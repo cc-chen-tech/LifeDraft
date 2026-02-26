@@ -1,0 +1,1108 @@
+"""Story generation prompts."""
+from typing import Dict, Any, Optional, List
+
+from config.prompts._helpers import (
+    _build_full_character_context,
+    _build_available_people_constraint,
+    _build_time_context,
+    _build_pending_storylines_context,
+    _build_established_facts_context,
+    _build_world_model_constraints,
+    _build_logic_constraints,
+    _build_continuation_mandate,
+    _build_foreshadowing_context,
+    _build_character_habits_context,
+    _collect_available_people,
+    _format_people_names,
+    _build_new_character_intro_context,
+    _build_common_story_constraints,
+    _build_character_name_constraint,
+)
+
+
+def get_event_generation_prompt(
+    player_state: Dict[str, Any],
+    language: str = "en",
+    current_phase: str = "early_career",
+    character_settings: Optional[Dict[str, Any]] = None,
+    opening_story: Optional[str] = None,
+    last_event_description: Optional[str] = None,
+    four_week_summary: Optional[str] = None,
+    yearly_summary: Optional[str] = None,
+    game_date_info: Optional[Dict[str, Any]] = None,
+    pending_storylines: Optional[list] = None,
+    established_facts: Optional[list] = None,
+    world_model: Optional[Any] = None
+) -> str:
+    """
+    Generate the prompt for AI event generation.
+    
+    Args:
+        player_state: Current player state dictionary
+        language: Language code ('en' or 'zh')
+        current_phase: Current life phase description
+        character_settings: Character background settings
+        opening_story: The opening story text for narrative continuity
+        last_event_description: The last event description for continuity
+        four_week_summary: Recent 4-week summary for context
+        yearly_summary: Yearly summary (randomly included) for context
+        game_date_info: Game-internal date info for time consistency
+        pending_storylines: Unresolved storylines for narrative continuity
+        world_model: Optional WorldModel instance for consistency constraints
+    
+    Returns:
+        Formatted prompt string
+    """
+    
+    if language == "zh":
+        return _get_chinese_prompt(player_state, current_phase, character_settings, opening_story, last_event_description, four_week_summary, yearly_summary, game_date_info, pending_storylines, established_facts, world_model=world_model)
+    else:
+        return _get_english_prompt(player_state, current_phase, character_settings, opening_story, last_event_description, four_week_summary, yearly_summary, game_date_info, pending_storylines, established_facts, world_model=world_model)
+
+
+def _get_english_prompt(player_state: Dict[str, Any], current_phase: str, character_settings: Optional[Dict[str, Any]] = None, opening_story: Optional[str] = None, last_event_description: Optional[str] = None, four_week_summary: Optional[str] = None, yearly_summary: Optional[str] = None, game_date_info: Optional[Dict[str, Any]] = None, pending_storylines: Optional[list] = None, established_facts: Optional[list] = None, world_model: Optional[Any] = None) -> str:
+    """English prompt template."""
+    
+    age = player_state.get("age", 22)
+    energy = player_state.get("energy", 70)
+    mood = player_state.get("mood", 60)
+    knowledge = player_state.get("knowledge", 50)
+    wealth = player_state.get("wealth", 10000)
+    relationships = player_state.get("relationships", {})
+    
+    rel_str = ", ".join([f"{name}({affinity})" for name, affinity in relationships.items()])
+    if not rel_str:
+        rel_str = "None"
+    
+    phase_descriptions = {
+        "early_career": "early career phase (just starting out)",
+        "establishing": "establishment phase (building career and relationships)",
+        "growth": "growth phase (expanding opportunities)",
+        "consolidation": "consolidation phase (stabilizing life)"
+    }
+    phase_desc = phase_descriptions.get(current_phase, current_phase)
+    
+    # Build character context and available people
+    character_context, available_people = _build_full_character_context(character_settings, "en")
+    available_people_str = _build_available_people_constraint(available_people, "en")
+    
+    # Build time context
+    time_context = _build_time_context(game_date_info, "en")
+    
+    # Build pending storylines context
+    storylines_context = _build_pending_storylines_context(pending_storylines, "en")
+    
+    # Build established facts context
+    facts_context = _build_established_facts_context(established_facts, "en")
+    
+    # Build world model constraints
+    world_model_context = _build_world_model_constraints(world_model, "en")
+    
+    # Build logic constraints
+    logic_constraints = _build_logic_constraints(game_date_info, "en")
+    
+    # Build decision history summary
+    history_str = "None"
+    decision_history = player_state.get("decision_history", [])
+    if decision_history:
+        recent_decisions = decision_history[-5:]  # Last 5 decisions
+        history_parts = []
+        for d in recent_decisions:
+            history_parts.append(f"Week {d.get('week')}: {d.get('choice')} (Event: {d.get('event')[:50]}...)")
+        history_str = "\n".join(history_parts)
+    
+    prompt = f"""You are a "fate engine" for a life simulation game. Generate a life event that requires the player to make a meaningful choice.
+
+MOST IMPORTANT REQUIREMENTS:
+1. **MUST use third-person narration** ("he/she" not "I/you"), keep consistent perspective throughout
+2. The story should be 800-1200 words, with dialogue, scene descriptions, and key moments. Write it with depth and engagement.
+
+【Complete Character Settings - MUST STRICTLY FOLLOW】
+{character_context if character_context else "Standard modern young adult"}{available_people_str}{time_context}
+
+【Recent History - DO NOT REPEAT SIMILAR PLOTS】
+{history_str}
+
+【Current Player State】
+Age: {age} years old
+Energy: {energy}/100
+Mood: {mood}/100
+Knowledge: {knowledge}/100
+Wealth: ${wealth:,}
+Key Relationships: {rel_str}{storylines_context}{facts_context}{world_model_context}
+
+【Generation Requirements - MUST STRICTLY FOLLOW】
+1. **CRITICAL: Event must be highly relevant to character settings**:
+   - **Era Background**: Must strictly match character's era (if ancient, cannot have "company", "client proposal", "mentor" etc. modern concepts)
+   - **Occupation/Identity**: Must match character's identity (if student, cannot have workplace events; if spy, cannot have ordinary company work)
+   - **Family Background**: If family situation is special, reflect it in the event
+   - **Personality Traits**: Event must match character's personality (introverted/extroverted, adventurous/conservative, etc.)
+   - **Social Relationships**: **All people in the event MUST and ONLY come from the "Available People List"**, cannot create new people
+2. Event must relate to at least two state values (energy, mood, knowledge, wealth, or relationships)
+3. Event should fit the "{phase_desc}" life stage and strictly match character settings
+4. Provide 2-4 options, each clearly listing effects on [energy, mood, knowledge, wealth]
+5. **Story should be 800-1200 words - engaging and immersive**:
+   - Write it as a compelling scene with depth
+   - Include 3-5 meaningful dialogue exchanges
+   - Include essential dialogue, expressions, actions, inner thoughts
+   - Use quotation marks for dialogue, e.g.: She said, "Why are you here today?"
+   - Focus on the key decision point while building atmosphere
+6. Options should present real trade-offs - no option should be clearly superior
+7. Relationship effects should be specified as "relationships": {{"name": +/-value}}, **name MUST come from Available People List**
+8. **IMPORTANT: Based on the character's personality, abilities, interests, and life vision, mark each option with "likely_choice": true/false to indicate what the character would most likely choose. At least one option should have likely_choice: true.**
+9. **ABSOLUTELY FORBIDDEN to generate events that don't match character background**, for example:
+    - Ancient character encounters "company", "client proposal", "mentor", "Friday after work" etc. modern concepts
+    - Student character encounters "company innovation competition", "client proposal" etc. workplace events
+    - Spy character encounters "company innovation competition", "client proposal" etc. ordinary workplace events
+    - Event contains people not in the "Available People List"
+10. **CRITICAL: Each generated event should be completely different from recent history. Avoid repeating the same plot and options. Be creative and create diverse life scenarios.**{logic_constraints}
+12. **NO FOURTH-WALL BREAKING**: The story must NEVER contain meta-commentary, references to 'game', 'simulation', 'system', 'stats', 'energy points', 'mood value', etc. No author asides, no addressing the reader, no explaining creative intent. The story must remain fully immersed in the character's world.
+13. **DO NOT FABRICATE PAST EVENTS**: Any past events referenced in the story MUST come from the context provided above. ABSOLUTELY FORBIDDEN to invent memories, conversations, events or experiences that never happened. Do not mention uncertain past events.
+
+REMINDER: event_description should be 800-1200 words - engaging and immersive. Focus on the key moment with atmosphere and depth.
+
+【Output Format】
+You MUST return ONLY valid JSON in this exact format:
+{{
+  "event_description": "A vivid description (1500-2000 words with extensive dialogue)"
+  "options": [
+    {{
+      "text": "Option A description (max 15 words)",
+      "effects": {{
+        "energy": -10,
+        "mood": 5,
+        "knowledge": 0,
+        "wealth": 2000,
+        "relationships": {{"Alice": -10}}
+      }},
+      "likely_choice": true
+    }},
+    {{
+      "text": "Option B description (max 15 words)",
+      "effects": {{
+        "energy": -20,
+        "mood": -10,
+        "knowledge": 5,
+        "wealth": 5000
+      }}
+    }}
+  ]
+}}
+
+Now generate a new event based on the player state above. Return ONLY the JSON, no additional text."""
+    
+    return prompt
+
+
+def _get_chinese_prompt(player_state: Dict[str, Any], current_phase: str, character_settings: Optional[Dict[str, Any]] = None, opening_story: Optional[str] = None, last_event_description: Optional[str] = None, four_week_summary: Optional[str] = None, yearly_summary: Optional[str] = None, game_date_info: Optional[Dict[str, Any]] = None, pending_storylines: Optional[list] = None, established_facts: Optional[list] = None, world_model: Optional[Any] = None) -> str:
+    """Chinese prompt template."""
+    
+    age = player_state.get("age", 22)
+    energy = player_state.get("energy", 70)
+    mood = player_state.get("mood", 60)
+    knowledge = player_state.get("knowledge", 50)
+    wealth = player_state.get("wealth", 10000)
+    week = player_state.get("week", 0)
+    relationships = player_state.get("relationships", {})
+    
+    rel_str = "，".join([f"{name}({affinity})" for name, affinity in relationships.items()])
+    if not rel_str:
+        rel_str = "无"
+    
+    phase_descriptions = {
+        "early_career": "职场新人阶段",
+        "establishing": "立业阶段",
+        "growth": "成长期",
+        "consolidation": "稳定期"
+    }
+    phase_desc = phase_descriptions.get(current_phase, current_phase)
+    
+    # Build character context and available people
+    character_context, available_people = _build_full_character_context(character_settings, "zh")
+    available_people_str = _build_available_people_constraint(available_people, "zh")
+    
+    # Build time context
+    time_context = _build_time_context(game_date_info, "zh")
+    
+    # Build pending storylines context
+    storylines_context = _build_pending_storylines_context(pending_storylines, "zh")
+    
+    # Build established facts context
+    facts_context = _build_established_facts_context(established_facts, "zh")
+    
+    # Build world model constraints
+    world_model_context = _build_world_model_constraints(world_model, "zh")
+    
+    # Build logic constraints
+    logic_constraints = _build_logic_constraints(game_date_info, "zh")
+    
+    # Build decision history summary
+    history_str = "无"
+    decision_history = player_state.get("decision_history", [])
+    if decision_history:
+        recent_decisions = decision_history[-5:]  # 最近5个决策
+        history_parts = []
+        for d in recent_decisions:
+            history_parts.append(f"第{d.get('week')}周：{d.get('choice')}（事件：{d.get('event')[:50]}...）")
+        history_str = "\n".join(history_parts)
+    
+    # Build story context for narrative continuity
+    story_context = ""
+    # Use opening story for first few weeks (week 0 or 1), or when no event history yet
+    if opening_story and (week <= 1 or not last_event_description):
+        # First week: continue from opening story
+        story_context = f"""\n【开场故事】
+{opening_story}
+
+请基于以上开场故事，续写后续情节。故事要自然接续开场情境，描述大约1周内发生的事情。"""
+    elif last_event_description:
+        # Subsequent weeks: continue from last event
+        story_context = f"""\n【上周故事】
+{last_event_description}
+
+请基于上周的故事，续写本周（第{week}周）的新故事。故事要有连续性，描述大约1周内发生的事情。"""
+    
+    # Add 4-week summary context if available
+    summary_context = ""
+    if four_week_summary:
+        summary_context += f"""\n【近期总结（最近4周）】
+{four_week_summary}
+"""
+    
+    # Add yearly summary context if provided (randomly selected)
+    if yearly_summary:
+        summary_context += f"""\n【年度回顾】
+{yearly_summary}
+"""
+    
+    prompt = f"""你是一个人生模拟游戏的"命运引擎"。请根据以下玩家状态和角色设定，以故事续写的方式生成一个需要抉择的生活事件。
+
+最重要的要求：
+1. **必须使用第三人称叙事**（"他/她"而非"我/你"），保持全文人称统一
+2. 故事应该控制在800-1200字，包含丰富的人物对话、场景描写、内心活动。要生动有深度，聚焦核心决策时刻。{story_context}{summary_context}
+
+【角色完整设定 - 必须严格遵守】
+{character_context if character_context else "标准现代青年"}{available_people_str}{time_context}
+
+**人物约束（严格禁止创造新人物）**：
+- 所有出现在事件中的人物名字必须且只能来自上方"可用人物列表"
+- 绝对禁止凭空创造任何新人物
+- 如果需要其他人物，请使用模糊称谓（如"一位同事""一个朋友"）
+
+【近期历史 - 禁止重复相似情节】
+{history_str}
+
+【玩家当前状态】
+年龄：{age}岁
+精力：{energy}/100
+情绪：{mood}/100
+学识：{knowledge}/100
+财富：{wealth:,}元
+关键关系：{rel_str}{storylines_context}{facts_context}{world_model_context}
+
+【生成要求 - 必须严格遵守】
+1. **CRITICAL：事件必须与角色的基本设定高度相关**：
+   - **时代背景**：必须严格符合角色的时代设定（如果是古代，不能出现"公司"、"客户提案"、"导师"等现代概念；如果是未来，要体现未来科技）
+   - **职业/身份**：必须符合角色的身份（如果是学生，不能出现职场事件；如果是间谍，不能出现普通公司工作）
+   - **家庭背景**：如果家庭情况特殊，要在事件中体现
+   - **性格特点**：事件要符合角色的性格（内向/外向、冒险/保守等）
+   - **社会关系**：**事件中出现的所有人物必须且只能来自"可用人物列表"**，不能凭空创造新人物
+2. 事件必须与至少两项状态值相关（精力、情绪、学识、财富或关系）
+3. 事件应贴近"{phase_desc}"人生阶段，并严格符合角色的基本设定
+4. 提供2-4个选项，每个选项明确列出对【精力、情绪、学识、财富】的影响值
+5. **故事应该800-1200字，生动有深度**：
+   - 写成有吸引力的场景片段，有一定深度
+   - 包含3-5轮有意义的对话交流
+   - 包含必要的对话、表情、动作、内心活动
+   - 对话用引号表示，如：她说："你今天怎么来了？"
+   - 聚焦核心决策点，同时营造氛围
+6. 选项应呈现真实的权衡取舍，不应有明显最优选项
+7. 关系影响应指定为"relationships": {{"姓名": +/-数值}}，**姓名必须来自可用人物列表**
+8. **重要：根据角色的性格特点、能力、兴趣和人生愿景，在选项中标注"likely_choice": true/false，表示该角色最可能做出的选择。每个事件至少有一个likely_choice为true的选项。**
+9. **绝对禁止生成与角色背景不符的事件**，例如：
+    - 古代角色遇到"公司"、"客户提案"、"导师"、"周五下班"等现代概念
+    - 学生角色遇到"公司内部创新大赛"、"客户提案"等职场事件
+    - 间谍角色遇到"公司内部创新大赛"、"客户提案"等普通职场事件
+    - 事件中出现不在"可用人物列表"中的人物
+10. **CRITICAL：每次生成的事件应该与近期历史完全不同，避免重复相同的情节和选项。发挥创意，创造多样化的生活场景。**{logic_constraints}
+12. **严禁跳脱叙事**：故事中绝对不能出现任何打破第四面墙的内容，包括但不限于：提及"游戏""模拟""系统""属性值""精力值""情绪值"等元信息；出现作者旁白、对读者说话、解释创作意图；出现对故事本身的评论或总结性元叙述。故事应完全沉浸在角色的世界中。
+13. **严禁编造过往事件**：故事中提到的任何过去发生的事情，必须来自上面提供的上下文（上周故事、近期总结、年度回顾等）。绝对禁止凭空捏造从未发生过的回忆、对话、事件或经历。不确定的过往不要提及。
+
+再次强调：event_description应该800-1200字，生动有深度。既不过长影响节奏，也不过短缺乏沉浸感！
+
+【输出格式】
+你必须仅返回有效的JSON格式，格式如下：
+{{
+  "event_description": "对情况的生动描述（1500-2000字，包含大量人物对话）"
+  "options": [
+    {{
+      "text": "选项A描述（最多15字）",
+      "effects": {{
+        "energy": -10,
+        "mood": 5,
+        "knowledge": 0,
+        "wealth": 2000,
+        "relationships": {{"李华": -10}}
+      }},
+      "likely_choice": true
+    }},
+    {{
+      "text": "选项B描述（最多15字）",
+      "effects": {{
+        "energy": -20,
+        "mood": -10,
+        "knowledge": 5,
+        "wealth": 5000
+      }}
+    }}
+  ]
+}}
+
+现在根据上述玩家状态和角色设定生成一个新事件。**必须严格符合角色设定，且与历史情节完全不同。**仅返回JSON，不要添加任何其他文本。"""
+    
+    return prompt
+
+
+def get_result_generation_prompt(
+    event_description: str,
+    chosen_option: str,
+    effects: Dict[str, Any],
+    language: str = "en",
+    character_settings: Dict[str, Any] = None,
+    recent_context: str = ""
+) -> str:
+    """
+    Generate prompt for story continuation after player's choice.
+    
+    This prompt generates a detailed story continuation (500-800 chars) that:
+    - Continues the narrative from the event
+    - Shows the immediate consequences of the player's choice
+    - Includes character interactions and dialogue where appropriate
+    - Maintains consistency with the character settings
+    """
+    
+    # Build character context
+    char_context = ""
+    if character_settings:
+        if "identity" in character_settings:
+            identity = character_settings["identity"]
+            char_context += f"\n主角：{identity.get('name', '未知')}"
+        if "occupation" in character_settings:
+            occupation = character_settings["occupation"]
+            char_context += f"\n职业：{occupation.get('occupation', '未知')}"
+    
+    if language == "zh":
+        return f"""你是一个沉浸式叙事小说作家。现在请续写以下故事，展示玩家做出选择后发生了什么。
+
+## 角色信息{char_context}
+
+## 当前故事
+{event_description}
+
+## 玩家的选择
+{chosen_option}
+
+## 选择带来的影响
+{effects}
+
+## 要求
+1. 续写500-800字，详细描述选择后立即发生的事情
+2. 包含具体的场景描写、人物反应和丰富的对话（至少3-5轮自然对话）
+3. 展现这个选择带来的即时后果和情感变化
+4. 保持沉浸式第二人称叙事（"你"的视角）
+5. 语言生动流畅，有细节感，对话要体现人物性格
+6. 严禁跳脱叙事：不得提及"游戏""模拟""系统""属性值"等元信息，不得出现作者旁白
+
+仅返回续写的故事内容，不要其他说明或标题。"""
+    else:
+        return f"""You are an immersive narrative writer. Continue the following story, showing what happens after the player's choice.
+
+## Character Info{char_context}
+
+## Current Story
+{event_description}
+
+## Player's Choice
+{chosen_option}
+
+## Effects of Choice
+{effects}
+
+## Requirements
+1. Write 500-800 words continuing the story
+2. Include specific scene descriptions, character reactions, and rich dialogue (at least 3-5 natural exchanges)
+3. Show immediate consequences and emotional changes from this choice
+4. Maintain immersive second-person narrative ("you" perspective)
+5. Vivid and fluid language with good details, dialogue should reflect character personality
+6. NO FOURTH-WALL BREAKING: never mention 'game', 'simulation', 'system', 'stats', etc. No author asides
+
+Return only the story continuation, no other explanations or headers."""
+
+
+def get_options_only_prompt(
+    story_description: str,
+    player_state: Dict[str, Any],
+    character_settings: Optional[Dict[str, Any]] = None,
+    language: str = "zh"
+) -> str:
+    """
+    Generate prompt for creating options based on an existing story.
+    Used when we already have the story (e.g., opening story) and only need options.
+    
+    Args:
+        story_description: The existing story text
+        player_state: Current player state
+        character_settings: Character background settings
+        language: Language code
+    
+    Returns:
+        Formatted prompt string
+    """
+    relationships = player_state.get("relationships", {})
+    collected = _collect_available_people(character_settings)
+    available_people = [p.get('name', '') for p in collected if p.get('name')]
+    
+    # Add names from current relationships
+    for name in relationships.keys():
+        if name not in available_people:
+            available_people.append(name)
+    
+    people_list = "、".join(available_people) if available_people else "无"
+    
+    # Build character context for option generator (era, personality, key background)
+    char_context_parts = []
+    if character_settings:
+        if "era" in character_settings:
+            era = character_settings["era"]
+            era_desc = era.get("era_description", "")
+            era_year = era.get("year", "")
+            if era_desc or era_year:
+                char_context_parts.append(f"时代：{era_year}年，{era_desc}" if language == "zh"
+                                          else f"Era: {era_year}, {era_desc}")
+        if "traits" in character_settings:
+            traits = character_settings["traits"]
+            traits_desc = traits.get("traits_description", "")
+            if traits_desc:
+                char_context_parts.append(f"性格：{traits_desc}" if language == "zh"
+                                          else f"Traits: {traits_desc}")
+        if "world" in character_settings:
+            world = character_settings["world"]
+            world_desc = world.get("world_description", "")
+            if world_desc:
+                char_context_parts.append(f"世界：{world_desc}" if language == "zh"
+                                          else f"World: {world_desc}")
+    
+    char_context_str = "\n".join(char_context_parts)
+    
+    if language == "zh":
+        char_section = f"\n\n【角色背景】\n{char_context_str}" if char_context_str else ""
+        return f"""你是一个人生模拟游戏的选项生成器。基于以下故事描述，生成2-4个用户可以选择的选项。
+
+【故事描述】
+{story_description}
+
+【可用人物列表】
+{people_list}{char_section}
+
+【核心要求 - 必须严格遵守】
+
+**最重要：选项必须精确回应故事结尾的决策点！**
+
+请仔细阅读上面的故事，特别关注故事**最后几段**面临的具体情境（某人提出邀请/面临冲突/需要做选择），然后生成2-4个**直接回应该情境**的选项。
+
+**逻辑一致性要求：**
+- 选项必须是主角在故事结尾的**具体情境下**可以采取的行动
+- 选项必须符合角色的身份、时代背景和性格特点
+- 每个选项都应该是对故事结尾**同一个决策点**的不同回应，而非各自描述不同的事情
+
+**绝对禁止：**
+- 不要生成"休息"、"学习"、"工作"等与故事无关的通用选项
+- 不要生成"继续前进"、"思考一下"、"保持现状"等模糊的万能选项
+- 不要生成脱离故事情境的独立行动
+
+【其他要求】
+3. 每个选项明确列出对【精力(energy)、情绪(mood)、学识(knowledge)、财富(wealth)】的影响值
+4. 选项应呈现真实的权衡取舍，不应有明显最优选项
+5. **关系影响必须指定为"relationships": {{"姓名": +/-数值}}，姓名必须严格来自可用人物列表，禁止使用列表中不存在的名字！**
+6. 标注"likely_choice": true/false表示角色最可能做出的选择
+
+【输出格式】
+仅返回有效的JSON格式：
+{{
+  "options": [
+    {{
+      "text": "选项A描述（最多15字）",
+      "effects": {{
+        "energy": -10,
+        "mood": 5,
+        "knowledge": 0,
+        "wealth": 0,
+        "relationships": {{}}
+      }},
+      "likely_choice": true
+    }},
+    {{
+      "text": "选项B描述（最多15字）",
+      "effects": {{
+        "energy": -5,
+        "mood": -5,
+        "knowledge": 5,
+        "wealth": 0
+      }},
+      "likely_choice": false
+    }}
+  ]
+}}
+
+仅返回JSON，不要其他内容。"""
+    else:
+        char_section_en = f"\n\n[Character Background]\n{char_context_str}" if char_context_str else ""
+        return f"""You are an options generator for a life simulation game. Based on the following story description, generate 2-4 options for the user to choose from.
+
+[Story Description]
+{story_description}
+
+[Available People]
+{people_list}{char_section_en}
+
+[Requirements]
+1. **Options MUST precisely respond to the decision point at the END of the story**:
+   - Read the story carefully, focus on the **last few paragraphs** to identify the specific situation (invitation/conflict/dilemma)
+   - Options must be actions the protagonist can take in that **specific situation**
+   - Options must fit the character's identity, era, and personality
+   - All options should be different responses to the **same decision point**, not describing unrelated things
+2. **FORBIDDEN to generate generic options unrelated to the story**:
+   - "Rest", "Study", "Work", "Exercise" etc.
+   - "Continue forward", "Think about it", "Keep status quo" etc.
+   - Any action detached from the story context
+3. Each option clearly lists effects on [energy, mood, knowledge, wealth]
+4. Options should present real trade-offs - no option should be clearly superior
+5. Relationship effects should be specified as "relationships": {{"name": +/-value}}, name must come from Available People List
+6. Mark "likely_choice": true/false to indicate what the character would most likely choose
+
+[Output Format]
+Return ONLY valid JSON:
+{{
+  "options": [
+    {{
+      "text": "Option A description (max 15 words)",
+      "effects": {{
+        "energy": -10,
+        "mood": 5,
+        "knowledge": 0,
+        "wealth": 0,
+        "relationships": {{}}
+      }},
+      "likely_choice": true
+    }},
+    {{
+      "text": "Option B description (max 15 words)",
+      "effects": {{
+        "energy": -5,
+        "mood": -5,
+        "knowledge": 5,
+        "wealth": 0
+      }},
+      "likely_choice": false
+    }}
+  ]
+}}
+
+Return ONLY the JSON, no additional text."""
+
+
+def get_story_only_prompt(
+    player_state: Dict[str, Any],
+    language: str = "zh",
+    current_phase: str = "early_career",
+    character_settings: Optional[Dict[str, Any]] = None,
+    opening_story: Optional[str] = None,
+    last_event_description: Optional[str] = None,
+    four_week_summary: Optional[str] = None,
+    yearly_summary: Optional[str] = None,
+    game_date_info: Optional[Dict[str, Any]] = None,
+    pending_storylines: Optional[list] = None,
+    established_facts: Optional[list] = None,
+    last_event_concluded: bool = True,
+    last_round_full_story: str = "",
+    activated_foreshadowing: Optional[Dict[str, Any]] = None,
+    character_habits: Optional[list] = None,
+    world_model: Optional[Any] = None,
+    vector_context: str = ""  # ★ 向量检索上下文
+) -> str:
+    """
+    Generate prompt for story-only generation (no JSON, pure narrative).
+    This produces longer, more detailed stories since there's no JSON format constraint.
+    
+    Args:
+        player_state: Current player state dictionary
+        language: Language code ('en' or 'zh')
+        current_phase: Current life phase description
+        character_settings: Character background settings
+        opening_story: The opening story text for narrative continuity
+        last_event_description: The last event description for continuity
+        four_week_summary: Recent 4-week summary for context
+        yearly_summary: Yearly summary (randomly included) for context
+    
+    Returns:
+        Formatted prompt string for pure story generation
+    """
+    
+    age = player_state.get("age", 22)
+    week = player_state.get("week", 0) + 1  # ★ week 从0开始，显示时+1，与前端一致
+    energy = player_state.get("energy", 70)
+    mood = player_state.get("mood", 60)
+    knowledge = player_state.get("knowledge", 50)
+    wealth = player_state.get("wealth", 10000)
+    relationships = player_state.get("relationships", {})
+    
+    rel_str = "、".join([f"{name}({affinity})" for name, affinity in relationships.items()]) if relationships else "无"
+    
+    phase_descriptions = {
+        "early_career": "职场新人阶段" if language == "zh" else "early career phase",
+        "establishing": "立业阶段" if language == "zh" else "establishment phase",
+        "growth": "成长期" if language == "zh" else "growth phase",
+        "consolidation": "稳定期" if language == "zh" else "consolidation phase"
+    }
+    phase_desc = phase_descriptions.get(current_phase, current_phase)
+    
+    # Build character context (simplified for story-only prompt)
+    available_people = _collect_available_people(character_settings)
+    character_context = ""
+    
+    if character_settings:
+        char_parts = []
+        
+        if "era" in character_settings:
+            era = character_settings["era"]
+            char_parts.append(f"""时代背景：{era.get('year', '未知')}年，{era.get('era_description', '')}""")
+        
+        if "age" in character_settings:
+            age_info = character_settings["age"]
+            char_parts.append(f"""起始年龄：{age_info.get('age', '未知')}岁""")
+        
+        if "gender" in character_settings:
+            gender_info = character_settings["gender"]
+            char_parts.append(f"""性别：{gender_info.get('gender', '未知')}""")
+        
+        if "world" in character_settings:
+            world = character_settings["world"]
+            char_parts.append(f"""世界设定：{world.get('world_description', '')}""")
+        
+        if "family" in character_settings:
+            family = character_settings["family"]
+            char_parts.append(f"""家庭背景：{family.get('family_description', '')}""")
+        
+        if available_people:
+            people_str = _format_people_names(available_people, "zh")
+            char_parts.append(f"""关键人物：{people_str}""")
+        
+        if "traits" in character_settings:
+            traits = character_settings["traits"]
+            char_parts.append(f"""个人特点：{traits.get('traits_description', '')}""")
+        
+        character_context = "\n".join(char_parts)
+    
+    # Build story context
+    story_context = ""
+    if opening_story and (week <= 1 or not last_event_description):
+        story_context = f"""\n【开场故事】
+{opening_story}
+
+请基于以上开场故事，续写后续情节。"""
+    elif last_event_description:
+        story_context = f"""\n【上周故事】
+{last_event_description}
+
+请基于上周的故事，续写本周（第{week}周）的新故事。"""
+    
+    # Build summary context
+    summary_context = ""
+    if four_week_summary:
+        summary_context += f"""\n【近期总结（4周）】
+{four_week_summary}"""
+    if yearly_summary:
+        summary_context += f"""\n【年度回顾】
+{yearly_summary}"""
+    
+    # Build available people constraint string
+    available_people_str = _build_available_people_constraint(available_people, "zh")
+    
+    # Build time context
+    time_context = _build_time_context(game_date_info, language)
+    
+    # Build pending storylines context
+    storylines_context = _build_pending_storylines_context(pending_storylines, language)
+    
+    # Build established facts context
+    facts_context = _build_established_facts_context(established_facts, language)
+    
+    # Build world model constraints
+    world_model_context = _build_world_model_constraints(world_model, language)
+    
+    # Build continuation mandate (if previous event not concluded)
+    continuation_mandate = _build_continuation_mandate(last_event_concluded, last_round_full_story, language)
+    
+    # Build foreshadowing echo context (if a seed was activated)
+    foreshadowing_context = _build_foreshadowing_context(activated_foreshadowing, language)
+    
+    # Build character habits context
+    habits_context = _build_character_habits_context(character_habits, language)
+    
+    # ★ 向量检索上下文（如果有）
+    vector_context_section = vector_context + "\n" if vector_context else ""
+    
+    if language == "zh":
+        prompt = f"""你是一位才华横溢的小说家。请根据以下角色设定和玩家状态，写一段生动的故事（描述这一周发生的事情）。{story_context}{summary_context}{continuation_mandate}{foreshadowing_context}{vector_context_section}
+
+【角色设定】
+{character_context if character_context else "标准现代青年"}{available_people_str}{time_context}
+
+【玩家当前状态】
+年龄：{age}岁 | 第{week}周
+精力：{energy}/100 | 情绪：{mood}/100 | 学识：{knowledge}/100
+财富：{wealth:,}元 | 关系：{rel_str}{storylines_context}{facts_context}{world_model_context}{habits_context}
+
+【写作要求 - 必须严格遵守】
+0. **必须使用第三人称叙事**（"他/她"而非"我/你"），保持全文人称统一
+1. **故事应该800-1200字**，写成有吸引力的场景片段
+2. **包含丰富对话**，3-5轮重要对话交流
+3. 对话用引号表示，如：她说："你今天怎么来了？"
+4. 包含环境描写、表情动作、内心独白等细节
+5. 事件必须严格符合角色设定（时代、身份、性格）
+6. 故事中出现的人物必须来自可用人物列表
+7. **最重要：故事结尾必须停在一个具体、明确的决策点！**
+   - 正确示例：「她说："明天一早跟我走，怎么样？"」「他递来一把钥匙："这是你自己的选择了。"」「父亲沉声道："你自己拿主意吧。"」
+   - 错误示例：「他们相视而笑。」（无决策点）、「一切都已经不一样了。」（纯情感结尾）、「故事到这里告一段落。」（无悬念）
+   - 故事结尾必须是：某人说出一句话需要主角回应、面临两个选择、需要做出承诺、需要表态等
+   - **绝对禁止**以纯情感描写或感慨收尾，必须有具体的"下一步怎么办"的悬念
+8. **只返回故事文本，不要任何JSON格式、选项列表或其他标记**
+9. **绝对禁止**在故事末尾写"选项一、选项二"或"A、B、C"这样的选择列表
+10. **时间与逻辑一致性**：故事中的时间、季节、人物动机必须与当前设定一致，不能出现前后矛盾
+11. **严禁跳脱叙事**：故事中不得出现打破第四面墙的内容，禁止提及"游戏""模拟""系统""属性值"等元信息，不得出现作者旁白、对读者说话或解释创作意图。故事必须完全沉浸在角色的世界中
+12. **严禁编造过往事件**：故事中提到的任何过去发生的事情，必须来自上面提供的上下文（上周故事、近期总结、年度回顾、剧情线等）。绝对禁止凭空捏造从未发生过的回忆、对话、事件或经历。不确定的过往不要提及
+
+现在请开始写故事："""
+    else:
+        prompt = f"""You are a talented novelist. Based on the following character settings and player state, write a vivid story (describing what happens this week).{story_context}{summary_context}{continuation_mandate}{foreshadowing_context}
+
+[Character Settings]
+{character_context if character_context else "Standard modern young adult"}{available_people_str}{time_context}
+
+[Current Player State]
+Age: {age} | Week {week}
+Energy: {energy}/100 | Mood: {mood}/100 | Knowledge: {knowledge}/100
+Wealth: ${wealth:,} | Relationships: {rel_str}{storylines_context}{facts_context}{world_model_context}{habits_context}
+
+[Writing Requirements - MUST FOLLOW]
+0. **MUST use third-person narration** ("he/she" not "I/you"), keep consistent perspective throughout
+1. **Story should be 800-1200 words**, write as an engaging scene
+2. **Include rich dialogue**, 3-5 important dialogue exchanges
+3. Use quotation marks for dialogue, e.g.: She said, "Why are you here today?"
+4. Include environment descriptions, expressions, actions, inner thoughts
+5. Event must strictly match character settings (era, identity, personality)
+6. Characters in the story must come from the available people list
+7. **MOST IMPORTANT: Story MUST end at a concrete, specific decision point!**
+   - Good: 'She said, "Come with me tomorrow morning, what do you say?"' 'He handed over a key: "This is your choice now."' 'Father said gravely: "Make your own decision."'
+   - Bad: 'They looked at each other and smiled.' (no decision point) 'Everything has changed.' (pure emotional ending) 'The story ends here.' (no suspense)
+   - Ending MUST be: someone asks a question requiring response, facing two paths, needing to make a promise, needing to take a stance, etc.
+   - **ABSOLUTELY FORBIDDEN** to end with pure emotional reflection or sentiment - there must be a concrete "what happens next" tension
+8. **Return ONLY story text, NO JSON, NO option lists, NO other markup**
+9. **ABSOLUTELY FORBIDDEN** to write "Option 1, Option 2" or "A, B, C" choice lists at the end
+10. **Time & Logic Consistency**: Story time, season, character motivations must match current settings, no contradictions allowed
+11. **NO FOURTH-WALL BREAKING**: NEVER mention 'game', 'simulation', 'system', 'stats', or any meta-information. No author asides, no addressing the reader. The story must remain fully immersed in the character's world
+12. **DO NOT FABRICATE PAST EVENTS**: Any past events referenced in the story MUST come from the context provided above. ABSOLUTELY FORBIDDEN to invent memories, conversations, events or experiences that never happened. Do not mention uncertain past events
+
+Now begin writing the story:"""
+    
+    return prompt
+
+
+def get_relationship_event_context(events: list, era: str, language: str) -> str:
+    """
+    生成关系事件上下文供AI使用
+    
+    Args:
+        events: 触发的关系事件列表
+        era: 时代背景
+        language: 语言
+    
+    Returns:
+        关系事件上下文字符串
+    """
+    if not events:
+        return ""
+    
+    if language == "zh":
+        lines = ["\n【本轮触发的重要关系事件 - 必须自然融入故事】"]
+        for event in events:
+            lines.append(f"- **{event['character_name']}**: {event['era_name']}")
+            lines.append(f"  {event['description']}")
+        lines.append("")
+        lines.append("请将以上关系事件自然地融入本轮故事中，使其感觉是故事发展的自然结果。")
+        lines.append("事件表达方式应符合时代背景，避免突兀。")
+    else:
+        lines = ["\n[IMPORTANT RELATIONSHIP EVENT - MUST INTEGRATE INTO STORY]"]
+        for event in events:
+            lines.append(f"- **{event['character_name']}**: {event['era_name']}")
+            lines.append(f"  {event['description']}")
+        lines.append("")
+        lines.append("Naturally integrate the above relationship events into this round's story.")
+        lines.append("Events should feel like natural story developments, not forced.")
+    
+    return "\n".join(lines)
+
+
+def get_round_event_prompt(
+    player_state: Dict[str, Any],
+    language: str,
+    round_number: int,
+    round_context: str,
+    character_settings: Optional[Dict[str, Any]] = None,
+    relationship_events: Optional[list] = None,
+    historical_weekly_summary: Optional[str] = None,
+    historical_yearly_summary: Optional[str] = None,
+    game_date_info: Optional[Dict[str, Any]] = None,
+    pending_storylines: Optional[list] = None,
+    established_facts: Optional[list] = None,
+    last_event_concluded: bool = True,
+    last_round_full_story: str = "",
+    activated_foreshadowing: Optional[Dict[str, Any]] = None,
+    character_habits: Optional[list] = None,
+    world_model: Optional[Any] = None,
+    new_character: Optional[Dict[str, Any]] = None,
+    vector_context: str = ""  # ★ 向量检索上下文
+) -> str:
+    """
+    Generate prompt for a single round's story within a week.
+    
+    Args:
+        player_state: Current player state dictionary
+        language: Language code ('zh' or 'en')
+        round_number: Round number within week (0=周一, 1=周中, 2=周末)
+        round_context: Previous rounds' summaries and choices
+        character_settings: Character background settings
+        relationship_events: 触发的关系事件列表
+        historical_weekly_summary: 随机选中的历史周总结
+        historical_yearly_summary: 随机选中的历史年度总结
+    
+    Returns:
+        Formatted prompt string for story generation
+    """
+    age = player_state.get("age", 22)
+    week = player_state.get("week", 0) + 1  # ★ week 从0开始，显示时+1，与前端一致
+    energy = player_state.get("energy", 70)
+    mood = player_state.get("mood", 60)
+    knowledge = player_state.get("knowledge", 50)
+    wealth = player_state.get("wealth", 10000)
+    relationships = player_state.get("relationships", {})
+    
+    rel_str = "、".join([f"{name}({affinity})" for name, affinity in relationships.items()]) if relationships else "无"
+    
+    # Build character context
+    available_people = _collect_available_people(character_settings)
+    character_context = ""
+    available_people_str = ""
+    
+    if character_settings:
+        char_parts = []
+        
+        if "era" in character_settings:
+            era = character_settings["era"]
+            char_parts.append(f"""时代背景：{era.get('year', '')}年，{era.get('era_description', '')}""")
+        
+        if "world" in character_settings:
+            world = character_settings["world"]
+            char_parts.append(f"""世界设定：{world.get('world_description', '')}""")
+        
+        if "family" in character_settings:
+            family = character_settings["family"]
+            char_parts.append(f"""家庭背景：{family.get('family_description', '')}""")
+        
+        if "traits" in character_settings:
+            traits = character_settings["traits"]
+            char_parts.append(f"""个人特质：{traits.get('traits_description', '')}""")
+        
+        # 生成可用人物列表字符串（包含所有人物）
+        # 如果有新人物，特别标注其首次登场
+        if available_people:
+            people_list = _format_people_names(available_people, "zh")
+                    
+            # 如果有新人物，在人物列表中特别标注
+            new_char_name = new_character.get("name", "") if new_character else ""
+            if new_char_name:
+                # 特别标注新人物
+                available_people_str = f"""\n**可用人物列表（仅限使用）**：{people_list}
+
+注意：**{new_char_name}** 是本轮**首次登场**的新人物，请确保写一个自然的「相遇/相识」场景！
+禁止创造不在上述列表中的人物名字！如需新人物请用「陌生人」「路人」等通用称谓。"""
+            else:
+                available_people_str = f"""\n**可用人物列表（仅限使用）**：{people_list}
+禁止创造不在上述列表中的人物名字！如需新人物请用「陌生人」「路人」等通用称谓。"""
+        
+        if char_parts:
+            character_context = "\n".join(char_parts)
+    
+    # Round names
+    round_names_zh = ["周一", "周中", "周末"]
+    round_names_en = ["Monday", "Midweek", "Weekend"]
+    
+    round_name = round_names_zh[round_number] if round_number < 3 else f"第{round_number+1}轮"
+    round_name_en = round_names_en[round_number] if round_number < 3 else f"Round {round_number+1}"
+    
+    if language == "zh":
+        # Build previous rounds context
+        context_section = ""
+        if round_context:
+            context_section = f"""\n
+【本周前几轮经历】
+{round_context}
+
+请基于上述经历继续发展故事，保持连贯性。"""
+        
+        # Build relationship events context
+        rel_events_context = ""
+        if relationship_events:
+            era = character_settings.get("era", {}).get("era_description", "") if character_settings else ""
+            rel_events_context = get_relationship_event_context(relationship_events, era, language)
+        
+        # Build historical memory context (as flashback/reminiscence)
+        memory_context = ""
+        if historical_weekly_summary or historical_yearly_summary:
+            memory_parts = ["\n【历史回忆 - 可自然地融入故事作为回忆片段】"]
+            if historical_yearly_summary:
+                memory_parts.append(f"「往年回忆」{historical_yearly_summary}")
+            if historical_weekly_summary:
+                memory_parts.append(f"「近期回忆」{historical_weekly_summary}")
+            memory_parts.append("提示：当人物回忆过去或谈论往事时，可以自然引用以上内容。")
+            memory_context = "\n".join(memory_parts)
+        
+        # Build time and storyline contexts
+        time_context = _build_time_context(game_date_info, language)
+        storylines_context = _build_pending_storylines_context(pending_storylines, language)
+        facts_context = _build_established_facts_context(established_facts, language)
+        
+        # Build world model constraints
+        world_model_context = _build_world_model_constraints(world_model, language)
+        
+        # Build continuation mandate (if previous event not concluded)
+        continuation_mandate = _build_continuation_mandate(last_event_concluded, last_round_full_story, language)
+        
+        # Build foreshadowing echo context
+        foreshadowing_context = _build_foreshadowing_context(activated_foreshadowing, language)
+        
+        # Build character habits context
+        habits_context = _build_character_habits_context(character_habits, language)
+        
+        # Build new character introduction context
+        new_char_context = _build_new_character_intro_context(new_character, language)
+        
+        # ★ 向量检索上下文（如果有）
+        vector_context_section = "\n" + vector_context if vector_context else ""
+        
+        prompt = f"""你是一位才华横溢的小说家。请为第{week}周的{round_name}写一段生动的故事。{continuation_mandate}{foreshadowing_context}{vector_context_section}
+
+【角色设定】
+{character_context if character_context else "标准现代青年"}{available_people_str}{time_context}
+
+【当前状态】
+年龄：{age}岁 | 第{week}周 - {round_name}
+精力：{energy}/100 | 情绪：{mood}/100 | 学识：{knowledge}/100
+财富：{wealth:,}元 | 关系：{rel_str}{context_section}{rel_events_context}{memory_context}{storylines_context}{facts_context}{world_model_context}{habits_context}{new_char_context}
+
+【写作要求】
+1. **故事应该1500-2000字**，写成有吸引力的场景片段
+2. **包含丰富对话**，4-6轮重要对话交流
+3. 对话用引号表示，如：她说："你今天怎么来了？"
+4. 包含环境描写、表情动作、内心独白等细节
+5. 事件必须严格符合角色设定（时代、身份、性格）
+6. **故事中出现的人物必须严格来自可用人物列表，禁止创造新人物名字！**
+7. **最重要：故事结尾必须停在一个具体、明确的决策点！**
+   - 正确示例：「她说："明天一早跟我走，怎么样？"」「他递来一把钥匙："这是你自己的选择了。"」「父亲沉声道："你自己拿主意吧。"」
+   - 错误示例：「他们相视而笑。」（无决策点）、「一切都已经不一样了。」（纯情感结尾）
+   - 故事结尾必须是：某人需要主角回应、面临具体选择、需要做出承诺或表态
+   - **绝对禁止**以纯情感描写或感慨收尾
+8. **只返回故事文本，不要任何JSON格式、选项列表或其他标记**
+9. **时间与逻辑一致性**：故事中的时间、季节、人物动机必须与当前设定一致，人物行为应符合其性格和目标
+10. **剧情连续性**：如果有未完结的重要剧情线，请自然地在故事中延续或回应
+11. **严禁跳脱叙事**：故事中不得出现打破第四面墙的内容，禁止提及"游戏""模拟""系统""属性值"等元信息，不得出现作者旁白、对读者说话。故事必须完全沉浸在角色的世界中
+12. **严禁编造过往事件**：故事中提到的任何过去发生的事情，必须来自上面提供的上下文（前几轮经历、上一轮故事、历史回忆、剧情线等）。绝对禁止凭空捏造从未发生过的回忆、对话、事件或经历。如果需要提到过去，只能引用上面明确出现的内容。不确定的过往不要提及
+
+现在请开始写{round_name}的故事："""
+    else:
+        context_section = ""
+        if round_context:
+            context_section = f"""\n
+[Previous Rounds This Week]
+{round_context}
+
+Continue the story based on the above, maintaining continuity."""
+        
+        # Build relationship events context
+        rel_events_context = ""
+        if relationship_events:
+            era = character_settings.get("era", {}).get("era_description", "") if character_settings else ""
+            rel_events_context = get_relationship_event_context(relationship_events, era, language)
+        
+        # Build historical memory context (as flashback/reminiscence)
+        memory_context = ""
+        if historical_weekly_summary or historical_yearly_summary:
+            memory_parts = ["\n[Historical Memory - Can be naturally woven into the story as flashbacks]"]
+            if historical_yearly_summary:
+                memory_parts.append(f"[Past Year Memory] {historical_yearly_summary}")
+            if historical_weekly_summary:
+                memory_parts.append(f"[Recent Memory] {historical_weekly_summary}")
+            memory_parts.append("Hint: When characters recall the past or discuss old times, you can naturally reference the above content.")
+            memory_context = "\n".join(memory_parts)
+        
+        # Build time and storyline contexts
+        time_context = _build_time_context(game_date_info, language)
+        storylines_context = _build_pending_storylines_context(pending_storylines, language)
+        facts_context = _build_established_facts_context(established_facts, language)
+        
+        # Build world model constraints
+        world_model_context_en = _build_world_model_constraints(world_model, language)
+        
+        # Build continuation mandate (if previous event not concluded)
+        continuation_mandate_en = _build_continuation_mandate(last_event_concluded, last_round_full_story, language)
+        
+        # Build foreshadowing echo context
+        foreshadowing_context_en = _build_foreshadowing_context(activated_foreshadowing, language)
+        
+        # Build character habits context
+        habits_context_en = _build_character_habits_context(character_habits, language)
+        
+        # Build new character introduction context
+        new_char_context_en = _build_new_character_intro_context(new_character, language)
+        
+        prompt = f"""You are a talented novelist. Write a vivid story for {round_name_en} of Week {week}.{continuation_mandate_en}{foreshadowing_context_en}
+
+[Character Settings]
+{character_context if character_context else "Standard modern young adult"}{available_people_str}{time_context}
+
+[Current State]
+Age: {age} | Week {week} - {round_name_en}
+Energy: {energy}/100 | Mood: {mood}/100 | Knowledge: {knowledge}/100
+Wealth: ${wealth:,} | Relationships: {rel_str}{context_section}{rel_events_context}{memory_context}{storylines_context}{facts_context}{world_model_context_en}{habits_context_en}{new_char_context_en}
+
+[Writing Requirements]
+1. **Story should be 1500-2000 words**, write as an engaging scene
+2. **Include rich dialogue**, 4-6 important dialogue exchanges
+3. Use quotation marks for dialogue
+4. Include environment descriptions, expressions, actions, inner thoughts
+5. Event must strictly match character settings
+6. Characters must come from the available people list
+7. **MOST IMPORTANT: Story MUST end at a concrete decision point!**
+   - Good: 'She said, "Come with me tomorrow?"' 'He handed a key: "Your choice."' 'Father said: "Decide for yourself."'
+   - Bad: 'They smiled at each other.' (no decision) 'Everything changed.' (pure emotion)
+   - Ending MUST create tension: someone needs response, facing concrete choices
+   - **FORBIDDEN** to end with pure emotional reflection
+8. **Return ONLY story text, NO JSON, NO options**
+9. **Time & Logic Consistency**: Story time, season, character motivations must match current settings, no contradictions
+10. **Storyline Continuity**: If there are pending important storylines, naturally continue or address them in the story
+11. **NO FOURTH-WALL BREAKING**: NEVER mention 'game', 'simulation', 'system', 'stats', or any meta-information. No author asides, no addressing the reader. The story must remain fully immersed in the character's world
+12. **DO NOT FABRICATE PAST EVENTS**: Any past events mentioned in the story MUST come from the context provided above (previous rounds, last round story, historical memories, storylines, etc.). ABSOLUTELY FORBIDDEN to invent memories, conversations, events or experiences that never happened. If referencing the past, only use what is explicitly provided above. Do not mention uncertain past events
+
+Now write the {round_name_en} story:"""
+    
+    return prompt

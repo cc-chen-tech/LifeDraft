@@ -1,0 +1,333 @@
+"""Tests for gameplay API routes."""
+import pytest
+from unittest.mock import patch, MagicMock
+from fastapi.testclient import TestClient
+
+from src.api.main import app
+from src.api import deps
+
+
+@pytest.fixture
+def client():
+    """Create test client."""
+    return TestClient(app)
+
+
+@pytest.fixture
+def auth_headers():
+    """Create auth headers."""
+    return {"Authorization": "Bearer test_token"}
+
+
+@pytest.fixture
+def mock_auth():
+    """Mock authentication."""
+    with patch("src.api.deps.decode_token") as mock:
+        mock.return_value = 1
+        yield mock
+
+
+@pytest.fixture
+def mock_session():
+    """Create a mock game session."""
+    session = MagicMock()
+    session.game_loop = MagicMock()
+    session.game_loop.is_game_over.return_value = False
+    session.game_loop.current_event = None
+    session.game_loop._generating = False
+    session.game_loop.player_state = MagicMock()
+    session.game_loop.player_state.to_dict.return_value = {}
+    session.game_loop.current_round = 0
+    session.sse_cache = []
+    session._is_generating = False
+    session.language = "zh"
+    return session
+
+
+@pytest.fixture
+def mock_session_store():
+    """Mock session store for all gameplay submodules."""
+    # Patch at the source - all imports will use this mock
+    with patch("src.api.session_store.session_store") as mock:
+        yield mock
+
+
+@pytest.fixture
+def mock_session_service(mock_session):
+    """Mock session service (used by endpoints to get sessions)."""
+    with patch("src.api.services.session_service.session_service.get_or_restore") as mock:
+        yield mock
+
+
+@pytest.fixture
+def mock_db():
+    """Mock database."""
+    with patch("src.api.routers.gameplay.summary.get_db") as mock:
+        mock_context = MagicMock()
+        mock_context.__enter__ = MagicMock(return_value=MagicMock())
+        mock_context.__exit__ = MagicMock(return_value=False)
+        mock.return_value = mock_context
+        yield mock
+
+
+class TestGetGameState:
+    """Tests for GET /api/gameplay/{game_id}/state."""
+
+    def test_get_state_success(self, client, auth_headers, mock_auth, mock_session_service, mock_session):
+        """Test getting game state."""
+        mock_session.game_loop.player_state.to_dict.return_value = {
+            "player_name": "Test",
+            "age": 22,
+            "week": 5
+        }
+        mock_session.game_loop.current_round = 1
+        mock_session_service.return_value = mock_session
+
+        response = client.get("/api/games/1/state", headers=auth_headers)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["game_id"] == 1
+        assert "player_state" in data
+
+    def test_get_state_no_session(self, client, auth_headers, mock_auth, mock_session_service):
+        """Test getting state without active session."""
+        from fastapi import HTTPException
+        mock_session_service.side_effect = HTTPException(status_code=404, detail="Game not found")
+        response = client.get("/api/games/1/state", headers=auth_headers)
+        assert response.status_code == 404
+
+
+class TestMakeChoice:
+    """Tests for POST /api/gameplay/{game_id}/choice."""
+
+    def test_make_choice_invalid_index(self, client, auth_headers, mock_auth, mock_session_service, mock_session):
+        """Test making choice with invalid option index."""
+        mock_event = MagicMock()
+        mock_event.options = [{"text": "Option 1"}, {"text": "Option 2"}]
+        mock_session.game_loop.current_event = mock_event
+        mock_session_service.return_value = mock_session
+
+        response = client.post(
+            "/api/games/1/choice",
+            json={"option_index": 5},
+            headers=auth_headers
+        )
+
+        assert response.status_code == 400
+
+    def test_make_choice_no_session(self, client, auth_headers, mock_auth, mock_session_service):
+        """Test making choice without active session."""
+        from fastapi import HTTPException
+        mock_session_service.side_effect = HTTPException(status_code=404, detail="Game not found")
+        response = client.post(
+            "/api/games/1/choice",
+            json={"option_index": 0},
+            headers=auth_headers
+        )
+        assert response.status_code == 404
+
+
+class TestCustomChoice:
+    """Tests for POST /api/gameplay/{game_id}/custom-choice."""
+
+    def test_custom_choice_no_session(self, client, auth_headers, mock_auth, mock_session_service):
+        """Test custom choice without active session."""
+        from fastapi import HTTPException
+        mock_session_service.side_effect = HTTPException(status_code=404, detail="Game not found")
+        response = client.post(
+            "/api/games/1/custom-choice",
+            json={"custom_text": "My custom action"},
+            headers=auth_headers
+        )
+        assert response.status_code == 404
+
+    def test_custom_choice_empty_text(self, client, auth_headers, mock_auth, mock_session_service, mock_session):
+        """Test custom choice with empty text."""
+        mock_session_service.return_value = mock_session
+        response = client.post(
+            "/api/games/1/custom-choice",
+            json={"custom_text": ""},
+            headers=auth_headers
+        )
+        assert response.status_code == 422
+
+
+class TestGenerateSummary:
+    """Tests for POST /api/gameplay/{game_id}/summary."""
+
+    def test_generate_summary_success(self, client, auth_headers, mock_auth, mock_session_service, mock_session):
+        """Test generating summary."""
+        mock_session.game_loop.generate_summary.return_value = {
+            "summary_text": "Your journey so far...",
+            "start_week": 1,
+            "end_week": 10
+        }
+        mock_session_service.return_value = mock_session
+
+        response = client.post(
+            "/api/games/1/summary",
+            json={"weeks": 10},
+            headers=auth_headers
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "summary_text" in data
+
+    def test_generate_summary_no_session(self, client, auth_headers, mock_auth, mock_session_service):
+        """Test generating summary without session."""
+        from fastapi import HTTPException
+        mock_session_service.side_effect = HTTPException(status_code=404, detail="Game not found")
+        response = client.post(
+            "/api/games/1/summary",
+            json={"weeks": 10},
+            headers=auth_headers
+        )
+        assert response.status_code == 404
+
+    def test_generate_summary_error(self, client, auth_headers, mock_auth, mock_session_service, mock_session):
+        """Test summary generation with AI error - should fallback gracefully."""
+        # Mock AI generator to raise error, but endpoint has fallback
+        mock_session.game_loop.ai_generator.generate_completion.side_effect = Exception("AI error")
+        
+        # Set real values for player_state (needed for format strings in fallback)
+        mock_player = MagicMock()
+        mock_player.player_name = "Test"
+        mock_player.age = 25
+        mock_player.week = 10
+        mock_player.wealth = 10000
+        mock_player.knowledge = 50
+        mock_session.game_loop.player_state = mock_player
+        mock_session_service.return_value = mock_session
+        
+        # Mock db to return some story history
+        with patch("src.api.routers.gameplay.summary.get_db") as mock_get_db:
+            mock_db = MagicMock()
+            mock_db.get_story_history.return_value = [{"week": 1, "story_text": "A story.", "choice_text": "A choice."}]
+            mock_get_db.return_value = mock_db
+            
+            response = client.post(
+                "/api/games/1/summary",
+                json={"weeks": 10},
+                headers=auth_headers
+            )
+        # Should return 200 with fallback summary
+        assert response.status_code == 200
+        assert "summary_text" in response.json()
+
+
+class TestGetEnding:
+    """Tests for GET /api/gameplay/{game_id}/ending."""
+
+    def test_get_ending_success(self, client, auth_headers, mock_auth, mock_session_service, mock_session, mock_db):
+        """Test getting game ending."""
+        mock_session.game_loop.is_game_over.return_value = True
+        mock_session.game_loop.get_state.return_value = MagicMock()
+        mock_session_service.return_value = mock_session
+
+        with patch("src.api.routers.gameplay.summary.EndingEvaluator") as MockEval:
+            mock_evaluator = MagicMock()
+            mock_evaluator.evaluate_ending.return_value = {
+                "ending_type": "happy",
+                "summary": "A life well lived",
+                "final_stats": {},
+                "achievements": []
+            }
+            MockEval.return_value = mock_evaluator
+
+            response = client.get("/api/games/1/ending", headers=auth_headers)
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["ending_type"] == "happy"
+
+    def test_get_ending_game_not_over(self, client, auth_headers, mock_auth, mock_session_service, mock_session):
+        """Test getting ending when game not over."""
+        mock_session.game_loop.is_game_over.return_value = False
+        mock_session_service.return_value = mock_session
+
+        response = client.get("/api/games/1/ending", headers=auth_headers)
+
+        assert response.status_code == 400
+        assert "not over" in response.json()["detail"].lower()
+
+    def test_get_ending_no_session(self, client, auth_headers, mock_auth, mock_session_service):
+        """Test getting ending without session."""
+        from fastapi import HTTPException
+        mock_session_service.side_effect = HTTPException(status_code=404, detail="Game not found")
+        response = client.get("/api/games/1/ending", headers=auth_headers)
+        assert response.status_code == 404
+
+
+class TestEventSync:
+    """Tests for POST /api/gameplay/{game_id}/event-sync."""
+
+    def test_event_sync_existing_event(self, client, auth_headers, mock_auth, mock_session_service, mock_session):
+        """Test sync endpoint returns existing event."""
+        mock_event = MagicMock()
+        mock_event.options = [{"text": "Option 1"}]
+        mock_event.model_dump.return_value = {
+            "event_description": "Something happened",
+            "options": [{"text": "Option 1"}]
+        }
+        mock_session.game_loop.current_event = mock_event
+        mock_session.game_loop.is_game_over.return_value = False
+        mock_session_service.return_value = mock_session
+
+        response = client.post("/api/games/1/event-sync", headers=auth_headers)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "event_description" in data
+
+    def test_event_sync_game_over(self, client, auth_headers, mock_auth, mock_session_service, mock_session):
+        """Test sync endpoint when game is over."""
+        mock_session.game_loop.is_game_over.return_value = True
+        mock_session.game_loop.current_event = None
+        mock_session_service.return_value = mock_session
+
+        response = client.post("/api/games/1/event-sync", headers=auth_headers)
+        assert response.status_code == 400
+
+    def test_event_sync_generation_in_progress(self, client, auth_headers, mock_auth, mock_session_service, mock_session):
+        """Test sync endpoint during generation."""
+        mock_session.game_loop.is_game_over.return_value = False
+        mock_session.game_loop.current_event = None
+        mock_session.game_loop._generating = True
+        mock_session_service.return_value = mock_session
+
+        response = client.post("/api/games/1/event-sync", headers=auth_headers)
+        assert response.status_code == 409
+
+
+class TestChoiceSync:
+    """Tests for POST /api/gameplay/{game_id}/choice-sync."""
+
+    def test_choice_sync_invalid_index(self, client, auth_headers, mock_auth, mock_session_service, mock_session):
+        """Test sync choice with invalid index."""
+        mock_event = MagicMock()
+        mock_event.options = [{"text": "Option 1"}]
+        mock_session.game_loop.current_event = mock_event
+        mock_session_service.return_value = mock_session
+
+        response = client.post(
+            "/api/games/1/choice-sync",
+            json={"option_index": 10},
+            headers=auth_headers
+        )
+        assert response.status_code == 400
+
+
+class TestCustomChoiceSync:
+    """Tests for POST /api/gameplay/{game_id}/custom-choice-sync."""
+
+    def test_custom_choice_sync_empty(self, client, auth_headers, mock_auth, mock_session_service, mock_session):
+        """Test custom choice sync with empty text."""
+        mock_session_service.return_value = mock_session
+        response = client.post(
+            "/api/games/1/custom-choice-sync",
+            json={"custom_text": ""},
+            headers=auth_headers
+        )
+        assert response.status_code == 422

@@ -1,0 +1,30 @@
+# Bandit Security Scanner Configuration
+# https://bandit.readthedocs.io/
+
+# Exclude directories that should not be scanned
+exclude_dirs:
+  - /tests/
+  - /venv/
+  - /.venv/
+  - /node_modules/
+  - /frontend/
+  - /data/
+
+# Skip specific checks (these are false positives for this project)
+skips:
+  - B101  # assert_used (tests use assert)
+  - B324  # hashlib MD5 used for non-security purposes (cache keys, content hashing)
+  - B311  # random module used for game logic (not cryptographic purposes)
+  - B110  # try_except_pass used for graceful degradation in optional features
+
+# Severity levels: all, low, medium, high
+severity: low
+
+# Confidence levels: all, low, medium, high
+confidence: low
+
+# Show line context
+show_line_context: true
+
+# Format options: csv, custom, html, json, screen, txt, xml, yaml
+# Use command line to override: bandit -f json -r src/

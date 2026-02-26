@@ -1,0 +1,238 @@
+{
+  "milestone_events": [
+    {
+      "week": 20,
+      "en": {
+        "event_description": "You've reached a significant milestone in your life journey. A major opportunity presents itself - you could pivot your career path, deepen a relationship, or invest in personal growth. This decision will shape the next phase of your life.",
+        "options": [
+          {
+            "text": "Change career path",
+            "effects": {
+              "energy": -20,
+              "mood": 10,
+              "knowledge": 15,
+              "wealth": -5000,
+              "action_points": -2
+            }
+          },
+          {
+            "text": "Strengthen relationships",
+            "effects": {
+              "energy": -10,
+              "mood": 20,
+              "knowledge": 0,
+              "wealth": 0,
+              "action_points": -1,
+              "relationships": {"Friend": 15, "Mentor": 10}
+            }
+          },
+          {
+            "text": "Focus on personal growth",
+            "effects": {
+              "energy": -15,
+              "mood": 5,
+              "knowledge": 25,
+              "wealth": -2000,
+              "action_points": -2
+            }
+          }
+        ]
+      },
+      "zh": {
+        "event_description": "你达到了人生旅程中的一个重要里程碑。一个重大机会出现在你面前 - 你可以转换职业道路、深化一段关系，或投资个人成长。这个决定将塑造你人生的下一个阶段。",
+        "options": [
+          {
+            "text": "转换职业道路",
+            "effects": {
+              "energy": -20,
+              "mood": 10,
+              "knowledge": 15,
+              "wealth": -5000,
+              "action_points": -2
+            }
+          },
+          {
+            "text": "加强人际关系",
+            "effects": {
+              "energy": -10,
+              "mood": 20,
+              "knowledge": 0,
+              "wealth": 0,
+              "action_points": -1,
+              "relationships": {"好友": 15, "导师": 10}
+            }
+          },
+          {
+            "text": "专注于个人成长",
+            "effects": {
+              "energy": -15,
+              "mood": 5,
+              "knowledge": 25,
+              "wealth": -2000,
+              "action_points": -2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "week": 40,
+      "en": {
+        "event_description": "Midway through your journey, you face a critical crossroads. Your current path has brought you here, but now you must decide whether to continue as planned or take a bold new direction.",
+        "options": [
+          {
+            "text": "Stay the course",
+            "effects": {
+              "energy": 10,
+              "mood": 15,
+              "knowledge": 5,
+              "wealth": 3000,
+              "action_points": -1
+            }
+          },
+          {
+            "text": "Take a bold risk",
+            "effects": {
+              "energy": -25,
+              "mood": -10,
+              "knowledge": 20,
+              "wealth": -10000,
+              "action_points": -3
+            }
+          }
+        ]
+      },
+      "zh": {
+        "event_description": "在人生旅程的中途，你面临一个关键的十字路口。你当前的道路带你来到这里，但现在你必须决定是继续按计划前进，还是采取大胆的新方向。",
+        "options": [
+          {
+            "text": "坚持原路",
+            "effects": {
+              "energy": 10,
+              "mood": 15,
+              "knowledge": 5,
+              "wealth": 3000,
+              "action_points": -1
+            }
+          },
+          {
+            "text": "大胆冒险",
+            "effects": {
+              "energy": -25,
+              "mood": -10,
+              "knowledge": 20,
+              "wealth": -10000,
+              "action_points": -3
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "special_events": [
+    {
+      "en": {
+        "event_description": "An unexpected inheritance from a distant relative arrives. It's a substantial amount, but accepting it means dealing with family expectations and responsibilities.",
+        "options": [
+          {
+            "text": "Accept the inheritance",
+            "effects": {
+              "energy": -5,
+              "mood": 10,
+              "knowledge": 0,
+              "wealth": 50000,
+              "action_points": -1
+            }
+          },
+          {
+            "text": "Decline and maintain independence",
+            "effects": {
+              "energy": 5,
+              "mood": 15,
+              "knowledge": 5,
+              "wealth": 0,
+              "action_points": -1
+            }
+          }
+        ]
+      },
+      "zh": {
+        "event_description": "一位远房亲戚的意外遗产到了。这是一笔可观的金额，但接受它意味着要处理家庭期望和责任。",
+        "options": [
+          {
+            "text": "接受遗产",
+            "effects": {
+              "energy": -5,
+              "mood": 10,
+              "knowledge": 0,
+              "wealth": 50000,
+              "action_points": -1
+            }
+          },
+          {
+            "text": "拒绝，保持独立",
+            "effects": {
+              "energy": 5,
+              "mood": 15,
+              "knowledge": 5,
+              "wealth": 0,
+              "action_points": -1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "en": {
+        "event_description": "A health crisis strikes. You need to take time off to recover, but this will impact your career and finances significantly.",
+        "options": [
+          {
+            "text": "Take full time to recover",
+            "effects": {
+              "energy": 30,
+              "mood": -10,
+              "knowledge": 0,
+              "wealth": -15000,
+              "action_points": -2
+            }
+          },
+          {
+            "text": "Work while recovering",
+            "effects": {
+              "energy": -20,
+              "mood": -25,
+              "knowledge": 0,
+              "wealth": -5000,
+              "action_points": -1
+            }
+          }
+        ]
+      },
+      "zh": {
+        "event_description": "健康危机袭来。你需要请假恢复，但这会严重影响你的事业和财务状况。",
+        "options": [
+          {
+            "text": "完全休息恢复",
+            "effects": {
+              "energy": 30,
+              "mood": -10,
+              "knowledge": 0,
+              "wealth": -15000,
+              "action_points": -2
+            }
+          },
+          {
+            "text": "边工作边恢复",
+            "effects": {
+              "energy": -20,
+              "mood": -25,
+              "knowledge": 0,
+              "wealth": -5000,
+              "action_points": -1
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

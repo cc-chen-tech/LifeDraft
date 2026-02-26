@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd /Users/luicy/story2/frontend && npm run test:coverage 2>&1 | head -100)",
+      "Bash(npm run test:coverage 2>&1 | tail -150)",
+      "Bash(cd /Users/luicy/story2/frontend && npm test -- --coverage --coverageReporters=text 2>&1 | head -100)",
+      "Bash(npm test -- --coverage --coverageReporters=text 2>&1 | tail -80)",
+      "Bash(npm test -- --testPathPattern=\"SavesPage\" --coverage=false 2>&1 | tail -50)",
+      "Bash(npm test -- --testPathPatterns=\"SavesPage\" --coverage=false 2>&1)",
+      "Bash(npm test -- --testPathPatterns=\"SavesPage\" --coverage=false 2>&1 | tail -30)",
+      "Bash(npm test -- --testPathPatterns=\"SavesPage\" --coverage=false 2>&1 | tail -20)",
+      "Bash(python -c \"from src.game.world_model_updater import WorldModelUpdater; print\\('sync_story_characters_to_settings' in dir\\(WorldModelUpdater\\)\\)\")",
+      "Bash(npm test -- --testPathPatterns=\"CreatePage\" --coverage=false 2>&1 | tail -60)",
+      "Bash(source venv/bin/activate && python -c \"from src.game.world_model_updater import WorldModelUpdater; print\\('sync_story_characters_to_settings' in dir\\(WorldModelUpdater\\)\\)\")",
+      "Bash(npm test -- --coverage=false 2>&1 | grep -A 20 \"act\\(...\\)\" | head -40)",
+      "Bash(source venv/bin/activate && ./test.sh 2>&1 | head -200)",
+      "Bash(wc -l /Users/luicy/story2/src/**/*.py 2>/dev/null | sort -n | tail -20)"
+    ]
+  }
+}
