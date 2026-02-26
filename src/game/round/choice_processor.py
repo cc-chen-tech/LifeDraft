@@ -3,36 +3,41 @@
 Handles the processing of player choices and post-choice pipeline.
 """
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Callable, Dict, Optional
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Callable, Dict, Optional, TYPE_CHECKING
 
 from src.ai.models import GameEvent
 from src.ai.vector_store import get_vector_store, is_vector_search_enabled
 from src.game.narrative_manager import NarrativeManager
 from src.game.world_model_updater import WorldModelUpdater
 
+if TYPE_CHECKING:
+    from src.game.state import PlayerState
+    from src.ai.generator import EventGenerator
+    from src.game.story_service import StoryService
+
 logger = logging.getLogger(__name__)
 
 
 class RoundChoiceProcessor:
     """Service for processing round choices.
-    
+
     This service handles:
     - Standard option selection
     - Custom choice processing
     - Post-choice pipeline execution
     - Story compression and world updates
     """
-    
+
     def __init__(
         self,
-        player_state_getter: callable,
-        ai_generator: Any,
-        language_getter: callable,
-        story_service: Any,
-        current_event_getter: callable,
-        current_event_setter: callable,
-        result_callback: Optional[Callable] = None,
+        player_state_getter: Callable[[], "PlayerState"],
+        ai_generator: "EventGenerator",
+        language_getter: Callable[[], str],
+        story_service: "StoryService",
+        current_event_getter: Callable[[], Optional[GameEvent]],
+        current_event_setter: Callable[[Optional[GameEvent]], None],
+        result_callback: Optional[Callable[[Dict[str, Any], "PlayerState"], None]] = None,
     ):
         """
         Args:
@@ -51,17 +56,17 @@ class RoundChoiceProcessor:
         self._get_current_event = current_event_getter
         self._set_current_event = current_event_setter
         self.result_callback = result_callback
-    
+
     @property
-    def player_state(self):
+    def player_state(self) -> Optional["PlayerState"]:
         return self._get_player_state()
-    
+
     @property
-    def language(self):
+    def language(self) -> str:
         return self._get_language()
-    
+
     @property
-    def current_event(self):
+    def current_event(self) -> Optional[GameEvent]:
         return self._get_current_event()
     
     def make_round_choice(

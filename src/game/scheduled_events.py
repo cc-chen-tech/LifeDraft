@@ -322,8 +322,8 @@ class ScheduledEventManager:
         ]
         
         # 按重要程度排序：critical > normal > minor
-        importance_order = {"critical": 0, "normal": 1, "minor": 2}
-        pending.sort(key=lambda e: (importance_order.get(e.importance, 1), e.created_week))
+        from src.game.constants import IMPORTANCE_ORDER
+        pending.sort(key=lambda e: (IMPORTANCE_ORDER.get(e.importance, 2), e.created_week))
         
         return pending
     
@@ -359,9 +359,9 @@ class ScheduledEventManager:
         merged_parties = list(set(event1.parties + event2.parties))
         
         # 取较高的重要程度
-        importance_order = {"critical": 0, "normal": 1, "minor": 2}
+        from src.game.constants import IMPORTANCE_ORDER
         merged_importance = event1.importance
-        if importance_order.get(event2.importance, 1) < importance_order.get(merged_importance, 1):
+        if IMPORTANCE_ORDER.get(event2.importance, 2) < IMPORTANCE_ORDER.get(merged_importance, 2):
             merged_importance = event2.importance
         
         # 合并事件提示

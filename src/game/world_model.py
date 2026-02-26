@@ -256,15 +256,19 @@ class WorldModel:
                     df.active = False
                 if df.active:
                     wm.dynamic_facts.append(df)
-            except Exception:
-                pass  # Graceful degradation
+            except (KeyError, TypeError, ValueError) as e:
+                logger.warning(f"Skipping invalid dynamic fact data: {e}, data: {df_d}")
+            except Exception as e:
+                logger.error(f"Unexpected error parsing dynamic fact: {e}, data: {df_d}")
 
         # ---------- Read character behavioral profiles ----------
         for name, cp_d in wmd.get("character_profiles", {}).items():
             try:
                 wm.character_profiles[name] = CharacterProfile.from_dict(cp_d)
-            except Exception:
-                pass  # Graceful degradation
+            except (KeyError, TypeError, ValueError) as e:
+                logger.warning(f"Skipping invalid character profile data for {name}: {e}")
+            except Exception as e:
+                logger.error(f"Unexpected error parsing character profile {name}: {e}")
 
         # ---------- Supplement from legacy established_facts ----------
         for fact in getattr(player_state, "established_facts", []):
@@ -585,13 +589,14 @@ class WorldModel:
 
     def _build_dynamic_facts_constraints(self, zh: bool) -> str:
         """Build constraint text from AI-identified dynamic facts."""
+        from src.game.constants import IMPORTANCE_ORDER
+
         active_facts = [f for f in self.dynamic_facts if f.active and f.constraint_text]
         if not active_facts:
             return ""
 
         # Sort by importance: critical > important > normal > minor
-        importance_order = {"critical": 0, "important": 1, "normal": 2, "minor": 3}
-        active_facts.sort(key=lambda f: importance_order.get(f.importance, 2))
+        active_facts.sort(key=lambda f: IMPORTANCE_ORDER.get(f.importance, 2))
 
         # Limit to top 15 to save tokens
         display_facts = active_facts[:15]

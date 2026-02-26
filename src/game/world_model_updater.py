@@ -9,7 +9,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, List, Optional
 
-from src.game.constants import GENERIC_CHARACTER_NAMES, ROLE_KEYWORDS
+from src.game.constants import GENERIC_CHARACTER_NAMES, ROLE_KEYWORDS, VALID_CAREER_LEVELS, DEFAULT_CAREER_LEVEL, IMPORTANCE_ORDER
 
 logger = logging.getLogger(__name__)
 
@@ -100,11 +100,10 @@ class WorldModelUpdater:
 
             new_role = update.get("new_role", "")
             employer = update.get("employer", "")
-            level = update.get("level", "mid")
+            level = update.get("level", DEFAULT_CAREER_LEVEL)
 
-            valid_levels = ["intern", "junior", "mid", "senior", "lead", "executive"]
-            if level not in valid_levels:
-                level = "mid"
+            if level not in VALID_CAREER_LEVELS:
+                level = DEFAULT_CAREER_LEVEL
 
             if character in careers:
                 old_record = careers[character]
@@ -328,8 +327,10 @@ class WorldModelUpdater:
             for df_d in existing_raw:
                 try:
                     existing_facts.append(DynamicFact.from_dict(df_d))
-                except Exception:
-                    pass
+                except (KeyError, TypeError, ValueError) as e:
+                    logger.warning(f"Skipping invalid dynamic fact: {e}")
+                except Exception as e:
+                    logger.error(f"Unexpected error parsing dynamic fact: {e}")
 
             # Run analysis
             new_facts = analyzer.analyze_story(
@@ -364,10 +365,9 @@ class WorldModelUpdater:
 
                 # Limit total facts to 500
                 if len(all_facts) > 500:
-                    importance_order = {"critical": 0, "important": 1, "normal": 2, "minor": 3}
                     all_facts.sort(
                         key=lambda f: (
-                            importance_order.get(f.importance, 2),
+                            IMPORTANCE_ORDER.get(f.importance, 2),
                             -(f.source_week),
                         )
                     )

@@ -52,3 +52,36 @@ ROLE_KEYWORDS = {
         "lawyer": "Lawyer",
     },
 }
+
+# Importance levels ordering for sorting
+# Used in: world_model.py, scheduled_events.py, event_generator.py, player_state.py
+IMPORTANCE_ORDER = {
+    "critical": 0,
+    "important": 1,
+    "normal": 2,
+    "minor": 3,
+}
+
+# Valid career levels
+VALID_CAREER_LEVELS = ["intern", "junior", "mid", "senior", "lead", "executive"]
+
+# Default career level if invalid
+DEFAULT_CAREER_LEVEL = "mid"
+
+# Maximum lengths for various text fields
+MAX_SUMMARY_LENGTH = 700
+MAX_DESCRIPTION_LENGTH = 200
+MAX_CHOICE_TEXT_LENGTH = 50
+
+# Effect value sanity checks
+EFFECT_SANITY_CHECKS = {
+    "energy": {"min": -50, "max": 50, "warning_threshold": 30},
+    "mood": {"min": -50, "max": 50, "warning_threshold": 30},
+    "knowledge": {"min": -50, "max": 50, "warning_threshold": 30},
+    "wealth": {"min": -50000, "max": 50000, "warning_threshold": 10000},
+}
+
+# Relationship affinity defaults
+DEFAULT_INITIAL_AFFINITY = 50
+MIN_AFFINITY = 0
+MAX_AFFINITY = 100

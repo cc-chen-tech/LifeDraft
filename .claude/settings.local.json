@@ -14,7 +14,8 @@
       "Bash(source venv/bin/activate && python -c \"from src.game.world_model_updater import WorldModelUpdater; print\\('sync_story_characters_to_settings' in dir\\(WorldModelUpdater\\)\\)\")",
       "Bash(npm test -- --coverage=false 2>&1 | grep -A 20 \"act\\(...\\)\" | head -40)",
       "Bash(source venv/bin/activate && ./test.sh 2>&1 | head -200)",
-      "Bash(wc -l /Users/luicy/story2/src/**/*.py 2>/dev/null | sort -n | tail -20)"
+      "Bash(wc -l /Users/luicy/story2/src/**/*.py 2>/dev/null | sort -n | tail -20)",
+      "Bash(sqlite3 data/story.db \"SELECT scene_id, game_id, week, round_number, stage, storage_path FROM scene_images WHERE game_id = 296 ORDER BY scene_id DESC LIMIT 10;\")"
     ]
   }
 }

@@ -153,8 +153,8 @@ class StoryGenerator:
 
                 story_text = story_text.strip()
                 logger.info(f"Generated story with {len(story_text)} characters")
-                logger.info(f"Story preview (first 200 chars): {story_text[:200]}...")
-                logger.info(f"Story preview (last 200 chars): ...{story_text[-200:]}")
+                logger.debug(f"Story preview (first 200 chars): {story_text[:200]}...")
+                logger.debug(f"Story preview (last 200 chars): ...{story_text[-200:]}")
 
                 # Step 2: Generate options based on the story
                 if option_generator is None:

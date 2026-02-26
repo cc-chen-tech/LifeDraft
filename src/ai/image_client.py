@@ -141,7 +141,7 @@ class ImageClient:
             )
             
             prompt = response.choices[0].message.content.strip()
-            logger.info(f"DeepSeek generated prompt: {prompt[:100]}...")
+            logger.debug(f"DeepSeek generated prompt: {prompt[:100]}...")
             return prompt
             
         except Exception as e:
@@ -570,7 +570,7 @@ class ImageClient:
                 
                 prompt = "".join(prompt_parts)
                 
-                logger.info(f"Edit prompt: {prompt}")
+                logger.debug(f"Edit prompt: {prompt}")
                 
                 try:
                     edited = self.edit_image(
@@ -817,7 +817,7 @@ class ImageClient:
             ContentInspectionError: 内容审核失败
             ImageGenerationError: 其他生成错误
         """
-        logger.info(f"Editing image with prompt: {prompt}")
+        logger.debug(f"Editing image with prompt: {prompt}")
         
         last_error = None
         
@@ -981,8 +981,10 @@ class ImageClient:
                         )
                 except ContentInspectionError:
                     raise
-                except Exception:
-                    pass
+                except (KeyError, TypeError) as e:
+                    logger.warning(f"Failed to parse content inspection error response: {e}")
+                except Exception as e:
+                    logger.warning(f"Unexpected error parsing API error response: {e}")
             
             raise ImageGenerationError(error_msg)
         
@@ -1294,7 +1296,7 @@ class ImageClient:
             )
             
             result = response.choices[0].message.content.strip()
-            logger.info(f"DeepSeek prompt rewrite (api_error={bool(api_error_message)}): {result[:200]}...")
+            logger.debug(f"DeepSeek prompt rewrite (api_error={bool(api_error_message)}): {result[:200]}...")
             
             # 解析结果
             new_scene_desc = scene_desc  # 默认保持原场景
@@ -1308,7 +1310,7 @@ class ImageClient:
                     new_prompt = line.replace('【提示词】', '').strip()
             
             logger.info(f"Rewritten scene: {new_scene_desc}")
-            logger.info(f"Rewritten prompt: {new_prompt[:100]}...")
+            logger.debug(f"Rewritten prompt: {new_prompt[:100]}...")
             
             return new_scene_desc, new_prompt
             
@@ -1330,7 +1332,7 @@ class ImageClient:
             if word in simplified_scene:
                 simplified_scene = simplified_scene.replace(word, '室内')
         
-        logger.info(f"Simplified prompt: {simplified_prompt[:100]}...")
+        logger.debug(f"Simplified prompt: {simplified_prompt[:100]}...")
         return simplified_scene, simplified_prompt
     
     def generate_opening_illustration(
@@ -1366,7 +1368,7 @@ class ImageClient:
         )
         
         logger.info(f"Selected scene: {scene_desc[:50]}...")
-        logger.info(f"Illustration prompt: {illustration_prompt[:100]}...")
+        logger.debug(f"Illustration prompt: {illustration_prompt[:100]}...")
         
         # Step 2: 生成插画
         if reference_image_url:

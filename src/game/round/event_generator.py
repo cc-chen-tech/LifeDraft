@@ -316,8 +316,8 @@ class RoundEventGenerator:
         all_parties = set()
         event_hints = []
         max_importance = "normal"
-        importance_order = {"critical": 0, "normal": 1, "minor": 2}
-        
+        from src.game.constants import IMPORTANCE_ORDER
+
         for se in scheduled_events:
             descriptions.append(se.get("description", ""))
             all_parties.update(se.get("parties", []))
@@ -325,7 +325,7 @@ class RoundEventGenerator:
                 event_hints.append(se.get("event_hint"))
             # 取最高重要程度
             se_importance = se.get("importance", "normal")
-            if importance_order.get(se_importance, 1) < importance_order.get(max_importance, 1):
+            if IMPORTANCE_ORDER.get(se_importance, 2) < IMPORTANCE_ORDER.get(max_importance, 2):
                 max_importance = se_importance
         
         # 构建强制事件的提示

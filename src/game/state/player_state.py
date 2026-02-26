@@ -547,8 +547,8 @@ class PlayerState(BaseModel):
                 pending.append(e)
         
         # 按重要程度排序
-        importance_order = {"critical": 0, "normal": 1, "minor": 2}
-        pending.sort(key=lambda e: importance_order.get(e.get("importance", "normal"), 1))
+        from src.game.constants import IMPORTANCE_ORDER
+        pending.sort(key=lambda e: IMPORTANCE_ORDER.get(e.get("importance", "normal"), 2))
         
         return pending
     

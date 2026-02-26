@@ -48,26 +48,28 @@ def _trigger_round_illustration_generation(game_loop, game_id: int, event, stage
                 if not player_state:
                     logger.warning(f"[RoundIllustration] No player state for game {game_id}")
                     return
-                
-                # 获取当前轮次
+
+                # 获取当前轮次和周数
                 round_number = player_state.current_round
-                
-                # ★ 检查是否已存在该轮该阶段的插画（必须包含 stage）
+                week = player_state.week  # ★ 获取周数
+
+                # ★ 检查是否已存在该周该轮该阶段的插画
                 from src.database.models import SceneImage
                 existing = db.query(SceneImage).filter(
                     SceneImage.game_id == game_id,
+                    SceneImage.week == week,  # ★ 加入 week 条件
                     SceneImage.round_number == round_number,
                     SceneImage.stage == stage,  # ★ 区分阶段
                 ).first()
                 
                 if existing:
-                    logger.info(f"[RoundIllustration] Round {round_number} stage={stage} illustration already exists")
+                    logger.info(f"[RoundIllustration] Week {week} round {round_number} stage={stage} illustration already exists")
                     return
                 
                 # 获取故事文本
                 story_text = event.event_description if event else ""
                 if not story_text:
-                    logger.warning(f"[RoundIllustration] No story text for round {round_number}")
+                    logger.warning(f"[RoundIllustration] No story text for week {week} round {round_number}")
                     return
                 
                 # 获取角色设定
@@ -110,9 +112,10 @@ def _trigger_round_illustration_generation(game_loop, game_id: int, event, stage
                     player_name=player_name,
                     existing_images=existing_images,
                     stage=stage,  # ★ 传递 stage 参数
+                    week=week,  # ★ 传递 week 参数
                 )
-                
-                logger.info(f"[RoundIllustration] Triggered async generation for game {game_id}, round {round_number}, stage={stage}")
+
+                logger.info(f"[RoundIllustration] Triggered async generation for game {game_id}, week {week}, round {round_number}, stage={stage}")
                 
             finally:
                 db.close()

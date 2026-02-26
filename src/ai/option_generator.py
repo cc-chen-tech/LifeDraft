@@ -49,7 +49,7 @@ class OptionGenerator:
         logger.info("=" * 80)
         logger.info("GENERATING OPTIONS ONLY")
         logger.info(f"Story length: {len(story_description)} characters")
-        logger.info(f"Story preview (first 300 chars): {story_description[:300]}...")
+        logger.debug(f"Story preview (first 300 chars): {story_description[:300]}...")
         logger.info(f"Language: {language}")
         logger.info("=" * 80)
 
@@ -57,7 +57,7 @@ class OptionGenerator:
             story_description, player_state, character_settings, language
         )
         logger.info(f"Prompt length: {len(prompt)} characters")
-        logger.info(f"Prompt preview (first 500 chars):\n{prompt[:500]}...")
+        logger.debug(f"Prompt preview (first 500 chars):\n{prompt[:500]}...")
 
         sys_prompt = get_system_prompt("option_generator", language)
         last_error: Optional[str] = None
@@ -88,7 +88,7 @@ class OptionGenerator:
 
                 content = content.strip()
                 logger.info(f"AI response length: {len(content)} characters")
-                logger.info(f"AI response preview:\n{content[:500]}...")
+                logger.debug(f"AI response preview:\n{content[:500]}...")
 
                 # Extract JSON from response
                 data = extract_json(content)
