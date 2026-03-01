@@ -9,6 +9,7 @@ OpenAI SDK or private methods. This ensures:
 """
 import json
 import logging
+import re
 from typing import Dict, Any, Optional, Callable
 
 import openai
@@ -17,6 +18,20 @@ from config.settings import settings
 from src.ai.utils import extract_json
 
 logger = logging.getLogger(__name__)
+
+# ★ max_tokens 自动降级配置
+MAX_TOKENS_FALLBACK_LEVELS = [8000, 6000, 4000]  # 降级序列
+
+
+def _is_max_tokens_error(error_message: str) -> bool:
+    """检查是否为 max_tokens 相关错误"""
+    patterns = [
+        r"Invalid max_tokens value",
+        r"max_tokens.*valid range",
+        r"max_tokens.*out of range",
+        r"token.*limit.*exceeded",
+    ]
+    return any(re.search(p, error_message, re.IGNORECASE) for p in patterns)
 
 
 class AIClient:
@@ -76,51 +91,81 @@ class AIClient:
             {"role": "user", "content": user_prompt},
         ]
         use_model = model or self.model
+        
+        # ★ max_tokens 自动降级重试逻辑
+        current_max_tokens = max_tokens
+        fallback_tokens = [t for t in MAX_TOKENS_FALLBACK_LEVELS if t < max_tokens]
+        tokens_to_try = [max_tokens] + fallback_tokens
+        
+        last_error = None
+        for attempt, current_max_tokens in enumerate(tokens_to_try):
+            try:
+                if stream_callback:
+                    stream = self.client.chat.completions.create(
+                        model=use_model,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=current_max_tokens,
+                        stream=True,
+                    )
 
-        if stream_callback:
-            stream = self.client.chat.completions.create(
-                model=use_model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                stream=True,
-            )
+                    full_text = ""
+                    finish_reason = None
+                    for chunk in stream:
+                        if chunk.choices[0].delta.content is not None:
+                            chunk_text = chunk.choices[0].delta.content
+                            full_text += chunk_text
+                            stream_callback(chunk_text)
+                        if chunk.choices[0].finish_reason:
+                            finish_reason = chunk.choices[0].finish_reason
 
-            full_text = ""
-            finish_reason = None
-            for chunk in stream:
-                if chunk.choices[0].delta.content is not None:
-                    chunk_text = chunk.choices[0].delta.content
-                    full_text += chunk_text
-                    stream_callback(chunk_text)
-                if chunk.choices[0].finish_reason:
-                    finish_reason = chunk.choices[0].finish_reason
+                    if finish_reason == "length":
+                        logger.warning(
+                            f"⚠️ AI response truncated by max_tokens ({current_max_tokens}). "
+                            f"Output length: {len(full_text)} chars. "
+                            f"Consider increasing max_tokens."
+                        )
 
-            if finish_reason == "length":
-                logger.warning(
-                    f"⚠️ AI response truncated by max_tokens ({max_tokens}). "
-                    f"Output length: {len(full_text)} chars. "
-                    f"Consider increasing max_tokens."
-                )
+                    return full_text.strip()
+                else:
+                    response = self.client.chat.completions.create(
+                        model=use_model,
+                        messages=messages,
+                        temperature=temperature,
+                        max_tokens=current_max_tokens,
+                    )
 
-            return full_text.strip()
-        else:
-            response = self.client.chat.completions.create(
-                model=use_model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
+                    finish_reason = response.choices[0].finish_reason
+                    if finish_reason == "length":
+                        logger.warning(
+                            f"⚠️ AI response truncated by max_tokens ({current_max_tokens}). "
+                            f"Output length: {len(response.choices[0].message.content)} chars. "
+                            f"Consider increasing max_tokens."
+                        )
 
-            finish_reason = response.choices[0].finish_reason
-            if finish_reason == "length":
-                logger.warning(
-                    f"⚠️ AI response truncated by max_tokens ({max_tokens}). "
-                    f"Output length: {len(response.choices[0].message.content)} chars. "
-                    f"Consider increasing max_tokens."
-                )
-
-            return response.choices[0].message.content.strip()
+                    return response.choices[0].message.content.strip()
+                    
+            except Exception as e:
+                error_msg = str(e)
+                last_error = e
+                
+                # ★ 检查是否为 max_tokens 错误，如果是则尝试降级
+                if _is_max_tokens_error(error_msg):
+                    if attempt < len(tokens_to_try) - 1:
+                        next_tokens = tokens_to_try[attempt + 1]
+                        logger.warning(
+                            f"⚠️ max_tokens={current_max_tokens} failed, "
+                            f"retrying with max_tokens={next_tokens}. Error: {error_msg[:100]}"
+                        )
+                        continue
+                    else:
+                        logger.error(f"All max_tokens fallback levels failed: {error_msg}")
+                else:
+                    # 非 max_tokens 错误，直接抛出
+                    raise
+        
+        # 所有尝试都失败，抛出最后一个错误
+        raise last_error
 
     # -------------------- JSON Call --------------------
 

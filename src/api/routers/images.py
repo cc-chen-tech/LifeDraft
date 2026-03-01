@@ -699,7 +699,11 @@ async def get_image_file(
             content=image_data,
             media_type=content_type,
             headers={
-                "Cache-Control": "public, max-age=86400",  # 缓存1天
+                # ★ 不缓存图片文件，确保重新生成后能立即看到新图片
+                # 前端通过 URL 参数 t=timestamp 实现缓存控制
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
             },
         )
         
@@ -889,7 +893,7 @@ async def generate_round_scene_image(
         raise HTTPException(status_code=500, detail=f"生成场景插画失败: {e}")
 
 
-@router.post("/scene/regenerate", response_model=OpeningIllustrationResponse)
+@router.post("/scene/regenerate", response_model=RoundSceneResponse)
 async def regenerate_round_scene_image(
     req: RegenerateRoundSceneRequest,
     db: Session = Depends(get_session),
@@ -897,7 +901,7 @@ async def regenerate_round_scene_image(
 ):
     """
     基于用户输入重新生成每轮场景插画
-    
+
     流程：
     1. 使用 DeepSeek 分析故事，选择场景
     2. 结合用户自定义提示词
@@ -908,14 +912,14 @@ async def regenerate_round_scene_image(
     # ★ 权限验证：必须登录
     if not user:
         raise HTTPException(status_code=401, detail="未登录")
-    
+
     # ★ 权限验证：验证游戏归属
     verify_game_ownership(db, req.game_id, user)
-    
+
     service = ImageService(db)
-    
+
     try:
-        image_model = service.regenerate_round_scene_image(
+        scene_model = service.regenerate_round_scene_image(
             game_id=req.game_id,
             round_number=req.round_number,
             story_text=req.story_text,
@@ -925,17 +929,23 @@ async def regenerate_round_scene_image(
             current_scene_id=req.current_scene_id,
             player_image_id=req.player_image_id,
         )
-        
+
         # 构建图片URL
-        image_url = service.get_image_url(image_model)
-        
-        return OpeningIllustrationResponse(
-            image_id=image_model.image_id,
-            game_id=req.game_id,
+        image_url = service.storage_service.get_image_url(
+            scene_model.storage_path,
+            scene_model.storage_type
+        )
+
+        # ★ 返回 RoundSceneResponse，包含 week 和 stage
+        return RoundSceneResponse(
+            scene_id=scene_model.scene_id,
+            game_id=scene_model.game_id,
+            week=scene_model.week,
+            round_number=scene_model.round_number,
+            stage=scene_model.stage,
             image_url=image_url,
-            scene_description=image_model.metadata_json.get("scene_description", ""),
-            prompt_used=image_model.prompt_text,
-            created_at=image_model.created_at.isoformat() if image_model.created_at else None,
+            scene_description=scene_model.scene_description or "",
+            created_at=scene_model.created_at.isoformat() if scene_model.created_at else None,
         )
         
     except ImageContentError as e:

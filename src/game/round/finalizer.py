@@ -94,7 +94,7 @@ class RoundFinalizer:
         # Apply weekly decay and advance week
         self._apply_weekly_decay()
         player_state.advance_week()
-        logger.info(f"Advanced to week {player_state.week}")
+        logger.info(f"Advanced to 第{player_state.week + 1}周")
         
         # Synthesize character profiles + summaries in parallel
         new_week = player_state.week
@@ -226,7 +226,7 @@ class RoundFinalizer:
             if not hasattr(player_state, 'four_week_summaries'):
                 player_state.four_week_summaries = []
             player_state.four_week_summaries.append(four_week_entry)
-            logger.info(f"Generated 4-week summary for week {week}")
+            logger.info(f"Generated 4-week summary for 第{week + 1}周")
             
         except Exception as e:
             logger.error(f"Failed to generate 4-week summary: {e}")
@@ -252,7 +252,7 @@ class RoundFinalizer:
             if not hasattr(player_state, 'yearly_summaries'):
                 player_state.yearly_summaries = []
             player_state.yearly_summaries.append(yearly_entry)
-            logger.info(f"Generated yearly summary for week {week}")
+            logger.info(f"Generated yearly summary for 第{week + 1}周")
             
         except Exception as e:
             logger.error(f"Failed to generate yearly summary: {e}")

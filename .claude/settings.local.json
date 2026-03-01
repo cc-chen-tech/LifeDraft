@@ -15,7 +15,23 @@
       "Bash(npm test -- --coverage=false 2>&1 | grep -A 20 \"act\\(...\\)\" | head -40)",
       "Bash(source venv/bin/activate && ./test.sh 2>&1 | head -200)",
       "Bash(wc -l /Users/luicy/story2/src/**/*.py 2>/dev/null | sort -n | tail -20)",
-      "Bash(sqlite3 data/story.db \"SELECT scene_id, game_id, week, round_number, stage, storage_path FROM scene_images WHERE game_id = 296 ORDER BY scene_id DESC LIMIT 10;\")"
+      "Bash(sqlite3 data/story.db \"SELECT scene_id, game_id, week, round_number, stage, storage_path FROM scene_images WHERE game_id = 296 ORDER BY scene_id DESC LIMIT 10;\")",
+      "Bash(sqlite3 /Users/luicy/story2/data/game.db \"SELECT scene_id, game_id, week, round_number, stage, storage_path FROM scene_images WHERE game_id = 296 ORDER BY scene_id DESC LIMIT 10;\")",
+      "Bash(./test.sh 2>&1 | tail -100)",
+      "Bash(sqlite3 /Users/luicy/story2/data/game.db \"SELECT scene_id, week, round_number, stage, storage_path, updated_at FROM scene_images WHERE scene_id = 7;\" 2>/dev/null || sqlite3 /Users/luicy/story2/data/game.db \".schema scene_images\")",
+      "Bash(sqlite3 /Users/luicy/story2/data/game.db \"SELECT scene_id, game_id, week, round_number, stage, storage_path, created_at FROM scene_images WHERE scene_id = 7;\")",
+      "Bash(sqlite3 /Users/luicy/story2/data/game.db \"SELECT scene_id, week, round_number, stage, storage_path FROM scene_images WHERE game_id = 296 ORDER BY scene_id DESC;\")",
+      "Bash(sqlite3 /Users/luicy/story2/data/game.db \"SELECT state_id, game_id, json_extract\\(state_json, '$.week'\\) as week, json_extract\\(state_json, '$.round_info.current_round'\\) as current_round, created_at FROM game_states WHERE game_id = 296 ORDER BY state_id DESC LIMIT 5;\")",
+      "Bash(sqlite3 /Users/luicy/story2/data/game.db \"SELECT scene_id, storage_path FROM scene_images WHERE scene_id = 7;\")",
+      "Bash(cd /Users/luicy/story2 && ./test.sh 2>&1 | tail -40)",
+      "Bash(./test.sh 2>&1 | tail -30)",
+      "Bash(sqlite3 /Users/luicy/story2/data/game.db \"SELECT scene_id, week, round_number, stage, created_at FROM scene_images WHERE game_id = 296 AND scene_id = 7;\")",
+      "Bash(chmod +x /Users/luicy/story2/.git/hooks/pre-commit /Users/luicy/story2/.git/hooks/commit-msg /Users/luicy/story2/scripts/git_helpers.sh)",
+      "Bash(.git/hooks/pre-commit 2>&1 || true)",
+      "Bash(./scripts/git_helpers.sh help)",
+      "Bash(./scripts/git_helpers.sh status)",
+      "Bash(gh auth status 2>&1)",
+      "Bash(which gh && gh auth status 2>&1 || echo \"gh not found\")"
     ]
   }
 }

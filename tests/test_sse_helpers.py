@@ -21,38 +21,54 @@ from src.api.routers.gameplay.sse_helpers import (
 
 class TestTriggerRoundIllustration:
     """场景插画生成触发测试"""
-    
+
     def test_trigger_with_valid_event(self):
         """测试有效事件触发插画生成"""
         game_loop = MagicMock()
         game_loop.player_state = MagicMock()
         game_loop.player_state.current_round = 5
+        game_loop.player_state.week = 2  # ★ 添加 week
         game_loop.player_state.player_name = "张三"
         game_loop.player_state.character_settings = {}
-        
+
         event = MagicMock()
         event.event_description = "张三走在繁华的街道上"
-        
+
         _trigger_round_illustration_generation(game_loop, 1, event)
         # 函数启动后台线程，不应该抛出异常
-    
+
     def test_trigger_with_no_player_state(self):
         """测试无玩家状态时不生成"""
         game_loop = MagicMock()
         game_loop.player_state = None
-        
+
         event = MagicMock()
         event.event_description = "测试事件"
-        
+
         _trigger_round_illustration_generation(game_loop, 1, event)
-    
+
     def test_trigger_with_no_event(self):
         """测试无事件时不生成"""
         game_loop = MagicMock()
         game_loop.player_state = MagicMock()
         game_loop.player_state.current_round = 1
-        
+
         _trigger_round_illustration_generation(game_loop, 1, None)
+
+    def test_trigger_with_week_parameter(self):
+        """测试触发插画生成时传递 week 参数"""
+        game_loop = MagicMock()
+        game_loop.player_state = MagicMock()
+        game_loop.player_state.current_round = 3
+        game_loop.player_state.week = 5  # ★ 第5周
+        game_loop.player_state.player_name = "李四"
+        game_loop.player_state.character_settings = {"gender": "male"}
+
+        event = MagicMock()
+        event.event_description = "李四在山中修炼"
+
+        _trigger_round_illustration_generation(game_loop, 1, event, stage="event")
+        # 函数启动后台线程，不应该抛出异常
 
 
 class TestMakeSSEEvent:
@@ -92,33 +108,57 @@ class TestMakeSSEEvent:
 
 class TestClearSSECache:
     """SSE缓存清理测试"""
-    
+
     def test_clear_sse_cache_on_retry(self):
         """测试重试时清理缓存"""
         status = {"phase": "retry"}
         session = MagicMock()
         session.clear_sse_cache = MagicMock()
-        
+
         clear_sse_cache_if_retry(status, session)
-        
+
         session.clear_sse_cache.assert_called_once()
-    
+
     def test_no_clear_on_normal_phase(self):
         """测试正常阶段不清理缓存"""
         status = {"phase": "normal"}
         session = MagicMock()
         session.clear_sse_cache = MagicMock()
-        
+
         clear_sse_cache_if_retry(status, session)
-        
+
         session.clear_sse_cache.assert_not_called()
-    
+
     def test_no_session(self):
         """测试无session时不报错"""
         status = {"phase": "retry"}
-        
+
         # 不应该抛出异常
         clear_sse_cache_if_retry(status, None)
+
+    def test_clear_sse_cache_on_retrying_phase(self):
+        """测试 retrying 阶段不清理缓存（只有 retry 阶段才清理）"""
+        status = {"phase": "retrying"}
+        session = MagicMock()
+        session.clear_sse_cache = MagicMock()
+
+        clear_sse_cache_if_retry(status, session)
+
+        # retrying 不是 retry，不应该清理
+        session.clear_sse_cache.assert_not_called()
+
+    def test_clear_sse_cache_with_other_phases(self):
+        """测试其他阶段不清理缓存"""
+        phases = ["processing", "generating", "complete", "error"]
+
+        for phase in phases:
+            status = {"phase": phase}
+            session = MagicMock()
+            session.clear_sse_cache = MagicMock()
+
+            clear_sse_cache_if_retry(status, session)
+
+            session.clear_sse_cache.assert_not_called()
 
 
 class TestSSEAsyncFunctions:

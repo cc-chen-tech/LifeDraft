@@ -310,6 +310,9 @@ class StoryGenerator:
             temperature = 0.75  # 允许更多创意
             logger.info(f"Dynamic temperature: {temperature} (new event)")
         
+        # ★ 在 try 块外初始化，确保 except 块能访问已生成的故事
+        story_text = None
+        
         try:
             story_text = self.client.call(
                 system_prompt=sys_prompt,
@@ -387,11 +390,15 @@ class StoryGenerator:
 
         except Exception as e:
             logger.error(f"Failed to generate round event: {e}")
-            # Return fallback event
-            fallback_desc = (
-                "这一天平静地度过了。" if language == "zh"
-                else "This day passed quietly."
-            )
+            # ★ 如果故事已生成但后续步骤（如选项生成）失败，保留真实故事而非使用 fallback
+            if story_text and len(story_text) > 50:
+                logger.info(f"Using already-generated story ({len(story_text)} chars) with fallback options")
+                fallback_desc = story_text
+            else:
+                fallback_desc = (
+                    "这一天平静地度过了。" if language == "zh"
+                    else "This day passed quietly."
+                )
             return GameEvent(
                 event_description=fallback_desc,
                 options=[

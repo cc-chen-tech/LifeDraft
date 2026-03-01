@@ -351,7 +351,9 @@ class GameDatabase:
             logger.error(f"save_game_progress: player_state is None for game_id={game_id}")
             return False
         
-        logger.info(f"save_game_progress: Saving game_id={game_id}, week={player_state.week}, age={player_state.age}")
+        # ★ 显示用周数（人类可读，从1开始）
+        week_display = f"第{player_state.week + 1}周" if player_state.week is not None else "未知周"
+        logger.info(f"save_game_progress: Saving game_id={game_id}, {week_display}, age={player_state.age}")
         
         db = SessionLocal()
         try:

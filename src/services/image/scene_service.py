@@ -66,7 +66,8 @@ class SceneImageService:
         """
         from src.database.models import SceneImage
 
-        logger.info(f"Generating round {round_number} scene for game {game_id}, week={week}, stage={stage}")
+        week_display = f"第{week + 1}周" if week is not None else "未知周"
+        logger.info(f"生成场景插画: game={game_id}, {week_display}, round {round_number}, stage={stage}")
 
         if week is None and get_week_func:
             week = get_week_func(game_id)
@@ -79,7 +80,8 @@ class SceneImageService:
             SceneImage.stage == stage,
         ).first()
         if existing:
-            logger.info(f"Scene image already exists for week {week} round {round_number} stage={stage}, skipping")
+            week_display = f"第{week + 1}周" if week is not None else "未知周"
+            logger.info(f"场景插画已存在: {week_display}, round {round_number}, stage={stage}, 跳过")
             return existing
 
         char_info = self._build_char_info(character_settings, player_name)
@@ -165,11 +167,13 @@ class SceneImageService:
                     )
 
             # Step 4: 保存图片
+            # ★ week 从0开始，entity_name 显示时 +1，与前端一致
+            display_week = (week + 1) if week is not None else 0
             storage_path, storage_type = self.storage_service.save_image(
                 image_data=image_data,
                 game_id=game_id,
                 image_type="round_scene",
-                entity_name=f"{player_name}_week_{week}_round_{round_number}",
+                entity_name=f"{player_name}_week_{display_week}_round_{round_number}",
                 week=week,
                 round_number=round_number,
                 stage=stage,
@@ -191,7 +195,8 @@ class SceneImageService:
             self.db.add(new_scene)
             self.db.commit()
             self.db.refresh(new_scene)
-            logger.info(f"Round scene created: scene_id={new_scene.scene_id}, week={week}")
+            week_display = f"第{week + 1}周" if week is not None else "未知周"
+            logger.info(f"场景插画创建完成: scene_id={new_scene.scene_id}, {week_display}")
 
             return new_scene
 

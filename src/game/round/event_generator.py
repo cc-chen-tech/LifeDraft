@@ -119,7 +119,9 @@ class RoundEventGenerator:
         current_week = player_state.week
         current_round = player_state.current_round
         
-        logger.info(f"Generating round event: week={current_week}, round={current_round}")
+        # ★ 显示用周数（人类可读，从1开始）
+        week_display = f"第{current_week + 1}周" if current_week is not None else "未知周"
+        logger.info(f"Generating round event: {week_display}, round={current_round}")
         
         # ★ 步骤0: 检查是否有预定事件需要触发
         scheduled_events = player_state.get_pending_scheduled_events(current_week, current_round)
@@ -245,7 +247,7 @@ class RoundEventGenerator:
             if self.event_callback:
                 self.event_callback(event, player_state)
             
-            logger.info(f"Successfully generated round event for week {current_week}, round {current_round}")
+            logger.info(f"Successfully generated round event for 第{current_week + 1}周, round {current_round}")
             self._generating = False  # Reset flag on success
             self._generating_start_time = None
             return event

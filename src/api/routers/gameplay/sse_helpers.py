@@ -63,18 +63,24 @@ def _trigger_round_illustration_generation(game_loop, game_id: int, event, stage
                 ).first()
                 
                 if existing:
-                    logger.info(f"[RoundIllustration] Week {week} round {round_number} stage={stage} illustration already exists")
+                    week_display = f"第{week + 1}周" if week is not None else "未知周"
+                    logger.info(f"[RoundIllustration] {week_display} round {round_number} stage={stage} 插画已存在")
                     return
-                
+
                 # 获取故事文本
                 story_text = event.event_description if event else ""
                 if not story_text:
-                    logger.warning(f"[RoundIllustration] No story text for week {week} round {round_number}")
+                    week_display = f"第{week + 1}周" if week is not None else "未知周"
+                    logger.warning(f"[RoundIllustration] {week_display} round {round_number} 无故事文本")
                     return
                 
                 # 获取角色设定
                 character_settings = player_state.character_settings or {}
                 player_name = player_state.player_name or "主角"
+
+                # 获取世界模型数据与已建立事实（用于更精确的实体/物品识别）
+                world_model_data = player_state.world_model_data or {}
+                established_facts = getattr(player_state, "established_facts", []) or []
                 
                 # 获取已有图片
                 images = db.query(ImageModel).filter(
@@ -113,9 +119,12 @@ def _trigger_round_illustration_generation(game_loop, game_id: int, event, stage
                     existing_images=existing_images,
                     stage=stage,  # ★ 传递 stage 参数
                     week=week,  # ★ 传递 week 参数
+                    world_model_data=world_model_data,
+                    established_facts=established_facts,
                 )
 
-                logger.info(f"[RoundIllustration] Triggered async generation for game {game_id}, week {week}, round {round_number}, stage={stage}")
+                week_display = f"第{week + 1}周" if week is not None else "未知周"
+                logger.info(f"[RoundIllustration] 触发异步生成: game={game_id}, {week_display}, round {round_number}, stage={stage}")
                 
             finally:
                 db.close()

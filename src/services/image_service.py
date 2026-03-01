@@ -288,48 +288,53 @@ class ImageService:
                     extra_params={"prompt_extend": True},
                 )
 
-            # 保存图片
+            # 保存图片 - ★ 传递 week 和 stage 参数，确保文件名格式一致
+            # ★ 使用当前场景的 week 和 stage，保持一致性
+            current_week = current_scene.week if current_scene else self._get_current_week_from_db(game_id)
+            current_stage = current_scene.stage if current_scene else 'result'
+            
             storage_path, storage_type = self.storage_service.save_image(
                 image_data=image_data,
                 game_id=game_id,
                 image_type="round_scene",
                 entity_name=f"{effective_player_name}_round_{round_number}",
+                week=current_week,
+                round_number=round_number,
+                stage=current_stage,
             )
 
             # 更新或创建 SceneImage 记录
             if current_scene:
+                from datetime import datetime
+                # ★ 删除旧图片文件，避免磁盘空间浪费
+                old_storage_path = current_scene.storage_path
+                if old_storage_path:
+                    try:
+                        self.storage_service.delete_image(old_storage_path, current_scene.storage_type)
+                        logger.info(f"Deleted old scene image: {old_storage_path}")
+                    except Exception as e:
+                        logger.warning(f"Failed to delete old scene image: {e}")
+                
                 current_scene.scene_description = scene_desc
                 current_scene.final_prompt = combined_prompt
                 current_scene.storage_path = storage_path
                 current_scene.storage_type = storage_type
                 current_scene.referenced_images = referenced_image_ids
                 current_scene.importance_score = "high"
+                current_scene.created_at = datetime.utcnow()  # ★ 更新时间戳，用于缓存破坏
                 self.db.commit()
                 self.db.refresh(current_scene)
-                logger.info(f"Round scene updated: scene_id={current_scene.scene_id}")
+                logger.info(f"Round scene updated: scene_id={current_scene.scene_id}, new_path={storage_path}")
 
-                return ImageModel(
-                    image_id=current_scene.scene_id,
-                    game_id=game_id,
-                    image_type="round_scene",
-                    entity_name=f"{effective_player_name}_round_{round_number}",
-                    entity_key=f"round_{round_number}",
-                    prompt_text=combined_prompt,
-                    storage_path=storage_path,
-                    storage_type=storage_type,
-                    metadata_json={
-                        "scene_description": scene_desc,
-                        "round_number": round_number,
-                        "user_prompt": user_prompt,
-                        "referenced_images": referenced_image_ids,
-                    },
-                    version=1,
-                    is_active=True,
-                    is_primary=True,
-                )
+                # ★ 返回 SceneImage 对象
+                return current_scene
             else:
+                # ★ 获取当前 week
+                week = self._get_current_week_from_db(game_id)
+
                 new_scene = SceneImage(
                     game_id=game_id,
+                    week=week,
                     round_number=round_number,
                     scene_description=scene_desc,
                     final_prompt=combined_prompt,
@@ -343,25 +348,8 @@ class ImageService:
                 self.db.refresh(new_scene)
                 logger.info(f"Round scene created: scene_id={new_scene.scene_id}")
 
-                return ImageModel(
-                    image_id=new_scene.scene_id,
-                    game_id=game_id,
-                    image_type="round_scene",
-                    entity_name=f"{effective_player_name}_round_{round_number}",
-                    entity_key=f"round_{round_number}",
-                    prompt_text=combined_prompt,
-                    storage_path=storage_path,
-                    storage_type=storage_type,
-                    metadata_json={
-                        "scene_description": scene_desc,
-                        "round_number": round_number,
-                        "user_prompt": user_prompt,
-                        "referenced_images": referenced_image_ids,
-                    },
-                    version=1,
-                    is_active=True,
-                    is_primary=True,
-                )
+                # ★ 返回 SceneImage 对象
+                return new_scene
 
         except ContentInspectionError as e:
             logger.warning(f"Content inspection failed for round scene: {e}")

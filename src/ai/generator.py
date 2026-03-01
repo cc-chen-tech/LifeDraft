@@ -235,7 +235,7 @@ class EventGenerator:
         if week is not None:
             preset_event = self._get_preset_milestone_event(week, language)
             if preset_event:
-                logger.info(f"Using preset milestone event for week {week}")
+                logger.info(f"Using preset milestone event for 第{week + 1}周")
                 return preset_event
 
         # Check cache (bypass if force is True)

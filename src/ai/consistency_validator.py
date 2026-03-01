@@ -180,22 +180,70 @@ class ConsistencyValidator:
             # Build fix instructions for retry
             fix_instructions = ""
             if not passed:
-                fix_parts = []
+                # ★ 按维度分组问题，提供更有针对性的修正指导
+                critical_by_dimension = {}
                 for issue in issues:
                     if issue.severity == "CRITICAL":
+                        dim = issue.dimension
+                        if dim not in critical_by_dimension:
+                            critical_by_dimension[dim] = []
+                        critical_by_dimension[dim].append(issue)
+                
+                fix_parts = []
+                
+                # ★ 地理位置问题 - 特殊强调
+                if "geographic" in critical_by_dimension:
+                    if language == "zh":
+                        fix_parts.append("\n⛔【地理位置错误 - 最严重的问题】")
+                        for issue in critical_by_dimension["geographic"]:
+                            fix_parts.append(f"  ❗ {issue.description}")
+                            fix_parts.append(f"  → 修正方案：{issue.fix_suggestion}")
+                        fix_parts.append("  提示：人物必须在其当前位置出现，如需移动必须先交代。可使用通讯方式（电话/信件/法术通讯）代替面对面交流。")
+                    else:
+                        fix_parts.append("\n⛔[GEOGRAPHIC ERRORS - MOST CRITICAL]")
+                        for issue in critical_by_dimension["geographic"]:
+                            fix_parts.append(f"  ❗ {issue.description}")
+                            fix_parts.append(f"  → Fix: {issue.fix_suggestion}")
+                        fix_parts.append("  Note: Characters MUST appear at their current location. For travel, narrate it first. Use communication (phone/letters/magic) instead of face-to-face.")
+                
+                # ★ 其他 CRITICAL 问题
+                for dim, issue_list in critical_by_dimension.items():
+                    if dim == "geographic":
+                        continue  # 已处理
+                    dim_label = {
+                        "career": "职业/身份",
+                        "personality": "性格",
+                        "temporal": "时间",
+                        "commitment": "承诺",
+                        "causal": "因果",
+                        "fabrication": "编造事实"
+                    }.get(dim, dim) if language == "zh" else dim
+                    
+                    if language == "zh":
+                        fix_parts.append(f"\n⚠️【{dim_label}问题】")
+                    else:
+                        fix_parts.append(f"\n⚠️[{dim_label.upper()} ISSUES]")
+                    
+                    for issue in issue_list:
                         if language == "zh":
-                            fix_parts.append(f"- 【必须修正】{issue.description}。建议：{issue.fix_suggestion}")
+                            fix_parts.append(f"  - {issue.description}")
+                            fix_parts.append(f"  → 修正方案：{issue.fix_suggestion}")
                         else:
-                            fix_parts.append(f"- [MUST FIX] {issue.description}. Suggestion: {issue.fix_suggestion}")
+                            fix_parts.append(f"  - {issue.description}")
+                            fix_parts.append(f"  → Fix: {issue.fix_suggestion}")
                 
                 if language == "zh":
-                    fix_instructions = "\n\n【一致性修正要求 - 必须严格遵守】\n上一次生成的故事存在以下逻辑矛盾，请在本次生成中修正：\n" + "\n".join(fix_parts)
+                    fix_instructions = "\n\n" + "="*50 + "\n【一致性修正要求 - 必须严格遵守】\n" + "="*50 + "\n上一次生成的故事存在以下逻辑矛盾，请在本次生成中修正："
+                    fix_instructions += "\n".join(fix_parts)
                     if retry_reason:
-                        fix_instructions += f"\n\nAI判断理由：{retry_reason}"
+                        fix_instructions += f"\n\n💡 AI判断理由：{retry_reason}"
+                    fix_instructions += "\n" + "="*50 + "\n请重新生成故事，确保严格遵守以上修正要求。"
                 else:
-                    fix_instructions = "\n\n[Consistency Fix Requirements - MUST strictly follow]\nThe previous story had these logical contradictions. Fix them in this generation:\n" + "\n".join(fix_parts)
+                    fix_instructions = "\n\n" + "="*50 + "\n[CONSISTENCY FIX REQUIREMENTS - MUST STRICTLY FOLLOW]\n" + "="*50 + "\nThe previous story had these logical contradictions. Fix them in this generation:"
+                    fix_instructions += "\n".join(fix_parts)
                     if retry_reason:
-                        fix_instructions += f"\n\nAI reasoning: {retry_reason}"
+                        fix_instructions += f"\n\n💡 AI reasoning: {retry_reason}"
+                    fix_instructions += "\n" + "="*50 + "\nPlease regenerate the story, strictly following the above fix requirements."
                 
                 # Also add warnings as reference
                 warning_parts = []

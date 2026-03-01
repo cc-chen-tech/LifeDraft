@@ -6,6 +6,7 @@ import hashlib
 import logging
 import os
 import uuid
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple
@@ -116,7 +117,19 @@ class ImageStorageService:
         对于其他图片(character/location/item)，保持原有格式
         """
         # 清理实体名称（移除特殊字符）
-        safe_name = "".join(c for c in entity_name if c.isalnum() or c in "._- ")[:30]
+        # 物品命名规则：
+        # - 优先提取类似“XX剑”“XX刀”“XX玉”“XX珠”等简短名作为文件名主体
+        # - 避免整句故事文本直接进文件名（例如“起去练剑”“地的巨剑”等）
+        # - 最终仍做一次安全字符过滤，限制长度
+        base_name = entity_name or "item"
+        # 提取武器/宝物短名称
+        match = re.search(r"([\u4e00-\u9fa5]{1,4}[剑刀枪棍斧弓玉珠])", base_name)
+        if match:
+            base_name = match.group(1)
+        # 安全化处理
+        safe_name = "".join(c for c in base_name if c.isalnum() or c in "._- ")[:30]
+        if not safe_name:
+            safe_name = "item"
         
         # 生成时间戳和随机ID
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -124,9 +137,11 @@ class ImageStorageService:
         
         # 构建文件名 - 场景图片包含完整层级信息
         if image_type == "round_scene" and week is not None:
-            # 场景图片: {game_id}/round_scene/week_{week}_round_{round}_{stage}_{uuid}.png
+            # 场景图片: {game_id}/round_scene/week_{week+1}_round_{round}_{stage}_{uuid}.png
+            # ★ week 从0开始，文件名显示时 +1，与前端一致
             stage_str = stage or "result"
-            filename = f"{game_id}/{image_type}/week_{week}_round_{round_number}_{stage_str}_{unique_id}.{extension}"
+            display_week = week + 1  # ★ 显示用周数（人类可读，从1开始）
+            filename = f"{game_id}/{image_type}/week_{display_week}_round_{round_number}_{stage_str}_{unique_id}.{extension}"
         else:
             # 其他图片: {game_id}/{image_type}/{timestamp}_{name}_{uuid}.png
             filename = f"{game_id}/{image_type}/{timestamp}_{safe_name}_{unique_id}.{extension}"

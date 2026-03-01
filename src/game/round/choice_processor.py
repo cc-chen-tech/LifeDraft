@@ -355,7 +355,9 @@ class RoundChoiceProcessor:
             decision_record["is_custom"] = True
         player_state.decision_history.append(decision_record)
 
-        logger.info(f"Saved {'custom ' if is_custom else ''}choice record: week={player_state.week}, round={player_state.current_round}")
+        # ★ 显示用周数（人类可读，从1开始）
+        week_display = f"第{player_state.week + 1}周" if player_state.week is not None else "未知周"
+        logger.info(f"Saved {'custom ' if is_custom else ''}choice record: {week_display}, round={player_state.current_round}")
 
         # 6. Clear current event data
         player_state.current_event_data = None

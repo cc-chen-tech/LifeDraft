@@ -94,7 +94,7 @@ class GameLoop(RoundSystemMixin):
         self.current_event = None
         self.player_state.current_event_data = None
         
-        logger.info(f"Started new game at age {self.player_state.age}, week {self.player_state.week}")
+        logger.info(f"Started new game at age {self.player_state.age}, 第{self.player_state.week + 1}周")
         return self.player_state
     
     def load_game(self, state_dict: Dict[str, Any]) -> PlayerState:
@@ -155,7 +155,7 @@ class GameLoop(RoundSystemMixin):
                 # No event saved, allow generation
                 self.last_event_week = current_week - 1
         
-        logger.info(f"Loaded game at age {self.player_state.age}, week {self.player_state.week}")
+        logger.info(f"Loaded game at age {self.player_state.age}, 第{self.player_state.week + 1}周")
         return self.player_state
     
     def generate_weekly_event(self, stream_callback: Optional[Callable[[str], None]] = None, force: bool = False, status_callback: Optional[Callable[[str], None]] = None) -> Optional[GameEvent]:
@@ -178,25 +178,27 @@ class GameLoop(RoundSystemMixin):
         
         current_week = self.player_state.week
         
-        logger.debug(f"Generating weekly event: week={current_week}, last_event_week={self.last_event_week}, force={force}")
+        # ★ 显示用周数（人类可读，从1开始）
+        week_display = f"第{current_week + 1}周" if current_week is not None else "未知周"
+        logger.debug(f"Generating weekly event: {week_display}, last_event_week={self.last_event_week}, force={force}")
         
         # Check if we've already generated event for this week (unless force is True)
         if self.last_event_week >= current_week and not force:
-            logger.debug(f"Already generated event for week {current_week} (last_event_week={self.last_event_week}), skipping")
+            logger.debug(f"Already generated event for 第{current_week + 1}周 (last_event_week={self.last_event_week}), skipping")
             return None
         
         # Check for milestone events first (bypass for force)
         if self.player_state.week in self.milestone_weeks and not force:
-            logger.debug(f"Checking for milestone event at week {self.player_state.week}")
+            logger.debug(f"Checking for milestone event at 第{self.player_state.week + 1}周")
             event = self._generate_milestone_event()
             if event:
-                logger.info(f"Generated milestone event for week {self.player_state.week}")
+                logger.info(f"Generated milestone event for 第{self.player_state.week + 1}周")
                 self.current_event = event
                 self.last_event_week = current_week
                 return event
         
         # Generate regular weekly event
-        logger.debug(f"Generating regular event for week {self.player_state.week}")
+        logger.debug(f"Generating regular event for 第{self.player_state.week + 1}周")
         try:
             state_dict = self.player_state.to_dict()
             character_settings = state_dict.get("character_settings", {})
@@ -248,7 +250,7 @@ class GameLoop(RoundSystemMixin):
             if self.event_callback:
                 self.event_callback(event, self.player_state)
             
-            logger.debug(f"Successfully generated event for week {self.player_state.week}")
+            logger.debug(f"Successfully generated event for 第{self.player_state.week + 1}周")
             return event
             
         except Exception as e:
@@ -352,7 +354,7 @@ class GameLoop(RoundSystemMixin):
         
         # Check if game is over
         if self.player_state.is_game_over():
-            logger.info(f"Game ended at age {self.player_state.age}, week {self.player_state.week}")
+            logger.info(f"Game ended at age {self.player_state.age}, 第{self.player_state.week + 1}周")
             return False
         
         return True
@@ -398,7 +400,7 @@ class GameLoop(RoundSystemMixin):
                 "date_info": self.player_state.get_game_date_info() if self.player_state else {}
             }
             self.player_state.four_week_summaries.append(summary_entry)
-            logger.info(f"Generated 4-week summary for weeks {start_week}-{current_week - 1}")
+            logger.info(f"Generated 4-week summary for 第{start_week + 1}周-第{current_week}周")
             
         except Exception as e:
             logger.error(f"Failed to generate 4-week summary: {e}")
@@ -437,7 +439,7 @@ class GameLoop(RoundSystemMixin):
                 "date_info": self.player_state.get_game_date_info() if self.player_state else {}
             }
             self.player_state.yearly_summaries.append(summary_entry)
-            logger.info(f"Generated yearly summary for weeks {start_week}-{current_week - 1}")
+            logger.info(f"Generated yearly summary for 第{start_week + 1}周-第{current_week}周")
             
         except Exception as e:
             logger.error(f"Failed to generate yearly summary: {e}")

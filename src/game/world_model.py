@@ -455,19 +455,36 @@ class WorldModel:
             return ""
         lines = []
         if zh:
-            lines.append("📍 【人物地理位置】")
+            lines.append("="*50)
+            lines.append("⛔ 【人物地理位置约束 — 必须严格遵守，不得违反】")
+            lines.append("="*50)
             for name, loc in self.character_locations.items():
                 mode_label = {"resident": "常住", "visiting": "暂访", "traveling": "旅途中"}.get(
                     loc.travel_mode, "")
-                lines.append(f"  - {name}：{loc.location}（{loc.region}，{mode_label}）")
-            lines.append("  ⚠️ 不同城市的人物不能在同一物理场景中偶遇。如需互动，请使用通讯方式或交代移动。")
+                # ★ 强调位置约束
+                lines.append(f"  ❗ {name} 当前位置：{loc.location}（{loc.region}，{mode_label}）")
+            lines.append("")
+            lines.append("  ⚠️ 【严格禁止的地理错误】：")
+            lines.append("  1. 人物不能出现在其当前位置以外的地点（除非故事中交代了移动）")
+            lines.append("  2. 不同城市的人物不能在同一物理场景中偶遇")
+            lines.append("  3. 如需人物互动，必须：使用通讯方式（电话/信件/法术通讯）或先交代人物移动")
+            lines.append("  4. 暂访/旅途中的人物位置是临时的，但仍需遵守当前位置约束")
+            lines.append("="*50)
         else:
-            lines.append("[Character Locations]")
+            lines.append("="*50)
+            lines.append("⛔ [CHARACTER LOCATION CONSTRAINTS — MUST STRICTLY FOLLOW]")
+            lines.append("="*50)
             for name, loc in self.character_locations.items():
                 mode_label = {"resident": "resident", "visiting": "visiting", "traveling": "traveling"}.get(
                     loc.travel_mode, "")
-                lines.append(f"  - {name}: {loc.location} ({loc.region}, {mode_label})")
-            lines.append("  Warning: Characters in different cities cannot casually meet in person. Use calls/video or narrate travel.")
+                lines.append(f"  ❗ {name} current location: {loc.location} ({loc.region}, {mode_label})")
+            lines.append("")
+            lines.append("  ⚠️ [STRICTLY FORBIDDEN GEOGRAPHIC ERRORS]:")
+            lines.append("  1. Characters CANNOT appear at locations other than their current location (unless travel is narrated)")
+            lines.append("  2. Characters in different cities CANNOT casually meet in the same physical scene")
+            lines.append("  3. For character interaction, MUST use: communication (phone/letters/magic) OR narrate travel first")
+            lines.append("  4. Visiting/traveling characters have temporary locations but still must follow current location constraints")
+            lines.append("="*50)
         return "\n".join(lines)
 
     def _build_career_constraints(self, zh: bool) -> str:

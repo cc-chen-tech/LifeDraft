@@ -54,7 +54,7 @@ class Settings:
     OSS_BUCKET_NAME: Optional[str] = os.getenv("OSS_BUCKET_NAME")
     
     # 图像生成配置
-    IMAGE_GENERATION_TIMEOUT: int = int(os.getenv("IMAGE_GENERATION_TIMEOUT", "60"))
+    IMAGE_GENERATION_TIMEOUT: int = int(os.getenv("IMAGE_GENERATION_TIMEOUT", "120"))  # ★ 默认120秒，图生图需要更长时间
     IMAGE_MAX_RETRIES: int = int(os.getenv("IMAGE_MAX_RETRIES", "3"))
     
     # ★ 模型降级配置（逗号分隔，必须在.env中显式配置）

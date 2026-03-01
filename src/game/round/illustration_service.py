@@ -47,6 +47,8 @@ class RoundIllustrationService:
         existing_images: List[Dict[str, Any]],
         stage: str = "event",  # ★ 新增 stage 参数
         week: Optional[int] = None,  # ★ 新增 week 参数
+        world_model_data: Optional[Dict[str, Any]] = None,
+        established_facts: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         """
         异步生成每轮场景插画（不阻塞主流程）
@@ -60,6 +62,8 @@ class RoundIllustrationService:
             existing_images: 已有的图片列表 [{image_id, entity_name, image_type, image_url}]
             stage: 场景阶段 (event=事件故事, result=结果故事)
             week: 周数
+            world_model_data: 世界模型数据（用于识别跨轮次反复出现的实体/物品）
+            established_facts: 已建立的世界事实列表（含 category="item" 的重要物品）
         """
         # 在后台线程中执行生成
         thread = threading.Thread(
@@ -73,11 +77,14 @@ class RoundIllustrationService:
                 existing_images,
                 stage,  # ★ 传递 stage 参数
                 week,  # ★ 传递 week 参数
+                world_model_data,
+                established_facts,
             ),
             daemon=True,
         )
         thread.start()
-        logger.info(f"[RoundIllustration] Started async generation for game {game_id}, week {week}, round {round_number}, stage={stage}")
+        week_display = f"第{week + 1}周" if week is not None else "未知周"
+        logger.info(f"[RoundIllustration] 启动异步生成: game={game_id}, {week_display}, round {round_number}, stage={stage}")
     
     def _generate_round_illustration_sync(
         self,
@@ -89,12 +96,16 @@ class RoundIllustrationService:
         existing_images: List[Dict[str, Any]],
         stage: str = "event",  # ★ 新增 stage 参数
         week: Optional[int] = None,  # ★ 新增 week 参数
+        world_model_data: Optional[Dict[str, Any]] = None,
+        established_facts: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         """同步生成每轮场景插画（在后台线程中执行）
                 
         Args:
             stage: 场景阶段 (event=事件故事, result=结果故事)
             week: 周数
+            world_model_data: 世界模型数据（用于识别跨轮次反复出现的实体/物品）
+            established_facts: 已建立的世界事实列表（含 category="item" 的重要物品）
         """
         try:
             # ★ 如果没有传入 week，尝试从数据库获取
@@ -126,7 +137,12 @@ class RoundIllustrationService:
                     referenced_image_ids.append(player_image.get("image_id"))
             
             # 检查故事中涉及的其他人物/物件/地点
-            involved_entities = self._extract_involved_entities(story_text, character_settings)
+            involved_entities = self._extract_involved_entities(
+                story_text,
+                character_settings,
+                world_model_data=world_model_data,
+                established_facts=established_facts,
+            )
             for entity in involved_entities:
                 entity_name = entity.get("name")
                 entity_type = entity.get("type", "character")
@@ -172,11 +188,13 @@ class RoundIllustrationService:
             )
             
             # Step 4: 保存图片 - 包含完整层级信息
+            # ★ week 从0开始，entity_name 显示时 +1，与前端一致
+            display_week = (week + 1) if week is not None else 0
             storage_path, storage_type = self.image_storage.save_image(
                 image_data=image_data,
                 game_id=game_id,
                 image_type="round_scene",
-                entity_name=f"{player_name}_week_{week}_round_{round_number}",
+                entity_name=f"{player_name}_week_{display_week}_round_{round_number}",
                 week=week,
                 round_number=round_number,
                 stage=stage,
@@ -199,7 +217,8 @@ class RoundIllustrationService:
             self.db.add(scene_image)
             self.db.commit()
             
-            logger.info(f"[RoundIllustration] Generated scene image: scene_id={scene_image.scene_id}, week={week}, stage={stage}")
+            week_display = f"第{week + 1}周" if week is not None else "未知周"
+            logger.info(f"[RoundIllustration] 场景插画生成完成: scene_id={scene_image.scene_id}, {week_display}, stage={stage}")
             
         except ContentInspectionError as e:
             logger.warning(f"[RoundIllustration] Content inspection failed: {e}")
@@ -428,27 +447,88 @@ class RoundIllustrationService:
         
         重要物品来源：
         1. established_facts 中 category 为 "item" 的事实
-        2. world_model_data 中记录的重要物品
-        """
-        items = []
+        2. world_model_data 中记录的动态事实（fact_type="possession"）
         
-        # 从 established_facts 提取已建立的重要物品
+        只有**在多个场景/事实中反复出现（≥3次）**的物品才会被认为是「重要物品」，用于触发图片生成。
+        
+        ★ 完全依赖 AI 识别，不使用正则匹配，以支持古代/现代/科幻等多场景泛化。
+        """
+        items: List[Dict[str, Any]] = []
+        candidate_items: List[Dict[str, Any]] = []
+
+        # ---------- 1. 从 established_facts 提取已建立的重要物品 ----------
         if established_facts:
             for fact in established_facts:
                 category = fact.get("category", "")
                 if category == "item":
                     item_name = fact.get("subject") or fact.get("fact", "")
+                    if not item_name:
+                        continue
                     if item_name and item_name in story_text:
-                        items.append({
+                        candidate_items.append({
                             "name": item_name,
                             "type": "item",
                             "description": fact.get("fact", f"重要物品：{item_name}"),
                         })
-        
-        # 如果没有 established_facts，使用智能匹配作为后备
-        if not items:
-            items = self._extract_items_from_story(story_text)
-        
+
+        # ---------- 2. 从 world_model_data.dynamic_facts 提取物品 ----------
+        # 补充：提取 possession 类型的动态事实中的物品
+        if world_model_data:
+            for df in world_model_data.get("dynamic_facts", []):
+                try:
+                    if df.get("fact_type") != "possession":
+                        continue
+                    subject = df.get("subject", "")
+                    desc = df.get("description", "") or ""
+                    if subject and subject in story_text:
+                        # 避免重复添加
+                        if not any(i["name"] == subject for i in candidate_items):
+                            candidate_items.append({
+                                "name": subject,
+                                "type": "item",
+                                "description": desc or f"重要物品：{subject}",
+                            })
+                except (AttributeError, TypeError):
+                    continue
+
+        if not candidate_items:
+            return []
+
+        # ---------- 3. 计算每个物品在世界模型/事实中的出现次数 ----------
+        def _count_occurrences(name: str) -> int:
+            count = 0
+            # 在 established_facts 中出现的次数
+            if established_facts:
+                for fact in established_facts:
+                    text = (fact.get("subject", "") or "") + " " + (fact.get("fact", "") or "")
+                    if name and name in text:
+                        count += 1
+            # 在 world_model_data.dynamic_facts 中出现的次数（possession 类型）
+            if world_model_data:
+                for df in world_model_data.get("dynamic_facts", []):
+                    try:
+                        if df.get("fact_type") != "possession":
+                            continue
+                        desc = df.get("description", "") or ""
+                        constraint = df.get("constraint_text", "") or ""
+                        related = " ".join(df.get("related_entities", []) or [])
+                        blob = desc + " " + constraint + " " + related
+                        if name and name in blob:
+                            count += 1
+                    except (AttributeError, TypeError):
+                        continue
+            return count
+
+        for item in candidate_items:
+            name = item.get("name", "")
+            if not name:
+                continue
+            occ = _count_occurrences(name)
+            # 至少在 3 个不同事实/场景中被提及，才认为是「反复出现的物品」
+            if occ >= 3:
+                items.append(item)
+
+        # 如果没有任何满足「反复出现」条件的物品，则不返回物品，避免一次性道具触发图片生成
         return items
 
     def _extract_important_landmarks(
