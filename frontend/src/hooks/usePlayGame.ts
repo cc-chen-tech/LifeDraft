@@ -1,0 +1,457 @@
+"use client";
+
+import { useEffect, useRef, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { useGameStore } from "@/stores/useGameStore";
+import { useHydration } from "@/hooks/useHydration";
+import { games } from "@/lib/api";
+import type { EventOption } from "@/lib/types";
+
+// Import sub-hooks
+import { usePhaseManager, Phase, ConnectionStatus } from "./game/usePhaseManager";
+import { useEventGenerator } from "./game/useEventGenerator";
+import { useChoiceHandler } from "./game/useChoiceHandler";
+import { useGameState } from "./game/useGameState";
+import { useHistoryViewer } from "./game/useHistoryViewer";
+
+// Re-export types for backwards compatibility
+export type { Phase, ConnectionStatus };
+export { STATUS_MESSAGES } from "./game/usePhaseManager";
+
+/**
+ * Custom hook that manages all game logic for the play page.
+ * Composes multiple sub-hooks for better maintainability.
+ * External API remains unchanged for backwards compatibility.
+ */
+export function usePlayGame() {
+  const router = useRouter();
+  const {
+    gameId,
+    playerState,
+    progress,
+    roundInfo,
+    storyText,
+    currentEvent,
+    isGameOver,
+    appendStoryText,
+    setStoryText,
+    setCurrentEvent,
+    setGameOver,
+    syncState,
+    syncPlayerState,
+    saveGame,
+    // ★ 场景插画
+    roundSceneImages,
+    currentRoundSceneImage,
+    eventSceneImage,  // ★ 事件插画
+    resultSceneImage,  // ★ 结果插画
+    isLoadingRoundSceneImage,
+    isRegeneratingRoundScene,
+    roundSceneRegenerateError,
+    fetchRoundSceneImage,
+    fetchAllRoundSceneImages,
+    regenerateRoundSceneImage,
+    setEventSceneImage,  // ★ 设置事件插画
+    setResultSceneImage,  // ★ 设置结果插画
+  } = useGameStore();
+
+  const hydrated = useHydration();
+
+  // Options state (local, not in sub-hooks)
+  const [options, setOptions] = useState<EventOption[]>([]);
+  const [isPrefetching, setIsPrefetching] = useState(false);
+
+  // Story container ref for scrolling
+  const storyContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Refs defined once and passed to sub-hooks
+  const abortRef = useRef<AbortController | null>(null);
+  const generatingRef = useRef(false);
+  const pollingRef = useRef(false);
+  const prefetchAbortRef = useRef<AbortController | null>(null);
+  const prefetchResultRef = useRef<{
+    story: string;
+    options: EventOption[];
+    event: { story: string; options: EventOption[] } | null;
+  } | null>(null);
+  const prefetchingRef = useRef(false);
+  const generateEventRef = useRef<() => Promise<void>>(async () => {});
+
+  // ===== Phase Manager =====
+  const {
+    phase,
+    setPhase,
+    phaseRef,
+    connectionStatus,
+    setConnectionStatus,
+    reconnectAttempt,
+    setReconnectAttempt,
+    elapsedSeconds,
+    getLoadingMessage,
+    setProcessing,
+  } = usePhaseManager();
+
+  // ===== Game State (called early to get setters) =====
+  const {
+    isSaving,
+    saveToast,
+    regenerateToast,
+    summaryText,
+    roundSummary,
+    showAdjuster,
+    endingData,
+    setSummaryText,
+    setRoundSummary,
+    setShowAdjuster,
+    handleSave,
+    handleContinueAfterSummary,
+    handleContinueToNextRound,
+    handleAdjustStory,
+    handleRegenerate,
+  } = useGameState({
+    gameId,
+    isGameOver,
+    setPhase,
+    setStoryText,
+    appendStoryText,
+    setCurrentEvent,
+    setOptions,
+    setProcessing,
+    generatingRef,
+    prefetchAbortRef,
+    prefetchResultRef,
+    prefetchingRef,
+    setIsPrefetching,
+    generateEventRef,
+    syncPlayerState,
+  });
+
+  // ===== Event Generator =====
+  const {
+    generateEvent,
+    prefetchNextEvent,
+  } = useEventGenerator({
+    gameId,
+    phaseRef,
+    setPhase,
+    setConnectionStatus,
+    setReconnectAttempt,
+    setProcessing,
+    setOptions,
+    setStoryText,
+    appendStoryText,
+    setCurrentEvent,
+    setGameOver,
+    setRoundSummary,
+    isGameOver,
+    setIsPrefetching,
+    abortRef,
+    generatingRef,
+    pollingRef,
+    prefetchAbortRef,
+    prefetchResultRef,
+    prefetchingRef,
+  });
+  
+  // Update generateEventRef for useGameState
+  generateEventRef.current = generateEvent;
+
+  // ===== Choice Handler =====
+  const { handleChoice, handleCustomChoice } = useChoiceHandler({
+    gameId,
+    abortRef,
+    generatingRef,
+    setPhase,
+    setConnectionStatus,
+    setReconnectAttempt,
+    setProcessing,
+    appendStoryText,
+    setCurrentEvent,
+    setGameOver,
+    setSummaryText,
+    setRoundSummary,
+    setOptions,
+    setStoryText,
+  });
+
+  // ===== History Viewer =====
+  const {
+    showHistory,
+    setShowHistory,
+    roundHistory,
+    historyRoundIndex,
+    isViewingHistory,
+    historyDisplayText,
+    displayText,  // ★ 实际显示的文本（历史模式下显示历史，否则显示当前）
+    handleOpenHistory,
+    handleSelectHistoryRound,
+    handleBackToCurrent,
+  } = useHistoryViewer({
+    playerState,
+    storyText,
+    currentEvent,
+    phaseRef,
+    setPhase,
+    setOptions,
+    generatingRef,
+  });
+
+  // ===== Session Recovery (remains in main hook) =====
+  const redirectCheckedRef = useRef(false);
+
+  useEffect(() => {
+    if (!hydrated) return;
+
+    const attemptRecovery = async () => {
+      if (!gameId) {
+        console.warn("[play] No gameId in localStorage, attempting server-side recovery...");
+
+        try {
+          const state = await games.getActive();
+          if (state && state.game_id) {
+            console.log("[play] ✅ Recovered active game from server:", state.game_id);
+
+            const rawEvent = state.current_event as Record<string, unknown> | null;
+            const event = rawEvent
+              ? {
+                  story: (rawEvent.event_description as string) || (rawEvent.story as string) || "",
+                  options: ((rawEvent.options as EventOption[]) || []),
+                }
+              : null;
+
+            let recoveredStoryText = event?.story || "";
+            if (!recoveredStoryText) {
+              const playerState = state.player_state as Record<string, unknown>;
+              const lastRoundStory = playerState?.last_round_full_story as string;
+              if (lastRoundStory) {
+                recoveredStoryText = lastRoundStory;
+                console.log(`[play] Restored story from last_round_full_story (${lastRoundStory.length} chars)`);
+              } else {
+                const roundHistory = playerState?.round_history as Array<{event_description?: string; story_continuation?: string}>;
+                if (roundHistory && roundHistory.length > 0) {
+                  const lastRound = roundHistory[roundHistory.length - 1];
+                  const eventDesc = lastRound?.event_description || "";
+                  const continuation = lastRound?.story_continuation || "";
+                  recoveredStoryText = eventDesc + (continuation ? "\n\n" + continuation : "");
+                  console.log(`[play] Restored story from round_history (${recoveredStoryText.length} chars)`);
+                }
+              }
+            }
+
+            useGameStore.setState({
+              gameId: state.game_id,
+              playerState: state.player_state,
+              progress: state.progress,
+              roundInfo: state.round_info,
+              currentEvent: event,
+              storyText: recoveredStoryText,
+            });
+
+            console.log("[play] State restored, will continue game");
+            return;
+          }
+        } catch (err) {
+          const error = err as { status?: number };
+          if (error.status === 404) {
+            console.log("[play] No active game on server, redirecting to home");
+          } else {
+            console.error("[play] Failed to recover session:", err);
+          }
+        }
+
+        router.replace("/");
+      } else {
+        console.log("[play] gameId exists:", gameId);
+        redirectCheckedRef.current = true;
+      }
+    };
+
+    attemptRecovery();
+  }, [hydrated, gameId, router]);
+
+  // ===== Initial Load =====
+  const initialLoadDoneRef = useRef(false);
+  const lastInitializedGameIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!hydrated) return;
+
+    if (gameId === lastInitializedGameIdRef.current) {
+      return;
+    }
+
+    if (!gameId) {
+      console.warn("[play] No gameId, cannot initialize");
+      return;
+    }
+
+    const currentPhase = phaseRef.current;
+    if (currentPhase !== "loading" && currentPhase !== "error") {
+      return;
+    }
+
+    initialLoadDoneRef.current = true;
+    lastInitializedGameIdRef.current = gameId;
+
+    const doInit = async () => {
+      try {
+        await useGameStore.getState().syncState();
+        const state = useGameStore.getState();
+        if (state.currentEvent?.options?.length) {
+          setOptions(state.currentEvent.options);
+          if (!state.storyText && state.currentEvent.story) {
+            setStoryText(state.currentEvent.story);
+          }
+          setPhase("options");
+        } else {
+          generateEvent();
+        }
+      } catch (err) {
+        console.error("[play] syncState failed:", err);
+        generateEvent();
+      }
+    };
+
+    doInit();
+  }, [hydrated, gameId, generateEvent, setStoryText, setPhase, phaseRef]);
+
+  // ===== Fetch Ending =====
+  const [localEndingData, setLocalEndingData] = useState<Record<string, unknown> | null>(null);
+  
+  useEffect(() => {
+    if (phase === "ending" && gameId && !localEndingData) {
+      import("@/lib/api").then(({ default: api }) =>
+        api.gameplay.getEnding(gameId).then(setLocalEndingData).catch(console.error)
+      );
+    }
+  }, [phase, gameId, localEndingData]);
+  
+  // Use local ending data if available, otherwise from useGameState
+  const finalEndingData = localEndingData || endingData;
+
+  // ===== Round Scene Images =====
+  const currentRound = (roundInfo?.current_round as number) ?? 0;
+  const enableSceneImage = useGameStore((s) => s.enableSceneImage);
+  const generateRoundSceneImage = useGameStore((s) => s.generateRoundSceneImage);
+  
+  // 当轮次变化时，获取当前轮次的场景插画
+  // ★ 根据 phase 决定获取哪个 stage 的插画
+  useEffect(() => {
+    if (gameId && currentRound >= 0) {
+      // ★ 根据 phase 确定要获取的 stage
+      const stage = phase === 'options' ? 'event' : phase === 'result' ? 'result' : undefined;
+      fetchRoundSceneImage(currentRound, stage);
+    }
+  }, [gameId, currentRound, phase, fetchRoundSceneImage]);
+
+  // 初始加载所有场景插画
+  useEffect(() => {
+    if (gameId) {
+      fetchAllRoundSceneImages();
+    }
+  }, [gameId, fetchAllRoundSceneImages]);
+  
+  // ★ 加载后检查：如果没有插画，自动生成
+  useEffect(() => {
+    if (!gameId || !enableSceneImage || !storyText || currentRound < 0) return;
+    
+    // 延迟检查，等待 fetchAllRoundSceneImages 完成
+    const timer = setTimeout(() => {
+      const state = useGameStore.getState();
+      const { eventSceneImage, resultSceneImage } = state;
+      
+      // 根据 phase 检查是否需要生成插画
+      if (phase === 'options' && !eventSceneImage) {
+        console.log(`[Auto Generate] No event scene found for round ${currentRound}, generating...`);
+        generateRoundSceneImage(currentRound, storyText, 'event').catch(err => {
+          console.error('[Auto Generate] Event scene generation failed:', err);
+        });
+      } else if (phase === 'result' && !resultSceneImage) {
+        console.log(`[Auto Generate] No result scene found for round ${currentRound}, generating...`);
+        generateRoundSceneImage(currentRound, storyText, 'result').catch(err => {
+          console.error('[Auto Generate] Result scene generation failed:', err);
+        });
+      }
+    }, 500);
+    
+    return () => clearTimeout(timer);
+  }, [gameId, currentRound, storyText, enableSceneImage, eventSceneImage, resultSceneImage, phase, generateRoundSceneImage]);
+
+  // Return the same API as before for backwards compatibility
+  return {
+    // State
+    phase,
+    options,
+    summaryText,
+    roundSummary,
+    isSaving,
+    saveToast,
+    regenerateToast,
+    showAdjuster,
+    endingData: finalEndingData,
+    connectionStatus,
+    reconnectAttempt,
+    elapsedSeconds,
+    isPrefetching,
+
+    // Store values
+    gameId,
+    playerState,
+    progress,
+    roundInfo,
+    storyText,
+    currentEvent,
+    isGameOver,
+
+    // Refs
+    storyContainerRef,
+
+    // Actions
+    setPhase,
+    setOptions,
+    setShowAdjuster,
+    setStoryText,
+
+    // Handlers
+    handleChoice,
+    handleCustomChoice,
+    handleContinueAfterSummary,
+    handleContinueToNextRound,
+    handleSave,
+    handleAdjustStory,
+    handleRegenerate,
+    generateEvent,
+
+    // History
+    showHistory,
+    setShowHistory,
+    roundHistory,
+    historyRoundIndex,
+    isViewingHistory,
+    historyDisplayText,
+    displayText,  // ★ 实际显示的文本
+    handleOpenHistory,
+    handleSelectHistoryRound,
+    handleBackToCurrent,
+
+    // ★ 场景插画
+    roundSceneImages,
+    currentRoundSceneImage,
+    eventSceneImage,  // ★ 事件插画
+    resultSceneImage,  // ★ 结果插画
+    isLoadingRoundSceneImage,
+    isRegeneratingRoundScene,
+    roundSceneRegenerateError,
+    fetchRoundSceneImage,
+    fetchAllRoundSceneImages,
+    regenerateRoundSceneImage,
+    setEventSceneImage,  // ★ 设置事件插画
+    setResultSceneImage,  // ★ 设置结果插画
+    currentRound,
+
+    // Utilities
+    getLoadingMessage,
+    hydrated,
+    router,
+  };
+}

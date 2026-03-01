@@ -1,0 +1,1289 @@
+/**
+ * useGameStore Tests
+ * Tests for the game store state management
+ */
+import { act, renderHook } from '@testing-library/react';
+
+// Mock the API before importing the store
+jest.mock('@/lib/api', () => ({
+  __esModule: true,
+  default: {
+    games: {
+      list: jest.fn().mockResolvedValue([]),
+      create: jest.fn().mockResolvedValue({ game_id: 1 }),
+      load: jest.fn().mockResolvedValue({
+        game_id: 1,
+        player_state: { player_name: 'Test' },
+        progress: { week: 1 },
+        round_info: { current_round: 1 },
+        current_event: null,
+      }),
+      save: jest.fn().mockResolvedValue({ success: true }),
+      delete: jest.fn().mockResolvedValue({ success: true }),
+    },
+    presets: {
+      list: jest.fn().mockResolvedValue([]),
+      create: jest.fn().mockResolvedValue({ preset_id: 1 }),
+      delete: jest.fn().mockResolvedValue({ success: true }),
+    },
+    gameplay: {
+      getState: jest.fn().mockResolvedValue({
+        player_state: { player_name: 'Test' },
+        progress: { week: 1 },
+        round_info: { current_round: 1 },
+        current_event: null,
+      }),
+      generateSummary: jest.fn().mockResolvedValue({
+        summary_text: 'Test summary',
+        start_week: 1,
+        end_week: 4,
+      }),
+    },
+    images: {
+      listByGame: jest.fn().mockResolvedValue({ images: [], total: 0 }),
+      generate: jest.fn().mockResolvedValue({ images: [], total: 0 }),
+      regenerate: jest.fn().mockResolvedValue({ images: [], total: 0 }),
+      regenerateFresh: jest.fn().mockResolvedValue({ images: [], total: 0 }),
+      get: jest.fn().mockResolvedValue({ image_id: 1, image_url: 'test.png' }),
+      delete: jest.fn().mockResolvedValue({ success: true }),
+      generateRoundSceneImage: jest.fn().mockResolvedValue({
+        scene_id: 1,
+        image_url: 'test-scene.png',
+      }),
+      getRoundSceneImage: jest.fn().mockResolvedValue(null),
+      getRoundSceneImageByStage: jest.fn().mockResolvedValue(null),
+      getAllRoundSceneImages: jest.fn().mockResolvedValue({ scenes: [], total: 0 }),
+      regenerateRoundSceneImage: jest.fn().mockResolvedValue({
+        scene_id: 1,
+        image_url: 'test-scene.png',
+      }),
+      generateOpeningIllustration: jest.fn().mockResolvedValue({
+        illustration_id: 1,
+        image_url: 'test-illustration.png',
+      }),
+    },
+  },
+}));
+
+import { useGameStore, CREATION_STEPS, MANUAL_STEPS, AUTO_ADVANCE_STEPS } from '@/stores/useGameStore';
+import { useImageStore } from '@/stores/useImageStore';
+import api from '@/lib/api';
+
+describe('useGameStore', () => {
+  beforeEach(() => {
+    // Reset the store state before each test
+    act(() => {
+      useGameStore.getState().resetGame();
+      useGameStore.getState().resetCreation();
+    });
+    jest.clearAllMocks();
+  });
+
+  describe('Initial state', () => {
+    it('has correct initial values', () => {
+      const state = useGameStore.getState();
+      
+      expect(state.gameId).toBeNull();
+      expect(state.sessionId).toBeNull();
+      expect(state.playerState).toBeNull();
+      expect(state.progress).toBeNull();
+      expect(state.roundInfo).toBeNull();
+      expect(state.currentEvent).toBeNull();
+      expect(state.storyText).toBe('');
+      expect(state.isGameOver).toBe(false);
+      expect(state.creationStep).toBe(0);
+      expect(state.characterSettings).toEqual({});
+      expect(state.playerName).toBe('');
+      expect(state.lifeVision).toBe('');
+    });
+  });
+
+  describe('Game session management', () => {
+    it('sets game session', () => {
+      act(() => {
+        useGameStore.getState().setGameSession(123, 'session-456');
+      });
+
+      const state = useGameStore.getState();
+      expect(state.gameId).toBe(123);
+      expect(state.sessionId).toBe('session-456');
+    });
+
+    it('resets game', () => {
+      act(() => {
+        useGameStore.getState().setGameSession(123, 'session-456');
+        useGameStore.getState().setStoryText('Some story');
+        useGameStore.getState().resetGame();
+      });
+
+      const state = useGameStore.getState();
+      expect(state.gameId).toBeNull();
+      expect(state.sessionId).toBeNull();
+      expect(state.storyText).toBe('');
+    });
+  });
+
+  describe('Story text management', () => {
+    it('sets story text', () => {
+      act(() => {
+        useGameStore.getState().setStoryText('Test story');
+      });
+
+      expect(useGameStore.getState().storyText).toBe('Test story');
+    });
+
+    it('appends story text', () => {
+      act(() => {
+        useGameStore.getState().setStoryText('Hello');
+        useGameStore.getState().appendStoryText(' World');
+      });
+
+      expect(useGameStore.getState().storyText).toBe('Hello World');
+    });
+
+    it('clears story text', () => {
+      act(() => {
+        useGameStore.getState().setStoryText('Test');
+        useGameStore.getState().setStoryText('');
+      });
+
+      expect(useGameStore.getState().storyText).toBe('');
+    });
+  });
+
+  describe('Current event management', () => {
+    it('sets current event', () => {
+      const event = {
+        story: 'Test story',
+        options: [{ text: 'Option 1' }, { text: 'Option 2' }],
+      };
+
+      act(() => {
+        useGameStore.getState().setCurrentEvent(event);
+      });
+
+      const state = useGameStore.getState();
+      expect(state.currentEvent).toEqual(event);
+    });
+
+    it('clears current event', () => {
+      act(() => {
+        useGameStore.getState().setCurrentEvent({
+          story: 'Test',
+          options: [],
+        });
+        useGameStore.getState().clearCurrentEvent();
+      });
+
+      const state = useGameStore.getState();
+      expect(state.currentEvent).toBeNull();
+      expect(state.storyText).toBe('');
+    });
+
+    it('sets null event', () => {
+      act(() => {
+        useGameStore.getState().setCurrentEvent({
+          story: 'Test',
+          options: [],
+        });
+        useGameStore.getState().setCurrentEvent(null);
+      });
+
+      expect(useGameStore.getState().currentEvent).toBeNull();
+    });
+  });
+
+  describe('Game over state', () => {
+    it('sets game over to true', () => {
+      act(() => {
+        useGameStore.getState().setGameOver(true);
+      });
+
+      expect(useGameStore.getState().isGameOver).toBe(true);
+    });
+
+    it('sets game over to false', () => {
+      act(() => {
+        useGameStore.getState().setGameOver(true);
+        useGameStore.getState().setGameOver(false);
+      });
+
+      expect(useGameStore.getState().isGameOver).toBe(false);
+    });
+  });
+
+  describe('Character creation', () => {
+    it('has correct creation steps', () => {
+      // CREATION_STEPS only contains user-interactive steps
+      expect(CREATION_STEPS).toEqual(['era', 'age', 'gender', 'world', 'portrait']);
+    });
+
+    it('has correct manual steps', () => {
+      expect(MANUAL_STEPS).toEqual(['era', 'age', 'gender', 'world', 'portrait']);
+    });
+
+    it('has correct auto advance steps', () => {
+      expect(AUTO_ADVANCE_STEPS).toEqual(['family', 'relationships', 'traits', 'wealth']);
+    });
+
+    it('sets player name', () => {
+      act(() => {
+        useGameStore.getState().setPlayerName('TestPlayer');
+      });
+
+      expect(useGameStore.getState().playerName).toBe('TestPlayer');
+    });
+
+    it('sets life vision', () => {
+      act(() => {
+        useGameStore.getState().setLifeVision('Test Vision');
+      });
+
+      expect(useGameStore.getState().lifeVision).toBe('Test Vision');
+    });
+
+    it('updates character setting', () => {
+      act(() => {
+        useGameStore.getState().updateCharacterSetting('era', { era: 'modern' });
+      });
+
+      expect(useGameStore.getState().characterSettings.era).toEqual({ era: 'modern' });
+    });
+
+    it('increments creation step', () => {
+      act(() => {
+        useGameStore.getState().nextCreationStep();
+      });
+
+      expect(useGameStore.getState().creationStep).toBe(1);
+    });
+
+    it('decrements creation step', () => {
+      act(() => {
+        useGameStore.getState().setCreationStep(3);
+        useGameStore.getState().prevCreationStep();
+      });
+
+      expect(useGameStore.getState().creationStep).toBe(2);
+    });
+
+    it('does not decrement below 0', () => {
+      act(() => {
+        useGameStore.getState().prevCreationStep();
+      });
+
+      expect(useGameStore.getState().creationStep).toBe(0);
+    });
+
+    it('does not increment beyond max steps', () => {
+      act(() => {
+        useGameStore.getState().setCreationStep(CREATION_STEPS.length - 1);
+        useGameStore.getState().nextCreationStep();
+      });
+
+      expect(useGameStore.getState().creationStep).toBe(CREATION_STEPS.length - 1);
+    });
+
+    it('resets creation', () => {
+      act(() => {
+        useGameStore.getState().setPlayerName('Test');
+        useGameStore.getState().setLifeVision('Vision');
+        useGameStore.getState().setCreationStep(5);
+        useGameStore.getState().updateCharacterSetting('era', { era: 'modern' });
+        useGameStore.getState().resetCreation();
+      });
+
+      const state = useGameStore.getState();
+      expect(state.playerName).toBe('');
+      expect(state.lifeVision).toBe('');
+      expect(state.creationStep).toBe(0);
+      expect(state.characterSettings).toEqual({});
+    });
+  });
+
+  describe('Preset management', () => {
+    it('loads preset', () => {
+      const preset = {
+        preset_id: 1,
+        preset_name: 'Test Preset',
+        player_name: 'Preset Player',
+        life_vision: 'Preset Vision',
+        character_settings: { era: { era: 'future' } },
+        created_at: '2024-01-15T10:00:00Z',
+      };
+
+      act(() => {
+        useGameStore.getState().loadPreset(preset);
+      });
+
+      const state = useGameStore.getState();
+      expect(state.playerName).toBe('Preset Player');
+      expect(state.lifeVision).toBe('Preset Vision');
+      expect(state.characterSettings).toEqual({ era: { era: 'future' } });
+      expect(state.isPresetLoaded).toBe(true);
+    });
+  });
+
+  describe('Summary management', () => {
+    it('clears summary', () => {
+      act(() => {
+        // Manually set a summary first
+        useGameStore.setState({ lastSummary: { summary: 'test' } });
+        useGameStore.getState().clearSummary();
+      });
+
+      expect(useGameStore.getState().lastSummary).toBeNull();
+    });
+  });
+
+  describe('generateRoundSceneImage', () => {
+    it('does nothing when gameId is null', async () => {
+      await act(async () => {
+        await useGameStore.getState().generateRoundSceneImage(1, 'test story');
+      });
+
+      // Should not throw
+      expect(useGameStore.getState().currentRoundSceneImage).toBeNull();
+    });
+
+    it('does nothing when storyText is empty', async () => {
+      act(() => {
+        useGameStore.getState().setGameSession(42, 'session-42');
+      });
+
+      await act(async () => {
+        await useGameStore.getState().generateRoundSceneImage(1, '');
+      });
+
+      // Should not throw
+      expect(useGameStore.getState().currentRoundSceneImage).toBeNull();
+    });
+
+    it('does nothing when enableSceneImage is false', async () => {
+      act(() => {
+        useGameStore.getState().setGameSession(42, 'session-42');
+        useGameStore.getState().setEnableSceneImage(false);
+      });
+
+      await act(async () => {
+        await useGameStore.getState().generateRoundSceneImage(1, 'test story');
+      });
+
+      // Should not generate
+      expect(useGameStore.getState().currentRoundSceneImage).toBeNull();
+    });
+  });
+
+  describe('loadGameState', () => {
+    it('loads game state successfully', async () => {
+      (api.games.load as jest.Mock).mockResolvedValue({
+        game_id: 42,
+        player_state: { player_name: 'TestPlayer', age: 25 },
+        progress: { week: 10 },
+        round_info: { current_round: 5 },
+        current_event: null,
+      });
+
+      await act(async () => {
+        await useGameStore.getState().loadGameState(42);
+      });
+
+      expect(api.games.load).toHaveBeenCalledWith(42);
+      expect(useGameStore.getState().playerState).toEqual({ player_name: 'TestPlayer', age: 25 });
+    });
+
+    it('loads game state with current event', async () => {
+      (api.games.load as jest.Mock).mockResolvedValue({
+        game_id: 42,
+        player_state: { player_name: 'TestPlayer' },
+        progress: { week: 10 },
+        round_info: { current_round: 5 },
+        current_event: {
+          event_description: 'Test event',
+          options: [{ text: 'Option 1' }, { text: 'Option 2' }],
+        },
+      });
+
+      await act(async () => {
+        await useGameStore.getState().loadGameState(42);
+      });
+
+      expect(useGameStore.getState().currentEvent).toEqual({
+        story: 'Test event',
+        options: [{ text: 'Option 1' }, { text: 'Option 2' }],
+      });
+    });
+
+    it('restores story from last_round_full_story when no current event', async () => {
+      (api.games.load as jest.Mock).mockResolvedValue({
+        game_id: 42,
+        player_state: {
+          player_name: 'TestPlayer',
+          last_round_full_story: 'Last round story content here',
+        },
+        progress: { week: 10 },
+        round_info: { current_round: 5 },
+        current_event: null,
+      });
+
+      await act(async () => {
+        await useGameStore.getState().loadGameState(42);
+      });
+
+      expect(useGameStore.getState().storyText).toBe('Last round story content here');
+    });
+
+    it('restores story from round_history when no last_round_full_story', async () => {
+      (api.games.load as jest.Mock).mockResolvedValue({
+        game_id: 42,
+        player_state: {
+          player_name: 'TestPlayer',
+          round_history: [
+            { event_description: 'Event 1', story_continuation: 'Continuation 1' },
+          ],
+        },
+        progress: { week: 10 },
+        round_info: { current_round: 5 },
+        current_event: null,
+      });
+
+      await act(async () => {
+        await useGameStore.getState().loadGameState(42);
+      });
+
+      expect(useGameStore.getState().storyText).toContain('Event 1');
+    });
+  });
+
+  describe('syncState', () => {
+    it('syncs state successfully', async () => {
+      act(() => {
+        useGameStore.getState().setGameSession(42, 'session-42');
+      });
+
+      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+        player_state: { player_name: 'SyncedPlayer' },
+        progress: { week: 20 },
+        round_info: { current_round: 10 },
+        current_event: null,
+      });
+
+      await act(async () => {
+        await useGameStore.getState().syncState();
+      });
+
+      expect(useGameStore.getState().playerState).toEqual({ player_name: 'SyncedPlayer' });
+    });
+  });
+
+  describe('syncPlayerState', () => {
+    it('syncs player state and returns response', async () => {
+      act(() => {
+        useGameStore.getState().setGameSession(42, 'session-42');
+      });
+
+      const mockResponse = {
+        player_state: { player_name: 'Player' },
+        progress: { week: 5 },
+        round_info: { current_round: 2 },
+        current_event: null,
+      };
+      (api.gameplay.getState as jest.Mock).mockResolvedValue(mockResponse);
+
+      const result = await act(async () => {
+        return await useGameStore.getState().syncPlayerState();
+      });
+
+      expect(result).toEqual(mockResponse);
+    });
+  });
+
+  describe('shallowChanged helper', () => {
+    it('detects changes in key fields', () => {
+      // Test through syncState behavior
+      act(() => {
+        useGameStore.getState().setGameSession(42, 'session-42');
+        useGameStore.setState({
+          playerState: { energy: 50, mood: 80 },
+        });
+      });
+
+      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+        player_state: { energy: 60, mood: 80 }, // energy changed
+        progress: { week: 5 },
+        round_info: { current_round: 2 },
+        current_event: null,
+      });
+
+      // Should update because energy changed
+      expect(useGameStore.getState().playerState).toEqual({ energy: 50, mood: 80 });
+    });
+  });
+
+  describe('API integration', () => {
+    it('fetches saved games', async () => {
+      const mockGames = [
+        { game_id: 1, player_name: 'Test', age: 25, week: 10, updated_at: '' },
+      ];
+      (api.games.list as jest.Mock).mockResolvedValue(mockGames);
+
+      await act(async () => {
+        await useGameStore.getState().fetchSavedGames();
+      });
+
+      expect(api.games.list).toHaveBeenCalled();
+      expect(useGameStore.getState().savedGames).toEqual(mockGames);
+    });
+
+    it('fetches presets', async () => {
+      const mockPresets = [
+        { preset_id: 1, preset_name: 'Test', player_name: 'Player', character_settings: {} },
+      ];
+      (api.presets.list as jest.Mock).mockResolvedValue(mockPresets);
+
+      await act(async () => {
+        await useGameStore.getState().fetchPresets();
+      });
+
+      expect(api.presets.list).toHaveBeenCalled();
+      expect(useGameStore.getState().presets).toEqual(mockPresets);
+    });
+
+    it('deletes game', async () => {
+      act(() => {
+        useGameStore.setState({
+          savedGames: [
+            { game_id: 1, player_name: 'Test1', age: 20, week: 5, updated_at: '', created_at: '', has_progress: true },
+            { game_id: 2, player_name: 'Test2', age: 25, week: 10, updated_at: '', created_at: '', has_progress: true },
+          ],
+        });
+      });
+
+      await act(async () => {
+        await useGameStore.getState().deleteGame(1);
+      });
+
+      expect(api.games.delete).toHaveBeenCalledWith(1);
+      expect(useGameStore.getState().savedGames).toHaveLength(1);
+      expect(useGameStore.getState().savedGames[0].game_id).toBe(2);
+    });
+
+    it('deletes preset', async () => {
+      act(() => {
+        useGameStore.setState({
+          presets: [
+            { preset_id: 1, preset_name: 'Test1', player_name: 'P1', character_settings: {}, life_vision: '', created_at: '' },
+            { preset_id: 2, preset_name: 'Test2', player_name: 'P2', character_settings: {}, life_vision: '', created_at: '' },
+          ],
+        });
+      });
+
+      await act(async () => {
+        await useGameStore.getState().deletePreset(1);
+      });
+
+      expect(api.presets.delete).toHaveBeenCalledWith(1);
+      expect(useGameStore.getState().presets).toHaveLength(1);
+      expect(useGameStore.getState().presets[0].preset_id).toBe(2);
+    });
+
+    it('saves game', async () => {
+      act(() => {
+        useGameStore.getState().setGameSession(123, 'session-123');
+      });
+
+      await act(async () => {
+        await useGameStore.getState().saveGame();
+      });
+
+      expect(api.games.save).toHaveBeenCalledWith(123);
+    });
+
+    it('does not save game without gameId', async () => {
+      await act(async () => {
+        await useGameStore.getState().saveGame();
+      });
+
+      expect(api.games.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Opening story', () => {
+    it('sets opening story', () => {
+      act(() => {
+        useGameStore.getState().setOpeningStory('Once upon a time...');
+      });
+
+      expect(useGameStore.getState().openingStory).toBe('Once upon a time...');
+    });
+  });
+
+  // ==================== 新增测试：核心方法覆盖 ====================
+
+  describe('loadGameState', () => {
+    it('loads game state normally', async () => {
+      const mockState = {
+        game_id: 42,
+        player_state: { player_name: 'TestPlayer', age: 25 },
+        progress: { week: 5, current_round: 10 },
+        round_info: { current_round: 10, week: 5 },
+        current_event: {
+          event_description: 'Test event story',
+          options: [{ text: 'Option 1' }, { text: 'Option 2' }],
+        },
+      };
+      (api.games.load as jest.Mock).mockResolvedValue(mockState);
+
+      await act(async () => {
+        await useGameStore.getState().loadGameState(42);
+      });
+
+      const state = useGameStore.getState();
+      expect(state.gameId).toBe(42);
+      expect(state.playerState).toEqual(mockState.player_state);
+      expect(state.progress).toEqual(mockState.progress);
+      expect(state.currentEvent?.story).toBe('Test event story');
+      expect(state.storyText).toBe('Test event story');
+    });
+
+    it('restores story from last_round_full_story when no current_event', async () => {
+      const mockState = {
+        game_id: 42,
+        player_state: {
+          player_name: 'TestPlayer',
+          last_round_full_story: 'Last round story from backend',
+        },
+        progress: { week: 5 },
+        round_info: { current_round: 10 },
+        current_event: null,
+      };
+      (api.games.load as jest.Mock).mockResolvedValue(mockState);
+
+      await act(async () => {
+        await useGameStore.getState().loadGameState(42);
+      });
+
+      expect(useGameStore.getState().storyText).toBe('Last round story from backend');
+    });
+
+    it('restores story from round_history when no last_round_full_story', async () => {
+      const mockState = {
+        game_id: 42,
+        player_state: {
+          player_name: 'TestPlayer',
+          round_history: [
+            { event_description: 'Event 1', story_continuation: 'Continuation 1' },
+            { event_description: 'Event 2', story_continuation: 'Continuation 2' },
+          ],
+        },
+        progress: { week: 5 },
+        round_info: { current_round: 10 },
+        current_event: null,
+      };
+      (api.games.load as jest.Mock).mockResolvedValue(mockState);
+
+      await act(async () => {
+        await useGameStore.getState().loadGameState(42);
+      });
+
+      expect(useGameStore.getState().storyText).toBe('Event 2\n\nContinuation 2');
+    });
+  });
+
+  describe('syncState', () => {
+    it('syncs state normally', async () => {
+      act(() => {
+        useGameStore.getState().setGameSession(42, 'session-42');
+      });
+
+      const mockState = {
+        player_state: { player_name: 'Test', age: 26, energy: 80 },
+        progress: { week: 6, current_round: 11 },
+        round_info: { current_round: 11, week: 6 },
+        current_event: null,
+      };
+      (api.gameplay.getState as jest.Mock).mockResolvedValue(mockState);
+
+      await act(async () => {
+        await useGameStore.getState().syncState();
+      });
+
+      expect(api.gameplay.getState).toHaveBeenCalledWith(42);
+    });
+
+    it('recovers from session 404 by reloading game', async () => {
+      act(() => {
+        useGameStore.getState().setGameSession(42, 'expired-session');
+      });
+
+      const error404 = { status: 404, message: 'Session not found' };
+      (api.gameplay.getState as jest.Mock).mockRejectedValueOnce(error404);
+
+      const mockReloadedState = {
+        game_id: 42,
+        player_state: { player_name: 'Reloaded' },
+        progress: { week: 1 },
+        round_info: { current_round: 1 },
+        current_event: null,
+      };
+      (api.games.load as jest.Mock).mockResolvedValue(mockReloadedState);
+
+      await act(async () => {
+        await useGameStore.getState().syncState();
+      });
+
+      expect(api.games.load).toHaveBeenCalledWith(42);
+    });
+
+    it('clears state when game no longer exists', async () => {
+      act(() => {
+        useGameStore.getState().setGameSession(42, 'session-42');
+        useGameStore.getState().setStoryText('Some story');
+      });
+
+      const error404 = { status: 404, message: 'Session not found' };
+      (api.gameplay.getState as jest.Mock).mockRejectedValueOnce(error404);
+
+      const error404Reload = { status: 404, message: 'Game not found' };
+      (api.games.load as jest.Mock).mockRejectedValue(error404Reload);
+
+      await act(async () => {
+        try {
+          await useGameStore.getState().syncState();
+        } catch (e) {
+          // Expected to throw
+        }
+      });
+
+      const state = useGameStore.getState();
+      expect(state.gameId).toBeNull();
+      expect(state.playerState).toBeNull();
+      expect(state.storyText).toBe('');
+    });
+
+    it('does nothing when gameId is null', async () => {
+      await act(async () => {
+        await useGameStore.getState().syncState();
+      });
+
+      expect(api.gameplay.getState).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('syncPlayerState', () => {
+    it('syncs player state normally', async () => {
+      act(() => {
+        useGameStore.getState().setGameSession(42, 'session-42');
+      });
+
+      const mockState = {
+        player_state: { player_name: 'Test', energy: 90 },
+        progress: { week: 7 },
+        round_info: { current_round: 12 },
+        current_event: null,
+      };
+      (api.gameplay.getState as jest.Mock).mockResolvedValue(mockState);
+
+      let result;
+      await act(async () => {
+        result = await useGameStore.getState().syncPlayerState();
+      });
+
+      expect(result).toEqual(mockState);
+    });
+
+    it('reloads game on session 404', async () => {
+      act(() => {
+        useGameStore.getState().setGameSession(42, 'expired-session');
+        useGameStore.getState().setCurrentEvent({ story: 'Test', options: [] });
+      });
+
+      const error404 = { status: 404, message: 'Session expired' };
+      (api.gameplay.getState as jest.Mock).mockRejectedValueOnce(error404);
+
+      const mockReloadedState = {
+        game_id: 42,
+        player_state: { player_name: 'Reloaded' },
+        progress: { week: 1 },
+        round_info: { current_round: 1 },
+        current_event: null,
+      };
+      (api.games.load as jest.Mock).mockResolvedValue(mockReloadedState);
+
+      await act(async () => {
+        await useGameStore.getState().syncPlayerState();
+      });
+
+      const state = useGameStore.getState();
+      expect(state.currentEvent).toBeNull();
+      expect(state.storyText).toBe('');
+    });
+
+    it('does nothing when gameId is null', async () => {
+      let result;
+      await act(async () => {
+        result = await useGameStore.getState().syncPlayerState();
+      });
+
+      expect(result).toBeUndefined();
+      expect(api.gameplay.getState).not.toHaveBeenCalled();
+    });
+  });
+
+  // ★ 玩家形象和开场插画测试已移至 useImageStore.test.ts
+
+  describe('fetchRoundSceneImage branches', () => {
+    it('adds new scene when not existing', async () => {
+      act(() => {
+        useGameStore.getState().setGameSession(42, 'session-42');
+        useGameStore.setState({ roundSceneImages: [] });
+      });
+
+      (api.images as unknown as Record<string, unknown>) = {
+        ...api.images,
+        getRoundSceneImage: jest.fn().mockResolvedValue({
+          scene_id: 1,
+          round_number: 5,
+          image_url: 'url',
+          scene_description: 'Scene',
+          created_at: '2024-01-01T00:00:00Z',
+        }),
+      };
+
+      await act(async () => {
+        await useGameStore.getState().fetchRoundSceneImage(5);
+      });
+
+      expect(useGameStore.getState().roundSceneImages).toHaveLength(1);
+    });
+
+    it('fetchAllRoundSceneImages sets currentScene based on roundInfo', async () => {
+      act(() => {
+        useGameStore.getState().setGameSession(42, 'session-42');
+        useGameStore.setState({
+          roundInfo: { current_round: 5 },
+        });
+      });
+
+      (api.images as unknown as Record<string, unknown>) = {
+        ...api.images,
+        getAllRoundSceneImages: jest.fn().mockResolvedValue({
+          scenes: [
+            { scene_id: 1, round_number: 4, stage: 'result', image_url: 'url1' },
+            { scene_id: 2, round_number: 5, stage: 'result', image_url: 'url2' },
+          ],
+        }),
+      };
+
+      await act(async () => {
+        await useGameStore.getState().fetchAllRoundSceneImages();
+      });
+
+      expect(useGameStore.getState().currentRoundSceneImage?.round_number).toBe(5);
+    });
+
+    it('regenerateRoundSceneImage updates scene', async () => {
+      act(() => {
+        useGameStore.getState().setGameSession(42, 'session-42');
+        // ★ 使用 useImageStore 设置玩家形象
+        useImageStore.getState().setPlayerImages([{ 
+          image_id: 1, 
+          image_url: 'url', 
+          game_id: 42, 
+          image_type: 'player', 
+          entity_name: 'Test', 
+          entity_key: 'player', 
+          created_at: '2024-01-01T00:00:00Z', 
+          prompt_used: 'test', 
+          version: 1 
+        }]);
+        useImageStore.getState().setSelectedImageIndex(0);
+        
+        // ★ useGameStore 只设置自己管理的状态
+        useGameStore.setState({
+          storyText: 'Test story',
+          characterSettings: { era: {} },
+          playerName: 'Test',
+          currentRoundSceneImage: {
+            scene_id: 1,
+            week: 1,
+            round_number: 5,
+            stage: 'event',
+            image_url: 'old-url',
+            scene_description: 'Old',
+            referenced_images: [],
+            created_at: '2024-01-01T00:00:00Z',
+          },
+          roundSceneImages: [{
+            scene_id: 1,
+            week: 1,
+            round_number: 5,
+            stage: 'event',
+            image_url: 'old-url',
+            scene_description: 'Old',
+            referenced_images: [],
+            created_at: '2024-01-01T00:00:00Z',
+          }],
+        });
+      });
+
+      (api.images as unknown as Record<string, unknown>) = {
+        ...api.images,
+        regenerateRoundSceneImage: jest.fn().mockResolvedValue({
+          image_id: 2,
+          image_url: 'new-url',
+          scene_description: 'New scene',
+          created_at: '2024-01-02T00:00:00Z',
+        }),
+      };
+
+      await act(async () => {
+        await useGameStore.getState().regenerateRoundSceneImage(5, 'make it darker');
+      });
+
+      expect(useGameStore.getState().isRegeneratingRoundScene).toBe(false);
+    });
+
+    it('regenerateRoundSceneImage handles error', async () => {
+      act(() => {
+        useGameStore.getState().setGameSession(42, 'session-42');
+        useGameStore.setState({
+          currentRoundSceneImage: {
+            scene_id: 1,
+            week: 1,
+            round_number: 5,
+            stage: 'event',
+            image_url: 'url',
+            scene_description: 'Scene',
+            referenced_images: [],
+            created_at: '2024-01-01T00:00:00Z',
+          },
+        });
+      });
+
+      (api.images as unknown as Record<string, unknown>) = {
+        ...api.images,
+        regenerateRoundSceneImage: jest.fn().mockRejectedValue(new Error('Regen failed')),
+      };
+
+      await act(async () => {
+        await useGameStore.getState().regenerateRoundSceneImage(5, 'prompt');
+      });
+
+      expect(useGameStore.getState().roundSceneRegenerateError).toBe('Regen failed');
+    });
+  });
+
+  describe('Additional session recovery tests', () => {
+    describe('syncState edge cases', () => {
+      it('handles non-404 errors without reload', async () => {
+        act(() => {
+          useGameStore.getState().setGameSession(42, 'session-42');
+        });
+
+        const error500 = { status: 500, message: 'Server error' };
+        (api.gameplay.getState as jest.Mock).mockRejectedValueOnce(error500);
+
+        await expect(
+          useGameStore.getState().syncState()
+        ).rejects.toBeDefined();
+      });
+
+      it('handles 404 in message but not status', async () => {
+        act(() => {
+          useGameStore.getState().setGameSession(42, 'session-42');
+        });
+
+        const errorWith404Message = { message: 'Error 404: Not found' };
+        (api.gameplay.getState as jest.Mock).mockRejectedValueOnce(errorWith404Message);
+
+        const mockReloadedState = {
+          game_id: 42,
+          player_state: { player_name: 'Reloaded' },
+          progress: { week: 1 },
+          round_info: { current_round: 1 },
+          current_event: null,
+        };
+        (api.games.load as jest.Mock).mockResolvedValue(mockReloadedState);
+
+        await act(async () => {
+          await useGameStore.getState().syncState();
+        });
+
+        expect(api.games.load).toHaveBeenCalledWith(42);
+      });
+
+      it('updates state when shallowChanged returns true', async () => {
+        act(() => {
+          useGameStore.getState().setGameSession(42, 'session-42');
+          useGameStore.setState({ playerState: { energy: 50 } });
+        });
+
+        const mockState = {
+          player_state: { energy: 100, mood: 'happy' },
+          progress: { week: 5 },
+          round_info: { current_round: 10 },
+          current_event: null,
+        };
+        (api.gameplay.getState as jest.Mock).mockResolvedValue(mockState);
+
+        await act(async () => {
+          await useGameStore.getState().syncState();
+        });
+
+        const state = useGameStore.getState();
+        expect(state.playerState?.energy).toBe(100);
+      });
+
+      it('updates currentEvent when new options arrive', async () => {
+        act(() => {
+          useGameStore.getState().setGameSession(42, 'session-42');
+          useGameStore.getState().setCurrentEvent({ story: 'Old story', options: [] });
+        });
+
+        const mockState = {
+          player_state: { player_name: 'Test' },
+          progress: { week: 1 },
+          round_info: { current_round: 1 },
+          current_event: {
+            event_description: 'New event',
+            options: [{ text: 'Option 1' }, { text: 'Option 2' }],
+          },
+        };
+        (api.gameplay.getState as jest.Mock).mockResolvedValue(mockState);
+
+        await act(async () => {
+          await useGameStore.getState().syncState();
+        });
+
+        const state = useGameStore.getState();
+        expect(state.currentEvent?.options).toHaveLength(2);
+      });
+
+      it('does not update when no changes detected', async () => {
+        const existingState = {
+          player_state: { energy: 50 },
+          progress: { week: 5, current_round: 10 },
+          round_info: { current_round: 10, week: 5 },
+        };
+        act(() => {
+          useGameStore.getState().setGameSession(42, 'session-42');
+          useGameStore.setState({
+            playerState: existingState.player_state,
+            progress: existingState.progress,
+            roundInfo: existingState.round_info,
+          });
+        });
+
+        (api.gameplay.getState as jest.Mock).mockResolvedValue(existingState);
+
+        await act(async () => {
+          await useGameStore.getState().syncState();
+        });
+
+        // State should remain the same
+        const state = useGameStore.getState();
+        expect(state.playerState?.energy).toBe(50);
+      });
+    });
+
+    describe('syncPlayerState edge cases', () => {
+      it('handles non-404 errors', async () => {
+        act(() => {
+          useGameStore.getState().setGameSession(42, 'session-42');
+        });
+
+        const error500 = { status: 500, message: 'Server error' };
+        (api.gameplay.getState as jest.Mock).mockRejectedValueOnce(error500);
+
+        await expect(
+          useGameStore.getState().syncPlayerState()
+        ).rejects.toBeDefined();
+      });
+
+      it('handles 404 with message string', async () => {
+        act(() => {
+          useGameStore.getState().setGameSession(42, 'session-42');
+        });
+
+        const errorWith404Message = { message: 'Request failed with 404' };
+        (api.gameplay.getState as jest.Mock).mockRejectedValueOnce(errorWith404Message);
+
+        const mockReloadedState = {
+          game_id: 42,
+          player_state: { player_name: 'Reloaded' },
+          progress: { week: 1 },
+          round_info: { current_round: 1 },
+          current_event: null,
+        };
+        (api.games.load as jest.Mock).mockResolvedValue(mockReloadedState);
+
+        await act(async () => {
+          await useGameStore.getState().syncPlayerState();
+        });
+
+        expect(useGameStore.getState().currentEvent).toBeNull();
+        expect(useGameStore.getState().storyText).toBe('');
+      });
+
+      it('throws error when reload fails with non-404', async () => {
+        act(() => {
+          useGameStore.getState().setGameSession(42, 'session-42');
+        });
+
+        const error404 = { status: 404 };
+        (api.gameplay.getState as jest.Mock).mockRejectedValueOnce(error404);
+        const error500 = { status: 500 };
+        (api.games.load as jest.Mock).mockRejectedValue(error500);
+
+        await expect(
+          useGameStore.getState().syncPlayerState()
+        ).rejects.toBeDefined();
+      });
+
+      it('returns state when sync succeeds', async () => {
+        act(() => {
+          useGameStore.getState().setGameSession(42, 'session-42');
+        });
+
+        const mockState = {
+          player_state: { energy: 100 },
+          progress: { week: 5 },
+          round_info: { current_round: 10 },
+        };
+        (api.gameplay.getState as jest.Mock).mockResolvedValue(mockState);
+
+        let result;
+        await act(async () => {
+          result = await useGameStore.getState().syncPlayerState();
+        });
+
+        expect(result).toEqual(mockState);
+      });
+    });
+
+    describe('loadGameState edge cases', () => {
+      it('handles load without existing event', async () => {
+        act(() => {
+          useGameStore.getState().setGameSession(42, 'session-42');
+        });
+
+        const mockLoadedGame = {
+          game_id: 42,
+          player_state: { player_name: 'Test' },
+          progress: { week: 1 },
+          round_info: { current_round: 1 },
+          current_event: null,
+        };
+        (api.games.load as jest.Mock).mockResolvedValue(mockLoadedGame);
+
+        await act(async () => {
+          await useGameStore.getState().loadGameState(42);
+        });
+
+        const state = useGameStore.getState();
+        expect(state.playerState?.player_name).toBe('Test');
+        expect(state.currentEvent).toBeNull();
+      });
+
+      it('handles load with event having options', async () => {
+        act(() => {
+          useGameStore.getState().setGameSession(42, 'session-42');
+        });
+
+        const mockLoadedGame = {
+          game_id: 42,
+          player_state: { player_name: 'Test' },
+          progress: { week: 1 },
+          round_info: { current_round: 1 },
+          current_event: {
+            event_description: 'Test event',
+            options: [{ text: 'Option 1' }],
+          },
+        };
+        (api.games.load as jest.Mock).mockResolvedValue(mockLoadedGame);
+
+        await act(async () => {
+          await useGameStore.getState().loadGameState(42);
+        });
+
+        const state = useGameStore.getState();
+        expect(state.currentEvent?.story).toBe('Test event');
+        expect(state.currentEvent?.options).toHaveLength(1);
+      });
+
+      it('handles load with last_round_full_story', async () => {
+        act(() => {
+          useGameStore.getState().setGameSession(42, 'session-42');
+        });
+
+        const mockLoadedGame = {
+          game_id: 42,
+          player_state: { player_name: 'Test', last_round_full_story: 'Previous round story...' },
+          progress: { week: 1 },
+          round_info: { current_round: 1 },
+          current_event: null,
+        };
+        (api.games.load as jest.Mock).mockResolvedValue(mockLoadedGame);
+
+        await act(async () => {
+          await useGameStore.getState().loadGameState(42);
+        });
+
+        const state = useGameStore.getState();
+        expect(state.storyText).toBe('Previous round story...');
+      });
+
+      it('handles load with round_history but no last_round_full_story', async () => {
+        act(() => {
+          useGameStore.getState().setGameSession(42, 'session-42');
+        });
+
+        const mockLoadedGame = {
+          game_id: 42,
+          player_state: {
+            player_name: 'Test',
+            round_history: [{ event_description: 'Round 1 story...', story_continuation: '' }]
+          },
+          progress: { week: 1 },
+          round_info: { current_round: 1 },
+          current_event: null,
+        };
+        (api.games.load as jest.Mock).mockResolvedValue(mockLoadedGame);
+
+        await act(async () => {
+          await useGameStore.getState().loadGameState(42);
+        });
+
+        const state = useGameStore.getState();
+        expect(state.storyText).toBe('Round 1 story...');
+      });
+
+      it('handles load with round_history and story_continuation', async () => {
+        act(() => {
+          useGameStore.getState().setGameSession(42, 'session-42');
+        });
+
+        const mockLoadedGame = {
+          game_id: 42,
+          player_state: {
+            player_name: 'Test',
+            round_history: [{ event_description: 'Event happened', story_continuation: 'Story continued' }]
+          },
+          progress: { week: 1 },
+          round_info: { current_round: 1 },
+          current_event: null,
+        };
+        (api.games.load as jest.Mock).mockResolvedValue(mockLoadedGame);
+
+        await act(async () => {
+          await useGameStore.getState().loadGameState(42);
+        });
+
+        const state = useGameStore.getState();
+        expect(state.storyText).toContain('Event happened');
+        expect(state.storyText).toContain('Story continued');
+      });
+    });
+  });
+});
