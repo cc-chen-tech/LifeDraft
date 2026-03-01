@@ -43,6 +43,8 @@ ENV/
 # Data
 data/cache/
 data/*.json
+data/images/
+data/vector_store/
 !data/presets/
 
 # Logs
