@@ -51,3 +51,26 @@ data/*.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+.nox/
+
+# MyPy
+.mypy_cache/
+
+# Ruff
+.ruff_cache/
+
+# Node/Frontend
+node_modules/
+frontend/.next/
+frontend/out/
+frontend/coverage/
+
+# Build artifacts
+*.pyc
+*.pyo

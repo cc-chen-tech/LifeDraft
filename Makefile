@@ -1,6 +1,7 @@
 .PHONY: check test flow-check state-test all-checks
 .PHONY: docker-build docker-up docker-down docker-logs docker-restart
 .PHONY: deploy-dev deploy-prod
+.PHONY: git-status git-tree git-stats git-clean git-hooks-install
 
 # ========== 代码质量检查 ==========
 flow-check:
@@ -90,3 +91,48 @@ stop: docker-down
 logs: docker-logs
 
 status: docker-ps
+
+# ========== Git 帮助命令 ==========
+git-status:
+	@echo "Enhanced git status..."
+	@./scripts/git_helpers.sh status
+
+git-tree:
+	@./scripts/git_helpers.sh tree
+
+git-stats:
+	@./scripts/git_helpers.sh stats
+
+git-clean:
+	@./scripts/git_helpers.sh clean
+
+# Install git hooks
+git-hooks-install:
+	@echo "Installing git hooks..."
+	@chmod +x .git/hooks/pre-commit .git/hooks/commit-msg
+	@echo "✓ Git hooks installed!"
+
+# Create feature branch
+git-feature:
+	@if [ -z "$(name)" ]; then \
+		echo "Usage: make git-feature name=<feature-name>"; \
+		exit 1; \
+	fi
+	@./scripts/git_helpers.sh feature $(name)
+
+# Create fix branch
+git-fix:
+	@if [ -z "$(name)" ]; then \
+		echo "Usage: make git-fix name=<fix-name>"; \
+		exit 1; \
+	fi
+	@./scripts/git_helpers.sh fix $(name)
+
+# Quick commit with conventional format
+git-qc:
+	@if [ -z "$(type)" ] || [ -z "$(msg)" ]; then \
+		echo "Usage: make git-qc type=<type> msg='<message>'"; \
+		echo "Types: feat, fix, docs, style, refactor, test, build, ci, chore, perf"; \
+		exit 1; \
+	fi
+	@git commit -m "$(type): $(msg)"
