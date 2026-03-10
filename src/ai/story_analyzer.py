@@ -15,10 +15,11 @@ Design Principles:
 - Facts have lifecycle management: importance, expiry, supersession.
 - ★ 事实溯源：每个事实都记录来源摘录和哈希，便于后续验证追溯
 """
+
 import hashlib
 import logging
 from dataclasses import dataclass, field
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, List, Optional
 
 from src.ai.system_prompts import get_system_prompt
 from src.ai.utils import extract_json
@@ -28,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 # ==================== Data Structures ====================
 
+
 @dataclass
 class DynamicFact:
     """A single world fact dynamically extracted by the AI analyzer.
@@ -35,35 +37,36 @@ class DynamicFact:
     Unlike the fixed-schema fields (LocationInfo, CareerInfo, etc.),
     DynamicFact can represent *any* type of story-relevant information
     that the AI identifies.
-    
+
     ★ 事实溯源：每个事实都记录其来源，以便后续验证时可以追溯到原文
     """
+
     # Core identification
-    fact_id: str = ""               # Short unique id, e.g. "f_zhangwei_injury_w5"
-    fact_type: str = ""             # AI-determined category, e.g.:
-                                    #   "physical_state", "emotional_state",
-                                    #   "possession", "knowledge", "environment",
-                                    #   "social_dynamic", "secret", "habit",
-                                    #   "implicit_promise", "threat", "goal",
-                                    #   "relationship_shift", "financial", ...
-    subject: str = ""               # Primary entity this fact is about
-    description: str = ""           # What the fact is (human-readable)
-    constraint_text: str = ""       # Direct constraint for future story generation,
-                                    # e.g. "张伟右臂打着石膏，不能提重物或做剧烈运动"
+    fact_id: str = ""  # Short unique id, e.g. "f_zhangwei_injury_w5"
+    fact_type: str = ""  # AI-determined category, e.g.:
+    #   "physical_state", "emotional_state",
+    #   "possession", "knowledge", "environment",
+    #   "social_dynamic", "secret", "habit",
+    #   "implicit_promise", "threat", "goal",
+    #   "relationship_shift", "financial", ...
+    subject: str = ""  # Primary entity this fact is about
+    description: str = ""  # What the fact is (human-readable)
+    constraint_text: str = ""  # Direct constraint for future story generation,
+    # e.g. "张伟右臂打着石膏，不能提重物或做剧烈运动"
     related_entities: List[str] = field(default_factory=list)
 
     # Lifecycle
-    source_week: int = 0            # When this fact was established
-    expiry_week: int = -1           # -1 = no expiry (permanent until superseded)
-    importance: str = "normal"      # "critical" / "important" / "normal" / "minor"
-    active: bool = True             # Whether this fact is still in effect
+    source_week: int = 0  # When this fact was established
+    expiry_week: int = -1  # -1 = no expiry (permanent until superseded)
+    importance: str = "normal"  # "critical" / "important" / "normal" / "minor"
+    active: bool = True  # Whether this fact is still in effect
 
     # Supersession
-    supersedes: str = ""            # fact_id that this fact replaces (if any)
-    
+    supersedes: str = ""  # fact_id that this fact replaces (if any)
+
     # ★ 事实溯源字段（新增）
-    source_excerpt: str = ""        # 原文摘录，证明此事实的直接引用
-    source_story_hash: str = ""     # 来源故事的哈希，用于快速定位原文
+    source_excerpt: str = ""  # 原文摘录，证明此事实的直接引用
+    source_story_hash: str = ""  # 来源故事的哈希，用于快速定位原文
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -104,6 +107,7 @@ class DynamicFact:
 
 
 # ==================== Story Analyzer Agent ====================
+
 
 class StoryAnalyzer:
     """AI agent that autonomously identifies key facts and constraints
@@ -151,7 +155,7 @@ class StoryAnalyzer:
             from config.prompts import get_story_analysis_prompt
 
             # ★ 计算故事文本的哈希，用于事实溯源
-            story_hash = hashlib.md5(story_text.encode('utf-8')).hexdigest()[:16]
+            story_hash = hashlib.md5(story_text.encode("utf-8")).hexdigest()[:16]
 
             # Build existing facts context for the AI
             existing_context = self._build_existing_facts_context(existing_facts, language)
@@ -214,13 +218,13 @@ class StoryAnalyzer:
         story_hash: str = "",
     ) -> List[DynamicFact]:
         """Parse the AI response into DynamicFact objects.
-        
+
         Args:
             response: Raw AI response text
             current_week: Current game week number
             existing_facts: Existing dynamic facts
             story_hash: ★ 来源故事的哈希，用于事实溯源
-        
+
         Returns:
             List of new/updated DynamicFact objects
         """
@@ -283,9 +287,13 @@ class StoryAnalyzer:
                     )
                     results.append(fact)
                     existing_ids.add(fact_id)
-                    
+
                     # ★ 日志包含溯源信息
-                    excerpt_preview = raw.get("source_excerpt", "")[:30] + "..." if raw.get("source_excerpt") else "无"
+                    excerpt_preview = (
+                        raw.get("source_excerpt", "")[:30] + "..."
+                        if raw.get("source_excerpt")
+                        else "无"
+                    )
                     logger.info(
                         f"🔍 新动态事实: [{fact_type}] {subject} - "
                         f"{description[:40]}... (约束: {constraint_text[:40]}...) 溯源:[{excerpt_preview}]"
@@ -297,8 +305,7 @@ class StoryAnalyzer:
                     if not target_id:
                         # Try matching by subject + type
                         for ef in existing_facts:
-                            if (ef.active and ef.subject == subject
-                                    and ef.fact_type == fact_type):
+                            if ef.active and ef.subject == subject and ef.fact_type == fact_type:
                                 target_id = ef.fact_id
                                 break
 
@@ -364,13 +371,13 @@ class StoryAnalyzer:
         language: str = "zh",
     ) -> List[Dict[str, Any]]:
         """从故事中提取带有具体时间点的承诺，用于创建预定事件。
-        
+
         Args:
             story_text: 故事文本
             current_week: 当前周数
             current_round: 当前轮次
             language: 语言
-        
+
         Returns:
             预定承诺字典列表，每个包含：
             - description: 承诺描述
@@ -384,7 +391,8 @@ class StoryAnalyzer:
             return []
 
         try:
-            from config.prompts.world_prompts import get_scheduled_commitment_extraction_prompt
+            from config.prompts.world_prompts import \
+                get_scheduled_commitment_extraction_prompt
 
             prompt = get_scheduled_commitment_extraction_prompt(
                 story=story_text,
@@ -413,10 +421,10 @@ class StoryAnalyzer:
         response: str,
     ) -> List[Dict[str, Any]]:
         """解析预定承诺提取的AI响应。
-        
+
         Args:
             response: AI响应文本
-        
+
         Returns:
             预定承诺字典列表
         """

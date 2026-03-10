@@ -7,10 +7,11 @@ OpenAI SDK or private methods. This ensures:
 3. Error feedback injection on retries (building-agents best practice)
 4. Easy to swap underlying provider
 """
+
 import json
 import logging
 import re
-from typing import Dict, Any, Optional, Callable
+from typing import Any, Callable, Dict, Optional
 
 import openai
 
@@ -91,12 +92,12 @@ class AIClient:
             {"role": "user", "content": user_prompt},
         ]
         use_model = model or self.model
-        
+
         # ★ max_tokens 自动降级重试逻辑
         current_max_tokens = max_tokens
         fallback_tokens = [t for t in MAX_TOKENS_FALLBACK_LEVELS if t < max_tokens]
         tokens_to_try = [max_tokens] + fallback_tokens
-        
+
         last_error = None
         for attempt, current_max_tokens in enumerate(tokens_to_try):
             try:
@@ -144,11 +145,11 @@ class AIClient:
                         )
 
                     return response.choices[0].message.content.strip()
-                    
+
             except Exception as e:
                 error_msg = str(e)
                 last_error = e
-                
+
                 # ★ 检查是否为 max_tokens 错误，如果是则尝试降级
                 if _is_max_tokens_error(error_msg):
                     if attempt < len(tokens_to_try) - 1:
@@ -163,7 +164,7 @@ class AIClient:
                 else:
                     # 非 max_tokens 错误，直接抛出
                     raise
-        
+
         # 所有尝试都失败，抛出最后一个错误
         raise last_error
 
@@ -266,12 +267,8 @@ class AIClient:
 
             except Exception as e:
                 last_error = str(e)
-                logger.warning(
-                    f"AI call attempt {attempt + 1}/{retry_count} failed: {e}"
-                )
+                logger.warning(f"AI call attempt {attempt + 1}/{retry_count} failed: {e}")
                 if attempt == retry_count - 1:
-                    raise ValueError(
-                        f"AI call failed after {retry_count} attempts: {e}"
-                    )
+                    raise ValueError(f"AI call failed after {retry_count} attempts: {e}")
 
         raise ValueError("AI call failed after all retries")

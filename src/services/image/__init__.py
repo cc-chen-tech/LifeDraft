@@ -2,26 +2,30 @@
 
 协调图像生成、存储和数据库记录。
 """
+
 import logging
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
 from config.settings import settings
-from src.ai.image_client import ImageClient, ImageGenerationError, ContentInspectionError
-from src.services.image_storage import ImageStorageService, ImageStorageError
+from src.ai.image_client import (ContentInspectionError, ImageClient,
+                                 ImageGenerationError)
 from src.database.models import Image as ImageModel
+from src.services.image_storage import ImageStorageError, ImageStorageService
 
 logger = logging.getLogger(__name__)
 
 
 class ImageServiceError(Exception):
     """图像服务错误"""
+
     pass
 
 
 class ImageContentError(ImageServiceError):
     """图像内容审核错误"""
+
     def __init__(self, message: str, original_prompt: str = None):
         super().__init__(message)
         self.original_prompt = original_prompt
@@ -55,9 +59,7 @@ class ImageService:
 
     def get_image(self, image_id: int) -> Optional[ImageModel]:
         """获取图片记录"""
-        return self.db.query(ImageModel).filter(
-            ImageModel.image_id == image_id
-        ).first()
+        return self.db.query(ImageModel).filter(ImageModel.image_id == image_id).first()
 
     def get_active_image(
         self,
@@ -76,12 +78,17 @@ class ImageService:
         Returns:
             活跃的Image模型，如果不存在返回None
         """
-        return self.db.query(ImageModel).filter(
-            ImageModel.game_id == game_id,
-            ImageModel.image_type == image_type,
-            ImageModel.entity_name == entity_name,
-            ImageModel.is_active == True,
-        ).order_by(ImageModel.version.desc()).first()
+        return (
+            self.db.query(ImageModel)
+            .filter(
+                ImageModel.game_id == game_id,
+                ImageModel.image_type == image_type,
+                ImageModel.entity_name == entity_name,
+                ImageModel.is_active == True,
+            )
+            .order_by(ImageModel.version.desc())
+            .first()
+        )
 
     def get_all_images_for_game(
         self,
@@ -228,12 +235,15 @@ class ImageService:
         Returns:
             当前周数，默认返回 0
         """
-        from src.database.models import GameState, Game
+        from src.database.models import Game, GameState
 
         try:
-            game_state = self.db.query(GameState).filter(
-                GameState.game_id == game_id
-            ).order_by(GameState.state_id.desc()).first()
+            game_state = (
+                self.db.query(GameState)
+                .filter(GameState.game_id == game_id)
+                .order_by(GameState.state_id.desc())
+                .first()
+            )
 
             if game_state and game_state.state_json:
                 week = game_state.state_json.get("week")
@@ -250,7 +260,9 @@ class ImageService:
 
         return 0
 
-    def _build_char_info(self, character_settings: Dict[str, Any], player_name: str) -> Dict[str, Any]:
+    def _build_char_info(
+        self, character_settings: Dict[str, Any], player_name: str
+    ) -> Dict[str, Any]:
         """
         构建角色信息字典
 
@@ -297,28 +309,36 @@ class ImageService:
 
         player_image = None
         if player_image_id:
-            player_image = self.db.query(ImageModel).filter(
-                ImageModel.image_id == player_image_id,
-                ImageModel.game_id == game_id
-            ).first()
+            player_image = (
+                self.db.query(ImageModel)
+                .filter(ImageModel.image_id == player_image_id, ImageModel.game_id == game_id)
+                .first()
+            )
             if not player_image:
-                logger.warning(f"player_image_id={player_image_id} does not belong to game_id={game_id}")
+                logger.warning(
+                    f"player_image_id={player_image_id} does not belong to game_id={game_id}"
+                )
 
         if not player_image:
-            player_image = self.db.query(ImageModel).filter(
-                ImageModel.game_id == game_id,
-                ImageModel.image_type == "character",
-                ImageModel.is_primary == True
-            ).order_by(ImageModel.image_id.desc()).first()
+            player_image = (
+                self.db.query(ImageModel)
+                .filter(
+                    ImageModel.game_id == game_id,
+                    ImageModel.image_type == "character",
+                    ImageModel.is_primary == True,
+                )
+                .order_by(ImageModel.image_id.desc())
+                .first()
+            )
             if player_image:
                 logger.info(f"Auto-selected primary player image: {player_image.image_id}")
 
         if player_image:
             try:
                 image_data = self.get_image_data(player_image)
-                ext = player_image.storage_path.rsplit('.', 1)[-1].lower()
-                mime_type = 'image/png' if ext == 'png' else 'image/jpeg'
-                base64_data = base64.b64encode(image_data).decode('utf-8')
+                ext = player_image.storage_path.rsplit(".", 1)[-1].lower()
+                mime_type = "image/png" if ext == "png" else "image/jpeg"
+                base64_data = base64.b64encode(image_data).decode("utf-8")
                 return f"data:{mime_type};base64,{base64_data}", player_image.image_id
             except Exception as e:
                 logger.warning(f"Failed to get player image: {e}")
@@ -339,9 +359,9 @@ class ImageService:
 
         try:
             image_data = self.get_image_data(image_model)
-            ext = image_model.storage_path.rsplit('.', 1)[-1].lower()
-            mime_type = 'image/png' if ext == 'png' else 'image/jpeg'
-            base64_data = base64.b64encode(image_data).decode('utf-8')
+            ext = image_model.storage_path.rsplit(".", 1)[-1].lower()
+            mime_type = "image/png" if ext == "png" else "image/jpeg"
+            base64_data = base64.b64encode(image_data).decode("utf-8")
             return f"data:{mime_type};base64,{base64_data}"
         except Exception as e:
             logger.warning(f"Failed to convert image to base64: {e}")

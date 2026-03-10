@@ -18,12 +18,6 @@ const mockGameStore = {
   playerName: 'TestHero',
   lifeVision: 'Be great',
   setOpeningStory: jest.fn(),
-  // Illustration related
-  openingIllustration: null as { image_url: string; scene_description: string } | null,
-  isGeneratingIllustration: false,
-  illustrationError: null as string | null,
-  generateOpeningIllustration: jest.fn(),
-  regenerateOpeningIllustration: jest.fn(),
 };
 
 jest.mock('@/stores/useGameStore', () => ({
@@ -33,6 +27,25 @@ jest.mock('@/stores/useGameStore', () => ({
       return mockGameStore;
     },
     { getState: () => mockGameStore }
+  ),
+}));
+
+// Mock image store - illustration related state moved here
+const mockImageStore = {
+  openingIllustration: null as { image_url: string; scene_description: string } | null,
+  isGeneratingIllustration: false,
+  illustrationError: null as string | null,
+  generateOpeningIllustration: jest.fn(),
+  regenerateOpeningIllustration: jest.fn(),
+};
+
+jest.mock('@/stores/useImageStore', () => ({
+  useImageStore: Object.assign(
+    (selector?: (state: typeof mockImageStore) => unknown) => {
+      if (selector) return selector(mockImageStore);
+      return mockImageStore;
+    },
+    { getState: () => mockImageStore }
   ),
 }));
 
@@ -83,6 +96,8 @@ describe('OpeningStoryPage', () => {
       },
       playerName: 'TestHero',
       lifeVision: 'Be great',
+    });
+    Object.assign(mockImageStore, {
       openingIllustration: null,
       isGeneratingIllustration: false,
       illustrationError: null,
@@ -169,8 +184,7 @@ describe('OpeningStoryPage', () => {
 
   describe('Illustration display', () => {
     it('shows illustration loading state', () => {
-      Object.assign(mockGameStore, {
-        openingStory: 'Complete story',
+      Object.assign(mockImageStore, {
         isGeneratingIllustration: true,
       });
       render(<OpeningStoryPage />);
@@ -178,8 +192,7 @@ describe('OpeningStoryPage', () => {
     });
 
     it('shows illustration when available', () => {
-      Object.assign(mockGameStore, {
-        openingStory: 'Complete story',
+      Object.assign(mockImageStore, {
         openingIllustration: {
           image_url: 'http://test.url/illustration.png',
           scene_description: 'A beautiful scene',
@@ -191,8 +204,7 @@ describe('OpeningStoryPage', () => {
     });
 
     it('shows illustration error state', () => {
-      Object.assign(mockGameStore, {
-        openingStory: 'Complete story',
+      Object.assign(mockImageStore, {
         illustrationError: 'Failed to generate',
       });
       render(<OpeningStoryPage />);
@@ -200,8 +212,7 @@ describe('OpeningStoryPage', () => {
     });
 
     it('shows retry button on illustration error', () => {
-      Object.assign(mockGameStore, {
-        openingStory: 'Complete story',
+      Object.assign(mockImageStore, {
         illustrationError: 'Failed to generate',
       });
       render(<OpeningStoryPage />);

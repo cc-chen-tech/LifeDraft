@@ -7,6 +7,7 @@ import { StreamingText } from "@/components/game/StreamingText";
 import { SkeletonStory } from "@/components/game/SkeletonStory";
 import { useGameStore } from "@/stores/useGameStore";
 import { useUIStore } from "@/stores/useUIStore";
+import { useImageStore } from "@/stores/useImageStore";
 import { useHydration } from "@/hooks/useHydration";
 import { streamOpeningStory } from "@/lib/sse";
 import { Play, Loader2, Home, ImageIcon, RefreshCw } from "lucide-react";
@@ -17,11 +18,14 @@ export default function OpeningStoryPage() {
   const gameId = useGameStore((s) => s.gameId);
   const openingStory = useGameStore((s) => s.openingStory);
   const setOpeningStory = useGameStore((s) => s.setOpeningStory);
-  const openingIllustration = useGameStore((s) => s.openingIllustration);
-  const isGeneratingIllustration = useGameStore((s) => s.isGeneratingIllustration);
-  const illustrationError = useGameStore((s) => s.illustrationError);
-  const generateOpeningIllustration = useGameStore((s) => s.generateOpeningIllustration);
-  const regenerateOpeningIllustration = useGameStore((s) => s.regenerateOpeningIllustration);
+  const playerName = useGameStore((s) => s.playerName);
+  const characterSettings = useGameStore((s) => s.characterSettings);
+  // ★ 图片相关状态从 useImageStore 获取
+  const openingIllustration = useImageStore((s) => s.openingIllustration);
+  const isGeneratingIllustration = useImageStore((s) => s.isGeneratingIllustration);
+  const illustrationError = useImageStore((s) => s.illustrationError);
+  const generateOpeningIllustration = useImageStore((s) => s.generateOpeningIllustration);
+  const regenerateOpeningIllustration = useImageStore((s) => s.regenerateOpeningIllustration);
   const { language } = useUIStore();
 
   const [isStreaming, setIsStreaming] = useState(false);
@@ -99,14 +103,14 @@ export default function OpeningStoryPage() {
           }
           setIsStreaming(false);
           setIsComplete(true);
-          
+
           // ★ 故事生成完成后，触发插画生成
-          if (!illustrationGeneratedRef.current) {
+          if (!illustrationGeneratedRef.current && gameId) {
             illustrationGeneratedRef.current = true;
             console.log("[OpeningStory] Story complete, triggering illustration generation...");
             // 延迟一点生成插画，让用户先看到故事
             setTimeout(() => {
-              generateOpeningIllustration();
+              generateOpeningIllustration(gameId, storyText, characterSettings, playerName);
             }, 500);
           }
         },
@@ -257,7 +261,9 @@ export default function OpeningStoryPage() {
                     size="sm"
                     onClick={() => {
                       console.log("[OpeningStory] Retrying illustration generation...");
-                      generateOpeningIllustration();
+                      if (gameId) {
+                        generateOpeningIllustration(gameId, openingStory || storyText, characterSettings, playerName);
+                      }
                     }}
                   >
                     <ImageIcon className="w-4 h-4 mr-2" />
@@ -293,8 +299,8 @@ export default function OpeningStoryPage() {
                       size="sm"
                       className="w-full"
                       onClick={() => {
-                        if (illustrationPrompt.trim()) {
-                          regenerateOpeningIllustration(illustrationPrompt);
+                        if (illustrationPrompt.trim() && gameId) {
+                          regenerateOpeningIllustration(gameId, openingStory || storyText, characterSettings, playerName, illustrationPrompt);
                           setIllustrationPrompt("");
                         }
                       }}

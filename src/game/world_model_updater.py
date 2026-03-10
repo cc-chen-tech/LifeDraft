@@ -5,11 +5,14 @@ Extracted from game_loop.py to reduce God Class complexity.
 Static methods accept a PlayerState instance; AI-dependent methods require
 an AIClient and language parameter.
 """
+
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
-from src.game.constants import GENERIC_CHARACTER_NAMES, ROLE_KEYWORDS, VALID_CAREER_LEVELS, DEFAULT_CAREER_LEVEL, IMPORTANCE_ORDER
+from src.game.constants import (DEFAULT_CAREER_LEVEL, GENERIC_CHARACTER_NAMES,
+                                IMPORTANCE_ORDER, ROLE_KEYWORDS,
+                                VALID_CAREER_LEVELS)
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +56,9 @@ class WorldModelUpdater:
                     "from": update.get("from", ""),
                     "reason": update.get("reason", ""),
                 }
-                logger.info(f"📍 位置更新: {character} -> {to_loc} ({update.get('mode', 'resident')})")
+                logger.info(
+                    f"📍 位置更新: {character} -> {to_loc} ({update.get('mode', 'resident')})"
+                )
 
             elif action == "confirm":
                 loc = update.get("location", "")
@@ -108,14 +113,16 @@ class WorldModelUpdater:
             if character in careers:
                 old_record = careers[character]
                 history = old_record.get("history", [])
-                history.append({
-                    "job": old_record.get("current_job", ""),
-                    "employer": old_record.get("employer", ""),
-                    "level": old_record.get("level", ""),
-                    "from_week": old_record.get("since_week", 0),
-                    "to_week": current_week,
-                    "action": action,
-                })
+                history.append(
+                    {
+                        "job": old_record.get("current_job", ""),
+                        "employer": old_record.get("employer", ""),
+                        "level": old_record.get("level", ""),
+                        "from_week": old_record.get("since_week", 0),
+                        "to_week": current_week,
+                        "action": action,
+                    }
+                )
                 careers[character] = {
                     "current_job": new_role or old_record.get("current_job", ""),
                     "employer": employer or old_record.get("employer", ""),
@@ -132,7 +139,9 @@ class WorldModelUpdater:
                     "history": [],
                 }
 
-            logger.info(f"💼 职业更新: {character} [{action}] -> {new_role} @ {employer} (level: {level})")
+            logger.info(
+                f"💼 职业更新: {character} [{action}] -> {new_role} @ {employer} (level: {level})"
+            )
 
         wm_data["career_records"] = careers
 
@@ -177,17 +186,17 @@ class WorldModelUpdater:
                 desc = update.get("description", "")
                 if not desc:
                     continue
-                
+
                 # ★ 方案4：增强承诺匹配逻辑
                 # 尝试找到匹配的 pending 承诺
                 matched = False
                 for c in commitments:
                     if c.get("status") != "pending":
                         continue
-                    
+
                     existing_desc = c.get("description", "").lower()
                     update_desc = desc.lower()
-                    
+
                     # 精确匹配：描述互相包含
                     if update_desc in existing_desc or existing_desc in update_desc:
                         matched = True
@@ -196,26 +205,38 @@ class WorldModelUpdater:
                         # 提取人物名进行匹配
                         existing_parties = [p.lower() for p in c.get("parties", [])]
                         update_parties = [p.lower() for p in update.get("parties", [])]
-                        
+
                         # 如果涉及相同的人物，且描述中有相似的关键词
                         has_common_party = any(p in existing_parties for p in update_parties)
-                        
+
                         # 提取关键动词进行匹配
-                        key_verbs = ["仪式", "约定", "承诺", "答应", "保证", "同意", "参加", "出席", "完成"]
+                        key_verbs = [
+                            "仪式",
+                            "约定",
+                            "承诺",
+                            "答应",
+                            "保证",
+                            "同意",
+                            "参加",
+                            "出席",
+                            "完成",
+                        ]
                         existing_has_verb = any(v in existing_desc for v in key_verbs)
                         update_has_verb = any(v in update_desc for v in key_verbs)
-                        
+
                         if has_common_party and existing_has_verb and update_has_verb:
                             # 有共同人物且都包含关键动词，认为是匹配
                             matched = True
-                            logger.info(f"🤝 承诺模糊匹配: '{desc[:40]}...' ~ '{c.get('description', '')[:40]}...'")
-                    
+                            logger.info(
+                                f"🤝 承诺模糊匹配: '{desc[:40]}...' ~ '{c.get('description', '')[:40]}...'"
+                            )
+
                     if matched:
                         c["status"] = action
                         c["resolved_week"] = current_week
                         logger.info(f"🤝 承诺{action}: {c.get('description', '')[:40]}...")
                         break
-                
+
                 if not matched:
                     logger.warning(f"🤝 未能找到匹配的承诺: {desc[:40]}...")
 
@@ -284,8 +305,7 @@ class WorldModelUpdater:
         active = [
             c
             for c in chains
-            if not c.get("resolved")
-            or (current_week - c.get("resolved_week", current_week)) < 20
+            if not c.get("resolved") or (current_week - c.get("resolved_week", current_week)) < 20
         ]
         wm_data["causal_chains"] = active
 
@@ -316,7 +336,7 @@ class WorldModelUpdater:
             return
 
         try:
-            from src.ai.story_analyzer import StoryAnalyzer, DynamicFact
+            from src.ai.story_analyzer import DynamicFact, StoryAnalyzer
 
             analyzer = StoryAnalyzer(ai_client)
 
@@ -411,8 +431,8 @@ class WorldModelUpdater:
 
         try:
             from config.prompts import get_character_profile_synthesis_prompt
-            from src.game.world_model import CharacterProfile
             from src.ai.profile_synthesizer import ProfileSynthesizer
+            from src.game.world_model import CharacterProfile
 
             current_week = player_state.week
             wm_data = player_state.world_model_data
@@ -455,9 +475,7 @@ class WorldModelUpdater:
                     if char_name in full_text:
                         all_chars.add(char_name)
 
-                round_name = r.get("date_info", {}).get(
-                    "date_string", f"第{r.get('round', 0)+1}轮"
-                )
+                round_name = r.get("date_info", {}).get("date_string", f"第{r.get('round', 0)+1}轮")
 
                 for char in all_chars:
                     if char not in char_evidence:
@@ -548,9 +566,7 @@ class WorldModelUpdater:
             if len(profiles) > 8:
                 sorted_profiles = sorted(
                     profiles.items(),
-                    key=lambda x: -(
-                        x[1].get("evidence_count", 0) if isinstance(x[1], dict) else 0
-                    ),
+                    key=lambda x: -(x[1].get("evidence_count", 0) if isinstance(x[1], dict) else 0),
                 )
                 profiles = dict(sorted_profiles[:8])
 
@@ -583,9 +599,7 @@ class WorldModelUpdater:
             return
 
         from src.game.scheduled_events import (
-            ScheduledEvent,
-            create_scheduled_event_from_commitment,
-        )
+            ScheduledEvent, create_scheduled_event_from_commitment)
 
         current_week = player_state.week
 
@@ -604,10 +618,12 @@ class WorldModelUpdater:
             existing = player_state.scheduled_events
             duplicate = False
             for e in existing:
-                if (e.get("status") == "pending" and
-                    e.get("description") == description and
-                    e.get("scheduled_week") == scheduled_week and
-                    e.get("scheduled_round") == scheduled_round):
+                if (
+                    e.get("status") == "pending"
+                    and e.get("description") == description
+                    and e.get("scheduled_week") == scheduled_week
+                    and e.get("scheduled_round") == scheduled_round
+                ):
                     duplicate = True
                     break
 
@@ -703,8 +719,7 @@ class WorldModelUpdater:
 
         # 移除旧事件
         player_state.scheduled_events = [
-            e for e in player_state.scheduled_events
-            if e.get("event_id") not in to_remove
+            e for e in player_state.scheduled_events if e.get("event_id") not in to_remove
         ]
 
         if to_remove:
@@ -803,7 +818,9 @@ class WorldModelUpdater:
                 logger.info(f"✨ 同步故事人物到角色设定: {name}")
 
                 # 同步到 player_state.relationships 字典
-                if hasattr(player_state, 'relationships') and isinstance(player_state.relationships, dict):
+                if hasattr(player_state, "relationships") and isinstance(
+                    player_state.relationships, dict
+                ):
                     player_state.relationships[name] = affinity
                     logger.debug(f"已同步 {name} 的亲和度到 player_state.relationships")
 

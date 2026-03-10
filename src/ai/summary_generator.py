@@ -3,9 +3,10 @@
 Handles story compression, weekly summaries, four-week summaries,
 and yearly summaries.
 """
-import re as _re
+
 import logging
-from typing import Dict, Any, Optional, List
+import re as _re
+from typing import Any, Dict, List, Optional
 
 from src.ai.client import AIClient
 from src.ai.system_prompts import get_system_prompt
@@ -51,8 +52,12 @@ class SummaryGenerator:
         logger.info(f"Compressing story of {len(story)} chars")
 
         prompt = get_story_compression_prompt(
-            story, choice, language, pending_storylines,
-            established_facts, character_habits,
+            story,
+            choice,
+            language,
+            pending_storylines,
+            established_facts,
+            character_habits,
         )
 
         sys_prompt = get_system_prompt("story_compressor", language)
@@ -64,8 +69,8 @@ class SummaryGenerator:
                 if attempt > 0 and last_error:
                     feedback = (
                         f"\n\n【上次生成失败，原因：{last_error}。请避免同样的问题，确保输出有效的JSON格式。】"
-                        if language == "zh" else
-                        f"\n\n[Previous attempt failed: {last_error}. Please ensure valid JSON output.]"
+                        if language == "zh"
+                        else f"\n\n[Previous attempt failed: {last_error}. Please ensure valid JSON output.]"
                     )
                     user_prompt = prompt + feedback
 
@@ -105,7 +110,9 @@ class SummaryGenerator:
                     }
 
                 # JSON parsed but missing 'summary' field
-                last_error = f"JSON缺少summary字段，返回keys: {list(data.keys()) if data else 'None'}"
+                last_error = (
+                    f"JSON缺少summary字段，返回keys: {list(data.keys()) if data else 'None'}"
+                )
                 logger.warning(f"Attempt {attempt + 1}/2: {last_error}")
 
                 # On last attempt, try fallback extraction
@@ -160,7 +167,10 @@ class SummaryGenerator:
         logger.info(f"[Narrative] Compressing story of {len(story)} chars")
 
         prompt = get_narrative_compression_prompt(
-            story, choice, language, pending_storylines,
+            story,
+            choice,
+            language,
+            pending_storylines,
         )
         sys_prompt = get_system_prompt("story_compressor", language)
 
@@ -171,8 +181,8 @@ class SummaryGenerator:
                 if attempt > 0 and last_error:
                     feedback = (
                         f"\n\n【上次生成失败，原因：{last_error}。请避免同样的问题，确保输出有效的JSON格式。】"
-                        if language == "zh" else
-                        f"\n\n[Previous attempt failed: {last_error}. Please ensure valid JSON output.]"
+                        if language == "zh"
+                        else f"\n\n[Previous attempt failed: {last_error}. Please ensure valid JSON output.]"
                     )
                     user_prompt = prompt + feedback
 
@@ -201,7 +211,9 @@ class SummaryGenerator:
                         "storyline_updates": storyline_updates,
                     }
 
-                last_error = f"JSON缺少summary字段，返回keys: {list(data.keys()) if data else 'None'}"
+                last_error = (
+                    f"JSON缺少summary字段，返回keys: {list(data.keys()) if data else 'None'}"
+                )
                 logger.warning(f"[Narrative] Attempt {attempt + 1}/2: {last_error}")
 
                 if attempt == 1:
@@ -217,7 +229,9 @@ class SummaryGenerator:
                 last_error = str(e)
                 logger.warning(f"[Narrative] Attempt {attempt + 1}/2 failed: {e}")
 
-        logger.error("[Narrative] compress_narrative failed after 2 attempts, using truncation fallback")
+        logger.error(
+            "[Narrative] compress_narrative failed after 2 attempts, using truncation fallback"
+        )
         fallback = story[:97] + "..." if len(story) > 100 else story
         return {
             "summary": fallback,
@@ -247,7 +261,11 @@ class SummaryGenerator:
         logger.info(f"[WorldExtract] Extracting world updates from {len(story)} chars")
 
         prompt = get_world_extraction_prompt(
-            story, choice, language, established_facts, character_habits,
+            story,
+            choice,
+            language,
+            established_facts,
+            character_habits,
         )
         sys_prompt = get_system_prompt("story_compressor", language)
 
@@ -268,8 +286,8 @@ class SummaryGenerator:
                 if attempt > 0 and last_error:
                     feedback = (
                         f"\n\n【上次生成失败，原因：{last_error}。请避免同样的问题，确保输出有效的JSON格式。】"
-                        if language == "zh" else
-                        f"\n\n[Previous attempt failed: {last_error}. Please ensure valid JSON output.]"
+                        if language == "zh"
+                        else f"\n\n[Previous attempt failed: {last_error}. Please ensure valid JSON output.]"
                     )
                     user_prompt = prompt + feedback
 
@@ -286,7 +304,9 @@ class SummaryGenerator:
                     for key in _empty_result:
                         result[key] = data.get(key, [])
                     total_items = sum(len(v) for v in result.values() if isinstance(v, list))
-                    logger.info(f"[WorldExtract] Extracted {total_items} total items across {len(result)} categories")
+                    logger.info(
+                        f"[WorldExtract] Extracted {total_items} total items across {len(result)} categories"
+                    )
                     return result
 
                 last_error = f"JSON解析失败，返回类型: {type(data).__name__}"
@@ -296,7 +316,9 @@ class SummaryGenerator:
                 last_error = str(e)
                 logger.warning(f"[WorldExtract] Attempt {attempt + 1}/2 failed: {e}")
 
-        logger.error("[WorldExtract] extract_world_updates failed after 2 attempts, returning empty")
+        logger.error(
+            "[WorldExtract] extract_world_updates failed after 2 attempts, returning empty"
+        )
         return dict(_empty_result)
 
     # -------------------- Weekly Summary --------------------
@@ -324,9 +346,7 @@ class SummaryGenerator:
 
         logger.info(f"Generating weekly summary for {len(rounds)} rounds")
 
-        prompt = get_weekly_summary_prompt(
-            rounds, character_settings, language, game_date_info
-        )
+        prompt = get_weekly_summary_prompt(rounds, character_settings, language, game_date_info)
         sys_prompt = get_system_prompt("weekly_summary", language)
 
         last_error: Optional[str] = None
@@ -336,8 +356,8 @@ class SummaryGenerator:
                 if attempt > 0 and last_error:
                     feedback = (
                         f"\n\n【上次生成失败，原因：{last_error}。请避免同样的问题，确保输出有效的JSON格式。】"
-                        if language == "zh" else
-                        f"\n\n[Previous attempt failed: {last_error}. Please ensure valid JSON output.]"
+                        if language == "zh"
+                        else f"\n\n[Previous attempt failed: {last_error}. Please ensure valid JSON output.]"
                     )
                     user_prompt = prompt + feedback
 
@@ -354,8 +374,7 @@ class SummaryGenerator:
                 if data:
                     summary = data.get(
                         "summary",
-                        "本周平静地度过了。" if language == "zh"
-                        else "This week passed quietly.",
+                        "本周平静地度过了。" if language == "zh" else "This week passed quietly.",
                     )
                     bonus_effects = data.get("bonus_effects", {})
 
@@ -381,10 +400,7 @@ class SummaryGenerator:
         # Fallback
         logger.error("generate_weekly_summary failed after 2 attempts, using fallback")
         return {
-            "summary": (
-                "本周平静地度过了。" if language == "zh"
-                else "This week passed quietly."
-            ),
+            "summary": ("本周平静地度过了。" if language == "zh" else "This week passed quietly."),
             "bonus_effects": {},
         }
 
@@ -430,10 +446,7 @@ class SummaryGenerator:
 
         except Exception as e:
             logger.error(f"Failed to generate 4-week summary after retries: {e}")
-            return (
-                "这4周平静地度过了。" if language == "zh"
-                else "These 4 weeks passed quietly."
-            )
+            return "这4周平静地度过了。" if language == "zh" else "These 4 weeks passed quietly."
 
     # -------------------- Yearly Summary --------------------
 
@@ -463,8 +476,12 @@ class SummaryGenerator:
         from config.prompts import get_yearly_summary_prompt
 
         prompt = get_yearly_summary_prompt(
-            four_week_summaries, character_settings,
-            start_week, end_week, language, game_date_info,
+            four_week_summaries,
+            character_settings,
+            start_week,
+            end_week,
+            language,
+            game_date_info,
         )
         sys_prompt = get_system_prompt("yearly_summary", language)
 
@@ -481,7 +498,8 @@ class SummaryGenerator:
         except Exception as e:
             logger.error(f"Failed to generate yearly summary after retries: {e}")
             return (
-                "这一年充满了各种经历。" if language == "zh"
+                "这一年充满了各种经历。"
+                if language == "zh"
                 else "This year was full of experiences."
             )
 
@@ -498,21 +516,19 @@ class SummaryGenerator:
             return summary
 
         # Remove code block markers (backticks and single quotes, with optional lang tag)
-        cleaned = _re.sub(r'`{3}(?:json)?\s*', '', summary)
-        cleaned = _re.sub(r'`{3}', '', cleaned)
-        cleaned = _re.sub(r"'{3}(?:json)?\s*", '', cleaned)
-        cleaned = _re.sub(r"'{3}", '', cleaned)
+        cleaned = _re.sub(r"`{3}(?:json)?\s*", "", summary)
+        cleaned = _re.sub(r"`{3}", "", cleaned)
+        cleaned = _re.sub(r"'{3}(?:json)?\s*", "", cleaned)
+        cleaned = _re.sub(r"'{3}", "", cleaned)
 
         # Remove standalone "json" / "JSON" prefix at the start
-        cleaned = _re.sub(r'^\s*[Jj][Ss][Oo][Nn]\s*[：:]?\s*', '', cleaned)
+        cleaned = _re.sub(r"^\s*[Jj][Ss][Oo][Nn]\s*[：:]?\s*", "", cleaned)
 
         # Remove JSON structural prefix: {"summary":" or "summary":" or summary:
-        cleaned = _re.sub(
-            r'^\s*\{?\s*["\']?summary["\']?\s*[：:]\s*["\']?', '', cleaned
-        )
+        cleaned = _re.sub(r'^\s*\{?\s*["\']?summary["\']?\s*[：:]\s*["\']?', "", cleaned)
 
         # Remove trailing JSON artifacts: "} or '} or just }
-        cleaned = _re.sub(r'["\']?\s*\}\s*$', '', cleaned)
+        cleaned = _re.sub(r'["\']?\s*\}\s*$', "", cleaned)
 
         # Remove any remaining leading/trailing quotes that wrap the entire text
         cleaned = cleaned.strip()
@@ -522,9 +538,7 @@ class SummaryGenerator:
         return cleaned.strip()
 
     @staticmethod
-    def _extract_summary_from_raw(
-        content: str, original_story: str, language: str
-    ) -> str:
+    def _extract_summary_from_raw(content: str, original_story: str, language: str) -> str:
         """
         Try to extract a clean summary from raw/malformed AI response.
         Handles cases where JSON parsing fails but summary text exists.
@@ -540,30 +554,22 @@ class SummaryGenerator:
         text = content.strip()
 
         # Strategy 1: Try to extract "summary" value via regex from partial JSON
-        summary_match = _re.search(
-            r'"summary"\s*:\s*"((?:[^"\\]|\\.)*)"', text
-        )
+        summary_match = _re.search(r'"summary"\s*:\s*"((?:[^"\\]|\\.)*)"', text)
         if summary_match:
             extracted = summary_match.group(1)
-            extracted = (
-                extracted.replace('\\n', '\n')
-                .replace('\\"', '"')
-                .replace('\\\\', '\\')
-            )
+            extracted = extracted.replace("\\n", "\n").replace('\\"', '"').replace("\\\\", "\\")
             if len(extracted) > 700:
                 extracted = extracted[:697] + "..."
             return extracted
 
         # Strategy 2: Remove all JSON/code markers and extract readable text
         cleaned = text
-        cleaned = _re.sub(r'```(?:json)?\s*', '', cleaned)
-        cleaned = _re.sub(r'```', '', cleaned)
-        cleaned = _re.sub(r"'''(?:json)?\s*", '', cleaned)
-        cleaned = _re.sub(r"'''", '', cleaned)
-        cleaned = cleaned.strip().strip('{}').strip()
-        value_match = _re.search(
-            r'"[^"]+"\s*:\s*"((?:[^"\\]|\\.)*)"', cleaned
-        )
+        cleaned = _re.sub(r"```(?:json)?\s*", "", cleaned)
+        cleaned = _re.sub(r"```", "", cleaned)
+        cleaned = _re.sub(r"'''(?:json)?\s*", "", cleaned)
+        cleaned = _re.sub(r"'''", "", cleaned)
+        cleaned = cleaned.strip().strip("{}").strip()
+        value_match = _re.search(r'"[^"]+"\s*:\s*"((?:[^"\\]|\\.)*)"', cleaned)
         if value_match:
             extracted = value_match.group(1)
             if len(extracted) > 700:
@@ -571,18 +577,14 @@ class SummaryGenerator:
             return extracted
 
         # Strategy 3: If cleaned text is reasonable length, use it
-        cleaned = _re.sub(r'"[^"]+"\s*:', '', cleaned)  # Remove JSON keys
-        cleaned = _re.sub(r'[{}\[\],]', '', cleaned)  # Remove JSON syntax chars
-        cleaned = _re.sub(r'\s+', ' ', cleaned).strip().strip('"')
+        cleaned = _re.sub(r'"[^"]+"\s*:', "", cleaned)  # Remove JSON keys
+        cleaned = _re.sub(r"[{}\[\],]", "", cleaned)  # Remove JSON syntax chars
+        cleaned = _re.sub(r"\s+", " ", cleaned).strip().strip('"')
         if 5 < len(cleaned) < 800:
             if len(cleaned) > 700:
                 cleaned = cleaned[:697] + "..."
             return cleaned
 
         # Strategy 4: Last resort - truncate original story
-        fallback = (
-            original_story[:97] + "..."
-            if len(original_story) > 100
-            else original_story
-        )
+        fallback = original_story[:97] + "..." if len(original_story) > 100 else original_story
         return fallback

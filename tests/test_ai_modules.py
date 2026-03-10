@@ -309,7 +309,7 @@ class TestConsistencyValidator:
         })
         result = validator._parse_validation_response(response, "en")
         assert result.passed is False  # 有 CRITICAL 所以不通过
-        assert "MUST FIX" in result.fix_instructions
+        assert "MUST STRICTLY FOLLOW" in result.fix_instructions
 
 
 # ==================== EventCache Tests ====================

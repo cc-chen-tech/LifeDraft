@@ -1,14 +1,16 @@
 """Scene image service - 场景插画生成服务."""
-import logging
+
 import base64
-from typing import Optional, Dict, Any, List
+import logging
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from src.ai.image_client import ImageClient, ImageGenerationError, ContentInspectionError
-from src.services.image_storage import ImageStorageService
+from src.ai.image_client import (ContentInspectionError, ImageClient,
+                                 ImageGenerationError)
 from src.database.models import Image as ImageModel
-from src.services.image import ImageServiceError, ImageContentError
+from src.services.image import ImageContentError, ImageServiceError
+from src.services.image_storage import ImageStorageService
 
 logger = logging.getLogger(__name__)
 
@@ -67,30 +69,40 @@ class SceneImageService:
         from src.database.models import SceneImage
 
         week_display = f"第{week + 1}周" if week is not None else "未知周"
-        logger.info(f"生成场景插画: game={game_id}, {week_display}, round {round_number}, stage={stage}")
+        logger.info(
+            f"生成场景插画: game={game_id}, {week_display}, round {round_number}, stage={stage}"
+        )
 
         if week is None and get_week_func:
             week = get_week_func(game_id)
 
         # 检查是否已存在
-        existing = self.db.query(SceneImage).filter(
-            SceneImage.game_id == game_id,
-            SceneImage.week == week,
-            SceneImage.round_number == round_number,
-            SceneImage.stage == stage,
-        ).first()
+        existing = (
+            self.db.query(SceneImage)
+            .filter(
+                SceneImage.game_id == game_id,
+                SceneImage.week == week,
+                SceneImage.round_number == round_number,
+                SceneImage.stage == stage,
+            )
+            .first()
+        )
         if existing:
             # ★ 验证文件是否真实存在，如果不存在则删除记录并重新生成
             if existing.storage_path and self.storage_service.image_exists(
                 existing.storage_path, existing.storage_type
             ):
                 week_display = f"第{week + 1}周" if week is not None else "未知周"
-                logger.info(f"场景插画已存在: {week_display}, round {round_number}, stage={stage}, 跳过")
+                logger.info(
+                    f"场景插画已存在: {week_display}, round {round_number}, stage={stage}, 跳过"
+                )
                 return existing
             else:
                 # 文件不存在，删除数据库记录并重新生成
                 week_display = f"第{week + 1}周" if week is not None else "未知周"
-                logger.warning(f"场景插画记录存在但文件丢失: {week_display}, round {round_number}, stage={stage}, 重新生成")
+                logger.warning(
+                    f"场景插画记录存在但文件丢失: {week_display}, round {round_number}, stage={stage}, 重新生成"
+                )
                 self.db.delete(existing)
                 self.db.commit()
 
@@ -116,9 +128,7 @@ class SceneImageService:
 
             # Step 3: 生成场景插画
             final_prompt = self.SCENE_PROMPT_TEMPLATE.format(
-                era=char_info['era'],
-                scene_desc=scene_desc,
-                illustration_prompt=illustration_prompt
+                era=char_info["era"], scene_desc=scene_desc, illustration_prompt=illustration_prompt
             )
 
             def generate_image():
@@ -171,10 +181,7 @@ class SceneImageService:
                     image_data, used_prompt = generate_image()
                 except ContentInspectionError as e2:
                     logger.error(f"Content inspection still failed after rewrite: {e2}")
-                    raise ImageContentError(
-                        "内容审核未通过，请尝试使用其他描述方式",
-                        new_prompt
-                    )
+                    raise ImageContentError("内容审核未通过，请尝试使用其他描述方式", new_prompt)
 
             # Step 4: 保存图片
             # ★ week 从0开始，entity_name 显示时 +1，与前端一致
@@ -353,19 +360,21 @@ class SceneImageService:
         char_info = self._build_char_info(character_settings, player_name)
 
         # 获取当前插画作为参考
-        current_illustration = self.db.query(ImageModel).filter(
-            ImageModel.image_id == current_illustration_id
-        ).first()
+        current_illustration = (
+            self.db.query(ImageModel).filter(ImageModel.image_id == current_illustration_id).first()
+        )
 
         reference_url = None
         if current_illustration and get_image_data_func:
             try:
                 image_data = get_image_data_func(current_illustration)
-                ext = current_illustration.storage_path.rsplit('.', 1)[-1].lower()
-                mime_type = 'image/png' if ext == 'png' else 'image/jpeg'
-                base64_data = base64.b64encode(image_data).decode('utf-8')
+                ext = current_illustration.storage_path.rsplit(".", 1)[-1].lower()
+                mime_type = "image/png" if ext == "png" else "image/jpeg"
+                base64_data = base64.b64encode(image_data).decode("utf-8")
                 reference_url = f"data:{mime_type};base64,{base64_data}"
-                logger.info(f"Using current illustration as reference (base64, {len(image_data)} bytes)")
+                logger.info(
+                    f"Using current illustration as reference (base64, {len(image_data)} bytes)"
+                )
             except Exception as e:
                 logger.warning(f"Failed to get current illustration: {e}")
 
@@ -452,7 +461,9 @@ class SceneImageService:
             self.db.rollback()
             raise ImageServiceError(f"重新生成开场插画失败: {e}")
 
-    def _build_char_info(self, character_settings: Dict[str, Any], player_name: str) -> Dict[str, Any]:
+    def _build_char_info(
+        self, character_settings: Dict[str, Any], player_name: str
+    ) -> Dict[str, Any]:
         """构建角色信息字典"""
         char_info = {"name": player_name, "era": "现代"}
 

@@ -1,20 +1,21 @@
 """Character creation router — generate settings, relationships, attributes, opening story."""
+
 import asyncio
 import json
 import logging
 import threading
 import time
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
-from src.game.character_creation import CharacterCreator
 from src.api.deps import get_current_user_optional
-from src.api.schemas import (
-    GenerateSettingRequest, GenerateRelationshipRequest,
-    GenerateAttributesRequest, OpeningStoryRequest,
-    RelationshipsSummaryRequest, MessageResponse,
-)
+from src.api.schemas import (GenerateAttributesRequest,
+                             GenerateRelationshipRequest,
+                             GenerateSettingRequest, MessageResponse,
+                             OpeningStoryRequest, RelationshipsSummaryRequest)
+from src.game.character_creation import CharacterCreator
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -81,41 +82,55 @@ async def generate_attributes(req: GenerateAttributesRequest):
 async def generate_opening_story(req: OpeningStoryRequest):
     """Generate opening story via SSE streaming."""
     cache_key = req.player_name
-    
+
     # ★ 检查是否正在生成或已有缓存
     with _cache_lock:
         cache_entry = _opening_story_cache.get(cache_key)
         if cache_entry:
             cache_age = time.time() - cache_entry.get("timestamp", 0)
-            
+
             # 如果正在生成中，但超过 60 秒，认为已失效（可能客户端断开了）
             if cache_entry.get("generating"):
                 if cache_age < 60:
-                    logger.warning(f"[opening-story] Already generating for {cache_key}, rejecting duplicate request")
-                    raise HTTPException(status_code=409, detail="Opening story generation in progress")
+                    logger.warning(
+                        f"[opening-story] Already generating for {cache_key}, rejecting duplicate request"
+                    )
+                    raise HTTPException(
+                        status_code=409, detail="Opening story generation in progress"
+                    )
                 else:
-                    logger.warning(f"[opening-story] Stale generating state for {cache_key}, resetting...")
+                    logger.warning(
+                        f"[opening-story] Stale generating state for {cache_key}, resetting..."
+                    )
                     # 继续执行，重新生成
-            
+
             # 如果有缓存结果且不超过 5 分钟，直接返回
             if cache_entry.get("result") and cache_age < 300:
                 logger.info(f"[opening-story] Returning cached result for {cache_key}")
                 cached_text = cache_entry["result"]
-                
+
                 async def cached_generator():
                     yield f"event: status\ndata: {json.dumps({'phase': 'cached'}, ensure_ascii=False)}\n\n"
                     yield f"event: story\ndata: {json.dumps(cached_text, ensure_ascii=False)}\n\n"
                     yield f"event: complete\ndata: {json.dumps({'full_story': cached_text}, ensure_ascii=False)}\n\n"
-                
+
                 return StreamingResponse(
                     cached_generator(),
                     media_type="text/event-stream",
-                    headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+                    headers={
+                        "Cache-Control": "no-cache",
+                        "Connection": "keep-alive",
+                        "X-Accel-Buffering": "no",
+                    },
                 )
-        
+
         # 标记为正在生成
-        _opening_story_cache[cache_key] = {"generating": True, "result": None, "timestamp": time.time()}
-    
+        _opening_story_cache[cache_key] = {
+            "generating": True,
+            "result": None,
+            "timestamp": time.time(),
+        }
+
     creator = CharacterCreator(language=req.language)
 
     async def stream_generator():
@@ -172,11 +187,19 @@ async def generate_opening_story(req: OpeningStoryRequest):
         # ★ 更新缓存
         with _cache_lock:
             if error_holder[0] is not None:
-                _opening_story_cache[cache_key] = {"generating": False, "result": None, "timestamp": time.time()}
+                _opening_story_cache[cache_key] = {
+                    "generating": False,
+                    "result": None,
+                    "timestamp": time.time(),
+                }
                 yield f"event: error\ndata: {json.dumps({'error': str(error_holder[0])}, ensure_ascii=False)}\n\n"
                 return
             else:
-                _opening_story_cache[cache_key] = {"generating": False, "result": full_text_holder[0], "timestamp": time.time()}
+                _opening_story_cache[cache_key] = {
+                    "generating": False,
+                    "result": full_text_holder[0],
+                    "timestamp": time.time(),
+                }
 
         # Send complete event with full text
         yield f"event: complete\ndata: {json.dumps({'full_story': full_text_holder[0]}, ensure_ascii=False)}\n\n"

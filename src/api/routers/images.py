@@ -1,30 +1,29 @@
 """Image generation router - 图片生成API路由"""
+
 import logging
 from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import Response as FastAPIResponse
-
 from sqlalchemy.orm import Session
 
-from src.api.deps import get_db, get_current_user_optional
-from src.api.schemas import (
-    GenerateImageRequest,
-    RegenerateImageRequest,
-    RegenerateFreshImageRequest,
-    BatchGenerateCharactersRequest,
-    GenerateOpeningIllustrationRequest,
-    RegenerateOpeningIllustrationRequest,
-    RegenerateRoundSceneRequest,
-    GenerateRoundSceneRequest,
-    RoundSceneResponse,
-    OpeningIllustrationResponse,
-    ImageResponse,
-    ImageListResponse,
-    MessageResponse,
-)
-from src.services.image_service import ImageService, ImageServiceError, ImageContentError
-from src.services.image_storage import ImageStorageService, ImageStorageError
-from src.database.models import User, SessionLocal, Game, Image as ImageModel
+from src.api.deps import get_current_user_optional, get_db
+from src.api.schemas import (BatchGenerateCharactersRequest,
+                             GenerateImageRequest,
+                             GenerateOpeningIllustrationRequest,
+                             GenerateRoundSceneRequest, ImageListResponse,
+                             ImageResponse, MessageResponse,
+                             OpeningIllustrationResponse,
+                             RegenerateFreshImageRequest,
+                             RegenerateImageRequest,
+                             RegenerateOpeningIllustrationRequest,
+                             RegenerateRoundSceneRequest, RoundSceneResponse)
+from src.database.models import Game
+from src.database.models import Image as ImageModel
+from src.database.models import SessionLocal, User
+from src.services.image_service import (ImageContentError, ImageService,
+                                        ImageServiceError)
+from src.services.image_storage import ImageStorageError, ImageStorageService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -42,62 +41,53 @@ def get_session() -> Session:
 def verify_game_ownership(db: Session, game_id: int, user_id: int) -> Game:
     """
     验证游戏归属权
-    
+
     Args:
         db: 数据库会话
         game_id: 游戏ID
         user_id: 用户ID
-    
+
     Returns:
         Game对象
-    
+
     Raises:
         HTTPException: 如果游戏不存在或不属于该用户
     """
     game = db.query(Game).filter(Game.game_id == game_id).first()
-    
+
     if not game:
-        raise HTTPException(
-            status_code=404,
-            detail="游戏不存在或无权访问"
-        )
-    
+        raise HTTPException(status_code=404, detail="游戏不存在或无权访问")
+
     # ★ 向后兼容：如果游戏没有user_id（旧数据），允许所有登录用户访问
     if game.user_id is not None and game.user_id != user_id:
-        raise HTTPException(
-            status_code=404,
-            detail="游戏不存在或无权访问"
-        )
-    
+        raise HTTPException(status_code=404, detail="游戏不存在或无权访问")
+
     return game
 
 
 def verify_image_ownership(db: Session, image_id: int, user_id: int) -> ImageModel:
     """
     验证图片归属权（通过游戏关联）
-    
+
     Args:
         db: 数据库会话
         image_id: 图片ID
         user_id: 用户ID
-    
+
     Returns:
         ImageModel对象
-    
+
     Raises:
         HTTPException: 如果图片不存在或不属于该用户
     """
     image = db.query(ImageModel).filter(ImageModel.image_id == image_id).first()
-    
+
     if not image:
-        raise HTTPException(
-            status_code=404,
-            detail="图片不存在"
-        )
-    
+        raise HTTPException(status_code=404, detail="图片不存在")
+
     # 验证游戏归属权
     verify_game_ownership(db, image.game_id, user_id)
-    
+
     return image
 
 
@@ -109,22 +99,24 @@ async def generate_image(
 ):
     """
     生成图片
-    
+
     支持生成人物形象、地点、物品等图片
     人物形象默认并行生成4张不同姿势的全身像
     """
-    logger.info(f"Generating image: type={req.image_type}, name={req.entity_name}, game={req.game_id}")
-    
+    logger.info(
+        f"Generating image: type={req.image_type}, name={req.entity_name}, game={req.game_id}"
+    )
+
     # ★ 权限验证：必须登录
     if not user:
         raise HTTPException(status_code=401, detail="未登录")
-    
+
     # ★ 权限验证：验证游戏归属
     verify_game_ownership(db, req.game_id, user)  # user 已经是 user_id (int)
-    
+
     try:
         service = ImageService(db)
-        
+
         if req.image_type == "character":
             # 人物形象：生成1张
             image_models = service.generate_character_image(
@@ -163,17 +155,21 @@ async def generate_image(
                 metadata=req.extra_context,
             )
             return ImageListResponse(
-                images=[ImageResponse(
-                    image_id=image_model.image_id,
-                    game_id=image_model.game_id,
-                    image_type=image_model.image_type,
-                    entity_name=image_model.entity_name,
-                    entity_key=image_model.entity_key,
-                    image_url=service.get_image_url(image_model),
-                    prompt_used=image_model.prompt_text,
-                    version=image_model.version,
-                    created_at=image_model.created_at.isoformat() if image_model.created_at else None,
-                )],
+                images=[
+                    ImageResponse(
+                        image_id=image_model.image_id,
+                        game_id=image_model.game_id,
+                        image_type=image_model.image_type,
+                        entity_name=image_model.entity_name,
+                        entity_key=image_model.entity_key,
+                        image_url=service.get_image_url(image_model),
+                        prompt_used=image_model.prompt_text,
+                        version=image_model.version,
+                        created_at=(
+                            image_model.created_at.isoformat() if image_model.created_at else None
+                        ),
+                    )
+                ],
                 total=1,
             )
         elif req.image_type == "item":
@@ -185,29 +181,33 @@ async def generate_image(
                 metadata=req.extra_context,
             )
             return ImageListResponse(
-                images=[ImageResponse(
-                    image_id=image_model.image_id,
-                    game_id=image_model.game_id,
-                    image_type=image_model.image_type,
-                    entity_name=image_model.entity_name,
-                    entity_key=image_model.entity_key,
-                    image_url=service.get_image_url(image_model),
-                    prompt_used=image_model.prompt_text,
-                    version=image_model.version,
-                    created_at=image_model.created_at.isoformat() if image_model.created_at else None,
-                )],
+                images=[
+                    ImageResponse(
+                        image_id=image_model.image_id,
+                        game_id=image_model.game_id,
+                        image_type=image_model.image_type,
+                        entity_name=image_model.entity_name,
+                        entity_key=image_model.entity_key,
+                        image_url=service.get_image_url(image_model),
+                        prompt_used=image_model.prompt_text,
+                        version=image_model.version,
+                        created_at=(
+                            image_model.created_at.isoformat() if image_model.created_at else None
+                        ),
+                    )
+                ],
                 total=1,
             )
         else:
             raise HTTPException(status_code=400, detail=f"不支持的图片类型: {req.image_type}")
-        
+
     except ImageContentError as e:
         # ★ 内容审核错误 - 返回 400 而不是 500，让用户知道是输入问题
         logger.warning(f"Content inspection failed: {e}")
         # 返回友好的字符串消息，前端可以直接显示
         raise HTTPException(
             status_code=400,
-            detail="您的修改描述可能包含敏感内容，无法生成图片。请尝试使用其他描述方式，如：穿着简洁的衣服、换一套服装等。"
+            detail="您的修改描述可能包含敏感内容，无法生成图片。请尝试使用其他描述方式，如：穿着简洁的衣服、换一套服装等。",
         )
     except ImageServiceError as e:
         logger.error(f"Image generation failed: {e}")
@@ -225,72 +225,80 @@ async def batch_generate_character_images(
 ):
     """
     批量生成关键人物画像
-    
+
     从 character_settings 中提取 family_members 和 key_people，
     为每个人物生成画像。
     使用 DeepSeek 生成描述，然后用 qwen-image-max 生成图片。
     """
     logger.info(f"Batch generating character images for game {req.game_id}")
-    
+
     # ★ 权限验证：必须登录
     if not user:
         raise HTTPException(status_code=401, detail="未登录")
-    
+
     # ★ 权限验证：验证游戏归属
     verify_game_ownership(db, req.game_id, user)
-    
+
     # 提取所有需要生成画像的人物
     characters_to_generate = []
-    
+
     # 1. 从 family 中提取家庭成员
     family = req.character_settings.get("family", {})
     family_members = family.get("family_members", [])
     for member in family_members:
         if isinstance(member, dict) and member.get("name"):
-            characters_to_generate.append({
-                "name": member.get("name"),
-                "role": member.get("role", "家庭成员"),
-                "gender": member.get("gender"),
-                "age": member.get("age"),
-                "description": member.get("relationship", ""),
-            })
-    
+            characters_to_generate.append(
+                {
+                    "name": member.get("name"),
+                    "role": member.get("role", "家庭成员"),
+                    "gender": member.get("gender"),
+                    "age": member.get("age"),
+                    "description": member.get("relationship", ""),
+                }
+            )
+
     # 2. 从 relationships 中提取关键人物
     relationships = req.character_settings.get("relationships", {})
     key_people = relationships.get("key_people", [])
     for person in key_people:
         if isinstance(person, dict) and person.get("name"):
-            characters_to_generate.append({
-                "name": person.get("name"),
-                "role": person.get("role", "关键人物"),
-                "gender": person.get("gender"),
-                "age": person.get("age"),
-                "description": person.get("relationship_desc", "") or person.get("relationship", ""),
-            })
-    
+            characters_to_generate.append(
+                {
+                    "name": person.get("name"),
+                    "role": person.get("role", "关键人物"),
+                    "gender": person.get("gender"),
+                    "age": person.get("age"),
+                    "description": person.get("relationship_desc", "")
+                    or person.get("relationship", ""),
+                }
+            )
+
     if not characters_to_generate:
         logger.info("No characters found to generate images for")
         return ImageListResponse(images=[], total=0)
-    
-    logger.info(f"Found {len(characters_to_generate)} characters to generate: {[c['name'] for c in characters_to_generate]}")
-    
+
+    logger.info(
+        f"Found {len(characters_to_generate)} characters to generate: {[c['name'] for c in characters_to_generate]}"
+    )
+
     # 提取时代背景
     era = "现代"
     era_setting = req.character_settings.get("era", {})
     if isinstance(era_setting, dict):
         era = era_setting.get("era_name") or era_setting.get("era_description") or "现代"
-    
+
     # 批量生成
     service = ImageService(db)
     all_images = []
-    
+
     for idx, char in enumerate(characters_to_generate):
         try:
             # ★ 如果不是第一个人，添加延迟避免速率限制
             if idx > 0:
                 import asyncio
+
                 await asyncio.sleep(3)  # 每次生成间隔3秒
-            
+
             # 构建描述
             desc_parts = []
             if char.get("age"):
@@ -299,14 +307,14 @@ async def batch_generate_character_images(
                 desc_parts.append(str(char["gender"]))
             if char.get("description"):
                 desc_parts.append(char["description"])
-            
+
             description = "，".join(desc_parts) if desc_parts else "一个普通人"
-            
+
             # 生成 entity_key
             entity_key = f"npc_{char['name']}"
-            
+
             logger.info(f"Generating image for {char['name']} ({char['role']}): {description}")
-            
+
             image_models = service.generate_character_image(
                 game_id=req.game_id,
                 name=char["name"],
@@ -319,20 +327,22 @@ async def batch_generate_character_images(
                 },
                 num_images=1,
             )
-            
+
             for img in image_models:
-                all_images.append(ImageResponse(
-                    image_id=img.image_id,
-                    game_id=img.game_id,
-                    image_type=img.image_type,
-                    entity_name=img.entity_name,
-                    entity_key=img.entity_key,
-                    image_url=service.get_image_url(img),
-                    prompt_used=img.prompt_text,
-                    version=img.version,
-                    created_at=img.created_at.isoformat() if img.created_at else None,
-                ))
-            
+                all_images.append(
+                    ImageResponse(
+                        image_id=img.image_id,
+                        game_id=img.game_id,
+                        image_type=img.image_type,
+                        entity_name=img.entity_name,
+                        entity_key=img.entity_key,
+                        image_url=service.get_image_url(img),
+                        prompt_used=img.prompt_text,
+                        version=img.version,
+                        created_at=img.created_at.isoformat() if img.created_at else None,
+                    )
+                )
+
         except ImageContentError as e:
             logger.warning(f"Content inspection failed for {char['name']}: {e}")
             # 跳过这个人物，继续生成其他人物
@@ -343,6 +353,7 @@ async def batch_generate_character_images(
             if "429" in error_str or "RateQuota" in error_str or "rate limit" in error_str.lower():
                 logger.warning(f"Rate limit hit for {char['name']}, waiting 10 seconds...")
                 import asyncio
+
                 await asyncio.sleep(10)  # 等待10秒后重试一次
                 try:
                     image_models = service.generate_character_image(
@@ -358,28 +369,30 @@ async def batch_generate_character_images(
                         num_images=1,
                     )
                     for img in image_models:
-                        all_images.append(ImageResponse(
-                            image_id=img.image_id,
-                            game_id=img.game_id,
-                            image_type=img.image_type,
-                            entity_name=img.entity_name,
-                            entity_key=img.entity_key,
-                            image_url=service.get_image_url(img),
-                            prompt_used=img.prompt_text,
-                            version=img.version,
-                            created_at=img.created_at.isoformat() if img.created_at else None,
-                        ))
+                        all_images.append(
+                            ImageResponse(
+                                image_id=img.image_id,
+                                game_id=img.game_id,
+                                image_type=img.image_type,
+                                entity_name=img.entity_name,
+                                entity_key=img.entity_key,
+                                image_url=service.get_image_url(img),
+                                prompt_used=img.prompt_text,
+                                version=img.version,
+                                created_at=img.created_at.isoformat() if img.created_at else None,
+                            )
+                        )
                     logger.info(f"Retry succeeded for {char['name']}")
                     continue
                 except Exception as retry_err:
                     logger.error(f"Retry also failed for {char['name']}: {retry_err}")
-            
+
             logger.error(f"Failed to generate image for {char['name']}: {e}")
             # 跳过这个人物，继续生成其他人物
             continue
-    
+
     logger.info(f"Batch generation complete: {len(all_images)} images generated")
-    
+
     return ImageListResponse(
         images=all_images,
         total=len(all_images),
@@ -394,20 +407,20 @@ async def generate_opening_illustration(
 ):
     """
     生成开场故事插画
-    
+
     使用 DeepSeek 分析故事文本，选择重要场景，
     然后使用千问 image-edit 模型生成插画。
     如果有玩家形象图片，会将其作为参考以保持人物一致性。
     """
     logger.info(f"Generating opening illustration for game {req.game_id}")
-    
+
     # ★ 权限验证：必须登录
     if not user:
         raise HTTPException(status_code=401, detail="未登录")
-    
+
     # ★ 权限验证：验证游戏归属
     verify_game_ownership(db, req.game_id, user)
-    
+
     try:
         service = ImageService(db)
         image_model = service.generate_opening_illustration(
@@ -417,7 +430,7 @@ async def generate_opening_illustration(
             player_name=req.player_name,
             player_image_id=req.player_image_id,
         )
-        
+
         return OpeningIllustrationResponse(
             image_id=image_model.image_id,
             game_id=image_model.game_id,
@@ -426,12 +439,11 @@ async def generate_opening_illustration(
             prompt_used=image_model.prompt_text,
             created_at=image_model.created_at.isoformat() if image_model.created_at else None,
         )
-        
+
     except ImageContentError as e:
         logger.warning(f"Content inspection failed for opening illustration: {e}")
         raise HTTPException(
-            status_code=400,
-            detail="生成插画时触发了内容安全审核。请尝试使用其他描述方式。"
+            status_code=400, detail="生成插画时触发了内容安全审核。请尝试使用其他描述方式。"
         )
     except ImageServiceError as e:
         logger.error(f"Opening illustration generation failed: {e}")
@@ -449,19 +461,19 @@ async def regenerate_opening_illustration(
 ):
     """
     基于用户输入重新生成开场故事插画
-    
+
     使用当前插画作为参考，结合用户自定义提示词重新生成。
     保持场景和人物的一致性，同时应用用户的修改意见。
     """
     logger.info(f"Regenerating opening illustration for game {req.game_id}")
-    
+
     # ★ 权限验证：必须登录
     if not user:
         raise HTTPException(status_code=401, detail="未登录")
-    
+
     # ★ 权限验证：验证游戏归属
     verify_game_ownership(db, req.game_id, user)
-    
+
     try:
         service = ImageService(db)
         image_model = service.regenerate_opening_illustration(
@@ -473,7 +485,7 @@ async def regenerate_opening_illustration(
             user_prompt=req.user_prompt,
             current_illustration_id=req.current_illustration_id,
         )
-        
+
         return OpeningIllustrationResponse(
             image_id=image_model.image_id,
             game_id=image_model.game_id,
@@ -482,12 +494,11 @@ async def regenerate_opening_illustration(
             prompt_used=image_model.prompt_text,
             created_at=image_model.created_at.isoformat() if image_model.created_at else None,
         )
-        
+
     except ImageContentError as e:
         logger.warning(f"Content inspection failed for opening illustration: {e}")
         raise HTTPException(
-            status_code=400,
-            detail="重新生成插画时触发了内容安全审核。请尝试使用其他描述方式。"
+            status_code=400, detail="重新生成插画时触发了内容安全审核。请尝试使用其他描述方式。"
         )
     except ImageServiceError as e:
         logger.error(f"Opening illustration regeneration failed: {e}")
@@ -505,18 +516,18 @@ async def regenerate_image(
 ):
     """
     重新生成图片（保持人物一致性）
-    
+
     基于用户反馈重新生成图片，使用主图作为参考保证人物一致
     """
     logger.info(f"Regenerating image: id={req.image_id}, feedback={req.feedback}")
-    
+
     # ★ 权限验证：必须登录
     if not user:
         raise HTTPException(status_code=401, detail="未登录")
-    
+
     # ★ 权限验证：验证图片归属（会自动验证游戏归属）
     verify_image_ownership(db, req.image_id, user)  # user 已经是 user_id (int)
-    
+
     try:
         service = ImageService(db)
         image_models = service.regenerate_image(
@@ -524,7 +535,7 @@ async def regenerate_image(
             feedback=req.feedback,
             new_description=req.new_description,
         )
-        
+
         return ImageListResponse(
             images=[
                 ImageResponse(
@@ -542,13 +553,13 @@ async def regenerate_image(
             ],
             total=len(image_models),
         )
-        
+
     except ImageContentError as e:
         # ★ 内容审核错误
         logger.warning(f"Content inspection failed in regenerate: {e}")
         raise HTTPException(
             status_code=400,
-            detail="您的修改描述可能包含敏感内容，无法生成图片。请尝试使用其他描述方式，如：穿着简洁的衣服、换一套服装等。"
+            detail="您的修改描述可能包含敏感内容，无法生成图片。请尝试使用其他描述方式，如：穿着简洁的衣服、换一套服装等。",
         )
     except ImageServiceError as e:
         logger.error(f"Image regeneration failed: {e}")
@@ -566,26 +577,28 @@ async def regenerate_fresh_image(
 ):
     """
     完全重新生成图片（抛弃历史修改）
-    
+
     使用 DeepSeek 生成优化的 prompt，然后用 qwen-image-max 文生图
     不使用参考图片，完全从头生成
     """
-    logger.info(f"Fresh regenerating image: id={req.image_id}, use_deepseek={req.use_deepseek_prompt}")
-    
+    logger.info(
+        f"Fresh regenerating image: id={req.image_id}, use_deepseek={req.use_deepseek_prompt}"
+    )
+
     # ★ 权限验证：必须登录
     if not user:
         raise HTTPException(status_code=401, detail="未登录")
-    
+
     # ★ 权限验证：验证图片归属
     verify_image_ownership(db, req.image_id, user)
-    
+
     try:
         service = ImageService(db)
         image_models = service.regenerate_fresh_image(
             image_id=req.image_id,
             use_deepseek_prompt=req.use_deepseek_prompt,
         )
-        
+
         return ImageListResponse(
             images=[
                 ImageResponse(
@@ -603,13 +616,12 @@ async def regenerate_fresh_image(
             ],
             total=len(image_models),
         )
-        
+
     except ImageContentError as e:
         # ★ 内容审核错误
         logger.warning(f"Content inspection failed in regenerate_fresh: {e}")
         raise HTTPException(
-            status_code=400,
-            detail="生成图片时触发了内容安全审核。请稍后重试，或尝试完全重新生成。"
+            status_code=400, detail="生成图片时触发了内容安全审核。请稍后重试，或尝试完全重新生成。"
         )
     except ImageServiceError as e:
         logger.error(f"Fresh image regeneration failed: {e}")
@@ -622,6 +634,7 @@ async def regenerate_fresh_image(
 # ★ 重要：具体路径必须在动态路径参数之前定义
 # /game/{game_id} 和 /file/... 必须在 /{image_id} 之前
 
+
 @router.get("/game/{game_id}", response_model=ImageListResponse)
 async def get_game_images(
     game_id: int,
@@ -633,13 +646,13 @@ async def get_game_images(
     # ★ 权限验证：必须登录
     if not user:
         raise HTTPException(status_code=401, detail="未登录")
-    
+
     # ★ 权限验证：验证游戏归属
     verify_game_ownership(db, game_id, user)  # user 已经是 user_id (int)
-    
+
     service = ImageService(db)
     images = service.get_all_images_for_game(game_id, image_type)
-    
+
     return ImageListResponse(
         images=[
             ImageResponse(
@@ -669,23 +682,24 @@ async def get_image_file(
 ):
     """
     获取图片文件
-    
+
     直接返回图片二进制数据，用于前端显示
     """
     try:
         storage_service = ImageStorageService()
-        
+
         # 构建存储路径
         from pathlib import Path
+
         storage_path = str(storage_service.local_path / str(game_id) / image_type / filename)
-        
+
         # 检查文件是否存在
         if not storage_service.image_exists(storage_path, "local"):
             raise HTTPException(status_code=404, detail="图片不存在")
-        
+
         # 读取图片数据
         image_data = storage_service.get_image_data(storage_path, "local")
-        
+
         # 确定内容类型
         content_type = "image/png"
         if filename.endswith(".jpg") or filename.endswith(".jpeg"):
@@ -694,7 +708,7 @@ async def get_image_file(
             content_type = "image/webp"
         elif filename.endswith(".gif"):
             content_type = "image/gif"
-        
+
         return Response(
             content=image_data,
             media_type=content_type,
@@ -706,7 +720,7 @@ async def get_image_file(
                 "Expires": "0",
             },
         )
-        
+
     except ImageStorageError as e:
         logger.error(f"Failed to get image file: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -716,6 +730,7 @@ async def get_image_file(
 
 
 # ==================== 每轮场景插画 API ====================
+
 
 @router.get("/scene/{game_id}/{round_number}")
 async def get_round_scene_image(
@@ -728,49 +743,45 @@ async def get_round_scene_image(
 ):
     """
     获取指定轮次的场景插画
-    
+
     参数:
     - stage: 可选，指定阶段 (event/result)。如果不指定，返回该轮次最新的插画
     - week: 可选，指定周数。如果不指定，返回匹配的最新插画
-    
+
     如果插画尚未生成，返回 404，前端可以轮询查询
     """
     from src.database.models import SceneImage
-    
+
     # ★ 权限验证：必须登录
     if not user:
         raise HTTPException(status_code=401, detail="未登录")
-    
+
     # ★ 权限验证：验证游戏归属
     verify_game_ownership(db, game_id, user)
-    
+
     # 查询场景插画
     query = db.query(SceneImage).filter(
-        SceneImage.game_id == game_id,
-        SceneImage.round_number == round_number
+        SceneImage.game_id == game_id, SceneImage.round_number == round_number
     )
-    
+
     if week is not None:
         # ★ 指定了周数，加入 week 条件
         query = query.filter(SceneImage.week == week)
-    
+
     if stage:
         # ★ 指定了阶段，精确查询
         scene_image = query.filter(SceneImage.stage == stage).first()
     else:
         # ★ 未指定阶段，优先返回 result，其次 event
         scene_image = query.order_by(SceneImage.created_at.desc()).first()
-    
+
     if not scene_image:
         raise HTTPException(status_code=404, detail="该轮次场景插画尚未生成")
-    
+
     # 构建图片URL
     storage_service = ImageStorageService()
-    image_url = storage_service.get_image_url(
-        scene_image.storage_path,
-        scene_image.storage_type
-    )
-    
+    image_url = storage_service.get_image_url(scene_image.storage_path, scene_image.storage_type)
+
     return {
         "scene_id": scene_image.scene_id,
         "game_id": scene_image.game_id,
@@ -794,21 +805,24 @@ async def get_all_round_scene_images(
     获取游戏的所有场景插画
     """
     from src.database.models import SceneImage
-    
+
     # ★ 权限验证：必须登录
     if not user:
         raise HTTPException(status_code=401, detail="未登录")
-    
+
     # ★ 权限验证：验证游戏归属
     verify_game_ownership(db, game_id, user)
-    
+
     # 查询所有场景插画
-    scene_images = db.query(SceneImage).filter(
-        SceneImage.game_id == game_id
-    ).order_by(SceneImage.week, SceneImage.round_number).all()
-    
+    scene_images = (
+        db.query(SceneImage)
+        .filter(SceneImage.game_id == game_id)
+        .order_by(SceneImage.week, SceneImage.round_number)
+        .all()
+    )
+
     storage_service = ImageStorageService()
-    
+
     return {
         "scenes": [
             {
@@ -835,24 +849,24 @@ async def generate_round_scene_image(
 ):
     """
     自动生成每轮场景插画
-    
+
     流程：
     1. 使用 DeepSeek 分析故事，选择场景
     2. 如果有玩家形象图片，使用图生图
     3. 否则使用文生图
     4. 保存到数据库
-    
+
     如果该轮次的场景插画已存在，直接返回现有记录。
     """
     # ★ 权限验证：必须登录
     if not user:
         raise HTTPException(status_code=401, detail="未登录")
-    
+
     # ★ 权限验证：验证游戏归属
     verify_game_ownership(db, req.game_id, user)
-    
+
     service = ImageService(db)
-    
+
     try:
         scene_model = service.generate_round_scene_image(
             game_id=req.game_id,
@@ -864,13 +878,12 @@ async def generate_round_scene_image(
             stage=req.stage,  # ★ 传递 stage 参数
             week=req.week,  # ★ 传递 week 参数
         )
-        
+
         # 构建图片URL
         image_url = service.storage_service.get_image_url(
-            scene_model.storage_path,
-            scene_model.storage_type
+            scene_model.storage_path, scene_model.storage_type
         )
-        
+
         return RoundSceneResponse(
             scene_id=scene_model.scene_id,
             game_id=scene_model.game_id,
@@ -881,7 +894,7 @@ async def generate_round_scene_image(
             scene_description=scene_model.scene_description or "",
             created_at=scene_model.created_at.isoformat() if scene_model.created_at else None,
         )
-        
+
     except ImageContentError as e:
         logger.warning(f"Content inspection failed: {e}")
         raise HTTPException(status_code=400, detail=f"内容审核未通过: {e}")
@@ -932,8 +945,7 @@ async def regenerate_round_scene_image(
 
         # 构建图片URL
         image_url = service.storage_service.get_image_url(
-            scene_model.storage_path,
-            scene_model.storage_type
+            scene_model.storage_path, scene_model.storage_type
         )
 
         # ★ 返回 RoundSceneResponse，包含 week 和 stage
@@ -947,7 +959,7 @@ async def regenerate_round_scene_image(
             scene_description=scene_model.scene_description or "",
             created_at=scene_model.created_at.isoformat() if scene_model.created_at else None,
         )
-        
+
     except ImageContentError as e:
         logger.warning(f"Content inspection failed: {e}")
         raise HTTPException(status_code=400, detail=f"内容审核未通过: {e}")
@@ -969,10 +981,10 @@ async def get_image(
     """获取图片信息"""
     service = ImageService(db)
     image_model = service.get_image(image_id)
-    
+
     if not image_model:
         raise HTTPException(status_code=404, detail="图片不存在")
-    
+
     return ImageResponse(
         image_id=image_model.image_id,
         game_id=image_model.game_id,
@@ -995,12 +1007,12 @@ async def delete_image(
     """删除图片（软删除，标记为不活跃）"""
     service = ImageService(db)
     image_model = service.get_image(image_id)
-    
+
     if not image_model:
         raise HTTPException(status_code=404, detail="图片不存在")
-    
+
     # 软删除
     image_model.is_active = False
     db.commit()
-    
+
     return MessageResponse(message="图片已删除", success=True)

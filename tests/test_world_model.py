@@ -452,7 +452,7 @@ class TestWorldModel:
 
         text = wm.build_constraints_text("en")
         assert "World Model Constraints" in text
-        assert "Character Locations" in text
+        assert "CHARACTER LOCATION CONSTRAINTS" in text
 
     def test_to_dict(self):
         wm = WorldModel()

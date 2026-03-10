@@ -8,8 +8,8 @@ Provides modular services for round-based gameplay:
 """
 
 from src.game.round.character_introduction import CharacterIntroductionService
-from src.game.round.event_generator import RoundEventGenerator
 from src.game.round.choice_processor import RoundChoiceProcessor
+from src.game.round.event_generator import RoundEventGenerator
 from src.game.round.finalizer import RoundFinalizer
 
 __all__ = [

@@ -2,9 +2,10 @@
 
 Handles segment-level story rewriting and full story regeneration.
 """
+
 import json
 import logging
-from typing import Dict, Any, Optional, Callable
+from typing import Any, Callable, Dict, Optional
 
 from config.prompts import get_story_only_prompt
 from src.ai.client import AIClient
@@ -115,10 +116,11 @@ Please rewrite the specified segment according to the user's request:
                 max_tokens=4096,
                 stream_callback=stream_callback,
             )
-            
+
             # ★ 一致性校验（如果有 world_model）- 复用 StoryGenerator 的方法
             if world_model and player_state:
                 from src.ai.story_generator import StoryGenerator
+
                 # 创建临时 StoryGenerator 实例来复用验证方法
                 temp_generator = StoryGenerator(self.client)
                 rewritten_story = temp_generator._validate_and_retry_story(
@@ -132,7 +134,7 @@ Please rewrite the specified segment according to the user's request:
                     stream_callback=stream_callback,
                     status_callback=status_callback,
                 )
-            
+
             return rewritten_story
 
         except Exception as e:
@@ -189,8 +191,14 @@ Please rewrite the specified segment according to the user's request:
                 last_event_description = decision_history[-1].get("event")
 
         story_prompt = get_story_only_prompt(
-            player_state, language, current_phase, character_settings,
-            opening_story, last_event_description, None, None,
+            player_state,
+            language,
+            current_phase,
+            character_settings,
+            opening_story,
+            last_event_description,
+            None,
+            None,
         )
 
         # Add previous story context
@@ -220,10 +228,11 @@ Please generate a brand new story based on the above context, ensuring logical c
                 max_tokens=4096,
                 stream_callback=stream_callback,
             )
-            
+
             # ★ 一致性校验（如果有 world_model）- 复用 StoryGenerator 的方法
             if world_model and player_state:
                 from src.ai.story_generator import StoryGenerator
+
                 # 创建临时 StoryGenerator 实例来复用验证方法
                 temp_generator = StoryGenerator(self.client)
                 regenerated_story = temp_generator._validate_and_retry_story(
@@ -237,7 +246,7 @@ Please generate a brand new story based on the above context, ensuring logical c
                     stream_callback=stream_callback,
                     status_callback=status_callback,
                 )
-            
+
             return regenerated_story
 
         except Exception as e:

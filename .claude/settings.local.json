@@ -31,7 +31,15 @@
       "Bash(./scripts/git_helpers.sh help)",
       "Bash(./scripts/git_helpers.sh status)",
       "Bash(gh auth status 2>&1)",
-      "Bash(which gh && gh auth status 2>&1 || echo \"gh not found\")"
+      "Bash(which gh && gh auth status 2>&1 || echo \"gh not found\")",
+      "Bash(claude --version)",
+      "Bash(claude mcp --help 2>&1)",
+      "Bash(claude auth --help 2>&1)",
+      "Bash(ls ~/.claude/todos/*.json 2>/dev/null | head -3 | xargs -I {} sh -c 'echo \"=== {} ===\" && cat {}')",
+      "Bash(cd /Users/luicy/story2 && ./test.sh 2>&1 | tail -50)",
+      "Bash(source venv/bin/activate && pytest tests/test_collection.py -v 2>&1)",
+      "Bash(lsof -ti:8000 > /dev/null 2>&1 && echo \"Backend running on port 8000\" || echo \"Backend NOT running\")",
+      "Bash(lsof -ti:3000 > /dev/null 2>&1 && echo \"Frontend running on port 3000\" || echo \"Frontend NOT running\")"
     ]
   }
 }

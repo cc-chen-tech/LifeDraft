@@ -1,12 +1,13 @@
 """FastAPI application entry point."""
+
 import logging
 import os
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from dotenv import load_dotenv
 
 from src.database.models import init_db
 
@@ -43,11 +44,12 @@ app = FastAPI(
 # ★ 必须使用 allow_credentials=True 来支持 Cookie 认证
 # ★ 不能使用 allow_origins=["*"]，必须明确指定 origin
 
+
 def get_allowed_origins():
     """获取允许的CORS origin列表"""
     origins = [
         "http://localhost:3000",
-        "http://127.0.0.1:3000", 
+        "http://127.0.0.1:3000",
         "http://localhost:8501",
         "http://127.0.0.1:8501",
     ]
@@ -56,6 +58,7 @@ def get_allowed_origins():
     if extra_origins:
         origins.extend([o.strip() for o in extra_origins.split(",") if o.strip()])
     return origins
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -77,7 +80,8 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # ---- Register routers ----
-from src.api.routers import auth, friends, games, character, presets, gameplay, story, images
+from src.api.routers import (auth, character, collection, friends, gameplay,
+                             games, images, presets, story)
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(friends.router, prefix="/api/friends", tags=["Friends"])
@@ -87,31 +91,34 @@ app.include_router(presets.router, prefix="/api/presets", tags=["Presets"])
 app.include_router(gameplay.router, prefix="/api/games", tags=["Gameplay"])
 app.include_router(story.router, prefix="/api/games", tags=["Story"])
 app.include_router(images.router, prefix="/api/images", tags=["Images"])
+app.include_router(collection.router, prefix="/api/collection", tags=["Collection"])
 
 
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint."""
     from src.api.session_store import session_store
+
     return {
         "status": "ok",
         "active_sessions": session_store.active_count,
     }
 
 
+from typing import Optional
+
 # ---- Client-side log collector ----
 from pydantic import BaseModel
-from typing import Optional
 
 client_logger = logging.getLogger("client")
 
 
 class ClientLogEntry(BaseModel):
-    level: str = "error"           # error / warn / info
+    level: str = "error"  # error / warn / info
     message: str
     context: Optional[str] = None  # e.g. "sse", "api", "global"
-    url: Optional[str] = None      # page URL on client
-    ua: Optional[str] = None       # User-Agent (auto-filled from header)
+    url: Optional[str] = None  # page URL on client
+    ua: Optional[str] = None  # User-Agent (auto-filled from header)
 
 
 @app.post("/api/client-log")

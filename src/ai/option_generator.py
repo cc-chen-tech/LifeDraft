@@ -3,11 +3,12 @@
 Handles option generation for existing stories (Step 2 of the two-stage pipeline),
 relationship name validation/fixing, and event quality checks.
 """
+
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, List, Optional
 
 from src.ai.client import AIClient
-from src.ai.models import GameEvent, EventOption
+from src.ai.models import EventOption, GameEvent
 from src.ai.system_prompts import get_system_prompt
 from src.ai.utils import extract_json
 from src.game.constants import GENERIC_CHARACTER_NAMES, GENERIC_OPTION_TEXTS
@@ -108,9 +109,7 @@ class OptionGenerator:
                         )
 
                 last_error = "Invalid options format or fewer than 2 options"
-                logger.warning(
-                    f"Attempt {attempt + 1}: Invalid options format, retrying..."
-                )
+                logger.warning(f"Attempt {attempt + 1}: Invalid options format, retrying...")
 
             except Exception as e:
                 last_error = str(e)
@@ -217,9 +216,7 @@ class OptionGenerator:
                             # Non-key_people characters can still have relationship changes
                             if not found_match:
                                 fixed_relationships[name] = value
-                                logger.info(
-                                    f"Keeping non-key_people relationship: '{name}'"
-                                )
+                                logger.info(f"Keeping non-key_people relationship: '{name}'")
 
                     # Update relationships in effects
                     option.effects["relationships"] = fixed_relationships
@@ -252,12 +249,14 @@ class OptionGenerator:
         # Check for trade-offs (not all options should be clearly better)
         total_effects = []
         for option in event.options:
-            total = sum([
-                abs(option.effects.get("energy", 0)),
-                abs(option.effects.get("mood", 0)),
-                abs(option.effects.get("knowledge", 0)),
-                abs(option.effects.get("wealth", 0)) / 1000,  # Normalize wealth
-            ])
+            total = sum(
+                [
+                    abs(option.effects.get("energy", 0)),
+                    abs(option.effects.get("mood", 0)),
+                    abs(option.effects.get("knowledge", 0)),
+                    abs(option.effects.get("wealth", 0)) / 1000,  # Normalize wealth
+                ]
+            )
             total_effects.append(total)
 
         if max(total_effects) - min(total_effects) < 5:
@@ -272,18 +271,18 @@ class OptionGenerator:
     ) -> List[str]:
         """
         Validate that options are consistent with the story.
-        
+
         Checks:
         1. Options relate to the story's decision point
         2. Character names in effects are valid
         3. Effects values are reasonable
-        
+
         Args:
             event: GameEvent to validate
             story_description: The story text
             available_people: List of allowed character names
             language: Language code
-        
+
         Returns:
             List of issues found (empty if all valid)
         """
@@ -306,14 +305,18 @@ class OptionGenerator:
                 if language == "zh":
                     issues.append(f"选项{i+1}文本过长({len(option.text)}字)，建议控制在15字内")
                 else:
-                    issues.append(f"Option {i+1} text too long ({len(option.text)} chars), suggest max 15 words")
+                    issues.append(
+                        f"Option {i+1} text too long ({len(option.text)} chars), suggest max 15 words"
+                    )
 
             # 检查是否是通用选项（与故事无关）
             if option.text.lower() in [g.lower() for g in generic_options.get(language, [])]:
                 if language == "zh":
                     issues.append(f"选项{i+1}「{option.text}」过于通用，应与故事情境相关")
                 else:
-                    issues.append(f"Option {i+1} '{option.text}' is too generic, should relate to story")
+                    issues.append(
+                        f"Option {i+1} '{option.text}' is too generic, should relate to story"
+                    )
 
         # 2. 检查人物名是否在允许列表中
         # 如果人物已在故事文本中出现，则允许其在 relationships 中使用
@@ -334,12 +337,14 @@ class OptionGenerator:
                         if language == "zh":
                             issues.append(f"选项{i+1}中人物「{name}」不在可用人物列表中")
                         else:
-                            issues.append(f"Option {i+1} character '{name}' not in available people list")
-        
+                            issues.append(
+                                f"Option {i+1} character '{name}' not in available people list"
+                            )
+
         # 3. 检查 effects 数值是否合理
         for i, option in enumerate(event.options):
             effects = option.effects
-            
+
             # 检查极端数值
             for key in ["energy", "mood", "knowledge"]:
                 value = effects.get(key, 0)
@@ -347,17 +352,23 @@ class OptionGenerator:
                     if language == "zh":
                         issues.append(f"选项{i+1}的{key}变化过大({value})，建议在-20到20之间")
                     else:
-                        issues.append(f"Option {i+1} {key} change too large ({value}), suggest -20 to 20")
-            
+                        issues.append(
+                            f"Option {i+1} {key} change too large ({value}), suggest -20 to 20"
+                        )
+
             # 检查财富变化
             wealth_change = effects.get("wealth", 0)
             if abs(wealth_change) > 10000:
                 if language == "zh":
-                    issues.append(f"选项{i+1}的财富变化过大({wealth_change})，建议在-5000到5000之间")
+                    issues.append(
+                        f"选项{i+1}的财富变化过大({wealth_change})，建议在-5000到5000之间"
+                    )
                 else:
-                    issues.append(f"Option {i+1} wealth change too large ({wealth_change}), suggest -5000 to 5000")
-        
+                    issues.append(
+                        f"Option {i+1} wealth change too large ({wealth_change}), suggest -5000 to 5000"
+                    )
+
         if issues:
             logger.warning(f"Options consistency issues: {issues}")
-        
+
         return issues

@@ -17,6 +17,7 @@ import { SkeletonStory } from "@/components/game/SkeletonStory";
 import { SettingDisplay } from "@/components/game/SettingDisplay";
 import { useGameStore, CREATION_STEPS, MANUAL_STEPS, AUTO_ADVANCE_STEPS } from "@/stores/useGameStore";
 import { useUIStore } from "@/stores/useUIStore";
+import { useImageStore } from "@/stores/useImageStore";
 import api from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
@@ -72,7 +73,12 @@ export default function CreatePage() {
     setPlayerName,
     setLifeVision,
     resetCreation,
-    // ★ 图片相关
+    gameId,
+    setGameSession,
+  } = useGameStore();
+
+  // ★ 图片相关状态从 useImageStore 获取
+  const {
     playerImages,
     selectedImageIndex,
     isGeneratingImage,
@@ -81,11 +87,9 @@ export default function CreatePage() {
     setSelectedImageIndex,
     generatePlayerImage,
     regeneratePlayerImage,
-    regenerateFreshPlayerImage,  // ★ 完全重新生成
+    regenerateFreshPlayerImage,
     setImageFeedback,
-    gameId,
-    setGameSession,
-  } = useGameStore();
+  } = useImageStore();
 
   // ★ 兼容旧代码，playerImage 是当前选中的图片
   const playerImage = playerImages[selectedImageIndex] || playerImages[0] || null;
@@ -169,7 +173,7 @@ export default function CreatePage() {
     if (isPortraitStep && gameId && playerImages.length === 0 && !isGeneratingImage && !hasGeneratedImage.current) {
       console.log("[portrait] Auto-generating player image...");
       hasGeneratedImage.current = true;  // ★ 标记已生成
-      generatePlayerImage().catch((err) => {
+      generatePlayerImage(gameId, playerName, characterSettings).catch((err) => {
         console.error("[portrait] Auto-generate failed:", err);
         hasGeneratedImage.current = false;  // ★ 失败时重置
       });

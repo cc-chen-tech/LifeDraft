@@ -9,8 +9,8 @@ This package provides the gameplay API endpoints:
 
 from fastapi import APIRouter
 
-from src.api.routers.gameplay.events import router as events_router
 from src.api.routers.gameplay.choices import router as choices_router
+from src.api.routers.gameplay.events import router as events_router
 from src.api.routers.gameplay.summary import router as summary_router
 
 # Main router that combines all sub-routers

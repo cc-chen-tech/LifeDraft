@@ -2,6 +2,7 @@
 
 Handles the generation of events for each round in the game.
 """
+
 import logging
 import time
 from typing import Any, Callable, Dict, Optional
@@ -15,13 +16,13 @@ logger = logging.getLogger(__name__)
 
 class RoundEventGenerator:
     """Service for generating round events.
-    
+
     This service handles:
     - Event generation with context building
     - Timeout handling and concurrency control
     - Fallback event generation
     """
-    
+
     def __init__(
         self,
         player_state_getter: callable,
@@ -49,85 +50,93 @@ class RoundEventGenerator:
         self.summary_selector = summary_selector
         self.relationship_service = relationship_service
         self.event_callback = event_callback
-        
+
         # Generation state
         self._generating = False
         self._generating_start_time = None
         self._GENERATION_TIMEOUT = 120.0  # seconds
         self._current_event = None
-    
+
     @property
     def player_state(self):
         return self._get_player_state()
-    
+
     @property
     def language(self):
         return self._get_language()
-    
+
     @property
     def current_event(self):
         return self._current_event
-    
+
     @current_event.setter
     def current_event(self, value):
         self._current_event = value
-    
+
     def generate_round_event(
         self,
         stream_callback: Optional[Callable[[str], None]] = None,
-        status_callback: Optional[Callable[[str], None]] = None
+        status_callback: Optional[Callable[[str], None]] = None,
     ) -> Optional[GameEvent]:
         """
         Generate an event for the current round within the week.
         Uses multi-round system: each week has multiple rounds.
-        
+
         Args:
             stream_callback: Optional callback for streaming story text
             status_callback: Optional callback for reporting processing status
-        
+
         Returns:
             GameEvent object for the current round
         """
         player_state = self.player_state
         if not player_state:
             raise ValueError("Game not started.")
-        
+
         # ★ CRITICAL: Check if we already have a valid event with options
         if self._current_event and self._current_event.options:
-            logger.info(f"Returning existing event (options count: {len(self._current_event.options)})")
+            logger.info(
+                f"Returning existing event (options count: {len(self._current_event.options)})"
+            )
             return self._current_event
-        
+
         # ★ CRITICAL: Prevent concurrent generation with timeout auto-reset
         if self._generating:
             # Check if generation has timed out
             if self._generating_start_time:
                 elapsed = time.time() - self._generating_start_time
                 if elapsed > self._GENERATION_TIMEOUT:
-                    logger.warning(f"Generation timeout ({elapsed:.1f}s > {self._GENERATION_TIMEOUT}s), auto-resetting flag")
+                    logger.warning(
+                        f"Generation timeout ({elapsed:.1f}s > {self._GENERATION_TIMEOUT}s), auto-resetting flag"
+                    )
                     self._generating = False
                     self._generating_start_time = None
                 else:
-                    logger.warning(f"Event generation in progress ({elapsed:.1f}s elapsed), raising error")
+                    logger.warning(
+                        f"Event generation in progress ({elapsed:.1f}s elapsed), raising error"
+                    )
                     raise ValueError("Event generation in progress, please wait")
             else:
                 logger.warning("Event generation in progress (no timestamp), raising error")
                 raise ValueError("Event generation in progress, please wait")
-        
+
         self._generating = True
         self._generating_start_time = time.time()
-        
+
         current_week = player_state.week
         current_round = player_state.current_round
-        
+
         # ★ 显示用周数（人类可读，从1开始）
         week_display = f"第{current_week + 1}周" if current_week is not None else "未知周"
         logger.info(f"Generating round event: {week_display}, round={current_round}")
-        
+
         # ★ 步骤0: 检查是否有预定事件需要触发
         scheduled_events = player_state.get_pending_scheduled_events(current_week, current_round)
         if scheduled_events:
             logger.info(f"检测到 {len(scheduled_events)} 个预定事件需要触发")
-            event = self._generate_scheduled_event(scheduled_events, player_state, stream_callback, status_callback)
+            event = self._generate_scheduled_event(
+                scheduled_events, player_state, stream_callback, status_callback
+            )
             if event:
                 self._current_event = event
                 player_state.current_event_data = event.model_dump()
@@ -139,36 +148,42 @@ class RoundEventGenerator:
                 self._generating = False
                 self._generating_start_time = None
                 return event
-        
+
         # Get round context from player state
         round_context = player_state.get_round_context()
-        
+
         try:
             # 发送初始化状态
             if status_callback:
                 status_callback("initializing")
-            
+
             # 步骤1: 尝试生成新人物（存入待引入队列，不立即引入）
             self.character_introduction_service.maybe_generate_new_character(probability=0.08)
-            
+
             # 步骤2: 检查是否有合适的引入机会
             new_character = None
             pending_entry = self.character_introduction_service.check_introduction_opportunity()
             if pending_entry:
-                new_character = self.character_introduction_service.introduce_pending_character(pending_entry)
+                new_character = self.character_introduction_service.introduce_pending_character(
+                    pending_entry
+                )
                 if new_character:
-                    intro_ctx = pending_entry.get('introduction_context', 'random')
-                    logger.info(f"本轮引入待引入人物: {new_character.get('name')} - {new_character.get('role')} (场景: {intro_ctx})")
-            
+                    intro_ctx = pending_entry.get("introduction_context", "random")
+                    logger.info(
+                        f"本轮引入待引入人物: {new_character.get('name')} - {new_character.get('role')} (场景: {intro_ctx})"
+                    )
+
             # 获取最新的状态（可能已包含新引入的人物）
             state_dict = player_state.to_dict()
             character_settings = state_dict.get("character_settings", {})
-            
+
             # 随机选择历史总结加入提示词（如同回忆）
             if status_callback:
                 status_callback("loading_context")
-            historical_weekly, historical_yearly = self.summary_selector.select_relevant_historical_summary(player_state)
-            
+            historical_weekly, historical_yearly = (
+                self.summary_selector.select_relevant_historical_summary(player_state)
+            )
+
             # 检测关系事件触发
             relationship_events = []
             try:
@@ -178,28 +193,33 @@ class RoundEventGenerator:
                     player_state, era=era, max_events=2
                 )
                 if relationship_events:
-                    logger.info(f"检测到{len(relationship_events)}个关系事件: {[e['event_type'] for e in relationship_events]}")
+                    logger.info(
+                        f"检测到{len(relationship_events)}个关系事件: {[e['event_type'] for e in relationship_events]}"
+                    )
             except Exception as e:
                 logger.warning(f"关系事件检测失败: {e}")
-            
+
             # 构建世界模型用于约束和校验
             if status_callback:
                 status_callback("building_world")
             world_model = None
             try:
                 from src.game.world_model import WorldModel
+
                 world_model = WorldModel.from_player_state(player_state)
-                logger.info(f"WorldModel built: {len(world_model.character_locations)} locations, "
-                           f"{len(world_model.career_records)} careers, "
-                           f"{len(world_model.active_commitments)} commitments, "
-                           f"{len(world_model.causal_chains)} causal chains")
+                logger.info(
+                    f"WorldModel built: {len(world_model.character_locations)} locations, "
+                    f"{len(world_model.career_records)} careers, "
+                    f"{len(world_model.active_commitments)} commitments, "
+                    f"{len(world_model.causal_chains)} causal chains"
+                )
             except Exception as e:
                 logger.warning(f"WorldModel 构建失败，将跳过一致性校验: {e}")
-            
+
             # 发送开始生成故事的状态
             if status_callback:
                 status_callback("generating_story")
-            
+
             event = self.ai_generator.generate_round_event(
                 player_state=state_dict,
                 language=self.language,
@@ -221,37 +241,39 @@ class RoundEventGenerator:
                 new_character=new_character,
                 status_callback=status_callback,
             )
-            
+
             # 如果有关系事件被触发，标记为已触发
             if relationship_events and event:
                 for rel_event in relationship_events:
                     try:
                         self.relationship_service.mark_event_triggered(
-                            player_state,
-                            rel_event["character_name"],
-                            rel_event["event_type"]
+                            player_state, rel_event["character_name"], rel_event["event_type"]
                         )
-                        logger.info(f"标记事件已触发: {rel_event['event_type']} for {rel_event['character_name']}")
+                        logger.info(
+                            f"标记事件已触发: {rel_event['event_type']} for {rel_event['character_name']}"
+                        )
                     except Exception as e:
                         logger.warning(f"标记事件触发失败: {e}")
-            
+
             if not event:
                 logger.error("AI generator returned None for round event!")
                 event = self._generate_fallback_event(is_round=True)
-            
+
             self._current_event = event
-            
+
             # Save current event to player state for persistence
             player_state.current_event_data = event.model_dump()
-            
+
             if self.event_callback:
                 self.event_callback(event, player_state)
-            
-            logger.info(f"Successfully generated round event for 第{current_week + 1}周, round {current_round}")
+
+            logger.info(
+                f"Successfully generated round event for 第{current_week + 1}周, round {current_round}"
+            )
             self._generating = False  # Reset flag on success
             self._generating_start_time = None
             return event
-            
+
         except Exception as e:
             logger.error(f"Failed to generate round event: {str(e)}", exc_info=True)
             event = self._generate_fallback_event(is_round=True)
@@ -260,14 +282,14 @@ class RoundEventGenerator:
             self._generating = False  # Reset flag on error
             self._generating_start_time = None
             return event
-    
+
     def _generate_fallback_event(self, is_round: bool = True) -> GameEvent:
         """Generate a fallback event when AI generation fails."""
         from src.ai.models import EventOption
-        
+
         player_state = self.player_state
         language = self.language
-        
+
         if language == "zh":
             description = "一个平静的日子，没有特别的事情发生。"
             options = [
@@ -282,7 +304,7 @@ class RoundEventGenerator:
                 EventOption(text="Look for something interesting", effects={"mood": 5}),
                 EventOption(text="Focus on work/study", effects={"knowledge": 5}),
             ]
-        
+
         return GameEvent(
             event_description=description,
             options=options,
@@ -294,25 +316,25 @@ class RoundEventGenerator:
         scheduled_events: list,
         player_state,
         stream_callback: Optional[Callable[[str], None]] = None,
-        status_callback: Optional[Callable[[str], None]] = None
+        status_callback: Optional[Callable[[str], None]] = None,
     ) -> Optional[GameEvent]:
         """根据预定事件生成强制事件。
-        
+
         当检测到有预定事件需要触发时，调用此方法生成事件。
         事件内容必须围绕兑现承诺展开。
-        
+
         Args:
             scheduled_events: 预定事件列表
             player_state: PlayerState 实例
             stream_callback: 流式回调
             status_callback: 状态回调
-        
+
         Returns:
             GameEvent 实例
         """
         if status_callback:
             status_callback("generating_scheduled_event")
-        
+
         # 合并多个预定事件的信息（如果有多个）
         descriptions = []
         all_parties = set()
@@ -329,19 +351,19 @@ class RoundEventGenerator:
             se_importance = se.get("importance", "normal")
             if IMPORTANCE_ORDER.get(se_importance, 2) < IMPORTANCE_ORDER.get(max_importance, 2):
                 max_importance = se_importance
-        
+
         # 构建强制事件的提示
         combined_description = "；".join(descriptions)
         combined_hint = "；".join(event_hints) if event_hints else ""
         parties_str = "、".join(all_parties) if all_parties else ""
-        
+
         logger.info(f"生成预定事件: {combined_description[:60]}... (涉及: {parties_str})")
-        
+
         try:
             # 使用AI生成事件内容，但必须包含承诺的核心元素
             state_dict = player_state.to_dict()
             character_settings = state_dict.get("character_settings", {})
-            
+
             # 构建强制事件提示词
             prompt = self._build_scheduled_event_prompt(
                 scheduled_events=scheduled_events,
@@ -349,10 +371,11 @@ class RoundEventGenerator:
                 character_settings=character_settings,
                 language=self.language,
             )
-            
+
             from src.ai.system_prompts import get_system_prompt
+
             sys_prompt = get_system_prompt("story_novelist", self.language)
-            
+
             # 调用AI生成
             response = self.ai_generator.ai_client.call(
                 system_prompt=sys_prompt,
@@ -361,24 +384,27 @@ class RoundEventGenerator:
                 max_tokens=8192,
                 stream_callback=stream_callback,
             )
-            
+
             # 解析响应
             from src.ai.utils import extract_json
+
             data = extract_json(response)
-            
+
             if data:
-                from src.ai.models import GameEvent, EventOption
-                
+                from src.ai.models import EventOption, GameEvent
+
                 event_desc = data.get("event_description", "")
                 options_data = data.get("options", [])
-                
+
                 options = []
                 for opt in options_data:
-                    options.append(EventOption(
-                        text=opt.get("text", ""),
-                        effects=opt.get("effects", {}),
-                    ))
-                
+                    options.append(
+                        EventOption(
+                            text=opt.get("text", ""),
+                            effects=opt.get("effects", {}),
+                        )
+                    )
+
                 if event_desc and options:
                     event = GameEvent(
                         event_description=event_desc,
@@ -387,11 +413,11 @@ class RoundEventGenerator:
                     )
                     logger.info(f"成功生成预定事件: {event_desc[:60]}...")
                     return event
-            
+
             # 如果解析失败，生成一个简单的事件
             logger.warning("解析预定事件响应失败，使用简化版本")
             return self._generate_simple_scheduled_event(scheduled_events, player_state)
-            
+
         except Exception as e:
             logger.error(f"生成预定事件失败: {e}")
             return self._generate_simple_scheduled_event(scheduled_events, player_state)
@@ -404,29 +430,35 @@ class RoundEventGenerator:
         language: str,
     ) -> str:
         """构建预定事件的提示词。"""
-        
+
         # 合并预定事件信息
         descriptions = []
         all_parties = set()
         event_hints = []
-        
+
         for se in scheduled_events:
             descriptions.append(se.get("description", ""))
             all_parties.update(se.get("parties", []))
             if se.get("event_hint"):
                 event_hints.append(se.get("event_hint"))
-        
+
         combined_description = "；".join(descriptions)
         combined_hint = "；".join(event_hints) if event_hints else ""
         parties_str = "、".join(all_parties) if all_parties else ""
-        
+
         player_name = player_state.get("player_name", "主角")
         week = player_state.get("week", 0)
         current_round = player_state.get("current_round", 0)
-        
-        round_names = ["周一", "周中", "周末"] if language == "zh" else ["Monday", "Midweek", "Weekend"]
-        round_name = round_names[current_round] if current_round < len(round_names) else f"Round {current_round}"
-        
+
+        round_names = (
+            ["周一", "周中", "周末"] if language == "zh" else ["Monday", "Midweek", "Weekend"]
+        )
+        round_name = (
+            round_names[current_round]
+            if current_round < len(round_names)
+            else f"Round {current_round}"
+        )
+
         if language == "zh":
             return f"""【强制事件】角色之前做出的承诺必须在本轮兑现。
 
@@ -492,14 +524,14 @@ Return ONLY JSON, no other text."""
         player_state,
     ) -> GameEvent:
         """生成一个简单的预定事件（当AI生成失败时的后备方案）。"""
-        from src.ai.models import GameEvent, EventOption
-        
+        from src.ai.models import EventOption, GameEvent
+
         # 合并描述
         descriptions = [se.get("description", "") for se in scheduled_events]
         combined_desc = "；".join(descriptions)
-        
+
         language = self.language
-        
+
         if language == "zh":
             event_desc = f"到了兑现承诺的时候了。{combined_desc}。你需要做出选择。"
             options = [
@@ -508,13 +540,17 @@ Return ONLY JSON, no other text."""
                 EventOption(text="找借口推迟", effects={"mood": -15}),
             ]
         else:
-            event_desc = f"It's time to fulfill your commitment. {combined_desc}. You need to make a choice."
+            event_desc = (
+                f"It's time to fulfill your commitment. {combined_desc}. You need to make a choice."
+            )
             options = [
-                EventOption(text="Fulfill the commitment seriously", effects={"mood": 10, "energy": -10}),
+                EventOption(
+                    text="Fulfill the commitment seriously", effects={"mood": 10, "energy": -10}
+                ),
                 EventOption(text="Do it half-heartedly", effects={"mood": -5}),
                 EventOption(text="Make an excuse to delay", effects={"mood": -15}),
             ]
-        
+
         return GameEvent(
             event_description=event_desc,
             options=options,

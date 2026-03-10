@@ -1,14 +1,19 @@
 """Story adjustment router — rewrite segment, regenerate full story, assistant chat."""
+
 import logging
 from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from src.api.deps import get_current_user_optional
-from src.api.session_store import session_store
+from src.api.routers.gameplay.sse_helpers import (return_sse_error,
+                                                  stream_regenerate,
+                                                  stream_rewrite)
+from src.api.schemas import (RegenerateStoryRequest, RewriteStoryRequest,
+                             StoryChatRequest, StoryChatResponse)
 from src.api.services.session_service import session_service
-from src.api.schemas import RewriteStoryRequest, RegenerateStoryRequest, StoryChatRequest, StoryChatResponse
-from src.api.routers.gameplay.sse_helpers import stream_regenerate, stream_rewrite, return_sse_error
+from src.api.session_store import session_store
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -26,7 +31,7 @@ async def rewrite_story(
     user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """Partially rewrite a segment of the current story.
-    
+
     ★ 使用前端传来的 full_story，不强制依赖 current_event
     """
     session = _require_session(game_id, user_id)
@@ -43,7 +48,9 @@ async def rewrite_story(
             full_story=req.full_story,
             segment_to_replace=req.segment_to_replace or req.full_story,  # 未选择段落时改写整个故事
             user_instruction=req.user_instruction,
-            character_settings=game_loop.player_state.character_settings if game_loop.player_state else {},
+            character_settings=(
+                game_loop.player_state.character_settings if game_loop.player_state else {}
+            ),
             story_context=story_context,
             language=req.language,
         )
@@ -69,7 +76,7 @@ async def regenerate_story(
     user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """Regenerate the entire current story and generate new options (non-streaming).
-    
+
     ★ 现在使用完整的 generate_round_event 流程，
     确保一致性校验、关系事件、世界模型等都正常工作。
     """
@@ -82,16 +89,16 @@ async def regenerate_story(
     try:
         # ★ 重置生成标志位，防止并发检查失败
         # （用户可能在之前生成未完成时点击重新生成）
-        if hasattr(game_loop, '_event_generator_service'):
+        if hasattr(game_loop, "_event_generator_service"):
             game_loop._event_generator_service._generating = False
             game_loop._event_generator_service._generating_start_time = None
-        
+
         # ★ 清空当前事件，让 generate_round_event 生成全新事件
         # 这确保使用完整流程：人物引入、历史摘要、关系事件、世界模型等
         game_loop.current_event = None
         if game_loop.player_state:
             game_loop.player_state.current_event_data = None
-        
+
         # ★ 使用完整的 generate_round_event 流程
         new_event = game_loop.generate_round_event(
             stream_callback=None,
@@ -118,9 +125,9 @@ async def rewrite_story_stream(
     user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """Rewrite story segment via SSE streaming.
-    
+
     流式改写故事段落，实时输出改写结果。
-    
+
     Yields:
         - status: rewrite progress
         - story: streamed story chunks
@@ -128,11 +135,11 @@ async def rewrite_story_stream(
     """
     session = _require_session(game_id, user_id)
     game_loop = session.game_loop
-    
+
     # Parse Last-Event-ID for reconnection support
     last_event_id_str = request.headers.get("Last-Event-ID")
     last_event_id = int(last_event_id_str) if last_event_id_str is not None else None
-    
+
     # Clear cache before starting rewrite
     if last_event_id is None:
         session.clear_sse_cache()
@@ -163,10 +170,10 @@ async def regenerate_story_stream(
     user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """Regenerate the entire current story via SSE streaming.
-    
+
     ★ 现在使用完整的 generate_round_event 流程，
     确保一致性校验、关系事件、世界模型等都正常工作。
-    
+
     Yields:
         - status: regeneration progress
         - story: streamed story chunks
@@ -174,7 +181,7 @@ async def regenerate_story_stream(
     """
     session = _require_session(game_id, user_id)
     game_loop = session.game_loop
-    
+
     # Parse Last-Event-ID for reconnection support
     last_event_id_str = request.headers.get("Last-Event-ID")
     last_event_id = int(last_event_id_str) if last_event_id_str is not None else None
@@ -219,7 +226,9 @@ async def story_assistant_chat(
     recent_context = ""
     if game_loop.player_state and game_loop.player_state.round_history:
         recent_rounds = game_loop.player_state.round_history[-3:]
-        recent_context = "\n".join([r.get("summary", "") for r in recent_rounds if r.get("summary")])
+        recent_context = "\n".join(
+            [r.get("summary", "") for r in recent_rounds if r.get("summary")]
+        )
 
     if req.language == "zh":
         system_prompt = f"""你是一个游戏剧情助手。基于以下角色设定和当前故事，回答玩家的问题。

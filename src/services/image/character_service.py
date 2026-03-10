@@ -1,14 +1,16 @@
 """Character image service - 人物图片生成服务."""
-import logging
+
 import base64
-from typing import Optional, Dict, Any, List
+import logging
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from src.ai.image_client import ImageClient, ImageGenerationError, ContentInspectionError
-from src.services.image_storage import ImageStorageService
+from src.ai.image_client import (ContentInspectionError, ImageClient,
+                                 ImageGenerationError)
 from src.database.models import Image as ImageModel
-from src.services.image import ImageServiceError, ImageContentError
+from src.services.image import ImageContentError, ImageServiceError
+from src.services.image_storage import ImageStorageService
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,7 @@ class CharacterImageService:
         num_images: int = 1,
         feedback: Optional[str] = None,
         reference_image_url: Optional[str] = None,
+        keep_old_active: bool = False,
     ) -> List[ImageModel]:
         """
         生成人物全身像图片（保证人物一致性）
@@ -53,18 +56,24 @@ class CharacterImageService:
             num_images: 总图片数量
             feedback: 用户反馈
             reference_image_url: 参考图片URL
+            keep_old_active: 是否保持旧图片活跃（用于重新生成时避免闪烁）
 
         Returns:
             Image模型实例列表
         """
-        logger.info(f"Generating {num_images} character images: {name} for game {game_id}, feedback: {feedback}")
+        logger.info(
+            f"Generating {num_images} character images: {name} for game {game_id}, feedback: {feedback}, keep_old_active={keep_old_active}"
+        )
 
-        # 停用该实体的所有旧图片
-        self.db.query(ImageModel).filter(
-            ImageModel.game_id == game_id,
-            ImageModel.entity_key == (entity_key or f"character_{name}")
-        ).update({"is_active": False})
-        self.db.commit()
+        # ★ 修复：如果 keep_old_active=True，不在生成前停用旧图片
+        # 这样可以避免图片生成过程中的"空窗期"
+        if not keep_old_active:
+            # 停用该实体的所有旧图片
+            self.db.query(ImageModel).filter(
+                ImageModel.game_id == game_id,
+                ImageModel.entity_key == (entity_key or f"character_{name}"),
+            ).update({"is_active": False})
+            self.db.commit()
 
         try:
             images_data, primary_image_url = self.image_client.generate_character_images(
@@ -91,7 +100,7 @@ class CharacterImageService:
                     entity_name=f"{name}_{idx + 1}",
                 )
 
-                is_primary = (idx == 0 and not reference_image_url)
+                is_primary = idx == 0 and not reference_image_url
 
                 image_model = ImageModel(
                     game_id=game_id,
@@ -164,30 +173,10 @@ class CharacterImageService:
         """
         logger.info(f"Regenerating image: {image_id}, feedback: {feedback}")
 
-        original = self.db.query(ImageModel).filter(
-            ImageModel.image_id == image_id
-        ).first()
+        original = self.db.query(ImageModel).filter(ImageModel.image_id == image_id).first()
 
         if not original:
             raise ImageServiceError(f"图片不存在: {image_id}")
-
-        # ★ 修复：停用图片时需要同时匹配 entity_key 和 entity_name
-        # 如果 entity_key 是 NULL，只匹配 entity_key 会误伤其他人物
-        # 解决方案：同时使用 entity_name 作为过滤条件
-        if original.entity_key:
-            # entity_key 不为空，使用 entity_key 匹配
-            self.db.query(ImageModel).filter(
-                ImageModel.game_id == original.game_id,
-                ImageModel.entity_key == original.entity_key
-            ).update({"is_active": False})
-        else:
-            # entity_key 为空，使用 entity_name + image_type 匹配，避免误伤其他人物
-            self.db.query(ImageModel).filter(
-                ImageModel.game_id == original.game_id,
-                ImageModel.image_type == original.image_type,
-                ImageModel.entity_name == original.entity_name
-            ).update({"is_active": False})
-        self.db.commit()
 
         metadata = original.metadata_json or {}
         char_settings = metadata.get("characterSettings", {})
@@ -206,15 +195,19 @@ class CharacterImageService:
         reference_url = None
         try:
             image_data = self._get_image_data(original)
-            ext = original.storage_path.rsplit('.', 1)[-1].lower()
-            mime_type = 'image/png' if ext == 'png' else 'image/jpeg'
-            base64_data = base64.b64encode(image_data).decode('utf-8')
+            ext = original.storage_path.rsplit(".", 1)[-1].lower()
+            mime_type = "image/png" if ext == "png" else "image/jpeg"
+            base64_data = base64.b64encode(image_data).decode("utf-8")
             reference_url = f"data:{mime_type};base64,{base64_data}"
             logger.info(f"Using current image as reference (base64, {len(image_data)} bytes)")
         except Exception as e:
-            logger.warning(f"Failed to convert image to base64: {e}, will generate without reference")
+            logger.warning(
+                f"Failed to convert image to base64: {e}, will generate without reference"
+            )
 
         try:
+            # ★ 修复：使用 keep_old_active=True 避免生成过程中的"空窗期"
+            # 旧图片保持活跃直到新图片生成完成
             new_images = self.generate_character_image(
                 game_id=original.game_id,
                 name=original.entity_name,
@@ -225,9 +218,26 @@ class CharacterImageService:
                 num_images=1,
                 feedback=feedback,
                 reference_image_url=reference_url,
+                keep_old_active=True,
             )
 
-            logger.info(f"Images regenerated: {len(new_images)} new images")
+            # ★ 新图片生成成功后，停用旧图片
+            if original.entity_key:
+                self.db.query(ImageModel).filter(
+                    ImageModel.game_id == original.game_id,
+                    ImageModel.entity_key == original.entity_key,
+                    ImageModel.image_id != new_images[0].image_id,  # 排除新生成的图片
+                ).update({"is_active": False})
+            else:
+                self.db.query(ImageModel).filter(
+                    ImageModel.game_id == original.game_id,
+                    ImageModel.image_type == original.image_type,
+                    ImageModel.entity_name == original.entity_name,
+                    ImageModel.image_id != new_images[0].image_id,  # 排除新生成的图片
+                ).update({"is_active": False})
+            self.db.commit()
+
+            logger.info(f"Images regenerated: {len(new_images)} new images, old images deactivated")
             return new_images
 
         except ImageContentError:
@@ -258,9 +268,7 @@ class CharacterImageService:
         """
         logger.info(f"Fresh regenerating image: {image_id}, use_deepseek={use_deepseek_prompt}")
 
-        original = self.db.query(ImageModel).filter(
-            ImageModel.image_id == image_id
-        ).first()
+        original = self.db.query(ImageModel).filter(ImageModel.image_id == image_id).first()
 
         if not original:
             raise ImageServiceError(f"图片不存在: {image_id}")
@@ -271,15 +279,14 @@ class CharacterImageService:
         if original.entity_key:
             # entity_key 不为空，使用 entity_key 匹配
             self.db.query(ImageModel).filter(
-                ImageModel.game_id == original.game_id,
-                ImageModel.entity_key == original.entity_key
+                ImageModel.game_id == original.game_id, ImageModel.entity_key == original.entity_key
             ).update({"is_active": False})
         else:
             # entity_key 为空，使用 entity_name + image_type 匹配，避免误伤其他人物
             self.db.query(ImageModel).filter(
                 ImageModel.game_id == original.game_id,
                 ImageModel.image_type == original.image_type,
-                ImageModel.entity_name == original.entity_name
+                ImageModel.entity_name == original.entity_name,
             ).update({"is_active": False})
         self.db.commit()
 
@@ -306,9 +313,15 @@ class CharacterImageService:
                 logger.debug(f"DeepSeek generated prompt: {prompt[:100]}...")
             except Exception as e:
                 logger.warning(f"DeepSeek prompt generation failed, using fallback: {e}")
-                prompt = build_description_func(char_settings) if build_description_func else "一个普通人"
+                prompt = (
+                    build_description_func(char_settings)
+                    if build_description_func
+                    else "一个普通人"
+                )
         else:
-            prompt = build_description_func(char_settings) if build_description_func else "一个普通人"
+            prompt = (
+                build_description_func(char_settings) if build_description_func else "一个普通人"
+            )
 
         era = character_info["era"]
 

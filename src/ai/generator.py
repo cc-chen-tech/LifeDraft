@@ -9,15 +9,16 @@ facade that delegates to focused sub-services:
 
 All existing public method signatures are preserved for backward compatibility.
 """
+
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Callable
+from typing import Any, Callable, Dict, List, Optional
 
-from config.settings import settings, PRESETS_DIR
+from config.settings import PRESETS_DIR, settings
 from src.ai.cache import EventCache
 from src.ai.client import AIClient
-from src.ai.models import GameEvent, EventOption
+from src.ai.models import EventOption, GameEvent
 from src.ai.option_generator import OptionGenerator
 from src.ai.story_generator import StoryGenerator
 from src.ai.story_rewriter import StoryRewriter
@@ -97,7 +98,7 @@ class EventGenerator:
         language: str = "zh",
     ) -> str:
         """Public AI text generation interface.
-        
+
         Args:
             prompt: User prompt text
             system_prompt: System prompt text
@@ -154,10 +155,10 @@ class EventGenerator:
         model: Optional[str] = None,
     ):
         """Public AI streaming interface - returns raw stream object.
-        
+
         Use this when you need direct access to the stream object
         (e.g., for UI streaming display).
-        
+
         Returns:
             OpenAI stream object that yields chunks
         """
@@ -186,9 +187,7 @@ class EventGenerator:
                 logger.warning(f"Failed to load preset events: {e}")
         return {}
 
-    def _get_preset_milestone_event(
-        self, week: int, language: str
-    ) -> Optional[GameEvent]:
+    def _get_preset_milestone_event(self, week: int, language: str) -> Optional[GameEvent]:
         """Get preset milestone event if available."""
         if not self.preset_events:
             return None
@@ -201,9 +200,7 @@ class EventGenerator:
                     try:
                         return GameEvent(**lang_data)
                     except Exception as e:
-                        logger.warning(
-                            f"Failed to parse preset milestone event: {e}"
-                        )
+                        logger.warning(f"Failed to parse preset milestone event: {e}")
         return None
 
     # ==================== Delegated Methods ====================
@@ -497,10 +494,6 @@ class EventGenerator:
         return SummaryGenerator._clean_summary_text(summary)
 
     @staticmethod
-    def _extract_summary_from_raw(
-        content: str, original_story: str, language: str
-    ) -> str:
+    def _extract_summary_from_raw(content: str, original_story: str, language: str) -> str:
         """Extract summary from raw response (delegates to SummaryGenerator)."""
-        return SummaryGenerator._extract_summary_from_raw(
-            content, original_story, language
-        )
+        return SummaryGenerator._extract_summary_from_raw(content, original_story, language)

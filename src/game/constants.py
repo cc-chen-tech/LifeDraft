@@ -2,10 +2,18 @@
 
 # Generic names that should not be treated as specific characters
 # These are placeholder names that AI might use in relationship effects
-GENERIC_CHARACTER_NAMES = frozenset({
-    "同事", "朋友", "家人", "老板",
-    "colleague", "friend", "family", "boss",
-})
+GENERIC_CHARACTER_NAMES = frozenset(
+    {
+        "同事",
+        "朋友",
+        "家人",
+        "老板",
+        "colleague",
+        "friend",
+        "family",
+        "boss",
+    }
+)
 
 # Generic option texts that indicate low-quality options
 GENERIC_OPTION_TEXTS = {

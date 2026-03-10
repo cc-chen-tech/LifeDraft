@@ -3,8 +3,9 @@
 Extracts AI-driven character profiling logic from game_loop.py into
 the AI layer where it belongs.
 """
+
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Any, Dict, List, Optional
 
 from src.ai.client import AIClient
 from src.ai.system_prompts import get_system_prompt

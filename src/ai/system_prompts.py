@@ -10,7 +10,6 @@ Usage:
     prompt = get_system_prompt("story_novelist", language)
 """
 
-
 # ==================== Story Generation ====================
 
 STORY_NOVELIST_ZH = (
@@ -98,10 +97,7 @@ YEARLY_SUMMARY = "You are a narrative summarizer. Generate comprehensive yearly 
 
 # ==================== Story Continuation ====================
 
-STORY_CONTINUATION_ZH = (
-    "你是一个专业的沉浸式叙事小说作家，"
-    "擅长第二人称视角的细腻描写。"
-)
+STORY_CONTINUATION_ZH = "你是一个专业的沉浸式叙事小说作家，" "擅长第二人称视角的细腻描写。"
 
 STORY_CONTINUATION_EN = (
     "You are a professional immersive narrative writer "
@@ -164,9 +160,7 @@ PROFILE_SYNTHESIZER_EN = (
 
 # ==================== Character Creation ====================
 
-WORLD_BUILDING_ZH = (
-    "你是一个创意世界构建助手。只返回有效的JSON，不要附加其他文本。"
-)
+WORLD_BUILDING_ZH = "你是一个创意世界构建助手。只返回有效的JSON，不要附加其他文本。"
 
 WORLD_BUILDING_EN = (
     "You are a creative world-building assistant. Return only valid JSON, no additional text."
@@ -176,21 +170,13 @@ RELATIONSHIP_DESIGNER_ZH = (
     "你是一个创意角色关系设计师。只返回有效的JSON，包含完整的角色属性，不要附加其他文本。"
 )
 
-RELATIONSHIP_DESIGNER_EN = (
-    "You are a creative character relationship designer. Return only valid JSON with complete character attributes, no additional text."
-)
+RELATIONSHIP_DESIGNER_EN = "You are a creative character relationship designer. Return only valid JSON with complete character attributes, no additional text."
 
-NARRATIVE_WRITER_ZH = (
-    "你是一个叙事作家。只返回有效的JSON，不要附加其他文本。"
-)
+NARRATIVE_WRITER_ZH = "你是一个叙事作家。只返回有效的JSON，不要附加其他文本。"
 
-NARRATIVE_WRITER_EN = (
-    "You are a narrative writer. Return only valid JSON, no additional text."
-)
+NARRATIVE_WRITER_EN = "You are a narrative writer. Return only valid JSON, no additional text."
 
-ATTRIBUTE_GENERATOR_ZH = (
-    "你是一个角色属性生成器。只返回有效的JSON，不要附加其他文本。"
-)
+ATTRIBUTE_GENERATOR_ZH = "你是一个角色属性生成器。只返回有效的JSON，不要附加其他文本。"
 
 ATTRIBUTE_GENERATOR_EN = (
     "You are a character attribute generator. Return only valid JSON, no additional text."
@@ -199,13 +185,9 @@ ATTRIBUTE_GENERATOR_EN = (
 
 # ==================== Narrative Summary (for monthly/yearly/endings) ====================
 
-NARRATIVE_SUMMARY_ZH = (
-    "你是一个叙事作家。只返回总结文本，不要附加其他内容。"
-)
+NARRATIVE_SUMMARY_ZH = "你是一个叙事作家。只返回总结文本，不要附加其他内容。"
 
-NARRATIVE_SUMMARY_EN = (
-    "You are a narrative writer. Return only the summary text."
-)
+NARRATIVE_SUMMARY_EN = "You are a narrative writer. Return only the summary text."
 
 
 # ==================== Custom Choice (Template) ====================

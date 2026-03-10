@@ -1,10 +1,12 @@
 """Presets router — CRUD for character presets."""
+
 import logging
 from typing import List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException
 
-from src.api.deps import get_db, get_current_user, get_current_user_optional
-from src.api.schemas import CreatePresetRequest, PresetInfo, MessageResponse
+from src.api.deps import get_current_user, get_current_user_optional, get_db
+from src.api.schemas import CreatePresetRequest, MessageResponse, PresetInfo
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

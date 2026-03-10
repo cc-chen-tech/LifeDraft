@@ -3,6 +3,7 @@
 Extracted from game_loop.py to reduce God Class complexity.
 All methods are static and accept a PlayerState instance.
 """
+
 import logging
 import math
 import random
@@ -79,9 +80,7 @@ class HistoricalSummarySelector:
 
         # 如果没有关键词，回退到随机选择
         if not keywords:
-            return HistoricalSummarySelector.select_random_historical_summary_fallback(
-                player_state
-            )
+            return HistoricalSummarySelector.select_random_historical_summary_fallback(player_state)
 
         weekly_summary = None
         yearly_summary = None

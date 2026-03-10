@@ -2,9 +2,10 @@
 
 Handles the processing of player choices and post-choice pipeline.
 """
+
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Callable, Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from src.ai.models import GameEvent
 from src.ai.vector_store import get_vector_store, is_vector_search_enabled
@@ -12,8 +13,8 @@ from src.game.narrative_manager import NarrativeManager
 from src.game.world_model_updater import WorldModelUpdater
 
 if TYPE_CHECKING:
-    from src.game.state import PlayerState
     from src.ai.generator import EventGenerator
+    from src.game.state import PlayerState
     from src.game.story_service import StoryService
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,7 @@ class RoundChoiceProcessor:
     @property
     def current_event(self) -> Optional[GameEvent]:
         return self._get_current_event()
-    
+
     def make_round_choice(
         self,
         option_index: int,
@@ -79,42 +80,42 @@ class RoundChoiceProcessor:
         """
         Process a player's choice for the current round.
         Updates attributes, generates story continuation, and handles round/week transitions.
-        
+
         Args:
             option_index: Index of the chosen option (0-based)
             stream_callback: Optional callback for streaming story continuation text
             status_callback: Optional callback for reporting processing status
             finalize_week_callback: Optional callback for week finalization
-        
+
         Returns:
             Dictionary with story_continuation, summary, effects_applied, need_weekly_summary, etc.
         """
         player_state = self.player_state
         if not player_state:
             raise ValueError("Game not started.")
-        
+
         current_event = self.current_event
         if not current_event:
             raise ValueError("No current event. Generate a round event first.")
-        
+
         # Save reference to current event at the start
         if option_index < 0 or option_index >= len(current_event.options):
             raise ValueError(f"Invalid option index: {option_index}")
-        
+
         chosen_option = current_event.options[option_index]
         effects = chosen_option.effects
-        
+
         # 1. Apply effects immediately (real-time update)
         player_state.update(
             energy=effects.get("energy", 0),
             mood=effects.get("mood", 0),
             knowledge=effects.get("knowledge", 0),
             wealth=effects.get("wealth", 0),
-            relationships=effects.get("relationships")
+            relationships=effects.get("relationships"),
         )
-        
+
         logger.debug(f"Applied effects: {effects}")
-        
+
         # 2. Generate story continuation
         story_continuation = self._generate_story_continuation(
             current_event.event_description,
@@ -123,12 +124,12 @@ class RoundChoiceProcessor:
             stream_callback=stream_callback,
             status_callback=status_callback,
         )
-        
+
         # 3. Build full story and delegate to shared pipeline
         full_story = current_event.event_description
         if story_continuation:
             full_story += "\n\n" + story_continuation
-        
+
         return self._post_choice_pipeline(
             event=current_event,
             choice_text=chosen_option.text,
@@ -149,40 +150,40 @@ class RoundChoiceProcessor:
         """
         处理用户自定义的选择。
         AI 会根据用户输入生成合理的结果和属性变化。
-        
+
         Args:
             custom_text: 用户自定义的选择文本
             stream_callback: Optional callback for streaming story continuation text
             status_callback: Optional callback for reporting processing status
             finalize_week_callback: Optional callback for week finalization
-        
+
         Returns:
             Dictionary with story_continuation, summary, effects_applied, need_weekly_summary, etc.
         """
         player_state = self.player_state
         if not player_state:
             raise ValueError("Game not started.")
-        
+
         current_event = self.current_event
         if not current_event:
             raise ValueError("No current event. Generate a round event first.")
-        
+
         logger.info(f"Processing custom choice: {custom_text[:50]}...")
-        
+
         # 1. 调用 AI 生成自定义选择的属性变化（快速 JSON 调用）
         effects = self._generate_custom_choice_effects(current_event.event_description, custom_text)
-        
+
         # 2. 应用属性变化
         player_state.update(
             energy=effects.get("energy", 0),
             mood=effects.get("mood", 0),
             knowledge=effects.get("knowledge", 0),
             wealth=effects.get("wealth", 0),
-            relationships=effects.get("relationships")
+            relationships=effects.get("relationships"),
         )
-        
+
         logger.debug(f"Applied effects from custom choice: {effects}")
-        
+
         # 3. 生成故事续写（流式输出）
         story_continuation = self._generate_story_continuation(
             current_event.event_description,
@@ -191,12 +192,12 @@ class RoundChoiceProcessor:
             stream_callback=stream_callback,
             status_callback=status_callback,
         )
-        
+
         # 4. Build full story and delegate to shared pipeline
         full_story = current_event.event_description
         if story_continuation:
             full_story += "\n\n" + story_continuation
-        
+
         return self._post_choice_pipeline(
             event=current_event,
             choice_text=custom_text,
@@ -221,11 +222,11 @@ class RoundChoiceProcessor:
     ) -> Dict[str, Any]:
         """
         Shared post-choice processing pipeline for make_round_choice and make_custom_choice.
-        
+
         Handles: story compression → narrative/world-model updates → save records → advance round → week finalization.
         """
         player_state = self.player_state
-        
+
         # 1. Parallel: narrative compression + world extraction + story analyzer
         if status_callback:
             status_callback("compressing")
@@ -236,17 +237,22 @@ class RoundChoiceProcessor:
 
         with ThreadPoolExecutor(max_workers=3) as executor:
             narrative_future = executor.submit(
-                self.story_service.compress_narrative,
-                full_story, choice_text, pending_storylines
+                self.story_service.compress_narrative, full_story, choice_text, pending_storylines
             )
             world_future = executor.submit(
                 self.story_service.extract_world_updates,
-                full_story, choice_text, established_facts, character_habits
+                full_story,
+                choice_text,
+                established_facts,
+                character_habits,
             )
             analyzer_future = executor.submit(
                 WorldModelUpdater.run_story_analyzer,
-                player_state, full_story, choice_text,
-                self.ai_generator.ai_client, self.language
+                player_state,
+                full_story,
+                choice_text,
+                self.ai_generator.ai_client,
+                self.language,
             )
             # Wait for all to complete
             narrative_result = narrative_future.result()
@@ -274,14 +280,30 @@ class RoundChoiceProcessor:
         logger.info(f"Event concluded: {event_concluded}, full story length: {len(full_story)}")
 
         # 4. Process narrative & world-model updates
-        NarrativeManager.process_storyline_updates(player_state, compression_result.get("storyline_updates", []))
-        NarrativeManager.process_fact_updates(player_state, compression_result.get("fact_updates", []))
-        NarrativeManager.process_foreshadowing_seeds(player_state, compression_result.get("foreshadowing_seeds", []))
-        NarrativeManager.process_habit_updates(player_state, compression_result.get("habit_updates", []))
-        WorldModelUpdater.process_location_updates(player_state, compression_result.get("location_updates", []))
-        WorldModelUpdater.process_career_updates(player_state, compression_result.get("career_updates", []))
-        WorldModelUpdater.process_commitment_updates(player_state, compression_result.get("commitment_updates", []))
-        WorldModelUpdater.process_causal_updates(player_state, compression_result.get("causal_updates", []))
+        NarrativeManager.process_storyline_updates(
+            player_state, compression_result.get("storyline_updates", [])
+        )
+        NarrativeManager.process_fact_updates(
+            player_state, compression_result.get("fact_updates", [])
+        )
+        NarrativeManager.process_foreshadowing_seeds(
+            player_state, compression_result.get("foreshadowing_seeds", [])
+        )
+        NarrativeManager.process_habit_updates(
+            player_state, compression_result.get("habit_updates", [])
+        )
+        WorldModelUpdater.process_location_updates(
+            player_state, compression_result.get("location_updates", [])
+        )
+        WorldModelUpdater.process_career_updates(
+            player_state, compression_result.get("career_updates", [])
+        )
+        WorldModelUpdater.process_commitment_updates(
+            player_state, compression_result.get("commitment_updates", [])
+        )
+        WorldModelUpdater.process_causal_updates(
+            player_state, compression_result.get("causal_updates", [])
+        )
 
         # 4.5 Sync story characters to character_settings
         # This handles characters that AI introduced in the story without going through
@@ -338,7 +360,7 @@ class RoundChoiceProcessor:
                         "round": player_state.current_round,
                         "choice": choice_text[:100],  # 截断防止过长
                         "is_custom": is_custom,
-                    }
+                    },
                 )
             except Exception as e:
                 logger.warning(f"Failed to add story to vector store: {e}")
@@ -357,7 +379,9 @@ class RoundChoiceProcessor:
 
         # ★ 显示用周数（人类可读，从1开始）
         week_display = f"第{player_state.week + 1}周" if player_state.week is not None else "未知周"
-        logger.info(f"Saved {'custom ' if is_custom else ''}choice record: {week_display}, round={player_state.current_round}")
+        logger.info(
+            f"Saved {'custom ' if is_custom else ''}choice record: {week_display}, round={player_state.current_round}"
+        )
 
         # 6. Clear current event data
         player_state.current_event_data = None
@@ -386,7 +410,9 @@ class RoundChoiceProcessor:
 
         return result
 
-    def _generate_custom_choice_effects(self, event_description: str, custom_text: str) -> Dict[str, Any]:
+    def _generate_custom_choice_effects(
+        self, event_description: str, custom_text: str
+    ) -> Dict[str, Any]:
         """用 AI 生成自定义选择的属性变化。委托给 StoryService。"""
         player_state = self.player_state
         character_settings = player_state.character_settings if player_state else {}
@@ -395,7 +421,9 @@ class RoundChoiceProcessor:
             event_description, custom_text, character_settings, current_state
         )
 
-    def _generate_custom_choice_result(self, event_description: str, custom_text: str) -> Dict[str, Any]:
+    def _generate_custom_choice_result(
+        self, event_description: str, custom_text: str
+    ) -> Dict[str, Any]:
         """用 AI 生成自定义选择的结果。委托给 StoryService。"""
         player_state = self.player_state
         character_settings = player_state.character_settings if player_state else {}
@@ -417,7 +445,10 @@ class RoundChoiceProcessor:
         character_settings = player_state.character_settings if player_state else {}
         player_state_dict = player_state.to_dict() if player_state else {}
         return self.story_service.generate_story_continuation(
-            event_description, chosen_option, effects, character_settings,
+            event_description,
+            chosen_option,
+            effects,
+            character_settings,
             player_state=player_state_dict,
             stream_callback=stream_callback,
             status_callback=status_callback,

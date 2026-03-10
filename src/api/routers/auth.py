@@ -1,14 +1,16 @@
 """Auth router — register, login, me, logout."""
-import os
+
 import logging
+import os
 from datetime import timedelta
-from fastapi import APIRouter, Depends, HTTPException, status, Response
+
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import JSONResponse
 
-from src.api.deps import get_user_manager, get_current_user, create_token, JWT_EXPIRE_HOURS
-from src.api.schemas import (
-    RegisterRequest, LoginRequest, AuthResponse, UserInfo, MessageResponse,
-)
+from src.api.deps import (JWT_EXPIRE_HOURS, create_token, get_current_user,
+                          get_user_manager)
+from src.api.schemas import (AuthResponse, LoginRequest, MessageResponse,
+                             RegisterRequest, UserInfo)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -52,7 +54,7 @@ async def register(req: RegisterRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
     token = create_token(user.user_id)
-    
+
     # 创建响应并设置Cookie
     response = JSONResponse(
         content=AuthResponse(
@@ -66,7 +68,7 @@ async def register(req: RegisterRequest):
         ).model_dump()
     )
     _set_auth_cookie(response, token)
-    
+
     return response
 
 
@@ -82,7 +84,7 @@ async def login(req: LoginRequest):
         )
 
     token = create_token(user.user_id)
-    
+
     # 创建响应并设置Cookie
     response = JSONResponse(
         content=AuthResponse(
@@ -95,7 +97,7 @@ async def login(req: LoginRequest):
         ).model_dump()
     )
     _set_auth_cookie(response, token)
-    
+
     return response
 
 
@@ -117,7 +119,7 @@ async def get_me(user_id: int = Depends(get_current_user)):
 async def logout(response: Response):
     """
     Logout — clear the auth Cookie and instruct client to discard token.
-    
+
     ★ 同时清除Cookie和提示客户端清除localStorage
     """
     _clear_auth_cookie(response)

@@ -1,8 +1,9 @@
 """GameLoop session store — manages in-memory GameLoop instances per user session."""
+
 import logging
-import time
 import threading
-from typing import Optional, Dict, Tuple
+import time
+from typing import Dict, Optional, Tuple
 
 from src.game.game_loop import GameLoop
 
@@ -15,7 +16,16 @@ SESSION_TIMEOUT = 2 * 60 * 60
 class GameLoopSession:
     """Wrapper holding a GameLoop instance with metadata."""
 
-    __slots__ = ("game_loop", "game_id", "user_id", "last_access", "language", "_is_generating", "sse_cache", "_sse_event_id")
+    __slots__ = (
+        "game_loop",
+        "game_id",
+        "user_id",
+        "last_access",
+        "language",
+        "_is_generating",
+        "sse_cache",
+        "_sse_event_id",
+    )
 
     # Maximum number of SSE story chunks to cache for reconnection
     MAX_SSE_CACHE_SIZE = 500
@@ -47,7 +57,7 @@ class GameLoopSession:
 
     def try_start_generating(self) -> bool:
         """Try to acquire generating lock. Returns True if successful, False if already generating.
-        
+
         Note: This is safe in asyncio single-threaded model because Python operations
         between await points are atomic. No threading.Lock needed.
         """
@@ -82,7 +92,7 @@ class GameLoopSession:
         cached_count = len(self.sse_cache)
         # First cached event ID
         first_cached_id = total_chunks - cached_count
-        
+
         result = []
         start_id = last_event_id + 1
         for event_id in range(start_id, total_chunks):
@@ -170,8 +180,7 @@ class SessionStore:
         prefix = f"user_{user_id}_game_"
         with self._lock:
             return [
-                s for k, s in self._sessions.items()
-                if k.startswith(prefix) and not s.is_expired
+                s for k, s in self._sessions.items() if k.startswith(prefix) and not s.is_expired
             ]
 
     @property

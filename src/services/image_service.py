@@ -3,28 +3,32 @@
 协调图像生成、存储和数据库记录。
 重构版本：委托给专门的子服务处理。
 """
+
 import logging
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
 from config.settings import settings
-from src.ai.image_client import ImageClient, ImageGenerationError, ContentInspectionError
-from src.services.image_storage import ImageStorageService, ImageStorageError
+from src.ai.image_client import (ContentInspectionError, ImageClient,
+                                 ImageGenerationError)
 from src.database.models import Image as ImageModel
 from src.services.image.character_service import CharacterImageService
 from src.services.image.scene_service import SceneImageService
+from src.services.image_storage import ImageStorageError, ImageStorageService
 
 logger = logging.getLogger(__name__)
 
 
 class ImageServiceError(Exception):
     """图像服务错误"""
+
     pass
 
 
 class ImageContentError(ImageServiceError):
     """图像内容审核错误"""
+
     def __init__(self, message: str, original_prompt: str = None):
         super().__init__(message)
         self.original_prompt = original_prompt
@@ -234,24 +238,26 @@ class ImageService:
             referenced_image_ids = []
 
             # 获取当前场景插画作为参考
-            current_scene = self.db.query(SceneImage).filter(
-                SceneImage.scene_id == current_scene_id
-            ).first()
+            current_scene = (
+                self.db.query(SceneImage).filter(SceneImage.scene_id == current_scene_id).first()
+            )
 
             if current_scene:
                 try:
                     image_data = self.storage_service.get_image_data(
-                        current_scene.storage_path,
-                        current_scene.storage_type
+                        current_scene.storage_path, current_scene.storage_type
                     )
                     if image_data:
                         import base64
-                        ext = current_scene.storage_path.rsplit('.', 1)[-1].lower()
-                        mime_type = 'image/png' if ext == 'png' else 'image/jpeg'
-                        base64_data = base64.b64encode(image_data).decode('utf-8')
+
+                        ext = current_scene.storage_path.rsplit(".", 1)[-1].lower()
+                        mime_type = "image/png" if ext == "png" else "image/jpeg"
+                        base64_data = base64.b64encode(image_data).decode("utf-8")
                         reference_urls.append(f"data:{mime_type};base64,{base64_data}")
                         referenced_image_ids.append(current_scene_id)
-                        logger.info(f"Using current scene as reference (base64, {len(image_data)} bytes)")
+                        logger.info(
+                            f"Using current scene as reference (base64, {len(image_data)} bytes)"
+                        )
                 except Exception as e:
                     logger.warning(f"Failed to get current scene: {e}")
 
@@ -290,9 +296,11 @@ class ImageService:
 
             # 保存图片 - ★ 传递 week 和 stage 参数，确保文件名格式一致
             # ★ 使用当前场景的 week 和 stage，保持一致性
-            current_week = current_scene.week if current_scene else self._get_current_week_from_db(game_id)
-            current_stage = current_scene.stage if current_scene else 'result'
-            
+            current_week = (
+                current_scene.week if current_scene else self._get_current_week_from_db(game_id)
+            )
+            current_stage = current_scene.stage if current_scene else "result"
+
             storage_path, storage_type = self.storage_service.save_image(
                 image_data=image_data,
                 game_id=game_id,
@@ -306,15 +314,18 @@ class ImageService:
             # 更新或创建 SceneImage 记录
             if current_scene:
                 from datetime import datetime
+
                 # ★ 删除旧图片文件，避免磁盘空间浪费
                 old_storage_path = current_scene.storage_path
                 if old_storage_path:
                     try:
-                        self.storage_service.delete_image(old_storage_path, current_scene.storage_type)
+                        self.storage_service.delete_image(
+                            old_storage_path, current_scene.storage_type
+                        )
                         logger.info(f"Deleted old scene image: {old_storage_path}")
                     except Exception as e:
                         logger.warning(f"Failed to delete old scene image: {e}")
-                
+
                 current_scene.scene_description = scene_desc
                 current_scene.final_prompt = combined_prompt
                 current_scene.storage_path = storage_path
@@ -324,7 +335,9 @@ class ImageService:
                 current_scene.created_at = datetime.utcnow()  # ★ 更新时间戳，用于缓存破坏
                 self.db.commit()
                 self.db.refresh(current_scene)
-                logger.info(f"Round scene updated: scene_id={current_scene.scene_id}, new_path={storage_path}")
+                logger.info(
+                    f"Round scene updated: scene_id={current_scene.scene_id}, new_path={storage_path}"
+                )
 
                 # ★ 返回 SceneImage 对象
                 return current_scene
@@ -366,9 +379,7 @@ class ImageService:
 
     def get_image(self, image_id: int) -> Optional[ImageModel]:
         """获取图片记录"""
-        return self.db.query(ImageModel).filter(
-            ImageModel.image_id == image_id
-        ).first()
+        return self.db.query(ImageModel).filter(ImageModel.image_id == image_id).first()
 
     def get_active_image(
         self,
@@ -377,12 +388,17 @@ class ImageService:
         entity_name: str,
     ) -> Optional[ImageModel]:
         """获取活跃的图片记录"""
-        return self.db.query(ImageModel).filter(
-            ImageModel.game_id == game_id,
-            ImageModel.image_type == image_type,
-            ImageModel.entity_name == entity_name,
-            ImageModel.is_active == True,
-        ).order_by(ImageModel.version.desc()).first()
+        return (
+            self.db.query(ImageModel)
+            .filter(
+                ImageModel.game_id == game_id,
+                ImageModel.image_type == image_type,
+                ImageModel.entity_name == entity_name,
+                ImageModel.is_active == True,
+            )
+            .order_by(ImageModel.version.desc())
+            .first()
+        )
 
     def get_all_images_for_game(
         self,
@@ -586,12 +602,15 @@ class ImageService:
 
     def _get_current_week_from_db(self, game_id: int) -> int:
         """从数据库获取游戏当前的周数"""
-        from src.database.models import GameState, Game
+        from src.database.models import Game, GameState
 
         try:
-            game_state = self.db.query(GameState).filter(
-                GameState.game_id == game_id
-            ).order_by(GameState.state_id.desc()).first()
+            game_state = (
+                self.db.query(GameState)
+                .filter(GameState.game_id == game_id)
+                .order_by(GameState.state_id.desc())
+                .first()
+            )
 
             if game_state and game_state.state_json:
                 week = game_state.state_json.get("week")
@@ -608,7 +627,9 @@ class ImageService:
 
         return 0
 
-    def _build_char_info(self, character_settings: Dict[str, Any], player_name: str) -> Dict[str, Any]:
+    def _build_char_info(
+        self, character_settings: Dict[str, Any], player_name: str
+    ) -> Dict[str, Any]:
         """构建角色信息字典"""
         char_info = {
             "name": player_name,
@@ -637,28 +658,36 @@ class ImageService:
 
         player_image = None
         if player_image_id:
-            player_image = self.db.query(ImageModel).filter(
-                ImageModel.image_id == player_image_id,
-                ImageModel.game_id == game_id
-            ).first()
+            player_image = (
+                self.db.query(ImageModel)
+                .filter(ImageModel.image_id == player_image_id, ImageModel.game_id == game_id)
+                .first()
+            )
             if not player_image:
-                logger.warning(f"player_image_id={player_image_id} does not belong to game_id={game_id}")
+                logger.warning(
+                    f"player_image_id={player_image_id} does not belong to game_id={game_id}"
+                )
 
         if not player_image:
-            player_image = self.db.query(ImageModel).filter(
-                ImageModel.game_id == game_id,
-                ImageModel.image_type == "character",
-                ImageModel.is_primary == True
-            ).order_by(ImageModel.image_id.desc()).first()
+            player_image = (
+                self.db.query(ImageModel)
+                .filter(
+                    ImageModel.game_id == game_id,
+                    ImageModel.image_type == "character",
+                    ImageModel.is_primary == True,
+                )
+                .order_by(ImageModel.image_id.desc())
+                .first()
+            )
             if player_image:
                 logger.info(f"Auto-selected primary player image: {player_image.image_id}")
 
         if player_image:
             try:
                 image_data = self.get_image_data(player_image)
-                ext = player_image.storage_path.rsplit('.', 1)[-1].lower()
-                mime_type = 'image/png' if ext == 'png' else 'image/jpeg'
-                base64_data = base64.b64encode(image_data).decode('utf-8')
+                ext = player_image.storage_path.rsplit(".", 1)[-1].lower()
+                mime_type = "image/png" if ext == "png" else "image/jpeg"
+                base64_data = base64.b64encode(image_data).decode("utf-8")
                 return f"data:{mime_type};base64,{base64_data}", player_image.image_id
             except Exception as e:
                 logger.warning(f"Failed to get player image: {e}")
@@ -667,27 +696,34 @@ class ImageService:
 
     def _get_character_settings_from_db(self, game_id: int) -> tuple:
         """从数据库获取角色设定"""
-        from src.database.models import GameState, Game
+        from src.database.models import Game, GameState
 
         db_character_settings = None
         db_player_name = None
 
         try:
-            game_state = self.db.query(GameState).filter(
-                GameState.game_id == game_id
-            ).order_by(GameState.state_id.desc()).first()
+            game_state = (
+                self.db.query(GameState)
+                .filter(GameState.game_id == game_id)
+                .order_by(GameState.state_id.desc())
+                .first()
+            )
 
             if game_state and game_state.state_json:
                 db_character_settings = game_state.state_json.get("character_settings")
                 db_player_name = game_state.state_json.get("player_name")
-                logger.info(f"Loaded character_settings from GameState (state_id={game_state.state_id})")
+                logger.info(
+                    f"Loaded character_settings from GameState (state_id={game_state.state_id})"
+                )
 
             if not db_character_settings:
                 game = self.db.query(Game).filter(Game.game_id == game_id).first()
                 if game and game.initial_state:
                     db_character_settings = game.initial_state.get("character_settings")
                     db_player_name = game.initial_state.get("player_name")
-                    logger.info(f"Loaded character_settings from Game.initial_state (game_id={game_id})")
+                    logger.info(
+                        f"Loaded character_settings from Game.initial_state (game_id={game_id})"
+                    )
         except Exception as e:
             logger.warning(f"Failed to load character_settings from database: {e}")
 

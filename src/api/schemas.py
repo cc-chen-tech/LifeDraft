@@ -1,19 +1,24 @@
 """Pydantic request/response models for all API endpoints."""
-from typing import Dict, Any, Optional, List
+
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
 
-
 # ==================== Auth ====================
+
 
 class RegisterRequest(BaseModel):
     display_name: str = Field(..., min_length=1, max_length=50)
 
+
 class LoginRequest(BaseModel):
     private_id: str = Field(..., min_length=1)
+
 
 class AuthResponse(BaseModel):
     token: str
     user: "UserInfo"
+
 
 class UserInfo(BaseModel):
     user_id: int
@@ -24,17 +29,21 @@ class UserInfo(BaseModel):
 
 # ==================== Friends ====================
 
+
 class FriendRequestCreate(BaseModel):
     to_public_id: str = Field(..., min_length=1)
+
 
 class FriendRequestRespond(BaseModel):
     request_id: int
     accept: bool
 
+
 class FriendInfo(BaseModel):
     user_id: int
     public_id: str
     display_name: Optional[str] = None
+
 
 class FriendRequestInfo(BaseModel):
     request_id: int
@@ -44,11 +53,13 @@ class FriendRequestInfo(BaseModel):
 
 # ==================== Games ====================
 
+
 class CreateGameRequest(BaseModel):
     character_settings: Dict[str, Any]
     player_name: str
     life_vision: str
     language: str = "zh"
+
 
 class GameListItem(BaseModel):
     game_id: int
@@ -59,12 +70,14 @@ class GameListItem(BaseModel):
     updated_at: Optional[str] = None
     has_progress: bool = False
 
+
 class GameStateResponse(BaseModel):
     game_id: int
     player_state: Dict[str, Any]
     progress: Dict[str, Any]
     round_info: Dict[str, Any]
     current_event: Optional[Dict[str, Any]] = None
+
 
 class SaveGameResponse(BaseModel):
     success: bool
@@ -73,13 +86,17 @@ class SaveGameResponse(BaseModel):
 
 # ==================== Character Creation ====================
 
+
 class GenerateSettingRequest(BaseModel):
-    setting_type: str = Field(..., description="era|age|gender|world|family|relationships|traits|wealth")
+    setting_type: str = Field(
+        ..., description="era|age|gender|world|family|relationships|traits|wealth"
+    )
     player_name: str
     life_vision: str
     previous_settings: Dict[str, Any] = Field(default_factory=dict)
     feedback: Optional[str] = None
     language: str = "zh"
+
 
 class GenerateRelationshipRequest(BaseModel):
     player_name: str
@@ -91,15 +108,18 @@ class GenerateRelationshipRequest(BaseModel):
     feedback: Optional[str] = None
     language: str = "zh"
 
+
 class GenerateAttributesRequest(BaseModel):
     character_settings: Dict[str, Any]
     language: str = "zh"
+
 
 class OpeningStoryRequest(BaseModel):
     character_settings: Dict[str, Any]
     player_name: str
     life_vision: str
     language: str = "zh"
+
 
 class RelationshipsSummaryRequest(BaseModel):
     player_name: str
@@ -111,11 +131,13 @@ class RelationshipsSummaryRequest(BaseModel):
 
 # ==================== Presets ====================
 
+
 class CreatePresetRequest(BaseModel):
     preset_name: str = Field(..., min_length=1, max_length=100)
     player_name: str
     life_vision: str = ""
     character_settings: Dict[str, Any] = Field(default_factory=dict)
+
 
 class PresetInfo(BaseModel):
     preset_id: int
@@ -128,14 +150,18 @@ class PresetInfo(BaseModel):
 
 # ==================== Gameplay ====================
 
+
 class MakeChoiceRequest(BaseModel):
     option_index: int = Field(..., ge=0)
+
 
 class CustomChoiceRequest(BaseModel):
     custom_text: str = Field(..., min_length=1)
 
+
 class GenerateSummaryRequest(BaseModel):
     weeks: int = Field(default=10, ge=1)
+
 
 class ChoiceResultResponse(BaseModel):
     story_continuation: str = ""
@@ -149,24 +175,29 @@ class ChoiceResultResponse(BaseModel):
 
 # ==================== Story Adjustment ====================
 
+
 class RewriteStoryRequest(BaseModel):
     full_story: str
     segment_to_replace: Optional[str] = None  # 可选，不提供则改写整个故事
     user_instruction: str
     language: str = "zh"
 
+
 class RegenerateStoryRequest(BaseModel):
     language: str = "zh"
+
 
 class StoryChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
     language: str = "zh"
+
 
 class StoryChatResponse(BaseModel):
     reply: str
 
 
 # ==================== Generic ====================
+
 
 class MessageResponse(BaseModel):
     message: str
@@ -176,8 +207,10 @@ class MessageResponse(BaseModel):
 
 # ==================== Image Generation ====================
 
+
 class GenerateImageRequest(BaseModel):
     """生成图片请求"""
+
     game_id: int
     image_type: str = Field(..., description="character|location|item")
     entity_name: str = Field(..., description="人物名/地点名/物品名")
@@ -187,8 +220,10 @@ class GenerateImageRequest(BaseModel):
     extra_context: Optional[Dict[str, Any]] = Field(None, description="额外上下文")
     feedback: Optional[str] = Field(None, description="重新生成时的修改意见")
 
+
 class RegenerateImageRequest(BaseModel):
     """重新生成图片请求"""
+
     image_id: int
     feedback: Optional[str] = Field(None, description="修改意见")
     new_description: Optional[str] = Field(None, description="新描述")
@@ -196,18 +231,24 @@ class RegenerateImageRequest(BaseModel):
 
 class RegenerateFreshImageRequest(BaseModel):
     """完全重新生成图片请求（抛弃历史修改）"""
+
     image_id: int
     use_deepseek_prompt: bool = Field(True, description="是否使用DeepSeek生成优化prompt")
 
 
 class BatchGenerateCharactersRequest(BaseModel):
     """批量生成关键人物画像请求"""
+
     game_id: int
-    character_settings: Dict[str, Any] = Field(..., description="角色设定（包含family和relationships）")
+    character_settings: Dict[str, Any] = Field(
+        ..., description="角色设定（包含family和relationships）"
+    )
     language: str = Field(default="zh", description="语言")
+
 
 class ImageResponse(BaseModel):
     """图片响应"""
+
     image_id: int
     game_id: int
     image_type: str
@@ -218,20 +259,26 @@ class ImageResponse(BaseModel):
     version: int = 1
     created_at: Optional[str] = None
 
+
 class ImageListResponse(BaseModel):
     """图片列表响应"""
+
     images: List[ImageResponse]
     total: int
 
 
 # ==================== Save Points (时间回溯) ====================
 
+
 class CreateSavePointRequest(BaseModel):
     """创建存档点请求"""
+
     save_name: Optional[str] = Field(None, description="存档名称（可选）")
+
 
 class SavePointItem(BaseModel):
     """存档点信息"""
+
     state_id: int
     game_id: int
     week: int
@@ -241,15 +288,19 @@ class SavePointItem(BaseModel):
     player_name: str = "未命名"
     is_save_point: bool = True
 
+
 class SavePointListResponse(BaseModel):
     """存档点列表响应"""
+
     game_id: int
     player_name: str
     save_points: List[SavePointItem]
     total: int
 
+
 class StateSnapshotItem(BaseModel):
     """状态快照信息（包括自动快照和手动存档）"""
+
     state_id: int
     game_id: int
     week: int
@@ -259,8 +310,10 @@ class StateSnapshotItem(BaseModel):
     created_at: Optional[str] = None
     player_name: str = "未命名"
 
+
 class StateTimelineResponse(BaseModel):
     """状态时间线响应"""
+
     game_id: int
     player_name: str
     snapshots: List[StateSnapshotItem]
@@ -269,16 +322,20 @@ class StateTimelineResponse(BaseModel):
 
 # ==================== Opening Illustration ====================
 
+
 class GenerateOpeningIllustrationRequest(BaseModel):
     """生成开场插画请求"""
+
     game_id: int
     story_text: str = Field(..., description="开场故事文本")
     character_settings: Dict[str, Any] = Field(default_factory=dict, description="角色设定")
     player_image_id: Optional[int] = Field(None, description="可选：已有的人物图片ID")
     player_name: str = Field(..., description="角色姓名")
 
+
 class OpeningIllustrationResponse(BaseModel):
     """开场插画响应"""
+
     image_id: int
     game_id: int
     image_url: str
@@ -289,6 +346,7 @@ class OpeningIllustrationResponse(BaseModel):
 
 class RegenerateOpeningIllustrationRequest(BaseModel):
     """重新生成开场插画请求"""
+
     game_id: int
     story_text: str = Field(..., description="开场故事文本")
     character_settings: Dict[str, Any] = Field(default_factory=dict, description="角色设定")
@@ -300,6 +358,7 @@ class RegenerateOpeningIllustrationRequest(BaseModel):
 
 class RegenerateRoundSceneRequest(BaseModel):
     """重新生成每轮场景插画请求"""
+
     game_id: int
     round_number: int = Field(..., description="轮次")
     story_text: str = Field(..., description="该轮的故事文本")
@@ -312,6 +371,7 @@ class RegenerateRoundSceneRequest(BaseModel):
 
 class GenerateRoundSceneRequest(BaseModel):
     """自动生成每轮场景插画请求"""
+
     game_id: int
     week: Optional[int] = Field(None, description="周数（可选，不传则自动从数据库获取）")
     round_number: int = Field(..., description="轮次")
@@ -324,6 +384,7 @@ class GenerateRoundSceneRequest(BaseModel):
 
 class RoundSceneResponse(BaseModel):
     """场景插画响应"""
+
     scene_id: int
     game_id: int
     week: int = 0  # ★ 新增：周数
@@ -332,3 +393,82 @@ class RoundSceneResponse(BaseModel):
     image_url: str
     scene_description: str
     created_at: Optional[str] = None
+
+
+# ==================== Collection (收集系统) ====================
+
+
+class CharacterCollectionItem(BaseModel):
+    """人物收集项"""
+
+    name: str
+    role: str = ""
+    description: str = ""
+    affinity: int = 50
+    age: Optional[int] = None
+    gender: Optional[str] = None
+    occupation: Optional[str] = None
+    personality_traits: List[str] = Field(default_factory=list)
+    image_url: Optional[str] = None
+    image_generated: bool = False
+    description_generated: bool = False
+
+
+class ItemCollectionItem(BaseModel):
+    """物品收集项"""
+
+    name: str
+    description: str = ""
+    importance: str = "normal"  # critical/important/normal
+    category: str = "other"  # weapon/tool/keepsake/treasure/document/other
+    acquired_week: int = 0
+    acquired_context: str = ""
+    is_key_item: bool = False
+    image_url: Optional[str] = None
+    image_generated: bool = False
+    description_generated: bool = False
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class LandmarkCollectionItem(BaseModel):
+    """标志物收集项"""
+
+    name: str
+    description: str = ""
+    category: str = "other"  # building/nature/room/area/other
+    importance: str = "normal"  # critical/important/normal
+    first_appear_week: int = 0
+    appear_count: int = 1
+    last_appear_week: int = 0
+    context: str = ""
+    is_key_location: bool = False
+    image_url: Optional[str] = None
+    image_generated: bool = False
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class CollectionResponse(BaseModel):
+    """收集数据响应"""
+
+    game_id: int
+    characters: List[CharacterCollectionItem]
+    items: List[ItemCollectionItem]
+    landmarks: List[LandmarkCollectionItem] = Field(default_factory=list)
+    total_characters: int
+    total_items: int
+    total_landmarks: int = 0
+
+
+class RegenerateCharacterImageRequest(BaseModel):
+    """重新生成人物画像请求"""
+
+    feedback: str = Field(..., description="用户修改意见，例如：头发变长一点、换一件蓝色衣服")
+    image_id: Optional[int] = Field(
+        None, description="可选：指定要修改的图片ID，不传则使用当前活跃图片"
+    )
+
+
+class RegenerateItemImageRequest(BaseModel):
+    """重新生成物品图片请求"""
+
+    feedback: str = Field(..., description="用户修改意见")

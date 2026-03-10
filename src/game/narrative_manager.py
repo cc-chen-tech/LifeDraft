@@ -4,10 +4,11 @@ Extracted from game_loop.py to reduce God Class complexity.
 All methods accept a PlayerState instance as the first argument instead of
 relying on ``self.player_state``, making the module stateless and testable.
 """
+
 import logging
 import math
 import random
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -81,14 +82,20 @@ class NarrativeManager:
             importance = sl.get("importance", "medium")
 
             if weeks_since_mention > 20:
-                logger.info(f"Removing expired storyline ({weeks_since_mention} weeks dormant): {sl.get('description', '')[:50]}...")
+                logger.info(
+                    f"Removing expired storyline ({weeks_since_mention} weeks dormant): {sl.get('description', '')[:50]}..."
+                )
                 continue
             if importance == "medium" and weeks_since_mention > 12:
-                logger.info(f"Removing stale medium storyline ({weeks_since_mention} weeks dormant): {sl.get('description', '')[:50]}...")
+                logger.info(
+                    f"Removing stale medium storyline ({weeks_since_mention} weeks dormant): {sl.get('description', '')[:50]}..."
+                )
                 continue
             if importance == "high" and weeks_since_mention > 8:
                 sl["importance"] = "medium"
-                logger.info(f"Demoted high->medium storyline ({weeks_since_mention} weeks dormant): {sl.get('description', '')[:50]}...")
+                logger.info(
+                    f"Demoted high->medium storyline ({weeks_since_mention} weeks dormant): {sl.get('description', '')[:50]}..."
+                )
 
             updated_storylines.append(sl)
 
@@ -123,8 +130,12 @@ class NarrativeManager:
                 if not fact_text:
                     continue
                 player_state.established_facts = [
-                    f for f in player_state.established_facts
-                    if not (f.get("subject", "").lower() == subject.lower() and f.get("category", "") == category)
+                    f
+                    for f in player_state.established_facts
+                    if not (
+                        f.get("subject", "").lower() == subject.lower()
+                        and f.get("category", "") == category
+                    )
                 ]
                 new_fact = {
                     "fact": fact_text,
@@ -158,12 +169,15 @@ class NarrativeManager:
                         "established_week": current_week,
                     }
                     player_state.established_facts.append(new_fact)
-                    logger.info(f"New world fact (from update): [{category}] {subject}: {fact_text[:50]}...")
+                    logger.info(
+                        f"New world fact (from update): [{category}] {subject}: {fact_text[:50]}..."
+                    )
 
             elif action == "remove":
                 before_count = len(player_state.established_facts)
                 player_state.established_facts = [
-                    f for f in player_state.established_facts
+                    f
+                    for f in player_state.established_facts
                     if f.get("subject", "").lower() != subject.lower()
                 ]
                 removed_count = before_count - len(player_state.established_facts)
@@ -240,7 +254,9 @@ class NarrativeManager:
             seed_characters = {c.lower() for c in seed.get("related_characters", [])}
             if seed_characters & active_characters:
                 prob *= 2.0
-                logger.debug(f"Foreshadowing context match doubled: {seed.get('description', '')[:30]}...")
+                logger.debug(
+                    f"Foreshadowing context match doubled: {seed.get('description', '')[:30]}..."
+                )
 
             seed_storylines = seed.get("related_storylines", [])
             if seed_storylines:
@@ -268,8 +284,8 @@ class NarrativeManager:
                 metrics["recovery_distances"].append(recovery_distance)
                 if len(metrics["recovery_distances"]) > 20:
                     metrics["recovery_distances"] = metrics["recovery_distances"][-20:]
-                metrics["avg_recovery_distance"] = (
-                    sum(metrics["recovery_distances"]) / len(metrics["recovery_distances"])
+                metrics["avg_recovery_distance"] = sum(metrics["recovery_distances"]) / len(
+                    metrics["recovery_distances"]
                 )
 
                 logger.info(
@@ -388,7 +404,9 @@ class NarrativeManager:
 
             if not seed.get("activated", False) and weeks_since_planted > 60:
                 metrics["total_expired"] += 1
-                logger.info(f"Foreshadowing seed expired ({weeks_since_planted}w): {seed.get('description', '')[:30]}...")
+                logger.info(
+                    f"Foreshadowing seed expired ({weeks_since_planted}w): {seed.get('description', '')[:30]}..."
+                )
                 continue
 
             cleaned_seeds.append(seed)
@@ -396,7 +414,9 @@ class NarrativeManager:
         player_state.foreshadowing_seeds = cleaned_seeds
 
         # 3. Limit active seeds to 20
-        active_seeds = [s for s in player_state.foreshadowing_seeds if not s.get("activated", False)]
+        active_seeds = [
+            s for s in player_state.foreshadowing_seeds if not s.get("activated", False)
+        ]
         if len(active_seeds) > 20:
             weight_order = {"major": 0, "supporting": 1, "minor": 2}
             active_seeds.sort(
@@ -449,10 +469,16 @@ class NarrativeManager:
                     ):
                         exists = True
                         h["last_seen_week"] = current_week
-                        idx = strength_order.index(h.get("strength", "moderate")) if h.get("strength", "moderate") in strength_order else 1
+                        idx = (
+                            strength_order.index(h.get("strength", "moderate"))
+                            if h.get("strength", "moderate") in strength_order
+                            else 1
+                        )
                         if idx < len(strength_order) - 1:
                             h["strength"] = strength_order[idx + 1]
-                        logger.info(f"Habit exists, strengthened: {character} - {habit_desc[:30]}... -> {h['strength']}")
+                        logger.info(
+                            f"Habit exists, strengthened: {character} - {habit_desc[:30]}... -> {h['strength']}"
+                        )
                         break
 
                 if not exists:
@@ -473,7 +499,9 @@ class NarrativeManager:
                         "origin": update.get("origin", ""),
                     }
                     player_state.character_habits.append(new_habit)
-                    logger.info(f"New habit: {character} - [{category}/{strength}] {habit_desc[:50]}")
+                    logger.info(
+                        f"New habit: {character} - [{category}/{strength}] {habit_desc[:50]}"
+                    )
 
             elif action == "strengthen":
                 for h in player_state.character_habits:
@@ -482,10 +510,16 @@ class NarrativeManager:
                         or h.get("habit", "").lower() in habit_desc.lower()
                     ):
                         h["last_seen_week"] = current_week
-                        idx = strength_order.index(h.get("strength", "moderate")) if h.get("strength", "moderate") in strength_order else 1
+                        idx = (
+                            strength_order.index(h.get("strength", "moderate"))
+                            if h.get("strength", "moderate") in strength_order
+                            else 1
+                        )
                         if idx < len(strength_order) - 1:
                             h["strength"] = strength_order[idx + 1]
-                        logger.info(f"Habit strengthened: {character} - {habit_desc[:30]}... -> {h['strength']}")
+                        logger.info(
+                            f"Habit strengthened: {character} - {habit_desc[:30]}... -> {h['strength']}"
+                        )
                         break
 
             elif action == "weaken":
@@ -495,14 +529,22 @@ class NarrativeManager:
                         or h.get("habit", "").lower() in habit_desc.lower()
                     ):
                         h["last_seen_week"] = current_week
-                        idx = strength_order.index(h.get("strength", "moderate")) if h.get("strength", "moderate") in strength_order else 1
+                        idx = (
+                            strength_order.index(h.get("strength", "moderate"))
+                            if h.get("strength", "moderate") in strength_order
+                            else 1
+                        )
                         if idx > 0:
                             h["strength"] = strength_order[idx - 1]
-                            logger.info(f"Habit weakened: {character} - {habit_desc[:30]}... -> {h['strength']}")
+                            logger.info(
+                                f"Habit weakened: {character} - {habit_desc[:30]}... -> {h['strength']}"
+                            )
                         else:
                             player_state.character_habits.remove(h)
                             reason = update.get("reason", "natural decay")
-                            logger.info(f"Habit faded: {character} - {habit_desc[:30]}... (reason: {reason})")
+                            logger.info(
+                                f"Habit faded: {character} - {habit_desc[:30]}... (reason: {reason})"
+                            )
                         break
 
             elif action == "remove":
@@ -513,7 +555,9 @@ class NarrativeManager:
                     ):
                         reason = update.get("reason", "unknown")
                         player_state.character_habits.remove(h)
-                        logger.info(f"Habit removed: {character} - {habit_desc[:30]}... (reason: {reason})")
+                        logger.info(
+                            f"Habit removed: {character} - {habit_desc[:30]}... (reason: {reason})"
+                        )
                         break
 
             elif action == "change":
@@ -533,9 +577,15 @@ class NarrativeManager:
                         if update.get("category"):
                             h["category"] = update["category"]
                         if update.get("strength"):
-                            h["strength"] = update["strength"] if update["strength"] in strength_order else h["strength"]
+                            h["strength"] = (
+                                update["strength"]
+                                if update["strength"] in strength_order
+                                else h["strength"]
+                            )
                         reason = update.get("reason", "unknown")
-                        logger.info(f"Habit changed: {character} - '{old_desc[:20]}' -> '{new_habit_desc[:20]}' (reason: {reason})")
+                        logger.info(
+                            f"Habit changed: {character} - '{old_desc[:20]}' -> '{new_habit_desc[:20]}' (reason: {reason})"
+                        )
                         found = True
                         break
                 if not found:
@@ -555,7 +605,9 @@ class NarrativeManager:
                         "origin": update.get("reason", ""),
                     }
                     player_state.character_habits.append(new_habit)
-                    logger.info(f"Habit change (old not found, adding new): {character} - {new_habit_desc[:30]}")
+                    logger.info(
+                        f"Habit change (old not found, adding new): {character} - {new_habit_desc[:30]}"
+                    )
 
         # Limit per-character habits to 10
         habits_by_char: Dict[str, list] = {}

@@ -21,16 +21,6 @@ let mockStoreState = {
   setLifeVision: jest.fn(),
   resetCreation: jest.fn(),
   setGameSession: jest.fn(),
-  playerImages: [] as unknown[],
-  selectedImageIndex: 0,
-  isGeneratingImage: false,
-  imageFeedback: '',
-  setPlayerImage: jest.fn(),
-  setSelectedImageIndex: jest.fn(),
-  generatePlayerImage: jest.fn().mockResolvedValue(undefined),
-  regeneratePlayerImage: jest.fn().mockResolvedValue(undefined),
-  regenerateFreshPlayerImage: jest.fn().mockResolvedValue(undefined),
-  setImageFeedback: jest.fn(),
   gameId: null as number | null,
 };
 
@@ -50,19 +40,9 @@ jest.mock('@/stores/useGameStore', () => {
     setLifeVision: jest.fn(),
     resetCreation: jest.fn(),
     setGameSession: jest.fn(),
-    playerImages: [],
-    selectedImageIndex: 0,
-    isGeneratingImage: false,
-    imageFeedback: '',
-    setPlayerImage: jest.fn(),
-    setSelectedImageIndex: jest.fn(),
-    generatePlayerImage: jest.fn().mockResolvedValue(undefined),
-    regeneratePlayerImage: jest.fn().mockResolvedValue(undefined),
-    regenerateFreshPlayerImage: jest.fn().mockResolvedValue(undefined),
-    setImageFeedback: jest.fn(),
     gameId: null,
   };
-  
+
   return {
     useGameStore: jest.fn((selector?: (state: typeof store) => unknown) => {
       if (selector) return selector(store);
@@ -82,6 +62,31 @@ jest.mock('@/stores/useUIStore', () => ({
     return { language: 'zh' };
   },
 }));
+
+// Mock useImageStore for image-related state
+jest.mock('@/stores/useImageStore', () => {
+  const imageStore = {
+    playerImages: [] as unknown[],
+    selectedImageIndex: 0,
+    isGeneratingImage: false,
+    imageFeedback: '',
+    setPlayerImage: jest.fn(),
+    setSelectedImageIndex: jest.fn(),
+    generatePlayerImage: jest.fn().mockResolvedValue(undefined),
+    regeneratePlayerImage: jest.fn().mockResolvedValue(undefined),
+    regenerateFreshPlayerImage: jest.fn().mockResolvedValue(undefined),
+    setImageFeedback: jest.fn(),
+  };
+
+  return {
+    useImageStore: jest.fn((selector?: (state: typeof imageStore) => unknown) => {
+      if (selector) return selector(imageStore);
+      return imageStore;
+    }),
+    __getMockImageStore: () => imageStore,
+    __setMockImageStore: (newState: Partial<typeof imageStore>) => Object.assign(imageStore, newState),
+  };
+});
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -112,6 +117,7 @@ jest.mock('@/lib/api', () => ({
 // Import after mocks
 import CreatePage from '@/app/create/page';
 import { useGameStore } from '@/stores/useGameStore';
+import { useImageStore } from '@/stores/useImageStore';
 
 // Helper to get the mock store from the mock function
 const getMockStore = () => {
@@ -125,12 +131,23 @@ const setMockStore = (newState: Record<string, unknown>) => {
   Object.assign(store, newState);
 };
 
+// Helper for image store
+const getMockImageStore = () => {
+  const mockFn = useImageStore as unknown as jest.Mock;
+  return mockFn();
+};
+
+const setMockImageStore = (newState: Record<string, unknown>) => {
+  const store = getMockImageStore();
+  Object.assign(store, newState);
+};
+
 describe('CreatePage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockPush.mockClear();
     mockReplace.mockClear();
-    
+
     // Reset store to initial state
     setMockStore({
       creationStep: 0,
@@ -138,11 +155,15 @@ describe('CreatePage', () => {
       playerName: '',
       lifeVision: '',
       isPresetLoaded: false,
+      gameId: null,
+    });
+
+    // Reset image store to initial state
+    setMockImageStore({
       playerImages: [],
       selectedImageIndex: 0,
       isGeneratingImage: false,
       imageFeedback: '',
-      gameId: null,
     });
   });
 
@@ -749,10 +770,12 @@ describe('CreatePage', () => {
         },
         playerName: 'TestPlayer',
         gameId: 1,
+      });
+      setMockImageStore({
         playerImages: [],
         isGeneratingImage: true,
       });
-      
+
       render(<CreatePage />);
       expect(screen.getByText('AI正在生成人物形象...')).toBeInTheDocument();
     });
@@ -768,10 +791,12 @@ describe('CreatePage', () => {
         },
         playerName: 'TestPlayer',
         gameId: 1,
+      });
+      setMockImageStore({
         playerImages: [{ image_id: 1, image_url: 'http://test.url/1.png' }],
         isGeneratingImage: false,
       });
-      
+
       render(<CreatePage />);
       expect(screen.getByPlaceholderText(/不满意？描述你想要的修改/)).toBeInTheDocument();
     });
@@ -787,6 +812,8 @@ describe('CreatePage', () => {
         },
         playerName: 'TestPlayer',
         gameId: 1,
+      });
+      setMockImageStore({
         playerImages: [
           { image_id: 1, image_url: 'http://test.url/1.png' },
           { image_id: 2, image_url: 'http://test.url/2.png' },
@@ -794,7 +821,7 @@ describe('CreatePage', () => {
         selectedImageIndex: 0,
         isGeneratingImage: false,
       });
-      
+
       render(<CreatePage />);
       // Should show thumbnails for multiple images
       expect(screen.getByText('人物形象')).toBeInTheDocument();
@@ -811,10 +838,12 @@ describe('CreatePage', () => {
         },
         playerName: 'TestPlayer',
         gameId: 1,
+      });
+      setMockImageStore({
         playerImages: [{ image_id: 1, image_url: 'http://test.url/1.png' }],
         isGeneratingImage: false,
       });
-      
+
       render(<CreatePage />);
       // Background generation indicator may or may not be shown
       expect(screen.getByText('人物形象')).toBeInTheDocument();

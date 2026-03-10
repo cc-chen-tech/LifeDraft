@@ -3,19 +3,17 @@
 Handles the core story text generation (Step 1 of the two-stage pipeline),
 consistency validation with retry, and life-phase determination.
 """
+
 import json
 import logging
-from typing import Dict, Any, Optional, Callable
+from typing import Any, Callable, Dict, Optional
 
 from pydantic import ValidationError
 
-from config.prompts import (
-    get_event_generation_prompt,
-    get_story_only_prompt,
-    get_round_event_prompt,
-)
+from config.prompts import (get_event_generation_prompt,
+                            get_round_event_prompt, get_story_only_prompt)
 from src.ai.client import AIClient
-from src.ai.models import GameEvent, EventOption
+from src.ai.models import EventOption, GameEvent
 from src.ai.system_prompts import get_system_prompt
 from src.ai.vector_store import get_vector_store, is_vector_search_enabled
 
@@ -104,22 +102,34 @@ class StoryGenerator:
                     query_context += " " + " ".join(str(s) for s in pending_storylines[:3])
                 vector_context = vector_store.get_relevant_context(query_context, max_chars=1500)
                 if vector_context:
-                    logger.info(f"[VectorStore] Injected {len(vector_context)} chars of vector context")
+                    logger.info(
+                        f"[VectorStore] Injected {len(vector_context)} chars of vector context"
+                    )
             except Exception as e:
                 logger.warning(f"Vector search failed: {e}")
 
         story_prompt = get_story_only_prompt(
-            player_state, language, current_phase, character_settings,
-            opening_story, last_event_description, four_week_summary,
-            yearly_summary, game_date_info, pending_storylines,
-            established_facts, last_event_concluded, last_round_full_story,
-            activated_foreshadowing, character_habits,
+            player_state,
+            language,
+            current_phase,
+            character_settings,
+            opening_story,
+            last_event_description,
+            four_week_summary,
+            yearly_summary,
+            game_date_info,
+            pending_storylines,
+            established_facts,
+            last_event_concluded,
+            last_round_full_story,
+            activated_foreshadowing,
+            character_habits,
             vector_context=vector_context,  # ★ 注入向量检索上下文
         )
 
         sys_prompt = get_system_prompt("story_novelist", language)
         last_error: Optional[str] = None
-        
+
         # ★ 优化：使用渐进式温度策略
         # - 初次生成：0.85 (平衡创意性与准确性)
         # - 第一次重试：0.75 (更保守)
@@ -139,8 +149,10 @@ class StoryGenerator:
 
                 # 计算当前温度：随着重试次数递减
                 current_temp = max(0.7, base_temperature - (attempt * temperature_decay))
-                logger.info(f"Story generation attempt {attempt + 1}/{retry_count}, temperature={current_temp}")
-                
+                logger.info(
+                    f"Story generation attempt {attempt + 1}/{retry_count}, temperature={current_temp}"
+                )
+
                 # Only stream on first attempt
                 cb = stream_callback if attempt == 0 else None
                 story_text = self.client.call(
@@ -272,13 +284,18 @@ class StoryGenerator:
                     query_context += " " + " ".join(str(s) for s in pending_storylines[:3])
                 vector_context = vector_store.get_relevant_context(query_context, max_chars=1500)
                 if vector_context:
-                    logger.info(f"[VectorStore] Injected {len(vector_context)} chars of vector context")
+                    logger.info(
+                        f"[VectorStore] Injected {len(vector_context)} chars of vector context"
+                    )
             except Exception as e:
                 logger.warning(f"Vector search failed: {e}")
 
         # Get round story prompt
         prompt = get_round_event_prompt(
-            player_state, language, round_number, round_context,
+            player_state,
+            language,
+            round_number,
+            round_context,
             character_settings,
             relationship_events=relationship_events,
             historical_weekly_summary=historical_weekly_summary,
@@ -297,7 +314,7 @@ class StoryGenerator:
 
         # Step 1: Generate story text (with optional streaming)
         sys_prompt = get_system_prompt("story_novelist", language)
-        
+
         # ★ 动态温度策略：根据上下文调整温度
         # - 有未完结剧情线或上一轮未结束时，使用更保守的温度
         # - 新事件可以更有创意
@@ -305,14 +322,16 @@ class StoryGenerator:
         needs_continuation = not last_event_concluded
         if has_pending or needs_continuation:
             temperature = 0.65  # 更保守，确保剧情连贯
-            logger.info(f"Dynamic temperature: {temperature} (pending_storylines={has_pending}, continuation={needs_continuation})")
+            logger.info(
+                f"Dynamic temperature: {temperature} (pending_storylines={has_pending}, continuation={needs_continuation})"
+            )
         else:
             temperature = 0.75  # 允许更多创意
             logger.info(f"Dynamic temperature: {temperature} (new event)")
-        
+
         # ★ 在 try 块外初始化，确保 except 块能访问已生成的故事
         story_text = None
-        
+
         try:
             story_text = self.client.call(
                 system_prompt=sys_prompt,
@@ -324,12 +343,13 @@ class StoryGenerator:
             logger.info(f"Generated round story with {len(story_text)} characters")
 
             # Step 1.4: Quick rule-based validation (before AI validation)
-            from src.ai.quick_validator import quick_validate_story
             from config.prompts._helpers import _collect_available_people
-            
+            from src.ai.quick_validator import quick_validate_story
+
             available_people_names = [
-                p.get('name', '') for p in _collect_available_people(character_settings) 
-                if p.get('name')
+                p.get("name", "")
+                for p in _collect_available_people(character_settings)
+                if p.get("name")
             ]
             quick_result = quick_validate_story(
                 story_text=story_text,
@@ -337,7 +357,7 @@ class StoryGenerator:
                 available_people=available_people_names,
                 language=language,
             )
-            
+
             if not quick_result.passed:
                 logger.warning(f"Quick validation failed: {quick_result.issues}")
                 # 快速校验失败时，记录问题但不立即重试
@@ -375,7 +395,7 @@ class StoryGenerator:
 
             # Validate relationships
             option_generator.validate_and_fix_relationships(event, character_settings)
-            
+
             # Validate options consistency
             option_issues = option_generator.validate_options_consistency(
                 event=event,
@@ -392,12 +412,13 @@ class StoryGenerator:
             logger.error(f"Failed to generate round event: {e}")
             # ★ 如果故事已生成但后续步骤（如选项生成）失败，保留真实故事而非使用 fallback
             if story_text and len(story_text) > 50:
-                logger.info(f"Using already-generated story ({len(story_text)} chars) with fallback options")
+                logger.info(
+                    f"Using already-generated story ({len(story_text)} chars) with fallback options"
+                )
                 fallback_desc = story_text
             else:
                 fallback_desc = (
-                    "这一天平静地度过了。" if language == "zh"
-                    else "This day passed quietly."
+                    "这一天平静地度过了。" if language == "zh" else "This day passed quietly."
                 )
             return GameEvent(
                 event_description=fallback_desc,
@@ -429,7 +450,7 @@ class StoryGenerator:
     ) -> str:
         """
         Validate story consistency and retry once if CRITICAL issues found.
-        
+
         Optimized strategy:
         - Only retry for truly critical issues (causal breaks, major contradictions)
         - Use tiered validation: check only the most important constraints first
@@ -453,9 +474,7 @@ class StoryGenerator:
                 return story_text
 
             if not validation.has_critical_issues:
-                logger.info(
-                    f"一致性校验有 {len(validation.warning_issues)} 个WARNING，不触发重试"
-                )
+                logger.info(f"一致性校验有 {len(validation.warning_issues)} 个WARNING，不触发重试")
                 return story_text
 
             # CRITICAL issues found - retry once
@@ -463,33 +482,31 @@ class StoryGenerator:
                 f"一致性校验不通过，{len(validation.critical_issues)} 个CRITICAL问题，触发重试"
             )
             for issue in validation.critical_issues:
-                logger.warning(
-                    f"  CRITICAL [{issue.dimension}]: {issue.description[:80]}"
-                )
+                logger.warning(f"  CRITICAL [{issue.dimension}]: {issue.description[:80]}")
 
             # Regenerate with fix instructions appended
             # ★ 重要：重试时也需要流式输出，否则前端会显示不完整的旧内容
             retry_prompt = original_prompt + validation.fix_instructions
-            
+
             # ★ 先发送状态提示，让前端显示"正在优化故事"
             if status_callback:
                 logger.info("★ 发送 retrying 状态提示")
                 status_callback("retrying")
-            
+
             # ★ 发送特殊的 retry 事件让前端清空故事（通过 status 回调）
             # 不再使用 stream_callback 发送 RETRY 标记，避免干扰故事流
             if status_callback:
                 logger.info("★ 发送 retry 事件让前端清空故事")
                 status_callback("retry")  # 前端会识别这个状态并清空故事
-            
+
             # 清空之前的故事缓存，准备接收新故事
             if stream_callback:
                 # 发送一个空字符串来重置流式状态
                 pass  # 新故事会直接开始流式输出
-            
+
             # ★ 优化：重试时使用固定的低温度 0.7，确保更保守、更符合约束
             logger.info(f"Consistency retry with temperature=0.7 (conservative)")
-            
+
             retry_story = self.client.call(
                 system_prompt=sys_prompt,
                 user_prompt=retry_prompt,

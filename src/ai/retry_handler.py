@@ -5,14 +5,15 @@ Provides a unified retry mechanism for AI calls with:
 - Error feedback injection on retries
 - Configurable retry count
 """
+
 import logging
-from typing import Optional, Callable, Any, TypeVar, Generic
+from typing import Any, Callable, Generic, Optional, TypeVar
 
 from src.ai.client import AIClient
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class AIRetryHandler:
@@ -80,8 +81,7 @@ class AIRetryHandler:
             try:
                 # Calculate temperature with decay
                 current_temp = max(
-                    self.min_temperature,
-                    self.base_temperature - (attempt * self.temperature_decay)
+                    self.min_temperature, self.base_temperature - (attempt * self.temperature_decay)
                 )
 
                 # Build prompt with error feedback
@@ -156,8 +156,7 @@ class AIRetryHandler:
         for attempt in range(retry_count):
             try:
                 current_temp = max(
-                    self.min_temperature,
-                    self.base_temperature - (attempt * self.temperature_decay)
+                    self.min_temperature, self.base_temperature - (attempt * self.temperature_decay)
                 )
 
                 prompt = user_prompt
@@ -193,7 +192,9 @@ class AIRetryHandler:
                 last_error = str(e)
                 logger.warning(f"JSON attempt {attempt + 1} failed: {e}")
 
-        raise ValueError(f"JSON AI call failed after {retry_count} attempts. Last error: {last_error}")
+        raise ValueError(
+            f"JSON AI call failed after {retry_count} attempts. Last error: {last_error}"
+        )
 
 
 def create_retry_handler(
@@ -230,7 +231,4 @@ def create_retry_handler(
 
     settings = presets.get(temperature_preset, presets["balanced"])
 
-    return AIRetryHandler(
-        client=client,
-        **settings
-    )
+    return AIRetryHandler(client=client, **settings)

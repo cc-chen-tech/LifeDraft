@@ -1,27 +1,29 @@
 """Yearly summary generation."""
+
 import logging
-from typing import Dict, Any, Optional, List
-from src.game.state import PlayerState
+from typing import Any, Dict, List, Optional
+
 from src.ai.generator import EventGenerator
 from src.ai.system_prompts import get_system_prompt
+from src.game.state import PlayerState
 
 logger = logging.getLogger(__name__)
 
 
 class YearlySummaryGenerator:
     """Generates yearly summaries."""
-    
+
     def __init__(self, ai_generator: Optional[EventGenerator] = None, language: str = "zh"):
         """
         Initialize yearly summary generator.
-        
+
         Args:
             ai_generator: AI event generator
             language: Language code
         """
         self.ai_generator = ai_generator or EventGenerator()
         self.language = language
-    
+
     def generate_summary(
         self,
         year: int,
@@ -31,11 +33,11 @@ class YearlySummaryGenerator:
         end_state: PlayerState,
         monthly_summaries: List[Dict[str, Any]],
         decisions: List[Dict[str, Any]],
-        language: str = "zh"
+        language: str = "zh",
     ) -> Dict[str, Any]:
         """
         Generate yearly summary.
-        
+
         Args:
             year: Year number (1, 2, 3, etc.)
             start_week: Starting week of the year
@@ -45,7 +47,7 @@ class YearlySummaryGenerator:
             monthly_summaries: Monthly summaries from this year
             decisions: All decisions made this year
             language: Language code
-        
+
         Returns:
             Summary dictionary
         """
@@ -55,9 +57,9 @@ class YearlySummaryGenerator:
             "mood": end_state.mood - start_state.get("mood", end_state.mood),
             "knowledge": end_state.knowledge - start_state.get("knowledge", end_state.knowledge),
             "wealth": end_state.wealth - start_state.get("wealth", end_state.wealth),
-            "age": end_state.age - start_state.get("age", end_state.age)
+            "age": end_state.age - start_state.get("age", end_state.age),
         }
-        
+
         # Generate AI summary
         summary_text = self._generate_ai_summary(
             year,
@@ -68,9 +70,9 @@ class YearlySummaryGenerator:
             changes,
             monthly_summaries,
             decisions,
-            language
+            language,
         )
-        
+
         return {
             "year": year,
             "start_week": start_week,
@@ -79,9 +81,9 @@ class YearlySummaryGenerator:
             "summary_text": summary_text,
             "changes": changes,
             "decisions_count": len(decisions),
-            "final_state": end_state.to_dict()
+            "final_state": end_state.to_dict(),
         }
-    
+
     def _generate_ai_summary(
         self,
         year: int,
@@ -92,23 +94,26 @@ class YearlySummaryGenerator:
         changes: Dict[str, int],
         weekly_summaries: List[Dict[str, Any]],
         decisions: List[Dict[str, Any]],
-        language: str
+        language: str,
     ) -> str:
         """Generate AI summary text."""
         try:
             # Get key decisions and events
             key_decisions = decisions[-10:] if len(decisions) > 10 else decisions
             decision_texts = [d.get("choice", "") for d in key_decisions]
-            
+
             # Get monthly summary highlights
             summary_highlights = []
             if monthly_summaries:
                 # Take a few representative summaries
                 if len(monthly_summaries) > 5:
-                    summary_highlights = [s.get("summary_text", "") for s in monthly_summaries[::len(monthly_summaries)//5]]
+                    summary_highlights = [
+                        s.get("summary_text", "")
+                        for s in monthly_summaries[:: len(monthly_summaries) // 5]
+                    ]
                 else:
                     summary_highlights = [s.get("summary_text", "") for s in monthly_summaries]
-            
+
             if language == "zh":
                 prompt = f"""请为第{year}年生成一段年度总结（150-250字）。
 
@@ -151,7 +156,7 @@ Monthly summary highlights:
 {chr(10).join(summary_highlights[:3]) if summary_highlights else 'No detailed records'}
 
 Generate a vivid annual summary describing the main changes, important events, growth, and challenges of this year. Reflect the overall trajectory and turning points."""
-            
+
             return self.ai_generator.generate_completion(
                 prompt=prompt,
                 system_prompt=get_system_prompt("narrative_summary", self.language),
@@ -161,7 +166,7 @@ Generate a vivid annual summary describing the main changes, important events, g
         except Exception as e:
             logger.warning(f"Failed to generate AI summary: {e}")
             return self._get_fallback_summary(year, changes, language)
-    
+
     def _get_fallback_summary(self, year: int, changes: Dict[str, int], language: str) -> str:
         """Get fallback summary."""
         if language == "zh":
