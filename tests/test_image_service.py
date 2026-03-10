@@ -265,3 +265,104 @@ class TestImageModelCreation:
         # 检查是否有内部创建模型的方法
         assert hasattr(service, 'db')
         assert service.db is not None
+
+
+class TestSceneImageFileMissing:
+    """场景插画文件丢失重新生成测试"""
+    
+    def test_scene_image_regenerates_when_file_missing(self):
+        """测试场景插画文件丢失时自动重新生成"""
+        from src.services.image.scene_service import SceneImageService
+        
+        # Mock 数据库
+        db = MagicMock()
+        
+        # Mock 存储服务 - 文件不存在
+        storage_service = MagicMock()
+        storage_service.image_exists.return_value = False
+        storage_service.save_image.return_value = ("/path/to/new_image.png", "local")
+        
+        # Mock 图片客户端
+        image_client = MagicMock()
+        image_client.analyze_story_for_illustration.return_value = (
+            "场景描述",
+            "插画提示词"
+        )
+        # generate_image 返回 (image_data, image_url) 元组
+        image_client.generate_image.return_value = (b"fake_image_data", "https://example.com/image.png")
+        
+        # Mock 已存在的数据库记录
+        existing_scene = MagicMock()
+        existing_scene.storage_path = "/path/to/missing_image.png"
+        existing_scene.storage_type = "local"
+        
+        # Mock 查询返回已存在记录
+        mock_query = MagicMock()
+        mock_query.filter.return_value.first.return_value = existing_scene
+        db.query.return_value = mock_query
+        
+        # 创建服务
+        service = SceneImageService(
+            db,
+            image_client=image_client,
+            storage_service=storage_service
+        )
+        
+        # 调用生成方法
+        result = service.generate_round_scene_image(
+            game_id=1,
+            round_number=0,
+            story_text="测试故事",
+            character_settings={"时代": "现代", "姓名": "测试角色"},
+            player_name="测试角色",
+            stage="event",
+            week=0
+        )
+        
+        # 验证：文件丢失时应删除旧记录并重新生成
+        db.delete.assert_called_once_with(existing_scene)
+        db.commit.assert_called()
+        storage_service.save_image.assert_called_once()
+    
+    def test_scene_image_skips_when_file_exists(self):
+        """测试场景插画文件存在时跳过生成"""
+        from src.services.image.scene_service import SceneImageService
+        
+        # Mock 数据库
+        db = MagicMock()
+        
+        # Mock 存储服务 - 文件存在
+        storage_service = MagicMock()
+        storage_service.image_exists.return_value = True
+        
+        # Mock 已存在的数据库记录
+        existing_scene = MagicMock()
+        existing_scene.storage_path = "/path/to/existing_image.png"
+        existing_scene.storage_type = "local"
+        
+        # Mock 查询返回已存在记录
+        mock_query = MagicMock()
+        mock_query.filter.return_value.first.return_value = existing_scene
+        db.query.return_value = mock_query
+        
+        # 创建服务
+        service = SceneImageService(
+            db,
+            storage_service=storage_service
+        )
+        
+        # 调用生成方法
+        result = service.generate_round_scene_image(
+            game_id=1,
+            round_number=0,
+            story_text="测试故事",
+            character_settings={"时代": "现代", "姓名": "测试角色"},
+            player_name="测试角色",
+            stage="event",
+            week=0
+        )
+        
+        # 验证：文件存在时返回现有记录
+        assert result == existing_scene
+        db.delete.assert_not_called()
+        storage_service.save_image.assert_not_called()
