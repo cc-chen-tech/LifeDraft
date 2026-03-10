@@ -80,9 +80,19 @@ class SceneImageService:
             SceneImage.stage == stage,
         ).first()
         if existing:
-            week_display = f"第{week + 1}周" if week is not None else "未知周"
-            logger.info(f"场景插画已存在: {week_display}, round {round_number}, stage={stage}, 跳过")
-            return existing
+            # ★ 验证文件是否真实存在，如果不存在则删除记录并重新生成
+            if existing.storage_path and self.storage_service.image_exists(
+                existing.storage_path, existing.storage_type
+            ):
+                week_display = f"第{week + 1}周" if week is not None else "未知周"
+                logger.info(f"场景插画已存在: {week_display}, round {round_number}, stage={stage}, 跳过")
+                return existing
+            else:
+                # 文件不存在，删除数据库记录并重新生成
+                week_display = f"第{week + 1}周" if week is not None else "未知周"
+                logger.warning(f"场景插画记录存在但文件丢失: {week_display}, round {round_number}, stage={stage}, 重新生成")
+                self.db.delete(existing)
+                self.db.commit()
 
         char_info = self._build_char_info(character_settings, player_name)
 
