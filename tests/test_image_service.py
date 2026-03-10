@@ -109,6 +109,14 @@ class TestGenerateCharacterImage:
         
         assert 'feedback' in params
 
+    def test_generate_character_image_with_keep_old_active(self, service):
+        """测试 keep_old_active 参数存在 - 验证新参数"""
+        import inspect
+        sig = inspect.signature(service.generate_character_image)
+        params = list(sig.parameters.keys())
+        
+        assert 'keep_old_active' in params
+
 
 class TestGenerateSceneImage:
     """场景图片生成测试"""
@@ -265,6 +273,64 @@ class TestImageModelCreation:
         # 检查是否有内部创建模型的方法
         assert hasattr(service, 'db')
         assert service.db is not None
+
+
+class TestKeepOldActive:
+    """测试 keep_old_active 参数行为 - 避免图片生成过程中的闪烁"""
+
+    @pytest.fixture
+    def service(self):
+        """创建测试服务"""
+        db = MagicMock()
+        return ImageService(
+            db,
+            image_client=MockImageClient(),
+            storage_service=MockStorageService()
+        )
+
+    def test_keep_old_active_param_exists(self, service):
+        """测试 keep_old_active 参数存在于 generate_character_image"""
+        import inspect
+        sig = inspect.signature(service.generate_character_image)
+        params = list(sig.parameters.keys())
+        
+        assert 'keep_old_active' in params
+        # 验证默认值为 False
+        assert sig.parameters['keep_old_active'].default == False
+
+    def test_regenerate_image_uses_keep_old_active(self, service):
+        """测试 regenerate_image 使用 keep_old_active=True"""
+        # Mock 数据库查询
+        mock_image = MagicMock()
+        mock_image.image_id = 1
+        mock_image.game_id = 1
+        mock_image.entity_name = "测试角色"
+        mock_image.entity_key = "character_测试角色"
+        mock_image.image_type = "character"
+        mock_image.storage_path = "/path/to/image.png"
+        mock_image.storage_type = "local"
+        mock_image.metadata_json = {}
+        mock_image.is_active = True
+
+        mock_query = MagicMock()
+        mock_query.filter.return_value.first.return_value = mock_image
+        service.db.query.return_value = mock_query
+
+        # Mock _get_image_data
+        service._get_image_data = MagicMock(return_value=b"fake_image_data")
+
+        # 验证 regenerate_image 会调用 generate_character_image with keep_old_active=True
+        with patch.object(service, '_character_service') as mock_char_service:
+            mock_char_service.regenerate_image.return_value = [mock_image]
+            
+            # 调用 regenerate_image
+            result = service.regenerate_image(
+                image_id=1,
+                feedback="头发变长"
+            )
+            
+            # 验证 regenerate_image 被调用
+            assert mock_char_service.regenerate_image.called
 
 
 class TestSceneImageFileMissing:

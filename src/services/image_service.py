@@ -84,6 +84,7 @@ class ImageService:
         num_images: int = 1,
         feedback: Optional[str] = None,
         reference_image_url: Optional[str] = None,
+        keep_old_active: bool = False,
     ) -> List[ImageModel]:
         """生成人物全身像图片"""
         return self._character_service.generate_character_image(
@@ -97,6 +98,7 @@ class ImageService:
             num_images=num_images,
             feedback=feedback,
             reference_image_url=reference_image_url,
+            keep_old_active=keep_old_active,
         )
 
     def regenerate_image(

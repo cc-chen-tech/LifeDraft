@@ -669,4 +669,129 @@ describe('useCollectionStore', () => {
       expect(useCollectionStore.getState().regeneratingImageFor).toBeNull();
     });
   });
+
+  describe('fetchCollection refresh mode', () => {
+    it('preserves existing image_url when new data has empty url in refresh mode', async () => {
+      // 先设置初始状态，包含已有图片的人物
+      useCollectionStore.setState({
+        characters: [{
+          name: '赵灵儿',
+          role: '妻子',
+          description: '测试描述',
+          affinity: 95,
+          age: 16,
+          gender: '女',
+          occupation: '女娲后裔',
+          personality_traits: ['温柔'],
+          image_url: 'http://example.com/old_image.png',
+          image_generated: true,
+          description_generated: true,
+        }],
+      });
+
+      // Mock API 返回新数据，但图片 URL 为空（模拟生成过程中）
+      (api.collection.get as jest.Mock).mockResolvedValue({
+        game_id: 1,
+        characters: [{
+          name: '赵灵儿',
+          role: '妻子',
+          description: '测试描述',
+          affinity: 95,
+          age: 16,
+          gender: '女',
+          occupation: '女娲后裔',
+          personality_traits: ['温柔'],
+          image_url: '',  // 空 URL，模拟生成过程中
+          image_generated: false,
+          description_generated: true,
+        }],
+        items: [],
+        landmarks: [],
+      });
+
+      // 调用刷新模式
+      await useCollectionStore.getState().fetchCollection(1, true);
+
+      // 验证：旧图片 URL 被保留，避免闪烁
+      const character = useCollectionStore.getState().characters[0];
+      expect(character.image_url).toBe('http://example.com/old_image.png');
+      expect(character.image_generated).toBe(true);
+    });
+
+    it('updates to new image_url when available in refresh mode', async () => {
+      // 先设置初始状态
+      useCollectionStore.setState({
+        characters: [{
+          name: '赵灵儿',
+          role: '妻子',
+          description: '测试描述',
+          affinity: 95,
+          age: 16,
+          gender: '女',
+          occupation: '女娲后裔',
+          personality_traits: ['温柔'],
+          image_url: 'http://example.com/old_image.png',
+          image_generated: true,
+          description_generated: true,
+        }],
+      });
+
+      // Mock API 返回新数据，有新的图片 URL
+      (api.collection.get as jest.Mock).mockResolvedValue({
+        game_id: 1,
+        characters: [{
+          name: '赵灵儿',
+          role: '妻子',
+          description: '测试描述',
+          affinity: 95,
+          age: 16,
+          gender: '女',
+          occupation: '女娲后裔',
+          personality_traits: ['温柔'],
+          image_url: 'http://example.com/new_image.png',  // 新 URL
+          image_generated: true,
+          description_generated: true,
+        }],
+        items: [],
+        landmarks: [],
+      });
+
+      // 调用刷新模式
+      await useCollectionStore.getState().fetchCollection(1, true);
+
+      // 验证：使用新的图片 URL
+      const character = useCollectionStore.getState().characters[0];
+      expect(character.image_url).toBe('http://example.com/new_image.png');
+    });
+
+    it('does not merge data in initial load mode', async () => {
+      // Mock API 返回数据
+      (api.collection.get as jest.Mock).mockResolvedValue({
+        game_id: 1,
+        characters: [{
+          name: '赵灵儿',
+          role: '妻子',
+          description: '测试描述',
+          affinity: 95,
+          age: 16,
+          gender: '女',
+          occupation: '女娲后裔',
+          personality_traits: ['温柔'],
+          image_url: '',  // 空 URL
+          image_generated: false,
+          description_generated: true,
+        }],
+        items: [],
+        landmarks: [],
+      });
+
+      // 调用初始加载模式（isRefresh=false）
+      await useCollectionStore.getState().fetchCollection(1, false);
+
+      // 验证：使用 API 返回的数据，不合并
+      const character = useCollectionStore.getState().characters[0];
+      expect(character.image_url).toBe('');
+      expect(character.image_generated).toBe(false);
+    });
+  });
 });
