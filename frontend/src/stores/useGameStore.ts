@@ -90,6 +90,7 @@ interface GameState {
   roundSceneRegenerateError: string | null;
 
   // Actions — Session
+  setGameId: (gameId: number) => void;
   setGameSession: (gameId: number, sessionId: string) => void;
   loadGameState: (gameId: number) => Promise<void>;
   syncState: () => Promise<void>;
@@ -246,6 +247,7 @@ export const useGameStore = create<GameState>()(
       },
 
       // ==================== Session Actions ====================
+      setGameId: (gameId) => set({ gameId }),
       setGameSession: (gameId, sessionId) => set({ gameId, sessionId }),
 
       loadGameState: async (gameId) => {

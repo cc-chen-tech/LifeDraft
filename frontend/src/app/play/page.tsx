@@ -1,7 +1,15 @@
 "use client";
 
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { StreamingText } from "@/components/game/StreamingText";
 import { OptionCards } from "@/components/game/OptionCards";
 import { StatusBar } from "@/components/game/StatusBar";
@@ -10,6 +18,7 @@ import { ChatBar } from "@/components/game/ChatBar";
 import { StoryAdjuster } from "@/components/game/StoryAdjuster";
 import { RoundHistoryDrawer } from "@/components/game/RoundHistoryDrawer";
 import { RoundSceneImageDisplay } from "@/components/game/RoundSceneImage";
+import { CollectionPanel } from "@/components/game/CollectionPanel";
 import { usePlayGame, STATUS_MESSAGES } from "@/hooks/usePlayGame";
 import { useGameStore } from "@/stores/useGameStore";
 import { cn } from "@/lib/utils";
@@ -21,15 +30,42 @@ import {
   XCircle,
   History,
   Settings,
+  BookOpen,
 } from "lucide-react";
 
 /**
+ * GameIdSync - 从 URL 参数同步 gameId 到 store
+ * 必须包裹在 Suspense 中，因为使用了 useSearchParams
+ */
+function GameIdSync() {
+  const searchParams = useSearchParams();
+  const urlGameId = searchParams.get("gameId");
+  const setGameId = useGameStore((s) => s.setGameId);
+  const storeGameId = useGameStore((s) => s.gameId);
+
+  useEffect(() => {
+    if (urlGameId) {
+      const parsedId = parseInt(urlGameId, 10);
+      if (!isNaN(parsedId) && parsedId !== storeGameId) {
+        console.log(`[PlayPage] URL gameId=${parsedId} differs from store gameId=${storeGameId}, updating...`);
+        setGameId(parsedId);
+      }
+    }
+  }, [urlGameId, storeGameId, setGameId]);
+
+  return null;
+}
+
+/**
  * PlayPage - Main game play page component.
- * 
+ *
  * Uses usePlayGame hook for all business logic.
  * This component only handles UI rendering.
  */
 export default function PlayPage() {
+  // ★ 收集面板状态
+  const [showCollection, setShowCollection] = useState(false);
+
   const {
     // State
     phase,
@@ -121,6 +157,10 @@ export default function PlayPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
+      {/* ★ URL 参数同步 - 必须在 Suspense 中 */}
+      <Suspense fallback={null}>
+        <GameIdSync />
+      </Suspense>
       {/* Header */}
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
@@ -133,6 +173,16 @@ export default function PlayPage() {
           
           {/* Actions */}
           <div className="flex items-center gap-2">
+            {/* ★ 收集按钮 */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setShowCollection(true)}
+              title="收集"
+            >
+              <BookOpen className="w-4 h-4" />
+            </Button>
             {/* ★ 历史回顾按钮 */}
             <Button
               variant="ghost"
@@ -430,6 +480,14 @@ export default function PlayPage() {
         }}
         isViewingHistory={isViewingHistory}
       />
+
+      {/* ★ 收集面板 */}
+      <Sheet open={showCollection} onOpenChange={setShowCollection}>
+        <SheetContent side="right" className="w-[400px] sm:w-[540px] p-0">
+          <SheetTitle className="sr-only">收集</SheetTitle>
+          <CollectionPanel gameId={gameId || 0} />
+        </SheetContent>
+      </Sheet>
 
       {/* Save toast */}
       {saveToast && (
