@@ -171,10 +171,22 @@ class CharacterImageService:
         if not original:
             raise ImageServiceError(f"图片不存在: {image_id}")
 
-        self.db.query(ImageModel).filter(
-            ImageModel.game_id == original.game_id,
-            ImageModel.entity_key == original.entity_key
-        ).update({"is_active": False})
+        # ★ 修复：停用图片时需要同时匹配 entity_key 和 entity_name
+        # 如果 entity_key 是 NULL，只匹配 entity_key 会误伤其他人物
+        # 解决方案：同时使用 entity_name 作为过滤条件
+        if original.entity_key:
+            # entity_key 不为空，使用 entity_key 匹配
+            self.db.query(ImageModel).filter(
+                ImageModel.game_id == original.game_id,
+                ImageModel.entity_key == original.entity_key
+            ).update({"is_active": False})
+        else:
+            # entity_key 为空，使用 entity_name + image_type 匹配，避免误伤其他人物
+            self.db.query(ImageModel).filter(
+                ImageModel.game_id == original.game_id,
+                ImageModel.image_type == original.image_type,
+                ImageModel.entity_name == original.entity_name
+            ).update({"is_active": False})
         self.db.commit()
 
         metadata = original.metadata_json or {}
@@ -253,10 +265,22 @@ class CharacterImageService:
         if not original:
             raise ImageServiceError(f"图片不存在: {image_id}")
 
-        self.db.query(ImageModel).filter(
-            ImageModel.game_id == original.game_id,
-            ImageModel.entity_key == original.entity_key
-        ).update({"is_active": False})
+        # ★ 修复：停用图片时需要同时匹配 entity_key 和 entity_name
+        # 如果 entity_key 是 NULL，只匹配 entity_key 会误伤其他人物
+        # 解决方案：同时使用 entity_name 作为过滤条件
+        if original.entity_key:
+            # entity_key 不为空，使用 entity_key 匹配
+            self.db.query(ImageModel).filter(
+                ImageModel.game_id == original.game_id,
+                ImageModel.entity_key == original.entity_key
+            ).update({"is_active": False})
+        else:
+            # entity_key 为空，使用 entity_name + image_type 匹配，避免误伤其他人物
+            self.db.query(ImageModel).filter(
+                ImageModel.game_id == original.game_id,
+                ImageModel.image_type == original.image_type,
+                ImageModel.entity_name == original.entity_name
+            ).update({"is_active": False})
         self.db.commit()
 
         metadata = original.metadata_json or {}
