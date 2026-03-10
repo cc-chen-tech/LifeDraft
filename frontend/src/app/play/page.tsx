@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState, Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -20,6 +19,7 @@ import { RoundHistoryDrawer } from "@/components/game/RoundHistoryDrawer";
 import { RoundSceneImageDisplay } from "@/components/game/RoundSceneImage";
 import { CollectionPanel } from "@/components/game/CollectionPanel";
 import { usePlayGame, STATUS_MESSAGES } from "@/hooks/usePlayGame";
+import { useGameIdFromUrl } from "@/hooks/useGameIdFromUrl";
 import { useGameStore } from "@/stores/useGameStore";
 import { cn } from "@/lib/utils";
 import {
@@ -34,25 +34,11 @@ import {
 } from "lucide-react";
 
 /**
- * GameIdSync - 从 URL 参数同步 gameId 到 store
- * 必须包裹在 Suspense 中，因为使用了 useSearchParams
+ * GameIdSync - 内部组件，使用 useGameIdFromUrl 同步 URL 参数
+ * 必须包裹在 Suspense 中
  */
 function GameIdSync() {
-  const searchParams = useSearchParams();
-  const urlGameId = searchParams.get("gameId");
-  const setGameId = useGameStore((s) => s.setGameId);
-  const storeGameId = useGameStore((s) => s.gameId);
-
-  useEffect(() => {
-    if (urlGameId) {
-      const parsedId = parseInt(urlGameId, 10);
-      if (!isNaN(parsedId) && parsedId !== storeGameId) {
-        console.log(`[PlayPage] URL gameId=${parsedId} differs from store gameId=${storeGameId}, updating...`);
-        setGameId(parsedId);
-      }
-    }
-  }, [urlGameId, storeGameId, setGameId]);
-
+  useGameIdFromUrl();
   return null;
 }
 
