@@ -795,7 +795,7 @@ export const useGameStore = create<GameState>()(
     {
       name: "game-storage",
       partialize: (state) => ({
-        gameId: state.gameId,
+        // ★ gameId 不再持久化，每次从服务器获取当前活跃游戏
         sessionId: state.sessionId,
         characterSettings: state.characterSettings,
         playerName: state.playerName,
