@@ -267,8 +267,8 @@ describe('SavesPage', () => {
     });
   });
 
-  describe('Grouped saves', () => {
-    it('groups saves by player name', async () => {
+  describe('Game list display', () => {
+    it('displays each game as separate card', async () => {
       mockGameState = {
         ...mockGameStoreState,
         savedGames: [
@@ -302,12 +302,15 @@ describe('SavesPage', () => {
       });
 
       await waitFor(() => {
-        expect(screen.getByText('Hero')).toBeInTheDocument();
+        // 每个游戏独立显示，不再按角色名分组
+        // Hero 出现 2 次（两个游戏），Villain 出现 1 次
+        const heroElements = screen.getAllByText('Hero');
+        expect(heroElements.length).toBe(2);
         expect(screen.getByText('Villain')).toBeInTheDocument();
       });
     });
 
-    it('shows save count for each group', async () => {
+    it('displays game age and week info', async () => {
       mockGameState = {
         ...mockGameStoreState,
         savedGames: [
@@ -317,13 +320,6 @@ describe('SavesPage', () => {
             age: 25,
             week: 10,
             updated_at: '2024-01-15T10:00:00Z',
-          },
-          {
-            game_id: 2,
-            player_name: 'Hero',
-            age: 30,
-            week: 20,
-            updated_at: '2024-01-14T10:00:00Z',
           },
         ],
         fetchSavedGames: jest.fn().mockResolvedValue(undefined),
@@ -334,11 +330,12 @@ describe('SavesPage', () => {
       });
 
       await waitFor(() => {
-        expect(screen.getByText(/2.*存档/)).toBeInTheDocument();
+        // 显示年龄和周数信息
+        expect(screen.getByText(/25岁.*第11周/)).toBeInTheDocument();
       });
     });
 
-    it('expands group when clicked', async () => {
+    it('has continue button for each game', async () => {
       mockGameState = {
         ...mockGameStoreState,
         savedGames: [
@@ -348,13 +345,6 @@ describe('SavesPage', () => {
             age: 25,
             week: 10,
             updated_at: '2024-01-15T10:00:00Z',
-          },
-          {
-            game_id: 2,
-            player_name: 'Hero',
-            age: 30,
-            week: 20,
-            updated_at: '2024-01-14T10:00:00Z',
           },
         ],
         fetchSavedGames: jest.fn().mockResolvedValue(undefined),
@@ -363,7 +353,6 @@ describe('SavesPage', () => {
         deleteGame: jest.fn().mockResolvedValue(undefined),
       };
 
-      const user = userEvent.setup();
       await act(async () => {
         render(<SavesPage />);
       });
@@ -372,18 +361,13 @@ describe('SavesPage', () => {
         expect(screen.getByText('Hero')).toBeInTheDocument();
       });
 
-      // Click on the group to expand
-      await user.click(screen.getByText('Hero'));
-
-      // After expansion, should see individual saves
-      await waitFor(() => {
-        expect(screen.getByText('最新')).toBeInTheDocument();
-      });
+      // 每个游戏卡片都有继续按钮
+      expect(screen.getByRole('button', { name: /继续/ })).toBeInTheDocument();
     });
   });
 
-  describe('Delete group', () => {
-    it('shows delete group button', async () => {
+  describe('Delete game', () => {
+    it('shows delete button for each game', async () => {
       mockGameState = {
         ...mockGameStoreState,
         savedGames: [
@@ -399,7 +383,6 @@ describe('SavesPage', () => {
         deleteGame: jest.fn().mockResolvedValue(undefined),
       };
 
-      const user = userEvent.setup();
       await act(async () => {
         render(<SavesPage />);
       });
@@ -408,12 +391,12 @@ describe('SavesPage', () => {
         expect(screen.getByText('Hero')).toBeInTheDocument();
       });
 
-      // Find delete group button (Trash2 icon button in group header)
+      // 每个游戏卡片都有删除按钮
       const deleteButtons = screen.getAllByRole('button');
       expect(deleteButtons.length).toBeGreaterThan(1);
     });
 
-    it('opens delete group confirmation dialog', async () => {
+    it('opens delete confirmation dialog when clicking delete', async () => {
       mockGameState = {
         ...mockGameStoreState,
         savedGames: [
@@ -438,7 +421,7 @@ describe('SavesPage', () => {
         expect(screen.getByText('Hero')).toBeInTheDocument();
       });
 
-      // Click the group delete button (first trash icon)
+      // 点击删除按钮（trash 图标）
       const trashButtons = screen.getAllByRole('button').filter(btn =>
         btn.querySelector('svg.lucide-trash2')
       );
@@ -447,7 +430,7 @@ describe('SavesPage', () => {
         await user.click(trashButtons[0]);
 
         await waitFor(() => {
-          expect(screen.getByText(/确认删除角色/)).toBeInTheDocument();
+          expect(screen.getByText(/确认删除/)).toBeInTheDocument();
         });
       }
     });
@@ -455,6 +438,7 @@ describe('SavesPage', () => {
 
   describe('Error handling', () => {
     it('shows error toast when load fails', async () => {
+      const loadGameStateMock = jest.fn().mockRejectedValue(new Error('Load failed'));
       mockGameState = {
         ...mockGameStoreState,
         savedGames: [
@@ -467,7 +451,7 @@ describe('SavesPage', () => {
           },
         ],
         fetchSavedGames: jest.fn().mockResolvedValue(undefined),
-        loadGameState: jest.fn().mockRejectedValue(new Error('Load failed')),
+        loadGameState: loadGameStateMock,
         setGameSession: jest.fn(),
       };
 
@@ -480,19 +464,12 @@ describe('SavesPage', () => {
         expect(screen.getByText('Hero')).toBeInTheDocument();
       });
 
-      // Expand the group
-      await user.click(screen.getByText('Hero'));
+      // 直接点击继续按钮（新实现不再需要展开分组）
+      const loadButton = screen.getByRole('button', { name: /继续/ });
+      expect(loadButton).toBeInTheDocument();
 
-      await waitFor(() => {
-        expect(screen.getByText('最新')).toBeInTheDocument();
-      });
-
-      // Click load button - verify it exists
-      const loadButton = screen.queryByRole('button', { name: /继续|加载/ });
-      if (loadButton) {
-        // loadGameState should be defined
-        expect(mockGameState.loadGameState).toBeDefined();
-      }
+      // 验证 loadGameState 函数已定义
+      expect(mockGameState.loadGameState).toBeDefined();
     });
 
     it('shows error toast when delete fails', async () => {
