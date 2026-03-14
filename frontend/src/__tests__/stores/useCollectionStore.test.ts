@@ -129,6 +129,7 @@ describe('useCollectionStore', () => {
           image_url: 'http://example.com/item.png',
           image_generated: true,
           description_generated: false,
+          metadata: {},
         };
 
         useCollectionStore.getState().selectItem(item);
@@ -153,6 +154,7 @@ describe('useCollectionStore', () => {
           is_key_location: true,
           image_url: 'http://example.com/landmark.png',
           image_generated: true,
+          metadata: {},
         };
 
         useCollectionStore.getState().selectLandmark(landmark);
@@ -166,8 +168,8 @@ describe('useCollectionStore', () => {
     describe('clearSelection', () => {
       it('clears all selections', () => {
         const character = { name: 'Test', role: '', description: '', affinity: 50, age: 0, gender: '', occupation: '', personality_traits: [], image_url: null, image_generated: false, description_generated: false };
-        const item = { name: 'Item', description: '', importance: 'normal' as const, category: 'other' as const, acquired_week: 0, acquired_context: '', is_key_item: false, image_url: null, image_generated: false, description_generated: false };
-        const landmark = { name: 'Landmark', description: '', category: 'other' as const, importance: 'normal' as const, first_appear_week: 0, appear_count: 1, last_appear_week: 0, context: '', is_key_location: false, image_url: null, image_generated: false };
+        const item = { name: 'Item', description: '', importance: 'normal' as const, category: 'other' as const, acquired_week: 0, acquired_context: '', is_key_item: false, image_url: null, image_generated: false, description_generated: false, metadata: {} };
+        const landmark = { name: 'Landmark', description: '', category: 'other' as const, importance: 'normal' as const, first_appear_week: 0, appear_count: 1, last_appear_week: 0, context: '', is_key_location: false, image_url: null, image_generated: false, metadata: {} };
 
         useCollectionStore.setState({ selectedCharacter: character, selectedItem: item, selectedLandmark: landmark });
 
@@ -243,6 +245,7 @@ describe('useCollectionStore', () => {
         image_url: 'http://example.com/old.png',
         image_generated: true,
         description_generated: false,
+        metadata: {},
       };
       useCollectionStore.setState({ selectedItem: initialItem });
 
@@ -278,6 +281,7 @@ describe('useCollectionStore', () => {
         is_key_location: true,
         image_url: 'http://example.com/old.png',
         image_generated: true,
+        metadata: {},
       };
       useCollectionStore.setState({ selectedLandmark: initialLandmark });
 
@@ -312,6 +316,7 @@ describe('useCollectionStore', () => {
         image_url: null,
         image_generated: false,
         description_generated: false,
+        metadata: {},
       };
       useCollectionStore.setState({ selectedItem: initialItem });
 
@@ -397,10 +402,10 @@ describe('useCollectionStore', () => {
             { name: 'Character 1', role: 'Friend', description: '', affinity: 80, age: 25, gender: '男', occupation: '', personality_traits: [], image_url: null, image_generated: false, description_generated: false },
           ],
           items: [
-            { name: 'Item 1', description: '', importance: 'normal', category: 'other', acquired_week: 0, acquired_context: '', is_key_item: false, image_url: null, image_generated: false, description_generated: false },
+            { name: 'Item 1', description: '', importance: 'normal', category: 'other', acquired_week: 0, acquired_context: '', is_key_item: false, image_url: null, image_generated: false, description_generated: false, metadata: {} },
           ],
           landmarks: [
-            { name: 'Landmark 1', description: '', category: 'building', importance: 'normal', first_appear_week: 0, appear_count: 1, last_appear_week: 0, context: '', is_key_location: false, image_url: null, image_generated: false },
+            { name: 'Landmark 1', description: '', category: 'building', importance: 'normal', first_appear_week: 0, appear_count: 1, last_appear_week: 0, context: '', is_key_location: false, image_url: null, image_generated: false, metadata: {} },
           ],
           total_characters: 1,
           total_items: 1,
@@ -508,7 +513,7 @@ describe('useCollectionStore', () => {
         const mockResponse = {
           game_id: 1,
           characters: [],
-          items: [{ name: 'TestItem', description: '', importance: 'normal', category: 'other', acquired_week: 0, acquired_context: '', is_key_item: false, image_url: 'new_url', image_generated: true, description_generated: false }],
+          items: [{ name: 'TestItem', description: '', importance: 'normal', category: 'other', acquired_week: 0, acquired_context: '', is_key_item: false, image_url: 'new_url', image_generated: true, description_generated: false, metadata: {} }],
           landmarks: [],
           total_characters: 0,
           total_items: 1,
@@ -535,7 +540,7 @@ describe('useCollectionStore', () => {
           game_id: 1,
           characters: [],
           items: [],
-          landmarks: [{ name: 'TestLandmark', description: '', category: 'building', importance: 'normal', first_appear_week: 0, appear_count: 1, last_appear_week: 0, context: '', is_key_location: false, image_url: 'new_url', image_generated: true }],
+          landmarks: [{ name: 'TestLandmark', description: '', category: 'building', importance: 'normal', first_appear_week: 0, appear_count: 1, last_appear_week: 0, context: '', is_key_location: false, image_url: 'new_url', image_generated: true, metadata: {} }],
           total_characters: 0,
           total_items: 0,
         };
@@ -560,7 +565,7 @@ describe('useCollectionStore', () => {
         const mockResponse = {
           game_id: 1,
           characters: [],
-          items: [{ name: 'TestItem', description: '', importance: 'normal', category: 'other', acquired_week: 0, acquired_context: '', is_key_item: false, image_url: 'new_url', image_generated: true, description_generated: false }],
+          items: [{ name: 'TestItem', description: '', importance: 'normal', category: 'other', acquired_week: 0, acquired_context: '', is_key_item: false, image_url: 'new_url', image_generated: true, description_generated: false, metadata: {} }],
           total_characters: 0,
           total_items: 1,
         };
@@ -585,7 +590,7 @@ describe('useCollectionStore', () => {
         const mockResponse = {
           game_id: 1,
           characters: [],
-          items: [{ name: 'TestItem', description: 'New description', importance: 'normal', category: 'other', acquired_week: 0, acquired_context: '', is_key_item: false, image_url: null, image_generated: false, description_generated: true }],
+          items: [{ name: 'TestItem', description: 'New description', importance: 'normal', category: 'other', acquired_week: 0, acquired_context: '', is_key_item: false, image_url: null, image_generated: false, description_generated: true, metadata: {} }],
           landmarks: [],
           total_characters: 0,
           total_items: 1,
