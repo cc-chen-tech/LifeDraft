@@ -87,7 +87,13 @@ export function startNetworkMonitoring(page: Page): NetworkMonitor {
       // 在控制台输出错误，方便调试
       console.error(`[Network Error] ${request.method()} ${url} - ${status} ${response.statusText()}`);
       if (status === 404) {
-        console.error(`  → API endpoint not found. Check if frontend path matches backend route.`);
+        // 检查是路由不存在还是资源不存在
+        const isRouteNotFound = body.includes('Not Found') && !body.includes('game_id') && !body.includes('Game not found');
+        if (isRouteNotFound) {
+          console.error(`  → API endpoint not found. Check if frontend path matches backend route.`);
+        } else {
+          console.error(`  → Resource not found (expected for new users without active game).`);
+        }
       }
     }
   });
