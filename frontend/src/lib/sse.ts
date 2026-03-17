@@ -2,10 +2,16 @@
  * Server-Sent Events (SSE) streaming utilities
  */
 
+export type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "error" | null;
+
 export interface StreamCallbacks {
+  onStory?: (text: string) => void;
   onChunk?: (chunk: string) => void;
-  onComplete?: () => void;
-  onError?: (error: Error) => void;
+  onStatus?: (status: { phase: string; heartbeat?: boolean; cached_count?: number; message?: string }) => void;
+  onComplete?: (data: Record<string, unknown>) => void;
+  onError?: (error: Error | { message: string }) => void;
+  onConnectionStatus?: (status: ConnectionStatus) => void;
+  onReconnecting?: (attempt: number, maxRetries: number) => void;
 }
 
 function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbacks: StreamCallbacks): Promise<void> {
@@ -14,9 +20,10 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
 
   return new Promise((resolve, reject) => {
     function pump(): Promise<void> {
-      return reader.read().then(({ done, value }) => {
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      return reader!.read().then(({ done, value }) => {
         if (done) {
-          callbacks.onComplete?.();
+          callbacks.onComplete?.({});
           resolve();
           return;
         }
@@ -30,19 +37,30 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
           if (trimmed.startsWith('data: ')) {
             const data = trimmed.slice(6);
             if (data === '[DONE]') {
-              callbacks.onComplete?.();
+              callbacks.onComplete?.({});
               resolve();
               return;
             }
             try {
               const parsed = JSON.parse(data);
-              if (parsed.content || parsed.text || parsed.chunk) {
-                callbacks.onChunk?.(parsed.content || parsed.text || parsed.chunk);
+              const chunk = parsed.content || parsed.text || parsed.chunk || parsed.story;
+              if (chunk) {
+                callbacks.onChunk?.(chunk);
+                callbacks.onStory?.(chunk);
+              }
+              // Handle status updates
+              if (parsed.type === 'status' && parsed.status) {
+                callbacks.onStatus?.(parsed.status);
+              }
+              // Handle complete event
+              if (parsed.type === 'complete' || parsed.event === 'complete') {
+                callbacks.onComplete?.(parsed.data || parsed);
               }
             } catch {
               // If not JSON, treat as plain text chunk
               if (data) {
                 callbacks.onChunk?.(data);
+                callbacks.onStory?.(data);
               }
             }
           }
@@ -62,13 +80,15 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
 export async function streamChoice(
   gameId: number,
   choiceIndex: number,
-  callbacks: StreamCallbacks
+  callbacks: StreamCallbacks,
+  options?: { signal?: AbortSignal }
 ): Promise<void> {
-  const response = await fetch(`/api/games/${gameId}/choices/stream`, {
+  const response = await fetch(`/api/games/${gameId}/choice`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ choice_index: choiceIndex }),
+    body: JSON.stringify({ option_index: choiceIndex }),
+    signal: options?.signal,
   });
 
   if (!response.ok) {
@@ -86,13 +106,15 @@ export async function streamChoice(
 export async function streamCustomChoice(
   gameId: number,
   customChoice: string,
-  callbacks: StreamCallbacks
+  callbacks: StreamCallbacks,
+  options?: { signal?: AbortSignal }
 ): Promise<void> {
-  const response = await fetch(`/api/games/${gameId}/choices/custom/stream`, {
+  const response = await fetch(`/api/games/${gameId}/custom-choice`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ custom_choice: customChoice }),
+    body: JSON.stringify({ custom_text: customChoice }),
+    signal: options?.signal,
   });
 
   if (!response.ok) {
@@ -109,12 +131,13 @@ export async function streamCustomChoice(
 
 export async function streamGameEvent(
   gameId: number,
-  callbacks: StreamCallbacks
+  callbacks: StreamCallbacks,
+  options?: { signal?: AbortSignal }
 ): Promise<void> {
-  const response = await fetch(`/api/games/${gameId}/events/stream`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+  const response = await fetch(`/api/games/${gameId}/event`, {
+    method: 'GET',
     credentials: 'include',
+    signal: options?.signal,
   });
 
   if (!response.ok) {
@@ -132,13 +155,12 @@ export async function streamGameEvent(
 export async function streamRegenerate(
   gameId: number,
   callbacks: StreamCallbacks,
-  options?: { story_context?: string; adjustment?: string }
+  options?: { story_context?: string; adjustment?: string; signal?: AbortSignal }
 ): Promise<void> {
-  const response = await fetch(`/api/games/${gameId}/regenerate/stream`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+  const response = await fetch(`/api/games/${gameId}/regenerate-stream`, {
+    method: 'GET',
     credentials: 'include',
-    body: JSON.stringify(options || {}),
+    signal: options?.signal,
   });
 
   if (!response.ok) {
@@ -166,18 +188,20 @@ export async function streamRewrite(
   instruction: string,
   segmentToReplace: string,
   language: string,
-  callbacks: RewriteCallbacks
-): Promise<void> {
-  const response = await fetch(`/api/games/${gameId}/rewrite/stream`, {
+  callbacks: RewriteCallbacks,
+  options?: { signal?: AbortSignal }
+): Promise<{ completed: boolean; error?: Error }> {
+  const response = await fetch(`/api/games/${gameId}/rewrite-stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({
-      story_context: storyContext,
-      instruction: instruction,
+      full_story: storyContext,
       segment_to_replace: segmentToReplace,
+      user_instruction: instruction,
       language: language,
     }),
+    signal: options?.signal,
   });
 
   if (!response.ok) {
@@ -193,12 +217,16 @@ export async function streamRewrite(
   const decoder = new TextDecoder();
   let buffer = '';
 
+  let completed = false;
+
   return new Promise((resolve, reject) => {
     function pump(): Promise<void> {
-      return reader.read().then(({ done, value }) => {
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      return reader!.read().then(({ done, value }) => {
         if (done) {
+          completed = true;
           callbacks.onComplete?.({});
-          resolve();
+          resolve({ completed: true, error: undefined });
           return;
         }
 
@@ -211,8 +239,9 @@ export async function streamRewrite(
           if (trimmed.startsWith('data: ')) {
             const data = trimmed.slice(6);
             if (data === '[DONE]') {
+              completed = true;
               callbacks.onComplete?.({});
-              resolve();
+              resolve({ completed: true, error: undefined });
               return;
             }
             try {
@@ -222,6 +251,7 @@ export async function streamRewrite(
               } else if (parsed.type === 'status' && parsed.status) {
                 callbacks.onStatus?.(parsed.status);
               } else if (parsed.type === 'complete') {
+                completed = true;
                 callbacks.onComplete?.(parsed.data || parsed);
               }
             } catch {
@@ -233,7 +263,7 @@ export async function streamRewrite(
         return pump();
       }).catch((error) => {
         callbacks.onError?.(error);
-        reject(error);
+        resolve({ completed, error });
       });
     }
 
@@ -253,7 +283,8 @@ export async function streamOpeningStory(
     onStory?: (text: string) => void;
     onComplete?: (data: unknown) => void;
     onError?: (error: { message: string }) => void;
-  }
+  },
+  options?: { signal?: AbortSignal; enableReconnect?: boolean }
 ): Promise<void> {
   const response = await fetch('/api/character/opening-story', {
     method: 'POST',
@@ -265,6 +296,7 @@ export async function streamOpeningStory(
       life_vision: lifeVision,
       language: language,
     }),
+    signal: options?.signal,
   });
 
   if (!response.ok) {
@@ -282,7 +314,8 @@ export async function streamOpeningStory(
 
   return new Promise((resolve, reject) => {
     function pump(): Promise<void> {
-      return reader.read().then(({ done, value }) => {
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      return reader!.read().then(({ done, value }) => {
         if (done) {
           callbacks.onComplete?.({});
           resolve();
