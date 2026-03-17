@@ -102,6 +102,7 @@ class AIClient:
         for attempt, current_max_tokens in enumerate(tokens_to_try):
             try:
                 if stream_callback:
+                    logger.info(f"[AIClient] Using streaming mode, stream_callback={stream_callback is not None}")
                     stream = self.client.chat.completions.create(
                         model=use_model,
                         messages=messages,
@@ -112,13 +113,16 @@ class AIClient:
 
                     full_text = ""
                     finish_reason = None
+                    chunk_count = 0
                     for chunk in stream:
                         if chunk.choices[0].delta.content is not None:
                             chunk_text = chunk.choices[0].delta.content
                             full_text += chunk_text
+                            chunk_count += 1
                             stream_callback(chunk_text)
                         if chunk.choices[0].finish_reason:
                             finish_reason = chunk.choices[0].finish_reason
+                    logger.info(f"[AIClient] Streaming complete: {chunk_count} chunks, {len(full_text)} chars")
 
                     if finish_reason == "length":
                         logger.warning(

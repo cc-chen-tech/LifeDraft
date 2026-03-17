@@ -195,10 +195,12 @@ async def stream_round_event(
 
     def stream_cb(text):
         if closed[0] or loop.is_closed():
+            logger.warning(f"[stream_cb] Skipping chunk (closed={closed[0]}, loop_closed={loop.is_closed()})")
             return
         try:
             loop.call_soon_threadsafe(q.put_nowait, ("story", text))
-        except RuntimeError:
+        except RuntimeError as e:
+            logger.error(f"[stream_cb] RuntimeError: {e}")
             closed[0] = True  # 事件循环已关闭
 
     def status_cb(status):
