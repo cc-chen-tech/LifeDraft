@@ -95,7 +95,9 @@ export default function OpeningStoryPage() {
           setStoryText((prev) => prev + text);
         },
         onComplete: (data) => {
-          const fullText = (data.full_story as string) || "";
+          const fullText = (data && typeof data === 'object' && 'full_story' in data)
+            ? (data as { full_story?: string }).full_story || ""
+            : "";
           console.log("[OpeningStory] Generation complete, length:", fullText.length);
           if (fullText) {
             setStoryText(fullText);
@@ -152,7 +154,9 @@ export default function OpeningStoryPage() {
           setStoryText((prev) => prev + text);
         },
         onComplete: (data) => {
-          const fullText = (data.full_story as string) || "";
+          const fullText = (data && typeof data === 'object' && 'full_story' in data)
+            ? (data as { full_story?: string }).full_story || ""
+            : "";
           if (fullText) {
             setStoryText(fullText);
             setOpeningStory(fullText);
