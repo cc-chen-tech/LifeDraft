@@ -270,7 +270,8 @@ class StoryGenerator:
         logger.info(
             f"Generating round event: round={round_number}, "
             f"context_length={len(round_context)}, "
-            f"rel_events={len(relationship_events) if relationship_events else 0}"
+            f"rel_events={len(relationship_events) if relationship_events else 0}, "
+            f"stream_callback={stream_callback is not None}"
         )
 
         # ★ 向量检索：获取相关历史片段
@@ -458,6 +459,9 @@ class StoryGenerator:
         Returns:
             Original or regenerated story text
         """
+        # ★ 诊断日志：确认进入时 stream_callback 状态
+        logger.info(f"[_validate_and_retry_story] Entered with stream_callback={stream_callback is not None}")
+
         try:
             from src.ai.consistency_validator import ConsistencyValidator
 
@@ -499,13 +503,14 @@ class StoryGenerator:
                 logger.info("★ 发送 retry 事件让前端清空故事")
                 status_callback("retry")  # 前端会识别这个状态并清空故事
 
-            # 清空之前的故事缓存，准备接收新故事
-            if stream_callback:
-                # 发送一个空字符串来重置流式状态
-                pass  # 新故事会直接开始流式输出
+            # ★ 诊断日志：确认 stream_callback 状态
+            if stream_callback is None:
+                logger.warning("★★★ stream_callback is None in retry! This should not happen.")
+            else:
+                logger.info(f"★ stream_callback is present in retry: {stream_callback}")
 
             # ★ 优化：重试时使用固定的低温度 0.7，确保更保守、更符合约束
-            logger.info(f"Consistency retry with temperature=0.7 (conservative)")
+            logger.info(f"Consistency retry with temperature=0.7 (conservative), stream_callback={stream_callback is not None}")
 
             retry_story = self.client.call(
                 system_prompt=sys_prompt,
