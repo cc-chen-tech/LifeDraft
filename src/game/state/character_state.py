@@ -5,7 +5,7 @@
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from pydantic import BaseModel, Field
 
@@ -85,7 +85,7 @@ class CharacterState(BaseModel):
             "deep_friendship": 80,  # 深度友谊事件
             "conflict": 20,  # 冲突事件
             "help_request": 60,  # 请求帮助
-            "secret_sharing": 75,  # 分享秘密
+            "secret_sharing": 75,  # 分享秘密 # noqa: B105
             "betrayal_risk": 15,  # 背叛风险
             # 浪漫关系事件
             "romance_spark": 75,  # 恋爱萌芽
