@@ -8,7 +8,6 @@ OpenAI SDK or private methods. This ensures:
 4. Easy to swap underlying provider
 """
 
-import json
 import logging
 import re
 from typing import Any, Callable, Dict, Optional
@@ -102,7 +101,9 @@ class AIClient:
         for attempt, current_max_tokens in enumerate(tokens_to_try):
             try:
                 if stream_callback:
-                    logger.info(f"[AIClient] Using streaming mode, stream_callback={stream_callback is not None}")
+                    logger.info(
+                        f"[AIClient] Using streaming mode, stream_callback={stream_callback is not None}"
+                    )
                     stream = self.client.chat.completions.create(
                         model=use_model,
                         messages=messages,
@@ -122,7 +123,9 @@ class AIClient:
                             stream_callback(chunk_text)
                         if chunk.choices[0].finish_reason:
                             finish_reason = chunk.choices[0].finish_reason
-                    logger.info(f"[AIClient] Streaming complete: {chunk_count} chunks, {len(full_text)} chars")
+                    logger.info(
+                        f"[AIClient] Streaming complete: {chunk_count} chunks, {len(full_text)} chars"
+                    )
 
                     if finish_reason == "length":
                         logger.warning(

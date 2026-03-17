@@ -6,23 +6,17 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from src.api.deps import get_current_user_optional, get_db
-from src.api.schemas import (
-    CharacterCollectionItem,
-    CollectionResponse,
-    ItemCollectionItem,
-    LandmarkCollectionItem,
-    MessageResponse,
-    RegenerateCharacterImageRequest,
-    RegenerateItemImageRequest,
-)
+from src.api.deps import get_current_user_optional
+from src.api.schemas import (CharacterCollectionItem, CollectionResponse,
+                             ItemCollectionItem, LandmarkCollectionItem,
+                             MessageResponse, RegenerateCharacterImageRequest,
+                             RegenerateItemImageRequest)
 from src.api.services.session_service import session_service
-from src.api.session_store import session_store
 from src.database.models import Game
 from src.database.models import Image as ImageModel
 from src.database.models import SessionLocal, User
-from src.game.state.item_state import ItemState
-from src.services.image_service import ImageContentError, ImageService, ImageServiceError
+from src.services.image_service import (ImageContentError, ImageService,
+                                        ImageServiceError)
 from src.services.item_extraction_service import ItemExtractionService
 from src.services.landmark_extraction_service import LandmarkExtractionService
 
@@ -86,7 +80,7 @@ async def get_collection(
                     ImageModel.game_id == game_id,
                     ImageModel.image_type == "character",
                     ImageModel.entity_name == player_name,
-                    ImageModel.is_active == True,
+                    ImageModel.is_active is True,
                 )
                 .order_by(ImageModel.created_at.desc())
                 .all()
@@ -146,7 +140,7 @@ async def get_collection(
                     ImageModel.game_id == game_id,
                     ImageModel.image_type == "character",
                     ImageModel.entity_name == name,
-                    ImageModel.is_active == True,
+                    ImageModel.is_active is True,
                 )
                 .order_by(ImageModel.created_at.desc())
                 .all()
@@ -187,7 +181,7 @@ async def get_collection(
                         ImageModel.game_id == game_id,
                         ImageModel.image_type == "character",
                         ImageModel.entity_name == name,
-                        ImageModel.is_active == True,
+                        ImageModel.is_active is True,
                     )
                     .order_by(ImageModel.created_at.desc())
                     .all()
@@ -230,7 +224,7 @@ async def get_collection(
                         ImageModel.game_id == game_id,
                         ImageModel.image_type == "character",
                         ImageModel.entity_name == name,
-                        ImageModel.is_active == True,
+                        ImageModel.is_active is True,
                     )
                     .order_by(ImageModel.created_at.desc())
                     .all()
@@ -264,7 +258,7 @@ async def get_collection(
                     ImageModel.game_id == game_id,
                     ImageModel.image_type == "item",
                     ImageModel.entity_name == name,
-                    ImageModel.is_active == True,
+                    ImageModel.is_active is True,
                 )
                 .order_by(ImageModel.created_at.desc())
                 .all()
@@ -298,7 +292,7 @@ async def get_collection(
                     ImageModel.game_id == game_id,
                     ImageModel.image_type == "landmark",
                     ImageModel.entity_name == name,
-                    ImageModel.is_active == True,
+                    ImageModel.is_active is True,
                 )
                 .order_by(ImageModel.created_at.desc())
                 .all()
@@ -364,7 +358,6 @@ async def generate_character_image(
         raise HTTPException(status_code=400, detail="游戏状态不存在")
 
     # 构建描述
-    char_data = player_state.characters.get(name)
     character_settings = player_state.character_settings or {}
     description_parts = []
 
@@ -787,7 +780,7 @@ async def regenerate_character_image(
                     ImageModel.game_id == game_id,
                     ImageModel.image_type == "character",
                     ImageModel.entity_name == name,
-                    ImageModel.is_active == True,
+                    ImageModel.is_active is True,
                 )
                 .order_by(ImageModel.created_at.desc())
                 .first()
@@ -850,7 +843,7 @@ async def regenerate_item_image(
                 ImageModel.game_id == game_id,
                 ImageModel.image_type == "item",
                 ImageModel.entity_name == item_name,
-                ImageModel.is_active == True,
+                ImageModel.is_active is True,
             )
             .order_by(ImageModel.created_at.desc())
             .first()
@@ -858,8 +851,6 @@ async def regenerate_item_image(
 
         if not current_image:
             raise HTTPException(status_code=404, detail=f"物品 {item_name} 暂无图片，请先生成图片")
-
-        image_service = ImageService(db)
 
         # 物品图片重新生成：使用当前图片作为参考
         import base64
@@ -879,13 +870,6 @@ async def regenerate_item_image(
         except Exception as e:
             logger.warning(f"Failed to get current item image: {e}")
             reference_url = None
-
-        # 获取时代背景
-        era = "现代"
-        character_settings = player_state.character_settings or {}
-        era_setting = character_settings.get("era", {})
-        if isinstance(era_setting, dict):
-            era = era_setting.get("era_name") or era_setting.get("era_description") or "现代"
 
         description = item_data.get("description", "") or f"一个叫{item_name}的物品"
 
@@ -994,7 +978,8 @@ async def recognize_entities(
         existing_characters.append(player_name)
 
     try:
-        from src.services.entity_recognition_service import EntityRecognitionService
+        from src.services.entity_recognition_service import \
+            EntityRecognitionService
 
         recognition_service = EntityRecognitionService(session.game_loop.ai_generator.ai_client)
 
@@ -1132,7 +1117,8 @@ async def create_item(
 
         # 如果需要从历史中提取描述
         if request.get("generate_description") and player_state.round_history:
-            from src.services.entity_recognition_service import EntityRecognitionService
+            from src.services.entity_recognition_service import \
+                EntityRecognitionService
 
             recognition_service = EntityRecognitionService(session.game_loop.ai_generator.ai_client)
 

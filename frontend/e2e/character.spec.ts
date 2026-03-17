@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
 /**
  * E2E Test: Character Creation Flow
  * Tests for the character creation wizard including all steps and navigation

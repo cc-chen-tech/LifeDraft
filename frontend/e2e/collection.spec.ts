@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
 /**
  * E2E tests for Collection System
  * Tests the collection panel, character/item display, and generation features

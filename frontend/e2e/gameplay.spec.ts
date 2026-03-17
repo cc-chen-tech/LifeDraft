@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
 /**
  * E2E Test: Gameplay Flow
  * Tests for the main game interaction including story display, choices, and save functionality

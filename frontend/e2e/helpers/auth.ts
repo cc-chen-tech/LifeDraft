@@ -5,7 +5,7 @@
  * - 不再使用 localStorage 存储 token
  * - 通过 Cookie 自动发送认证信息
  */
-import { Page, BrowserContext, APIRequestContext, expect } from '@playwright/test';
+import { Page, BrowserContext, expect } from '@playwright/test';
 
 const API_URL = 'http://localhost:8000';
 

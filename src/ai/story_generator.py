@@ -10,8 +10,7 @@ from typing import Any, Callable, Dict, Optional
 
 from pydantic import ValidationError
 
-from config.prompts import (get_event_generation_prompt,
-                            get_round_event_prompt, get_story_only_prompt)
+from config.prompts import get_round_event_prompt, get_story_only_prompt
 from src.ai.client import AIClient
 from src.ai.models import EventOption, GameEvent
 from src.ai.system_prompts import get_system_prompt
@@ -460,7 +459,9 @@ class StoryGenerator:
             Original or regenerated story text
         """
         # ★ 诊断日志：确认进入时 stream_callback 状态
-        logger.info(f"[_validate_and_retry_story] Entered with stream_callback={stream_callback is not None}")
+        logger.info(
+            f"[_validate_and_retry_story] Entered with stream_callback={stream_callback is not None}"
+        )
 
         try:
             from src.ai.consistency_validator import ConsistencyValidator
@@ -510,7 +511,9 @@ class StoryGenerator:
                 logger.info(f"★ stream_callback is present in retry: {stream_callback}")
 
             # ★ 优化：重试时使用固定的低温度 0.7，确保更保守、更符合约束
-            logger.info(f"Consistency retry with temperature=0.7 (conservative), stream_callback={stream_callback is not None}")
+            logger.info(
+                f"Consistency retry with temperature=0.7 (conservative), stream_callback={stream_callback is not None}"
+            )
 
             retry_story = self.client.call(
                 system_prompt=sys_prompt,

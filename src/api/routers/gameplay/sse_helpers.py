@@ -8,7 +8,7 @@ import asyncio
 import json
 import logging
 import threading
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 from src.api.deps import get_db
 
@@ -101,7 +101,7 @@ def _trigger_round_illustration_generation(
                 # 获取已有图片
                 images = (
                     db.query(ImageModel)
-                    .filter(ImageModel.game_id == game_id, ImageModel.is_active == True)
+                    .filter(ImageModel.game_id == game_id, ImageModel.is_active is True)
                     .all()
                 )
 
@@ -195,7 +195,9 @@ async def stream_round_event(
 
     def stream_cb(text):
         if closed[0] or loop.is_closed():
-            logger.warning(f"[stream_cb] Skipping chunk (closed={closed[0]}, loop_closed={loop.is_closed()})")
+            logger.warning(
+                f"[stream_cb] Skipping chunk (closed={closed[0]}, loop_closed={loop.is_closed()})"
+            )
             return
         try:
             loop.call_soon_threadsafe(q.put_nowait, ("story", text))
@@ -241,7 +243,7 @@ async def stream_round_event(
             if not session._is_generating and session.sse_cache:
                 event = game_loop.current_event
                 if event and event.options:
-                    logger.info(f"Generation already complete, sending complete event directly")
+                    logger.info("Generation already complete, sending complete event directly")
                     yield make_sse_event("status", {"phase": "resuming"})
                     yield make_sse_event("complete", event.model_dump())
                     return

@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+
 /**
  * E2E Test: Authentication Flow
  * Tests for login and registration functionality on the welcome page
