@@ -36,7 +36,7 @@ jobs:
       - name: Setup test database
         run: |
           mkdir -p data
-          python -c "from src.utils.database import init_db; init_db()"
+          python -c "from src.database.models import init_db; init_db()"
         env:
           PYTHONPATH: ${{ github.workspace }}
 
