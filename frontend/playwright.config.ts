@@ -49,15 +49,17 @@ export default defineConfig({
     // },
   ],
 
-  /* Run your local dev server before starting the tests */
-  webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:3000',
-    reuseExistingServer: true,
-    timeout: 120 * 1000,
-    // E2E 测试需要后端，如果不存在则跳过测试而不是失败
-    env: Object.fromEntries(
-      Object.entries(process.env).filter(([, v]) => v !== undefined)
-    ) as Record<string, string>,
-  },
+  /* Run your local dev server before starting the tests (local development only) */
+  // CI环境中由GitHub Actions工作流手动启动服务器，避免端口冲突
+  ...(process.env.CI ? {} : {
+    webServer: {
+      command: 'npm run dev',
+      url: 'http://localhost:3000',
+      reuseExistingServer: true,
+      timeout: 120 * 1000,
+      env: Object.fromEntries(
+        Object.entries(process.env).filter(([, v]) => v !== undefined)
+      ) as Record<string, string>,
+    },
+  }),
 });
