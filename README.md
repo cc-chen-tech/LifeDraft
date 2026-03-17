@@ -1,96 +1,177 @@
 # 人生草稿本 (Life Draft Book)
 
-A text-based life simulation game with AI-generated events, resource management, and decision-making gameplay. 人生草稿本 - 用AI生成事件，管理资源，做出选择，体验不同的人生轨迹。
+A text-based life simulation game with AI-generated events, resource management, and decision-making gameplay.
+
+人生草稿本 - 用 AI 生成事件，管理资源，做出选择，体验不同的人生轨迹。
 
 ## Features
 
-- **AI-Generated Events**: Dynamic, personalized life events generated in real-time
+- **AI-Generated Events**: Dynamic, personalized life events generated in real-time using GPT-4
 - **Resource Management**: Balance energy, mood, knowledge, and wealth
 - **Decision-Making**: Make choices that affect your life trajectory
-- **Bilingual Support**: Play in Chinese or English
+- **Dual Interfaces**: Both Streamlit and Next.js web interfaces
+- **Save System**: Save and load your game progress
+- **Bilingual Support**: Play in Chinese (default) or English
 - **Multiple Endings**: Experience different life outcomes based on your choices
 
-## Installation
+## Tech Stack
 
-1. Clone the repository
-2. Create a virtual environment:
+- **Backend**: Python 3.9+, FastAPI, SQLAlchemy
+- **Frontend**: Next.js 16, React 19, TypeScript, Tailwind CSS 4
+- **AI**: OpenAI GPT-4 API
+- **Database**: SQLite (default) / PostgreSQL (production)
+- **Testing**: pytest, Jest, Playwright (E2E)
+- **Deployment**: Docker, Docker Compose
+
+## Quick Start
+
+### Option 1: Using start.sh (Recommended for Development)
+
+```bash
+# Start both backend and frontend
+./start.sh
+
+# Other commands
+./start.sh stop      # Stop all services
+./start.sh restart   # Restart services
+./start.sh status    # Check service status
+./start.sh tail      # View real-time logs
+```
+
+### Option 2: Using Docker
+
+```bash
+# Build and start with Docker Compose
+make deploy-dev
+
+# Or manually:
+docker-compose up -d
+```
+
+### Option 3: Manual Setup
+
+1. **Clone and setup Python environment**:
    ```bash
    python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-3. Install dependencies:
-   ```bash
+   source venv/bin/activate
    pip install -r requirements.txt
    ```
-4. Set up environment variables:
-   Create a `.env` file in the project root with:
+
+2. **Setup environment variables**:
    ```bash
-   OPENAI_API_KEY=your_openai_api_key_here
-   OPENAI_MODEL=gpt-4
-   DEFAULT_LANGUAGE=en
-   CACHE_EVENTS=true
+   cp .env.example .env
+   # Edit .env with your OpenAI API key
    ```
 
-## Usage
+3. **Start backend**:
+   ```bash
+   python run_api.py
+   ```
 
-### Command-Line Interface (Phase 1)
+4. **Start frontend** (in another terminal):
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
+5. **Open** http://localhost:3000
+
+## Environment Variables
+
+Create a `.env` file in the project root:
+
 ```bash
-python run_cli.py
-# Or with options:
-python run_cli.py --language zh  # Chinese
-python run_cli.py --load savegame.json  # Load saved game
+# Required
+OPENAI_API_KEY=your-openai-api-key-here
+OPENAI_MODEL=gpt-4
+
+# Optional
+DEFAULT_LANGUAGE=zh        # zh or en
+CACHE_EVENTS=true          # Enable event caching
+DATABASE_URL=              # PostgreSQL URL (optional, uses SQLite by default)
 ```
 
-### Next.js Web Interface
+See `.env.example` for all available options.
 
-启动后端 API 服务:
+## Development Commands
+
+### Using Makefile
+
 ```bash
-python run_api.py
+make test           # Run all tests
+make test-cov       # Run tests with coverage report
+make format         # Format code with black and isort
+make lint           # Run flake8 linting
+make type-check     # Run mypy type checking
+make quality        # Run all quality checks
+
+make docker-up      # Start Docker services
+make docker-down    # Stop Docker services
+make deploy-dev     # Deploy development environment
+make deploy-prod    # Deploy production environment
 ```
 
-启动前端服务:
+### Testing
+
+**Backend tests:**
+```bash
+pytest tests/ -v
+pytest tests/ -v --cov=src --cov-report=html
+```
+
+**Frontend tests:**
 ```bash
 cd frontend
-npm install  # 首次运行
-npm run dev
+npm test              # Unit tests with Jest
+npm run test:e2e      # E2E tests with Playwright
 ```
-
-前端界面将在浏览器中打开 `http://localhost:3000`
-
-或使用一键启动脚本:
-```bash
-./start.sh  # 启动前后端服务
-./start_lan_nextjs.sh  # 局域网访问模式
-```
-
-## Gameplay
-
-- Start at age 22 and simulate 8 years (96 weeks) until age 30
-- Each week, you'll face 2-3 AI-generated events
-- Make decisions that affect your resources (energy, mood, knowledge, wealth)
-- Manage relationships with key NPCs
-- Experience different endings based on your choices
 
 ## Project Structure
 
 ```
 story2/
-├── config/          # Configuration and prompts
 ├── src/
-│   ├── game/       # Core game logic
-│   ├── ai/         # AI event generation
-│   ├── api/        # FastAPI backend
-│   └── database/   # Database models and operations
-├── frontend/       # Next.js frontend
-├── tests/          # Unit and integration tests
-└── data/           # Preset events and cache
+│   ├── game/         # Core game logic and state management
+│   ├── ai/           # AI event generation and LLM integration
+│   ├── api/          # FastAPI backend
+│   ├── ui/           # Streamlit interface
+│   └── database/     # Database models and operations
+├── frontend/         # Next.js frontend application
+├── tests/            # Backend tests
+├── config/           # Configuration and AI prompts
+├── data/             # Game data, presets, and cache
+├── docker-compose.yml
+├── Dockerfile
+├── Makefile          # Development commands
+├── start.sh          # Quick start script
+└── DEPLOYMENT.md     # Detailed deployment guide
 ```
 
-## Development Phases
+## Deployment
 
-- **Phase 1**: Core prototype with CLI
-- **Phase 2**: FastAPI backend with database
-- **Phase 3**: Next.js frontend with full features
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment options:
+
+- **Streamlit Cloud** - Easiest, free tier available
+- **Docker Deployment** - Recommended for VPS/cloud servers
+- **Full Production Setup** - With Nginx, SSL, monitoring
+
+Quick Docker deployment:
+```bash
+# Development
+make deploy-dev
+
+# Production
+make deploy-prod
+```
+
+## Gameplay
+
+- Start at age 22 and simulate until age 30 (96 weeks)
+- Each week, face 2-3 AI-generated events based on your current situation
+- Make decisions that affect your resources (energy, mood, knowledge, wealth)
+- Build relationships with NPCs
+- Experience different endings based on your life choices
 
 ## License
 
