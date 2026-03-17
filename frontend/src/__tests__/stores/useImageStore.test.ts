@@ -141,10 +141,10 @@ describe('useImageStore', () => {
 
         await useImageStore.getState().regeneratePlayerImage('make it better');
 
-        expect(api.images.regenerate).toHaveBeenCalledWith({
-          image_id: 1,
-          feedback: 'make it better',
-        });
+        expect(api.images.regenerate).toHaveBeenCalledWith(
+          1,
+          { feedback: 'make it better' }
+        );
         expect(useImageStore.getState().playerImages).toEqual(newImages);
       });
 
@@ -176,7 +176,7 @@ describe('useImageStore', () => {
 
         await useImageStore.getState().regenerateFreshPlayerImage();
 
-        expect(api.images.regenerateFresh).toHaveBeenCalledWith(1, true);
+        expect(api.images.regenerateFresh).toHaveBeenCalledWith(1);
         expect(useImageStore.getState().playerImages).toEqual(newImages);
       });
 

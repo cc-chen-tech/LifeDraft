@@ -56,14 +56,38 @@ run_e2e_tests() {
     echo -e "${BLUE}========================================${NC}"
     echo -e "${YELLOW}运行 E2E Playwright 测试...${NC}"
     echo -e "${BLUE}========================================${NC}"
+
+    # 检查后端是否运行，如果没有则启动
+    local backend_started=false
+    if ! lsof -ti:8000 > /dev/null 2>&1; then
+        echo -e "${YELLOW}后端未运行，正在启动...${NC}"
+        cd "$PROJECT_DIR"
+        source venv/bin/activate
+        python -m src.main > /tmp/backend_e2e.log 2>&1 &
+        local backend_pid=$!
+        backend_started=true
+
+        # 等待后端启动
+        echo -e "${YELLOW}等待后端启动...${NC}"
+        for i in {1..30}; do
+            if curl -s http://localhost:8000/api/health > /dev/null 2>&1; then
+                echo -e "${GREEN}后端已启动${NC}"
+                # 额外等待确保所有路由完全初始化
+                sleep 2
+                break
+            fi
+            sleep 1
+        done
+    fi
+
     cd "$PROJECT_DIR/frontend"
-    
+
     # 检查是否需要安装浏览器
     if [ ! -d "$HOME/Library/Caches/ms-playwright/chromium-"* ]; then
         echo -e "${YELLOW}首次运行，安装 Playwright 浏览器...${NC}"
         npx playwright install chromium
     fi
-    
+
     npx playwright test --project=chromium
     local result=$?
     if [ $result -eq 0 ]; then
@@ -71,6 +95,13 @@ run_e2e_tests() {
     else
         echo -e "${RED}✗ E2E 测试失败${NC}"
     fi
+
+    # 如果测试期间启动了后端，则关闭它
+    if [ "$backend_started" = true ]; then
+        echo -e "${YELLOW}关闭测试期间启动的后端...${NC}"
+        kill $backend_pid 2>/dev/null || true
+    fi
+
     return $result
 }
 

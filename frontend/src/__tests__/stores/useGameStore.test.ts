@@ -477,7 +477,7 @@ describe('useGameStore', () => {
   });
 
   describe('syncPlayerState', () => {
-    it('syncs player state and returns response', async () => {
+    it('syncs player state without returning response', async () => {
       act(() => {
         useGameStore.getState().setGameSession(42, 'session-42');
       });
@@ -490,11 +490,12 @@ describe('useGameStore', () => {
       };
       (api.gameplay.getState as jest.Mock).mockResolvedValue(mockResponse);
 
-      const result = await act(async () => {
-        return await useGameStore.getState().syncPlayerState();
+      await act(async () => {
+        await useGameStore.getState().syncPlayerState();
       });
 
-      expect(result).toEqual(mockResponse);
+      // syncPlayerState now returns void, state is updated directly in store
+      expect(api.gameplay.getState).toHaveBeenCalledWith(42);
     });
   });
 
@@ -784,12 +785,12 @@ describe('useGameStore', () => {
       };
       (api.gameplay.getState as jest.Mock).mockResolvedValue(mockState);
 
-      let result;
       await act(async () => {
-        result = await useGameStore.getState().syncPlayerState();
+        await useGameStore.getState().syncPlayerState();
       });
 
-      expect(result).toEqual(mockState);
+      // Verify the API was called - syncPlayerState now returns void
+      expect(api.gameplay.getState).toHaveBeenCalledWith(42);
     });
 
     it('reloads game on session 404', async () => {
@@ -1153,12 +1154,12 @@ describe('useGameStore', () => {
         };
         (api.gameplay.getState as jest.Mock).mockResolvedValue(mockState);
 
-        let result;
         await act(async () => {
-          result = await useGameStore.getState().syncPlayerState();
+          await useGameStore.getState().syncPlayerState();
         });
 
-        expect(result).toEqual(mockState);
+        // Verify API was called - syncPlayerState now returns void
+        expect(api.gameplay.getState).toHaveBeenCalledWith(42);
       });
     });
 

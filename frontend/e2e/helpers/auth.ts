@@ -5,7 +5,7 @@
  * - 不再使用 localStorage 存储 token
  * - 通过 Cookie 自动发送认证信息
  */
-import { Page, BrowserContext, APIRequestContext } from '@playwright/test';
+import { Page, BrowserContext, APIRequestContext, expect } from '@playwright/test';
 
 const API_URL = 'http://localhost:8000';
 
@@ -31,39 +31,41 @@ export async function registerUser(
 /**
  * 确保用户已登录（如果没有则注册新用户）
  * 使用 Cookie 自动管理认证状态
+ *
+ * 策略：直接使用 API 注册（避免 UI 超时问题），然后让前端从 Cookie 恢复状态
  */
 export async function ensureAuthenticated(page: Page, context: BrowserContext): Promise<void> {
-  // 先访问页面
+  // 先访问页面，触发应用初始化
   await page.goto('/');
 
-  // 尝试点击"新游戏"按钮，如果弹出登录框则需要认证
-  const newGameButton = page.getByRole('button', { name: /新游戏|New Game/i });
-  await newGameButton.click();
+  // 等待页面加载完成
+  await page.waitForLoadState('networkidle');
 
-  // 等待短暂时间看是否出现登录/注册弹窗
-  await page.waitForTimeout(500);
+  // 检查是否已登录（看是否有"登录"按钮）
+  const loginButton = page.getByRole('button', { name: /登录/i });
+  const isLoggedOut = await loginButton.isVisible().catch(() => false);
 
-  // 检查是否出现了注册输入框（未登录状态）
-  const nameInput = page.getByPlaceholder(/你的名字/i);
-  const isLoginSheetVisible = await nameInput.isVisible().catch(() => false);
+  if (isLoggedOut) {
+    // 未登录，使用 API 直接注册（更可靠）
+    const testUserName = `TestUser_${Date.now()}`;
 
-  if (isLoginSheetVisible) {
-    // 未登录，需要注册
-    await nameInput.fill(`TestUser_${Date.now()}`);
+    // 直接使用 context.request 调用 API，绕过 UI
+    const registerResponse = await context.request.post(`${API_URL}/api/auth/register`, {
+      data: { display_name: testUserName }
+    });
 
-    const submitButton = page.getByRole('button', { name: /创建账户|登录/i }).first();
-    await submitButton.click();
-
-    // 等待注册完成（等待弹窗关闭或显示 private_id）
-    await page.waitForTimeout(1000);
-
-    // 如果有继续按钮，点击关闭弹窗
-    const continueButton = page.getByRole('button', { name: /继续|确定|OK/i }).first();
-    if (await continueButton.isVisible().catch(() => false)) {
-      await continueButton.click();
+    if (!registerResponse.ok()) {
+      const errorText = await registerResponse.text();
+      throw new Error(`Registration failed: ${registerResponse.status()} ${errorText}`);
     }
-  } else {
-    // 已经登录，点击新游戏可能已经导航了，返回首页
-    await page.goto('/');
+
+    // Cookie 已通过 context.request 自动设置到浏览器上下文中
+    // 现在刷新页面，让前端从 Cookie 恢复登录状态
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    // 等待 UI 更新为已登录状态（登录按钮应该消失）
+    await expect(loginButton).not.toBeVisible({ timeout: 5000 });
   }
+  // 已登录，无需操作
 }

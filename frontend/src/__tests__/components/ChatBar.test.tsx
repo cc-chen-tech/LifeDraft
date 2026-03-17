@@ -238,7 +238,7 @@ describe('ChatBar', () => {
       await user.click(sendButton);
 
       await waitFor(() => {
-        expect(api.story.chat).toHaveBeenCalledWith(1, 'Hello AI');
+        expect(api.story.chat).toHaveBeenCalledWith(1, { message: 'Hello AI' });
       });
     });
 
