@@ -10,7 +10,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# Ignore lib/ only at root level (Python virtual env), not in frontend/src
+/lib/
 lib64/
 parts/
 sdist/
