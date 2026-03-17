@@ -1,0 +1,111 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  e2e-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Set up Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Node.js dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install chromium
+
+      - name: Create .env file
+        run: |
+          cp .env.example .env
+          echo "OPENAI_API_KEY=dummy-key-for-testing" >> .env
+          echo "DEFAULT_LANGUAGE=zh" >> .env
+
+      - name: Start backend server
+        run: |
+          python run_api.py &
+          echo $! > backend.pid
+          # Wait for backend to be ready
+          n=0
+          until curl -s http://localhost:8000/api/health > /dev/null 2>&1; do
+            if [ $n -ge 30 ]; then
+              echo "Backend failed to start within 30 seconds"
+              exit 1
+            fi
+            n=$((n + 1))
+            echo "Waiting for backend... ($n/30)"
+            sleep 1
+          done
+          echo "Backend is ready!"
+
+      - name: Start frontend server
+        working-directory: frontend
+        run: |
+          npm run dev &
+          echo $! > ../frontend.pid
+          # Wait for frontend to be ready
+          n=0
+          until curl -s http://localhost:3000 > /dev/null 2>&1; do
+            if [ $n -ge 30 ]; then
+              echo "Frontend failed to start within 30 seconds"
+              exit 1
+            fi
+            n=$((n + 1))
+            echo "Waiting for frontend... ($n/30)"
+            sleep 1
+          done
+          echo "Frontend is ready!"
+
+      - name: Run E2E tests
+        working-directory: frontend
+        run: npm run test:e2e
+        env:
+          CI: true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7
+
+      - name: Upload test screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-screenshots
+          path: frontend/test-results/
+          retention-days: 7
+
+      - name: Stop servers
+        if: always()
+        run: |
+          if [ -f backend.pid ]; then kill $(cat backend.pid) 2>/dev/null || true; fi
+          if [ -f frontend.pid ]; then kill $(cat frontend.pid) 2>/dev/null || true; fi
