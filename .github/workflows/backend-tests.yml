@@ -33,6 +33,13 @@ jobs:
           pip install -r requirements.txt
           pip install pytest-asyncio
 
+      - name: Setup test database
+        run: |
+          mkdir -p data
+          python -c "from src.utils.database import init_db; init_db()"
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
       - name: Run pytest
         run: pytest tests/ -v --tb=short
         env:
@@ -40,3 +47,5 @@ jobs:
           TESTING: 'true'
           OPENAI_API_KEY: 'sk-test-dummy-key-for-ci'
           IMAGE_API_KEY: 'sk-test-dummy-key-for-ci'
+          IMAGE_API_BASE_URL: 'https://api.openai.com/v1'
+          OPENAI_BASE_URL: 'https://api.openai.com/v1'
