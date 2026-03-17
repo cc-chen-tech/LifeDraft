@@ -114,7 +114,7 @@ export function ChatBar({
 
     const tryChat = async (isRetry = false): Promise<void> => {
       try {
-        const result = await api.story.chat(gameId, text);
+        const result = await api.story.chat(gameId, { message: text });
         const assistantMsg: ChatMessage = {
           role: "assistant",
           content: result.reply || "抱歉，暂时无法回答。",
