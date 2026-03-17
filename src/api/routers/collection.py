@@ -7,18 +7,22 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user_optional, get_db
-from src.api.schemas import (CharacterCollectionItem, CollectionResponse,
-                             ItemCollectionItem, LandmarkCollectionItem,
-                             MessageResponse, RegenerateCharacterImageRequest,
-                             RegenerateItemImageRequest)
+from src.api.schemas import (
+    CharacterCollectionItem,
+    CollectionResponse,
+    ItemCollectionItem,
+    LandmarkCollectionItem,
+    MessageResponse,
+    RegenerateCharacterImageRequest,
+    RegenerateItemImageRequest,
+)
 from src.api.services.session_service import session_service
 from src.api.session_store import session_store
 from src.database.models import Game
 from src.database.models import Image as ImageModel
 from src.database.models import SessionLocal, User
 from src.game.state.item_state import ItemState
-from src.services.image_service import (ImageContentError, ImageService,
-                                        ImageServiceError)
+from src.services.image_service import ImageContentError, ImageService, ImageServiceError
 from src.services.item_extraction_service import ItemExtractionService
 from src.services.landmark_extraction_service import LandmarkExtractionService
 
@@ -331,6 +335,16 @@ async def get_collection(
 
     finally:
         db.close()
+
+
+@router.get("/{game_id}/details", response_model=CollectionResponse)
+async def get_collection_details(
+    game_id: int,
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    """获取游戏的收集数据（人物和物品）- 与 /{game_id} 相同，为兼容前端路径"""
+    # 复用 get_collection 逻辑
+    return await get_collection(game_id, user)
 
 
 @router.post("/{game_id}/characters/{name}/generate-image", response_model=MessageResponse)
@@ -980,8 +994,7 @@ async def recognize_entities(
         existing_characters.append(player_name)
 
     try:
-        from src.services.entity_recognition_service import \
-            EntityRecognitionService
+        from src.services.entity_recognition_service import EntityRecognitionService
 
         recognition_service = EntityRecognitionService(session.game_loop.ai_generator.ai_client)
 
@@ -1119,8 +1132,7 @@ async def create_item(
 
         # 如果需要从历史中提取描述
         if request.get("generate_description") and player_state.round_history:
-            from src.services.entity_recognition_service import \
-                EntityRecognitionService
+            from src.services.entity_recognition_service import EntityRecognitionService
 
             recognition_service = EntityRecognitionService(session.game_loop.ai_generator.ai_client)
 
