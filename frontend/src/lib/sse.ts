@@ -240,3 +240,89 @@ export async function streamRewrite(
     pump();
   });
 }
+
+/**
+ * Stream opening story generation
+ */
+export async function streamOpeningStory(
+  characterSettings: Record<string, unknown>,
+  playerName: string,
+  lifeVision: string,
+  language: string,
+  callbacks: {
+    onStory?: (text: string) => void;
+    onComplete?: (data: unknown) => void;
+    onError?: (error: { message: string }) => void;
+  }
+): Promise<void> {
+  const response = await fetch('/api/character/opening-story', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({
+      character_settings: characterSettings,
+      player_name: playerName,
+      life_vision: lifeVision,
+      language: language,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error('No response body');
+  }
+
+  // Parse SSE stream
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  return new Promise((resolve, reject) => {
+    function pump(): Promise<void> {
+      return reader.read().then(({ done, value }) => {
+        if (done) {
+          callbacks.onComplete?.({});
+          resolve();
+          return;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data: ')) {
+            const data = trimmed.slice(6);
+            if (data === '[DONE]') {
+              callbacks.onComplete?.({});
+              resolve();
+              return;
+            }
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.type === 'story_chunk' && parsed.content) {
+                callbacks.onStory?.(parsed.content);
+              } else if (parsed.type === 'complete') {
+                callbacks.onComplete?.(parsed.data || parsed);
+              }
+            } catch {
+              // If not JSON, treat as story chunk
+              callbacks.onStory?.(data);
+            }
+          }
+        }
+
+        return pump();
+      }).catch((error) => {
+        callbacks.onError?.({ message: error.message || 'Stream error' });
+        reject(error);
+      });
+    }
+
+    pump();
+  });
+}
