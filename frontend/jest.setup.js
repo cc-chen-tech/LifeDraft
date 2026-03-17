@@ -58,3 +58,17 @@ Element.prototype.scrollIntoView = jest.fn();
 
 // Suppress console errors in tests (optional, remove if you want to see them)
 // global.console.error = jest.fn();
+
+// Mock react-markdown
+jest.mock('react-markdown', () => {
+  const React = require('react');
+  return function ReactMarkdown({ children }) {
+    return React.createElement('div', { className: 'markdown-mock' }, children);
+  };
+});
+
+// Mock remark-gfm
+jest.mock('remark-gfm', () => ({
+  __esModule: true,
+  default: function() { return {}; },
+}));

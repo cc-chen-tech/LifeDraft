@@ -5,9 +5,9 @@
 
 import json
 import logging
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set
+from dataclasses import dataclass
 from datetime import datetime
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PromptFeedback:
     """提示词反馈记录."""
+
     image_id: int
     feedback_text: str
     is_positive: bool  # 是否正面反馈
@@ -25,11 +26,12 @@ class PromptFeedback:
 @dataclass
 class EnhancementRule:
     """提示词增强规则."""
+
     trigger_keywords: List[str]  # 触发关键词
-    enhancement_text: str       # 增强文本
-    priority: int = 1           # 优先级
-    apply_count: int = 0        # 应用次数
-    success_count: int = 0      # 成功次数
+    enhancement_text: str  # 增强文本
+    priority: int = 1  # 优先级
+    apply_count: int = 0  # 应用次数
+    success_count: int = 0  # 成功次数
 
 
 class PromptEnhancer:
@@ -202,12 +204,14 @@ class PromptEnhancer:
 
             # 如果负面反馈较多，增加严格约束
             if len(negative_feedback) >= 2:
-                enhancements.append("""
+                enhancements.append(
+                    """
 【重要】该角色近期生成质量不稳定，请严格遵循以下要求：
 - 仔细参照角色的外貌锚点描述
 - 保持面部特征的高度一致性
 - 确保与之前成功生成的形象一致
-""")
+"""
+                )
 
             # 基于反馈内容匹配规则
             for feedback in negative_feedback:
@@ -225,10 +229,11 @@ class PromptEnhancer:
 
         # 3. 组合提示词
         if enhancements:
+            newline = "\n"
             enhanced_prompt = f"""{base_prompt}
 
 【增强要求】
-{"\n\n".join(enhancements)}
+{newline.join(enhancements)}
 """
             return enhanced_prompt
 
@@ -322,10 +327,10 @@ class PromptEnhancer:
     def _load_rules(self):
         """从文件加载规则."""
         try:
-            with open(self.storage_path, 'r', encoding='utf-8') as f:
+            with open(self.storage_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 # 加载自定义规则（保留默认规则）
-                for rule_data in data.get('custom_rules', []):
+                for rule_data in data.get("custom_rules", []):
                     self.rules.append(EnhancementRule(**rule_data))
                 logger.info(f"Loaded {len(data.get('custom_rules', []))} custom rules")
         except FileNotFoundError:
@@ -342,22 +347,22 @@ class PromptEnhancer:
             # 只保存非默认的自定义规则
             custom_rules = [
                 {
-                    'trigger_keywords': rule.trigger_keywords,
-                    'enhancement_text': rule.enhancement_text,
-                    'priority': rule.priority,
-                    'apply_count': rule.apply_count,
-                    'success_count': rule.success_count,
+                    "trigger_keywords": rule.trigger_keywords,
+                    "enhancement_text": rule.enhancement_text,
+                    "priority": rule.priority,
+                    "apply_count": rule.apply_count,
+                    "success_count": rule.success_count,
                 }
                 for rule in self.rules
                 if rule not in self.DEFAULT_RULES
             ]
 
             data = {
-                'custom_rules': custom_rules,
-                'last_updated': datetime.utcnow().isoformat(),
+                "custom_rules": custom_rules,
+                "last_updated": datetime.utcnow().isoformat(),
             }
 
-            with open(self.storage_path, 'w', encoding='utf-8') as f:
+            with open(self.storage_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
 
             logger.info(f"Saved {len(custom_rules)} custom rules")
@@ -367,12 +372,11 @@ class PromptEnhancer:
     def get_stats(self) -> Dict:
         """获取增强器统计信息."""
         return {
-            'total_feedback': len(self.feedback_history),
-            'characters_tracked': len(self.character_feedback),
-            'rules_count': len(self.rules),
-            'top_rules': sorted(
-                [(r.trigger_keywords[0], r.apply_count, r.success_count)
-                 for r in self.rules],
+            "total_feedback": len(self.feedback_history),
+            "characters_tracked": len(self.character_feedback),
+            "rules_count": len(self.rules),
+            "top_rules": sorted(
+                [(r.trigger_keywords[0], r.apply_count, r.success_count) for r in self.rules],
                 key=lambda x: x[1],
                 reverse=True,
             )[:5],

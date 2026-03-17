@@ -3,10 +3,9 @@
 通过结构化的外貌描述（从文本生成），确保同一角色在不同场景下的视觉一致性。
 """
 
-import json
 import logging
-from dataclasses import dataclass, field, asdict
-from typing import Dict, List, Optional, Any
+from dataclasses import asdict, dataclass, field
+from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -197,7 +196,9 @@ class CharacterAppearanceAnchor:
         return missing
 
 
-def merge_anchors(base: CharacterAppearanceAnchor, override: Dict[str, Any]) -> CharacterAppearanceAnchor:
+def merge_anchors(
+    base: CharacterAppearanceAnchor, override: Dict[str, Any]
+) -> CharacterAppearanceAnchor:
     """合并锚点，用于更新时保留未修改的字段.
 
     Args:

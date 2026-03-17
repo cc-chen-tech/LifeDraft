@@ -10,7 +10,6 @@ from src.ai.image_client import (ContentInspectionError, ImageClient,
                                  ImageGenerationError)
 from src.database.models import Image as ImageModel
 from src.services.image import ImageContentError, ImageServiceError
-from src.services.image.appearance_anchor import CharacterAppearanceAnchor
 from src.services.image_storage import ImageStorageService
 
 logger = logging.getLogger(__name__)
@@ -295,7 +294,8 @@ class CharacterImageService:
         if original.entity_key:
             # entity_key 不为空，使用 entity_key 匹配
             self.db.query(ImageModel).filter(
-                ImageModel.game_id == original.game_id, ImageModel.entity_key == original.entity_key
+                ImageModel.game_id == original.game_id,
+                ImageModel.entity_key == original.entity_key,
             ).update({"is_active": False})
         else:
             # entity_key 为空，使用 entity_name + image_type 匹配，避免误伤其他人物

@@ -4,36 +4,38 @@
 """
 
 import logging
-from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass
 from enum import Enum
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 
 class MoodType(str, Enum):
     """情感基调类型."""
-    WARM_DAILY = "warm_daily"           # 温馨日常
-    TENSE_CONFLICT = "tense_conflict"   # 紧张冲突
-    ROMANTIC = "romantic"               # 浪漫
-    MYSTERIOUS = "mysterious"           # 神秘
-    JOYFUL = "joyful"                   # 欢快
-    MELANCHOLY = "melancholy"           # 忧郁
-    EPIC = "epic"                       # 史诗
-    HORROR = "horror"                   # 恐怖
+
+    WARM_DAILY = "warm_daily"  # 温馨日常
+    TENSE_CONFLICT = "tense_conflict"  # 紧张冲突
+    ROMANTIC = "romantic"  # 浪漫
+    MYSTERIOUS = "mysterious"  # 神秘
+    JOYFUL = "joyful"  # 欢快
+    MELANCHOLY = "melancholy"  # 忧郁
+    EPIC = "epic"  # 史诗
+    HORROR = "horror"  # 恐怖
 
 
 @dataclass
 class ColorPalette:
     """颜色调板定义."""
+
     name: str
-    description: str                    # 调板描述
-    primary_colors: List[str]           # 主色调
-    secondary_colors: List[str]        # 辅助色
-    lighting: str                       # 光线描述
-    saturation: str                     # 饱和度级别：高/中/低
-    contrast: str                       # 对比度级别：高/中/低
-    atmosphere: str                     # 整体氛围
+    description: str  # 调板描述
+    primary_colors: List[str]  # 主色调
+    secondary_colors: List[str]  # 辅助色
+    lighting: str  # 光线描述
+    saturation: str  # 饱和度级别：高/中/低
+    contrast: str  # 对比度级别：高/中/低
+    atmosphere: str  # 整体氛围
 
     def build_prompt_segment(self) -> str:
         """构建用于提示词的调板描述."""
@@ -45,12 +47,14 @@ class ColorPalette:
         ]
         if secondary:
             parts.append(f"辅以{secondary}")
-        parts.extend([
-            f"光线：{self.lighting}",
-            f"饱和度：{self.saturation}",
-            f"对比度：{self.contrast}",
-            f"氛围：{self.atmosphere}",
-        ])
+        parts.extend(
+            [
+                f"光线：{self.lighting}",
+                f"饱和度：{self.saturation}",
+                f"对比度：{self.contrast}",
+                f"氛围：{self.atmosphere}",
+            ]
+        )
         return "。".join(parts)
 
 
@@ -170,13 +174,77 @@ class SceneStyleManager:
 
         # 关键词映射
         mood_keywords = {
-            MoodType.TENSE_CONFLICT: ["冲突", "争吵", "对抗", "紧张", "危险", "危机", "愤怒", "打架", "对峙"],
-            MoodType.ROMANTIC: ["浪漫", "表白", "约会", "心动", "暧昧", "亲密", "温柔", "爱情"],
-            MoodType.MYSTERIOUS: ["神秘", "未知", "悬疑", "谜", "秘密", "诡异", "奇怪", "离奇"],
-            MoodType.JOYFUL: ["开心", "欢乐", "庆祝", "胜利", "成功", "喜悦", "兴奋", "派对"],
-            MoodType.MELANCHOLY: ["悲伤", "失落", "离别", "怀念", "孤独", "惆怅", "遗憾", "分手"],
-            MoodType.HORROR: ["恐怖", "惊悚", "害怕", "恐惧", "鬼魂", "死亡", "血腥", "噩梦"],
-            MoodType.EPIC: ["宏大", "壮观", "决战", "命运", "历史", "传说", "英雄", "伟大"],
+            MoodType.TENSE_CONFLICT: [
+                "冲突",
+                "争吵",
+                "对抗",
+                "紧张",
+                "危险",
+                "危机",
+                "愤怒",
+                "打架",
+                "对峙",
+            ],
+            MoodType.ROMANTIC: [
+                "浪漫",
+                "表白",
+                "约会",
+                "心动",
+                "暧昧",
+                "亲密",
+                "温柔",
+                "爱情",
+            ],
+            MoodType.MYSTERIOUS: [
+                "神秘",
+                "未知",
+                "悬疑",
+                "谜",
+                "秘密",
+                "诡异",
+                "奇怪",
+                "离奇",
+            ],
+            MoodType.JOYFUL: [
+                "开心",
+                "欢乐",
+                "庆祝",
+                "胜利",
+                "成功",
+                "喜悦",
+                "兴奋",
+                "派对",
+            ],
+            MoodType.MELANCHOLY: [
+                "悲伤",
+                "失落",
+                "离别",
+                "怀念",
+                "孤独",
+                "惆怅",
+                "遗憾",
+                "分手",
+            ],
+            MoodType.HORROR: [
+                "恐怖",
+                "惊悚",
+                "害怕",
+                "恐惧",
+                "鬼魂",
+                "死亡",
+                "血腥",
+                "噩梦",
+            ],
+            MoodType.EPIC: [
+                "宏大",
+                "壮观",
+                "决战",
+                "命运",
+                "历史",
+                "传说",
+                "英雄",
+                "伟大",
+            ],
         }
 
         # 统计每种基调的匹配次数

@@ -1,18 +1,21 @@
 /**
  * useGameStore — 游戏核心会话状态
- * 
+ *
  * 管理游戏会话的核心状态：gameId, sessionId, playerState, progress, roundInfo
- * 
+ *
  * 注意：此文件已拆分为多个专门的 store：
  * - useEventStore: 事件和故事状态
  * - useImageStore: 图片相关状态
  * - useCharacterStore: 角色创建状态
  * - useGameListStore: 存档和预设列表
- * 
+ *
  * 本文件保持向后兼容，组合所有子 store 的功能。
+ *
+ * ★ 注意：此 store 不再持久化到 localStorage
+ * - 游戏状态通过 Cookie 认证从服务器获取
+ * - 角色创建表单在刷新后会丢失
  */
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 import type {
   GameEvent,
   GameStateResponse,
@@ -88,6 +91,12 @@ interface GameState {
   isLoadingRoundSceneImage: boolean;
   isRegeneratingRoundScene: boolean;
   roundSceneRegenerateError: string | null;
+  
+  // ★ 历史场景插画状态
+  historySceneImage: RoundSceneImage | null;
+  isLoadingHistoryImage: boolean;
+  isGeneratingHistoryImage: boolean;
+  isRegeneratingHistoryImage: boolean;
 
   // Actions — Session
   setGameId: (gameId: number) => void;
@@ -137,11 +146,16 @@ interface GameState {
   addRoundSceneImage: (image: RoundSceneImage) => void;
   regenerateRoundSceneImage: (roundNumber: number, userPrompt: string) => Promise<void>;
   clearImageCache: () => void;  // ★ 清理图片缓存
+  
+  // Actions — History Scene Images
+  fetchHistorySceneImage: (week: number, round: number, stage?: string) => Promise<void>;
+  generateHistorySceneImage: (week: number, round: number, storyText: string, stage?: string) => Promise<void>;
+  regenerateHistorySceneImage: (week: number, round: number, storyText: string, userPrompt: string, sceneId: number) => Promise<void>;
+  setHistorySceneImage: (image: RoundSceneImage | null) => void;
 }
 
 export const useGameStore = create<GameState>()(
-  persist(
-    (set, get) => ({
+  (set, get) => ({
       // ==================== Initial State ====================
       // Session
       gameId: null,
@@ -179,6 +193,12 @@ export const useGameStore = create<GameState>()(
       isLoadingRoundSceneImage: false,
       isRegeneratingRoundScene: false,
       roundSceneRegenerateError: null,
+      
+      // ★ 历史场景插画状态
+      historySceneImage: null,
+      isLoadingHistoryImage: false,
+      isGeneratingHistoryImage: false,
+      isRegeneratingHistoryImage: false,
 
       // ==================== Game Settings Actions ====================
       setEnableSceneImage: (enabled: boolean) => set({ enableSceneImage: enabled }),
@@ -786,28 +806,153 @@ export const useGameStore = create<GameState>()(
           isLoadingRoundSceneImage: false,
           isRegeneratingRoundScene: false,
           roundSceneRegenerateError: null,
+          // ★ 同时清理历史图片状态
+          historySceneImage: null,
+          isLoadingHistoryImage: false,
+          isGeneratingHistoryImage: false,
+          isRegeneratingHistoryImage: false,
         });
         // ★ 同时清理 useImageStore 的缓存
         useImageStore.getState().clearCache?.();
         console.log("[clearImageCache] Image cache cleared");
       },
-    }),
-    {
-      name: "game-storage",
-      partialize: (state) => ({
-        // ★ gameId 不再持久化，每次从服务器获取当前活跃游戏
-        sessionId: state.sessionId,
-        characterSettings: state.characterSettings,
-        playerName: state.playerName,
-        lifeVision: state.lifeVision,
-        openingStory: state.openingStory,
-        creationStep: state.creationStep,
-        isPresetLoaded: state.isPresetLoaded,
-        // ★ 持久化 roundInfo 和 progress，确保刷新后能正确加载图片
-        roundInfo: state.roundInfo,
-        progress: state.progress,
-        // ★ 玩家形象由 useImageStore 持久化
-      }),
-    }
-  )
+      
+      // ==================== History Scene Image Actions ====================
+      // ★ 获取指定历史轮次的场景图片
+      fetchHistorySceneImage: async (week: number, round: number, stage?: string) => {
+        const { gameId } = get();
+        if (!gameId) return;
+        
+        set({ isLoadingHistoryImage: true });
+        
+        try {
+          const scene = stage 
+            ? await api.images.getRoundSceneImageByStage(gameId, round, stage, week)
+            : await api.images.getRoundSceneImage(gameId, round, week);
+            
+          if (scene && scene.scene_id) {
+            const sceneWithStage: RoundSceneImage = {
+              scene_id: scene.scene_id,
+              week: scene.week ?? week,
+              round_number: scene.round_number,
+              stage: scene.stage || stage || 'result',
+              image_url: scene.image_url,
+              scene_description: scene.scene_description,
+              referenced_images: (scene as { referenced_images?: number[] }).referenced_images || [],
+              created_at: scene.created_at,
+            };
+            
+            set({ historySceneImage: sceneWithStage, isLoadingHistoryImage: false });
+          } else {
+            set({ historySceneImage: null, isLoadingHistoryImage: false });
+          }
+        } catch (err) {
+          const error = err as { status?: number };
+          if (error.status !== 404) {
+            console.error(`[fetchHistorySceneImage] Failed:`, err);
+          }
+          set({ historySceneImage: null, isLoadingHistoryImage: false });
+        }
+      },
+      
+      // ★ 为历史轮次生成场景图片
+      generateHistorySceneImage: async (week: number, round: number, storyText: string, stage: string = 'result') => {
+        const { gameId, characterSettings, playerName, enableSceneImage } = get();
+        const { playerImages, selectedImageIndex } = useImageStore.getState();
+        
+        if (!gameId || !storyText) {
+          console.error("[generateHistorySceneImage] Missing gameId or storyText");
+          return;
+        }
+        
+        if (!enableSceneImage) {
+          console.log("[generateHistorySceneImage] Scene image generation disabled");
+          return;
+        }
+        
+        set({ isGeneratingHistoryImage: true });
+        
+        try {
+          const selectedImage = playerImages[selectedImageIndex] || playerImages[0];
+          const playerImageId = selectedImage?.image_id;
+          
+          const result = await api.images.generateRoundSceneImage({
+            game_id: gameId,
+            round_number: round,
+            story_text: storyText,
+            character_settings: characterSettings,
+            player_name: playerName,
+            player_image_id: playerImageId,
+            stage,
+            week,
+          });
+          
+          const newScene: RoundSceneImage = {
+            scene_id: result.scene_id,
+            week: result.week ?? week,
+            round_number: result.round_number,
+            stage: result.stage ?? stage,
+            image_url: result.image_url,
+            scene_description: result.scene_description,
+            referenced_images: [],
+            created_at: result.created_at,
+          };
+          
+          set({ historySceneImage: newScene, isGeneratingHistoryImage: false });
+          console.log(`[generateHistorySceneImage] Scene generated: scene_id=${result.scene_id}`);
+        } catch (err) {
+          console.error(`[generateHistorySceneImage] Failed:`, err);
+          set({ isGeneratingHistoryImage: false });
+        }
+      },
+      
+      // ★ 重新生成历史轮次场景图片
+      regenerateHistorySceneImage: async (week: number, round: number, storyText: string, userPrompt: string, sceneId: number) => {
+        const { gameId, characterSettings, playerName } = get();
+        const { playerImages, selectedImageIndex } = useImageStore.getState();
+        
+        if (!gameId) {
+          console.error("[regenerateHistorySceneImage] Missing gameId");
+          return;
+        }
+        
+        set({ isRegeneratingHistoryImage: true });
+        
+        try {
+          const selectedImage = playerImages[selectedImageIndex] || playerImages[0];
+          const playerImageId = selectedImage?.image_id;
+          
+          const result = await api.images.regenerateRoundSceneImage({
+            game_id: gameId,
+            round_number: round,
+            story_text: storyText,
+            character_settings: characterSettings,
+            player_name: playerName,
+            user_prompt: userPrompt,
+            current_scene_id: sceneId,
+            player_image_id: playerImageId,
+          });
+          
+          const updatedScene: RoundSceneImage = {
+            scene_id: result.scene_id,
+            week: result.week ?? week,
+            round_number: result.round_number,
+            stage: result.stage ?? 'result',
+            image_url: result.image_url,
+            scene_description: result.scene_description,
+            referenced_images: [],
+            created_at: result.created_at,
+          };
+          
+          set({ historySceneImage: updatedScene, isRegeneratingHistoryImage: false });
+          console.log(`[regenerateHistorySceneImage] Scene regenerated: scene_id=${result.scene_id}`);
+        } catch (err) {
+          console.error(`[regenerateHistorySceneImage] Failed:`, err);
+          set({ isRegeneratingHistoryImage: false });
+        }
+      },
+      
+      // ★ 设置历史场景图片
+      setHistorySceneImage: (image: RoundSceneImage | null) => set({ historySceneImage: image }),
+    })
 );

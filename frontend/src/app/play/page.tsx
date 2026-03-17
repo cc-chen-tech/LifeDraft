@@ -17,6 +17,7 @@ import { ChatBar } from "@/components/game/ChatBar";
 import { StoryAdjuster } from "@/components/game/StoryAdjuster";
 import { RoundHistoryDrawer } from "@/components/game/RoundHistoryDrawer";
 import { RoundSceneImageDisplay } from "@/components/game/RoundSceneImage";
+import { HistorySceneImage } from "@/components/game/HistorySceneImage";
 import { CollectionPanel } from "@/components/game/CollectionPanel";
 import { usePlayGame, STATUS_MESSAGES } from "@/hooks/usePlayGame";
 import { useGameIdFromUrl } from "@/hooks/useGameIdFromUrl";
@@ -105,9 +106,13 @@ export default function PlayPage() {
     historyRoundIndex,
     isViewingHistory,
     displayText,  // ★ 实际显示的文本（历史模式下显示历史，否则显示当前）
+    historyDisplayText,  // ★ 历史显示文本
+    currentHistoryRound,  // ★ 当前查看的历史轮次
     handleOpenHistory,
     handleSelectHistoryRound,
     handleBackToCurrent,
+    handleGenerateHistoryImage,  // ★ 生成历史图片
+    handleRegenerateHistoryImage,  // ★ 重新生成历史图片
     
     // ★ 场景插画
     roundSceneImages,
@@ -120,6 +125,11 @@ export default function PlayPage() {
     regenerateRoundSceneImage,
     setEventSceneImage,  // ★ 设置事件插画
     setResultSceneImage,  // ★ 设置结果插画
+    // ★ 历史场景插画
+    historySceneImage,
+    isLoadingHistoryImage,
+    isGeneratingHistoryImage,
+    isRegeneratingHistoryImage,
     currentRound,
   } = usePlayGame();
 
@@ -267,46 +277,64 @@ export default function PlayPage() {
         )}
 
         {/* ★ 场景插画展示 */}
-        {!isViewingHistory && storyText && (
-          <>
-            {/* ★ 事件插画：options 阶段和 result 阶段都显示 */}
-            {(phase === "options" || phase === "result") && eventSceneImage && (
-              <RoundSceneImageDisplay
-                sceneImage={eventSceneImage}
-                isLoading={isLoadingRoundSceneImage && phase === "options"}
-                isRegenerating={isRegeneratingRoundScene}
-                currentRound={currentRound}
-                label="事件场景"
-                onRefresh={() => fetchRoundSceneImage(currentRound, "event")}
-                onRegenerate={regenerateRoundSceneImage}
-              />
-            )}
-            
-            {/* ★ 结果插画：只在 result 阶段显示 */}
-            {phase === "result" && resultSceneImage && (
-              <RoundSceneImageDisplay
-                sceneImage={resultSceneImage}
-                isLoading={isLoadingRoundSceneImage}
-                isRegenerating={isRegeneratingRoundScene}
-                currentRound={currentRound}
-                label="结果场景"
-                onRefresh={() => fetchRoundSceneImage(currentRound, "result")}
-                onRegenerate={regenerateRoundSceneImage}
-              />
-            )}
-            
-            {/* ★ 兜底：其他阶段显示当前轮次插画 */}
-            {!eventSceneImage && !resultSceneImage && currentRoundSceneImage && (
-              <RoundSceneImageDisplay
-                sceneImage={currentRoundSceneImage}
-                isLoading={isLoadingRoundSceneImage}
-                isRegenerating={isRegeneratingRoundScene}
-                currentRound={currentRound}
-                onRefresh={() => fetchRoundSceneImage(currentRound, phase === 'options' ? 'event' : phase === 'result' ? 'result' : undefined)}
-                onRegenerate={regenerateRoundSceneImage}
-              />
-            )}
-          </>
+        {isViewingHistory ? (
+          // ★ 历史模式下显示历史轮次的场景插画
+          currentHistoryRound && (
+            <HistorySceneImage
+              sceneImage={historySceneImage}
+              isLoading={isLoadingHistoryImage}
+              isGenerating={isGeneratingHistoryImage}
+              isRegenerating={isRegeneratingHistoryImage}
+              week={currentHistoryRound.week}
+              round={currentHistoryRound.round}
+              storyText={historyDisplayText || ''}
+              onGenerate={handleGenerateHistoryImage}
+              onRegenerate={handleRegenerateHistoryImage}
+            />
+          )
+        ) : (
+          // ★ 当前模式下显示当前轮次的场景插画
+          storyText && (
+            <>
+              {/* ★ 事件插画：options 阶段和 result 阶段都显示 */}
+              {(phase === "options" || phase === "result") && eventSceneImage && (
+                <RoundSceneImageDisplay
+                  sceneImage={eventSceneImage}
+                  isLoading={isLoadingRoundSceneImage && phase === "options"}
+                  isRegenerating={isRegeneratingRoundScene}
+                  currentRound={currentRound}
+                  label="事件场景"
+                  onRefresh={() => fetchRoundSceneImage(currentRound, "event")}
+                  onRegenerate={regenerateRoundSceneImage}
+                />
+              )}
+              
+              {/* ★ 结果插画：只在 result 阶段显示 */}
+              {phase === "result" && resultSceneImage && (
+                <RoundSceneImageDisplay
+                  sceneImage={resultSceneImage}
+                  isLoading={isLoadingRoundSceneImage}
+                  isRegenerating={isRegeneratingRoundScene}
+                  currentRound={currentRound}
+                  label="结果场景"
+                  onRefresh={() => fetchRoundSceneImage(currentRound, "result")}
+                  onRegenerate={regenerateRoundSceneImage}
+                />
+              )}
+              
+              {/* ★ 兜底：其他阶段显示当前轮次插画 */}
+              {!eventSceneImage && !resultSceneImage && currentRoundSceneImage && (
+                <RoundSceneImageDisplay
+                  sceneImage={currentRoundSceneImage}
+                  isLoading={isLoadingRoundSceneImage}
+                  isRegenerating={isRegeneratingRoundScene}
+                  currentRound={currentRound}
+                  onRefresh={() => fetchRoundSceneImage(currentRound, phase === 'options' ? 'event' : phase === 'result' ? 'result' : undefined)}
+                  onRegenerate={regenerateRoundSceneImage}
+                />
+              )}
+            </>
+          )
         )}
 
         {/* Round summary - only in result phase */}

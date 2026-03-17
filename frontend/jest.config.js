@@ -29,7 +29,7 @@ const config = {
     },
   },
   transformIgnorePatterns: [
-    'node_modules/(?!(zustand)/)',
+    'node_modules/(?!(zustand|react-markdown|remark-gfm|unist-util-stringify-position|unist-util-position|unist-util-generated|unist-util-is|devlop|html-url-attributes|mdast-util-|markdown-|micromark-|remark-|trim-lines|vfile|space-separated-tokens|property-information|comma-separated-tokens|bail|is-plain-obj|decode-named-character-reference|character-entities|ccount|escape-string-regexp)/)',
   ],
   testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/.next/', '<rootDir>/e2e/'],
 };

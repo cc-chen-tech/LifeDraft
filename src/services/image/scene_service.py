@@ -2,16 +2,17 @@
 
 import base64
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from sqlalchemy.orm import Session
 
 from src.ai.image_client import (ContentInspectionError, ImageClient,
                                  ImageGenerationError)
 from src.database.models import Image as ImageModel
+from src.database.models import SceneImage
 from src.services.image import ImageContentError, ImageServiceError
 from src.services.image.appearance_anchor import CharacterAppearanceAnchor
-from src.services.image.style_manager import style_manager, MoodType
+from src.services.image.style_manager import style_manager
 from src.services.image_storage import ImageStorageService
 
 logger = logging.getLogger(__name__)
@@ -261,7 +262,7 @@ class SceneImageService:
             try:
                 image_data, used_prompt = generate_image()
             except ContentInspectionError as e:
-                logger.warning(f"Content inspection failed, attempting prompt rewrite and retry...")
+                logger.warning("Content inspection failed, attempting prompt rewrite and retry...")
                 api_error = e.api_error_message or str(e)
                 logger.info(f"API error message: {api_error}")
 

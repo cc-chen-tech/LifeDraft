@@ -5,7 +5,6 @@ Supports various image generation APIs that follow OpenAI-compatible interface:
 - Other OpenAI-compatible image services
 """
 
-import base64
 import logging
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -15,12 +14,6 @@ import requests
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
-
-# Import appearance anchor for type hints
-try:
-    from src.services.image.appearance_anchor import CharacterAppearanceAnchor
-except ImportError:
-    CharacterAppearanceAnchor = None
 
 
 class ImageGenerationError(Exception):
@@ -267,7 +260,7 @@ class ImageClient:
                         if not is_last_model:
                             # ★ 不是最后一个模型：直接换模型，不等待
                             logger.warning(
-                                f"[Model Fallback] Rate limit detected, switching to next model immediately..."
+                                "[Model Fallback] Rate limit detected, switching to next model immediately..."
                             )
                             break  # 跳出重试循环，进入下一个模型
                         else:
@@ -492,56 +485,68 @@ class ImageClient:
             parts.append(f"【必须执行的修改】{feedback}。这是最重要的要求，必须严格体现在图片中。")
 
         # 基础信息
-        parts.extend([
-            f"【人物】{name}",
-            f"【时代背景】{era}",
-        ])
+        parts.extend(
+            [
+                f"【人物】{name}",
+                f"【时代背景】{era}",
+            ]
+        )
 
         # 外貌描述（更细致）
-        parts.extend([
-            f"【外貌特征】{description}",
-            "【服装】根据时代背景设计的典型服饰，款式细节丰富，材质纹理清晰可见",
-            "【表情】自然平和，眼神有故事感，符合人物性格特征",
-            "【光线】柔和的自然光，从左侧45度角打光，突出面部立体感和轮廓",
-        ])
+        parts.extend(
+            [
+                f"【外貌特征】{description}",
+                "【服装】根据时代背景设计的典型服饰，款式细节丰富，材质纹理清晰可见",
+                "【表情】自然平和，眼神有故事感，符合人物性格特征",
+                "【光线】柔和的自然光，从左侧45度角打光，突出面部立体感和轮廓",
+            ]
+        )
 
         # 构图要求（更精确）
-        parts.extend([
-            "【构图要求】",
-            "- 全身像，人物占画面75%-85%",
-            "- 头顶留白约8%-12%，脚底留白约5%-8%",
-            "- 人物纵向居中，左右适当留白",
-            "- 纵向构图（竖版），突出人物全身",
-            "- 背景简洁虚化，突出人物主体",
-        ])
+        parts.extend(
+            [
+                "【构图要求】",
+                "- 全身像，人物占画面75%-85%",
+                "- 头顶留白约8%-12%，脚底留白约5%-8%",
+                "- 人物纵向居中，左右适当留白",
+                "- 纵向构图（竖版），突出人物全身",
+                "- 背景简洁虚化，突出人物主体",
+            ]
+        )
 
         # 姿势
         if pose_hint:
             parts.append(f"【姿势】{pose_hint}")
         else:
-            parts.append("【姿势】自然站立姿态，双脚与肩同宽，身体略微侧向15-30度，避免完全正面呆板")
+            parts.append(
+                "【姿势】自然站立姿态，双脚与肩同宽，身体略微侧向15-30度，避免完全正面呆板"
+            )
 
         # 风格提示（更详细）
         if style_hint:
             parts.append(f"【风格】{style_hint}")
         else:
-            parts.extend([
-                "【风格】写实风格，电影质感",
-                "- 细节丰富：面部特征、服装纹理、头发丝都清晰可见",
-                "- 光影自然：柔和过渡，避免过度平滑的AI感",
-                "- 色彩适中：饱和度适中，肤色自然真实",
-                "- 画面质感：有真实照片感，避免蜡像或塑料质感",
-            ])
+            parts.extend(
+                [
+                    "【风格】写实风格，电影质感",
+                    "- 细节丰富：面部特征、服装纹理、头发丝都清晰可见",
+                    "- 光影自然：柔和过渡，避免过度平滑的AI感",
+                    "- 色彩适中：饱和度适中，肤色自然真实",
+                    "- 画面质感：有真实照片感，避免蜡像或塑料质感",
+                ]
+            )
 
         # 质量要求（强化）
-        parts.extend([
-            "【质量要求】",
-            "- 全身完整展示：头部、躯干、四肢、脚部全部可见",
-            "- 面部清晰：五官比例协调，特征鲜明可辨",
-            "- 服装细节：款式、颜色、褶皱、材质都清晰呈现",
-            "- 光影立体：有明显的主光源方向，阴影柔和有层次",
-            "- 避免畸形：手指、五官比例正确，没有明显的AI畸变",
-        ])
+        parts.extend(
+            [
+                "【质量要求】",
+                "- 全身完整展示：头部、躯干、四肢、脚部全部可见",
+                "- 面部清晰：五官比例协调，特征鲜明可辨",
+                "- 服装细节：款式、颜色、褶皱、材质都清晰呈现",
+                "- 光影立体：有明显的主光源方向，阴影柔和有层次",
+                "- 避免畸形：手指、五官比例正确，没有明显的AI畸变",
+            ]
+        )
 
         return "。".join(parts)
 
@@ -634,7 +639,12 @@ class ImageClient:
 
             # 生成主图
             main_prompt = self._build_character_prompt(
-                name, description, era, style_hint, "站立姿态，正面朝向，自然光线", feedback
+                name,
+                description,
+                era,
+                style_hint,
+                "站立姿态，正面朝向，自然光线",
+                feedback,
             )
             try:
                 main_image_bytes, main_prompt_used, primary_image_url = (
@@ -931,7 +941,7 @@ class ImageClient:
                         if not is_last_model:
                             # ★ 不是最后一个模型：直接换模型，不等待
                             logger.warning(
-                                f"[Model Fallback] Rate limit detected, switching to next model immediately..."
+                                "[Model Fallback] Rate limit detected, switching to next model immediately..."
                             )
                             break  # 跳出重试循环，进入下一个模型
                         else:
@@ -1383,7 +1393,16 @@ class ImageClient:
     def _simplify_prompt(self, original_prompt: str, scene_desc: str) -> Tuple[str, str]:
         """简化 prompt 作为备选方案"""
         # 移除一些常见的敏感词
-        sensitive_words = ["网吧", "酒吧", "深夜", "赌博", "暴力", "血腥", "性感", "诱惑"]
+        sensitive_words = [
+            "网吧",
+            "酒吧",
+            "深夜",
+            "赌博",
+            "暴力",
+            "血腥",
+            "性感",
+            "诱惑",
+        ]
 
         simplified_prompt = original_prompt
         simplified_scene = scene_desc
@@ -1590,6 +1609,7 @@ class ImageClient:
 
             # 解析 JSON
             import json
+
             anchor_data = json.loads(result)
 
             # 添加元信息

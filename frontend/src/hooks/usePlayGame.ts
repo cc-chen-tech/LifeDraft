@@ -53,6 +53,14 @@ export function usePlayGame() {
     regenerateRoundSceneImage,
     setEventSceneImage,  // ★ 设置事件插画
     setResultSceneImage,  // ★ 设置结果插画
+    // ★ 历史场景插画
+    historySceneImage,
+    isLoadingHistoryImage,
+    isGeneratingHistoryImage,
+    isRegeneratingHistoryImage,
+    fetchHistorySceneImage,
+    generateHistorySceneImage,
+    regenerateHistorySceneImage,
   } = useGameStore();
 
   const hydrated = useHydration();
@@ -183,9 +191,13 @@ export function usePlayGame() {
     isViewingHistory,
     historyDisplayText,
     displayText,  // ★ 实际显示的文本（历史模式下显示历史，否则显示当前）
+    // ★ 历史场景图片
+    currentHistoryRound,
     handleOpenHistory,
     handleSelectHistoryRound,
     handleBackToCurrent,
+    handleGenerateHistoryImage,
+    handleRegenerateHistoryImage,
   } = useHistoryViewer({
     playerState,
     storyText,
@@ -194,6 +206,10 @@ export function usePlayGame() {
     setPhase,
     setOptions,
     generatingRef,
+    gameId,
+    fetchHistorySceneImage,
+    generateHistorySceneImage,
+    regenerateHistorySceneImage,
   });
 
   // ===== Session Recovery (remains in main hook) =====
@@ -430,9 +446,12 @@ export function usePlayGame() {
     isViewingHistory,
     historyDisplayText,
     displayText,  // ★ 实际显示的文本
+    currentHistoryRound,  // ★ 当前查看的历史轮次
     handleOpenHistory,
     handleSelectHistoryRound,
     handleBackToCurrent,
+    handleGenerateHistoryImage,  // ★ 生成历史图片
+    handleRegenerateHistoryImage,  // ★ 重新生成历史图片
 
     // ★ 场景插画
     roundSceneImages,
@@ -447,6 +466,11 @@ export function usePlayGame() {
     regenerateRoundSceneImage,
     setEventSceneImage,  // ★ 设置事件插画
     setResultSceneImage,  // ★ 设置结果插画
+    // ★ 历史场景插画
+    historySceneImage,
+    isLoadingHistoryImage,
+    isGeneratingHistoryImage,
+    isRegeneratingHistoryImage,
     currentRound,
 
     // Utilities

@@ -6,8 +6,8 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 
 from src.api.deps import get_current_user, get_current_user_optional, get_db
-from src.api.schemas import (CreateGameRequest,  # 时间回溯存档系统
-                             CreateSavePointRequest, GameListItem,
+from src.api.schemas import CreateGameRequest  # 时间回溯存档系统
+from src.api.schemas import (CreateSavePointRequest, GameListItem,
                              GameStateResponse, MessageResponse,
                              SaveGameResponse, SavePointItem,
                              SavePointListResponse, StateSnapshotItem,

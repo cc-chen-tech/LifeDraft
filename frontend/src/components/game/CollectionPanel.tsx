@@ -22,10 +22,14 @@ import {
   Loader2,
   Pencil,
   X,
+  Wand2,
+  Plus,
+  Trash2,
+  AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCollectionStore } from "@/stores/useCollectionStore";
-import type { CharacterCollectionItem, ItemCollectionItem, LandmarkCollectionItem } from "@/lib/types";
+import type { CharacterCollectionItem, ItemCollectionItem, LandmarkCollectionItem, RecognizedEntity } from "@/lib/types";
 
 interface CollectionPanelProps {
   gameId: number;
@@ -71,6 +75,10 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
     generatingDescriptionFor,
     regeneratingImageFor,
     error,
+    isRecognizing,
+    recognizedEntities,
+    isDeleting,
+    deletingEntity,
     fetchCollection,
     setActiveTab,
     selectCharacter,
@@ -83,6 +91,13 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
     generateLandmarkDescription,
     regenerateCharacterImage,
     regenerateItemImage,
+    recognizeEntities,
+    addRecognizedEntities,
+    clearRecognizedEntities,
+    createItem,
+    deleteItem,
+    deleteCharacter,
+    deleteLandmark,
     clearError,
   } = useCollectionStore();
 
@@ -90,6 +105,21 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
   const [showRegenerateInput, setShowRegenerateInput] = useState(false);
   const [regenerateFeedback, setRegenerateFeedback] = useState("");
   const [regenerateType, setRegenerateType] = useState<"character" | "item" | null>(null);
+
+  // 识别相关状态
+  const [showRecognizeDialog, setShowRecognizeDialog] = useState(false);
+  const [selectedRecognizedItems, setSelectedRecognizedItems] = useState<RecognizedEntity[]>([]);
+  const [selectedRecognizedCharacters, setSelectedRecognizedCharacters] = useState<RecognizedEntity[]>([]);
+  const [selectedRecognizedLandmarks, setSelectedRecognizedLandmarks] = useState<RecognizedEntity[]>([]);
+
+  // 手动添加相关状态
+  const [showAddItemDialog, setShowAddItemDialog] = useState(false);
+  const [newItemName, setNewItemName] = useState("");
+  const [generateDescForNewItem, setGenerateDescForNewItem] = useState(true);
+
+  // 删除确认相关状态
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [entityToDelete, setEntityToDelete] = useState<{ type: "character" | "item" | "landmark"; name: string } | null>(null);
 
   // 初始加载
   useEffect(() => {
@@ -202,6 +232,126 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
     setRegenerateType(null);
   };
 
+  // ==================== 识别相关处理函数 ====================
+
+  // 打开识别对话框
+  const handleOpenRecognize = async () => {
+    setShowRecognizeDialog(true);
+    const result = await recognizeEntities(gameId, 3);
+    if (result) {
+      // 默认全选
+      setSelectedRecognizedItems(result.items || []);
+      setSelectedRecognizedCharacters(result.characters || []);
+      setSelectedRecognizedLandmarks(result.landmarks || []);
+    }
+  };
+
+  // 关闭识别对话框
+  const handleCloseRecognize = () => {
+    setShowRecognizeDialog(false);
+    clearRecognizedEntities();
+    setSelectedRecognizedItems([]);
+    setSelectedRecognizedCharacters([]);
+    setSelectedRecognizedLandmarks([]);
+  };
+
+  // 提交识别的实体
+  const handleSubmitRecognizedEntities = async () => {
+    await addRecognizedEntities(gameId, {
+      items: selectedRecognizedItems,
+      characters: selectedRecognizedCharacters,
+      landmarks: selectedRecognizedLandmarks,
+    });
+    setShowRecognizeDialog(false);
+    setSelectedRecognizedItems([]);
+    setSelectedRecognizedCharacters([]);
+    setSelectedRecognizedLandmarks([]);
+  };
+
+  // 切换物品选择
+  const toggleItemSelection = (item: RecognizedEntity) => {
+    setSelectedRecognizedItems((prev) =>
+      prev.some((i) => i.name === item.name)
+        ? prev.filter((i) => i.name !== item.name)
+        : [...prev, item]
+    );
+  };
+
+  // 切换人物选择
+  const toggleCharacterSelection = (character: RecognizedEntity) => {
+    setSelectedRecognizedCharacters((prev) =>
+      prev.some((c) => c.name === character.name)
+        ? prev.filter((c) => c.name !== character.name)
+        : [...prev, character]
+    );
+  };
+
+  // 切换地点选择
+  const toggleLandmarkSelection = (landmark: RecognizedEntity) => {
+    setSelectedRecognizedLandmarks((prev) =>
+      prev.some((l) => l.name === landmark.name)
+        ? prev.filter((l) => l.name !== landmark.name)
+        : [...prev, landmark]
+    );
+  };
+
+  // ==================== 手动添加相关处理函数 ====================
+
+  // 打开手动添加对话框
+  const handleOpenAddItem = () => {
+    setShowAddItemDialog(true);
+    setNewItemName("");
+    setGenerateDescForNewItem(true);
+  };
+
+  // 关闭手动添加对话框
+  const handleCloseAddItem = () => {
+    setShowAddItemDialog(false);
+    setNewItemName("");
+  };
+
+  // 提交手动添加
+  const handleSubmitAddItem = async () => {
+    if (!newItemName.trim()) return;
+    await createItem(gameId, newItemName.trim(), generateDescForNewItem);
+    setShowAddItemDialog(false);
+    setNewItemName("");
+  };
+
+  // ==================== 删除相关处理函数 ====================
+
+  // 打开删除确认
+  const handleOpenDeleteConfirm = (type: "character" | "item" | "landmark", name: string) => {
+    setEntityToDelete({ type, name });
+    setShowDeleteConfirm(true);
+  };
+
+  // 关闭删除确认
+  const handleCloseDeleteConfirm = () => {
+    setShowDeleteConfirm(false);
+    setEntityToDelete(null);
+  };
+
+  // 确认删除
+  const handleConfirmDelete = async () => {
+    if (!entityToDelete) return;
+
+    switch (entityToDelete.type) {
+      case "character":
+        await deleteCharacter(gameId, entityToDelete.name);
+        break;
+      case "item":
+        await deleteItem(gameId, entityToDelete.name);
+        break;
+      case "landmark":
+        await deleteLandmark(gameId, entityToDelete.name);
+        break;
+    }
+
+    setShowDeleteConfirm(false);
+    setEntityToDelete(null);
+  };
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* 标题 */}
@@ -244,6 +394,35 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
           <MapPin className="w-4 h-4 mr-1" />
           标志物 ({landmarks.length})
         </Button>
+      </div>
+
+      {/* 操作按钮 */}
+      <div className="px-4 pt-2 flex gap-2 flex-shrink-0">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleOpenRecognize}
+          disabled={isRecognizing}
+          className="flex-1"
+        >
+          {isRecognizing ? (
+            <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+          ) : (
+            <Wand2 className="w-4 h-4 mr-1" />
+          )}
+          智能识别
+        </Button>
+        {activeTab === "items" && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleOpenAddItem}
+            className="flex-1"
+          >
+            <Plus className="w-4 h-4 mr-1" />
+            手动添加
+          </Button>
+        )}
       </div>
 
       {/* 可滚动的内容区域 */}
@@ -454,13 +633,29 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
           {selectedCharacter && (
             <>
               <DialogHeader className="px-6 pt-6 pb-2 flex-shrink-0">
-                <DialogTitle className="flex items-center gap-2">
-                  <User className="w-5 h-5" />
-                  {selectedCharacter.name}
-                </DialogTitle>
-                <DialogDescription>
-                  {selectedCharacter.role || "故事中的人物"}
-                </DialogDescription>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <DialogTitle className="flex items-center gap-2">
+                      <User className="w-5 h-5" />
+                      {selectedCharacter.name}
+                    </DialogTitle>
+                    <DialogDescription>
+                      {selectedCharacter.role || "故事中的人物"}
+                    </DialogDescription>
+                  </div>
+                  {/* 删除按钮 */}
+                  {selectedCharacter.role !== "主角" && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => handleOpenDeleteConfirm("character", selectedCharacter.name)}
+                      disabled={isDeleting}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  )}
+                </div>
               </DialogHeader>
 
               <div className="flex-1 overflow-y-auto px-6 pb-6">
@@ -632,17 +827,31 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
           {selectedItem && (
             <>
               <DialogHeader className="px-6 pt-6 pb-2 flex-shrink-0">
-                <DialogTitle className="flex items-center gap-2">
-                  <Package className="w-5 h-5" />
-                  {selectedItem.name}
-                  {selectedItem.is_key_item && (
-                    <Sparkles className="w-4 h-4 text-amber-500" />
-                  )}
-                </DialogTitle>
-                <DialogDescription>
-                  {CATEGORY_LABELS[selectedItem.category] || selectedItem.category}
-                  · {IMPORTANCE_LABELS[selectedItem.importance]?.label || "普通"}
-                </DialogDescription>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <DialogTitle className="flex items-center gap-2">
+                      <Package className="w-5 h-5" />
+                      {selectedItem.name}
+                      {selectedItem.is_key_item && (
+                        <Sparkles className="w-4 h-4 text-amber-500" />
+                      )}
+                    </DialogTitle>
+                    <DialogDescription>
+                      {CATEGORY_LABELS[selectedItem.category] || selectedItem.category}
+                      · {IMPORTANCE_LABELS[selectedItem.importance]?.label || "普通"}
+                    </DialogDescription>
+                  </div>
+                  {/* 删除按钮 */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => handleOpenDeleteConfirm("item", selectedItem.name)}
+                    disabled={isDeleting}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
               </DialogHeader>
 
               <div className="flex-1 overflow-y-auto px-6 pb-6">
@@ -809,17 +1018,31 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
           {selectedLandmark && (
             <>
               <DialogHeader className="px-6 pt-6 pb-2 flex-shrink-0">
-                <DialogTitle className="flex items-center gap-2">
-                  <MapPin className="w-5 h-5" />
-                  {selectedLandmark.name}
-                  {selectedLandmark.is_key_location && (
-                    <Sparkles className="w-4 h-4 text-amber-500" />
-                  )}
-                </DialogTitle>
-                <DialogDescription>
-                  {LANDMARK_CATEGORY_LABELS[selectedLandmark.category] || selectedLandmark.category}
-                  · {IMPORTANCE_LABELS[selectedLandmark.importance]?.label || "普通"}
-                </DialogDescription>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <DialogTitle className="flex items-center gap-2">
+                      <MapPin className="w-5 h-5" />
+                      {selectedLandmark.name}
+                      {selectedLandmark.is_key_location && (
+                        <Sparkles className="w-4 h-4 text-amber-500" />
+                      )}
+                    </DialogTitle>
+                    <DialogDescription>
+                      {LANDMARK_CATEGORY_LABELS[selectedLandmark.category] || selectedLandmark.category}
+                      · {IMPORTANCE_LABELS[selectedLandmark.importance]?.label || "普通"}
+                    </DialogDescription>
+                  </div>
+                  {/* 删除按钮 */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => handleOpenDeleteConfirm("landmark", selectedLandmark.name)}
+                    disabled={isDeleting}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
               </DialogHeader>
 
               <div className="flex-1 overflow-y-auto px-6 pb-6">
@@ -934,6 +1157,272 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
           </Button>
         </div>
       )}
+
+      {/* 智能识别对话框 */}
+      <Dialog open={showRecognizeDialog} onOpenChange={handleCloseRecognize}>
+        <DialogContent className="max-w-lg max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wand2 className="w-5 h-5" />
+              智能识别
+            </DialogTitle>
+            <DialogDescription>
+              从历史故事中识别重复出现的物品、人物、地点
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto py-4">
+            {isRecognizing ? (
+              <div className="flex flex-col items-center justify-center py-8 gap-3">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground">正在分析故事历史...</p>
+              </div>
+            ) : recognizedEntities ? (
+              <div className="space-y-4">
+                {/* 物品 */}
+                {recognizedEntities.items && recognizedEntities.items.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-2 flex items-center gap-2">
+                      <Package className="w-4 h-4" />
+                      识别到的物品 ({recognizedEntities.items.length})
+                    </h4>
+                    <div className="space-y-2">
+                      {recognizedEntities.items.map((item) => (
+                        <label
+                          key={item.name}
+                          className="flex items-start gap-2 p-2 rounded border hover:bg-accent cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-1"
+                            checked={selectedRecognizedItems.some((i) => i.name === item.name)}
+                            onChange={() => toggleItemSelection(item)}
+                          />
+                          <div className="flex-1 text-sm">
+                            <div className="font-medium">{item.name}</div>
+                            <div className="text-muted-foreground text-xs">
+                              出现 {item.appear_count} 次 · {item.description.slice(0, 50)}...
+                            </div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 人物 */}
+                {recognizedEntities.characters && recognizedEntities.characters.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-2 flex items-center gap-2">
+                      <User className="w-4 h-4" />
+                      识别到的人物 ({recognizedEntities.characters.length})
+                    </h4>
+                    <div className="space-y-2">
+                      {recognizedEntities.characters.map((char) => (
+                        <label
+                          key={char.name}
+                          className="flex items-start gap-2 p-2 rounded border hover:bg-accent cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-1"
+                            checked={selectedRecognizedCharacters.some((c) => c.name === char.name)}
+                            onChange={() => toggleCharacterSelection(char)}
+                          />
+                          <div className="flex-1 text-sm">
+                            <div className="font-medium">{char.name}</div>
+                            <div className="text-muted-foreground text-xs">
+                              出现 {char.appear_count} 次 · {char.description.slice(0, 50)}...
+                            </div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 地点 */}
+                {recognizedEntities.landmarks && recognizedEntities.landmarks.length > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-2 flex items-center gap-2">
+                      <MapPin className="w-4 h-4" />
+                      识别到的地点 ({recognizedEntities.landmarks.length})
+                    </h4>
+                    <div className="space-y-2">
+                      {recognizedEntities.landmarks.map((landmark) => (
+                        <label
+                          key={landmark.name}
+                          className="flex items-start gap-2 p-2 rounded border hover:bg-accent cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-1"
+                            checked={selectedRecognizedLandmarks.some((l) => l.name === landmark.name)}
+                            onChange={() => toggleLandmarkSelection(landmark)}
+                          />
+                          <div className="flex-1 text-sm">
+                            <div className="font-medium">{landmark.name}</div>
+                            <div className="text-muted-foreground text-xs">
+                              出现 {landmark.appear_count} 次 · {landmark.description.slice(0, 50)}...
+                            </div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 无结果提示 */}
+                {recognizedEntities.items?.length === 0 &&
+                  recognizedEntities.characters?.length === 0 &&
+                  recognizedEntities.landmarks?.length === 0 && (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <AlertCircle className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                      <p>未识别到新的实体</p>
+                      <p className="text-xs mt-1">可能故事还不够长，或已有所有实体</p>
+                    </div>
+                  )}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="flex gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={handleCloseRecognize} className="flex-1">
+              取消
+            </Button>
+            <Button
+              onClick={handleSubmitRecognizedEntities}
+              disabled={
+                isLoading ||
+                (selectedRecognizedItems.length === 0 &&
+                  selectedRecognizedCharacters.length === 0 &&
+                  selectedRecognizedLandmarks.length === 0)
+              }
+              className="flex-1"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  添加中...
+                </>
+              ) : (
+                <>
+                  添加到收集
+                  {selectedRecognizedItems.length + selectedRecognizedCharacters.length + selectedRecognizedLandmarks.length > 0 && (
+                    <span className="ml-1">
+                      ({selectedRecognizedItems.length + selectedRecognizedCharacters.length + selectedRecognizedLandmarks.length})
+                    </span>
+                  )}
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 手动添加物品对话框 */}
+      <Dialog open={showAddItemDialog} onOpenChange={handleCloseAddItem}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="w-5 h-5" />
+              手动添加物品
+            </DialogTitle>
+            <DialogDescription>
+              输入物品名称，AI将从故事历史中提取描述
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4 space-y-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">物品名称</label>
+              <input
+                type="text"
+                value={newItemName}
+                onChange={(e) => setNewItemName(e.target.value)}
+                placeholder="例如：神秘古书、银色怀表..."
+                className="w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newItemName.trim()) {
+                    handleSubmitAddItem();
+                  }
+                }}
+              />
+            </div>
+
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={generateDescForNewItem}
+                onChange={(e) => setGenerateDescForNewItem(e.target.checked)}
+              />
+              从故事历史中提取描述
+            </label>
+          </div>
+
+          <div className="flex gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={handleCloseAddItem} className="flex-1">
+              取消
+            </Button>
+            <Button
+              onClick={handleSubmitAddItem}
+              disabled={!newItemName.trim() || isLoading}
+              className="flex-1"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  创建中...
+                </>
+              ) : (
+                "创建"
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 删除确认对话框 */}
+      <Dialog open={showDeleteConfirm} onOpenChange={handleCloseDeleteConfirm}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="w-5 h-5" />
+              确认删除
+            </DialogTitle>
+            <DialogDescription>
+              {entityToDelete && (
+                <>
+                  确定要删除
+                  <span className="font-medium mx-1">{entityToDelete.name}</span>
+                  吗？此操作不可恢复。
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex gap-2 pt-4">
+            <Button variant="outline" onClick={handleCloseDeleteConfirm} className="flex-1">
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmDelete}
+              disabled={isDeleting}
+              className="flex-1"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  删除中...
+                </>
+              ) : (
+                "删除"
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

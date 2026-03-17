@@ -2,7 +2,8 @@
  * E2E Test: Complete User Journey
  * Tests for the full user flow from landing to gameplay
  */
-import { test, expect } from '@playwright/test';
+import { test, expect, Page, BrowserContext } from '@playwright/test';
+import { registerUser, ensureAuthenticated } from './helpers/auth';
 
 test.describe('User Journey - Landing Page', () => {
   test('should display welcome page with title', async ({ page }) => {
@@ -31,7 +32,10 @@ test.describe('User Journey - Landing Page', () => {
     expect(typeof isVisible).toBe('boolean');
   });
 
-  test('should navigate to create page on new game click', async ({ page }) => {
+  test('should navigate to create page on new game click', async ({ page, context }) => {
+    // 先登录
+    await ensureAuthenticated(page, context);
+
     await page.goto('/');
 
     const newGameButton = page.getByRole('button', { name: /新游戏|New Game/i });
@@ -133,7 +137,10 @@ test.describe('User Journey - Character Creation Flow', () => {
 });
 
 test.describe('User Journey - Saves Page Flow', () => {
-  test('should navigate to saves from home', async ({ page }) => {
+  test('should navigate to saves from home', async ({ page, context }) => {
+    // 先登录
+    await ensureAuthenticated(page, context);
+
     await page.goto('/');
 
     // Look for saves button
@@ -187,7 +194,10 @@ test.describe('User Journey - Saves Page Flow', () => {
 });
 
 test.describe('User Journey - Full Flow Simulation', () => {
-  test('should complete basic navigation flow', async ({ page }) => {
+  test('should complete basic navigation flow', async ({ page, context }) => {
+    // 先登录
+    await ensureAuthenticated(page, context);
+
     // Start at home
     await page.goto('/');
     await expect(page).toHaveTitle(/Story Life|人生|Life Draft/);
@@ -215,16 +225,20 @@ test.describe('User Journey - Full Flow Simulation', () => {
     }
   });
 
-  test('should handle network errors gracefully', async ({ page }) => {
-    // Block all API calls
-    await page.route('**/api/**', route => route.abort('failed'));
+  test('should handle network errors gracefully', async ({ page, context }) => {
+    // 先登录（在拦截网络之前）
+    await ensureAuthenticated(page, context);
+
+    // 拦截特定的后端API调用（如游戏状态同步），但不拦截认证相关API
+    await page.route('**/api/games*/**', route => route.abort('failed'));
+    await page.route('**/api/gameplay/**', route => route.abort('failed'));
 
     await page.goto('/');
 
     // Page should still load
     await expect(page).toHaveTitle(/Story Life|人生|Life Draft/);
 
-    // Navigate to create
+    // Navigate to create - 允许导航工作
     const newGameButton = page.getByRole('button', { name: /新游戏/i });
     await newGameButton.click();
 
@@ -232,10 +246,13 @@ test.describe('User Journey - Full Flow Simulation', () => {
     await expect(page).toHaveURL('/create');
   });
 
-  test('should handle slow network', async ({ page }) => {
-    // Delay all API calls
-    await page.route('**/api/**', async route => {
-      await new Promise(resolve => setTimeout(resolve, 2000));
+  test('should handle slow network', async ({ page, context }) => {
+    // 先登录
+    await ensureAuthenticated(page, context);
+
+    // Delay specific API calls
+    await page.route('**/api/games*/**', async route => {
+      await new Promise(resolve => setTimeout(resolve, 500));
       route.continue();
     });
 

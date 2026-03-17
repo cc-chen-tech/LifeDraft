@@ -947,3 +947,391 @@ async def regenerate_item_image(
         raise HTTPException(status_code=500, detail=f"图片修改失败: {e}")
     finally:
         db.close()
+
+
+# ==================== Entity Recognition (实体识别) ====================
+
+
+@router.post("/{game_id}/recognize-entities")
+async def recognize_entities(
+    game_id: int,
+    request: dict,
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    """从历史故事中识别重复出现的实体（物品、人物、地点）"""
+    if not user:
+        raise HTTPException(status_code=401, detail="未登录")
+
+    session = session_service.get_or_restore(game_id, user)
+    player_state = session.game_loop.get_state()
+
+    if not player_state:
+        raise HTTPException(status_code=400, detail="游戏状态不存在")
+
+    # 获取现有实体名称列表
+    existing_items = list(player_state.items.keys())
+    existing_characters = list(player_state.characters.keys())
+    existing_landmarks = list(player_state.landmarks.keys())
+
+    # 获取主角名字，添加到已存在人物中（避免识别主角）
+    character_settings = player_state.character_settings or {}
+    player_name = player_state.player_name or character_settings.get("player_name", "")
+    if player_name:
+        existing_characters.append(player_name)
+
+    try:
+        from src.services.entity_recognition_service import \
+            EntityRecognitionService
+
+        recognition_service = EntityRecognitionService(session.game_loop.ai_generator.ai_client)
+
+        min_appearances = request.get("min_appearances", 3)
+
+        result = recognition_service.recognize_from_history(
+            round_history=player_state.round_history,
+            existing_items=existing_items,
+            existing_characters=existing_characters,
+            existing_landmarks=existing_landmarks,
+            min_appearances=min_appearances,
+            language=session.language,
+        )
+
+        return result
+
+    except Exception as e:
+        logger.error(f"实体识别失败: {e}")
+        raise HTTPException(status_code=500, detail=f"实体识别失败: {e}")
+
+
+@router.post("/{game_id}/add-entities")
+async def add_entities(
+    game_id: int,
+    request: dict,
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    """批量添加识别出的实体到收集系统"""
+    if not user:
+        raise HTTPException(status_code=401, detail="未登录")
+
+    session = session_service.get_or_restore(game_id, user)
+    player_state = session.game_loop.get_state()
+
+    if not player_state:
+        raise HTTPException(status_code=400, detail="游戏状态不存在")
+
+    added_items = []
+    added_landmarks = []
+
+    try:
+        # 添加物品
+        for item_data in request.get("items", []):
+            item_name = item_data.get("name")
+            if item_name and item_name not in player_state.items:
+                from src.game.state.item_state import ItemState
+
+                item = ItemState(
+                    name=item_name,
+                    description=item_data.get("description", ""),
+                    importance=item_data.get("importance", "normal"),
+                    category=item_data.get("category", "other"),
+                    acquired_week=player_state.week,
+                    acquired_context=(
+                        item_data.get("appear_contexts", [""])[0]
+                        if item_data.get("appear_contexts")
+                        else ""
+                    ),
+                    is_key_item=(item_data.get("importance") == "critical"),
+                    image_generated=False,
+                    description_generated=True,
+                )
+                player_state.add_item(item)
+                added_items.append(item_name)
+                logger.info(f"Added item from recognition: {item_name}")
+
+        # 添加地点
+        for landmark_data in request.get("landmarks", []):
+            landmark_name = landmark_data.get("name")
+            if landmark_name and landmark_name not in player_state.landmarks:
+                from src.game.state.landmark_state import LandmarkState
+
+                landmark = LandmarkState(
+                    name=landmark_name,
+                    description=landmark_data.get("description", ""),
+                    category=landmark_data.get("category", "other"),
+                    importance=landmark_data.get("importance", "normal"),
+                    first_appear_week=player_state.week,
+                    appear_count=landmark_data.get("appear_count", 1),
+                    last_appear_week=player_state.week,
+                    context=(
+                        landmark_data.get("appear_contexts", [""])[0]
+                        if landmark_data.get("appear_contexts")
+                        else ""
+                    ),
+                    is_key_location=(landmark_data.get("importance") == "critical"),
+                    image_generated=False,
+                )
+                player_state.add_landmark(landmark)
+                added_landmarks.append(landmark_name)
+                logger.info(f"Added landmark from recognition: {landmark_name}")
+
+        return {
+            "message": f"成功添加 {len(added_items)} 个物品, {len(added_landmarks)} 个地点",
+            "success": True,
+            "added_items": added_items,
+            "added_characters": [],
+            "added_landmarks": added_landmarks,
+        }
+
+    except Exception as e:
+        logger.error(f"添加实体失败: {e}")
+        raise HTTPException(status_code=500, detail=f"添加实体失败: {e}")
+
+
+@router.post("/{game_id}/items/create")
+async def create_item(
+    game_id: int,
+    request: dict,
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    """手动创建物品，可选从历史中提取描述"""
+    if not user:
+        raise HTTPException(status_code=401, detail="未登录")
+
+    session = session_service.get_or_restore(game_id, user)
+    player_state = session.game_loop.get_state()
+
+    if not player_state:
+        raise HTTPException(status_code=400, detail="游戏状态不存在")
+
+    item_name = request.get("name", "").strip()
+    if not item_name:
+        raise HTTPException(status_code=400, detail="物品名称不能为空")
+
+    # 检查是否已存在
+    if item_name in player_state.items:
+        raise HTTPException(status_code=400, detail=f"物品 '{item_name}' 已存在")
+
+    try:
+        description = ""
+        category = "other"
+        importance = "normal"
+        acquired_context = ""
+
+        # 如果需要从历史中提取描述
+        if request.get("generate_description") and player_state.round_history:
+            from src.services.entity_recognition_service import \
+                EntityRecognitionService
+
+            recognition_service = EntityRecognitionService(session.game_loop.ai_generator.ai_client)
+
+            item_info = recognition_service.extract_item_description(
+                item_name=item_name,
+                round_history=player_state.round_history,
+                language=session.language,
+            )
+
+            if item_info:
+                description = item_info.get("description", "")
+                category = item_info.get("category", "other")
+                importance = item_info.get("importance", "normal")
+                acquired_context = item_info.get("acquired_context", "")[:200]
+
+        # 创建物品
+        from src.game.state.item_state import ItemState
+
+        item = ItemState(
+            name=item_name,
+            description=description,
+            importance=importance,
+            category=category,
+            acquired_week=player_state.week,
+            acquired_context=acquired_context,
+            is_key_item=(importance == "critical"),
+            image_generated=False,
+            description_generated=bool(description),
+        )
+        player_state.add_item(item)
+
+        return {
+            "message": f"物品 '{item_name}' 创建成功",
+            "success": True,
+            "item": {
+                "name": item_name,
+                "description": description,
+                "importance": importance,
+                "category": category,
+                "acquired_week": player_state.week,
+                "acquired_context": acquired_context,
+                "is_key_item": (importance == "critical"),
+                "image_generated": False,
+                "description_generated": bool(description),
+            },
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"创建物品失败: {e}")
+        raise HTTPException(status_code=500, detail=f"创建物品失败: {e}")
+
+
+@router.delete("/{game_id}/items/{item_name}")
+async def delete_item(
+    game_id: int,
+    item_name: str,
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    """删除物品"""
+    if not user:
+        raise HTTPException(status_code=401, detail="未登录")
+
+    session = session_service.get_or_restore(game_id, user)
+    player_state = session.game_loop.get_state()
+
+    if not player_state:
+        raise HTTPException(status_code=400, detail="游戏状态不存在")
+
+    # 解码URL编码的物品名称
+    from urllib.parse import unquote
+
+    item_name = unquote(item_name)
+
+    if item_name not in player_state.items:
+        raise HTTPException(status_code=404, detail=f"物品 '{item_name}' 不存在")
+
+    try:
+        # 删除物品
+        success = player_state.remove_item(item_name)
+
+        if not success:
+            raise HTTPException(status_code=500, detail="删除失败")
+
+        # 同时删除关联的图片记录
+        db = SessionLocal()
+        try:
+            db.query(ImageModel).filter(
+                ImageModel.game_id == game_id,
+                ImageModel.image_type == "item",
+                ImageModel.entity_name == item_name,
+            ).delete()
+            db.commit()
+        finally:
+            db.close()
+
+        return {"message": f"物品 '{item_name}' 已删除", "success": True}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除物品失败: {e}")
+        raise HTTPException(status_code=500, detail=f"删除失败: {e}")
+
+
+@router.delete("/{game_id}/characters/{character_name}")
+async def delete_character(
+    game_id: int,
+    character_name: str,
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    """删除人物"""
+    if not user:
+        raise HTTPException(status_code=401, detail="未登录")
+
+    session = session_service.get_or_restore(game_id, user)
+    player_state = session.game_loop.get_state()
+
+    if not player_state:
+        raise HTTPException(status_code=400, detail="游戏状态不存在")
+
+    # 解码URL编码的人物名称
+    from urllib.parse import unquote
+
+    character_name = unquote(character_name)
+
+    # 检查是否是主角
+    character_settings = player_state.character_settings or {}
+    player_name = player_state.player_name or character_settings.get("player_name", "")
+    if character_name == player_name:
+        raise HTTPException(status_code=400, detail="不能删除主角")
+
+    if character_name not in player_state.characters:
+        raise HTTPException(status_code=404, detail=f"人物 '{character_name}' 不存在或无法删除")
+
+    try:
+        # 删除人物
+        success = player_state.remove_character(character_name)
+
+        if not success:
+            raise HTTPException(status_code=500, detail="删除失败")
+
+        # 同时删除关联的图片记录
+        db = SessionLocal()
+        try:
+            db.query(ImageModel).filter(
+                ImageModel.game_id == game_id,
+                ImageModel.image_type == "character",
+                ImageModel.entity_name == character_name,
+            ).delete()
+            db.commit()
+        finally:
+            db.close()
+
+        return {"message": f"人物 '{character_name}' 已删除", "success": True}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除人物失败: {e}")
+        raise HTTPException(status_code=500, detail=f"删除失败: {e}")
+
+
+@router.delete("/{game_id}/landmarks/{landmark_name}")
+async def delete_landmark(
+    game_id: int,
+    landmark_name: str,
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    """删除地点/标志物"""
+    if not user:
+        raise HTTPException(status_code=401, detail="未登录")
+
+    session = session_service.get_or_restore(game_id, user)
+    player_state = session.game_loop.get_state()
+
+    if not player_state:
+        raise HTTPException(status_code=400, detail="游戏状态不存在")
+
+    # 解码URL编码的地点名称
+    from urllib.parse import unquote
+
+    landmark_name = unquote(landmark_name)
+
+    if landmark_name not in player_state.landmarks:
+        raise HTTPException(status_code=404, detail=f"地点 '{landmark_name}' 不存在")
+
+    try:
+        # 删除地点
+        success = player_state.remove_landmark(landmark_name)
+
+        if not success:
+            raise HTTPException(status_code=500, detail="删除失败")
+
+        # 同时删除关联的图片记录
+        db = SessionLocal()
+        try:
+            db.query(ImageModel).filter(
+                ImageModel.game_id == game_id,
+                ImageModel.image_type == "landmark",
+                ImageModel.entity_name == landmark_name,
+            ).delete()
+            db.commit()
+        finally:
+            db.close()
+
+        return {"message": f"地点 '{landmark_name}' 已删除", "success": True}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除地点失败: {e}")
+        raise HTTPException(status_code=500, detail=f"删除失败: {e}")

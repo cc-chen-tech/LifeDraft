@@ -472,3 +472,67 @@ class RegenerateItemImageRequest(BaseModel):
     """重新生成物品图片请求"""
 
     feedback: str = Field(..., description="用户修改意见")
+
+
+# ==================== Entity Recognition (实体识别) ====================
+
+
+class EntityRecognitionRequest(BaseModel):
+    """实体识别请求"""
+
+    entity_types: List[str] = Field(
+        default_factory=lambda: ["item", "character", "landmark"], description="要识别的实体类型"
+    )
+    min_appearances: int = Field(default=3, ge=1, le=10, description="最少出现次数")
+
+
+class RecognizedEntity(BaseModel):
+    """识别出的实体"""
+
+    name: str = Field(..., description="实体名称")
+    description: str = Field(..., description="详细描述")
+    category: str = Field(default="other", description="类别")
+    importance: str = Field(default="normal", description="重要程度")
+    appear_count: int = Field(default=1, description="出现次数")
+    appear_contexts: List[str] = Field(default_factory=list, description="出现的上下文片段")
+
+
+class EntityRecognitionResponse(BaseModel):
+    """实体识别响应"""
+
+    items: List[RecognizedEntity] = Field(default_factory=list)
+    characters: List[RecognizedEntity] = Field(default_factory=list)
+    landmarks: List[RecognizedEntity] = Field(default_factory=list)
+
+
+class AddEntitiesRequest(BaseModel):
+    """批量添加实体请求"""
+
+    items: List[RecognizedEntity] = Field(default_factory=list)
+    characters: List[RecognizedEntity] = Field(default_factory=list)
+    landmarks: List[RecognizedEntity] = Field(default_factory=list)
+
+
+class AddEntitiesResponse(BaseModel):
+    """批量添加实体响应"""
+
+    message: str = ""
+    success: bool = True
+    added_items: List[str] = Field(default_factory=list)
+    added_characters: List[str] = Field(default_factory=list)
+    added_landmarks: List[str] = Field(default_factory=list)
+
+
+class CreateItemRequest(BaseModel):
+    """手动创建物品请求"""
+
+    name: str = Field(..., min_length=1, max_length=100, description="物品名称")
+    generate_description: bool = Field(default=True, description="是否从历史中生成描述")
+
+
+class CreateItemResponse(BaseModel):
+    """手动创建物品响应"""
+
+    message: str = ""
+    success: bool = True
+    item: Optional[ItemCollectionItem] = None

@@ -4,7 +4,7 @@
  * 管理人物、物品和标志物收集数据
  */
 import { create } from "zustand";
-import type { CharacterCollectionItem, ItemCollectionItem, LandmarkCollectionItem, CollectionResponse } from "@/lib/types";
+import type { CharacterCollectionItem, ItemCollectionItem, LandmarkCollectionItem, CollectionResponse, RecognizedEntity, EntityRecognitionResponse } from "@/lib/types";
 import api from "@/lib/api";
 
 interface CollectionState {
@@ -26,6 +26,14 @@ interface CollectionState {
   generatingDescriptionFor: string | null;  // 正在生成描述的名称
   regeneratingImageFor: string | null;  // 正在重新生成图片的名称
 
+  // 识别状态
+  isRecognizing: boolean;  // 是否正在进行实体识别
+  recognizedEntities: EntityRecognitionResponse | null;  // 识别结果
+
+  // 删除状态
+  isDeleting: boolean;  // 是否正在删除
+  deletingEntity: string | null;  // 正在删除的实体名称
+
   // 错误
   error: string | null;
 
@@ -43,6 +51,20 @@ interface CollectionState {
   generateLandmarkDescription: (gameId: number, landmarkName: string) => Promise<void>;
   regenerateCharacterImage: (gameId: number, name: string, feedback: string, imageId?: number) => Promise<void>;
   regenerateItemImage: (gameId: number, itemName: string, feedback: string) => Promise<void>;
+
+  // 识别相关 Actions
+  recognizeEntities: (gameId: number, minAppearances?: number) => Promise<EntityRecognitionResponse | null>;
+  addRecognizedEntities: (gameId: number, entities: { items: RecognizedEntity[]; characters: RecognizedEntity[]; landmarks: RecognizedEntity[] }) => Promise<void>;
+  clearRecognizedEntities: () => void;
+
+  // 手动添加 Actions
+  createItem: (gameId: number, name: string, generateDescription?: boolean) => Promise<void>;
+
+  // 删除 Actions
+  deleteItem: (gameId: number, itemName: string) => Promise<void>;
+  deleteCharacter: (gameId: number, characterName: string) => Promise<void>;
+  deleteLandmark: (gameId: number, landmarkName: string) => Promise<void>;
+
   clearSelection: () => void;
   clearError: () => void;
 }
@@ -65,6 +87,14 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
   generatingImageFor: null,
   generatingDescriptionFor: null,
   regeneratingImageFor: null,
+
+  // 初始识别状态
+  isRecognizing: false,
+  recognizedEntities: null,
+
+  // 初始删除状态
+  isDeleting: false,
+  deletingEntity: null,
 
   // 初始错误
   error: null,
@@ -328,4 +358,145 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
 
   // 清除错误
   clearError: () => set({ error: null }),
+
+  // ==================== 实体识别 Actions ====================
+
+  // 识别实体
+  recognizeEntities: async (gameId: number, minAppearances: number = 3) => {
+    set({ isRecognizing: true, error: null });
+
+    try {
+      const result = await api.collection.recognizeEntities(gameId, {
+        entity_types: ["item", "character", "landmark"],
+        min_appearances: minAppearances,
+      });
+
+      set({ recognizedEntities: result, isRecognizing: false });
+      return result;
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "实体识别失败";
+      console.error("[recognizeEntities] 错误:", errorMsg);
+      set({ error: errorMsg, isRecognizing: false });
+      return null;
+    }
+  },
+
+  // 添加识别出的实体
+  addRecognizedEntities: async (gameId: number, entities: { items: RecognizedEntity[]; characters: RecognizedEntity[]; landmarks: RecognizedEntity[] }) => {
+    set({ isLoading: true, error: null });
+
+    try {
+      await api.collection.addEntities(gameId, entities);
+
+      // 刷新收集数据
+      await get().fetchCollection(gameId, true);
+
+      // 清除识别结果
+      set({ recognizedEntities: null, isLoading: false });
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "添加实体失败";
+      console.error("[addRecognizedEntities] 错误:", errorMsg);
+      set({ error: errorMsg, isLoading: false });
+    }
+  },
+
+  // 清除识别结果
+  clearRecognizedEntities: () => set({ recognizedEntities: null }),
+
+  // ==================== 手动添加 Actions ====================
+
+  // 手动创建物品
+  createItem: async (gameId: number, name: string, generateDescription: boolean = true) => {
+    set({ isLoading: true, error: null });
+
+    try {
+      await api.collection.createItem(gameId, {
+        name,
+        generate_description: generateDescription,
+      });
+
+      // 刷新收集数据
+      await get().fetchCollection(gameId, true);
+
+      set({ isLoading: false });
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "创建物品失败";
+      console.error("[createItem] 错误:", errorMsg);
+      set({ error: errorMsg, isLoading: false });
+    }
+  },
+
+  // ==================== 删除 Actions ====================
+
+  // 删除物品
+  deleteItem: async (gameId: number, itemName: string) => {
+    set({ isDeleting: true, deletingEntity: itemName, error: null });
+
+    try {
+      await api.collection.deleteItem(gameId, itemName);
+
+      // 如果删除的是当前选中的物品，清除选择
+      const currentSelected = get().selectedItem;
+      if (currentSelected?.name === itemName) {
+        set({ selectedItem: null });
+      }
+
+      // 刷新收集数据
+      await get().fetchCollection(gameId, true);
+
+      set({ isDeleting: false, deletingEntity: null });
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "删除物品失败";
+      console.error("[deleteItem] 错误:", errorMsg);
+      set({ error: errorMsg, isDeleting: false, deletingEntity: null });
+    }
+  },
+
+  // 删除人物
+  deleteCharacter: async (gameId: number, characterName: string) => {
+    set({ isDeleting: true, deletingEntity: characterName, error: null });
+
+    try {
+      await api.collection.deleteCharacter(gameId, characterName);
+
+      // 如果删除的是当前选中的人物，清除选择
+      const currentSelected = get().selectedCharacter;
+      if (currentSelected?.name === characterName) {
+        set({ selectedCharacter: null });
+      }
+
+      // 刷新收集数据
+      await get().fetchCollection(gameId, true);
+
+      set({ isDeleting: false, deletingEntity: null });
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "删除人物失败";
+      console.error("[deleteCharacter] 错误:", errorMsg);
+      set({ error: errorMsg, isDeleting: false, deletingEntity: null });
+    }
+  },
+
+  // 删除标志物
+  deleteLandmark: async (gameId: number, landmarkName: string) => {
+    set({ isDeleting: true, deletingEntity: landmarkName, error: null });
+
+    try {
+      await api.collection.deleteLandmark(gameId, landmarkName);
+
+      // 如果删除的是当前选中的标志物，清除选择
+      const currentSelected = get().selectedLandmark;
+      if (currentSelected?.name === landmarkName) {
+        set({ selectedLandmark: null });
+      }
+
+      // 刷新收集数据
+      await get().fetchCollection(gameId, true);
+
+      set({ isDeleting: false, deletingEntity: null });
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "删除标志物失败";
+      console.error("[deleteLandmark] 错误:", errorMsg);
+      set({ error: errorMsg, isDeleting: false, deletingEntity: null });
+    }
+  },
 }));

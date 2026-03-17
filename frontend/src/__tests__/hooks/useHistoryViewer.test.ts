@@ -19,6 +19,7 @@ describe('useHistoryViewer', () => {
     setPhase: mockSetPhase,
     setOptions: mockSetOptions,
     generatingRef: mockGeneratingRef,
+    gameId: 1,
   };
 
   beforeEach(() => {

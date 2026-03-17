@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { useGameStore } from "@/stores/useGameStore";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   MessageCircle,
   X,
@@ -273,10 +275,16 @@ export function ChatBar({
                 "text-sm rounded-lg px-3 py-2 max-w-[85%]",
                 msg.role === "user"
                   ? "bg-primary/20 text-foreground ml-auto"
-                  : "bg-secondary text-muted-foreground"
+                  : "bg-secondary text-muted-foreground prose prose-sm prose-invert max-w-none"
               )}
             >
-              {msg.content}
+              {msg.role === "user" ? (
+                msg.content
+              ) : (
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {msg.content}
+                </ReactMarkdown>
+              )}
             </div>
           ))}
           {(isSending || isGeneratingSummary) && (

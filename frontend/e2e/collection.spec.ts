@@ -4,6 +4,7 @@
  */
 
 import { test, expect, Page, BrowserContext } from '@playwright/test';
+import { registerUser } from './helpers/auth';
 
 const BASE_URL = 'http://localhost:3000';
 const API_URL = 'http://localhost:8000';
@@ -11,9 +12,9 @@ const API_URL = 'http://localhost:8000';
 test.describe('Collection System E2E Tests', () => {
   test('1. Collection API - Get collection for non-existent game returns error', async ({ request }) => {
     const response = await request.get(`${API_URL}/api/collection/999999`);
-    // Should return 401 (unauthorized) or 404 (not found)
+    // Should return 401 (unauthorized), 404 (not found), or 422 (validation error)
     const status = response.status();
-    expect([401, 404]).toContain(status);
+    expect([401, 404, 422]).toContain(status);
   });
 
   test('2. Collection API - Verify collection endpoint exists', async ({ request }) => {

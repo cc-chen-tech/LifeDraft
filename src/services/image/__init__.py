@@ -8,16 +8,9 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from config.settings import settings
-from src.ai.image_client import (ContentInspectionError, ImageClient,
-                                 ImageGenerationError)
+from src.ai.image_client import ImageClient
 from src.database.models import Image as ImageModel
-from src.services.image.appearance_anchor import CharacterAppearanceAnchor
-from src.services.image.prompt_enhancer import PromptEnhancer, prompt_enhancer
-from src.services.image.style_manager import (
-    ColorPalette, MoodType, SceneStyleManager, style_manager
-)
-from src.services.image_storage import ImageStorageError, ImageStorageService
+from src.services.image_storage import ImageStorageService
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +82,7 @@ class ImageService:
                 ImageModel.game_id == game_id,
                 ImageModel.image_type == image_type,
                 ImageModel.entity_name == entity_name,
-                ImageModel.is_active == True,
+                ImageModel.is_active.is_(True),
             )
             .order_by(ImageModel.version.desc())
             .first()
@@ -112,7 +105,7 @@ class ImageService:
         """
         query = self.db.query(ImageModel).filter(
             ImageModel.game_id == game_id,
-            ImageModel.is_active == True,
+            ImageModel.is_active.is_(True),
         )
 
         if image_type:
@@ -316,7 +309,10 @@ class ImageService:
         if player_image_id:
             player_image = (
                 self.db.query(ImageModel)
-                .filter(ImageModel.image_id == player_image_id, ImageModel.game_id == game_id)
+                .filter(
+                    ImageModel.image_id == player_image_id,
+                    ImageModel.game_id == game_id,
+                )
                 .first()
             )
             if not player_image:
@@ -330,7 +326,7 @@ class ImageService:
                 .filter(
                     ImageModel.game_id == game_id,
                     ImageModel.image_type == "character",
-                    ImageModel.is_primary == True,
+                    ImageModel.is_primary.is_(True),
                 )
                 .order_by(ImageModel.image_id.desc())
                 .first()

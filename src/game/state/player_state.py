@@ -825,3 +825,56 @@ class PlayerState(BaseModel):
                 overdue.append(e)
 
         return overdue
+
+    # ==================== 删除方法 ====================
+
+    def remove_item(self, name: str) -> bool:
+        """删除指定名称的物品。
+
+        Args:
+            name: 物品名称
+
+        Returns:
+            是否删除成功
+        """
+        if name in self.items:
+            del self.items[name]
+            logger.info(f"Removed item: {name}")
+            return True
+        logger.warning(f"Item not found for removal: {name}")
+        return False
+
+    def remove_character(self, name: str) -> bool:
+        """删除指定名称的角色。
+
+        Args:
+            name: 角色名称
+
+        Returns:
+            是否删除成功
+        """
+        if name in self.characters:
+            del self.characters[name]
+            # 同时从relationships中删除
+            if name in self.relationships:
+                del self.relationships[name]
+            logger.info(f"Removed character: {name}")
+            return True
+        logger.warning(f"Character not found for removal: {name}")
+        return False
+
+    def remove_landmark(self, name: str) -> bool:
+        """删除指定名称的地点/场景。
+
+        Args:
+            name: 地点名称
+
+        Returns:
+            是否删除成功
+        """
+        if name in self.landmarks:
+            del self.landmarks[name]
+            logger.info(f"Removed landmark: {name}")
+            return True
+        logger.warning(f"Landmark not found for removal: {name}")
+        return False
