@@ -53,7 +53,7 @@ export default defineConfig({
   webServer: {
     command: 'npm run dev',
     url: 'http://localhost:3000',
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: true,
     timeout: 120 * 1000,
     // E2E 测试需要后端，如果不存在则跳过测试而不是失败
     env: Object.fromEntries(
