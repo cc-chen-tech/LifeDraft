@@ -211,7 +211,11 @@ describe('SSE Streaming', () => {
         body: createMockStream(['data: [DONE]\n\n']),
       });
 
-      const callbacks: StreamCallbacks = {};
+      const callbacks = {
+        onStory: jest.fn(),
+        onComplete: jest.fn(),
+        onError: jest.fn(),
+      };
       await streamOpeningStory(
         { era: 'modern', age: 25 },
         'TestPlayer',
@@ -462,7 +466,7 @@ describe('SSE Streaming', () => {
       abortError.name = 'AbortError';
       mockFetch.mockRejectedValueOnce(abortError);
 
-      await expect(streamGameEvent(123, {}, controller.signal)).rejects.toThrow('The operation was aborted');
+      await expect(streamGameEvent(123, {}, { signal: controller.signal })).rejects.toThrow('The operation was aborted');
     });
   });
 });

@@ -554,8 +554,8 @@ describe('useGameStore', () => {
       act(() => {
         useGameStore.setState({
           savedGames: [
-            { game_id: 1, player_name: 'Test1', age: 20, week: 5, updated_at: '', created_at: '', has_progress: true },
-            { game_id: 2, player_name: 'Test2', age: 25, week: 10, updated_at: '', created_at: '', has_progress: true },
+            { game_id: 1, player_name: 'Test1', age: 20, week: 5, updated_at: '', created_at: '' },
+            { game_id: 2, player_name: 'Test2', age: 25, week: 10, updated_at: '', created_at: '' },
           ],
         });
       });
@@ -887,16 +887,10 @@ describe('useGameStore', () => {
       act(() => {
         useGameStore.getState().setGameSession(42, 'session-42');
         // ★ 使用 useImageStore 设置玩家形象
-        useImageStore.getState().setPlayerImages([{ 
-          image_id: 1, 
-          image_url: 'url', 
-          game_id: 42, 
-          image_type: 'player', 
-          entity_name: 'Test', 
-          entity_key: 'player', 
-          created_at: '2024-01-01T00:00:00Z', 
-          prompt_used: 'test', 
-          version: 1 
+        useImageStore.getState().setPlayerImages([{
+          image_id: 1,
+          image_url: 'url',
+          image_type: 'player'
         }]);
         useImageStore.getState().setSelectedImageIndex(0);
         
