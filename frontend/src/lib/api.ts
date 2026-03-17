@@ -140,6 +140,37 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+    // Synchronous choice methods (non-streaming)
+    makeChoiceSync: (gameId: number, data: { option_index: number }) =>
+      fetchJson<{
+        result: string;
+        story: string;
+        current_round: number;
+        current_week: number;
+        player_state: Record<string, unknown>;
+        summary?: string;
+        need_weekly_summary?: boolean;
+        weekly_summary?: string;
+        game_over?: boolean;
+      }>(`/games/${gameId}/choices/sync`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    makeCustomChoiceSync: (gameId: number, data: { custom_text: string }) =>
+      fetchJson<{
+        result: string;
+        story: string;
+        current_round: number;
+        current_week: number;
+        player_state: Record<string, unknown>;
+        summary?: string;
+        need_weekly_summary?: boolean;
+        weekly_summary?: string;
+        game_over?: boolean;
+      }>(`/games/${gameId}/choices/custom-sync`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
   },
 
   // Character
@@ -379,3 +410,6 @@ export const api = {
 };
 
 export default api;
+
+// Named exports for convenience
+export const { gameplay } = api;

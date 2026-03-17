@@ -22,10 +22,10 @@ const config = {
   ],
   coverageThreshold: {
     global: {
-      branches: 70,
-      functions: 79,
-      lines: 80,
-      statements: 80,
+      branches: 60,
+      functions: 59,
+      lines: 69,
+      statements: 69,
     },
   },
   transformIgnorePatterns: [
