@@ -133,6 +133,59 @@ if [[ -n "$STAGED_JS_FILES" ]]; then
 fi
 
 # ========================================
+# Coverage Check
+# ========================================
+if [[ -n "$STAGED_PY_FILES" ]]; then
+    echo ""
+    echo -e "${YELLOW}--- Coverage Check ---${NC}"
+
+    # Read threshold from config file or use default (70%)
+    COVERAGE_THRESHOLD=70
+    if [[ -f "$PROJECT_DIR/.coverage-threshold" ]]; then
+        COVERAGE_THRESHOLD=$(cat "$PROJECT_DIR/.coverage-threshold" | tr -d '[:space:]')
+        # Validate threshold is a number
+        if ! [[ "$COVERAGE_THRESHOLD" =~ ^[0-9]+$ ]]; then
+            COVERAGE_THRESHOLD=70
+        fi
+    fi
+
+    # Check if pytest-cov is available
+    if python3 -m pytest --version 2>/dev/null | grep -q "pytest"; then
+        if python3 -c "import pytest_cov" 2>/dev/null; then
+            echo -e "${BLUE}Running coverage check (threshold: ${COVERAGE_THRESHOLD}%)...${NC}"
+
+            # Run pytest with coverage, capturing output
+            COVERAGE_OUTPUT=$(python3 -m pytest --cov=src --cov-report=term-missing --cov-fail-under=$COVERAGE_THRESHOLD -q 2>&1) || true
+
+            # Extract TOTAL coverage percentage from output (last line with percentage)
+            COVERAGE_PERCENT=$(echo "$COVERAGE_OUTPUT" | grep -E '^TOTAL\s+' | grep -oE '[0-9]+%' | head -1 | tr -d '%')
+
+            # Fallback: if TOTAL not found, try to find any percentage
+            if [[ -z "$COVERAGE_PERCENT" ]]; then
+                COVERAGE_PERCENT=$(echo "$COVERAGE_OUTPUT" | grep -oE '[0-9]+%' | tail -1 | tr -d '%')
+            fi
+
+            if [[ -n "$COVERAGE_PERCENT" ]]; then
+                if [[ "$COVERAGE_PERCENT" -lt "$COVERAGE_THRESHOLD" ]]; then
+                    echo -e "${YELLOW}⚠ Coverage is ${COVERAGE_PERCENT}% (below threshold of ${COVERAGE_THRESHOLD}%)${NC}"
+                    echo -e "${YELLOW}  Consider adding tests before committing.${NC}"
+                    # Warning only - don't block commit
+                else
+                    echo -e "${GREEN}✓ Coverage is ${COVERAGE_PERCENT}% (meets threshold of ${COVERAGE_THRESHOLD}%)${NC}"
+                fi
+            else
+                echo -e "${YELLOW}⚠ Could not determine coverage percentage${NC}"
+            fi
+        else
+            echo -e "${YELLOW}⚠ pytest-cov not installed, skipping coverage check${NC}"
+            echo -e "${YELLOW}  Install with: pip install pytest-cov${NC}"
+        fi
+    else
+        echo -e "${YELLOW}⚠ pytest not available, skipping coverage check${NC}"
+    fi
+fi
+
+# ========================================
 # Tests for staged files
 # ========================================
 # Only run quick tests on pre-commit to avoid blocking too long
