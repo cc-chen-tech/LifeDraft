@@ -10,6 +10,7 @@ from src.ai.image_client import (ContentInspectionError, ImageClient,
                                  ImageGenerationError)
 from src.database.models import Image as ImageModel
 from src.services.image import ImageContentError, ImageServiceError
+from src.services.image.appearance_anchor import CharacterAppearanceAnchor
 from src.services.image_storage import ImageStorageService
 
 logger = logging.getLogger(__name__)
@@ -76,6 +77,17 @@ class CharacterImageService:
             self.db.commit()
 
         try:
+            # ★ 生成外貌特征锚点（文本层面的一致性机制）
+            character_settings = metadata.get("characterSettings", {}) if metadata else {}
+            logger.info(f"Generating appearance anchor for {name}...")
+            anchor_data = self.image_client.generate_appearance_anchor(
+                name=name,
+                description=description,
+                era=era,
+                character_settings=character_settings,
+            )
+            logger.info(f"Appearance anchor generated for {name}")
+
             images_data, primary_image_url = self.image_client.generate_character_images(
                 name=name,
                 description=description,
@@ -102,6 +114,13 @@ class CharacterImageService:
 
                 is_primary = idx == 0 and not reference_image_url
 
+                # ★ 将锚点数据合并到 metadata_json
+                merged_metadata = {
+                    **(metadata or {}),
+                    "primary_image_url": primary_image_url if is_primary else None,
+                    "appearance_anchor": anchor_data,  # ★ 保存外貌锚点
+                }
+
                 image_model = ImageModel(
                     game_id=game_id,
                     image_type="character",
@@ -110,10 +129,7 @@ class CharacterImageService:
                     prompt_text=prompt,
                     storage_path=storage_path,
                     storage_type=storage_type,
-                    metadata_json={
-                        **(metadata or {}),
-                        "primary_image_url": primary_image_url if is_primary else None,
-                    },
+                    metadata_json=merged_metadata,
                     version=1,
                     is_active=True,
                     is_primary=is_primary,

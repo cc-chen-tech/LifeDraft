@@ -16,6 +16,12 @@ from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
+# Import appearance anchor for type hints
+try:
+    from src.services.image.appearance_anchor import CharacterAppearanceAnchor
+except ImportError:
+    CharacterAppearanceAnchor = None
+
 
 class ImageGenerationError(Exception):
     """图像生成错误"""
@@ -466,7 +472,7 @@ class ImageClient:
         feedback: Optional[str] = None,  # ★ 用户修改意见
     ) -> str:
         """
-        构建人物形象prompt
+        构建人物形象prompt（优化版本 - 更细致的描述）
 
         Args:
             name: 人物名称
@@ -479,47 +485,65 @@ class ImageClient:
         Returns:
             构建好的prompt
         """
-        # ★ 强调全身像，人物占满画面
         parts = []
 
         # ★★★ 最重要：用户的修改意见放在最前面
         if feedback:
-            parts.append(f"【必须执行的修改】{feedback}。这是最重要的要求，必须体现在图片中。")
+            parts.append(f"【必须执行的修改】{feedback}。这是最重要的要求，必须严格体现在图片中。")
 
-        parts.extend(
-            [
-                f"人物全身像：{name}。",
-                f"时代背景：{era}。",
-                f"人物外貌特征：{description}。",
-                "构图要求：",
-                "- 人物占画面80%以上，全身完整展示",
-                "- 脚部距离图片底部边缘留有少量空间",
-                "- 头部距离图片顶部边缘留有少量空间",
-                "- 背景简洁，不要占用太多画面空间",
-                "- 纵向构图，人物居中站立",
-                "姿势：站立姿态，双脚并拢，脚尖朝前，脚部完整可见。",
-            ]
-        )
+        # 基础信息
+        parts.extend([
+            f"【人物】{name}",
+            f"【时代背景】{era}",
+        ])
 
-        # 姿势和场景
+        # 外貌描述（更细致）
+        parts.extend([
+            f"【外貌特征】{description}",
+            "【服装】根据时代背景设计的典型服饰，款式细节丰富，材质纹理清晰可见",
+            "【表情】自然平和，眼神有故事感，符合人物性格特征",
+            "【光线】柔和的自然光，从左侧45度角打光，突出面部立体感和轮廓",
+        ])
+
+        # 构图要求（更精确）
+        parts.extend([
+            "【构图要求】",
+            "- 全身像，人物占画面75%-85%",
+            "- 头顶留白约8%-12%，脚底留白约5%-8%",
+            "- 人物纵向居中，左右适当留白",
+            "- 纵向构图（竖版），突出人物全身",
+            "- 背景简洁虚化，突出人物主体",
+        ])
+
+        # 姿势
         if pose_hint:
-            parts.append(f"当前场景：{pose_hint}。")
-
-        # 风格提示
-        if style_hint:
-            parts.append(f"风格：{style_hint}。")
+            parts.append(f"【姿势】{pose_hint}")
         else:
-            # 默认风格
-            parts.append("风格：写实风格，细节丰富，光影自然。")
+            parts.append("【姿势】自然站立姿态，双脚与肩同宽，身体略微侧向15-30度，避免完全正面呆板")
 
-        # 质量要求
-        parts.extend(
-            [
-                "重要：人物必须占据画面大部分，脚部和鞋子清晰可见，全身完整。",
-            ]
-        )
+        # 风格提示（更详细）
+        if style_hint:
+            parts.append(f"【风格】{style_hint}")
+        else:
+            parts.extend([
+                "【风格】写实风格，电影质感",
+                "- 细节丰富：面部特征、服装纹理、头发丝都清晰可见",
+                "- 光影自然：柔和过渡，避免过度平滑的AI感",
+                "- 色彩适中：饱和度适中，肤色自然真实",
+                "- 画面质感：有真实照片感，避免蜡像或塑料质感",
+            ])
 
-        return "".join(parts)
+        # 质量要求（强化）
+        parts.extend([
+            "【质量要求】",
+            "- 全身完整展示：头部、躯干、四肢、脚部全部可见",
+            "- 面部清晰：五官比例协调，特征鲜明可辨",
+            "- 服装细节：款式、颜色、褶皱、材质都清晰呈现",
+            "- 光影立体：有明显的主光源方向，阴影柔和有层次",
+            "- 避免畸形：手指、五官比例正确，没有明显的AI畸变",
+        ])
+
+        return "。".join(parts)
 
     # 预设的姿势和场景（确保是同一个人的不同场景）
     CHARACTER_POSES = [
@@ -700,7 +724,7 @@ class ImageClient:
         else:
             parts.append("风格：写实风格，细节丰富，氛围感强。")
 
-        parts.append("要求：场景清晰、构图美观、有代入感。")
+        parts.append("要求：场景清晰、构图美观、有代入感。画面中不要出现任何人物，仅展示场景本身。")
 
         return "".join(parts)
 
@@ -1436,3 +1460,209 @@ class ImageClient:
                 extra_params={"prompt_extend": True},
             )
             return image_data, prompt_used, scene_desc
+
+    # ==================== 外貌锚点生成 ====================
+
+    def generate_appearance_anchor(
+        self,
+        name: str,
+        description: str,
+        era: str = "现代",
+        character_settings: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """生成人物外貌特征锚点（文本层面）.
+
+        基于原始描述和角色设定，生成结构化的外貌特征描述，
+        用于后续场景生成时保持人物视觉一致性。
+
+        Args:
+            name: 人物名称
+            description: 原始人物描述
+            era: 时代背景
+            character_settings: 角色设定字典（可选）
+
+        Returns:
+            锚点字典，可直接存入 metadata_json
+        """
+        import openai
+
+        # 使用 deepseek 配置
+        api_key = settings.SCENE_ANALYZER_API_KEY or settings.OPENAI_API_KEY
+        base_url = settings.SCENE_ANALYZER_BASE_URL or settings.OPENAI_BASE_URL
+        model = settings.SCENE_ANALYZER_MODEL  # deepseek-chat
+
+        if not api_key:
+            logger.warning("No API key for anchor generation, using fallback")
+            return self._fallback_appearance_anchor(name, description, era, character_settings)
+
+        # 提取额外的角色信息
+        age = ""
+        gender = ""
+        personality = ""
+        if character_settings:
+            age_info = character_settings.get("age", {})
+            if isinstance(age_info, dict):
+                age = str(age_info.get("age", ""))
+            gender_info = character_settings.get("gender", {})
+            if isinstance(gender_info, dict):
+                gender = gender_info.get("gender", "")
+            traits = character_settings.get("traits", {})
+            if isinstance(traits, dict):
+                personality = traits.get("personality", "")
+
+        system_prompt = """你是一个专业的角色设计师和视觉描述专家。
+你的任务是基于给定的角色描述，生成一个详细、结构化的外貌特征锚点（Appearance Anchor）。
+
+这个锚点将被用于：
+1. 在后续不同场景生成时，确保角色外貌保持一致
+2. 作为图片生成的详细描述依据
+
+输出要求：
+1. 每个字段都要具体、可视觉化，避免抽象词汇
+2. 面部特征要详细（脸型、五官具体形状）
+3. 发型要具体到长度、颜色、造型细节
+4. 体型和体态要描述到位
+5. 服装要符合时代背景，具体到款式、颜色、材质
+6. 配饰要具体（如果有）
+7. 整体气质要与性格描述匹配
+
+输出格式（JSON）：
+{
+    "face_shape": "脸型描述，如：标准的鹅蛋脸",
+    "facial_features": "五官详细描述，如：单眼皮但眼睛有神，鼻梁挺直，嘴唇薄而线条分明",
+    "expression": "常设表情，如：温和中带着一丝坚毅",
+    "skin_tone": "肤色，如：健康的小麦色",
+    "hair_style": "发型，如：黑色中长发，自然垂落至肩部",
+    "hair_color": "发色，如：乌黑发亮",
+    "hair_details": "发型细节，如：刘海自然向右侧分开，发梢微微内卷",
+    "body_type": "体型，如：中等偏瘦的身材，身形修长",
+    "height_impression": "身高印象，如：看起来比实际年龄显高挑",
+    "posture": "体态，如：站姿挺拔， shoulders放松",
+    "distinctive_marks": ["独特标记1", "独特标记2"],
+    "typical_outfit": "典型服装，如：深蓝色修身牛仔裤，白色简约T恤，外搭一件浅灰色休闲西装外套",
+    "clothing_style": "服装风格，如：简约休闲中带点文艺气息",
+    "accessories": ["配饰1", "配饰2"],
+    "aura": "整体气质，如：书卷气与都市感并存，给人可靠而温和的印象",
+    "age_appearance": "年龄感，如：看起来比实际年龄年轻两三岁",
+    "lighting_preference": "适合的光线，如：柔和的侧光能突出面部轮廓",
+    "angle_preference": "适合的角度，如：略微侧脸比正面更有立体感"
+}
+
+要求：
+- 所有描述必须是视觉化的，能看到的外貌特征
+- 避免模糊词汇如"美丽""帅气"，要具体描述是什么让角色好看
+- distinctive_marks 是可选的，但如果有要特别注明（如疤痕、痣、胎记等）
+- 服装要具体到可以画出来的程度"""
+
+        user_prompt = f"""请为以下角色生成外貌特征锚点：
+
+角色名称：{name}
+时代背景：{era}
+原始描述：{description}
+"""
+        if age:
+            user_prompt += f"年龄：{age}\n"
+        if gender:
+            user_prompt += f"性别：{gender}\n"
+        if personality:
+            user_prompt += f"性格特点：{personality}\n"
+
+        user_prompt += """
+请生成详细的外貌特征锚点，确保描述足够具体，可以用于指导后续所有场景的图片生成。
+"""
+
+        try:
+            client = openai.OpenAI(api_key=api_key, base_url=base_url)
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.7,
+                max_tokens=1500,
+                response_format={"type": "json_object"},
+            )
+
+            result = response.choices[0].message.content.strip()
+            logger.info(f"Generated appearance anchor for {name}")
+            logger.debug(f"Anchor content: {result[:300]}...")
+
+            # 解析 JSON
+            import json
+            anchor_data = json.loads(result)
+
+            # 添加元信息
+            anchor_data["name"] = name
+            anchor_data["era"] = era
+            anchor_data["generated_from"] = description[:200]  # 保存原始描述的前200字
+            anchor_data["version"] = 1
+
+            return anchor_data
+
+        except Exception as e:
+            logger.error(f"Failed to generate appearance anchor: {e}")
+            return self._fallback_appearance_anchor(name, description, era, character_settings)
+
+    def _fallback_appearance_anchor(
+        self,
+        name: str,
+        description: str,
+        era: str = "现代",
+        character_settings: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """当API不可用时，从描述中提取基础锚点信息."""
+        logger.warning(f"Using fallback anchor generation for {name}")
+
+        # 简单的关键词提取逻辑
+        anchor = {
+            "name": name,
+            "era": era,
+            "face_shape": "",
+            "facial_features": description,  # 直接使用原始描述
+            "expression": "",
+            "skin_tone": "",
+            "hair_style": "",
+            "hair_color": "",
+            "hair_details": "",
+            "body_type": "",
+            "height_impression": "",
+            "posture": "",
+            "distinctive_marks": [],
+            "typical_outfit": "",
+            "clothing_style": "",
+            "accessories": [],
+            "aura": "",
+            "age_appearance": "",
+            "lighting_preference": "",
+            "angle_preference": "",
+            "generated_from": description[:200],
+            "version": 1,
+            "is_fallback": True,  # 标记为fallback生成的
+        }
+
+        # 简单的关键词匹配
+        desc_lower = description.lower()
+
+        # 脸型
+        if any(w in desc_lower for w in ["圆脸", "圆脸"]):
+            anchor["face_shape"] = "圆脸"
+        elif any(w in desc_lower for w in ["瓜子脸", "瓜子臉"]):
+            anchor["face_shape"] = "瓜子脸"
+        elif any(w in desc_lower for w in ["方脸", "方臉"]):
+            anchor["face_shape"] = "方脸"
+
+        # 发型/发色
+        if "长发" in desc_lower:
+            anchor["hair_style"] = "长发"
+        elif "短发" in desc_lower:
+            anchor["hair_style"] = "短发"
+
+        if any(w in desc_lower for w in ["黑发", "黑色头发", "乌黑"]):
+            anchor["hair_color"] = "黑色"
+        elif any(w in desc_lower for w in ["金发", "金色"]):
+            anchor["hair_color"] = "金色"
+        elif "棕发" in desc_lower or "棕色头发" in desc_lower:
+            anchor["hair_color"] = "棕色"
+
+        return anchor

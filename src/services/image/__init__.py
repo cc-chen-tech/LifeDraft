@@ -12,6 +12,11 @@ from config.settings import settings
 from src.ai.image_client import (ContentInspectionError, ImageClient,
                                  ImageGenerationError)
 from src.database.models import Image as ImageModel
+from src.services.image.appearance_anchor import CharacterAppearanceAnchor
+from src.services.image.prompt_enhancer import PromptEnhancer, prompt_enhancer
+from src.services.image.style_manager import (
+    ColorPalette, MoodType, SceneStyleManager, style_manager
+)
 from src.services.image_storage import ImageStorageError, ImageStorageService
 
 logger = logging.getLogger(__name__)

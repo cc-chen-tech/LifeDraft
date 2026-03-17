@@ -10,6 +10,8 @@ from src.ai.image_client import (ContentInspectionError, ImageClient,
                                  ImageGenerationError)
 from src.database.models import Image as ImageModel
 from src.services.image import ImageContentError, ImageServiceError
+from src.services.image.appearance_anchor import CharacterAppearanceAnchor
+from src.services.image.style_manager import style_manager, MoodType
 from src.services.image_storage import ImageStorageService
 
 logger = logging.getLogger(__name__)
@@ -18,12 +20,36 @@ logger = logging.getLogger(__name__)
 class SceneImageService:
     """场景插画生成服务"""
 
-    # 场景插画提示词模板
-    SCENE_PROMPT_TEMPLATE = """电影感故事场景插画。
-时代背景：{era}。
-场景：{scene_desc}
+    # 场景插画提示词模板 - 优化版本（更细致的描述）
+    SCENE_PROMPT_TEMPLATE = """电影感故事场景插画，高质量，细节丰富。
+
+【时代背景】
+{era}
+
+【场景描述】
+{scene_desc}
+
+【画面构图】
+- 构图：电影级构图，视觉焦点明确，景深自然
+- 人物位置：黄金分割点或画面中心偏左/右，避免呆板居中
+- 镜头角度：略高于人物视线的俯视角度，增强代入感
+
+【光线与氛围】
+{lighting_desc}
+- 主光源：自然光或场景光源，方向明确
+- 阴影：层次分明，柔和过渡，面部阴影不掩盖特征
+- 光比：适中，保留亮部和暗部细节
+
 {illustration_prompt}
-风格：写实风格，光影自然，故事感强，电影构图。"""
+
+【色彩调性】
+{color_palette}
+
+【质量要求】
+- 写实风格，细节清晰，纹理丰富
+- 光影自然，过渡柔和，避免过度后期感
+- 色彩饱和度适中，整体色调统一协调
+- 电影质感，故事感强，氛围渲染到位"""
 
     def __init__(
         self,
@@ -108,6 +134,28 @@ class SceneImageService:
 
         char_info = self._build_char_info(character_settings, player_name)
 
+        # ★ 从故事文本检测情感基调
+        detected_mood = style_manager.detect_mood_from_story(story_text)
+        logger.info(f"Detected mood from story: {detected_mood.value}")
+
+        # ★ 获取或应用颜色调板（如果已设置游戏调板，则优先使用）
+        if game_id in style_manager._game_palettes:
+            palette = style_manager.get_game_palette(game_id)
+            logger.info(f"Using game palette: {palette.name}")
+        else:
+            palette = style_manager.get_palette(detected_mood)
+            style_manager.set_game_palette(game_id, detected_mood)
+            logger.info(f"Setting new palette for game: {palette.name}")
+
+        # ★ 应用时序色彩变化（如果有周数信息）
+        temporal_hint = ""
+        if week is not None:
+            # 假设总共52周（一年）
+            total_weeks = 52
+            temporal_palette = style_manager.apply_temporal_progression(game_id, week, total_weeks)
+            temporal_hint = temporal_palette.atmosphere
+            logger.info(f"Applied temporal progression: week {week}, hint: {temporal_hint[:50]}...")
+
         try:
             # Step 1: 分析故事选择场景
             scene_desc, illustration_prompt = self.image_client.analyze_story_for_illustration(
@@ -120,22 +168,75 @@ class SceneImageService:
             # Step 2: 获取玩家形象图片作为参考
             reference_url = None
             referenced_image_ids = []
+            appearance_anchor = None
 
             if get_player_image_func:
                 reference_url, img_id = get_player_image_func(game_id, player_image_id)
                 if img_id:
                     referenced_image_ids.append(img_id)
+                    # ★ 获取外貌锚点数据
+                    appearance_anchor = self._get_appearance_anchor(img_id)
 
             # Step 3: 生成场景插画
+            # ★ 构建光线描述（基于调板）
+            lighting_desc = palette.lighting
+            if temporal_hint:
+                lighting_desc += f"。{temporal_hint}"
+
+            # ★ 使用锚点构建更详细的角色描述
+            if appearance_anchor:
+                # 使用锚点数据构建详细的角色外貌描述
+                anchor_desc = appearance_anchor.build_prompt_segment()
+                logger.info(f"Using appearance anchor for scene generation: {anchor_desc[:100]}...")
+
+                # 将锚点描述融入场景提示词
+                enhanced_illustration = f"""{illustration_prompt}
+
+人物外貌特征（必须严格保持一致）：
+{anchor_desc}
+
+重要：人物的面部特征、发型、体型必须与上述描述完全一致，仅姿势和场景环境可以改变。"""
+            else:
+                enhanced_illustration = illustration_prompt
+                logger.warning("No appearance anchor found, using basic character info")
+
+            # ★ 使用优化后的模板生成最终提示词
             final_prompt = self.SCENE_PROMPT_TEMPLATE.format(
-                era=char_info["era"], scene_desc=scene_desc, illustration_prompt=illustration_prompt
+                era=char_info["era"],
+                scene_desc=scene_desc,
+                lighting_desc=lighting_desc,
+                illustration_prompt=enhanced_illustration,
+                color_palette=palette.build_prompt_segment(),
             )
 
             def generate_image():
                 if reference_url:
-                    edit_prompt = f"""将人物融入以下场景：{scene_desc}。
-保持人物的外貌特征和服装不变。
-{illustration_prompt}"""
+                    # ★ 使用锚点构建更精确的编辑提示词
+                    if appearance_anchor:
+                        anchor_desc = appearance_anchor.build_prompt_segment()
+                        edit_prompt = f"""将人物融入以下场景：{scene_desc}。
+
+人物必须具有以下外貌特征（严格保持一致）：
+{anchor_desc}
+
+场景动作和氛围：{illustration_prompt}
+
+光线要求：{lighting_desc}
+色彩调性：{palette.build_prompt_segment()}
+
+重要：
+- 保持人物的面部特征、发型、体型完全一致
+- 人物与新场景的光影要自然融合，投影方向一致
+- 色调要与场景整体调性协调
+- 只改变姿势和融入新场景，不改变外貌特征"""
+                    else:
+                        edit_prompt = f"""将人物融入以下场景：{scene_desc}。
+
+场景动作和氛围：{illustration_prompt}
+光线要求：{lighting_desc}
+色彩调性：{palette.build_prompt_segment()}
+
+保持人物的外貌特征和服装不变，确保光影融合自然。"""
 
                     results = self.image_client.edit_image(
                         reference_image=reference_url,
@@ -495,3 +596,26 @@ class SceneImageService:
                 char_info["age"] = str(age)
 
         return char_info
+
+    def _get_appearance_anchor(self, image_id: int) -> Optional[CharacterAppearanceAnchor]:
+        """从人物图片记录中获取外貌锚点.
+
+        Args:
+            image_id: 人物图片ID
+
+        Returns:
+            CharacterAppearanceAnchor 实例，如果不存在则返回 None
+        """
+        try:
+            image = self.db.query(ImageModel).filter(ImageModel.image_id == image_id).first()
+            if not image or not image.metadata_json:
+                return None
+
+            anchor_data = image.metadata_json.get("appearance_anchor")
+            if not anchor_data:
+                return None
+
+            return CharacterAppearanceAnchor.from_dict(anchor_data)
+        except Exception as e:
+            logger.warning(f"Failed to get appearance anchor for image {image_id}: {e}")
+            return None
