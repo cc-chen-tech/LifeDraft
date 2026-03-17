@@ -29,6 +29,7 @@ interface ImageState {
   playerImages: ImageResponse[];
   selectedImageIndex: number;
   isGeneratingImage: boolean;
+  isLoadingPlayerImages: boolean;  // ★ 加载玩家图片中
   imageFeedback: string;
 
   // 开场插画
@@ -66,6 +67,7 @@ export const useImageStore = create<ImageState>()(
     playerImages: [],
     selectedImageIndex: 0,
     isGeneratingImage: false,
+    isLoadingPlayerImages: false,  // ★ 初始不处于加载状态
     imageFeedback: "",
 
     // 开场插画初始状态
@@ -209,6 +211,8 @@ export const useImageStore = create<ImageState>()(
     loadPlayerImages: async (gameId: number) => {
       if (!gameId) return;
 
+      set({ isLoadingPlayerImages: true });
+
       try {
         console.log("[loadPlayerImages] Loading player images for game:", gameId);
         const result = await api.images.listByGame(gameId, "character");
@@ -224,13 +228,19 @@ export const useImageStore = create<ImageState>()(
               playerImages,
               playerImage: playerImages[0],
               selectedImageIndex: 0,
+              isLoadingPlayerImages: false,
             });
             console.log("[loadPlayerImages] Loaded", playerImages.length, "player images");
+          } else {
+            set({ isLoadingPlayerImages: false });
           }
+        } else {
+          set({ isLoadingPlayerImages: false });
         }
       } catch (err) {
         console.error("[loadPlayerImages] Failed:", err);
         // 加载失败不抛出错误，保持空状态
+        set({ isLoadingPlayerImages: false });
       }
     },
 

@@ -327,17 +327,12 @@ export const useGameStore = create<GameState>()(
           resultSceneImage: null,
         });
         console.log(`[loadGameState] Loaded game ${gameId}`);
-        
-        // ★ 异步加载该游戏的人物图片到 useImageStore
-        try {
-          const images = await api.images.listByGame(gameId, 'character');
-          if (images.images && images.images.length > 0) {
-            useImageStore.getState().setPlayerImages(images.images);
-            console.log(`[loadGameState] Loaded ${images.images.length} player images for game ${gameId}`);
-          }
-        } catch (imgErr) {
-          console.warn(`[loadGameState] Failed to load player images:`, imgErr);
-        }
+
+        // ★ 异步加载该游戏的人物图片到 useImageStore（不阻塞游戏加载）
+        // 使用 setTimeout 确保图片加载在UI渲染后再执行
+        setTimeout(() => {
+          useImageStore.getState().loadPlayerImages(gameId);
+        }, 0);
       },
 
       syncState: async () => {
