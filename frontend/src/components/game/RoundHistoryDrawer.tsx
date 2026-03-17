@@ -13,6 +13,15 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { History, ChevronRight, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+/** 场景图片信息 */
+export interface SceneImageInfo {
+  scene_id: number;
+  image_url: string;
+  scene_description: string;
+  stage: string;
+  created_at?: string;
+}
+
 /** 历史轮次数据结构 */
 export interface RoundHistoryItem {
   week: number;
@@ -27,6 +36,8 @@ export interface RoundHistoryItem {
     year?: number;
     month?: number;
   };
+  /** 场景插画信息 */
+  scene_image?: SceneImageInfo | null;
 }
 
 interface RoundHistoryDrawerProps {

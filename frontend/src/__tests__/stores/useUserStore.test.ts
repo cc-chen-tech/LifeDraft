@@ -33,7 +33,6 @@ describe('useUserStore', () => {
     act(() => {
       useUserStore.setState({
         user: null,
-        token: null,
         isAuthenticated: false,
         friends: [],
         pendingRequests: [],
@@ -47,7 +46,6 @@ describe('useUserStore', () => {
       const state = useUserStore.getState();
 
       expect(state.user).toBeNull();
-      expect(state.token).toBeNull();
       expect(state.isAuthenticated).toBe(false);
       expect(state.friends).toEqual([]);
       expect(state.pendingRequests).toEqual([]);
@@ -77,7 +75,6 @@ describe('useUserStore', () => {
 
       const state = useUserStore.getState();
       expect(state.user).toEqual(mockResponse.user);
-      expect(state.token).toBe('register-token');
       expect(state.isAuthenticated).toBe(true);
     });
 
@@ -111,7 +108,6 @@ describe('useUserStore', () => {
 
       const state = useUserStore.getState();
       expect(state.user).toEqual(mockResponse.user);
-      expect(state.token).toBe('login-token');
       expect(state.isAuthenticated).toBe(true);
     });
 
@@ -128,7 +124,6 @@ describe('useUserStore', () => {
       act(() => {
         useUserStore.setState({
           user: { user_id: 1, public_id: 'pub', display_name: 'Test', private_id: 'priv' },
-          token: 'token',
           isAuthenticated: true,
           friends: [{ user_id: 2, public_id: 'pub2', display_name: 'Friend' }],
           pendingRequests: [],
@@ -145,7 +140,6 @@ describe('useUserStore', () => {
 
       const state = useUserStore.getState();
       expect(state.user).toBeNull();
-      expect(state.token).toBeNull();
       expect(state.isAuthenticated).toBe(false);
       expect(state.friends).toEqual([]);
       expect(state.pendingRequests).toEqual([]);
@@ -178,7 +172,6 @@ describe('useUserStore', () => {
       act(() => {
         useUserStore.setState({
           user: { user_id: 1, public_id: 'pub', display_name: 'Test', private_id: 'priv' },
-          token: 'token',
           isAuthenticated: true,
         });
       });
@@ -191,7 +184,6 @@ describe('useUserStore', () => {
 
       const state = useUserStore.getState();
       expect(state.user).toBeNull();
-      expect(state.token).toBeNull();
       expect(state.isAuthenticated).toBe(false);
     });
   });
@@ -316,12 +308,11 @@ describe('useUserStore', () => {
       };
 
       act(() => {
-        useUserStore.getState().setUser(mockUser, 'test-token');
+        useUserStore.getState().setUser(mockUser);
       });
 
       const state = useUserStore.getState();
       expect(state.user).toEqual(mockUser);
-      expect(state.token).toBe('test-token');
       expect(state.isAuthenticated).toBe(true);
     });
   });
