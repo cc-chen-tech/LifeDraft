@@ -147,9 +147,9 @@ export default function SavesPage() {
                           {save.player_name}
                         </span>
                         <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                          {save.age}岁 第{save.week + 1}周
+                          {save.age}岁 第{(save.week ?? 0) + 1}周
                         </span>
-                        {save.week === 0 && (
+                        {(save.week ?? 0) === 0 && (
                           <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600">
                             新角色
                           </span>
