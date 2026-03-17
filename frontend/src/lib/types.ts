@@ -63,7 +63,7 @@ export interface GameStateResponse {
 export interface ImageResponse {
   image_id: number;
   image_url: string;
-  image_type: string;
+  image_type?: string;
 }
 
 export interface OpeningIllustrationResponse {
@@ -80,7 +80,7 @@ export interface RoundSceneImage {
   stage: string;
   image_url: string;
   scene_description: string;
-  referenced_images: number[];
+  referenced_images?: number[];
   created_at: string;
 }
 
@@ -100,4 +100,74 @@ export interface CollectionStatus {
   characters: CollectionCharacter[];
   total: number;
   collected: number;
+}
+
+// Character collection item
+export interface CharacterCollectionItem {
+  name: string;
+  role: string;
+  description: string;
+  affinity: number;
+  age: number | null;
+  gender: string | null;
+  occupation: string | null;
+  personality_traits: string[];
+  image_url: string | null;
+  image_generated: boolean;
+  description_generated: boolean;
+}
+
+// Item collection item
+export interface ItemCollectionItem {
+  name: string;
+  description: string;
+  importance: "critical" | "important" | "normal";
+  category: "weapon" | "tool" | "keepsake" | "treasure" | "document" | "other";
+  acquired_week: number;
+  acquired_context: string;
+  is_key_item: boolean;
+  image_url: string | null;
+  image_generated: boolean;
+  description_generated: boolean;
+  metadata: Record<string, unknown>;
+}
+
+// Landmark collection item
+export interface LandmarkCollectionItem {
+  name: string;
+  description: string;
+  category: "building" | "nature" | "room" | "area" | "other";
+  importance: "critical" | "important" | "normal";
+  first_appear_week: number;
+  appear_count: number;
+  last_appear_week: number;
+  context: string;
+  is_key_location: boolean;
+  image_url: string | null;
+  image_generated: boolean;
+  metadata: Record<string, unknown>;
+}
+
+// Recognized entity for AI recognition
+export interface RecognizedEntity {
+  name: string;
+  description: string;
+  category: string;
+  importance: "critical" | "important" | "normal";
+  appear_count: number;
+  appear_contexts: string[];
+}
+
+// Collection response from API
+export interface CollectionResponse {
+  characters: CharacterCollectionItem[];
+  items: ItemCollectionItem[];
+  landmarks: LandmarkCollectionItem[];
+}
+
+// Entity recognition response
+export interface EntityRecognitionResponse {
+  items: RecognizedEntity[];
+  characters: RecognizedEntity[];
+  landmarks: RecognizedEntity[];
 }

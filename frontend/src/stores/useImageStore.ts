@@ -160,8 +160,7 @@ export const useImageStore = create<ImageState>()(
       set({ isGeneratingImage: true, imageFeedback: feedback });
 
       try {
-        const result = await api.images.regenerate({
-          image_id: selectedImage.image_id,
+        const result = await api.images.regenerate(selectedImage.image_id, {
           feedback,
         });
 
@@ -191,7 +190,7 @@ export const useImageStore = create<ImageState>()(
       set({ isGeneratingImage: true });
 
       try {
-        const result = await api.images.regenerateFresh(selectedImage.image_id, true);
+        const result = await api.images.regenerateFresh(selectedImage.image_id);
         const newImages = result.images || [];
         set({
           playerImages: newImages,

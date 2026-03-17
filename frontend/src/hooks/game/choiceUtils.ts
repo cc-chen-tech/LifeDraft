@@ -118,8 +118,10 @@ export async function recoverStoryFromRoundHistory(
   setStoryText: (text: string) => void
 ): Promise<boolean> {
   try {
-    const syncedState = await useGameStore.getState().syncPlayerState();
-    const roundHistory = syncedState?.player_state?.round_history as
+    // syncPlayerState updates the store, then we read from it
+    await useGameStore.getState().syncPlayerState();
+    const playerState = useGameStore.getState().playerState;
+    const roundHistory = playerState?.round_history as
       | Array<{ story_continuation?: string }>
       | undefined;
 

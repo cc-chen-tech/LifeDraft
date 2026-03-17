@@ -272,23 +272,33 @@ export const api = {
   // Images
   images: {
     listByGame: (gameId: number, imageType?: string) =>
-      fetchJson<{ images: Array<{ image_id: number; image_url: string; image_type: string }>; total: number }>(
-        `/games/${gameId}/images${imageType ? `?type=${imageType}` : ''}`
+      fetchJson<{ images: Array<{ image_id: number; image_url: string; image_type: string; entity_key?: string; entity_name?: string }>; total: number }>(
+        `/images/game/${gameId}${imageType ? `?image_type=${imageType}` : ''}`
       ),
-    generate: (data: { game_id: number; image_type: string; prompt?: string }) =>
+    generate: (data: {
+      game_id: number;
+      image_type: string;
+      prompt?: string;
+      entity_name?: string;
+      description?: string;
+      entity_key?: string;
+      era?: string;
+      extra_context?: Record<string, unknown>;
+      feedback?: string;
+    }) =>
       fetchJson<{ images: Array<{ image_id: number; image_url: string }>; total: number }>('/images', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
-    regenerate: (imageId: number, data?: { prompt?: string }) =>
-      fetchJson<{ images: Array<{ image_id: number; image_url: string }>; total: number }>(`/images/${imageId}/regenerate`, {
+    regenerate: (imageId: number, data?: { prompt?: string; feedback?: string }) =>
+      fetchJson<{ images: Array<{ image_id: number; image_url: string }>; total: number }>(`/images/regenerate`, {
         method: 'POST',
-        body: JSON.stringify(data || {}),
+        body: JSON.stringify({ image_id: imageId, ...data }),
       }),
     regenerateFresh: (imageId: number, data?: { prompt?: string }) =>
-      fetchJson<{ images: Array<{ image_id: number; image_url: string }>; total: number }>(`/images/${imageId}/regenerate-fresh`, {
+      fetchJson<{ images: Array<{ image_id: number; image_url: string }>; total: number }>(`/images/regenerate-fresh`, {
         method: 'POST',
-        body: JSON.stringify(data || {}),
+        body: JSON.stringify({ image_id: imageId, ...data }),
       }),
     get: (imageId: number) =>
       fetchJson<{ image_id: number; image_url: string; image_type: string }>(`/images/${imageId}`),
@@ -306,9 +316,25 @@ export const api = {
       game_id: number;
       character_settings: Record<string, unknown>;
       player_name: string;
-      opening_story: string;
+      opening_story?: string;
+      story_text?: string;
+      player_image_id?: number;
     }) =>
       fetchJson<{ image_id: number; image_url: string; image_type: string; scene_description: string }>('/images/opening', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    regenerateOpeningIllustration: (data: {
+      game_id: number;
+      current_scene_id?: number;
+      current_illustration_id?: number;
+      story_text: string;
+      character_settings: Record<string, unknown>;
+      player_name: string;
+      user_prompt: string;
+      player_image_id?: number;
+    }) =>
+      fetchJson<{ image_id: number; image_url: string; image_type: string; scene_description: string }>('/images/opening/regenerate', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
@@ -322,7 +348,7 @@ export const api = {
         scene_description: string;
         referenced_images?: number[];
         created_at: string;
-      }>(`/games/${gameId}/round-scenes/${roundNumber}${week !== undefined ? `?week=${week}` : ''}`),
+      }>(`/images/scene/${gameId}/${roundNumber}${week !== undefined ? `?week=${week}` : ''}`),
     getRoundSceneImageByStage: (gameId: number, roundNumber: number, stage: string, week?: number) =>
       fetchJson<{
         scene_id: number;
@@ -333,7 +359,7 @@ export const api = {
         scene_description: string;
         referenced_images?: number[];
         created_at: string;
-      }>(`/games/${gameId}/round-scenes/${roundNumber}/${stage}${week !== undefined ? `?week=${week}` : ''}`),
+      }>(`/images/scene/${gameId}/${roundNumber}?stage=${encodeURIComponent(stage)}${week !== undefined ? `&week=${week}` : ''}`),
     getAllRoundSceneImages: (gameId: number) =>
       fetchJson<{
         scenes: Array<{
@@ -346,7 +372,7 @@ export const api = {
           referenced_images?: number[];
           created_at: string;
         }>;
-      }>(`/games/${gameId}/round-scenes`),
+      }>(`/images/scenes/${gameId}`),
     generateRoundSceneImage: (data: {
       game_id: number;
       round_number: number;
@@ -365,7 +391,7 @@ export const api = {
         image_url: string;
         scene_description: string;
         created_at: string;
-      }>('/images/round-scene', {
+      }>('/images/scene/generate', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
@@ -387,7 +413,7 @@ export const api = {
         image_url: string;
         scene_description: string;
         created_at: string;
-      }>('/images/round-scene/regenerate', {
+      }>('/images/scene/regenerate', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
@@ -395,6 +421,49 @@ export const api = {
 
   // Collection
   collection: {
+    get: (gameId: number) =>
+      fetchJson<{
+        characters: Array<{
+          name: string;
+          role: string;
+          description: string;
+          affinity: number;
+          age: number | null;
+          gender: string | null;
+          occupation: string | null;
+          personality_traits: string[];
+          image_url: string | null;
+          image_generated: boolean;
+          description_generated: boolean;
+        }>;
+        items: Array<{
+          name: string;
+          description: string;
+          importance: "critical" | "important" | "normal";
+          category: "weapon" | "tool" | "keepsake" | "treasure" | "document" | "other";
+          acquired_week: number;
+          acquired_context: string;
+          is_key_item: boolean;
+          image_url: string | null;
+          image_generated: boolean;
+          description_generated: boolean;
+          metadata: Record<string, unknown>;
+        }>;
+        landmarks: Array<{
+          name: string;
+          description: string;
+          category: "building" | "nature" | "room" | "area" | "other";
+          importance: "critical" | "important" | "normal";
+          first_appear_week: number;
+          appear_count: number;
+          last_appear_week: number;
+          context: string;
+          is_key_location: boolean;
+          image_url: string | null;
+          image_generated: boolean;
+          metadata: Record<string, unknown>;
+        }>;
+      }>(`/games/${gameId}/collection/details`),
     getStatus: (gameId: number) =>
       fetchJson<{
         characters: Array<{
@@ -432,6 +501,126 @@ export const api = {
           description: string;
         }>;
       }>(`/collection/characters/${characterId}`),
+    // Character image generation
+    generateCharacterImage: (gameId: number, name: string) =>
+      fetchJson<{ image_url: string; success: boolean }>(`/games/${gameId}/collection/characters/${encodeURIComponent(name)}/generate-image`, {
+        method: 'POST',
+      }),
+    regenerateCharacterImage: (gameId: number, name: string, feedback?: string, imageId?: number) =>
+      fetchJson<{ image_url: string; success: boolean }>(`/games/${gameId}/collection/characters/${encodeURIComponent(name)}/regenerate-image`, {
+        method: 'POST',
+        body: JSON.stringify({ feedback, image_id: imageId }),
+      }),
+    // Character description generation
+    generateCharacterDescription: (gameId: number, name: string) =>
+      fetchJson<{ description: string; success: boolean }>(`/games/${gameId}/collection/characters/${encodeURIComponent(name)}/generate-description`, {
+        method: 'POST',
+      }),
+    // Item image generation
+    generateItemImage: (gameId: number, itemName: string) =>
+      fetchJson<{ image_url: string; success: boolean }>(`/games/${gameId}/collection/items/${encodeURIComponent(itemName)}/generate-image`, {
+        method: 'POST',
+      }),
+    regenerateItemImage: (gameId: number, itemName: string, feedback?: string) =>
+      fetchJson<{ image_url: string; success: boolean }>(`/games/${gameId}/collection/items/${encodeURIComponent(itemName)}/regenerate-image`, {
+        method: 'POST',
+        body: JSON.stringify({ feedback }),
+      }),
+    // Item description generation
+    generateItemDescription: (gameId: number, itemName: string) =>
+      fetchJson<{ description: string; success: boolean }>(`/games/${gameId}/collection/items/${encodeURIComponent(itemName)}/generate-description`, {
+        method: 'POST',
+      }),
+    // Landmark image generation
+    generateLandmarkImage: (gameId: number, landmarkName: string) =>
+      fetchJson<{ image_url: string; success: boolean }>(`/games/${gameId}/collection/landmarks/${encodeURIComponent(landmarkName)}/generate-image`, {
+        method: 'POST',
+      }),
+    // Landmark description generation
+    generateLandmarkDescription: (gameId: number, landmarkName: string) =>
+      fetchJson<{ description: string; success: boolean }>(`/games/${gameId}/collection/landmarks/${encodeURIComponent(landmarkName)}/generate-description`, {
+        method: 'POST',
+      }),
+    // Entity recognition
+    recognizeEntities: (gameId: number, data: { entity_types?: string[]; min_appearances?: number }) =>
+      fetchJson<{
+        items: Array<{
+          name: string;
+          description: string;
+          category: string;
+          importance: "critical" | "important" | "normal";
+          appear_count: number;
+          appear_contexts: string[];
+        }>;
+        characters: Array<{
+          name: string;
+          description: string;
+          category: string;
+          importance: "critical" | "important" | "normal";
+          appear_count: number;
+          appear_contexts: string[];
+        }>;
+        landmarks: Array<{
+          name: string;
+          description: string;
+          category: string;
+          importance: "critical" | "important" | "normal";
+          appear_count: number;
+          appear_contexts: string[];
+        }>;
+      }>(`/games/${gameId}/collection/recognize-entities`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    // Add recognized entities
+    addEntities: (gameId: number, data: {
+      items?: Array<{ name: string; description: string; category: string; importance: string }>;
+      characters?: Array<{ name: string; description: string; category: string; importance: string }>;
+      landmarks?: Array<{ name: string; description: string; category: string; importance: string }>;
+    }) =>
+      fetchJson<{
+        message: string;
+        added_items: string[];
+        added_characters: string[];
+        added_landmarks: string[];
+      }>(`/games/${gameId}/collection/add-entities`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    // Create item manually
+    createItem: (gameId: number, data: { name: string; generate_description?: boolean }) =>
+      fetchJson<{
+        message: string;
+        item: {
+          name: string;
+          description: string;
+          importance: "critical" | "important" | "normal";
+          category: "weapon" | "tool" | "keepsake" | "treasure" | "document" | "other";
+          acquired_week: number;
+          acquired_context: string;
+          is_key_item: boolean;
+          image_url: string | null;
+          image_generated: boolean;
+          description_generated: boolean;
+          metadata: Record<string, unknown>;
+        };
+      }>(`/games/${gameId}/collection/items`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    // Delete entities
+    deleteItem: (gameId: number, itemName: string) =>
+      fetchJson<{ message: string; success: boolean }>(`/games/${gameId}/collection/items/${encodeURIComponent(itemName)}`, {
+        method: 'DELETE',
+      }),
+    deleteCharacter: (gameId: number, characterName: string) =>
+      fetchJson<{ message: string; success: boolean }>(`/games/${gameId}/collection/characters/${encodeURIComponent(characterName)}`, {
+        method: 'DELETE',
+      }),
+    deleteLandmark: (gameId: number, landmarkName: string) =>
+      fetchJson<{ message: string; success: boolean }>(`/games/${gameId}/collection/landmarks/${encodeURIComponent(landmarkName)}`, {
+        method: 'DELETE',
+      }),
   },
 };
 

@@ -30,9 +30,17 @@ type AuthMode = "login" | "register" | null;
 
 export default function WelcomePage() {
   const router = useRouter();
-  const { isAuthenticated, user, register, login, logout } = useUserStore();
+  const { isAuthenticated, user, register, login, logout, fetchMe } = useUserStore();
   const { gameId, fetchSavedGames, fetchPresets, resetCreation } = useGameStore();
   const hydrated = useHydration();
+
+  // 页面加载时检查 session（从 Cookie 恢复登录状态）
+  useEffect(() => {
+    if (hydrated && !isAuthenticated) {
+      // 使用 Promise.resolve 包装以兼容测试环境
+      Promise.resolve(fetchMe?.()).catch(() => {});
+    }
+  }, [hydrated, isAuthenticated, fetchMe]);
 
   // Whether there's an active game to continue
   const hasActiveGame = hydrated && !!gameId;

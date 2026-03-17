@@ -1187,7 +1187,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
                       识别到的物品 ({recognizedEntities.items.length})
                     </h4>
                     <div className="space-y-2">
-                      {recognizedEntities.items.map((item) => (
+                      {recognizedEntities.items.map((item: RecognizedEntity) => (
                         <label
                           key={item.name}
                           className="flex items-start gap-2 p-2 rounded border hover:bg-accent cursor-pointer"
@@ -1218,7 +1218,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
                       识别到的人物 ({recognizedEntities.characters.length})
                     </h4>
                     <div className="space-y-2">
-                      {recognizedEntities.characters.map((char) => (
+                      {recognizedEntities.characters.map((char: RecognizedEntity) => (
                         <label
                           key={char.name}
                           className="flex items-start gap-2 p-2 rounded border hover:bg-accent cursor-pointer"
@@ -1249,7 +1249,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
                       识别到的地点 ({recognizedEntities.landmarks.length})
                     </h4>
                     <div className="space-y-2">
-                      {recognizedEntities.landmarks.map((landmark) => (
+                      {recognizedEntities.landmarks.map((landmark: RecognizedEntity) => (
                         <label
                           key={landmark.name}
                           className="flex items-start gap-2 p-2 rounded border hover:bg-accent cursor-pointer"

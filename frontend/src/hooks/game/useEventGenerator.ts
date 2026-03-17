@@ -109,7 +109,8 @@ export function useEventGenerator({
     setReconnectAttempt(null);
     abortRef.current = new AbortController();
 
-    await streamGameEvent(
+    try {
+      await streamGameEvent(
       gameId,
       {
         onStory: appendStoryText,
@@ -214,6 +215,14 @@ export function useEventGenerator({
       },
       { signal: abortRef.current.signal }
     );
+    } catch (err) {
+      // Ignore AbortError - it's expected when component unmounts or user navigates away
+      if (err instanceof Error && err.name === 'AbortError') {
+        console.log("[generateEvent] Generation aborted (expected)");
+      } else {
+        throw err; // Re-throw other errors
+      }
+    }
   }, [gameId, setStoryText, appendStoryText, setProcessing, setCurrentEvent, setGameOver, setPhase, phaseRef, setConnectionStatus, setReconnectAttempt, setOptions, setRoundSummary]);
 
   // Prefetch next event (background generation)
@@ -264,7 +273,12 @@ export function useEventGenerator({
         { signal: prefetchAbortRef.current.signal }
       );
     } catch (err) {
-      console.warn("[prefetch] Prefetch error:", err);
+      // Ignore AbortError - it's expected when component unmounts or effect re-runs
+      if (err instanceof Error && err.name === 'AbortError') {
+        console.log("[prefetch] Prefetch aborted (expected)");
+      } else {
+        console.warn("[prefetch] Prefetch error:", err);
+      }
       prefetchResultRef.current = null;
     } finally {
       prefetchingRef.current = false;

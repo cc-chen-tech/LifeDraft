@@ -103,7 +103,7 @@ interface GameState {
   setGameSession: (gameId: number, sessionId: string) => void;
   loadGameState: (gameId: number) => Promise<void>;
   syncState: () => Promise<void>;
-  syncPlayerState: () => Promise<GameStateResponse | undefined>;
+  syncPlayerState: () => Promise<unknown>;
   saveGame: () => Promise<void>;
   resetGame: () => void;
 
@@ -422,7 +422,7 @@ export const useGameStore = create<GameState>()(
         const { gameId } = get();
         console.log(`[syncPlayerState] Syncing player state for game ${gameId}`);
         if (!gameId) return;
-        
+
         let state;
         try {
           state = await api.gameplay.getState(gameId);
@@ -445,7 +445,7 @@ export const useGameStore = create<GameState>()(
 
         const currentState = get();
         const updates: Partial<GameState> = {};
-        
+
         if (shallowChanged(state.player_state, currentState.playerState)) {
           updates.playerState = state.player_state;
         }
@@ -462,7 +462,7 @@ export const useGameStore = create<GameState>()(
         } else {
           console.log('[syncPlayerState] No updates needed');
         }
-        
+
         return state;
       },
 
@@ -697,10 +697,11 @@ export const useGameStore = create<GameState>()(
         
         try {
           const result = await api.images.getAllRoundSceneImages(gameId);
-          // ★ 确保 stage 字段存在
+          // ★ 确保 stage 和 referenced_images 字段存在
           const scenes: RoundSceneImage[] = (result.scenes || []).map(s => ({
             ...s,
             stage: s.stage || 'result',
+            referenced_images: s.referenced_images || [],
           }));
           
           // ★ 根据当前轮次和周数设置 currentRoundSceneImage、eventSceneImage、resultSceneImage
