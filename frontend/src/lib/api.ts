@@ -45,7 +45,7 @@ export const api = {
   games: {
     list: () =>
       fetchJson<Array<{ game_id: number; player_name: string; age: number; week: number; updated_at: string }>>('/games'),
-    create: (data: { player_name: string; life_vision?: string; character_settings?: Record<string, unknown> }) =>
+    create: (data: { player_name: string; life_vision?: string; character_settings?: Record<string, unknown>; language?: string }) =>
       fetchJson<{ game_id: number }>('/games', {
         method: 'POST',
         body: JSON.stringify(data),
@@ -90,7 +90,7 @@ export const api = {
         created_at: string;
         character_settings: Record<string, unknown>;
       }>>('/presets'),
-    create: (data: { player_name: string; life_vision?: string; character_settings?: Record<string, unknown> }) =>
+    create: (data: { preset_name: string; player_name: string; life_vision?: string; character_settings?: Record<string, unknown> }) =>
       fetchJson<{ preset_id: number }>('/presets', {
         method: 'POST',
         body: JSON.stringify(data),
@@ -175,17 +175,43 @@ export const api = {
 
   // Character
   character: {
-    generateSetting: (data: { setting_type: string; character_settings?: Record<string, unknown> }) =>
+    generateSetting: (data: {
+      setting_type: string;
+      player_name?: string;
+      life_vision?: string;
+      previous_settings?: Record<string, unknown>;
+      feedback?: string | null;
+      language?: string;
+      character_settings?: Record<string, unknown>
+    }) =>
       fetchJson<{ era: string; era_description: string }>('/character/setting', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
-    generateRelationship: (data: { relationship_type: string; character_settings?: Record<string, unknown> }) =>
+    generateRelationship: (data: {
+      relationship_type?: string;
+      player_name?: string;
+      life_vision?: string;
+      previous_settings?: Record<string, unknown>;
+      existing_people?: Array<Record<string, unknown>>;
+      person_index?: number;
+      total_needed?: number;
+      feedback?: string | null;
+      language?: string;
+      character_settings?: Record<string, unknown>
+    }) =>
       fetchJson<{ name: string; relationship: string }>('/character/relationship', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
-    generateRelationshipsSummary: (data: { character_settings?: Record<string, unknown> }) =>
+    generateRelationshipsSummary: (data: {
+      character_settings?: Record<string, unknown>;
+      player_name?: string;
+      life_vision?: string;
+      previous_settings?: Record<string, unknown>;
+      key_people?: Array<Record<string, unknown>>;
+      language?: string;
+    }) =>
       fetchJson<{ relationships_description: string }>('/character/relationships-summary', {
         method: 'POST',
         body: JSON.stringify(data),
@@ -412,4 +438,4 @@ export const api = {
 export default api;
 
 // Named exports for convenience
-export const { gameplay } = api;
+export const { gameplay, games } = api;
