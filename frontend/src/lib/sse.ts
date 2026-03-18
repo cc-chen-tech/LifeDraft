@@ -17,6 +17,7 @@ export interface StreamCallbacks {
 function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbacks: StreamCallbacks): Promise<void> {
   const decoder = new TextDecoder();
   let buffer = '';
+  let currentEventType: string | null = null;
 
   return new Promise((resolve, reject) => {
     function pump(): Promise<void> {
@@ -34,6 +35,11 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
 
         for (const line of lines) {
           const trimmed = line.trim();
+          // Parse event type from event: line
+          if (trimmed.startsWith('event: ')) {
+            currentEventType = trimmed.slice(7);
+            continue;
+          }
           if (trimmed.startsWith('data: ')) {
             const data = trimmed.slice(6);
             if (data === '[DONE]') {
@@ -43,26 +49,35 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
             }
             try {
               const parsed = JSON.parse(data);
+
+              // Handle complete event (either from event: line or type field in data)
+              if (currentEventType === 'complete' || parsed.type === 'complete' || parsed.event === 'complete') {
+                callbacks.onComplete?.(parsed.data || parsed);
+                currentEventType = null;
+                continue;
+              }
+
+              // Handle status updates
+              if (parsed.type === 'status' && parsed.status) {
+                callbacks.onStatus?.(parsed.status);
+                continue;
+              }
+
+              // Handle story chunks
               const chunk = parsed.content || parsed.text || parsed.chunk || parsed.story;
               if (chunk) {
                 callbacks.onChunk?.(chunk);
                 callbacks.onStory?.(chunk);
               }
-              // Handle status updates
-              if (parsed.type === 'status' && parsed.status) {
-                callbacks.onStatus?.(parsed.status);
-              }
-              // Handle complete event
-              if (parsed.type === 'complete' || parsed.event === 'complete') {
-                callbacks.onComplete?.(parsed.data || parsed);
-              }
             } catch {
-              // If not JSON, treat as plain text chunk
-              if (data) {
+              // If not JSON, treat as plain text chunk (for story)
+              if (data && currentEventType !== 'complete') {
                 callbacks.onChunk?.(data);
                 callbacks.onStory?.(data);
               }
             }
+            // Reset event type after processing data line
+            currentEventType = null;
           }
         }
 

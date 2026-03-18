@@ -303,10 +303,13 @@ async def stream_round_event(
     if event is not None:
         # Debug log: check if event_description is complete
         desc = event.event_description
-        logger.info(f"[SSE Complete] event_description length: {len(desc)} chars")
+        opts = getattr(event, 'options', None)
+        logger.info(f"[SSE Complete] event_description length: {len(desc)} chars, options count: {len(opts) if opts else 0}")
         logger.info(f"[SSE Complete] Last 100 chars: ...{desc[-100:] if len(desc) > 100 else desc}")
 
-        yield make_sse_event("complete", event.model_dump())
+        event_data = event.model_dump()
+        logger.info(f"[SSE Complete] model_dump options count: {len(event_data.get('options', []))}")
+        yield make_sse_event("complete", event_data)
 
         # Auto-save game state after event generation
         # This ensures user can resume from this point even if they close the page
