@@ -85,10 +85,10 @@ class CharacterState(BaseModel):
             "deep_friendship": 80,  # 深度友谊事件
             "conflict": 20,  # 冲突事件
             "help_request": 60,  # 请求帮助
-            "secret_sharing": 75,  # 分享秘密  # nosec B105
+            "secret_sharing": 75,  # nosec B105 - 分享秘密事件阈值
             "betrayal_risk": 15,  # 背叛风险
             # 浪漫关系事件
-            "romance_spark": 75,  # 恋爱萌芽
+            "romance_spark": 75,  # nosec B105 - 恋爱萌芽事件阈值
             "marriage_proposal": 85,  # 求婚
             "breakup": 25,  # 分手
             "elopement": 90,  # 私奔（需要外部阻力）
@@ -103,7 +103,7 @@ class CharacterState(BaseModel):
             "severance": 10,  # 决裂
             "sabotage": 25,  # 暗中陷害
             # 特殊关系事件
-            "apprenticeship": 75,  # 师徒
+            "apprenticeship": 75,  # nosec B105 - 师徒事件阈值
             "patron": 70,  # 贵人提携
             "childbirth": 90,  # 生育子女
         },
