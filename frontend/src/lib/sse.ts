@@ -18,14 +18,29 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
   const decoder = new TextDecoder();
   let buffer = '';
   let currentEventType: string | null = null;
+  let completeData: Record<string, unknown> | null = null;
+  let isCompleteReceived = false;
+  let isResolved = false;
 
   return new Promise((resolve, reject) => {
+    function safeResolve() {
+      if (!isResolved) {
+        isResolved = true;
+        resolve();
+      }
+    }
+
     function pump(): Promise<void> {
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       return reader!.read().then(({ done, value }) => {
         if (done) {
-          callbacks.onComplete?.({});
-          resolve();
+          // Stream ended - use the last complete event data if received
+          if (isCompleteReceived && completeData) {
+            callbacks.onComplete?.(completeData);
+          } else if (!isCompleteReceived) {
+            callbacks.onComplete?.({});
+          }
+          safeResolve();
           return;
         }
 
@@ -43,8 +58,15 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
           if (trimmed.startsWith('data: ')) {
             const data = trimmed.slice(6);
             if (data === '[DONE]') {
-              callbacks.onComplete?.({});
-              resolve();
+              // [DONE] marker - resolve with any stored complete data
+              if (!isResolved) {
+                if (completeData) {
+                  callbacks.onComplete?.(completeData);
+                } else {
+                  callbacks.onComplete?.({});
+                }
+                safeResolve();
+              }
               return;
             }
             try {
@@ -52,7 +74,10 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
 
               // Handle complete event (either from event: line or type field in data)
               if (currentEventType === 'complete' || parsed.type === 'complete' || parsed.event === 'complete') {
-                callbacks.onComplete?.(parsed.data || parsed);
+                // Store the complete data but don't call callback yet
+                // Wait for stream to end or [DONE] marker to ensure all data is received
+                completeData = parsed.data || parsed;
+                isCompleteReceived = true;
                 currentEventType = null;
                 continue;
               }

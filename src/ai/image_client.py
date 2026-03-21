@@ -10,10 +10,32 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from config.settings import settings
 
 logger = logging.getLogger(__name__)
+
+
+def create_retry_session(
+    retries=3,
+    backoff_factor=1,
+    status_forcelist=(500, 502, 503, 504),
+):
+    """Create a requests session with retry strategy."""
+    session = requests.Session()
+    retry = Retry(
+        total=retries,
+        read=retries,
+        connect=retries,
+        backoff_factor=backoff_factor,
+        status_forcelist=status_forcelist,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
 
 
 class ImageGenerationError(Exception):
@@ -53,6 +75,9 @@ class ImageClient:
         self.model = model or settings.IMAGE_MODEL
         self.timeout = settings.IMAGE_GENERATION_TIMEOUT
         self.max_retries = settings.IMAGE_MAX_RETRIES
+
+        # ★ 使用带重试策略的 session 来改善 SSL 连接稳定性
+        self.session = create_retry_session(retries=self.max_retries)
 
         # ★ 从配置解析模型降级列表
         self.text_to_image_models = [
@@ -404,7 +429,7 @@ class ImageClient:
             f"Calling DashScope image API: {url}, model: {self.model}, size: {dashscope_size}"
         )
 
-        response = requests.post(
+        response = self.session.post(
             url,
             json=payload,
             headers=headers,
@@ -420,7 +445,7 @@ class ImageClient:
 
     def _download_image(self, url: str) -> bytes:
         """下载图片"""
-        response = requests.get(url, timeout=self.timeout)
+        response = self.session.get(url, timeout=self.timeout)
         if response.status_code != 200:
             raise ImageGenerationError(f"Failed to download image: {response.status_code}")
         return response.content
@@ -1023,7 +1048,7 @@ class ImageClient:
 
         logger.debug(f"Calling image edit API: model={use_model}, size={dashscope_size}")
 
-        response = requests.post(
+        response = self.session.post(
             url,
             json=payload,
             headers=headers,

@@ -79,6 +79,25 @@ def _trigger_round_illustration_generation(
                     logger.info(
                         f"[RoundIllustration] {week_display} round {round_number} stage={stage} 插画已存在"
                     )
+                    # ★ 即使插画已存在，仍然检查并生成缺失的人物图片
+                    # 需要先获取已有图片列表
+                    images = (
+                        db.query(ImageModel)
+                        .filter(ImageModel.game_id == game_id, ImageModel.is_active.is_(True))
+                        .all()
+                    )
+                    existing_images = [
+                        {
+                            "image_id": img.image_id,
+                            "entity_name": img.entity_name,
+                            "image_type": img.image_type,
+                            "entity_key": img.entity_key,
+                        }
+                        for img in images
+                    ]
+                    _ensure_entity_images_exist(
+                        game_loop, game_id, event, existing_images, week, round_number
+                    )
                     return
 
                 # 获取故事文本
@@ -101,7 +120,7 @@ def _trigger_round_illustration_generation(
                 # 获取已有图片
                 images = (
                     db.query(ImageModel)
-                    .filter(ImageModel.game_id == game_id, ImageModel.is_active is True)
+                    .filter(ImageModel.game_id == game_id, ImageModel.is_active.is_(True))
                     .all()
                 )
 
@@ -153,6 +172,203 @@ def _trigger_round_illustration_generation(
 
     # 在后台线程中执行
     thread = threading.Thread(target=generate_illustration, daemon=True)
+    thread.start()
+
+
+def _ensure_entity_images_exist(
+    game_loop, game_id: int, event, existing_images: list, week: int, round_number: int
+) -> None:
+    """
+    确保故事中涉及的所有实体（人物、物品、地点）都有图片。
+
+    即使场景插画已存在，仍然需要检查并生成缺失的实体图片。
+    这在断点续传场景特别重要：用户加载存档后，人物图片可能尚未生成。
+
+    Args:
+        game_loop: 游戏循环实例
+        game_id: 游戏ID
+        event: 事件对象
+        existing_images: 已有的图片列表
+        week: 周数
+        round_number: 轮次
+    """
+
+    def ensure_images():
+        try:
+            from src.ai.image_client import ImageClient
+            from src.database.models import SessionLocal
+            from src.game.round.illustration_service import \
+                RoundIllustrationService
+            from src.services.image_storage import ImageStorageService
+
+            db = SessionLocal()
+            try:
+                player_state = game_loop.player_state
+                if not player_state:
+                    return
+
+                character_settings = player_state.character_settings or {}
+                player_name = player_state.player_name or "主角"
+                story_text = event.event_description if event else ""
+
+                if not story_text:
+                    return
+
+                # 提取时代背景
+                era = "现代"
+                if character_settings.get("era"):
+                    era_data = character_settings["era"]
+                    if isinstance(era_data, dict):
+                        era = era_data.get("era", "现代")
+                    else:
+                        era = str(era_data)
+
+                # 创建服务实例
+                image_client = ImageClient()
+                image_storage = ImageStorageService()
+                illustration_service = RoundIllustrationService(
+                    image_client=image_client, image_storage=image_storage, db_session=db
+                )
+
+                # 提取故事中涉及的实体
+                world_model_data = player_state.world_model_data or {}
+                established_facts = getattr(player_state, "established_facts", []) or []
+
+                involved_entities = illustration_service._extract_involved_entities(
+                    story_text,
+                    character_settings,
+                    world_model_data=world_model_data,
+                    established_facts=established_facts,
+                )
+
+                # 检查每个实体是否有图片，没有则生成
+                generated_count = 0
+                for entity in involved_entities:
+                    entity_name = entity.get("name")
+                    entity_type = entity.get("type", "character")
+                    entity_desc = entity.get("description", "")
+
+                    # 检查是否已有图片
+                    entity_image = illustration_service._find_entity_image(
+                        existing_images, entity_name
+                    )
+                    if not entity_image:
+                        # 没有图片，自动生成
+                        logger.info(
+                            f"[EntityImages] {entity_type} '{entity_name}' has no image, auto-generating..."
+                        )
+                        try:
+                            new_image = illustration_service._generate_entity_image(
+                                game_id=game_id,
+                                entity_name=entity_name,
+                                entity_type=entity_type,
+                                description=entity_desc,
+                                era=era,
+                            )
+                            if new_image:
+                                generated_count += 1
+                                logger.info(
+                                    f"[EntityImages] Auto-generated {entity_type} image for '{entity_name}': image_id={new_image.image_id}"
+                                )
+                            else:
+                                logger.warning(
+                                    f"[EntityImages] _generate_entity_image returned None for '{entity_name}'"
+                                )
+                        except Exception as e:
+                            logger.warning(
+                                f"[EntityImages] Failed to auto-generate {entity_type} image for '{entity_name}': {e}"
+                            )
+
+                if generated_count > 0:
+                    week_display = f"第{week + 1}周" if week is not None else "未知周"
+                    logger.info(
+                        f"[EntityImages] Completed: generated {generated_count} images for {week_display} round {round_number}"
+                    )
+
+            finally:
+                db.close()
+
+        except Exception as e:
+            logger.error(f"[EntityImages] Failed to ensure entity images: {e}")
+
+    # 在后台线程中执行
+    thread = threading.Thread(target=ensure_images, daemon=True)
+    thread.start()
+
+
+def _prefetch_options(game_loop, game_id: int, session, event) -> None:
+    """
+    异步预生成选项并缓存。
+
+    在故事生成完成后（但选项未生成时）后台触发，
+    这样下次加载存档时可以直接使用缓存的选项，实现零等待。
+
+    Args:
+        game_loop: 游戏循环实例
+        game_id: 游戏ID
+        session: GameLoopSession 实例
+        event: 事件对象（包含故事描述但没有选项）
+    """
+
+    def prefetch():
+        try:
+            if not session or session.is_prefetching_options():
+                return
+
+            player_state = game_loop.player_state
+            if not player_state:
+                return
+
+            current_week = player_state.week
+            current_round = player_state.current_round
+
+            # Check if already cached
+            cached = session.get_cached_options(current_week, current_round)
+            if cached:
+                logger.info(
+                    f"[Options Prefetch] Already cached for week={current_week}, round={current_round}"
+                )
+                return
+
+            session.start_prefetching_options()
+            logger.info(
+                f"[Options Prefetch] Starting for game_id={game_id}, "
+                f"week={current_week}, round={current_round}"
+            )
+
+            # Generate options
+            story_description = event.event_description
+            ai_generator = game_loop.ai_generator
+
+            from src.ai.models import GameEvent
+
+            options_event = ai_generator.generate_options_only(
+                story_description=story_description,
+                player_state=player_state.to_dict(),
+                character_settings=player_state.character_settings,
+                language=game_loop.language,
+            )
+
+            if options_event and options_event.options:
+                # Cache the options
+                session.set_cached_options(
+                    current_week, current_round, [opt.model_dump() for opt in options_event.options]
+                )
+                logger.info(
+                    f"[Options Prefetch] Completed: cached {len(options_event.options)} options "
+                    f"for game_id={game_id}"
+                )
+            else:
+                logger.warning(f"[Options Prefetch] Failed: no options generated")
+
+        except Exception as e:
+            logger.error(f"[Options Prefetch] Error: {e}", exc_info=True)
+        finally:
+            if session:
+                session.finish_prefetching_options()
+
+    # 在后台线程中执行
+    thread = threading.Thread(target=prefetch, daemon=True)
     thread.start()
 
 
@@ -221,6 +437,7 @@ async def stream_round_event(
             result_holder[0] = game_loop.generate_round_event(
                 stream_callback=stream_cb,
                 status_callback=status_cb,
+                session=session,
             )
         except Exception as e:
             error_holder[0] = e
@@ -303,12 +520,16 @@ async def stream_round_event(
     if event is not None:
         # Debug log: check if event_description is complete
         desc = event.event_description
-        opts = getattr(event, 'options', None)
-        logger.info(f"[SSE Complete] event_description length: {len(desc)} chars, options count: {len(opts) if opts else 0}")
+        opts = getattr(event, "options", None)
+        logger.info(
+            f"[SSE Complete] event_description length: {len(desc)} chars, options count: {len(opts) if opts else 0}"
+        )
         logger.info(f"[SSE Complete] Last 100 chars: ...{desc[-100:] if len(desc) > 100 else desc}")
 
         event_data = event.model_dump()
-        logger.info(f"[SSE Complete] model_dump options count: {len(event_data.get('options', []))}")
+        logger.info(
+            f"[SSE Complete] model_dump options count: {len(event_data.get('options', []))}"
+        )
         yield make_sse_event("complete", event_data)
 
         # Auto-save game state after event generation
@@ -328,6 +549,14 @@ async def stream_round_event(
             _trigger_round_illustration_generation(game_loop, game_id, event, stage="event")
         except Exception as e:
             logger.warning(f"Failed to trigger round illustration generation: {e}")
+
+        # ★ 异步触发选项预生成（如果故事已生成但选项未生成）
+        # 这优化了断点续传场景：下次加载时选项已缓存，实现零等待
+        if event and event.event_description and not event.options:
+            try:
+                _prefetch_options(game_loop, game_id, session, event)
+            except Exception as e:
+                logger.warning(f"Failed to prefetch options: {e}")
     else:
         yield make_sse_event("complete", {"event_description": "", "options": []})
 

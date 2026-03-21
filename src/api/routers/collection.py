@@ -80,7 +80,7 @@ async def get_collection(
                     ImageModel.game_id == game_id,
                     ImageModel.image_type == "character",
                     ImageModel.entity_name == player_name,
-                    ImageModel.is_active is True,
+                    ImageModel.is_active.is_(True),
                 )
                 .order_by(ImageModel.created_at.desc())
                 .all()
@@ -140,7 +140,7 @@ async def get_collection(
                     ImageModel.game_id == game_id,
                     ImageModel.image_type == "character",
                     ImageModel.entity_name == name,
-                    ImageModel.is_active is True,
+                    ImageModel.is_active.is_(True),
                 )
                 .order_by(ImageModel.created_at.desc())
                 .all()
@@ -181,7 +181,7 @@ async def get_collection(
                         ImageModel.game_id == game_id,
                         ImageModel.image_type == "character",
                         ImageModel.entity_name == name,
-                        ImageModel.is_active is True,
+                        ImageModel.is_active.is_(True),
                     )
                     .order_by(ImageModel.created_at.desc())
                     .all()
@@ -224,7 +224,7 @@ async def get_collection(
                         ImageModel.game_id == game_id,
                         ImageModel.image_type == "character",
                         ImageModel.entity_name == name,
-                        ImageModel.is_active is True,
+                        ImageModel.is_active.is_(True),
                     )
                     .order_by(ImageModel.created_at.desc())
                     .all()
@@ -258,7 +258,7 @@ async def get_collection(
                     ImageModel.game_id == game_id,
                     ImageModel.image_type == "item",
                     ImageModel.entity_name == name,
-                    ImageModel.is_active is True,
+                    ImageModel.is_active.is_(True),
                 )
                 .order_by(ImageModel.created_at.desc())
                 .all()
@@ -292,7 +292,7 @@ async def get_collection(
                     ImageModel.game_id == game_id,
                     ImageModel.image_type == "landmark",
                     ImageModel.entity_name == name,
-                    ImageModel.is_active is True,
+                    ImageModel.is_active.is_(True),
                 )
                 .order_by(ImageModel.created_at.desc())
                 .all()
@@ -780,7 +780,7 @@ async def regenerate_character_image(
                     ImageModel.game_id == game_id,
                     ImageModel.image_type == "character",
                     ImageModel.entity_name == name,
-                    ImageModel.is_active is True,
+                    ImageModel.is_active.is_(True),
                 )
                 .order_by(ImageModel.created_at.desc())
                 .first()
@@ -843,7 +843,7 @@ async def regenerate_item_image(
                 ImageModel.game_id == game_id,
                 ImageModel.image_type == "item",
                 ImageModel.entity_name == item_name,
-                ImageModel.is_active is True,
+                ImageModel.is_active.is_(True),
             )
             .order_by(ImageModel.created_at.desc())
             .first()

@@ -4,22 +4,33 @@
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
-async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${url}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-    credentials: 'include',
-  });
+async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: number }): Promise<T> {
+  const { timeout, ...fetchOptions } = options || {};
+  
+  // 创建 AbortController 用于超时控制
+  const controller = new AbortController();
+  const timeoutId = timeout ? setTimeout(() => controller.abort(), timeout) : null;
+  
+  try {
+    const response = await fetch(`${API_BASE}${url}`, {
+      ...fetchOptions,
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...fetchOptions?.headers,
+      },
+      credentials: 'include',
+    });
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: response.statusText }));
-    throw Object.assign(new Error(error.message || 'Request failed'), { status: response.status });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: response.statusText }));
+      throw Object.assign(new Error(error.message || 'Request failed'), { status: response.status });
+    }
+
+    return response.json();
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
-
-  return response.json();
 }
 
 export const api = {
@@ -571,6 +582,7 @@ export const api = {
       }>(`/collection/${gameId}/recognize-entities`, {
         method: 'POST',
         body: JSON.stringify(data),
+        timeout: 180000, // 3分钟超时，实体识别可能需要较长时间
       }),
     // Add recognized entities
     addEntities: (gameId: number, data: {

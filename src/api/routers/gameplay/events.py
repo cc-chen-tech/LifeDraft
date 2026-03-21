@@ -242,7 +242,7 @@ async def generate_event_sync(
         loop = asyncio.get_running_loop()
 
         def run():
-            return game_loop.generate_round_event()
+            return game_loop.generate_round_event(session=session)
 
         event = await loop.run_in_executor(None, run)
 

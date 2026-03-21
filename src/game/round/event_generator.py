@@ -77,6 +77,7 @@ class RoundEventGenerator:
         self,
         stream_callback: Optional[Callable[[str], None]] = None,
         status_callback: Optional[Callable[[str], None]] = None,
+        session: Optional[Any] = None,
     ) -> Optional[GameEvent]:
         """
         Generate an event for the current round within the week.
@@ -99,6 +100,148 @@ class RoundEventGenerator:
                 f"Returning existing event (options count: {len(self._current_event.options)})"
             )
             return self._current_event
+
+        # ★ CRITICAL: Resume from round_history if current_event is empty but story exists
+        # This handles the "save & load" scenario where current_event_data is cleared after choice
+        # but round_history contains the story for current round
+        if not self._current_event or not self._current_event.options:
+            current_week = player_state.week
+            current_round = player_state.current_round
+            round_history = player_state.round_history
+            last_round_full_story = player_state.last_round_full_story
+
+            logger.info(
+                f"[Resume Check] current_week={current_week}, current_round={current_round}, "
+                f"round_history_count={len(round_history) if round_history else 0}, "
+                f"has_last_round_full_story={bool(last_round_full_story)}, "
+                f"has_session={session is not None}"
+            )
+
+            # Check if we can resume from existing story
+            # Case 1: round_history has current round's story
+            # Case 2: last_round_full_story exists and matches current round (after choice, before next round)
+            existing_story = None
+            resume_source = None
+
+            if round_history:
+                last_entry = round_history[-1]
+                entry_week = last_entry.get("week")
+                entry_round = last_entry.get("round")
+
+                logger.info(
+                    f"[Resume Check] last_entry: week={entry_week}, round={entry_round}, "
+                    f"has_event_desc={bool(last_entry.get('event_description'))}"
+                )
+
+                # Case 1: Current round story exists in round_history
+                if entry_week == current_week and entry_round == current_round:
+                    event_desc = last_entry.get("event_description", "")
+                    story_continuation = last_entry.get("story_continuation", "")
+                    existing_story = event_desc + (
+                        f"\n\n{story_continuation}" if story_continuation else ""
+                    )
+                    resume_source = "round_history"
+                    logger.info(f"[Resume Check] Found current round story in round_history")
+
+                # Case 2: Last round is current_round - 1, and last_round_full_story exists
+                # This means story was generated but choice not made yet
+                elif (
+                    entry_week == current_week
+                    and entry_round == current_round - 1
+                    and last_round_full_story
+                ):
+                    existing_story = last_round_full_story
+                    resume_source = "last_round_full_story"
+                    logger.info(
+                        f"[Resume Check] Found story in last_round_full_story (current_round={current_round}, last_entry_round={entry_round})"
+                    )
+
+            # Also check last_round_full_story if no round_history match
+            elif last_round_full_story:
+                existing_story = last_round_full_story
+                resume_source = "last_round_full_story_only"
+                logger.info(f"[Resume Check] Using last_round_full_story (no round_history match)")
+
+            if existing_story and len(existing_story) > 100:
+                # ★ Check options cache first
+                cached_options = None
+                if session:
+                    cached_options = session.get_cached_options(current_week, current_round)
+
+                if cached_options:
+                    # Use cached options - instant response!
+                    logger.info(
+                        f"★ Resume mode (cached options): Using {len(cached_options)} cached options "
+                        f"for 第{current_week + 1}周 round {current_round}"
+                    )
+
+                    # Create event with cached options
+                    from src.ai.models import EventOption, GameEvent
+
+                    options = [EventOption(**opt) for opt in cached_options]
+                    event = GameEvent(
+                        event_description=existing_story,
+                        options=options,
+                    )
+
+                    self._current_event = event
+                    player_state.current_event_data = event.model_dump()
+
+                    if self.event_callback:
+                        self.event_callback(event, player_state)
+
+                    logger.info(
+                        f"★ Resume mode complete (cached): Returned {len(options)} options instantly"
+                    )
+                    return event
+
+                # No cache - generate options
+                logger.info(
+                    f"★ Resume mode detected ({resume_source}): Found existing story for 第{current_week + 1}周 "
+                    f"round {current_round} ({len(existing_story)} chars), generating options only"
+                )
+
+                self._generating = True
+                self._generating_start_time = time.time()
+
+                try:
+                    if status_callback:
+                        status_callback("generating_options")
+
+                    # Generate options only for existing story
+                    event = self.ai_generator.generate_options_only(
+                        story_description=existing_story,
+                        player_state=player_state.to_dict(),
+                        character_settings=player_state.character_settings,
+                        language=self.language,
+                    )
+
+                    # ★ Cache the generated options
+                    if session and event.options:
+                        session.set_cached_options(
+                            current_week, current_round, [opt.model_dump() for opt in event.options]
+                        )
+
+                    self._current_event = event
+                    player_state.current_event_data = event.model_dump()
+
+                    if self.event_callback:
+                        self.event_callback(event, player_state)
+
+                    logger.info(
+                        f"★ Resume mode complete: Generated {len(event.options)} options for existing story"
+                    )
+                    self._generating = False
+                    self._generating_start_time = None
+                    return event
+
+                except Exception as e:
+                    logger.error(
+                        f"Failed to generate options for existing story: {e}", exc_info=True
+                    )
+                    # Fall through to normal generation
+                    self._generating = False
+                    self._generating_start_time = None
 
         # ★ CRITICAL: Prevent concurrent generation with timeout auto-reset
         if self._generating:
@@ -123,6 +266,8 @@ class RoundEventGenerator:
         self._generating = True
         self._generating_start_time = time.time()
 
+        # current_week and current_round already defined above in resume mode check
+        # Re-fetch here to ensure consistency
         current_week = player_state.week
         current_round = player_state.current_round
 

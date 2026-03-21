@@ -3,7 +3,7 @@
 import logging
 import threading
 import time
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.game.game_loop import GameLoop
 
@@ -25,6 +25,10 @@ class GameLoopSession:
         "_is_generating",
         "sse_cache",
         "_sse_event_id",
+        # ★ Options cache for fast resume
+        "_cached_options",
+        "_cached_options_key",
+        "_is_prefetching_options",
     )
 
     # Maximum number of SSE story chunks to cache for reconnection
@@ -46,6 +50,10 @@ class GameLoopSession:
         # SSE reconnection support: cache story chunks with event IDs
         self.sse_cache: list[str] = []
         self._sse_event_id: int = 0
+        # ★ Options cache for fast resume
+        self._cached_options: Optional[List[Dict[str, Any]]] = None
+        self._cached_options_key: Optional[str] = None  # "week_round" format
+        self._is_prefetching_options: bool = False
 
     def touch(self):
         """Update last access timestamp."""
@@ -106,6 +114,53 @@ class GameLoopSession:
         self.sse_cache.clear()
         self._sse_event_id = 0
 
+    # ---- Options cache methods for fast resume ----
+
+    def get_cache_key(self, week: int, round_num: int) -> str:
+        """Generate cache key for current week/round."""
+        return f"{week}_{round_num}"
+
+    def get_cached_options(self, week: int, round_num: int) -> Optional[List[Dict[str, Any]]]:
+        """Get cached options if available for current week/round."""
+        cache_key = self.get_cache_key(week, round_num)
+        logger.info(
+            f"[Options Cache] Checking: requested={cache_key}, cached={self._cached_options_key}, has_data={self._cached_options is not None}"
+        )
+        if self._cached_options_key == cache_key and self._cached_options:
+            logger.info(f"[Options Cache] Hit for week={week}, round={round_num}")
+            return self._cached_options
+        return None
+
+    def set_cached_options(self, week: int, round_num: int, options: List[Dict[str, Any]]) -> None:
+        """Cache options for current week/round."""
+        cache_key = self.get_cache_key(week, round_num)
+        self._cached_options_key = cache_key
+        self._cached_options = options
+        logger.info(
+            f"[Options Cache] Stored {len(options)} options for week={week}, round={round_num}"
+        )
+
+    def clear_options_cache(self) -> None:
+        """Clear options cache (call when choice is made or new round starts)."""
+        if self._cached_options:
+            logger.info(f"[Options Cache] Cleared (was for {self._cached_options_key})")
+        self._cached_options = None
+        self._cached_options_key = None
+
+    def is_prefetching_options(self) -> bool:
+        """Check if options prefetch is in progress."""
+        return self._is_prefetching_options
+
+    def start_prefetching_options(self) -> None:
+        """Mark options prefetch as started."""
+        self._is_prefetching_options = True
+        logger.info("[Options Prefetch] Started")
+
+    def finish_prefetching_options(self) -> None:
+        """Mark options prefetch as finished."""
+        self._is_prefetching_options = False
+        logger.info("[Options Prefetch] Finished")
+
 
 class SessionStore:
     """
@@ -152,18 +207,35 @@ class SessionStore:
         user_id: Optional[int] = None,
         language: str = "zh",
     ) -> GameLoopSession:
-        """Create or overwrite a session."""
+        """Create or update a session.
+
+        If session already exists, update the game_loop reference but preserve
+        cached data (like options cache) for better performance.
+        """
         key = self.make_key(game_id, user_id)
-        session = GameLoopSession(
-            game_loop=game_loop,
-            game_id=game_id,
-            user_id=user_id,
-            language=language,
-        )
+
         with self._lock:
+            existing_session = self._sessions.get(key)
+            if existing_session is not None and not existing_session.is_expired:
+                # ★ Preserve cache: Update game_loop reference but keep cached options
+                existing_session.game_loop = game_loop
+                existing_session.touch()
+                logger.info(
+                    f"Session updated: {key}, "
+                    f"preserved_options_cache={existing_session._cached_options_key is not None}"
+                )
+                return existing_session
+
+            # Create new session
+            session = GameLoopSession(
+                game_loop=game_loop,
+                game_id=game_id,
+                user_id=user_id,
+                language=language,
+            )
             self._sessions[key] = session
-        logger.info(f"Session created: {key}")
-        return session
+            logger.info(f"Session created: {key}")
+            return session
 
     def remove(self, game_id: int, user_id: Optional[int] = None) -> bool:
         """Remove a session. Returns True if it existed."""

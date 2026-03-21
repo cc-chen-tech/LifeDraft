@@ -59,6 +59,9 @@ class AIClient:
         if settings.OPENAI_BASE_URL:
             client_kwargs["base_url"] = settings.OPENAI_BASE_URL
 
+        # ★ 添加超时设置，避免长时间请求导致连接错误
+        client_kwargs["timeout"] = 300.0  # 5分钟超时，实体识别需要较长时间
+
         self.client = openai.OpenAI(**client_kwargs)
 
     # -------------------- Core Call --------------------

@@ -109,6 +109,7 @@ async def make_choice(
     # Clear cache before starting new choice processing (unless reconnecting)
     if last_event_id is None:
         session.clear_sse_cache()
+        session.clear_options_cache()  # ★ Clear options cache when choice is made
 
     return StreamingResponse(
         stream_choice(game_loop, req.option_index, game_id, session, last_event_id),
@@ -150,6 +151,7 @@ async def make_custom_choice(
     # Clear cache before starting new choice processing (unless reconnecting)
     if last_event_id is None:
         session.clear_sse_cache()
+        session.clear_options_cache()  # ★ Clear options cache when custom choice is made
 
     return StreamingResponse(
         stream_choice(

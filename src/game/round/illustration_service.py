@@ -784,6 +784,7 @@ class RoundIllustrationService:
 
         except Exception as e:
             logger.error(
-                f"[RoundIllustration] Failed to generate {entity_type} image for {entity_name}: {e}"
+                f"[RoundIllustration] Failed to generate {entity_type} image for {entity_name}: {e}",
+                exc_info=True,
             )
             return None

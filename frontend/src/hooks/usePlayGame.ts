@@ -314,12 +314,20 @@ export function usePlayGame() {
         await useGameStore.getState().syncState();
         const state = useGameStore.getState();
         if (state.currentEvent?.options?.length) {
+          // 有选项，直接展示
           setOptions(state.currentEvent.options);
           if (!state.storyText && state.currentEvent.story) {
             setStoryText(state.currentEvent.story);
           }
           setPhase("options");
+        } else if (state.storyText) {
+          // ★ 有故事但无选项（存档加载常见情况）：展示已有故事，然后调用 generateEvent 生成选项
+          // generateEvent 内部已有保护：如果 storyText 非空则保留内容不清空
+          // phase 保持在 "loading"，直接调用 generateEvent 即可
+          console.log(`[play] Has story (${state.storyText.length} chars) but no options, generating options via SSE...`);
+          generateEvent();
         } else {
+          // 真正没有故事，生成新事件
           generateEvent();
         }
       } catch (err) {

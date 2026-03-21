@@ -80,13 +80,13 @@ class EntityRecognitionService:
                 system_prompt=sys_prompt,
                 user_prompt=prompt,
                 temperature=0.3,
-                max_tokens=4096,
+                max_tokens=2048,  # 减少token数，避免服务器超时
             )
 
             return self._parse_recognition_response(response)
 
         except Exception as e:
-            logger.error(f"Entity recognition failed: {e}")
+            logger.error(f"Entity recognition failed: {e}", exc_info=True)
             return {"items": [], "characters": [], "landmarks": []}
 
     def extract_item_description(

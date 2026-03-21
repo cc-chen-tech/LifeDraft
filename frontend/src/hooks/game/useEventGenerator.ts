@@ -103,7 +103,13 @@ export function useEventGenerator({
     console.log(`[generateEvent] Starting generation for gameId: ${gameId}`);
 
     abortRef.current?.abort();
-    setStoryText("");
+    // ★ 不无条件清空故事：如果已有故事内容，保留并继续流式追加；只有为空时才清空
+    const existingStory = useGameStore.getState().storyText;
+    if (existingStory && existingStory.length > 0) {
+      console.log(`[generateEvent] Preserving existing story (${existingStory.length} chars), will append new content`);
+    } else {
+      setStoryText("");
+    }
     setPhase("generating");
     setConnectionStatus(null);
     setReconnectAttempt(null);
