@@ -29,9 +29,7 @@ def _require_session(game_id: int, user_id: Optional[int]):
     return session_service.get_or_restore(game_id, user_id)
 
 
-def _restore_current_event_if_needed(
-    game_loop, game_id: int, user_id: Optional[int]
-) -> bool:
+def _restore_current_event_if_needed(game_loop, game_id: int, user_id: Optional[int]) -> bool:
     """Restore current_event from database if it's None.
 
     Returns:
@@ -76,9 +74,7 @@ def _restore_current_event_if_needed(
     except Exception as e:
         logger.error(f"Failed to restore current_event: {e}")
 
-    raise HTTPException(
-        status_code=400, detail="No current event. Generate an event first."
-    )
+    raise HTTPException(status_code=400, detail="No current event. Generate an event first.")
 
 
 @router.post("/{game_id}/choice")
@@ -198,7 +194,10 @@ async def make_choice_sync(
     def run():
         return game_loop.make_round_choice(option_index=req.option_index)
 
-    result = await loop.run_in_executor(None, run)
+    try:
+        result = await loop.run_in_executor(None, run)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
 
     # Auto-save after choice to persist current_event_data=None
     try:
@@ -232,7 +231,10 @@ async def make_custom_choice_sync(
     def run():
         return game_loop.make_custom_choice(custom_text=req.custom_text)
 
-    result = await loop.run_in_executor(None, run)
+    try:
+        result = await loop.run_in_executor(None, run)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
 
     # Auto-save after custom choice to persist current_event_data=None
     try:
@@ -240,9 +242,7 @@ async def make_custom_choice_sync(
         state = game_loop.get_state()
         if state:
             db.save_game_progress(game_id, state)
-            logger.info(
-                f"Auto-saved game state after sync custom choice: game_id={game_id}"
-            )
+            logger.info(f"Auto-saved game state after sync custom choice: game_id={game_id}")
     except Exception as e:
         logger.warning(f"Auto-save failed after sync custom choice: {e}")
 

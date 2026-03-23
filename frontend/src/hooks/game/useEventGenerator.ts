@@ -104,7 +104,7 @@ export function useEventGenerator({
 
     abortRef.current?.abort();
     // ★ 不无条件清空故事：如果已有故事内容，保留并继续流式追加；只有为空时才清空
-    const existingStory = useGameStore.getState().storyText;
+    const existingStory = useGameStore.getState()?.storyText;
     if (existingStory && existingStory.length > 0) {
       console.log(`[generateEvent] Preserving existing story (${existingStory.length} chars), will append new content`);
     } else {
@@ -139,7 +139,7 @@ export function useEventGenerator({
             console.log("[generateEvent] Session expired, restoring and regenerating...");
             try {
               setProcessing(true, "恢复游戏状态...");
-              await useGameStore.getState().syncPlayerState();
+              await useGameStore.getState()?.syncPlayerState?.();
               generatingRef.current = false;
               setProcessing(false);
               setPhase("loading");
@@ -180,14 +180,14 @@ export function useEventGenerator({
 
           const pollForCompletion = async (): Promise<boolean> => {
             try {
-              await useGameStore.getState().syncState();
+              await useGameStore.getState()?.syncState?.();
               const state = useGameStore.getState();
 
-              if (state.currentEvent?.options?.length) {
+              if (state?.currentEvent?.options?.length) {
                 setOptions(state.currentEvent.options);
                 setCurrentEvent({
                   ...state.currentEvent,
-                  story: useGameStore.getState().storyText || state.currentEvent.story,
+                  story: useGameStore.getState()?.storyText || state.currentEvent.story,
                 });
                 setPhase("options");
                 setProcessing(false);
@@ -251,7 +251,7 @@ export function useEventGenerator({
     let prefetchedOptions: EventOption[] = [];
 
     try {
-      await useGameStore.getState().syncPlayerState();
+      await useGameStore.getState()?.syncPlayerState?.();
 
       await streamGameEvent(
         gameId,
