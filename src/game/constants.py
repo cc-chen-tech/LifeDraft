@@ -17,8 +17,12 @@ GENERIC_CHARACTER_NAMES = frozenset(
 
 # Generic option texts that indicate low-quality options
 GENERIC_OPTION_TEXTS = {
-    "zh": frozenset({"休息", "学习", "工作", "继续前进", "思考一下", "保持现状", "随便"}),
-    "en": frozenset({"rest", "study", "work", "continue", "think", "status quo", "whatever"}),
+    "zh": frozenset(
+        {"休息", "学习", "工作", "继续前进", "思考一下", "保持现状", "随便"}
+    ),
+    "en": frozenset(
+        {"rest", "study", "work", "continue", "think", "status quo", "whatever"}
+    ),
 }
 
 # Role inference keywords for story characters

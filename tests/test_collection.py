@@ -1,6 +1,8 @@
 """Tests for collection router."""
-import pytest
+
 from unittest.mock import MagicMock, patch
+
+import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
@@ -141,7 +143,9 @@ class TestCollectionRouterEndpoints:
 
     @patch("src.api.routers.collection.session_service")
     @patch("src.api.routers.collection.SessionLocal")
-    def test_get_collection_unauthorized(self, mock_session_local, mock_session_service, client):
+    def test_get_collection_unauthorized(
+        self, mock_session_local, mock_session_service, client
+    ):
         """Test get_collection returns 401 when not logged in."""
         response = client.get("/collection/1")
         # Should return 401 because no user is provided
@@ -149,7 +153,9 @@ class TestCollectionRouterEndpoints:
 
     @patch("src.api.routers.collection.session_service")
     @patch("src.api.routers.collection.SessionLocal")
-    def test_get_collection_success(self, mock_session_local, mock_session_service, client):
+    def test_get_collection_success(
+        self, mock_session_local, mock_session_service, client
+    ):
         """Test get_collection returns correct data."""
         # Mock user
         mock_user = MagicMock()
@@ -181,11 +187,15 @@ class TestCollectionRouterEndpoints:
 
         # Mock database
         mock_db = MagicMock()
-        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
+        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = (
+            []
+        )
         mock_session_local.return_value = mock_db
 
         # Mock image service
-        with patch("src.api.routers.collection.ImageService") as mock_image_service_class:
+        with patch(
+            "src.api.routers.collection.ImageService"
+        ) as mock_image_service_class:
             mock_image_service = MagicMock()
             mock_image_service.get_image_url.return_value = None
             mock_image_service_class.return_value = mock_image_service
@@ -227,7 +237,7 @@ class TestItemExtractionService:
         from src.services.item_extraction_service import ItemExtractionService
 
         service = ItemExtractionService(MagicMock())
-        response = '''
+        response = """
         {
             "items": [
                 {
@@ -240,7 +250,7 @@ class TestItemExtractionService:
                 }
             ]
         }
-        '''
+        """
         result = service._parse_extraction_response(response, current_week=10)
 
         assert len(result) == 1
@@ -254,7 +264,7 @@ class TestItemExtractionService:
         from src.services.item_extraction_service import ItemExtractionService
 
         service = ItemExtractionService(MagicMock())
-        response = '''
+        response = """
         {
             "items": [
                 {
@@ -264,7 +274,7 @@ class TestItemExtractionService:
                 }
             ]
         }
-        '''
+        """
         result = service._parse_extraction_response(response, current_week=1)
 
         assert len(result) == 1
@@ -275,7 +285,7 @@ class TestItemExtractionService:
         from src.services.item_extraction_service import ItemExtractionService
 
         service = ItemExtractionService(MagicMock())
-        response = '''
+        response = """
         {
             "items": [
                 {
@@ -284,7 +294,7 @@ class TestItemExtractionService:
                 }
             ]
         }
-        '''
+        """
         result = service._parse_extraction_response(response, current_week=1)
 
         assert len(result) == 1
@@ -295,7 +305,7 @@ class TestItemExtractionService:
         from src.services.item_extraction_service import ItemExtractionService
 
         service = ItemExtractionService(MagicMock())
-        response = '''
+        response = """
         {
             "items": [
                 {"action": "new", "name": "新物品"},
@@ -303,7 +313,7 @@ class TestItemExtractionService:
                 {"name": "默认新物品"}
             ]
         }
-        '''
+        """
         result = service._parse_extraction_response(response, current_week=1)
 
         # Only 'new' action items should be included
@@ -328,7 +338,9 @@ class TestCharacterSettingsNestedDict:
 
         # Extract values as the fixed code should do
         age_val = age_dict.get("age") if isinstance(age_dict, dict) else age_dict
-        gender_val = gender_dict.get("gender") if isinstance(gender_dict, dict) else gender_dict
+        gender_val = (
+            gender_dict.get("gender") if isinstance(gender_dict, dict) else gender_dict
+        )
 
         # Should create without validation error
         item = CharacterCollectionItem(
@@ -385,7 +397,9 @@ class TestRegenerateImageSchemas:
         assert request1.image_id is None
 
         # Test with feedback and image_id
-        request2 = RegenerateCharacterImageRequest(feedback="换一件蓝色衣服", image_id=123)
+        request2 = RegenerateCharacterImageRequest(
+            feedback="换一件蓝色衣服", image_id=123
+        )
         assert request2.feedback == "换一件蓝色衣服"
         assert request2.image_id == 123
 
@@ -402,21 +416,26 @@ class TestRegenerateCharacterImageEndpoint:
 
     @patch("src.api.routers.collection.session_service")
     @patch("src.api.routers.collection.SessionLocal")
-    def test_regenerate_character_image_unauthorized(self, mock_session_local, mock_session_service, client):
+    def test_regenerate_character_image_unauthorized(
+        self, mock_session_local, mock_session_service, client
+    ):
         """Test regenerate_character_image returns 401 when not logged in."""
         response = client.post(
             "/collection/1/characters/张三/regenerate-image",
-            json={"feedback": "头发变长"}
+            json={"feedback": "头发变长"},
         )
         assert response.status_code == 401
 
     @patch("src.api.routers.collection.session_service")
     @patch("src.api.routers.collection.SessionLocal")
-    def test_regenerate_character_image_character_not_found(self, mock_session_local, mock_session_service, client):
+    def test_regenerate_character_image_character_not_found(
+        self, mock_session_local, mock_session_service, client
+    ):
         """Test regenerate_character_image returns 404 when character not found anywhere."""
-        from src.api.routers.collection import router
-        from fastapi.testclient import TestClient
         from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from src.api.routers.collection import router
 
         app = FastAPI()
         app.include_router(router, prefix="/collection")
@@ -453,11 +472,7 @@ class TestRegenerateCharacterImageEndpoint:
         mock_player_state.characters = {}  # Not in characters
         mock_player_state.player_name = "主角"
         mock_player_state.character_settings = {
-            "relationships": {
-                "key_people": [
-                    {"name": "赵灵儿", "role": "青梅竹马"}
-                ]
-            }
+            "relationships": {"key_people": [{"name": "赵灵儿", "role": "青梅竹马"}]}
         }
         mock_game_loop.get_state.return_value = mock_player_state
 
@@ -469,25 +484,35 @@ class TestRegenerateCharacterImageEndpoint:
         mock_image.image_id = 456
         mock_game = MagicMock()
         mock_game.user_id = 1  # Same as mock_user.user_id
-        mock_db_session.query.return_value.filter.return_value.first.return_value = mock_image
+        mock_db_session.query.return_value.filter.return_value.first.return_value = (
+            mock_image
+        )
         # For verify_game_ownership
-        mock_db_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = mock_image
+        mock_db_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+            mock_image
+        )
 
         with patch("src.api.routers.collection.session_service") as mock_ss:
             with patch("src.api.routers.collection.SessionLocal") as mock_db_class:
-                with patch("src.api.routers.collection.verify_game_ownership") as mock_verify:
-                    with patch.object(ImageService, 'regenerate_image') as mock_regenerate:
+                with patch(
+                    "src.api.routers.collection.verify_game_ownership"
+                ) as mock_verify:
+                    with patch.object(
+                        ImageService, "regenerate_image"
+                    ) as mock_regenerate:
                         mock_ss.get_or_restore.return_value = mock_session
                         mock_db_class.return_value = mock_db_session
                         mock_verify.return_value = mock_game  # Pass ownership check
                         mock_regenerate.return_value = [mock_image]
 
-                        app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+                        app.dependency_overrides[get_current_user_optional] = (
+                            lambda: mock_user
+                        )
 
                         test_client = TestClient(app)
                         response = test_client.post(
                             "/collection/1/characters/赵灵儿/regenerate-image",
-                            json={"feedback": "裙子变长"}
+                            json={"feedback": "裙子变长"},
                         )
 
                         # key_people should be allowed without affinity check
@@ -512,11 +537,7 @@ class TestRegenerateCharacterImageEndpoint:
         mock_player_state.characters = {}  # Not in characters
         mock_player_state.player_name = "主角"
         mock_player_state.character_settings = {
-            "family": {
-                "family_members": [
-                    {"name": "父亲", "role": "父亲"}
-                ]
-            }
+            "family": {"family_members": [{"name": "父亲", "role": "父亲"}]}
         }
         mock_game_loop.get_state.return_value = mock_player_state
 
@@ -526,23 +547,31 @@ class TestRegenerateCharacterImageEndpoint:
         mock_db_session = MagicMock()
         mock_image = MagicMock()
         mock_image.image_id = 789
-        mock_db_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = mock_image
+        mock_db_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+            mock_image
+        )
 
         with patch("src.api.routers.collection.session_service") as mock_ss:
             with patch("src.api.routers.collection.SessionLocal") as mock_db_class:
-                with patch("src.api.routers.collection.verify_game_ownership") as mock_verify:
-                    with patch.object(ImageService, 'regenerate_image') as mock_regenerate:
+                with patch(
+                    "src.api.routers.collection.verify_game_ownership"
+                ) as mock_verify:
+                    with patch.object(
+                        ImageService, "regenerate_image"
+                    ) as mock_regenerate:
                         mock_ss.get_or_restore.return_value = mock_session
                         mock_db_class.return_value = mock_db_session
                         mock_verify.return_value = mock_game  # Pass ownership check
                         mock_regenerate.return_value = [mock_image]
 
-                        app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+                        app.dependency_overrides[get_current_user_optional] = (
+                            lambda: mock_user
+                        )
 
                         test_client = TestClient(app)
                         response = test_client.post(
                             "/collection/1/characters/父亲/regenerate-image",
-                            json={"feedback": "戴眼镜"}
+                            json={"feedback": "戴眼镜"},
                         )
 
                         # family_members should be allowed without affinity check
@@ -560,9 +589,7 @@ class TestRegenerateCharacterImageEndpoint:
 
         mock_game_loop = MagicMock()
         mock_player_state = MagicMock()
-        mock_player_state.characters = {
-            "李四": {"name": "李四", "affinity": 49}
-        }
+        mock_player_state.characters = {"李四": {"name": "李四", "affinity": 49}}
         mock_player_state.player_name = "主角"
         mock_player_state.character_settings = {}
         mock_game_loop.get_state.return_value = mock_player_state
@@ -579,7 +606,7 @@ class TestRegenerateCharacterImageEndpoint:
                 test_client = TestClient(app)
                 response = test_client.post(
                     "/collection/1/characters/李四/regenerate-image",
-                    json={"feedback": "头发变长"}
+                    json={"feedback": "头发变长"},
                 )
 
                 # affinity < 50 should be rejected with 403
@@ -601,9 +628,7 @@ class TestRegenerateCharacterImageEndpoint:
 
         mock_game_loop = MagicMock()
         mock_player_state = MagicMock()
-        mock_player_state.characters = {
-            "王五": {"name": "王五", "affinity": 50}
-        }
+        mock_player_state.characters = {"王五": {"name": "王五", "affinity": 50}}
         mock_player_state.player_name = "主角"
         mock_player_state.character_settings = {}
         mock_game_loop.get_state.return_value = mock_player_state
@@ -615,23 +640,31 @@ class TestRegenerateCharacterImageEndpoint:
         mock_db_session = MagicMock()
         mock_image = MagicMock()
         mock_image.image_id = 123
-        mock_db_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = mock_image
+        mock_db_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+            mock_image
+        )
 
         with patch("src.api.routers.collection.session_service") as mock_ss:
             with patch("src.api.routers.collection.SessionLocal") as mock_db_class:
-                with patch("src.api.routers.collection.verify_game_ownership") as mock_verify:
-                    with patch.object(ImageService, 'regenerate_image') as mock_regenerate:
+                with patch(
+                    "src.api.routers.collection.verify_game_ownership"
+                ) as mock_verify:
+                    with patch.object(
+                        ImageService, "regenerate_image"
+                    ) as mock_regenerate:
                         mock_ss.get_or_restore.return_value = mock_session
                         mock_db_class.return_value = mock_db_session
                         mock_verify.return_value = mock_game
                         mock_regenerate.return_value = [mock_image]
 
-                        app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+                        app.dependency_overrides[get_current_user_optional] = (
+                            lambda: mock_user
+                        )
 
                         test_client = TestClient(app)
                         response = test_client.post(
                             "/collection/1/characters/王五/regenerate-image",
-                            json={"feedback": "头发变长"}
+                            json={"feedback": "头发变长"},
                         )
 
                         # affinity >= 50 should be allowed
@@ -664,23 +697,31 @@ class TestRegenerateCharacterImageEndpoint:
         mock_db_session = MagicMock()
         mock_image = MagicMock()
         mock_image.image_id = 999
-        mock_db_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = mock_image
+        mock_db_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+            mock_image
+        )
 
         with patch("src.api.routers.collection.session_service") as mock_ss:
             with patch("src.api.routers.collection.SessionLocal") as mock_db_class:
-                with patch("src.api.routers.collection.verify_game_ownership") as mock_verify:
-                    with patch.object(ImageService, 'regenerate_image') as mock_regenerate:
+                with patch(
+                    "src.api.routers.collection.verify_game_ownership"
+                ) as mock_verify:
+                    with patch.object(
+                        ImageService, "regenerate_image"
+                    ) as mock_regenerate:
                         mock_ss.get_or_restore.return_value = mock_session
                         mock_db_class.return_value = mock_db_session
                         mock_verify.return_value = mock_game
                         mock_regenerate.return_value = [mock_image]
 
-                        app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+                        app.dependency_overrides[get_current_user_optional] = (
+                            lambda: mock_user
+                        )
 
                         test_client = TestClient(app)
                         response = test_client.post(
                             "/collection/1/characters/李逍遥/regenerate-image",
-                            json={"feedback": "换个发型"}
+                            json={"feedback": "换个发型"},
                         )
 
                         # Player should always be allowed
@@ -715,7 +756,7 @@ class TestRegenerateCharacterImageEndpoint:
                 test_client = TestClient(app)
                 response = test_client.post(
                     "/collection/1/characters/陌生人/regenerate-image",
-                    json={"feedback": "头发变长"}
+                    json={"feedback": "头发变长"},
                 )
 
                 # Character not found should return 404
@@ -741,9 +782,7 @@ class TestRegenerateCharacterImageEndpoint:
         mock_player_state.player_name = "主角"
         mock_player_state.character_settings = {
             "relationships": {
-                "key_people": [
-                    {"name": "林月如", "role": "好友"}  # Also in key_people
-                ]
+                "key_people": [{"name": "林月如", "role": "好友"}]  # Also in key_people
             }
         }
         mock_game_loop.get_state.return_value = mock_player_state
@@ -760,7 +799,7 @@ class TestRegenerateCharacterImageEndpoint:
                 test_client = TestClient(app)
                 response = test_client.post(
                     "/collection/1/characters/林月如/regenerate-image",
-                    json={"feedback": "换个发型"}
+                    json={"feedback": "换个发型"},
                 )
 
                 # Should check affinity from characters, not bypass
@@ -775,17 +814,20 @@ class TestRegenerateItemImageEndpoint:
 
     @patch("src.api.routers.collection.session_service")
     @patch("src.api.routers.collection.SessionLocal")
-    def test_regenerate_item_image_unauthorized(self, mock_session_local, mock_session_service, client):
+    def test_regenerate_item_image_unauthorized(
+        self, mock_session_local, mock_session_service, client
+    ):
         """Test regenerate_item_image returns 401 when not logged in."""
         response = client.post(
-            "/collection/1/items/魔法剑/regenerate-image",
-            json={"feedback": "增加光泽"}
+            "/collection/1/items/魔法剑/regenerate-image", json={"feedback": "增加光泽"}
         )
         assert response.status_code == 401
 
     @patch("src.api.routers.collection.session_service")
     @patch("src.api.routers.collection.SessionLocal")
-    def test_regenerate_item_image_item_not_found(self, mock_session_local, mock_session_service, client):
+    def test_regenerate_item_image_item_not_found(
+        self, mock_session_local, mock_session_service, client
+    ):
         """Test regenerate_item_image returns 404 when item not found."""
         mock_user = MagicMock()
         mock_user.user_id = 1

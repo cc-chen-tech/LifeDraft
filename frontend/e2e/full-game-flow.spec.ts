@@ -39,14 +39,14 @@ test.describe('Full Game Flow - Complete Journey', () => {
     // 填写角色名
     const nameInput = page.getByPlaceholder(/角色名|姓名|Name/i);
     await nameInput.fill('E2E测试角色');
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
 
     // 填写人生愿景
     const visionInput = page.getByPlaceholder(/人生愿景|人生方向|Life Vision/i);
     await visionInput.fill('探索世界，寻找真理');
 
     // 等待AI生成完成
-    await page.waitForTimeout(3000);
+    await page.waitForResponse(resp => resp.url().includes('/api/') && resp.status() === 200).catch(() => {});
     await waitForNetworkIdle(page);
 
     // 检查是否有网络错误
@@ -68,7 +68,7 @@ test.describe('Full Game Flow - Complete Journey', () => {
     // 填写角色名
     const nameInput = page.getByPlaceholder(/角色名|姓名|Name/i);
     await nameInput.fill('E2E测试角色');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
 
     // 点击下一步遍历所有步骤
     const maxSteps = 5;
@@ -81,7 +81,7 @@ test.describe('Full Game Flow - Complete Journey', () => {
         if (isEnabled) {
           monitor.clear();
           await nextButton.click();
-          await page.waitForTimeout(1000);
+          await page.waitForLoadState('networkidle');
           await waitForNetworkIdle(page);
 
           // 检查每一步是否有API错误
@@ -103,7 +103,7 @@ test.describe('Full Game Flow - Complete Journey', () => {
 
     // 填写必要信息
     await page.getByPlaceholder(/角色名|姓名|Name/i).fill('E2E测试角色');
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState('networkidle');
 
     // 点击开始游戏按钮（如果在最后一步）
     const startButton = page.getByRole('button', { name: /开始游戏|Start Game|生成角色/i });
@@ -111,7 +111,7 @@ test.describe('Full Game Flow - Complete Journey', () => {
     if (await startButton.isVisible().catch(() => false)) {
       monitor.clear();
       await startButton.click();
-      await page.waitForTimeout(2000);
+      await page.waitForResponse(resp => resp.url().includes('/api/')).catch(() => {});
       await waitForNetworkIdle(page);
 
       // 检查是否有API错误
@@ -137,7 +137,7 @@ test.describe('Full Game Flow - Game Loop', () => {
 
     await page.goto(`${BASE_URL}/play`);
     await waitForNetworkIdle(page);
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState('networkidle');
 
     // 检查是否有404错误
     const notFoundErrors = monitor.get404Errors();
@@ -177,7 +177,7 @@ test.describe('Full Game Flow - Game Loop', () => {
     if (await historyButton.isVisible().catch(() => false)) {
       monitor.clear();
       await historyButton.click();
-      await page.waitForTimeout(1000);
+      await page.waitForLoadState('networkidle');
 
       const errors = monitor.get4xxErrors();
       if (errors.length > 0) {
@@ -206,7 +206,7 @@ test.describe('Full Game Flow - Save and Load', () => {
     if (await saveButton.isVisible().catch(() => false)) {
       monitor.clear();
       await saveButton.click();
-      await page.waitForTimeout(2000);
+      await page.waitForResponse(resp => resp.url().includes('/api/')).catch(() => {});
       await waitForNetworkIdle(page);
 
       const errors = monitor.get4xxErrors();
@@ -223,7 +223,7 @@ test.describe('Full Game Flow - Save and Load', () => {
     // 进入存档页面
     await page.goto(`${BASE_URL}/saves`);
     await waitForNetworkIdle(page);
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState('networkidle');
 
     const errors = monitor.get4xxErrors();
     if (errors.length > 0) {
@@ -252,7 +252,7 @@ test.describe('Full Game Flow - Image Generation', () => {
 
     // 填写角色名触发图片生成
     await page.getByPlaceholder(/角色名|姓名|Name/i).fill('ImageTest角色');
-    await page.waitForTimeout(3000);
+    await page.waitForResponse(resp => resp.url().includes('/api/') && resp.status() === 200).catch(() => {});
     await waitForNetworkIdle(page);
 
     const errors = monitor.get4xxErrors();
@@ -275,7 +275,7 @@ test.describe('Full Game Flow - Image Generation', () => {
     // 进入游戏页面
     await page.goto(`${BASE_URL}/play`);
     await waitForNetworkIdle(page);
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState('networkidle');
 
     const errors = monitor.get4xxErrors();
 
@@ -318,13 +318,13 @@ test.describe('Full Game Flow - Console Error Monitoring', () => {
 
     // 执行一系列操作
     await page.goto(`${BASE_URL}/`);
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
 
     await page.goto(`${BASE_URL}/create`);
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
 
     await page.goto(`${BASE_URL}/saves`);
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
 
     // 过滤掉已知的非关键错误
     const criticalErrors = consoleErrors.filter(e =>

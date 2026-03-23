@@ -5,6 +5,7 @@
  * Tests for game save and load functionality including save list, load, and delete
  */
 import { test, expect } from '@playwright/test';
+import { waitForPageReady } from './helpers/wait-helpers';
 
 test.describe('Save/Load - Page Structure', () => {
   test.beforeEach(async ({ page }) => {
@@ -34,12 +35,12 @@ test.describe('Save/Load - Save List', () => {
     const spinner = page.locator('[class*="animate-spin"]');
     
     // Should either show loading or content
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
   });
 
   test('should display saved games list when available', async ({ page }) => {
     await page.goto('/saves');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     
     // Save cards or empty state
     const saveCards = page.locator('[class*="card"], [class*="save"]');
@@ -50,7 +51,7 @@ test.describe('Save/Load - Save List', () => {
 
   test('should show player name on save cards', async ({ page }) => {
     await page.goto('/saves');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     
     // Look for player name
     const playerName = page.locator('text=/角色|玩家/');
@@ -60,7 +61,7 @@ test.describe('Save/Load - Save List', () => {
 
   test('should display save timestamp', async ({ page }) => {
     await page.goto('/saves');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     
     // Time display (凌晨/上午/下午/晚上)
     const timeDisplay = page.locator('text=/凌晨|上午|下午|晚上|\d+:\d+/');
@@ -70,7 +71,7 @@ test.describe('Save/Load - Save List', () => {
 
   test('should show week progress on saves', async ({ page }) => {
     await page.goto('/saves');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     
     // Week display
     const weekDisplay = page.locator('text=/周|Week/');
@@ -80,7 +81,7 @@ test.describe('Save/Load - Save List', () => {
 test.describe('Save/Load - Character Groups', () => {
   test('should group saves by character name', async ({ page }) => {
     await page.goto('/saves');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     
     // Character groups (collapsible)
     const groups = page.locator('[class*="collapsible"], [class*="group"]');
@@ -90,20 +91,20 @@ test.describe('Save/Load - Character Groups', () => {
 
   test('should allow expanding character group', async ({ page }) => {
     await page.goto('/saves');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     
     // Click to expand group
     const groupTrigger = page.locator('button').filter({ has: page.locator('svg') });
     
     if (await groupTrigger.count() > 0) {
       await groupTrigger.first().click();
-      await page.waitForTimeout(300);
+      await page.waitForLoadState('domcontentloaded');
     }
   });
 
   test('should show save count per character', async ({ page }) => {
     await page.goto('/saves');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     
     // Save count badge
     const saveCount = page.locator('text=/\\d+.*存档|\\d+.*个/');
@@ -113,7 +114,7 @@ test.describe('Save/Load - Character Groups', () => {
 test.describe('Save/Load - Load Functionality', () => {
   test('should have load/play button on each save', async ({ page }) => {
     await page.goto('/saves');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     
     // Play button
     const playButton = page.getByRole('button', { name: /继续|加载|Load|Play/i });
@@ -123,7 +124,7 @@ test.describe('Save/Load - Load Functionality', () => {
 
   test('should load game when clicking play button', async ({ page }) => {
     await page.goto('/saves');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     
     const playButton = page.getByRole('button', { name: /继续|加载|Load|Play/i });
     
@@ -131,7 +132,7 @@ test.describe('Save/Load - Load Functionality', () => {
       await playButton.first().click();
       
       // Should navigate to play page
-      await page.waitForTimeout(1000);
+      await page.waitForLoadState('networkidle');
       
       // URL should be /play
       const currentUrl = page.url();
@@ -140,7 +141,7 @@ test.describe('Save/Load - Load Functionality', () => {
 
   test('should show loading indicator while loading', async ({ page }) => {
     await page.goto('/saves');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     
     const playButton = page.getByRole('button', { name: /继续|加载|Load|Play/i });
     
@@ -156,7 +157,7 @@ test.describe('Save/Load - Load Functionality', () => {
 test.describe('Save/Load - Delete Functionality', () => {
   test('should have delete button on each save', async ({ page }) => {
     await page.goto('/saves');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     
     // Delete button (trash icon)
     const deleteButton = page.getByRole('button').filter({ has: page.locator('svg') });
@@ -166,7 +167,7 @@ test.describe('Save/Load - Delete Functionality', () => {
 
   test('should show confirmation dialog when deleting', async ({ page }) => {
     await page.goto('/saves');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     
     // Find delete button (trash icon)
     const buttons = page.getByRole('button');
@@ -176,7 +177,7 @@ test.describe('Save/Load - Delete Functionality', () => {
       const hasTrashIcon = await button.locator('svg').count() > 0;
       if (hasTrashIcon) {
         await button.click();
-        await page.waitForTimeout(300);
+        await page.waitForLoadState('domcontentloaded');
         
         // Dialog should appear
         const dialog = page.locator('[role="dialog"], [class*="dialog"]');
@@ -187,7 +188,7 @@ test.describe('Save/Load - Delete Functionality', () => {
 
   test('should cancel delete when clicking cancel', async ({ page }) => {
     await page.goto('/saves');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     
     // Open delete dialog
     const buttons = page.getByRole('button');
@@ -196,7 +197,7 @@ test.describe('Save/Load - Delete Functionality', () => {
       const hasTrashIcon = await button.locator('svg').count() > 0;
       if (hasTrashIcon) {
         await button.click();
-        await page.waitForTimeout(300);
+        await page.waitForLoadState('domcontentloaded');
         
         // Click cancel
         const cancelButton = page.getByRole('button', { name: /取消|Cancel/i });
@@ -210,7 +211,7 @@ test.describe('Save/Load - Delete Functionality', () => {
 
   test('should delete save when confirming', async ({ page }) => {
     await page.goto('/saves');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     
     // Open delete dialog
     const buttons = page.getByRole('button');
@@ -219,7 +220,7 @@ test.describe('Save/Load - Delete Functionality', () => {
       const hasTrashIcon = await button.locator('svg').count() > 0;
       if (hasTrashIcon) {
         await button.click();
-        await page.waitForTimeout(300);
+        await page.waitForLoadState('domcontentloaded');
         
         // Click confirm delete
         const confirmButton = page.getByRole('button', { name: /删除|Delete|确认/i });
@@ -241,7 +242,7 @@ test.describe('Save/Load - Empty State', () => {
     });
     
     await page.goto('/saves');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     
     // Empty state message
     const emptyMessage = page.locator('text=/没有存档|暂无|空|开始新游戏/');
@@ -257,7 +258,7 @@ test.describe('Save/Load - Empty State', () => {
     });
     
     await page.goto('/saves');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     
     // New game button
     const newGameButton = page.getByRole('button', { name: /新游戏|创建角色|开始/i });
@@ -268,7 +269,7 @@ test.describe('Save/Load - Empty State', () => {
 test.describe('Save/Load - Toast Notifications', () => {
   test('should show success toast after successful load', async ({ page }) => {
     await page.goto('/saves');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     
     const playButton = page.getByRole('button', { name: /继续|加载|Load|Play/i });
     
@@ -276,7 +277,7 @@ test.describe('Save/Load - Toast Notifications', () => {
       await playButton.first().click();
 
       // Toast notification or navigation should happen
-      await page.waitForTimeout(1000);
+      await page.waitForLoadState('networkidle');
     }
   });
 
@@ -285,13 +286,13 @@ test.describe('Save/Load - Toast Notifications', () => {
     await page.route('**/api/games/*/load*', route => route.abort('failed'));
     
     await page.goto('/saves');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     
     const playButton = page.getByRole('button', { name: /继续|加载|Load|Play/i });
     
     if (await playButton.count() > 0) {
       await playButton.first().click();
-      await page.waitForTimeout(1000);
+      await page.waitForLoadState('networkidle');
 
       // Error toast or error state should appear
       await expect(page).toHaveURL(/saves|play/);

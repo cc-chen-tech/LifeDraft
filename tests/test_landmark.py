@@ -1,7 +1,14 @@
 """Tests for landmark collection system."""
+
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from src.game.state.landmark_state import LandmarkState, LANDMARK_CATEGORY_LABELS, LANDMARK_IMPORTANCE_LABELS
+
+from src.game.state.landmark_state import (
+    LANDMARK_CATEGORY_LABELS,
+    LANDMARK_IMPORTANCE_LABELS,
+    LandmarkState,
+)
 from src.services.landmark_extraction_service import LandmarkExtractionService
 
 
@@ -135,7 +142,7 @@ class TestLandmarkExtractionService:
     def test_extract_landmarks_new_landmark(self):
         """Test extracting a new landmark."""
         mock_ai_client = Mock()
-        mock_ai_client.call.return_value = '''
+        mock_ai_client.call.return_value = """
         {
             "landmarks": [
                 {
@@ -150,7 +157,7 @@ class TestLandmarkExtractionService:
                 }
             ]
         }
-        '''
+        """
 
         service = LandmarkExtractionService(mock_ai_client)
 
@@ -172,7 +179,7 @@ class TestLandmarkExtractionService:
     def test_extract_landmarks_update_existing(self):
         """Test updating an existing landmark."""
         mock_ai_client = Mock()
-        mock_ai_client.call.return_value = '''
+        mock_ai_client.call.return_value = """
         {
             "landmarks": [
                 {
@@ -181,7 +188,7 @@ class TestLandmarkExtractionService:
                 }
             ]
         }
-        '''
+        """
 
         service = LandmarkExtractionService(mock_ai_client)
 
@@ -211,7 +218,7 @@ class TestLandmarkExtractionService:
     def test_extract_landmarks_invalid_category_defaults_to_other(self):
         """Test that invalid category defaults to 'other'."""
         mock_ai_client = Mock()
-        mock_ai_client.call.return_value = '''
+        mock_ai_client.call.return_value = """
         {
             "landmarks": [
                 {
@@ -225,7 +232,7 @@ class TestLandmarkExtractionService:
                 }
             ]
         }
-        '''
+        """
 
         service = LandmarkExtractionService(mock_ai_client)
 
@@ -243,7 +250,7 @@ class TestLandmarkExtractionService:
     def test_extract_landmarks_invalid_importance_defaults_to_normal(self):
         """Test that invalid importance defaults to 'normal'."""
         mock_ai_client = Mock()
-        mock_ai_client.call.return_value = '''
+        mock_ai_client.call.return_value = """
         {
             "landmarks": [
                 {
@@ -257,7 +264,7 @@ class TestLandmarkExtractionService:
                 }
             ]
         }
-        '''
+        """
 
         service = LandmarkExtractionService(mock_ai_client)
 
@@ -323,7 +330,9 @@ class TestLandmarkExtractionService:
     def test_generate_landmark_description(self):
         """Test generating landmark description."""
         mock_ai_client = Mock()
-        mock_ai_client.call.return_value = '{"description": "这是一座宏伟的建筑，高耸入云，散发着神秘的光芒。"}'
+        mock_ai_client.call.return_value = (
+            '{"description": "这是一座宏伟的建筑，高耸入云，散发着神秘的光芒。"}'
+        )
 
         service = LandmarkExtractionService(mock_ai_client)
 
@@ -458,12 +467,14 @@ class TestPlayerStateLandmarkMethods:
         from src.game.state.player_state import PlayerState
 
         player = PlayerState(player_name="Test")
-        player.add_landmark(LandmarkState(
-            name="钟楼",
-            description="古老的钟楼",
-            category="building",
-            is_key_location=True,
-        ))
+        player.add_landmark(
+            LandmarkState(
+                name="钟楼",
+                description="古老的钟楼",
+                category="building",
+                is_key_location=True,
+            )
+        )
 
         context = player.get_landmarks_context()
 

@@ -1,8 +1,10 @@
 """Tests for quick_validator module."""
+
 import pytest
+
 from src.ai.quick_validator import (
-    QuickValidator,
     QuickValidationResult,
+    QuickValidator,
     quick_validate_story,
 )
 
@@ -78,33 +80,29 @@ class TestQuickValidator:
     def test_validate_dialogue_first_person_allowed_zh(self):
         """Test that first-person in dialogue is allowed."""
         validator = QuickValidator()
-        story = '''她说："我今天很开心。" 他点了点头。'''
+        story = """她说："我今天很开心。" 他点了点头。"""
         result = validator.validate(story, language="zh")
         # Should pass because first-person is in dialogue
         assert result.passed is True
 
     def test_validate_character_names_no_false_positives_zh(self):
         """Test that character name detection doesn't produce false positives.
-        
+
         中文人名识别非常困难，规则方法误报率极高。
         所以我们不再尝试从文本中提取人名，避免误报。
         """
         validator = QuickValidator()
         story = "李逍遥盘腿坐下，符文在烛光中闪烁。"
-        result = validator.validate(
-            story,
-            available_people=["李逍遥"],
-            language="zh"
-        )
+        result = validator.validate(story, available_people=["李逍遥"], language="zh")
         # Should NOT have false positive warnings like "李逍遥盘"
         assert len(result.warnings) == 0
 
     def test_validate_clean_story_en(self):
         """Test validation of clean English story."""
         validator = QuickValidator()
-        story = '''She walked down the street, looking at the scenery.
+        story = """She walked down the street, looking at the scenery.
         "Why are you here today?" she asked.
-        He smiled without answering.'''
+        He smiled without answering."""
         result = validator.validate(story, language="en")
         assert result.passed is True
 
@@ -168,15 +166,17 @@ class TestQuickValidateStory:
         story = "I walked down the street. This is a game."
         result = quick_validate_story(story, language="en")
         # Should detect issues in English
-        assert result.passed is False or len(result.issues) > 0 or len(result.warnings) >= 0
+        assert (
+            result.passed is False
+            or len(result.issues) > 0
+            or len(result.warnings) >= 0
+        )
 
     def test_quick_validate_story_with_available_people(self):
         """Test quick_validate_story with available people list."""
         story = "小明和小红在街上相遇了。"
         result = quick_validate_story(
-            story,
-            available_people=["小明", "小红"],
-            language="zh"
+            story, available_people=["小明", "小红"], language="zh"
         )
         # Should pass with correct names
         assert result.passed is True

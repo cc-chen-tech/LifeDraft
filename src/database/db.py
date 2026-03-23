@@ -5,10 +5,19 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from src.database.models import (CharacterPreset, Decision, Ending, Game,
-                                 GameState, SessionLocal, get_db, init_db)
+from src.database.models import (
+    CharacterPreset,
+    Decision,
+    Ending,
+    Game,
+    GameState,
+    SessionLocal,
+    get_db,
+    init_db,
+)
 from src.game.state import PlayerState
 
 logger = logging.getLogger(__name__)
@@ -40,7 +49,9 @@ class GameDatabase:
         """
         db = SessionLocal()
         try:
-            game = Game(language=language, initial_state=initial_state or {}, user_id=user_id)
+            game = Game(
+                language=language, initial_state=initial_state or {}, user_id=user_id
+            )
             db.add(game)
             db.commit()
             db.refresh(game)
@@ -204,7 +215,10 @@ class GameDatabase:
         db = SessionLocal()
         try:
             return (
-                db.query(Decision).filter(Decision.game_id == game_id).order_by(Decision.week).all()
+                db.query(Decision)
+                .filter(Decision.game_id == game_id)
+                .order_by(Decision.week)
+                .all()
             )
         finally:
             db.close()
@@ -259,7 +273,10 @@ class GameDatabase:
         db = SessionLocal()
         try:
             decisions = (
-                db.query(Decision).filter(Decision.game_id == game_id).order_by(Decision.week).all()
+                db.query(Decision)
+                .filter(Decision.game_id == game_id)
+                .order_by(Decision.week)
+                .all()
             )
 
             results = []
@@ -296,26 +313,41 @@ class GameDatabase:
         """
         db = SessionLocal()
         try:
-            games = (
-                db.query(Game)
-                .filter(Game.user_id == user_id, Game.ending_type.is_(None))  # 只显示未结束的游戏
+            # 子查询：找到每个游戏的最新 state_id
+            latest_state_subquery = (
+                db.query(
+                    GameState.game_id,
+                    func.max(GameState.state_id).label("max_state_id"),
+                )
+                .group_by(GameState.game_id)
+                .subquery()
+            )
+
+            # 主查询：JOIN Game + 最新 GameState
+            results = (
+                db.query(Game, GameState)
+                .outerjoin(
+                    latest_state_subquery,
+                    Game.game_id == latest_state_subquery.c.game_id,
+                )
+                .outerjoin(
+                    GameState,
+                    GameState.state_id == latest_state_subquery.c.max_state_id,
+                )
+                .filter(Game.user_id == user_id)
+                .filter(Game.ending_type.is_(None))
                 .order_by(Game.updated_at.desc())
                 .limit(limit)
                 .all()
             )
 
+            # 转换为原有返回格式
             result = []
-            for game in games:
-                # 获取最新的游戏状态
-                latest_state = (
-                    db.query(GameState)
-                    .filter(GameState.game_id == game.game_id)
-                    .order_by(GameState.week.desc())
-                    .first()
-                )
-
+            for game, latest_state in results:
                 # 从 initial_state 或 latest_state 获取信息
-                state_data = latest_state.state_json if latest_state else game.initial_state
+                state_data = (
+                    latest_state.state_json if latest_state else game.initial_state
+                )
                 initial_data = game.initial_state or {}
 
                 # player_name 优先从 initial_state 获取（因为旧的 game_states 可能没有这个字段）
@@ -363,11 +395,17 @@ class GameDatabase:
         logger = logging.getLogger(__name__)
 
         if not player_state:
-            logger.error(f"save_game_progress: player_state is None for game_id={game_id}")
+            logger.error(
+                f"save_game_progress: player_state is None for game_id={game_id}"
+            )
             return False
 
         # ★ 显示用周数（人类可读，从1开始）
-        week_display = f"第{player_state.week + 1}周" if player_state.week is not None else "未知周"
+        week_display = (
+            f"第{player_state.week + 1}周"
+            if player_state.week is not None
+            else "未知周"
+        )
         logger.info(
             f"save_game_progress: Saving game_id={game_id}, {week_display}, age={player_state.age}"
         )
@@ -389,13 +427,17 @@ class GameDatabase:
                 game.updated_at = datetime.utcnow()
                 logger.info(f"save_game_progress: Updated game {game_id} updated_at")
             else:
-                logger.warning(f"save_game_progress: Game {game_id} not found in database")
+                logger.warning(
+                    f"save_game_progress: Game {game_id} not found in database"
+                )
 
             db.commit()
             logger.info(f"save_game_progress: Successfully saved game_id={game_id}")
             return True
         except Exception as e:
-            logger.error(f"save_game_progress: Failed to save game_id={game_id}, error={e}")
+            logger.error(
+                f"save_game_progress: Failed to save game_id={game_id}, error={e}"
+            )
             db.rollback()
             return False
         finally:
@@ -415,7 +457,11 @@ class GameDatabase:
         db = SessionLocal()
         try:
             # 验证游戏属于该用户
-            game = db.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
+            game = (
+                db.query(Game)
+                .filter(Game.game_id == game_id, Game.user_id == user_id)
+                .first()
+            )
 
             if not game:
                 return None
@@ -435,9 +481,13 @@ class GameDatabase:
                 state_data["_game_id"] = game_id  # 添加 game_id 以便后续保存
 
                 # 从 initial_state 补充 player_name 和 life_vision（旧存档可能没有这些字段）
-                if not state_data.get("player_name") and initial_data.get("player_name"):
+                if not state_data.get("player_name") and initial_data.get(
+                    "player_name"
+                ):
                     state_data["player_name"] = initial_data["player_name"]
-                if not state_data.get("life_vision") and initial_data.get("life_vision"):
+                if not state_data.get("life_vision") and initial_data.get(
+                    "life_vision"
+                ):
                     state_data["life_vision"] = initial_data["life_vision"]
 
             return state_data
@@ -457,7 +507,11 @@ class GameDatabase:
         """
         db = SessionLocal()
         try:
-            game = db.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
+            game = (
+                db.query(Game)
+                .filter(Game.game_id == game_id, Game.user_id == user_id)
+                .first()
+            )
 
             if game:
                 db.delete(game)  # cascade 会自动删除关联的 states 和 decisions
@@ -522,7 +576,9 @@ class GameDatabase:
 
         db = SessionLocal()
         try:
-            query = db.query(CharacterPreset).filter(CharacterPreset.preset_id == preset_id)
+            query = db.query(CharacterPreset).filter(
+                CharacterPreset.preset_id == preset_id
+            )
             # 如果提供了 user_id，验证所有权（允许自己的和公共的）
             if user_id is not None:
                 query = query.filter(
@@ -541,7 +597,9 @@ class GameDatabase:
                     "player_name": preset.player_name,
                     "life_vision": preset.life_vision,
                     "character_settings": preset.character_settings,
-                    "created_at": preset.created_at.isoformat() if preset.created_at else None,
+                    "created_at": (
+                        preset.created_at.isoformat() if preset.created_at else None
+                    ),
                 }
             return None
         finally:
@@ -580,7 +638,9 @@ class GameDatabase:
         finally:
             db.close()
 
-    def delete_character_preset(self, preset_id: int, user_id: Optional[int] = None) -> bool:
+    def delete_character_preset(
+        self, preset_id: int, user_id: Optional[int] = None
+    ) -> bool:
         """
         Delete a character preset.
 
@@ -593,7 +653,9 @@ class GameDatabase:
         """
         db = SessionLocal()
         try:
-            query = db.query(CharacterPreset).filter(CharacterPreset.preset_id == preset_id)
+            query = db.query(CharacterPreset).filter(
+                CharacterPreset.preset_id == preset_id
+            )
             # 如果提供了 user_id，验证所有权（但允许删除 user_id 为 NULL 的旧数据）
             if user_id is not None:
                 from sqlalchemy import or_
@@ -601,7 +663,9 @@ class GameDatabase:
                 query = query.filter(
                     or_(
                         CharacterPreset.user_id == user_id,
-                        CharacterPreset.user_id.is_(None),  # Allow deleting orphaned presets
+                        CharacterPreset.user_id.is_(
+                            None
+                        ),  # Allow deleting orphaned presets
                     )
                 )
 
@@ -665,7 +729,10 @@ class GameDatabase:
                 # 验证游戏是否仍然存在且属于该用户
                 game = (
                     db.query(Game)
-                    .filter(Game.game_id == user.last_active_game_id, Game.user_id == user_id)
+                    .filter(
+                        Game.game_id == user.last_active_game_id,
+                        Game.user_id == user_id,
+                    )
                     .first()
                 )
                 if game:
@@ -733,7 +800,11 @@ class GameDatabase:
         db = SessionLocal()
         try:
             # 验证游戏属于该用户
-            game = db.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
+            game = (
+                db.query(Game)
+                .filter(Game.game_id == game_id, Game.user_id == user_id)
+                .first()
+            )
 
             if not game:
                 logger.warning(
@@ -783,7 +854,11 @@ class GameDatabase:
         db = SessionLocal()
         try:
             # 验证游戏属于该用户
-            game = db.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
+            game = (
+                db.query(Game)
+                .filter(Game.game_id == game_id, Game.user_id == user_id)
+                .first()
+            )
 
             if not game:
                 return []
@@ -829,7 +904,9 @@ class GameDatabase:
         db = SessionLocal()
         try:
             # 查询存档点并验证权限
-            save_point = db.query(GameState).filter(GameState.state_id == state_id).first()
+            save_point = (
+                db.query(GameState).filter(GameState.state_id == state_id).first()
+            )
 
             if not save_point:
                 return None
@@ -910,7 +987,11 @@ class GameDatabase:
         db = SessionLocal()
         try:
             # 验证游戏属于该用户
-            game = db.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
+            game = (
+                db.query(Game)
+                .filter(Game.game_id == game_id, Game.user_id == user_id)
+                .first()
+            )
 
             if not game:
                 return []

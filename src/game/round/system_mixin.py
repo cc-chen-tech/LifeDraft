@@ -118,7 +118,9 @@ class RoundSystemMixin:
 
     # ==================== Character Introduction ====================
 
-    def _maybe_generate_new_character(self, probability: float = 0.08) -> Optional[Dict[str, Any]]:
+    def _maybe_generate_new_character(
+        self, probability: float = 0.08
+    ) -> Optional[Dict[str, Any]]:
         """Generate new character with probability. Delegates to CharacterIntroductionService."""
         if not hasattr(self, "_char_intro_service"):
             self._init_round_services()
@@ -193,7 +195,9 @@ class RoundSystemMixin:
     # ==================== Finalization ====================
 
     def _finalize_week(
-        self, result: Dict[str, Any], status_callback: Optional[Callable[[str], None]] = None
+        self,
+        result: Dict[str, Any],
+        status_callback: Optional[Callable[[str], None]] = None,
     ) -> None:
         """Finalize week. Delegates to RoundFinalizer."""
         if not hasattr(self, "_finalizer"):
@@ -236,7 +240,9 @@ class RoundSystemMixin:
         """Generate custom choice result. Delegates to choice processor."""
         if not hasattr(self, "_choice_processor"):
             self._init_round_services()
-        return self._choice_processor._generate_custom_choice_result(event_description, custom_text)
+        return self._choice_processor._generate_custom_choice_result(
+            event_description, custom_text
+        )
 
     def _generate_story_continuation(
         self,

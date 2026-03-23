@@ -233,7 +233,9 @@ class RegenerateFreshImageRequest(BaseModel):
     """完全重新生成图片请求（抛弃历史修改）"""
 
     image_id: int
-    use_deepseek_prompt: bool = Field(True, description="是否使用DeepSeek生成优化prompt")
+    use_deepseek_prompt: bool = Field(
+        True, description="是否使用DeepSeek生成优化prompt"
+    )
 
 
 class BatchGenerateCharactersRequest(BaseModel):
@@ -328,7 +330,9 @@ class GenerateOpeningIllustrationRequest(BaseModel):
 
     game_id: int
     story_text: str = Field(..., description="开场故事文本")
-    character_settings: Dict[str, Any] = Field(default_factory=dict, description="角色设定")
+    character_settings: Dict[str, Any] = Field(
+        default_factory=dict, description="角色设定"
+    )
     player_image_id: Optional[int] = Field(None, description="可选：已有的人物图片ID")
     player_name: str = Field(..., description="角色姓名")
 
@@ -349,7 +353,9 @@ class RegenerateOpeningIllustrationRequest(BaseModel):
 
     game_id: int
     story_text: str = Field(..., description="开场故事文本")
-    character_settings: Dict[str, Any] = Field(default_factory=dict, description="角色设定")
+    character_settings: Dict[str, Any] = Field(
+        default_factory=dict, description="角色设定"
+    )
     player_image_id: Optional[int] = Field(None, description="可选：已有的人物图片ID")
     player_name: str = Field(..., description="角色姓名")
     user_prompt: str = Field(..., description="用户自定义提示词/修改意见")
@@ -362,7 +368,9 @@ class RegenerateRoundSceneRequest(BaseModel):
     game_id: int
     round_number: int = Field(..., description="轮次")
     story_text: str = Field(..., description="该轮的故事文本")
-    character_settings: Dict[str, Any] = Field(default_factory=dict, description="角色设定")
+    character_settings: Dict[str, Any] = Field(
+        default_factory=dict, description="角色设定"
+    )
     player_name: str = Field(..., description="角色姓名")
     user_prompt: str = Field(..., description="用户自定义提示词/修改意见")
     current_scene_id: int = Field(..., description="当前场景插画ID，作为参考")
@@ -373,13 +381,19 @@ class GenerateRoundSceneRequest(BaseModel):
     """自动生成每轮场景插画请求"""
 
     game_id: int
-    week: Optional[int] = Field(None, description="周数（可选，不传则自动从数据库获取）")
+    week: Optional[int] = Field(
+        None, description="周数（可选，不传则自动从数据库获取）"
+    )
     round_number: int = Field(..., description="轮次")
     story_text: str = Field(..., description="该轮的故事文本")
-    character_settings: Dict[str, Any] = Field(default_factory=dict, description="角色设定")
+    character_settings: Dict[str, Any] = Field(
+        default_factory=dict, description="角色设定"
+    )
     player_name: str = Field(..., description="角色姓名")
     player_image_id: Optional[int] = Field(None, description="可选：已有的人物图片ID")
-    stage: str = Field("result", description="场景阶段: event(事件故事) 或 result(结果故事)")
+    stage: str = Field(
+        "result", description="场景阶段: event(事件故事) 或 result(结果故事)"
+    )
 
 
 class RoundSceneResponse(BaseModel):
@@ -462,7 +476,9 @@ class CollectionResponse(BaseModel):
 class RegenerateCharacterImageRequest(BaseModel):
     """重新生成人物画像请求"""
 
-    feedback: str = Field(..., description="用户修改意见，例如：头发变长一点、换一件蓝色衣服")
+    feedback: str = Field(
+        ..., description="用户修改意见，例如：头发变长一点、换一件蓝色衣服"
+    )
     image_id: Optional[int] = Field(
         None, description="可选：指定要修改的图片ID，不传则使用当前活跃图片"
     )
@@ -481,7 +497,8 @@ class EntityRecognitionRequest(BaseModel):
     """实体识别请求"""
 
     entity_types: List[str] = Field(
-        default_factory=lambda: ["item", "character", "landmark"], description="要识别的实体类型"
+        default_factory=lambda: ["item", "character", "landmark"],
+        description="要识别的实体类型",
     )
     min_appearances: int = Field(default=3, ge=1, le=10, description="最少出现次数")
 
@@ -494,7 +511,9 @@ class RecognizedEntity(BaseModel):
     category: str = Field(default="other", description="类别")
     importance: str = Field(default="normal", description="重要程度")
     appear_count: int = Field(default=1, description="出现次数")
-    appear_contexts: List[str] = Field(default_factory=list, description="出现的上下文片段")
+    appear_contexts: List[str] = Field(
+        default_factory=list, description="出现的上下文片段"
+    )
 
 
 class EntityRecognitionResponse(BaseModel):

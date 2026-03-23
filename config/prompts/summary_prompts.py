@@ -1,19 +1,15 @@
 """Summary generation prompts."""
-from typing import Dict, Any, Optional, List
 
-from config.prompts._helpers import (
-    _build_time_context,
-    _format_people_names,
-)
+from typing import Any, Dict, List, Optional
+
+from config.prompts._helpers import _build_time_context, _format_people_names
 
 
 def get_ending_prompt(
-    final_state: Dict[str, Any],
-    decision_history: list,
-    language: str = "en"
+    final_state: Dict[str, Any], decision_history: list, language: str = "en"
 ) -> str:
     """Generate prompt for ending narrative."""
-    
+
     if language == "zh":
         return f"""根据以下游戏结果，生成一段人生总结（200-300字）：
 
@@ -35,26 +31,28 @@ def get_four_week_summary_prompt(
     decisions: list,
     character_settings: Optional[Dict[str, Any]] = None,
     language: str = "zh",
-    game_date_info: Optional[Dict[str, Any]] = None
+    game_date_info: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
     Generate prompt for 4-week summary.
-    
+
     Args:
         stories: List of story descriptions from the past 4 weeks
         decisions: List of decisions made in the past 4 weeks
         character_settings: Character background settings
         language: Language code
         game_date_info: Game-internal date info for time context
-    
+
     Returns:
         Formatted prompt string
     """
     stories_text = "\n\n".join([f"第{i+1}周：{s}" for i, s in enumerate(stories)])
-    decisions_text = "\n".join([f"- {d.get('choice', '')}（{d.get('event', '')[:30]}...）" for d in decisions])
-    
+    decisions_text = "\n".join(
+        [f"- {d.get('choice', '')}（{d.get('event', '')[:30]}...）" for d in decisions]
+    )
+
     time_context = _build_time_context(game_date_info, language)
-    
+
     if language == "zh":
         return f"""请基于以下4周的故事和决策，生成一个简洁的总结（100-150字）：{time_context}
 
@@ -83,11 +81,11 @@ def get_yearly_summary_prompt(
     start_week: int = 0,
     end_week: int = 47,
     language: str = "zh",
-    game_date_info: Optional[Dict[str, Any]] = None
+    game_date_info: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
     Generate prompt for 48-week (yearly) summary.
-    
+
     Args:
         four_week_summaries: List of 4-week summaries (up to 12)
         character_settings: Character background settings
@@ -95,14 +93,19 @@ def get_yearly_summary_prompt(
         end_week: Ending week number
         language: Language code
         game_date_info: Game-internal date info for time context
-    
+
     Returns:
         Formatted prompt string
     """
-    summaries_text = "\n\n".join([f"第{i+1}个月：{s.get('summary', s) if isinstance(s, dict) else s}" for i, s in enumerate(four_week_summaries)])
-    
+    summaries_text = "\n\n".join(
+        [
+            f"第{i+1}个月：{s.get('summary', s) if isinstance(s, dict) else s}"
+            for i, s in enumerate(four_week_summaries)
+        ]
+    )
+
     time_context = _build_time_context(game_date_info, language)
-    
+
     if language == "zh":
         return f"""请基于以下12个月（48周）的总结，生成一个年度回顾（200-300字）：{time_context}
 
@@ -119,12 +122,19 @@ def get_yearly_summary_prompt(
 Summarize this year's main achievements, important turning points, character growth and changes. Highlight the most impactful events and decisions. Include time range info in the summary. Return only the summary text."""
 
 
-def get_story_compression_prompt(story: str, choice: str, language: str, pending_storylines: Optional[list] = None, established_facts: Optional[list] = None, character_habits: Optional[list] = None) -> str:
+def get_story_compression_prompt(
+    story: str,
+    choice: str,
+    language: str,
+    pending_storylines: Optional[list] = None,
+    established_facts: Optional[list] = None,
+    character_habits: Optional[list] = None,
+) -> str:
     """
     Generate prompt to compress a story into a 200-character summary,
     evaluate storyline status, judge if event is concluded, extract/update world facts,
     and track character habit changes.
-    
+
     Args:
         story: The full story text (1500-2000 chars)
         choice: The player's choice text
@@ -132,7 +142,7 @@ def get_story_compression_prompt(story: str, choice: str, language: str, pending
         pending_storylines: Current list of pending storylines for evaluation
         established_facts: Current established world facts for consistency tracking
         character_habits: Current character habits for tracking changes
-    
+
     Returns:
         Prompt for story compression with storyline, event conclusion, fact and habit evaluation
     """
@@ -142,44 +152,58 @@ def get_story_compression_prompt(story: str, choice: str, language: str, pending
         if language == "zh":
             lines = ["\n【当前未完结的剧情线】"]
             for sl in pending_storylines:
-                lines.append(f"- [{sl.get('importance', 'medium')}] {sl.get('description', '')}")
+                lines.append(
+                    f"- [{sl.get('importance', 'medium')}] {sl.get('description', '')}"
+                )
             pending_context = "\n".join(lines)
         else:
             lines = ["\n[Current Pending Storylines]"]
             for sl in pending_storylines:
-                lines.append(f"- [{sl.get('importance', 'medium')}] {sl.get('description', '')}")
+                lines.append(
+                    f"- [{sl.get('importance', 'medium')}] {sl.get('description', '')}"
+                )
             pending_context = "\n".join(lines)
-    
+
     # Build established facts context
     facts_context = ""
     if established_facts:
         if language == "zh":
             lines = ["\n【当前已建立的世界事实】"]
             for f in established_facts:
-                cat = {"location": "地点", "role": "角色", "situation": "事务"}.get(f.get("category", ""), "事实")
+                cat = {"location": "地点", "role": "角色", "situation": "事务"}.get(
+                    f.get("category", ""), "事实"
+                )
                 lines.append(f"- 【{cat}】{f.get('subject', '')}：{f.get('fact', '')}")
             facts_context = "\n".join(lines)
         else:
             lines = ["\n[Current Established Facts]"]
             for f in established_facts:
-                cat = {"location": "Location", "role": "Role", "situation": "Situation"}.get(f.get("category", ""), "Fact")
+                cat = {
+                    "location": "Location",
+                    "role": "Role",
+                    "situation": "Situation",
+                }.get(f.get("category", ""), "Fact")
                 lines.append(f"- [{cat}] {f.get('subject', '')}: {f.get('fact', '')}")
             facts_context = "\n".join(lines)
-    
+
     # Build character habits context
     habits_context = ""
     if character_habits:
         if language == "zh":
             lines = ["\n【当前已记录的人物习惯】"]
             for h in character_habits:
-                lines.append(f"- {h.get('character', '')}：{h.get('habit', '')}（{h.get('category', '')}，{h.get('strength', 'moderate')}）")
+                lines.append(
+                    f"- {h.get('character', '')}：{h.get('habit', '')}（{h.get('category', '')}，{h.get('strength', 'moderate')}）"
+                )
             habits_context = "\n".join(lines)
         else:
             lines = ["\n[Current Character Habits]"]
             for h in character_habits:
-                lines.append(f"- {h.get('character', '')}: {h.get('habit', '')} ({h.get('category', '')}, {h.get('strength', 'moderate')})")
+                lines.append(
+                    f"- {h.get('character', '')}: {h.get('habit', '')} ({h.get('category', '')}, {h.get('strength', 'moderate')})"
+                )
             habits_context = "\n".join(lines)
-    
+
     if language == "zh":
         return f"""请将以下故事压缩为500字以内的摘要，判断事件是否已完结，评估剧情线状态，并提取伏笔种子。
 
@@ -727,7 +751,7 @@ def get_narrative_compression_prompt(
     """
     Generate prompt for narrative compression only:
     summary + event_concluded + storyline_updates.
-    
+
     This is the lightweight half of the original get_story_compression_prompt,
     designed to run in parallel with get_world_extraction_prompt.
     """
@@ -737,12 +761,16 @@ def get_narrative_compression_prompt(
         if language == "zh":
             lines = ["\n【当前未完结的剧情线】"]
             for sl in pending_storylines:
-                lines.append(f"- [{sl.get('importance', 'medium')}] {sl.get('description', '')}")
+                lines.append(
+                    f"- [{sl.get('importance', 'medium')}] {sl.get('description', '')}"
+                )
             pending_context = "\n".join(lines)
         else:
             lines = ["\n[Current Pending Storylines]"]
             for sl in pending_storylines:
-                lines.append(f"- [{sl.get('importance', 'medium')}] {sl.get('description', '')}")
+                lines.append(
+                    f"- [{sl.get('importance', 'medium')}] {sl.get('description', '')}"
+                )
             pending_context = "\n".join(lines)
 
     if language == "zh":
@@ -842,55 +870,67 @@ def get_weekly_summary_prompt(
     rounds: list,
     character_settings: Optional[Dict[str, Any]],
     language: str,
-    game_date_info: Optional[Dict[str, Any]] = None
+    game_date_info: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
     Generate prompt for weekly summary generation.
-    
+
     Args:
         rounds: List of round records [{"summary": ..., "choice": ..., "effects": ...}]
         character_settings: Character background settings
         language: Language code ('zh' or 'en')
-    
+
     Returns:
         Prompt for weekly summary generation
     """
     # Format rounds into readable text
     round_names_zh = ["周一", "周中", "周末"]
     round_names_en = ["Monday", "Midweek", "Weekend"]
-    
+
     rounds_text = ""
     for r in rounds:
         round_idx = r.get("round", 0)
         continuation = r.get("story_continuation", "")
         if language == "zh":
-            round_name = round_names_zh[round_idx] if round_idx < 3 else f"第{round_idx+1}轮"
+            round_name = (
+                round_names_zh[round_idx] if round_idx < 3 else f"第{round_idx+1}轮"
+            )
             rounds_text += f"""\n【{round_name}】
 经历：{r.get('summary', '')}
 选择：{r.get('choice', '')}
 效果：{_format_effects(r.get('effects', {}), language)}
 """
             if continuation:
-                cont_brief = continuation[:200] + "..." if len(continuation) > 200 else continuation
+                cont_brief = (
+                    continuation[:200] + "..."
+                    if len(continuation) > 200
+                    else continuation
+                )
                 rounds_text += f"后续发展：{cont_brief}\n"
         else:
-            round_name = round_names_en[round_idx] if round_idx < 3 else f"Round {round_idx+1}"
+            round_name = (
+                round_names_en[round_idx] if round_idx < 3 else f"Round {round_idx+1}"
+            )
             rounds_text += f"""\n[{round_name}]
 Experience: {r.get('summary', '')}
 Choice: {r.get('choice', '')}
 Effects: {_format_effects(r.get('effects', {}), language)}
 """
             if continuation:
-                cont_brief = continuation[:200] + "..." if len(continuation) > 200 else continuation
+                cont_brief = (
+                    continuation[:200] + "..."
+                    if len(continuation) > 200
+                    else continuation
+                )
                 rounds_text += f"Follow-up: {cont_brief}\n"
-    
+
     # Get character name if available
     char_name = ""
     if character_settings and "name" in character_settings:
         char_name = character_settings["name"]
-    
+
     time_context = _build_time_context(game_date_info, language)
-    
+
     if language == "zh":
         prompt = f"""你是人生模拟游戏的周总结生成器。{time_context}
 
@@ -937,35 +977,40 @@ Please generate:
 - Mixed choices -> no extra bonus (all zeros)
 
 Note: Return ONLY valid JSON, no other text."""
-    
+
     return prompt
 
 
 def _format_effects(effects: Dict[str, Any], language: str) -> str:
     """
     Format effects dictionary into readable string.
-    
+
     Args:
         effects: Effects dictionary
         language: Language code
-    
+
     Returns:
         Formatted string
     """
     if not effects:
         return "无" if language == "zh" else "None"
-    
+
     parts = []
     labels = {
         "zh": {"energy": "精力", "mood": "情绪", "knowledge": "学识", "wealth": "财富"},
-        "en": {"energy": "Energy", "mood": "Mood", "knowledge": "Knowledge", "wealth": "Wealth"}
+        "en": {
+            "energy": "Energy",
+            "mood": "Mood",
+            "knowledge": "Knowledge",
+            "wealth": "Wealth",
+        },
     }
-    
+
     for key in ["energy", "mood", "knowledge", "wealth"]:
         val = effects.get(key, 0)
         if val != 0:
             label = labels.get(language, labels["en"]).get(key, key)
             sign = "+" if val > 0 else ""
             parts.append(f"{label}{sign}{val}")
-    
+
     return "、".join(parts) if parts else ("无" if language == "zh" else "None")

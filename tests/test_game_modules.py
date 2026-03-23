@@ -1,17 +1,20 @@
 """Tests for game modules: achievements, endings, player_service, story_service, summaries."""
+
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from src.game.state import PlayerState, CharacterState
+
 from src.game.achievements import AchievementTracker
 from src.game.endings import EndingEvaluator
+from src.game.monthly_summary import MonthlySummaryGenerator
 from src.game.player_service import PlayerService
+from src.game.state import CharacterState, PlayerState
 from src.game.story_service import StoryService
 from src.game.weekly_summary import WeeklySummaryGenerator
-from src.game.monthly_summary import MonthlySummaryGenerator
 from src.game.yearly_summary import YearlySummaryGenerator
 
-
 # ==================== Achievement Tests ====================
+
 
 class TestAchievementTracker:
     """Test AchievementTracker class."""
@@ -106,14 +109,21 @@ class TestAchievementTracker:
 
 # ==================== Ending Tests ====================
 
+
 class TestEndingEvaluator:
     """Test EndingEvaluator class."""
 
     def test_balanced_ending(self):
         """Test balanced ending type."""
         evaluator = EndingEvaluator()
-        player = PlayerState(energy=60, mood=60, knowledge=60, wealth=15000,
-                            relationships={"Friend": 50}, age=24)
+        player = PlayerState(
+            energy=60,
+            mood=60,
+            knowledge=60,
+            wealth=15000,
+            relationships={"Friend": 50},
+            age=24,
+        )
         result = evaluator.evaluate_ending(player, "zh")
         assert result["ending_type"] == "balanced"
         assert result["ending_name"] == "平衡人生"
@@ -136,8 +146,12 @@ class TestEndingEvaluator:
         """Test social ending with high relationships."""
         evaluator = EndingEvaluator()
         player = PlayerState(
-            energy=60, mood=60, knowledge=60, wealth=10000, age=24,
-            relationships={"F1": 80, "F2": 80, "F3": 80}
+            energy=60,
+            mood=60,
+            knowledge=60,
+            wealth=10000,
+            age=24,
+            relationships={"F1": 80, "F2": 80, "F3": 80},
         )
         result = evaluator.evaluate_ending(player, "zh")
         assert result["ending_type"] == "social"
@@ -196,6 +210,7 @@ class TestEndingEvaluator:
 
 # ==================== PlayerService Tests ====================
 
+
 class TestPlayerService:
     """Test PlayerService class."""
 
@@ -219,9 +234,7 @@ class TestPlayerService:
         player = PlayerState()
         player.relationships = {"张三": 75}
         player.character_settings = {
-            "relationships": {
-                "key_people": [{"name": "张三", "role": "朋友"}]
-            }
+            "relationships": {"key_people": [{"name": "张三", "role": "朋友"}]}
         }
         PlayerService.initialize_characters_from_settings(player)
         char = CharacterState(**player.characters["张三"])
@@ -291,6 +304,7 @@ class TestPlayerService:
 
 # ==================== StoryService Tests ====================
 
+
 class TestStoryService:
     """Test StoryService class."""
 
@@ -308,18 +322,14 @@ class TestStoryService:
         """Test English fallback continuation."""
         mock_gen = Mock()
         service = StoryService(ai_generator=mock_gen, language="en")
-        result = service.generate_fallback_continuation(
-            "leave", {"mood": 5}
-        )
+        result = service.generate_fallback_continuation("leave", {"mood": 5})
         assert "leave" in result
 
     def test_fallback_with_negative_mood(self):
         """Test fallback with negative mood."""
         mock_gen = Mock()
         service = StoryService(ai_generator=mock_gen, language="zh")
-        result = service.generate_fallback_continuation(
-            "拒绝", {"mood": -5}
-        )
+        result = service.generate_fallback_continuation("拒绝", {"mood": -5})
         assert "波动" in result
 
     def test_fallback_with_relationships(self):
@@ -356,6 +366,7 @@ class TestStoryService:
 
 # ==================== Summary Generator Tests ====================
 
+
 class TestWeeklySummaryGenerator:
     """Test WeeklySummaryGenerator class."""
 
@@ -378,16 +389,18 @@ class TestWeeklySummaryGenerator:
         """Test Chinese fallback summary."""
         gen = WeeklySummaryGenerator.__new__(WeeklySummaryGenerator)
         gen.language = "zh"
-        result = gen._get_fallback_summary(5, {"energy": 10, "mood": -5,
-                                                "knowledge": 3, "wealth": 1000}, "zh")
+        result = gen._get_fallback_summary(
+            5, {"energy": 10, "mood": -5, "knowledge": 3, "wealth": 1000}, "zh"
+        )
         assert "第5周" in result
 
     def test_fallback_summary_en(self):
         """Test English fallback summary."""
         gen = WeeklySummaryGenerator.__new__(WeeklySummaryGenerator)
         gen.language = "en"
-        result = gen._get_fallback_summary(5, {"energy": 10, "mood": -5,
-                                                "knowledge": 3, "wealth": 1000}, "en")
+        result = gen._get_fallback_summary(
+            5, {"energy": 10, "mood": -5, "knowledge": 3, "wealth": 1000}, "en"
+        )
         assert "Week 5" in result
 
 
@@ -401,7 +414,13 @@ class TestMonthlySummaryGenerator:
         gen = MonthlySummaryGenerator(ai_generator=mock_gen, language="zh")
 
         player = PlayerState(energy=80, mood=70, knowledge=60, wealth=15000, age=23)
-        prev_state = {"energy": 70, "mood": 60, "knowledge": 55, "wealth": 14000, "age": 22}
+        prev_state = {
+            "energy": 70,
+            "mood": 60,
+            "knowledge": 55,
+            "wealth": 14000,
+            "age": 22,
+        }
         result = gen.generate_summary(1, 0, 3, prev_state, player, [], "zh")
 
         assert result["month"] == 1
@@ -412,8 +431,9 @@ class TestMonthlySummaryGenerator:
     def test_fallback_summary(self):
         """Test fallback summary."""
         gen = MonthlySummaryGenerator.__new__(MonthlySummaryGenerator)
-        result = gen._get_fallback_summary(2, {"energy": 5, "mood": -3,
-                                                "knowledge": 2, "wealth": 500}, "zh")
+        result = gen._get_fallback_summary(
+            2, {"energy": 5, "mood": -3, "knowledge": 2, "wealth": 500}, "zh"
+        )
         assert "第2个月" in result
 
 
@@ -427,7 +447,13 @@ class TestYearlySummaryGenerator:
         gen = YearlySummaryGenerator(ai_generator=mock_gen, language="zh")
 
         player = PlayerState(energy=75, mood=65, knowledge=70, wealth=20000, age=23)
-        start_state = {"energy": 70, "mood": 60, "knowledge": 50, "wealth": 10000, "age": 22}
+        start_state = {
+            "energy": 70,
+            "mood": 60,
+            "knowledge": 50,
+            "wealth": 10000,
+            "age": 22,
+        }
         result = gen.generate_summary(1, 0, 47, start_state, player, [], [], "zh")
 
         assert result["year"] == 1
@@ -437,16 +463,18 @@ class TestYearlySummaryGenerator:
     def test_fallback_summary(self):
         """Test fallback summary."""
         gen = YearlySummaryGenerator.__new__(YearlySummaryGenerator)
-        result = gen._get_fallback_summary(1, {"energy": 5, "mood": -3,
-                                                "knowledge": 10, "wealth": 5000,
-                                                "age": 1}, "zh")
+        result = gen._get_fallback_summary(
+            1,
+            {"energy": 5, "mood": -3, "knowledge": 10, "wealth": 5000, "age": 1},
+            "zh",
+        )
         assert "第1年" in result
         assert "年龄增长了1岁" in result
 
     def test_fallback_summary_en(self):
         """Test English fallback summary."""
         gen = YearlySummaryGenerator.__new__(YearlySummaryGenerator)
-        result = gen._get_fallback_summary(2, {"energy": 0, "mood": 0,
-                                                "knowledge": 0, "wealth": 0,
-                                                "age": 1}, "en")
+        result = gen._get_fallback_summary(
+            2, {"energy": 0, "mood": 0, "knowledge": 0, "wealth": 0, "age": 1}, "en"
+        )
         assert "Year 2" in result

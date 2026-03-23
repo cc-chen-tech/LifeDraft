@@ -59,11 +59,15 @@ class NarrativeManager:
                         or sl.get("description", "").lower() in description.lower()
                     ):
                         player_state.pending_storylines.pop(i)
-                        logger.info(f"Resolved storyline: {sl.get('description', '')[:50]}...")
+                        logger.info(
+                            f"Resolved storyline: {sl.get('description', '')[:50]}..."
+                        )
                         resolved = True
                         break
                 if not resolved:
-                    logger.debug(f"Could not match resolved storyline: {description[:50]}...")
+                    logger.debug(
+                        f"Could not match resolved storyline: {description[:50]}..."
+                    )
 
             elif action == "continues":
                 for sl in player_state.pending_storylines:
@@ -72,7 +76,9 @@ class NarrativeManager:
                         or sl.get("description", "").lower() in description.lower()
                     ):
                         sl["last_mentioned_week"] = current_week
-                        logger.info(f"Continued storyline: {sl.get('description', '')[:50]}...")
+                        logger.info(
+                            f"Continued storyline: {sl.get('description', '')[:50]}..."
+                        )
                         break
 
         # Clean up stale storylines with graduated approach
@@ -144,7 +150,9 @@ class NarrativeManager:
                     "established_week": current_week,
                 }
                 player_state.established_facts.append(new_fact)
-                logger.info(f"New world fact: [{category}] {subject}: {fact_text[:50]}...")
+                logger.info(
+                    f"New world fact: [{category}] {subject}: {fact_text[:50]}..."
+                )
 
             elif action == "update":
                 fact_text = update.get("fact", "")
@@ -158,7 +166,9 @@ class NarrativeManager:
                             f["category"] = category
                         f["fact"] = fact_text
                         f["established_week"] = current_week
-                        logger.info(f"Updated world fact: {subject}: {fact_text[:50]}...")
+                        logger.info(
+                            f"Updated world fact: {subject}: {fact_text[:50]}..."
+                        )
                         updated = True
                         break
                 if not updated:
@@ -248,7 +258,9 @@ class NarrativeManager:
                 decay_weeks = overshoot - peak_at
                 prob = peak_prob * math.exp(-decay_weeks / 20)
 
-            weight_multiplier = {"major": 1.8, "supporting": 1.0, "minor": 0.6}.get(weight, 1.0)
+            weight_multiplier = {"major": 1.8, "supporting": 1.0, "minor": 0.6}.get(
+                weight, 1.0
+            )
             prob *= weight_multiplier
 
             seed_characters = {c.lower() for c in seed.get("related_characters", [])}
@@ -261,7 +273,11 @@ class NarrativeManager:
             seed_storylines = seed.get("related_storylines", [])
             if seed_storylines:
                 for ssl in seed_storylines:
-                    if any(kw in ssl.lower() for kw in active_storyline_keywords if len(kw) > 1):
+                    if any(
+                        kw in ssl.lower()
+                        for kw in active_storyline_keywords
+                        if len(kw) > 1
+                    ):
                         prob *= 1.5
                         break
 
@@ -284,9 +300,9 @@ class NarrativeManager:
                 metrics["recovery_distances"].append(recovery_distance)
                 if len(metrics["recovery_distances"]) > 20:
                     metrics["recovery_distances"] = metrics["recovery_distances"][-20:]
-                metrics["avg_recovery_distance"] = sum(metrics["recovery_distances"]) / len(
+                metrics["avg_recovery_distance"] = sum(
                     metrics["recovery_distances"]
-                )
+                ) / len(metrics["recovery_distances"])
 
                 logger.info(
                     f"Foreshadowing activated! "
@@ -297,7 +313,9 @@ class NarrativeManager:
                 )
                 return seed
 
-        logger.debug(f"No foreshadowing activated this round ({len(eligible_seeds)} candidates)")
+        logger.debug(
+            f"No foreshadowing activated this round ({len(eligible_seeds)} candidates)"
+        )
         return None
 
     # ------------------------------------------------------------------
@@ -356,7 +374,13 @@ class NarrativeManager:
                 narrative_weight = "supporting"
 
             recycle_method = seed.get("recycle_method", "echo")
-            valid_methods = ("revelation", "confirmation", "ironic_twist", "escalation", "echo")
+            valid_methods = (
+                "revelation",
+                "confirmation",
+                "ironic_twist",
+                "escalation",
+                "echo",
+            )
             if recycle_method not in valid_methods:
                 recycle_method = "echo"
 
@@ -399,7 +423,9 @@ class NarrativeManager:
             if seed.get("activated", False):
                 activation_week = seed.get("activation_week", 0)
                 if current_week - activation_week > 4:
-                    logger.debug(f"Removing activated seed: {seed.get('description', '')[:30]}...")
+                    logger.debug(
+                        f"Removing activated seed: {seed.get('description', '')[:30]}..."
+                    )
                     continue
 
             if not seed.get("activated", False) and weeks_since_planted > 60:
@@ -431,7 +457,9 @@ class NarrativeManager:
                 for s in player_state.foreshadowing_seeds
                 if s.get("activated", False) or id(s) not in seeds_to_remove
             ]
-            logger.info("Foreshadowing seeds exceeded limit, keeping top 20 by weight+recency")
+            logger.info(
+                "Foreshadowing seeds exceeded limit, keeping top 20 by weight+recency"
+            )
 
     # ------------------------------------------------------------------
     # Habit updates
@@ -483,7 +511,13 @@ class NarrativeManager:
 
                 if not exists:
                     category = update.get("category", "behavioral")
-                    valid_categories = ("behavioral", "speech", "emotional", "social", "lifestyle")
+                    valid_categories = (
+                        "behavioral",
+                        "speech",
+                        "emotional",
+                        "social",
+                        "lifestyle",
+                    )
                     if category not in valid_categories:
                         category = "behavioral"
                     strength = update.get("strength", "emerging")
@@ -590,7 +624,13 @@ class NarrativeManager:
                         break
                 if not found:
                     category = update.get("category", "behavioral")
-                    if category not in ("behavioral", "speech", "emotional", "social", "lifestyle"):
+                    if category not in (
+                        "behavioral",
+                        "speech",
+                        "emotional",
+                        "social",
+                        "lifestyle",
+                    ):
                         category = "behavioral"
                     strength = update.get("strength", "emerging")
                     if strength not in strength_order:

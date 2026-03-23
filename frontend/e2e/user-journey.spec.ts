@@ -6,6 +6,7 @@
  */
 import { test, expect } from '@playwright/test';
 import { ensureAuthenticated } from './helpers/auth';
+import { waitForPageReady } from './helpers/wait-helpers';
 
 test.describe('User Journey - Landing Page', () => {
   test('should display welcome page with title', async ({ page }) => {
@@ -92,7 +93,7 @@ test.describe('User Journey - Character Creation Flow', () => {
     await nameInput.fill('测试角色');
 
     // Wait for auto-generation to potentially start
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
 
     // After entering name, next button should be visible
     const nextButton = page.getByRole('button', { name: /下一步|Next/i }).first();
@@ -103,7 +104,7 @@ test.describe('User Journey - Character Creation Flow', () => {
     // Enter name
     const nameInput = page.getByPlaceholder(/角色名|姓名|Name/i);
     await nameInput.fill('测试角色');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
 
     // Click next if available
     const nextButton = page.getByRole('button', { name: /下一步|Next/i }).first();
@@ -112,7 +113,7 @@ test.describe('User Journey - Character Creation Flow', () => {
     for (let i = 0; i < 3; i++) {
       if (await nextButton.isVisible() && await nextButton.isEnabled()) {
         await nextButton.click();
-        await page.waitForTimeout(500);
+        await page.waitForLoadState('networkidle');
       }
     }
 
@@ -125,7 +126,7 @@ test.describe('User Journey - Character Creation Flow', () => {
     await nameInput.fill('测试角色');
 
     // Look for loading state
-    await page.waitForTimeout(300);
+    await page.waitForLoadState('networkidle');
 
     // Either loading indicator or content should be visible
     const loadingText = page.locator('text=/生成中|AI正在|Generating/');
@@ -178,7 +179,7 @@ test.describe('User Journey - Saves Page Flow', () => {
     });
 
     await page.goto('/saves');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
 
     // Empty state message should be visible or saves should be listed
     await expect(page).toHaveURL('/saves');

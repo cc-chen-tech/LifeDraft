@@ -2,7 +2,8 @@
 
 用于从历史故事中识别重复出现的物品、人物、地点的AI提示词。
 """
-from typing import Dict, Any, List
+
+from typing import Any, Dict, List
 
 
 def get_entity_recognition_prompt(

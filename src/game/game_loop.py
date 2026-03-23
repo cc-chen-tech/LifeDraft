@@ -53,13 +53,19 @@ class GameLoop(RoundSystemMixin):
         self.player_state: Optional[PlayerState] = None
         self.current_event: Optional[GameEvent] = None
         self._generating: bool = False  # Flag to prevent concurrent generation
-        self._generating_start_time: Optional[float] = None  # Track when generation started
-        self._GENERATION_TIMEOUT = settings.GENERATION_TIMEOUT  # Max seconds before auto-reset
+        self._generating_start_time: Optional[float] = (
+            None  # Track when generation started
+        )
+        self._GENERATION_TIMEOUT = (
+            settings.GENERATION_TIMEOUT
+        )  # Max seconds before auto-reset
         self.milestone_weeks = settings.MILESTONE_WEEKS  # Milestone events
         self.yearly_summary_gen = YearlySummaryGenerator(self.ai_generator, language)
         self.relationship_service = RelationshipMCPService()
         self.story_service = StoryService(self.ai_generator, language)
-        self.character_creator = CharacterCreator(ai_generator=self.ai_generator, language=language)
+        self.character_creator = CharacterCreator(
+            ai_generator=self.ai_generator, language=language
+        )
         # Extracted sub-services (Phase 3 God Class decomposition)
         self.narrative_mgr = NarrativeManager()
         self.world_updater = WorldModelUpdater()
@@ -68,7 +74,9 @@ class GameLoop(RoundSystemMixin):
         self.last_year_start_state = None  # Track state at year start
         self.last_event_week = -1  # Track when last event was generated
 
-    def start_new_game(self, initial_state: Optional[Dict[str, Any]] = None) -> PlayerState:
+    def start_new_game(
+        self, initial_state: Optional[Dict[str, Any]] = None
+    ) -> PlayerState:
         """
         Start a new game.
 
@@ -148,7 +156,9 @@ class GameLoop(RoundSystemMixin):
         # Check if we've already made a decision this week
         current_week = self.player_state.week
         week_decisions = [
-            d for d in self.player_state.decision_history if d.get("week", 0) == current_week
+            d
+            for d in self.player_state.decision_history
+            if d.get("week", 0) == current_week
         ]
 
         if week_decisions:
@@ -163,7 +173,9 @@ class GameLoop(RoundSystemMixin):
                 # No event saved, allow generation
                 self.last_event_week = current_week - 1
 
-        logger.info(f"Loaded game at age {self.player_state.age}, 第{self.player_state.week + 1}周")
+        logger.info(
+            f"Loaded game at age {self.player_state.age}, 第{self.player_state.week + 1}周"
+        )
         return self.player_state
 
     def generate_weekly_event(
@@ -192,7 +204,9 @@ class GameLoop(RoundSystemMixin):
         current_week = self.player_state.week
 
         # ★ 显示用周数（人类可读，从1开始）
-        week_display = f"第{current_week + 1}周" if current_week is not None else "未知周"
+        week_display = (
+            f"第{current_week + 1}周" if current_week is not None else "未知周"
+        )
         logger.debug(
             f"Generating weekly event: {week_display}, last_event_week={self.last_event_week}, force={force}"
         )
@@ -206,10 +220,14 @@ class GameLoop(RoundSystemMixin):
 
         # Check for milestone events first (bypass for force)
         if self.player_state.week in self.milestone_weeks and not force:
-            logger.debug(f"Checking for milestone event at 第{self.player_state.week + 1}周")
+            logger.debug(
+                f"Checking for milestone event at 第{self.player_state.week + 1}周"
+            )
             event = self._generate_milestone_event()
             if event:
-                logger.info(f"Generated milestone event for 第{self.player_state.week + 1}周")
+                logger.info(
+                    f"Generated milestone event for 第{self.player_state.week + 1}周"
+                )
                 self.current_event = event
                 self.last_event_week = current_week
                 return event
@@ -223,7 +241,9 @@ class GameLoop(RoundSystemMixin):
             # Get the most recent 4-week summary if available
             four_week_summary = None
             if self.player_state.four_week_summaries:
-                four_week_summary = self.player_state.four_week_summaries[-1].get("summary")
+                four_week_summary = self.player_state.four_week_summaries[-1].get(
+                    "summary"
+                )
 
             # Randomly decide whether to include yearly summary (if available)
             yearly_summary = None
@@ -271,13 +291,17 @@ class GameLoop(RoundSystemMixin):
             if self.event_callback:
                 self.event_callback(event, self.player_state)
 
-            logger.debug(f"Successfully generated event for 第{self.player_state.week + 1}周")
+            logger.debug(
+                f"Successfully generated event for 第{self.player_state.week + 1}周"
+            )
             return event
 
         except Exception as e:
             logger.error(f"Failed to generate event: {str(e)}", exc_info=True)
             logger.error(f"Exception type: {type(e).__name__}")
-            logger.error(f"Player week: {self.player_state.week if self.player_state else 'N/A'}")
+            logger.error(
+                f"Player week: {self.player_state.week if self.player_state else 'N/A'}"
+            )
             # Fallback to a simple event
             event = self._generate_fallback_event()
             self.current_event = event
@@ -304,7 +328,8 @@ class GameLoop(RoundSystemMixin):
 
         # Convert GameEvent options to dict format
         event_options = [
-            {"text": opt.text, "effects": opt.effects} for opt in self.current_event.options
+            {"text": opt.text, "effects": opt.effects}
+            for opt in self.current_event.options
         ]
 
         result = process_decision(
@@ -420,10 +445,14 @@ class GameLoop(RoundSystemMixin):
                 "start_week": start_week,
                 "end_week": current_week - 1,
                 "summary": summary_text,
-                "date_info": self.player_state.get_game_date_info() if self.player_state else {},
+                "date_info": (
+                    self.player_state.get_game_date_info() if self.player_state else {}
+                ),
             }
             self.player_state.four_week_summaries.append(summary_entry)
-            logger.info(f"Generated 4-week summary for 第{start_week + 1}周-第{current_week}周")
+            logger.info(
+                f"Generated 4-week summary for 第{start_week + 1}周-第{current_week}周"
+            )
 
         except Exception as e:
             logger.error(f"Failed to generate 4-week summary: {e}")
@@ -464,10 +493,14 @@ class GameLoop(RoundSystemMixin):
                 "start_week": start_week,
                 "end_week": current_week - 1,
                 "summary": summary_text,
-                "date_info": self.player_state.get_game_date_info() if self.player_state else {},
+                "date_info": (
+                    self.player_state.get_game_date_info() if self.player_state else {}
+                ),
             }
             self.player_state.yearly_summaries.append(summary_entry)
-            logger.info(f"Generated yearly summary for 第{start_week + 1}周-第{current_week}周")
+            logger.info(
+                f"Generated yearly summary for 第{start_week + 1}周-第{current_week}周"
+            )
 
         except Exception as e:
             logger.error(f"Failed to generate yearly summary: {e}")
@@ -554,20 +587,22 @@ class GameLoop(RoundSystemMixin):
             f"Using {'round ' if is_round else ''}fallback event - AI generation failed!"
         )
 
-        character_settings = self.player_state.character_settings if self.player_state else {}
+        character_settings = (
+            self.player_state.character_settings if self.player_state else {}
+        )
 
         if is_round:
             prefix = (
-                self.player_state.get_round_name(self.language) if self.player_state else "周一"
+                self.player_state.get_round_name(self.language)
+                if self.player_state
+                else "周一"
             )
         else:
             prefix = ""
 
         if self.language == "zh":
             if is_round:
-                desc = (
-                    f"{prefix}，你度过了平静的一天。生活的节奏张弛有度，你有一些时间可以自由支配。"
-                )
+                desc = f"{prefix}，你度过了平静的一天。生活的节奏张弛有度，你有一些时间可以自由支配。"
             else:
                 desc = "你度过了一个平静的一周。"
                 if character_settings and "era" in character_settings:
@@ -580,7 +615,9 @@ class GameLoop(RoundSystemMixin):
                 event_description=desc,
                 options=[
                     EventOption(
-                        text="保持现状，继续前进" if not is_round else "继续保持现有节奏",
+                        text=(
+                            "保持现状，继续前进" if not is_round else "继续保持现有节奏"
+                        ),
                         effects={
                             "energy": 0 if is_round else 5,
                             "mood": 5,
@@ -598,9 +635,7 @@ class GameLoop(RoundSystemMixin):
             if is_round:
                 desc = f"{prefix}, you had a quiet day. Life flows at a steady pace, and you have some time for yourself."
             else:
-                desc = (
-                    "You had a quiet week. You have some free time to think about what to do next."
-                )
+                desc = "You had a quiet week. You have some free time to think about what to do next."
 
             return GameEvent(
                 event_description=desc,

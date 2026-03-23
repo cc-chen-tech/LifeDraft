@@ -1,6 +1,8 @@
 """Tests for presets API routes."""
+
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
 from src.api.main import app
@@ -42,12 +44,16 @@ class TestCreatePreset:
         """Test creating a new preset."""
         mock_db.save_character_preset.return_value = 1
 
-        response = client.post("/api/presets", json={
-            "preset_name": "My Hero",
-            "player_name": "Hero",
-            "life_vision": "Be a hero",
-            "character_settings": {"era": {"era_name": "现代"}}
-        }, headers=auth_headers)
+        response = client.post(
+            "/api/presets",
+            json={
+                "preset_name": "My Hero",
+                "player_name": "Hero",
+                "life_vision": "Be a hero",
+                "character_settings": {"era": {"era_name": "现代"}},
+            },
+            headers=auth_headers,
+        )
 
         assert response.status_code == 201
         data = response.json()
@@ -59,35 +65,46 @@ class TestCreatePreset:
         """Test creating preset without auth (anonymous)."""
         mock_db.save_character_preset.return_value = 2
 
-        response = client.post("/api/presets", json={
-            "preset_name": "Anonymous Preset",
-            "player_name": "Anon",
-            "life_vision": "",
-            "character_settings": {}
-        })
+        response = client.post(
+            "/api/presets",
+            json={
+                "preset_name": "Anonymous Preset",
+                "player_name": "Anon",
+                "life_vision": "",
+                "character_settings": {},
+            },
+        )
 
         assert response.status_code == 201
 
     def test_create_preset_empty_name(self, client, mock_auth, auth_headers):
         """Test creating preset with empty name."""
-        response = client.post("/api/presets", json={
-            "preset_name": "",
-            "player_name": "Test",
-            "life_vision": "",
-            "character_settings": {}
-        }, headers=auth_headers)
+        response = client.post(
+            "/api/presets",
+            json={
+                "preset_name": "",
+                "player_name": "Test",
+                "life_vision": "",
+                "character_settings": {},
+            },
+            headers=auth_headers,
+        )
 
         assert response.status_code == 422
 
     def test_create_preset_name_too_long(self, client, mock_auth, auth_headers):
         """Test creating preset with name exceeding max length."""
         long_name = "x" * 101
-        response = client.post("/api/presets", json={
-            "preset_name": long_name,
-            "player_name": "Test",
-            "life_vision": "",
-            "character_settings": {}
-        }, headers=auth_headers)
+        response = client.post(
+            "/api/presets",
+            json={
+                "preset_name": long_name,
+                "player_name": "Test",
+                "life_vision": "",
+                "character_settings": {},
+            },
+            headers=auth_headers,
+        )
 
         assert response.status_code == 422
 
@@ -95,12 +112,16 @@ class TestCreatePreset:
         """Test preset creation database error."""
         mock_db.save_character_preset.side_effect = Exception("DB error")
 
-        response = client.post("/api/presets", json={
-            "preset_name": "Test",
-            "player_name": "Test",
-            "life_vision": "",
-            "character_settings": {}
-        }, headers=auth_headers)
+        response = client.post(
+            "/api/presets",
+            json={
+                "preset_name": "Test",
+                "player_name": "Test",
+                "life_vision": "",
+                "character_settings": {},
+            },
+            headers=auth_headers,
+        )
 
         assert response.status_code == 500
 
@@ -111,6 +132,7 @@ class TestListPresets:
     def test_list_presets_success(self, client, mock_db, mock_auth, auth_headers):
         """Test listing presets."""
         from datetime import datetime
+
         mock_preset = MagicMock()
         mock_preset.preset_id = 1
         mock_preset.preset_name = "My Preset"
@@ -118,7 +140,7 @@ class TestListPresets:
         mock_preset.life_vision = "Be great"
         mock_preset.character_settings = {"era": {}}
         mock_preset.created_at = datetime(2024, 1, 1, 12, 0, 0)
-        
+
         mock_db.list_character_presets.return_value = [mock_preset]
 
         response = client.get("/api/presets", headers=auth_headers)
@@ -166,7 +188,7 @@ class TestGetPreset:
             "player_name": "Hero",
             "life_vision": "Be great",
             "character_settings": {"era": {}},
-            "created_at": "2024-01-01T12:00:00"
+            "created_at": "2024-01-01T12:00:00",
         }
 
         response = client.get("/api/presets/1", headers=auth_headers)
@@ -191,7 +213,7 @@ class TestGetPreset:
             "preset_name": "Public Preset",
             "player_name": "Test",
             "life_vision": "",
-            "character_settings": {}
+            "character_settings": {},
         }
 
         response = client.get("/api/presets/1")

@@ -1,10 +1,12 @@
 """Tests for RoundIllustrationService."""
-import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
-import base64
 
+import base64
+from unittest.mock import MagicMock, PropertyMock, patch
+
+import pytest
+
+from src.ai.image_client import ContentInspectionError, ImageGenerationError
 from src.game.round.illustration_service import RoundIllustrationService
-from src.ai.image_client import ImageGenerationError, ContentInspectionError
 
 
 class TestRoundIllustrationServiceInit:
@@ -211,7 +213,9 @@ class TestExtractInvolvedEntities:
             }
         }
 
-        result = service._extract_involved_entities("妈妈做了饭，爸爸在看电视", settings)
+        result = service._extract_involved_entities(
+            "妈妈做了饭，爸爸在看电视", settings
+        )
         names = [e["name"] for e in result]
         assert "妈妈" in names
         assert "爸爸" in names
@@ -245,9 +249,9 @@ class TestGenerateSceneImage:
     def test_generate_with_reference(self):
         """Test generating scene with reference image."""
         mock_client = MagicMock()
-        mock_client.edit_image = MagicMock(return_value=[
-            (b"fake_image_data", "prompt1")
-        ])
+        mock_client.edit_image = MagicMock(
+            return_value=[(b"fake_image_data", "prompt1")]
+        )
 
         service = RoundIllustrationService(
             image_client=mock_client,
@@ -268,7 +272,9 @@ class TestGenerateSceneImage:
     def test_generate_without_reference(self):
         """Test generating scene without reference image."""
         mock_client = MagicMock()
-        mock_client.generate_image = MagicMock(return_value=(b"fake_image_data", "prompt1"))
+        mock_client.generate_image = MagicMock(
+            return_value=(b"fake_image_data", "prompt1")
+        )
 
         service = RoundIllustrationService(
             image_client=mock_client,
@@ -385,7 +391,7 @@ class TestGenerateRoundIllustrationAsync:
             db_session=MagicMock(),
         )
 
-        with patch('threading.Thread') as mock_thread:
+        with patch("threading.Thread") as mock_thread:
             service.generate_round_illustration_async(
                 game_id=1,
                 round_number=1,
@@ -497,7 +503,12 @@ class TestAutoGenerateEntityImage:
             db_session=MagicMock(),
         )
 
-        char_data = {"name": "张三", "age": 25, "gender": "男", "relationship_desc": "朋友"}
+        char_data = {
+            "name": "张三",
+            "age": 25,
+            "gender": "男",
+            "relationship_desc": "朋友",
+        }
         desc = service._build_character_desc(char_data)
         assert "25岁" in desc
         assert "男" in desc

@@ -43,7 +43,8 @@ class CharacterState(BaseModel):
 
     # ===== 社会属性 =====
     social_status: str = Field(
-        default="ordinary", description="社会地位：student/ordinary/professional/leader/elite"
+        default="ordinary",
+        description="社会地位：student/ordinary/professional/leader/elite",
     )
     influence: int = Field(default=30, ge=0, le=100, description="影响力/社会资源")
 
@@ -53,7 +54,8 @@ class CharacterState(BaseModel):
 
     # ===== 隐藏属性（不暴露给用户）=====
     sexual_orientation: str = Field(
-        default="heterosexual", description="性倾向: heterosexual/homosexual/bisexual/asexual"
+        default="heterosexual",
+        description="性倾向: heterosexual/homosexual/bisexual/asexual",
     )
     relationship_status: str = Field(
         default="single", description="感情状态: single/dating/engaged/married/divorced"
@@ -69,13 +71,17 @@ class CharacterState(BaseModel):
     )
 
     # ===== 与主角关联的属性 =====
-    affinity: int = Field(default=50, ge=0, le=100, description="亲密度（与主角双向共享）")
+    affinity: int = Field(
+        default=50, ge=0, le=100, description="亲密度（与主角双向共享）"
+    )
     trust: int = Field(default=50, ge=0, le=100, description="对主角的信任度")
     respect: int = Field(default=50, ge=0, le=100, description="对主角的尊重度")
 
     # ===== 互动记录 =====
     interaction_count: int = Field(default=0, ge=0, description="互动次数")
-    last_interaction_week: int = Field(default=-1, description="最近互动的周数，-1表示从未互动")
+    last_interaction_week: int = Field(
+        default=-1, description="最近互动的周数，-1表示从未互动"
+    )
     relationship_history: str = Field(default="", description="关系发展简述")
 
     # ===== 特殊事件触发阈值 =====
@@ -210,7 +216,9 @@ class CharacterState(BaseModel):
         Returns:
             角色描述字符串
         """
-        traits_str = "、".join(self.personality_traits) if self.personality_traits else "普通"
+        traits_str = (
+            "、".join(self.personality_traits) if self.personality_traits else "普通"
+        )
         specialty_str = "、".join(self.specialty) if self.specialty else "无特殊专长"
 
         return f"""{self.name}（{self.role}）：

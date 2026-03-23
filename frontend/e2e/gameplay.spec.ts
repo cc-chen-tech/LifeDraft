@@ -9,6 +9,7 @@
  * 2. UI components are present when game exists
  */
 import { test, expect } from '@playwright/test';
+import { waitForPageReady } from './helpers/wait-helpers';
 
 test.describe('Gameplay - Game Page Structure', () => {
   test.beforeEach(async ({ page }) => {
@@ -35,7 +36,7 @@ test.describe('Gameplay - Play Page Without Game', () => {
   // Tests for /play page when no game is active (redirects or shows loading)
   test('should handle play page without active game', async ({ page }) => {
     await page.goto('/play');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     
     // Page should either:
     // 1. Show a loading spinner (waiting for game)
@@ -54,7 +55,7 @@ test.describe('Gameplay - Play Page Without Game', () => {
     const loader = page.locator('[class*="animate-spin"]');
     
     // Either loader or redirect happens
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
   });
 });
 
@@ -78,13 +79,13 @@ test.describe('Gameplay - History Feature', () => {
 
   test('should open history drawer when clicking history button', async ({ page }) => {
     await page.goto('/play');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     
     const headerButtons = page.locator('header button');
     if (await headerButtons.count() >= 2) {
       // First button after status bar should be history
       await headerButtons.first().click();
-      await page.waitForTimeout(500);
+      await page.waitForLoadState('domcontentloaded');
       
       // Drawer should open
       const drawer = page.locator('[class*="drawer"], [class*="sheet"], [role="dialog"]');
@@ -106,7 +107,7 @@ test.describe('Gameplay - Loading States', () => {
     await page.goto('/play');
     
     // Loading spinner or redirect should happen
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     
     // Page should handle gracefully
     const currentUrl = page.url();
@@ -115,7 +116,7 @@ test.describe('Gameplay - Loading States', () => {
 
   test('play page handles missing game state', async ({ page }) => {
     await page.goto('/play');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     
     // Either shows loading, redirects, or shows error
     // The important thing is it doesn't crash
@@ -127,7 +128,7 @@ test.describe('Gameplay - Loading States', () => {
 test.describe('Gameplay - Status Display', () => {
   test('welcome page loads correctly', async ({ page }) => {
     await page.goto('/');
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     
     // Welcome page should be visible
     await expect(page).toHaveTitle(/Story Life|人生|Life Draft/);
@@ -135,7 +136,7 @@ test.describe('Gameplay - Status Display', () => {
 
   test('should display round information', async ({ page }) => {
     await page.goto('/play');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
     
     // Round progress (周/轮次)
     const roundInfo = page.locator('text=/周|轮|round/i');
@@ -148,7 +149,7 @@ test.describe('Gameplay - Error Handling', () => {
     await page.route('**/api/**', route => route.abort('failed'));
     
     await page.goto('/');
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('domcontentloaded');
     
     // Page should still load (static content)
     await expect(page).toHaveTitle(/Story Life|人生|Life Draft/);

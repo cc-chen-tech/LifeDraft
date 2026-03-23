@@ -164,7 +164,9 @@ class UserManager:
 
     # ==================== 好友功能 ====================
 
-    def send_friend_request(self, user_id: int, friend_public_id: str) -> Dict[str, Any]:
+    def send_friend_request(
+        self, user_id: int, friend_public_id: str
+    ) -> Dict[str, Any]:
         """
         发送好友请求
 
@@ -181,15 +183,25 @@ class UserManager:
             return {"success": False, "message": "用户不存在", "friendship": None}
 
         if friend.user_id == user_id:
-            return {"success": False, "message": "不能添加自己为好友", "friendship": None}
+            return {
+                "success": False,
+                "message": "不能添加自己为好友",
+                "friendship": None,
+            }
 
         # 检查是否已有好友关系
         existing = (
             self.db.query(Friendship)
             .filter(
                 or_(
-                    and_(Friendship.user_id == user_id, Friendship.friend_id == friend.user_id),
-                    and_(Friendship.user_id == friend.user_id, Friendship.friend_id == user_id),
+                    and_(
+                        Friendship.user_id == user_id,
+                        Friendship.friend_id == friend.user_id,
+                    ),
+                    and_(
+                        Friendship.user_id == friend.user_id,
+                        Friendship.friend_id == user_id,
+                    ),
                 )
             )
             .first()
@@ -197,7 +209,11 @@ class UserManager:
 
         if existing:
             if existing.status == "accepted":
-                return {"success": False, "message": "你们已经是好友了", "friendship": existing}
+                return {
+                    "success": False,
+                    "message": "你们已经是好友了",
+                    "friendship": existing,
+                }
             elif existing.status == "pending":
                 if existing.user_id == user_id:
                     return {
@@ -222,10 +238,16 @@ class UserManager:
                 existing.friend_id = friend.user_id
                 existing.updated_at = datetime.utcnow()
                 self.db.commit()
-                return {"success": True, "message": "好友请求已发送", "friendship": existing}
+                return {
+                    "success": True,
+                    "message": "好友请求已发送",
+                    "friendship": existing,
+                }
 
         # 创建新的好友请求
-        friendship = Friendship(user_id=user_id, friend_id=friend.user_id, status="pending")
+        friendship = Friendship(
+            user_id=user_id, friend_id=friend.user_id, status="pending"
+        )
         self.db.add(friendship)
         self.db.commit()
         self.db.refresh(friendship)
@@ -343,8 +365,14 @@ class UserManager:
             self.db.query(Friendship)
             .filter(
                 or_(
-                    and_(Friendship.user_id == user_id, Friendship.friend_id == friend_user_id),
-                    and_(Friendship.user_id == friend_user_id, Friendship.friend_id == user_id),
+                    and_(
+                        Friendship.user_id == user_id,
+                        Friendship.friend_id == friend_user_id,
+                    ),
+                    and_(
+                        Friendship.user_id == friend_user_id,
+                        Friendship.friend_id == user_id,
+                    ),
                 ),
                 Friendship.status == "accepted",
             )
@@ -393,8 +421,14 @@ class UserManager:
             self.db.query(Friendship)
             .filter(
                 or_(
-                    and_(Friendship.user_id == user_id, Friendship.friend_id == friend_user_id),
-                    and_(Friendship.user_id == friend_user_id, Friendship.friend_id == user_id),
+                    and_(
+                        Friendship.user_id == user_id,
+                        Friendship.friend_id == friend_user_id,
+                    ),
+                    and_(
+                        Friendship.user_id == friend_user_id,
+                        Friendship.friend_id == user_id,
+                    ),
                 ),
                 Friendship.status == "accepted",
             )
@@ -423,7 +457,11 @@ class UserManager:
         Returns:
             是否设置成功
         """
-        game = self.db.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
+        game = (
+            self.db.query(Game)
+            .filter(Game.game_id == game_id, Game.user_id == user_id)
+            .first()
+        )
 
         if game:
             game.is_public = is_public

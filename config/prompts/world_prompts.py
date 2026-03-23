@@ -10,12 +10,10 @@ from typing import Any, Dict, List, Optional
 
 
 def get_ending_prompt(
-    final_state: Dict[str, Any],
-    decision_history: list,
-    language: str = "en"
+    final_state: Dict[str, Any], decision_history: list, language: str = "en"
 ) -> str:
     """Generate prompt for ending narrative."""
-    
+
     if language == "zh":
         return f"""根据以下游戏结果，生成一段人生总结（200-300字）：
 
@@ -43,7 +41,7 @@ def get_world_extraction_prompt(
     Generate prompt for world state extraction only:
     fact_updates, foreshadowing_seeds, habit_updates, location_updates,
     career_updates, commitment_updates, causal_updates.
-    
+
     This is the detail-extraction half of the original get_story_compression_prompt,
     designed to run in parallel with get_narrative_compression_prompt.
     """
@@ -53,13 +51,19 @@ def get_world_extraction_prompt(
         if language == "zh":
             lines = ["\n【当前已建立的世界事实】"]
             for f in established_facts:
-                cat = {"location": "地点", "role": "角色", "situation": "事务"}.get(f.get("category", ""), "事实")
+                cat = {"location": "地点", "role": "角色", "situation": "事务"}.get(
+                    f.get("category", ""), "事实"
+                )
                 lines.append(f"- 【{cat}】{f.get('subject', '')}：{f.get('fact', '')}")
             facts_context = "\n".join(lines)
         else:
             lines = ["\n[Current Established Facts]"]
             for f in established_facts:
-                cat = {"location": "Location", "role": "Role", "situation": "Situation"}.get(f.get("category", ""), "Fact")
+                cat = {
+                    "location": "Location",
+                    "role": "Role",
+                    "situation": "Situation",
+                }.get(f.get("category", ""), "Fact")
                 lines.append(f"- [{cat}] {f.get('subject', '')}: {f.get('fact', '')}")
             facts_context = "\n".join(lines)
 
@@ -69,12 +73,16 @@ def get_world_extraction_prompt(
         if language == "zh":
             lines = ["\n【当前已记录的人物习惯】"]
             for h in character_habits:
-                lines.append(f"- {h.get('character', '')}：{h.get('habit', '')}（{h.get('category', '')}，{h.get('strength', 'moderate')}）")
+                lines.append(
+                    f"- {h.get('character', '')}：{h.get('habit', '')}（{h.get('category', '')}，{h.get('strength', 'moderate')}）"
+                )
             habits_context = "\n".join(lines)
         else:
             lines = ["\n[Current Character Habits]"]
             for h in character_habits:
-                lines.append(f"- {h.get('character', '')}: {h.get('habit', '')} ({h.get('category', '')}, {h.get('strength', 'moderate')})")
+                lines.append(
+                    f"- {h.get('character', '')}: {h.get('habit', '')} ({h.get('category', '')}, {h.get('strength', 'moderate')})"
+                )
             habits_context = "\n".join(lines)
 
     if language == "zh":
@@ -271,15 +279,15 @@ def get_scheduled_commitment_extraction_prompt(
 ) -> str:
     """
     Generate prompt for extracting scheduled commitments with specific time points.
-    
+
     从故事中提取带有具体时间点的承诺，用于创建预定事件。
-    
+
     Args:
         story: 故事文本
         current_week: 当前周数
         current_round: 当前轮次
         language: 语言
-    
+
     Returns:
         提示词字符串
     """

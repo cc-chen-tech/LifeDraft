@@ -5,19 +5,40 @@
 """
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
 from config.settings import settings
-from src.ai.image_client import (ContentInspectionError, ImageClient,
-                                 ImageGenerationError)
+from src.ai.image_client import (
+    ContentInspectionError,
+    ImageClient,
+    ImageGenerationError,
+)
 from src.database.models import Image as ImageModel
 from src.services.image.character_service import CharacterImageService
 from src.services.image.scene_service import SceneImageService
 from src.services.image_storage import ImageStorageError, ImageStorageService
 
 logger = logging.getLogger(__name__)
+
+# C-05: 模块级线程池，替代裸线程使用
+_image_thread_pool = ThreadPoolExecutor(max_workers=10, thread_name_prefix="image-gen")
+
+
+def get_image_thread_pool() -> ThreadPoolExecutor:
+    """获取共享的图片生成线程池"""
+    return _image_thread_pool
+
+
+def shutdown_image_thread_pool(wait: bool = True) -> None:
+    """关闭线程池（用于应用退出时清理）"""
+    global _image_thread_pool
+    _image_thread_pool.shutdown(wait=wait)
+    _image_thread_pool = ThreadPoolExecutor(
+        max_workers=10, thread_name_prefix="image-gen"
+    )
 
 
 class ImageServiceError(Exception):
@@ -215,17 +236,23 @@ class ImageService:
         logger.debug(f"User prompt: {user_prompt[:100]}...")
 
         # 从数据库获取 character_settings
-        db_character_settings, db_player_name = self._get_character_settings_from_db(game_id)
+        db_character_settings, db_player_name = self._get_character_settings_from_db(
+            game_id
+        )
         effective_character_settings = db_character_settings or character_settings
         effective_player_name = db_player_name or player_name
 
-        char_info = self._build_char_info(effective_character_settings, effective_player_name)
+        char_info = self._build_char_info(
+            effective_character_settings, effective_player_name
+        )
 
         try:
             # 分析故事选择场景
-            scene_desc, illustration_prompt = self.image_client.analyze_story_for_illustration(
-                story_text=story_text[:2000],
-                character_info=char_info,
+            scene_desc, illustration_prompt = (
+                self.image_client.analyze_story_for_illustration(
+                    story_text=story_text[:2000],
+                    character_info=char_info,
+                )
             )
 
             combined_prompt = f"""{user_prompt}
@@ -241,7 +268,9 @@ class ImageService:
 
             # 获取当前场景插画作为参考
             current_scene = (
-                self.db.query(SceneImage).filter(SceneImage.scene_id == current_scene_id).first()
+                self.db.query(SceneImage)
+                .filter(SceneImage.scene_id == current_scene_id)
+                .first()
             )
 
             if current_scene:
@@ -265,7 +294,9 @@ class ImageService:
 
             # 获取玩家形象图片
             if player_image_id:
-                ref_url, img_id = self._get_player_image_base64(game_id, player_image_id)
+                ref_url, img_id = self._get_player_image_base64(
+                    game_id, player_image_id
+                )
                 if ref_url:
                     reference_urls.append(ref_url)
                     if img_id:
@@ -288,7 +319,9 @@ class ImageService:
                 if results:
                     image_data, _ = results[0]
                 else:
-                    raise ImageGenerationError("Failed to generate scene image with reference")
+                    raise ImageGenerationError(
+                        "Failed to generate scene image with reference"
+                    )
             else:
                 image_data, _ = self.image_client.generate_image(
                     prompt=combined_prompt,
@@ -299,7 +332,9 @@ class ImageService:
             # 保存图片 - ★ 传递 week 和 stage 参数，确保文件名格式一致
             # ★ 使用当前场景的 week 和 stage，保持一致性
             current_week = (
-                current_scene.week if current_scene else self._get_current_week_from_db(game_id)
+                current_scene.week
+                if current_scene
+                else self._get_current_week_from_db(game_id)
             )
             current_stage = current_scene.stage if current_scene else "result"
 
@@ -334,7 +369,9 @@ class ImageService:
                 current_scene.storage_type = storage_type
                 current_scene.referenced_images = referenced_image_ids
                 current_scene.importance_score = "high"
-                current_scene.created_at = datetime.utcnow()  # ★ 更新时间戳，用于缓存破坏
+                current_scene.created_at = (
+                    datetime.utcnow()
+                )  # ★ 更新时间戳，用于缓存破坏
                 self.db.commit()
                 self.db.refresh(current_scene)
                 logger.info(
@@ -575,7 +612,9 @@ class ImageService:
 
         return "，".join(parts) if parts else "一个普通人"
 
-    def _extract_era_from_settings(self, char_settings: Dict[str, Any]) -> Optional[str]:
+    def _extract_era_from_settings(
+        self, char_settings: Dict[str, Any]
+    ) -> Optional[str]:
         """从角色设定中提取时代名称"""
         era = char_settings.get("era")
         if era:
@@ -654,7 +693,9 @@ class ImageService:
 
         return char_info
 
-    def _get_player_image_base64(self, game_id: int, player_image_id: Optional[int]) -> tuple:
+    def _get_player_image_base64(
+        self, game_id: int, player_image_id: Optional[int]
+    ) -> tuple:
         """获取玩家形象的 Base64 编码"""
         import base64
 
@@ -662,7 +703,10 @@ class ImageService:
         if player_image_id:
             player_image = (
                 self.db.query(ImageModel)
-                .filter(ImageModel.image_id == player_image_id, ImageModel.game_id == game_id)
+                .filter(
+                    ImageModel.image_id == player_image_id,
+                    ImageModel.game_id == game_id,
+                )
                 .first()
             )
             if not player_image:
@@ -682,7 +726,9 @@ class ImageService:
                 .first()
             )
             if player_image:
-                logger.info(f"Auto-selected primary player image: {player_image.image_id}")
+                logger.info(
+                    f"Auto-selected primary player image: {player_image.image_id}"
+                )
 
         if player_image:
             try:

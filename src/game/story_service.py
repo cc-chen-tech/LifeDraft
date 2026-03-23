@@ -94,7 +94,9 @@ class StoryService:
                 stream_callback(fallback)
             return fallback
 
-    def generate_fallback_continuation(self, chosen_option: str, effects: Dict[str, Any]) -> str:
+    def generate_fallback_continuation(
+        self, chosen_option: str, effects: Dict[str, Any]
+    ) -> str:
         """
         Generate a simple fallback continuation when AI generation fails.
 
@@ -192,7 +194,9 @@ class StoryService:
                 story_text=continuation,
                 world_model=world_model,
                 player_state_dict=(
-                    player_state if isinstance(player_state, dict) else player_state.to_dict()
+                    player_state
+                    if isinstance(player_state, dict)
+                    else player_state.to_dict()
                 ),
                 character_settings=character_settings,
                 language=self.language,
@@ -267,7 +271,12 @@ class StoryService:
             Dict with 'summary', 'storyline_updates', 'fact_updates', 'habit_updates', etc.
         """
         return self.ai_generator.compress_story(
-            story, choice, self.language, pending_storylines, established_facts, character_habits
+            story,
+            choice,
+            self.language,
+            pending_storylines,
+            established_facts,
+            character_habits,
         )
 
     def compress_narrative(
@@ -348,7 +357,10 @@ class StoryService:
                     prompt += f"\n\n【上次生成失败，原因：{last_error}。请避免同样的问题，确保输出有效的JSON格式。】"
 
                 result = self.ai_generator.generate_completion_json(
-                    prompt=prompt, system_prompt=system_prompt, temperature=0.8, max_tokens=4096
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    temperature=0.8,
+                    max_tokens=4096,
                 )
                 if result and isinstance(result, dict):
                     # Ensure we have valid effect keys
@@ -365,7 +377,9 @@ class StoryService:
                 last_error = str(e)
                 logger.warning(f"Attempt {attempt + 1}/2 failed: {e}")
 
-        logger.error(f"Failed to generate custom choice effects after 2 attempts, using fallback")
+        logger.error(
+            f"Failed to generate custom choice effects after 2 attempts, using fallback"
+        )
         return {"energy": -5, "mood": 5, "knowledge": 0, "wealth": 0}
 
     def generate_custom_choice_result(
@@ -443,7 +457,9 @@ class StoryService:
                 last_error = str(e)
                 logger.warning(f"Attempt {attempt + 1}/2 failed: {e}")
 
-        logger.error(f"Failed to generate custom choice result after 2 attempts, using fallback")
+        logger.error(
+            f"Failed to generate custom choice result after 2 attempts, using fallback"
+        )
         return {
             "story_continuation": f"你决定{custom_text}。这是一个有趣的选择，让我们看看接下来会发生什么...",
             "effects": {"energy": -5, "mood": 5},
