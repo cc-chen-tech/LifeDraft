@@ -163,7 +163,7 @@ export const api = {
         need_weekly_summary?: boolean;
         weekly_summary?: string;
         game_over?: boolean;
-      }>(`/games/${gameId}/choices/sync`, {
+      }>(`/games/${gameId}/choice-sync`, {
         method: 'POST',
         body: JSON.stringify(data),
       }),
@@ -178,7 +178,7 @@ export const api = {
         need_weekly_summary?: boolean;
         weekly_summary?: string;
         game_over?: boolean;
-      }>(`/games/${gameId}/choices/custom-sync`, {
+      }>(`/games/${gameId}/custom-choice-sync`, {
         method: 'POST',
         body: JSON.stringify(data),
       }),
