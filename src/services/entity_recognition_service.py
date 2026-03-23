@@ -60,9 +60,8 @@ class EntityRecognitionService:
                 )
                 story_text = story_text[:max_story_length] + "\n...[故事过长，已截断]"
 
-            from config.prompts.entity_recognition_prompt import (
-                get_entity_recognition_prompt,
-            )
+            from config.prompts.entity_recognition_prompt import \
+                get_entity_recognition_prompt
 
             prompt = get_entity_recognition_prompt(
                 story_text=story_text,
@@ -75,9 +74,7 @@ class EntityRecognitionService:
 
             sys_prompt = get_system_prompt("story_analyzer", language)
 
-            logger.info(
-                f"Starting entity recognition with story length {len(story_text)} chars"
-            )
+            logger.info(f"Starting entity recognition with story length {len(story_text)} chars")
 
             response = self.ai_client.call(
                 system_prompt=sys_prompt,
@@ -129,9 +126,8 @@ class EntityRecognitionService:
             contexts = contexts[:5]
             story_text = "\n\n---\n\n".join(contexts)
 
-            from config.prompts.entity_recognition_prompt import (
-                get_item_description_extraction_prompt,
-            )
+            from config.prompts.entity_recognition_prompt import \
+                get_item_description_extraction_prompt
 
             prompt = get_item_description_extraction_prompt(
                 item_name=item_name,
@@ -177,9 +173,7 @@ class EntityRecognitionService:
         story_parts = []
 
         # 按周和回合排序
-        sorted_history = sorted(
-            round_history, key=lambda x: (x.get("week", 0), x.get("round", 0))
-        )
+        sorted_history = sorted(round_history, key=lambda x: (x.get("week", 0), x.get("round", 0)))
 
         for entry in sorted_history:
             week = entry.get("week", 0) + 1
@@ -203,9 +197,7 @@ class EntityRecognitionService:
 
         return "\n".join(story_parts)
 
-    def _parse_recognition_response(
-        self, response: str
-    ) -> Dict[str, List[Dict[str, Any]]]:
+    def _parse_recognition_response(self, response: str) -> Dict[str, List[Dict[str, Any]]]:
         """解析AI识别响应。
 
         Args:
@@ -272,9 +264,7 @@ class EntityRecognitionService:
             entity["appear_count"] = 1
 
         # 确保appear_contexts是列表
-        if "appear_contexts" not in entity or not isinstance(
-            entity["appear_contexts"], list
-        ):
+        if "appear_contexts" not in entity or not isinstance(entity["appear_contexts"], list):
             entity["appear_contexts"] = []
 
         return True
