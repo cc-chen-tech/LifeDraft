@@ -31,24 +31,24 @@ class TestEntityRecognitionImports:
     def test_collection_router_import(self):
         """测试收集路由导入"""
         from src.api.routers.collection import (
-            _add_entities_to_collection_sync,
-            get_recognize_entities_status,
+            get_collection,
+            recognize_entities,
             router,
-            start_recognize_entities_async,
+            add_entities,
         )
 
         assert router is not None
-        assert callable(start_recognize_entities_async)
-        assert callable(get_recognize_entities_status)
-        assert callable(_add_entities_to_collection_sync)
+        assert callable(recognize_entities)
+        assert callable(get_collection)
+        assert callable(add_entities)
 
     def test_prompt_import(self):
         """测试 prompt 模块导入"""
         from config.prompts.entity_recognition_prompt import (
-            get_segment_recognition_prompt,
+            get_entity_recognition_prompt,
         )
 
-        assert callable(get_segment_recognition_prompt)
+        assert callable(get_entity_recognition_prompt)
 
 
 class TestNoCircularImports:

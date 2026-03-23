@@ -18,97 +18,68 @@ from src.services.entity_recognition_service import EntityRecognitionService
 
 
 class TestEntityRecognitionServiceAsync:
-    """测试实体识别服务的异步方法"""
+    """测试实体识别服务的核心方法"""
 
     def setup_method(self):
         """每个测试前重置任务管理器"""
         reset_task_manager()
 
-    def test_group_by_round(self):
-        """测试按周分组功能
-        
-        _group_by_round 按 week 分组（而非 round），将同一周的故事合并。
-        输入字段：week, event_description, story_continuation, summary, choice
-        输出字段：round_num（周数）, story_text（拼接文本）, choices（选择列表）
-        """
+    def test_build_story_text(self):
+        """测试构建故事文本功能"""
         service = EntityRecognitionService(Mock())
         
-        # 使用正确的字段名：week 用于分组，event_description/story_continuation/summary 用于拼接
         round_history = [
-            {"week": 1, "round": 0, "event_description": "事件描述1", "story_continuation": "故事继续1", "summary": "总结1", "choice": "选择1"},
-            {"week": 1, "round": 1, "event_description": "事件描述2", "story_continuation": "故事继续2", "summary": "总结2", "choice": "选择2"},
-            {"week": 2, "round": 0, "event_description": "事件描述3", "story_continuation": "故事继续3", "summary": "总结3", "choice": "选择3"},
-            {"week": 3, "round": 0, "event_description": "事件描述4", "story_continuation": "故事继续4", "summary": "总结4", "choice": "选择4"},
+            {"week": 0, "round": 0, "event_description": "事件描述1", "story_continuation": "故事继续1", "summary": "总结1", "choice": "选择1"},
+            {"week": 0, "round": 1, "event_description": "事件描述2", "story_continuation": "故事继续2", "summary": "总结2", "choice": "选择2"},
+            {"week": 1, "round": 0, "event_description": "事件描述3", "story_continuation": "故事继续3", "summary": "总结3", "choice": "选择3"},
         ]
         
-        groups = service._group_by_round(round_history)
+        story_text = service._build_story_text(round_history)
         
-        # 验证按 week 分组，共3周
-        assert len(groups) == 3
+        # 验证故事文本包含所有事件描述
+        assert "事件描述1" in story_text
+        assert "事件描述2" in story_text
+        assert "事件描述3" in story_text
         
-        # 返回结果是字典列表，按 week 排序（通过 rounds_dict.values()）
-        week_nums = sorted([g["round_num"] for g in groups])
-        assert week_nums == [1, 2, 3]
-        
-        # 获取第1周的分组
-        week1_group = next(g for g in groups if g["round_num"] == 1)
-        
-        # 验证第1周的故事合并（event_description + story_continuation）
-        assert "事件描述1" in week1_group["story_text"]
-        assert "故事继续1" in week1_group["story_text"]
-        assert "事件描述2" in week1_group["story_text"]
-        assert "故事继续2" in week1_group["story_text"]
-        
-        # 验证选择列表
-        assert "选择1" in week1_group["choices"]
-        assert "选择2" in week1_group["choices"]
+        # 验证故事文本包含选择
+        assert "选择1" in story_text
+        assert "选择2" in story_text
 
-    def test_merge_recognition_results(self):
-        """测试合并识别结果"""
+    def test_validate_entity_valid(self):
+        """测试有效实体验证"""
         service = EntityRecognitionService(Mock())
         
-        existing = {
-            "items": [{"name": "物品1"}],
-            "characters": [],
-            "landmarks": []
-        }
-        new = {
-            "items": [{"name": "物品2"}],
-            "characters": [{"name": "人物1"}],
-            "landmarks": [{"name": "地点1"}]
+        entity = {
+            "name": "测试物品",
+            "importance": "critical",
+            "appear_count": 5,
+            "appear_contexts": ["场景1", "场景2"]
         }
         
-        merged = service._merge_recognition_results(existing, new)
-        
-        assert len(merged["items"]) == 2
-        assert len(merged["characters"]) == 1
-        assert len(merged["landmarks"]) == 1
+        assert service._validate_entity(entity) is True
 
-    def test_deduplicate_and_count(self):
-        """测试去重和统计"""
+    def test_validate_entity_missing_name(self):
+        """测试缺少名称的实体验证"""
         service = EntityRecognitionService(Mock())
         
-        results = {
-            "items": [
-                {"name": "物品A", "appear_count": 2, "appear_contexts": ["场景1"]},
-                {"name": "物品A", "appear_count": 3, "appear_contexts": ["场景2"]},
-                {"name": "物品B", "appear_count": 1, "appear_contexts": []},
-            ],
-            "characters": [],
-            "landmarks": []
+        entity = {
+            "importance": "critical",
+            "appear_count": 5
         }
         
-        deduped = service._deduplicate_and_count(results)
+        assert service._validate_entity(entity) is False
+
+    def test_validate_entity_fixes_invalid_importance(self):
+        """测试自动修复无效重要程度"""
+        service = EntityRecognitionService(Mock())
         
-        # 验证去重
-        assert len(deduped["items"]) == 2
+        entity = {
+            "name": "测试物品",
+            "importance": "invalid_value",
+        }
         
-        # 验证出现次数累加
-        item_a = next(i for i in deduped["items"] if i["name"] == "物品A")
-        assert item_a["appear_count"] == 5  # 2 + 3
-        
-        # 验证上下文合并
-        assert len(item_a["appear_contexts"]) == 2
+        assert service._validate_entity(entity) is True
+        assert entity["importance"] == "normal"  # 应该被修复为 normal
 
 
 class TestAsyncTaskManagerIntegration:
@@ -205,91 +176,21 @@ class TestAsyncTaskManagerIntegration:
         assert new_task.task_id != task.task_id
 
 
-class TestSaveRecognitionResults:
-    """测试保存识别结果功能"""
-
-    def test_import_add_entities_function(self):
-        """测试 _add_entities_to_collection_sync 函数可正确导入"""
-        # 这个测试验证修复的导入错误
-        try:
-            from src.api.routers.collection import _add_entities_to_collection_sync
-            assert callable(_add_entities_to_collection_sync)
-        except ImportError as e:
-            pytest.fail(f"导入 _add_entities_to_collection_sync 失败: {e}")
-
-    def test_add_entities_with_mock_data(self):
-        """测试使用模拟数据调用 _add_entities_to_collection_sync"""
-        from unittest.mock import patch, MagicMock
-        
-        # Mock GameDatabase
-        mock_state_data = {
-            "week": 5,
-            "age": 25,
-            "items": {},
-            "relationships": {},
-            "landmarks": {},
-            "characters": {},
-            "entity_appearances": {"items": {}, "characters": {}, "landmarks": {}}
-        }
-        
-        # 创建 mock db session
-        mock_db_session = MagicMock()
-        mock_db_session.add = MagicMock()
-        mock_db_session.commit = MagicMock()
-        mock_db_session.query = MagicMock(return_value=MagicMock(
-            filter=MagicMock(return_value=MagicMock(first=MagicMock(return_value=None)))
-        ))
-        
-        with patch('src.database.db.GameDatabase') as MockDBClass:
-            mock_game_db = MagicMock()
-            mock_game_db.load_saved_game.return_value = mock_state_data
-            MockDBClass.return_value = mock_game_db
-            
-            # 同时 mock session_service 避免副作用
-            with patch('src.api.routers.collection.session_service'):
-                from src.api.routers.collection import _add_entities_to_collection_sync
-                
-                # 调用函数
-                result = _add_entities_to_collection_sync(
-                    db=mock_db_session,
-                    game_id=1,
-                    user_id=1,
-                    items=[{"name": "测试物品", "description": "测试", "appear_count": 3}],
-                    characters=[],
-                    landmarks=[],
-                    is_batch=True,
-                )
-                
-                # 验证结果
-                assert isinstance(result, dict)
-                assert "added_items" in result
-                assert "added_characters" in result
-                assert "added_landmarks" in result
-                
-                # ★ 验证 GameDatabase 被正确调用
-                MockDBClass.assert_called_once()
-                mock_game_db.load_saved_game.assert_called_once_with(1, 1)
-                
-                # 验证 db.add 和 db.commit 被调用
-                assert mock_db_session.add.called
-                assert mock_db_session.commit.called
-
-
 class TestDataFlowContract:
     """验证生产者和消费者之间的数据契约一致性
     
     choice_processor.py 生产的 round_record 字段：
         week, round, summary, event_description, story_continuation, choice, effects, date_info, event_concluded
     
-    _group_by_round 消费的字段：
-        week（分组）, event_description, story_continuation, summary（文本拼接）, choice
+    _build_story_text 消费的字段：
+        week, round, event_description, story_continuation, summary, choice
     """
 
     def test_round_history_field_names_match_producer(self):
-        """验证 _group_by_round 消费的字段名与 choice_processor 生产的一致"""
+        """验证 _build_story_text 消费的字段名与 choice_processor 生产的一致"""
         from src.services.entity_recognition_service import EntityRecognitionService
         
-        # 用 choice_processor 实际生产的字段名构造数据（参考 choice_processor.py L320-333）
+        # 用 choice_processor 实际生产的字段名构造数据
         round_record_from_producer = {
             "week": 0,
             "round": 1,
@@ -303,26 +204,19 @@ class TestDataFlowContract:
         }
         
         service = EntityRecognitionService(Mock())
-        groups = service._group_by_round([round_record_from_producer])
-        
-        # 验证能正确提取文本
-        assert len(groups) == 1
-        group = groups[0]
-        
-        # 验证 week 被用于分组
-        assert group["round_num"] == 0
+        story_text = service._build_story_text([round_record_from_producer])
         
         # 验证 event_description 被包含
-        assert "清晨的武馆" in group["story_text"]
+        assert "清晨的武馆" in story_text
         
         # 验证 story_continuation 被包含
-        assert "剑法有了明显进步" in group["story_text"]
+        assert "剑法有了明显进步" in story_text
         
         # 验证 choice 被收集
-        assert "继续练习基本功" in group["choices"]
+        assert "继续练习基本功" in story_text
 
-    def test_group_by_round_combines_all_text_fields(self):
-        """验证所有文本字段 (event_description + story_continuation + summary) 都被拼接"""
+    def test_build_story_text_combines_all_text_fields(self):
+        """验证所有文本字段都被拼接"""
         from src.services.entity_recognition_service import EntityRecognitionService
         
         round_record = {
@@ -335,70 +229,37 @@ class TestDataFlowContract:
         }
         
         service = EntityRecognitionService(Mock())
-        groups = service._group_by_round([round_record])
+        story_text = service._build_story_text([round_record])
         
-        group = groups[0]
-        story_text = group["story_text"]
-        
-        # event_description 和 story_continuation 必须被包含
+        # event_description 必须被包含
         assert "【事件描述】" in story_text
+        # story_continuation 必须被包含
         assert "【故事继续】" in story_text
-        
-        # summary 在有 event_description 时作为回退（不一定被包含）
-        # 参考源码：只有在没有详细文本时才使用 summary
+        # summary 也被包含
+        assert "【总结】" in story_text
 
-    def test_group_by_round_groups_by_week(self):
-        """验证按 week 而非 round 分组"""
+    def test_build_story_text_sorts_by_week_and_round(self):
+        """验证按 week 和 round 排序"""
         from src.services.entity_recognition_service import EntityRecognitionService
         
-        # 创建跨两周、多轮次的数据
+        # 创建乱序数据
         records = [
-            {"week": 0, "round": 0, "event_description": "周0轮0", "story_continuation": "", "choice": "A"},
-            {"week": 0, "round": 1, "event_description": "周0轮1", "story_continuation": "", "choice": "B"},
-            {"week": 0, "round": 2, "event_description": "周0轮2", "story_continuation": "", "choice": "C"},
             {"week": 1, "round": 0, "event_description": "周1轮0", "story_continuation": "", "choice": "D"},
+            {"week": 0, "round": 1, "event_description": "周0轮1", "story_continuation": "", "choice": "B"},
+            {"week": 0, "round": 0, "event_description": "周0轮0", "story_continuation": "", "choice": "A"},
             {"week": 1, "round": 1, "event_description": "周1轮1", "story_continuation": "", "choice": "E"},
         ]
         
         service = EntityRecognitionService(Mock())
-        groups = service._group_by_round(records)
+        story_text = service._build_story_text(records)
         
-        # 应该按 week 分成2组，而不是按 round 分成3组
-        assert len(groups) == 2
+        # 验证顺序正确（周0在周1前面）
+        pos_week0_round0 = story_text.find("周0轮0")
+        pos_week0_round1 = story_text.find("周0轮1")
+        pos_week1_round0 = story_text.find("周1轮0")
+        pos_week1_round1 = story_text.find("周1轮1")
         
-        # 获取周0和周1的分组
-        week0_group = next(g for g in groups if g["round_num"] == 0)
-        week1_group = next(g for g in groups if g["round_num"] == 1)
-        
-        # 周0应该合并3个轮次的内容
-        assert "周0轮0" in week0_group["story_text"]
-        assert "周0轮1" in week0_group["story_text"]
-        assert "周0轮2" in week0_group["story_text"]
-        assert len(week0_group["choices"]) == 3
-        
-        # 周1应该合并2个轮次的内容
-        assert "周1轮0" in week1_group["story_text"]
-        assert "周1轮1" in week1_group["story_text"]
-        assert len(week1_group["choices"]) == 2
-
-    def test_group_by_round_fallback_to_summary(self):
-        """验证当没有 event_description 和 story_continuation 时回退使用 summary"""
-        from src.services.entity_recognition_service import EntityRecognitionService
-        
-        record = {
-            "week": 0,
-            "round": 0,
-            "event_description": "",  # 空
-            "story_continuation": "",  # 空
-            "summary": "这是总结内容",
-            "choice": "选择",
-        }
-        
-        service = EntityRecognitionService(Mock())
-        groups = service._group_by_round([record])
-        
-        # 应该使用 summary 作为回退
-        assert "这是总结内容" in groups[0]["story_text"]
+        assert pos_week0_round0 < pos_week0_round1 < pos_week1_round0 < pos_week1_round1
 
 
 class TestLazyImports:
