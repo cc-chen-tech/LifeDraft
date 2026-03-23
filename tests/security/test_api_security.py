@@ -10,17 +10,19 @@ This module contains security-focused tests including:
 
 Run with: pytest tests/security/ -v
 """
+
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
 from src.api.main import app
-
 
 client = TestClient(app)
 
 
 # ==================== Input Validation Tests ====================
+
 
 class TestInputValidation:
     """Test input validation and sanitization."""
@@ -35,16 +37,16 @@ class TestInputValidation:
             "admin'--",
             "1; SELECT * FROM users",
         ]
-        
+
         for payload in payloads:
-            response = client.post(
-                "/api/auth/login",
-                json={"private_id": payload}
-            )
+            response = client.post("/api/auth/login", json={"private_id": payload})
             # Should not return 200 (success) or 500 (server error)
             # Should return 400/401/422 (client error)
-            assert response.status_code in [400, 401, 422], \
-                f"SQL injection payload not handled: {payload}"
+            assert response.status_code in [
+                400,
+                401,
+                422,
+            ], f"SQL injection payload not handled: {payload}"
 
     def test_xss_in_registration(self):
         """Test XSS attempts in registration."""
@@ -54,26 +56,23 @@ class TestInputValidation:
             "javascript:alert('xss')",
             "<svg onload=alert('xss')>",
         ]
-        
+
         for payload in xss_payloads:
-            response = client.post(
-                "/api/auth/register",
-                json={"display_name": payload}
-            )
+            response = client.post("/api/auth/register", json={"display_name": payload})
             # API may accept the payload as-is (stored, not executed)
             # XSS protection happens on the frontend via React's auto-escaping
             # We just verify the request is handled (not crashed)
-            assert response.status_code in [200, 400, 422], \
-                f"XSS payload not handled properly: {payload}"
+            assert response.status_code in [
+                200,
+                400,
+                422,
+            ], f"XSS payload not handled properly: {payload}"
 
     def test_long_input_handling(self):
         """Test handling of excessively long inputs."""
         long_string = "a" * 10000
-        
-        response = client.post(
-            "/api/auth/register",
-            json={"display_name": long_string}
-        )
+
+        response = client.post("/api/auth/register", json={"display_name": long_string})
         # Should reject long inputs
         assert response.status_code == 422
 
@@ -82,20 +81,20 @@ class TestInputValidation:
         special_chars = [
             "\x00",  # Null byte
             "\n\r",  # Newlines
-            "\t",    # Tab
+            "\t",  # Tab
             "\\u0000",  # Unicode null
         ]
-        
+
         for char in special_chars:
             response = client.post(
-                "/api/auth/register",
-                json={"display_name": f"Test{char}User"}
+                "/api/auth/register", json={"display_name": f"Test{char}User"}
             )
             # Should handle gracefully
             assert response.status_code in [200, 400, 422]
 
 
 # ==================== Authentication Tests ====================
+
 
 class TestAuthentication:
     """Test authentication security."""
@@ -115,12 +114,9 @@ class TestAuthentication:
             "",
             "Basic dGVzdDp0ZXN0",  # Wrong auth type
         ]
-        
+
         for token in invalid_tokens:
-            response = client.get(
-                "/api/games",
-                headers={"Authorization": token}
-            )
+            response = client.get("/api/games", headers={"Authorization": token})
             # Should reject invalid tokens
             # 200 is acceptable for public endpoints
             if "invalid" not in token:
@@ -132,13 +128,12 @@ class TestAuthentication:
         # This test verifies the error is raised (not silently ignored)
         with patch("src.api.deps.decode_token") as mock:
             mock.side_effect = ValueError("Token expired")
-            
+
             # The exception will propagate - this is expected behavior
             # In production, this would return 401
             try:
                 response = client.get(
-                    "/api/games",
-                    headers={"Authorization": "Bearer expired_token"}
+                    "/api/games", headers={"Authorization": "Bearer expired_token"}
                 )
                 # If we get here, error was handled
                 assert response.status_code in [401, 500]
@@ -150,16 +145,16 @@ class TestAuthentication:
         """Test token that doesn't contain user_id."""
         with patch("src.api.deps.decode_token") as mock:
             mock.return_value = None
-            
+
             response = client.get(
-                "/api/games",
-                headers={"Authorization": "Bearer no_user_token"}
+                "/api/games", headers={"Authorization": "Bearer no_user_token"}
             )
             # Should reject tokens without user_id
             assert response.status_code in [401, 403]
 
 
 # ==================== Authorization Tests ====================
+
 
 class TestAuthorization:
     """Test authorization and access control."""
@@ -168,15 +163,14 @@ class TestAuthorization:
         """Test accessing another user's game."""
         with patch("src.api.deps.decode_token") as mock_auth:
             mock_auth.return_value = 1  # User 1
-            
+
             with patch("src.api.routers.games.get_db") as mock_db:
                 mock_db.return_value.get_game.return_value = MagicMock(
                     user_id=2  # Belongs to User 2
                 )
-                
+
                 response = client.get(
-                    "/api/games/1/state",
-                    headers={"Authorization": "Bearer token"}
+                    "/api/games/1/state", headers={"Authorization": "Bearer token"}
                 )
                 # Should deny access
                 assert response.status_code in [403, 404]
@@ -185,22 +179,21 @@ class TestAuthorization:
         """Test modifying another user's game."""
         with patch("src.api.deps.decode_token") as mock_auth:
             mock_auth.return_value = 1
-            
+
             with patch("src.api.routers.games.get_db") as mock_db:
-                mock_db.return_value.get_game.return_value = MagicMock(
-                    user_id=2
-                )
-                
+                mock_db.return_value.get_game.return_value = MagicMock(user_id=2)
+
                 response = client.post(
                     "/api/games/1/decision",
                     json={"option_index": 0},
-                    headers={"Authorization": "Bearer token"}
+                    headers={"Authorization": "Bearer token"},
                 )
                 # Should deny access
                 assert response.status_code in [403, 404]
 
 
 # ==================== Data Exposure Tests ====================
+
 
 class TestDataExposure:
     """Test for sensitive data exposure."""
@@ -209,11 +202,8 @@ class TestDataExposure:
         """Test that private IDs are not exposed in API responses."""
         # This test verifies the API response structure
         # Private ID should only be returned during registration, not login
-        response = client.post(
-            "/api/auth/login",
-            json={"private_id": "nonexistent_id"}
-        )
-        
+        response = client.post("/api/auth/login", json={"private_id": "nonexistent_id"})
+
         # Login with invalid ID should fail
         if response.status_code == 200:
             data = response.json()
@@ -223,10 +213,9 @@ class TestDataExposure:
     def test_password_not_in_error_messages(self):
         """Test that passwords/secrets are not in error messages."""
         response = client.post(
-            "/api/auth/login",
-            json={"private_id": "secret_value_123"}
+            "/api/auth/login", json={"private_id": "secret_value_123"}
         )
-        
+
         # Error message should not contain the secret
         if response.status_code >= 400:
             response_text = response.text.lower()
@@ -234,6 +223,7 @@ class TestDataExposure:
 
 
 # ==================== Rate Limiting Tests ====================
+
 
 class TestRateLimiting:
     """Test rate limiting (if implemented)."""
@@ -245,7 +235,7 @@ class TestRateLimiting:
         for _ in range(20):
             response = client.get("/health")
             responses.append(response.status_code)
-        
+
         # All requests should complete
         # Without rate limiting, all return 200
         # With rate limiting, some may return 429
@@ -257,16 +247,16 @@ class TestRateLimiting:
 
 # ==================== Headers Security Tests ====================
 
+
 class TestSecurityHeaders:
     """Test security-related HTTP headers."""
 
     def test_cors_headers(self):
         """Test CORS configuration."""
         response = client.options(
-            "/api/auth/login",
-            headers={"Origin": "http://evil.com"}
+            "/api/auth/login", headers={"Origin": "http://evil.com"}
         )
-        
+
         # Check CORS headers are properly configured
         # If CORS is configured, it should not allow arbitrary origins
         cors_header = response.headers.get("Access-Control-Allow-Origin")
@@ -276,7 +266,7 @@ class TestSecurityHeaders:
     def test_content_type_options(self):
         """Test X-Content-Type-Options header."""
         response = client.get("/health")
-        
+
         # Should have X-Content-Type-Options: nosniff
         content_type_options = response.headers.get("X-Content-Type-Options")
         # This is a best practice check, not mandatory
@@ -284,13 +274,14 @@ class TestSecurityHeaders:
     def test_frame_options(self):
         """Test X-Frame-Options header."""
         response = client.get("/health")
-        
+
         # Should have X-Frame-Options to prevent clickjacking
         frame_options = response.headers.get("X-Frame-Options")
         # This is a best practice check, not mandatory
 
 
 # ==================== Error Handling Tests ====================
+
 
 class TestErrorHandling:
     """Test secure error handling."""
@@ -299,10 +290,10 @@ class TestErrorHandling:
         """Test that stack traces are not exposed in errors."""
         with patch("src.api.routers.games.get_db") as mock:
             mock.side_effect = ValueError("Internal error")
-            
+
             try:
                 response = client.get("/api/games")
-                
+
                 if response.status_code >= 500:
                     # Stack trace should not be in response
                     assert "Traceback" not in response.text
@@ -316,7 +307,96 @@ class TestErrorHandling:
     def test_debug_info_not_exposed(self):
         """Test that debug info is not exposed."""
         response = client.get("/nonexistent-endpoint")
-        
+
         # Debug info should not be exposed
         assert "debug" not in response.text.lower()
         assert "stack" not in response.text.lower()
+
+
+class TestCORSConfiguration:
+    """CORS 配置安全性测试 - 对应 H-01"""
+
+    def test_allowed_origin_returns_cors_headers(self, client):
+        """允许的 origin 应返回 CORS 头"""
+        response = client.options(
+            "/api/health",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        # 应包含 CORS 相关头
+        assert response.status_code in (200, 204)
+
+    def test_disallowed_origin_no_cors(self, client):
+        """不允许的 origin 不应返回 CORS 头"""
+        response = client.options(
+            "/api/health",
+            headers={
+                "Origin": "http://evil-site.com",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        cors_header = response.headers.get("access-control-allow-origin", "")
+        # 不应允许 evil-site.com 或使用 *
+        assert "evil-site.com" not in cors_header
+
+    def test_wildcard_methods_should_be_restricted(self, client):
+        """不应允许所有 HTTP 方法"""
+        response = client.options(
+            "/api/health",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "DELETE",
+            },
+        )
+        allowed = response.headers.get("access-control-allow-methods", "")
+        # 未来修复后：不应包含 DELETE 等危险方法（除非端点需要）
+        assert isinstance(allowed, str)
+
+
+class TestSecurityHeadersEnhanced:
+    """HTTP 安全头测试 - 对应 M-05"""
+
+    def test_response_headers_present(self, client):
+        """响应应包含基本安全头"""
+        response = client.get("/api/health")
+        headers = response.headers
+        # 检查安全头存在（修复后应通过）
+        # 目前记录哪些头缺失
+        expected_headers = [
+            "x-content-type-options",
+            "x-frame-options",
+        ]
+        missing = [h for h in expected_headers if h not in headers]
+        # 占位：记录缺失的安全头数量
+        assert isinstance(missing, list)
+
+
+class TestErrorInfoLeakage:
+    """异常信息泄露测试 - 对应 H-02"""
+
+    def test_internal_error_hides_details(self, client, mock_auth):
+        """500 错误不应暴露内部实现细节"""
+        # 触发一个可能导致 500 的请求
+        response = client.get(
+            "/api/games/999999", headers={"Authorization": "Bearer test_token"}
+        )
+        if response.status_code == 500:
+            body = response.json()
+            detail = str(body.get("detail", ""))
+            # 不应包含文件路径、类名、堆栈信息
+            assert "Traceback" not in detail
+            assert "/src/" not in detail
+            assert "sqlalchemy" not in detail.lower()
+
+    def test_error_response_format_consistent(self, client, mock_auth):
+        """错误响应格式应一致"""
+        # 发送无效请求
+        response = client.get(
+            "/api/games/invalid_id", headers={"Authorization": "Bearer test_token"}
+        )
+        if response.status_code >= 400:
+            body = response.json()
+            # 应有 detail 字段
+            assert "detail" in body

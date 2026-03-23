@@ -11,7 +11,9 @@ class EventOption(BaseModel):
 
     text: str = Field(..., max_length=200)  # Increased for longer option text
     effects: Dict[str, Any] = Field(...)
-    likely_choice: bool = Field(default=False)  # Whether this is the character's likely choice
+    likely_choice: bool = Field(
+        default=False
+    )  # Whether this is the character's likely choice
 
 
 class GameEvent(BaseModel):

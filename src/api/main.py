@@ -8,6 +8,9 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+from starlette.responses import Response
 
 from src.database.models import init_db
 
@@ -64,24 +67,60 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=get_allowed_origins(),
     allow_credentials=True,  # ★ 必须为 True 才能发送 Cookie
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # H-01: 收紧 methods
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "X-Requested-With",
+        "Accept",
+    ],  # H-01: 收紧 headers
 )
+
+
+# M-05: HTTP 安全头中间件
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        response = await call_next(request)
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:"
+        )
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 # Global exception handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    # H-02: 异常信息隐藏
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    if os.getenv("ENVIRONMENT", "production") == "development":
+        detail = str(exc)
+    else:
+        detail = "Internal server error. Please try again later."
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal server error", "message": str(exc)},
+        content={"detail": detail},
     )
 
 
 # ---- Register routers ----
-from src.api.routers import (auth, character, collection, friends, gameplay,
-                             games, images, presets, story)
+from src.api.routers import (
+    auth,
+    character,
+    collection,
+    friends,
+    gameplay,
+    games,
+    images,
+    presets,
+    story,
+)
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(friends.router, prefix="/api/friends", tags=["Friends"])

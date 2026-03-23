@@ -2,14 +2,15 @@
 
 测试根据反馈优化提示词，学习用户反馈历史自动增强提示词以提高生成质量。
 """
-import tempfile
+
 import os
+import tempfile
 from datetime import datetime
 
 from src.services.image.prompt_enhancer import (
+    EnhancementRule,
     PromptEnhancer,
     PromptFeedback,
-    EnhancementRule,
     prompt_enhancer,
 )
 
@@ -197,7 +198,9 @@ class TestEnhancePrompt:
         # 应包含一致性相关的增强
         assert "增强要求" in enhanced
         # 包含 "严格要求" 头部或具体的一致性要求文本
-        assert "严格要求" in enhanced or "保持一致" in enhanced or "五官比例" in enhanced
+        assert (
+            "严格要求" in enhanced or "保持一致" in enhanced or "五官比例" in enhanced
+        )
 
     def test_enhance_multiple_negative_feedback(self):
         """测试多条负面反馈时的增强"""

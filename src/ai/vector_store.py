@@ -102,7 +102,9 @@ class VectorStore:
             return False
 
         try:
-            self._collection.add(ids=[story_id], documents=[content], metadatas=[metadata or {}])
+            self._collection.add(
+                ids=[story_id], documents=[content], metadatas=[metadata or {}]
+            )
             logger.info(
                 f"[VectorStore] Added story: id={story_id}, len={len(content)}, metadata={metadata}"
             )
@@ -112,7 +114,10 @@ class VectorStore:
             return False
 
     def search(
-        self, query: str, n_results: int = 5, filter_metadata: Optional[Dict[str, Any]] = None
+        self,
+        query: str,
+        n_results: int = 5,
+        filter_metadata: Optional[Dict[str, Any]] = None,
     ) -> List[SearchResult]:
         """
         Search for relevant stories.
@@ -130,17 +135,27 @@ class VectorStore:
             return []
 
         try:
-            logger.info(f"[VectorStore] Searching: query_len={len(query)}, n_results={n_results}")
+            logger.info(
+                f"[VectorStore] Searching: query_len={len(query)}, n_results={n_results}"
+            )
             results = self._collection.query(
                 query_texts=[query], n_results=n_results, where=filter_metadata
             )
 
             search_results = []
             for i, doc in enumerate(results.get("documents", [[]])[0]):
-                score = 1 - results.get("distances", [[]])[0][i]  # Convert distance to similarity
-                metadata = results.get("metadatas", [[]])[0][i] if results.get("metadatas") else {}
+                score = (
+                    1 - results.get("distances", [[]])[0][i]
+                )  # Convert distance to similarity
+                metadata = (
+                    results.get("metadatas", [[]])[0][i]
+                    if results.get("metadatas")
+                    else {}
+                )
 
-                search_results.append(SearchResult(content=doc, score=score, metadata=metadata))
+                search_results.append(
+                    SearchResult(content=doc, score=score, metadata=metadata)
+                )
 
             # Log results summary
             if search_results:
@@ -157,7 +172,9 @@ class VectorStore:
             logger.error(f"[VectorStore] Search failed: {e}")
             return []
 
-    def get_relevant_context(self, current_situation: str, max_chars: int = 2000) -> str:
+    def get_relevant_context(
+        self, current_situation: str, max_chars: int = 2000
+    ) -> str:
         """
         Get relevant historical context for current situation.
 
@@ -185,7 +202,9 @@ class VectorStore:
                 break
 
             week = result.metadata.get("week", "?")
-            excerpt = result.content[:500] if len(result.content) > 500 else result.content
+            excerpt = (
+                result.content[:500] if len(result.content) > 500 else result.content
+            )
 
             context_parts.append(f"- 第{week}周: {excerpt}")
             total_chars += len(excerpt)

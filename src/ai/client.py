@@ -10,6 +10,7 @@ OpenAI SDK or private methods. This ensures:
 
 import logging
 import re
+import threading
 from typing import Any, Callable, Dict, Optional
 
 import openai
@@ -36,6 +37,9 @@ def _is_max_tokens_error(error_message: str) -> bool:
 
 class AIClient:
     """Base AI calling abstraction. All AI services depend on this."""
+
+    # C-04: 并发限制，最多5个并发AI调用
+    _semaphore = threading.Semaphore(5)
 
     def __init__(
         self,
@@ -89,6 +93,27 @@ class AIClient:
         Returns:
             AI generated text
         """
+        # C-04: 使用信号量限制并发调用
+        with self._semaphore:
+            return self._call_impl(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream_callback=stream_callback,
+                model=model,
+            )
+
+    def _call_impl(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.8,
+        max_tokens: int = 2000,
+        stream_callback: Optional[Callable[[str], None]] = None,
+        model: Optional[str] = None,
+    ) -> str:
+        """Internal implementation of AI call."""
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
@@ -170,7 +195,9 @@ class AIClient:
                         )
                         continue
                     else:
-                        logger.error(f"All max_tokens fallback levels failed: {error_msg}")
+                        logger.error(
+                            f"All max_tokens fallback levels failed: {error_msg}"
+                        )
                 else:
                     # 非 max_tokens 错误，直接抛出
                     raise
@@ -277,8 +304,12 @@ class AIClient:
 
             except Exception as e:
                 last_error = str(e)
-                logger.warning(f"AI call attempt {attempt + 1}/{retry_count} failed: {e}")
+                logger.warning(
+                    f"AI call attempt {attempt + 1}/{retry_count} failed: {e}"
+                )
                 if attempt == retry_count - 1:
-                    raise ValueError(f"AI call failed after {retry_count} attempts: {e}")
+                    raise ValueError(
+                        f"AI call failed after {retry_count} attempts: {e}"
+                    )
 
         raise ValueError("AI call failed after all retries")

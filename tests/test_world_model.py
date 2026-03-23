@@ -1,11 +1,22 @@
 """Tests for world_model module - improving coverage from 34%."""
-import pytest
+
 from unittest.mock import MagicMock
 
+import pytest
+
 from src.game.world_model import (
-    LocationInfo, CareerInfo, Commitment, CausalChain, PhysicalState,
-    CharacterProfile, WorldModel, _extract_region,
-    CAREER_LEVELS, CAREER_LEVEL_INDEX, MAX_CAREER_JUMP, MIN_WEEKS_BEFORE_PROMOTION
+    CAREER_LEVEL_INDEX,
+    CAREER_LEVELS,
+    MAX_CAREER_JUMP,
+    MIN_WEEKS_BEFORE_PROMOTION,
+    CareerInfo,
+    CausalChain,
+    CharacterProfile,
+    Commitment,
+    LocationInfo,
+    PhysicalState,
+    WorldModel,
+    _extract_region,
 )
 
 
@@ -21,10 +32,7 @@ class TestLocationInfo:
 
     def test_to_dict(self):
         loc = LocationInfo(
-            location="北京市朝阳区",
-            region="北京",
-            since_week=5,
-            travel_mode="visiting"
+            location="北京市朝阳区", region="北京", since_week=5, travel_mode="visiting"
         )
         d = loc.to_dict()
         assert d["location"] == "北京市朝阳区"
@@ -37,7 +45,7 @@ class TestLocationInfo:
             "location": "上海浦东新区",
             "region": "上海",
             "since_week": 10,
-            "travel_mode": "traveling"
+            "travel_mode": "traveling",
         }
         loc = LocationInfo.from_dict(d)
         assert loc.location == "上海浦东新区"
@@ -68,7 +76,7 @@ class TestCareerInfo:
             employer="某科技公司",
             level="senior",
             since_week=20,
-            history=[{"job": "工程师", "duration": 50}]
+            history=[{"job": "工程师", "duration": 50}],
         )
         d = career.to_dict()
         assert d["current_job"] == "产品经理"
@@ -82,7 +90,7 @@ class TestCareerInfo:
             "employer": "StartupX",
             "level": "executive",
             "since_week": 100,
-            "history": []
+            "history": [],
         }
         career = CareerInfo.from_dict(d)
         assert career.current_job == "CEO"
@@ -107,7 +115,7 @@ class TestCommitment:
             deadline_week=10,
             status="pending",
             created_week=5,
-            importance="critical"
+            importance="critical",
         )
         d = commit.to_dict()
         assert d["description"] == "答应周末陪妈妈去医院"
@@ -120,7 +128,7 @@ class TestCommitment:
             "description": "参加婚礼",
             "parties": ["好友A", "好友B"],
             "deadline_week": 15,
-            "status": "fulfilled"
+            "status": "fulfilled",
         }
         commit = Commitment.from_dict(d)
         assert commit.description == "参加婚礼"
@@ -143,7 +151,7 @@ class TestCausalChain:
             expected_consequence="可能影响晋升",
             characters=["李总"],
             created_week=5,
-            resolved=False
+            resolved=False,
         )
         d = cc.to_dict()
         assert d["cause"] == "得罪了部门主管"
@@ -155,7 +163,7 @@ class TestCausalChain:
             "cause": "投资失败",
             "expected_consequence": "财务紧张",
             "characters": [],
-            "resolved": True
+            "resolved": True,
         }
         cc = CausalChain.from_dict(d)
         assert cc.cause == "投资失败"
@@ -176,7 +184,7 @@ class TestPhysicalState:
             condition="右腿骨折",
             severity="severe",
             since_week=10,
-            expected_recovery_week=20
+            expected_recovery_week=20,
         )
         d = ps.to_dict()
         assert d["condition"] == "右腿骨折"
@@ -188,7 +196,7 @@ class TestPhysicalState:
             "condition": "感冒",
             "severity": "minor",
             "since_week": 5,
-            "expected_recovery_week": 6
+            "expected_recovery_week": 6,
         }
         ps = PhysicalState.from_dict(d)
         assert ps.condition == "感冒"
@@ -215,7 +223,7 @@ class TestCharacterProfile:
             behavioral_boundaries=["绝不公开发怒"],
             constraint_text="李明是一个善于倾听的人...",
             evidence_count=5,
-            last_updated_week=20
+            last_updated_week=20,
         )
         d = cp.to_dict()
         assert d["character"] == "李明"
@@ -227,7 +235,7 @@ class TestCharacterProfile:
             "character": "王华",
             "behavioral_traits": ["外向"],
             "speech_style": "幽默",
-            "evidence_count": 3
+            "evidence_count": 3,
         }
         cp = CharacterProfile.from_dict(d)
         assert cp.character == "王华"
@@ -263,11 +271,20 @@ class TestWorldModel:
         player_state.week = 15
         player_state.character_settings = {
             "era": {"era_description": "科幻未来"},
-            "occupation": {"occupation": "工程师", "employer": "TechCorp", "level": "senior"}
+            "occupation": {
+                "occupation": "工程师",
+                "employer": "TechCorp",
+                "level": "senior",
+            },
         }
         player_state.world_model_data = {
             "character_locations": {
-                "Hero": {"location": "北京", "region": "北京", "since_week": 0, "travel_mode": "resident"}
+                "Hero": {
+                    "location": "北京",
+                    "region": "北京",
+                    "since_week": 0,
+                    "travel_mode": "resident",
+                }
             },
             "career_records": {
                 "Hero": {"current_job": "工程师", "level": "senior", "since_week": 0}
@@ -278,12 +295,14 @@ class TestWorldModel:
             "causal_chains": [
                 {"cause": "加班", "expected_consequence": "升职", "resolved": False}
             ],
-            "physical_states": {
-                "Hero": {"condition": "疲劳", "severity": "minor"}
-            },
+            "physical_states": {"Hero": {"condition": "疲劳", "severity": "minor"}},
             "character_profiles": {
-                "李明": {"character": "李明", "evidence_count": 5, "constraint_text": "Test"}
-            }
+                "李明": {
+                    "character": "李明",
+                    "evidence_count": 5,
+                    "constraint_text": "Test",
+                }
+            },
         }
         player_state.established_facts = []
         player_state.player_name = "Hero"
@@ -304,8 +323,18 @@ class TestWorldModel:
         player_state.character_settings = {}
         player_state.world_model_data = {}
         player_state.established_facts = [
-            {"category": "location", "subject": "Hero", "fact": "北京市朝阳区", "established_week": 1},
-            {"category": "role", "subject": "Hero", "fact": "软件工程师", "established_week": 1}
+            {
+                "category": "location",
+                "subject": "Hero",
+                "fact": "北京市朝阳区",
+                "established_week": 1,
+            },
+            {
+                "category": "role",
+                "subject": "Hero",
+                "fact": "软件工程师",
+                "established_week": 1,
+            },
         ]
         player_state.player_name = "Hero"
 
@@ -382,7 +411,9 @@ class TestWorldModel:
             Commitment(description="Task 1", deadline_week=5, status="pending"),
             Commitment(description="Task 2", deadline_week=15, status="pending"),
             Commitment(description="Task 3", deadline_week=3, status="fulfilled"),
-            Commitment(description="Task 4", deadline_week=-1, status="pending"),  # No deadline
+            Commitment(
+                description="Task 4", deadline_week=-1, status="pending"
+            ),  # No deadline
         ]
 
         pending = wm.get_pending_commitments(10)
@@ -414,9 +445,15 @@ class TestWorldModel:
     def test_get_established_profile_names(self):
         wm = WorldModel()
         wm.character_profiles = {
-            "Established": CharacterProfile(character="Established", evidence_count=5, constraint_text="Test"),
-            "New": CharacterProfile(character="New", evidence_count=2, constraint_text="Test"),
-            "Empty": CharacterProfile(character="Empty", evidence_count=5, constraint_text=""),
+            "Established": CharacterProfile(
+                character="Established", evidence_count=5, constraint_text="Test"
+            ),
+            "New": CharacterProfile(
+                character="New", evidence_count=2, constraint_text="Test"
+            ),
+            "Empty": CharacterProfile(
+                character="Empty", evidence_count=5, constraint_text=""
+            ),
         }
 
         names = wm.get_established_profile_names()
@@ -432,10 +469,18 @@ class TestWorldModel:
     def test_build_constraints_text_chinese(self):
         wm = WorldModel()
         wm.current_week = 10
-        wm.character_locations["Hero"] = LocationInfo(location="北京市朝阳区", region="北京")
-        wm.career_records["Hero"] = CareerInfo(current_job="工程师", employer="TechCorp", level="senior")
-        wm.active_commitments = [Commitment(description="完成项目", parties=["老板"], deadline_week=12)]
-        wm.causal_chains = [CausalChain(cause="加班", expected_consequence="疲劳", resolved=False)]
+        wm.character_locations["Hero"] = LocationInfo(
+            location="北京市朝阳区", region="北京"
+        )
+        wm.career_records["Hero"] = CareerInfo(
+            current_job="工程师", employer="TechCorp", level="senior"
+        )
+        wm.active_commitments = [
+            Commitment(description="完成项目", parties=["老板"], deadline_week=12)
+        ]
+        wm.causal_chains = [
+            CausalChain(cause="加班", expected_consequence="疲劳", resolved=False)
+        ]
         wm.physical_states["Hero"] = PhysicalState(condition="疲劳", severity="minor")
 
         text = wm.build_constraints_text("zh")
@@ -447,7 +492,9 @@ class TestWorldModel:
 
     def test_build_constraints_text_english(self):
         wm = WorldModel()
-        wm.character_locations["Hero"] = LocationInfo(location="Beijing", region="Beijing")
+        wm.character_locations["Hero"] = LocationInfo(
+            location="Beijing", region="Beijing"
+        )
         wm.career_records["Hero"] = CareerInfo(current_job="Engineer", level="senior")
 
         text = wm.build_constraints_text("en")
@@ -502,7 +549,14 @@ class TestCareerLevelSystem:
     """Tests for career level constants."""
 
     def test_career_levels_order(self):
-        assert CAREER_LEVELS == ["intern", "junior", "mid", "senior", "lead", "executive"]
+        assert CAREER_LEVELS == [
+            "intern",
+            "junior",
+            "mid",
+            "senior",
+            "lead",
+            "executive",
+        ]
 
     def test_career_level_index(self):
         assert CAREER_LEVEL_INDEX["intern"] == 0

@@ -2,7 +2,8 @@
 
 用于从故事中提取重要地点/场景的AI提示词。
 """
-from typing import Dict, Any, List
+
+from typing import Any, Dict, List
 
 
 def get_landmark_extraction_prompt(
@@ -30,12 +31,12 @@ def get_landmark_extraction_prompt(
         if language == "zh":
             existing_context = "【已记录的重要地点】\n"
             for landmark in existing_landmarks:
-                appear_count = landmark.get('appear_count', 1)
+                appear_count = landmark.get("appear_count", 1)
                 existing_context += f"- {landmark.get('name', '未知')}: {landmark.get('description', '')[:50]}... (出现{appear_count}次)\n"
         else:
             existing_context = "[Recorded Important Locations]\n"
             for landmark in existing_landmarks:
-                appear_count = landmark.get('appear_count', 1)
+                appear_count = landmark.get("appear_count", 1)
                 existing_context += f"- {landmark.get('name', 'Unknown')}: {landmark.get('description', '')[:50]}... (appeared {appear_count} times)\n"
 
     # 获取主角名字
@@ -187,10 +188,12 @@ def get_landmark_description_generation_prompt(
         "nature": {"zh": "自然景观", "en": "Nature"},
         "room": {"zh": "房间", "en": "Room"},
         "area": {"zh": "区域", "en": "Area"},
-        "other": {"zh": "其他", "en": "Other"}
+        "other": {"zh": "其他", "en": "Other"},
     }
 
-    category_name = category_names.get(landmark_category, {"zh": "其他", "en": "Other"})[language]
+    category_name = category_names.get(
+        landmark_category, {"zh": "其他", "en": "Other"}
+    )[language]
 
     if language == "zh":
         return f"""请为以下地点生成详细的描述。

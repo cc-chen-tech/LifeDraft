@@ -1,11 +1,14 @@
 """Tests for images router - simplified version."""
-import pytest
+
 from unittest.mock import MagicMock, patch
+
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from src.api.deps import get_current_user
 from src.api.routers.images import router, verify_game_ownership, verify_image_ownership
-from src.services.image_service import ImageServiceError, ImageContentError
+from src.services.image_service import ImageContentError, ImageServiceError
 from src.services.image_storage import ImageStorageError
 
 
@@ -42,6 +45,7 @@ class TestVerifyGameOwnership:
         mock_db.query.return_value.filter.return_value.first.return_value = None
 
         from fastapi import HTTPException
+
         with pytest.raises(HTTPException) as exc:
             verify_game_ownership(mock_db, 999, 1)
         assert exc.value.status_code == 404
@@ -54,6 +58,7 @@ class TestVerifyGameOwnership:
         mock_db.query.return_value.filter.return_value.first.return_value = mock_game
 
         from fastapi import HTTPException
+
         with pytest.raises(HTTPException) as exc:
             verify_game_ownership(mock_db, 1, 1)
         assert exc.value.status_code == 404
@@ -80,7 +85,7 @@ class TestVerifyImageOwnership:
         mock_image.image_id = 1
         mock_db.query.return_value.filter.return_value.first.return_value = mock_image
 
-        with patch('src.api.routers.images.verify_game_ownership') as mock_verify:
+        with patch("src.api.routers.images.verify_game_ownership") as mock_verify:
             result = verify_image_ownership(mock_db, 1, 1)
             mock_verify.assert_called_once()
 
@@ -90,6 +95,7 @@ class TestVerifyImageOwnership:
         mock_db.query.return_value.filter.return_value.first.return_value = None
 
         from fastapi import HTTPException
+
         with pytest.raises(HTTPException) as exc:
             verify_image_ownership(mock_db, 999, 1)
         assert exc.value.status_code == 404
@@ -98,10 +104,13 @@ class TestVerifyImageOwnership:
 class TestGetImageFileEndpoint:
     """Test /file/{game_id}/{image_type}/{filename} endpoint."""
 
-    @patch('src.api.routers.images.ImageStorageService')
-    def test_get_image_file_success(self, mock_storage_class, client):
+    @patch("src.api.routers.images.ImageStorageService")
+    def test_get_image_file_success(self, mock_storage_class, app, client):
         """Test getting image file."""
         from pathlib import Path
+
+        # Mock auth dependency
+        app.dependency_overrides[get_current_user] = lambda: 1
 
         mock_storage = MagicMock()
         mock_storage.image_exists.return_value = True
@@ -109,17 +118,23 @@ class TestGetImageFileEndpoint:
         mock_storage.local_path = Path("/data/images")
         mock_storage_class.return_value = mock_storage
 
-        with patch('src.api.routers.images.get_session') as mock_session_gen:
-            mock_session_gen.return_value = iter([MagicMock()])
-            response = client.get("/images/file/1/character/test.png")
+        try:
+            with patch("src.api.routers.images.get_session") as mock_session_gen:
+                mock_session_gen.return_value = iter([MagicMock()])
+                response = client.get("/images/file/1/character/test.png")
 
-        assert response.status_code == 200
-        assert response.content == b"fake_image_data"
+            assert response.status_code == 200
+            assert response.content == b"fake_image_data"
+        finally:
+            app.dependency_overrides.clear()
 
-    @patch('src.api.routers.images.ImageStorageService')
-    def test_get_image_file_storage_error(self, mock_storage_class, client):
+    @patch("src.api.routers.images.ImageStorageService")
+    def test_get_image_file_storage_error(self, mock_storage_class, app, client):
         """Test handling storage error."""
         from pathlib import Path
+
+        # Mock auth dependency
+        app.dependency_overrides[get_current_user] = lambda: 1
 
         mock_storage = MagicMock()
         mock_storage.image_exists.return_value = True
@@ -127,17 +142,20 @@ class TestGetImageFileEndpoint:
         mock_storage.local_path = Path("/data/images")
         mock_storage_class.return_value = mock_storage
 
-        with patch('src.api.routers.images.get_session') as mock_session_gen:
-            mock_session_gen.return_value = iter([MagicMock()])
-            response = client.get("/images/file/1/character/test.png")
+        try:
+            with patch("src.api.routers.images.get_session") as mock_session_gen:
+                mock_session_gen.return_value = iter([MagicMock()])
+                response = client.get("/images/file/1/character/test.png")
 
-        assert response.status_code == 500
+            assert response.status_code == 500
+        finally:
+            app.dependency_overrides.clear()
 
 
 class TestGetImageEndpoint:
     """Test /{image_id} endpoint."""
 
-    @patch('src.api.routers.images.ImageService')
+    @patch("src.api.routers.images.ImageService")
     def test_get_image_success(self, mock_service_class, client):
         """Test getting image by ID."""
         mock_service = MagicMock()
@@ -154,7 +172,7 @@ class TestGetImageEndpoint:
         mock_service.get_image_url.return_value = "/images/file/1/character/test.png"
         mock_service_class.return_value = mock_service
 
-        with patch('src.api.routers.images.get_session') as mock_session_gen:
+        with patch("src.api.routers.images.get_session") as mock_session_gen:
             mock_session_gen.return_value = iter([MagicMock()])
             response = client.get("/images/1")
 
@@ -162,14 +180,14 @@ class TestGetImageEndpoint:
         data = response.json()
         assert data["image_id"] == 1
 
-    @patch('src.api.routers.images.ImageService')
+    @patch("src.api.routers.images.ImageService")
     def test_get_image_not_found(self, mock_service_class, client):
         """Test getting non-existent image."""
         mock_service = MagicMock()
         mock_service.get_image.return_value = None
         mock_service_class.return_value = mock_service
 
-        with patch('src.api.routers.images.get_session') as mock_session_gen:
+        with patch("src.api.routers.images.get_session") as mock_session_gen:
             mock_session_gen.return_value = iter([MagicMock()])
             response = client.get("/images/999")
 
@@ -179,14 +197,14 @@ class TestGetImageEndpoint:
 class TestDeleteImageEndpoint:
     """Test DELETE /{image_id} endpoint."""
 
-    @patch('src.api.routers.images.ImageService')
+    @patch("src.api.routers.images.ImageService")
     def test_delete_image_not_found(self, mock_service_class, client):
         """Test deleting non-existent image."""
         mock_service = MagicMock()
         mock_service.get_image.return_value = None
         mock_service_class.return_value = mock_service
 
-        with patch('src.api.routers.images.get_session') as mock_session_gen:
+        with patch("src.api.routers.images.get_session") as mock_session_gen:
             mock_session_gen.return_value = iter([MagicMock()])
             response = client.delete("/images/999")
 

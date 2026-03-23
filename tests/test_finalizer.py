@@ -1,7 +1,9 @@
 """Tests for RoundFinalizer service."""
-import pytest
-from unittest.mock import MagicMock, patch, call
+
 from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import MagicMock, call, patch
+
+import pytest
 
 from src.game.round.finalizer import RoundFinalizer
 
@@ -86,10 +88,12 @@ class TestFinalizeWeek:
         mock_state.character_settings = {}
 
         mock_ai = MagicMock()
-        mock_ai.generate_weekly_summary = MagicMock(return_value={
-            "summary": "Test summary",
-            "bonus_effects": {"energy": 5, "mood": 3}
-        })
+        mock_ai.generate_weekly_summary = MagicMock(
+            return_value={
+                "summary": "Test summary",
+                "bonus_effects": {"energy": 5, "mood": 3},
+            }
+        )
 
         finalizer = RoundFinalizer(
             player_state_getter=MagicMock(return_value=mock_state),
@@ -100,9 +104,11 @@ class TestFinalizeWeek:
         )
 
         result = {}
-        with patch.object(finalizer, '_apply_weekly_decay'):
-            with patch.object(finalizer, '_check_and_fix_missing_attributes'):
-                with patch('src.game.round.finalizer.WorldModelUpdater.synthesize_character_profiles'):
+        with patch.object(finalizer, "_apply_weekly_decay"):
+            with patch.object(finalizer, "_check_and_fix_missing_attributes"):
+                with patch(
+                    "src.game.round.finalizer.WorldModelUpdater.synthesize_character_profiles"
+                ):
                     finalizer.finalize_week(result)
 
         assert result["weekly_summary"] == "Test summary"
@@ -128,8 +134,10 @@ class TestFinalizeWeek:
         )
 
         result = {}
-        with patch.object(finalizer, '_apply_weekly_decay'):
-            with patch('src.game.round.finalizer.WorldModelUpdater.synthesize_character_profiles'):
+        with patch.object(finalizer, "_apply_weekly_decay"):
+            with patch(
+                "src.game.round.finalizer.WorldModelUpdater.synthesize_character_profiles"
+            ):
                 finalizer.finalize_week(result, status_callback=mock_callback)
 
         mock_callback.assert_called_with("weekly_summary")
@@ -144,10 +152,12 @@ class TestFinalizeWeek:
         mock_state.character_settings = {}
 
         mock_ai = MagicMock()
-        mock_ai.generate_weekly_summary = MagicMock(return_value={
-            "summary": "Test",
-            "bonus_effects": {"energy": 10, "mood": 5, "knowledge": 3, "wealth": 2}
-        })
+        mock_ai.generate_weekly_summary = MagicMock(
+            return_value={
+                "summary": "Test",
+                "bonus_effects": {"energy": 10, "mood": 5, "knowledge": 3, "wealth": 2},
+            }
+        )
 
         finalizer = RoundFinalizer(
             player_state_getter=MagicMock(return_value=mock_state),
@@ -158,12 +168,16 @@ class TestFinalizeWeek:
         )
 
         result = {}
-        with patch.object(finalizer, '_apply_weekly_decay'):
-            with patch.object(finalizer, '_check_and_fix_missing_attributes'):
-                with patch('src.game.round.finalizer.WorldModelUpdater.synthesize_character_profiles'):
+        with patch.object(finalizer, "_apply_weekly_decay"):
+            with patch.object(finalizer, "_check_and_fix_missing_attributes"):
+                with patch(
+                    "src.game.round.finalizer.WorldModelUpdater.synthesize_character_profiles"
+                ):
                     finalizer.finalize_week(result)
 
-        mock_state.update.assert_called_once_with(energy=10, mood=5, knowledge=3, wealth=2)
+        mock_state.update.assert_called_once_with(
+            energy=10, mood=5, knowledge=3, wealth=2
+        )
 
 
 class TestGenerateWeeklySummary:
@@ -217,17 +231,16 @@ class TestGenerateWeeklySummary:
     def test_generate_weekly_summary_with_rounds(self):
         """Test weekly summary with rounds."""
         mock_state = MagicMock()
-        mock_state.get_current_week_rounds = MagicMock(return_value=[
-            {"story": "Story 1", "choice": "Choice 1"}
-        ])
+        mock_state.get_current_week_rounds = MagicMock(
+            return_value=[{"story": "Story 1", "choice": "Choice 1"}]
+        )
         mock_state.character_settings = {"name": "Test"}
         mock_state.get_game_date_info = MagicMock(return_value={"year": 1})
 
         mock_ai = MagicMock()
-        mock_ai.generate_weekly_summary = MagicMock(return_value={
-            "summary": "Week summary",
-            "bonus_effects": {}
-        })
+        mock_ai.generate_weekly_summary = MagicMock(
+            return_value={"summary": "Week summary", "bonus_effects": {}}
+        )
 
         finalizer = RoundFinalizer(
             player_state_getter=MagicMock(return_value=mock_state),
@@ -273,7 +286,9 @@ class TestCompressRoundStory:
         mock_state.character_habits = []
 
         mock_story_service = MagicMock()
-        mock_story_service.compress_story = MagicMock(return_value={"summary": "compressed"})
+        mock_story_service.compress_story = MagicMock(
+            return_value={"summary": "compressed"}
+        )
 
         finalizer = RoundFinalizer(
             player_state_getter=MagicMock(return_value=mock_state),
@@ -291,7 +306,9 @@ class TestCompressRoundStory:
     def test_compress_round_story_no_state(self):
         """Test story compression with no state."""
         mock_story_service = MagicMock()
-        mock_story_service.compress_story = MagicMock(return_value={"summary": "compressed"})
+        mock_story_service.compress_story = MagicMock(
+            return_value={"summary": "compressed"}
+        )
 
         finalizer = RoundFinalizer(
             player_state_getter=MagicMock(return_value=None),
@@ -398,7 +415,9 @@ class TestCheckAndFixMissingAttributes:
         )
 
         finalizer._check_and_fix_missing_attributes()
-        mock_char_creator.check_and_fix_missing_attributes.assert_called_once_with(mock_state)
+        mock_char_creator.check_and_fix_missing_attributes.assert_called_once_with(
+            mock_state
+        )
 
     def test_check_and_fix_missing_attributes_no_state(self):
         """Test attribute check with no state."""
@@ -424,9 +443,9 @@ class TestGenerateFamilyMembersDetails:
         mock_state.player_name = "Player"
 
         mock_char_creator = MagicMock()
-        mock_char_creator.generate_family_members_details = MagicMock(return_value=[
-            {"name": "Mom", "role": "mother"}
-        ])
+        mock_char_creator.generate_family_members_details = MagicMock(
+            return_value=[{"name": "Mom", "role": "mother"}]
+        )
 
         finalizer = RoundFinalizer(
             player_state_getter=MagicMock(return_value=mock_state),
@@ -494,7 +513,10 @@ class TestGenerateFourWeekSummary:
         )
 
         finalizer._generate_four_week_summary(4)
-        assert not hasattr(mock_state, 'four_week_summaries') or len(mock_state.four_week_summaries) == 0
+        assert (
+            not hasattr(mock_state, "four_week_summaries")
+            or len(mock_state.four_week_summaries) == 0
+        )
 
 
 class TestGenerateYearlySummary:
@@ -535,4 +557,7 @@ class TestGenerateYearlySummary:
         )
 
         finalizer._generate_yearly_summary(48)
-        assert not hasattr(mock_state, 'yearly_summaries') or len(mock_state.yearly_summaries) == 0
+        assert (
+            not hasattr(mock_state, "yearly_summaries")
+            or len(mock_state.yearly_summaries) == 0
+        )

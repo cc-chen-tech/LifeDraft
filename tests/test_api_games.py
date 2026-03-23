@@ -1,6 +1,8 @@
 """Tests for games API routes."""
+
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
 from src.api.main import app
@@ -51,17 +53,24 @@ def mock_auth():
 class TestCreateGame:
     """Tests for POST /api/games."""
 
-    def test_create_game_success(self, client, mock_db, mock_session_store, mock_auth, auth_headers):
+    def test_create_game_success(
+        self, client, mock_db, mock_session_store, mock_auth, auth_headers
+    ):
         """Test creating a new game."""
         with patch("src.api.routers.games.GameInitializer") as MockInit:
             mock_game_loop = MagicMock()
-            mock_game_loop.get_state.return_value = MagicMock(to_dict=lambda: {"player_name": "Test"})
+            mock_game_loop.get_state.return_value = MagicMock(
+                to_dict=lambda: {"player_name": "Test"}
+            )
             mock_game_loop.get_progress.return_value = {"week": 1}
             mock_game_loop.get_round_info.return_value = {"current_round": 0}
             mock_game_loop.current_event = None
-            
+
             mock_initializer = MagicMock()
-            mock_initializer.initialize_game_from_settings.return_value = (mock_game_loop, 1)
+            mock_initializer.initialize_game_from_settings.return_value = (
+                mock_game_loop,
+                1,
+            )
             MockInit.return_value = mock_initializer
 
             response = client.post(
@@ -70,9 +79,9 @@ class TestCreateGame:
                     "character_settings": {"era": {"era_name": "现代"}},
                     "player_name": "TestPlayer",
                     "life_vision": "Test vision",
-                    "language": "zh"
+                    "language": "zh",
                 },
-                headers=auth_headers
+                headers=auth_headers,
             )
 
             assert response.status_code == 201
@@ -87,9 +96,12 @@ class TestCreateGame:
             mock_game_loop.get_progress.return_value = {}
             mock_game_loop.get_round_info.return_value = {}
             mock_game_loop.current_event = None
-            
+
             mock_initializer = MagicMock()
-            mock_initializer.initialize_game_from_settings.return_value = (mock_game_loop, 2)
+            mock_initializer.initialize_game_from_settings.return_value = (
+                mock_game_loop,
+                2,
+            )
             MockInit.return_value = mock_initializer
 
             response = client.post(
@@ -98,8 +110,8 @@ class TestCreateGame:
                     "character_settings": {},
                     "player_name": "Anon",
                     "life_vision": "",
-                    "language": "zh"
-                }
+                    "language": "zh",
+                },
             )
 
             # Should work without auth (anonymous)
@@ -109,7 +121,9 @@ class TestCreateGame:
         """Test creating game with invalid settings."""
         with patch("src.api.routers.games.GameInitializer") as MockInit:
             mock_initializer = MagicMock()
-            mock_initializer.initialize_game_from_settings.side_effect = ValueError("Invalid settings")
+            mock_initializer.initialize_game_from_settings.side_effect = ValueError(
+                "Invalid settings"
+            )
             MockInit.return_value = mock_initializer
 
             response = client.post(
@@ -118,9 +132,9 @@ class TestCreateGame:
                     "character_settings": {},
                     "player_name": "Test",
                     "life_vision": "",
-                    "language": "zh"
+                    "language": "zh",
                 },
-                headers=auth_headers
+                headers=auth_headers,
             )
 
             assert response.status_code == 400
@@ -132,6 +146,7 @@ class TestListGames:
     def test_list_games_success(self, client, mock_db, mock_auth, auth_headers):
         """Test listing user's games."""
         from datetime import datetime
+
         mock_db.list_saved_games.return_value = [
             {
                 "game_id": 1,
@@ -140,7 +155,7 @@ class TestListGames:
                 "age": 23,
                 "created_at": datetime(2024, 1, 1, 12, 0, 0),
                 "updated_at": datetime(2024, 1, 2, 12, 0, 0),
-                "has_progress": True
+                "has_progress": True,
             },
             {
                 "game_id": 2,
@@ -149,8 +164,8 @@ class TestListGames:
                 "age": 22,
                 "created_at": datetime(2024, 1, 3, 12, 0, 0),
                 "updated_at": None,
-                "has_progress": False
-            }
+                "has_progress": False,
+            },
         ]
 
         response = client.get("/api/games", headers=auth_headers)
@@ -189,16 +204,20 @@ class TestListGames:
 class TestLoadGame:
     """Tests for GET /api/games/{game_id}."""
 
-    def test_load_game_success(self, client, mock_db, mock_session_store, mock_auth, auth_headers):
+    def test_load_game_success(
+        self, client, mock_db, mock_session_store, mock_auth, auth_headers
+    ):
         """Test loading an existing game."""
         mock_db.load_saved_game.return_value = {
             "player_state": {"player_name": "Test"},
-            "character_settings": {"era": {"era_description": "现代"}}
+            "character_settings": {"era": {"era_description": "现代"}},
         }
 
         with patch("src.api.routers.games.GameLoop") as MockLoop:
             mock_game_loop = MagicMock()
-            mock_game_loop.get_state.return_value = MagicMock(to_dict=lambda: {"player_name": "Test"})
+            mock_game_loop.get_state.return_value = MagicMock(
+                to_dict=lambda: {"player_name": "Test"}
+            )
             mock_game_loop.get_progress.return_value = {}
             mock_game_loop.get_round_info.return_value = {}
             mock_game_loop.current_event = None
@@ -228,7 +247,15 @@ class TestLoadGame:
 class TestSaveGame:
     """Tests for POST /api/games/{game_id}/save."""
 
-    def test_save_game_success(self, client, mock_db, mock_session_store, mock_session_service, mock_auth, auth_headers):
+    def test_save_game_success(
+        self,
+        client,
+        mock_db,
+        mock_session_store,
+        mock_session_service,
+        mock_auth,
+        auth_headers,
+    ):
         """Test saving game progress."""
         mock_session = MagicMock()
         mock_session.game_loop.get_state.return_value = MagicMock()
@@ -241,16 +268,21 @@ class TestSaveGame:
         data = response.json()
         assert data["success"] is True
 
-    def test_save_game_no_session(self, client, mock_session_store, mock_session_service, mock_auth, auth_headers):
+    def test_save_game_no_session(
+        self, client, mock_session_store, mock_session_service, mock_auth, auth_headers
+    ):
         """Test saving when no active session."""
         from fastapi import HTTPException
+
         mock_session_service.get_or_restore.side_effect = HTTPException(status_code=404)
 
         response = client.post("/api/games/1/save", headers=auth_headers)
 
         assert response.status_code == 404
 
-    def test_save_game_no_state(self, client, mock_session_store, mock_session_service, mock_auth, auth_headers):
+    def test_save_game_no_state(
+        self, client, mock_session_store, mock_session_service, mock_auth, auth_headers
+    ):
         """Test saving when no game state."""
         mock_session = MagicMock()
         mock_session.game_loop.get_state.return_value = None
@@ -264,7 +296,9 @@ class TestSaveGame:
 class TestDeleteGame:
     """Tests for DELETE /api/games/{game_id}."""
 
-    def test_delete_game_success(self, client, mock_db, mock_session_store, mock_auth, auth_headers):
+    def test_delete_game_success(
+        self, client, mock_db, mock_session_store, mock_auth, auth_headers
+    ):
         """Test deleting a game."""
         mock_db.delete_saved_game.return_value = True
 
@@ -290,18 +324,22 @@ class TestDeleteGame:
 class TestGetActiveGame:
     """Tests for GET /api/games/active - 服务端会话恢复"""
 
-    def test_get_active_game_success(self, client, mock_db, mock_session_store, mock_auth, auth_headers):
+    def test_get_active_game_success(
+        self, client, mock_db, mock_session_store, mock_auth, auth_headers
+    ):
         """Test getting active game when user has one."""
         # 设置用户有活跃游戏
         mock_db.get_active_game.return_value = 1
         mock_db.load_saved_game.return_value = {
             "player_state": {"player_name": "Test"},
-            "character_settings": {"era": {"era_description": "现代"}}
+            "character_settings": {"era": {"era_description": "现代"}},
         }
 
         with patch("src.api.routers.games.GameLoop") as MockLoop:
             mock_game_loop = MagicMock()
-            mock_game_loop.get_state.return_value = MagicMock(to_dict=lambda: {"player_name": "Test"})
+            mock_game_loop.get_state.return_value = MagicMock(
+                to_dict=lambda: {"player_name": "Test"}
+            )
             mock_game_loop.get_progress.return_value = {}
             mock_game_loop.get_round_info.return_value = {}
             mock_game_loop.current_event = None
@@ -316,7 +354,9 @@ class TestGetActiveGame:
             mock_db.get_active_game.assert_called_once_with(1)
             mock_session_store.put.assert_called_once()
 
-    def test_get_active_game_no_active_game(self, client, mock_db, mock_auth, auth_headers):
+    def test_get_active_game_no_active_game(
+        self, client, mock_db, mock_auth, auth_headers
+    ):
         """Test getting active game when user has none."""
         mock_db.get_active_game.return_value = None
 
@@ -325,7 +365,9 @@ class TestGetActiveGame:
         assert response.status_code == 404
         assert "No active game" in response.json()["detail"]
 
-    def test_get_active_game_deleted_game(self, client, mock_db, mock_auth, auth_headers):
+    def test_get_active_game_deleted_game(
+        self, client, mock_db, mock_auth, auth_headers
+    ):
         """Test getting active game when the game was deleted."""
         mock_db.get_active_game.return_value = 1
         mock_db.load_saved_game.return_value = None  # 游戏已被删除
@@ -345,17 +387,24 @@ class TestGetActiveGame:
 class TestSetActiveGame:
     """Tests for set_active_game functionality."""
 
-    def test_create_game_sets_active(self, client, mock_db, mock_session_store, mock_auth, auth_headers):
+    def test_create_game_sets_active(
+        self, client, mock_db, mock_session_store, mock_auth, auth_headers
+    ):
         """Test that creating a game sets it as active."""
         with patch("src.api.routers.games.GameInitializer") as MockInit:
             mock_game_loop = MagicMock()
-            mock_game_loop.get_state.return_value = MagicMock(to_dict=lambda: {"player_name": "Test"})
+            mock_game_loop.get_state.return_value = MagicMock(
+                to_dict=lambda: {"player_name": "Test"}
+            )
             mock_game_loop.get_progress.return_value = {"week": 1}
             mock_game_loop.get_round_info.return_value = {"current_round": 0}
             mock_game_loop.current_event = None
-            
+
             mock_initializer = MagicMock()
-            mock_initializer.initialize_game_from_settings.return_value = (mock_game_loop, 1)
+            mock_initializer.initialize_game_from_settings.return_value = (
+                mock_game_loop,
+                1,
+            )
             MockInit.return_value = mock_initializer
 
             response = client.post(
@@ -364,25 +413,29 @@ class TestSetActiveGame:
                     "character_settings": {"era": {"era_name": "现代"}},
                     "player_name": "TestPlayer",
                     "life_vision": "Test vision",
-                    "language": "zh"
+                    "language": "zh",
                 },
-                headers=auth_headers
+                headers=auth_headers,
             )
 
             assert response.status_code == 201
             # 验证设置了活跃游戏
             mock_db.set_active_game.assert_called_once_with(1, 1)
 
-    def test_load_game_sets_active(self, client, mock_db, mock_session_store, mock_auth, auth_headers):
+    def test_load_game_sets_active(
+        self, client, mock_db, mock_session_store, mock_auth, auth_headers
+    ):
         """Test that loading a game sets it as active."""
         mock_db.load_saved_game.return_value = {
             "player_state": {"player_name": "Test"},
-            "character_settings": {"era": {"era_description": "现代"}}
+            "character_settings": {"era": {"era_description": "现代"}},
         }
 
         with patch("src.api.routers.games.GameLoop") as MockLoop:
             mock_game_loop = MagicMock()
-            mock_game_loop.get_state.return_value = MagicMock(to_dict=lambda: {"player_name": "Test"})
+            mock_game_loop.get_state.return_value = MagicMock(
+                to_dict=lambda: {"player_name": "Test"}
+            )
             mock_game_loop.get_progress.return_value = {}
             mock_game_loop.get_round_info.return_value = {}
             mock_game_loop.current_event = None
@@ -394,7 +447,9 @@ class TestSetActiveGame:
             # 验证设置了活跃游戏
             mock_db.set_active_game.assert_called_once_with(1, 1)
 
-    def test_delete_game_clears_active(self, client, mock_db, mock_session_store, mock_auth, auth_headers):
+    def test_delete_game_clears_active(
+        self, client, mock_db, mock_session_store, mock_auth, auth_headers
+    ):
         """Test that deleting the active game clears it."""
         mock_db.get_active_game.return_value = 1  # 删除的是活跃游戏
         mock_db.delete_saved_game.return_value = True
@@ -405,7 +460,9 @@ class TestSetActiveGame:
         # 验证清除了活跃游戏
         mock_db.clear_active_game.assert_called_once_with(1)
 
-    def test_delete_other_game_keeps_active(self, client, mock_db, mock_session_store, mock_auth, auth_headers):
+    def test_delete_other_game_keeps_active(
+        self, client, mock_db, mock_session_store, mock_auth, auth_headers
+    ):
         """Test that deleting another game doesn't clear active."""
         mock_db.get_active_game.return_value = 2  # 活跃游戏是另一个
         mock_db.delete_saved_game.return_value = True

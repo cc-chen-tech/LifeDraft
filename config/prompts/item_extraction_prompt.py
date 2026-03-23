@@ -2,7 +2,8 @@
 
 用于从故事中提取重要物品的AI提示词。
 """
-from typing import Dict, Any, List
+
+from typing import Any, Dict, List
 
 
 def get_item_extraction_prompt(
@@ -182,10 +183,12 @@ def get_item_description_generation_prompt(
         "keepsake": {"zh": "纪念品", "en": "Keepsake"},
         "treasure": {"zh": "宝物", "en": "Treasure"},
         "document": {"zh": "文件", "en": "Document"},
-        "other": {"zh": "其他", "en": "Other"}
+        "other": {"zh": "其他", "en": "Other"},
     }
 
-    category_name = category_names.get(item_category, {"zh": "其他", "en": "Other"})[language]
+    category_name = category_names.get(item_category, {"zh": "其他", "en": "Other"})[
+        language
+    ]
 
     if language == "zh":
         return f"""请为以下物品生成详细的描述。

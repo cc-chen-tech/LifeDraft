@@ -7,6 +7,7 @@
 
 import { test, expect, Page, BrowserContext } from '@playwright/test';
 import { registerUser } from './helpers/auth';
+import { waitForPageReady } from './helpers/wait-helpers';
 
 const BASE_URL = 'http://localhost:3000';
 const API_URL = 'http://localhost:8000';
@@ -80,7 +81,7 @@ test.describe('Collection System E2E Tests', () => {
       }
     });
 
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState('networkidle');
 
     // Filter out known non-critical errors
     const criticalErrors = consoleErrors.filter(e =>
@@ -145,7 +146,7 @@ test.describe('Collection Panel UI Tests', () => {
       errors.push(error.message);
     });
 
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState('networkidle');
 
     // Should not have module import errors
     const moduleErrors = errors.filter(e => e.includes('module') || e.includes('import'));
@@ -208,7 +209,7 @@ test.describe('Full Collection Flow Test', () => {
       }
     });
 
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState('networkidle');
 
     // Should not have module not found errors for collection
     const collectionErrors = moduleErrors.filter(e => e.toLowerCase().includes('collection'));
@@ -225,7 +226,7 @@ test.describe('Full Collection Flow Test', () => {
       runtimeErrors.push(error.message);
     });
 
-    await page.waitForTimeout(1500);
+    await page.waitForLoadState('networkidle');
 
     // Should not have zustand or collection store errors
     const storeErrors = runtimeErrors.filter(e =>

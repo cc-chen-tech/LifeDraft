@@ -5,6 +5,7 @@
  * Tests for login and registration functionality on the welcome page
  */
 import { test, expect } from '@playwright/test';
+import { waitForPageReady } from './helpers/wait-helpers';
 
 test.describe('Auth - Welcome Page', () => {
   test.beforeEach(async ({ page }) => {
@@ -51,7 +52,7 @@ test.describe('Auth - Registration Flow', () => {
     
     // Registration sheet should open
     const sheet = page.locator('[role="dialog"], [class*="sheet"]');
-    await page.waitForTimeout(500);
+    await sheet.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
     
     // Display name input should appear
     const nameInput = page.getByPlaceholder(/昵称|名字|Name/i);
@@ -62,7 +63,7 @@ test.describe('Auth - Registration Flow', () => {
     
     const newGameButton = page.getByRole('button', { name: /新游戏|New Game/i });
     await newGameButton.click();
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     
     const nameInput = page.getByPlaceholder(/昵称|名字|Name/i);
     
@@ -77,7 +78,7 @@ test.describe('Auth - Registration Flow', () => {
     
     const newGameButton = page.getByRole('button', { name: /新游戏|New Game/i });
     await newGameButton.click();
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     
     const submitButton = page.getByRole('button', { name: /注册|Register|提交/i });
   });
@@ -87,7 +88,7 @@ test.describe('Auth - Registration Flow', () => {
     
     const newGameButton = page.getByRole('button', { name: /新游戏|New Game/i });
     await newGameButton.click();
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     
     const nameInput = page.getByPlaceholder(/昵称|名字|Name/i);
     
@@ -97,7 +98,7 @@ test.describe('Auth - Registration Flow', () => {
       const submitButton = page.getByRole('button', { name: /注册|Register|提交/i });
       if (await submitButton.isVisible()) {
         await submitButton.click();
-        await page.waitForTimeout(1000);
+        await page.waitForResponse(resp => resp.url().includes('/api/auth'));
         
         // Private ID should be shown
         const privateId = page.locator('text=/密钥|Private.*ID|保存/');
@@ -110,7 +111,7 @@ test.describe('Auth - Registration Flow', () => {
     
     const newGameButton = page.getByRole('button', { name: /新游戏|New Game/i });
     await newGameButton.click();
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     
     const nameInput = page.getByPlaceholder(/昵称|名字|Name/i);
     
@@ -120,7 +121,7 @@ test.describe('Auth - Registration Flow', () => {
       const submitButton = page.getByRole('button', { name: /注册|Register|提交/i });
       if (await submitButton.isVisible()) {
         await submitButton.click();
-        await page.waitForTimeout(1000);
+        await page.waitForResponse(resp => resp.url().includes('/api/auth'));
         
         // Copy button
         const copyButton = page.getByRole('button', { name: /复制|Copy/i });
@@ -137,7 +138,7 @@ test.describe('Auth - Login Flow', () => {
     
     if (await loginButton.isVisible()) {
       await loginButton.click();
-      await page.waitForTimeout(500);
+      await page.waitForLoadState('networkidle');
       
       // Login sheet should open
       const sheet = page.locator('[role="dialog"], [class*="sheet"]');
@@ -151,7 +152,7 @@ test.describe('Auth - Login Flow', () => {
     
     if (await loginButton.isVisible()) {
       await loginButton.click();
-      await page.waitForTimeout(500);
+      await page.waitForLoadState('networkidle');
       
       const privateIdInput = page.getByPlaceholder(/密钥|Private.*ID|ID/i);
       
@@ -169,7 +170,7 @@ test.describe('Auth - Login Flow', () => {
     
     if (await loginButton.isVisible()) {
       await loginButton.click();
-      await page.waitForTimeout(500);
+      await page.waitForLoadState('networkidle');
       
       const privateIdInput = page.getByPlaceholder(/密钥|Private.*ID|ID/i);
       
@@ -178,7 +179,7 @@ test.describe('Auth - Login Flow', () => {
         
         const submitButton = page.getByRole('button', { name: /登录|Login/i });
         await submitButton.click();
-        await page.waitForTimeout(1000);
+        await page.waitForResponse(resp => resp.url().includes('/api/auth'));
         
         // Error message should appear
         const errorMessage = page.locator('text=/失败|错误|无效/');
@@ -193,7 +194,7 @@ test.describe('Auth - Navigation', () => {
     
     const newGameButton = page.getByRole('button', { name: /新游戏/i });
     await newGameButton.click();
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     
     // Should open registration sheet or navigate to create
     const sheet = page.locator('[role="dialog"], [class*="sheet"]');
@@ -212,7 +213,7 @@ test.describe('Auth - Navigation', () => {
     
     if (await loadButton.isVisible()) {
       await loadButton.click();
-      await page.waitForTimeout(500);
+      await page.waitForLoadState('networkidle');
       
       // Check if navigated to saves page or opened a sheet
       const currentUrl = page.url();
@@ -235,7 +236,7 @@ test.describe('Auth - Sheet Interactions', () => {
     
     const newGameButton = page.getByRole('button', { name: /新游戏|New Game/i });
     await newGameButton.click();
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     
     // Sheet should be open
     const sheet = page.locator('[role="dialog"], [class*="sheet"]');
@@ -244,7 +245,7 @@ test.describe('Auth - Sheet Interactions', () => {
     const overlay = page.locator('[class*="overlay"], [class*="backdrop"]');
     if (await overlay.count() > 0) {
       await overlay.first().click({ force: true });
-      await page.waitForTimeout(300);
+      await page.waitForLoadState('domcontentloaded');
     }
   });
 
@@ -253,11 +254,11 @@ test.describe('Auth - Sheet Interactions', () => {
     
     const newGameButton = page.getByRole('button', { name: /新游戏|New Game/i });
     await newGameButton.click();
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     
     // Press escape
     await page.keyboard.press('Escape');
-    await page.waitForTimeout(300);
+    await page.waitForLoadState('domcontentloaded');
   });
 });
 
@@ -267,7 +268,7 @@ test.describe('Auth - Error Handling', () => {
     
     const newGameButton = page.getByRole('button', { name: /新游戏/i });
     await newGameButton.click();
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     
     // If registration sheet opened
     const nameInput = page.getByPlaceholder(/昵称|名字|Name/i);
@@ -287,7 +288,7 @@ test.describe('Auth - Error Handling', () => {
     
     const newGameButton = page.getByRole('button', { name: /新游戏/i });
     await newGameButton.click();
-    await page.waitForTimeout(500);
+    await page.waitForLoadState('networkidle');
     
     const nameInput = page.getByPlaceholder(/昵称|名字|Name/i);
     

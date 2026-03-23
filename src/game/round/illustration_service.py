@@ -8,15 +8,18 @@
 """
 
 import logging
-import threading
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
-from src.ai.image_client import (ContentInspectionError, ImageClient,
-                                 ImageGenerationError)
+from src.ai.image_client import (
+    ContentInspectionError,
+    ImageClient,
+    ImageGenerationError,
+)
 from src.database.models import Image as ImageModel
 from src.database.models import SceneImage
+from src.services.image_service import get_image_thread_pool  # C-05: 使用共享线程池
 from src.services.image_storage import ImageStorageService
 
 logger = logging.getLogger(__name__)
@@ -69,24 +72,20 @@ class RoundIllustrationService:
             world_model_data: 世界模型数据（用于识别跨轮次反复出现的实体/物品）
             established_facts: 已建立的世界事实列表（含 category="item" 的重要物品）
         """
-        # 在后台线程中执行生成
-        thread = threading.Thread(
-            target=self._generate_round_illustration_sync,
-            args=(
-                game_id,
-                round_number,
-                story_text,
-                character_settings,
-                player_name,
-                existing_images,
-                stage,  # ★ 传递 stage 参数
-                week,  # ★ 传递 week 参数
-                world_model_data,
-                established_facts,
-            ),
-            daemon=True,
+        # C-05: 使用线程池替代裸线程
+        get_image_thread_pool().submit(
+            self._generate_round_illustration_sync,
+            game_id,
+            round_number,
+            story_text,
+            character_settings,
+            player_name,
+            existing_images,
+            stage,  # ★ 传递 stage 参数
+            week,  # ★ 传递 week 参数
+            world_model_data,
+            established_facts,
         )
-        thread.start()
         week_display = f"第{week + 1}周" if week is not None else "未知周"
         logger.info(
             f"[RoundIllustration] 启动异步生成: game={game_id}, {week_display}, round {round_number}, stage={stage}"
@@ -123,9 +122,11 @@ class RoundIllustrationService:
                 "era": self._extract_era_from_settings(character_settings),
             }
 
-            scene_desc, illustration_prompt = self.image_client.analyze_story_for_illustration(
-                story_text=story_text[:2000],  # 限制长度避免token超限
-                character_info=char_info,
+            scene_desc, illustration_prompt = (
+                self.image_client.analyze_story_for_illustration(
+                    story_text=story_text[:2000],  # 限制长度避免token超限
+                    character_info=char_info,
+                )
             )
 
             logger.info(f"[RoundIllustration] Selected scene: {scene_desc[:50]}...")
@@ -287,7 +288,9 @@ class RoundIllustrationService:
                 image_data, _ = results[0]
                 return image_data, final_prompt
             else:
-                raise ImageGenerationError("Failed to generate scene image with reference")
+                raise ImageGenerationError(
+                    "Failed to generate scene image with reference"
+                )
         else:
             # 没有参考图片，使用文生图
             image_data, _ = self.image_client.generate_image(
@@ -297,10 +300,15 @@ class RoundIllustrationService:
             )
             return image_data, final_prompt
 
-    def _get_player_image(self, existing_images: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    def _get_player_image(
+        self, existing_images: List[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
         """获取玩家主形象图片"""
         for img in existing_images:
-            if img.get("image_type") == "character" and img.get("entity_key") == "player_main":
+            if (
+                img.get("image_type") == "character"
+                and img.get("entity_key") == "player_main"
+            ):
                 return img
         # 如果没有标记为player_main的，返回第一个character图片
         for img in existing_images:
@@ -347,7 +355,9 @@ class RoundIllustrationService:
             else:
                 # 向后兼容：如果没有提供 game_id，只按 image_id 查询（不推荐）
                 image_model = (
-                    self.db.query(ImageModel).filter(ImageModel.image_id == image_id).first()
+                    self.db.query(ImageModel)
+                    .filter(ImageModel.image_id == image_id)
+                    .first()
                 )
 
             if not image_model:
@@ -500,7 +510,9 @@ class RoundIllustrationService:
                             {
                                 "name": item_name,
                                 "type": "item",
-                                "description": fact.get("fact", f"重要物品：{item_name}"),
+                                "description": fact.get(
+                                    "fact", f"重要物品：{item_name}"
+                                ),
                             }
                         )
 
@@ -535,7 +547,11 @@ class RoundIllustrationService:
             # 在 established_facts 中出现的次数
             if established_facts:
                 for fact in established_facts:
-                    text = (fact.get("subject", "") or "") + " " + (fact.get("fact", "") or "")
+                    text = (
+                        (fact.get("subject", "") or "")
+                        + " "
+                        + (fact.get("fact", "") or "")
+                    )
                     if name and name in text:
                         count += 1
             # 在 world_model_data.dynamic_facts 中出现的次数（possession 类型）
@@ -595,7 +611,9 @@ class RoundIllustrationService:
                                 {
                                     "name": landmark_name,
                                     "type": "location",
-                                    "description": fact.get("fact", f"重要地标：{landmark_name}"),
+                                    "description": fact.get(
+                                        "fact", f"重要地标：{landmark_name}"
+                                    ),
                                 }
                             )
 
@@ -631,7 +649,9 @@ class RoundIllustrationService:
         if char_data.get("gender"):
             desc_parts.append(str(char_data["gender"]))
         if char_data.get("relationship_desc") or char_data.get("relationship"):
-            desc_parts.append(char_data.get("relationship_desc") or char_data.get("relationship"))
+            desc_parts.append(
+                char_data.get("relationship_desc") or char_data.get("relationship")
+            )
         return "，".join(desc_parts) if desc_parts else "一个普通人"
 
     def _extract_items_from_story(self, story_text: str) -> List[Dict[str, Any]]:
@@ -715,7 +735,9 @@ class RoundIllustrationService:
                 if week is not None:
                     return week
         except Exception as e:
-            logger.warning(f"[RoundIllustration] Failed to get current week from database: {e}")
+            logger.warning(
+                f"[RoundIllustration] Failed to get current week from database: {e}"
+            )
 
         return 0  # 默认返回 0
 

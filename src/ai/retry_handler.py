@@ -81,7 +81,8 @@ class AIRetryHandler:
             try:
                 # Calculate temperature with decay
                 current_temp = max(
-                    self.min_temperature, self.base_temperature - (attempt * self.temperature_decay)
+                    self.min_temperature,
+                    self.base_temperature - (attempt * self.temperature_decay),
                 )
 
                 # Build prompt with error feedback
@@ -121,7 +122,9 @@ class AIRetryHandler:
                 last_error = str(e)
                 logger.warning(f"Attempt {attempt + 1} failed: {e}")
 
-        raise ValueError(f"AI call failed after {retry_count} attempts. Last error: {last_error}")
+        raise ValueError(
+            f"AI call failed after {retry_count} attempts. Last error: {last_error}"
+        )
 
     def call_with_json_retry(
         self,
@@ -156,7 +159,8 @@ class AIRetryHandler:
         for attempt in range(retry_count):
             try:
                 current_temp = max(
-                    self.min_temperature, self.base_temperature - (attempt * self.temperature_decay)
+                    self.min_temperature,
+                    self.base_temperature - (attempt * self.temperature_decay),
                 )
 
                 prompt = user_prompt

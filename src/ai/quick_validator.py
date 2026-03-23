@@ -98,7 +98,9 @@ class QuickValidator:
         """Build regex pattern for forbidden words."""
         words = self.FORBIDDEN_WORDS_ZH if language == "zh" else self.FORBIDDEN_WORDS_EN
         # 匹配独立词汇，避免部分匹配
-        pattern = r"(?:^|[^\w])(" + "|".join(re.escape(w) for w in words) + r")(?:[^\w]|$)"
+        pattern = (
+            r"(?:^|[^\w])(" + "|".join(re.escape(w) for w in words) + r")(?:[^\w]|$)"
+        )
         return re.compile(pattern, re.IGNORECASE)
 
     def validate(
@@ -132,7 +134,9 @@ class QuickValidator:
 
         # 2. 检查人物名是否在允许列表中
         if available_people:
-            name_issues = self._check_character_names(story_text, available_people, language)
+            name_issues = self._check_character_names(
+                story_text, available_people, language
+            )
             warnings.extend(name_issues)  # 作为警告，不阻止生成
 
         # 3. 检查人称一致性
@@ -152,7 +156,11 @@ class QuickValidator:
     def _check_forbidden_words(self, text: str, language: str) -> List[str]:
         """Check for forbidden meta-reference words."""
         issues = []
-        pattern = self._forbidden_pattern_zh if language == "zh" else self._forbidden_pattern_en
+        pattern = (
+            self._forbidden_pattern_zh
+            if language == "zh"
+            else self._forbidden_pattern_en
+        )
 
         matches = pattern.findall(text)
 
@@ -174,7 +182,9 @@ class QuickValidator:
                 if language == "zh":
                     issues.append(f"检测到违禁词「{match}」，可能打破第四面墙")
                 else:
-                    issues.append(f"Forbidden word '{match}' detected, may break fourth wall")
+                    issues.append(
+                        f"Forbidden word '{match}' detected, may break fourth wall"
+                    )
 
         return issues
 
@@ -207,7 +217,9 @@ class QuickValidator:
             for quote_pair in [('"', '"'), ("'", "'"), ("「", "」"), ("『", "』")]:
                 # 简单移除配对引号内的内容
                 pattern = re.escape(quote_pair[0]) + r".*?" + re.escape(quote_pair[1])
-                text_without_quotes = re.sub(pattern, "", text_without_quotes, flags=re.DOTALL)
+                text_without_quotes = re.sub(
+                    pattern, "", text_without_quotes, flags=re.DOTALL
+                )
 
             if first_person_pattern.search(text_without_quotes):
                 issues.append("故事中使用了第一人称「我」，应使用第三人称")

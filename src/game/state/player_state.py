@@ -196,11 +196,14 @@ class PlayerState(BaseModel):
             )
 
         if mood is not None:
-            self.mood = max(settings.MIN_RESOURCE, min(settings.MAX_RESOURCE, self.mood + mood))
+            self.mood = max(
+                settings.MIN_RESOURCE, min(settings.MAX_RESOURCE, self.mood + mood)
+            )
 
         if knowledge is not None:
             self.knowledge = max(
-                settings.MIN_RESOURCE, min(settings.MAX_RESOURCE, self.knowledge + knowledge)
+                settings.MIN_RESOURCE,
+                min(settings.MAX_RESOURCE, self.knowledge + knowledge),
             )
 
         if wealth is not None:
@@ -220,7 +223,9 @@ class PlayerState(BaseModel):
         self.current_round = 0
         # Update age: every 52 weeks = 1 year
         # Get the starting age from character settings if available
-        starting_age = self.character_settings.get("age", {}).get("age", settings.STARTING_AGE)
+        starting_age = self.character_settings.get("age", {}).get(
+            "age", settings.STARTING_AGE
+        )
         self.age = starting_age + int(self.week / settings.WEEKS_PER_YEAR)
 
     def advance_round(self) -> bool:
@@ -315,7 +320,9 @@ class PlayerState(BaseModel):
         for r in earlier_rounds:
             round_idx = r.get("round", 0)
             round_name = (
-                round_names[round_idx] if round_idx < len(round_names) else f"第{round_idx+1}轮"
+                round_names[round_idx]
+                if round_idx < len(round_names)
+                else f"第{round_idx+1}轮"
             )
             date_str = r.get("date_info", {}).get("date_string", "")
             date_prefix = f"({date_str}) " if date_str else ""
@@ -415,7 +422,9 @@ class PlayerState(BaseModel):
         self.characters[character.name] = character.model_dump()
         # 同步到relationships字典
         self.relationships[character.name] = character.affinity
-        logger.debug(f"Added character: {character.name} with affinity {character.affinity}")
+        logger.debug(
+            f"Added character: {character.name} with affinity {character.affinity}"
+        )
 
     def get_character(self, name: str) -> Optional[CharacterState]:
         """
@@ -574,7 +583,11 @@ class PlayerState(BaseModel):
         """
         from src.game.state.item_state import ItemState
 
-        return [ItemState(**data) for data in self.items.values() if data.get("is_key_item", False)]
+        return [
+            ItemState(**data)
+            for data in self.items.values()
+            if data.get("is_key_item", False)
+        ]
 
     def update_item(self, name: str, **kwargs) -> bool:
         """
@@ -635,7 +648,9 @@ class PlayerState(BaseModel):
         from src.game.state.landmark_state import LandmarkState
 
         self.landmarks[landmark.name] = landmark.model_dump()
-        logger.debug(f"Added landmark: {landmark.name} (importance: {landmark.importance})")
+        logger.debug(
+            f"Added landmark: {landmark.name} (importance: {landmark.importance})"
+        )
 
     def get_landmark(self, name: str) -> Optional["LandmarkState"]:
         """
@@ -741,7 +756,9 @@ class PlayerState(BaseModel):
         existing_ids = [e.get("event_id") for e in self.scheduled_events]
         if event.event_id not in existing_ids:
             self.scheduled_events.append(event.to_dict())
-            logger.debug(f"添加预定事件: {event.description[:40]}... (ID: {event.event_id})")
+            logger.debug(
+                f"添加预定事件: {event.description[:40]}... (ID: {event.event_id})"
+            )
 
     def get_scheduled_event_manager(self) -> "ScheduledEventManager":
         """获取预定事件管理器实例
@@ -753,7 +770,9 @@ class PlayerState(BaseModel):
 
         return ScheduledEventManager.from_dict_list(self.scheduled_events)
 
-    def sync_scheduled_events_from_manager(self, manager: "ScheduledEventManager") -> None:
+    def sync_scheduled_events_from_manager(
+        self, manager: "ScheduledEventManager"
+    ) -> None:
         """从管理器同步预定事件状态
 
         Args:
@@ -780,13 +799,18 @@ class PlayerState(BaseModel):
         for e in self.scheduled_events:
             if e.get("status") != "pending":
                 continue
-            if e.get("scheduled_week") == target_week and e.get("scheduled_round") == target_round:
+            if (
+                e.get("scheduled_week") == target_week
+                and e.get("scheduled_round") == target_round
+            ):
                 pending.append(e)
 
         # 按重要程度排序
         from src.game.constants import IMPORTANCE_ORDER
 
-        pending.sort(key=lambda e: IMPORTANCE_ORDER.get(e.get("importance", "normal"), 2))
+        pending.sort(
+            key=lambda e: IMPORTANCE_ORDER.get(e.get("importance", "normal"), 2)
+        )
 
         return pending
 

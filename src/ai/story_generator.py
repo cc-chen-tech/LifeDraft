@@ -98,8 +98,12 @@ class StoryGenerator:
                 # 使用当前情境作为查询
                 query_context = last_event_description or ""
                 if pending_storylines:
-                    query_context += " " + " ".join(str(s) for s in pending_storylines[:3])
-                vector_context = vector_store.get_relevant_context(query_context, max_chars=1500)
+                    query_context += " " + " ".join(
+                        str(s) for s in pending_storylines[:3]
+                    )
+                vector_context = vector_store.get_relevant_context(
+                    query_context, max_chars=1500
+                )
                 if vector_context:
                     logger.info(
                         f"[VectorStore] Injected {len(vector_context)} chars of vector context"
@@ -147,7 +151,9 @@ class StoryGenerator:
                         prompt += f"\n\n[Previous attempt failed: {last_error}. Please avoid the same issue.]"
 
                 # 计算当前温度：随着重试次数递减
-                current_temp = max(0.7, base_temperature - (attempt * temperature_decay))
+                current_temp = max(
+                    0.7, base_temperature - (attempt * temperature_decay)
+                )
                 logger.info(
                     f"Story generation attempt {attempt + 1}/{retry_count}, temperature={current_temp}"
                 )
@@ -187,7 +193,9 @@ class StoryGenerator:
                     logger.info(f"Option {i+1}: {opt.text}")
 
                 # Validate and fix relationship names
-                option_generator.validate_and_fix_relationships(event, character_settings)
+                option_generator.validate_and_fix_relationships(
+                    event, character_settings
+                )
 
                 # Validate event quality
                 option_generator.validate_event_quality(event)
@@ -196,7 +204,9 @@ class StoryGenerator:
                 if cache:
                     cache.set(player_state, language, event)
 
-                logger.info(f"Successfully generated event with {len(event.options)} options")
+                logger.info(
+                    f"Successfully generated event with {len(event.options)} options"
+                )
                 return event
 
             except (ValueError, ValidationError, json.JSONDecodeError) as e:
@@ -281,8 +291,12 @@ class StoryGenerator:
                 # 使用当前情境作为查询
                 query_context = round_context or ""
                 if pending_storylines:
-                    query_context += " " + " ".join(str(s) for s in pending_storylines[:3])
-                vector_context = vector_store.get_relevant_context(query_context, max_chars=1500)
+                    query_context += " " + " ".join(
+                        str(s) for s in pending_storylines[:3]
+                    )
+                vector_context = vector_store.get_relevant_context(
+                    query_context, max_chars=1500
+                )
                 if vector_context:
                     logger.info(
                         f"[VectorStore] Injected {len(vector_context)} chars of vector context"
@@ -418,7 +432,9 @@ class StoryGenerator:
                 fallback_desc = story_text
             else:
                 fallback_desc = (
-                    "这一天平静地度过了。" if language == "zh" else "This day passed quietly."
+                    "这一天平静地度过了。"
+                    if language == "zh"
+                    else "This day passed quietly."
                 )
             return GameEvent(
                 event_description=fallback_desc,
@@ -479,7 +495,9 @@ class StoryGenerator:
                 return story_text
 
             if not validation.has_critical_issues:
-                logger.info(f"一致性校验有 {len(validation.warning_issues)} 个WARNING，不触发重试")
+                logger.info(
+                    f"一致性校验有 {len(validation.warning_issues)} 个WARNING，不触发重试"
+                )
                 return story_text
 
             # CRITICAL issues found - retry once
@@ -487,7 +505,9 @@ class StoryGenerator:
                 f"一致性校验不通过，{len(validation.critical_issues)} 个CRITICAL问题，触发重试"
             )
             for issue in validation.critical_issues:
-                logger.warning(f"  CRITICAL [{issue.dimension}]: {issue.description[:80]}")
+                logger.warning(
+                    f"  CRITICAL [{issue.dimension}]: {issue.description[:80]}"
+                )
 
             # Regenerate with fix instructions appended
             # ★ 重要：重试时也需要流式输出，否则前端会显示不完整的旧内容
@@ -506,7 +526,9 @@ class StoryGenerator:
 
             # ★ 诊断日志：确认 stream_callback 状态
             if stream_callback is None:
-                logger.warning("★★★ stream_callback is None in retry! This should not happen.")
+                logger.warning(
+                    "★★★ stream_callback is None in retry! This should not happen."
+                )
             else:
                 logger.info(f"★ stream_callback is present in retry: {stream_callback}")
 

@@ -47,7 +47,9 @@ class ImageGenerationError(Exception):
 class ContentInspectionError(ImageGenerationError):
     """内容审核错误 - 触发了平台的内容安全检测"""
 
-    def __init__(self, message: str, original_prompt: str = None, api_error_message: str = None):
+    def __init__(
+        self, message: str, original_prompt: str = None, api_error_message: str = None
+    ):
         super().__init__(message)
         self.original_prompt = original_prompt
         self.api_error_message = api_error_message  # ★ 阿里云返回的原始错误信息
@@ -228,7 +230,9 @@ class ImageClient:
             is_last_model = model_idx == len(self.text_to_image_models) - 1
 
             if model_idx > 0:
-                logger.warning(f"[Model Fallback] Switching to fallback model: {fallback_model}")
+                logger.warning(
+                    f"[Model Fallback] Switching to fallback model: {fallback_model}"
+                )
 
             for attempt in range(self.max_retries):
                 try:
@@ -264,7 +268,9 @@ class ImageClient:
                         f"Got image URL from DashScope (model={fallback_model}), downloading..."
                     )
                     image_bytes = self._download_image(image_url)
-                    logger.info(f"Successfully downloaded image: {len(image_bytes)} bytes")
+                    logger.info(
+                        f"Successfully downloaded image: {len(image_bytes)} bytes"
+                    )
                     return image_bytes, prompt
 
                 except Exception as e:
@@ -447,7 +453,9 @@ class ImageClient:
         """下载图片"""
         response = self.session.get(url, timeout=self.timeout)
         if response.status_code != 200:
-            raise ImageGenerationError(f"Failed to download image: {response.status_code}")
+            raise ImageGenerationError(
+                f"Failed to download image: {response.status_code}"
+            )
         return response.content
 
     def generate_character_image(
@@ -507,7 +515,9 @@ class ImageClient:
 
         # ★★★ 最重要：用户的修改意见放在最前面
         if feedback:
-            parts.append(f"【必须执行的修改】{feedback}。这是最重要的要求，必须严格体现在图片中。")
+            parts.append(
+                f"【必须执行的修改】{feedback}。这是最重要的要求，必须严格体现在图片中。"
+            )
 
         # 基础信息
         parts.extend(
@@ -684,7 +694,9 @@ class ImageClient:
                 # 基于主图生成变体
                 num_variants = num_images - 1
                 if num_variants > 0:
-                    logger.info(f"Generating {num_variants} variants from primary image")
+                    logger.info(
+                        f"Generating {num_variants} variants from primary image"
+                    )
 
                     for i in range(num_variants):
                         variant = VARIANTS[i % len(VARIANTS)]
@@ -759,7 +771,9 @@ class ImageClient:
         else:
             parts.append("风格：写实风格，细节丰富，氛围感强。")
 
-        parts.append("要求：场景清晰、构图美观、有代入感。画面中不要出现任何人物，仅展示场景本身。")
+        parts.append(
+            "要求：场景清晰、构图美观、有代入感。画面中不要出现任何人物，仅展示场景本身。"
+        )
 
         return "".join(parts)
 
@@ -836,7 +850,9 @@ class ImageClient:
         Returns:
             Tuple[bytes, str]: (图片二进制数据, 使用的prompt)
         """
-        prompt = self._build_scene_prompt(scene_description, characters, era, style_hint)
+        prompt = self._build_scene_prompt(
+            scene_description, characters, era, style_hint
+        )
 
         return self.generate_image(
             prompt=prompt,
@@ -983,7 +999,9 @@ class ImageClient:
                         # 非速率限制错误，不尝试其他模型
                         break
 
-        raise ImageGenerationError(f"Failed to edit image after trying all models: {last_error}")
+        raise ImageGenerationError(
+            f"Failed to edit image after trying all models: {last_error}"
+        )
 
     def _call_edit_api(
         self,
@@ -1046,7 +1064,9 @@ class ImageClient:
             "Content-Type": "application/json",
         }
 
-        logger.debug(f"Calling image edit API: model={use_model}, size={dashscope_size}")
+        logger.debug(
+            f"Calling image edit API: model={use_model}, size={dashscope_size}"
+        )
 
         response = self.session.post(
             url,
@@ -1077,7 +1097,9 @@ class ImageClient:
                 except ContentInspectionError:
                     raise
                 except (KeyError, TypeError) as e:
-                    logger.warning(f"Failed to parse content inspection error response: {e}")
+                    logger.warning(
+                        f"Failed to parse content inspection error response: {e}"
+                    )
                 except Exception as e:
                     logger.warning(f"Unexpected error parsing API error response: {e}")
 
@@ -1306,7 +1328,9 @@ class ImageClient:
         model = settings.SCENE_ANALYZER_MODEL
 
         if not api_key:
-            logger.warning("No DeepSeek API key for prompt rewrite, using simplified prompt")
+            logger.warning(
+                "No DeepSeek API key for prompt rewrite, using simplified prompt"
+            )
             return self._simplify_prompt(original_prompt, scene_desc)
 
         player_name = character_info.get("name", "主角")
@@ -1415,7 +1439,9 @@ class ImageClient:
             logger.error(f"DeepSeek prompt rewrite failed: {e}")
             return self._simplify_prompt(original_prompt, scene_desc)
 
-    def _simplify_prompt(self, original_prompt: str, scene_desc: str) -> Tuple[str, str]:
+    def _simplify_prompt(
+        self, original_prompt: str, scene_desc: str
+    ) -> Tuple[str, str]:
         """简化 prompt 作为备选方案"""
         # 移除一些常见的敏感词
         sensitive_words = [
@@ -1465,7 +1491,9 @@ class ImageClient:
         Returns:
             Tuple[bytes, str, str]: (图片数据, 提示词, 场景描述)
         """
-        logger.info(f"Generating opening illustration, has_reference={bool(reference_image_url)}")
+        logger.info(
+            f"Generating opening illustration, has_reference={bool(reference_image_url)}"
+        )
 
         # Step 1: 分析故事，选择场景
         scene_desc, illustration_prompt = self.analyze_story_for_illustration(
@@ -1495,7 +1523,9 @@ class ImageClient:
                 image_data, _ = results[0]
                 return image_data, edit_prompt, scene_desc
             else:
-                raise ImageGenerationError("Failed to generate illustration with reference")
+                raise ImageGenerationError(
+                    "Failed to generate illustration with reference"
+                )
         else:
             # 使用文生图
             image_data, prompt_used = self.generate_image(
@@ -1537,7 +1567,9 @@ class ImageClient:
 
         if not api_key:
             logger.warning("No API key for anchor generation, using fallback")
-            return self._fallback_appearance_anchor(name, description, era, character_settings)
+            return self._fallback_appearance_anchor(
+                name, description, era, character_settings
+            )
 
         # 提取额外的角色信息
         age = ""
@@ -1647,7 +1679,9 @@ class ImageClient:
 
         except Exception as e:
             logger.error(f"Failed to generate appearance anchor: {e}")
-            return self._fallback_appearance_anchor(name, description, era, character_settings)
+            return self._fallback_appearance_anchor(
+                name, description, era, character_settings
+            )
 
     def _fallback_appearance_anchor(
         self,

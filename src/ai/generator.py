@@ -187,7 +187,9 @@ class EventGenerator:
                 logger.warning(f"Failed to load preset events: {e}")
         return {}
 
-    def _get_preset_milestone_event(self, week: int, language: str) -> Optional[GameEvent]:
+    def _get_preset_milestone_event(
+        self, week: int, language: str
+    ) -> Optional[GameEvent]:
         """Get preset milestone event if available."""
         if not self.preset_events:
             return None
@@ -494,6 +496,10 @@ class EventGenerator:
         return SummaryGenerator._clean_summary_text(summary)
 
     @staticmethod
-    def _extract_summary_from_raw(content: str, original_story: str, language: str) -> str:
+    def _extract_summary_from_raw(
+        content: str, original_story: str, language: str
+    ) -> str:
         """Extract summary from raw response (delegates to SummaryGenerator)."""
-        return SummaryGenerator._extract_summary_from_raw(content, original_story, language)
+        return SummaryGenerator._extract_summary_from_raw(
+            content, original_story, language
+        )

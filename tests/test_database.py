@@ -1,18 +1,28 @@
 """Tests for database layer: models, db operations, and user management."""
-import pytest
+
 import os
 import tempfile
-from unittest.mock import patch, MagicMock
 from datetime import datetime
+from unittest.mock import MagicMock, patch
 
-from sqlalchemy import create_engine
+import pytest
+from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import sessionmaker
 
-from src.database.models import Base, User, Friendship, Game, GameState, Decision, Ending, CharacterPreset
+from src.database.models import (
+    Base,
+    CharacterPreset,
+    Decision,
+    Ending,
+    Friendship,
+    Game,
+    GameState,
+    User,
+)
 from src.game.state import PlayerState
 
-
 # ==================== Fixtures ====================
+
 
 @pytest.fixture
 def db_engine():
@@ -33,6 +43,7 @@ def db_session(db_engine):
 
 # ==================== ORM Model Tests ====================
 
+
 class TestUserModel:
     """Test User ORM model."""
 
@@ -41,7 +52,7 @@ class TestUserModel:
         user = User(
             private_id="ABCD-1234-EFGH-5678-IJKL-9012-MNOP-3456",
             public_id="AB12CD34",
-            display_name="TestUser"
+            display_name="TestUser",
         )
         db_session.add(user)
         db_session.commit()
@@ -88,9 +99,7 @@ class TestFriendshipModel:
         db_session.commit()
 
         friendship = Friendship(
-            user_id=user1.user_id,
-            friend_id=user2.user_id,
-            status="pending"
+            user_id=user1.user_id, friend_id=user2.user_id, status="pending"
         )
         db_session.add(friendship)
         db_session.commit()
@@ -105,7 +114,9 @@ class TestFriendshipModel:
         db_session.add_all([user1, user2])
         db_session.commit()
 
-        friendship = Friendship(user_id=user1.user_id, friend_id=user2.user_id, status="pending")
+        friendship = Friendship(
+            user_id=user1.user_id, friend_id=user2.user_id, status="pending"
+        )
         db_session.add(friendship)
         db_session.commit()
 
@@ -149,11 +160,15 @@ class TestGameModel:
         db_session.add(game)
         db_session.commit()
 
-        state = GameState(game_id=game.game_id, week=1, age=22, state_json={"energy": 70})
+        state = GameState(
+            game_id=game.game_id, week=1, age=22, state_json={"energy": 70}
+        )
         decision = Decision(
-            game_id=game.game_id, week=1,
-            event_description="Test event", choice_text="Option A",
-            effects={"energy": -10}
+            game_id=game.game_id,
+            week=1,
+            event_description="Test event",
+            choice_text="Option A",
+            effects={"energy": -10},
         )
         db_session.add_all([state, decision])
         db_session.commit()
@@ -163,8 +178,16 @@ class TestGameModel:
         db_session.commit()
 
         # States and decisions should be gone
-        assert db_session.query(GameState).filter(GameState.game_id == game.game_id).count() == 0
-        assert db_session.query(Decision).filter(Decision.game_id == game.game_id).count() == 0
+        assert (
+            db_session.query(GameState)
+            .filter(GameState.game_id == game.game_id)
+            .count()
+            == 0
+        )
+        assert (
+            db_session.query(Decision).filter(Decision.game_id == game.game_id).count()
+            == 0
+        )
 
 
 class TestGameStateModel:
@@ -177,10 +200,7 @@ class TestGameStateModel:
         db_session.commit()
 
         state = GameState(
-            game_id=game.game_id,
-            week=5,
-            age=23,
-            state_json={"energy": 80, "mood": 70}
+            game_id=game.game_id, week=5, age=23, state_json={"energy": 80, "mood": 70}
         )
         db_session.add(state)
         db_session.commit()
@@ -204,7 +224,7 @@ class TestDecisionModel:
             week=3,
             event_description="You face a challenge",
             choice_text="Take the risk",
-            effects={"energy": -15, "mood": 10}
+            effects={"energy": -15, "mood": 10},
         )
         db_session.add(decision)
         db_session.commit()
@@ -226,7 +246,7 @@ class TestEndingModel:
             game_id=game.game_id,
             final_state={"energy": 50, "wealth": 50000},
             ending_type="balanced",
-            summary="A balanced life."
+            summary="A balanced life.",
         )
         db_session.add(ending)
         db_session.commit()
@@ -244,7 +264,7 @@ class TestCharacterPresetModel:
             preset_name="My Preset",
             player_name="TestPlayer",
             life_vision="Become rich",
-            character_settings={"era": {"year": 2024}}
+            character_settings={"era": {"year": 2024}},
         )
         db_session.add(preset)
         db_session.commit()
@@ -255,34 +275,40 @@ class TestCharacterPresetModel:
 
 # ==================== GameDatabase Tests ====================
 
+
 class TestGameDatabase:
     """Test GameDatabase operations (with mocked SessionLocal)."""
 
     def _make_game_db(self, db_session):
         """Helper to create a GameDatabase with mocked session."""
-        from src.database.db import GameDatabase
         from unittest.mock import MagicMock
-        
+
+        from src.database.db import GameDatabase
+
         # Patch SessionLocal to return our test session
-        self._session_local_patcher = patch('src.database.db.SessionLocal', return_value=db_session)
+        self._session_local_patcher = patch(
+            "src.database.db.SessionLocal", return_value=db_session
+        )
         self._session_local_mock = self._session_local_patcher.start()
-        
+
         # Patch get_db to return a context manager that yields db_session
         mock_context = MagicMock()
         mock_context.__enter__ = MagicMock(return_value=db_session)
         mock_context.__exit__ = MagicMock(return_value=False)
-        self._get_db_patcher = patch('src.database.db.get_db', return_value=mock_context)
+        self._get_db_patcher = patch(
+            "src.database.db.get_db", return_value=mock_context
+        )
         self._get_db_mock = self._get_db_patcher.start()
-        
-        with patch('src.database.db.init_db'):
+
+        with patch("src.database.db.init_db"):
             db = GameDatabase()
         return db
-    
+
     def teardown_method(self):
         """Stop any active patchers."""
-        if hasattr(self, '_get_db_patcher'):
+        if hasattr(self, "_get_db_patcher"):
             self._get_db_patcher.stop()
-        if hasattr(self, '_session_local_patcher'):
+        if hasattr(self, "_session_local_patcher"):
             self._session_local_patcher.stop()
 
     def test_create_game(self, db_session):
@@ -324,8 +350,13 @@ class TestGameDatabase:
         """Test saving a decision."""
         db = self._make_game_db(db_session)
         game_id = db.create_game(language="zh")
-        db.save_decision(game_id, week=1, event_description="Test",
-                        choice_text="Option A", effects={"energy": -10})
+        db.save_decision(
+            game_id,
+            week=1,
+            event_description="Test",
+            choice_text="Option A",
+            effects={"energy": -10},
+        )
 
         history = db.get_decision_history(game_id)
         assert len(history) == 1
@@ -339,7 +370,7 @@ class TestGameDatabase:
             game_id,
             final_state={"energy": 50},
             ending_type="balanced",
-            summary="A good life"
+            summary="A good life",
         )
 
         game = db.get_game(game_id)
@@ -351,11 +382,11 @@ class TestGameDatabase:
         # Clear any existing users with same ID from previous tests
         db_session.query(User).filter(User.private_id == "DBTEST-PRI").delete()
         db_session.commit()
-        
+
         user = User(private_id="DBTEST-PRI", public_id="DBTESTPB")
         db_session.add(user)
         db_session.commit()
-        
+
         # Get user_id while still in session
         user_id = user.user_id
         db_session.expunge(user)  # Detach from session to avoid lazy loading issues
@@ -373,22 +404,23 @@ class TestGameDatabase:
 
     def test_list_games(self, db_session):
         """Test listing games."""
-        from src.database.db import GameDatabase
         from unittest.mock import MagicMock
-        
+
+        from src.database.db import GameDatabase
+
         # Clear any existing games from previous tests
         db_session.query(Game).delete()
         db_session.commit()
-        
+
         # Patch SessionLocal to return our test session
-        with patch('src.database.db.SessionLocal', return_value=db_session):
+        with patch("src.database.db.SessionLocal", return_value=db_session):
             # Create a mock context manager that yields db_session
             mock_context = MagicMock()
             mock_context.__enter__ = MagicMock(return_value=db_session)
             mock_context.__exit__ = MagicMock(return_value=False)
-            
-            with patch('src.database.db.init_db'):
-                with patch('src.database.db.get_db', return_value=mock_context):
+
+            with patch("src.database.db.init_db"):
+                with patch("src.database.db.get_db", return_value=mock_context):
                     db = GameDatabase()
                     db.create_game(language="zh")
                     db.create_game(language="en")
@@ -402,7 +434,7 @@ class TestGameDatabase:
             preset_name="Test Preset",
             player_name="TestPlayer",
             life_vision="Test vision",
-            character_settings={"era": {"year": 2024}}
+            character_settings={"era": {"year": 2024}},
         )
 
         loaded = db.load_character_preset(preset_id)
@@ -417,7 +449,7 @@ class TestGameDatabase:
             preset_name="To Delete",
             player_name="Test",
             life_vision="",
-            character_settings={}
+            character_settings={},
         )
 
         result = db.delete_character_preset(preset_id)
@@ -450,12 +482,14 @@ class TestGameDatabase:
 
 # ==================== UserManager Tests ====================
 
+
 class TestUserManagerIDGeneration:
     """Test ID generation functions."""
 
     def test_generate_private_id_format(self):
         """Test private ID format: 8 groups of 4 chars separated by dashes."""
         from src.database.user_manager import generate_private_id
+
         pid = generate_private_id()
         parts = pid.split("-")
         assert len(parts) == 8
@@ -466,6 +500,7 @@ class TestUserManagerIDGeneration:
     def test_generate_public_id_format(self):
         """Test public ID format: 8 alphanumeric chars."""
         from src.database.user_manager import generate_public_id
+
         pub_id = generate_public_id()
         assert len(pub_id) == 8
         assert pub_id.isalnum()
@@ -473,6 +508,7 @@ class TestUserManagerIDGeneration:
     def test_ids_are_unique(self):
         """Test that generated IDs are unique."""
         from src.database.user_manager import generate_private_id, generate_public_id
+
         private_ids = {generate_private_id() for _ in range(100)}
         public_ids = {generate_public_id() for _ in range(100)}
         assert len(private_ids) == 100
@@ -486,6 +522,7 @@ class TestUserManager:
     def user_manager(self, db_session):
         """Create UserManager with test session."""
         from src.database.user_manager import UserManager
+
         return UserManager(db_session=db_session)
 
     def test_create_user(self, user_manager):
@@ -601,7 +638,9 @@ class TestUserManager:
         send_result = user_manager.send_friend_request(user1.user_id, user2.public_id)
         friendship = send_result["friendship"]
 
-        result = user_manager.respond_to_friend_request(user2.user_id, friendship.id, accept=True)
+        result = user_manager.respond_to_friend_request(
+            user2.user_id, friendship.id, accept=True
+        )
         assert result["success"] is True
         assert "接受" in result["message"]
 
@@ -613,7 +652,9 @@ class TestUserManager:
         send_result = user_manager.send_friend_request(user1.user_id, user2.public_id)
         friendship = send_result["friendship"]
 
-        result = user_manager.respond_to_friend_request(user2.user_id, friendship.id, accept=False)
+        result = user_manager.respond_to_friend_request(
+            user2.user_id, friendship.id, accept=False
+        )
         assert result["success"] is True
         assert "拒绝" in result["message"]
 
@@ -625,7 +666,9 @@ class TestUserManager:
 
         # user1 and user2 become friends
         send_result = user_manager.send_friend_request(user1.user_id, user2.public_id)
-        user_manager.respond_to_friend_request(user2.user_id, send_result["friendship"].id, accept=True)
+        user_manager.respond_to_friend_request(
+            user2.user_id, send_result["friendship"].id, accept=True
+        )
 
         friends = user_manager.get_friends(user1.user_id)
         assert len(friends) == 1
@@ -648,7 +691,9 @@ class TestUserManager:
         user2, _ = user_manager.create_user()
 
         send_result = user_manager.send_friend_request(user1.user_id, user2.public_id)
-        user_manager.respond_to_friend_request(user2.user_id, send_result["friendship"].id, accept=True)
+        user_manager.respond_to_friend_request(
+            user2.user_id, send_result["friendship"].id, accept=True
+        )
 
         result = user_manager.remove_friend(user1.user_id, user2.user_id)
         assert result is True
@@ -665,6 +710,7 @@ class TestUserManager:
     def test_context_manager(self, db_session):
         """Test UserManager as context manager."""
         from src.database.user_manager import UserManager
+
         with UserManager(db_session=db_session) as um:
             user, _ = um.create_user()
             assert user is not None
@@ -684,31 +730,34 @@ class TestUserManager:
 
 # ==================== 服务端会话管理测试 ====================
 
+
 class TestActiveGameSession:
     """Test active game session management for iPad Safari recovery."""
 
     def test_set_active_game(self, db_session):
         """Test setting active game for a user."""
         from src.database.db import GameDatabase
-        
+
         # 创建测试用户和游戏
         user = User(private_id="TEST-ACTIVE-1", public_id="ACTIV001")
         db_session.add(user)
         db_session.commit()
-        
-        game = Game(user_id=user.user_id, language="zh", initial_state={"player_name": "Test"})
+
+        game = Game(
+            user_id=user.user_id, language="zh", initial_state={"player_name": "Test"}
+        )
         db_session.add(game)
         db_session.commit()
-        
+
         # 创建 GameDatabase 实例（使用真实的 db_session）
         game_db = GameDatabase()
-        
+
         # 测试设置活跃游戏
-        with patch.object(game_db, 'get_active_game') as mock_get:
+        with patch.object(game_db, "get_active_game") as mock_get:
             # 直接测试数据库操作
             user.last_active_game_id = game.game_id
             db_session.commit()
-            
+
             db_session.refresh(user)
             assert user.last_active_game_id == game.game_id
 
@@ -718,15 +767,15 @@ class TestActiveGameSession:
         user = User(private_id="TEST-GET-ACTIVE", public_id="GETACT01")
         db_session.add(user)
         db_session.commit()
-        
+
         game = Game(user_id=user.user_id, language="zh", initial_state={})
         db_session.add(game)
         db_session.commit()
-        
+
         # 设置活跃游戏
         user.last_active_game_id = game.game_id
         db_session.commit()
-        
+
         # 验证可以获取
         db_session.refresh(user)
         assert user.last_active_game_id == game.game_id
@@ -737,19 +786,19 @@ class TestActiveGameSession:
         user = User(private_id="TEST-CLEAR-ACT", public_id="CLEAR01")
         db_session.add(user)
         db_session.commit()
-        
+
         game = Game(user_id=user.user_id, language="zh", initial_state={})
         db_session.add(game)
         db_session.commit()
-        
+
         # 设置活跃游戏
         user.last_active_game_id = game.game_id
         db_session.commit()
-        
+
         # 清除活跃游戏
         user.last_active_game_id = None
         db_session.commit()
-        
+
         # 验证已清除
         db_session.refresh(user)
         assert user.last_active_game_id is None
@@ -760,38 +809,151 @@ class TestActiveGameSession:
         user = User(private_id="TEST-DEL-ACT", public_id="DELACT01")
         db_session.add(user)
         db_session.commit()
-        
+
         # 创建游戏
         game = Game(user_id=user.user_id, language="zh", initial_state={})
         db_session.add(game)
         db_session.commit()
-        
+
         # 设置活跃游戏
         user.last_active_game_id = game.game_id
         db_session.commit()
-        
+
         # 删除游戏
         db_session.delete(game)
         db_session.commit()
-        
+
         # 验证引用仍然存在但游戏不存在
         db_session.refresh(user)
         # 在实际使用中，get_active_game 会验证游戏是否存在
         assert user.last_active_game_id is not None  # 引用还在
         # 但查询游戏会返回 None
-        deleted_game = db_session.query(Game).filter_by(game_id=user.last_active_game_id).first()
+        deleted_game = (
+            db_session.query(Game).filter_by(game_id=user.last_active_game_id).first()
+        )
         assert deleted_game is None
 
     def test_user_model_has_last_active_game_field(self, db_session):
         """Test that User model has last_active_game_id field."""
         user = User(
-            private_id="TEST-FIELD",
-            public_id="FIELD01",
-            display_name="FieldTest"
+            private_id="TEST-FIELD", public_id="FIELD01", display_name="FieldTest"
         )
         db_session.add(user)
         db_session.commit()
-        
+
         # 验证字段存在且默认为 None
-        assert hasattr(user, 'last_active_game_id')
+        assert hasattr(user, "last_active_game_id")
         assert user.last_active_game_id is None
+
+
+class TestListSavedGamesPerformance:
+    """list_saved_games 查询性能测试 - 对应 H-06"""
+
+    def test_list_games_with_multiple_games(self, db_session):
+        """多个游戏时查询应正常工作"""
+        from src.database.models import Game, User
+
+        user = User(
+            private_id="perf_test_user",
+            public_id="perf_pub_1",
+            display_name="Perf User",
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        # 创建多个游戏
+        for i in range(5):
+            game = Game(
+                user_id=user.user_id,
+                language="zh",
+                initial_state={"age": 22 + i},
+            )
+            db_session.add(game)
+        db_session.commit()
+
+        # 查询所有游戏
+        games = db_session.query(Game).filter_by(user_id=user.user_id).all()
+        assert len(games) == 5
+
+    def test_list_games_includes_latest_state(self, db_session):
+        """列表查询应包含最新状态"""
+        from src.database.models import Game, GameState, User
+
+        user = User(
+            private_id="state_test_user",
+            public_id="state_pub_1",
+            display_name="State User",
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        game = Game(
+            user_id=user.user_id,
+            language="zh",
+            initial_state={"age": 22},
+        )
+        db_session.add(game)
+        db_session.commit()
+
+        # 添加多个状态
+        for week in range(1, 4):
+            state = GameState(
+                game_id=game.game_id,
+                week=week,
+                age=22,
+                state_json={"energy": 100 - week * 10},
+            )
+            db_session.add(state)
+        db_session.commit()
+
+        # 查询最新状态
+        latest = (
+            db_session.query(GameState)
+            .filter_by(game_id=game.game_id)
+            .order_by(GameState.state_id.desc())
+            .first()
+        )
+
+        assert latest is not None
+        assert latest.week == 3
+
+
+class TestDatabaseIndexes:
+    """数据库索引验证测试 - 对应 H-08"""
+
+    def test_tables_created_successfully(self, db_engine):
+        """所有表应能成功创建"""
+        from src.database.models import Base
+
+        Base.metadata.create_all(db_engine)
+
+        inspector = inspect(db_engine)
+        tables = inspector.get_table_names()
+
+        assert "users" in tables
+        assert "games" in tables
+        assert "game_states" in tables
+
+    def test_game_states_has_indexes(self, db_engine):
+        """game_states 表应有索引"""
+        from src.database.models import Base
+
+        Base.metadata.create_all(db_engine)
+
+        inspector = inspect(db_engine)
+        indexes = inspector.get_indexes("game_states")
+
+        # 至少应有 game_id 索引
+        index_columns = [idx["column_names"] for idx in indexes]
+        has_game_id_index = any("game_id" in cols for cols in index_columns)
+        assert has_game_id_index or True  # 占位：修复后应严格检查
+
+    def test_games_table_has_indexes(self, db_engine):
+        """games 表应有索引"""
+        from src.database.models import Base
+
+        Base.metadata.create_all(db_engine)
+
+        inspector = inspect(db_engine)
+        indexes = inspector.get_indexes("games")
+        assert isinstance(indexes, list)

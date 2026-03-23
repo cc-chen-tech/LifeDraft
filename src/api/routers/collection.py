@@ -7,16 +7,24 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user_optional
-from src.api.schemas import (CharacterCollectionItem, CollectionResponse,
-                             ItemCollectionItem, LandmarkCollectionItem,
-                             MessageResponse, RegenerateCharacterImageRequest,
-                             RegenerateItemImageRequest)
+from src.api.schemas import (
+    CharacterCollectionItem,
+    CollectionResponse,
+    ItemCollectionItem,
+    LandmarkCollectionItem,
+    MessageResponse,
+    RegenerateCharacterImageRequest,
+    RegenerateItemImageRequest,
+)
 from src.api.services.session_service import session_service
 from src.database.models import Game
 from src.database.models import Image as ImageModel
 from src.database.models import SessionLocal, User
-from src.services.image_service import (ImageContentError, ImageService,
-                                        ImageServiceError)
+from src.services.image_service import (
+    ImageContentError,
+    ImageService,
+    ImageServiceError,
+)
 from src.services.item_extraction_service import ItemExtractionService
 from src.services.landmark_extraction_service import LandmarkExtractionService
 
@@ -69,7 +77,9 @@ async def get_collection(
         character_settings = player_state.character_settings or {}
 
         # 0. 添加主角（放在最前面）
-        player_name = player_state.player_name or character_settings.get("player_name", "")
+        player_name = player_state.player_name or character_settings.get(
+            "player_name", ""
+        )
         if player_name:
             added_names.add(player_name)
 
@@ -200,7 +210,9 @@ async def get_collection(
                         gender=person.get("gender"),
                         occupation=None,
                         personality_traits=(
-                            [person.get("personality", "")] if person.get("personality") else []
+                            [person.get("personality", "")]
+                            if person.get("personality")
+                            else []
                         ),
                         image_url=image_url,
                         image_generated=bool(images),
@@ -341,7 +353,9 @@ async def get_collection_details(
     return await get_collection(game_id, user)
 
 
-@router.post("/{game_id}/characters/{name}/generate-image", response_model=MessageResponse)
+@router.post(
+    "/{game_id}/characters/{name}/generate-image", response_model=MessageResponse
+)
 async def generate_character_image(
     game_id: int,
     name: str,
@@ -405,7 +419,9 @@ async def generate_character_image(
 
         # 从 family_members 中查找
         if not description_parts:
-            family_members = character_settings.get("family", {}).get("family_members", [])
+            family_members = character_settings.get("family", {}).get(
+                "family_members", []
+            )
             for member in family_members:
                 if isinstance(member, dict) and member.get("name") == name:
                     if member.get("age"):
@@ -416,13 +432,17 @@ async def generate_character_image(
                         description_parts.append(member["relationship"])
                     break
 
-    description = "，".join(description_parts) if description_parts else f"一个叫{name}的人"
+    description = (
+        "，".join(description_parts) if description_parts else f"一个叫{name}的人"
+    )
 
     # 获取时代背景
     era = "现代"
     era_setting = character_settings.get("era", {})
     if isinstance(era_setting, dict):
-        era = era_setting.get("era_name") or era_setting.get("era_description") or "现代"
+        era = (
+            era_setting.get("era_name") or era_setting.get("era_description") or "现代"
+        )
 
     db = SessionLocal()
     try:
@@ -446,7 +466,9 @@ async def generate_character_image(
 
     except ImageContentError as e:
         logger.warning(f"Content inspection failed: {e}")
-        raise HTTPException(status_code=400, detail="生成图片时触发了内容安全审核，请稍后重试")
+        raise HTTPException(
+            status_code=400, detail="生成图片时触发了内容安全审核，请稍后重试"
+        )
     except ImageServiceError as e:
         logger.error(f"Image generation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -454,7 +476,9 @@ async def generate_character_image(
         db.close()
 
 
-@router.post("/{game_id}/characters/{name}/generate-description", response_model=MessageResponse)
+@router.post(
+    "/{game_id}/characters/{name}/generate-description", response_model=MessageResponse
+)
 async def generate_character_description(
     game_id: int,
     name: str,
@@ -467,7 +491,9 @@ async def generate_character_description(
     return MessageResponse(message=f"人物 {name} 描述已存在", success=True)
 
 
-@router.post("/{game_id}/items/{item_name}/generate-image", response_model=MessageResponse)
+@router.post(
+    "/{game_id}/items/{item_name}/generate-image", response_model=MessageResponse
+)
 async def generate_item_image(
     game_id: int,
     item_name: str,
@@ -494,7 +520,9 @@ async def generate_item_image(
     character_settings = player_state.character_settings or {}
     era_setting = character_settings.get("era", {})
     if isinstance(era_setting, dict):
-        era = era_setting.get("era_name") or era_setting.get("era_description") or "现代"
+        era = (
+            era_setting.get("era_name") or era_setting.get("era_description") or "现代"
+        )
 
     db = SessionLocal()
     try:
@@ -518,7 +546,9 @@ async def generate_item_image(
 
     except ImageContentError as e:
         logger.warning(f"Content inspection failed: {e}")
-        raise HTTPException(status_code=400, detail="生成图片时触发了内容安全审核，请稍后重试")
+        raise HTTPException(
+            status_code=400, detail="生成图片时触发了内容安全审核，请稍后重试"
+        )
     except ImageServiceError as e:
         logger.error(f"Image generation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -526,7 +556,9 @@ async def generate_item_image(
         db.close()
 
 
-@router.post("/{game_id}/items/{item_name}/generate-description", response_model=MessageResponse)
+@router.post(
+    "/{game_id}/items/{item_name}/generate-description", response_model=MessageResponse
+)
 async def generate_item_description(
     game_id: int,
     item_name: str,
@@ -584,7 +616,10 @@ async def generate_item_description(
 # ==================== 标志物端点 ====================
 
 
-@router.post("/{game_id}/landmarks/{landmark_name}/generate-image", response_model=MessageResponse)
+@router.post(
+    "/{game_id}/landmarks/{landmark_name}/generate-image",
+    response_model=MessageResponse,
+)
 async def generate_landmark_image(
     game_id: int,
     landmark_name: str,
@@ -611,7 +646,9 @@ async def generate_landmark_image(
     character_settings = player_state.character_settings or {}
     era_setting = character_settings.get("era", {})
     if isinstance(era_setting, dict):
-        era = era_setting.get("era_name") or era_setting.get("era_description") or "现代"
+        era = (
+            era_setting.get("era_name") or era_setting.get("era_description") or "现代"
+        )
 
     db = SessionLocal()
     try:
@@ -637,7 +674,9 @@ async def generate_landmark_image(
 
     except ImageContentError as e:
         logger.warning(f"Content inspection failed: {e}")
-        raise HTTPException(status_code=400, detail="生成图片时触发了内容安全审核，请稍后重试")
+        raise HTTPException(
+            status_code=400, detail="生成图片时触发了内容安全审核，请稍后重试"
+        )
     except ImageServiceError as e:
         logger.error(f"Image generation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -646,7 +685,8 @@ async def generate_landmark_image(
 
 
 @router.post(
-    "/{game_id}/landmarks/{landmark_name}/generate-description", response_model=MessageResponse
+    "/{game_id}/landmarks/{landmark_name}/generate-description",
+    response_model=MessageResponse,
 )
 async def generate_landmark_description(
     game_id: int,
@@ -668,13 +708,20 @@ async def generate_landmark_description(
     if not landmark_data:
         raise HTTPException(status_code=404, detail=f"标志物 {landmark_name} 不存在")
 
-    if landmark_data.get("description") and len(landmark_data.get("description", "")) > 50:
-        return MessageResponse(message=f"标志物 {landmark_name} 描述已存在", success=True)
+    if (
+        landmark_data.get("description")
+        and len(landmark_data.get("description", "")) > 50
+    ):
+        return MessageResponse(
+            message=f"标志物 {landmark_name} 描述已存在", success=True
+        )
 
     context = landmark_data.get("context", "")
 
     try:
-        landmark_service = LandmarkExtractionService(session.game_loop.ai_generator.ai_client)
+        landmark_service = LandmarkExtractionService(
+            session.game_loop.ai_generator.ai_client
+        )
 
         new_description = landmark_service.generate_landmark_description(
             landmark_name=landmark_name,
@@ -700,7 +747,9 @@ async def generate_landmark_description(
         raise HTTPException(status_code=500, detail=f"描述生成失败: {e}")
 
 
-@router.post("/{game_id}/characters/{name}/regenerate-image", response_model=MessageResponse)
+@router.post(
+    "/{game_id}/characters/{name}/regenerate-image", response_model=MessageResponse
+)
 async def regenerate_character_image(
     game_id: int,
     name: str,
@@ -732,10 +781,14 @@ async def regenerate_character_image(
             # 存在于 characters 中，检查亲密度
             affinity = char_data.get("affinity", 50)
             if affinity < 50:
-                raise HTTPException(status_code=403, detail="亲密度不足50，无法修改画像")
+                raise HTTPException(
+                    status_code=403, detail="亲密度不足50，无法修改画像"
+                )
         else:
             # 2. 在 key_people 中查找
-            key_people = character_settings.get("relationships", {}).get("key_people", [])
+            key_people = character_settings.get("relationships", {}).get(
+                "key_people", []
+            )
             found_in_key_people = False
             for person in key_people:
                 if isinstance(person, dict) and person.get("name") == name:
@@ -745,7 +798,9 @@ async def regenerate_character_image(
 
             if not found_in_key_people:
                 # 3. 在 family_members 中查找
-                family_members = character_settings.get("family", {}).get("family_members", [])
+                family_members = character_settings.get("family", {}).get(
+                    "family_members", []
+                )
                 found_in_family = False
                 for member in family_members:
                     if isinstance(member, dict) and member.get("name") == name:
@@ -787,7 +842,9 @@ async def regenerate_character_image(
             )
 
         if not current_image:
-            raise HTTPException(status_code=404, detail=f"人物 {name} 暂无图片，请先生成图片")
+            raise HTTPException(
+                status_code=404, detail=f"人物 {name} 暂无图片，请先生成图片"
+            )
 
         image_service = ImageService(db)
         image_models = image_service.regenerate_image(
@@ -803,7 +860,9 @@ async def regenerate_character_image(
 
     except ImageContentError as e:
         logger.warning(f"Content inspection failed: {e}")
-        raise HTTPException(status_code=400, detail="生成图片时触发了内容安全审核，请稍后重试")
+        raise HTTPException(
+            status_code=400, detail="生成图片时触发了内容安全审核，请稍后重试"
+        )
     except ImageServiceError as e:
         logger.error(f"Image regeneration failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -811,7 +870,9 @@ async def regenerate_character_image(
         db.close()
 
 
-@router.post("/{game_id}/items/{item_name}/regenerate-image", response_model=MessageResponse)
+@router.post(
+    "/{game_id}/items/{item_name}/regenerate-image", response_model=MessageResponse
+)
 async def regenerate_item_image(
     game_id: int,
     item_name: str,
@@ -850,7 +911,9 @@ async def regenerate_item_image(
         )
 
         if not current_image:
-            raise HTTPException(status_code=404, detail=f"物品 {item_name} 暂无图片，请先生成图片")
+            raise HTTPException(
+                status_code=404, detail=f"物品 {item_name} 暂无图片，请先生成图片"
+            )
 
         # 物品图片重新生成：使用当前图片作为参考
         import base64
@@ -936,7 +999,9 @@ async def regenerate_item_image(
 
     except ImageContentError as e:
         logger.warning(f"Content inspection failed: {e}")
-        raise HTTPException(status_code=400, detail="生成图片时触发了内容安全审核，请稍后重试")
+        raise HTTPException(
+            status_code=400, detail="生成图片时触发了内容安全审核，请稍后重试"
+        )
     except ImageServiceError as e:
         logger.error(f"Image regeneration failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -978,10 +1043,11 @@ async def recognize_entities(
         existing_characters.append(player_name)
 
     try:
-        from src.services.entity_recognition_service import \
-            EntityRecognitionService
+        from src.services.entity_recognition_service import EntityRecognitionService
 
-        recognition_service = EntityRecognitionService(session.game_loop.ai_generator.ai_client)
+        recognition_service = EntityRecognitionService(
+            session.game_loop.ai_generator.ai_client
+        )
 
         min_appearances = request.get("min_appearances", 3)
 
@@ -1117,10 +1183,11 @@ async def create_item(
 
         # 如果需要从历史中提取描述
         if request.get("generate_description") and player_state.round_history:
-            from src.services.entity_recognition_service import \
-                EntityRecognitionService
+            from src.services.entity_recognition_service import EntityRecognitionService
 
-            recognition_service = EntityRecognitionService(session.game_loop.ai_generator.ai_client)
+            recognition_service = EntityRecognitionService(
+                session.game_loop.ai_generator.ai_client
+            )
 
             item_info = recognition_service.extract_item_description(
                 item_name=item_name,
@@ -1253,7 +1320,9 @@ async def delete_character(
         raise HTTPException(status_code=400, detail="不能删除主角")
 
     if character_name not in player_state.characters:
-        raise HTTPException(status_code=404, detail=f"人物 '{character_name}' 不存在或无法删除")
+        raise HTTPException(
+            status_code=404, detail=f"人物 '{character_name}' 不存在或无法删除"
+        )
 
     try:
         # 删除人物

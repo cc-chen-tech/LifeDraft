@@ -7,10 +7,19 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import JSONResponse
 
-from src.api.deps import (JWT_EXPIRE_HOURS, create_token, get_current_user,
-                          get_user_manager)
-from src.api.schemas import (AuthResponse, LoginRequest, MessageResponse,
-                             RegisterRequest, UserInfo)
+from src.api.deps import (
+    JWT_EXPIRE_HOURS,
+    create_token,
+    get_current_user,
+    get_user_manager,
+)
+from src.api.schemas import (
+    AuthResponse,
+    LoginRequest,
+    MessageResponse,
+    RegisterRequest,
+    UserInfo,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -18,7 +27,9 @@ router = APIRouter()
 # Cookie配置
 COOKIE_NAME = "auth_token"
 COOKIE_MAX_AGE = JWT_EXPIRE_HOURS * 3600  # 转换为秒
-COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"  # 生产环境设为true
+COOKIE_SECURE = (
+    os.getenv("COOKIE_SECURE", "false").lower() == "true"
+)  # 生产环境设为true
 COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "lax")  # lax/strict/none
 
 
@@ -116,11 +127,15 @@ async def get_me(user_id: int = Depends(get_current_user)):
 
 
 @router.post("/logout", response_model=MessageResponse)
-async def logout(response: Response):
+async def logout(
+    response: Response,
+    current_user: int = Depends(get_current_user),  # H-05: 登出需认证
+):
     """
     Logout — clear the auth Cookie and instruct client to discard token.
 
     ★ 同时清除Cookie和提示客户端清除localStorage
+    ★ 需要认证才能登出
     """
     _clear_auth_cookie(response)
     return MessageResponse(message="Logged out successfully")

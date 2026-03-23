@@ -7,22 +7,30 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import Response as FastAPIResponse
 from sqlalchemy.orm import Session
 
-from src.api.deps import get_current_user_optional, get_db
-from src.api.schemas import (BatchGenerateCharactersRequest,
-                             GenerateImageRequest,
-                             GenerateOpeningIllustrationRequest,
-                             GenerateRoundSceneRequest, ImageListResponse,
-                             ImageResponse, MessageResponse,
-                             OpeningIllustrationResponse,
-                             RegenerateFreshImageRequest,
-                             RegenerateImageRequest,
-                             RegenerateOpeningIllustrationRequest,
-                             RegenerateRoundSceneRequest, RoundSceneResponse)
+from src.api.deps import get_current_user, get_current_user_optional, get_db
+from src.api.schemas import (
+    BatchGenerateCharactersRequest,
+    GenerateImageRequest,
+    GenerateOpeningIllustrationRequest,
+    GenerateRoundSceneRequest,
+    ImageListResponse,
+    ImageResponse,
+    MessageResponse,
+    OpeningIllustrationResponse,
+    RegenerateFreshImageRequest,
+    RegenerateImageRequest,
+    RegenerateOpeningIllustrationRequest,
+    RegenerateRoundSceneRequest,
+    RoundSceneResponse,
+)
 from src.database.models import Game
 from src.database.models import Image as ImageModel
 from src.database.models import SessionLocal, User
-from src.services.image_service import (ImageContentError, ImageService,
-                                        ImageServiceError)
+from src.services.image_service import (
+    ImageContentError,
+    ImageService,
+    ImageServiceError,
+)
 from src.services.image_storage import ImageStorageError, ImageStorageService
 
 logger = logging.getLogger(__name__)
@@ -140,7 +148,9 @@ async def generate_image(
                         image_url=service.get_image_url(img),
                         prompt_used=img.prompt_text,
                         version=img.version,
-                        created_at=img.created_at.isoformat() if img.created_at else None,
+                        created_at=(
+                            img.created_at.isoformat() if img.created_at else None
+                        ),
                     )
                     for img in image_models
                 ],
@@ -166,7 +176,9 @@ async def generate_image(
                         prompt_used=image_model.prompt_text,
                         version=image_model.version,
                         created_at=(
-                            image_model.created_at.isoformat() if image_model.created_at else None
+                            image_model.created_at.isoformat()
+                            if image_model.created_at
+                            else None
                         ),
                     )
                 ],
@@ -192,14 +204,18 @@ async def generate_image(
                         prompt_used=image_model.prompt_text,
                         version=image_model.version,
                         created_at=(
-                            image_model.created_at.isoformat() if image_model.created_at else None
+                            image_model.created_at.isoformat()
+                            if image_model.created_at
+                            else None
                         ),
                     )
                 ],
                 total=1,
             )
         else:
-            raise HTTPException(status_code=400, detail=f"不支持的图片类型: {req.image_type}")
+            raise HTTPException(
+                status_code=400, detail=f"不支持的图片类型: {req.image_type}"
+            )
 
     except ImageContentError as e:
         # ★ 内容审核错误 - 返回 400 而不是 500，让用户知道是输入问题
@@ -285,7 +301,9 @@ async def batch_generate_character_images(
     era = "现代"
     era_setting = req.character_settings.get("era", {})
     if isinstance(era_setting, dict):
-        era = era_setting.get("era_name") or era_setting.get("era_description") or "现代"
+        era = (
+            era_setting.get("era_name") or era_setting.get("era_description") or "现代"
+        )
 
     # 批量生成
     service = ImageService(db)
@@ -313,7 +331,9 @@ async def batch_generate_character_images(
             # 生成 entity_key
             entity_key = f"npc_{char['name']}"
 
-            logger.info(f"Generating image for {char['name']} ({char['role']}): {description}")
+            logger.info(
+                f"Generating image for {char['name']} ({char['role']}): {description}"
+            )
 
             image_models = service.generate_character_image(
                 game_id=req.game_id,
@@ -339,7 +359,9 @@ async def batch_generate_character_images(
                         image_url=service.get_image_url(img),
                         prompt_used=img.prompt_text,
                         version=img.version,
-                        created_at=img.created_at.isoformat() if img.created_at else None,
+                        created_at=(
+                            img.created_at.isoformat() if img.created_at else None
+                        ),
                     )
                 )
 
@@ -350,8 +372,14 @@ async def batch_generate_character_images(
         except Exception as e:
             error_str = str(e)
             # ★ 检测 429 速率限制错误
-            if "429" in error_str or "RateQuota" in error_str or "rate limit" in error_str.lower():
-                logger.warning(f"Rate limit hit for {char['name']}, waiting 10 seconds...")
+            if (
+                "429" in error_str
+                or "RateQuota" in error_str
+                or "rate limit" in error_str.lower()
+            ):
+                logger.warning(
+                    f"Rate limit hit for {char['name']}, waiting 10 seconds..."
+                )
                 import asyncio
 
                 await asyncio.sleep(10)  # 等待10秒后重试一次
@@ -379,7 +407,11 @@ async def batch_generate_character_images(
                                 image_url=service.get_image_url(img),
                                 prompt_used=img.prompt_text,
                                 version=img.version,
-                                created_at=img.created_at.isoformat() if img.created_at else None,
+                                created_at=(
+                                    img.created_at.isoformat()
+                                    if img.created_at
+                                    else None
+                                ),
                             )
                         )
                     logger.info(f"Retry succeeded for {char['name']}")
@@ -437,13 +469,16 @@ async def generate_opening_illustration(
             image_url=service.get_image_url(image_model),
             scene_description=image_model.metadata_json.get("scene_description", ""),
             prompt_used=image_model.prompt_text,
-            created_at=image_model.created_at.isoformat() if image_model.created_at else None,
+            created_at=(
+                image_model.created_at.isoformat() if image_model.created_at else None
+            ),
         )
 
     except ImageContentError as e:
         logger.warning(f"Content inspection failed for opening illustration: {e}")
         raise HTTPException(
-            status_code=400, detail="生成插画时触发了内容安全审核。请尝试使用其他描述方式。"
+            status_code=400,
+            detail="生成插画时触发了内容安全审核。请尝试使用其他描述方式。",
         )
     except ImageServiceError as e:
         logger.error(f"Opening illustration generation failed: {e}")
@@ -453,7 +488,9 @@ async def generate_opening_illustration(
         raise HTTPException(status_code=500, detail=f"生成开场插画失败: {e}")
 
 
-@router.post("/opening-illustration/regenerate", response_model=OpeningIllustrationResponse)
+@router.post(
+    "/opening-illustration/regenerate", response_model=OpeningIllustrationResponse
+)
 async def regenerate_opening_illustration(
     req: RegenerateOpeningIllustrationRequest,
     db: Session = Depends(get_session),
@@ -492,13 +529,16 @@ async def regenerate_opening_illustration(
             image_url=service.get_image_url(image_model),
             scene_description=image_model.metadata_json.get("scene_description", ""),
             prompt_used=image_model.prompt_text,
-            created_at=image_model.created_at.isoformat() if image_model.created_at else None,
+            created_at=(
+                image_model.created_at.isoformat() if image_model.created_at else None
+            ),
         )
 
     except ImageContentError as e:
         logger.warning(f"Content inspection failed for opening illustration: {e}")
         raise HTTPException(
-            status_code=400, detail="重新生成插画时触发了内容安全审核。请尝试使用其他描述方式。"
+            status_code=400,
+            detail="重新生成插画时触发了内容安全审核。请尝试使用其他描述方式。",
         )
     except ImageServiceError as e:
         logger.error(f"Opening illustration regeneration failed: {e}")
@@ -621,7 +661,8 @@ async def regenerate_fresh_image(
         # ★ 内容审核错误
         logger.warning(f"Content inspection failed in regenerate_fresh: {e}")
         raise HTTPException(
-            status_code=400, detail="生成图片时触发了内容安全审核。请稍后重试，或尝试完全重新生成。"
+            status_code=400,
+            detail="生成图片时触发了内容安全审核。请稍后重试，或尝试完全重新生成。",
         )
     except ImageServiceError as e:
         logger.error(f"Fresh image regeneration failed: {e}")
@@ -678,7 +719,7 @@ async def get_image_file(
     image_type: str,
     filename: str,
     db: Session = Depends(get_session),
-    # ★ 图片文件访问不需要认证，通过路径参数game_id验证权限
+    user: int = Depends(get_current_user),  # C-02: 添加认证依赖
 ):
     """
     获取图片文件
@@ -691,7 +732,15 @@ async def get_image_file(
         # 构建存储路径
         from pathlib import Path
 
-        storage_path = str(storage_service.local_path / str(game_id) / image_type / filename)
+        # C-01: 路径遍历防护
+        base_path = storage_service.local_path.resolve()
+        requested_path = (
+            storage_service.local_path / str(game_id) / image_type / filename
+        ).resolve()
+        if not requested_path.is_relative_to(base_path):
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        storage_path = str(requested_path)
 
         # 检查文件是否存在
         if not storage_service.image_exists(storage_path, "local"):
@@ -780,7 +829,9 @@ async def get_round_scene_image(
 
     # 构建图片URL
     storage_service = ImageStorageService()
-    image_url = storage_service.get_image_url(scene_image.storage_path, scene_image.storage_type)
+    image_url = storage_service.get_image_url(
+        scene_image.storage_path, scene_image.storage_type
+    )
 
     return {
         "scene_id": scene_image.scene_id,
@@ -791,7 +842,9 @@ async def get_round_scene_image(
         "image_url": image_url,
         "scene_description": scene_image.scene_description,
         "referenced_images": scene_image.referenced_images,
-        "created_at": scene_image.created_at.isoformat() if scene_image.created_at else None,
+        "created_at": (
+            scene_image.created_at.isoformat() if scene_image.created_at else None
+        ),
     }
 
 
@@ -830,10 +883,14 @@ async def get_all_round_scene_images(
                 "week": scene.week,  # ★ 返回 week
                 "round_number": scene.round_number,
                 "stage": scene.stage,  # ★ 返回 stage
-                "image_url": storage_service.get_image_url(scene.storage_path, scene.storage_type),
+                "image_url": storage_service.get_image_url(
+                    scene.storage_path, scene.storage_type
+                ),
                 "scene_description": scene.scene_description,
                 "referenced_images": scene.referenced_images,
-                "created_at": scene.created_at.isoformat() if scene.created_at else None,
+                "created_at": (
+                    scene.created_at.isoformat() if scene.created_at else None
+                ),
             }
             for scene in scene_images
         ],
@@ -892,7 +949,9 @@ async def generate_round_scene_image(
             stage=scene_model.stage,  # ★ 返回 stage
             image_url=image_url,
             scene_description=scene_model.scene_description or "",
-            created_at=scene_model.created_at.isoformat() if scene_model.created_at else None,
+            created_at=(
+                scene_model.created_at.isoformat() if scene_model.created_at else None
+            ),
         )
 
     except ImageContentError as e:
@@ -957,7 +1016,9 @@ async def regenerate_round_scene_image(
             stage=scene_model.stage,
             image_url=image_url,
             scene_description=scene_model.scene_description or "",
-            created_at=scene_model.created_at.isoformat() if scene_model.created_at else None,
+            created_at=(
+                scene_model.created_at.isoformat() if scene_model.created_at else None
+            ),
         )
 
     except ImageContentError as e:
@@ -994,7 +1055,9 @@ async def get_image(
         image_url=service.get_image_url(image_model),
         prompt_used=image_model.prompt_text,
         version=image_model.version,
-        created_at=image_model.created_at.isoformat() if image_model.created_at else None,
+        created_at=(
+            image_model.created_at.isoformat() if image_model.created_at else None
+        ),
     )
 
 

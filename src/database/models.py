@@ -2,8 +2,18 @@
 
 from datetime import datetime
 
-from sqlalchemy import (JSON, Boolean, Column, DateTime, ForeignKey, Index,
-                        Integer, String, Text, create_engine)
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    create_engine,
+)
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 
@@ -19,18 +29,25 @@ class User(Base):
 
     user_id = Column(Integer, primary_key=True, autoincrement=True)
     private_id = Column(String(32), unique=True, nullable=False, index=True)  # 登录用
-    public_id = Column(String(8), unique=True, nullable=False, index=True)  # 显示/加好友用
+    public_id = Column(
+        String(8), unique=True, nullable=False, index=True
+    )  # 显示/加好友用
     display_name = Column(String(50), nullable=True)  # 可选昵称
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login = Column(DateTime, nullable=True)
 
     # ★ 服务端会话管理：记录最近活跃的游戏ID，用于自动恢复
-    last_active_game_id = Column(Integer, ForeignKey("games.game_id"), nullable=True, index=True)
+    last_active_game_id = Column(
+        Integer, ForeignKey("games.game_id"), nullable=True, index=True
+    )
 
     # 关联
     # 明确指定 foreign_keys，因为 users-games 之间存在两个外键路径
     games = relationship(
-        "Game", foreign_keys="Game.user_id", back_populates="user", cascade="all, delete-orphan"
+        "Game",
+        foreign_keys="Game.user_id",
+        back_populates="user",
+        cascade="all, delete-orphan",
     )
     # 我发起的好友请求
     sent_friend_requests = relationship(
@@ -61,7 +78,9 @@ class Friendship(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # 关联
-    user = relationship("User", foreign_keys=[user_id], back_populates="sent_friend_requests")
+    user = relationship(
+        "User", foreign_keys=[user_id], back_populates="sent_friend_requests"
+    )
     friend = relationship(
         "User", foreign_keys=[friend_id], back_populates="received_friend_requests"
     )
@@ -76,9 +95,13 @@ class Game(Base):
     __tablename__ = "games"
 
     game_id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=True, index=True)  # 关联用户
+    user_id = Column(
+        Integer, ForeignKey("users.user_id"), nullable=True, index=True
+    )  # 关联用户
     created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)  # 最后修改时间
+    updated_at = Column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, index=True
+    )  # 最后修改时间，H-08: 添加索引
     language = Column(String(10), default="en")
     initial_state = Column(JSON)
     final_state = Column(JSON, nullable=True)
@@ -88,13 +111,19 @@ class Game(Base):
 
     # Relationships
     user = relationship("User", back_populates="games", foreign_keys=[user_id])
-    states = relationship("GameState", back_populates="game", cascade="all, delete-orphan")
-    decisions = relationship("Decision", back_populates="game", cascade="all, delete-orphan")
+    states = relationship(
+        "GameState", back_populates="game", cascade="all, delete-orphan"
+    )
+    decisions = relationship(
+        "Decision", back_populates="game", cascade="all, delete-orphan"
+    )
     ending = relationship(
         "Ending", back_populates="game", cascade="all, delete-orphan", uselist=False
     )
     images = relationship("Image", back_populates="game", cascade="all, delete-orphan")
-    scene_images = relationship("SceneImage", back_populates="game", cascade="all, delete-orphan")
+    scene_images = relationship(
+        "SceneImage", back_populates="game", cascade="all, delete-orphan"
+    )
 
 
 class GameState(Base):
@@ -116,6 +145,9 @@ class GameState(Base):
     # Relationships
     game = relationship("Game", back_populates="states")
 
+    # H-08: 复合索引优化查询性能
+    __table_args__ = (Index("ix_game_state_game_week", "game_id", "week"),)
+
 
 class Decision(Base):
     """Decision record model."""
@@ -132,6 +164,9 @@ class Decision(Base):
 
     # Relationships
     game = relationship("Game", back_populates="decisions")
+
+    # H-08: 复合索引优化查询性能
+    __table_args__ = (Index("ix_decision_game_week", "game_id", "week"),)
 
 
 class Ending(Base):
@@ -184,7 +219,9 @@ class Image(Base):
 
     # 实体标识（用于关联）
     entity_name = Column(String(100), nullable=False)  # 人物名/地点名/物品名
-    entity_key = Column(String(100), nullable=True)  # 唯一标识键（如 player_main, npc_1 等）
+    entity_key = Column(
+        String(100), nullable=True
+    )  # 唯一标识键（如 player_main, npc_1 等）
 
     # 图片信息
     prompt_text = Column(Text, nullable=False)  # 生成时使用的prompt
@@ -200,7 +237,9 @@ class Image(Base):
 
     # 主图/变体关系
     is_primary = Column(Boolean, default=False)  # 是否为主图（第一张）
-    primary_image_id = Column(Integer, ForeignKey("images.image_id"), nullable=True)  # 关联的主图ID
+    primary_image_id = Column(
+        Integer, ForeignKey("images.image_id"), nullable=True
+    )  # 关联的主图ID
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -208,7 +247,9 @@ class Image(Base):
     game = relationship("Game", back_populates="images")
 
     # 索引
-    __table_args__ = (Index("ix_images_game_type_entity", "game_id", "image_type", "entity_name"),)
+    __table_args__ = (
+        Index("ix_images_game_type_entity", "game_id", "image_type", "entity_name"),
+    )
 
 
 class SceneImage(Base):
@@ -243,7 +284,13 @@ class SceneImage(Base):
 
     # 索引 - 包含 week 的复合索引，支持按游戏、周、轮次、阶段查询
     __table_args__ = (
-        Index("ix_scene_images_game_week_round_stage", "game_id", "week", "round_number", "stage"),
+        Index(
+            "ix_scene_images_game_week_round_stage",
+            "game_id",
+            "week",
+            "round_number",
+            "stage",
+        ),
     )
 
 
@@ -251,11 +298,23 @@ class SceneImage(Base):
 # 使用 settings.get_database_url() 支持云数据库
 database_url = settings.get_database_url()
 
-# PostgreSQL 需要特殊配置
+# C-03: 增强连接池配置
 if database_url.startswith("postgresql"):
-    engine = create_engine(database_url, echo=False, pool_pre_ping=True)
+    engine = create_engine(
+        database_url,
+        echo=False,
+        pool_pre_ping=True,
+        pool_size=10,
+        max_overflow=20,
+        pool_recycle=3600,
+    )
 else:
-    engine = create_engine(database_url, echo=False)
+    engine = create_engine(
+        database_url,
+        echo=False,
+        pool_pre_ping=True,
+        connect_args={"check_same_thread": False, "timeout": 30},
+    )
 
 SessionLocal = sessionmaker(bind=engine)
 

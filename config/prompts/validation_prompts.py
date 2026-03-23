@@ -19,11 +19,11 @@ def get_story_analysis_prompt(
 ) -> str:
     """
     Build prompt for the Story Analyzer Agent.
-    
+
     The AI is asked to freely identify ALL narratively significant facts
     from the story — not limited to predefined categories. Each fact
     includes a constraint_text that will be injected into future prompts.
-    
+
     Args:
         story_text: The full story text to analyze
         player_choice: Player's choice text
@@ -31,7 +31,7 @@ def get_story_analysis_prompt(
         character_settings: Character settings for name references
         current_week: Current game week number
         language: Language code ('zh' or 'en')
-    
+
     Returns:
         Analysis prompt string
     """
@@ -39,14 +39,14 @@ def get_story_analysis_prompt(
     char_name = ""
     if character_settings:
         char_name = character_settings.get("name", "")
-    
+
     existing_section = ""
     if existing_facts_context:
         if language == "zh":
-            existing_section = f"\n\n{existing_facts_context}\n（注意：如果故事中的新信息使某个已有事实过时或改变，请用 action:\"update\" 或 action:\"invalidate\" 处理）"
+            existing_section = f'\n\n{existing_facts_context}\n（注意：如果故事中的新信息使某个已有事实过时或改变，请用 action:"update" 或 action:"invalidate" 处理）'
         else:
-            existing_section = f"\n\n{existing_facts_context}\n(Note: If new information makes an existing fact outdated or changed, use action:\"update\" or action:\"invalidate\")"
-    
+            existing_section = f'\n\n{existing_facts_context}\n(Note: If new information makes an existing fact outdated or changed, use action:"update" or action:"invalidate")'
+
     if language == "zh":
         return f"""请分析以下故事，提取所有对未来叙事有约束力的关键信息。
 
@@ -205,36 +205,40 @@ def get_consistency_validation_prompt(
     constraints_text: str,
     character_settings: Dict[str, Any],
     language: str,
-    profiled_characters: List[str] = None
+    profiled_characters: List[str] = None,
 ) -> str:
     """
     Build prompt for AI consistency validation.
-    
+
     Args:
         story_text: The generated story text to validate
         constraints_text: World model constraints text from WorldModel.build_constraints_text()
         character_settings: Character background settings
         language: Language code ('zh' or 'en')
         profiled_characters: 已建立行为画像的角色名单
-    
+
     Returns:
         Validation prompt string
     """
     if profiled_characters is None:
         profiled_characters = []
-    
+
     # Build character personality context
     personality_context = ""
     if character_settings:
-        name = character_settings.get("name", "主角" if language == "zh" else "Protagonist")
+        name = character_settings.get(
+            "name", "主角" if language == "zh" else "Protagonist"
+        )
         personality = character_settings.get("personality", {})
         traits = personality.get("traits", [])
         if traits:
             if language == "zh":
                 personality_context = f"\n【主角性格特征】{name}：{'、'.join(traits)}"
             else:
-                personality_context = f"\n[Protagonist Personality] {name}: {', '.join(traits)}"
-        
+                personality_context = (
+                    f"\n[Protagonist Personality] {name}: {', '.join(traits)}"
+                )
+
         # Key people personalities
         relationships = character_settings.get("relationships", {})
         key_people = relationships.get("key_people", [])
@@ -244,13 +248,15 @@ def get_consistency_validation_prompt(
             p_personality = person.get("personality", "")
             if p_name and p_personality:
                 people_lines.append(f"- {p_name}: {p_personality}")
-        
+
         if people_lines:
             if language == "zh":
                 personality_context += "\n【关键人物性格】\n" + "\n".join(people_lines)
             else:
-                personality_context += "\n[Key Character Personalities]\n" + "\n".join(people_lines)
-    
+                personality_context += "\n[Key Character Personalities]\n" + "\n".join(
+                    people_lines
+                )
+
     # 已建立行为画像的角色说明
     profiled_chars_note = ""
     if profiled_characters:
@@ -258,7 +264,7 @@ def get_consistency_validation_prompt(
             profiled_chars_note = f"\n【已建立行为画像的角色】{'、'.join(profiled_characters)}\n这些角色已有明确的行为模式和性格记录，他们的性格不一致应视为严重问题。"
         else:
             profiled_chars_note = f"\n[Characters with Established Behavioral Profiles] {', '.join(profiled_characters)}\nThese characters have documented behavior patterns - personality inconsistencies for them should be treated as serious issues."
-    
+
     if language == "zh":
         return f"""请检查以下故事是否与世界模型约束存在逻辑矛盾。
 

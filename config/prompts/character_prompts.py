@@ -39,9 +39,15 @@ def get_character_profile_synthesis_prompt(
     Returns:
         Synthesis prompt string
     """
-    traits_str = "、".join(character_settings_traits) if character_settings_traits else "未设定"
+    traits_str = (
+        "、".join(character_settings_traits) if character_settings_traits else "未设定"
+    )
 
-    evidence_str = "\n".join(f"  - {e}" for e in behavioral_evidence) if behavioral_evidence else "（无新证据）"
+    evidence_str = (
+        "\n".join(f"  - {e}" for e in behavioral_evidence)
+        if behavioral_evidence
+        else "（无新证据）"
+    )
 
     existing_section = ""
     if existing_profile:
@@ -380,7 +386,9 @@ Return JSON format:
 
     if feedback:
         if language == "zh":
-            prompt += f"\n\n用户反馈：{feedback}\n请根据反馈重新生成，确保满足用户的要求。"
+            prompt += (
+                f"\n\n用户反馈：{feedback}\n请根据反馈重新生成，确保满足用户的要求。"
+            )
         else:
             prompt += f"\n\nUser Feedback: {feedback}\nPlease regenerate based on the feedback to meet user requirements."
 
