@@ -67,14 +67,60 @@ jest.mock('@/lib/api', () => ({
 
 import { useGameStore, CREATION_STEPS, MANUAL_STEPS, AUTO_ADVANCE_STEPS } from '@/stores/useGameStore';
 import { useImageStore } from '@/stores/useImageStore';
+import { useGameListStore } from '@/stores/useGameListStore';
+import { useEventStore } from '@/stores/useEventStore';
+import { useSessionStore } from '@/stores/useSessionStore';
+import { useCharacterStore } from '@/stores/useCharacterStore';
+import { useSceneImageStore } from '@/stores/useSceneImageStore';
 import api from '@/lib/api';
 
 describe('useGameStore', () => {
   beforeEach(() => {
-    // Reset the store state before each test
+    // Reset all sub-stores before resetting the combined store
     act(() => {
-      useGameStore.getState().resetGame();
-      useGameStore.getState().resetCreation();
+      // Reset sub-stores directly
+      useSessionStore.setState({
+        gameId: null,
+        sessionId: null,
+        playerState: null,
+        progress: null,
+        roundInfo: null,
+        isGameOver: false,
+        enableSceneImage: true,
+      });
+      useEventStore.setState({
+        currentEvent: null,
+        storyText: '',
+        lastSummary: null,
+      });
+      useCharacterStore.setState({
+        creationStep: 0,
+        characterSettings: {},
+        playerName: '',
+        lifeVision: '',
+        openingStory: '',
+        isPresetLoaded: false,
+      });
+      useGameListStore.setState({
+        savedGames: [],
+        presets: [],
+      });
+      useSceneImageStore.setState({
+        roundSceneImages: [],
+        currentRoundSceneImage: null,
+        eventSceneImage: null,
+        resultSceneImage: null,
+        isLoadingRoundSceneImage: false,
+        isRegeneratingRoundScene: false,
+        roundSceneRegenerateError: null,
+        historySceneImage: null,
+        isLoadingHistoryImage: false,
+        isGeneratingHistoryImage: false,
+        isRegeneratingHistoryImage: false,
+      });
+      
+      // Sync combined store
+      useGameStore.getState()._syncFromSubStores();
     });
     jest.clearAllMocks();
   });
@@ -505,7 +551,7 @@ describe('useGameStore', () => {
       act(() => {
         useGameStore.getState().setGameSession(42, 'session-42');
         useGameStore.setState({
-          playerState: { energy: 50, mood: 80 },
+          playerState: { player_name: 'Test', life_vision: '', energy: 50, mood: 80, knowledge: 0, wealth: 0, age: 18, week: 1, current_round: 1, rounds_per_week: 3, character_settings: {} },
         });
       });
 
@@ -517,7 +563,7 @@ describe('useGameStore', () => {
       });
 
       // Should update because energy changed
-      expect(useGameStore.getState().playerState).toEqual({ energy: 50, mood: 80 });
+      expect(useGameStore.getState().playerState).toEqual({ player_name: 'Test', life_vision: '', energy: 50, mood: 80, knowledge: 0, wealth: 0, age: 18, week: 1, current_round: 1, rounds_per_week: 3, character_settings: {} });
     });
   });
 
@@ -551,13 +597,15 @@ describe('useGameStore', () => {
     });
 
     it('deletes game', async () => {
+      // Set savedGames in sub-store first
       act(() => {
-        useGameStore.setState({
+        useGameListStore.setState({
           savedGames: [
             { game_id: 1, player_name: 'Test1', age: 20, week: 5, updated_at: '', created_at: '' },
             { game_id: 2, player_name: 'Test2', age: 25, week: 10, updated_at: '', created_at: '' },
           ],
         });
+        useGameStore.getState()._syncFromSubStores();
       });
 
       await act(async () => {
@@ -570,13 +618,15 @@ describe('useGameStore', () => {
     });
 
     it('deletes preset', async () => {
+      // Set presets in sub-store first
       act(() => {
-        useGameStore.setState({
+        useGameListStore.setState({
           presets: [
             { preset_id: 1, preset_name: 'Test1', player_name: 'P1', character_settings: {}, life_vision: '', created_at: '' },
             { preset_id: 2, preset_name: 'Test2', player_name: 'P2', character_settings: {}, life_vision: '', created_at: '' },
           ],
         });
+        useGameStore.getState()._syncFromSubStores();
       });
 
       await act(async () => {
@@ -861,9 +911,12 @@ describe('useGameStore', () => {
     it('fetchAllRoundSceneImages sets currentScene based on roundInfo', async () => {
       act(() => {
         useGameStore.getState().setGameSession(42, 'session-42');
-        useGameStore.setState({
-          roundInfo: { current_round: 5 },
+        // Set roundInfo in sub-store
+        useSessionStore.setState({
+          roundInfo: { current_round: 5, week: 2 },
+          progress: { week: 2, current_round: 5, rounds_per_week: 3 },
         });
+        useGameStore.getState()._syncFromSubStores();
       });
 
       (api.images as unknown as Record<string, unknown>) = {
@@ -897,7 +950,7 @@ describe('useGameStore', () => {
         // ★ useGameStore 只设置自己管理的状态
         useGameStore.setState({
           storyText: 'Test story',
-          characterSettings: { era: {} },
+          characterSettings: { era: { era: 'modern' } },
           playerName: 'Test',
           currentRoundSceneImage: {
             scene_id: 1,
@@ -942,7 +995,8 @@ describe('useGameStore', () => {
     it('regenerateRoundSceneImage handles error', async () => {
       act(() => {
         useGameStore.getState().setGameSession(42, 'session-42');
-        useGameStore.setState({
+        // Set scene image in sub-store
+        useSceneImageStore.setState({
           currentRoundSceneImage: {
             scene_id: 1,
             week: 1,
@@ -954,6 +1008,7 @@ describe('useGameStore', () => {
             created_at: '2024-01-01T00:00:00Z',
           },
         });
+        useGameStore.getState()._syncFromSubStores();
       });
 
       (api.images as unknown as Record<string, unknown>) = {
@@ -1011,7 +1066,7 @@ describe('useGameStore', () => {
       it('updates state when shallowChanged returns true', async () => {
         act(() => {
           useGameStore.getState().setGameSession(42, 'session-42');
-          useGameStore.setState({ playerState: { energy: 50 } });
+          useGameStore.setState({ playerState: { player_name: 'Test', life_vision: '', energy: 50, mood: 100, knowledge: 0, wealth: 0, age: 18, week: 1, current_round: 1, rounds_per_week: 3, character_settings: {} } });
         });
 
         const mockState = {
@@ -1064,9 +1119,9 @@ describe('useGameStore', () => {
         act(() => {
           useGameStore.getState().setGameSession(42, 'session-42');
           useGameStore.setState({
-            playerState: existingState.player_state,
-            progress: existingState.progress,
-            roundInfo: existingState.round_info,
+            playerState: { player_name: '', life_vision: '', energy: 50, mood: 100, knowledge: 0, wealth: 0, age: 18, week: 5, current_round: 10, rounds_per_week: 3, character_settings: {} },
+            progress: { week: 5, current_round: 10, rounds_per_week: 3 },
+            roundInfo: { current_round: 10, week: 5 },
           });
         });
 

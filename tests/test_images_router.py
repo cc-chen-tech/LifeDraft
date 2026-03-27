@@ -6,8 +6,12 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+# API tests - image endpoints
+pytestmark = pytest.mark.api
+
 from src.api.deps import get_current_user
-from src.api.routers.images import router, verify_game_ownership, verify_image_ownership
+from src.api.routers.images import (router, verify_game_ownership,
+                                    verify_image_ownership)
 from src.services.image_service import ImageContentError, ImageServiceError
 from src.services.image_storage import ImageStorageError
 
@@ -209,3 +213,242 @@ class TestDeleteImageEndpoint:
             response = client.delete("/images/999")
 
         assert response.status_code == 404
+
+
+# ==================== Path Traversal Security Tests ====================
+
+
+class TestPathTraversalSecurity:
+    """Test path traversal attack prevention."""
+
+    @patch("src.api.routers.images.ImageStorageService")
+    def test_path_traversal_rejected_dot_dot(self, mock_storage_class, app, client):
+        """Test that path traversal with .. is rejected."""
+        from pathlib import Path
+
+        app.dependency_overrides[get_current_user] = lambda: 1
+
+        mock_storage = MagicMock()
+        mock_storage.image_exists.return_value = False
+        mock_storage.local_path = Path("/data/images")
+        mock_storage_class.return_value = mock_storage
+
+        try:
+            with patch("src.api.routers.images.get_session") as mock_session_gen:
+                mock_session_gen.return_value = iter([MagicMock()])
+                response = client.get("/images/file/1/character/../../../etc/passwd")
+
+            # Should return 400 or 404, not actual file content
+            assert response.status_code in (400, 404)
+        finally:
+            app.dependency_overrides.clear()
+
+    @patch("src.api.routers.images.ImageStorageService")
+    def test_path_traversal_rejected_encoded(self, mock_storage_class, app, client):
+        """Test that URL-encoded path traversal is rejected."""
+        from pathlib import Path
+
+        app.dependency_overrides[get_current_user] = lambda: 1
+
+        mock_storage = MagicMock()
+        mock_storage.image_exists.return_value = False
+        mock_storage.local_path = Path("/data/images")
+        mock_storage_class.return_value = mock_storage
+
+        try:
+            with patch("src.api.routers.images.get_session") as mock_session_gen:
+                mock_session_gen.return_value = iter([MagicMock()])
+                response = client.get("/images/file/1/character/%2e%2e%2fetc%2fpasswd")
+
+            assert response.status_code in (400, 404)
+        finally:
+            app.dependency_overrides.clear()
+
+
+# ==================== POST Generate Image Tests ====================
+
+
+class TestGenerateImageEndpoint:
+    """Test POST /generate endpoint."""
+
+    @patch("src.api.routers.images.ImageService")
+    def test_generate_image_unauthorized(self, mock_service_class, app, client):
+        """Test that unauthenticated requests return 401."""
+        from src.api.deps import get_current_user_optional
+
+        # Don't override auth - should be None
+        with patch("src.api.routers.images.get_session") as mock_session_gen:
+            mock_session_gen.return_value = iter([MagicMock()])
+            response = client.post(
+                "/images/generate",
+                json={
+                    "game_id": 1,
+                    "image_type": "character",
+                    "entity_name": "Test",
+                    "description": "Test description",
+                },
+            )
+
+        assert response.status_code == 401
+
+    @patch("src.api.routers.images.ImageService")
+    @patch("src.api.routers.images.verify_game_ownership")
+    def test_generate_image_success(self, mock_verify, mock_service_class, app, client):
+        """Test successful image generation."""
+        from src.api.deps import get_current_user_optional
+
+        mock_user = MagicMock()
+        mock_user.user_id = 1
+        app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+
+        mock_service = MagicMock()
+        mock_image = MagicMock()
+        mock_image.image_id = 1
+        mock_image.game_id = 1
+        mock_image.image_type = "character"
+        mock_image.entity_name = "Test"
+        mock_image.entity_key = "player"
+        mock_image.prompt_text = "test prompt"
+        mock_image.version = 1
+        mock_image.created_at = None
+        mock_service.generate_character_image.return_value = [mock_image]
+        mock_service.get_image_url.return_value = "/images/file/1/character/test.png"
+        mock_service_class.return_value = mock_service
+
+        mock_verify.return_value = MagicMock()
+
+        try:
+            with patch("src.api.routers.images.get_session") as mock_session_gen:
+                mock_session_gen.return_value = iter([MagicMock()])
+                response = client.post(
+                    "/images/generate",
+                    json={
+                        "game_id": 1,
+                        "image_type": "character",
+                        "entity_name": "Test",
+                        "description": "Test description",
+                    },
+                )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert "images" in data
+            assert data["total"] >= 0
+        finally:
+            app.dependency_overrides.clear()
+
+    @patch("src.api.routers.images.ImageService")
+    @patch("src.api.routers.images.verify_game_ownership")
+    def test_generate_image_invalid_type(
+        self, mock_verify, mock_service_class, app, client
+    ):
+        """Test generating image with invalid type."""
+        from src.api.deps import get_current_user_optional
+
+        mock_user = MagicMock()
+        mock_user.user_id = 1
+        app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+
+        mock_verify.return_value = MagicMock()
+
+        try:
+            with patch("src.api.routers.images.get_session") as mock_session_gen:
+                mock_session_gen.return_value = iter([MagicMock()])
+                response = client.post(
+                    "/images/generate",
+                    json={
+                        "game_id": 1,
+                        "image_type": "invalid_type",
+                        "entity_name": "Test",
+                        "description": "Test",
+                    },
+                )
+
+            # Invalid type should return 400 or 500 (depending on error handling)
+            assert response.status_code in (400, 500)
+        finally:
+            app.dependency_overrides.clear()
+
+    @patch("src.api.routers.images.ImageService")
+    @patch("src.api.routers.images.verify_game_ownership")
+    def test_generate_image_content_error(
+        self, mock_verify, mock_service_class, app, client
+    ):
+        """Test handling content moderation error."""
+        from src.api.deps import get_current_user_optional
+
+        mock_user = MagicMock()
+        mock_user.user_id = 1
+        app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+
+        mock_service = MagicMock()
+        mock_service.generate_character_image.side_effect = ImageContentError(
+            "Content moderation failed"
+        )
+        mock_service_class.return_value = mock_service
+
+        mock_verify.return_value = MagicMock()
+
+        try:
+            with patch("src.api.routers.images.get_session") as mock_session_gen:
+                mock_session_gen.return_value = iter([MagicMock()])
+                response = client.post(
+                    "/images/generate",
+                    json={
+                        "game_id": 1,
+                        "image_type": "character",
+                        "entity_name": "Test",
+                        "description": "Test",
+                    },
+                )
+
+            assert response.status_code == 400
+            assert "敏感内容" in response.json()["detail"]
+        finally:
+            app.dependency_overrides.clear()
+
+
+# ==================== Image File Not Found Tests ====================
+
+
+class TestImageFileNotFound:
+    """Test image file not found scenarios."""
+
+    @patch("src.api.routers.images.ImageStorageService")
+    def test_get_image_file_not_exists(self, mock_storage_class, app, client):
+        """Test getting non-existent image file returns 404 or 500."""
+        from pathlib import Path
+
+        app.dependency_overrides[get_current_user] = lambda: 1
+
+        mock_storage = MagicMock()
+        mock_storage.image_exists.return_value = False
+        mock_storage.local_path = Path("/data/images")
+        mock_storage_class.return_value = mock_storage
+
+        try:
+            with patch("src.api.routers.images.get_session") as mock_session_gen:
+                mock_session_gen.return_value = iter([MagicMock()])
+                response = client.get("/images/file/1/character/nonexistent.png")
+
+            # Not found should return 404 or 500 (depending on error handling)
+            assert response.status_code in (404, 500)
+        finally:
+            app.dependency_overrides.clear()
+
+
+# ==================== Invalid Parameter Tests ====================
+
+
+class TestInvalidParameters:
+    """Test invalid parameter handling."""
+
+    def test_get_image_invalid_id(self, client):
+        """Test getting image with invalid ID format."""
+        response = client.get("/images/invalid")
+        assert response.status_code == 422
+
+    def test_generate_image_missing_fields(self, client):
+        """Test generating image with missing required fields."""
+        response = client.post("/images/generate", json={})
+        assert response.status_code == 422

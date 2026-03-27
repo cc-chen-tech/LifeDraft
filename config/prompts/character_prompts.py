@@ -13,6 +13,7 @@ Contains:
 from typing import Any, Dict, List, Optional
 
 from config.prompts._helpers import _format_effects
+from src.ai.prompt_sanitizer import sanitize_life_vision, sanitize_player_name
 
 
 def get_character_profile_synthesis_prompt(
@@ -39,6 +40,8 @@ def get_character_profile_synthesis_prompt(
     Returns:
         Synthesis prompt string
     """
+    # 清洗角色名称输入，防止 prompt 注入
+    sanitized_character_name = sanitize_player_name(character_name)
     traits_str = (
         "、".join(character_settings_traits) if character_settings_traits else "未设定"
     )
@@ -73,7 +76,7 @@ def get_character_profile_synthesis_prompt(
 """
 
     if language == "zh":
-        return f"""请为角色「{character_name}」合成/更新行为画像。
+        return f"""请为角色「{sanitized_character_name}」合成/更新行为画像。
 
 【初始性格设定】{traits_str}
 
@@ -97,12 +100,12 @@ def get_character_profile_synthesis_prompt(
   "decision_patterns": ["2-4个决策倾向，如'优先考虑他人感受'、'风险厌恶型'"],
   "emotional_tendencies": ["2-3个情绪特征，如'表面平静但内心波动大'"],
   "behavioral_boundaries": ["2-4个行为红线，如'绝不在公开场合发怒'、'不会主动伤害弱者'"],
-  "constraint_text": "一段50-100字的综合约束描述，告诉未来的故事生成AI这个角色应该如何表现。例如：'{character_name}是一个表面温和但内心坚定的人，面对冲突时倾向于先退让再迂回解决。他说话柔和但逻辑清晰，绝不会在众人面前大声争吵或做出冲动决定。'"
+  "constraint_text": "一段50-100字的综合约束描述，告诉未来的故事生成AI这个角色应该如何表现。例如：'{sanitized_character_name}是一个表面温和但内心坚定的人，面对冲突时倾向于先退让再迂回解决。他说话柔和但逻辑清晰，绝不会在众人面前大声争吵或做出冲动决定。'"
 }}
 
 - 只返回JSON，不要其他文本"""
     else:
-        return f"""Synthesize/update a behavioral profile for character "{character_name}".
+        return f"""Synthesize/update a behavioral profile for character "{sanitized_character_name}".
 
 [Initial Personality Traits] {traits_str}
 
@@ -159,10 +162,14 @@ def get_character_setting_prompt(
     """
     import json as _json
 
+    # 清洗用户输入，防止 prompt 注入
+    sanitized_player_name = sanitize_player_name(player_name)
+    sanitized_life_vision = sanitize_life_vision(life_vision)
+
     if language == "zh":
         base_context = f"""
-玩家姓名：{player_name}
-人生愿景：{life_vision}
+玩家姓名：{sanitized_player_name}
+人生愿景：{sanitized_life_vision}
 
 已生成的设定：
 {_json.dumps(previous_settings, ensure_ascii=False, indent=2)}
@@ -275,8 +282,8 @@ def get_character_setting_prompt(
         }
     else:
         base_context = f"""
-Player Name: {player_name}
-Life Vision: {life_vision}
+Player Name: {sanitized_player_name}
+Life Vision: {sanitized_life_vision}
 
 Generated Settings:
 {_json.dumps(previous_settings, indent=2)}
@@ -411,9 +418,13 @@ def get_relationship_person_prompt(
     """Generate prompt for creating a single relationship person."""
     import json as _json
 
+    # 清洗用户输入，防止 prompt 注入
+    sanitized_player_name = sanitize_player_name(player_name)
+    sanitized_life_vision = sanitize_life_vision(life_vision)
+
     base_context = f"""
-玩家姓名：{player_name}
-人生愿景：{life_vision}
+玩家姓名：{sanitized_player_name}
+人生愿景：{sanitized_life_vision}
 
 已生成的设定：
 {_json.dumps(previous_settings, ensure_ascii=False, indent=2)}
@@ -548,9 +559,13 @@ def get_relationships_summary_prompt(
     """Generate prompt for creating a relationships summary."""
     import json as _json
 
+    # 清洗用户输入，防止 prompt 注入
+    sanitized_player_name = sanitize_player_name(player_name)
+    sanitized_life_vision = sanitize_life_vision(life_vision)
+
     base_context = f"""
-玩家姓名：{player_name}
-人生愿景：{life_vision}
+玩家姓名：{sanitized_player_name}
+人生愿景：{sanitized_life_vision}
 
 已生成的设定：
 {_json.dumps(previous_settings, ensure_ascii=False, indent=2)}
@@ -725,6 +740,10 @@ def get_opening_story_prompt(
         formatted_family_members: Pre-formatted family members string.
         language: Language code.
     """
+    # 清洗用户输入，防止 prompt 注入
+    sanitized_player_name = sanitize_player_name(player_name)
+    sanitized_life_vision = sanitize_life_vision(life_vision)
+
     era = character_settings.get("era", {})
     age_info = character_settings.get("age", {})
     gender = character_settings.get("gender", {})
@@ -738,8 +757,8 @@ def get_opening_story_prompt(
         return f"""请基于以下角色设定，生成一个生动的开场故事（300-400字）。
 
 【角色信息】
-姓名：{player_name}
-人生愿景：{life_vision}
+姓名：{sanitized_player_name}
+人生愿景：{sanitized_life_vision}
 
 【时代背景】
 {era.get('era_description', '')}，{era.get('year', '')}年
@@ -785,8 +804,8 @@ def get_opening_story_prompt(
         return f"""Generate a vivid opening story (300-400 words) based on the following character settings.
 
 【Character Info】
-Name: {player_name}
-Life Vision: {life_vision}
+Name: {sanitized_player_name}
+Life Vision: {sanitized_life_vision}
 
 【Era】
 {era.get('era_description', '')}, Year {era.get('year', '')}

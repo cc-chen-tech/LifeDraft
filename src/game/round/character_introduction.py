@@ -6,7 +6,7 @@ into the story world.
 
 import logging
 import random
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +23,9 @@ class CharacterIntroductionService:
 
     def __init__(
         self,
-        player_state_getter: callable,
+        player_state_getter: Callable[[], Any],
         character_creator: Any,
-        character_settings_setter: callable = None,
+        character_settings_setter: Optional[Callable[[Dict[str, Any]], None]] = None,
     ):
         """
         Args:

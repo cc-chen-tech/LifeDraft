@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2 } from "lucide-react";
@@ -17,7 +18,7 @@ interface SkeletonStoryProps {
  * - 居中显示加载提示（动态状态）
  * - 显示等待时间
  */
-export function SkeletonStory({
+export const SkeletonStory = memo(function SkeletonStory({
   className,
   message = "正在构思故事...",
   elapsedSeconds,
@@ -60,4 +61,6 @@ export function SkeletonStory({
       </div>
     </div>
   );
-}
+});
+
+SkeletonStory.displayName = 'SkeletonStory';

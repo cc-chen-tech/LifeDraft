@@ -489,7 +489,8 @@ class TestHistoricalSummarySelector:
     """Test HistoricalSummarySelector class."""
 
     def test_select_no_player_state(self):
-        from src.game.historical_summary_selector import HistoricalSummarySelector
+        from src.game.historical_summary_selector import \
+            HistoricalSummarySelector
 
         weekly, yearly = HistoricalSummarySelector.select_relevant_historical_summary(
             None
@@ -498,7 +499,8 @@ class TestHistoricalSummarySelector:
         assert yearly is None
 
     def test_select_no_keywords_fallback(self):
-        from src.game.historical_summary_selector import HistoricalSummarySelector
+        from src.game.historical_summary_selector import \
+            HistoricalSummarySelector
 
         state = Mock()
         state.week = 10
@@ -516,7 +518,8 @@ class TestHistoricalSummarySelector:
         assert weekly is None
 
     def test_select_with_keywords_match(self):
-        from src.game.historical_summary_selector import HistoricalSummarySelector
+        from src.game.historical_summary_selector import \
+            HistoricalSummarySelector
 
         state = Mock()
         state.week = 20
@@ -539,7 +542,8 @@ class TestHistoricalSummarySelector:
         assert "张三" in weekly
 
     def test_select_yearly_with_keywords(self):
-        from src.game.historical_summary_selector import HistoricalSummarySelector
+        from src.game.historical_summary_selector import \
+            HistoricalSummarySelector
 
         state = Mock()
         state.week = 60
@@ -561,7 +565,8 @@ class TestHistoricalSummarySelector:
         assert "创业" in yearly
 
     def test_random_fallback_no_state(self):
-        from src.game.historical_summary_selector import HistoricalSummarySelector
+        from src.game.historical_summary_selector import \
+            HistoricalSummarySelector
 
         weekly, yearly = (
             HistoricalSummarySelector.select_random_historical_summary_fallback(None)
@@ -570,7 +575,8 @@ class TestHistoricalSummarySelector:
         assert yearly is None
 
     def test_keywords_from_foreshadowing(self):
-        from src.game.historical_summary_selector import HistoricalSummarySelector
+        from src.game.historical_summary_selector import \
+            HistoricalSummarySelector
 
         state = Mock()
         state.week = 20
@@ -591,7 +597,8 @@ class TestHistoricalSummarySelector:
         assert weekly is not None
 
     def test_keywords_from_commitments(self):
-        from src.game.historical_summary_selector import HistoricalSummarySelector
+        from src.game.historical_summary_selector import \
+            HistoricalSummarySelector
 
         state = Mock()
         state.week = 20

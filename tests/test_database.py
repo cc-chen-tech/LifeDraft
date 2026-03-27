@@ -9,16 +9,11 @@ import pytest
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import sessionmaker
 
-from src.database.models import (
-    Base,
-    CharacterPreset,
-    Decision,
-    Ending,
-    Friendship,
-    Game,
-    GameState,
-    User,
-)
+# Integration tests - database operations
+pytestmark = pytest.mark.integration
+
+from src.database.models import (Base, CharacterPreset, Decision, Ending,
+                                 Friendship, Game, GameState, User)
 from src.game.state import PlayerState
 
 # ==================== Fixtures ====================
@@ -279,26 +274,43 @@ class TestCharacterPresetModel:
 class TestGameDatabase:
     """Test GameDatabase operations (with mocked SessionLocal)."""
 
+    # Modules and their available attributes to patch
+    _MODULES_TO_PATCH = {
+        "src.database.db": ["SessionLocal", "get_db"],
+        "src.database.game_repository": ["SessionLocal", "get_db"],
+        "src.database.state_repository": ["SessionLocal", "get_db"],
+        "src.database.decision_repository": ["SessionLocal", "get_db"],
+        "src.database.character_preset_repository": ["SessionLocal"],  # No get_db
+        "src.database.session_repository": ["SessionLocal"],  # No get_db
+        "src.database.save_point_repository": ["SessionLocal"],  # No get_db
+    }
+
     def _make_game_db(self, db_session):
         """Helper to create a GameDatabase with mocked session."""
         from unittest.mock import MagicMock
 
         from src.database.db import GameDatabase
 
-        # Patch SessionLocal to return our test session
-        self._session_local_patcher = patch(
-            "src.database.db.SessionLocal", return_value=db_session
-        )
-        self._session_local_mock = self._session_local_patcher.start()
+        self._patchers = []
 
-        # Patch get_db to return a context manager that yields db_session
-        mock_context = MagicMock()
-        mock_context.__enter__ = MagicMock(return_value=db_session)
-        mock_context.__exit__ = MagicMock(return_value=False)
-        self._get_db_patcher = patch(
-            "src.database.db.get_db", return_value=mock_context
-        )
-        self._get_db_mock = self._get_db_patcher.start()
+        # Patch SessionLocal and get_db in all repository modules
+        for module, attrs in self._MODULES_TO_PATCH.items():
+            # Patch SessionLocal
+            if "SessionLocal" in attrs:
+                session_patcher = patch(
+                    f"{module}.SessionLocal", return_value=db_session
+                )
+                self._patchers.append(session_patcher)
+                session_patcher.start()
+
+            # Patch get_db to return a context manager that yields db_session
+            if "get_db" in attrs:
+                mock_context = MagicMock()
+                mock_context.__enter__ = MagicMock(return_value=db_session)
+                mock_context.__exit__ = MagicMock(return_value=False)
+                get_db_patcher = patch(f"{module}.get_db", return_value=mock_context)
+                self._patchers.append(get_db_patcher)
+                get_db_patcher.start()
 
         with patch("src.database.db.init_db"):
             db = GameDatabase()
@@ -306,10 +318,12 @@ class TestGameDatabase:
 
     def teardown_method(self):
         """Stop any active patchers."""
-        if hasattr(self, "_get_db_patcher"):
-            self._get_db_patcher.stop()
-        if hasattr(self, "_session_local_patcher"):
-            self._session_local_patcher.stop()
+        if hasattr(self, "_patchers"):
+            for patcher in self._patchers:
+                try:
+                    patcher.stop()
+                except RuntimeError:
+                    pass  # Already stopped
 
     def test_create_game(self, db_session):
         """Test GameDatabase.create_game."""
@@ -412,20 +426,11 @@ class TestGameDatabase:
         db_session.query(Game).delete()
         db_session.commit()
 
-        # Patch SessionLocal to return our test session
-        with patch("src.database.db.SessionLocal", return_value=db_session):
-            # Create a mock context manager that yields db_session
-            mock_context = MagicMock()
-            mock_context.__enter__ = MagicMock(return_value=db_session)
-            mock_context.__exit__ = MagicMock(return_value=False)
-
-            with patch("src.database.db.init_db"):
-                with patch("src.database.db.get_db", return_value=mock_context):
-                    db = GameDatabase()
-                    db.create_game(language="zh")
-                    db.create_game(language="en")
-                    games = db.list_games(limit=10)
-                    assert len(games) == 2
+        db = self._make_game_db(db_session)
+        db.create_game(language="zh")
+        db.create_game(language="en")
+        games = db.list_games(limit=10)
+        assert len(games) == 2
 
     def test_save_and_load_character_preset(self, db_session):
         """Test saving and loading character presets."""
@@ -507,7 +512,8 @@ class TestUserManagerIDGeneration:
 
     def test_ids_are_unique(self):
         """Test that generated IDs are unique."""
-        from src.database.user_manager import generate_private_id, generate_public_id
+        from src.database.user_manager import (generate_private_id,
+                                               generate_public_id)
 
         private_ids = {generate_private_id() for _ in range(100)}
         public_ids = {generate_public_id() for _ in range(100)}

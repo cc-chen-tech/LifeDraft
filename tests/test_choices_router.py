@@ -6,11 +6,9 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
-from src.api.routers.gameplay.choices import (
-    _require_session,
-    _restore_current_event_if_needed,
-    router,
-)
+from src.api.routers.gameplay.choices import (_require_session,
+                                              _restore_current_event_if_needed,
+                                              router)
 
 
 @pytest.fixture

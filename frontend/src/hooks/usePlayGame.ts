@@ -401,8 +401,114 @@ export function usePlayGame() {
     return () => clearTimeout(timer);
   }, [gameId, currentRound, storyText, enableSceneImage, eventSceneImage, resultSceneImage, phase, generateRoundSceneImage]);
 
-  // Return the same API as before for backwards compatibility
+  // ===== Grouped Return Objects =====
+  // M-04: Organized return values into logical groups
+  const session = {
+    gameId,
+    playerState,
+    progress,
+    roundInfo,
+    currentEvent,
+    isGameOver,
+    currentRound,
+  };
+
+  const events = {
+    phase,
+    storyText,
+    options,
+    displayText,
+    summaryText,
+    roundSummary,
+    endingData: finalEndingData,
+    isPrefetching,
+  };
+
+  const ui = {
+    showAdjuster,
+    showHistory,
+    isViewingHistory,
+    saveToast,
+    regenerateToast,
+    isSaving,
+    connectionStatus,
+    reconnectAttempt,
+    elapsedSeconds,
+  };
+
+  const actions = {
+    // Phase & Options
+    setPhase,
+    setOptions,
+    setStoryText,
+    setShowAdjuster,
+    setShowHistory,
+    // Game flow
+    handleChoice,
+    handleCustomChoice,
+    handleContinueAfterSummary,
+    handleContinueToNextRound,
+    handleSave,
+    handleAdjustStory,
+    handleRegenerate,
+    generateEvent,
+  };
+
+  const history = {
+    roundHistory,
+    historyRoundIndex,
+    historyDisplayText,
+    currentHistoryRound,
+    handleOpenHistory,
+    handleSelectHistoryRound,
+    handleBackToCurrent,
+    handleGenerateHistoryImage,
+    handleRegenerateHistoryImage,
+  };
+
+  const sceneImages = {
+    roundSceneImages,
+    currentRoundSceneImage,
+    eventSceneImage,
+    resultSceneImage,
+    historySceneImage,
+    isLoadingRoundSceneImage,
+    isLoadingHistoryImage,
+    isGeneratingHistoryImage,
+    isRegeneratingRoundScene,
+    isRegeneratingHistoryImage,
+    roundSceneRegenerateError,
+    fetchRoundSceneImage,
+    fetchAllRoundSceneImages,
+    regenerateRoundSceneImage,
+    setEventSceneImage,
+    setResultSceneImage,
+  };
+
+  const refs = {
+    storyContainerRef,
+  };
+
+  const utils = {
+    getLoadingMessage,
+    hydrated,
+    router,
+  };
+
+  // Return both grouped and flat APIs for flexibility
+  // Flat API maintained for backwards compatibility
   return {
+    // ===== Grouped API (M-04) =====
+    session,
+    events,
+    ui,
+    actions,
+    history,
+    sceneImages,
+    refs,
+    utils,
+
+    // ===== Flat API (backwards compatibility) =====
     // State
     phase,
     options,
@@ -453,28 +559,27 @@ export function usePlayGame() {
     historyRoundIndex,
     isViewingHistory,
     historyDisplayText,
-    displayText,  // ★ 实际显示的文本
-    currentHistoryRound,  // ★ 当前查看的历史轮次
+    displayText,
+    currentHistoryRound,
     handleOpenHistory,
     handleSelectHistoryRound,
     handleBackToCurrent,
-    handleGenerateHistoryImage,  // ★ 生成历史图片
-    handleRegenerateHistoryImage,  // ★ 重新生成历史图片
+    handleGenerateHistoryImage,
+    handleRegenerateHistoryImage,
 
-    // ★ 场景插画
+    // Scene images
     roundSceneImages,
     currentRoundSceneImage,
-    eventSceneImage,  // ★ 事件插画
-    resultSceneImage,  // ★ 结果插画
+    eventSceneImage,
+    resultSceneImage,
     isLoadingRoundSceneImage,
     isRegeneratingRoundScene,
     roundSceneRegenerateError,
     fetchRoundSceneImage,
     fetchAllRoundSceneImages,
     regenerateRoundSceneImage,
-    setEventSceneImage,  // ★ 设置事件插画
-    setResultSceneImage,  // ★ 设置结果插画
-    // ★ 历史场景插画
+    setEventSceneImage,
+    setResultSceneImage,
     historySceneImage,
     isLoadingHistoryImage,
     isGeneratingHistoryImage,
@@ -487,3 +592,6 @@ export function usePlayGame() {
     router,
   };
 }
+
+// Export grouped return type for consumers who want to use grouped API
+export type UsePlayGameReturn = ReturnType<typeof usePlayGame>;

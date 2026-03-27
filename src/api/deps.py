@@ -8,9 +8,9 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 
-from src.api.session_store import GameLoopSession, session_store
-from src.database.db import GameDatabase
-from src.database.user_manager import UserManager
+from src.api.services.session_service import session_service
+from src.api.session_store import GameLoopSession
+from src.database.singletons import get_game_db, get_user_manager
 
 logger = logging.getLogger(__name__)
 
@@ -25,25 +25,12 @@ JWT_EXPIRE_HOURS = ACCESS_TOKEN_EXPIRE_MINUTES / 60  # 保持向后兼容
 # Security scheme (optional bearer token)
 _bearer = HTTPBearer(auto_error=False)
 
-# Singletons (initialized once)
-_game_db: Optional[GameDatabase] = None
-_user_manager: Optional[UserManager] = None
+# Re-export singletons for backward compatibility
+# These functions are now defined in src.database.singletons
+# to break the circular dependency with session_service
 
-
-def get_db() -> GameDatabase:
-    """Get the global GameDatabase singleton."""
-    global _game_db
-    if _game_db is None:
-        _game_db = GameDatabase()
-    return _game_db
-
-
-def get_user_manager() -> UserManager:
-    """Get the global UserManager singleton."""
-    global _user_manager
-    if _user_manager is None:
-        _user_manager = UserManager()
-    return _user_manager
+# Alias for backward compatibility - external code may use get_db()
+get_db = get_game_db
 
 
 # ---- JWT helpers ----
@@ -151,6 +138,4 @@ def get_game_session(
     Auto-restores from database if not in memory.
     Raises 404 if game not found.
     """
-    from src.api.services.session_service import session_service
-
     return session_service.get_or_restore(game_id, user_id)

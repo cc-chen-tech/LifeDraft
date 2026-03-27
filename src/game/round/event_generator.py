@@ -25,9 +25,9 @@ class RoundEventGenerator:
 
     def __init__(
         self,
-        player_state_getter: callable,
+        player_state_getter: Callable[[], Any],
         ai_generator: Any,
-        language_getter: callable,
+        language_getter: Callable[[], str],
         character_introduction_service: Any,
         summary_selector: Any,
         relationship_service: Any,
@@ -52,10 +52,10 @@ class RoundEventGenerator:
         self.event_callback = event_callback
 
         # Generation state
-        self._generating = False
-        self._generating_start_time = None
-        self._GENERATION_TIMEOUT = 120.0  # seconds
-        self._current_event = None
+        self._generating: bool = False
+        self._generating_start_time: Optional[float] = None
+        self._GENERATION_TIMEOUT: float = 120.0  # seconds
+        self._current_event: Optional[GameEvent] = None
 
     @property
     def player_state(self):
@@ -294,11 +294,11 @@ class RoundEventGenerator:
         )
         if scheduled_events:
             logger.info(f"检测到 {len(scheduled_events)} 个预定事件需要触发")
-            event = self._generate_scheduled_event(
+            event = self._generate_scheduled_event(  # type: ignore[assignment]
                 scheduled_events, player_state, stream_callback, status_callback
             )
             if event:
-                self._current_event = event
+                self._current_event = event  # type: ignore[assignment]
                 player_state.current_event_data = event.model_dump()
                 # 标记预定事件已触发
                 for se in scheduled_events:
@@ -478,7 +478,6 @@ class RoundEventGenerator:
         return GameEvent(
             event_description=description,
             options=options,
-            event_type="fallback",
         )
 
     def _generate_scheduled_event(
@@ -583,7 +582,6 @@ class RoundEventGenerator:
                     event = GameEvent(
                         event_description=event_desc,
                         options=options,
-                        event_type="scheduled",
                     )
                     logger.info(f"成功生成预定事件: {event_desc[:60]}...")
                     return event
@@ -729,5 +727,4 @@ Return ONLY JSON, no other text."""
         return GameEvent(
             event_description=event_desc,
             options=options,
-            event_type="scheduled_fallback",
         )

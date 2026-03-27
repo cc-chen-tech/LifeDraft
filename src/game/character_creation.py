@@ -1,16 +1,15 @@
 """Character creation and world setup system."""
 
+import json
 import logging
 import random
 from typing import Any, Dict, List, Optional
 
-from config.prompts import (
-    get_character_setting_prompt,
-    get_initial_attributes_prompt,
-    get_opening_story_prompt,
-    get_relationship_person_prompt,
-    get_relationships_summary_prompt,
-)
+from config.prompts import (get_character_setting_prompt,
+                            get_initial_attributes_prompt,
+                            get_opening_story_prompt,
+                            get_relationship_person_prompt,
+                            get_relationships_summary_prompt)
 from src.ai.generator import EventGenerator
 from src.ai.system_prompts import get_system_prompt
 from src.ai.utils import extract_json
@@ -155,7 +154,7 @@ class CharacterCreator:
 
                 return result
 
-            except Exception as e:
+            except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
                 if attempt < max_retries - 1:
                     logger.warning(
                         f"Failed to generate {setting_type} (attempt {attempt + 1}/{max_retries}): {e}, retrying..."
@@ -164,6 +163,29 @@ class CharacterCreator:
                 else:
                     logger.error(
                         f"Failed to generate {setting_type} after {max_retries} attempts: {e}"
+                    )
+                    logger.error(
+                        f"Error type: {type(e).__name__}, Error details: {str(e)}"
+                    )
+                    fallback = self._get_fallback_setting(setting_type)
+                    # Ensure wealth fallback is not 0
+                    if setting_type == "wealth" and fallback.get("wealth", 0) == 0:
+                        fallback["wealth"] = 30000
+                    # Mark as fallback for debugging
+                    fallback["_is_fallback"] = True
+                    fallback["_error"] = f"{type(e).__name__}: {str(e)}"
+                    logger.warning(f"Using fallback for {setting_type}: {fallback}")
+                    return fallback
+            except Exception as e:
+                # Unexpected error - log with stack trace
+                if attempt < max_retries - 1:
+                    logger.warning(
+                        f"Failed to generate {setting_type} (attempt {attempt + 1}/{max_retries}): {e}, retrying..."
+                    )
+                    continue
+                else:
+                    logger.exception(
+                        f"Unexpected error generating {setting_type} after {max_retries} attempts: {e}"
                     )
                     logger.error(
                         f"Error type: {type(e).__name__}, Error details: {str(e)}"
@@ -297,7 +319,7 @@ class CharacterCreator:
                 )
                 return result
 
-            except Exception as e:
+            except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
                 last_error = str(e)
                 if attempt < max_retries - 1:
                     logger.warning(
@@ -349,6 +371,61 @@ class CharacterCreator:
                         "peak_affinity": 55,
                         "triggered_events": [],
                     }
+            except Exception as e:
+                # Unexpected error - log with stack trace
+                last_error = str(e)
+                if attempt < max_retries - 1:
+                    logger.warning(
+                        f"Failed to generate relationship person {person_index + 1} (attempt {attempt + 1}/{max_retries}): {e}, retrying..."
+                    )
+                    continue
+                else:
+                    logger.exception(
+                        f"Unexpected error generating relationship person {person_index + 1} after {max_retries} attempts: {e}"
+                    )
+                    # Return a fallback with rich attributes
+                    return {
+                        "name": (
+                            f"人物{person_index + 1}"
+                            if is_zh
+                            else f"Person{person_index + 1}"
+                        ),
+                        "role": "朋友" if is_zh else "Friend",
+                        "relationship": (
+                            "与玩家关系密切，经常交流互动。"
+                            if is_zh
+                            else "Close relationship with the player, frequent interaction."
+                        ),
+                        "relationship_desc": (
+                            "与玩家关系密切，经常交流互动。"
+                            if is_zh
+                            else "Close relationship with the player, frequent interaction."
+                        ),
+                        "age": 25,
+                        "gender": "",
+                        "occupation": "",
+                        "personality_traits": (
+                            ["友善", "热心"] if is_zh else ["friendly", "helpful"]
+                        ),
+                        "temperament": "balanced",
+                        "mood": 60,
+                        "mood_stability": 70,
+                        "social_status": "ordinary",
+                        "influence": 30,
+                        "competence": 50,
+                        "specialty": [],
+                        "affinity": 55,
+                        "trust": 50,
+                        "respect": 50,
+                        "sexual_orientation": assign_sexual_orientation(),
+                        "relationship_status": "single",
+                        "romantic_interest": "",
+                        "has_external_obstacle": False,
+                        "peak_affinity": 55,
+                        "triggered_events": [],
+                    }
+        # This should never be reached, but mypy requires it
+        return {}  # type: ignore[return-value]
 
     def generate_relationships_summary(
         self,
@@ -388,25 +465,27 @@ class CharacterCreator:
             if result:
                 return result.get("relationships_description", "")
             raise ValueError("AI returned no valid JSON for relationships summary")
+        except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
+            logger.warning(f"Failed to generate relationships summary: {e}")
+            # Fall through to generate fallback summary
         except Exception as e:
-            logger.error(f"Failed to generate relationships summary: {e}")
-            # Generate fallback summary from key_people
-            if self.language == "zh":
-                if key_people:
-                    names = [p.get("name", "") for p in key_people if p.get("name")]
-                    roles = [p.get("role", "") for p in key_people if p.get("role")]
-                    return f"玩家与{len(key_people)}位关键人物建立了密切关系：{', '.join([f'{name}({role})' for name, role in zip(names[:3], roles[:3])])}等。这些关系对玩家的人生发展有重要影响。"
-                else:
-                    return (
-                        "玩家在社会中建立了多种关系，这些关系对玩家的发展有重要影响。"
-                    )
+            logger.exception(f"Unexpected error generating relationships summary: {e}")
+
+        # Generate fallback summary from key_people
+        if self.language == "zh":
+            if key_people:
+                names = [p.get("name", "") for p in key_people if p.get("name")]
+                roles = [p.get("role", "") for p in key_people if p.get("role")]
+                return f"玩家与{len(key_people)}位关键人物建立了密切关系：{', '.join([f'{name}({role})' for name, role in zip(names[:3], roles[:3])])}等。这些关系对玩家的人生发展有重要影响。"
             else:
-                if key_people:
-                    names = [p.get("name", "") for p in key_people if p.get("name")]
-                    roles = [p.get("role", "") for p in key_people if p.get("role")]
-                    return f"The player has established close relationships with {len(key_people)} key people: {', '.join([f'{name}({role})' for name, role in zip(names[:3], roles[:3])])}, etc. These relationships have important impacts on the player's life development."
-                else:
-                    return "The player has established various relationships in society, which have important impacts on development."
+                return "玩家在社会中建立了多种关系，这些关系对玩家的发展有重要影响。"
+        else:
+            if key_people:
+                names = [p.get("name", "") for p in key_people if p.get("name")]
+                roles = [p.get("role", "") for p in key_people if p.get("role")]
+                return f"The player has established close relationships with {len(key_people)} key people: {', '.join([f'{name}({role})' for name, role in zip(names[:3], roles[:3])])}, etc. These relationships have important impacts on the player's life development."
+            else:
+                return "The player has established various relationships in society, which have important impacts on development."
 
     def generate_initial_attributes(
         self, character_settings: Dict[str, Any], language: str = "zh"
@@ -455,16 +534,18 @@ class CharacterCreator:
                 "knowledge": knowledge,
                 "wealth": wealth,
             }
-        except Exception as e:
+        except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
             logger.warning(f"AI生成初始属性失败: {e}")
-            traits = character_settings.get("traits", {})
-            logger.debug(
-                f"Fallback到规则生成, traits类型: {type(traits)}, keys: {list(traits.keys()) if isinstance(traits, dict) else 'N/A'}"
-            )
-            # Fallback: use rule-based generation
-            return self._generate_attributes_from_traits_rules(
-                traits, character_settings
-            )
+            # Fall through to rule-based generation
+        except Exception as e:
+            logger.exception(f"AI生成初始属性失败 (unexpected): {e}")
+
+        # Fallback: use rule-based generation
+        traits = character_settings.get("traits", {})
+        logger.debug(
+            f"Fallback到规则生成, traits类型: {type(traits)}, keys: {list(traits.keys()) if isinstance(traits, dict) else 'N/A'}"
+        )
+        return self._generate_attributes_from_traits_rules(traits, character_settings)
 
     def _generate_attributes_from_traits_rules(
         self,
@@ -755,7 +836,7 @@ class CharacterCreator:
                 },
             }
 
-        return fallbacks.get(setting_type, {})
+        return fallbacks.get(setting_type, {})  # type: ignore[return-value]
 
     def generate_opening_story(
         self, character_settings: Dict[str, Any], player_name: str, life_vision: str
@@ -797,22 +878,26 @@ class CharacterCreator:
                 max_tokens=4096,  # Maximum tokens - no truncation
             )
 
-            return response  # Return the stream object
+            return response  # type: ignore[return-value]  # Return the stream object
+        except (ValueError, TypeError, KeyError) as e:
+            logger.warning(f"Failed to generate opening story: {e}")
+            # Fall through to fallback
         except Exception as e:
-            logger.error(f"Failed to generate opening story: {e}")
-            # Return a fallback story
-            if self.language == "zh":
-                return iter(
-                    [
-                        f"在{era.get('year', '某个')}年的{era.get('era_description', '某个时代')}，{player_name}站在人生的十字路口。{age_info.get('age', '年轻')}岁的{gender.get('gender', 'TA')}，心中怀揣着{life_vision}的梦想，即将开启一段全新的人生旅程..."
-                    ]
-                )
-            else:
-                return iter(
-                    [
-                        f"In the year {era.get('year', 'of a certain era')}, {player_name} stands at a crossroads. At {age_info.get('age', 'young')} years old, with a dream of {life_vision}, {gender.get('gender', 'they')} are about to embark on a new life journey..."
-                    ]
-                )
+            logger.exception(f"Unexpected error generating opening story: {e}")
+
+        # Return a fallback story
+        if self.language == "zh":
+            return iter(  # type: ignore[return-value]
+                [
+                    f"在{era.get('year', '某个')}年的{era.get('era_description', '某个时代')}，{player_name}站在人生的十字路口。{age_info.get('age', '年轻')}岁的{gender.get('gender', 'TA')}，心中怀揣着{life_vision}的梦想，即将开启一段全新的人生旅程..."
+                ]
+            )
+        else:
+            return iter(  # type: ignore[return-value]
+                [
+                    f"In the year {era.get('year', 'of a certain era')}, {player_name} stands at a crossroads. At {age_info.get('age', 'young')} years old, with a dream of {life_vision}, {gender.get('gender', 'they')} are about to embark on a new life journey..."
+                ]
+            )
 
     def generate_family_members_details(
         self, old_format_members: list, character_settings: dict, player_name: str
@@ -867,8 +952,10 @@ class CharacterCreator:
             )
             if data:
                 return data.get("members", [])
+        except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
+            logger.warning(f"生成家庭成员详情失败: {e}")
         except Exception as e:
-            logger.error(f"生成家庭成员详情失败: {e}")
+            logger.exception(f"生成家庭成员详情失败 (unexpected): {e}")
 
         return []
 
@@ -927,8 +1014,10 @@ class CharacterCreator:
                             if name and name not in player_state.relationships:
                                 player_state.relationships[name] = 60
                                 logger.debug(f"添加家庭成员到关系列表: {name}")
-                except Exception as e:
+                except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
                     logger.warning(f"升级 family_members 失败: {e}")
+                except Exception as e:
+                    logger.exception(f"升级 family_members 失败 (unexpected): {e}")
 
         if fixed_any:
             logger.debug("角色设定属性已修复")

@@ -10,13 +10,9 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional
 
-from src.game.constants import (
-    DEFAULT_CAREER_LEVEL,
-    GENERIC_CHARACTER_NAMES,
-    IMPORTANCE_ORDER,
-    ROLE_KEYWORDS,
-    VALID_CAREER_LEVELS,
-)
+from src.game.constants import (DEFAULT_CAREER_LEVEL, GENERIC_CHARACTER_NAMES,
+                                IMPORTANCE_ORDER, ROLE_KEYWORDS,
+                                VALID_CAREER_LEVELS)
 
 logger = logging.getLogger(__name__)
 
@@ -361,7 +357,7 @@ class WorldModelUpdater:
                 except (KeyError, TypeError, ValueError) as e:
                     logger.warning(f"Skipping invalid dynamic fact: {e}")
                 except Exception as e:
-                    logger.error(f"Unexpected error parsing dynamic fact: {e}")
+                    logger.exception(f"Unexpected error parsing dynamic fact: {e}")
 
             # Run analysis
             new_facts = analyzer.analyze_story(
@@ -414,8 +410,12 @@ class WorldModelUpdater:
             else:
                 logger.info("🔍 Story Analyzer 完成：未发现新的关键事实")
 
+        except (ImportError, ValueError, TypeError, KeyError) as e:
+            logger.warning(f"Story Analyzer 执行失败（不影响主流程）: {e}")
         except Exception as e:
-            logger.error(f"Story Analyzer 执行失败（不影响主流程）: {e}")
+            logger.exception(
+                f"Story Analyzer 执行失败（unexpected，不影响主流程）: {e}"
+            )
 
     # ------------------------------------------------------------------
     # Character profile synthesis (requires AI)
@@ -560,8 +560,11 @@ class WorldModelUpdater:
                         language=language,
                     )
                     return (char_name, new_profile)
+                except (ValueError, TypeError, KeyError) as e:
+                    logger.warning(f"角色画像合成失败 ({char_name}): {e}")
+                    return (char_name, None)
                 except Exception as e:
-                    logger.error(f"角色画像合成失败 ({char_name}): {e}")
+                    logger.exception(f"角色画像合成失败 ({char_name}, unexpected): {e}")
                     return (char_name, None)
 
             with ThreadPoolExecutor(max_workers=min(len(sorted_chars), 3)) as executor:
@@ -598,8 +601,10 @@ class WorldModelUpdater:
             wm_data["character_profiles"] = profiles
             logger.info(f"🎭 角色画像合成完成：{len(profiles)} 个角色有画像")
 
+        except (ImportError, ValueError, TypeError, KeyError) as e:
+            logger.warning(f"角色画像合成失败（不影响主流程）: {e}")
         except Exception as e:
-            logger.error(f"角色画像合成失败（不影响主流程）: {e}")
+            logger.exception(f"角色画像合成失败（unexpected，不影响主流程）: {e}")
 
     # ------------------------------------------------------------------
     # Scheduled Events updates
@@ -624,9 +629,7 @@ class WorldModelUpdater:
             return
 
         from src.game.scheduled_events import (
-            ScheduledEvent,
-            create_scheduled_event_from_commitment,
-        )
+            ScheduledEvent, create_scheduled_event_from_commitment)
 
         current_week = player_state.week
 
@@ -718,8 +721,10 @@ class WorldModelUpdater:
                     current_round=player_state.current_round,
                 )
 
+        except (ImportError, ValueError, TypeError, KeyError) as e:
+            logger.warning(f"提取预定承诺失败（不影响主流程）: {e}")
         except Exception as e:
-            logger.error(f"提取预定承诺失败（不影响主流程）: {e}")
+            logger.exception(f"提取预定承诺失败（unexpected，不影响主流程）: {e}")
 
     @staticmethod
     def cleanup_triggered_scheduled_events(player_state, keep_weeks: int = 10) -> int:
@@ -832,7 +837,11 @@ class WorldModelUpdater:
             # 检查是否在故事文本中出现（避免添加效果中有但故事中没有的人物）
             if name in story_text or name.lower() in story_text.lower():
                 # 创建基础人物条目
-                affinity = relationships_in_effects.get(name, 50)
+                affinity = (
+                    relationships_in_effects.get(name, 50)
+                    if relationships_in_effects
+                    else 50
+                )
                 inferred_role = infer_role_from_story(name, story_text)
                 new_person = {
                     "name": name,

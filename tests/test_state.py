@@ -69,12 +69,12 @@ class TestPlayerState:
     def test_validate(self):
         """Test state validation."""
         state = PlayerState()
-        assert state.validate() is True
+        assert state.validate_state() is True
 
         # Test invalid state
         state.energy = 150
         with pytest.raises(ValueError):
-            state.validate()
+            state.validate_state()
 
     def test_is_game_over(self):
         """Test game over condition."""

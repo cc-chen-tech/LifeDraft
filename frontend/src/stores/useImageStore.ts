@@ -8,7 +8,7 @@
  * - 场景插画相关状态由 useGameStore 管理
  */
 import { create } from "zustand";
-import type { ImageResponse, OpeningIllustrationResponse } from "@/lib/types";
+import type { ImageResponse, OpeningIllustrationResponse, CharacterSettings, EraSetting } from "@/lib/types";
 import api from "@/lib/api";
 
 // 场景插画类型（导出供 useGameStore 使用）
@@ -43,7 +43,7 @@ interface ImageState {
   setSelectedImageIndex: (index: number) => void;
   setIsGeneratingImage: (isGenerating: boolean) => void;
   setImageFeedback: (feedback: string) => void;
-  generatePlayerImage: (gameId: number, playerName: string, characterSettings: Record<string, unknown>, feedback?: string) => Promise<void>;
+  generatePlayerImage: (gameId: number, playerName: string, characterSettings: CharacterSettings, feedback?: string) => Promise<void>;
   regeneratePlayerImage: (feedback: string) => Promise<void>;
   regenerateFreshPlayerImage: () => Promise<void>;
   // ★ 从服务器重新加载玩家形象
@@ -53,8 +53,8 @@ interface ImageState {
   setOpeningIllustration: (illustration: OpeningIllustrationResponse | null) => void;
   setIsGeneratingIllustration: (isGenerating: boolean) => void;
   setIllustrationError: (error: string | null) => void;
-  generateOpeningIllustration: (gameId: number, openingStory: string, characterSettings: Record<string, unknown>, playerName: string) => Promise<void>;
-  regenerateOpeningIllustration: (gameId: number, openingStory: string, characterSettings: Record<string, unknown>, playerName: string, userPrompt: string) => Promise<void>;
+  generateOpeningIllustration: (gameId: number, openingStory: string, characterSettings: CharacterSettings, playerName: string) => Promise<void>;
+  regenerateOpeningIllustration: (gameId: number, openingStory: string, characterSettings: CharacterSettings, playerName: string, userPrompt: string) => Promise<void>;
 
   // Actions — Cache
   clearCache: () => void;
@@ -93,10 +93,10 @@ export const useImageStore = create<ImageState>()(
       set({ isGeneratingImage: true, imageFeedback: feedback || "" });
 
       try {
-        const era = characterSettings.era as Record<string, unknown> | null;
-        const gender = characterSettings.gender as Record<string, unknown> | null;
-        const age = characterSettings.age as Record<string, unknown> | null;
-        const world = characterSettings.world as Record<string, unknown> | null;
+        const era = characterSettings.era as EraSetting | undefined;
+        const gender = characterSettings.gender as { gender?: string } | undefined;
+        const age = characterSettings.age as { age?: number; age_range?: string } | undefined;
+        const world = characterSettings.world as { cultural_context?: string; special_features?: string } | undefined;
 
         const parts: string[] = [];
         if (age) {

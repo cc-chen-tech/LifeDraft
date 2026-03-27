@@ -48,7 +48,7 @@ def _restore_current_event_if_needed(
     )
     try:
         db = get_db()
-        state_data = db.load_saved_game(game_id, user_id)
+        state_data = db.load_saved_game(game_id, user_id)  # type: ignore[arg-type]
         if state_data and state_data.get("current_event_data"):
             from src.ai.models import GameEvent
 

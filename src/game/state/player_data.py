@@ -1,0 +1,207 @@
+"""玩家数据模型。
+
+此模块定义了 PlayerState 的纯数据属性部分，作为 Mixin 类供 PlayerState 继承。
+包含所有 Pydantic 字段定义、验证器和序列化方法。
+"""
+
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
+from pydantic import Field, field_validator
+
+from config.settings import settings
+
+# 在 TYPE_CHECKING 中声明 BaseModel 的方法
+if TYPE_CHECKING:
+    from pydantic import BaseModel
+
+
+class PlayerDataMixin:
+    """玩家数据属性 Mixin。
+
+    包含所有数据字段定义，需要与 BaseModel 一起使用。
+    """
+
+    # Player identity
+    player_name: str = Field(default="", description="玩家名称")
+    life_vision: str = Field(default="", description="人生愿景")
+
+    # Core attributes (0-100 scale)
+    energy: int = Field(default=settings.INITIAL_ENERGY, ge=0, le=100)
+    mood: int = Field(default=settings.INITIAL_MOOD, ge=0, le=100)
+    knowledge: int = Field(default=settings.INITIAL_KNOWLEDGE, ge=0, le=100)
+    wealth: int = Field(default=settings.INITIAL_WEALTH, ge=0)
+
+    # Relationships: {name: affinity (0-100)} - 为了向后兼容保留
+    relationships: Dict[str, int] = Field(default_factory=dict)
+
+    # NPC角色状态系统: {name: CharacterState.model_dump()}
+    characters: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+
+    # 重要物品状态系统: {item_name: ItemState.model_dump()}
+    items: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+
+    # 重要地点/场景状态系统: {landmark_name: LandmarkState.model_dump()}
+    landmarks: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+
+    # Time tracking
+    age: int = Field(default=settings.STARTING_AGE, ge=0)  # No upper age limit
+    week: int = Field(default=0, ge=0)
+
+    # Decision history
+    decision_history: list = Field(default_factory=list)
+
+    # Character creation settings
+    character_settings: Dict[str, Any] = Field(default_factory=dict)
+
+    # Story history - stores each week's story/event description
+    story_history: list = Field(default_factory=list)
+
+    # Four-week summaries - generated every 4 weeks
+    four_week_summaries: list = Field(default_factory=list)
+
+    # Yearly summaries - generated every 48 weeks
+    yearly_summaries: list = Field(default_factory=list)
+
+    # Multi-round system - new fields
+    current_round: int = Field(default=0, ge=0)  # Current round within week (0, 1, 2)
+    rounds_per_week: int = Field(
+        default=settings.ROUNDS_PER_WEEK, ge=1
+    )  # Number of rounds per week
+
+    # Round history - stores each round's compressed summary and decision
+    # Structure: [{"week": 0, "round": 0, "summary": "100字总结", "choice": "选项文本", "effects": {...}}]
+    round_history: list = Field(default_factory=list)
+
+    # Weekly summaries - generated at end of each week after all rounds
+    # Structure: [{"week": 0, "summary": "周总结文本", "bonus_effects": {...}}]
+    weekly_summaries: list = Field(default_factory=list)
+
+    # Current event state - saves the event being displayed (not yet chosen)
+    # This allows resuming exactly where the player left off
+    # Structure: {"event_description": "...", "options": [{"text": "...", "effects": {...}}], "story_text": "..."}
+    current_event_data: Optional[Dict[str, Any]] = Field(default=None)
+
+    # 未完结的重要剧情线
+    # Structure: [{"description": "...", "created_week": 0, "importance": "high/medium",
+    #              "status": "active/deferred", "related_characters": [], "last_mentioned_week": 0}]
+    pending_storylines: list = Field(default_factory=list)
+
+    # 已建立的世界事实（人物角色/地理位置/正在进行的事务等一致性信息）
+    # Structure: [{"fact": "...", "subject": "主体名", "category": "location/role/situation",
+    #              "established_week": 0}]
+    established_facts: list = Field(default_factory=list)
+
+    # 上一轮完整故事文本（event_description + story_continuation），用于强制续写
+    last_round_full_story: str = Field(
+        default="", description="上一轮的完整故事文本，供下一轮续写参考"
+    )
+
+    # 上一轮事件是否已完结
+    last_event_concluded: bool = Field(
+        default=True, description="上一轮事件是否已自然完结。False表示需要强制续写"
+    )
+
+    # 伏笔种子系统（草蛇灰线引擎）：存储可在未来故事中回响的伏笔元素
+    # Structure: [{"description": "伏笔描述", "original_context": "原始场景简述",
+    #              "planted_week": 0, "related_characters": [], "seed_type": "mystery",
+    #              "maturity_weeks": 8, "activated": false, "activation_week": null,
+    #              "obfuscation_level": 0.5,     # 隐蔽度 0-1（0=明显线索, 1=极度隐蔽）
+    #              "narrative_weight": "minor",   # 叙事权重 minor/supporting/major
+    #              "recycle_method": "revelation", # 回收方式 revelation/confirmation/ironic_twist/escalation/echo
+    #              "related_storylines": []        # 关联的 pending_storylines 描述
+    #             }]
+    foreshadowing_seeds: list = Field(default_factory=list)
+
+    # 人物习惯追踪系统：记录故事中角色展现出的行为习惯，支持随事件变化
+    # Structure: [{"character": "角色名", "habit": "习惯描述",
+    #              "category": "behavioral/speech/emotional/social/lifestyle",
+    #              "established_week": 0, "last_seen_week": 0,
+    #              "strength": "strong/moderate/emerging",
+    #              "origin": "习惯来源简述"}]
+    character_habits: list = Field(default_factory=list)
+
+    # 世界模型结构化数据（地理位置/职业轨迹/承诺/因果链/身体状态）
+    # 与 established_facts 共存，WorldModel 同时读取两者
+    # Structure: {"character_locations": {name: LocationInfo.to_dict()},
+    #             "career_records": {name: CareerInfo.to_dict()},
+    #             "active_commitments": [Commitment.to_dict()],
+    #             "causal_chains": [CausalChain.to_dict()],
+    #             "physical_states": {name: PhysicalState.to_dict()}}
+    world_model_data: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            "character_locations": {},
+            "career_records": {},
+            "active_commitments": [],
+            "causal_chains": [],
+            "physical_states": {},
+            "dynamic_facts": [],
+            "character_profiles": {},
+        }
+    )
+
+    # 伏笔系统生命周期指标（用于评估伏笔系统健康度）
+    # Structure: {"total_planted": 0, "total_activated": 0, "total_expired": 0,
+    #             "avg_recovery_distance": 0, "recovery_distances": []}
+    foreshadowing_metrics: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            "total_planted": 0,
+            "total_activated": 0,
+            "total_expired": 0,
+            "avg_recovery_distance": 0.0,
+            "recovery_distances": [],
+        }
+    )
+
+    # 待引入人物队列：存储已生成但尚未在故事中自然引入的新人物
+    # 人物生成后不立即添加到 key_people，而是等待合适的故事场景再引入
+    # Structure: [{"character_data": {...完整的人物属性}, "created_week": 0,
+    #              "introduction_context": "work/social/location_change/education/random",
+    #              "priority": 0, "attempts": 0}]
+    # - introduction_context: 建议的引入场景类型
+    # - priority: 引入优先级（越高越优先）
+    # - attempts: 尝试引入次数（超过阈值仍未引入则强制引入）
+    pending_character_introductions: list = Field(default_factory=list)
+
+    # ★ 预定事件系统：存储带有具体时间点的承诺事件
+    # 当角色在故事中承诺在特定时间做某事时，系统会在此创建预定事件
+    # 到达指定轮次时，这些事件会被强制触发
+    # Structure: [ScheduledEvent.to_dict()] - 详见 src/game/scheduled_events.py
+    scheduled_events: list = Field(default_factory=list)
+
+    @field_validator("relationships")
+    @classmethod
+    def validate_relationships(cls, v: Dict[str, int]) -> Dict[str, int]:
+        """Ensure relationship values are within bounds."""
+        return {name: max(0, min(100, affinity)) for name, affinity in v.items()}
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert state to dictionary."""
+        # model_dump is provided by BaseModel when used in the combined class
+        return getattr(self, "model_dump")()
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PlayerDataMixin":
+        """Create state from dictionary."""
+        return cls(**data)
+
+    def validate_state(self) -> bool:
+        """
+        Validate that all state values are within acceptable bounds.
+
+        Returns:
+            True if valid, raises ValueError if invalid
+        """
+        if not (settings.MIN_RESOURCE <= self.energy <= settings.MAX_RESOURCE):
+            raise ValueError(f"Energy out of bounds: {self.energy}")
+        if not (settings.MIN_RESOURCE <= self.mood <= settings.MAX_RESOURCE):
+            raise ValueError(f"Mood out of bounds: {self.mood}")
+        if not (settings.MIN_RESOURCE <= self.knowledge <= settings.MAX_RESOURCE):
+            raise ValueError(f"Knowledge out of bounds: {self.knowledge}")
+        if self.wealth < 0:
+            raise ValueError(f"Wealth cannot be negative: {self.wealth}")
+        if self.week < 0 or self.week > settings.TOTAL_WEEKS:
+            raise ValueError(f"Week out of bounds: {self.week}")
+        if self.age < 0:
+            raise ValueError(f"Age cannot be negative: {self.age}")
+
+        return True

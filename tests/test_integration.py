@@ -4,6 +4,9 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+# Integration tests - module interactions
+pytestmark = pytest.mark.integration
+
 from src.game.character_creation import assign_sexual_orientation
 from src.game.game_loop import GameLoop
 from src.game.historical_summary_selector import HistoricalSummarySelector

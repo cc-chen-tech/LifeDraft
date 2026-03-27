@@ -6,8 +6,14 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
-from src.api.routers.collection import router, verify_game_ownership
+# API tests - collection endpoints
+pytestmark = pytest.mark.api
+
+from src.api.routers.collection import router
 from src.game.state.item_state import ItemState
+from src.services.collection_service import (CollectionService,
+                                             EntityNotFoundError,
+                                             PermissionDeniedError)
 
 
 @pytest.fixture
@@ -25,7 +31,7 @@ def client(app):
 
 
 class TestVerifyGameOwnership:
-    """Test verify_game_ownership function."""
+    """Test CollectionService.verify_game_ownership method."""
 
     def test_verify_game_ownership_success(self):
         """Test successful game ownership verification."""
@@ -34,7 +40,8 @@ class TestVerifyGameOwnership:
         mock_game.user_id = 1
         mock_db.query.return_value.filter.return_value.first.return_value = mock_game
 
-        result = verify_game_ownership(mock_db, 1, 1)
+        service = CollectionService(mock_db)
+        result = service.verify_game_ownership(1, 1)
         assert result == mock_game
 
     def test_verify_game_ownership_game_not_found(self):
@@ -42,9 +49,9 @@ class TestVerifyGameOwnership:
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.first.return_value = None
 
-        with pytest.raises(HTTPException) as exc:
-            verify_game_ownership(mock_db, 999, 1)
-        assert exc.value.status_code == 404
+        service = CollectionService(mock_db)
+        with pytest.raises(EntityNotFoundError):
+            service.verify_game_ownership(999, 1)
 
     def test_verify_game_ownership_wrong_user(self):
         """Test when game belongs to different user."""
@@ -53,9 +60,9 @@ class TestVerifyGameOwnership:
         mock_game.user_id = 2
         mock_db.query.return_value.filter.return_value.first.return_value = mock_game
 
-        with pytest.raises(HTTPException) as exc:
-            verify_game_ownership(mock_db, 1, 1)
-        assert exc.value.status_code == 404
+        service = CollectionService(mock_db)
+        with pytest.raises(EntityNotFoundError):
+            service.verify_game_ownership(1, 1)
 
     def test_verify_game_ownership_no_user_id_backward_compat(self):
         """Test backward compatibility when game has no user_id."""
@@ -64,7 +71,8 @@ class TestVerifyGameOwnership:
         mock_game.user_id = None
         mock_db.query.return_value.filter.return_value.first.return_value = mock_game
 
-        result = verify_game_ownership(mock_db, 1, 1)
+        service = CollectionService(mock_db)
+        result = service.verify_game_ownership(1, 1)
         assert result == mock_game
 
 
@@ -192,9 +200,9 @@ class TestCollectionRouterEndpoints:
         )
         mock_session_local.return_value = mock_db
 
-        # Mock image service
+        # Mock image service - now in collection_service module
         with patch(
-            "src.api.routers.collection.ImageService"
+            "src.services.collection_service.ImageService"
         ) as mock_image_service_class:
             mock_image_service = MagicMock()
             mock_image_service.get_image_url.return_value = None
@@ -494,8 +502,8 @@ class TestRegenerateCharacterImageEndpoint:
 
         with patch("src.api.routers.collection.session_service") as mock_ss:
             with patch("src.api.routers.collection.SessionLocal") as mock_db_class:
-                with patch(
-                    "src.api.routers.collection.verify_game_ownership"
+                with patch.object(
+                    CollectionService, "verify_game_ownership"
                 ) as mock_verify:
                     with patch.object(
                         ImageService, "regenerate_image"
@@ -553,8 +561,8 @@ class TestRegenerateCharacterImageEndpoint:
 
         with patch("src.api.routers.collection.session_service") as mock_ss:
             with patch("src.api.routers.collection.SessionLocal") as mock_db_class:
-                with patch(
-                    "src.api.routers.collection.verify_game_ownership"
+                with patch.object(
+                    CollectionService, "verify_game_ownership"
                 ) as mock_verify:
                     with patch.object(
                         ImageService, "regenerate_image"
@@ -587,6 +595,9 @@ class TestRegenerateCharacterImageEndpoint:
         mock_user = MagicMock()
         mock_user.user_id = 1
 
+        mock_game = MagicMock()
+        mock_game.user_id = 1
+
         mock_game_loop = MagicMock()
         mock_player_state = MagicMock()
         mock_player_state.characters = {"李四": {"name": "李四", "affinity": 49}}
@@ -597,9 +608,16 @@ class TestRegenerateCharacterImageEndpoint:
         mock_session = MagicMock()
         mock_session.game_loop = mock_game_loop
 
+        mock_db_session = MagicMock()
+        # Mock verify_game_ownership query
+        mock_db_session.query.return_value.filter.return_value.first.return_value = (
+            mock_game
+        )
+
         with patch("src.api.routers.collection.session_service") as mock_ss:
             with patch("src.api.routers.collection.SessionLocal") as mock_db:
                 mock_ss.get_or_restore.return_value = mock_session
+                mock_db.return_value = mock_db_session
 
                 app.dependency_overrides[get_current_user_optional] = lambda: mock_user
 
@@ -646,8 +664,8 @@ class TestRegenerateCharacterImageEndpoint:
 
         with patch("src.api.routers.collection.session_service") as mock_ss:
             with patch("src.api.routers.collection.SessionLocal") as mock_db_class:
-                with patch(
-                    "src.api.routers.collection.verify_game_ownership"
+                with patch.object(
+                    CollectionService, "verify_game_ownership"
                 ) as mock_verify:
                     with patch.object(
                         ImageService, "regenerate_image"
@@ -703,8 +721,8 @@ class TestRegenerateCharacterImageEndpoint:
 
         with patch("src.api.routers.collection.session_service") as mock_ss:
             with patch("src.api.routers.collection.SessionLocal") as mock_db_class:
-                with patch(
-                    "src.api.routers.collection.verify_game_ownership"
+                with patch.object(
+                    CollectionService, "verify_game_ownership"
                 ) as mock_verify:
                     with patch.object(
                         ImageService, "regenerate_image"
@@ -774,6 +792,9 @@ class TestRegenerateCharacterImageEndpoint:
         mock_user = MagicMock()
         mock_user.user_id = 1
 
+        mock_game = MagicMock()
+        mock_game.user_id = 1
+
         mock_game_loop = MagicMock()
         mock_player_state = MagicMock()
         mock_player_state.characters = {
@@ -790,9 +811,15 @@ class TestRegenerateCharacterImageEndpoint:
         mock_session = MagicMock()
         mock_session.game_loop = mock_game_loop
 
+        mock_db_session = MagicMock()
+        mock_db_session.query.return_value.filter.return_value.first.return_value = (
+            mock_game
+        )
+
         with patch("src.api.routers.collection.session_service") as mock_ss:
-            with patch("src.api.routers.collection.SessionLocal"):
+            with patch("src.api.routers.collection.SessionLocal") as mock_db:
                 mock_ss.get_or_restore.return_value = mock_session
+                mock_db.return_value = mock_db_session
 
                 app.dependency_overrides[get_current_user_optional] = lambda: mock_user
 

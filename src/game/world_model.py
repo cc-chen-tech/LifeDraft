@@ -394,7 +394,7 @@ class WorldModel:
         if len(located) < 2:
             return issues  # Not enough location data to validate
 
-        regions = {}
+        regions: dict[str, list[str]] = {}
         for name, loc in located.items():
             regions.setdefault(loc.region, []).append(name)
 

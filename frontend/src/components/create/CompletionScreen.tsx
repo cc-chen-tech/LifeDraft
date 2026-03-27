@@ -1,0 +1,216 @@
+"use client";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
+import { SettingDisplay } from "@/components/game/SettingDisplay";
+import { CREATION_STEPS } from "@/stores/useGameStore";
+import {
+  ArrowLeft,
+  Loader2,
+  Save,
+  Play,
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+} from "lucide-react";
+
+const STEP_LABELS: Record<string, string> = {
+  era: "时代背景",
+  age: "年龄阶段",
+  gender: "性别",
+  world: "世界观",
+  portrait: "人物形象",
+  family: "家庭背景",
+  relationships: "人际关系",
+  traits: "性格特征",
+  wealth: "财富状况",
+};
+
+const AUTO_ADVANCE_STEPS = ["family", "relationships", "traits", "wealth"];
+
+interface CompletionScreenProps {
+  playerName: string;
+  playerImages: Array<{ image_id: number; image_url: string }>;
+  selectedImageIndex: number;
+  characterSettings: Record<string, unknown>;
+  isPresetLoaded: boolean;
+  isGenerating: boolean;
+  hasBasicInfo: boolean;
+  showDetails: boolean;
+  showPresetSheet: boolean;
+  presetName: string;
+  isSavingPreset: boolean;
+  onSetShowDetails: (show: boolean) => void;
+  onSetShowPresetSheet: (show: boolean) => void;
+  onSetPresetName: (name: string) => void;
+  onBack: () => void;
+  onStartGame: () => Promise<void>;
+  onSavePreset: () => Promise<void>;
+}
+
+export function CompletionScreen({
+  playerName,
+  playerImages,
+  selectedImageIndex,
+  characterSettings,
+  isPresetLoaded,
+  isGenerating,
+  hasBasicInfo,
+  showDetails,
+  showPresetSheet,
+  presetName,
+  isSavingPreset,
+  onSetShowDetails,
+  onSetShowPresetSheet,
+  onSetPresetName,
+  onBack,
+  onStartGame,
+  onSavePreset,
+}: CompletionScreenProps) {
+  return (
+    <div className="min-h-screen bg-background animate-page-enter flex flex-col">
+      <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-sm border-b border-border">
+        <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onBack}
+          >
+            <ArrowLeft className="w-4 h-4 mr-1" />
+            返回修改
+          </Button>
+          <span className="text-sm text-muted-foreground">角色创建完成</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onSetShowPresetSheet(true)}
+          >
+            <Save className="w-4 h-4 mr-1" />
+            保存
+          </Button>
+        </div>
+      </header>
+
+      {/* Centered completion message */}
+      <main className="flex-1 flex flex-col items-center justify-center px-4 py-8">
+        {/* 主角图片展示 */}
+        {playerImages.length > 0 && (
+          <div className="mb-6 flex flex-col items-center">
+            <img
+              src={playerImages[selectedImageIndex]?.image_url || playerImages[0]?.image_url}
+              alt={playerName || "主角"}
+              className="w-32 h-48 object-cover rounded-lg border-2 border-primary/30 shadow-lg"
+            />
+            <span className="text-sm font-medium text-foreground mt-2">{playerName}</span>
+          </div>
+        )}
+        
+        <Sparkles className="w-14 h-14 text-primary mb-4" />
+        <h2 className="text-xl font-bold text-foreground mb-1">角色设定完成</h2>
+        <p className="text-sm text-muted-foreground text-center mb-6">
+          {isPresetLoaded ? "已加载预设角色背景" : "已为你自动生成角色背景"}
+        </p>
+
+        {/* View details toggle */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mb-4 text-muted-foreground"
+          onClick={() => onSetShowDetails(!showDetails)}
+        >
+          <Eye className="w-4 h-4 mr-1" />
+          查看设定详情
+          {showDetails ? (
+            <ChevronUp className="w-4 h-4 ml-1" />
+          ) : (
+            <ChevronDown className="w-4 h-4 ml-1" />
+          )}
+        </Button>
+
+        {/* Collapsible details */}
+        {showDetails && (
+          <div className="w-full max-w-lg space-y-4 mb-6 animate-page-enter">
+            {AUTO_ADVANCE_STEPS.map((step) => {
+              const data = characterSettings[step];
+              if (!data) return null;
+              return (
+                <div key={step} className="space-y-1">
+                  <h3 className="text-xs font-medium text-primary">
+                    {STEP_LABELS[step]}
+                  </h3>
+                  <SettingDisplay
+                    stepKey={step}
+                    data={data as Record<string, unknown>}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Action buttons */}
+        <div className="flex flex-col gap-3 w-full max-w-xs">
+          <Button
+            className="w-full touch-target h-12"
+            onClick={onStartGame}
+            disabled={isGenerating || !hasBasicInfo}
+          >
+            {isGenerating ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Play className="w-4 h-4 mr-2" />
+            )}
+            {hasBasicInfo ? "开始游戏" : "请先输入角色姓名"}
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full touch-target"
+            onClick={() => onSetShowPresetSheet(true)}
+          >
+            <Save className="w-4 h-4 mr-1" />
+            保存为预设
+          </Button>
+        </div>
+      </main>
+
+      {/* Save preset sheet */}
+      <Sheet open={showPresetSheet} onOpenChange={onSetShowPresetSheet}>
+        <SheetContent side="bottom" className="bg-card border-t border-border">
+          <SheetHeader>
+            <SheetTitle className="text-foreground">保存角色预设</SheetTitle>
+            <SheetDescription className="text-muted-foreground">
+              保存当前角色设定以便下次使用
+            </SheetDescription>
+          </SheetHeader>
+          <div className="space-y-4 mt-4">
+            <Input
+              value={presetName}
+              onChange={(e) => onSetPresetName(e.target.value)}
+              placeholder="预设名称"
+              className="bg-secondary border-border h-12"
+              autoFocus
+            />
+            <Button
+              className="w-full touch-target"
+              disabled={!presetName.trim() || isSavingPreset}
+              onClick={onSavePreset}
+            >
+              {isSavingPreset && (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              )}
+              保存
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </div>
+  );
+}

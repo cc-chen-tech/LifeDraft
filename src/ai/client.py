@@ -134,7 +134,7 @@ class AIClient:
                     )
                     stream = self.client.chat.completions.create(
                         model=use_model,
-                        messages=messages,
+                        messages=messages,  # type: ignore[arg-type]
                         temperature=temperature,
                         max_tokens=current_max_tokens,
                         stream=True,
@@ -144,13 +144,13 @@ class AIClient:
                     finish_reason = None
                     chunk_count = 0
                     for chunk in stream:
-                        if chunk.choices[0].delta.content is not None:
-                            chunk_text = chunk.choices[0].delta.content
+                        if hasattr(chunk, "choices") and chunk.choices[0].delta.content is not None:  # type: ignore[union-attr]
+                            chunk_text = chunk.choices[0].delta.content  # type: ignore[union-attr]
                             full_text += chunk_text
                             chunk_count += 1
                             stream_callback(chunk_text)
-                        if chunk.choices[0].finish_reason:
-                            finish_reason = chunk.choices[0].finish_reason
+                        if hasattr(chunk, "choices") and chunk.choices[0].finish_reason:  # type: ignore[union-attr]
+                            finish_reason = chunk.choices[0].finish_reason  # type: ignore[union-attr]
                     logger.info(
                         f"[AIClient] Streaming complete: {chunk_count} chunks, {len(full_text)} chars"
                     )
@@ -166,22 +166,23 @@ class AIClient:
                 else:
                     response = self.client.chat.completions.create(
                         model=use_model,
-                        messages=messages,
+                        messages=messages,  # type: ignore[arg-type]
                         temperature=temperature,
                         max_tokens=current_max_tokens,
                     )
 
                     finish_reason = response.choices[0].finish_reason
                     if finish_reason == "length":
+                        content = response.choices[0].message.content or ""
                         logger.warning(
                             f"⚠️ AI response truncated by max_tokens ({current_max_tokens}). "
-                            f"Output length: {len(response.choices[0].message.content)} chars. "
+                            f"Output length: {len(content)} chars. "
                             f"Consider increasing max_tokens."
                         )
 
-                    return response.choices[0].message.content.strip()
+                    return (response.choices[0].message.content or "").strip()
 
-            except Exception as e:
+            except openai.APIError as e:
                 error_msg = str(e)
                 last_error = e
 
@@ -201,9 +202,13 @@ class AIClient:
                 else:
                     # 非 max_tokens 错误，直接抛出
                     raise
+            except Exception as e:
+                # Unexpected errors - log with stack trace
+                logger.exception(f"Unexpected error in AI call: {e}")
+                raise
 
         # 所有尝试都失败，抛出最后一个错误
-        raise last_error
+        raise last_error  # type: ignore[misc]
 
     # -------------------- JSON Call --------------------
 
@@ -302,10 +307,19 @@ class AIClient:
                     model=model,
                 )
 
-            except Exception as e:
+            except openai.APIError as e:
                 last_error = str(e)
                 logger.warning(
                     f"AI call attempt {attempt + 1}/{retry_count} failed: {e}"
+                )
+                if attempt == retry_count - 1:
+                    raise ValueError(
+                        f"AI call failed after {retry_count} attempts: {e}"
+                    )
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(
+                    f"AI call attempt {attempt + 1}/{retry_count} failed (unexpected): {e}"
                 )
                 if attempt == retry_count - 1:
                     raise ValueError(

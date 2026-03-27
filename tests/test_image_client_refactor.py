@@ -66,13 +66,14 @@ class TestImageClientAfterSplit:
         assert isinstance(prompt_methods, list)
 
     def test_error_handling_in_client(self):
-        """ImageClient 应有错误处理"""
-        # 验证异常处理相关代码存在
+        """ImageClient 模块应有错误处理"""
+        # 验证异常处理相关代码存在（在拆分后的模块中）
         import inspect
 
-        from src.ai.image_client import ImageClient
+        # 检查拆分后的 ImageGenerator 模块是否有错误处理
+        from src.ai.image_generator import ImageGenerator
 
-        source = inspect.getsource(ImageClient)
+        source = inspect.getsource(ImageGenerator)
         assert "except" in source or "try" in source
 
     def test_backward_compatible_api(self):

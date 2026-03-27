@@ -7,11 +7,9 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from src.ai.consistency_validator import (
-    ConsistencyIssue,
-    ConsistencyValidator,
-    ValidationResult,
-)
+from src.ai.consistency_validator import (ConsistencyIssue,
+                                          ConsistencyValidator,
+                                          ValidationResult)
 from src.ai.models import EventOption, GameEvent
 from src.ai.system_prompts import _PROMPT_REGISTRY, get_system_prompt
 from src.ai.utils import extract_json

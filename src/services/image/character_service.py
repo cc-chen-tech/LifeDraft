@@ -2,15 +2,12 @@
 
 import base64
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from src.ai.image_client import (
-    ContentInspectionError,
-    ImageClient,
-    ImageGenerationError,
-)
+from src.ai.image_client import (ContentInspectionError, ImageClient,
+                                 ImageGenerationError)
 from src.database.models import Image as ImageModel
 from src.services.image import ImageContentError, ImageServiceError
 from src.services.image_storage import ImageStorageService
@@ -165,7 +162,7 @@ class CharacterImageService:
 
         except ContentInspectionError as e:
             logger.warning(f"Content inspection failed: {e}")
-            raise ImageContentError(str(e), e.original_prompt)
+            raise ImageContentError(str(e), e.original_prompt or "")
         except ImageGenerationError as e:
             logger.error(f"Image generation failed: {e}")
             raise ImageServiceError(f"图像生成失败: {e}")
@@ -179,8 +176,8 @@ class CharacterImageService:
         image_id: int,
         feedback: Optional[str] = None,
         new_description: Optional[str] = None,
-        build_description_func: callable = None,
-        extract_era_func: callable = None,
+        build_description_func: Optional[Callable[[Dict[str, Any]], str]] = None,
+        extract_era_func: Optional[Callable[[Dict[str, Any]], Optional[str]]] = None,
     ) -> List[ImageModel]:
         """
         重新生成图片（保持人物一致性）
@@ -204,7 +201,7 @@ class CharacterImageService:
         if not original:
             raise ImageServiceError(f"图片不存在: {image_id}")
 
-        metadata = original.metadata_json or {}
+        metadata: Dict[str, Any] = original.metadata_json or {}  # type: ignore[assignment]
         char_settings = metadata.get("characterSettings", {})
 
         if new_description:
@@ -237,11 +234,11 @@ class CharacterImageService:
             # ★ 修复：使用 keep_old_active=True 避免生成过程中的"空窗期"
             # 旧图片保持活跃直到新图片生成完成
             new_images = self.generate_character_image(
-                game_id=original.game_id,
-                name=original.entity_name,
+                game_id=int(original.game_id),  # type: ignore[arg-type]
+                name=str(original.entity_name),  # type: ignore[arg-type]
                 description=base_description,
                 era=era,
-                entity_key=original.entity_key,
+                entity_key=str(original.entity_key) if original.entity_key else None,  # type: ignore[arg-type]
                 metadata=metadata,
                 num_images=1,
                 feedback=feedback,
@@ -280,8 +277,8 @@ class CharacterImageService:
     def regenerate_fresh_image(
         self,
         image_id: int,
-        build_description_func: callable = None,
-        extract_era_func: callable = None,
+        build_description_func: Optional[Callable[[Dict[str, Any]], str]] = None,
+        extract_era_func: Optional[Callable[[Dict[str, Any]], Optional[str]]] = None,
         use_deepseek_prompt: bool = True,
     ) -> List[ImageModel]:
         """
@@ -325,7 +322,7 @@ class CharacterImageService:
             ).update({"is_active": False})
         self.db.commit()
 
-        metadata = original.metadata_json or {}
+        metadata: Dict[str, Any] = original.metadata_json or {}  # type: ignore[assignment]
         char_settings = metadata.get("characterSettings", {})
 
         character_info = {
@@ -368,11 +365,11 @@ class CharacterImageService:
 
         try:
             new_images = self.generate_character_image(
-                game_id=original.game_id,
-                name=original.entity_name,
+                game_id=int(original.game_id),  # type: ignore[arg-type]
+                name=str(original.entity_name),  # type: ignore[arg-type]
                 description=prompt,
                 era=era,
-                entity_key=original.entity_key,
+                entity_key=str(original.entity_key) if original.entity_key else None,  # type: ignore[arg-type]
                 metadata=metadata,
                 num_images=1,
                 feedback=None,
@@ -390,6 +387,6 @@ class CharacterImageService:
     def _get_image_data(self, image_model: ImageModel) -> bytes:
         """获取图片二进制数据"""
         return self.storage_service.get_image_data(
-            image_model.storage_path,
-            image_model.storage_type,
+            str(image_model.storage_path),  # type: ignore[arg-type]
+            str(image_model.storage_type) if image_model.storage_type else None,  # type: ignore[arg-type]
         )

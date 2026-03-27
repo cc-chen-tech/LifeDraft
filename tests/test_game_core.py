@@ -4,27 +4,17 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from src.game.decisions import (
-    _generate_fallback_result,
-    apply_character_effects,
-    calculate_character_effects,
-    get_character_interaction_context,
-    process_decision,
-)
+from src.game.decisions import (_generate_fallback_result,
+                                apply_character_effects,
+                                calculate_character_effects,
+                                get_character_interaction_context,
+                                process_decision)
 from src.game.narrative_manager import NarrativeManager
 from src.game.state import CharacterState, PlayerState
-from src.game.world_model import (
-    CAREER_LEVEL_INDEX,
-    CAREER_LEVELS,
-    MAX_CAREER_JUMP,
-    CareerInfo,
-    CausalChain,
-    CharacterProfile,
-    Commitment,
-    LocationInfo,
-    PhysicalState,
-    WorldModel,
-)
+from src.game.world_model import (CAREER_LEVEL_INDEX, CAREER_LEVELS,
+                                  MAX_CAREER_JUMP, CareerInfo, CausalChain,
+                                  CharacterProfile, Commitment, LocationInfo,
+                                  PhysicalState, WorldModel)
 from src.game.world_model_updater import WorldModelUpdater
 
 # ==================== Decisions Tests ====================

@@ -80,9 +80,9 @@ describe('Session Recovery', () => {
       // 模拟 getActive 返回活跃游戏
       mockGames.getActive.mockResolvedValueOnce({
         game_id: 123,
-        player_state: { player_name: 'RecoveredPlayer' },
-        progress: { week: 5 },
-        round_info: { current_round: 1 },
+        player_state: { player_name: 'RecoveredPlayer', life_vision: '', energy: 100, mood: 100, knowledge: 0, wealth: 0, age: 18, week: 5, current_round: 1, rounds_per_week: 3, character_settings: {} },
+        progress: { week: 5, current_round: 1, rounds_per_week: 3 },
+        round_info: { current_round: 1, week: 5 },
         current_event: null,
       });
 
@@ -113,12 +113,12 @@ describe('Session Recovery', () => {
     it('should update local state after successful recovery', async () => {
       mockGames.getActive.mockResolvedValueOnce({
         game_id: 456,
-        player_state: { player_name: 'Recovered', energy: 80 },
-        progress: { week: 10, age: 25 },
-        round_info: { current_round: 2 },
+        player_state: { player_name: 'Recovered', life_vision: '', energy: 80, mood: 100, knowledge: 0, wealth: 0, age: 25, week: 10, current_round: 2, rounds_per_week: 3, character_settings: {} },
+        progress: { week: 10, current_round: 2, rounds_per_week: 3 },
+        round_info: { current_round: 2, week: 10 },
         current_event: {
           event_description: 'Recovered story text',
-          options: [{ text: 'Option 1', brief_result: 'Result 1' }],
+          options: [{ text: 'Option 1' }],
         },
       });
 
@@ -134,9 +134,9 @@ describe('Session Recovery', () => {
     it('getActive should call correct endpoint', async () => {
       mockGames.getActive.mockResolvedValueOnce({
         game_id: 1,
-        player_state: {},
-        progress: {},
-        round_info: {},
+        player_state: { player_name: '', life_vision: '', energy: 100, mood: 100, knowledge: 0, wealth: 0, age: 18, week: 1, current_round: 1, rounds_per_week: 3, character_settings: {} },
+        progress: { week: 1, current_round: 1, rounds_per_week: 3 },
+        round_info: { current_round: 1, week: 1 },
         current_event: null,
       });
 
@@ -162,9 +162,9 @@ describe('Session Recovery', () => {
       
       mockGames.getActive.mockResolvedValueOnce({
         game_id: recoveredGameId,
-        player_state: { player_name: 'Test' },
-        progress: { week: 1 },
-        round_info: {},
+        player_state: { player_name: 'Test', life_vision: '', energy: 100, mood: 100, knowledge: 0, wealth: 0, age: 18, week: 1, current_round: 1, rounds_per_week: 3, character_settings: {} },
+        progress: { week: 1, current_round: 1, rounds_per_week: 3 },
+        round_info: { current_round: 1, week: 1 },
         current_event: null,
       });
 
@@ -177,16 +177,16 @@ describe('Session Recovery', () => {
       const mockEvent = {
         event_description: 'Test story',
         options: [
-          { text: 'Option A', brief_result: 'Result A' },
-          { text: 'Option B', brief_result: 'Result B' },
+          { text: 'Option A' },
+          { text: 'Option B' },
         ],
       };
 
       mockGames.getActive.mockResolvedValueOnce({
         game_id: 100,
-        player_state: {},
-        progress: {},
-        round_info: {},
+        player_state: { player_name: '', life_vision: '', energy: 100, mood: 100, knowledge: 0, wealth: 0, age: 18, week: 1, current_round: 1, rounds_per_week: 3, character_settings: {} },
+        progress: { week: 1, current_round: 1, rounds_per_week: 3 },
+        round_info: { current_round: 1, week: 1 },
         current_event: mockEvent,
       });
 
@@ -209,9 +209,9 @@ describe('Redirect behavior', () => {
   it('should not redirect when game is recovered', async () => {
     mockGames.getActive.mockResolvedValueOnce({
       game_id: 123,
-      player_state: {},
-      progress: {},
-      round_info: {},
+      player_state: { player_name: '', life_vision: '', energy: 100, mood: 100, knowledge: 0, wealth: 0, age: 18, week: 1, current_round: 1, rounds_per_week: 3, character_settings: {} },
+      progress: { week: 1, current_round: 1, rounds_per_week: 3 },
+      round_info: { current_round: 1, week: 1 },
       current_event: null,
     });
 

@@ -230,14 +230,16 @@ class RoundChoiceProcessor:
         Handles: story compression → narrative/world-model updates → save records → advance round → week finalization.
         """
         player_state = self.player_state
+        if player_state is None:
+            raise ValueError("Player state is not available")
 
         # 1. Parallel: narrative compression + world extraction + story analyzer
         if status_callback:
             status_callback("compressing")
 
-        pending_storylines = player_state.pending_storylines if player_state else []
-        established_facts = player_state.established_facts if player_state else []
-        character_habits = player_state.character_habits if player_state else []
+        pending_storylines = player_state.pending_storylines
+        established_facts = player_state.established_facts
+        character_habits = player_state.character_habits
 
         with ThreadPoolExecutor(max_workers=3) as executor:
             narrative_future = executor.submit(

@@ -2,35 +2,88 @@
  * API client for the game backend
  */
 
+import type {
+  PlayerState,
+  GameProgress,
+  RoundInfo,
+  CurrentEventData,
+  CharacterSettings,
+  EffectValues,
+  EventOption,
+} from './types';
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
-async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: number }): Promise<T> {
-  const { timeout, ...fetchOptions } = options || {};
+/**
+ * L-03: Fetch with retry mechanism for transient failures
+ * Implements exponential backoff for server errors (5xx)
+ */
+async function fetchWithRetry(
+  url: string, 
+  options: RequestInit & { timeout?: number }, 
+  retries = 3
+): Promise<Response> {
+  const { timeout, ...fetchOptions } = options;
+  let lastError: Error | null = null;
   
-  // 创建 AbortController 用于超时控制
-  const controller = new AbortController();
-  const timeoutId = timeout ? setTimeout(() => controller.abort(), timeout) : null;
-  
-  try {
-    const response = await fetch(`${API_BASE}${url}`, {
-      ...fetchOptions,
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        ...fetchOptions?.headers,
-      },
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: response.statusText }));
-      throw Object.assign(new Error(error.message || 'Request failed'), { status: response.status });
+  for (let i = 0; i < retries; i++) {
+    const controller = new AbortController();
+    const timeoutId = timeout ? setTimeout(() => controller.abort(), timeout) : null;
+    
+    try {
+      const response = await fetch(`${API_BASE}${url}`, {
+        ...fetchOptions,
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          ...fetchOptions?.headers,
+        },
+        credentials: 'include',
+      });
+      
+      if (timeoutId) clearTimeout(timeoutId);
+      
+      // Only retry on server errors (5xx), not client errors (4xx)
+      if (response.ok || response.status < 500) {
+        return response;
+      }
+      
+      // Server error - will retry
+      lastError = new Error(`Server error: ${response.status}`);
+      console.warn(`[API] Server error (${response.status}), attempt ${i + 1}/${retries}`);
+    } catch (error) {
+      if (timeoutId) clearTimeout(timeoutId);
+      
+      // Don't retry on abort
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw error;
+      }
+      
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.warn(`[API] Request failed, attempt ${i + 1}/${retries}:`, error);
+      
+      // On last retry, throw immediately
+      if (i === retries - 1) {
+        throw lastError;
+      }
     }
-
-    return response.json();
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
+    
+    // Exponential backoff: 1s, 2s, 4s, ...
+    await new Promise(r => setTimeout(r, Math.pow(2, i) * 1000));
   }
+  
+  throw lastError || new Error('Max retries exceeded');
+}
+
+async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: number }): Promise<T> {
+  const response = await fetchWithRetry(url, options || {});
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: response.statusText }));
+    throw Object.assign(new Error(error.message || 'Request failed'), { status: response.status });
+  }
+
+  return response.json();
 }
 
 export const api = {
@@ -56,7 +109,7 @@ export const api = {
   games: {
     list: () =>
       fetchJson<Array<{ game_id: number; player_name: string; age: number; week: number; updated_at: string }>>('/games'),
-    create: (data: { player_name: string; life_vision?: string; character_settings?: Record<string, unknown>; language?: string }) =>
+    create: (data: { player_name: string; life_vision?: string; character_settings?: CharacterSettings; language?: string }) =>
       fetchJson<{ game_id: number }>('/games', {
         method: 'POST',
         body: JSON.stringify(data),
@@ -64,10 +117,10 @@ export const api = {
     load: (gameId: number) =>
       fetchJson<{
         game_id: number;
-        player_state: Record<string, unknown>;
-        progress: Record<string, unknown>;
-        round_info: Record<string, unknown>;
-        current_event: Record<string, unknown> | null;
+        player_state: PlayerState;
+        progress: GameProgress;
+        round_info: RoundInfo;
+        current_event: CurrentEventData | null;
       }>(`/games/${gameId}`),
     save: (gameId: number) =>
       fetchJson<{ success: boolean }>(`/games/${gameId}/save`, { method: 'POST' }),
@@ -76,10 +129,10 @@ export const api = {
     getActive: () =>
       fetchJson<{
         game_id: number;
-        player_state: Record<string, unknown>;
-        progress: Record<string, unknown>;
-        round_info: Record<string, unknown>;
-        current_event: Record<string, unknown> | null;
+        player_state: PlayerState;
+        progress: GameProgress;
+        round_info: RoundInfo;
+        current_event: CurrentEventData | null;
       }>('/games/active'),
     getEnding: (gameId: number) =>
       fetchJson<{
@@ -99,9 +152,9 @@ export const api = {
         player_name: string;
         life_vision: string;
         created_at: string;
-        character_settings: Record<string, unknown>;
+        character_settings: CharacterSettings;
       }>>('/presets'),
-    create: (data: { preset_name: string; player_name: string; life_vision?: string; character_settings?: Record<string, unknown> }) =>
+    create: (data: { preset_name: string; player_name: string; life_vision?: string; character_settings?: CharacterSettings }) =>
       fetchJson<{ preset_id: number }>('/presets', {
         method: 'POST',
         body: JSON.stringify(data),
@@ -114,15 +167,15 @@ export const api = {
   gameplay: {
     getState: (gameId: number) =>
       fetchJson<{
-        player_state: Record<string, unknown>;
-        progress: Record<string, unknown>;
-        round_info: Record<string, unknown>;
-        current_event: Record<string, unknown> | null;
+        player_state: PlayerState;
+        progress: GameProgress;
+        round_info: RoundInfo;
+        current_event: CurrentEventData | null;
       }>(`/games/${gameId}/state`),
     generateEvent: (gameId: number, data?: { custom_choices?: string[] }) =>
       fetchJson<{
         story: string;
-        options: Array<{ text: string; effects?: Record<string, unknown> }>;
+        options: Array<{ text: string; effects?: EffectValues }>;
       }>(`/games/${gameId}/events`, {
         method: 'POST',
         body: JSON.stringify(data || {}),
@@ -130,7 +183,7 @@ export const api = {
     submitChoice: (gameId: number, data: { choice_index: number; custom_choice?: string }) =>
       fetchJson<{
         result: string;
-        new_event: Record<string, unknown> | null;
+        new_event: CurrentEventData | null;
       }>(`/games/${gameId}/choices`, {
         method: 'POST',
         body: JSON.stringify(data),
@@ -158,7 +211,7 @@ export const api = {
         story: string;
         current_round: number;
         current_week: number;
-        player_state: Record<string, unknown>;
+        player_state: PlayerState;
         summary?: string;
         need_weekly_summary?: boolean;
         weekly_summary?: string;
@@ -173,7 +226,7 @@ export const api = {
         story: string;
         current_round: number;
         current_week: number;
-        player_state: Record<string, unknown>;
+        player_state: PlayerState;
         summary?: string;
         need_weekly_summary?: boolean;
         weekly_summary?: string;
@@ -190,10 +243,10 @@ export const api = {
       setting_type: string;
       player_name?: string;
       life_vision?: string;
-      previous_settings?: Record<string, unknown>;
+      previous_settings?: CharacterSettings;
       feedback?: string | null;
       language?: string;
-      character_settings?: Record<string, unknown>
+      character_settings?: CharacterSettings
     }) =>
       fetchJson<{ era: string; era_description: string }>('/character/setting', {
         method: 'POST',
@@ -203,23 +256,23 @@ export const api = {
       relationship_type?: string;
       player_name?: string;
       life_vision?: string;
-      previous_settings?: Record<string, unknown>;
+      previous_settings?: CharacterSettings;
       existing_people?: Array<Record<string, unknown>>;
       person_index?: number;
       total_needed?: number;
       feedback?: string | null;
       language?: string;
-      character_settings?: Record<string, unknown>
+      character_settings?: CharacterSettings
     }) =>
       fetchJson<{ name: string; relationship: string }>('/character/relationship', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
     generateRelationshipsSummary: (data: {
-      character_settings?: Record<string, unknown>;
+      character_settings?: CharacterSettings;
       player_name?: string;
       life_vision?: string;
-      previous_settings?: Record<string, unknown>;
+      previous_settings?: CharacterSettings;
       key_people?: Array<Record<string, unknown>>;
       language?: string;
     }) =>
@@ -294,7 +347,7 @@ export const api = {
       description?: string;
       entity_key?: string;
       era?: string;
-      extra_context?: Record<string, unknown>;
+      extra_context?: Record<string, unknown>; // Intentionally flexible
       feedback?: string;
     }) =>
       fetchJson<{ images: Array<{ image_id: number; image_url: string }>; total: number }>('/images', {
@@ -315,7 +368,7 @@ export const api = {
       fetchJson<{ image_id: number; image_url: string; image_type: string }>(`/images/${imageId}`),
     generatePlayerImage: (data: {
       game_id: number;
-      character_settings: Record<string, unknown>;
+      character_settings: CharacterSettings;
       player_name: string;
       life_vision?: string;
     }) =>
@@ -325,7 +378,7 @@ export const api = {
       }),
     generateOpeningIllustration: (data: {
       game_id: number;
-      character_settings: Record<string, unknown>;
+      character_settings: CharacterSettings;
       player_name: string;
       opening_story?: string;
       story_text?: string;
@@ -340,7 +393,7 @@ export const api = {
       current_scene_id?: number;
       current_illustration_id?: number;
       story_text: string;
-      character_settings: Record<string, unknown>;
+      character_settings: CharacterSettings;
       player_name: string;
       user_prompt: string;
       player_image_id?: number;
@@ -388,7 +441,7 @@ export const api = {
       game_id: number;
       round_number: number;
       story_text: string;
-      character_settings: Record<string, unknown>;
+      character_settings: CharacterSettings;
       player_name: string;
       player_image_id?: number;
       stage?: string;
@@ -410,7 +463,7 @@ export const api = {
       game_id: number;
       round_number: number;
       story_text: string;
-      character_settings: Record<string, unknown>;
+      character_settings: CharacterSettings;
       player_name: string;
       user_prompt: string;
       current_scene_id: number;
@@ -458,7 +511,7 @@ export const api = {
           image_url: string | null;
           image_generated: boolean;
           description_generated: boolean;
-          metadata: Record<string, unknown>;
+          metadata: Record<string, unknown>; // Intentionally flexible for item metadata
         }>;
         landmarks: Array<{
           name: string;
@@ -472,7 +525,7 @@ export const api = {
           is_key_location: boolean;
           image_url: string | null;
           image_generated: boolean;
-          metadata: Record<string, unknown>;
+          metadata: Record<string, unknown>; // Intentionally flexible for item metadata
         }>;
       }>(`/collection/${gameId}/details`),
     getStatus: (gameId: number) =>
@@ -614,7 +667,7 @@ export const api = {
           image_url: string | null;
           image_generated: boolean;
           description_generated: boolean;
-          metadata: Record<string, unknown>;
+          metadata: Record<string, unknown>; // Intentionally flexible for item metadata
         };
       }>(`/collection/${gameId}/items/create`, {
         method: 'POST',

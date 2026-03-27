@@ -4,7 +4,7 @@ Provides centralized fallback event generation for when AI generation fails.
 Extracted from game_loop.py and round/event_generator.py to avoid duplication.
 """
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from src.ai.models import EventOption, GameEvent
 
@@ -95,12 +95,11 @@ def generate_fallback_event(
     return GameEvent(
         event_description=description,
         options=options,
-        event_type="fallback",
     )
 
 
 def generate_simple_scheduled_event(
-    language: str = "zh", scheduled_events: list = None
+    language: str = "zh", scheduled_events: Optional[list] = None
 ) -> GameEvent:
     """Generate a simple fallback scheduled event when AI generation fails.
 
@@ -138,7 +137,6 @@ def generate_simple_scheduled_event(
     return GameEvent(
         event_description=event_desc,
         options=options,
-        event_type="scheduled_fallback",
     )
 
 
@@ -183,5 +181,4 @@ def generate_simple_round_event(
     return GameEvent(
         event_description=description,
         options=options,
-        event_type="fallback",
     )

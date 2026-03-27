@@ -9,16 +9,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+# Integration tests - SSE stream handling
+pytestmark = pytest.mark.integration
+
 from src.api.routers.gameplay.sse_helpers import (
-    _trigger_round_illustration_generation,
-    clear_sse_cache_if_retry,
-    make_sse_event,
-    return_sse_error,
-    stream_choice,
-    stream_regenerate,
-    stream_rewrite,
-    stream_round_event,
-)
+    _trigger_round_illustration_generation, clear_sse_cache_if_retry,
+    make_sse_event, return_sse_error, stream_choice, stream_regenerate,
+    stream_rewrite, stream_round_event)
 
 
 class TestTriggerRoundIllustration:

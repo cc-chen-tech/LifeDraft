@@ -1,12 +1,19 @@
 """Collection API E2E测试脚本
 
 自动测试收集系统的所有新API端点
+
+注意：这是一个独立的 E2E 测试脚本，需要手动运行：
+    python tests/test_collection_api.py
+
+不会被 pytest 自动收集（测试函数使用 _test_ 前缀）。
 """
 
-import requests
 import sys
 
+import requests
+
 BASE_URL = "http://localhost:8000/api"
+
 
 # 创建一个测试用户
 def create_test_user():
@@ -25,6 +32,7 @@ def create_test_user():
     print("⚠️  创建用户失败，可能需要手动提供token")
     return None
 
+
 # 创建测试游戏
 def create_test_game(token: str):
     """创建测试游戏"""
@@ -38,16 +46,12 @@ def create_test_game(token: str):
             "player_name": "测试主角",
             "age": {"age": 25},
             "gender": "男",
-            "era": {"era_name": "现代", "year": 2024}
+            "era": {"era_name": "现代", "year": 2024},
         },
-        "language": "zh"
+        "language": "zh",
     }
 
-    resp = requests.post(
-        f"{BASE_URL}/games",
-        json=data,
-        headers=headers
-    )
+    resp = requests.post(f"{BASE_URL}/games", json=data, headers=headers)
 
     if resp.status_code in (200, 201):
         result = resp.json()
@@ -58,21 +62,19 @@ def create_test_game(token: str):
         print(f"❌ 创建游戏失败: {resp.status_code} - {resp.text[:200]}")
         return None
 
+
 # 测试1: 实体识别端点
-def test_recognize_entities(token: str, game_id: int = 1):
+def _test_recognize_entities(token: str, game_id: int = 1):
     """测试实体识别API"""
     print("\n🧪 测试实体识别API...")
 
     headers = {"Authorization": f"Bearer {token}"}
-    data = {
-        "entity_types": ["item", "character", "landmark"],
-        "min_appearances": 3
-    }
+    data = {"entity_types": ["item", "character", "landmark"], "min_appearances": 3}
 
     resp = requests.post(
         f"{BASE_URL}/collection/{game_id}/recognize-entities",
         json=data,
-        headers=headers
+        headers=headers,
     )
 
     if resp.status_code == 200:
@@ -89,21 +91,17 @@ def test_recognize_entities(token: str, game_id: int = 1):
         print(f"⚠️  其他响应: {resp.status_code} - {resp.text[:100]}")
         return None
 
+
 # 测试2: 手动创建物品
-def test_create_item(token: str, game_id: int = 1):
+def _test_create_item(token: str, game_id: int = 1):
     """测试手动创建物品API"""
     print("\n🧪 测试手动创建物品API...")
 
     headers = {"Authorization": f"Bearer {token}"}
-    data = {
-        "name": "测试物品",
-        "generate_description": False
-    }
+    data = {"name": "测试物品", "generate_description": False}
 
     resp = requests.post(
-        f"{BASE_URL}/collection/{game_id}/items/create",
-        json=data,
-        headers=headers
+        f"{BASE_URL}/collection/{game_id}/items/create", json=data, headers=headers
     )
 
     if resp.status_code == 200:
@@ -124,17 +122,15 @@ def test_create_item(token: str, game_id: int = 1):
         print(f"⚠️  其他响应: {resp.status_code} - {resp.text[:100]}")
         return False
 
+
 # 测试3: 获取收集列表
-def test_get_collection(token: str, game_id: int = 1):
+def _test_get_collection(token: str, game_id: int = 1):
     """测试获取收集列表API"""
     print("\n🧪 测试获取收集列表API...")
 
     headers = {"Authorization": f"Bearer {token}"}
 
-    resp = requests.get(
-        f"{BASE_URL}/collection/{game_id}",
-        headers=headers
-    )
+    resp = requests.get(f"{BASE_URL}/collection/{game_id}", headers=headers)
 
     if resp.status_code == 200:
         result = resp.json()
@@ -150,16 +146,16 @@ def test_get_collection(token: str, game_id: int = 1):
         print(f"⚠️  其他响应: {resp.status_code} - {resp.text[:100]}")
         return None
 
+
 # 测试4: 删除物品
-def test_delete_item(token: str, game_id: int = 1, item_name: str = "测试物品"):
+def _test_delete_item(token: str, game_id: int = 1, item_name: str = "测试物品"):
     """测试删除物品API"""
     print(f"\n🧪 测试删除物品API (物品: {item_name})...")
 
     headers = {"Authorization": f"Bearer {token}"}
 
     resp = requests.delete(
-        f"{BASE_URL}/collection/{game_id}/items/{item_name}",
-        headers=headers
+        f"{BASE_URL}/collection/{game_id}/items/{item_name}", headers=headers
     )
 
     if resp.status_code == 200:
@@ -176,8 +172,9 @@ def test_delete_item(token: str, game_id: int = 1, item_name: str = "测试物�
         print(f"⚠️  其他响应: {resp.status_code} - {resp.text[:100]}")
         return False
 
+
 # 测试5: 批量添加实体
-def test_add_entities(token: str, game_id: int = 1):
+def _test_add_entities(token: str, game_id: int = 1):
     """测试批量添加实体API"""
     print("\n🧪 测试批量添加实体API...")
 
@@ -190,17 +187,15 @@ def test_add_entities(token: str, game_id: int = 1):
                 "category": "tool",
                 "importance": "normal",
                 "appear_count": 3,
-                "appear_contexts": ["第一周", "第三周"]
+                "appear_contexts": ["第一周", "第三周"],
             }
         ],
         "characters": [],
-        "landmarks": []
+        "landmarks": [],
     }
 
     resp = requests.post(
-        f"{BASE_URL}/collection/{game_id}/add-entities",
-        json=data,
-        headers=headers
+        f"{BASE_URL}/collection/{game_id}/add-entities", json=data, headers=headers
     )
 
     if resp.status_code == 200:
@@ -214,6 +209,7 @@ def test_add_entities(token: str, game_id: int = 1):
     else:
         print(f"⚠️  其他响应: {resp.status_code} - {resp.text[:100]}")
         return False
+
 
 def main():
     print("=" * 60)
@@ -254,23 +250,23 @@ def main():
     results = []
 
     # 测试1: 实体识别
-    result1 = test_recognize_entities(token, game_id)
+    result1 = _test_recognize_entities(token, game_id)
     results.append(("实体识别", result1 is not None))
 
     # 测试2: 创建物品
-    result2 = test_create_item(token, game_id)
+    result2 = _test_create_item(token, game_id)
     results.append(("创建物品", result2))
 
     # 测试3: 获取列表
-    result3 = test_get_collection(token, game_id)
+    result3 = _test_get_collection(token, game_id)
     results.append(("获取列表", result3 is not None))
 
     # 测试4: 批量添加
-    result4 = test_add_entities(token, game_id)
+    result4 = _test_add_entities(token, game_id)
     results.append(("批量添加", result4))
 
     # 测试5: 删除物品
-    result5 = test_delete_item(token, game_id, item_name="测试物品A")
+    result5 = _test_delete_item(token, game_id, item_name="测试物品A")
     results.append(("删除物品", result5))
 
     # 测试结果汇总
@@ -293,6 +289,7 @@ def main():
     else:
         print("\n⚠️  部分测试失败")
         return 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

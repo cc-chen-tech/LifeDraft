@@ -6,25 +6,22 @@
 import logging
 from typing import Any, Dict, List, Optional
 
-from src.ai.system_prompts import get_system_prompt
-from src.ai.utils import extract_json
 from src.game.state.landmark_state import LandmarkState
+from src.services.base_extraction import BaseExtractionService
 
 logger = logging.getLogger(__name__)
 
+# 标志物有效类别
+LANDMARK_CATEGORIES = ("building", "nature", "room", "area", "other")
 
-class LandmarkExtractionService:
+
+class LandmarkExtractionService(BaseExtractionService):
     """从故事中提取重要地点/场景的服务。
 
     复用 StoryAnalyzer 的模式，专门用于提取标志物信息。
     """
 
-    def __init__(self, ai_client):
-        """
-        Args:
-            ai_client: AIClient 实例
-        """
-        self.ai_client = ai_client
+    # 继承 BaseExtractionService.__init__
 
     def extract_landmarks_from_story(
         self,
@@ -51,9 +48,8 @@ class LandmarkExtractionService:
             return []
 
         try:
-            from config.prompts.landmark_extraction_prompt import (
-                get_landmark_extraction_prompt,
-            )
+            from config.prompts.landmark_extraction_prompt import \
+                get_landmark_extraction_prompt
 
             # 构建已存在标志物列表
             existing_landmarks_list = (
@@ -68,9 +64,9 @@ class LandmarkExtractionService:
                 language=language,
             )
 
-            sys_prompt = get_system_prompt("story_analyzer", language)
+            sys_prompt = self._get_system_prompt("story_analyzer", language)
 
-            response = self.ai_client.call(
+            response = self._call_ai(
                 system_prompt=sys_prompt,
                 user_prompt=prompt,
                 temperature=0.3,
@@ -104,9 +100,8 @@ class LandmarkExtractionService:
             包含新标志物和更新信息的列表
         """
         try:
-            data = extract_json(response)
+            data = self._parse_json_response(response)
             if not data:
-                logger.warning("无法解析标志物提取响应为JSON")
                 return []
 
             raw_landmarks = data.get("landmarks", [])
@@ -127,15 +122,14 @@ class LandmarkExtractionService:
                     continue
 
                 if action == "new":
-                    # 验证重要程度
-                    importance = raw.get("importance", "normal")
-                    if importance not in ("critical", "important", "normal"):
-                        importance = "normal"
-
-                    # 验证类别
-                    category = raw.get("category", "other")
-                    if category not in ("building", "nature", "room", "area", "other"):
-                        category = "other"
+                    # 使用基类的验证方法
+                    importance = self._validate_importance(
+                        raw.get("importance", "normal")
+                    )
+                    category = self._validate_category(
+                        raw.get("category", "other"),
+                        LANDMARK_CATEGORIES,
+                    )
 
                     landmark = LandmarkState(
                         name=name,
@@ -181,9 +175,8 @@ class LandmarkExtractionService:
             生成的描述，失败返回None
         """
         try:
-            from config.prompts.landmark_extraction_prompt import (
-                get_landmark_description_generation_prompt,
-            )
+            from config.prompts.landmark_extraction_prompt import \
+                get_landmark_description_generation_prompt
 
             prompt = get_landmark_description_generation_prompt(
                 landmark_name=landmark_name,
@@ -193,16 +186,16 @@ class LandmarkExtractionService:
                 language=language,
             )
 
-            sys_prompt = get_system_prompt("story_analyzer", language)
+            sys_prompt = self._get_system_prompt("story_analyzer", language)
 
-            response = self.ai_client.call(
+            response = self._call_ai(
                 system_prompt=sys_prompt,
                 user_prompt=prompt,
                 temperature=0.7,
                 max_tokens=1024,
             )
 
-            data = extract_json(response)
+            data = self._parse_json_response(response)
             if data and "description" in data:
                 return data["description"]
 

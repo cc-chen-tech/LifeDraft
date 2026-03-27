@@ -8,11 +8,8 @@ from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
-from src.services.image_service import (
-    ImageContentError,
-    ImageService,
-    ImageServiceError,
-)
+from src.services.image_service import (ImageContentError, ImageService,
+                                        ImageServiceError)
 
 
 class MockImageClient:

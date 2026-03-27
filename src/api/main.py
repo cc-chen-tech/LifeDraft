@@ -2,6 +2,7 @@
 
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
@@ -94,6 +95,34 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 app.add_middleware(SecurityHeadersMiddleware)
 
 
+# M-06: 操作审计日志中间件
+class AuditLogMiddleware(BaseHTTPMiddleware):
+    """记录所有 API 请求的审计日志"""
+
+    async def dispatch(self, request: StarletteRequest, call_next):
+        start_time = time.time()
+        response = await call_next(request)
+        duration = time.time() - start_time
+
+        # 跳过健康检查和静态资源的日志
+        path = request.url.path
+        if not path.startswith("/api/health") and not path.startswith("/_next"):
+            logger.info(
+                "API Request",
+                extra={
+                    "method": request.method,
+                    "path": path,
+                    "status": response.status_code,
+                    "duration_ms": round(duration * 1000, 2),
+                    "client_ip": request.client.host if request.client else "unknown",
+                },
+            )
+        return response
+
+
+app.add_middleware(AuditLogMiddleware)
+
+
 # Global exception handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -110,17 +139,8 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # ---- Register routers ----
-from src.api.routers import (
-    auth,
-    character,
-    collection,
-    friends,
-    gameplay,
-    games,
-    images,
-    presets,
-    story,
-)
+from src.api.routers import (auth, character, collection, friends, gameplay,
+                             games, images, presets, story)
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(friends.router, prefix="/api/friends", tags=["Friends"])

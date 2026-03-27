@@ -5,6 +5,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+# API tests - gameplay endpoints
+pytestmark = pytest.mark.api
+
 from src.api import deps
 from src.api.main import app
 

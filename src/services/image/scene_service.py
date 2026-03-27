@@ -2,15 +2,12 @@
 
 import base64
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from sqlalchemy.orm import Session
 
-from src.ai.image_client import (
-    ContentInspectionError,
-    ImageClient,
-    ImageGenerationError,
-)
+from src.ai.image_client import (ContentInspectionError, ImageClient,
+                                 ImageGenerationError)
 from src.database.models import Image as ImageModel
 from src.database.models import SceneImage
 from src.services.image import ImageContentError, ImageServiceError
@@ -75,8 +72,8 @@ class SceneImageService:
         player_image_id: Optional[int] = None,
         stage: str = "result",
         week: Optional[int] = None,
-        get_week_func: callable = None,
-        get_player_image_func: callable = None,
+        get_week_func: Optional[Callable[[], int]] = None,
+        get_player_image_func: Optional[Callable[[int, Optional[int]], tuple]] = None,
     ) -> "SceneImage":
         """
         自动生成每轮场景插画
@@ -104,7 +101,7 @@ class SceneImageService:
         )
 
         if week is None and get_week_func:
-            week = get_week_func(game_id)
+            week = get_week_func()
 
         # 检查是否已存在
         existing = (
@@ -120,7 +117,8 @@ class SceneImageService:
         if existing:
             # ★ 验证文件是否真实存在，如果不存在则删除记录并重新生成
             if existing.storage_path and self.storage_service.image_exists(
-                existing.storage_path, existing.storage_type
+                str(existing.storage_path),  # type: ignore[arg-type]
+                str(existing.storage_type) if existing.storage_type else None,  # type: ignore[arg-type]
             ):
                 week_display = f"第{week + 1}周" if week is not None else "未知周"
                 logger.info(
@@ -342,7 +340,7 @@ class SceneImageService:
 
         except ContentInspectionError as e:
             logger.warning(f"Content inspection failed for round scene: {e}")
-            raise ImageContentError(str(e), e.original_prompt)
+            raise ImageContentError(str(e), e.original_prompt or "")
         except ImageGenerationError as e:
             logger.error(f"Image generation failed: {e}")
             raise ImageServiceError(f"场景插画生成失败: {e}")
@@ -358,7 +356,7 @@ class SceneImageService:
         character_settings: Dict[str, Any],
         player_name: str,
         player_image_id: Optional[int] = None,
-        get_player_image_func: callable = None,
+        get_player_image_func: Optional[Callable[[int, Optional[int]], tuple]] = None,
     ) -> ImageModel:
         """
         生成开场故事插画
@@ -435,7 +433,7 @@ class SceneImageService:
 
         except ContentInspectionError as e:
             logger.warning(f"Content inspection failed for illustration: {e}")
-            raise ImageContentError(str(e), e.original_prompt)
+            raise ImageContentError(str(e), e.original_prompt or "")
         except ImageGenerationError as e:
             logger.error(f"Image generation failed: {e}")
             raise ImageServiceError(f"插画生成失败: {e}")
@@ -453,8 +451,8 @@ class SceneImageService:
         player_image_id: Optional[int],
         user_prompt: str,
         current_illustration_id: int,
-        get_image_data_func: callable = None,
-        get_player_image_func: callable = None,
+        get_image_data_func: Optional[Callable[[ImageModel], bytes]] = None,
+        get_player_image_func: Optional[Callable[[int, Optional[int]], tuple]] = None,
     ) -> ImageModel:
         """
         基于用户输入重新生成开场故事插画
@@ -583,7 +581,7 @@ class SceneImageService:
 
         except ContentInspectionError as e:
             logger.warning(f"Content inspection failed for illustration: {e}")
-            raise ImageContentError(str(e), e.original_prompt)
+            raise ImageContentError(str(e), e.original_prompt or "")
         except ImageGenerationError as e:
             logger.error(f"Image generation failed: {e}")
             raise ImageServiceError(f"插画重新生成失败: {e}")

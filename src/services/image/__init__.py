@@ -24,7 +24,7 @@ class ImageServiceError(Exception):
 class ImageContentError(ImageServiceError):
     """图像内容审核错误"""
 
-    def __init__(self, message: str, original_prompt: str = None):
+    def __init__(self, message: str, original_prompt: Optional[str] = None):
         super().__init__(message)
         self.original_prompt = original_prompt
 
@@ -116,15 +116,15 @@ class ImageService:
     def get_image_url(self, image_model: ImageModel) -> str:
         """获取图片访问URL"""
         return self.storage_service.get_image_url(
-            image_model.storage_path,
-            image_model.storage_type,
+            str(image_model.storage_path),  # type: ignore[arg-type]
+            str(image_model.storage_type) if image_model.storage_type else None,  # type: ignore[arg-type]
         )
 
     def get_image_data(self, image_model: ImageModel) -> bytes:
         """获取图片二进制数据"""
         return self.storage_service.get_image_data(
-            image_model.storage_path,
-            image_model.storage_type,
+            str(image_model.storage_path),  # type: ignore[arg-type]
+            str(image_model.storage_type) if image_model.storage_type else None,  # type: ignore[arg-type]
         )
 
     # ==================== 辅助方法 ====================

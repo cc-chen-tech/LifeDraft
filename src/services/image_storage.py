@@ -53,8 +53,11 @@ class ImageStorageService:
         try:
             self.local_path.mkdir(parents=True, exist_ok=True)
             logger.info(f"Image storage directory: {self.local_path}")
-        except Exception as e:
-            logger.error(f"Failed to create image storage directory: {e}")
+        except PermissionError as e:
+            logger.error(f"Permission denied creating image storage directory: {e}")
+            raise ImageStorageError(f"无法创建图片存储目录（权限不足）: {e}")
+        except OSError as e:
+            logger.error(f"OS error creating image storage directory: {e}")
             raise ImageStorageError(f"无法创建图片存储目录: {e}")
 
     def save_image(
@@ -180,8 +183,11 @@ class ImageStorageService:
             logger.info(f"Image saved to: {full_path}")
             return str(full_path), "local"
 
-        except Exception as e:
-            logger.error(f"Failed to save image locally: {e}")
+        except PermissionError as e:
+            logger.error(f"Permission denied saving image locally: {e}")
+            raise ImageStorageError(f"保存图片失败（权限不足）: {e}")
+        except OSError as e:
+            logger.error(f"OS error saving image locally: {e}")
             raise ImageStorageError(f"保存图片失败: {e}")
 
     def _save_oss(
@@ -219,8 +225,16 @@ class ImageStorageService:
             logger.info(f"Image saved to OSS: {oss_path}")
             return oss_path, "oss"
 
+        except ImportError:
+            raise ImageStorageError("OSS SDK未安装，请运行: pip install oss2")
+        except ConnectionError as e:
+            logger.error(f"OSS connection error: {e}")
+            raise ImageStorageError(f"OSS连接失败: {e}")
+        except TimeoutError as e:
+            logger.error(f"OSS timeout: {e}")
+            raise ImageStorageError(f"OSS连接超时: {e}")
         except Exception as e:
-            logger.error(f"Failed to save image to OSS: {e}")
+            logger.exception(f"OSS upload unexpected error: {e}")
             raise ImageStorageError(f"保存图片到OSS失败: {e}")
 
     def _get_oss_client(self):
@@ -240,7 +254,10 @@ class ImageStorageService:
                 )
             except ImportError:
                 raise ImageStorageError("OSS SDK未安装，请运行: pip install oss2")
+            except (ValueError, TypeError) as e:
+                raise ImageStorageError(f"OSS配置错误: {e}")
             except Exception as e:
+                logger.exception(f"OSS client init unexpected error: {e}")
                 raise ImageStorageError(f"OSS客户端初始化失败: {e}")
 
         return self._oss_client
@@ -299,8 +316,14 @@ class ImageStorageService:
             url = client.sign_url("GET", object_key, 3600)
             return url
 
+        except (ValueError, KeyError) as e:
+            logger.error(f"Invalid OSS path format: {e}")
+            raise ImageStorageError(f"获取OSS URL失败（路径格式错误）: {e}")
+        except ConnectionError as e:
+            logger.error(f"OSS connection error generating URL: {e}")
+            raise ImageStorageError(f"获取OSS URL失败（连接错误）: {e}")
         except Exception as e:
-            logger.error(f"Failed to generate OSS URL: {e}")
+            logger.exception(f"Unexpected error generating OSS URL: {e}")
             raise ImageStorageError(f"获取OSS URL失败: {e}")
 
     def get_image_data(
@@ -330,8 +353,14 @@ class ImageStorageService:
         try:
             with open(storage_path, "rb") as f:
                 return f.read()
-        except Exception as e:
-            logger.error(f"Failed to read local image: {e}")
+        except FileNotFoundError as e:
+            logger.error(f"Local image not found: {e}")
+            raise ImageStorageError(f"读取本地图片失败（文件不存在）: {e}")
+        except PermissionError as e:
+            logger.error(f"Permission denied reading local image: {e}")
+            raise ImageStorageError(f"读取本地图片失败（权限不足）: {e}")
+        except OSError as e:
+            logger.error(f"OS error reading local image: {e}")
             raise ImageStorageError(f"读取本地图片失败: {e}")
 
     def _get_oss_image_data(self, storage_path: str) -> bytes:
@@ -349,8 +378,14 @@ class ImageStorageService:
             result = client.get_object(object_key)
             return result.read()
 
+        except (ValueError, KeyError) as e:
+            logger.error(f"Invalid OSS path format: {e}")
+            raise ImageStorageError(f"读取OSS图片失败（路径格式错误）: {e}")
+        except ConnectionError as e:
+            logger.error(f"OSS connection error reading image: {e}")
+            raise ImageStorageError(f"读取OSS图片失败（连接错误）: {e}")
         except Exception as e:
-            logger.error(f"Failed to read OSS image: {e}")
+            logger.exception(f"Unexpected error reading OSS image: {e}")
             raise ImageStorageError(f"读取OSS图片失败: {e}")
 
     def delete_image(
@@ -387,8 +422,17 @@ class ImageStorageService:
             else:
                 raise ImageStorageError(f"不支持的存储类型: {storage_type}")
 
+        except FileNotFoundError:
+            logger.warning(f"Image not found for deletion: {storage_path}")
+            return False  # 文件不存在，返回删除失败
+        except PermissionError as e:
+            logger.error(f"Permission denied deleting image: {e}")
+            return False
+        except OSError as e:
+            logger.error(f"OS error deleting image: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Failed to delete image: {e}")
+            logger.exception(f"Unexpected error deleting image: {e}")
             return False
 
     def image_exists(
@@ -421,8 +465,14 @@ class ImageStorageService:
             else:
                 return False
 
+        except (ValueError, KeyError) as e:
+            logger.error(f"Invalid path format checking image existence: {e}")
+            return False
+        except ConnectionError as e:
+            logger.error(f"Connection error checking image existence: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Failed to check image existence: {e}")
+            logger.exception(f"Unexpected error checking image existence: {e}")
             return False
 
     def compute_hash(self, image_data: bytes) -> str:

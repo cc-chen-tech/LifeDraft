@@ -7,13 +7,10 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from src.game.relationship_events import (
-    RELATIONSHIP_EVENTS,
-    EventCategory,
-    RelationshipEventDef,
-    get_event_by_type,
-    get_events_by_category,
-)
+from src.game.relationship_events import (RELATIONSHIP_EVENTS, EventCategory,
+                                          RelationshipEventDef,
+                                          get_event_by_type,
+                                          get_events_by_category)
 
 if TYPE_CHECKING:
     from src.game.state import CharacterState, PlayerState
@@ -71,8 +68,8 @@ class RelationshipMCPService:
         self,
         char_orientation: str,
         char_gender: str,
-        player_orientation: str = None,
-        player_gender: str = None,
+        player_orientation: Optional[str] = None,
+        player_gender: Optional[str] = None,
     ) -> bool:
         """
         检查两个角色是否可能发展浪漫关系
@@ -462,11 +459,9 @@ class RelationshipMCPService:
         # char_data 可能是 CharacterState 对象或 dict
         from src.game.state import CharacterState
 
-        is_object = isinstance(char_data, CharacterState)
-
         # 恒爱萌芽 -> 改变感情状态
         if event_type == "romance_spark":
-            if is_object:
+            if isinstance(char_data, CharacterState):
                 char_data.relationship_status = "dating"
                 char_data.romantic_interest = "player"
             else:
@@ -475,14 +470,14 @@ class RelationshipMCPService:
 
         # 求婚 -> 改变感情状态
         elif event_type == "marriage_proposal":
-            if is_object:
+            if isinstance(char_data, CharacterState):
                 char_data.relationship_status = "married"
             else:
                 char_data["relationship_status"] = "married"
 
         # 分手 -> 改变感情状态
         elif event_type == "breakup":
-            if is_object:
+            if isinstance(char_data, CharacterState):
                 char_data.relationship_status = "single"
                 char_data.romantic_interest = ""
             else:
@@ -491,14 +486,14 @@ class RelationshipMCPService:
 
         # 私奔 -> 改变感情状态，移除外部阻力
         elif event_type == "elopement":
-            if is_object:
+            if isinstance(char_data, CharacterState):
                 char_data.relationship_status = "married"
                 char_data.has_external_obstacle = False
             else:
                 char_data["relationship_status"] = "married"
                 char_data["has_external_obstacle"] = False
 
-        if not is_object:
+        if not isinstance(char_data, CharacterState):
             player.characters[character_name] = char_data
 
     def generate_event_context(

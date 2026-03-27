@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -25,7 +26,7 @@ interface SettingDisplayProps {
  * SettingDisplay — 将各设定类型的 JSON 数据渲染为人类可读的卡片
  * 根据 stepKey 使用不同的渲染模板
  */
-export function SettingDisplay({
+export const SettingDisplay = memo(function SettingDisplay({
   stepKey,
   data,
   isNew = false,
@@ -48,7 +49,9 @@ export function SettingDisplay({
       {renderContent(stepKey, data)}
     </Card>
   );
-}
+});
+
+SettingDisplay.displayName = 'SettingDisplay';
 
 function renderContent(
   stepKey: string,

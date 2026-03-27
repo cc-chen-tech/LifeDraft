@@ -49,9 +49,7 @@ class TestEventGenerator:
         # Mock API response
         mock_response = Mock()
         mock_response.choices = [Mock()]
-        mock_response.choices[
-            0
-        ].message.content = """{
+        mock_response.choices[0].message.content = """{
             "event_description": "A test event",
             "options": [
                 {"text": "Option A", "effects": {"energy": -10, "action_points": -1}},

@@ -3,10 +3,8 @@
 测试文本层面的角色一致性机制，确保角色在不同场景下保持视觉一致性。
 """
 
-from src.services.image.appearance_anchor import (
-    CharacterAppearanceAnchor,
-    merge_anchors,
-)
+from src.services.image.appearance_anchor import (CharacterAppearanceAnchor,
+                                                  merge_anchors)
 
 
 class TestCharacterAppearanceAnchor:

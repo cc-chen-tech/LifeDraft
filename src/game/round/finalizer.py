@@ -25,9 +25,9 @@ class RoundFinalizer:
 
     def __init__(
         self,
-        player_state_getter: callable,
+        player_state_getter: Callable,
         ai_generator: Any,
-        language_getter: callable,
+        language_getter: Callable,
         story_service: Any,
         character_creator: Any,
     ):
@@ -348,7 +348,8 @@ class RoundFinalizer:
         Args:
             week: 当前周数
         """
-        from src.services.landmark_extraction_service import LandmarkExtractionService
+        from src.services.landmark_extraction_service import \
+            LandmarkExtractionService
 
         player_state = self.player_state
         if not player_state:

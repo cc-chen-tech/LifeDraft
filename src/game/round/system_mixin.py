@@ -21,13 +21,21 @@ following attributes exist on `self`:
 """
 
 import logging
-from typing import Any, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from src.ai.models import GameEvent
 from src.game.round.character_introduction import CharacterIntroductionService
 from src.game.round.choice_processor import RoundChoiceProcessor
 from src.game.round.event_generator import RoundEventGenerator
 from src.game.round.finalizer import RoundFinalizer
+
+if TYPE_CHECKING:
+    from src.ai.generator import EventGenerator
+    from src.game.character_creator import CharacterCreator
+    from src.game.historical_summary_selector import HistoricalSummarySelector
+    from src.game.state import PlayerState
+    from src.game.story_service import StoryService
+    from src.mcp.relationship_service import RelationshipMCPService
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +49,15 @@ class RoundSystemMixin:
     - RoundChoiceProcessor: Choice processing
     - RoundFinalizer: Week finalization
     """
+
+    # Type hints for attributes expected from the concrete class (GameLoop)
+    player_state: "PlayerState"
+    ai_generator: "EventGenerator"
+    language: str
+    story_service: "StoryService"
+    character_creator: "CharacterCreator"
+    summary_selector: "HistoricalSummarySelector"
+    relationship_service: "RelationshipMCPService"
 
     def _init_round_services(self) -> None:
         """Initialize round system services. Call this in __init__."""
