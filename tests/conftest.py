@@ -474,3 +474,91 @@ def mock_cache_with_ttl():
             return len(self._cache)
 
     return TTLCache
+
+
+# ==================== API Testing Fixtures ====================
+
+
+@pytest.fixture
+def mock_session_service():
+    """Mock session_service for collection/images API tests.
+
+    Provides a configured mock session with game_loop and player_state.
+    """
+    with patch("src.api.routers.collection.session_service") as mock_ss:
+        mock_game_loop = MagicMock()
+        mock_player_state = MagicMock()
+        mock_player_state.characters = {}
+        mock_player_state.items = {}
+        mock_player_state.landmarks = {}
+        mock_player_state.player_name = "TestPlayer"
+        mock_player_state.character_settings = {}
+        mock_player_state.round_history = []
+        mock_game_loop.get_state.return_value = mock_player_state
+
+        mock_session = MagicMock()
+        mock_session.game_loop = mock_game_loop
+        mock_session.language = "zh"
+        mock_ss.get_or_restore.return_value = mock_session
+
+        yield mock_ss
+
+
+@pytest.fixture
+def mock_image_service():
+    """Mock ImageService for image API tests."""
+    with patch("src.services.image_service.ImageService") as mock_class:
+        mock_service = MagicMock()
+        mock_class.return_value = mock_service
+        yield mock_service
+
+
+@pytest.fixture
+def mock_collection_service():
+    """Mock CollectionService for collection API tests."""
+    with patch("src.services.collection_service.CollectionService") as mock_class:
+        mock_service = MagicMock()
+        mock_class.return_value = mock_service
+        yield mock_service
+
+
+@pytest.fixture
+def mock_image_storage():
+    """Mock ImageStorageService for image API tests."""
+    with patch("src.services.image_storage.ImageStorageService") as mock_class:
+        from pathlib import Path
+
+        mock_storage = MagicMock()
+        mock_storage.image_exists.return_value = True
+        mock_storage.get_image_data.return_value = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+        mock_storage.local_path = Path("/tmp/test_images")
+        mock_class.return_value = mock_storage
+        yield mock_storage
+
+
+@pytest.fixture
+def sample_collection_response():
+    """Sample collection response data for tests."""
+    return {
+        "characters": [],
+        "items": [],
+        "landmarks": [],
+        "total_characters": 0,
+        "total_items": 0,
+        "total_landmarks": 0,
+    }
+
+
+@pytest.fixture
+def sample_image_model():
+    """Sample ImageModel mock for tests."""
+    mock_image = MagicMock()
+    mock_image.image_id = 1
+    mock_image.game_id = 1
+    mock_image.image_type = "character"
+    mock_image.entity_name = "TestCharacter"
+    mock_image.entity_key = "player"
+    mock_image.prompt_text = "Test prompt"
+    mock_image.version = 1
+    mock_image.created_at = None
+    return mock_image

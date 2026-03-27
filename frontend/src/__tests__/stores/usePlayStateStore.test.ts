@@ -402,8 +402,8 @@ describe('usePlayStateStore (Gameplay State)', () => {
         useGameStore.setState({
           storyText: 'Story',
           currentEvent: { story: 'Event', options: [] },
-          progress: { week: 10 },
-          roundInfo: { current_round: 5 },
+          progress: { week: 10, current_round: 5, rounds_per_week: 3 },
+          roundInfo: { current_round: 5, week: 10 },
           isGameOver: true,
         });
         useGameStore.getState().resetGame();

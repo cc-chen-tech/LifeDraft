@@ -5,12 +5,9 @@
 
 import pytest
 
-from src.game.scheduled_events import (
-    ScheduledEvent,
-    ScheduledEventManager,
-    create_scheduled_event_from_commitment,
-    parse_time_reference,
-)
+from src.game.scheduled_events import (ScheduledEvent, ScheduledEventManager,
+                                       create_scheduled_event_from_commitment,
+                                       parse_time_reference)
 from src.game.state.player_state import PlayerState
 from src.game.world_model import Commitment
 

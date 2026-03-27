@@ -153,7 +153,7 @@ describe('useCharacterStore', () => {
         player_name: 'Preset Character',
         life_vision: 'Preset vision',
         character_settings: {
-          era: { era_name: 'Ancient' },
+          era: { era: 'ancient', era_name: 'Ancient' },
           age: { age: 20 },
         },
         created_at: '2024-01-01',
@@ -167,7 +167,7 @@ describe('useCharacterStore', () => {
       expect(state.playerName).toBe('Preset Character');
       expect(state.lifeVision).toBe('Preset vision');
       expect(state.characterSettings).toEqual({
-        era: { era_name: 'Ancient' },
+        era: { era: 'ancient', era_name: 'Ancient' },
         age: { age: 20 },
       });
       expect(state.isPresetLoaded).toBe(true);
@@ -181,7 +181,7 @@ describe('useCharacterStore', () => {
         player_name: 'No Vision Character',
         life_vision: '', // Empty string - falsy
         character_settings: {
-          era: { era_name: 'Modern' },
+          era: { era: 'modern', era_name: 'Modern' },
         },
         created_at: '2024-01-01',
       };

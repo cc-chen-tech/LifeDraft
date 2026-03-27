@@ -2,23 +2,193 @@
 
 from typing import Any, Dict, List, Optional
 
-from config.prompts._helpers import (
-    _build_available_people_constraint,
-    _build_character_habits_context,
-    _build_character_name_constraint,
-    _build_common_story_constraints,
-    _build_continuation_mandate,
-    _build_established_facts_context,
-    _build_foreshadowing_context,
-    _build_full_character_context,
-    _build_logic_constraints,
-    _build_new_character_intro_context,
-    _build_pending_storylines_context,
-    _build_time_context,
-    _build_world_model_constraints,
-    _collect_available_people,
-    _format_people_names,
-)
+from config.prompts._helpers import (_build_available_people_constraint,
+                                     _build_character_habits_context,
+                                     _build_character_name_constraint,
+                                     _build_common_story_constraints,
+                                     _build_continuation_mandate,
+                                     _build_established_facts_context,
+                                     _build_foreshadowing_context,
+                                     _build_full_character_context,
+                                     _build_logic_constraints,
+                                     _build_new_character_intro_context,
+                                     _build_pending_storylines_context,
+                                     _build_time_context,
+                                     _build_world_model_constraints,
+                                     _collect_available_people,
+                                     _format_people_names)
+from src.ai.prompt_sanitizer import sanitize_user_choice
+
+# ==================== 自定义选择相关 Prompts ====================
+
+
+def get_custom_choice_effects_prompt(
+    character_settings: dict,
+    current_state: dict,
+    language: str = "zh",
+) -> str:
+    """
+    生成自定义选择效果的 system prompt。
+
+    Args:
+        character_settings: 角色设定
+        current_state: 当前玩家状态
+        language: 语言
+
+    Returns:
+        System prompt 字符串
+    """
+    import json
+
+    if language == "zh":
+        return f"""你是一个人生模拟游戏的叙事引擎。玩家选择了一个自定义的行动，请根据当前情境和玩家的选择，生成合理的属性变化。
+
+角色设定：{json.dumps(character_settings or {}, ensure_ascii=False)}
+当前状态：精力={current_state.get('energy', 50)}, 情绪={current_state.get('mood', 50)}, 学识={current_state.get('knowledge', 50)}, 财富={current_state.get('wealth', 1000)}
+
+属性变化范围说明：
+- energy(精力): -20到20，负值表示累了，正值表示休息恢复
+- mood(情绪): -20到20，负值表示不开心，正值表示开心
+- knowledge(学识): -10到15，正值表示学到东西
+- wealth(财富): -1000到1000，平时变化应该较小
+
+注意：属性变化应该合理，不要过于极端。大多数情况下变化应该在 -10 到 10 之间。
+
+请仅返回JSON格式的属性变化：
+{{
+  "energy": 0,
+  "mood": 0,
+  "knowledge": 0,
+  "wealth": 0
+}}"""
+    else:
+        return f"""You are a narrative engine for a life simulation game. The player chose a custom action. Based on the current situation and player's choice, generate reasonable attribute changes.
+
+Character settings: {json.dumps(character_settings or {}, ensure_ascii=False)}
+Current state: Energy={current_state.get('energy', 50)}, Mood={current_state.get('mood', 50)}, Knowledge={current_state.get('knowledge', 50)}, Wealth={current_state.get('wealth', 1000)}
+
+Attribute change ranges:
+- energy: -20 to 20, negative means tired, positive means rested
+- mood: -20 to 20, negative means unhappy, positive means happy
+- knowledge: -10 to 15, positive means learned something
+- wealth: -1000 to 1000, usually small changes
+
+Note: Changes should be reasonable, not extreme. Most changes should be between -10 and 10.
+
+Return ONLY JSON format:
+{{
+  "energy": 0,
+  "mood": 0,
+  "knowledge": 0,
+  "wealth": 0
+}}"""
+
+
+def get_custom_choice_result_prompt(
+    character_settings: dict,
+    current_state: dict,
+    language: str = "zh",
+) -> str:
+    """
+    生成自定义选择完整结果（包含故事续写和属性变化）的 system prompt。
+
+    Args:
+        character_settings: 角色设定
+        current_state: 当前玩家状态
+        language: 语言
+
+    Returns:
+        System prompt 字符串
+    """
+    import json
+
+    if language == "zh":
+        return f"""你是一个人生模拟游戏的叙事引擎。玩家选择了一个自定义的行动，你需要：
+1. 根据当前情境和玩家的选择，生成合理的故事续写（200-400字）
+2. 生成合理的属性变化（必须符合逻辑）
+
+角色设定：{json.dumps(character_settings or {}, ensure_ascii=False)}
+当前状态：精力={current_state.get('energy', 50)}, 情绪={current_state.get('mood', 50)}, 学识={current_state.get('knowledge', 50)}, 财富={current_state.get('wealth', 1000)}
+
+属性变化范围说明：
+- energy(精力): -20到20，负值表示累了，正值表示休息恢复
+- mood(情绪): -20到20，负值表示不开心，正值表示开心
+- knowledge(学识): -10到15，正值表示学到东西
+- wealth(财富): -1000到1000，平时变化应该较小
+
+注意：属性变化应该合理，不要过于极端。大多数情况下变化应该在 -10 到 10 之间。
+
+请返回JSON格式：
+{{
+  "story_continuation": "故事续写...",
+  "effects": {{
+    "energy": 0,
+    "mood": 0,
+    "knowledge": 0,
+    "wealth": 0
+  }}
+}}"""
+    else:
+        return f"""You are a narrative engine for a life simulation game. The player chose a custom action. You need to:
+1. Generate a reasonable story continuation (200-400 words) based on the situation and choice
+2. Generate reasonable attribute changes (must be logical)
+
+Character settings: {json.dumps(character_settings or {}, ensure_ascii=False)}
+Current state: Energy={current_state.get('energy', 50)}, Mood={current_state.get('mood', 50)}, Knowledge={current_state.get('knowledge', 50)}, Wealth={current_state.get('wealth', 1000)}
+
+Attribute change ranges:
+- energy: -20 to 20, negative means tired, positive means rested
+- mood: -20 to 20, negative means unhappy, positive means happy
+- knowledge: -10 to 15, positive means learned something
+- wealth: -1000 to 1000, usually small changes
+
+Note: Changes should be reasonable, not extreme. Most changes should be between -10 and 10.
+
+Return JSON format:
+{{
+  "story_continuation": "Story continuation...",
+  "effects": {{
+    "energy": 0,
+    "mood": 0,
+    "knowledge": 0,
+    "wealth": 0
+  }}
+}}"""
+
+
+def get_custom_choice_user_prompt(
+    event_description: str,
+    custom_text: str,
+    language: str = "zh",
+) -> str:
+    """
+    生成自定义选择的 user prompt。
+
+    Args:
+        event_description: 事件描述
+        custom_text: 用户自定义选择文本（已清洗）
+        language: 语言
+
+    Returns:
+        User prompt 字符串
+    """
+    if language == "zh":
+        return f"""当前情境：
+{event_description}
+
+玩家的选择：{custom_text}
+
+请生成合理的结果。"""
+    else:
+        return f"""Current situation:
+{event_description}
+
+Player's choice: {custom_text}
+
+Generate reasonable results."""
+
+
+# ==================== 事件生成 Prompts ====================
 
 
 def get_event_generation_prompt(
@@ -429,7 +599,7 @@ def get_result_generation_prompt(
     chosen_option: str,
     effects: Dict[str, Any],
     language: str = "en",
-    character_settings: Dict[str, Any] = None,
+    character_settings: Optional[Dict[str, Any]] = None,
     recent_context: str = "",
 ) -> str:
     """
@@ -441,6 +611,8 @@ def get_result_generation_prompt(
     - Includes character interactions and dialogue where appropriate
     - Maintains consistency with the character settings
     """
+    # 清洗用户选择输入，防止 prompt 注入
+    sanitized_chosen_option = sanitize_user_choice(chosen_option)
 
     # Build character context
     char_context = ""
@@ -461,7 +633,7 @@ def get_result_generation_prompt(
 {event_description}
 
 ## 玩家的选择
-{chosen_option}
+{sanitized_chosen_option}
 
 ## 选择带来的影响
 {effects}
@@ -484,7 +656,7 @@ def get_result_generation_prompt(
 {event_description}
 
 ## Player's Choice
-{chosen_option}
+{sanitized_chosen_option}
 
 ## Effects of Choice
 {effects}

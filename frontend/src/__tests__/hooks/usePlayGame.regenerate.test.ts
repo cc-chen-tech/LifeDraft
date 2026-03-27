@@ -11,7 +11,19 @@ import { useGameStore } from '@/stores/useGameStore';
 import { useUIStore } from '@/stores/useUIStore';
 
 // Mock dependencies
-jest.mock('@/stores/useGameStore');
+jest.mock('@/stores/useGameStore', () => {
+  const mockFn = jest.fn();
+  (mockFn as unknown as { getState: jest.Mock }).getState = jest.fn(() => ({
+    storyText: 'Original story',
+    currentEvent: { story: 'Original story', options: [{ text: 'Option 1' }] },
+    roundInfo: { current_round: 1 },
+    enableSceneImage: true,
+    generateRoundSceneImage: jest.fn().mockResolvedValue(undefined),
+    syncPlayerState: jest.fn().mockResolvedValue({}),
+    syncState: jest.fn().mockResolvedValue(undefined),
+  }));
+  return { useGameStore: mockFn };
+});
 jest.mock('@/stores/useUIStore');
 jest.mock('@/hooks/useHydration', () => ({
   useHydration: () => true,

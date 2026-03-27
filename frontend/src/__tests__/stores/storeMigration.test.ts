@@ -254,9 +254,9 @@ describe('Store Migration Compatibility', () => {
       const savedState = {
         gameId: 100,
         sessionId: 'saved-session',
-        playerState: { player_name: 'SavedPlayer', energy: 80 },
-        progress: { week: 5 },
-        roundInfo: { current_round: 3 },
+        playerState: { player_name: 'SavedPlayer', life_vision: '', energy: 80, mood: 100, knowledge: 0, wealth: 0, age: 18, week: 5, current_round: 3, rounds_per_week: 3, character_settings: {} },
+        progress: { week: 5, current_round: 3, rounds_per_week: 3 },
+        roundInfo: { current_round: 3, week: 5 },
         storyText: 'Saved story content',
         currentEvent: null,
       };

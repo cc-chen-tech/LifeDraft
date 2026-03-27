@@ -12,11 +12,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
-from src.ai.image_client import (
-    ContentInspectionError,
-    ImageClient,
-    ImageGenerationError,
-)
+from src.ai.image_client import (ContentInspectionError, ImageClient,
+                                 ImageGenerationError)
 from src.database.models import Image as ImageModel
 from src.database.models import SceneImage
 from src.services.image_service import get_image_thread_pool  # C-05: 使用共享线程池
@@ -157,7 +154,9 @@ class RoundIllustrationService:
                 entity_type = entity.get("type", "character")
                 entity_desc = entity.get("description", "")
 
-                entity_image = self._find_entity_image(existing_images, entity_name)
+                entity_image = self._find_entity_image(
+                    existing_images, entity_name or ""
+                )
                 if entity_image:
                     ref_url = self._get_image_url_as_base64(
                         entity_image, game_id=game_id
@@ -173,7 +172,7 @@ class RoundIllustrationService:
                     try:
                         new_image = self._generate_entity_image(
                             game_id=game_id,
-                            entity_name=entity_name,
+                            entity_name=entity_name or "",
                             entity_type=entity_type,
                             description=entity_desc,
                             era=char_info["era"],
@@ -365,7 +364,7 @@ class RoundIllustrationService:
 
             # 读取图片文件
             image_data = self.image_storage.get_image_data(
-                image_model.storage_path, image_model.storage_type
+                str(image_model.storage_path), str(image_model.storage_type) if image_model.storage_type else None  # type: ignore[arg-type]
             )
             if not image_data:
                 return None
@@ -620,7 +619,7 @@ class RoundIllustrationService:
         # 从 world_model_data 提取反复出现的地点
         if not landmarks and world_model_data:
             # 统计每个地点出现的次数，选择最重要的
-            location_counts = {}
+            location_counts: dict[str, int] = {}
             char_locations = world_model_data.get("character_locations", {})
             for char_name, loc_info in char_locations.items():
                 location = loc_info.get("location", "")
@@ -650,7 +649,7 @@ class RoundIllustrationService:
             desc_parts.append(str(char_data["gender"]))
         if char_data.get("relationship_desc") or char_data.get("relationship"):
             desc_parts.append(
-                char_data.get("relationship_desc") or char_data.get("relationship")
+                str(char_data.get("relationship_desc") or char_data.get("relationship"))
             )
         return "，".join(desc_parts) if desc_parts else "一个普通人"
 

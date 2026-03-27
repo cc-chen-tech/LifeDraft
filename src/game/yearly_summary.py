@@ -107,16 +107,16 @@ class YearlySummaryGenerator:
 
             # Get monthly summary highlights
             summary_highlights = []
-            if monthly_summaries:
+            if weekly_summaries:
                 # Take a few representative summaries
-                if len(monthly_summaries) > 5:
+                if len(weekly_summaries) > 5:
                     summary_highlights = [
                         s.get("summary_text", "")
-                        for s in monthly_summaries[:: len(monthly_summaries) // 5]
+                        for s in weekly_summaries[:: len(weekly_summaries) // 5]
                     ]
                 else:
                     summary_highlights = [
-                        s.get("summary_text", "") for s in monthly_summaries
+                        s.get("summary_text", "") for s in weekly_summaries
                     ]
 
             if language == "zh":

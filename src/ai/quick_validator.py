@@ -196,7 +196,7 @@ class QuickValidator:
         ★ 中文人名识别非常困难，规则方法误报率极高。
         所以这里只做最基本的检查，不做复杂的启发式检测。
         """
-        warnings = []
+        warnings: list[str] = []
         # 不再尝试从文本中提取人名，因为误报率太高
         # 只检查 available_people 中的人名是否出现在文本中（用于其他用途）
         return warnings

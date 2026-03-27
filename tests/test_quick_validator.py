@@ -2,11 +2,8 @@
 
 import pytest
 
-from src.ai.quick_validator import (
-    QuickValidationResult,
-    QuickValidator,
-    quick_validate_story,
-)
+from src.ai.quick_validator import (QuickValidationResult, QuickValidator,
+                                    quick_validate_story)
 
 
 class TestQuickValidator:

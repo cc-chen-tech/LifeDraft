@@ -5,48 +5,33 @@
 
 import pytest
 
+# Unit tests - no external dependencies
+pytestmark = pytest.mark.unit
+
 
 class TestEntityRecognitionImports:
     """测试实体识别相关模块导入"""
 
-    def test_task_manager_import(self):
-        """测试任务管理器导入"""
-        from src.services.entity_recognition_task import (
-            EntityRecognitionTask,
-            TaskManager,
-            TaskStatus,
-            get_task_manager,
-            reset_task_manager,
-        )
-
-        assert callable(get_task_manager)
-        assert callable(reset_task_manager)
-
     def test_recognition_service_import(self):
         """测试识别服务导入"""
-        from src.services.entity_recognition_service import EntityRecognitionService
+        from src.services.entity_recognition_service import \
+            EntityRecognitionService
 
         assert EntityRecognitionService is not None
 
     def test_collection_router_import(self):
         """测试收集路由导入"""
-        from src.api.routers.collection import (
-            get_collection,
-            recognize_entities,
-            router,
-            add_entities,
-        )
+        from src.api.routers.collection import (add_entities,
+                                                recognize_entities, router)
 
         assert router is not None
         assert callable(recognize_entities)
-        assert callable(get_collection)
         assert callable(add_entities)
 
     def test_prompt_import(self):
         """测试 prompt 模块导入"""
-        from config.prompts.entity_recognition_prompt import (
-            get_entity_recognition_prompt,
-        )
+        from config.prompts.entity_recognition_prompt import \
+            get_entity_recognition_prompt
 
         assert callable(get_entity_recognition_prompt)
 
@@ -54,8 +39,8 @@ class TestEntityRecognitionImports:
 class TestNoCircularImports:
     """测试没有循环导入问题"""
 
-    def test_entity_recognition_task_no_circular(self):
-        """验证 entity_recognition_task 没有循环导入"""
+    def test_entity_recognition_service_no_circular(self):
+        """验证 entity_recognition_service 没有循环导入"""
         import importlib
         import sys
 
@@ -70,10 +55,9 @@ class TestNoCircularImports:
 
         # 重新导入应该成功
         from src.api.routers.collection import router
-        from src.services.entity_recognition_service import EntityRecognitionService
-        from src.services.entity_recognition_task import get_task_manager
+        from src.services.entity_recognition_service import \
+            EntityRecognitionService
 
-        assert get_task_manager is not None
         assert EntityRecognitionService is not None
         assert router is not None
 

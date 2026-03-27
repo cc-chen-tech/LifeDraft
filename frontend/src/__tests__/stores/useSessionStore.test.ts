@@ -265,7 +265,7 @@ describe('useSessionStore (Session Management)', () => {
     it('should update playerState when changed', async () => {
       act(() => {
         useGameStore.getState().setGameSession(42, 'session-42');
-        useGameStore.setState({ playerState: { energy: 50 } });
+        useGameStore.setState({ playerState: { player_name: 'Test', life_vision: '', energy: 50, mood: 100, knowledge: 0, wealth: 0, age: 18, week: 1, current_round: 1, rounds_per_week: 3, character_settings: {} } });
       });
 
       (api.gameplay.getState as jest.Mock).mockResolvedValue({
@@ -385,9 +385,9 @@ describe('useSessionStore (Session Management)', () => {
         useGameStore.setState({
           gameId: 42,
           sessionId: 'session-42',
-          playerState: { name: 'Test' },
-          progress: { week: 5 },
-          roundInfo: { current_round: 3 },
+          playerState: { player_name: 'Test', life_vision: '', energy: 100, mood: 100, knowledge: 0, wealth: 0, age: 18, week: 5, current_round: 3, rounds_per_week: 3, character_settings: {} },
+          progress: { week: 5, current_round: 3, rounds_per_week: 3 },
+          roundInfo: { current_round: 3, week: 5 },
           storyText: 'Some story',
           isGameOver: true,
         });
@@ -409,7 +409,7 @@ describe('useSessionStore (Session Management)', () => {
         useGameStore.setState({
           gameId: 42,
           creationStep: 5,
-          characterSettings: { era: 'modern' },
+          characterSettings: { era: { era: 'modern' } },
           playerName: 'TestName',
         });
         useGameStore.getState().resetGame();

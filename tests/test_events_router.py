@@ -7,7 +7,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.api.routers.gameplay.events import _get_game_lock, _require_session, router
+from src.api.routers.gameplay.events import (_get_game_lock, _require_session,
+                                             router)
 
 
 @pytest.fixture

@@ -27,7 +27,7 @@ def calculate_character_effects(
     Returns:
         角色效果字典 {name: {affinity: x, trust: y, respect: z, mood: w}}
     """
-    character_effects = {}
+    character_effects: dict[str, Any] = {}
 
     # 从 effects 中提取 relationships 变化
     relationships = effects.get("relationships", {})
@@ -209,7 +209,7 @@ def process_decision(
 
     # Validate state after update
     try:
-        player_state.validate()
+        player_state.validate_state()
     except ValueError as e:
         logger.error(f"State validation failed after decision: {e}")
 

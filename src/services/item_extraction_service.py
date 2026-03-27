@@ -6,25 +6,22 @@
 import logging
 from typing import Any, Dict, List, Optional
 
-from src.ai.system_prompts import get_system_prompt
-from src.ai.utils import extract_json
 from src.game.state.item_state import ItemState
+from src.services.base_extraction import BaseExtractionService
 
 logger = logging.getLogger(__name__)
 
+# 物品有效类别
+ITEM_CATEGORIES = ("weapon", "tool", "keepsake", "treasure", "document", "other")
 
-class ItemExtractionService:
+
+class ItemExtractionService(BaseExtractionService):
     """从故事中提取重要物品的服务。
 
     复用 StoryAnalyzer 的模式，专门用于提取物品信息。
     """
 
-    def __init__(self, ai_client):
-        """
-        Args:
-            ai_client: AIClient 实例
-        """
-        self.ai_client = ai_client
+    # 继承 BaseExtractionService.__init__
 
     def extract_items_from_story(
         self,
@@ -50,7 +47,8 @@ class ItemExtractionService:
             return []
 
         try:
-            from config.prompts.item_extraction_prompt import get_item_extraction_prompt
+            from config.prompts.item_extraction_prompt import \
+                get_item_extraction_prompt
 
             # 构建已存在物品列表
             existing_items_list = (
@@ -65,9 +63,9 @@ class ItemExtractionService:
                 language=language,
             )
 
-            sys_prompt = get_system_prompt("story_analyzer", language)
+            sys_prompt = self._get_system_prompt("story_analyzer", language)
 
-            response = self.ai_client.call(
+            response = self._call_ai(
                 system_prompt=sys_prompt,
                 user_prompt=prompt,
                 temperature=0.3,
@@ -98,9 +96,8 @@ class ItemExtractionService:
             物品列表
         """
         try:
-            data = extract_json(response)
+            data = self._parse_json_response(response)
             if not data:
-                logger.warning("无法解析物品提取响应为JSON")
                 return []
 
             raw_items = data.get("items", [])
@@ -115,22 +112,14 @@ class ItemExtractionService:
                 if not name:
                     continue
 
-                # 验证重要程度
-                importance = raw.get("importance", "normal")
-                if importance not in ("critical", "important", "normal"):
-                    importance = "normal"
+                # 使用基类的验证方法
+                importance = self._validate_importance(raw.get("importance", "normal"))
 
                 # 验证类别
-                category = raw.get("category", "other")
-                if category not in (
-                    "weapon",
-                    "tool",
-                    "keepsake",
-                    "treasure",
-                    "document",
-                    "other",
-                ):
-                    category = "other"
+                category = self._validate_category(
+                    raw.get("category", "other"),
+                    ITEM_CATEGORIES,
+                )
 
                 item = ItemState(
                     name=name,
@@ -175,9 +164,8 @@ class ItemExtractionService:
             生成的描述，失败返回None
         """
         try:
-            from config.prompts.item_extraction_prompt import (
-                get_item_description_generation_prompt,
-            )
+            from config.prompts.item_extraction_prompt import \
+                get_item_description_generation_prompt
 
             prompt = get_item_description_generation_prompt(
                 item_name=item_name,
@@ -187,16 +175,16 @@ class ItemExtractionService:
                 language=language,
             )
 
-            sys_prompt = get_system_prompt("story_analyzer", language)
+            sys_prompt = self._get_system_prompt("story_analyzer", language)
 
-            response = self.ai_client.call(
+            response = self._call_ai(
                 system_prompt=sys_prompt,
                 user_prompt=prompt,
                 temperature=0.7,
                 max_tokens=1024,
             )
 
-            data = extract_json(response)
+            data = self._parse_json_response(response)
             if data and "description" in data:
                 return data["description"]
 

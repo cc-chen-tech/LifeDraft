@@ -2,13 +2,10 @@
 
 import pytest
 
-from src.game.relationship_events import (
-    RELATIONSHIP_EVENTS,
-    EventCategory,
-    RelationshipEventDef,
-    get_event_by_type,
-    get_events_by_category,
-)
+from src.game.relationship_events import (RELATIONSHIP_EVENTS, EventCategory,
+                                          RelationshipEventDef,
+                                          get_event_by_type,
+                                          get_events_by_category)
 
 
 class TestRelationshipEventDef:

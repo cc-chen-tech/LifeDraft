@@ -1,43 +1,35 @@
 """Image generation router - 图片生成API路由"""
 
 import logging
-from typing import Optional
+from typing import Generator, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import Response as FastAPIResponse
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user, get_current_user_optional, get_db
-from src.api.schemas import (
-    BatchGenerateCharactersRequest,
-    GenerateImageRequest,
-    GenerateOpeningIllustrationRequest,
-    GenerateRoundSceneRequest,
-    ImageListResponse,
-    ImageResponse,
-    MessageResponse,
-    OpeningIllustrationResponse,
-    RegenerateFreshImageRequest,
-    RegenerateImageRequest,
-    RegenerateOpeningIllustrationRequest,
-    RegenerateRoundSceneRequest,
-    RoundSceneResponse,
-)
+from src.api.schemas import (BatchGenerateCharactersRequest,
+                             GenerateImageRequest,
+                             GenerateOpeningIllustrationRequest,
+                             GenerateRoundSceneRequest, ImageListResponse,
+                             ImageResponse, MessageResponse,
+                             OpeningIllustrationResponse,
+                             RegenerateFreshImageRequest,
+                             RegenerateImageRequest,
+                             RegenerateOpeningIllustrationRequest,
+                             RegenerateRoundSceneRequest, RoundSceneResponse)
 from src.database.models import Game
 from src.database.models import Image as ImageModel
 from src.database.models import SessionLocal, User
-from src.services.image_service import (
-    ImageContentError,
-    ImageService,
-    ImageServiceError,
-)
+from src.services.image_service import (ImageContentError, ImageService,
+                                        ImageServiceError)
 from src.services.image_storage import ImageStorageError, ImageStorageService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def get_session() -> Session:
+def get_session() -> Generator[Session, None, None]:
     """Get a SQLAlchemy session for image operations."""
     db = SessionLocal()
     try:
@@ -94,7 +86,7 @@ def verify_image_ownership(db: Session, image_id: int, user_id: int) -> ImageMod
         raise HTTPException(status_code=404, detail="图片不存在")
 
     # 验证游戏归属权
-    verify_game_ownership(db, image.game_id, user_id)
+    verify_game_ownership(db, int(image.game_id), user_id)  # type: ignore[arg-type]
 
     return image
 
@@ -140,14 +132,14 @@ async def generate_image(
             return ImageListResponse(
                 images=[
                     ImageResponse(
-                        image_id=img.image_id,
-                        game_id=img.game_id,
-                        image_type=img.image_type,
-                        entity_name=img.entity_name,
-                        entity_key=img.entity_key,
+                        image_id=int(img.image_id),  # type: ignore[arg-type]
+                        game_id=int(img.game_id),  # type: ignore[arg-type]
+                        image_type=str(img.image_type),  # type: ignore[arg-type]
+                        entity_name=str(img.entity_name),  # type: ignore[arg-type]
+                        entity_key=str(img.entity_key) if img.entity_key else None,  # type: ignore[arg-type]
                         image_url=service.get_image_url(img),
-                        prompt_used=img.prompt_text,
-                        version=img.version,
+                        prompt_used=str(img.prompt_text),  # type: ignore[arg-type]
+                        version=int(img.version),  # type: ignore[arg-type]
                         created_at=(
                             img.created_at.isoformat() if img.created_at else None
                         ),
@@ -167,14 +159,14 @@ async def generate_image(
             return ImageListResponse(
                 images=[
                     ImageResponse(
-                        image_id=image_model.image_id,
-                        game_id=image_model.game_id,
-                        image_type=image_model.image_type,
-                        entity_name=image_model.entity_name,
-                        entity_key=image_model.entity_key,
+                        image_id=int(image_model.image_id),  # type: ignore[arg-type]
+                        game_id=int(image_model.game_id),  # type: ignore[arg-type]
+                        image_type=str(image_model.image_type),  # type: ignore[arg-type]
+                        entity_name=str(image_model.entity_name),  # type: ignore[arg-type]
+                        entity_key=str(image_model.entity_key) if image_model.entity_key else None,  # type: ignore[arg-type]
                         image_url=service.get_image_url(image_model),
-                        prompt_used=image_model.prompt_text,
-                        version=image_model.version,
+                        prompt_used=str(image_model.prompt_text),  # type: ignore[arg-type]
+                        version=int(image_model.version),  # type: ignore[arg-type]
                         created_at=(
                             image_model.created_at.isoformat()
                             if image_model.created_at
@@ -195,14 +187,14 @@ async def generate_image(
             return ImageListResponse(
                 images=[
                     ImageResponse(
-                        image_id=image_model.image_id,
-                        game_id=image_model.game_id,
-                        image_type=image_model.image_type,
-                        entity_name=image_model.entity_name,
-                        entity_key=image_model.entity_key,
+                        image_id=int(image_model.image_id),  # type: ignore[arg-type]
+                        game_id=int(image_model.game_id),  # type: ignore[arg-type]
+                        image_type=str(image_model.image_type),  # type: ignore[arg-type]
+                        entity_name=str(image_model.entity_name),  # type: ignore[arg-type]
+                        entity_key=str(image_model.entity_key) if image_model.entity_key else None,  # type: ignore[arg-type]
                         image_url=service.get_image_url(image_model),
-                        prompt_used=image_model.prompt_text,
-                        version=image_model.version,
+                        prompt_used=str(image_model.prompt_text),  # type: ignore[arg-type]
+                        version=int(image_model.version),  # type: ignore[arg-type]
                         created_at=(
                             image_model.created_at.isoformat()
                             if image_model.created_at
@@ -228,8 +220,11 @@ async def generate_image(
     except ImageServiceError as e:
         logger.error(f"Image generation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    except (ValueError, TypeError, KeyError) as e:
+        logger.warning(f"Invalid data in generate_image: {e}")
+        raise HTTPException(status_code=400, detail=f"参数错误: {e}")
     except Exception as e:
-        logger.error(f"Unexpected error in generate_image: {e}")
+        logger.exception(f"Unexpected error in generate_image: {e}")
         raise HTTPException(status_code=500, detail=f"图片生成失败: {e}")
 
 
@@ -351,14 +346,14 @@ async def batch_generate_character_images(
             for img in image_models:
                 all_images.append(
                     ImageResponse(
-                        image_id=img.image_id,
-                        game_id=img.game_id,
-                        image_type=img.image_type,
-                        entity_name=img.entity_name,
-                        entity_key=img.entity_key,
+                        image_id=int(img.image_id),  # type: ignore[arg-type]
+                        game_id=int(img.game_id),  # type: ignore[arg-type]
+                        image_type=str(img.image_type),  # type: ignore[arg-type]
+                        entity_name=str(img.entity_name),  # type: ignore[arg-type]
+                        entity_key=str(img.entity_key) if img.entity_key else None,  # type: ignore[arg-type]
                         image_url=service.get_image_url(img),
-                        prompt_used=img.prompt_text,
-                        version=img.version,
+                        prompt_used=str(img.prompt_text),  # type: ignore[arg-type]
+                        version=int(img.version),  # type: ignore[arg-type]
                         created_at=(
                             img.created_at.isoformat() if img.created_at else None
                         ),
@@ -368,6 +363,9 @@ async def batch_generate_character_images(
         except ImageContentError as e:
             logger.warning(f"Content inspection failed for {char['name']}: {e}")
             # 跳过这个人物，继续生成其他人物
+            continue
+        except (ValueError, TypeError, KeyError) as e:
+            logger.warning(f"Invalid data generating image for {char['name']}: {e}")
             continue
         except Exception as e:
             error_str = str(e)
@@ -399,14 +397,14 @@ async def batch_generate_character_images(
                     for img in image_models:
                         all_images.append(
                             ImageResponse(
-                                image_id=img.image_id,
-                                game_id=img.game_id,
-                                image_type=img.image_type,
-                                entity_name=img.entity_name,
-                                entity_key=img.entity_key,
+                                image_id=int(img.image_id),  # type: ignore[arg-type]
+                                game_id=int(img.game_id),  # type: ignore[arg-type]
+                                image_type=str(img.image_type),  # type: ignore[arg-type]
+                                entity_name=str(img.entity_name),  # type: ignore[arg-type]
+                                entity_key=str(img.entity_key) if img.entity_key else None,  # type: ignore[arg-type]
                                 image_url=service.get_image_url(img),
-                                prompt_used=img.prompt_text,
-                                version=img.version,
+                                prompt_used=str(img.prompt_text),  # type: ignore[arg-type]
+                                version=int(img.version),  # type: ignore[arg-type]
                                 created_at=(
                                     img.created_at.isoformat()
                                     if img.created_at
@@ -416,8 +414,12 @@ async def batch_generate_character_images(
                         )
                     logger.info(f"Retry succeeded for {char['name']}")
                     continue
+                except (OSError, IOError) as retry_err:
+                    logger.error(f"Retry IO error for {char['name']}: {retry_err}")
                 except Exception as retry_err:
-                    logger.error(f"Retry also failed for {char['name']}: {retry_err}")
+                    logger.exception(
+                        f"Retry unexpected error for {char['name']}: {retry_err}"
+                    )
 
             logger.error(f"Failed to generate image for {char['name']}: {e}")
             # 跳过这个人物，继续生成其他人物
@@ -464,11 +466,11 @@ async def generate_opening_illustration(
         )
 
         return OpeningIllustrationResponse(
-            image_id=image_model.image_id,
-            game_id=image_model.game_id,
+            image_id=int(image_model.image_id),  # type: ignore[arg-type]
+            game_id=int(image_model.game_id),  # type: ignore[arg-type]
             image_url=service.get_image_url(image_model),
             scene_description=image_model.metadata_json.get("scene_description", ""),
-            prompt_used=image_model.prompt_text,
+            prompt_used=str(image_model.prompt_text),  # type: ignore[arg-type]
             created_at=(
                 image_model.created_at.isoformat() if image_model.created_at else None
             ),
@@ -483,8 +485,11 @@ async def generate_opening_illustration(
     except ImageServiceError as e:
         logger.error(f"Opening illustration generation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    except (ValueError, TypeError, KeyError) as e:
+        logger.warning(f"Invalid data in generate_opening_illustration: {e}")
+        raise HTTPException(status_code=400, detail=f"参数错误: {e}")
     except Exception as e:
-        logger.error(f"Unexpected error in generate_opening_illustration: {e}")
+        logger.exception(f"Unexpected error in generate_opening_illustration: {e}")
         raise HTTPException(status_code=500, detail=f"生成开场插画失败: {e}")
 
 
@@ -524,11 +529,11 @@ async def regenerate_opening_illustration(
         )
 
         return OpeningIllustrationResponse(
-            image_id=image_model.image_id,
-            game_id=image_model.game_id,
+            image_id=int(image_model.image_id),  # type: ignore[arg-type]
+            game_id=int(image_model.game_id),  # type: ignore[arg-type]
             image_url=service.get_image_url(image_model),
             scene_description=image_model.metadata_json.get("scene_description", ""),
-            prompt_used=image_model.prompt_text,
+            prompt_used=str(image_model.prompt_text),  # type: ignore[arg-type]
             created_at=(
                 image_model.created_at.isoformat() if image_model.created_at else None
             ),
@@ -543,8 +548,11 @@ async def regenerate_opening_illustration(
     except ImageServiceError as e:
         logger.error(f"Opening illustration regeneration failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    except (ValueError, TypeError, KeyError) as e:
+        logger.warning(f"Invalid data in regenerate_opening_illustration: {e}")
+        raise HTTPException(status_code=400, detail=f"参数错误: {e}")
     except Exception as e:
-        logger.error(f"Unexpected error in regenerate_opening_illustration: {e}")
+        logger.exception(f"Unexpected error in regenerate_opening_illustration: {e}")
         raise HTTPException(status_code=500, detail=f"重新生成开场插画失败: {e}")
 
 
@@ -579,14 +587,14 @@ async def regenerate_image(
         return ImageListResponse(
             images=[
                 ImageResponse(
-                    image_id=img.image_id,
-                    game_id=img.game_id,
-                    image_type=img.image_type,
-                    entity_name=img.entity_name,
-                    entity_key=img.entity_key,
+                    image_id=int(img.image_id),  # type: ignore[arg-type]
+                    game_id=int(img.game_id),  # type: ignore[arg-type]
+                    image_type=str(img.image_type),  # type: ignore[arg-type]
+                    entity_name=str(img.entity_name),  # type: ignore[arg-type]
+                    entity_key=str(img.entity_key) if img.entity_key else None,  # type: ignore[arg-type]
                     image_url=service.get_image_url(img),
-                    prompt_used=img.prompt_text,
-                    version=img.version,
+                    prompt_used=str(img.prompt_text),  # type: ignore[arg-type]
+                    version=int(img.version),  # type: ignore[arg-type]
                     created_at=img.created_at.isoformat() if img.created_at else None,
                 )
                 for img in image_models
@@ -604,8 +612,11 @@ async def regenerate_image(
     except ImageServiceError as e:
         logger.error(f"Image regeneration failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    except (ValueError, TypeError, KeyError) as e:
+        logger.warning(f"Invalid data in regenerate_image: {e}")
+        raise HTTPException(status_code=400, detail=f"参数错误: {e}")
     except Exception as e:
-        logger.error(f"Unexpected error in regenerate_image: {e}")
+        logger.exception(f"Unexpected error in regenerate_image: {e}")
         raise HTTPException(status_code=500, detail=f"图片重新生成失败: {e}")
 
 
@@ -642,14 +653,14 @@ async def regenerate_fresh_image(
         return ImageListResponse(
             images=[
                 ImageResponse(
-                    image_id=img.image_id,
-                    game_id=img.game_id,
-                    image_type=img.image_type,
-                    entity_name=img.entity_name,
-                    entity_key=img.entity_key,
+                    image_id=int(img.image_id),  # type: ignore[arg-type]
+                    game_id=int(img.game_id),  # type: ignore[arg-type]
+                    image_type=str(img.image_type),  # type: ignore[arg-type]
+                    entity_name=str(img.entity_name),  # type: ignore[arg-type]
+                    entity_key=str(img.entity_key) if img.entity_key else None,  # type: ignore[arg-type]
                     image_url=service.get_image_url(img),
-                    prompt_used=img.prompt_text,
-                    version=img.version,
+                    prompt_used=str(img.prompt_text),  # type: ignore[arg-type]
+                    version=int(img.version),  # type: ignore[arg-type]
                     created_at=img.created_at.isoformat() if img.created_at else None,
                 )
                 for img in image_models
@@ -667,8 +678,11 @@ async def regenerate_fresh_image(
     except ImageServiceError as e:
         logger.error(f"Fresh image regeneration failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    except (ValueError, TypeError, KeyError) as e:
+        logger.warning(f"Invalid data in regenerate_fresh_image: {e}")
+        raise HTTPException(status_code=400, detail=f"参数错误: {e}")
     except Exception as e:
-        logger.error(f"Unexpected error in regenerate_fresh_image: {e}")
+        logger.exception(f"Unexpected error in regenerate_fresh_image: {e}")
         raise HTTPException(status_code=500, detail=f"完全重新生成失败: {e}")
 
 
@@ -697,14 +711,14 @@ async def get_game_images(
     return ImageListResponse(
         images=[
             ImageResponse(
-                image_id=img.image_id,
-                game_id=img.game_id,
-                image_type=img.image_type,
-                entity_name=img.entity_name,
-                entity_key=img.entity_key,
+                image_id=int(img.image_id),  # type: ignore[arg-type]
+                game_id=int(img.game_id),  # type: ignore[arg-type]
+                image_type=str(img.image_type),  # type: ignore[arg-type]
+                entity_name=str(img.entity_name),  # type: ignore[arg-type]
+                entity_key=str(img.entity_key) if img.entity_key else None,  # type: ignore[arg-type]
                 image_url=service.get_image_url(img),
-                prompt_used=img.prompt_text,
-                version=img.version,
+                prompt_used=str(img.prompt_text),  # type: ignore[arg-type]
+                version=int(img.version),  # type: ignore[arg-type]
                 created_at=img.created_at.isoformat() if img.created_at else None,
             )
             for img in images
@@ -773,8 +787,14 @@ async def get_image_file(
     except ImageStorageError as e:
         logger.error(f"Failed to get image file: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    except FileNotFoundError as e:
+        logger.warning(f"Image file not found: {e}")
+        raise HTTPException(status_code=404, detail="图片文件不存在")
+    except (OSError, IOError) as e:
+        logger.error(f"IO error reading image file: {e}")
+        raise HTTPException(status_code=500, detail=f"读取图片失败: {e}")
     except Exception as e:
-        logger.error(f"Unexpected error in get_image_file: {e}")
+        logger.exception(f"Unexpected error in get_image_file: {e}")
         raise HTTPException(status_code=500, detail=f"获取图片失败: {e}")
 
 
@@ -830,7 +850,7 @@ async def get_round_scene_image(
     # 构建图片URL
     storage_service = ImageStorageService()
     image_url = storage_service.get_image_url(
-        scene_image.storage_path, scene_image.storage_type
+        str(scene_image.storage_path), str(scene_image.storage_type)  # type: ignore[arg-type]
     )
 
     return {
@@ -884,7 +904,7 @@ async def get_all_round_scene_images(
                 "round_number": scene.round_number,
                 "stage": scene.stage,  # ★ 返回 stage
                 "image_url": storage_service.get_image_url(
-                    scene.storage_path, scene.storage_type
+                    str(scene.storage_path), str(scene.storage_type)  # type: ignore[arg-type]
                 ),
                 "scene_description": scene.scene_description,
                 "referenced_images": scene.referenced_images,
@@ -938,12 +958,12 @@ async def generate_round_scene_image(
 
         # 构建图片URL
         image_url = service.storage_service.get_image_url(
-            scene_model.storage_path, scene_model.storage_type
+            str(scene_model.storage_path), str(scene_model.storage_type)  # type: ignore[arg-type]
         )
 
         return RoundSceneResponse(
-            scene_id=scene_model.scene_id,
-            game_id=scene_model.game_id,
+            scene_id=int(scene_model.scene_id),  # type: ignore[arg-type]
+            game_id=int(scene_model.game_id),  # type: ignore[arg-type]
             week=scene_model.week,  # ★ 返回 week
             round_number=scene_model.round_number,
             stage=scene_model.stage,  # ★ 返回 stage
@@ -960,8 +980,11 @@ async def generate_round_scene_image(
     except ImageServiceError as e:
         logger.error(f"Image service error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    except (ValueError, TypeError, KeyError) as e:
+        logger.warning(f"Invalid data in generate_round_scene_image: {e}")
+        raise HTTPException(status_code=400, detail=f"参数错误: {e}")
     except Exception as e:
-        logger.error(f"Unexpected error in generate_round_scene_image: {e}")
+        logger.exception(f"Unexpected error in generate_round_scene_image: {e}")
         raise HTTPException(status_code=500, detail=f"生成场景插画失败: {e}")
 
 
@@ -1004,13 +1027,13 @@ async def regenerate_round_scene_image(
 
         # 构建图片URL
         image_url = service.storage_service.get_image_url(
-            scene_model.storage_path, scene_model.storage_type
+            str(scene_model.storage_path), str(scene_model.storage_type)  # type: ignore[arg-type]
         )
 
         # ★ 返回 RoundSceneResponse，包含 week 和 stage
         return RoundSceneResponse(
-            scene_id=scene_model.scene_id,
-            game_id=scene_model.game_id,
+            scene_id=int(scene_model.scene_id),  # type: ignore[arg-type]
+            game_id=int(scene_model.game_id),  # type: ignore[arg-type]
             week=scene_model.week,
             round_number=scene_model.round_number,
             stage=scene_model.stage,
@@ -1027,8 +1050,11 @@ async def regenerate_round_scene_image(
     except ImageServiceError as e:
         logger.error(f"Image service error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    except (ValueError, TypeError, KeyError) as e:
+        logger.warning(f"Invalid data in regenerate_round_scene_image: {e}")
+        raise HTTPException(status_code=400, detail=f"参数错误: {e}")
     except Exception as e:
-        logger.error(f"Unexpected error in regenerate_round_scene_image: {e}")
+        logger.exception(f"Unexpected error in regenerate_round_scene_image: {e}")
         raise HTTPException(status_code=500, detail=f"重新生成场景插画失败: {e}")
 
 
@@ -1047,14 +1073,14 @@ async def get_image(
         raise HTTPException(status_code=404, detail="图片不存在")
 
     return ImageResponse(
-        image_id=image_model.image_id,
-        game_id=image_model.game_id,
-        image_type=image_model.image_type,
-        entity_name=image_model.entity_name,
-        entity_key=image_model.entity_key,
+        image_id=int(image_model.image_id),  # type: ignore[arg-type]
+        game_id=int(image_model.game_id),  # type: ignore[arg-type]
+        image_type=str(image_model.image_type),  # type: ignore[arg-type]
+        entity_name=str(image_model.entity_name),  # type: ignore[arg-type]
+        entity_key=str(image_model.entity_key) if image_model.entity_key else None,  # type: ignore[arg-type]
         image_url=service.get_image_url(image_model),
-        prompt_used=image_model.prompt_text,
-        version=image_model.version,
+        prompt_used=str(image_model.prompt_text),  # type: ignore[arg-type]
+        version=int(image_model.version),  # type: ignore[arg-type]
         created_at=(
             image_model.created_at.isoformat() if image_model.created_at else None
         ),
@@ -1075,7 +1101,7 @@ async def delete_image(
         raise HTTPException(status_code=404, detail="图片不存在")
 
     # 软删除
-    image_model.is_active = False
+    image_model.is_active = False  # type: ignore[assignment]
     db.commit()
 
     return MessageResponse(message="图片已删除", success=True)

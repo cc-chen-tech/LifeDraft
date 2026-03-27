@@ -105,7 +105,7 @@ describe('useImageStore', () => {
         (api.images.generate as jest.Mock).mockResolvedValue({ images: mockImages });
 
         await useImageStore.getState().generatePlayerImage(1, 'TestPlayer', {
-          era: { era_name: '现代' },
+          era: { era: '现代', era_name: '现代' },
           age: { age: 25 },
           gender: { gender: '男' },
         });

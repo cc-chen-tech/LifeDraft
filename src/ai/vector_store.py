@@ -51,8 +51,8 @@ class VectorStore:
             enabled: Whether vector search is enabled
         """
         self.enabled = enabled and ENABLE_VECTOR_SEARCH
-        self._client = None
-        self._collection = None
+        self._client: Any = None
+        self._collection: Any = None
 
         if self.enabled:
             self._initialize_store()
@@ -67,8 +67,9 @@ class VectorStore:
             # Use in-memory or persistent storage based on config
             persist_dir = os.getenv("VECTOR_STORE_PATH", "./data/vector_store")
 
-            self._client = chromadb.PersistentClient(path=persist_dir)
-            self._collection = self._client.get_or_create_collection(
+            client = chromadb.PersistentClient(path=persist_dir)
+            self._client = client
+            self._collection = client.get_or_create_collection(
                 name="story_history", metadata={"hnsw:space": "cosine"}
             )
             logger.info(f"Vector store initialized at {persist_dir}")

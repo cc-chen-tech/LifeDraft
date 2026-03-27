@@ -11,7 +11,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from src.database.models import SessionLocal, Game, User
+from src.database.models import Game, SessionLocal, User
 
 
 class TestRealDatabaseIntegration:

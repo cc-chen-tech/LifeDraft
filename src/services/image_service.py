@@ -11,11 +11,8 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from config.settings import settings
-from src.ai.image_client import (
-    ContentInspectionError,
-    ImageClient,
-    ImageGenerationError,
-)
+from src.ai.image_client import (ContentInspectionError, ImageClient,
+                                 ImageGenerationError)
 from src.database.models import Image as ImageModel
 from src.services.image.character_service import CharacterImageService
 from src.services.image.scene_service import SceneImageService
@@ -50,7 +47,7 @@ class ImageServiceError(Exception):
 class ImageContentError(ImageServiceError):
     """图像内容审核错误"""
 
-    def __init__(self, message: str, original_prompt: str = None):
+    def __init__(self, message: str, original_prompt: Optional[str] = None):
         super().__init__(message)
         self.original_prompt = original_prompt
 
@@ -173,7 +170,7 @@ class ImageService:
             player_image_id=player_image_id,
             stage=stage,
             week=week,
-            get_week_func=self._get_current_week_from_db,
+            get_week_func=self._get_current_week_from_db,  # type: ignore[arg-type]
             get_player_image_func=self._get_player_image_base64,
         )
 
@@ -276,7 +273,8 @@ class ImageService:
             if current_scene:
                 try:
                     image_data = self.storage_service.get_image_data(
-                        current_scene.storage_path, current_scene.storage_type
+                        str(current_scene.storage_path),  # type: ignore[arg-type]
+                        str(current_scene.storage_type) if current_scene.storage_type else None,  # type: ignore[arg-type]
                     )
                     if image_data:
                         import base64
@@ -289,8 +287,10 @@ class ImageService:
                         logger.info(
                             f"Using current scene as reference (base64, {len(image_data)} bytes)"
                         )
+                except (OSError, IOError) as e:
+                    logger.warning(f"IO error getting current scene: {e}")
                 except Exception as e:
-                    logger.warning(f"Failed to get current scene: {e}")
+                    logger.exception(f"Unexpected error getting current scene: {e}")
 
             # 获取玩家形象图片
             if player_image_id:
@@ -343,9 +343,9 @@ class ImageService:
                 game_id=game_id,
                 image_type="round_scene",
                 entity_name=f"{effective_player_name}_round_{round_number}",
-                week=current_week,
+                week=int(current_week) if current_week else None,  # type: ignore[arg-type]
                 round_number=round_number,
-                stage=current_stage,
+                stage=str(current_stage) if current_stage else None,  # type: ignore[arg-type]
             )
 
             # 更新或创建 SceneImage 记录
@@ -357,21 +357,24 @@ class ImageService:
                 if old_storage_path:
                     try:
                         self.storage_service.delete_image(
-                            old_storage_path, current_scene.storage_type
+                            str(old_storage_path),  # type: ignore[arg-type]
+                            str(current_scene.storage_type) if current_scene.storage_type else None,  # type: ignore[arg-type]
                         )
                         logger.info(f"Deleted old scene image: {old_storage_path}")
+                    except (OSError, IOError) as e:
+                        logger.warning(f"IO error deleting old scene image: {e}")
                     except Exception as e:
-                        logger.warning(f"Failed to delete old scene image: {e}")
+                        logger.exception(
+                            f"Unexpected error deleting old scene image: {e}"
+                        )
 
-                current_scene.scene_description = scene_desc
-                current_scene.final_prompt = combined_prompt
-                current_scene.storage_path = storage_path
-                current_scene.storage_type = storage_type
-                current_scene.referenced_images = referenced_image_ids
-                current_scene.importance_score = "high"
-                current_scene.created_at = (
-                    datetime.utcnow()
-                )  # ★ 更新时间戳，用于缓存破坏
+                current_scene.scene_description = scene_desc  # type: ignore[assignment]
+                current_scene.final_prompt = combined_prompt  # type: ignore[assignment]
+                current_scene.storage_path = storage_path  # type: ignore[assignment]
+                current_scene.storage_type = storage_type  # type: ignore[assignment]
+                current_scene.referenced_images = referenced_image_ids  # type: ignore[assignment]
+                current_scene.importance_score = "high"  # type: ignore[assignment]
+                current_scene.created_at = datetime.utcnow()  # type: ignore[assignment]  # ★ 更新时间戳，用于缓存破坏
                 self.db.commit()
                 self.db.refresh(current_scene)
                 logger.info(
@@ -409,8 +412,12 @@ class ImageService:
         except ImageGenerationError as e:
             logger.error(f"Image generation failed: {e}")
             raise ImageServiceError(f"场景插画重新生成失败: {e}")
+        except (ValueError, TypeError, KeyError) as e:
+            logger.warning(f"Invalid data in regenerate_round_scene_image: {e}")
+            self.db.rollback()
+            raise ImageServiceError(f"重新生成场景插画失败（数据错误）: {e}")
         except Exception as e:
-            logger.error(f"Unexpected error in regenerate_round_scene_image: {e}")
+            logger.exception(f"Unexpected error in regenerate_round_scene_image: {e}")
             self.db.rollback()
             raise ImageServiceError(f"重新生成场景插画失败: {e}")
 
@@ -458,15 +465,15 @@ class ImageService:
     def get_image_url(self, image_model: ImageModel) -> str:
         """获取图片访问URL"""
         return self.storage_service.get_image_url(
-            image_model.storage_path,
-            image_model.storage_type,
+            str(image_model.storage_path),  # type: ignore[arg-type]
+            str(image_model.storage_type) if image_model.storage_type else None,  # type: ignore[arg-type]
         )
 
     def get_image_data(self, image_model: ImageModel) -> bytes:
         """获取图片二进制数据"""
         return self.storage_service.get_image_data(
-            image_model.storage_path,
-            image_model.storage_type,
+            str(image_model.storage_path),  # type: ignore[arg-type]
+            str(image_model.storage_type) if image_model.storage_type else None,  # type: ignore[arg-type]
         )
 
     # ==================== 简单生成方法 ====================
@@ -513,8 +520,12 @@ class ImageService:
 
             return image_model
 
+        except (ValueError, TypeError, KeyError) as e:
+            logger.warning(f"Invalid data in generate_location_image: {e}")
+            self.db.rollback()
+            raise ImageServiceError(f"生成地点图片失败（数据错误）: {e}")
         except Exception as e:
-            logger.error(f"Failed to generate location image: {e}")
+            logger.exception(f"Failed to generate location image: {e}")
             self.db.rollback()
             raise ImageServiceError(f"生成地点图片失败: {e}")
 
@@ -560,8 +571,12 @@ class ImageService:
 
             return image_model
 
+        except (ValueError, TypeError, KeyError) as e:
+            logger.warning(f"Invalid data in generate_item_image: {e}")
+            self.db.rollback()
+            raise ImageServiceError(f"生成物品图片失败（数据错误）: {e}")
         except Exception as e:
-            logger.error(f"Failed to generate item image: {e}")
+            logger.exception(f"Failed to generate item image: {e}")
             self.db.rollback()
             raise ImageServiceError(f"生成物品图片失败: {e}")
 
@@ -663,8 +678,12 @@ class ImageService:
                 week = game.initial_state.get("week")
                 if week is not None:
                     return week
+        except (ValueError, TypeError, KeyError) as e:
+            logger.warning(f"Invalid data getting current week from database: {e}")
         except Exception as e:
-            logger.warning(f"Failed to get current week from database: {e}")
+            logger.exception(
+                f"Unexpected error getting current week from database: {e}"
+            )
 
         return 0
 
@@ -737,8 +756,10 @@ class ImageService:
                 mime_type = "image/png" if ext == "png" else "image/jpeg"
                 base64_data = base64.b64encode(image_data).decode("utf-8")
                 return f"data:{mime_type};base64,{base64_data}", player_image.image_id
+            except (OSError, IOError) as e:
+                logger.warning(f"IO error getting player image: {e}")
             except Exception as e:
-                logger.warning(f"Failed to get player image: {e}")
+                logger.exception(f"Unexpected error getting player image: {e}")
 
         return None, None
 
@@ -772,7 +793,13 @@ class ImageService:
                     logger.info(
                         f"Loaded character_settings from Game.initial_state (game_id={game_id})"
                     )
+        except (ValueError, TypeError, KeyError) as e:
+            logger.warning(
+                f"Invalid data loading character_settings from database: {e}"
+            )
         except Exception as e:
-            logger.warning(f"Failed to load character_settings from database: {e}")
+            logger.exception(
+                f"Unexpected error loading character_settings from database: {e}"
+            )
 
         return db_character_settings, db_player_name

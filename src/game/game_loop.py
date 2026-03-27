@@ -50,7 +50,7 @@ class GameLoop(RoundSystemMixin):
         self.ai_generator = ai_generator or EventGenerator()
         self.event_callback = event_callback
         self.result_callback = result_callback
-        self.player_state: Optional[PlayerState] = None
+        self.player_state: Optional[PlayerState] = None  # type: ignore[assignment]
         self.current_event: Optional[GameEvent] = None
         self._generating: bool = False  # Flag to prevent concurrent generation
         self._generating_start_time: Optional[float] = None  # Track when generation started
@@ -65,7 +65,9 @@ class GameLoop(RoundSystemMixin):
         self.world_updater = WorldModelUpdater()
         self.summary_selector = HistoricalSummarySelector()
         self.last_year_start_week = 0  # Track year boundaries
-        self.last_year_start_state = None  # Track state at year start
+        self.last_year_start_state: Optional[dict[str, Any]] = (
+            None  # Track state at year start
+        )
         self.last_event_week = -1  # Track when last event was generated
 
     def start_new_game(self, initial_state: Optional[Dict[str, Any]] = None) -> PlayerState:
@@ -142,7 +144,7 @@ class GameLoop(RoundSystemMixin):
         else:
             self.last_year_start_week = 0
 
-        self.last_year_start_state = self.player_state.to_dict()
+        self.last_year_start_state = self.player_state.to_dict()  # type: ignore[assignment]
 
         # Initialize weekly event tracking
         # Check if we've already made a decision this week

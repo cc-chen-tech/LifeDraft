@@ -205,7 +205,7 @@ def get_consistency_validation_prompt(
     constraints_text: str,
     character_settings: Dict[str, Any],
     language: str,
-    profiled_characters: List[str] = None,
+    profiled_characters: Optional[List[str]] = None,
 ) -> str:
     """
     Build prompt for AI consistency validation.

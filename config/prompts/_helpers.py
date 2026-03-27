@@ -853,71 +853,55 @@ def _build_full_character_context(
     if "era" in character_settings:
         era = character_settings["era"]
         if zh:
-            char_parts.append(
-                f"""时代背景：
+            char_parts.append(f"""时代背景：
 - 年份：{era.get('year', '未知')}年
 - 时代描述：{era.get('era_description', '')}
-- 世界背景：{era.get('world_context', '')}"""
-            )
+- 世界背景：{era.get('world_context', '')}""")
         else:
-            char_parts.append(
-                f"""Era Background:
+            char_parts.append(f"""Era Background:
 - Year: {era.get('year', 'Unknown')} AD
 - Era Description: {era.get('era_description', '')}
-- World Context: {era.get('world_context', '')}"""
-            )
+- World Context: {era.get('world_context', '')}""")
 
     # Age
     if "age" in character_settings:
         age_info = character_settings["age"]
         if zh:
-            char_parts.append(
-                f"""起始年龄：
+            char_parts.append(f"""起始年龄：
 - 年龄：{age_info.get('age', '未知')}岁
-- 年龄阶段：{age_info.get('age_description', '')}"""
-            )
+- 年龄阶段：{age_info.get('age_description', '')}""")
         else:
-            char_parts.append(
-                f"""Starting Age:
+            char_parts.append(f"""Starting Age:
 - Age: {age_info.get('age', 'Unknown')} years old
-- Age Stage: {age_info.get('age_description', '')}"""
-            )
+- Age Stage: {age_info.get('age_description', '')}""")
 
     # Gender
     if "gender" in character_settings:
         gender_info = character_settings["gender"]
         if zh:
-            char_parts.append(
-                f"""性别：
+            char_parts.append(f"""性别：
 - 性别：{gender_info.get('gender', '未知')}
-- 社会背景：{gender_info.get('gender_description', '')}"""
-            )
+- 社会背景：{gender_info.get('gender_description', '')}""")
         else:
-            char_parts.append(
-                f"""Gender:
+            char_parts.append(f"""Gender:
 - Gender: {gender_info.get('gender', 'Unknown')}
-- Social Context: {gender_info.get('gender_description', '')}"""
-            )
+- Social Context: {gender_info.get('gender_description', '')}""")
 
     # World
     if "world" in character_settings:
         world = character_settings["world"]
         if zh:
-            char_parts.append(
-                f"""世界与社会：
+            char_parts.append(f"""世界与社会：
 - 世界描述：{world.get('world_description', '')}
 - 科技水平：{world.get('technology_level', '')}
 - 社会制度：{world.get('social_system', '')}
-- 经济状况：{world.get('economy', '')}"""
-            )
+- 经济状况：{world.get('economy', '')}""")
         else:
-            char_parts.append(
-                f"""World & Society:
+            char_parts.append(f"""World & Society:
 - World Description: {world.get('world_description', '')}
 - Technology Level: {world.get('technology_level', '')}
 - Social System: {world.get('social_system', '')}
-- Economy: {world.get('economy', '')}"""
-            )
+- Economy: {world.get('economy', '')}""")
 
     # Family
     if "family" in character_settings:
@@ -940,32 +924,26 @@ def _build_full_character_context(
         members_str = sep.join(member_names) if member_names else none_str
 
         if zh:
-            char_parts.append(
-                f"""家庭情况：
+            char_parts.append(f"""家庭情况：
 - 家庭描述：{family.get('family_description', '')}
 - 家庭成员：{members_str}
 - 家庭经济：{family.get('family_economy', '')}
-- 家庭关系：{family.get('family_relationships', '')}"""
-            )
+- 家庭关系：{family.get('family_relationships', '')}""")
         else:
-            char_parts.append(
-                f"""Family:
+            char_parts.append(f"""Family:
 - Family Description: {family.get('family_description', '')}
 - Family Members: {members_str}
 - Family Economy: {family.get('family_economy', '')}
-- Family Relationships: {family.get('family_relationships', '')}"""
-            )
+- Family Relationships: {family.get('family_relationships', '')}""")
 
     # Relationships
     if "relationships" in character_settings:
         rel = character_settings["relationships"]
         people_str = _format_people_names(available_people, language)
         if zh:
-            char_parts.append(
-                f"""社会关系：
+            char_parts.append(f"""社会关系：
 - 关系描述：{rel.get('relationships_description', '')}
-- **可用人物列表（包含家人和关键人物，事件中的人物必须来自此列表）**：{people_str}"""
-            )
+- **可用人物列表（包含家人和关键人物，事件中的人物必须来自此列表）**：{people_str}""")
         else:
             char_parts.append(
                 f"""Social Relationships:
@@ -977,25 +955,21 @@ def _build_full_character_context(
     if "traits" in character_settings:
         traits = character_settings["traits"]
         if zh:
-            char_parts.append(
-                f"""个人特点：
+            char_parts.append(f"""个人特点：
 - 特点描述：{traits.get('traits_description', '')}
 - 性格：{traits.get('personality', '')}
 - 能力：{traits.get('abilities', '')}
 - 兴趣：{traits.get('interests', '')}
 - 优点：{traits.get('strengths', '')}
-- 缺点：{traits.get('weaknesses', '')}"""
-            )
+- 缺点：{traits.get('weaknesses', '')}""")
         else:
-            char_parts.append(
-                f"""Personal Traits:
+            char_parts.append(f"""Personal Traits:
 - Traits Description: {traits.get('traits_description', '')}
 - Personality: {traits.get('personality', '')}
 - Abilities: {traits.get('abilities', '')}
 - Interests: {traits.get('interests', '')}
 - Strengths: {traits.get('strengths', '')}
-- Weaknesses: {traits.get('weaknesses', '')}"""
-            )
+- Weaknesses: {traits.get('weaknesses', '')}""")
 
     character_context = "\n".join(char_parts) if char_parts else ""
     return character_context, available_people

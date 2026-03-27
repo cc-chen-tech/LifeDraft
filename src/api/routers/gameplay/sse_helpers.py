@@ -40,7 +40,8 @@ def _trigger_round_illustration_generation(
             from src.database.models import Game
             from src.database.models import Image as ImageModel
             from src.database.models import SessionLocal
-            from src.game.round.illustration_service import RoundIllustrationService
+            from src.game.round.illustration_service import \
+                RoundIllustrationService
             from src.services.image_storage import ImageStorageService
 
             # 创建数据库会话
@@ -180,7 +181,9 @@ def _trigger_round_illustration_generation(
                 db.close()
 
         except Exception as e:
-            logger.error(f"[RoundIllustration] Failed to trigger generation: {e}")
+            logger.exception(
+                f"[RoundIllustration] Unexpected error in generate_illustration: {e}"
+            )
 
     # 在线程池中执行
     _sse_thread_pool.submit(generate_illustration)
@@ -208,7 +211,8 @@ def _ensure_entity_images_exist(
         try:
             from src.ai.image_client import ImageClient
             from src.database.models import SessionLocal
-            from src.game.round.illustration_service import RoundIllustrationService
+            from src.game.round.illustration_service import \
+                RoundIllustrationService
             from src.services.image_storage import ImageStorageService
 
             db = SessionLocal()
@@ -286,9 +290,13 @@ def _ensure_entity_images_exist(
                                 logger.warning(
                                     f"[EntityImages] _generate_entity_image returned None for '{entity_name}'"
                                 )
-                        except Exception as e:
+                        except (OSError, IOError) as e:
                             logger.warning(
-                                f"[EntityImages] Failed to auto-generate {entity_type} image for '{entity_name}': {e}"
+                                f"[EntityImages] IO error generating {entity_type} image for '{entity_name}': {e}"
+                            )
+                        except Exception as e:
+                            logger.exception(
+                                f"[EntityImages] Unexpected error generating {entity_type} image for '{entity_name}': {e}"
                             )
 
                 if generated_count > 0:
@@ -301,7 +309,7 @@ def _ensure_entity_images_exist(
                 db.close()
 
         except Exception as e:
-            logger.error(f"[EntityImages] Failed to ensure entity images: {e}")
+            logger.exception(f"[EntityImages] Unexpected error in ensure_images: {e}")
 
     # 在线程池中执行
     _sse_thread_pool.submit(ensure_images)
@@ -374,8 +382,10 @@ def _prefetch_options(game_loop, game_id: int, session, event) -> None:
             else:
                 logger.warning(f"[Options Prefetch] Failed: no options generated")
 
+        except (ValueError, TypeError, KeyError) as e:
+            logger.warning(f"[Options Prefetch] Data error: {e}")
         except Exception as e:
-            logger.error(f"[Options Prefetch] Error: {e}", exc_info=True)
+            logger.exception(f"[Options Prefetch] Unexpected error: {e}")
         finally:
             if session:
                 session.finish_prefetching_options()
@@ -451,7 +461,11 @@ async def stream_round_event(
                 status_callback=status_cb,
                 session=session,
             )
+        except (ValueError, TypeError, KeyError) as e:
+            logger.warning(f"[stream_round_event] Data error in run(): {e}")
+            error_holder[0] = e
         except Exception as e:
+            logger.exception(f"[stream_round_event] Unexpected error in run(): {e}")
             error_holder[0] = e
         finally:
             if not closed[0] and not loop.is_closed():
@@ -559,8 +573,10 @@ async def stream_round_event(
                 logger.info(
                     f"Auto-saved game state after event generation: game_id={game_id}"
                 )
+        except (OSError, IOError) as e:
+            logger.warning(f"Auto-save IO error after event generation: {e}")
         except Exception as e:
-            logger.warning(f"Auto-save failed after event generation: {e}")
+            logger.exception(f"Auto-save unexpected error after event generation: {e}")
 
         # ★ 异步触发每轮场景插画生成（不阻塞游戏流程）
         # event 阶段的插画在事件生成完成后触发
@@ -568,16 +584,22 @@ async def stream_round_event(
             _trigger_round_illustration_generation(
                 game_loop, game_id, event, stage="event"
             )
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Invalid data for round illustration generation: {e}")
         except Exception as e:
-            logger.warning(f"Failed to trigger round illustration generation: {e}")
+            logger.exception(
+                f"Unexpected error triggering round illustration generation: {e}"
+            )
 
         # ★ 异步触发选项预生成（如果故事已生成但选项未生成）
         # 这优化了断点续传场景：下次加载时选项已缓存，实现零等待
         if event and event.event_description and not event.options:
             try:
                 _prefetch_options(game_loop, game_id, session, event)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid data for prefetch options: {e}")
             except Exception as e:
-                logger.warning(f"Failed to prefetch options: {e}")
+                logger.exception(f"Unexpected error prefetching options: {e}")
     else:
         yield make_sse_event("complete", {"event_description": "", "options": []})
 
@@ -643,7 +665,11 @@ async def stream_choice(
                     stream_callback=stream_cb,
                     status_callback=status_cb,
                 )
+        except (ValueError, TypeError, KeyError) as e:
+            logger.warning(f"[stream_choice] Data error in run(): {e}")
+            error_holder[0] = e
         except Exception as e:
+            logger.exception(f"[stream_choice] Unexpected error in run(): {e}")
             error_holder[0] = e
         finally:
             if not closed[0] and not loop.is_closed():
@@ -722,8 +748,10 @@ async def stream_choice(
             if state:
                 db.save_game_progress(game_id, state)
                 logger.info(f"Auto-saved game state after choice: game_id={game_id}")
+        except (OSError, IOError) as e:
+            logger.warning(f"Auto-save IO error after choice: {e}")
         except Exception as e:
-            logger.warning(f"Auto-save failed after choice: {e}")
+            logger.exception(f"Auto-save unexpected error after choice: {e}")
     else:
         yield make_sse_event("error", {"error": "No result from choice processing"})
 
@@ -880,8 +908,11 @@ async def stream_regenerate(
                     "Failed to generate valid event with options"
                 )
 
+        except (ValueError, TypeError, KeyError) as e:
+            logger.warning(f"[stream_regenerate] Data error: {e}")
+            error_holder[0] = e
         except Exception as e:
-            logger.error(f"Regeneration failed: {e}")
+            logger.exception(f"[stream_regenerate] Unexpected error: {e}")
             error_holder[0] = e
         finally:
             if not closed[0] and not loop.is_closed():
@@ -947,8 +978,10 @@ async def stream_regenerate(
                 logger.info(
                     f"Auto-saved game state after regeneration: game_id={game_id}"
                 )
+        except (OSError, IOError) as e:
+            logger.warning(f"Auto-save IO error after regeneration: {e}")
         except Exception as e:
-            logger.warning(f"Auto-save failed after regeneration: {e}")
+            logger.exception(f"Auto-save unexpected error after regeneration: {e}")
     else:
         yield make_sse_event("complete", {"event_description": "", "options": []})
 
@@ -1020,8 +1053,12 @@ async def stream_rewrite(
                         if hasattr(game_loop.player_state, "to_dict")
                         else dict(game_loop.player_state.__dict__)
                     )
+                except (ValueError, TypeError, KeyError) as e:
+                    logger.warning(f"[Rewrite] Data error building WorldModel: {e}")
                 except Exception as e:
-                    logger.warning(f"[Rewrite] Failed to build WorldModel: {e}")
+                    logger.exception(
+                        f"[Rewrite] Unexpected error building WorldModel: {e}"
+                    )
 
             rewritten_story = game_loop.ai_generator.rewrite_story_segment(
                 full_story=full_story,
@@ -1042,8 +1079,11 @@ async def stream_rewrite(
             else:
                 error_holder[0] = ValueError("Failed to rewrite story")
 
+        except (ValueError, TypeError, KeyError) as e:
+            logger.warning(f"[stream_rewrite] Data error: {e}")
+            error_holder[0] = e
         except Exception as e:
-            logger.error(f"Rewrite failed: {e}")
+            logger.exception(f"[stream_rewrite] Unexpected error: {e}")
             error_holder[0] = e
         finally:
             if not closed[0] and not loop.is_closed():

@@ -6,13 +6,9 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 
 from src.api.deps import get_current_user, get_user_manager
-from src.api.schemas import (
-    FriendInfo,
-    FriendRequestCreate,
-    FriendRequestInfo,
-    FriendRequestRespond,
-    MessageResponse,
-)
+from src.api.schemas import (FriendInfo, FriendRequestCreate,
+                             FriendRequestInfo, FriendRequestRespond,
+                             MessageResponse)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -26,9 +22,11 @@ async def send_friend_request(
     """Send a friend request to another user by public_id."""
     um = get_user_manager()
     result = um.send_friend_request(user_id, req.to_public_id)
-    if "error" in result.lower() or "不能" in result or "已经" in result:
-        raise HTTPException(status_code=400, detail=result)
-    return MessageResponse(message=result)
+    # Handle both str and dict return types for compatibility
+    msg = result.get("message", "") if isinstance(result, dict) else str(result)
+    if "error" in msg.lower() or "不能" in msg or "已经" in msg:
+        raise HTTPException(status_code=400, detail=msg)
+    return MessageResponse(message=msg)
 
 
 @router.post("/respond", response_model=MessageResponse)
@@ -38,10 +36,12 @@ async def respond_to_friend_request(
 ):
     """Accept or reject a friend request."""
     um = get_user_manager()
-    result = um.respond_to_friend_request(req.request_id, user_id, req.accept)
-    if "error" in result.lower() or "无权" in result:
-        raise HTTPException(status_code=400, detail=result)
-    return MessageResponse(message=result)
+    result = um.respond_to_friend_request(user_id, req.request_id, req.accept)
+    # Handle both str and dict return types for compatibility
+    msg = result.get("message", "") if isinstance(result, dict) else str(result)
+    if "error" in msg.lower() or "无权" in msg:
+        raise HTTPException(status_code=400, detail=msg)
+    return MessageResponse(message=msg)
 
 
 @router.get("", response_model=List[FriendInfo])

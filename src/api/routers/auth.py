@@ -7,19 +7,10 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import JSONResponse
 
-from src.api.deps import (
-    JWT_EXPIRE_HOURS,
-    create_token,
-    get_current_user,
-    get_user_manager,
-)
-from src.api.schemas import (
-    AuthResponse,
-    LoginRequest,
-    MessageResponse,
-    RegisterRequest,
-    UserInfo,
-)
+from src.api.deps import (JWT_EXPIRE_HOURS, create_token, get_current_user,
+                          get_user_manager)
+from src.api.schemas import (AuthResponse, LoginRequest, MessageResponse,
+                             RegisterRequest, UserInfo)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -38,10 +29,10 @@ def _set_auth_cookie(response: Response, token: str) -> None:
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
-        max_age=COOKIE_MAX_AGE,
+        max_age=int(COOKIE_MAX_AGE),
         httponly=True,  # 防止XSS攻击
         secure=COOKIE_SECURE,  # HTTPS only in production
-        samesite=COOKIE_SAMESITE,  # CSRF protection
+        samesite=COOKIE_SAMESITE,  # type: ignore[arg-type]  # CSRF protection
         path="/",  # 全站可用
     )
 
@@ -64,16 +55,16 @@ async def register(req: RegisterRequest):
         logger.error(f"Registration failed: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
-    token = create_token(user.user_id)
+    token = create_token(int(user.user_id))  # type: ignore[arg-type]
 
     # 创建响应并设置Cookie
     response = JSONResponse(
         content=AuthResponse(
             token=token,
             user=UserInfo(
-                user_id=user.user_id,
-                public_id=user.public_id,
-                display_name=user.display_name,
+                user_id=int(user.user_id),  # type: ignore[arg-type]
+                public_id=str(user.public_id),  # type: ignore[arg-type]
+                display_name=str(user.display_name) if user.display_name else None,  # type: ignore[arg-type]
                 private_id=private_id,  # Only returned on register!
             ),
         ).model_dump()
@@ -94,16 +85,16 @@ async def login(req: LoginRequest):
             detail="Invalid private ID",
         )
 
-    token = create_token(user.user_id)
+    token = create_token(int(user.user_id))  # type: ignore[arg-type]
 
     # 创建响应并设置Cookie
     response = JSONResponse(
         content=AuthResponse(
             token=token,
             user=UserInfo(
-                user_id=user.user_id,
-                public_id=user.public_id,
-                display_name=user.display_name,
+                user_id=int(user.user_id),  # type: ignore[arg-type]
+                public_id=str(user.public_id),  # type: ignore[arg-type]
+                display_name=str(user.display_name) if user.display_name else None,  # type: ignore[arg-type]
             ),
         ).model_dump()
     )
@@ -120,9 +111,9 @@ async def get_me(user_id: int = Depends(get_current_user)):
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     return UserInfo(
-        user_id=user.user_id,
-        public_id=user.public_id,
-        display_name=user.display_name,
+        user_id=int(user.user_id),  # type: ignore[arg-type]
+        public_id=str(user.public_id),  # type: ignore[arg-type]
+        display_name=str(user.display_name) if user.display_name else None,  # type: ignore[arg-type]
     )
 
 

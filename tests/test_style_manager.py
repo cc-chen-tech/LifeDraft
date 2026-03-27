@@ -3,12 +3,8 @@
 测试颜色调板和视觉风格约束，确保多场景之间的视觉一致性。
 """
 
-from src.services.image.style_manager import (
-    ColorPalette,
-    MoodType,
-    SceneStyleManager,
-    style_manager,
-)
+from src.services.image.style_manager import (ColorPalette, MoodType,
+                                              SceneStyleManager, style_manager)
 
 
 class TestMoodType:

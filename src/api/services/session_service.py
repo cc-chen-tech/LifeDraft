@@ -15,9 +15,9 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException
 
-from src.api.deps import get_db
 from src.api.session_store import GameLoopSession, session_store
 from src.database.models import SessionLocal  # ★ 添加 SessionLocal 导入
+from src.database.singletons import get_game_db
 from src.game.game_loop import GameLoop
 from src.utils.language import detect_language_from_state
 
@@ -92,8 +92,8 @@ class SessionService:
             HTTPException: 404 如果游戏不存在
         """
         try:
-            db = get_db()
-            state_data = db.load_saved_game(game_id, user_id)
+            db = get_game_db()
+            state_data = db.load_saved_game(game_id, user_id)  # type: ignore[arg-type]
 
             if state_data is None:
                 raise HTTPException(
@@ -191,6 +191,8 @@ class SessionService:
 
             try:
                 player_state = game_loop.player_state
+                if player_state is None:
+                    return
                 current_week = player_state.week
                 current_round = player_state.current_round
 
@@ -586,7 +588,8 @@ class SessionService:
         def generate_in_background():
             try:
                 from src.ai.image_client import ImageClient
-                from src.game.round.illustration_service import RoundIllustrationService
+                from src.game.round.illustration_service import \
+                    RoundIllustrationService
                 from src.services.image_storage import ImageStorageService
 
                 # 创建新的数据库会话（在线程中）

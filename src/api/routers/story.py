@@ -1,23 +1,17 @@
 """Story adjustment router — rewrite segment, regenerate full story, assistant chat."""
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from src.api.deps import get_current_user_optional
-from src.api.routers.gameplay.sse_helpers import (
-    return_sse_error,
-    stream_regenerate,
-    stream_rewrite,
-)
-from src.api.schemas import (
-    RegenerateStoryRequest,
-    RewriteStoryRequest,
-    StoryChatRequest,
-    StoryChatResponse,
-)
+from src.api.routers.gameplay.sse_helpers import (return_sse_error,
+                                                  stream_regenerate,
+                                                  stream_rewrite)
+from src.api.schemas import (RegenerateStoryRequest, RewriteStoryRequest,
+                             StoryChatRequest, StoryChatResponse)
 from src.api.services.session_service import session_service
 from src.api.session_store import session_store
 
@@ -228,7 +222,7 @@ async def story_assistant_chat(
     game_loop = session.game_loop
 
     # Build context
-    character_settings = {}
+    character_settings: dict[str, Any] = {}
     current_story = "暂无"
     if game_loop.player_state:
         character_settings = game_loop.player_state.character_settings or {}

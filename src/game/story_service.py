@@ -5,6 +5,8 @@ import logging
 from typing import Any, Callable, Dict, List, Optional
 
 from src.ai.generator import EventGenerator
+from src.ai.prompt_sanitizer import (sanitize_custom_action,
+                                     sanitize_user_choice)
 from src.ai.system_prompts import get_system_prompt
 
 logger = logging.getLogger(__name__)
@@ -49,15 +51,18 @@ class StoryService:
         Returns:
             A 500-800 character story continuation
         """
+        # 清洗用户选择，防止 prompt 注入
+        sanitized_chosen_option = sanitize_user_choice(chosen_option)
+
         from config.prompts import get_result_generation_prompt
 
         try:
             prompt = get_result_generation_prompt(
                 event_description=event_description,
-                chosen_option=chosen_option,
+                chosen_option=sanitized_chosen_option,
                 effects=effects,
                 language=self.language,
-                character_settings=character_settings,
+                character_settings=character_settings or {},  # type: ignore[arg-type]
             )
 
             sys_prompt = get_system_prompt("story_continuation", self.language)
@@ -86,10 +91,20 @@ class StoryService:
 
             return continuation
 
-        except Exception as e:
+        except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
             logger.warning(f"Failed to generate story continuation: {e}")
-            fallback = self.generate_fallback_continuation(chosen_option, effects)
+            fallback = self.generate_fallback_continuation(
+                sanitized_chosen_option, effects
+            )
             # If streaming was requested, emit fallback text as a single chunk
+            if stream_callback:
+                stream_callback(fallback)
+            return fallback
+        except Exception as e:
+            logger.exception(f"Unexpected error generating story continuation: {e}")
+            fallback = self.generate_fallback_continuation(
+                sanitized_chosen_option, effects
+            )
             if stream_callback:
                 stream_callback(fallback)
             return fallback
@@ -182,8 +197,13 @@ class StoryService:
                 if ps_obj:
                     world_model = WorldModel.from_player_state(ps_obj)
                     logger.debug(f"[StoryContinuation] Built WorldModel for validation")
-            except Exception as e:
+            except (ImportError, ValueError, TypeError, KeyError) as e:
                 logger.warning(f"[StoryContinuation] Failed to build WorldModel: {e}")
+                return continuation
+            except Exception as e:
+                logger.exception(
+                    f"[StoryContinuation] Unexpected error building WorldModel: {e}"
+                )
                 return continuation
 
             if not world_model:
@@ -244,8 +264,13 @@ class StoryService:
 
             return continuation
 
+        except (ImportError, ValueError, TypeError, KeyError) as e:
+            logger.warning(f"[StoryContinuation] Validation/retry failed: {e}")
+            return continuation
         except Exception as e:
-            logger.error(f"[StoryContinuation] Validation/retry failed: {e}")
+            logger.exception(
+                f"[StoryContinuation] Unexpected error during validation/retry: {e}"
+            )
             return continuation
 
     def compress_story(
@@ -319,35 +344,24 @@ class StoryService:
         Returns:
             Dictionary with effects: {"energy": int, "mood": int, "knowledge": int, "wealth": int}
         """
+        from config.prompts.story_prompts import (
+            get_custom_choice_effects_prompt, get_custom_choice_user_prompt)
+
         current_state = current_state or {}
 
-        system_prompt = f"""你是一个人生模拟游戏的叙事引擎。玩家选择了一个自定义的行动，请根据当前情境和玩家的选择，生成合理的属性变化。
+        system_prompt = get_custom_choice_effects_prompt(
+            character_settings=character_settings or {},
+            current_state=current_state,
+            language=self.language,
+        )
 
-角色设定：{json.dumps(character_settings or {{}}, ensure_ascii=False)}
-当前状态：精力={current_state.get('energy', 50)}, 情绪={current_state.get('mood', 50)}, 学识={current_state.get('knowledge', 50)}, 财富={current_state.get('wealth', 1000)}
-
-属性变化范围说明：
-- energy(精力): -20到20，负值表示累了，正值表示休息恢复
-- mood(情绪): -20到20，负值表示不开心，正值表示开心
-- knowledge(学识): -10到15，正值表示学到东西
-- wealth(财富): -1000到1000，平时变化应该较小
-
-注意：属性变化应该合理，不要过于极端。大多数情况下变化应该在 -10 到 10 之间。
-
-请仅返回JSON格式的属性变化：
-{{
-  "energy": 0,
-  "mood": 0,
-  "knowledge": 0,
-  "wealth": 0
-}}"""
-
-        user_prompt = f"""当前情境：
-{event_description}
-
-玩家的选择：{custom_text}
-
-请生成合理的属性变化。"""
+        # 清洗用户自定义输入，防止 prompt 注入
+        sanitized_custom_text = sanitize_custom_action(custom_text)
+        user_prompt = get_custom_choice_user_prompt(
+            event_description=event_description,
+            custom_text=sanitized_custom_text,
+            language=self.language,
+        )
 
         last_error = None
         for attempt in range(2):
@@ -373,9 +387,12 @@ class StoryService:
                     return effects
                 last_error = f"JSON解析失败或缺少属性字段，返回keys: {list(result.keys()) if result else 'None'}"
                 logger.warning(f"Attempt {attempt + 1}/2: {last_error}")
-            except Exception as e:
+            except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
                 last_error = str(e)
                 logger.warning(f"Attempt {attempt + 1}/2 failed: {e}")
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(f"Attempt {attempt + 1}/2 failed (unexpected): {e}")
 
         logger.error(
             f"Failed to generate custom choice effects after 2 attempts, using fallback"
@@ -401,40 +418,24 @@ class StoryService:
         Returns:
             Dictionary with 'effects' and 'story_continuation'
         """
+        from config.prompts.story_prompts import (
+            get_custom_choice_result_prompt, get_custom_choice_user_prompt)
+
         current_state = current_state or {}
 
-        system_prompt = f"""你是一个人生模拟游戏的叙事引擎。玩家选择了一个自定义的行动，你需要：
-1. 根据当前情境和玩家的选择，生成合理的故事续写（200-400字）
-2. 生成合理的属性变化（必须符合逻辑）
+        system_prompt = get_custom_choice_result_prompt(
+            character_settings=character_settings or {},
+            current_state=current_state,
+            language=self.language,
+        )
 
-角色设定：{json.dumps(character_settings or {}, ensure_ascii=False)}
-当前状态：精力={current_state.get('energy', 50)}, 情绪={current_state.get('mood', 50)}, 学识={current_state.get('knowledge', 50)}, 财富={current_state.get('wealth', 1000)}
-
-属性变化范围说明：
-- energy(精力): -20到20，负值表示累了，正值表示休息恢复
-- mood(情绪): -20到20，负值表示不开心，正值表示开心
-- knowledge(学识): -10到15，正值表示学到东西
-- wealth(财富): -1000到1000，平时变化应该较小
-
-注意：属性变化应该合理，不要过于极端。大多数情况下变化应该在 -10 到 10 之间。
-
-请返回JSON格式：
-{{
-  "story_continuation": "故事续写...",
-  "effects": {{
-    "energy": 0,
-    "mood": 0,
-    "knowledge": 0,
-    "wealth": 0
-  }}
-}}"""
-
-        user_prompt = f"""当前情境：
-{event_description}
-
-玩家的选择：{custom_text}
-
-请生成合理的结果。"""
+        # 清洗用户自定义输入，防止 prompt 注入
+        sanitized_custom_text = sanitize_custom_action(custom_text)
+        user_prompt = get_custom_choice_user_prompt(
+            event_description=event_description,
+            custom_text=sanitized_custom_text,
+            language=self.language,
+        )
 
         last_error = None
         for attempt in range(2):
@@ -453,9 +454,12 @@ class StoryService:
                     return result
                 last_error = "JSON解析失败，未能提取有效结果"
                 logger.warning(f"Attempt {attempt + 1}/2: {last_error}")
-            except Exception as e:
+            except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
                 last_error = str(e)
                 logger.warning(f"Attempt {attempt + 1}/2 failed: {e}")
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(f"Attempt {attempt + 1}/2 failed (unexpected): {e}")
 
         logger.error(
             f"Failed to generate custom choice result after 2 attempts, using fallback"

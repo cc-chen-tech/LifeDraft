@@ -5,6 +5,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+# Unit tests - no external dependencies
+pytestmark = pytest.mark.unit
+
 
 class TestPathTraversalPrevention:
     """测试路径遍历防护函数"""
@@ -111,6 +114,17 @@ class TestPathTraversalPrevention:
 class TestImageEndpointSecurity:
     """测试图片端点的安全性（API 级别）"""
 
+    @pytest.fixture(autouse=True)
+    def reset_app_state(self):
+        """每个测试前后重置 app 状态，避免测试间状态泄漏"""
+        from src.api.main import app
+
+        # 测试前清理
+        app.dependency_overrides.clear()
+        yield
+        # 测试后清理
+        app.dependency_overrides.clear()
+
     def test_traversal_in_url_returns_error(self, client, mock_auth):
         """URL 中包含路径遍历时应返回 403 或 400"""
         response = client.get(
@@ -119,16 +133,41 @@ class TestImageEndpointSecurity:
         )
         assert response.status_code in (400, 403, 404, 422)
 
-    def test_valid_image_path_format(self, client, mock_auth, safe_image_dir):
-        """合法的图片路径格式应能被接受（返回 401 表示路径有效但未授权）"""
-        from unittest.mock import MagicMock, PropertyMock, patch
+    def test_valid_image_path_format(self, safe_image_dir, tmp_path):
+        """合法的图片路径格式不应触发安全拒绝（403）或参数错误（400/422）"""
+        from unittest.mock import MagicMock, patch
 
-        # 测试目的：验证路径格式有效，不会触发安全错误 (403)
-        # 返回 401 表示路径有效但需要认证，这是预期行为
-        response = client.get(
-            "/api/images/file/1/character/test.png",
-            headers={"Authorization": "Bearer test_token"},
-        )
-        # 401 = 路径有效但未授权，404 = 文件不存在，200 = 成功
-        # 不应该是 403 (访问拒绝/路径遮历) 或 422 (参数错误)
-        assert response.status_code in [200, 401, 404], f"Expected 200/401/404 for valid path, got {response.status_code}"
+        from fastapi.testclient import TestClient
+
+        from src.api.deps import get_current_user
+        from src.api.main import app
+
+        # 创建独立的 mock，确保测试隔离
+        mock_storage = MagicMock()
+        mock_storage.local_path = safe_image_dir
+        mock_storage.image_exists.return_value = True
+        mock_storage.get_image_data.return_value = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+
+        # 使用 app.dependency_overrides 覆盖认证依赖和存储服务
+        app.dependency_overrides[get_current_user] = lambda: 1
+
+        try:
+            with patch("src.api.routers.images.ImageStorageService") as MockStorage:
+                MockStorage.return_value = mock_storage
+
+                # 创建新的 TestClient 以确保依赖覆盖生效
+                with TestClient(app) as test_client:
+                    response = test_client.get(
+                        "/api/images/file/1/character/test.png",
+                        headers={"Authorization": "Bearer test_token"},
+                    )
+                    # 核心断言：合法路径不应触发安全拒绝(403)或参数错误(400/422)
+                    # 401 是认证问题，不是安全问题，200 表示路径验证通过
+                    assert response.status_code not in (
+                        400,
+                        403,
+                        422,
+                    ), f"合法路径不应触发安全拒绝，实际状态码: {response.status_code}"
+        finally:
+            # 清理依赖覆盖
+            app.dependency_overrides.clear()

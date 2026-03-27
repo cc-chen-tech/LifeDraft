@@ -119,7 +119,7 @@ class UserManager:
         user = self.db.query(User).filter(User.private_id == private_id).first()
 
         if user:
-            user.last_login = datetime.utcnow()
+            user.last_login = datetime.utcnow()  # type: ignore[assignment]
             self.db.commit()
             logger.info(f"User logged in: public_id={user.public_id}")
         else:
@@ -157,7 +157,7 @@ class UserManager:
         """
         user = self.get_user_by_id(user_id)
         if user:
-            user.display_name = display_name[:50]  # 限制长度
+            user.display_name = display_name[:50]  # type: ignore[assignment]  # 限制长度
             self.db.commit()
             return True
         return False
@@ -223,8 +223,8 @@ class UserManager:
                     }
                 else:
                     # 对方先发的请求，自动接受
-                    existing.status = "accepted"
-                    existing.updated_at = datetime.utcnow()
+                    existing.status = "accepted"  # type: ignore[assignment]
+                    existing.updated_at = datetime.utcnow()  # type: ignore[assignment]
                     self.db.commit()
                     return {
                         "success": True,
@@ -233,10 +233,10 @@ class UserManager:
                     }
             elif existing.status == "rejected":
                 # 重新发送请求
-                existing.status = "pending"
-                existing.user_id = user_id
-                existing.friend_id = friend.user_id
-                existing.updated_at = datetime.utcnow()
+                existing.status = "pending"  # type: ignore[assignment]
+                existing.user_id = user_id  # type: ignore[assignment]
+                existing.friend_id = friend.user_id  # type: ignore[assignment]
+                existing.updated_at = datetime.utcnow()  # type: ignore[assignment]
                 self.db.commit()
                 return {
                     "success": True,
@@ -282,8 +282,8 @@ class UserManager:
         if not friendship:
             return {"success": False, "message": "好友请求不存在或已处理"}
 
-        friendship.status = "accepted" if accept else "rejected"
-        friendship.updated_at = datetime.utcnow()
+        friendship.status = "accepted" if accept else "rejected"  # type: ignore[assignment]
+        friendship.updated_at = datetime.utcnow()  # type: ignore[assignment]
         self.db.commit()
 
         action = "接受" if accept else "拒绝"
@@ -313,7 +313,7 @@ class UserManager:
         friends = []
         for f in friendships:
             friend_id = f.friend_id if f.user_id == user_id else f.user_id
-            friend = self.get_user_by_id(friend_id)
+            friend = self.get_user_by_id(int(friend_id))  # type: ignore[arg-type]
             if friend:
                 friends.append(friend)
 
@@ -337,7 +337,7 @@ class UserManager:
 
         result = []
         for req in requests:
-            sender = self.get_user_by_id(req.user_id)
+            sender = self.get_user_by_id(int(req.user_id))  # type: ignore[arg-type]
             if sender:
                 result.append(
                     {
@@ -464,7 +464,7 @@ class UserManager:
         )
 
         if game:
-            game.is_public = is_public
+            game.is_public = is_public  # type: ignore[assignment]
             self.db.commit()
             return True
         return False

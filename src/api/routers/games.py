@@ -7,17 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from src.api.deps import get_current_user, get_current_user_optional, get_db
 from src.api.schemas import CreateGameRequest  # 时间回溯存档系统
-from src.api.schemas import (
-    CreateSavePointRequest,
-    GameListItem,
-    GameStateResponse,
-    MessageResponse,
-    SaveGameResponse,
-    SavePointItem,
-    SavePointListResponse,
-    StateSnapshotItem,
-    StateTimelineResponse,
-)
+from src.api.schemas import (CreateSavePointRequest, GameListItem,
+                             GameStateResponse, MessageResponse,
+                             SaveGameResponse, SavePointItem,
+                             SavePointListResponse, StateSnapshotItem,
+                             StateTimelineResponse)
 from src.api.services.session_service import session_service
 from src.api.session_store import session_store
 from src.game.game_initializer import GameInitializer
@@ -378,14 +372,14 @@ async def load_save_point(
     game_loop.load_game(state_data)
 
     # 存储到会话
-    session_store.put(game_id, game_loop, user_id=user_id, language=language)
+    session_store.put(game_id, game_loop, user_id=user_id, language=language)  # type: ignore[arg-type]
 
     # 更新活跃游戏
-    db.set_active_game(user_id, game_id)
+    db.set_active_game(user_id, game_id)  # type: ignore[arg-type]
 
     state = game_loop.get_state()
     return GameStateResponse(
-        game_id=game_id,
+        game_id=game_id,  # type: ignore[arg-type]
         player_state=state.to_dict() if state else {},
         progress=game_loop.get_progress(),
         round_info=game_loop.get_round_info(),

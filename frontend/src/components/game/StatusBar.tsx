@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Heart, Brain, Coins, Users, TrendingUp } from "lucide-react";
@@ -38,7 +39,7 @@ function getAttributeColor(value: number, maxValue: number): string {
  * - 紧凑模式用于游戏主页顶部
  * - 完整模式用于侧边栏
  */
-export function StatusBar({
+export const StatusBar = memo(function StatusBar({
   playerState,
   progress,
   className,
@@ -168,4 +169,6 @@ export function StatusBar({
       )}
     </div>
   );
-}
+});
+
+StatusBar.displayName = 'StatusBar';

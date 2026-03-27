@@ -190,7 +190,7 @@ class ConsistencyValidator:
             fix_instructions = ""
             if not passed:
                 # ★ 按维度分组问题，提供更有针对性的修正指导
-                critical_by_dimension = {}
+                critical_by_dimension: dict[str, Any] = {}
                 for issue in issues:
                     if issue.severity == "CRITICAL":
                         dim = issue.dimension

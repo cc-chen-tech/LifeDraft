@@ -22,6 +22,185 @@ export interface FriendRequestInfo {
   created_at: string;
 }
 
+// ==================== Core Game Types ====================
+
+/**
+ * Era setting for character creation
+ */
+export interface EraSetting {
+  era: string;
+  era_name?: string;
+  era_description?: string;
+}
+
+/**
+ * Key person in the game (NPC)
+ */
+export interface KeyPerson {
+  name: string;
+  relationship: string;
+  description?: string;
+}
+
+/**
+ * Character settings from character creation
+ * Contains era, key people, and other story settings
+ */
+export interface CharacterSettings {
+  era?: EraSetting;
+  key_people?: KeyPerson[];
+  relationships_description?: string;
+  [key: string]: unknown; // Allow additional settings
+}
+
+/**
+ * Core player state from backend
+ * This reflects the PlayerDataMixin structure
+ */
+export interface PlayerState {
+  // Player identity
+  player_name: string;
+  life_vision: string;
+  
+  // Core attributes (0-100 scale)
+  energy: number;
+  mood: number;
+  knowledge: number;
+  wealth: number;
+  
+  // Time tracking
+  age: number;
+  week: number;
+  
+  // Multi-round system
+  current_round: number;
+  rounds_per_week: number;
+  
+  // Character settings
+  character_settings: CharacterSettings;
+  
+  // Story state
+  last_round_full_story?: string;
+  last_event_concluded?: boolean;
+  current_event_data?: CurrentEventData | null;
+  
+  // History
+  round_history?: RoundHistoryEntry[];
+  weekly_summaries?: WeeklySummary[];
+  decision_history?: DecisionHistoryEntry[];
+  story_history?: string[];
+  
+  // Relationships and NPCs
+  relationships?: Record<string, number>;
+  characters?: Record<string, CharacterState>;
+  items?: Record<string, ItemState>;
+  landmarks?: Record<string, LandmarkState>;
+  
+  // Additional fields
+  [key: string]: unknown;
+}
+
+/**
+ * Current event data stored in player state
+ */
+export interface CurrentEventData {
+  event_description?: string;
+  story_text?: string;
+  options?: EventOption[];
+}
+
+/**
+ * Round history entry
+ */
+export interface RoundHistoryEntry {
+  week: number;
+  round: number;
+  summary?: string;
+  event_description?: string;
+  story_continuation?: string;
+  choice?: string;
+  effects?: EffectValues;
+}
+
+/**
+ * Weekly summary entry
+ */
+export interface WeeklySummary {
+  week: number;
+  summary: string;
+  bonus_effects?: EffectValues;
+}
+
+/**
+ * Decision history entry
+ */
+export interface DecisionHistoryEntry {
+  week: number;
+  round?: number;
+  decision: string;
+  effects?: EffectValues;
+}
+
+/**
+ * Character state (NPC)
+ */
+export interface CharacterState {
+  name: string;
+  relationship: string;
+  affinity?: number;
+  description?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Item state
+ */
+export interface ItemState {
+  name: string;
+  description?: string;
+  importance?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Landmark state
+ */
+export interface LandmarkState {
+  name: string;
+  description?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Effect values from choices
+ */
+export interface EffectValues {
+  energy?: number;
+  mood?: number;
+  knowledge?: number;
+  wealth?: number;
+  [key: string]: unknown;
+}
+
+/**
+ * Game progress tracking
+ */
+export interface GameProgress {
+  week: number;
+  current_round: number;
+  rounds_per_week: number;
+  [key: string]: unknown;
+}
+
+/**
+ * Round info
+ */
+export interface RoundInfo {
+  week: number;
+  current_round: number;
+  [key: string]: unknown;
+}
+
 // Game types
 export interface GameListItem {
   game_id: number;
@@ -38,7 +217,7 @@ export interface PresetInfo {
   player_name: string;
   life_vision?: string;
   created_at?: string;
-  character_settings: Record<string, unknown>;
+  character_settings: CharacterSettings;
 }
 
 export interface GameEvent {
@@ -48,16 +227,22 @@ export interface GameEvent {
 
 export interface EventOption {
   text: string;
-  effects?: Record<string, unknown>;
+  effects?: EffectValues;
 }
 
 export interface GameStateResponse {
   game_id: number;
-  player_state: Record<string, unknown>;
-  progress: Record<string, unknown>;
-  round_info: Record<string, unknown>;
-  current_event: Record<string, unknown> | null;
+  player_state: PlayerState;
+  progress: GameProgress;
+  round_info: RoundInfo;
+  current_event: CurrentEventData | null;
 }
+
+// ==================== Test Utility Types ====================
+// For testing purposes, allow partial objects
+export type PartialPlayerState = Partial<PlayerState>;
+export type PartialGameProgress = Partial<GameProgress>;
+export type PartialRoundInfo = Partial<RoundInfo>;
 
 // Image types
 export interface ImageResponse {
@@ -129,7 +314,7 @@ export interface ItemCollectionItem {
   image_url: string | null;
   image_generated: boolean;
   description_generated: boolean;
-  metadata: Record<string, unknown>;
+  metadata: Record<string, unknown>; // Intentionally flexible for metadata
 }
 
 // Landmark collection item
@@ -145,7 +330,7 @@ export interface LandmarkCollectionItem {
   is_key_location: boolean;
   image_url: string | null;
   image_generated: boolean;
-  metadata: Record<string, unknown>;
+  metadata: Record<string, unknown>; // Intentionally flexible for metadata
 }
 
 // Recognized entity for AI recognition

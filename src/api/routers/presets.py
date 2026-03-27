@@ -49,11 +49,11 @@ async def list_presets(
     presets = db.list_character_presets(limit=limit, user_id=user_id)
     return [
         PresetInfo(
-            preset_id=p.preset_id,
-            preset_name=p.preset_name,
-            player_name=p.player_name,
-            life_vision=p.life_vision,
-            character_settings=p.character_settings or {},
+            preset_id=int(p.preset_id),  # type: ignore[arg-type]
+            preset_name=str(p.preset_name),  # type: ignore[arg-type]
+            player_name=str(p.player_name),  # type: ignore[arg-type]
+            life_vision=str(p.life_vision) if p.life_vision else None,  # type: ignore[arg-type]
+            character_settings=p.character_settings or {},  # type: ignore[arg-type]
             created_at=p.created_at.isoformat() if p.created_at else None,
         )
         for p in presets

@@ -399,9 +399,8 @@ class StoryAnalyzer:
             return []
 
         try:
-            from config.prompts.world_prompts import (
-                get_scheduled_commitment_extraction_prompt,
-            )
+            from config.prompts.world_prompts import \
+                get_scheduled_commitment_extraction_prompt
 
             prompt = get_scheduled_commitment_extraction_prompt(
                 story=story_text,

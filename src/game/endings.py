@@ -217,7 +217,7 @@ Be vivid and specific, reflecting the character's uniqueness."""
 
                 return self.ai_generator.generate_completion(
                     prompt=prompt,
-                    system_prompt=get_system_prompt("narrative_summary", self.language),
+                    system_prompt=get_system_prompt("narrative_summary", language),
                     temperature=0.8,
                     max_tokens=4096,
                 )

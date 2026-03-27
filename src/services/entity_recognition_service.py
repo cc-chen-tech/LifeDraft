@@ -6,21 +6,15 @@
 import logging
 from typing import Any, Dict, List, Optional
 
-from src.ai.system_prompts import get_system_prompt
-from src.ai.utils import extract_json
+from src.services.base_extraction import BaseExtractionService
 
 logger = logging.getLogger(__name__)
 
 
-class EntityRecognitionService:
+class EntityRecognitionService(BaseExtractionService):
     """从历史故事中识别实体的服务。"""
 
-    def __init__(self, ai_client):
-        """
-        Args:
-            ai_client: AIClient 实例
-        """
-        self.ai_client = ai_client
+    # 继承 BaseExtractionService.__init__
 
     def recognize_from_history(
         self,
@@ -51,14 +45,8 @@ class EntityRecognitionService:
             # 构建完整故事文本
             story_text = self._build_story_text(round_history)
 
-            # 如果故事太长，可能需要截断或分段处理
-            # 这里先尝试完整发送，AI应该能处理
-            max_story_length = 15000  # 限制长度避免token超限
-            if len(story_text) > max_story_length:
-                logger.warning(
-                    f"Story text too long ({len(story_text)} chars), truncating to {max_story_length}"
-                )
-                story_text = story_text[:max_story_length] + "\n...[故事过长，已截断]"
+            # 使用基类的截断逻辑
+            story_text = self._truncate_story(story_text)
 
             from config.prompts.entity_recognition_prompt import \
                 get_entity_recognition_prompt
@@ -72,15 +60,15 @@ class EntityRecognitionService:
                 language=language,
             )
 
-            sys_prompt = get_system_prompt("story_analyzer", language)
+            sys_prompt = self._get_system_prompt("story_analyzer", language)
 
             logger.info(f"Starting entity recognition with story length {len(story_text)} chars")
 
-            response = self.ai_client.call(
+            response = self._call_ai(
                 system_prompt=sys_prompt,
                 user_prompt=prompt,
                 temperature=0.3,
-                max_tokens=2048,  # 减少token数，避免服务器超时
+                max_tokens=2048,
             )
 
             return self._parse_recognition_response(response)
@@ -135,16 +123,16 @@ class EntityRecognitionService:
                 language=language,
             )
 
-            sys_prompt = get_system_prompt("story_analyzer", language)
+            sys_prompt = self._get_system_prompt("story_analyzer", language)
 
-            response = self.ai_client.call(
+            response = self._call_ai(
                 system_prompt=sys_prompt,
                 user_prompt=prompt,
                 temperature=0.5,
                 max_tokens=2048,
             )
 
-            data = extract_json(response)
+            data = self._parse_json_response(response)
             if data and "name" in data:
                 return {
                     "name": data["name"],
@@ -207,12 +195,11 @@ class EntityRecognitionService:
             解析后的实体字典
         """
         try:
-            data = extract_json(response)
+            data = self._parse_json_response(response)
             if not data:
-                logger.warning("Could not parse recognition response as JSON")
                 return {"items": [], "characters": [], "landmarks": []}
 
-            result = {"items": [], "characters": [], "landmarks": []}
+            result: dict[str, Any] = {"items": [], "characters": [], "landmarks": []}
 
             # 解析物品
             for item in data.get("items", []):
@@ -253,10 +240,10 @@ class EntityRecognitionService:
         if not entity.get("name"):
             return False
 
-        # 验证重要程度
-        importance = entity.get("importance", "normal")
-        if importance not in ("critical", "important", "normal"):
-            entity["importance"] = "normal"
+        # 使用基类的验证方法
+        entity["importance"] = self._validate_importance(
+            entity.get("importance", "normal")
+        )
 
         # 验证出现次数
         appear_count = entity.get("appear_count", 0)
