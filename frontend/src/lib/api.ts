@@ -80,13 +80,19 @@ async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: num
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: response.statusText }));
-    
+
     // ★ 401 未授权 - 对于 /auth/me 这是正常的未登录状态，不显示错误日志
     if (response.status === 401 && url === '/auth/me') {
       // 静默处理，不显示错误日志
       throw Object.assign(new Error(error.message || 'Request failed'), { status: response.status });
     }
-    
+
+    // ★ 404 未找到 - 对于场景图片查询，这是正常的未生成状态，不显示错误日志
+    if (response.status === 404 && url.includes('/images/scene/')) {
+      // 静默处理，前端会轮询直到图片生成完成
+      throw Object.assign(new Error(error.message || 'Request failed'), { status: response.status });
+    }
+
     console.error(`[API Error] ${url} failed with ${response.status}:`, error.message || response.statusText);
     
     // ★ 401 未授权 - 清除本地认证状态并跳转到首页（登录页）

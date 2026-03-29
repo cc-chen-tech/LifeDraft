@@ -84,9 +84,20 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
                 continue;
               }
 
-              // Handle status updates
-              if (parsed.type === 'status' && parsed.status) {
-                callbacks.onStatus?.(parsed.status);
+              // ★ Handle error events from backend
+              if (currentEventType === 'error' || parsed.type === 'error' || parsed.event === 'error') {
+                const errorMsg = parsed.error || parsed.message || 'Unknown server error';
+                console.error('[SSE] Error event received:', errorMsg);
+                callbacks.onError?.({ message: errorMsg });
+                currentEventType = null;
+                continue;
+              }
+
+              // Handle status updates (support both formats: {type: "status", status: {...}} and {phase: "..."})
+              if (currentEventType === 'status' || parsed.type === 'status') {
+                const statusData = parsed.status || parsed;
+                callbacks.onStatus?.(statusData);
+                currentEventType = null;
                 continue;
               }
 

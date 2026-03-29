@@ -886,6 +886,12 @@ async def stream_regenerate(
             # 清空当前事件，让 generate_round_event 生成全新事件
             game_loop.current_event = None
 
+            # ★ CRITICAL: 显式清除 event generator 内部缓存
+            # property setter 应该已经处理了，但多线程场景下增加防御性清除
+            if hasattr(game_loop, "_event_generator_service"):
+                game_loop._event_generator_service._current_event = None
+                logger.info("[stream_regenerate] Explicitly cleared _event_generator_service._current_event")
+
             # ★ CRITICAL: 清除 player_state 中的故事缓存，确保真正重新生成
             # 否则 generate_round_event 会从 last_round_full_story 恢复旧故事
             player_state = game_loop.player_state
@@ -925,6 +931,12 @@ async def stream_regenerate(
                 logger.info(
                     "[stream_regenerate] Cleared story caches for true regeneration"
                 )
+
+                # ★ CRITICAL: 清除 session 缓存的选项，防止使用旧选项
+                if session is not None:
+                    session.clear_options_cache()
+                    session.clear_sse_cache()
+                    logger.info("[stream_regenerate] Cleared session options and SSE cache")
 
             # ★ CRITICAL: 删除当前轮次的场景图片记录，确保重新生成图片
             # 否则系统会认为图片已存在，不会生成新的图片

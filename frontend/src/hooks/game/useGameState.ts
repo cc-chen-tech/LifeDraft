@@ -190,6 +190,12 @@ export function useGameState({
             },
             onStatus: (status) => {
               setProcessing(true, status.phase);
+              // ★ 当后端因一致性校验失败触发 retry 时，清空已累积的故事文本
+              // 否则旧故事和新故事会被拼接在一起
+              if (status.phase === 'retry') {
+                console.log('[handleRegenerate] Retry detected, clearing accumulated story text');
+                setStoryText('');
+              }
             },
             onComplete: (data) => {
               setProcessing(false);
