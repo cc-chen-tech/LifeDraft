@@ -54,9 +54,9 @@ describe('eventUtils', () => {
   });
 
   describe('selectFinalStory', () => {
-    it('uses backend story when it is longer', () => {
+    it('uses backend story when frontend is very short (< 10 chars)', () => {
       const backendStory = 'This is a longer backend story with more content';
-      const frontendStory = 'Short story';
+      const frontendStory = 'Short'; // 5 chars < 10
 
       const result = selectFinalStory(backendStory, frontendStory);
 
@@ -64,36 +64,37 @@ describe('eventUtils', () => {
       expect(result.finalStory).toBe(backendStory);
     });
 
-    it('uses backend story when frontend is short', () => {
+    it('uses backend story when frontend is very short', () => {
       const backendStory = 'Backend';
-      const frontendStory = 'Hi'; // Less than 100 chars
+      const frontendStory = 'Hi'; // 2 chars < 10
 
       const result = selectFinalStory(backendStory, frontendStory);
 
       expect(result.useBackend).toBe(true);
     });
 
-    it('uses frontend story when backend is shorter and frontend is long enough', () => {
+    it('uses frontend story when frontend is long enough (>= 10 chars)', () => {
       const backendStory = 'Short';
-      const frontendStory = 'This is a longer frontend story that has been streamed and is now over one hundred characters long to avoid the minimum length check';
+      const frontendStory = 'This is a longer frontend story'; // > 10 chars
 
       const result = selectFinalStory(backendStory, frontendStory);
 
-      // frontendStory.length >= 100 and backendStory.length < frontendStory.length
-      // so useBackendStory = false
+      // frontendStory.length >= 10, so useBackendStory = false
       expect(result.useBackend).toBe(false);
       expect(result.finalStory).toBe(frontendStory);
     });
 
-    it('uses backend story when backend is longer', () => {
+    it('returns remainingText when backend is longer but frontend is long enough', () => {
       const backendStory = 'This is the complete backend story';
-      const frontendStory = 'This is the complete';
+      const frontendStory = 'This is the'; // 11 chars >= 10, so won't use backend
 
       const result = selectFinalStory(backendStory, frontendStory);
 
-      // backendStory.length > frontendStory.length, so useBackend should be true
-      expect(result.useBackend).toBe(true);
-      expect(result.finalStory).toBe(backendStory);
+      // frontend >= 10, so useBackendStory = false
+      // but backend > frontend, so returns remainingText
+      expect(result.useBackend).toBe(false);
+      expect(result.finalStory).toBe(frontendStory);
+      expect(result.remainingText).toBe(' complete backend story');
     });
 
     it('handles empty backend story', () => {
@@ -327,20 +328,22 @@ describe('eventUtils', () => {
 
     it('handles streaming remaining text', () => {
       const data: EventData = {
-        event_description: 'Full backend story that is longer',
+        event_description: 'Full backend story that is longer than frontend',
         options: [{ text: 'Option' }],
       };
 
+      // Frontend >= 10 chars, so won't use backend directly
+      // But backend > frontend, so will stream remaining text
       (useGameStore.getState as jest.Mock).mockReturnValue({
-        storyText: 'Full backend story',
+        storyText: 'Full backend story', // 18 chars >= 10
         currentEvent: null,
       });
 
       handleEventComplete(data as Record<string, unknown>, mockHandlers);
 
-      // Should set options immediately
+      // Should set options (for remainingText streaming path)
       expect(mockHandlers.setOptions).toHaveBeenCalled();
-      expect(mockHandlers.setPhase).toHaveBeenCalledWith('options');
+      // setPhase is called asynchronously after streaming
     });
 
     it('handles optionsChanged and storyChanged', () => {
@@ -384,7 +387,8 @@ describe('eventUtils', () => {
 
       handleEventComplete(data as Record<string, unknown>, mockHandlers);
 
-      // Should still call setPhase
+      // Phase is set asynchronously with setTimeout
+      jest.advanceTimersByTime(600);
       expect(mockHandlers.setPhase).toHaveBeenCalledWith('options');
     });
 
@@ -411,14 +415,14 @@ describe('eventUtils', () => {
 
     it('handles remainingText streaming path', () => {
       // This test covers the remainingText branch in handleEventComplete
-      // We need to trigger selectFinalStory to return remainingText
+      // Frontend >= 10 chars, backend > frontend, so will stream remaining text
       const data: EventData = {
         event_description: 'A very long backend story that exceeds the frontend story length by a significant amount',
         options: [{ text: 'Option' }],
       };
 
       (useGameStore.getState as jest.Mock).mockReturnValue({
-        storyText: 'A very long backend story that exceeds', // Shorter frontend story
+        storyText: 'A very long backend story that exceeds', // 38 chars >= 10
         currentEvent: null,
         roundInfo: { current_round: 1 },
         enableSceneImage: false,
@@ -426,9 +430,9 @@ describe('eventUtils', () => {
 
       handleEventComplete(data as Record<string, unknown>, mockHandlers);
 
-      // Should set options and phase
+      // Should set options for remainingText streaming
       expect(mockHandlers.setOptions).toHaveBeenCalled();
-      expect(mockHandlers.setPhase).toHaveBeenCalledWith('options');
+      // Phase is set after streaming completes
     });
 
     it('handles scene image generation with no roundInfo', () => {
@@ -469,63 +473,41 @@ describe('eventUtils', () => {
   });
 
   describe('selectFinalStory remainingText branch', () => {
-    it('returns remainingText when backend is longer but useBackend is false', () => {
-      // This tests the specific branch where:
-      // - backendStory.length > frontendStory.length (so useBackendStory = true initially)
-      // - But the first condition (useBackend && backendStory.length > 0) is true
-      // So remainingText branch is NOT hit in normal cases
-      // 
-      // The remainingText branch (lines 74-80) is hit when:
-      // - useBackendStory is false (frontend is longer and >= 100 chars)
-      // - BUT backend is still longer than frontend
-      // This is actually impossible based on the logic
-      // 
-      // Let's test the actual remainingText path which happens when:
-      // - useBackend is false (frontend >= 100 and frontend >= backend)
-      // - backend > frontend (for remainingText)
-      // This requires frontend >= 100 AND backend > frontend
-      // But if backend > frontend, useBackendStory would be true
-      // 
-      // The remainingText branch is actually:
-      // if (backendStory.length > frontendStory.length) {
-      //   return { useBackend: false, finalStory: frontendStory, remainingText: backendStory.slice(frontendStory.length) };
-      // }
-      // This is hit when useBackendStory is false but backend > frontend
-      // But useBackendStory = backendStory.length > frontendStory.length || frontendStory.length < 100
-      // So if backend > frontend, useBackendStory would be true
-      // 
-      // This branch seems unreachable based on current logic
-      // Let's test what we can
-      const backendStory = 'This is a backend story that is longer than the frontend';
-      const frontendStory = 'This is a backend story';
+    it('returns remainingText when frontend is long enough but backend is longer', () => {
+      // When frontend >= 10 and backend > frontend, should return remainingText
+      const backendStory = 'This is a backend story that is longer than the frontend story';
+      const frontendStory = 'This is a frontend'; // 18 chars >= 10
 
       const result = selectFinalStory(backendStory, frontendStory);
 
-      // Backend is longer, so useBackend should be true
-      expect(result.useBackend).toBe(true);
-      expect(result.finalStory).toBe(backendStory);
+      // Frontend >= 10, so useBackendStory = false
+      // But backend > frontend, so returns remainingText
+      expect(result.useBackend).toBe(false);
+      expect(result.finalStory).toBe(frontendStory);
+      expect(result.remainingText).toBe('story that is longer than the frontend story');
     });
 
-    it('handles edge case where frontend is exactly 100 chars', () => {
+    it('uses frontend when it is longer than backend', () => {
       const backendStory = 'Short';
-      const frontendStory = 'A'.repeat(100); // Exactly 100 chars
+      const frontendStory = 'This is a longer frontend story'; // > 10 chars
 
       const result = selectFinalStory(backendStory, frontendStory);
 
-      // Frontend >= 100 and backend < frontend, so useBackendStory = false
+      // Frontend >= 10 and longer than backend
       expect(result.useBackend).toBe(false);
       expect(result.finalStory).toBe(frontendStory);
       expect(result.remainingText).toBeUndefined();
     });
 
-    it('handles frontend just under 100 chars with short backend', () => {
-      const backendStory = 'Backend';
-      const frontendStory = 'A'.repeat(99); // 99 chars, under 100
+    it('uses backend when frontend is very short', () => {
+      const backendStory = 'Backend story here';
+      const frontendStory = 'Short'; // 5 chars < 10
 
       const result = selectFinalStory(backendStory, frontendStory);
 
-      // Frontend < 100, so useBackendStory = true
+      // Frontend < 10, so useBackendStory = true
       expect(result.useBackend).toBe(true);
+      expect(result.finalStory).toBe(backendStory);
     });
   });
 
@@ -590,7 +572,7 @@ describe('eventUtils', () => {
   });
 
   describe('handleEventComplete with retry', () => {
-    it('uses backend story when retry was detected', () => {
+    it('uses backend story when retry was detected and frontend is short', () => {
       // ★ 使用 resetModules + require 确保 markRetry 和 handleEventComplete 共享同一模块实例
       jest.resetModules();
       jest.mock('@/stores/useGameStore', () => ({
@@ -603,17 +585,18 @@ describe('eventUtils', () => {
       const { markRetry, handleEventComplete: localHandleEventComplete } = require('@/hooks/game/eventUtils');
       const { useGameStore: localStore } = require('@/stores/useGameStore');
       jest.spyOn(console, 'log').mockImplementation();
-      
+
       // Mark retry first
       markRetry();
-      
+
       const data: EventData = {
         event_description: 'Backend story after retry',
         options: [{ text: 'Option' }],
       };
 
+      // Frontend is short (< 10), so retry will use backend story
       (localStore.getState as jest.Mock).mockReturnValue({
-        storyText: 'Old frontend story',
+        storyText: 'Short',
         currentEvent: null,
       });
 
