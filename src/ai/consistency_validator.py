@@ -27,7 +27,9 @@ class ValidationResult:
 
     passed: bool
     issues: List[ConsistencyIssue] = field(default_factory=list)
-    fix_instructions: str = ""  # Concatenated fix instructions for retry prompt injection
+    fix_instructions: str = (
+        ""  # Concatenated fix instructions for retry prompt injection
+    )
 
     @property
     def has_critical_issues(self) -> bool:
@@ -123,7 +125,9 @@ class ConsistencyValidator:
             # On error, pass through (don't block story generation)
             return ValidationResult(passed=True)
 
-    def _parse_validation_response(self, response: str, language: str) -> ValidationResult:
+    def _parse_validation_response(
+        self, response: str, language: str
+    ) -> ValidationResult:
         """
         Parse the AI validation response into a ValidationResult.
         ★ 已移除所有硬性判断逻辑，完全依赖 AI 的判断结果。
@@ -138,7 +142,9 @@ class ConsistencyValidator:
         try:
             data = extract_json(response)
             if not data:
-                logger.warning("Could not parse validation response as JSON, treating as pass")
+                logger.warning(
+                    "Could not parse validation response as JSON, treating as pass"
+                )
                 return ValidationResult(passed=True)
 
             issues = []
@@ -182,7 +188,9 @@ class ConsistencyValidator:
                 has_critical = any(i.severity == "CRITICAL" for i in issues)
                 should_retry = has_critical
                 if should_retry:
-                    retry_reason = "存在严重问题" if language == "zh" else "Critical issues found"
+                    retry_reason = (
+                        "存在严重问题" if language == "zh" else "Critical issues found"
+                    )
 
             passed = not should_retry
 
@@ -287,12 +295,15 @@ class ConsistencyValidator:
                         if language == "zh":
                             warning_parts.append(f"- 【建议改进】{issue.description}")
                         else:
-                            warning_parts.append(f"- [Suggested improvement] {issue.description}")
+                            warning_parts.append(
+                                f"- [Suggested improvement] {issue.description}"
+                            )
 
                 if warning_parts:
                     if language == "zh":
-                        fix_instructions += "\n\n以下问题建议改进但非强制：\n" + "\n".join(
-                            warning_parts
+                        fix_instructions += (
+                            "\n\n以下问题建议改进但非强制：\n"
+                            + "\n".join(warning_parts)
                         )
                     else:
                         fix_instructions += (
@@ -316,7 +327,9 @@ class ConsistencyValidator:
                     logger.info(f"  AI判断理由: {retry_reason}")
                 for issue in issues:
                     # ★ 输出完整的问题描述，不再截断
-                    logger.info(f"  [{issue.severity}][{issue.dimension}] {issue.description}")
+                    logger.info(
+                        f"  [{issue.severity}][{issue.dimension}] {issue.description}"
+                    )
             else:
                 logger.info("一致性校验结果: 通过（无问题）")
 
@@ -444,7 +457,9 @@ class ConsistencyValidator:
             logger.error(f"History validation failed: {e}")
             return ValidationResult(passed=True)
 
-    def _build_history_summary(self, story_history: List[Dict[str, Any]], language: str) -> str:
+    def _build_history_summary(
+        self, story_history: List[Dict[str, Any]], language: str
+    ) -> str:
         """构建历史故事摘要。"""
         if not story_history:
             return "无历史记录" if language == "zh" else "No historical records"
@@ -480,7 +495,9 @@ class ConsistencyValidator:
             source_excerpt = getattr(f, "source_excerpt", "")
 
             if language == "zh":
-                line = f"- [{fact_type}] {subject}: {description} (来源:第{source_week}周)"
+                line = (
+                    f"- [{fact_type}] {subject}: {description} (来源:第{source_week}周)"
+                )
                 if source_excerpt:
                     line += f" 原文:「{source_excerpt[:50]}...」"
             else:

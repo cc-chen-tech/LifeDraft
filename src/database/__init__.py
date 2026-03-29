@@ -1,11 +1,25 @@
 """Database package."""
 
-from src.database.models import (Base, CharacterPreset, Decision, Ending,
-                                 Friendship, Game, GameState, SessionLocal,
-                                 User, engine, get_db, init_db)
+from src.database.models import (
+    Base,
+    CharacterPreset,
+    Decision,
+    Ending,
+    Friendship,
+    Game,
+    GameState,
+    SessionLocal,
+    User,
+    engine,
+    get_db,
+    init_db,
+)
 from src.database.singletons import get_game_db, get_user_manager
-from src.database.user_manager import (UserManager, generate_private_id,
-                                       generate_public_id)
+from src.database.user_manager import (
+    UserManager,
+    generate_private_id,
+    generate_public_id,
+)
 
 __all__ = [
     "Base",

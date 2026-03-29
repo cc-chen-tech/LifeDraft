@@ -6,8 +6,11 @@ from typing import Any, Callable, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from src.ai.image_client import (ContentInspectionError, ImageClient,
-                                 ImageGenerationError)
+from src.ai.image_client import (
+    ContentInspectionError,
+    ImageClient,
+    ImageGenerationError,
+)
 from src.database.models import Image as ImageModel
 from src.services.image import ImageContentError, ImageServiceError
 from src.services.image_storage import ImageStorageService
@@ -77,7 +80,9 @@ class CharacterImageService:
 
         try:
             # ★ 生成外貌特征锚点（文本层面的一致性机制）
-            character_settings = metadata.get("characterSettings", {}) if metadata else {}
+            character_settings = (
+                metadata.get("characterSettings", {}) if metadata else {}
+            )
             logger.info(f"Generating appearance anchor for {name}...")
             anchor_data = self.image_client.generate_appearance_anchor(
                 name=name,
@@ -87,14 +92,16 @@ class CharacterImageService:
             )
             logger.info(f"Appearance anchor generated for {name}")
 
-            images_data, primary_image_url = self.image_client.generate_character_images(
-                name=name,
-                description=description,
-                era=era,
-                style_hint=style_hint,
-                num_images=num_images,
-                reference_image_url=reference_image_url,
-                feedback=feedback,
+            images_data, primary_image_url = (
+                self.image_client.generate_character_images(
+                    name=name,
+                    description=description,
+                    era=era,
+                    style_hint=style_hint,
+                    num_images=num_images,
+                    reference_image_url=reference_image_url,
+                    feedback=feedback,
+                )
             )
 
             if not images_data:
@@ -151,7 +158,9 @@ class CharacterImageService:
             for model in image_models:
                 self.db.refresh(model)
 
-            logger.info(f"Character images saved: {len(image_models)} images for {name}")
+            logger.info(
+                f"Character images saved: {len(image_models)} images for {name}"
+            )
             return image_models
 
         except ContentInspectionError as e:
@@ -188,7 +197,9 @@ class CharacterImageService:
         """
         logger.info(f"Regenerating image: {image_id}, feedback: {feedback}")
 
-        original = self.db.query(ImageModel).filter(ImageModel.image_id == image_id).first()
+        original = (
+            self.db.query(ImageModel).filter(ImageModel.image_id == image_id).first()
+        )
 
         if not original:
             raise ImageServiceError(f"图片不存在: {image_id}")
@@ -214,7 +225,9 @@ class CharacterImageService:
             mime_type = "image/png" if ext == "png" else "image/jpeg"
             base64_data = base64.b64encode(image_data).decode("utf-8")
             reference_url = f"data:{mime_type};base64,{base64_data}"
-            logger.info(f"Using current image as reference (base64, {len(image_data)} bytes)")
+            logger.info(
+                f"Using current image as reference (base64, {len(image_data)} bytes)"
+            )
         except Exception as e:
             logger.warning(
                 f"Failed to convert image to base64: {e}, will generate without reference"
@@ -252,7 +265,9 @@ class CharacterImageService:
                 ).update({"is_active": False})
             self.db.commit()
 
-            logger.info(f"Images regenerated: {len(new_images)} new images, old images deactivated")
+            logger.info(
+                f"Images regenerated: {len(new_images)} new images, old images deactivated"
+            )
             return new_images
 
         except ImageContentError:
@@ -281,9 +296,13 @@ class CharacterImageService:
         Returns:
             新的Image模型实例列表
         """
-        logger.info(f"Fresh regenerating image: {image_id}, use_deepseek={use_deepseek_prompt}")
+        logger.info(
+            f"Fresh regenerating image: {image_id}, use_deepseek={use_deepseek_prompt}"
+        )
 
-        original = self.db.query(ImageModel).filter(ImageModel.image_id == image_id).first()
+        original = (
+            self.db.query(ImageModel).filter(ImageModel.image_id == image_id).first()
+        )
 
         if not original:
             raise ImageServiceError(f"图片不存在: {image_id}")
@@ -325,10 +344,14 @@ class CharacterImageService:
 
         if use_deepseek_prompt:
             try:
-                prompt = self.image_client.generate_image_prompt_with_deepseek(character_info)
+                prompt = self.image_client.generate_image_prompt_with_deepseek(
+                    character_info
+                )
                 logger.debug(f"DeepSeek generated prompt: {prompt[:100]}...")
             except Exception as e:
-                logger.warning(f"DeepSeek prompt generation failed, using fallback: {e}")
+                logger.warning(
+                    f"DeepSeek prompt generation failed, using fallback: {e}"
+                )
                 prompt = (
                     build_description_func(char_settings)
                     if build_description_func
@@ -336,7 +359,9 @@ class CharacterImageService:
                 )
         else:
             prompt = (
-                build_description_func(char_settings) if build_description_func else "一个普通人"
+                build_description_func(char_settings)
+                if build_description_func
+                else "一个普通人"
             )
 
         era = character_info["era"]

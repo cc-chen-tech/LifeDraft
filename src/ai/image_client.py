@@ -15,15 +15,16 @@ from typing import Any, Dict, List, Optional, Tuple
 
 # Re-export settings for backward compatibility (needed by tests)
 from config.settings import settings
+
 # Re-export utility function for backward compatibility
 from src.ai.image_config import create_retry_session
+
 # Re-export exceptions for backward compatibility
-from src.ai.image_exceptions import (ContentInspectionError,
-                                     ImageGenerationError)
+from src.ai.image_exceptions import ContentInspectionError, ImageGenerationError
+
 # Import internal modules
 from src.ai.image_generator import ImageGenerator
-from src.ai.image_prompt_builder import (DeepSeekPromptEnhancer,
-                                         ImagePromptBuilder)
+from src.ai.image_prompt_builder import DeepSeekPromptEnhancer, ImagePromptBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,9 @@ class ImageClient:
         character_info: Dict[str, Any],
     ) -> str:
         """使用 DeepSeek 生成图片描述 prompt"""
-        return self._deepseek_enhancer.generate_image_prompt_with_deepseek(character_info)
+        return self._deepseek_enhancer.generate_image_prompt_with_deepseek(
+            character_info
+        )
 
     def analyze_story_for_illustration(
         self,
@@ -93,7 +96,9 @@ class ImageClient:
         character_info: Dict[str, Any],
     ) -> Tuple[str, str]:
         """使用 DeepSeek 分析故事，选择最重要/最视觉化的场景"""
-        return self._deepseek_enhancer.analyze_story_for_illustration(story_text, character_info)
+        return self._deepseek_enhancer.analyze_story_for_illustration(
+            story_text, character_info
+        )
 
     def rewrite_prompt_for_content_safety(
         self,
@@ -147,7 +152,9 @@ class ImageClient:
         style_hint: Optional[str] = None,
     ) -> str:
         """构建地点prompt"""
-        return self._prompt_builder.build_location_prompt(name, description, era, style_hint)
+        return self._prompt_builder.build_location_prompt(
+            name, description, era, style_hint
+        )
 
     def _build_item_prompt(
         self,
@@ -157,7 +164,9 @@ class ImageClient:
         style_hint: Optional[str] = None,
     ) -> str:
         """构建物品prompt"""
-        return self._prompt_builder.build_item_prompt(name, description, era, style_hint)
+        return self._prompt_builder.build_item_prompt(
+            name, description, era, style_hint
+        )
 
     def _build_scene_prompt(
         self,
@@ -171,7 +180,9 @@ class ImageClient:
             scene_description, characters, era, style_hint
         )
 
-    def _simplify_prompt(self, original_prompt: str, scene_desc: str) -> Tuple[str, str]:
+    def _simplify_prompt(
+        self, original_prompt: str, scene_desc: str
+    ) -> Tuple[str, str]:
         """简化 prompt 作为备选方案"""
         return self._prompt_builder.simplify_prompt(original_prompt, scene_desc)
 
@@ -181,7 +192,9 @@ class ImageClient:
         character_info: Dict[str, Any],
     ) -> Tuple[str, str]:
         """备选：基于规则选择场景"""
-        return self._deepseek_enhancer._fallback_scene_selection(story_text, character_info)
+        return self._deepseek_enhancer._fallback_scene_selection(
+            story_text, character_info
+        )
 
     def _fallback_appearance_anchor(
         self,
@@ -260,7 +273,9 @@ class ImageClient:
         model: Optional[str] = None,
     ) -> Dict[str, Any]:
         """调用图生图API"""
-        return self._generator._call_edit_api(reference_image, prompt, size, num_images, model)
+        return self._generator._call_edit_api(
+            reference_image, prompt, size, num_images, model
+        )
 
     def generate_character_images(
         self,
@@ -408,7 +423,9 @@ class ImageClient:
         Returns:
             Tuple[bytes, str]: (图片二进制数据, 使用的prompt)
         """
-        prompt = self._build_scene_prompt(scene_description, characters, era, style_hint)
+        prompt = self._build_scene_prompt(
+            scene_description, characters, era, style_hint
+        )
         return self.generate_image(
             prompt=prompt,
             size=size,
@@ -439,7 +456,9 @@ class ImageClient:
         Returns:
             Tuple[bytes, str, str]: (图片数据, 提示词, 场景描述)
         """
-        logger.info(f"Generating opening illustration, has_reference={bool(reference_image_url)}")
+        logger.info(
+            f"Generating opening illustration, has_reference={bool(reference_image_url)}"
+        )
 
         # Step 1: 分析故事，选择场景
         scene_desc, illustration_prompt = self.analyze_story_for_illustration(
@@ -468,7 +487,9 @@ class ImageClient:
                 image_data, _ = results[0]
                 return image_data, edit_prompt, scene_desc
             else:
-                raise ImageGenerationError("Failed to generate illustration with reference")
+                raise ImageGenerationError(
+                    "Failed to generate illustration with reference"
+                )
         else:
             # 使用文生图
             image_data, prompt_used = self.generate_image(

@@ -32,7 +32,9 @@ class PlayerLandmarksMixin:
         from src.game.state.landmark_state import LandmarkState
 
         self.landmarks[landmark.name] = landmark.model_dump()
-        logger.debug(f"Added landmark: {landmark.name} (importance: {landmark.importance})")
+        logger.debug(
+            f"Added landmark: {landmark.name} (importance: {landmark.importance})"
+        )
 
     def get_landmark(self, name: str) -> Optional["LandmarkState"]:
         """

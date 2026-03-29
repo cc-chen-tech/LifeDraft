@@ -164,7 +164,9 @@ class UserManager:
 
     # ==================== 好友功能 ====================
 
-    def send_friend_request(self, user_id: int, friend_public_id: str) -> Dict[str, Any]:
+    def send_friend_request(
+        self, user_id: int, friend_public_id: str
+    ) -> Dict[str, Any]:
         """
         发送好友请求
 
@@ -243,7 +245,9 @@ class UserManager:
                 }
 
         # 创建新的好友请求
-        friendship = Friendship(user_id=user_id, friend_id=friend.user_id, status="pending")
+        friendship = Friendship(
+            user_id=user_id, friend_id=friend.user_id, status="pending"
+        )
         self.db.add(friendship)
         self.db.commit()
         self.db.refresh(friendship)
@@ -453,7 +457,11 @@ class UserManager:
         Returns:
             是否设置成功
         """
-        game = self.db.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
+        game = (
+            self.db.query(Game)
+            .filter(Game.game_id == game_id, Game.user_id == user_id)
+            .first()
+        )
 
         if game:
             game.is_public = is_public  # type: ignore[assignment]

@@ -120,7 +120,9 @@ class GameLoopSession:
         """Generate cache key for current week/round."""
         return f"{week}_{round_num}"
 
-    def get_cached_options(self, week: int, round_num: int) -> Optional[List[Dict[str, Any]]]:
+    def get_cached_options(
+        self, week: int, round_num: int
+    ) -> Optional[List[Dict[str, Any]]]:
         """Get cached options if available for current week/round."""
         cache_key = self.get_cache_key(week, round_num)
         logger.info(
@@ -131,7 +133,9 @@ class GameLoopSession:
             return self._cached_options
         return None
 
-    def set_cached_options(self, week: int, round_num: int, options: List[Dict[str, Any]]) -> None:
+    def set_cached_options(
+        self, week: int, round_num: int, options: List[Dict[str, Any]]
+    ) -> None:
         """Cache options for current week/round."""
         cache_key = self.get_cache_key(week, round_num)
         self._cached_options_key = cache_key
@@ -185,7 +189,9 @@ class SessionStore:
 
     # ---- public API ----
 
-    def get(self, game_id: int, user_id: Optional[int] = None) -> Optional[GameLoopSession]:
+    def get(
+        self, game_id: int, user_id: Optional[int] = None
+    ) -> Optional[GameLoopSession]:
         """Get a session if it exists and is not expired."""
         self._maybe_cleanup()
         key = self.make_key(game_id, user_id)
@@ -252,7 +258,9 @@ class SessionStore:
         prefix = f"user_{user_id}_game_"
         with self._lock:
             return [
-                s for k, s in self._sessions.items() if k.startswith(prefix) and not s.is_expired
+                s
+                for k, s in self._sessions.items()
+                if k.startswith(prefix) and not s.is_expired
             ]
 
     @property

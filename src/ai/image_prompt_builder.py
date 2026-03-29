@@ -43,7 +43,9 @@ class ImagePromptBuilder:
 
         # 最重要：用户的修改意见放在最前面
         if feedback:
-            parts.append(f"【必须执行的修改】{feedback}。这是最重要的要求，必须严格体现在图片中。")
+            parts.append(
+                f"【必须执行的修改】{feedback}。这是最重要的要求，必须严格体现在图片中。"
+            )
 
         # 基础信息
         parts.extend(
@@ -130,7 +132,9 @@ class ImagePromptBuilder:
         else:
             parts.append("风格：写实风格，细节丰富，氛围感强。")
 
-        parts.append("要求：场景清晰、构图美观、有代入感。画面中不要出现任何人物，仅展示场景本身。")
+        parts.append(
+            "要求：场景清晰、构图美观、有代入感。画面中不要出现任何人物，仅展示场景本身。"
+        )
 
         return "".join(parts)
 
@@ -432,7 +436,9 @@ class DeepSeekPromptEnhancer:
         api_key, base_url, model = get_scene_analyzer_config()
 
         if not api_key:
-            logger.warning("No DeepSeek API key for prompt rewrite, using simplified prompt")
+            logger.warning(
+                "No DeepSeek API key for prompt rewrite, using simplified prompt"
+            )
             return ImagePromptBuilder().simplify_prompt(original_prompt, scene_desc)
 
         player_name = character_info.get("name", "主角")
@@ -566,7 +572,9 @@ class DeepSeekPromptEnhancer:
 
         if not api_key:
             logger.warning("No API key for anchor generation, using fallback")
-            return self._fallback_appearance_anchor(name, description, era, character_settings)
+            return self._fallback_appearance_anchor(
+                name, description, era, character_settings
+            )
 
         # 提取额外的角色信息
         age = ""
@@ -676,7 +684,9 @@ class DeepSeekPromptEnhancer:
 
         except Exception as e:
             logger.error(f"Failed to generate appearance anchor: {e}")
-            return self._fallback_appearance_anchor(name, description, era, character_settings)
+            return self._fallback_appearance_anchor(
+                name, description, era, character_settings
+            )
 
     def _fallback_appearance_anchor(
         self,

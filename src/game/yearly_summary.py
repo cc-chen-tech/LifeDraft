@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 class YearlySummaryGenerator:
     """Generates yearly summaries."""
 
-    def __init__(self, ai_generator: Optional[EventGenerator] = None, language: str = "zh"):
+    def __init__(
+        self, ai_generator: Optional[EventGenerator] = None, language: str = "zh"
+    ):
         """
         Initialize yearly summary generator.
 
@@ -55,7 +57,8 @@ class YearlySummaryGenerator:
         changes = {
             "energy": end_state.energy - start_state.get("energy", end_state.energy),
             "mood": end_state.mood - start_state.get("mood", end_state.mood),
-            "knowledge": end_state.knowledge - start_state.get("knowledge", end_state.knowledge),
+            "knowledge": end_state.knowledge
+            - start_state.get("knowledge", end_state.knowledge),
             "wealth": end_state.wealth - start_state.get("wealth", end_state.wealth),
             "age": end_state.age - start_state.get("age", end_state.age),
         }
@@ -112,7 +115,9 @@ class YearlySummaryGenerator:
                         for s in weekly_summaries[:: len(weekly_summaries) // 5]
                     ]
                 else:
-                    summary_highlights = [s.get("summary_text", "") for s in weekly_summaries]
+                    summary_highlights = [
+                        s.get("summary_text", "") for s in weekly_summaries
+                    ]
 
             if language == "zh":
                 prompt = f"""请为第{year}年生成一段年度总结（150-250字）。
@@ -167,7 +172,9 @@ Generate a vivid annual summary describing the main changes, important events, g
             logger.warning(f"Failed to generate AI summary: {e}")
             return self._get_fallback_summary(year, changes, language)
 
-    def _get_fallback_summary(self, year: int, changes: Dict[str, int], language: str) -> str:
+    def _get_fallback_summary(
+        self, year: int, changes: Dict[str, int], language: str
+    ) -> str:
         """Get fallback summary."""
         if language == "zh":
             return f"第{year}年过去了。精力变化{changes['energy']:+d}，情绪变化{changes['mood']:+d}，学识变化{changes['knowledge']:+d}，财富变化{changes['wealth']:+,}，年龄增长了{changes['age']}岁。"

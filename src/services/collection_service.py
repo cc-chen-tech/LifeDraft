@@ -12,8 +12,12 @@ from urllib.parse import unquote
 
 from sqlalchemy.orm import Session
 
-from src.api.schemas import (CharacterCollectionItem, CollectionResponse,
-                             ItemCollectionItem, LandmarkCollectionItem)
+from src.api.schemas import (
+    CharacterCollectionItem,
+    CollectionResponse,
+    ItemCollectionItem,
+    LandmarkCollectionItem,
+)
 from src.database.models import Game
 from src.database.models import Image as ImageModel
 from src.game.state import PlayerState
@@ -146,7 +150,9 @@ class CollectionService:
             if name in added_names:
                 continue
             added_names.add(name)
-            image_url, image_generated = self._get_entity_image(game_id, "character", name)
+            image_url, image_generated = self._get_entity_image(
+                game_id, "character", name
+            )
             characters.append(
                 CharacterCollectionItem(
                     name=name,
@@ -190,16 +196,22 @@ class CollectionService:
         added_names: set,
     ) -> Optional[CharacterCollectionItem]:
         """构建主角信息。"""
-        player_name = player_state.player_name or character_settings.get("player_name", "")
+        player_name = player_state.player_name or character_settings.get(
+            "player_name", ""
+        )
         if not player_name:
             return None
 
         added_names.add(player_name)
-        image_url, image_generated = self._get_entity_image(game_id, "character", player_name)
+        image_url, image_generated = self._get_entity_image(
+            game_id, "character", player_name
+        )
 
         # 处理可能的嵌套字典
         age_val = self._extract_nested_value(character_settings.get("age"), "age")
-        gender_val = self._extract_nested_value(character_settings.get("gender"), "gender")
+        gender_val = self._extract_nested_value(
+            character_settings.get("gender"), "gender"
+        )
         occupation_val = self._extract_nested_value(
             character_settings.get("occupation"), "occupation"
         )
@@ -245,7 +257,8 @@ class CollectionService:
         return CharacterCollectionItem(
             name=name,
             role=person.get("role", ""),
-            description=person.get("relationship_desc", "") or person.get("relationship", ""),
+            description=person.get("relationship_desc", "")
+            or person.get("relationship", ""),
             affinity=person.get("affinity", 50),
             age=person.get("age"),
             gender=person.get("gender"),
@@ -320,7 +333,9 @@ class CollectionService:
         """构建标志物列表。"""
         landmarks = []
         for name, landmark_data in player_state.landmarks.items():
-            image_url, image_generated = self._get_entity_image(game_id, "landmark", name)
+            image_url, image_generated = self._get_entity_image(
+                game_id, "landmark", name
+            )
             landmarks.append(
                 LandmarkCollectionItem(
                     name=name,
@@ -375,7 +390,11 @@ class CollectionService:
         """从角色设定中获取时代背景。"""
         era_setting = character_settings.get("era", {})
         if isinstance(era_setting, dict):
-            return era_setting.get("era_name") or era_setting.get("era_description") or "现代"
+            return (
+                era_setting.get("era_name")
+                or era_setting.get("era_description")
+                or "现代"
+            )
         return "现代"
 
     # ==================== 生成图片 ====================
@@ -390,13 +409,17 @@ class CollectionService:
         description_parts = []
 
         # 检查是否是主角
-        player_name = player_state.player_name or character_settings.get("player_name", "")
+        player_name = player_state.player_name or character_settings.get(
+            "player_name", ""
+        )
         is_player = name == player_name
 
         if is_player:
             # 主角信息
             age_val = self._extract_nested_value(character_settings.get("age"), "age")
-            gender_val = self._extract_nested_value(character_settings.get("gender"), "gender")
+            gender_val = self._extract_nested_value(
+                character_settings.get("gender"), "gender"
+            )
             occupation_val = self._extract_nested_value(
                 character_settings.get("occupation"), "occupation"
             )
@@ -413,7 +436,9 @@ class CollectionService:
                 description_parts.append(life_vision[:50])
         else:
             # 从 key_people 中查找
-            key_people = character_settings.get("relationships", {}).get("key_people", [])
+            key_people = character_settings.get("relationships", {}).get(
+                "key_people", []
+            )
             for person in key_people:
                 if isinstance(person, dict) and person.get("name") == name:
                     if person.get("age"):
@@ -426,7 +451,9 @@ class CollectionService:
 
             # 从 family_members 中查找
             if not description_parts:
-                family_members = character_settings.get("family", {}).get("family_members", [])
+                family_members = character_settings.get("family", {}).get(
+                    "family_members", []
+                )
                 for member in family_members:
                     if isinstance(member, dict) and member.get("name") == name:
                         if member.get("age"):
@@ -437,7 +464,9 @@ class CollectionService:
                             description_parts.append(member["relationship"])
                         break
 
-        description = "，".join(description_parts) if description_parts else f"一个叫{name}的人"
+        description = (
+            "，".join(description_parts) if description_parts else f"一个叫{name}的人"
+        )
         era = self._get_era_from_settings(character_settings)
 
         return CharacterInfo(
@@ -515,7 +544,9 @@ class CollectionService:
         if not landmark_data:
             raise EntityNotFoundError(f"标志物 {landmark_name} 不存在")
 
-        description = landmark_data.get("description", "") or f"一个叫{landmark_name}的地点"
+        description = (
+            landmark_data.get("description", "") or f"一个叫{landmark_name}的地点"
+        )
         character_settings = player_state.character_settings or {}
         era = self._get_era_from_settings(character_settings)
 
@@ -543,7 +574,9 @@ class CollectionService:
             PermissionDeniedError: 亲密度不足
         """
         character_settings = player_state.character_settings or {}
-        player_name = player_state.player_name or character_settings.get("player_name", "")
+        player_name = player_state.player_name or character_settings.get(
+            "player_name", ""
+        )
         is_player = name == player_name
 
         if is_player:
@@ -818,8 +851,7 @@ class CollectionService:
 
         # 如果需要从历史中提取描述
         if generate_description and player_state.round_history and ai_client:
-            from src.services.entity_recognition_service import \
-                EntityRecognitionService
+            from src.services.entity_recognition_service import EntityRecognitionService
 
             recognition_service = EntityRecognitionService(ai_client)
             item_info = recognition_service.extract_item_description(
@@ -895,7 +927,9 @@ class CollectionService:
 
         # 检查是否是主角
         character_settings = player_state.character_settings or {}
-        player_name = player_state.player_name or character_settings.get("player_name", "")
+        player_name = player_state.player_name or character_settings.get(
+            "player_name", ""
+        )
         if character_name == player_name:
             raise PermissionDeniedError("不能删除主角")
 

@@ -19,42 +19,59 @@ Usage:
 """
 
 # Helper functions (exported for use in other modules)
-from config.prompts._helpers import (_build_character_habits_context,
-                                     _build_continuation_mandate,
-                                     _build_established_facts_context,
-                                     _build_foreshadowing_context,
-                                     _build_full_character_context,
-                                     _build_logic_constraints,
-                                     _build_new_character_intro_context,
-                                     _build_pending_storylines_context,
-                                     _build_time_context,
-                                     _build_world_model_constraints,
-                                     _collect_available_people,
-                                     _format_effects, _format_people_names)
+from config.prompts._helpers import (
+    _build_character_habits_context,
+    _build_continuation_mandate,
+    _build_established_facts_context,
+    _build_foreshadowing_context,
+    _build_full_character_context,
+    _build_logic_constraints,
+    _build_new_character_intro_context,
+    _build_pending_storylines_context,
+    _build_time_context,
+    _build_world_model_constraints,
+    _collect_available_people,
+    _format_effects,
+    _format_people_names,
+)
+
 # Character creation and profile prompts
 from config.prompts.character_prompts import (
-    get_character_profile_synthesis_prompt, get_character_setting_prompt,
-    get_initial_attributes_prompt, get_opening_story_prompt,
-    get_relationship_person_prompt, get_relationships_summary_prompt)
+    get_character_profile_synthesis_prompt,
+    get_character_setting_prompt,
+    get_initial_attributes_prompt,
+    get_opening_story_prompt,
+    get_relationship_person_prompt,
+    get_relationships_summary_prompt,
+)
+
 # Story generation prompts
-from config.prompts.story_prompts import (get_event_generation_prompt,
-                                          get_options_only_prompt,
-                                          get_relationship_event_context,
-                                          get_result_generation_prompt,
-                                          get_round_event_prompt,
-                                          get_story_only_prompt)
+from config.prompts.story_prompts import (
+    get_event_generation_prompt,
+    get_options_only_prompt,
+    get_relationship_event_context,
+    get_result_generation_prompt,
+    get_round_event_prompt,
+    get_story_only_prompt,
+)
+
 # Summary generation prompts
-from config.prompts.summary_prompts import (get_four_week_summary_prompt,
-                                            get_narrative_compression_prompt,
-                                            get_story_compression_prompt,
-                                            get_weekly_summary_prompt,
-                                            get_yearly_summary_prompt)
+from config.prompts.summary_prompts import (
+    get_four_week_summary_prompt,
+    get_narrative_compression_prompt,
+    get_story_compression_prompt,
+    get_weekly_summary_prompt,
+    get_yearly_summary_prompt,
+)
+
 # Validation prompts
 from config.prompts.validation_prompts import (
-    get_consistency_validation_prompt, get_story_analysis_prompt)
+    get_consistency_validation_prompt,
+    get_story_analysis_prompt,
+)
+
 # World state and ending prompts
-from config.prompts.world_prompts import (get_ending_prompt,
-                                          get_world_extraction_prompt)
+from config.prompts.world_prompts import get_ending_prompt, get_world_extraction_prompt
 
 __all__ = [
     # Story prompts

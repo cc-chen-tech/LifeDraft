@@ -196,7 +196,9 @@ class AIClient:
                         )
                         continue
                     else:
-                        logger.error(f"All max_tokens fallback levels failed: {error_msg}")
+                        logger.error(
+                            f"All max_tokens fallback levels failed: {error_msg}"
+                        )
                 else:
                     # 非 max_tokens 错误，直接抛出
                     raise
@@ -307,15 +309,21 @@ class AIClient:
 
             except openai.APIError as e:
                 last_error = str(e)
-                logger.warning(f"AI call attempt {attempt + 1}/{retry_count} failed: {e}")
+                logger.warning(
+                    f"AI call attempt {attempt + 1}/{retry_count} failed: {e}"
+                )
                 if attempt == retry_count - 1:
-                    raise ValueError(f"AI call failed after {retry_count} attempts: {e}")
+                    raise ValueError(
+                        f"AI call failed after {retry_count} attempts: {e}"
+                    )
             except Exception as e:
                 last_error = str(e)
                 logger.warning(
                     f"AI call attempt {attempt + 1}/{retry_count} failed (unexpected): {e}"
                 )
                 if attempt == retry_count - 1:
-                    raise ValueError(f"AI call failed after {retry_count} attempts: {e}")
+                    raise ValueError(
+                        f"AI call failed after {retry_count} attempts: {e}"
+                    )
 
         raise ValueError("AI call failed after all retries")

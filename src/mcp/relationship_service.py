@@ -7,10 +7,13 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from src.game.relationship_events import (RELATIONSHIP_EVENTS, EventCategory,
-                                          RelationshipEventDef,
-                                          get_event_by_type,
-                                          get_events_by_category)
+from src.game.relationship_events import (
+    RELATIONSHIP_EVENTS,
+    EventCategory,
+    RelationshipEventDef,
+    get_event_by_type,
+    get_events_by_category,
+)
 
 if TYPE_CHECKING:
     from src.game.state import CharacterState, PlayerState
@@ -51,7 +54,9 @@ class RelationshipMCPService:
     3. 记录已触发的事件避免重复
     """
 
-    def __init__(self, player_gender: str = "male", player_orientation: str = "heterosexual"):
+    def __init__(
+        self, player_gender: str = "male", player_orientation: str = "heterosexual"
+    ):
         """
         初始化MCP服务
 
@@ -104,9 +109,9 @@ class RelationshipMCPService:
             return same_gender
 
         # 双性恋与异性恋
-        if (char_orientation == "bisexual" and player_orientation == "heterosexual") or (
-            char_orientation == "heterosexual" and player_orientation == "bisexual"
-        ):
+        if (
+            char_orientation == "bisexual" and player_orientation == "heterosexual"
+        ) or (char_orientation == "heterosexual" and player_orientation == "bisexual"):
             return not same_gender
 
         # 双性恋与同性恋
@@ -167,18 +172,30 @@ class RelationshipMCPService:
 
         # 检查亲密度
         if event_def.is_negative_threshold:
-            if event_def.required_affinity > 0 and character.affinity > event_def.required_affinity:
+            if (
+                event_def.required_affinity > 0
+                and character.affinity > event_def.required_affinity
+            ):
                 return False
         else:
-            if event_def.required_affinity > 0 and character.affinity < event_def.required_affinity:
+            if (
+                event_def.required_affinity > 0
+                and character.affinity < event_def.required_affinity
+            ):
                 return False
 
         # 检查信任度
         if event_def.is_negative_threshold:
-            if event_def.required_trust > 0 and character.trust > event_def.required_trust:
+            if (
+                event_def.required_trust > 0
+                and character.trust > event_def.required_trust
+            ):
                 return False
         else:
-            if event_def.required_trust > 0 and character.trust < event_def.required_trust:
+            if (
+                event_def.required_trust > 0
+                and character.trust < event_def.required_trust
+            ):
                 return False
 
         # 检查尊重度
@@ -267,7 +284,9 @@ class RelationshipMCPService:
         for event_def in events:
             if self.check_event_conditions(event_def, character, player):
                 era_name = event_def.get_era_name(era)
-                description = event_def.description_template.format(character=character.name)
+                description = event_def.description_template.format(
+                    character=character.name
+                )
                 priority = base_priority
                 if priority_overrides and event_def.event_type in priority_overrides:
                     priority = priority_overrides[event_def.event_type]
@@ -365,8 +384,12 @@ class RelationshipMCPService:
 
             # 检查各类事件
             all_triggered.extend(self.check_romance_events(character, player, era_name))
-            all_triggered.extend(self.check_friendship_events(character, player, era_name))
-            all_triggered.extend(self.check_negative_events(character, player, era_name))
+            all_triggered.extend(
+                self.check_friendship_events(character, player, era_name)
+            )
+            all_triggered.extend(
+                self.check_negative_events(character, player, era_name)
+            )
             all_triggered.extend(self.check_special_events(character, player, era_name))
 
         # 按优先级排序
@@ -375,7 +398,9 @@ class RelationshipMCPService:
         # 限制返回数量
         result = all_triggered[:max_events]
 
-        logger.info(f"Detected {len(all_triggered)} events, returning top {len(result)}")
+        logger.info(
+            f"Detected {len(all_triggered)} events, returning top {len(result)}"
+        )
 
         return [e.to_dict() for e in result]
 

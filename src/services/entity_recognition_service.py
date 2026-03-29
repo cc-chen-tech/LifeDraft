@@ -48,8 +48,9 @@ class EntityRecognitionService(BaseExtractionService):
             # 使用基类的截断逻辑
             story_text = self._truncate_story(story_text)
 
-            from config.prompts.entity_recognition_prompt import \
-                get_entity_recognition_prompt
+            from config.prompts.entity_recognition_prompt import (
+                get_entity_recognition_prompt,
+            )
 
             prompt = get_entity_recognition_prompt(
                 story_text=story_text,
@@ -62,7 +63,9 @@ class EntityRecognitionService(BaseExtractionService):
 
             sys_prompt = self._get_system_prompt("story_analyzer", language)
 
-            logger.info(f"Starting entity recognition with story length {len(story_text)} chars")
+            logger.info(
+                f"Starting entity recognition with story length {len(story_text)} chars"
+            )
 
             response = self._call_ai(
                 system_prompt=sys_prompt,
@@ -114,8 +117,9 @@ class EntityRecognitionService(BaseExtractionService):
             contexts = contexts[:5]
             story_text = "\n\n---\n\n".join(contexts)
 
-            from config.prompts.entity_recognition_prompt import \
-                get_item_description_extraction_prompt
+            from config.prompts.entity_recognition_prompt import (
+                get_item_description_extraction_prompt,
+            )
 
             prompt = get_item_description_extraction_prompt(
                 item_name=item_name,
@@ -161,7 +165,9 @@ class EntityRecognitionService(BaseExtractionService):
         story_parts = []
 
         # 按周和回合排序
-        sorted_history = sorted(round_history, key=lambda x: (x.get("week", 0), x.get("round", 0)))
+        sorted_history = sorted(
+            round_history, key=lambda x: (x.get("week", 0), x.get("round", 0))
+        )
 
         for entry in sorted_history:
             week = entry.get("week", 0) + 1
@@ -185,7 +191,9 @@ class EntityRecognitionService(BaseExtractionService):
 
         return "\n".join(story_parts)
 
-    def _parse_recognition_response(self, response: str) -> Dict[str, List[Dict[str, Any]]]:
+    def _parse_recognition_response(
+        self, response: str
+    ) -> Dict[str, List[Dict[str, Any]]]:
         """解析AI识别响应。
 
         Args:
@@ -241,7 +249,9 @@ class EntityRecognitionService(BaseExtractionService):
             return False
 
         # 使用基类的验证方法
-        entity["importance"] = self._validate_importance(entity.get("importance", "normal"))
+        entity["importance"] = self._validate_importance(
+            entity.get("importance", "normal")
+        )
 
         # 验证出现次数
         appear_count = entity.get("appear_count", 0)
@@ -249,7 +259,9 @@ class EntityRecognitionService(BaseExtractionService):
             entity["appear_count"] = 1
 
         # 确保appear_contexts是列表
-        if "appear_contexts" not in entity or not isinstance(entity["appear_contexts"], list):
+        if "appear_contexts" not in entity or not isinstance(
+            entity["appear_contexts"], list
+        ):
             entity["appear_contexts"] = []
 
         return True

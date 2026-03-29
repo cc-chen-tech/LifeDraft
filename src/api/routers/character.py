@@ -11,10 +11,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from src.api.deps import get_current_user_optional
-from src.api.schemas import (GenerateAttributesRequest,
-                             GenerateRelationshipRequest,
-                             GenerateSettingRequest, MessageResponse,
-                             OpeningStoryRequest, RelationshipsSummaryRequest)
+from src.api.schemas import (
+    GenerateAttributesRequest,
+    GenerateRelationshipRequest,
+    GenerateSettingRequest,
+    MessageResponse,
+    OpeningStoryRequest,
+    RelationshipsSummaryRequest,
+)
 from src.game.character_creation import CharacterCreator
 
 logger = logging.getLogger(__name__)
