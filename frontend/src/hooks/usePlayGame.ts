@@ -355,8 +355,6 @@ export function usePlayGame() {
 
   // ===== Round Scene Images =====
   const currentRound = (roundInfo?.current_round as number) ?? 0;
-  const enableSceneImage = useGameStore((s) => s.enableSceneImage);
-  const generateRoundSceneImage = useGameStore((s) => s.generateRoundSceneImage);
   
   // 当轮次变化时，获取当前轮次的场景插画
   // ★ 根据 phase 决定获取哪个 stage 的插画
@@ -375,31 +373,9 @@ export function usePlayGame() {
     }
   }, [gameId, fetchAllRoundSceneImages]);
   
-  // ★ 加载后检查：如果没有插画，自动生成
-  useEffect(() => {
-    if (!gameId || !enableSceneImage || !storyText || currentRound < 0) return;
-    
-    // 延迟检查，等待 fetchAllRoundSceneImages 完成
-    const timer = setTimeout(() => {
-      const state = useGameStore.getState();
-      const { eventSceneImage, resultSceneImage } = state;
-      
-      // 根据 phase 检查是否需要生成插画
-      if (phase === 'options' && !eventSceneImage) {
-        console.log(`[Auto Generate] No event scene found for round ${currentRound}, generating...`);
-        generateRoundSceneImage(currentRound, storyText, 'event').catch(err => {
-          console.error('[Auto Generate] Event scene generation failed:', err);
-        });
-      } else if (phase === 'result' && !resultSceneImage) {
-        console.log(`[Auto Generate] No result scene found for round ${currentRound}, generating...`);
-        generateRoundSceneImage(currentRound, storyText, 'result').catch(err => {
-          console.error('[Auto Generate] Result scene generation failed:', err);
-        });
-      }
-    }, 500);
-    
-    return () => clearTimeout(timer);
-  }, [gameId, currentRound, storyText, enableSceneImage, eventSceneImage, resultSceneImage, phase, generateRoundSceneImage]);
+  // ★ 场景插画自动生成已由后端 GET 端点处理
+  // 当调用 fetchRoundSceneImage 时，如果图片不存在，后端会自动触发生成并返回 202
+  // 前端只需轮询等待即可，无需主动触发生成
 
   // ===== Grouped Return Objects =====
   // M-04: Organized return values into logical groups
