@@ -150,12 +150,13 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       audio.onended = () => {
         setIsPlaying(false);
         setCurrentTime(0);
-        // 自动播放下一首（使用函数引用避免循环依赖）
-        if (recommendation?.songs.length && currentSong) {
+        // 自动播放下一首 - 使用传入的 song 参数而不是 currentSong
+        if (recommendation?.songs.length) {
           const currentIndex = recommendation.songs.findIndex(
-            (s) => s.id === currentSong.id
+            (s) => s.id === song.id
           );
           const nextIndex = (currentIndex + 1) % recommendation.songs.length;
+          console.log(`[MusicPlayer] Song ended, playing next: ${recommendation.songs[nextIndex].name}`);
           loadAndPlaySong(recommendation.songs[nextIndex]);
         }
       };
