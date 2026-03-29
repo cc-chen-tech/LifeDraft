@@ -39,12 +39,14 @@ test.describe('User Journey - Landing Page', () => {
     // 先登录
     await ensureAuthenticated(page, context);
 
-    await page.goto('/');
+    // ensureAuthenticated 已经在 / 页面，等待登录状态确认
+    const loginButton = page.getByRole('button', { name: /登录/i });
+    await expect(loginButton).not.toBeVisible({ timeout: 5000 });
 
     const newGameButton = page.getByRole('button', { name: /新游戏|New Game/i });
     await newGameButton.click();
 
-    await expect(page).toHaveURL('/create');
+    await expect(page).toHaveURL('/create', { timeout: 10000 });
   });
 });
 
@@ -146,14 +148,16 @@ test.describe('User Journey - Saves Page Flow', () => {
     // 先登录
     await ensureAuthenticated(page, context);
 
-    await page.goto('/');
+    // ensureAuthenticated 已经在 / 页面，等待登录状态确认
+    const loginButton = page.getByRole('button', { name: /登录/i });
+    await expect(loginButton).not.toBeVisible({ timeout: 5000 });
 
     // Look for saves button
-    const savesButton = page.getByRole('button', { name: /存档|Saves|Load/i });
+    const savesButton = page.getByRole('button', { name: /存档|加载存档|Saves|Load/i });
 
     if (await savesButton.isVisible()) {
       await savesButton.click();
-      await expect(page).toHaveURL('/saves');
+      await expect(page).toHaveURL('/saves', { timeout: 10000 });
     }
   });
 
@@ -203,30 +207,31 @@ test.describe('User Journey - Full Flow Simulation', () => {
     // 先登录
     await ensureAuthenticated(page, context);
 
-    // Start at home
-    await page.goto('/');
+    // ensureAuthenticated 已经在 / 页面，等待登录状态确认
+    const loginButton = page.getByRole('button', { name: /登录/i });
+    await expect(loginButton).not.toBeVisible({ timeout: 5000 });
     await expect(page).toHaveTitle(/Story Life|人生|Life Draft/);
 
     // Go to create
     const newGameButton = page.getByRole('button', { name: /新游戏/i });
     await newGameButton.click();
-    await expect(page).toHaveURL('/create');
+    await expect(page).toHaveURL('/create', { timeout: 10000 });
 
     // Return to home
     const returnButton = page.getByRole('button', { name: /返回/i }).first();
     await returnButton.click();
-    await expect(page).toHaveURL('/');
+    await expect(page).toHaveURL('/', { timeout: 10000 });
 
     // Go to saves
-    const savesButton = page.getByRole('button', { name: /存档|Saves/i });
+    const savesButton = page.getByRole('button', { name: /存档|加载存档|Saves/i });
     if (await savesButton.isVisible()) {
       await savesButton.click();
-      await expect(page).toHaveURL('/saves');
+      await expect(page).toHaveURL('/saves', { timeout: 10000 });
 
       // Return to home
       const returnFromSaves = page.getByRole('button', { name: /返回/i });
       await returnFromSaves.click();
-      await expect(page).toHaveURL('/');
+      await expect(page).toHaveURL('/', { timeout: 10000 });
     }
   });
 

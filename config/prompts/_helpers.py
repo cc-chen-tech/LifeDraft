@@ -1096,3 +1096,148 @@ def _build_character_name_constraint(available_people: List[str], language: str)
 - ABSOLUTELY FORBIDDEN to create any new character names
 - If other characters are needed, use generic terms (e.g., "a colleague", "a friend", "a stranger")
 """
+
+
+def extract_overused_phrases(
+    decision_history: List[Dict[str, Any]],
+    min_freq: int = 3,
+    max_phrases: int = 15,
+    language: str = "zh",
+) -> str:
+    """
+    从历史故事中动态提取高频重复短语，生成禁用列表注入prompt。
+
+    三重策略：
+    1. 滑动窗口提取跨故事重复的描写性短语（8-15字）
+    2. 提取重复的完整句子（多篇故事中出现相同句子）
+    3. 提取重复的故事开头模式（多个故事以相似方式开头）
+
+    Args:
+        decision_history: 决策历史列表
+        min_freq: 最小出现次数才认为是“过度使用”
+        max_phrases: 最多返回多少个短语
+        language: 语言
+
+    Returns:
+        格式化的禁用短语文本，可直接插入prompt。若无高频短语则返回空字符串。
+    """
+    import re
+    from collections import Counter
+
+    if not decision_history or len(decision_history) < 3:
+        return ""
+
+    # 收集所有故事文本
+    stories: List[str] = []
+    for d in decision_history:
+        event = d.get("event", "")
+        if event and len(event) > 20:
+            stories.append(event)
+
+    if len(stories) < 3:
+        return ""
+
+    # 动态调整阈值：故事越多，阈值可以越低
+    effective_min_freq = min_freq if len(stories) <= 10 else 2
+
+    ban_items: List[str] = []
+
+    # === 策略一（最重要）：提取重复的故事开头模式 ===
+    opening_keywords: Counter = Counter()
+    for story in stories:
+        first_part = story[:30]
+        for keyword in ["晨光", "晨雾", "暮色", "夜色", "月光", "午后",
+                        "烛火", "天明", "黄昏", "午时", "卵时",
+                        "晨钟", "清晨", "破晓", "曙光"]:
+            if keyword in first_part:
+                opening_keywords[keyword] += 1
+
+    for keyword, count in opening_keywords.most_common():
+        if count >= 3:
+            ban_items.append(
+                f"以“{keyword}”开头的场景（已用{count}次，必须换其他时间/场景切入）"
+            )
+
+    # === 策略二：提取多故事重复的完整句子 ===
+    sentence_story_count: Counter = Counter()
+    for story in stories:
+        sentences = re.split(r'[。！？\n]', story)
+        seen_sents: set = set()
+        for s in sentences:
+            s = s.strip()
+            if len(s) >= 15 and s not in seen_sents:
+                seen_sents.add(s)
+                sentence_story_count[s] += 1
+
+    for sent, count in sentence_story_count.most_common(20):
+        if count >= effective_min_freq:
+            display = sent[:40] + ("…" if len(sent) > 40 else "")
+            ban_items.append(f"“{display}”（完整句子在{count}篇中重复）")
+
+    # 收集已禁用句子的文本，用于过滤策略三中的重复短语
+    banned_text = " ".join(ban_items)
+
+    # === 策略三：提取跨故事重复的描写性短语（8-15字） ===
+    phrase_counter: Counter = Counter()
+    for story in stories:
+        seen_in_story: set = set()
+        for length in [8, 10, 12, 15]:
+            for i in range(len(story) - length + 1):
+                phrase = story[i:i + length]
+                # 跳过包含换行符的短语
+                if '\n' in phrase:
+                    continue
+                if re.search(r'[\u4e00-\u9fff]{5,}', phrase):
+                    if phrase not in seen_in_story:
+                        seen_in_story.add(phrase)
+                        phrase_counter[phrase] += 1
+
+    frequent = [
+        (p, c) for p, c in phrase_counter.most_common(300)
+        if c >= effective_min_freq
+    ]
+
+    # 去重：长短语包含短短语时只保留长的
+    filtered_phrases = []
+    for phrase, count in frequent:
+        is_sub = False
+        for p2, c2 in frequent:
+            if len(p2) > len(phrase) and phrase in p2 and c2 >= count * 0.7:
+                is_sub = True
+                break
+        if not is_sub:
+            filtered_phrases.append((phrase, count))
+
+    for phrase, count in filtered_phrases:
+        if '“' in phrase and '”' in phrase:
+            continue
+        if len(phrase) <= 8 and not any(c in phrase for c in '的地得了着过在从与'):
+            continue
+        # 跳过已被更长句子覆盖的短语
+        if phrase in banned_text:
+            continue
+        ban_items.append(f"“{phrase}”（{count}篇故事重复）")
+
+    if not ban_items:
+        return ""
+
+    # 截取前 N 个
+    ban_items = ban_items[:max_phrases]
+
+    # 格式化输出
+    if language == "zh":
+        lines = [f"  - {item}" for item in ban_items]
+        return (
+            "\n【★ 动态禁用列表 - 以下表达已被过度使用，本次严禁使用】\n"
+            "必须用全新的描写方式替代：\n"
+            + "\n".join(lines)
+            + "\n❗ 不是禁止提及相关事物，而是禁止用这些完全相同的句式/开头来描写。请换一种角度、一种感官、一种句式来写。"
+        )
+    else:
+        lines = [f"  - {item}" for item in ban_items]
+        return (
+            "\n[DYNAMIC BAN LIST - These expressions are overused, DO NOT use them]\n"
+            "You MUST use completely different wording:\n"
+            + "\n".join(lines)
+            + "\n! It's not about avoiding the topics, but about using fresh descriptions."
+        )

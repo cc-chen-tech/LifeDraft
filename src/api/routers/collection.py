@@ -11,7 +11,7 @@ from src.api.schemas import (CollectionResponse, MessageResponse,
                              RegenerateCharacterImageRequest,
                              RegenerateItemImageRequest)
 from src.api.services.session_service import session_service
-from src.database.models import SessionLocal, User
+from src.database.models import SessionLocal
 from src.services.collection_service import (CollectionService,
                                              EntityNotFoundError,
                                              ImageGenerationError,
@@ -33,16 +33,16 @@ def get_session() -> Generator[Session, None, None]:
         db.close()
 
 
-def _require_user(user: Optional[User]) -> User:
+def _require_user(user_id: Optional[int]) -> int:
     """验证用户已登录。"""
-    if not user:
+    if not user_id:
         raise HTTPException(status_code=401, detail="未登录")
-    return user
+    return user_id
 
 
-def _get_player_state(game_id: int, user: User) -> tuple:  # type: ignore
+def _get_player_state(game_id: int, user_id: int) -> tuple:  # type: ignore
     """获取游戏会话和玩家状态。"""
-    session = session_service.get_or_restore(game_id, user)
+    session = session_service.get_or_restore(game_id, user_id)
     player_state = session.game_loop.get_state()
     if not player_state:
         raise HTTPException(status_code=400, detail="游戏状态不存在")
@@ -55,11 +55,11 @@ def _get_player_state(game_id: int, user: User) -> tuple:  # type: ignore
 @router.get("/{game_id}", response_model=CollectionResponse)
 async def get_collection(  # type: ignore
     game_id: int,
-    user: Optional[User] = Depends(get_current_user_optional),
+    user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """获取游戏的收集数据（人物和物品）"""
-    user = _require_user(user)
-    _, player_state = _get_player_state(game_id, user)
+    user_id = _require_user(user_id)
+    _, player_state = _get_player_state(game_id, user_id)
 
     db = SessionLocal()
     try:
@@ -72,10 +72,10 @@ async def get_collection(  # type: ignore
 @router.get("/{game_id}/details", response_model=CollectionResponse)
 async def get_collection_details(  # type: ignore
     game_id: int,
-    user: Optional[User] = Depends(get_current_user_optional),
+    user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """获取游戏的收集数据 - 与 /{game_id} 相同，为兼容前端路径"""
-    return await get_collection(game_id, user)
+    return await get_collection(game_id, user_id)
 
 
 # ==================== 生成图片 ====================
@@ -85,16 +85,16 @@ async def get_collection_details(  # type: ignore
 async def generate_character_image(  # type: ignore
     game_id: int,
     name: str,
-    user: Optional[User] = Depends(get_current_user_optional),
+    user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """生成人物图片"""
-    user = _require_user(user)
-    _, player_state = _get_player_state(game_id, user)
+    user_id = _require_user(user_id)
+    _, player_state = _get_player_state(game_id, user_id)
 
     db = SessionLocal()
     try:
         service = CollectionService(db)
-        service.verify_game_ownership(game_id, int(user.user_id))
+        service.verify_game_ownership(game_id, user_id)
         image_id = service.generate_character_image(game_id, name, player_state)
 
         return MessageResponse(
@@ -116,10 +116,10 @@ async def generate_character_image(  # type: ignore
 async def generate_character_description(  # type: ignore
     game_id: int,
     name: str,
-    user: Optional[User] = Depends(get_current_user_optional),
+    user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """生成人物描述（人物描述已存在于角色设定中）"""
-    _require_user(user)
+    _require_user(user_id)
     return MessageResponse(message=f"人物 {name} 描述已存在", success=True)
 
 
@@ -127,16 +127,16 @@ async def generate_character_description(  # type: ignore
 async def generate_item_image(  # type: ignore
     game_id: int,
     item_name: str,
-    user: Optional[User] = Depends(get_current_user_optional),
+    user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """生成物品图片"""
-    user = _require_user(user)
-    _, player_state = _get_player_state(game_id, user)
+    user_id = _require_user(user_id)
+    _, player_state = _get_player_state(game_id, user_id)
 
     db = SessionLocal()
     try:
         service = CollectionService(db)
-        service.verify_game_ownership(game_id, int(user.user_id))
+        service.verify_game_ownership(game_id, user_id)
         image_id = service.generate_item_image(game_id, item_name, player_state)
 
         return MessageResponse(
@@ -158,11 +158,11 @@ async def generate_item_image(  # type: ignore
 async def generate_item_description(  # type: ignore
     game_id: int,
     item_name: str,
-    user: Optional[User] = Depends(get_current_user_optional),
+    user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """生成物品描述"""
-    user = _require_user(user)
-    session, player_state = _get_player_state(game_id, user)
+    user_id = _require_user(user_id)
+    session, player_state = _get_player_state(game_id, user_id)
 
     item_data = player_state.items.get(item_name)
     if not item_data:
@@ -209,16 +209,16 @@ async def generate_item_description(  # type: ignore
 async def generate_landmark_image(  # type: ignore
     game_id: int,
     landmark_name: str,
-    user: Optional[User] = Depends(get_current_user_optional),
+    user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """生成标志物图片"""
-    user = _require_user(user)
-    _, player_state = _get_player_state(game_id, user)
+    user_id = _require_user(user_id)
+    _, player_state = _get_player_state(game_id, user_id)
 
     db = SessionLocal()
     try:
         service = CollectionService(db)
-        service.verify_game_ownership(game_id, int(user.user_id))
+        service.verify_game_ownership(game_id, user_id)
         image_id = service.generate_landmark_image(game_id, landmark_name, player_state)
 
         return MessageResponse(
@@ -243,11 +243,11 @@ async def generate_landmark_image(  # type: ignore
 async def generate_landmark_description(  # type: ignore
     game_id: int,
     landmark_name: str,
-    user: Optional[User] = Depends(get_current_user_optional),
+    user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """生成标志物描述"""
-    user = _require_user(user)
-    session, player_state = _get_player_state(game_id, user)
+    user_id = _require_user(user_id)
+    session, player_state = _get_player_state(game_id, user_id)
 
     landmark_data = player_state.landmarks.get(landmark_name)
     if not landmark_data:
@@ -290,16 +290,16 @@ async def regenerate_character_image(  # type: ignore
     game_id: int,
     name: str,
     request: RegenerateCharacterImageRequest,
-    user: Optional[User] = Depends(get_current_user_optional),
+    user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """基于用户文字描述重新生成人物画像"""
-    user = _require_user(user)
-    _, player_state = _get_player_state(game_id, user)
+    user_id = _require_user(user_id)
+    _, player_state = _get_player_state(game_id, user_id)
 
     db = SessionLocal()
     try:
         service = CollectionService(db)
-        service.verify_game_ownership(game_id, int(user.user_id))
+        service.verify_game_ownership(game_id, user_id)
         service.validate_character_for_regenerate(name, player_state)
 
         image_id = service.regenerate_character_image(
@@ -328,16 +328,16 @@ async def regenerate_item_image(  # type: ignore
     game_id: int,
     item_name: str,
     request: RegenerateItemImageRequest,
-    user: Optional[User] = Depends(get_current_user_optional),
+    user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """基于用户文字描述重新生成物品图片"""
-    user = _require_user(user)
-    _, player_state = _get_player_state(game_id, user)
+    user_id = _require_user(user_id)
+    _, player_state = _get_player_state(game_id, user_id)
 
     db = SessionLocal()
     try:
         service = CollectionService(db)
-        service.verify_game_ownership(game_id, int(user.user_id))
+        service.verify_game_ownership(game_id, user_id)
         image_id = service.regenerate_item_image(game_id, item_name, request.feedback, player_state)
 
         return MessageResponse(
@@ -369,11 +369,11 @@ async def regenerate_item_image(  # type: ignore
 async def recognize_entities(  # type: ignore
     game_id: int,
     request: dict,
-    user: Optional[User] = Depends(get_current_user_optional),
+    user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """从历史故事中识别重复出现的实体（物品、人物、地点）"""
-    user = _require_user(user)
-    session, player_state = _get_player_state(game_id, user)
+    user_id = _require_user(user_id)
+    session, player_state = _get_player_state(game_id, user_id)
 
     # 获取现有实体名称列表
     existing_items = list(player_state.items.keys())
@@ -410,11 +410,11 @@ async def recognize_entities(  # type: ignore
 async def add_entities(  # type: ignore
     game_id: int,
     request: dict,
-    user: Optional[User] = Depends(get_current_user_optional),
+    user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """批量添加识别出的实体到收集系统"""
-    user = _require_user(user)
-    _, player_state = _get_player_state(game_id, user)
+    user_id = _require_user(user_id)
+    _, player_state = _get_player_state(game_id, user_id)
 
     db = SessionLocal()
     try:
@@ -447,11 +447,11 @@ async def add_entities(  # type: ignore
 async def create_item(  # type: ignore
     game_id: int,
     request: dict,
-    user: Optional[User] = Depends(get_current_user_optional),
+    user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """手动创建物品，可选从历史中提取描述"""
-    user = _require_user(user)
-    session, player_state = _get_player_state(game_id, user)
+    user_id = _require_user(user_id)
+    session, player_state = _get_player_state(game_id, user_id)
 
     db = SessionLocal()
     try:
@@ -483,11 +483,11 @@ async def create_item(  # type: ignore
 async def delete_item(  # type: ignore
     game_id: int,
     item_name: str,
-    user: Optional[User] = Depends(get_current_user_optional),
+    user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """删除物品"""
-    user = _require_user(user)
-    _, player_state = _get_player_state(game_id, user)
+    user_id = _require_user(user_id)
+    _, player_state = _get_player_state(game_id, user_id)
 
     db = SessionLocal()
     try:
@@ -511,11 +511,11 @@ async def delete_item(  # type: ignore
 async def delete_character(  # type: ignore
     game_id: int,
     character_name: str,
-    user: Optional[User] = Depends(get_current_user_optional),
+    user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """删除人物"""
-    user = _require_user(user)
-    _, player_state = _get_player_state(game_id, user)
+    user_id = _require_user(user_id)
+    _, player_state = _get_player_state(game_id, user_id)
 
     db = SessionLocal()
     try:
@@ -541,11 +541,11 @@ async def delete_character(  # type: ignore
 async def delete_landmark(  # type: ignore
     game_id: int,
     landmark_name: str,
-    user: Optional[User] = Depends(get_current_user_optional),
+    user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """删除地点/标志物"""
-    user = _require_user(user)
-    _, player_state = _get_player_state(game_id, user)
+    user_id = _require_user(user_id)
+    _, player_state = _get_player_state(game_id, user_id)
 
     db = SessionLocal()
     try:

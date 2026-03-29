@@ -66,6 +66,9 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
   const preloadedAudioRef = useRef<HTMLAudioElement | null>(null);
   const preloadedSongRef = useRef<Song | null>(null);
   const activeAudioRef = useRef<HTMLAudioElement | null>(null); // 当前正在播放的音频
+  const [isSwitchingSong, setIsSwitchingSong] = useState(false); // 切换歌曲时的加载状态
+  const [preloadProgress, setPreloadProgress] = useState(0); // 预加载进度
+  const songUrlMapRef = useRef<Map<number, string>>(new Map()); // 预加载的歌曲 URL 映射
 
   // 获取音乐推荐
   const fetchRecommendation = useCallback(async () => {
@@ -73,10 +76,30 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
 
     setIsLoadingRecommendation(true);
     setRecommendationError(null);
+    setPreloadProgress(0);
 
     try {
+      // 检查 fetch 是否可用（某些测试环境可能不支持）
+      if (typeof fetch === 'undefined') {
+        console.warn('[MusicPlayer] fetch API not available, skipping music recommendation');
+        setRecommendationError('音乐服务暂不可用');
+        return;
+      }
+
       const result = await fetchMusicRecommendation(storyText, gameId);
       setRecommendation(result);
+      
+      // URL 已由后端批量返回，无需前端预加载
+      // 将 URL 存入映射表供备用
+      const urlMap = new Map<number, string>();
+      result.songs.forEach((song: Song) => {
+        if (song.url) {
+          urlMap.set(song.id, song.url);
+        }
+      });
+      songUrlMapRef.current = urlMap;
+      setPreloadProgress(100);
+      console.log(`[MusicPlayer] Received ${urlMap.size}/${result.songs.length} song URLs from backend`);
     } catch (error) {
       console.error("[MusicPlayer] Failed to fetch recommendation:", error);
       setRecommendationError(
@@ -95,52 +118,72 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
   ]);
   
   // 加载并播放歌曲
-  const loadAndPlaySong = useCallback(async (song: Song) => {
+  const loadAndPlaySong = useCallback(async (song: Song, isPreload: boolean = false) => {
     // 防止同时加载多个歌曲
-    if (isLoadingSongRef.current) {
+    if (isLoadingSongRef.current && !isPreload) {
       console.log(`[MusicPlayer] Already loading a song, skipping: ${song.name}`);
       return;
     }
-    isLoadingSongRef.current = true;
+    if (!isPreload) {
+      isLoadingSongRef.current = true;
+      setIsSwitchingSong(true); // 显示切换加载状态
+    }
     
     try {
-      // 停止所有正在播放的音频（包括预加载的）
-      if (activeAudioRef.current) {
-        console.log('[MusicPlayer] Stopping active audio from ref');
-        activeAudioRef.current.pause();
-        activeAudioRef.current.src = "";
-        activeAudioRef.current = null;
+      // 如果是预加载，不清理当前播放的音频
+      if (!isPreload) {
+        // 停止所有正在播放的音频（包括预加载的）
+        if (activeAudioRef.current) {
+          console.log('[MusicPlayer] Stopping active audio from ref');
+          activeAudioRef.current.pause();
+          activeAudioRef.current.src = "";
+          activeAudioRef.current = null;
+        }
+        
+        // 清理旧的音频 - 完全清理避免多个音频同时播放
+        if (audioElement) {
+          audioElement.pause();
+          audioElement.src = "";
+          // 移除所有事件监听器
+          audioElement.onplay = null;
+          audioElement.onpause = null;
+          audioElement.ontimeupdate = null;
+          audioElement.onloadedmetadata = null;
+          audioElement.onended = null;
+          audioElement.onerror = null;
+        }
+        
+        // 清理预加载的音频
+        if (preloadedAudioRef.current) {
+          preloadedAudioRef.current.pause();
+          preloadedAudioRef.current.src = "";
+          preloadedAudioRef.current = null;
+          preloadedSongRef.current = null;
+        }
+        
+        // 重置音频元素状态
+        setAudioElement(null);
+        
+        // 清除之前的播放错误
+        setPlayError(null);
       }
-      
-      // 清理旧的音频 - 完全清理避免多个音频同时播放
-      if (audioElement) {
-        audioElement.pause();
-        audioElement.src = "";
-        // 移除所有事件监听器
-        audioElement.onplay = null;
-        audioElement.onpause = null;
-        audioElement.ontimeupdate = null;
-        audioElement.onloadedmetadata = null;
-        audioElement.onended = null;
-        audioElement.onerror = null;
-      }
-      
-      // 清理预加载的音频
-      if (preloadedAudioRef.current) {
-        preloadedAudioRef.current.pause();
-        preloadedAudioRef.current.src = "";
-        preloadedAudioRef.current = null;
-        preloadedSongRef.current = null;
-      }
-      
-      // 重置音频元素状态
-      setAudioElement(null);
-      
-      // 清除之前的播放错误
-      setPlayError(null);
 
-      // 获取播放地址
-      const url = await fetchSongUrl(song.id);
+      // 获取播放地址（优先使用歌曲自带的 URL，后端已批量返回）
+      let url = song.url || songUrlMapRef.current.get(song.id);
+      
+      // 如果没有 URL，尝试实时获取（降级方案）
+      if (!url && !isPreload) {
+        console.log(`[MusicPlayer] Song ${song.id} has no URL, fetching realtime...`);
+        try {
+          url = await fetchSongUrl(song.id);
+          if (url) {
+            songUrlMapRef.current.set(song.id, url);
+          }
+        } catch (error) {
+          console.warn(`[MusicPlayer] Failed to fetch URL for song ${song.id}:`, error);
+        }
+      }
+      
       if (!url) {
         console.warn(`[MusicPlayer] 无法获取歌曲播放地址: ${song.name}`);
         setPlayError(`"${song.name}" 因版权限制无法播放`);
@@ -272,7 +315,10 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       console.error("[MusicPlayer] Failed to load song:", error);
     } finally {
       // 重置加载标志
-      isLoadingSongRef.current = false;
+      if (!isPreload) {
+        isLoadingSongRef.current = false;
+        setIsSwitchingSong(false); // 隐藏切换加载状态
+      }
     }
   }, [audioElement, volume, recommendation, currentSong, setAudioElement, setCurrentSong, setIsPlaying, setCurrentTime, setDuration]);
 
@@ -501,6 +547,14 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
         </div>
       )}
 
+      {/* 预加载进度 */}
+      {!isLoadingRecommendation && recommendation && preloadProgress < 100 && preloadProgress > 0 && (
+        <div className="flex items-center justify-center py-2 text-muted-foreground">
+          <Loader2 className="w-3 h-3 animate-spin mr-2" />
+          <span className="text-xs">预加载歌曲 {preloadProgress}%</span>
+        </div>
+      )}
+
       {/* 错误状态 */}
       {recommendationError && (
         <div className="text-sm text-destructive text-center py-2">
@@ -517,6 +571,14 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
               (已跳过 {skippedSongs.size} 首)
             </span>
           )}
+        </div>
+      )}
+
+      {/* 切换歌曲加载状态 */}
+      {isSwitchingSong && (
+        <div className="flex items-center justify-center py-2 text-muted-foreground">
+          <Loader2 className="w-3 h-3 animate-spin mr-2" />
+          <span className="text-xs">切换歌曲中...</span>
         </div>
       )}
 

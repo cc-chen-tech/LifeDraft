@@ -11,6 +11,7 @@ from typing import Any, Callable, Dict, Optional
 from pydantic import ValidationError
 
 from config.prompts import get_round_event_prompt, get_story_only_prompt
+from config.prompts._helpers import extract_overused_phrases
 from src.ai.client import AIClient
 from src.ai.models import EventOption, GameEvent
 from src.ai.system_prompts import get_system_prompt
@@ -107,6 +108,12 @@ class StoryGenerator:
             except Exception as e:
                 logger.warning(f"Vector search failed: {e}")
 
+        # ★ 动态提取历史故事中的高频重复短语，生成禁用列表
+        decision_history = player_state.get("decision_history", [])
+        overused_phrases = extract_overused_phrases(decision_history, language=language)
+        if overused_phrases:
+            logger.info(f"[AntiRepeat] Injected dynamic ban list ({len(overused_phrases)} chars)")
+
         story_prompt = get_story_only_prompt(
             player_state,
             language,
@@ -124,6 +131,7 @@ class StoryGenerator:
             activated_foreshadowing,
             character_habits,
             vector_context=vector_context,  # ★ 注入向量检索上下文
+            overused_phrases=overused_phrases,  # ★ 注入动态禁用列表
         )
 
         sys_prompt = get_system_prompt("story_novelist", language)
@@ -292,6 +300,12 @@ class StoryGenerator:
             except Exception as e:
                 logger.warning(f"Vector search failed: {e}")
 
+        # ★ 动态提取历史故事中的高频重复短语，生成禁用列表
+        decision_history = player_state.get("decision_history", [])
+        overused_phrases = extract_overused_phrases(decision_history, language=language)
+        if overused_phrases:
+            logger.info(f"[AntiRepeat] Round: Injected dynamic ban list ({len(overused_phrases)} chars)")
+
         # Get round story prompt
         prompt = get_round_event_prompt(
             player_state,
@@ -312,6 +326,7 @@ class StoryGenerator:
             world_model=world_model,
             new_character=new_character,
             vector_context=vector_context,  # ★ 注入向量检索上下文
+            overused_phrases=overused_phrases,  # ★ 注入动态禁用列表
         )
 
         # Step 1: Generate story text (with optional streaming)

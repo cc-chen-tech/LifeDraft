@@ -25,6 +25,7 @@ MYPY_RESULT=0
 IMPORTS_RESULT=0
 CONTRACT_RESULT=0
 DB_RESULT=0
+E2E_RESULT=0
 
 # 打印层级标题
 print_layer_header() {
@@ -109,20 +110,44 @@ run_db() {
     return $result
 }
 
-# Layer 5: E2E 浏览器测试 (提示)
+# Layer 5: E2E 浏览器测试 (Playwright)
 run_e2e_browser() {
-    print_layer_header "5" "E2E 浏览器测试" "前端进度显示、面板交互"
-    echo ""
-    echo -e "${YELLOW}╭─────────────────────────────────────────────────────────────╮${NC}"
-    echo -e "${YELLOW}│  E2E 浏览器测试需要使用 browser-agent 执行                 │${NC}"
-    echo -e "${YELLOW}│                                                             │${NC}"
-    echo -e "${YELLOW}│  此测试需要真实浏览器环境，无法通过命令行自动化运行。      │${NC}"
-    echo -e "${YELLOW}│  请在 IDE 中使用 browser-agent 来执行 E2E 测试。           │${NC}"
-    echo -e "${YELLOW}│                                                             │${NC}"
-    echo -e "${YELLOW}│  测试文件位置: frontend/e2e/                                │${NC}"
-    echo -e "${YELLOW}╰─────────────────────────────────────────────────────────────╯${NC}"
-    echo ""
-    return 0
+    print_layer_header "5" "E2E 浏览器测试" "前端页面渲染、用户交互、前后端联调"
+    cd "$PROJECT_DIR/frontend"
+    
+    # 检查后端是否运行
+    if ! lsof -ti:8000 > /dev/null 2>&1; then
+        echo -e "${YELLOW}后端未运行，正在启动...${NC}"
+        cd "$PROJECT_DIR"
+        source venv/bin/activate
+        python run_api.py > /tmp/backend_e2e.log 2>&1 &
+        BACKEND_PID=$!
+        sleep 3
+        if ! lsof -ti:8000 > /dev/null 2>&1; then
+            echo -e "${RED}后端启动失败，跳过 E2E 测试${NC}"
+            E2E_RESULT=1
+            return 1
+        fi
+        echo -e "${GREEN}后端已启动 (PID: $BACKEND_PID)${NC}"
+        cd "$PROJECT_DIR/frontend"
+    else
+        BACKEND_PID=""
+        echo -e "${GREEN}后端已在运行${NC}"
+    fi
+    
+    echo -e "${YELLOW}运行 Playwright E2E 测试 (chromium)...${NC}"
+    npx playwright test --project=chromium --reporter=list
+    local result=$?
+    
+    # 清理：如果是我们启动的后端，关掉它
+    if [ -n "$BACKEND_PID" ]; then
+        echo -e "${YELLOW}关闭测试用后端 (PID: $BACKEND_PID)...${NC}"
+        kill $BACKEND_PID 2>/dev/null
+    fi
+    
+    print_layer_result "e2e" $result
+    E2E_RESULT=$result
+    return $result
 }
 
 # 单元测试 (pytest -m unit)
@@ -301,7 +326,7 @@ run_perf() {
 run_all() {
     echo -e "${MAGENTA}╔════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${MAGENTA}║${NC}           ${CYAN}Story2 五层测试架构 - 自动化测试${NC}               ${MAGENTA}║${NC}"
-    echo -e "${MAGENTA}║${NC}           ${YELLOW}(Layer 1-4 自动化, Layer 5 需 browser-agent)${NC}   ${MAGENTA}║${NC}"
+    echo -e "${MAGENTA}║${NC}           ${YELLOW}(Layer 1-5 全自动化)${NC}                       ${MAGENTA}║${NC}"
     echo -e "${MAGENTA}╚════════════════════════════════════════════════════════════╝${NC}"
     
     local failed=0
@@ -318,8 +343,8 @@ run_all() {
     # Layer 4: DB 集成测试
     run_db || ((failed++))
     
-    # Layer 5: E2E 浏览器测试 (仅提示)
-    run_e2e_browser
+    # Layer 5: E2E 浏览器测试
+    run_e2e_browser || ((failed++))
     
     # 打印总结
     echo ""
@@ -348,12 +373,16 @@ run_all() {
     else
         echo -e "  Layer 4 - db:       ${RED}✗ FAIL${NC}"
     fi
-    echo -e "  Layer 5 - e2e:      ${YELLOW}⊘ SKIPPED (需 browser-agent)${NC}"
+    if [ $E2E_RESULT -eq 0 ]; then
+        echo -e "  Layer 5 - e2e:      ${GREEN}✓ PASS${NC}"
+    else
+        echo -e "  Layer 5 - e2e:      ${RED}✗ FAIL${NC}"
+    fi
     echo ""
     
     if [ $failed -eq 0 ]; then
         echo -e "${GREEN}══════════════════════════════════════════════════════════════${NC}"
-        echo -e "${GREEN}✓ 所有自动化测试通过！ (4/4 layers)${NC}"
+        echo -e "${GREEN}✓ 所有测试通过！ (5/5 layers)${NC}"
         echo -e "${GREEN}══════════════════════════════════════════════════════════════${NC}"
     else
         echo -e "${RED}══════════════════════════════════════════════════════════════${NC}"
@@ -375,7 +404,7 @@ show_help() {
     echo "  imports       - Layer 2: 导入验证测试"
     echo "  contract      - Layer 3: API 契约测试"
     echo "  db            - Layer 4: 真实 DB 集成测试"
-    echo "  e2e           - Layer 5: E2E 浏览器测试 (提示需 browser-agent)"
+    echo "  e2e           - Layer 5: E2E 浏览器测试 (Playwright)"
     echo ""
     echo -e "${YELLOW}按标记运行:${NC}"
     echo "  unit          - 运行 pytest -m unit"
@@ -383,7 +412,7 @@ show_help() {
     echo "  api           - 运行 pytest -m api"
     echo ""
     echo -e "${YELLOW}其他命令:${NC}"
-    echo "  all           - 运行全部自动化测试 (Layer 1-4)"
+    echo "  all           - 运行全部测试 (Layer 1-5)"
     echo "  backend       - 运行后端全量 pytest 测试"
     echo "  frontend      - 运行前端 tsc + Jest 测试"
     echo "  coverage      - 运行测试并生成覆盖率报告"
@@ -392,7 +421,7 @@ show_help() {
     echo "  help          - 显示此帮助信息"
     echo ""
     echo -e "${YELLOW}示例:${NC}"
-    echo "  ./test.sh              # 运行全部自动化测试 (Layer 1-4)"
+    echo "  ./test.sh              # 运行全部测试 (Layer 1-5)"
     echo "  ./test.sh all          # 同上"
     echo "  ./test.sh mypy         # 只运行 mypy 静态分析"
     echo "  ./test.sh contract     # 只运行契约测试"

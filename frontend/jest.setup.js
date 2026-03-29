@@ -1,5 +1,11 @@
 require('@testing-library/jest-dom');
 
+// Setup MSW
+const { server } = require('./src/__tests__/mocks/server');
+beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }));
+afterEach(() => server.resetHandlers());
+afterAll(() => server.close());
+
 // Mock next/navigation
 jest.mock('next/navigation', () => ({
   useRouter: () => ({

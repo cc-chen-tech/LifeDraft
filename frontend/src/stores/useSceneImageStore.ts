@@ -199,7 +199,8 @@ export const useSceneImageStore = create<SceneImageState>()(
           };
 
           set((state) => ({
-            currentRoundSceneImage: sceneWithStage,
+            // ★ 只更新对应 stage 的图片，不更新 currentRoundSceneImage
+            // currentRoundSceneImage 由 fetchAllRoundSceneImages 统一管理
             eventSceneImage: sceneWithStage.stage === 'event' ? sceneWithStage : state.eventSceneImage,
             resultSceneImage: sceneWithStage.stage === 'result' ? sceneWithStage : state.resultSceneImage,
             roundSceneImages: state.roundSceneImages.some(s => s.week === sceneWithStage.week && s.round_number === roundNumber && s.stage === sceneWithStage.stage)

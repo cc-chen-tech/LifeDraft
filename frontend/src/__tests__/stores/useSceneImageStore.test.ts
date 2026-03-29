@@ -212,6 +212,8 @@ describe('useSceneImageStore', () => {
       
       const state = useSceneImageStore.getState();
       expect(state.eventSceneImage?.scene_id).toBe(1);
+      // ★ fetchRoundSceneImage 不设置 currentRoundSceneImage
+      expect(state.currentRoundSceneImage).toBeNull();
     });
 
     it('should handle 404 error gracefully', async () => {

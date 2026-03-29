@@ -248,6 +248,49 @@ export async function fetchSongUrl(songId: number): Promise<string> {
   return data.url;
 }
 
+/**
+ * 批量预加载所有歌曲的 URL
+ * 使用 Promise.allSettled 确保即使部分失败也能继续
+ */
+export async function preloadAllSongUrls(
+  songs: Song[],
+  onProgress?: (loaded: number, total: number) => void
+): Promise<Map<number, string>> {
+  const urlMap = new Map<number, string>();
+  const total = songs.length;
+  let loaded = 0;
+
+  // 并行加载所有歌曲 URL（限制并发数为 3，避免请求过多）
+  const batchSize = 3;
+  for (let i = 0; i < songs.length; i += batchSize) {
+    const batch = songs.slice(i, i + batchSize);
+    
+    const results = await Promise.allSettled(
+      batch.map(async (song) => {
+        try {
+          const url = await fetchSongUrl(song.id);
+          return { id: song.id, url };
+        } catch (error) {
+          console.warn(`[MusicStore] Failed to preload song ${song.id}:`, error);
+          return { id: song.id, url: null };
+        }
+      })
+    );
+
+    results.forEach((result) => {
+      if (result.status === 'fulfilled' && result.value.url) {
+        urlMap.set(result.value.id, result.value.url);
+      }
+      loaded++;
+    });
+
+    onProgress?.(loaded, total);
+  }
+
+  console.log(`[MusicStore] Preloaded ${urlMap.size}/${total} song URLs`);
+  return urlMap;
+}
+
 export async function searchMusic(
   keyword: string,
   limit: number = 10

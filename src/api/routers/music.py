@@ -56,6 +56,7 @@ async def recommend_music(
     """根据故事内容推荐音乐
 
     分析故事的情绪和场景，搜索匹配的音乐
+    并批量获取所有歌曲的播放 URL
     """
     try:
         music_service = get_music_service()
@@ -65,7 +66,33 @@ async def recommend_music(
             story_text=request.story_text,
         )
 
-        # 转换为响应格式
+        # 批量获取所有歌曲的播放 URL（并行）
+        import asyncio
+        
+        async def get_song_url_with_id(song):
+            """获取歌曲 URL 并返回 (id, url)"""
+            try:
+                url = await music_service.get_song_play_url(song.id)
+                return (song.id, url)
+            except Exception as e:
+                logger.warning(f"Failed to get URL for song {song.id}: {e}")
+                return (song.id, None)
+        
+        # 并行获取所有歌曲的 URL
+        url_tasks = [get_song_url_with_id(song) for song in recommendation.songs]
+        url_results = await asyncio.gather(*url_tasks, return_exceptions=True)
+        
+        # 构建 URL 映射
+        url_map = {}
+        for result in url_results:
+            if isinstance(result, tuple):
+                song_id, url = result
+                if url:
+                    url_map[song_id] = url
+        
+        logger.info(f"[MusicAPI] Fetched {len(url_map)}/{len(recommendation.songs)} song URLs")
+
+        # 转换为响应格式（包含 URL）
         songs = [
             SongResponse(
                 id=song.id,
@@ -73,6 +100,7 @@ async def recommend_music(
                 artists=song.artists,
                 album=song.album,
                 duration=song.duration,
+                url=url_map.get(song.id),  # 直接包含 URL
             )
             for song in recommendation.songs
         ]
