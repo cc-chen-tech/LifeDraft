@@ -140,7 +140,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # ---- Register routers ----
 from src.api.routers import (auth, character, collection, friends, gameplay,
-                             games, images, presets, story)
+                             games, images, music, presets, story)
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(friends.router, prefix="/api/friends", tags=["Friends"])
@@ -151,6 +151,7 @@ app.include_router(gameplay.router, prefix="/api/games", tags=["Gameplay"])
 app.include_router(story.router, prefix="/api/games", tags=["Story"])
 app.include_router(images.router, prefix="/api/images", tags=["Images"])
 app.include_router(collection.router, prefix="/api/collection", tags=["Collection"])
+app.include_router(music.router, prefix="/api", tags=["Music"])
 
 
 @app.get("/api/health")
