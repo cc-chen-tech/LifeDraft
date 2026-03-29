@@ -1283,8 +1283,34 @@ def get_round_event_prompt(
         # Build new character introduction context
         new_char_context = _build_new_character_intro_context(new_character, language)
 
-        # ★ 向量检索上下文（如果有）
-        vector_context_section = "\n" + vector_context if vector_context else ""
+        # ★ 优化向量检索上下文格式，使其更醒目并增加使用说明
+        vector_context_section = ""
+        if vector_context:
+            vector_context_section = f"""
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                        📚 相关历史片段（回忆参考）                            ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+{vector_context}
+
+💡 使用提示：以上是与当前情境相关的历史片段，可作为角色回忆、对话引用或背景参考。
+   请自然地融入故事，但不要重复叙述这些过去的事件，而是作为当前故事的背景铺垫。
+╔══════════════════════════════════════════════════════════════════════════════╝
+"""
+
+        # ★ 优化：将约束信息放在提示词最前面，确保AI先看到
+        # 同时优化约束文本格式，使其更加醒目
+        constraints_header = ""
+        if world_model_context or storylines_context:
+            constraints_header = f"""
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    ⚠️  写作前必须遵守的硬性约束  ⚠️                          ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+{world_model_context if world_model_context else ""}
+{storylines_context if storylines_context else ""}
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  违反上述约束将导致故事被判定为不合格并需要重新生成                            ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+"""
 
         prompt = f"""你是一位才华横溢的小说家。请为第{week}周的{round_name}写一段生动的故事。{continuation_mandate}{foreshadowing_context}{vector_context_section}
 
@@ -1294,9 +1320,23 @@ def get_round_event_prompt(
 【当前状态】
 年龄：{age}岁 | 第{week}周 - {round_name}
 精力：{energy}/100 | 情绪：{mood}/100 | 学识：{knowledge}/100
-财富：{wealth:,}元 | 关系：{rel_str}{context_section}{rel_events_context}{memory_context}{storylines_context}{facts_context}{world_model_context}{habits_context}{new_char_context}
+财富：{wealth:,}元 | 关系：{rel_str}{context_section}{rel_events_context}{memory_context}{facts_context}{habits_context}{new_char_context}
+
+{constraints_header}
 
 【写作要求】
+**★★★ 写作前必读 — 约束检查清单（必须严格遵守）★★★**
+在开始写作前，请先仔细阅读并确认以下约束。写作过程中必须始终遵守，否则故事将被判定为不合格：
+- **人物位置约束**：检查【世界模型约束】中每个角色的当前位置，人物只能出现在其当前位置，除非故事中明确交代了移动过程
+- **承诺约束**：检查是否有未兑现的关键承诺，主角的行为不能与这些承诺直接冲突
+- **剧情线约束**：如有未完结的剧情线，必须在本轮中自然延续或回应
+
+**写作步骤（必须按此顺序执行）：**
+1. **先检查约束**：仔细阅读上述【硬性约束】部分，确认所有角色位置和承诺
+2. **规划场景**：根据约束确定场景地点、出场人物、事件发展
+3. **核对约束**：再次确认规划的场景不违反任何约束
+4. **写作故事**：确保故事完全符合所有约束
+
 1. **故事应该1500-2000字**，写成有吸引力的场景片段
 2. **包含丰富对话**，4-6轮重要对话交流
 3. 对话用引号表示，如：她说："你今天怎么来了？"
@@ -1379,7 +1419,36 @@ Continue the story based on the above, maintaining continuity."""
             new_character, language
         )
 
-        prompt = f"""You are a talented novelist. Write a vivid story for {round_name_en} of Week {week}.{continuation_mandate_en}{foreshadowing_context_en}
+        # ★ 优化向量检索上下文格式，使其更醒目并增加使用说明
+        vector_context_section_en = ""
+        if vector_context:
+            vector_context_section_en = f"""
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    📚 Relevant Historical Fragments (Reference)               ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+{vector_context}
+
+💡 Usage Tip: The above are historical fragments related to the current situation. Use them as character memories, dialogue references, or background context.
+   Please weave them naturally into the story, but don't repeat these past events. Instead, use them as background铺垫 for the current story.
+╔══════════════════════════════════════════════════════════════════════════════╝
+"""
+
+        # ★ 优化：将约束信息放在提示词最前面，确保AI先看到
+        # 同时优化约束文本格式，使其更加醒目
+        constraints_header_en = ""
+        if world_model_context_en or storylines_context:
+            constraints_header_en = f"""
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    ⚠️  HARD CONSTRAINTS — MUST FOLLOW  ⚠️                    ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+{world_model_context_en if world_model_context_en else ""}
+{storylines_context if storylines_context else ""}
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  Violating these constraints will result in story rejection and regeneration ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+"""
+
+        prompt = f"""You are a talented novelist. Write a vivid story for {round_name_en} of Week {week}.{continuation_mandate_en}{foreshadowing_context_en}{vector_context_section_en}
 
 [Character Settings]
 {character_context if character_context else "Standard modern young adult"}{available_people_str}{time_context}
@@ -1387,9 +1456,23 @@ Continue the story based on the above, maintaining continuity."""
 [Current State]
 Age: {age} | Week {week} - {round_name_en}
 Energy: {energy}/100 | Mood: {mood}/100 | Knowledge: {knowledge}/100
-Wealth: ${wealth:,} | Relationships: {rel_str}{context_section}{rel_events_context}{memory_context}{storylines_context}{facts_context}{world_model_context_en}{habits_context_en}{new_char_context_en}
+Wealth: ${wealth:,} | Relationships: {rel_str}{context_section}{rel_events_context}{memory_context}{facts_context}{habits_context_en}{new_char_context_en}
+
+{constraints_header_en}
 
 [Writing Requirements]
+**★★★ PRE-WRITING CHECKLIST — CONSTRAINTS (MUST STRICTLY FOLLOW) ★★★**
+BEFORE you start writing, carefully read and confirm the following constraints. You MUST follow them throughout writing, or the story will be rejected:
+- **Character Location Constraint**: Check [World Model Constraints] for each character's current location. Characters can ONLY appear at their current location unless the story explicitly describes their movement
+- **Commitment Constraint**: Check for any unfulfilled critical commitments. The protagonist's actions MUST NOT directly conflict with these commitments
+- **Storyline Constraint**: If there are pending storylines, they MUST be naturally continued or addressed in this round
+
+**Writing Steps (MUST follow this order):**
+1. **Check Constraints First**: Carefully read the [HARD CONSTRAINTS] section above, confirm all character locations and commitments
+2. **Plan the Scene**: Determine location, characters, and plot development based on constraints
+3. **Verify Constraints**: Double-check that the planned scene doesn't violate any constraints
+4. **Write the Story**: Ensure the story fully complies with ALL constraints
+
 1. **Story should be 1500-2000 words**, write as an engaging scene
 2. **Include rich dialogue**, 4-6 important dialogue exchanges
 3. Use quotation marks for dialogue

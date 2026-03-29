@@ -105,9 +105,7 @@ async def generate_event(
 
         # Parse Last-Event-ID for reconnection support
         last_event_id_str = request.headers.get("Last-Event-ID")
-        last_event_id = (
-            int(last_event_id_str) if last_event_id_str is not None else None
-        )
+        last_event_id = int(last_event_id_str) if last_event_id_str is not None else None
 
         if last_event_id is not None:
             logger.info(
@@ -128,9 +126,7 @@ async def generate_event(
             if last_event_id is not None and session.sse_cache:
                 return StreamingResponse(
                     wrap_with_release(
-                        replay_cached_then_complete(
-                            session, last_event_id, game_loop.current_event
-                        )
+                        replay_cached_then_complete(session, last_event_id, game_loop.current_event)
                     ),
                     media_type="text/event-stream",
                     headers={
@@ -158,9 +154,7 @@ async def generate_event(
 
                 elapsed = time.time() - game_loop._generating_start_time
                 if elapsed > 60:  # Same as GENERATION_TIMEOUT
-                    logger.warning(
-                        f"[event] Generation flag stuck for {elapsed:.1f}s, force reset"
-                    )
+                    logger.warning(f"[event] Generation flag stuck for {elapsed:.1f}s, force reset")
                     game_loop._generating = False
                     game_loop._generating_start_time = None
                 else:
@@ -180,9 +174,7 @@ async def generate_event(
                 # If reconnecting during generation, replay cached chunks
                 if last_event_id is not None and session.sse_cache:
                     return StreamingResponse(
-                        wrap_with_release(
-                            replay_cached_and_wait(session, last_event_id)
-                        ),
+                        wrap_with_release(replay_cached_and_wait(session, last_event_id)),
                         media_type="text/event-stream",
                         headers={
                             "Cache-Control": "no-cache",
@@ -235,9 +227,7 @@ async def generate_event(
             # Return error in SSE format instead of HTTPException
             return StreamingResponse(
                 wrap_with_release(
-                    return_sse_error(
-                        "Event generation already in progress, please wait"
-                    )
+                    return_sse_error("Event generation already in progress, please wait")
                 ),
                 media_type="text/event-stream",
                 headers={
@@ -300,9 +290,7 @@ async def generate_event_sync(
         logger.warning(
             f"Event generation already in progress for game_id={game_id} (sync, game_loop flag)"
         )
-        raise HTTPException(
-            status_code=409, detail="Event generation in progress, please wait"
-        )
+        raise HTTPException(status_code=409, detail="Event generation in progress, please wait")
 
     # Use asyncio.Lock to properly prevent concurrent generation
     lock = await _get_game_lock(game_id)
@@ -314,9 +302,7 @@ async def generate_event_sync(
         # Return current event if exists
         if game_loop.current_event:
             return game_loop.current_event.model_dump()
-        raise HTTPException(
-            status_code=409, detail="Event generation already in progress"
-        )
+        raise HTTPException(status_code=409, detail="Event generation already in progress")
 
     async with lock:
         # Run in thread pool to avoid blocking

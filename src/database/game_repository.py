@@ -33,9 +33,7 @@ class GameRepository:
         """
         db = SessionLocal()
         try:
-            game = Game(
-                language=language, initial_state=initial_state or {}, user_id=user_id
-            )
+            game = Game(language=language, initial_state=initial_state or {}, user_id=user_id)
             db.add(game)
             db.commit()
             db.refresh(game)
@@ -126,9 +124,7 @@ class GameRepository:
             result = []
             for game, latest_state in results:
                 # 从 initial_state 或 latest_state 获取信息
-                state_data = (
-                    latest_state.state_json if latest_state else game.initial_state
-                )
+                state_data = latest_state.state_json if latest_state else game.initial_state
                 initial_data = game.initial_state or {}
 
                 # player_name 优先从 initial_state 获取（因为旧的 game_states 可能没有这个字段）
@@ -173,11 +169,7 @@ class GameRepository:
         """
         db = SessionLocal()
         try:
-            game = (
-                db.query(Game)
-                .filter(Game.game_id == game_id, Game.user_id == user_id)
-                .first()
-            )
+            game = db.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
 
             if game:
                 db.delete(game)  # cascade 会自动删除关联的 states 和 decisions

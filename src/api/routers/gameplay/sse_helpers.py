@@ -57,9 +57,7 @@ def _trigger_round_illustration_generation(
                 # 获取玩家状态
                 player_state = game_loop.player_state
                 if not player_state:
-                    logger.warning(
-                        f"[RoundIllustration] No player state for game {game_id}"
-                    )
+                    logger.warning(f"[RoundIllustration] No player state for game {game_id}")
                     return
 
                 # 获取当前轮次和周数
@@ -129,9 +127,7 @@ def _trigger_round_illustration_generation(
                 # 获取已有图片
                 images = (
                     db.query(ImageModel)
-                    .filter(
-                        ImageModel.game_id == game_id, ImageModel.is_active.is_(True)
-                    )
+                    .filter(ImageModel.game_id == game_id, ImageModel.is_active.is_(True))
                     .all()
                 )
 
@@ -181,9 +177,7 @@ def _trigger_round_illustration_generation(
                 db.close()
 
         except Exception as e:
-            logger.exception(
-                f"[RoundIllustration] Unexpected error in generate_illustration: {e}"
-            )
+            logger.exception(f"[RoundIllustration] Unexpected error in generate_illustration: {e}")
 
     # 在线程池中执行
     _sse_thread_pool.submit(generate_illustration)
@@ -486,9 +480,7 @@ async def stream_round_event(
             if not session._is_generating and session.sse_cache:
                 event = game_loop.current_event
                 if event and event.options:
-                    logger.info(
-                        "Generation already complete, sending complete event directly"
-                    )
+                    logger.info("Generation already complete, sending complete event directly")
                     yield make_sse_event("status", {"phase": "resuming"})
                     yield make_sse_event("complete", event.model_dump())
                     return
@@ -506,17 +498,13 @@ async def stream_round_event(
     while True:
         try:
             # Use shorter timeout for heartbeat check
-            event_type, data = await asyncio.wait_for(
-                q.get(), timeout=heartbeat_interval
-            )
+            event_type, data = await asyncio.wait_for(q.get(), timeout=heartbeat_interval)
             last_event_time = asyncio.get_event_loop().time()
         except asyncio.TimeoutError:
             # Check if overall timeout exceeded (120 seconds)
             elapsed = asyncio.get_event_loop().time() - last_event_time
             if elapsed > 120:
-                yield make_sse_event(
-                    "error", {"error": "Timeout waiting for event generation"}
-                )
+                yield make_sse_event("error", {"error": "Timeout waiting for event generation"})
                 break
             # Send heartbeat to keep connection alive
             yield make_sse_event("status", {"phase": "processing", "heartbeat": True})
@@ -553,9 +541,7 @@ async def stream_round_event(
         logger.info(
             f"[SSE Complete] event_description length: {len(desc)} chars, options count: {len(opts) if opts else 0}"
         )
-        logger.info(
-            f"[SSE Complete] Last 100 chars: ...{desc[-100:] if len(desc) > 100 else desc}"
-        )
+        logger.info(f"[SSE Complete] Last 100 chars: ...{desc[-100:] if len(desc) > 100 else desc}")
 
         event_data = event.model_dump()
         logger.info(
@@ -570,9 +556,7 @@ async def stream_round_event(
             state = game_loop.get_state()
             if state:
                 db.save_game_progress(game_id, state)
-                logger.info(
-                    f"Auto-saved game state after event generation: game_id={game_id}"
-                )
+                logger.info(f"Auto-saved game state after event generation: game_id={game_id}")
         except (OSError, IOError) as e:
             logger.warning(f"Auto-save IO error after event generation: {e}")
         except Exception as e:
@@ -581,15 +565,11 @@ async def stream_round_event(
         # ★ 异步触发每轮场景插画生成（不阻塞游戏流程）
         # event 阶段的插画在事件生成完成后触发
         try:
-            _trigger_round_illustration_generation(
-                game_loop, game_id, event, stage="event"
-            )
+            _trigger_round_illustration_generation(game_loop, game_id, event, stage="event")
         except (ValueError, TypeError) as e:
             logger.warning(f"Invalid data for round illustration generation: {e}")
         except Exception as e:
-            logger.exception(
-                f"Unexpected error triggering round illustration generation: {e}"
-            )
+            logger.exception(f"Unexpected error triggering round illustration generation: {e}")
 
         # ★ 异步触发选项预生成（如果故事已生成但选项未生成）
         # 这优化了断点续传场景：下次加载时选项已缓存，实现零等待
@@ -702,9 +682,7 @@ async def stream_choice(
 
     while True:
         try:
-            event_type, data = await asyncio.wait_for(
-                q.get(), timeout=heartbeat_interval
-            )
+            event_type, data = await asyncio.wait_for(q.get(), timeout=heartbeat_interval)
             last_event_time = asyncio.get_event_loop().time()
         except asyncio.TimeoutError:
             # Check if overall timeout exceeded (120 seconds)
@@ -820,9 +798,7 @@ async def replay_cached_and_wait(session, last_event_id: int):
         yield make_sse_event("complete", game_loop.current_event.model_dump())
     else:
         # Generation timed out or failed
-        yield make_sse_event(
-            "error", {"error": "Generation timed out, please try again"}
-        )
+        yield make_sse_event("error", {"error": "Generation timed out, please try again"})
 
 
 async def stream_round_event_with_asyncio_lock(
@@ -834,9 +810,7 @@ async def stream_round_event_with_asyncio_lock(
 ):
     """Wrapper that ensures asyncio lock is released after streaming completes."""
     try:
-        async for event in stream_round_event(
-            game_loop, game_id, session, last_event_id
-        ):
+        async for event in stream_round_event(game_loop, game_id, session, last_event_id):
             yield event
     finally:
         lock.release()
@@ -892,6 +866,62 @@ async def stream_regenerate(
             # 清空当前事件，让 generate_round_event 生成全新事件
             game_loop.current_event = None
 
+            # ★ CRITICAL: 清除 player_state 中的故事缓存，确保真正重新生成
+            # 否则 generate_round_event 会从 last_round_full_story 恢复旧故事
+            player_state = game_loop.player_state
+            current_week = None
+            current_round = None
+            if player_state:
+                current_week = player_state.week
+                current_round = player_state.current_round
+                # 清除 last_round_full_story 强制重新生成故事
+                if hasattr(player_state, "last_round_full_story"):
+                    player_state.last_round_full_story = (
+                        ""  # 使用空字符串而不是 None，避免 Pydantic 验证错误
+                    )
+                # 清除当前轮次的 round_history 条目
+                if hasattr(player_state, "round_history") and player_state.round_history:
+                    # 过滤掉当前轮次的历史记录
+                    player_state.round_history = [
+                        entry
+                        for entry in player_state.round_history
+                        if not (
+                            entry.get("week") == current_week
+                            and entry.get("round") == current_round
+                        )
+                    ]
+                logger.info("[stream_regenerate] Cleared story caches for true regeneration")
+
+            # ★ CRITICAL: 删除当前轮次的场景图片记录，确保重新生成图片
+            # 否则系统会认为图片已存在，不会生成新的图片
+            if current_week is not None and current_round is not None:
+                try:
+                    from src.database.models import SceneImage
+                    from src.database.session import SessionLocal
+
+                    db = SessionLocal()
+                    try:
+                        # 删除当前周、当前轮次的所有场景图片记录
+                        deleted = (
+                            db.query(SceneImage)
+                            .filter(
+                                SceneImage.game_id == game_id,
+                                SceneImage.week == current_week,
+                                SceneImage.round_number == current_round,
+                            )
+                            .delete()
+                        )
+                        db.commit()
+                        if deleted > 0:
+                            logger.info(
+                                f"[stream_regenerate] Deleted {deleted} old scene image(s) for "
+                                f"week={current_week}, round={current_round}"
+                            )
+                    finally:
+                        db.close()
+                except Exception as e:
+                    logger.warning(f"[stream_regenerate] Failed to delete old scene images: {e}")
+
             # 调用 game_loop 的完整生成流程
             new_event = game_loop.generate_round_event(
                 stream_callback=stream_cb,
@@ -904,9 +934,7 @@ async def stream_regenerate(
                     f"Regeneration complete: {len(new_event.event_description)} chars, {len(new_event.options)} options"
                 )
             else:
-                error_holder[0] = ValueError(
-                    "Failed to generate valid event with options"
-                )
+                error_holder[0] = ValueError("Failed to generate valid event with options")
 
         except (ValueError, TypeError, KeyError) as e:
             logger.warning(f"[stream_regenerate] Data error: {e}")
@@ -915,11 +943,19 @@ async def stream_regenerate(
             logger.exception(f"[stream_regenerate] Unexpected error: {e}")
             error_holder[0] = e
         finally:
+            logger.info(
+                f"[stream_regenerate] run() finally block, closed={closed[0]}, loop_closed={loop.is_closed()}"
+            )
             if not closed[0] and not loop.is_closed():
                 try:
                     loop.call_soon_threadsafe(q.put_nowait, ("__done__", None))
-                except RuntimeError:
-                    pass
+                    logger.info("[stream_regenerate] Sent __done__ signal")
+                except RuntimeError as e:
+                    logger.warning(f"[stream_regenerate] Failed to send __done__: {e}")
+            else:
+                logger.warning(
+                    f"[stream_regenerate] Skipped sending __done__, closed={closed[0]}, loop_closed={loop.is_closed()}"
+                )
 
     # Tell client we're starting
     yield make_sse_event("status", {"phase": "regenerating"})
@@ -932,9 +968,7 @@ async def stream_regenerate(
 
     while True:
         try:
-            event_type, data = await asyncio.wait_for(
-                q.get(), timeout=heartbeat_interval
-            )
+            event_type, data = await asyncio.wait_for(q.get(), timeout=heartbeat_interval)
             last_event_time = asyncio.get_event_loop().time()
         except asyncio.TimeoutError:
             elapsed = asyncio.get_event_loop().time() - last_event_time
@@ -945,6 +979,7 @@ async def stream_regenerate(
             continue
 
         if event_type == "__done__":
+            logger.info("[stream_regenerate] Received __done__ signal, breaking loop")
             break
 
         # ★ Handle retry status: clear cache before sending
@@ -966,8 +1001,11 @@ async def stream_regenerate(
 
     # Send complete event with full event data
     event = result_holder[0]
+    logger.info(f"[stream_regenerate] Sending complete event, event is None: {event is None}")
     if event is not None:
-        yield make_sse_event("complete", event.model_dump())
+        event_data = event.model_dump()
+        logger.info(f"[stream_regenerate] Complete event data keys: {list(event_data.keys())}")
+        yield make_sse_event("complete", event_data)
 
         # Auto-save game state
         try:
@@ -975,14 +1013,13 @@ async def stream_regenerate(
             state = game_loop.get_state()
             if state:
                 db.save_game_progress(game_id, state)
-                logger.info(
-                    f"Auto-saved game state after regeneration: game_id={game_id}"
-                )
+                logger.info(f"Auto-saved game state after regeneration: game_id={game_id}")
         except (OSError, IOError) as e:
             logger.warning(f"Auto-save IO error after regeneration: {e}")
         except Exception as e:
             logger.exception(f"Auto-save unexpected error after regeneration: {e}")
     else:
+        logger.info("[stream_regenerate] Sending empty complete event (event is None)")
         yield make_sse_event("complete", {"event_description": "", "options": []})
 
 
@@ -1056,9 +1093,7 @@ async def stream_rewrite(
                 except (ValueError, TypeError, KeyError) as e:
                     logger.warning(f"[Rewrite] Data error building WorldModel: {e}")
                 except Exception as e:
-                    logger.exception(
-                        f"[Rewrite] Unexpected error building WorldModel: {e}"
-                    )
+                    logger.exception(f"[Rewrite] Unexpected error building WorldModel: {e}")
 
             rewritten_story = game_loop.ai_generator.rewrite_story_segment(
                 full_story=full_story,
@@ -1103,9 +1138,7 @@ async def stream_rewrite(
 
     while True:
         try:
-            event_type, data = await asyncio.wait_for(
-                q.get(), timeout=heartbeat_interval
-            )
+            event_type, data = await asyncio.wait_for(q.get(), timeout=heartbeat_interval)
             last_event_time = asyncio.get_event_loop().time()
         except asyncio.TimeoutError:
             elapsed = asyncio.get_event_loop().time() - last_event_time
@@ -1148,9 +1181,7 @@ async def stream_rewrite(
                 "new_story": rewritten_story,
                 "rewritten_story": rewritten_story,
                 "event": (
-                    game_loop.current_event.model_dump()
-                    if game_loop.current_event
-                    else None
+                    game_loop.current_event.model_dump() if game_loop.current_event else None
                 ),
             },
         )
@@ -1159,6 +1190,4 @@ async def stream_rewrite(
         if session is not None:
             session.clear_sse_cache()
     else:
-        yield make_sse_event(
-            "complete", {"new_story": "", "rewritten_story": "", "event": None}
-        )
+        yield make_sse_event("complete", {"new_story": "", "rewritten_story": "", "event": None})

@@ -80,6 +80,27 @@ async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: num
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: response.statusText }));
+    
+    // ★ 401 未授权 - 对于 /auth/me 这是正常的未登录状态，不显示错误日志
+    if (response.status === 401 && url === '/auth/me') {
+      // 静默处理，不显示错误日志
+      throw Object.assign(new Error(error.message || 'Request failed'), { status: response.status });
+    }
+    
+    console.error(`[API Error] ${url} failed with ${response.status}:`, error.message || response.statusText);
+    
+    // ★ 401 未授权 - 清除本地认证状态并跳转到首页（登录页）
+    if (response.status === 401) {
+      console.warn('[API] Session expired or invalid, redirecting to home...');
+      // 清除 localStorage 中的游戏状态
+      localStorage.removeItem('gameId');
+      localStorage.removeItem('gameState');
+      // 跳转到首页（如果不是已经在首页）
+      if (typeof window !== 'undefined' && window.location.pathname !== '/') {
+        window.location.href = '/';
+      }
+    }
+    
     throw Object.assign(new Error(error.message || 'Request failed'), { status: response.status });
   }
 

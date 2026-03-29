@@ -93,25 +93,19 @@ class StoryService:
 
         except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
             logger.warning(f"Failed to generate story continuation: {e}")
-            fallback = self.generate_fallback_continuation(
-                sanitized_chosen_option, effects
-            )
+            fallback = self.generate_fallback_continuation(sanitized_chosen_option, effects)
             # If streaming was requested, emit fallback text as a single chunk
             if stream_callback:
                 stream_callback(fallback)
             return fallback
         except Exception as e:
             logger.exception(f"Unexpected error generating story continuation: {e}")
-            fallback = self.generate_fallback_continuation(
-                sanitized_chosen_option, effects
-            )
+            fallback = self.generate_fallback_continuation(sanitized_chosen_option, effects)
             if stream_callback:
                 stream_callback(fallback)
             return fallback
 
-    def generate_fallback_continuation(
-        self, chosen_option: str, effects: Dict[str, Any]
-    ) -> str:
+    def generate_fallback_continuation(self, chosen_option: str, effects: Dict[str, Any]) -> str:
         """
         Generate a simple fallback continuation when AI generation fails.
 
@@ -201,9 +195,7 @@ class StoryService:
                 logger.warning(f"[StoryContinuation] Failed to build WorldModel: {e}")
                 return continuation
             except Exception as e:
-                logger.exception(
-                    f"[StoryContinuation] Unexpected error building WorldModel: {e}"
-                )
+                logger.exception(f"[StoryContinuation] Unexpected error building WorldModel: {e}")
                 return continuation
 
             if not world_model:
@@ -214,9 +206,7 @@ class StoryService:
                 story_text=continuation,
                 world_model=world_model,
                 player_state_dict=(
-                    player_state
-                    if isinstance(player_state, dict)
-                    else player_state.to_dict()
+                    player_state if isinstance(player_state, dict) else player_state.to_dict()
                 ),
                 character_settings=character_settings,
                 language=self.language,
@@ -268,9 +258,7 @@ class StoryService:
             logger.warning(f"[StoryContinuation] Validation/retry failed: {e}")
             return continuation
         except Exception as e:
-            logger.exception(
-                f"[StoryContinuation] Unexpected error during validation/retry: {e}"
-            )
+            logger.exception(f"[StoryContinuation] Unexpected error during validation/retry: {e}")
             return continuation
 
     def compress_story(
@@ -394,9 +382,7 @@ class StoryService:
                 last_error = str(e)
                 logger.warning(f"Attempt {attempt + 1}/2 failed (unexpected): {e}")
 
-        logger.error(
-            f"Failed to generate custom choice effects after 2 attempts, using fallback"
-        )
+        logger.error(f"Failed to generate custom choice effects after 2 attempts, using fallback")
         return {"energy": -5, "mood": 5, "knowledge": 0, "wealth": 0}
 
     def generate_custom_choice_result(
@@ -461,9 +447,7 @@ class StoryService:
                 last_error = str(e)
                 logger.warning(f"Attempt {attempt + 1}/2 failed (unexpected): {e}")
 
-        logger.error(
-            f"Failed to generate custom choice result after 2 attempts, using fallback"
-        )
+        logger.error(f"Failed to generate custom choice result after 2 attempts, using fallback")
         return {
             "story_continuation": f"你决定{custom_text}。这是一个有趣的选择，让我们看看接下来会发生什么...",
             "effects": {"energy": -5, "mood": 5},

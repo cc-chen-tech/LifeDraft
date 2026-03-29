@@ -84,7 +84,11 @@ export function useChoiceHandler({
 
   // Handle choice selection
   const handleChoice = async (optionIndex: number, isRetry = false) => {
-    if (!gameId) return;
+    console.log(`[handleChoice] Called with gameId=${gameId}, optionIndex=${optionIndex}`);
+    if (!gameId) {
+      console.error("[handleChoice] No gameId available");
+      return;
+    }
     abortRef.current?.abort();
     generatingRef.current = false;
 

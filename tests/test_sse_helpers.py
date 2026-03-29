@@ -522,3 +522,117 @@ class TestSSEConnectionLimits:
         mock_sse_manager.disconnect(user_id)
         assert mock_sse_manager.can_connect(user_id)
         assert mock_sse_manager.connect(user_id)
+
+
+# ==================== Regression Tests ====================
+
+class TestStreamRegenerateRegression:
+    """Regression tests for stream_regenerate to prevent breaking fixes."""
+
+    @pytest.mark.asyncio
+    async def test_last_round_full_story_cleared_to_empty_string_not_none(self):
+        """
+        Regression test: Ensure last_round_full_story is cleared to empty string, not None.
+
+        Bug: Setting last_round_full_story to None caused Pydantic validation error
+        when session was auto-restored: "Input should be a valid string".
+        Fix: Set to empty string "" instead of None.
+        """
+        # Use a real PlayerState object to properly test the behavior
+        from src.game.state.player_state import PlayerState
+
+        # Create a real PlayerState with initial content
+        player_state = PlayerState(
+            character_settings={},
+            week=5,
+            current_round=2,
+            last_round_full_story="Previous story content",
+        )
+        player_state.round_history = [
+            {"week": 5, "round": 2, "summary": "Current round"},
+            {"week": 5, "round": 1, "summary": "Previous round"},
+        ]
+
+        # Mock game_loop with real player_state
+        mock_game_loop = MagicMock()
+        mock_game_loop.player_state = player_state
+
+        # Mock generate_round_event to return a valid event
+        mock_event = MagicMock()
+        mock_event.options = [MagicMock()]
+        mock_game_loop.generate_round_event = MagicMock(return_value=mock_event)
+
+        # Verify initial state
+        assert player_state.last_round_full_story == "Previous story content"
+
+        # Call stream_regenerate
+        generator = stream_regenerate(mock_game_loop, game_id=296)
+
+        # Consume the generator (it yields status events)
+        try:
+            async for _ in generator:
+                pass
+        except Exception:
+            # We expect this to fail due to mocking, but we just want to verify
+            # the last_round_full_story was set correctly
+            pass
+
+        # Verify the fix: last_round_full_story should be "" (empty string), not None
+        assert player_state.last_round_full_story == "", \
+            f"last_round_full_story should be empty string, got {player_state.last_round_full_story!r}"
+        assert isinstance(player_state.last_round_full_story, str), \
+            f"last_round_full_story should be string type, got {type(player_state.last_round_full_story)}"
+
+    @pytest.mark.asyncio
+    async def test_session_can_restore_after_regenerate(self):
+        """
+        Regression test: Ensure session can be restored after stream_regenerate.
+
+        Bug: stream_regenerate set last_round_full_story to None, causing
+        Pydantic validation error when session_service tried to restore session.
+        Fix: Set last_round_full_story to empty string "".
+        """
+        from src.game.state.player_state import PlayerState
+
+        # Create a valid PlayerState
+        player_state = PlayerState(
+            character_settings={},
+            week=5,
+            current_round=2,
+            last_round_full_story="Some story content",
+        )
+
+        # Simulate what stream_regenerate does (the fix)
+        player_state.last_round_full_story = ""  # Should be empty string, not None
+
+        # Verify the state is valid (can be serialized and deserialized)
+        state_dict = player_state.to_dict()
+        assert state_dict["last_round_full_story"] == "", \
+            "last_round_full_story should be empty string in dict"
+
+        # Verify we can create a new PlayerState from this dict (simulating restore)
+        restored_state = PlayerState(**state_dict)
+        assert restored_state.last_round_full_story == "", \
+            "Restored state should have empty string for last_round_full_story"
+
+    def test_player_state_rejects_none_for_last_round_full_story(self):
+        """
+        Verify that PlayerState properly rejects None for last_round_full_story.
+
+        This ensures our fix is necessary - if this test fails, the model was changed
+        to allow None and our fix might not be needed anymore.
+        """
+        from pydantic import ValidationError
+        from src.game.state.player_state import PlayerState
+
+        # Attempting to create PlayerState with None should fail
+        with pytest.raises(ValidationError) as exc_info:
+            PlayerState(
+                character_settings={},
+                last_round_full_story=None,  # This should cause validation error
+            )
+
+        # Verify the error is about last_round_full_story
+        error_msg = str(exc_info.value)
+        assert "last_round_full_story" in error_msg or "string" in error_msg.lower(), \
+            f"Expected validation error for last_round_full_story, got: {error_msg}"

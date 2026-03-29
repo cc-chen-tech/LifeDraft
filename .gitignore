@@ -77,3 +77,6 @@ frontend/coverage/
 # Build artifacts
 *.pyc
 *.pyo
+
+# Netease Cloud Music API (cloned at runtime)
+netease-music-api/

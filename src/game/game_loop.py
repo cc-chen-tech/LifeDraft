@@ -65,9 +65,7 @@ class GameLoop(RoundSystemMixin):
         self.world_updater = WorldModelUpdater()
         self.summary_selector = HistoricalSummarySelector()
         self.last_year_start_week = 0  # Track year boundaries
-        self.last_year_start_state: Optional[dict[str, Any]] = (
-            None  # Track state at year start
-        )
+        self.last_year_start_state: Optional[dict[str, Any]] = None  # Track state at year start
         self.last_event_week = -1  # Track when last event was generated
 
     def start_new_game(self, initial_state: Optional[Dict[str, Any]] = None) -> PlayerState:

@@ -13,9 +13,7 @@ class AchievementTracker:
         self.achievements: List[str] = []
         self.milestones: Dict[str, Any] = {}
 
-    def check_achievements(
-        self, player_state: PlayerState, language: str = "en"
-    ) -> List[str]:
+    def check_achievements(self, player_state: PlayerState, language: str = "en") -> List[str]:
         """
         Check and return newly unlocked achievements.
 
@@ -34,9 +32,7 @@ class AchievementTracker:
             self.achievements.append("wealth_100k")
 
         if "wealth_50k" not in self.achievements and player_state.wealth >= 50000:
-            new_achievements.append(
-                "财务自由" if language == "zh" else "Financial Freedom"
-            )
+            new_achievements.append("财务自由" if language == "zh" else "Financial Freedom")
             self.achievements.append("wealth_50k")
 
         # Knowledge achievements
@@ -49,13 +45,8 @@ class AchievementTracker:
             self.achievements.append("knowledge_80")
 
         # Relationship achievements
-        if (
-            "relationships_5" not in self.achievements
-            and len(player_state.relationships) >= 5
-        ):
-            new_achievements.append(
-                "社交达人" if language == "zh" else "Social Butterfly"
-            )
+        if "relationships_5" not in self.achievements and len(player_state.relationships) >= 5:
+            new_achievements.append("社交达人" if language == "zh" else "Social Butterfly")
             self.achievements.append("relationships_5")
 
         # Decision milestones
@@ -77,9 +68,7 @@ class AchievementTracker:
             ]
         ):
             if "perfect_state" not in self.achievements:
-                new_achievements.append(
-                    "完美状态" if language == "zh" else "Perfect State"
-                )
+                new_achievements.append("完美状态" if language == "zh" else "Perfect State")
                 self.achievements.append("perfect_state")
 
         # Week milestones

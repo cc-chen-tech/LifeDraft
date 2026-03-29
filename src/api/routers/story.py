@@ -46,13 +46,10 @@ async def rewrite_story(
 
         rewritten_story = game_loop.ai_generator.rewrite_story_segment(
             full_story=req.full_story,
-            segment_to_replace=req.segment_to_replace
-            or req.full_story,  # 未选择段落时改写整个故事
+            segment_to_replace=req.segment_to_replace or req.full_story,  # 未选择段落时改写整个故事
             user_instruction=req.user_instruction,
             character_settings=(
-                game_loop.player_state.character_settings
-                if game_loop.player_state
-                else {}
+                game_loop.player_state.character_settings if game_loop.player_state else {}
             ),
             story_context=story_context,
             language=req.language,
@@ -65,11 +62,7 @@ async def rewrite_story(
         return {
             "new_story": rewritten_story,
             "rewritten_story": rewritten_story,
-            "event": (
-                game_loop.current_event.model_dump()
-                if game_loop.current_event
-                else None
-            ),
+            "event": (game_loop.current_event.model_dump() if game_loop.current_event else None),
         }
     except Exception as e:
         logger.error(f"Story rewrite failed: {e}")

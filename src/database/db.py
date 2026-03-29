@@ -82,9 +82,7 @@ class GameDatabase:
         achievements: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Save game ending."""
-        return self._game_repo.save_ending(
-            game_id, final_state, ending_type, summary, achievements
-        )
+        return self._game_repo.save_ending(game_id, final_state, ending_type, summary, achievements)
 
     # ==================== State Read/Write ====================
 
@@ -160,9 +158,7 @@ class GameDatabase:
         """List character presets."""
         return self._preset_repo.list_character_presets(limit, user_id)
 
-    def delete_character_preset(
-        self, preset_id: int, user_id: Optional[int] = None
-    ) -> bool:
+    def delete_character_preset(self, preset_id: int, user_id: Optional[int] = None) -> bool:
         """Delete a character preset."""
         return self._preset_repo.delete_character_preset(preset_id, user_id)
 
@@ -190,9 +186,7 @@ class GameDatabase:
         save_name: Optional[str] = None,
     ) -> Optional[int]:
         """创建存档点（手动存档）。"""
-        return self._save_point_repo.create_save_point(
-            game_id, user_id, player_state, save_name
-        )
+        return self._save_point_repo.create_save_point(game_id, user_id, player_state, save_name)
 
     def list_save_points(self, game_id: int, user_id: int) -> List[Dict[str, Any]]:
         """列出游戏的所有存档点。"""

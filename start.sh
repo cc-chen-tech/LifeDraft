@@ -1,20 +1,23 @@
 #!/bin/bash
 # Story2 项目启动脚本
 # 用法: ./start.sh [命令]
-#   无参数 - 启动前后端服务
-#   stop   - 停止所有服务
-#   restart - 重启所有服务
-#   status - 查看服务状态
-#   logs   - 查看日志（最后20行）
-#   tail   - 实时查看日志（Ctrl+C退出）
-#   tail backend  - 仅实时查看后端日志
-#   tail frontend - 仅实时查看前端日志
+#   无参数/start/restart - 启动/重启所有服务
+#   stop                  - 停止所有服务
+#   status                - 查看服务状态
+#   logs                  - 查看日志（最后20行）
+#   tail                  - 实时查看日志（Ctrl+C退出）
+#   tail backend          - 仅实时查看后端日志
+#   tail frontend         - 仅实时查看前端日志
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_PORT=8000
 FRONTEND_PORT=3000
+NETEASE_MUSIC_PORT=3001
 BACKEND_LOG="/tmp/backend.log"
 FRONTEND_LOG="/tmp/frontend.log"
+NETEASE_MUSIC_LOG="/tmp/netease_music.log"
+# 网易云音乐 API 路径（项目内置）
+NETEASE_MUSIC_DIR="${NETEASE_MUSIC_DIR:-$PROJECT_DIR/netease-music-api}"
 
 # 颜色定义
 RED='\033[0;31m'
@@ -29,6 +32,7 @@ stop_services() {
     echo -e "${YELLOW}正在停止服务...${NC}"
     lsof -ti:$BACKEND_PORT | xargs kill -9 2>/dev/null
     lsof -ti:$FRONTEND_PORT | xargs kill -9 2>/dev/null
+    lsof -ti:$NETEASE_MUSIC_PORT | xargs kill -9 2>/dev/null
     echo -e "${GREEN}服务已停止${NC}"
 }
 
@@ -43,6 +47,25 @@ start_backend() {
         echo -e "${GREEN}✓ 后端启动成功${NC}"
     else
         echo -e "${RED}✗ 后端启动失败，查看日志: cat $BACKEND_LOG${NC}"
+    fi
+}
+
+# 启动网易云音乐 API
+start_netease_music() {
+    if [ ! -d "$NETEASE_MUSIC_DIR" ]; then
+        echo -e "${YELLOW}⚠ 网易云音乐 API 目录不存在: $NETEASE_MUSIC_DIR${NC}"
+        echo -e "${YELLOW}  音乐功能将不可用。如需使用，请克隆: https://github.com/Binaryify/NeteaseCloudMusicApi${NC}"
+        return
+    fi
+    
+    echo -e "${YELLOW}启动网易云音乐 API (端口 $NETEASE_MUSIC_PORT)...${NC}"
+    cd "$NETEASE_MUSIC_DIR"
+    PORT=$NETEASE_MUSIC_PORT npm start > $NETEASE_MUSIC_LOG 2>&1 &
+    sleep 3
+    if lsof -ti:$NETEASE_MUSIC_PORT > /dev/null 2>&1; then
+        echo -e "${GREEN}✓ 网易云音乐 API 启动成功${NC}"
+    else
+        echo -e "${RED}✗ 网易云音乐 API 启动失败，查看日志: cat $NETEASE_MUSIC_LOG${NC}"
     fi
 }
 
@@ -71,6 +94,11 @@ show_status() {
         echo -e "  前端 (端口 $FRONTEND_PORT): ${GREEN}运行中${NC}"
     else
         echo -e "  前端 (端口 $FRONTEND_PORT): ${RED}未运行${NC}"
+    fi
+    if lsof -ti:$NETEASE_MUSIC_PORT > /dev/null 2>&1; then
+        echo -e "  网易云音乐 (端口 $NETEASE_MUSIC_PORT): ${GREEN}运行中${NC}"
+    else
+        echo -e "  网易云音乐 (端口 $NETEASE_MUSIC_PORT): ${RED}未运行${NC}"
     fi
 }
 
@@ -120,17 +148,33 @@ tail_logs() {
     esac
 }
 
+# 启动所有服务
+start_all() {
+    stop_services
+    sleep 1
+    start_netease_music
+    start_backend
+    start_frontend
+    echo ""
+    show_status
+    echo ""
+    echo -e "${GREEN}访问地址:${NC}"
+    echo "  本机: http://localhost:$FRONTEND_PORT"
+    echo "  局域网: http://$(ipconfig getifaddr en0 2>/dev/null || echo "IP"):$FRONTEND_PORT"
+    echo ""
+    echo -e "${CYAN}实时查看日志: ./start.sh tail${NC}"
+}
+
 # 主逻辑
 case "$1" in
     stop)
         stop_services
         ;;
+    start)
+        start_all
+        ;;
     restart)
-        stop_services
-        sleep 1
-        start_backend
-        start_frontend
-        show_status
+        start_all
         ;;
     status)
         show_status
@@ -142,18 +186,7 @@ case "$1" in
         tail_logs "$2"
         ;;
     *)
-        # 默认启动
-        stop_services
-        sleep 1
-        start_backend
-        start_frontend
-        echo ""
-        show_status
-        echo ""
-        echo -e "${GREEN}访问地址:${NC}"
-        echo "  本机: http://localhost:$FRONTEND_PORT"
-        echo "  局域网: http://$(ipconfig getifaddr en0 2>/dev/null || echo "IP"):$FRONTEND_PORT"
-        echo ""
-        echo -e "${CYAN}实时查看日志: ./start.sh tail${NC}"
+        # 默认启动（同 start）
+        start_all
         ;;
 esac

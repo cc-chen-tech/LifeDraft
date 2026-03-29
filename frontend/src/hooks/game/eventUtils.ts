@@ -63,8 +63,9 @@ export function selectFinalStory(
   backendStory: string,
   frontendStory: string
 ): { useBackend: boolean; finalStory: string; remainingText?: string } {
-  // 如果后端故事明显更长，使用后端故事
-  const useBackendStory = backendStory.length > frontendStory.length || frontendStory.length < 100;
+  // 如果前端故事为空或极短，才使用后端故事
+  // 避免流式生成过程中被后端文本覆盖
+  const useBackendStory = frontendStory.length < 10;
   
   if (useBackendStory && backendStory.length > 0) {
     return { useBackend: true, finalStory: backendStory };
@@ -194,9 +195,10 @@ export function handleEventComplete(
   if (result.remainingText) {
     // 流式补充剩余文本
     setOptions(receivedOptions);
-    setPhase("options");
+    // 保持 generating 阶段以维持流式显示效果
     streamRemainingText(result.remainingText, appendStoryText, () => {
       setCurrentEvent({ story: backendStory, options: receivedOptions });
+      setPhase("options");
     });
     return;
   }
@@ -212,7 +214,10 @@ export function handleEventComplete(
   if (optionsChanged || storyChanged) {
     setCurrentEvent({ story: result.finalStory, options: receivedOptions });
   }
-  setPhase("options");
+  // 延迟切换到 options 阶段，让用户看到完整故事后再选择
+  setTimeout(() => {
+    setPhase("options");
+  }, 500);
   setRoundSummary(null);
   
   // ★ 事件插画由后端 SSE 完成后自动触发（_trigger_round_illustration_generation）

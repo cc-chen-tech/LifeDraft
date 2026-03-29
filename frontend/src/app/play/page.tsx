@@ -19,6 +19,7 @@ import { RoundHistoryDrawer } from "@/components/game/RoundHistoryDrawer";
 import { RoundSceneImageDisplay } from "@/components/game/RoundSceneImage";
 import { HistorySceneImage } from "@/components/game/HistorySceneImage";
 import { CollectionPanel } from "@/components/game/CollectionPanel";
+import { MusicPlayer } from "@/components/game/MusicPlayer";
 import { usePlayGame, STATUS_MESSAGES } from "@/hooks/usePlayGame";
 import { useGameIdFromUrl } from "@/hooks/useGameIdFromUrl";
 import { useGameStore } from "@/stores/useGameStore";
@@ -257,6 +258,15 @@ export default function PlayPage() {
           />
         )}
 
+        {/* ★ 音乐播放器 - 放在故事文本上方 */}
+        {!isViewingHistory && storyText && (
+          <MusicPlayer
+            storyText={storyText}
+            gameId={gameId || undefined}
+            className="mb-6"
+          />
+        )}
+
         {/* Story text */}
         {displayText && (
           <>
@@ -308,7 +318,7 @@ export default function PlayPage() {
                   onRegenerate={regenerateRoundSceneImage}
                 />
               )}
-              
+
               {/* ★ 结果插画：只在 result 阶段显示 */}
               {phase === "result" && resultSceneImage && (
                 <RoundSceneImageDisplay
@@ -321,7 +331,7 @@ export default function PlayPage() {
                   onRegenerate={regenerateRoundSceneImage}
                 />
               )}
-              
+
               {/* ★ 兜底：其他阶段显示当前轮次插画 */}
               {!eventSceneImage && !resultSceneImage && currentRoundSceneImage && (
                 <RoundSceneImageDisplay

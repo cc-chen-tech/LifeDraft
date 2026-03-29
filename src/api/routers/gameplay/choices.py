@@ -88,6 +88,9 @@ async def make_choice(
 
     Supports reconnection via Last-Event-ID header for mobile network resilience.
     """
+    logger.info(
+        f"[make_choice] Received request: game_id={game_id}, option_index={req.option_index}, user_id={user_id}"
+    )
     session = _require_session(game_id, user_id)
     game_loop = session.game_loop
 

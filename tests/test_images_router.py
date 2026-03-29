@@ -452,3 +452,23 @@ class TestInvalidParameters:
         """Test generating image with missing required fields."""
         response = client.post("/images/generate", json={})
         assert response.status_code == 422
+
+
+# ==================== Round Scene Image Tests ====================
+
+class TestRoundSceneImage:
+    """Test round scene image endpoint with week parameter."""
+
+    def test_get_round_scene_image_requires_week(self, client):
+        """Test that week parameter is required to prevent returning wrong week images.
+
+        This is a regression test for the issue where not passing week parameter
+        would return images from other weeks with the same round number.
+        """
+        # Without week parameter - should fail with 422 validation error
+        # because week is now a required parameter
+        response = client.get("/images/scene/1/0")
+        assert response.status_code == 422, (
+            "Week parameter should be required to prevent returning wrong week images. "
+            "This prevents the bug where images from different weeks but same round were returned."
+        )

@@ -154,21 +154,15 @@ class SceneImageService:
         if week is not None:
             # 假设总共52周（一年）
             total_weeks = 52
-            temporal_palette = style_manager.apply_temporal_progression(
-                game_id, week, total_weeks
-            )
+            temporal_palette = style_manager.apply_temporal_progression(game_id, week, total_weeks)
             temporal_hint = temporal_palette.atmosphere
-            logger.info(
-                f"Applied temporal progression: week {week}, hint: {temporal_hint[:50]}..."
-            )
+            logger.info(f"Applied temporal progression: week {week}, hint: {temporal_hint[:50]}...")
 
         try:
             # Step 1: 分析故事选择场景
-            scene_desc, illustration_prompt = (
-                self.image_client.analyze_story_for_illustration(
-                    story_text=story_text[:2000],
-                    character_info=char_info,
-                )
+            scene_desc, illustration_prompt = self.image_client.analyze_story_for_illustration(
+                story_text=story_text[:2000],
+                character_info=char_info,
             )
 
             logger.info(f"Selected scene: {scene_desc[:50]}...")
@@ -195,9 +189,7 @@ class SceneImageService:
             if appearance_anchor:
                 # 使用锚点数据构建详细的角色外貌描述
                 anchor_desc = appearance_anchor.build_prompt_segment()
-                logger.info(
-                    f"Using appearance anchor for scene generation: {anchor_desc[:100]}..."
-                )
+                logger.info(f"Using appearance anchor for scene generation: {anchor_desc[:100]}...")
 
                 # 将锚点描述融入场景提示词
                 enhanced_illustration = f"""{illustration_prompt}
@@ -258,9 +250,7 @@ class SceneImageService:
                     if results:
                         return results[0][0], edit_prompt
                     else:
-                        raise ImageGenerationError(
-                            "Failed to generate scene image with reference"
-                        )
+                        raise ImageGenerationError("Failed to generate scene image with reference")
                 else:
                     image_data, _ = self.image_client.generate_image(
                         prompt=final_prompt,
@@ -273,19 +263,15 @@ class SceneImageService:
             try:
                 image_data, used_prompt = generate_image()
             except ContentInspectionError as e:
-                logger.warning(
-                    "Content inspection failed, attempting prompt rewrite and retry..."
-                )
+                logger.warning("Content inspection failed, attempting prompt rewrite and retry...")
                 api_error = e.api_error_message or str(e)
                 logger.info(f"API error message: {api_error}")
 
-                new_scene_desc, new_prompt = (
-                    self.image_client.rewrite_prompt_for_content_safety(
-                        original_prompt=final_prompt,
-                        scene_desc=scene_desc,
-                        character_info=char_info,
-                        api_error_message=api_error,
-                    )
+                new_scene_desc, new_prompt = self.image_client.rewrite_prompt_for_content_safety(
+                    original_prompt=final_prompt,
+                    scene_desc=scene_desc,
+                    character_info=char_info,
+                    api_error_message=api_error,
                 )
 
                 scene_desc = new_scene_desc
@@ -298,9 +284,7 @@ class SceneImageService:
                     image_data, used_prompt = generate_image()
                 except ContentInspectionError as e2:
                     logger.error(f"Content inspection still failed after rewrite: {e2}")
-                    raise ImageContentError(
-                        "内容审核未通过，请尝试使用其他描述方式", new_prompt
-                    )
+                    raise ImageContentError("内容审核未通过，请尝试使用其他描述方式", new_prompt)
 
             # Step 4: 保存图片
             # ★ week 从0开始，entity_name 显示时 +1，与前端一致
@@ -332,9 +316,7 @@ class SceneImageService:
             self.db.commit()
             self.db.refresh(new_scene)
             week_display = f"第{week + 1}周" if week is not None else "未知周"
-            logger.info(
-                f"场景插画创建完成: scene_id={new_scene.scene_id}, {week_display}"
-            )
+            logger.info(f"场景插画创建完成: scene_id={new_scene.scene_id}, {week_display}")
 
             return new_scene
 
@@ -389,13 +371,11 @@ class SceneImageService:
             reference_url, _ = get_player_image_func(game_id, player_image_id)
 
         try:
-            image_data, prompt_used, scene_desc = (
-                self.image_client.generate_opening_illustration(
-                    story_text=story_text,
-                    character_info=char_info,
-                    reference_image_url=reference_url,
-                    size="1664*928",
-                )
+            image_data, prompt_used, scene_desc = self.image_client.generate_opening_illustration(
+                story_text=story_text,
+                character_info=char_info,
+                reference_image_url=reference_url,
+                size="1664*928",
             )
 
             storage_path, storage_type = self.storage_service.save_image(
@@ -484,9 +464,7 @@ class SceneImageService:
 
         # 获取当前插画作为参考
         current_illustration = (
-            self.db.query(ImageModel)
-            .filter(ImageModel.image_id == current_illustration_id)
-            .first()
+            self.db.query(ImageModel).filter(ImageModel.image_id == current_illustration_id).first()
         )
 
         reference_url = None
@@ -508,11 +486,9 @@ class SceneImageService:
             reference_url, _ = get_player_image_func(game_id, player_image_id)
 
         try:
-            scene_desc, illustration_prompt = (
-                self.image_client.analyze_story_for_illustration(
-                    story_text,
-                    char_info,
-                )
+            scene_desc, illustration_prompt = self.image_client.analyze_story_for_illustration(
+                story_text,
+                char_info,
             )
 
             combined_prompt = f"""{user_prompt}
@@ -574,9 +550,7 @@ class SceneImageService:
             self.db.commit()
             self.db.refresh(image_model)
 
-            logger.info(
-                f"Opening illustration regenerated: image_id={image_model.image_id}"
-            )
+            logger.info(f"Opening illustration regenerated: image_id={image_model.image_id}")
             return image_model
 
         except ContentInspectionError as e:
@@ -625,9 +599,7 @@ class SceneImageService:
 
         return char_info
 
-    def _get_appearance_anchor(
-        self, image_id: int
-    ) -> Optional[CharacterAppearanceAnchor]:
+    def _get_appearance_anchor(self, image_id: int) -> Optional[CharacterAppearanceAnchor]:
         """从人物图片记录中获取外貌锚点.
 
         Args:
@@ -637,11 +609,7 @@ class SceneImageService:
             CharacterAppearanceAnchor 实例，如果不存在则返回 None
         """
         try:
-            image = (
-                self.db.query(ImageModel)
-                .filter(ImageModel.image_id == image_id)
-                .first()
-            )
+            image = self.db.query(ImageModel).filter(ImageModel.image_id == image_id).first()
             if not image or not image.metadata_json:
                 return None
 

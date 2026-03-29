@@ -29,6 +29,7 @@ export const STATUS_MESSAGES: Record<string, string> = {
   fallback: "正在使用备用模式...",
   replaying: "正在恢复进度...",
   waiting: "等待服务器响应...",
+  validating: "正在检查故事一致性...",  // ★ 新增：一致性校验状态
   retrying: "故事逻辑校验中，正在优化...",
 };
 

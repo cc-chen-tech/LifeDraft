@@ -35,6 +35,7 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
       return reader!.read().then(({ done, value }) => {
         if (done) {
           // Stream ended - use the last complete event data if received
+          console.log('[SSE] Stream ended, isCompleteReceived:', isCompleteReceived, 'completeData keys:', Object.keys(completeData || {}));
           if (isCompleteReceived && completeData) {
             callbacks.onComplete?.(completeData);
           } else if (!isCompleteReceived) {
@@ -78,6 +79,7 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
                 // Wait for stream to end or [DONE] marker to ensure all data is received
                 completeData = parsed.data || parsed;
                 isCompleteReceived = true;
+                console.log('[SSE] Complete event received, data keys:', Object.keys(completeData || {}));
                 currentEventType = null;
                 continue;
               }
@@ -89,7 +91,10 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
               }
 
               // Handle story chunks
-              const chunk = parsed.content || parsed.text || parsed.chunk || parsed.story;
+              // 如果是字符串，直接使用；如果是对象，尝试提取内容字段
+              const chunk = typeof parsed === 'string' 
+                ? parsed 
+                : (parsed.content || parsed.text || parsed.chunk || parsed.story);
               if (chunk) {
                 callbacks.onChunk?.(chunk);
                 callbacks.onStory?.(chunk);
@@ -256,6 +261,7 @@ export async function streamRewrite(
   // Parse SSE stream with rewrite-specific handling
   const decoder = new TextDecoder();
   let buffer = '';
+  let currentEventType: string | null = null;
 
   let completed = false;
 
@@ -276,6 +282,11 @@ export async function streamRewrite(
 
         for (const line of lines) {
           const trimmed = line.trim();
+          // Parse event type from event: line
+          if (trimmed.startsWith('event: ')) {
+            currentEventType = trimmed.slice(7);
+            continue;
+          }
           if (trimmed.startsWith('data: ')) {
             const data = trimmed.slice(6);
             if (data === '[DONE]') {
@@ -286,17 +297,43 @@ export async function streamRewrite(
             }
             try {
               const parsed = JSON.parse(data);
-              if (parsed.type === 'story_chunk' && parsed.content) {
-                callbacks.onStory?.(parsed.content);
-              } else if (parsed.type === 'status' && parsed.status) {
-                callbacks.onStatus?.(parsed.status);
-              } else if (parsed.type === 'complete') {
+              // Handle complete event
+              if (currentEventType === 'complete' || parsed.type === 'complete') {
                 completed = true;
                 callbacks.onComplete?.(parsed.data || parsed);
+                continue;
+              }
+              // Handle status updates
+              if (currentEventType === 'status' || parsed.type === 'status') {
+                const statusData = parsed.status || parsed;
+                if (statusData) {
+                  callbacks.onStatus?.(statusData);
+                }
+                continue;
+              }
+              // Handle story chunks - check both event type and parsed content
+              if (currentEventType === 'story') {
+                // If it's a string, use it directly; if object, extract content
+                const chunk = typeof parsed === 'string'
+                  ? parsed
+                  : (parsed.content || parsed.text || parsed.chunk || parsed.story);
+                if (chunk) {
+                  callbacks.onStory?.(chunk);
+                }
+                continue;
+              }
+              // Fallback: check for story_chunk type for backwards compatibility
+              if (parsed.type === 'story_chunk' && parsed.content) {
+                callbacks.onStory?.(parsed.content);
               }
             } catch {
-              // If not JSON, ignore
+              // If not JSON, treat as plain text chunk (for story)
+              if (data && currentEventType === 'story') {
+                callbacks.onStory?.(data);
+              }
             }
+            // Reset event type after processing data line
+            currentEventType = null;
           }
         }
 

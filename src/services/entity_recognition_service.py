@@ -241,9 +241,7 @@ class EntityRecognitionService(BaseExtractionService):
             return False
 
         # 使用基类的验证方法
-        entity["importance"] = self._validate_importance(
-            entity.get("importance", "normal")
-        )
+        entity["importance"] = self._validate_importance(entity.get("importance", "normal"))
 
         # 验证出现次数
         appear_count = entity.get("appear_count", 0)

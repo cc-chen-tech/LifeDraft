@@ -41,9 +41,7 @@ class CharacterIntroductionService:
     def player_state(self):
         return self._get_player_state()
 
-    def maybe_generate_new_character(
-        self, probability: float = 0.08
-    ) -> Optional[Dict[str, Any]]:
+    def maybe_generate_new_character(self, probability: float = 0.08) -> Optional[Dict[str, Any]]:
         """
         以一定概率生成新的人物，存入待引入队列。
         人物不会立即出现在故事中，而是等待合适的场景再自然引入。
@@ -94,9 +92,7 @@ class CharacterIntroductionService:
                 return None
 
             new_name = new_person["name"]
-            logger.info(
-                f"成功生成新人物：{new_name} ({new_person.get('role', '未知')})"
-            )
+            logger.info(f"成功生成新人物：{new_name} ({new_person.get('role', '未知')})")
 
             # 根据人物角色和当前状态，决定引入场景
             intro_context = self.determine_introduction_context(new_person)
@@ -222,9 +218,7 @@ class CharacterIntroductionService:
 
         # 特殊角色提高优先级
         role = new_person.get("role", "").lower()
-        if any(
-            kw in role for kw in ["恋人", "爱人", "伴侣", "lover", "partner", "spouse"]
-        ):
+        if any(kw in role for kw in ["恋人", "爱人", "伴侣", "lover", "partner", "spouse"]):
             priority += 3
         elif any(kw in role for kw in ["导师", "贵人", "mentor", "patron"]):
             priority += 2
@@ -407,14 +401,10 @@ class CharacterIntroductionService:
             # 从待引入队列中移除
             pending = player_state.pending_character_introductions
             player_state.pending_character_introductions = [
-                e
-                for e in pending
-                if e.get("character_data", {}).get("name") != new_name
+                e for e in pending if e.get("character_data", {}).get("name") != new_name
             ]
 
-            logger.info(
-                f"新人物 {new_name} 已正式引入（初始亲密度：{initial_affinity}）"
-            )
+            logger.info(f"新人物 {new_name} 已正式引入（初始亲密度：{initial_affinity}）")
 
             return new_person
 

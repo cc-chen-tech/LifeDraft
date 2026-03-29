@@ -98,3 +98,42 @@ class TestPlayerState:
 
         state.week = 75
         assert state.get_current_phase() == "consolidation"
+
+    def test_from_dict_handles_none_last_round_full_story(self):
+        """
+        Regression test: from_dict should handle None for last_round_full_story.
+
+        Bug: Old data in database had last_round_full_story=None, causing
+        Pydantic validation error when loading game state.
+        Fix: from_dict now converts None to empty string "".
+        """
+        # Create state dict with None for last_round_full_story (simulating old data)
+        state_dict = {
+            "character_settings": {},
+            "week": 5,
+            "current_round": 2,
+            "last_round_full_story": None,  # This was causing the bug
+        }
+
+        # Should not raise validation error
+        state = PlayerState.from_dict(state_dict)
+
+        # Verify the value was converted to empty string
+        assert state.last_round_full_story == "", \
+            f"last_round_full_story should be empty string, got {state.last_round_full_story!r}"
+        assert isinstance(state.last_round_full_story, str), \
+            f"last_round_full_story should be string type, got {type(state.last_round_full_story)}"
+
+    def test_from_dict_preserves_valid_last_round_full_story(self):
+        """Test that from_dict preserves valid non-None last_round_full_story values."""
+        state_dict = {
+            "character_settings": {},
+            "week": 5,
+            "current_round": 2,
+            "last_round_full_story": "Some story content",
+        }
+
+        state = PlayerState.from_dict(state_dict)
+
+        assert state.last_round_full_story == "Some story content", \
+            "Valid last_round_full_story should be preserved"

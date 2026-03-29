@@ -45,7 +45,8 @@ export function StreamingText({
   useEffect(() => {
     // ★ 关键修复：如果不是流式模式，直接显示全部文本
     if (!isStreaming) {
-      if (displayedText !== text) {
+      // 使用 ref 获取最新值，避免 React 状态延迟问题
+      if (displayedLenRef.current < text.length) {
         setDisplayedText(text);
         displayedLenRef.current = text.length;
       }
@@ -65,15 +66,16 @@ export function StreamingText({
     const timer = setInterval(() => {
       if (displayedLenRef.current < text.length) {
         const nextLen = Math.min(displayedLenRef.current + charsPerFrame, text.length);
-        setDisplayedText(text.slice(0, nextLen));
         displayedLenRef.current = nextLen;
+        setDisplayedText(text.slice(0, nextLen));
       } else {
         clearInterval(timer);
       }
     }, frameInterval);
 
     return () => clearInterval(timer);
-  }, [text, isStreaming, charsPerFrame, frameInterval, displayedText]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, isStreaming, charsPerFrame, frameInterval]);
 
   // ★ 智能自动滚动：只在用户没有手动滚动时自动滚到底部
   useEffect(() => {

@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useGameStore } from "@/stores/useGameStore";
+import { useSceneImageStore } from "@/stores/useSceneImageStore";
 import { streamRegenerate } from "@/lib/sse";
 import type { EventOption } from "@/lib/types";
 import type { Phase } from "./usePhaseManager";
@@ -173,6 +174,10 @@ export function useGameState({
     generatingRef.current = true;
     setPhase("generating");
     setProcessing(true, "regenerating");
+
+    // ★ 清除当前轮次的场景图片状态，确保重新生成后显示新图片
+    useSceneImageStore.getState().clearCurrentRoundImages();
+    console.log("[handleRegenerate] Cleared current round scene images");
 
     // ★ 定义重试逻辑
     const attemptRegenerate = async (isRetry: boolean = false) => {
