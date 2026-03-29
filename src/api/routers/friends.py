@@ -6,13 +6,9 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 
 from src.api.deps import get_current_user, get_user_manager
-from src.api.schemas import (
-    FriendInfo,
-    FriendRequestCreate,
-    FriendRequestInfo,
-    FriendRequestRespond,
-    MessageResponse,
-)
+from src.api.schemas import (FriendInfo, FriendRequestCreate,
+                             FriendRequestInfo, FriendRequestRespond,
+                             MessageResponse)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

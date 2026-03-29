@@ -158,9 +158,7 @@ class StoryAnalyzer:
             story_hash = hashlib.md5(story_text.encode("utf-8")).hexdigest()[:16]
 
             # Build existing facts context for the AI
-            existing_context = self._build_existing_facts_context(
-                existing_facts, language
-            )
+            existing_context = self._build_existing_facts_context(existing_facts, language)
 
             prompt = get_story_analysis_prompt(
                 story_text=story_text,
@@ -181,9 +179,7 @@ class StoryAnalyzer:
             )
 
             # ★ 传递 story_hash 用于溯源
-            return self._parse_analysis_response(
-                response, current_week, existing_facts, story_hash
-            )
+            return self._parse_analysis_response(response, current_week, existing_facts, story_hash)
 
         except Exception as e:
             logger.error(f"Story analysis failed: {e}")
@@ -309,11 +305,7 @@ class StoryAnalyzer:
                     if not target_id:
                         # Try matching by subject + type
                         for ef in existing_facts:
-                            if (
-                                ef.active
-                                and ef.subject == subject
-                                and ef.fact_type == fact_type
-                            ):
+                            if ef.active and ef.subject == subject and ef.fact_type == fact_type:
                                 target_id = ef.fact_id
                                 break
 
@@ -399,9 +391,8 @@ class StoryAnalyzer:
             return []
 
         try:
-            from config.prompts.world_prompts import (
-                get_scheduled_commitment_extraction_prompt,
-            )
+            from config.prompts.world_prompts import \
+                get_scheduled_commitment_extraction_prompt
 
             prompt = get_scheduled_commitment_extraction_prompt(
                 story=story_text,
@@ -457,9 +448,7 @@ class StoryAnalyzer:
 
                 # 验证轮次范围
                 if scheduled_round not in (0, 1, 2):
-                    logger.warning(
-                        f"Invalid scheduled_round: {scheduled_round}, skipping"
-                    )
+                    logger.warning(f"Invalid scheduled_round: {scheduled_round}, skipping")
                     continue
 
                 # 验证重要程度

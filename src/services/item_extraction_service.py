@@ -47,12 +47,11 @@ class ItemExtractionService(BaseExtractionService):
             return []
 
         try:
-            from config.prompts.item_extraction_prompt import get_item_extraction_prompt
+            from config.prompts.item_extraction_prompt import \
+                get_item_extraction_prompt
 
             # 构建已存在物品列表
-            existing_items_list = (
-                list(existing_items.values()) if existing_items else []
-            )
+            existing_items_list = list(existing_items.values()) if existing_items else []
 
             prompt = get_item_extraction_prompt(
                 story_text=story_text,
@@ -163,9 +162,8 @@ class ItemExtractionService(BaseExtractionService):
             生成的描述，失败返回None
         """
         try:
-            from config.prompts.item_extraction_prompt import (
-                get_item_description_generation_prompt,
-            )
+            from config.prompts.item_extraction_prompt import \
+                get_item_description_generation_prompt
 
             prompt = get_item_description_generation_prompt(
                 item_name=item_name,

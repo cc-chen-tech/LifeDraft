@@ -45,10 +45,7 @@ class DecisionRepository:
         db = SessionLocal()
         try:
             return (
-                db.query(Decision)
-                .filter(Decision.game_id == game_id)
-                .order_by(Decision.week)
-                .all()
+                db.query(Decision).filter(Decision.game_id == game_id).order_by(Decision.week).all()
             )
         finally:
             db.close()
@@ -103,10 +100,7 @@ class DecisionRepository:
         db = SessionLocal()
         try:
             decisions = (
-                db.query(Decision)
-                .filter(Decision.game_id == game_id)
-                .order_by(Decision.week)
-                .all()
+                db.query(Decision).filter(Decision.game_id == game_id).order_by(Decision.week).all()
             )
 
             results = []

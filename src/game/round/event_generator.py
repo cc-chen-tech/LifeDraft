@@ -141,16 +141,17 @@ class RoundEventGenerator:
                         f"\n\n{story_continuation}" if story_continuation else ""
                     )
                     resume_source = "round_history"
-                    logger.info(
-                        f"[Resume Check] Found current round story in round_history"
-                    )
+                    logger.info(f"[Resume Check] Found current round story in round_history")
 
                 # Case 2: Last round is current_round - 1, and last_round_full_story exists
                 # This means story was generated but choice not made yet
+                # ★ CRITICAL: Only use last_round_full_story if current_event_data exists
+                # This ensures the story was actually generated for the current round
                 elif (
                     entry_week == current_week
                     and entry_round == current_round - 1
                     and last_round_full_story
+                    and player_state.current_event_data
                 ):
                     existing_story = last_round_full_story
                     resume_source = "last_round_full_story"
@@ -159,20 +160,19 @@ class RoundEventGenerator:
                     )
 
             # Also check last_round_full_story if no round_history match
-            elif last_round_full_story:
+            # ★ CRITICAL: Only use last_round_full_story for round 0 if current_event_data exists
+            elif last_round_full_story and current_round == 0 and player_state.current_event_data:
                 existing_story = last_round_full_story
                 resume_source = "last_round_full_story_only"
                 logger.info(
-                    f"[Resume Check] Using last_round_full_story (no round_history match)"
+                    f"[Resume Check] Using last_round_full_story (no round_history match, round 0 with current_event)"
                 )
 
             if existing_story and len(existing_story) > 100:
                 # ★ Check options cache first
                 cached_options = None
                 if session:
-                    cached_options = session.get_cached_options(
-                        current_week, current_round
-                    )
+                    cached_options = session.get_cached_options(current_week, current_round)
 
                 if cached_options:
                     # Use cached options - instant response!
@@ -215,7 +215,7 @@ class RoundEventGenerator:
                         status_callback("generating_options")
 
                     # Generate options only for existing story
-                    event = self.ai_generator.generate_options_only(
+                    generated_event: GameEvent = self.ai_generator.generate_options_only(
                         story_description=existing_story,
                         player_state=player_state.to_dict(),
                         character_settings=player_state.character_settings,
@@ -223,25 +223,25 @@ class RoundEventGenerator:
                     )
 
                     # ★ Cache the generated options
-                    if session and event.options:
+                    if session and generated_event.options:
                         session.set_cached_options(
                             current_week,
                             current_round,
-                            [opt.model_dump() for opt in event.options],
+                            [opt.model_dump() for opt in generated_event.options],
                         )
 
-                    self._current_event = event
-                    player_state.current_event_data = event.model_dump()
+                    self._current_event = generated_event
+                    player_state.current_event_data = generated_event.model_dump()
 
                     if self.event_callback:
-                        self.event_callback(event, player_state)
+                        self.event_callback(generated_event, player_state)
 
                     logger.info(
-                        f"★ Resume mode complete: Generated {len(event.options)} options for existing story"
+                        f"★ Resume mode complete: Generated {len(generated_event.options)} options for existing story"
                     )
                     self._generating = False
                     self._generating_start_time = None
-                    return event
+                    return generated_event
 
                 except Exception as e:
                     logger.error(
@@ -269,9 +269,7 @@ class RoundEventGenerator:
                     )
                     raise ValueError("Event generation in progress, please wait")
             else:
-                logger.warning(
-                    "Event generation in progress (no timestamp), raising error"
-                )
+                logger.warning("Event generation in progress (no timestamp), raising error")
                 raise ValueError("Event generation in progress, please wait")
 
         self._generating = True
@@ -283,15 +281,11 @@ class RoundEventGenerator:
         current_round = player_state.current_round
 
         # ★ 显示用周数（人类可读，从1开始）
-        week_display = (
-            f"第{current_week + 1}周" if current_week is not None else "未知周"
-        )
+        week_display = f"第{current_week + 1}周" if current_week is not None else "未知周"
         logger.info(f"Generating round event: {week_display}, round={current_round}")
 
         # ★ 步骤0: 检查是否有预定事件需要触发
-        scheduled_events = player_state.get_pending_scheduled_events(
-            current_week, current_round
-        )
+        scheduled_events = player_state.get_pending_scheduled_events(current_week, current_round)
         if scheduled_events:
             logger.info(f"检测到 {len(scheduled_events)} 个预定事件需要触发")
             event = self._generate_scheduled_event(  # type: ignore[assignment]
@@ -318,20 +312,14 @@ class RoundEventGenerator:
                 status_callback("initializing")
 
             # 步骤1: 尝试生成新人物（存入待引入队列，不立即引入）
-            self.character_introduction_service.maybe_generate_new_character(
-                probability=0.08
-            )
+            self.character_introduction_service.maybe_generate_new_character(probability=0.08)
 
             # 步骤2: 检查是否有合适的引入机会
             new_character = None
-            pending_entry = (
-                self.character_introduction_service.check_introduction_opportunity()
-            )
+            pending_entry = self.character_introduction_service.check_introduction_opportunity()
             if pending_entry:
-                new_character = (
-                    self.character_introduction_service.introduce_pending_character(
-                        pending_entry
-                    )
+                new_character = self.character_introduction_service.introduce_pending_character(
+                    pending_entry
                 )
                 if new_character:
                     intro_ctx = pending_entry.get("introduction_context", "random")
@@ -401,9 +389,7 @@ class RoundEventGenerator:
                 established_facts=player_state.established_facts,
                 last_event_concluded=player_state.last_event_concluded,
                 last_round_full_story=player_state.last_round_full_story,
-                activated_foreshadowing=NarrativeManager.select_foreshadowing_seed(
-                    player_state
-                ),
+                activated_foreshadowing=NarrativeManager.select_foreshadowing_seed(player_state),
                 character_habits=player_state.character_habits,
                 world_model=world_model,
                 new_character=new_character,
@@ -518,9 +504,7 @@ class RoundEventGenerator:
                 event_hints.append(se.get("event_hint"))
             # 取最高重要程度
             se_importance = se.get("importance", "normal")
-            if IMPORTANCE_ORDER.get(se_importance, 2) < IMPORTANCE_ORDER.get(
-                max_importance, 2
-            ):
+            if IMPORTANCE_ORDER.get(se_importance, 2) < IMPORTANCE_ORDER.get(max_importance, 2):
                 max_importance = se_importance
 
         # 构建强制事件的提示
@@ -528,9 +512,7 @@ class RoundEventGenerator:
         combined_hint = "；".join(event_hints) if event_hints else ""
         parties_str = "、".join(all_parties) if all_parties else ""
 
-        logger.info(
-            f"生成预定事件: {combined_description[:60]}... (涉及: {parties_str})"
-        )
+        logger.info(f"生成预定事件: {combined_description[:60]}... (涉及: {parties_str})")
 
         try:
             # 使用AI生成事件内容，但必须包含承诺的核心元素
@@ -623,9 +605,7 @@ class RoundEventGenerator:
         current_round = player_state.get("current_round", 0)
 
         round_names = (
-            ["周一", "周中", "周末"]
-            if language == "zh"
-            else ["Monday", "Midweek", "Weekend"]
+            ["周一", "周中", "周末"] if language == "zh" else ["Monday", "Midweek", "Weekend"]
         )
         round_name = (
             round_names[current_round]
@@ -714,7 +694,9 @@ Return ONLY JSON, no other text."""
                 EventOption(text="找借口推迟", effects={"mood": -15}),
             ]
         else:
-            event_desc = f"It's time to fulfill your commitment. {combined_desc}. You need to make a choice."
+            event_desc = (
+                f"It's time to fulfill your commitment. {combined_desc}. You need to make a choice."
+            )
             options = [
                 EventOption(
                     text="Fulfill the commitment seriously",

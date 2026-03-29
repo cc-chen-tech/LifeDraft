@@ -189,16 +189,10 @@ class CharacterProfile:
     """
 
     character: str = ""  # Character name
-    behavioral_traits: List[str] = field(
-        default_factory=list
-    )  # ["冲突回避型", "善于倾听"]
+    behavioral_traits: List[str] = field(default_factory=list)  # ["冲突回避型", "善于倾听"]
     speech_style: str = ""  # "说话直接、偶尔带自嘲式幽默"
-    decision_patterns: List[str] = field(
-        default_factory=list
-    )  # ["倾向妥协", "重视关系胜过利益"]
-    emotional_tendencies: List[str] = field(
-        default_factory=list
-    )  # ["压抑情绪", "独处时才释放"]
+    decision_patterns: List[str] = field(default_factory=list)  # ["倾向妥协", "重视关系胜过利益"]
+    emotional_tendencies: List[str] = field(default_factory=list)  # ["压抑情绪", "独处时才释放"]
     behavioral_boundaries: List[str] = field(
         default_factory=list
     )  # ["绝不在公开场合发怒", "不会背叛朋友"]
@@ -266,9 +260,7 @@ class WorldModel:
         self.active_commitments: List[Commitment] = []
         self.causal_chains: List[CausalChain] = []
         self.physical_states: Dict[str, PhysicalState] = {}
-        self.dynamic_facts: List[Any] = (
-            []
-        )  # List of DynamicFact objects from StoryAnalyzer
+        self.dynamic_facts: List[Any] = []  # List of DynamicFact objects from StoryAnalyzer
         self.character_profiles: Dict[str, CharacterProfile] = (
             {}
         )  # Behavioral profiles per character
@@ -325,18 +317,14 @@ class WorldModel:
             except (KeyError, TypeError, ValueError) as e:
                 logger.warning(f"Skipping invalid dynamic fact data: {e}, data: {df_d}")
             except Exception as e:
-                logger.error(
-                    f"Unexpected error parsing dynamic fact: {e}, data: {df_d}"
-                )
+                logger.error(f"Unexpected error parsing dynamic fact: {e}, data: {df_d}")
 
         # ---------- Read character behavioral profiles ----------
         for name, cp_d in wmd.get("character_profiles", {}).items():
             try:
                 wm.character_profiles[name] = CharacterProfile.from_dict(cp_d)
             except (KeyError, TypeError, ValueError) as e:
-                logger.warning(
-                    f"Skipping invalid character profile data for {name}: {e}"
-                )
+                logger.warning(f"Skipping invalid character profile data for {name}: {e}")
             except Exception as e:
                 logger.error(f"Unexpected error parsing character profile {name}: {e}")
 
@@ -358,9 +346,7 @@ class WorldModel:
                     travel_mode="resident",
                 )
             elif category == "role" and subject not in wm.career_records:
-                wm.career_records[subject] = CareerInfo(
-                    current_job=fact_text, since_week=week
-                )
+                wm.career_records[subject] = CareerInfo(current_job=fact_text, since_week=week)
 
         # ---------- Supplement from character_settings (initial occupation) ----------
         if "occupation" in cs and "主角" not in wm.career_records:
@@ -387,9 +373,7 @@ class WorldModel:
             return issues
 
         located = {
-            n: self.character_locations[n]
-            for n in char_names
-            if n in self.character_locations
+            n: self.character_locations[n] for n in char_names if n in self.character_locations
         }
         if len(located) < 2:
             return issues  # Not enough location data to validate
@@ -452,9 +436,7 @@ class WorldModel:
                 result.append(c)
         return result
 
-    def get_expiring_commitments(
-        self, week: int, lookahead: int = 3
-    ) -> List[Commitment]:
+    def get_expiring_commitments(self, week: int, lookahead: int = 3) -> List[Commitment]:
         """Get commitments that will expire within `lookahead` weeks."""
         result = []
         for c in self.active_commitments:
@@ -604,9 +586,7 @@ class WorldModel:
                 lines.append("")
                 lines.append("  🚨 【硬性规则 — 违反将触发重新生成】：")
                 lines.append("  1. 上述角色只能出现在其【当前位置】")
-                lines.append(
-                    "  2. 如果需要在其他地点出现，必须在故事中明确交代移动过程"
-                )
+                lines.append("  2. 如果需要在其他地点出现，必须在故事中明确交代移动过程")
                 lines.append("  3. 两个在不同地点的角色不能在同一物理场景中对话或互动")
                 lines.append("")
 
@@ -615,9 +595,7 @@ class WorldModel:
                 lines.append("  【位置不确定的角色】")
                 for name, loc, status in vague_chars:
                     lines.append(f"  💡 {name} 目前状态：{status}")
-                lines.append(
-                    "  📝 这些角色如需出现，应在故事中自然交代其回归或到达的原因。"
-                )
+                lines.append("  📝 这些角色如需出现，应在故事中自然交代其回归或到达的原因。")
                 lines.append("")
 
             lines.append("  ❌ 【绝对禁止的地理错误】（违反将触发重新生成）：")
@@ -631,9 +609,7 @@ class WorldModel:
             lines.append("=" * 60)
         else:
             lines.append("=" * 60)
-            lines.append(
-                "🚨 [CHARACTER LOCATION CONSTRAINTS — Violations cause story rejection]"
-            )
+            lines.append("🚨 [CHARACTER LOCATION CONSTRAINTS — Violations cause story rejection]")
             lines.append("=" * 60)
 
             # 明确位置的角色 - 严格约束
@@ -652,9 +628,7 @@ class WorldModel:
                     )
                 lines.append("")
                 lines.append("  🚨 [HARD RULES — Violations trigger regeneration]:")
-                lines.append(
-                    "  1. Above characters can ONLY appear at their [current location]"
-                )
+                lines.append("  1. Above characters can ONLY appear at their [current location]")
                 lines.append(
                     "  2. If they need to appear elsewhere, travel MUST be explicitly narrated"
                 )
@@ -673,9 +647,7 @@ class WorldModel:
                 )
                 lines.append("")
 
-            lines.append(
-                "  ❌ [ABSOLUTELY FORBIDDEN GEOGRAPHIC ERRORS] (trigger regeneration):"
-            )
+            lines.append("  ❌ [ABSOLUTELY FORBIDDEN GEOGRAPHIC ERRORS] (trigger regeneration):")
             lines.append(
                 "  1. Characters from different cities/locations meeting casually without travel narration"
             )
@@ -711,9 +683,7 @@ class WorldModel:
             for name, cr in self.career_records.items():
                 emp = f" at {cr.employer}" if cr.employer else ""
                 lines.append(f"  - {name}: {cr.current_job}{emp}, level={cr.level}")
-            lines.append(
-                "  Warning: Career changes must be gradual, no unrealistic jumps."
-            )
+            lines.append("  Warning: Career changes must be gradual, no unrealistic jumps.")
         return "\n".join(lines)
 
     def _build_commitment_constraints(self, zh: bool) -> str:
@@ -732,11 +702,7 @@ class WorldModel:
 
         # Focus on urgent ones (due within 4 weeks or overdue)
         # 使用有效截止日期判断紧迫性
-        urgent = [
-            c
-            for c in pending
-            if 0 <= get_effective_deadline(c) <= self.current_week + 4
-        ]
+        urgent = [c for c in pending if 0 <= get_effective_deadline(c) <= self.current_week + 4]
         non_urgent = [
             c
             for c in pending
@@ -758,10 +724,7 @@ class WorldModel:
                 lines.append("  ❗ 【即将到期或已过期的承诺】（必须处理）：")
                 for c in urgent:
                     # ★ 关键承诺显示为"待兑现"而非"已过期"
-                    if (
-                        c.importance == "critical"
-                        and c.deadline_week <= self.current_week
-                    ):
+                    if c.importance == "critical" and c.deadline_week <= self.current_week:
                         overdue = "【关键承诺，待兑现 — 必须在本轮故事中处理或回应】"
                     else:
                         overdue = (
@@ -777,9 +740,7 @@ class WorldModel:
                 for c in non_urgent[:5]:  # Limit to 5 to save tokens
                     lines.append(f"  - {c.description}（涉及：{'、'.join(c.parties)}）")
         else:
-            lines.append(
-                "🤝 [Unfulfilled Commitments — Violations cause story rejection]"
-            )
+            lines.append("🤝 [Unfulfilled Commitments — Violations cause story rejection]")
             lines.append("")
             lines.append("  🚨 [HARD RULES — Violations trigger regeneration]:")
             lines.append(
@@ -788,18 +749,13 @@ class WorldModel:
             lines.append(
                 "  2. If a commitment involves character status (e.g., 'departed', 'hidden'), that character CANNOT change status without explanation"
             )
-            lines.append(
-                "  3. Critical commitments MUST be properly addressed, cannot be ignored"
-            )
+            lines.append("  3. Critical commitments MUST be properly addressed, cannot be ignored")
             lines.append("")
             if urgent:
                 lines.append("  ❗ [Due soon or overdue] (MUST be addressed):")
                 for c in urgent:
                     # ★ 关键承诺显示为"待兑现"而非"已过期"
-                    if (
-                        c.importance == "critical"
-                        and c.deadline_week <= self.current_week
-                    ):
+                    if c.importance == "critical" and c.deadline_week <= self.current_week:
                         overdue = "[CRITICAL - MUST address or respond in this round]"
                     else:
                         overdue = (
@@ -813,9 +769,7 @@ class WorldModel:
             if non_urgent:
                 lines.append("  Other pending commitments:")
                 for c in non_urgent[:5]:
-                    lines.append(
-                        f"  - {c.description} (parties: {', '.join(c.parties)})"
-                    )
+                    lines.append(f"  - {c.description} (parties: {', '.join(c.parties)})")
         return "\n".join(lines)
 
     def _build_causal_constraints(self, zh: bool) -> str:
@@ -827,21 +781,13 @@ class WorldModel:
             lines.append("⚡ 【悬而未决的因果链】")
             for cc in active:
                 chars = f"（涉及：{'、'.join(cc.characters)}）" if cc.characters else ""
-                lines.append(
-                    f"  - 起因：{cc.cause} → 预期后果：{cc.expected_consequence}{chars}"
-                )
+                lines.append(f"  - 起因：{cc.cause} → 预期后果：{cc.expected_consequence}{chars}")
             lines.append("  ⚠️ 以上因果关系应在合适时机在故事中体现，不能被遗忘。")
         else:
             lines.append("[Pending Causal Chains]")
             for cc in active:
-                chars = (
-                    f" (characters: {', '.join(cc.characters)})"
-                    if cc.characters
-                    else ""
-                )
-                lines.append(
-                    f"  - Cause: {cc.cause} -> Expected: {cc.expected_consequence}{chars}"
-                )
+                chars = f" (characters: {', '.join(cc.characters)})" if cc.characters else ""
+                lines.append(f"  - Cause: {cc.cause} -> Expected: {cc.expected_consequence}{chars}")
             lines.append(
                 "  Warning: These cause-effect chains should manifest in the story at appropriate times."
             )
@@ -872,9 +818,7 @@ class WorldModel:
                     else:
                         recovery = f" (recovery ~week {ps.expected_recovery_week})"
                 lines.append(f"  - {name}: {ps.condition} ({ps.severity}){recovery}")
-            lines.append(
-                "  Warning: Character actions must be consistent with physical state."
-            )
+            lines.append("  Warning: Character actions must be consistent with physical state.")
         return "\n".join(lines)
 
     def _build_dynamic_facts_constraints(self, zh: bool) -> str:
@@ -903,9 +847,7 @@ class WorldModel:
                 }.get(f.importance, "")
                 prefix = f"[{importance_label}] " if importance_label else ""
                 lines.append(f"  - {prefix}{f.constraint_text}")
-            lines.append(
-                "  ⚠️ 以上约束由AI从历史故事中自动提取，请在生成故事时严格遵守。"
-            )
+            lines.append("  ⚠️ 以上约束由AI从历史故事中自动提取，请在生成故事时严格遵守。")
         else:
             lines.append("[AI-Identified World State Constraints]")
             for f in display_facts:
@@ -944,19 +886,11 @@ class WorldModel:
                 lines.append(f"  [{level}] {name}：")
                 lines.append(f"    {p.constraint_text}")
                 if p.behavioral_boundaries:
-                    lines.append(
-                        f"    ❌ 绝对不会：{'；'.join(p.behavioral_boundaries[:3])}"
-                    )
-            lines.append(
-                "  ⚠️ 以上画像由AI从多轮故事中归纳而成。角色的言行举止、决策方式、情绪表达"
-            )
-            lines.append(
-                "  必须与画像一致。如需角色成长/转变，必须有明确的故事契机和过渡铺垫。"
-            )
+                    lines.append(f"    ❌ 绝对不会：{'；'.join(p.behavioral_boundaries[:3])}")
+            lines.append("  ⚠️ 以上画像由AI从多轮故事中归纳而成。角色的言行举止、决策方式、情绪表达")
+            lines.append("  必须与画像一致。如需角色成长/转变，必须有明确的故事契机和过渡铺垫。")
         else:
-            lines.append(
-                "[Character Behavioral Profiles — Personality Consistency Constraints]"
-            )
+            lines.append("[Character Behavioral Profiles — Personality Consistency Constraints]")
             for name, p in established.items():
                 level = "STRICT" if p.evidence_count >= 4 else "Important"
                 lines.append(f"  [{level}] {name}:")
@@ -979,20 +913,12 @@ class WorldModel:
             "character_locations": {
                 n: loc.to_dict() for n, loc in self.character_locations.items()
             },
-            "career_records": {
-                n: cr.to_dict() for n, cr in self.career_records.items()
-            },
+            "career_records": {n: cr.to_dict() for n, cr in self.career_records.items()},
             "active_commitments": [c.to_dict() for c in self.active_commitments],
             "causal_chains": [cc.to_dict() for cc in self.causal_chains],
-            "physical_states": {
-                n: ps.to_dict() for n, ps in self.physical_states.items()
-            },
-            "dynamic_facts": [
-                df.to_dict() for df in self.dynamic_facts if hasattr(df, "to_dict")
-            ],
-            "character_profiles": {
-                n: cp.to_dict() for n, cp in self.character_profiles.items()
-            },
+            "physical_states": {n: ps.to_dict() for n, ps in self.physical_states.items()},
+            "dynamic_facts": [df.to_dict() for df in self.dynamic_facts if hasattr(df, "to_dict")],
+            "character_profiles": {n: cp.to_dict() for n, cp in self.character_profiles.items()},
         }
 
 

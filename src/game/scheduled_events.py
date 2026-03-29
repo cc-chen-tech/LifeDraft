@@ -255,9 +255,7 @@ def parse_time_reference(
 
         import re
 
-        days_match = re.search(
-            r"(\d+)\s*days?\s*(later|after|from now)", time_ref_lower
-        )
+        days_match = re.search(r"(\d+)\s*days?\s*(later|after|from now)", time_ref_lower)
         if days_match:
             days = int(days_match.group(1))
             total_rounds = current_round + days
@@ -312,32 +310,24 @@ class ScheduledEventManager:
                 return True
         return False
 
-    def get_pending_events_for_round(
-        self, week: int, round_num: int
-    ) -> List[ScheduledEvent]:
+    def get_pending_events_for_round(self, week: int, round_num: int) -> List[ScheduledEvent]:
         """获取指定轮次需要触发的预定事件
 
         Returns:
             按优先级排序的预定事件列表
         """
         pending = [
-            e
-            for e in self.events
-            if e.status == "pending" and e.matches_time(week, round_num)
+            e for e in self.events if e.status == "pending" and e.matches_time(week, round_num)
         ]
 
         # 按重要程度排序：critical > normal > minor
         from src.game.constants import IMPORTANCE_ORDER
 
-        pending.sort(
-            key=lambda e: (IMPORTANCE_ORDER.get(e.importance, 2), e.created_week)
-        )
+        pending.sort(key=lambda e: (IMPORTANCE_ORDER.get(e.importance, 2), e.created_week))
 
         return pending
 
-    def get_overdue_events(
-        self, current_week: int, current_round: int
-    ) -> List[ScheduledEvent]:
+    def get_overdue_events(self, current_week: int, current_round: int) -> List[ScheduledEvent]:
         """获取已过期的预定事件"""
         return [e for e in self.events if e.is_overdue(current_week, current_round)]
 
@@ -357,9 +347,7 @@ class ScheduledEventManager:
                 logger.warning(f"预定事件被跳过: {event.description[:40]}...")
                 break
 
-    def merge_events(
-        self, event1: ScheduledEvent, event2: ScheduledEvent
-    ) -> ScheduledEvent:
+    def merge_events(self, event1: ScheduledEvent, event2: ScheduledEvent) -> ScheduledEvent:
         """合并两个预定事件
 
         返回合并后的新事件，原事件标记为 merged
@@ -374,9 +362,7 @@ class ScheduledEventManager:
         from src.game.constants import IMPORTANCE_ORDER
 
         merged_importance = event1.importance
-        if IMPORTANCE_ORDER.get(event2.importance, 2) < IMPORTANCE_ORDER.get(
-            merged_importance, 2
-        ):
+        if IMPORTANCE_ORDER.get(event2.importance, 2) < IMPORTANCE_ORDER.get(merged_importance, 2):
             merged_importance = event2.importance
 
         # 合并事件提示
@@ -399,9 +385,7 @@ class ScheduledEventManager:
         event2.status = "merged"
         event2.merged_into = merged.event_id
 
-        logger.info(
-            f"合并预定事件: {event1.event_id} + {event2.event_id} -> {merged.event_id}"
-        )
+        logger.info(f"合并预定事件: {event1.event_id} + {event2.event_id} -> {merged.event_id}")
 
         return merged
 

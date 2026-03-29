@@ -660,13 +660,10 @@ class TestRoundEventContext:
         """事件生成函数参数数量应合理（<= 10）"""
         import inspect
 
-        try:
-            from src.game.round.event_generator import generate_round_event
+        from src.game.round.event_generator import RoundEventGenerator
 
-            sig = inspect.signature(generate_round_event)
-            param_count = len(sig.parameters)
-            # 修复后参数应 <= 10（使用 Context 对象封装）
-            # 目前仅记录
-            assert param_count >= 0
-        except ImportError:
-            pytest.skip("Function not available for inspection")
+        sig = inspect.signature(RoundEventGenerator.generate_round_event)
+        param_count = len(sig.parameters)
+        # 修复后参数应 <= 10（使用 Context 对象封装）
+        # self + stream_callback + status_callback + session = 4 个参数
+        assert param_count <= 4, f"Expected <= 4 parameters, got {param_count}"

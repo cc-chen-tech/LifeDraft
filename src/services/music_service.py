@@ -48,9 +48,7 @@ class NeteaseMusicClient:
     """网易云音乐 API 客户端"""
 
     def __init__(self, base_url: Optional[str] = None):
-        base_url = base_url or os.getenv(
-            "NETEASE_MUSIC_API_URL", "http://localhost:3000"
-        )
+        base_url = base_url or os.getenv("NETEASE_MUSIC_API_URL", "http://localhost:3000")
         # 将 localhost 替换为 127.0.0.1 避免 IPv6 问题
         self.base_url = base_url.replace("localhost", "127.0.0.1")
         # 禁用连接池，避免 503 错误
@@ -132,9 +130,7 @@ class NeteaseMusicClient:
             if songs and len(songs) > 0:
                 song_url = songs[0].get("url")
                 if song_url:
-                    logger.info(
-                        f"[NeteaseMusic] Got URL for song {song_id}: {song_url[:50]}..."
-                    )
+                    logger.info(f"[NeteaseMusic] Got URL for song {song_id}: {song_url[:50]}...")
                     return song_url
                 else:
                     logger.warning(
@@ -149,6 +145,7 @@ class NeteaseMusicClient:
             if retry > 0 and "503" in str(e):
                 logger.warning(f"[NeteaseMusic] 503 error, retrying... ({retry} attempts left)")
                 import asyncio
+
                 await asyncio.sleep(0.5)  # 等待500ms后重试
                 return await self.get_song_url(song_id, retry - 1)
             logger.exception(f"[NeteaseMusic] Failed to get song URL: {e}")
@@ -248,13 +245,9 @@ class MusicService:
                     setting_info.append(f"时代背景：{era.get('era_description', '')}")
                     setting_info.append(f"时代特征：{era.get('era_name', '')}")
             if "world_description" in character_settings:
-                setting_info.append(
-                    f"世界观：{character_settings['world_description']}"
-                )
+                setting_info.append(f"世界观：{character_settings['world_description']}")
             if "character_style" in character_settings:
-                setting_info.append(
-                    f"角色风格：{character_settings['character_style']}"
-                )
+                setting_info.append(f"角色风格：{character_settings['character_style']}")
 
         era_info = "\n".join(setting_info) if setting_info else ""
 

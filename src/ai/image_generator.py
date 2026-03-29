@@ -12,15 +12,13 @@ import requests  # type: ignore[import-untyped]
 from cachetools import TTLCache  # type: ignore[import-untyped]
 
 from config.settings import settings
-from src.ai.image_config import (
-    CHARACTER_VARIANTS,
-    DEFAULT_EDIT_NEGATIVE_PROMPT,
-    DEFAULT_NEGATIVE_PROMPT,
-    create_retry_session,
-    get_image_edit_models,
-    get_text_to_image_models,
-)
-from src.ai.image_exceptions import ContentInspectionError, ImageGenerationError
+from src.ai.image_config import (CHARACTER_VARIANTS,
+                                 DEFAULT_EDIT_NEGATIVE_PROMPT,
+                                 DEFAULT_NEGATIVE_PROMPT, create_retry_session,
+                                 get_image_edit_models,
+                                 get_text_to_image_models)
+from src.ai.image_exceptions import (ContentInspectionError,
+                                     ImageGenerationError)
 
 logger = logging.getLogger(__name__)
 
@@ -29,9 +27,7 @@ logger = logging.getLogger(__name__)
 _image_cache: TTLCache = TTLCache(maxsize=100, ttl=3600)
 
 
-def _get_prompt_hash(
-    prompt: str, size: str, extra_params: Optional[Dict] = None
-) -> str:
+def _get_prompt_hash(prompt: str, size: str, extra_params: Optional[Dict] = None) -> str:
     """生成 prompt 的哈希值作为缓存 key"""
     cache_key = f"{prompt}|{size}|{extra_params}"
     return hashlib.md5(cache_key.encode()).hexdigest()
@@ -123,9 +119,7 @@ class ImageGenerator:
             is_last_model = model_idx == len(self.text_to_image_models) - 1
 
             if model_idx > 0:
-                logger.warning(
-                    f"[Model Fallback] Switching to fallback model: {fallback_model}"
-                )
+                logger.warning(f"[Model Fallback] Switching to fallback model: {fallback_model}")
 
             for attempt in range(self.max_retries):
                 try:
@@ -160,16 +154,12 @@ class ImageGenerator:
                         f"Got image URL from DashScope (model={fallback_model}), downloading..."
                     )
                     image_bytes = self._download_image(image_url)
-                    logger.info(
-                        f"Successfully downloaded image: {len(image_bytes)} bytes"
-                    )
+                    logger.info(f"Successfully downloaded image: {len(image_bytes)} bytes")
 
                     # M-09: 存入缓存
                     cached_result = (image_bytes, prompt)
                     _image_cache[cache_key] = cached_result
-                    logger.debug(
-                        f"[ImageCache] Cached image with key: {cache_key[:8]}..."
-                    )
+                    logger.debug(f"[ImageCache] Cached image with key: {cache_key[:8]}...")
 
                     return cached_result
 
@@ -356,9 +346,7 @@ class ImageGenerator:
         """下载图片"""
         response = self.session.get(url, timeout=self.timeout)
         if response.status_code != 200:
-            raise ImageGenerationError(
-                f"Failed to download image: {response.status_code}"
-            )
+            raise ImageGenerationError(f"Failed to download image: {response.status_code}")
         return response.content
 
     def edit_image(
@@ -481,9 +469,7 @@ class ImageGenerator:
                     else:
                         break
 
-        raise ImageGenerationError(
-            f"Failed to edit image after trying all models: {last_error}"
-        )
+        raise ImageGenerationError(f"Failed to edit image after trying all models: {last_error}")
 
     def _call_edit_api(
         self,
@@ -542,9 +528,7 @@ class ImageGenerator:
             "Content-Type": "application/json",
         }
 
-        logger.debug(
-            f"Calling image edit API: model={use_model}, size={dashscope_size}"
-        )
+        logger.debug(f"Calling image edit API: model={use_model}, size={dashscope_size}")
 
         response = self.session.post(
             url,
@@ -575,13 +559,9 @@ class ImageGenerator:
                 except ContentInspectionError:
                     raise
                 except (KeyError, TypeError) as e:
-                    logger.warning(
-                        f"Failed to parse content inspection error response: {e}"
-                    )
+                    logger.warning(f"Failed to parse content inspection error response: {e}")
                 except Exception as e:
-                    logger.exception(
-                        f"Unexpected error parsing API error response: {e}"
-                    )
+                    logger.exception(f"Unexpected error parsing API error response: {e}")
 
             raise ImageGenerationError(error_msg)
 
@@ -666,9 +646,7 @@ class ImageGenerator:
                 ) as e:
                     logger.warning(f"Failed to generate variant {i + 1}: {e}")
                 except Exception as e:
-                    logger.exception(
-                        f"Unexpected error generating variant {i + 1}: {e}"
-                    )
+                    logger.exception(f"Unexpected error generating variant {i + 1}: {e}")
         else:
             # 没有参考图片，先生成主图
             logger.info(f"Generating primary image for {name}, feedback: {feedback}")
@@ -695,9 +673,7 @@ class ImageGenerator:
                 # 基于主图生成变体
                 num_variants = num_images - 1
                 if num_variants > 0:
-                    logger.info(
-                        f"Generating {num_variants} variants from primary image"
-                    )
+                    logger.info(f"Generating {num_variants} variants from primary image")
 
                     for i in range(num_variants):
                         variant = CHARACTER_VARIANTS[i % len(CHARACTER_VARIANTS)]
@@ -720,9 +696,7 @@ class ImageGenerator:
                         ) as e:
                             logger.warning(f"Failed to generate variant {i + 1}: {e}")
                         except Exception as e:
-                            logger.exception(
-                                f"Unexpected error generating variant {i + 1}: {e}"
-                            )
+                            logger.exception(f"Unexpected error generating variant {i + 1}: {e}")
 
             except (requests.exceptions.RequestException, ImageGenerationError) as e:
                 logger.error(f"Failed to generate primary image: {e}")

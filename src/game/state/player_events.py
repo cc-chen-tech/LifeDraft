@@ -36,9 +36,7 @@ class PlayerEventsMixin:
         existing_ids = [e.get("event_id") for e in self.scheduled_events]
         if event.event_id not in existing_ids:
             self.scheduled_events.append(event.to_dict())
-            logger.debug(
-                f"添加预定事件: {event.description[:40]}... (ID: {event.event_id})"
-            )
+            logger.debug(f"添加预定事件: {event.description[:40]}... (ID: {event.event_id})")
 
     def get_scheduled_event_manager(self) -> "ScheduledEventManager":
         """获取预定事件管理器实例
@@ -50,9 +48,7 @@ class PlayerEventsMixin:
 
         return ScheduledEventManager.from_dict_list(self.scheduled_events)
 
-    def sync_scheduled_events_from_manager(
-        self, manager: "ScheduledEventManager"
-    ) -> None:
+    def sync_scheduled_events_from_manager(self, manager: "ScheduledEventManager") -> None:
         """从管理器同步预定事件状态
 
         Args:
@@ -79,18 +75,13 @@ class PlayerEventsMixin:
         for e in self.scheduled_events:
             if e.get("status") != "pending":
                 continue
-            if (
-                e.get("scheduled_week") == target_week
-                and e.get("scheduled_round") == target_round
-            ):
+            if e.get("scheduled_week") == target_week and e.get("scheduled_round") == target_round:
                 pending.append(e)
 
         # 按重要程度排序
         from src.game.constants import IMPORTANCE_ORDER
 
-        pending.sort(
-            key=lambda e: IMPORTANCE_ORDER.get(e.get("importance", "normal"), 2)
-        )
+        pending.sort(key=lambda e: IMPORTANCE_ORDER.get(e.get("importance", "normal"), 2))
 
         return pending
 

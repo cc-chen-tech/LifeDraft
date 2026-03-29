@@ -923,8 +923,8 @@ describe('useGameStore', () => {
         ...api.images,
         getAllRoundSceneImages: jest.fn().mockResolvedValue({
           scenes: [
-            { scene_id: 1, round_number: 4, stage: 'result', image_url: 'url1' },
-            { scene_id: 2, round_number: 5, stage: 'result', image_url: 'url2' },
+            { scene_id: 1, week: 2, round_number: 4, stage: 'result', image_url: 'url1' },
+            { scene_id: 2, week: 2, round_number: 5, stage: 'result', image_url: 'url2' },
           ],
         }),
       };

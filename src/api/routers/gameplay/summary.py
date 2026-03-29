@@ -59,9 +59,7 @@ async def get_game_state(
 
     # Build round info
     round_info = {
-        "current_round": (
-            game_loop.current_round if hasattr(game_loop, "current_round") else 0
-        ),
+        "current_round": (game_loop.current_round if hasattr(game_loop, "current_round") else 0),
         "game_over": game_loop.is_game_over(),
     }
 
@@ -247,9 +245,7 @@ def _generate_fallback_summary(story_history: list, player) -> str:
         story = item.get("story_text", "")
         if story and len(story) > 50:
             # Take first sentence as summary
-            first_sentence = (
-                story.split("。")[0] + "。" if "。" in story else story[:100]
-            )
+            first_sentence = story.split("。")[0] + "。" if "。" in story else story[:100]
             events.append(first_sentence)
 
     summary_parts = []

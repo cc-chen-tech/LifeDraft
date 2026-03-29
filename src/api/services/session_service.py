@@ -37,9 +37,7 @@ class SessionService:
         game_loop = session.game_loop
     """
 
-    def get(
-        self, game_id: int, user_id: Optional[int] = None
-    ) -> Optional[GameLoopSession]:
+    def get(self, game_id: int, user_id: Optional[int] = None) -> Optional[GameLoopSession]:
         """获取内存中的 session，不自动恢复。
 
         Args:
@@ -51,9 +49,7 @@ class SessionService:
         """
         return session_store.get(game_id, user_id)
 
-    def get_or_restore(
-        self, game_id: int, user_id: Optional[int] = None
-    ) -> GameLoopSession:
+    def get_or_restore(self, game_id: int, user_id: Optional[int] = None) -> GameLoopSession:
         """获取 session，如果不存在则从数据库恢复。
 
         Args:
@@ -76,9 +72,7 @@ class SessionService:
         )
         return self._restore_from_database(game_id, user_id)
 
-    def _restore_from_database(
-        self, game_id: int, user_id: Optional[int]
-    ) -> GameLoopSession:
+    def _restore_from_database(self, game_id: int, user_id: Optional[int]) -> GameLoopSession:
         """从数据库恢复游戏状态到内存 session。
 
         Args:
@@ -109,17 +103,13 @@ class SessionService:
             game_loop.load_game(state_data)
 
             # Store in session
-            session = session_store.put(
-                game_id, game_loop, user_id=user_id, language=language
-            )
+            session = session_store.put(game_id, game_loop, user_id=user_id, language=language)
             logger.info(
                 f"Auto-restored session from database: game_id={game_id}, has_current_event={game_loop.current_event is not None}"
             )
 
             # ★ 检查并补充缺失的场景插画
-            self._check_and_generate_missing_illustrations(
-                game_id, game_loop, state_data
-            )
+            self._check_and_generate_missing_illustrations(game_id, game_loop, state_data)
 
             return session
 
@@ -231,9 +221,7 @@ class SessionService:
                     image_storage=image_storage,
                 )
 
-                logger.info(
-                    f"[SessionService] Illustration check completed for game_id={game_id}"
-                )
+                logger.info(f"[SessionService] Illustration check completed for game_id={game_id}")
 
             except Exception as inner_e:
                 logger.warning(f"[SessionService] Illustration query failed: {inner_e}")
@@ -242,9 +230,7 @@ class SessionService:
 
         except Exception as e:
             # 图片生成失败不应该影响 session 恢复
-            logger.warning(
-                f"[SessionService] Failed to check/generate illustrations: {e}"
-            )
+            logger.warning(f"[SessionService] Failed to check/generate illustrations: {e}")
 
     def _check_character_images(
         self,
@@ -336,9 +322,7 @@ class SessionService:
         missing_scenes = []
         for scene in recent_scenes:
             if not image_storage.image_exists(scene.storage_path, scene.storage_type):
-                week_display = (
-                    f"第{scene.week + 1}周" if scene.week is not None else "未知周"
-                )
+                week_display = f"第{scene.week + 1}周" if scene.week is not None else "未知周"
                 logger.warning(
                     f"[SessionService] Scene image file missing: "
                     f"scene_id={scene.scene_id}, {week_display}, round={scene.round_number}, "
@@ -347,9 +331,7 @@ class SessionService:
                 missing_scenes.append(scene)
 
         if missing_scenes:
-            logger.info(
-                f"[SessionService] Found {len(missing_scenes)} missing scene images"
-            )
+            logger.info(f"[SessionService] Found {len(missing_scenes)} missing scene images")
             # 标记丢失的场景图片
             for scene in missing_scenes:
                 # 不删除记录，但标记为需要重新生成
@@ -397,18 +379,13 @@ class SessionService:
 
                             # 从 metadata 提取角色设定
                             metadata = img.metadata_json or {}
-                            char_settings = metadata.get(
-                                "characterSettings", character_settings
-                            )
+                            char_settings = metadata.get("characterSettings", character_settings)
 
                             # 构建描述
                             description = img.prompt_text or "一个普通人"
                             era = "现代"
                             if char_settings:
-                                era = (
-                                    self._extract_era_from_settings(char_settings)
-                                    or "现代"
-                                )
+                                era = self._extract_era_from_settings(char_settings) or "现代"
 
                             new_images = image_service.generate_character_image(
                                 game_id=game_id,
@@ -444,9 +421,7 @@ class SessionService:
         thread = threading.Thread(target=regenerate_in_background, daemon=True)
         thread.start()
 
-    def _extract_era_from_settings(
-        self, char_settings: Dict[str, Any]
-    ) -> Optional[str]:
+    def _extract_era_from_settings(self, char_settings: Dict[str, Any]) -> Optional[str]:
         """从角色设定中提取时代名称"""
         era = char_settings.get("era")
         if era:
@@ -516,9 +491,7 @@ class SessionService:
         if existing:
             # 检查文件是否真实存在
             if image_storage and existing.storage_path:
-                if not image_storage.image_exists(
-                    existing.storage_path, existing.storage_type
-                ):
+                if not image_storage.image_exists(existing.storage_path, existing.storage_type):
                     logger.warning(
                         f"[SessionService] Scene image file missing: "
                         f"scene_id={existing.scene_id}, storage_path={existing.storage_path}, "
@@ -588,7 +561,8 @@ class SessionService:
         def generate_in_background():
             try:
                 from src.ai.image_client import ImageClient
-                from src.game.round.illustration_service import RoundIllustrationService
+                from src.game.round.illustration_service import \
+                    RoundIllustrationService
                 from src.services.image_storage import ImageStorageService
 
                 # 创建新的数据库会话（在线程中）
@@ -643,9 +617,7 @@ class SessionService:
                     db.close()
 
             except Exception as e:
-                logger.error(
-                    f"[SessionService] Failed to generate illustration in background: {e}"
-                )
+                logger.error(f"[SessionService] Failed to generate illustration in background: {e}")
 
         # 启动后台线程
         thread = threading.Thread(target=generate_in_background, daemon=True)

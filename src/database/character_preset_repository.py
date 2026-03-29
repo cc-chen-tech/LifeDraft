@@ -65,9 +65,7 @@ class CharacterPresetRepository:
         """
         db = SessionLocal()
         try:
-            query = db.query(CharacterPreset).filter(
-                CharacterPreset.preset_id == preset_id
-            )
+            query = db.query(CharacterPreset).filter(CharacterPreset.preset_id == preset_id)
             # 如果提供了 user_id，验证所有权（允许自己的和公共的）
             if user_id is not None:
                 query = query.filter(
@@ -86,9 +84,7 @@ class CharacterPresetRepository:
                     "player_name": preset.player_name,
                     "life_vision": preset.life_vision,
                     "character_settings": preset.character_settings,
-                    "created_at": (
-                        preset.created_at.isoformat() if preset.created_at else None
-                    ),
+                    "created_at": (preset.created_at.isoformat() if preset.created_at else None),
                 }
             return None
         finally:
@@ -125,9 +121,7 @@ class CharacterPresetRepository:
         finally:
             db.close()
 
-    def delete_character_preset(
-        self, preset_id: int, user_id: Optional[int] = None
-    ) -> bool:
+    def delete_character_preset(self, preset_id: int, user_id: Optional[int] = None) -> bool:
         """
         Delete a character preset.
 
@@ -140,17 +134,13 @@ class CharacterPresetRepository:
         """
         db = SessionLocal()
         try:
-            query = db.query(CharacterPreset).filter(
-                CharacterPreset.preset_id == preset_id
-            )
+            query = db.query(CharacterPreset).filter(CharacterPreset.preset_id == preset_id)
             # 如果提供了 user_id，验证所有权（但允许删除 user_id 为 NULL 的旧数据）
             if user_id is not None:
                 query = query.filter(
                     or_(
                         CharacterPreset.user_id == user_id,
-                        CharacterPreset.user_id.is_(
-                            None
-                        ),  # Allow deleting orphaned presets
+                        CharacterPreset.user_id.is_(None),  # Allow deleting orphaned presets
                     )
                 )
 

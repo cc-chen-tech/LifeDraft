@@ -94,62 +94,44 @@ class TestAIExtractionBase:
 
     def test_entity_recognition_module_exists(self):
         """实体识别模块应存在"""
-        try:
-            from src.services import entity_recognition
+        from src.services import EntityRecognitionService
 
-            assert entity_recognition is not None
-        except ImportError:
-            pytest.skip("Module not available")
+        assert EntityRecognitionService is not None
 
     def test_item_extraction_module_exists(self):
         """物品提取模块应存在"""
-        try:
-            from src.services import item_extraction
+        from src.services import ItemExtractionService
 
-            assert item_extraction is not None
-        except ImportError:
-            pytest.skip("Module not available")
+        assert ItemExtractionService is not None
 
     def test_landmark_extraction_module_exists(self):
         """地标提取模块应存在"""
-        try:
-            from src.services import landmark_extraction
+        from src.services import LandmarkExtractionService
 
-            assert landmark_extraction is not None
-        except ImportError:
-            pytest.skip("Module not available")
+        assert LandmarkExtractionService is not None
 
     def test_extraction_modules_share_pattern(self):
         """提取模块应共享类似的接口模式"""
-        modules = []
-        try:
-            from src.services import entity_recognition
+        from src.services import (
+            EntityRecognitionService,
+            ItemExtractionService,
+            LandmarkExtractionService,
+        )
+        from src.services.base_extraction import BaseExtractionService
 
-            modules.append(entity_recognition)
-        except ImportError:
-            pass
-        try:
-            from src.services import item_extraction
+        modules = [
+            EntityRecognitionService,
+            ItemExtractionService,
+            LandmarkExtractionService,
+        ]
 
-            modules.append(item_extraction)
-        except ImportError:
-            pass
-        try:
-            from src.services import landmark_extraction
+        # 验证所有模块都继承自 BaseExtractionService
+        for mod in modules:
+            assert issubclass(mod, BaseExtractionService), f"{mod.__name__} should inherit from BaseExtractionService"
 
-            modules.append(landmark_extraction)
-        except ImportError:
-            pass
-
-        if len(modules) >= 2:
-            # 验证模块有相似的函数/类
-            first_attrs = set(dir(modules[0]))
-            for mod in modules[1:]:
-                mod_attrs = set(dir(mod))
-                # 应有一些共同的接口
-                common = first_attrs & mod_attrs
-                public_common = [a for a in common if not a.startswith("_")]
-                assert len(public_common) >= 1
+        # 验证所有模块都有 __init__ 方法（继承自基类）
+        for mod in modules:
+            assert hasattr(mod, "__init__"), f"{mod.__name__} should have __init__ method"
 
     def test_extraction_error_handling_pattern(self):
         """提取模块应有一致的错误处理"""

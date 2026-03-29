@@ -8,29 +8,21 @@ from fastapi.responses import Response as FastAPIResponse
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user, get_current_user_optional, get_db
-from src.api.schemas import (
-    BatchGenerateCharactersRequest,
-    GenerateImageRequest,
-    GenerateOpeningIllustrationRequest,
-    GenerateRoundSceneRequest,
-    ImageListResponse,
-    ImageResponse,
-    MessageResponse,
-    OpeningIllustrationResponse,
-    RegenerateFreshImageRequest,
-    RegenerateImageRequest,
-    RegenerateOpeningIllustrationRequest,
-    RegenerateRoundSceneRequest,
-    RoundSceneResponse,
-)
+from src.api.schemas import (BatchGenerateCharactersRequest,
+                             GenerateImageRequest,
+                             GenerateOpeningIllustrationRequest,
+                             GenerateRoundSceneRequest, ImageListResponse,
+                             ImageResponse, MessageResponse,
+                             OpeningIllustrationResponse,
+                             RegenerateFreshImageRequest,
+                             RegenerateImageRequest,
+                             RegenerateOpeningIllustrationRequest,
+                             RegenerateRoundSceneRequest, RoundSceneResponse)
 from src.database.models import Game
 from src.database.models import Image as ImageModel
 from src.database.models import SessionLocal, User
-from src.services.image_service import (
-    ImageContentError,
-    ImageService,
-    ImageServiceError,
-)
+from src.services.image_service import (ImageContentError, ImageService,
+                                        ImageServiceError)
 from src.services.image_storage import ImageStorageError, ImageStorageService
 
 logger = logging.getLogger(__name__)
@@ -148,9 +140,7 @@ async def generate_image(
                         image_url=service.get_image_url(img),
                         prompt_used=str(img.prompt_text),  # type: ignore[arg-type]
                         version=int(img.version),  # type: ignore[arg-type]
-                        created_at=(
-                            img.created_at.isoformat() if img.created_at else None
-                        ),
+                        created_at=(img.created_at.isoformat() if img.created_at else None),
                     )
                     for img in image_models
                 ],
@@ -176,9 +166,7 @@ async def generate_image(
                         prompt_used=str(image_model.prompt_text),  # type: ignore[arg-type]
                         version=int(image_model.version),  # type: ignore[arg-type]
                         created_at=(
-                            image_model.created_at.isoformat()
-                            if image_model.created_at
-                            else None
+                            image_model.created_at.isoformat() if image_model.created_at else None
                         ),
                     )
                 ],
@@ -204,18 +192,14 @@ async def generate_image(
                         prompt_used=str(image_model.prompt_text),  # type: ignore[arg-type]
                         version=int(image_model.version),  # type: ignore[arg-type]
                         created_at=(
-                            image_model.created_at.isoformat()
-                            if image_model.created_at
-                            else None
+                            image_model.created_at.isoformat() if image_model.created_at else None
                         ),
                     )
                 ],
                 total=1,
             )
         else:
-            raise HTTPException(
-                status_code=400, detail=f"不支持的图片类型: {req.image_type}"
-            )
+            raise HTTPException(status_code=400, detail=f"不支持的图片类型: {req.image_type}")
 
     except ImageContentError as e:
         # ★ 内容审核错误 - 返回 400 而不是 500，让用户知道是输入问题
@@ -304,9 +288,7 @@ async def batch_generate_character_images(
     era = "现代"
     era_setting = req.character_settings.get("era", {})
     if isinstance(era_setting, dict):
-        era = (
-            era_setting.get("era_name") or era_setting.get("era_description") or "现代"
-        )
+        era = era_setting.get("era_name") or era_setting.get("era_description") or "现代"
 
     # 批量生成
     service = ImageService(db)
@@ -334,9 +316,7 @@ async def batch_generate_character_images(
             # 生成 entity_key
             entity_key = f"npc_{char['name']}"
 
-            logger.info(
-                f"Generating image for {char['name']} ({char['role']}): {description}"
-            )
+            logger.info(f"Generating image for {char['name']} ({char['role']}): {description}")
 
             image_models = service.generate_character_image(
                 game_id=req.game_id,
@@ -362,9 +342,7 @@ async def batch_generate_character_images(
                         image_url=service.get_image_url(img),
                         prompt_used=str(img.prompt_text),  # type: ignore[arg-type]
                         version=int(img.version),  # type: ignore[arg-type]
-                        created_at=(
-                            img.created_at.isoformat() if img.created_at else None
-                        ),
+                        created_at=(img.created_at.isoformat() if img.created_at else None),
                     )
                 )
 
@@ -378,14 +356,8 @@ async def batch_generate_character_images(
         except Exception as e:
             error_str = str(e)
             # ★ 检测 429 速率限制错误
-            if (
-                "429" in error_str
-                or "RateQuota" in error_str
-                or "rate limit" in error_str.lower()
-            ):
-                logger.warning(
-                    f"Rate limit hit for {char['name']}, waiting 10 seconds..."
-                )
+            if "429" in error_str or "RateQuota" in error_str or "rate limit" in error_str.lower():
+                logger.warning(f"Rate limit hit for {char['name']}, waiting 10 seconds...")
                 import asyncio
 
                 await asyncio.sleep(10)  # 等待10秒后重试一次
@@ -413,11 +385,7 @@ async def batch_generate_character_images(
                                 image_url=service.get_image_url(img),
                                 prompt_used=str(img.prompt_text),  # type: ignore[arg-type]
                                 version=int(img.version),  # type: ignore[arg-type]
-                                created_at=(
-                                    img.created_at.isoformat()
-                                    if img.created_at
-                                    else None
-                                ),
+                                created_at=(img.created_at.isoformat() if img.created_at else None),
                             )
                         )
                     logger.info(f"Retry succeeded for {char['name']}")
@@ -425,9 +393,7 @@ async def batch_generate_character_images(
                 except (OSError, IOError) as retry_err:
                     logger.error(f"Retry IO error for {char['name']}: {retry_err}")
                 except Exception as retry_err:
-                    logger.exception(
-                        f"Retry unexpected error for {char['name']}: {retry_err}"
-                    )
+                    logger.exception(f"Retry unexpected error for {char['name']}: {retry_err}")
 
             logger.error(f"Failed to generate image for {char['name']}: {e}")
             # 跳过这个人物，继续生成其他人物
@@ -479,9 +445,7 @@ async def generate_opening_illustration(
             image_url=service.get_image_url(image_model),
             scene_description=image_model.metadata_json.get("scene_description", ""),
             prompt_used=str(image_model.prompt_text),  # type: ignore[arg-type]
-            created_at=(
-                image_model.created_at.isoformat() if image_model.created_at else None
-            ),
+            created_at=(image_model.created_at.isoformat() if image_model.created_at else None),
         )
 
     except ImageContentError as e:
@@ -501,9 +465,7 @@ async def generate_opening_illustration(
         raise HTTPException(status_code=500, detail=f"生成开场插画失败: {e}")
 
 
-@router.post(
-    "/opening-illustration/regenerate", response_model=OpeningIllustrationResponse
-)
+@router.post("/opening-illustration/regenerate", response_model=OpeningIllustrationResponse)
 async def regenerate_opening_illustration(
     req: RegenerateOpeningIllustrationRequest,
     db: Session = Depends(get_session),
@@ -542,9 +504,7 @@ async def regenerate_opening_illustration(
             image_url=service.get_image_url(image_model),
             scene_description=image_model.metadata_json.get("scene_description", ""),
             prompt_used=str(image_model.prompt_text),  # type: ignore[arg-type]
-            created_at=(
-                image_model.created_at.isoformat() if image_model.created_at else None
-            ),
+            created_at=(image_model.created_at.isoformat() if image_model.created_at else None),
         )
 
     except ImageContentError as e:
@@ -873,9 +833,7 @@ async def get_round_scene_image(
             "image_url": image_url,
             "scene_description": scene_image.scene_description,
             "referenced_images": scene_image.referenced_images,
-            "created_at": (
-                scene_image.created_at.isoformat() if scene_image.created_at else None
-            ),
+            "created_at": (scene_image.created_at.isoformat() if scene_image.created_at else None),
         }
 
     # ★ 场景插画不存在，尝试自动触发生成
@@ -891,6 +849,7 @@ async def get_round_scene_image(
 
     # 从游戏状态获取故事文本和角色设定
     import json
+
     try:
         game_state = json.loads(game.player_state) if game.player_state else {}
         story_text = game_state.get("current_event_data", {}).get("event_description", "")
@@ -909,8 +868,7 @@ async def get_round_scene_image(
             f"for game={game_id}, week={week}, round={round_number}"
         )
         raise HTTPException(
-            status_code=404,
-            detail="该轮次场景插画尚未生成，且无法获取故事文本进行自动生成"
+            status_code=404, detail="该轮次场景插画尚未生成，且无法获取故事文本进行自动生成"
         )
 
     # ★ 后台触发生成
@@ -931,16 +889,10 @@ async def get_round_scene_image(
     except Exception as e:
         logger.error(f"[get_round_scene_image] Failed to trigger generation: {e}")
         # 触发失败，返回 404，让前端自己处理
-        raise HTTPException(
-            status_code=404,
-            detail="该轮次场景插画尚未生成，自动触发生成失败"
-        )
+        raise HTTPException(status_code=404, detail="该轮次场景插画尚未生成，自动触发生成失败")
 
     # 返回 202 Accepted，表示已接受生成请求
-    raise HTTPException(
-        status_code=202,
-        detail="场景插画生成中，请稍后刷新查看"
-    )
+    raise HTTPException(status_code=202, detail="场景插画生成中，请稍后刷新查看")
 
     # 构建图片URL
     storage_service = ImageStorageService()
@@ -957,9 +909,7 @@ async def get_round_scene_image(
         "image_url": image_url,
         "scene_description": scene_image.scene_description,
         "referenced_images": scene_image.referenced_images,
-        "created_at": (
-            scene_image.created_at.isoformat() if scene_image.created_at else None
-        ),
+        "created_at": (scene_image.created_at.isoformat() if scene_image.created_at else None),
     }
 
 
@@ -1010,9 +960,7 @@ async def get_all_round_scene_images(
                 ),
                 "scene_description": scene.scene_description,
                 "referenced_images": scene.referenced_images,
-                "created_at": (
-                    scene.created_at.isoformat() if scene.created_at else None
-                ),
+                "created_at": (scene.created_at.isoformat() if scene.created_at else None),
             }
             for scene in scene_images
         ],
@@ -1071,9 +1019,7 @@ async def generate_round_scene_image(
             stage=scene_model.stage,  # ★ 返回 stage
             image_url=image_url,
             scene_description=scene_model.scene_description or "",
-            created_at=(
-                scene_model.created_at.isoformat() if scene_model.created_at else None
-            ),
+            created_at=(scene_model.created_at.isoformat() if scene_model.created_at else None),
         )
 
     except ImageContentError as e:
@@ -1141,9 +1087,7 @@ async def regenerate_round_scene_image(
             stage=scene_model.stage,
             image_url=image_url,
             scene_description=scene_model.scene_description or "",
-            created_at=(
-                scene_model.created_at.isoformat() if scene_model.created_at else None
-            ),
+            created_at=(scene_model.created_at.isoformat() if scene_model.created_at else None),
         )
 
     except ImageContentError as e:
@@ -1183,9 +1127,7 @@ async def get_image(
         image_url=service.get_image_url(image_model),
         prompt_used=str(image_model.prompt_text),  # type: ignore[arg-type]
         version=int(image_model.version),  # type: ignore[arg-type]
-        created_at=(
-            image_model.created_at.isoformat() if image_model.created_at else None
-        ),
+        created_at=(image_model.created_at.isoformat() if image_model.created_at else None),
     )
 
 
@@ -1210,6 +1152,7 @@ async def delete_image(
 
 
 # ==================== 后台场景插画生成辅助函数 ====================
+
 
 def _trigger_scene_generation_in_background(
     game_id: int,
@@ -1239,7 +1182,8 @@ def _trigger_scene_generation_in_background(
             from src.ai.image_client import ImageClient
             from src.database.models import Image as ImageModel
             from src.database.models import SessionLocal
-            from src.game.round.illustration_service import RoundIllustrationService
+            from src.game.round.illustration_service import \
+                RoundIllustrationService
             from src.services.image_storage import ImageStorageService
 
             # 创建新的数据库会话（在线程中）
@@ -1255,9 +1199,7 @@ def _trigger_scene_generation_in_background(
                 )
 
                 # 获取已有的图片列表（用于参考）
-                existing_images = (
-                    db.query(ImageModel).filter(ImageModel.game_id == game_id).all()
-                )
+                existing_images = db.query(ImageModel).filter(ImageModel.game_id == game_id).all()
 
                 existing_image_list = [
                     {

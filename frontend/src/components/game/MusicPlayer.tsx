@@ -62,6 +62,7 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
   const isLoadingSongRef = useRef(false);
   const [playError, setPlayError] = useState<string | null>(null);
   const [skippedSongs, setSkippedSongs] = useState<Set<number>>(new Set());
+  const skippedSongsRef = useRef<Set<number>>(new Set()); // 同步跟踪跳过的歌曲
   const preloadedAudioRef = useRef<HTMLAudioElement | null>(null);
   const preloadedSongRef = useRef<Song | null>(null);
 
@@ -125,15 +126,34 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       if (!url) {
         console.warn(`[MusicPlayer] 无法获取歌曲播放地址: ${song.name}`);
         setPlayError(`"${song.name}" 因版权限制无法播放`);
-        setSkippedSongs(prev => new Set(prev).add(song.id));
-        // 自动尝试下一首
+        
+        // 同步更新 ref 和 state
+        skippedSongsRef.current.add(song.id);
+        setSkippedSongs(new Set(skippedSongsRef.current));
+        
+        // 自动尝试下一首 - 使用 ref 确保同步
         if (recommendation?.songs.length) {
           const currentIndex = recommendation.songs.findIndex((s) => s.id === song.id);
-          const nextIndex = (currentIndex + 1) % recommendation.songs.length;
-          if (nextIndex !== currentIndex && !skippedSongs.has(recommendation.songs[nextIndex].id)) {
-            console.log(`[MusicPlayer] 尝试播放下一首: ${recommendation.songs[nextIndex].name}`);
-            setTimeout(() => loadAndPlaySong(recommendation.songs[nextIndex]), 500);
+          // 找到下一首未跳过的歌曲
+          let nextIndex = (currentIndex + 1) % recommendation.songs.length;
+          let attempts = 0;
+          const maxAttempts = recommendation.songs.length;
+          
+          while (attempts < maxAttempts) {
+            const nextSong = recommendation.songs[nextIndex];
+            if (!skippedSongsRef.current.has(nextSong.id)) {
+              console.log(`[MusicPlayer] 尝试播放下一首: ${nextSong.name}`);
+              setTimeout(() => loadAndPlaySong(nextSong), 800);
+              return;
+            }
+            nextIndex = (nextIndex + 1) % recommendation.songs.length;
+            attempts++;
           }
+          
+          // 所有歌曲都跳过了，清空列表重试
+          console.log('[MusicPlayer] All songs failed, resetting skip list');
+          skippedSongsRef.current = new Set();
+          setSkippedSongs(new Set());
         }
         return;
       }
@@ -180,7 +200,10 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
         
         setIsPlaying(false);
         setPlayError(`"${song.name}" ${errorType}，尝试下一首...`);
-        setSkippedSongs(prev => new Set(prev).add(song.id));
+        
+        // 同步更新 ref 和 state
+        skippedSongsRef.current.add(song.id);
+        setSkippedSongs(new Set(skippedSongsRef.current));
         
         // 清理当前音频
         audio.pause();
@@ -189,19 +212,26 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
         // 播放出错时尝试下一首
         if (recommendation?.songs.length) {
           const currentIndex = recommendation.songs.findIndex((s) => s.id === song.id);
-          const nextIndex = (currentIndex + 1) % recommendation.songs.length;
-          // 确保不会无限循环 - 如果所有歌曲都跳过了，重置跳过列表
-          const allSkipped = recommendation.songs.every(s => 
-            s.id === song.id || skippedSongs.has(s.id)
-          );
-          if (allSkipped) {
-            setSkippedSongs(new Set());
-            console.log('[MusicPlayer] All songs skipped, resetting skip list');
+          // 找到下一首未跳过的歌曲
+          let nextIndex = (currentIndex + 1) % recommendation.songs.length;
+          let attempts = 0;
+          const maxAttempts = recommendation.songs.length;
+          
+          while (attempts < maxAttempts) {
+            const nextSong = recommendation.songs[nextIndex];
+            if (!skippedSongsRef.current.has(nextSong.id)) {
+              console.log(`[MusicPlayer] Error occurred, trying next song: ${nextSong.name}`);
+              setTimeout(() => loadAndPlaySong(nextSong), 800);
+              return;
+            }
+            nextIndex = (nextIndex + 1) % recommendation.songs.length;
+            attempts++;
           }
-          if (nextIndex !== currentIndex) {
-            console.log(`[MusicPlayer] Error occurred, trying next song: ${recommendation.songs[nextIndex].name}`);
-            setTimeout(() => loadAndPlaySong(recommendation.songs[nextIndex]), 800);
-          }
+          
+          // 所有歌曲都跳过了，清空列表重试
+          console.log('[MusicPlayer] All songs skipped, resetting skip list');
+          skippedSongsRef.current = new Set();
+          setSkippedSongs(new Set());
         }
       };
 
@@ -211,27 +241,8 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       
       // 播放（使用 try-catch 捕获播放错误）
       try {
-        // 先静音，然后淡入
-        audio.volume = 0;
+        audio.volume = volume;
         await audio.play();
-        // 淡入效果（1.5秒从0到目标音量）
-        const targetVolume = volume;
-        const fadeDuration = 1500;
-        const startTime = Date.now();
-        
-        const fadeIn = setInterval(() => {
-          const elapsed = Date.now() - startTime;
-          const progress = Math.min(elapsed / fadeDuration, 1);
-          const newVolume = targetVolume * progress;
-          
-          if (audio) {
-            audio.volume = newVolume;
-          }
-          
-          if (progress >= 1) {
-            clearInterval(fadeIn);
-          }
-        }, 50);
       } catch (playError) {
         console.warn(`[MusicPlayer] Play interrupted for "${song.name}":`, playError);
         // 播放被中断（可能是用户切换了歌曲），不显示错误
