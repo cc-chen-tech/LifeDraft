@@ -55,12 +55,15 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
     play,
     pause,
     cleanup,
+    fadeVolume,
   } = useMusicStore();
 
   const hasFetchedRef = useRef(false);
   const isLoadingSongRef = useRef(false);
   const [playError, setPlayError] = useState<string | null>(null);
   const [skippedSongs, setSkippedSongs] = useState<Set<number>>(new Set());
+  const preloadedAudioRef = useRef<HTMLAudioElement | null>(null);
+  const preloadedSongRef = useRef<Song | null>(null);
 
   // 获取音乐推荐
   const fetchRecommendation = useCallback(async () => {
@@ -194,7 +197,27 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       
       // 播放（使用 try-catch 捕获播放错误）
       try {
+        // 先静音，然后淡入
+        audio.volume = 0;
         await audio.play();
+        // 淡入效果（1.5秒从0到目标音量）
+        const targetVolume = volume;
+        const fadeDuration = 1500;
+        const startTime = Date.now();
+        
+        const fadeIn = setInterval(() => {
+          const elapsed = Date.now() - startTime;
+          const progress = Math.min(elapsed / fadeDuration, 1);
+          const newVolume = targetVolume * progress;
+          
+          if (audio) {
+            audio.volume = newVolume;
+          }
+          
+          if (progress >= 1) {
+            clearInterval(fadeIn);
+          }
+        }, 50);
       } catch (playError) {
         console.warn(`[MusicPlayer] Play interrupted for "${song.name}":`, playError);
         // 播放被中断（可能是用户切换了歌曲），不显示错误
@@ -207,12 +230,54 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
     }
   }, [audioElement, volume, recommendation, currentSong, setAudioElement, setCurrentSong, setIsPlaying, setCurrentTime, setDuration]);
 
+  // 预加载下一首歌曲
+  const preloadNextSong = useCallback(async () => {
+    if (!recommendation?.songs.length || !currentSong) return;
+    
+    const currentIndex = recommendation.songs.findIndex((s) => s.id === currentSong.id);
+    const nextIndex = (currentIndex + 1) % recommendation.songs.length;
+    const nextSong = recommendation.songs[nextIndex];
+    
+    // 如果下一首已经预加载过了，跳过
+    if (preloadedSongRef.current?.id === nextSong.id) return;
+    
+    try {
+      const url = await fetchSongUrl(nextSong.id);
+      if (url) {
+        // 创建并预加载音频
+        const audio = new Audio(url);
+        audio.preload = "auto";
+        audio.volume = 0; // 静音预加载
+        
+        // 等待音频足够加载
+        audio.oncanplaythrough = () => {
+          preloadedAudioRef.current = audio;
+          preloadedSongRef.current = { ...nextSong, url };
+          console.log(`[MusicPlayer] Preloaded next song: ${nextSong.name}`);
+        };
+      }
+    } catch (error) {
+      console.warn(`[MusicPlayer] Failed to preload next song: ${nextSong.name}`, error);
+    }
+  }, [recommendation, currentSong]);
+
   // 自动播放第一首歌（单独处理，避免循环依赖）
   useEffect(() => {
     if (recommendation && recommendation.songs.length > 0 && !currentSong && !audioElement) {
       loadAndPlaySong(recommendation.songs[0]);
     }
   }, [recommendation, currentSong, audioElement, loadAndPlaySong]);
+
+  // 当前歌曲播放后预加载下一首
+  useEffect(() => {
+    if (isPlaying && currentSong) {
+      // 延迟5秒后开始预加载（给用户一些时间听当前歌曲）
+      const timer = setTimeout(() => {
+        preloadNextSong();
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [isPlaying, currentSong, preloadNextSong]);
 
   // 播放控制
   const togglePlay = () => {
@@ -456,10 +521,13 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
           {/* 歌曲列表 */}
           {recommendation.songs.length > 1 && (
             <div className="mt-3 pt-3 border-t">
-              <div className="text-xs text-muted-foreground mb-2">
-                推荐歌曲 ({recommendation.songs.length}首)
+              <div className="text-xs text-muted-foreground mb-2 flex items-center justify-between">
+                <span>推荐歌曲 ({recommendation.songs.length}首)</span>
+                {recommendation.songs.length < 5 && (
+                  <span className="text-amber-500">匹配歌曲较少</span>
+                )}
               </div>
-              <div className="max-h-24 overflow-y-auto space-y-1">
+              <div className="max-h-32 overflow-y-auto space-y-1">
                 {recommendation.songs.map((song) => (
                   <button
                     key={song.id}

@@ -22,6 +22,8 @@ export interface MusicRecommendation {
   story_style?: string;      // 故事风格（武侠、仙侠、科幻等）
   music_style?: string;      // 推荐音乐风格
   instruments?: string[];    // 适合的乐器
+  pacing?: string;           // 叙事节奏（舒缓、紧凑等）
+  time_weather?: string;     // 时间天气（清晨、雨天等）
   description?: string;      // 音乐氛围描述
   songs: Song[];
 }
@@ -60,6 +62,7 @@ interface MusicState {
   togglePlay: () => void;
   seek: (time: number) => void;
   changeVolume: (volume: number) => void;
+  fadeVolume: (targetVolume: number, duration?: number) => void;  // 音量渐变
 
   // 清理
   reset: () => void;
@@ -146,6 +149,28 @@ export const useMusicStore = create<MusicState>((set, get) => ({
     if (audioElement) {
       audioElement.volume = clampedVolume;
     }
+  },
+
+  fadeVolume: (targetVolume: number, duration: number = 1000) => {
+    const { audioElement, volume } = get();
+    if (!audioElement) return;
+
+    const startVolume = volume;
+    const startTime = Date.now();
+    const volumeDiff = targetVolume - startVolume;
+
+    const fadeInterval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const newVolume = startVolume + volumeDiff * progress;
+
+      audioElement.volume = newVolume;
+      set({ volume: newVolume });
+
+      if (progress >= 1) {
+        clearInterval(fadeInterval);
+      }
+    }, 50);
   },
 
   // 清理

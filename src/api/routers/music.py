@@ -42,6 +42,8 @@ class MusicRecommendationResponse(BaseModel):
     story_style: Optional[str] = None  # 故事风格
     music_style: Optional[str] = None  # 推荐音乐风格
     instruments: Optional[List[str]] = None  # 适合的乐器
+    pacing: Optional[str] = None  # 叙事节奏
+    time_weather: Optional[str] = None  # 时间天气
     description: Optional[str] = None  # 音乐氛围描述
     songs: List[SongResponse]
 
@@ -83,6 +85,8 @@ async def recommend_music(
             story_style=recommendation.story_style,
             music_style=recommendation.music_style,
             instruments=recommendation.instruments,
+            pacing=recommendation.pacing,
+            time_weather=recommendation.time_weather,
             description=recommendation.description,
             songs=songs,
         )

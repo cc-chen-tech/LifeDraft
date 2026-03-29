@@ -39,6 +39,8 @@ class MusicRecommendation:
     story_style: Optional[str] = None  # 故事风格
     music_style: Optional[str] = None  # 推荐音乐风格
     instruments: Optional[List[str]] = None  # 适合的乐器
+    pacing: Optional[str] = None  # 叙事节奏
+    time_weather: Optional[str] = None  # 时间天气
     description: Optional[str] = None  # 音乐氛围描述
 
 
@@ -46,7 +48,9 @@ class NeteaseMusicClient:
     """网易云音乐 API 客户端"""
 
     def __init__(self, base_url: Optional[str] = None):
-        base_url = base_url or os.getenv("NETEASE_MUSIC_API_URL", "http://localhost:3000")
+        base_url = base_url or os.getenv(
+            "NETEASE_MUSIC_API_URL", "http://localhost:3000"
+        )
         # 将 localhost 替换为 127.0.0.1 避免 IPv6 问题
         self.base_url = base_url.replace("localhost", "127.0.0.1")
         # 禁用连接池，避免 503 错误
@@ -127,7 +131,9 @@ class NeteaseMusicClient:
             if songs and len(songs) > 0:
                 song_url = songs[0].get("url")
                 if song_url:
-                    logger.info(f"[NeteaseMusic] Got URL for song {song_id}: {song_url[:50]}...")
+                    logger.info(
+                        f"[NeteaseMusic] Got URL for song {song_id}: {song_url[:50]}..."
+                    )
                     return song_url
                 else:
                     logger.warning(
@@ -173,19 +179,35 @@ class MusicService:
         # 构建搜索关键词
         search_keywords = self._build_search_keywords(analysis)
 
-        # 搜索歌曲
+        # 搜索歌曲 - 使用更多关键词，获取更多结果
         all_songs = []
-        for keyword in search_keywords[:3]:  # 最多用3个关键词搜索
-            songs = await self.music_client.search(keyword, limit=5)
+        # 增加关键词数量和每关键词的搜索数量
+        for keyword in search_keywords[:5]:  # 增加到5个关键词
+            songs = await self.music_client.search(keyword, limit=10)  # 每关键词10首
             all_songs.extend(songs)
 
-        # 去重并限制数量
+        # 去重并限制数量 - 确保至少15首，最多20首
         seen_ids = set()
         unique_songs = []
         for song in all_songs:
-            if song.id not in seen_ids and len(unique_songs) < 10:
+            if song.id not in seen_ids and len(unique_songs) < 20:
                 seen_ids.add(song.id)
                 unique_songs.append(song)
+
+        # 如果歌曲少于5首，使用更通用的关键词补充搜索
+        if len(unique_songs) < 5:
+            logger.warning(
+                f"[MusicService] Only found {len(unique_songs)} songs, searching with generic keywords"
+            )
+            generic_keywords = ["轻音乐", "纯音乐", "背景音乐"]
+            for keyword in generic_keywords:
+                if len(unique_songs) >= 5:
+                    break
+                songs = await self.music_client.search(keyword, limit=10)
+                for song in songs:
+                    if song.id not in seen_ids and len(unique_songs) < 20:
+                        seen_ids.add(song.id)
+                        unique_songs.append(song)
 
         return MusicRecommendation(
             keywords=search_keywords,
@@ -196,6 +218,8 @@ class MusicService:
             story_style=analysis.get("story_style"),
             music_style=analysis.get("music_style"),
             instruments=analysis.get("instruments"),
+            pacing=analysis.get("pacing"),
+            time_weather=analysis.get("time_weather"),
             description=analysis.get("description"),
         )
 
@@ -218,9 +242,13 @@ class MusicService:
                     setting_info.append(f"时代背景：{era.get('era_description', '')}")
                     setting_info.append(f"时代特征：{era.get('era_name', '')}")
             if "world_description" in character_settings:
-                setting_info.append(f"世界观：{character_settings['world_description']}")
+                setting_info.append(
+                    f"世界观：{character_settings['world_description']}"
+                )
             if "character_style" in character_settings:
-                setting_info.append(f"角色风格：{character_settings['character_style']}")
+                setting_info.append(
+                    f"角色风格：{character_settings['character_style']}"
+                )
 
         era_info = "\n".join(setting_info) if setting_info else ""
 
@@ -239,7 +267,9 @@ class MusicService:
   "story_style": "故事风格（如：武侠、仙侠、科幻、悬疑、治愈、史诗、暗黑等）",
   "music_style": "推荐音乐风格（如：中国风、电子、古典、民谣、摇滚、爵士等）",
   "instruments": ["适合的乐器，如：古筝、笛子、钢琴、小提琴、电子合成器等"],
-  "keywords": ["5-8个中文音乐搜索关键词，结合情绪、场景、时代、风格"],
+  "pacing": "叙事节奏（如：舒缓、紧凑、急促、悠然、跌宕起伏等）",
+  "time_weather": "时间天气（如：清晨、黄昏、夜晚、雨天、雪天、雾天、晴朗等）",
+  "keywords": ["5-8个中文音乐搜索关键词，结合情绪、场景、时代、风格、节奏"],
   "description": "简短的音乐氛围描述（30字以内，包含时代和风格特征）"
 }}
 
@@ -247,8 +277,10 @@ class MusicService:
 1. 考虑故事的时代背景（古代/现代/未来）
 2. 考虑故事的风格类型（武侠/仙侠/科幻等）
 3. 考虑场景环境（室内/室外/自然/都市等）
-4. 选择符合时代和风格的乐器
-5. 关键词要具体，便于搜索到匹配的音乐
+4. 分析叙事节奏：故事是舒缓展开还是紧凑推进？
+5. 识别时间天气：故事发生在什么时段？天气如何？
+6. 选择符合时代、风格和节奏的乐器
+7. 关键词要具体，便于搜索到匹配的音乐
 
 只返回JSON，不要有其他内容。"""
 
