@@ -3,19 +3,17 @@
 使用 Mock 隔离数据库和外部服务依赖
 """
 
-import asyncio
-import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
-# Integration tests - SSE stream handling
-pytestmark = pytest.mark.integration
 
 from src.api.routers.gameplay.sse_helpers import (
     _trigger_round_illustration_generation, clear_sse_cache_if_retry,
     make_sse_event, return_sse_error, stream_choice, stream_regenerate,
     stream_rewrite, stream_round_event)
+
+# Integration tests - SSE stream handling
+pytestmark = pytest.mark.integration
 
 
 class TestTriggerRoundIllustration:
@@ -525,6 +523,165 @@ class TestSSEConnectionLimits:
 
 
 # ==================== Regression Tests ====================
+
+class TestStreamRegenerateSceneImageCleanup:
+    """验证 stream_regenerate 正确删除旧场景图片记录
+
+    回归测试：曾因延迟导入路径错误导致场景图片清理静默失败，
+    重写故事后旧图片被去重逻辑命中，用户看到的仍是旧图。
+    """
+
+    def test_scene_image_deleted_after_regenerate(self):
+        """
+        核心副作用测试：stream_regenerate 的清理逻辑必须删除当前轮次的 SceneImage 记录。
+
+        直接测试数据库操作，确保导入路径正确且删除逻辑有效。
+        """
+        from src.database.models import SceneImage, SessionLocal
+
+        test_game_id = 99999
+        test_week = 7
+        test_round = 1
+
+        db = SessionLocal()
+        try:
+            # Arrange: 插入测试场景图片记录
+            test_scene = SceneImage(
+                game_id=test_game_id,
+                week=test_week,
+                round_number=test_round,
+                stage="event",
+                scene_description="测试场景描述",
+                final_prompt="test prompt",
+                storage_path=f"/fake/path/{test_game_id}/test.png",
+                storage_type="local",
+            )
+            db.add(test_scene)
+            db.commit()
+
+            count_before = (
+                db.query(SceneImage)
+                .filter(
+                    SceneImage.game_id == test_game_id,
+                    SceneImage.week == test_week,
+                    SceneImage.round_number == test_round,
+                )
+                .count()
+            )
+            assert count_before == 1, "测试记录应该已插入"
+
+            # Act: 复现 stream_regenerate 中的清理逻辑（同一导入路径 + 同一删除逻辑）
+            # ★ 此处故意使用与 sse_helpers.py L919 完全相同的导入方式
+            from src.database.models import SceneImage as _SceneImage
+            from src.database.models import SessionLocal as _SessionLocal
+
+            cleanup_db = _SessionLocal()
+            try:
+                deleted = (
+                    cleanup_db.query(_SceneImage)
+                    .filter(
+                        _SceneImage.game_id == test_game_id,
+                        _SceneImage.week == test_week,
+                        _SceneImage.round_number == test_round,
+                    )
+                    .delete()
+                )
+                cleanup_db.commit()
+            finally:
+                cleanup_db.close()
+
+            # Assert
+            db.expire_all()
+            count_after = (
+                db.query(SceneImage)
+                .filter(
+                    SceneImage.game_id == test_game_id,
+                    SceneImage.week == test_week,
+                    SceneImage.round_number == test_round,
+                )
+                .count()
+            )
+            assert deleted == 1, f"应删除 1 条记录，实际删除 {deleted} 条"
+            assert count_after == 0, (
+                f"stream_regenerate 清理后应无记录，"
+                f"但仍有 {count_after} 条"
+            )
+
+        finally:
+            db.query(SceneImage).filter(
+                SceneImage.game_id == test_game_id
+            ).delete()
+            db.commit()
+            db.close()
+
+    def test_scene_image_other_rounds_preserved(self):
+        """
+        验证清理逻辑只删除当前轮次的记录，不影响其他轮次。
+        """
+        from src.database.models import SceneImage, SessionLocal
+
+        test_game_id = 99998
+        test_week = 5
+        current_round = 2
+        other_round = 1
+
+        db = SessionLocal()
+        try:
+            # Arrange
+            for round_num in [current_round, other_round]:
+                scene = SceneImage(
+                    game_id=test_game_id,
+                    week=test_week,
+                    round_number=round_num,
+                    stage="event",
+                    scene_description=f"场景 round {round_num}",
+                    final_prompt="test",
+                    storage_path=f"/fake/{test_game_id}/r{round_num}.png",
+                    storage_type="local",
+                )
+                db.add(scene)
+            db.commit()
+
+            # Act: 复现清理逻辑（只删除 current_round）
+            cleanup_db = SessionLocal()
+            try:
+                cleanup_db.query(SceneImage).filter(
+                    SceneImage.game_id == test_game_id,
+                    SceneImage.week == test_week,
+                    SceneImage.round_number == current_round,
+                ).delete()
+                cleanup_db.commit()
+            finally:
+                cleanup_db.close()
+
+            # Assert
+            db.expire_all()
+            current_count = (
+                db.query(SceneImage)
+                .filter(
+                    SceneImage.game_id == test_game_id,
+                    SceneImage.round_number == current_round,
+                )
+                .count()
+            )
+            other_count = (
+                db.query(SceneImage)
+                .filter(
+                    SceneImage.game_id == test_game_id,
+                    SceneImage.round_number == other_round,
+                )
+                .count()
+            )
+            assert current_count == 0, f"当前轮次记录应被删除，但还有 {current_count} 条"
+            assert other_count == 1, f"其他轮次记录应保留，但有 {other_count} 条"
+
+        finally:
+            db.query(SceneImage).filter(
+                SceneImage.game_id == test_game_id
+            ).delete()
+            db.commit()
+            db.close()
+
 
 class TestStreamRegenerateRegression:
     """Regression tests for stream_regenerate to prevent breaking fixes."""

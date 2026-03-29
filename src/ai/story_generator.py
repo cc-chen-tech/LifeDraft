@@ -160,6 +160,8 @@ class StoryGenerator:
                     temperature=current_temp,  # ★ 动态调整温度
                     max_tokens=8192,
                     stream_callback=cb,
+                    frequency_penalty=0.3,  # ★ 惩罚重复词汇，减少车轲辘话
+                    presence_penalty=0.3,  # ★ 鼓励使用新词汇/新主题
                 )
 
                 story_text = story_text.strip()
@@ -339,6 +341,8 @@ class StoryGenerator:
                 temperature=temperature,
                 max_tokens=8192,
                 stream_callback=stream_callback,
+                frequency_penalty=0.4,  # ★ 轮次级别更强的反重复，因为同周多轮更容易重复
+                presence_penalty=0.4,  # ★ 鼓励每轮使用不同的表达方式
             )
             logger.info(f"Generated round story with {len(story_text)} characters")
 
@@ -526,6 +530,8 @@ class StoryGenerator:
                 temperature=0.7,  # 固定低温度，确保严格遵守约束
                 max_tokens=8192,
                 stream_callback=stream_callback,
+                frequency_penalty=0.3,  # ★ 重试时也保持反重复
+                presence_penalty=0.3,
             )
 
             if retry_story:

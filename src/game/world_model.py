@@ -887,7 +887,9 @@ class WorldModel:
                 lines.append(f"    {p.constraint_text}")
                 if p.behavioral_boundaries:
                     lines.append(f"    ❌ 绝对不会：{'；'.join(p.behavioral_boundaries[:3])}")
-            lines.append("  ⚠️ 以上画像由AI从多轮故事中归纳而成。角色的言行举止、决策方式、情绪表达")
+            lines.append(
+                "  ⚠️ 以上画像由AI从多轮故事中归纳而成。角色的言行举止、决策方式、情绪表达"
+            )
             lines.append("  必须与画像一致。如需角色成长/转变，必须有明确的故事契机和过渡铺垫。")
         else:
             lines.append("[Character Behavioral Profiles — Personality Consistency Constraints]")

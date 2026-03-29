@@ -78,6 +78,8 @@ class AIClient:
         max_tokens: int = 2000,
         stream_callback: Optional[Callable[[str], None]] = None,
         model: Optional[str] = None,
+        frequency_penalty: float = 0.0,
+        presence_penalty: float = 0.0,
     ) -> str:
         """
         Unified AI call method.
@@ -89,6 +91,8 @@ class AIClient:
             max_tokens: Maximum tokens to generate
             stream_callback: Optional streaming callback
             model: Optional model override
+            frequency_penalty: Penalize repeated tokens by frequency (0.0-2.0)
+            presence_penalty: Penalize tokens that already appeared (0.0-2.0)
 
         Returns:
             AI generated text
@@ -102,6 +106,8 @@ class AIClient:
                 max_tokens=max_tokens,
                 stream_callback=stream_callback,
                 model=model,
+                frequency_penalty=frequency_penalty,
+                presence_penalty=presence_penalty,
             )
 
     def _call_impl(
@@ -112,6 +118,8 @@ class AIClient:
         max_tokens: int = 2000,
         stream_callback: Optional[Callable[[str], None]] = None,
         model: Optional[str] = None,
+        frequency_penalty: float = 0.0,
+        presence_penalty: float = 0.0,
     ) -> str:
         """Internal implementation of AI call."""
         messages = [
@@ -132,12 +140,19 @@ class AIClient:
                     logger.info(
                         f"[AIClient] Using streaming mode, stream_callback={stream_callback is not None}"
                     )
+                    # ★ 构建额外参数（仅在非零时传入，避免不支持的API报错）
+                    extra_params: Dict[str, Any] = {}
+                    if frequency_penalty > 0:
+                        extra_params["frequency_penalty"] = frequency_penalty
+                    if presence_penalty > 0:
+                        extra_params["presence_penalty"] = presence_penalty
                     stream = self.client.chat.completions.create(
                         model=use_model,
                         messages=messages,  # type: ignore[arg-type]
                         temperature=temperature,
                         max_tokens=current_max_tokens,
                         stream=True,
+                        **extra_params,
                     )
 
                     full_text = ""
@@ -164,11 +179,18 @@ class AIClient:
 
                     return full_text.strip()
                 else:
+                    # ★ 构建额外参数（仅在非零时传入）
+                    extra_params_sync: Dict[str, Any] = {}
+                    if frequency_penalty > 0:
+                        extra_params_sync["frequency_penalty"] = frequency_penalty
+                    if presence_penalty > 0:
+                        extra_params_sync["presence_penalty"] = presence_penalty
                     response = self.client.chat.completions.create(
                         model=use_model,
                         messages=messages,  # type: ignore[arg-type]
                         temperature=temperature,
                         max_tokens=current_max_tokens,
+                        **extra_params_sync,
                     )
 
                     finish_reason = response.choices[0].finish_reason

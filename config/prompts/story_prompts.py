@@ -324,6 +324,25 @@ def _get_english_prompt(
             )
         history_str = "\n".join(history_parts)
 
+    # ★ 拐点提取：从较多的历史中提取关键信息，帮助AI识别重复模式
+    recent_topics_str = ""
+    if len(decision_history) > 5:
+        older_decisions = decision_history[-15:-5]  # 6-15个前的决策
+        if older_decisions:
+            topic_parts = []
+            for d in older_decisions:
+                event_snippet = d.get('event', '')[:80]
+                topic_parts.append(f"W{d.get('week')}: {event_snippet}")
+            recent_topics_str = "\n".join(topic_parts)
+
+    # ★ 构建更早历史上下文字符串（避免在f-string中使用反斜杠）
+    older_history_section_en = ""
+    if recent_topics_str:
+        older_history_section_en = (
+            "\n\n【Older History Summaries - MUST NOT repeat these plots】\n"
+            + recent_topics_str
+        )
+
     prompt = f"""You are a "fate engine" for a life simulation game. Generate a life event that requires the player to make a meaningful choice.
 
 MOST IMPORTANT REQUIREMENTS:
@@ -333,8 +352,8 @@ MOST IMPORTANT REQUIREMENTS:
 【Complete Character Settings - MUST STRICTLY FOLLOW】
 {character_context if character_context else "Standard modern young adult"}{available_people_str}{time_context}
 
-【Recent History - DO NOT REPEAT SIMILAR PLOTS】
-{history_str}
+【近期历史 - 禁止重复相似情节】
+{history_str}{older_history_section_en}
 
 【Current Player State】
 Age: {age} years old
@@ -368,7 +387,13 @@ Key Relationships: {rel_str}{storylines_context}{facts_context}{world_model_cont
     - Student character encounters "company innovation competition", "client proposal" etc. workplace events
     - Spy character encounters "company innovation competition", "client proposal" etc. ordinary workplace events
     - Event contains people not in the "Available People List"
-10. **CRITICAL: Each generated event should be completely different from recent history. Avoid repeating the same plot and options. Be creative and create diverse life scenarios.**{logic_constraints}
+10. **CRITICAL: Each generated event should be completely different from recent history. Avoid repeating the same plot and options. Be creative and create diverse life scenarios.**
+    - **FORBIDDEN opening patterns**: Do not start with "XX sat in the study", "candles flickered", "dawn was breaking" or similar cliché openings that have been used before
+    - **FORBIDDEN repeated props**: Do not reuse the same props (e.g. "three documents on the desk", "a letter", "a report") across consecutive events
+    - **FORBIDDEN repeated entrances**: Do not have characters always "push open the door" or "walk in quickly" - vary how characters appear
+    - **FORBIDDEN atmosphere recycling**: Do not repeat the same weather/atmosphere descriptions (rain, fog, candlelight shadows)
+    - **Vary story structure**: Start from different moments (mid-conversation, mid-action, a surprising discovery) rather than always from "morning in a room"
+    - **Vary conflict types**: Rotate between interpersonal conflicts, moral dilemmas, unexpected discoveries, external crises, personal growth moments{logic_constraints}
 12. **NO FOURTH-WALL BREAKING**: The story must NEVER contain meta-commentary, references to 'game', 'simulation', 'system', 'stats', 'energy points', 'mood value', etc. No author asides, no addressing the reader, no explaining creative intent. The story must remain fully immersed in the character's world.
 13. **DO NOT FABRICATE PAST EVENTS**: Any past events referenced in the story MUST come from the context provided above. ABSOLUTELY FORBIDDEN to invent memories, conversations, events or experiences that never happened. Do not mention uncertain past events.
 
@@ -477,6 +502,17 @@ def _get_chinese_prompt(
             )
         history_str = "\n".join(history_parts)
 
+    # ★ 拐点提取：从较多的历史中提取关键信息，帮助AI识别重复模式
+    recent_topics_str = ""
+    if len(decision_history) > 5:
+        older_decisions = decision_history[-15:-5]  # 6-15个前的决策
+        if older_decisions:
+            topic_parts = []
+            for d in older_decisions:
+                event_snippet = d.get('event', '')[:80]
+                topic_parts.append(f"第{d.get('week')}周: {event_snippet}")
+            recent_topics_str = "\n".join(topic_parts)
+
     # Build story context for narrative continuity
     story_context = ""
     # Use opening story for first few weeks (week 0 or 1), or when no event history yet
@@ -506,7 +542,15 @@ def _get_chinese_prompt(
 {yearly_summary}
 """
 
-    prompt = f"""你是一个人生模拟游戏的"命运引擎"。请根据以下玩家状态和角色设定，以故事续写的方式生成一个需要抉择的生活事件。
+    # ★ 构建更早历史上下文字符串（避免在f-string中使用反斜杠）
+    older_history_section = ""
+    if recent_topics_str:
+        older_history_section = (
+            "\n\n【更早的历史事件摘要 - 禁止与这些情节雷同】\n"
+            + recent_topics_str
+        )
+
+    prompt = f"""你是一个人生模拟游戏的“命运引擎”。请根据以下玩家状态和角色设定，以故事续写的方式生成一个需要拉择的生活事件。
 
 最重要的要求：
 1. **必须使用第三人称叙事**（"他/她"而非"我/你"），保持全文人称统一
@@ -516,12 +560,20 @@ def _get_chinese_prompt(
 {character_context if character_context else "标准现代青年"}{available_people_str}{time_context}
 
 **人物约束（严格禁止创造新人物）**：
-- 所有出现在事件中的人物名字必须且只能来自上方"可用人物列表"
+- 所有出现在事件中的人物名字必须且只能来自上方“可用人物列表”
 - 绝对禁止凭空创造任何新人物
-- 如果需要其他人物，请使用模糊称谓（如"一位同事""一个朋友"）
+- 如果需要其他人物，请使用模糊称谓（如“一位同事”“一个朋友”）
 
 【近期历史 - 禁止重复相似情节】
-{history_str}
+{history_str}{older_history_section}
+
+**★ 反重复红线（违反任何一条即为失败）★**：
+- 禁止以“某人坐在书房/值房”、“烛火摇曳”、“晨光熙微”、“天还未亮”等老套开头
+- 禁止反复使用“案上攓着三份文书”、“一封密报”、“一份名单”等雷同道具
+- 禁止人物每次都“推门进来”“快步走来”——应变化登场方式
+- 禁止回收相同的天气/氛围描写（细雨、晨雾、烛火影子拉得很长）
+- **故事结构必须变化**：不要总是“早晨在房间”开始，可以从对话中场、行动中场、意外发现、突发危机等时刻开始
+- **冲突类型必须轮换**：人际矛盾、道德困境、意外发现、外部危机、个人成长等不同类型交替使用
 
 【玩家当前状态】
 年龄：{age}岁
@@ -555,7 +607,13 @@ def _get_chinese_prompt(
     - 学生角色遇到"公司内部创新大赛"、"客户提案"等职场事件
     - 间谍角色遇到"公司内部创新大赛"、"客户提案"等普通职场事件
     - 事件中出现不在"可用人物列表"中的人物
-10. **CRITICAL：每次生成的事件应该与近期历史完全不同，避免重复相同的情节和选项。发挥创意，创造多样化的生活场景。**{logic_constraints}
+10. **CRITICAL：每次生成的事件应该与近期历史完全不同，避免重复相同的情节和选项。发挥创意，创造多样化的生活场景。**
+    - **禁止套路开头**：不要再用“某人坐在书房”、“烛火摇曳”、“晨光熙微”、“天还未亮”等已用过的开头
+    - **禁止重复道具**：不要反复使用“案上攓着三份文书”、“一封密报”、“一份名单”等雷同道具
+    - **禁止重复登场**：人物不要每次都“推门进来”“快步走来”，应变化登场方式
+    - **禁止回收氛围**：不要重复相同的天气/氛围描写（细雨、晨雾、烛火影子拉得很长）
+    - **故事结构必须变化**：不要总是“早晨在房间”开始，可从对话中场、行动中场、意外发现、突发危机开始
+    - **冲突类型必须轮换**：人际矛盾、道德困境、意外发现、外部危机、个人成长等交替使用{logic_constraints}
 12. **严禁跳脱叙事**：故事中绝对不能出现任何打破第四面墙的内容，包括但不限于：提及"游戏""模拟""系统""属性值""精力值""情绪值"等元信息；出现作者旁白、对读者说话、解释创作意图；出现对故事本身的评论或总结性元叙述。故事应完全沉浸在角色的世界中。
 13. **严禁编造过往事件**：故事中提到的任何过去发生的事情，必须来自上面提供的上下文（上周故事、近期总结、年度回顾等）。绝对禁止凭空捏造从未发生过的回忆、对话、事件或经历。不确定的过往不要提及。
 
@@ -1029,8 +1087,15 @@ def get_story_only_prompt(
 8. **只返回故事文本，不要任何JSON格式、选项列表或其他标记**
 9. **绝对禁止**在故事末尾写"选项一、选项二"或"A、B、C"这样的选择列表
 10. **时间与逻辑一致性**：故事中的时间、季节、人物动机必须与当前设定一致，不能出现前后矛盾
-11. **严禁跳脱叙事**：故事中不得出现打破第四面墙的内容，禁止提及"游戏""模拟""系统""属性值"等元信息，不得出现作者旁白、对读者说话或解释创作意图。故事必须完全沉浸在角色的世界中
+11. **严禁跳脱叙事**：故事中不得出现打破第四面墙的内容，禁止提及“游戏”“模拟”“系统”“属性值”等元信息，不得出现作者旁白、对读者说话或解释创作意图。故事必须完全沉浸在角色的世界中
 12. **严禁编造过往事件**：故事中提到的任何过去发生的事情，必须来自上面提供的上下文（上周故事、近期总结、年度回顾、剧情线等）。绝对禁止凭空捏造从未发生过的回忆、对话、事件或经历。不确定的过往不要提及
+13. **★ 反重复红线（违反即为失败）★**：
+    - 禁止套路开头：“某人坐在书房”、“烛火摇曳”、“晨光熙微”、“天还未亮”、“XX一夜未眠”等已被用烂的开头
+    - 禁止重复道具：“案上攓着三份文书”、“一封密报”、“一份名单”等雷同道具
+    - 禁止重复登场：人物不要每次都“推门进来”“快步走来”，应变化登场方式
+    - 禁止回收氛围：不要重复相同的天气/氛围描写（细雨、晨雾、烛火影子、露珠）
+    - **故事结构必须变化**：不要总从“早晨在房间”开始，可从对话中场、行动中场、意外发现、突发危机等时刻切入
+    - **冲突类型必须轮换**：人际矛盾、道德困境、意外发现、外部危机、个人成长等不同类型交替使用
 
 现在请开始写故事："""
     else:
@@ -1062,6 +1127,13 @@ Wealth: ${wealth:,} | Relationships: {rel_str}{storylines_context}{facts_context
 10. **Time & Logic Consistency**: Story time, season, character motivations must match current settings, no contradictions allowed
 11. **NO FOURTH-WALL BREAKING**: NEVER mention 'game', 'simulation', 'system', 'stats', or any meta-information. No author asides, no addressing the reader. The story must remain fully immersed in the character's world
 12. **DO NOT FABRICATE PAST EVENTS**: Any past events referenced in the story MUST come from the context provided above. ABSOLUTELY FORBIDDEN to invent memories, conversations, events or experiences that never happened. Do not mention uncertain past events
+13. **★ ANTI-REPETITION RED LINES (violation = failure) ★**:
+    - FORBIDDEN cliché openings: "Someone sat in the study", "candles flickered", "dawn was breaking", "before daylight" - vary your openings
+    - FORBIDDEN repeated props: "three documents on the desk", "a secret letter", "a list" - use fresh props each time
+    - FORBIDDEN repeated entrances: Characters must not always "push open the door" or "walk in quickly" - vary how characters appear
+    - FORBIDDEN recycled atmosphere: Do not reuse the same weather/mood descriptions (rain, morning fog, candle shadows, dewdrops)
+    - **Vary story structure**: Do not always start from "morning in a room" - begin mid-conversation, mid-action, with a surprising discovery, or a sudden crisis
+    - **Rotate conflict types**: Alternate between interpersonal conflicts, moral dilemmas, unexpected discoveries, external crises, personal growth moments
 
 Now begin writing the story:"""
 
@@ -1362,8 +1434,15 @@ def get_round_event_prompt(
 8. **只返回故事文本，不要任何JSON格式、选项列表或其他标记**
 9. **时间与逻辑一致性**：故事中的时间、季节、人物动机必须与当前设定一致，人物行为应符合其性格和目标
 10. **剧情连续性**：如果有未完结的重要剧情线，请自然地在故事中延续或回应
-11. **严禁跳脱叙事**：故事中不得出现打破第四面墙的内容，禁止提及"游戏""模拟""系统""属性值"等元信息，不得出现作者旁白、对读者说话。故事必须完全沉浸在角色的世界中
+11. **严禁跳脱叙事**：故事中不得出现打破第四面墙的内容，禁止提及“游戏”“模拟”“系统”“属性值”等元信息，不得出现作者旁白、对读者说话。故事必须完全沉浸在角色的世界中
 12. **严禁编造过往事件**：故事中提到的任何过去发生的事情，必须来自上面提供的上下文（前几轮经历、上一轮故事、历史回忆、剧情线等）。绝对禁止凭空捏造从未发生过的回忆、对话、事件或经历。如果需要提到过去，只能引用上面明确出现的内容。不确定的过往不要提及
+13. **★ 反重复红线（违反即为失败）★**：
+    - 禁止套路开头：“某人坐在书房”、“烛火摇曳”、“晨光熙微”、“天还未亮”、“XX一夜未眠”等已被用烂的开头
+    - 禁止重复道具：“案上攓着三份文书”、“一封密报”、“一份名单”等雷同道具
+    - 禁止重复登场：人物不要每次都“推门进来”“快步走来”，应变化登场方式
+    - 禁止回收氛围：不要重复相同的天气/氛围描写（细雨、晨雾、烛火影子、露珠）
+    - **故事结构必须变化**：不要总从“早晨在房间”开始，可从对话中场、行动中场、意外发现、突发危机等时刻切入
+    - **冲突类型必须轮换**：人际矛盾、道德困境、意外发现、外部危机、个人成长等不同类型交替使用
 
 现在请开始写{round_name}的故事："""
     else:
@@ -1519,6 +1598,13 @@ BEFORE you start writing, you MUST check each constraint below and confirm in yo
 10. **Storyline Continuity**: If there are pending important storylines, naturally continue or address them in the story
 11. **NO FOURTH-WALL BREAKING**: NEVER mention 'game', 'simulation', 'system', 'stats', or any meta-information. No author asides, no addressing the reader. The story must remain fully immersed in the character's world
 12. **DO NOT FABRICATE PAST EVENTS**: Any past events mentioned in the story MUST come from the context provided above (previous rounds, last round story, historical memories, storylines, etc.). ABSOLUTELY FORBIDDEN to invent memories, conversations, events or experiences that never happened. If referencing the past, only use what is explicitly provided above. Do not mention uncertain past events
+13. **★ ANTI-REPETITION RED LINES (violation = failure) ★**:
+    - FORBIDDEN cliché openings: "Someone sat in the study", "candles flickered", "dawn was breaking", "before daylight" - vary your openings
+    - FORBIDDEN repeated props: "three documents on the desk", "a secret letter", "a list" - use fresh props each time
+    - FORBIDDEN repeated entrances: Characters must not always "push open the door" or "walk in quickly" - vary how characters appear
+    - FORBIDDEN recycled atmosphere: Do not reuse the same weather/mood descriptions (rain, morning fog, candle shadows, dewdrops)
+    - **Vary story structure**: Do not always start from "morning in a room" - begin mid-conversation, mid-action, with a surprising discovery, or a sudden crisis
+    - **Rotate conflict types**: Alternate between interpersonal conflicts, moral dilemmas, unexpected discoveries, external crises, personal growth moments
 
 Now write the {round_name_en} story:"""
 

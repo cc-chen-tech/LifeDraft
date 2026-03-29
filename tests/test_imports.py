@@ -41,7 +41,6 @@ class TestNoCircularImports:
 
     def test_entity_recognition_service_no_circular(self):
         """验证 entity_recognition_service 没有循环导入"""
-        import importlib
         import sys
 
         # 清除缓存重新导入
@@ -93,6 +92,50 @@ class TestRealDatabaseInterface:
         assert "game_id" in params
         # user_id 是可选的
         assert "user_id" in params or len(params) >= 2
+
+
+class TestSSEHelpersLazyImports:
+    """验证 sse_helpers.py 中所有延迟导入路径可达
+
+    sse_helpers 在后台线程/try块中使用延迟导入，
+    如果路径写错会被静默吞掉，必须在此显式验证。
+    """
+
+    def test_illustration_generation_imports(self):
+        """验证 _trigger_round_illustration_generation 的延迟导入"""
+        from src.ai.image_client import ImageClient
+        from src.database.models import Game
+        from src.database.models import Image as ImageModel
+        from src.database.models import SceneImage, SessionLocal
+        from src.game.round.illustration_service import RoundIllustrationService
+        from src.services.image_storage import ImageStorageService
+
+        assert ImageClient is not None
+        assert Game is not None
+        assert ImageModel is not None
+        assert SceneImage is not None
+        assert SessionLocal is not None
+        assert RoundIllustrationService is not None
+        assert ImageStorageService is not None
+
+    def test_stream_regenerate_scene_cleanup_imports(self):
+        """验证 stream_regenerate 场景图片清理的延迟导入
+
+        回归测试：曾因 `from src.database.session import SessionLocal`
+        写错路径导致场景图片清理静默失败。
+        正确路径是 `from src.database.models import SessionLocal`。
+        """
+        from src.database.models import SceneImage, SessionLocal
+
+        assert SceneImage is not None
+        assert SessionLocal is not None
+        assert callable(SessionLocal)
+
+    def test_stream_rewrite_world_model_import(self):
+        """验证 stream_rewrite 的 WorldModel 延迟导入"""
+        from src.game.world_model import WorldModel
+
+        assert WorldModel is not None
 
 
 class TestNoCyclicDependencies:

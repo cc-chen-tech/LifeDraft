@@ -370,7 +370,7 @@ def _prefetch_options(game_loop, game_id: int, session, event) -> None:
                     f"for game_id={game_id}"
                 )
             else:
-                logger.warning(f"[Options Prefetch] Failed: no options generated")
+                logger.warning("[Options Prefetch] Failed: no options generated")
 
         except (ValueError, TypeError, KeyError) as e:
             logger.warning(f"[Options Prefetch] Data error: {e}")
@@ -916,8 +916,7 @@ async def stream_regenerate(
             # 否则系统会认为图片已存在，不会生成新的图片
             if current_week is not None and current_round is not None:
                 try:
-                    from src.database.models import SceneImage
-                    from src.database.session import SessionLocal
+                    from src.database.models import SceneImage, SessionLocal
 
                     db = SessionLocal()
                     try:
