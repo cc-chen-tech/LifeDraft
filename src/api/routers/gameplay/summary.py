@@ -59,7 +59,9 @@ async def get_game_state(
 
     # Build round info
     round_info = {
-        "current_round": (game_loop.current_round if hasattr(game_loop, "current_round") else 0),
+        "current_round": (
+            game_loop.current_round if hasattr(game_loop, "current_round") else 0
+        ),
         "game_over": game_loop.is_game_over(),
     }
 
@@ -68,12 +70,20 @@ async def get_game_state(
     # 原因：前端在 result 阶段已经有完整故事（原故事+续写），不应该被旧故事覆盖
     # 故事恢复应该只在特定场景下进行（如页面刷新后重新加载）
     current_event = None
+    logger.info(
+        f"[GetGameState] game_loop.current_event exists: {game_loop.current_event is not None}"
+    )
     if game_loop.current_event:
         current_event = (
             game_loop.current_event.model_dump()
             if hasattr(game_loop.current_event, "model_dump")
             else game_loop.current_event
         )
+        logger.info(
+            f"[GetGameState] Returning current_event with options count: {len(current_event.get('options', []))}"
+        )
+    else:
+        logger.info("[GetGameState] No current_event, returning None")
 
     return GameStateResponse(
         game_id=game_id,
@@ -237,7 +247,9 @@ def _generate_fallback_summary(story_history: list, player) -> str:
         story = item.get("story_text", "")
         if story and len(story) > 50:
             # Take first sentence as summary
-            first_sentence = story.split("。")[0] + "。" if "。" in story else story[:100]
+            first_sentence = (
+                story.split("。")[0] + "。" if "。" in story else story[:100]
+            )
             events.append(first_sentence)
 
     summary_parts = []

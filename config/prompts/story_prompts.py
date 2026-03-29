@@ -1,22 +1,22 @@
 """Story generation prompts."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-from config.prompts._helpers import (_build_available_people_constraint,
-                                     _build_character_habits_context,
-                                     _build_character_name_constraint,
-                                     _build_common_story_constraints,
-                                     _build_continuation_mandate,
-                                     _build_established_facts_context,
-                                     _build_foreshadowing_context,
-                                     _build_full_character_context,
-                                     _build_logic_constraints,
-                                     _build_new_character_intro_context,
-                                     _build_pending_storylines_context,
-                                     _build_time_context,
-                                     _build_world_model_constraints,
-                                     _collect_available_people,
-                                     _format_people_names)
+from config.prompts._helpers import (
+    _build_available_people_constraint,
+    _build_character_habits_context,
+    _build_continuation_mandate,
+    _build_established_facts_context,
+    _build_foreshadowing_context,
+    _build_full_character_context,
+    _build_logic_constraints,
+    _build_new_character_intro_context,
+    _build_pending_storylines_context,
+    _build_time_context,
+    _build_world_model_constraints,
+    _collect_available_people,
+    _format_people_names,
+)
 from src.ai.prompt_sanitizer import sanitize_user_choice
 
 # ==================== 自定义选择相关 Prompts ====================
@@ -910,14 +910,6 @@ def get_story_only_prompt(
         else "无"
     )
 
-    phase_descriptions = {
-        "early_career": "职场新人阶段" if language == "zh" else "early career phase",
-        "establishing": "立业阶段" if language == "zh" else "establishment phase",
-        "growth": "成长期" if language == "zh" else "growth phase",
-        "consolidation": "稳定期" if language == "zh" else "consolidation phase",
-    }
-    phase_desc = phase_descriptions.get(current_phase, current_phase)
-
     # Build character context (simplified for story-only prompt)
     available_people = _collect_available_people(character_settings)
     character_context = ""
@@ -1303,12 +1295,12 @@ def get_round_event_prompt(
         if world_model_context or storylines_context:
             constraints_header = f"""
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║                    ⚠️  写作前必须遵守的硬性约束  ⚠️                          ║
+║           🚨 硬性约束 — 违反将导致故事被判定为不合格并重新生成 🚨              ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 {world_model_context if world_model_context else ""}
 {storylines_context if storylines_context else ""}
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║  违反上述约束将导致故事被判定为不合格并需要重新生成                            ║
+║  ⚠️  写作前必须严格执行约束检查，否则故事将被拒绝并重新生成                    ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
 
@@ -1324,18 +1316,37 @@ def get_round_event_prompt(
 
 {constraints_header}
 
-【写作要求】
-**★★★ 写作前必读 — 约束检查清单（必须严格遵守）★★★**
-在开始写作前，请先仔细阅读并确认以下约束。写作过程中必须始终遵守，否则故事将被判定为不合格：
-- **人物位置约束**：检查【世界模型约束】中每个角色的当前位置，人物只能出现在其当前位置，除非故事中明确交代了移动过程
-- **承诺约束**：检查是否有未兑现的关键承诺，主角的行为不能与这些承诺直接冲突
-- **剧情线约束**：如有未完结的剧情线，必须在本轮中自然延续或回应
+【写作要求 — 强制执行】
+**🚨 写作前必须完成的约束检查清单 🚨**
 
-**写作步骤（必须按此顺序执行）：**
-1. **先检查约束**：仔细阅读上述【硬性约束】部分，确认所有角色位置和承诺
-2. **规划场景**：根据约束确定场景地点、出场人物、事件发展
-3. **核对约束**：再次确认规划的场景不违反任何约束
-4. **写作故事**：确保故事完全符合所有约束
+**【第一步】强制约束检查（未完成禁止写作）**
+在开始写作前，必须逐条检查以下约束并在脑海中确认：
+
+1. **人物位置约束（CRITICAL）**：
+   - 检查【世界模型约束】中每个角色的当前位置
+   - **绝对禁止**：让角色出现在其当前位置以外的地点，除非故事中明确交代了移动过程
+   - **示例**：如果"独孤宇云"在"蜀山客舍"，"李逍遥"在"客舍"，则两人不能在同一物理场景中对话，除非先交代其中一人移动
+
+2. **承诺约束（CRITICAL）**：
+   - 检查【未兑现的承诺】中的所有承诺
+   - **绝对禁止**：让角色做出与待兑现承诺直接冲突的行为
+   - **示例**：如果清虚真人状态为"未知（离开）"，则故事中不能让他直接出现，除非先交代其回归
+
+3. **剧情线约束**：
+   - 检查【未完结的重要剧情线】
+   - 如有高重要性剧情线，必须在本轮中自然延续或回应
+
+**【第二步】场景规划与约束核对**
+1. 根据约束确定：场景地点、哪些人物可以出场、事件发展
+2. **再次核对**：确认规划的场景不违反任何约束
+3. **特别注意**：如果两个人物在不同地点，他们只能通过通讯方式互动，或先交代其中一人移动
+
+**【第三步】写作与实时检查**
+- 写作过程中持续对照约束
+- 每当引入一个人物时，立即核对其位置约束
+- 每当涉及承诺时，立即核对其状态
+
+**违反约束的后果**：故事将被AI一致性校验器判定为不合格，触发重新生成，浪费计算资源。
 
 1. **故事应该1500-2000字**，写成有吸引力的场景片段
 2. **包含丰富对话**，4-6轮重要对话交流
@@ -1439,12 +1450,12 @@ Continue the story based on the above, maintaining continuity."""
         if world_model_context_en or storylines_context:
             constraints_header_en = f"""
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║                    ⚠️  HARD CONSTRAINTS — MUST FOLLOW  ⚠️                    ║
+║     🚨 HARD CONSTRAINTS — Violations will cause story rejection & retry 🚨   ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 {world_model_context_en if world_model_context_en else ""}
 {storylines_context if storylines_context else ""}
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║  Violating these constraints will result in story rejection and regeneration ║
+║  ⚠️  MUST perform constraint checks BEFORE writing, or story will be rejected ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
 
@@ -1460,18 +1471,37 @@ Wealth: ${wealth:,} | Relationships: {rel_str}{context_section}{rel_events_conte
 
 {constraints_header_en}
 
-[Writing Requirements]
-**★★★ PRE-WRITING CHECKLIST — CONSTRAINTS (MUST STRICTLY FOLLOW) ★★★**
-BEFORE you start writing, carefully read and confirm the following constraints. You MUST follow them throughout writing, or the story will be rejected:
-- **Character Location Constraint**: Check [World Model Constraints] for each character's current location. Characters can ONLY appear at their current location unless the story explicitly describes their movement
-- **Commitment Constraint**: Check for any unfulfilled critical commitments. The protagonist's actions MUST NOT directly conflict with these commitments
-- **Storyline Constraint**: If there are pending storylines, they MUST be naturally continued or addressed in this round
+[Writing Requirements — ENFORCED]
+**🚨 MANDATORY PRE-WRITING CONSTRAINT CHECKLIST 🚨**
 
-**Writing Steps (MUST follow this order):**
-1. **Check Constraints First**: Carefully read the [HARD CONSTRAINTS] section above, confirm all character locations and commitments
-2. **Plan the Scene**: Determine location, characters, and plot development based on constraints
-3. **Verify Constraints**: Double-check that the planned scene doesn't violate any constraints
-4. **Write the Story**: Ensure the story fully complies with ALL constraints
+**[STEP 1] Mandatory Constraint Checks (MUST complete before writing)**
+BEFORE you start writing, you MUST check each constraint below and confirm in your mind:
+
+1. **Character Location Constraint (CRITICAL)**:
+   - Check [World Model Constraints] for each character's current location
+   - **ABSOLUTELY FORBIDDEN**: Having characters appear at locations other than their current location, unless travel is explicitly narrated
+   - **Example**: If "Character A" is at "Location X" and "Character B" is at "Location Y", they CANNOT be in the same physical scene unless one is shown to travel first
+
+2. **Commitment Constraint (CRITICAL)**:
+   - Check all [Unfulfilled Commitments]
+   - **ABSOLUTELY FORBIDDEN**: Having characters act in ways that directly conflict with pending commitments
+   - **Example**: If a character's status is "unknown (departed)", they CANNOT appear in the story unless their return is first explained
+
+3. **Storyline Constraint**:
+   - Check [Pending Important Storylines]
+   - If there are high-importance storylines, they MUST be naturally continued or addressed
+
+**[STEP 2] Scene Planning & Constraint Verification**
+1. Determine based on constraints: scene location, which characters can appear, plot development
+2. **Verify again**: Confirm the planned scene doesn't violate any constraints
+3. **Special Note**: If two characters are in different locations, they can only interact via communication OR one must be shown to travel first
+
+**[STEP 3] Writing & Real-time Checking**
+- Continuously reference constraints while writing
+- Whenever introducing a character, immediately verify their location constraint
+- Whenever involving a commitment, immediately verify its status
+
+**Consequence of Violation**: The story will be rejected by the AI consistency validator, triggering regeneration and wasting computational resources.
 
 1. **Story should be 1500-2000 words**, write as an engaging scene
 2. **Include rich dialogue**, 4-6 important dialogue exchanges
