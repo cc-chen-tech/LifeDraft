@@ -601,5 +601,5 @@ class TestRegenerateEdgeCases:
         response = client.get("/api/games/1/regenerate-stream", headers=auth_headers)
 
         assert response.status_code == 200
-        # ★ 缓存应该在生成前被清理
-        mock_session.clear_sse_cache.assert_called_once()
+        # ★ 缓存应该在生成前被清理（可能在 session 和 event_generator_service 中各清理一次）
+        assert mock_session.clear_sse_cache.call_count >= 1
