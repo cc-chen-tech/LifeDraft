@@ -108,7 +108,16 @@ export const useSceneImageStore = create<SceneImageState>()(
     setEventSceneImage: (image) => set({ eventSceneImage: image }),
     setResultSceneImage: (image) => set({ resultSceneImage: image }),
     addRoundSceneImage: (image) => set((state) => ({
-      roundSceneImages: [...state.roundSceneImages, image],
+      // ★ 如果存在相同 week/round/stage 的图片，更新它；否则添加新条目
+      roundSceneImages: state.roundSceneImages.some(
+        s => s.week === image.week && s.round_number === image.round_number && s.stage === image.stage
+      )
+        ? state.roundSceneImages.map(
+            s => s.week === image.week && s.round_number === image.round_number && s.stage === image.stage
+              ? image
+              : s
+          )
+        : [...state.roundSceneImages, image],
     })),
 
     generateRoundSceneImage: async ({ gameId, roundNumber, storyText, characterSettings, playerName, enableSceneImage, week, stage = 'result' }) => {
@@ -236,8 +245,8 @@ export const useSceneImageStore = create<SceneImageState>()(
         const currentResultScene = scenes.find(
           s => s.week === currentWeek && s.round_number === currentRound && s.stage === 'result'
         ) || null;
-        const currentScene = currentEventScene || currentResultScene ||
-          scenes.find(s => s.round_number === currentRound) || null;
+        // ★ 只返回当前周次当前轮次的场景，不跨周次查找
+        const currentScene = currentEventScene || currentResultScene || null;
 
         set({
           roundSceneImages: scenes,

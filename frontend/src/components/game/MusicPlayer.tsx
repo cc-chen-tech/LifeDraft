@@ -293,6 +293,45 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
     }
   }, [isPlaying, currentSong, preloadNextSong]);
 
+  // 监控音乐是否意外停止（缓冲不足、网络问题等）
+  useEffect(() => {
+    if (!audioElement || !isPlaying || !currentSong) return;
+
+    let lastTime = audioElement.currentTime;
+    let stuckCount = 0;
+
+    const checkInterval = setInterval(() => {
+      if (!audioElement) return;
+      
+      // 如果音乐正在播放但时间没有前进，可能是卡住了
+      if (audioElement.currentTime === lastTime && !audioElement.paused) {
+        stuckCount++;
+        console.log(`[MusicPlayer] Audio may be stuck (${stuckCount}/3)`);
+        
+        // 连续3次检测都卡住，尝试恢复播放
+        if (stuckCount >= 3) {
+          console.log('[MusicPlayer] Attempting to resume playback...');
+          audioElement.play().catch(() => {
+            // 如果恢复失败，跳到下一首
+            console.log('[MusicPlayer] Resume failed, switching to next song');
+            if (recommendation?.songs.length) {
+              const currentIndex = recommendation.songs.findIndex((s) => s.id === currentSong.id);
+              const nextIndex = (currentIndex + 1) % recommendation.songs.length;
+              loadAndPlaySong(recommendation.songs[nextIndex]);
+            }
+          });
+          stuckCount = 0;
+        }
+      } else {
+        stuckCount = 0;
+      }
+      
+      lastTime = audioElement.currentTime;
+    }, 3000); // 每3秒检查一次
+
+    return () => clearInterval(checkInterval);
+  }, [audioElement, isPlaying, currentSong, recommendation, loadAndPlaySong]);
+
   // 播放控制
   const togglePlay = () => {
     if (audioElement) {
