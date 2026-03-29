@@ -202,11 +202,18 @@ export const useSceneImageStore = create<SceneImageState>()(
           set({ isLoadingRoundSceneImage: false });
         }
       } catch (err) {
-        const error = err as { status?: number };
-        if (error.status !== 404) {
+        const error = err as { status?: number; message?: string };
+        if (error.status === 202) {
+          // ★ 202 Accepted - 后端已触发生成，保持加载状态
+          console.log(`[fetchRoundSceneImage] Generation triggered by backend, waiting...`);
+          // 保持 isLoadingRoundSceneImage = true，前端会继续轮询
+        } else if (error.status !== 404) {
           console.error(`[fetchRoundSceneImage] Failed:`, err);
+          set({ isLoadingRoundSceneImage: false });
+        } else {
+          // 404 - 未找到且无法生成，停止加载
+          set({ isLoadingRoundSceneImage: false });
         }
-        set({ isLoadingRoundSceneImage: false });
       }
     },
 

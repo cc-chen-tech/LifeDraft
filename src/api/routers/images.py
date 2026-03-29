@@ -826,9 +826,9 @@ async def get_round_scene_image(
     - week: 必需，指定周数。防止返回其他周次的同轮次图片
     - stage: 可选，指定阶段 (event/result)。如果不指定，返回该轮次最新的插画
 
-    如果插画尚未生成，返回 404，前端可以轮询查询
+    如果插画尚未生成，自动触发生成并返回 202 Accepted，前端可以轮询查询
     """
-    from src.database.models import SceneImage
+    from src.database.models import Game, SceneImage
 
     # ★ 调试日志：检查认证信息
     cookie_token = request.cookies.get("auth_token") if request else None
@@ -857,8 +857,90 @@ async def get_round_scene_image(
         # ★ 未指定阶段，优先返回 result，其次 event
         scene_image = query.order_by(SceneImage.created_at.desc()).first()
 
-    if not scene_image:
-        raise HTTPException(status_code=404, detail="该轮次场景插画尚未生成")
+    if scene_image:
+        # 构建图片URL
+        storage_service = ImageStorageService()
+        image_url = storage_service.get_image_url(
+            str(scene_image.storage_path), str(scene_image.storage_type)  # type: ignore[arg-type]
+        )
+
+        return {
+            "scene_id": scene_image.scene_id,
+            "game_id": scene_image.game_id,
+            "week": scene_image.week,  # ★ 返回 week
+            "round_number": scene_image.round_number,
+            "stage": scene_image.stage,  # ★ 返回 stage
+            "image_url": image_url,
+            "scene_description": scene_image.scene_description,
+            "referenced_images": scene_image.referenced_images,
+            "created_at": (
+                scene_image.created_at.isoformat() if scene_image.created_at else None
+            ),
+        }
+
+    # ★ 场景插画不存在，尝试自动触发生成
+    logger.info(
+        f"[get_round_scene_image] Scene image not found for game={game_id}, week={week}, "
+        f"round={round_number}, stage={stage}. Triggering generation..."
+    )
+
+    # 获取游戏信息
+    game = db.query(Game).filter(Game.game_id == game_id).first()
+    if not game:
+        raise HTTPException(status_code=404, detail="游戏不存在")
+
+    # 从游戏状态获取故事文本和角色设定
+    import json
+    try:
+        game_state = json.loads(game.player_state) if game.player_state else {}
+        story_text = game_state.get("current_event_data", {}).get("event_description", "")
+        character_settings = game_state.get("character_settings", {})
+        player_name = character_settings.get("identity", {}).get("name", "主角")
+    except (json.JSONDecodeError, AttributeError) as e:
+        logger.warning(f"[get_round_scene_image] Failed to parse game state: {e}")
+        story_text = ""
+        character_settings = {}
+        player_name = "主角"
+
+    # 如果没有故事文本，无法生成插画，返回 404
+    if not story_text:
+        logger.warning(
+            f"[get_round_scene_image] Cannot generate scene image: no story text available "
+            f"for game={game_id}, week={week}, round={round_number}"
+        )
+        raise HTTPException(
+            status_code=404,
+            detail="该轮次场景插画尚未生成，且无法获取故事文本进行自动生成"
+        )
+
+    # ★ 后台触发生成
+    try:
+        _trigger_scene_generation_in_background(
+            game_id=game_id,
+            week=week,
+            round_number=round_number,
+            stage=stage or "result",
+            story_text=story_text,
+            character_settings=character_settings,
+            player_name=player_name,
+        )
+        logger.info(
+            f"[get_round_scene_image] Background generation triggered for "
+            f"game={game_id}, week={week}, round={round_number}, stage={stage or 'result'}"
+        )
+    except Exception as e:
+        logger.error(f"[get_round_scene_image] Failed to trigger generation: {e}")
+        # 触发失败，返回 404，让前端自己处理
+        raise HTTPException(
+            status_code=404,
+            detail="该轮次场景插画尚未生成，自动触发生成失败"
+        )
+
+    # 返回 202 Accepted，表示已接受生成请求
+    raise HTTPException(
+        status_code=202,
+        detail="场景插画生成中，请稍后刷新查看"
+    )
 
     # 构建图片URL
     storage_service = ImageStorageService()
@@ -1125,3 +1207,120 @@ async def delete_image(
     db.commit()
 
     return MessageResponse(message="图片已删除", success=True)
+
+
+# ==================== 后台场景插画生成辅助函数 ====================
+
+def _trigger_scene_generation_in_background(
+    game_id: int,
+    week: int,
+    round_number: int,
+    stage: str,
+    story_text: str,
+    character_settings: dict,
+    player_name: str,
+) -> None:
+    """
+    在后台线程中触发场景插画生成
+
+    Args:
+        game_id: 游戏ID
+        week: 周数
+        round_number: 轮次
+        stage: 阶段 (event/result)
+        story_text: 故事文本
+        character_settings: 角色设定
+        player_name: 玩家名称
+    """
+    import threading
+
+    def generate_in_thread():
+        try:
+            from src.ai.image_client import ImageClient
+            from src.database.models import Image as ImageModel
+            from src.database.models import SessionLocal
+            from src.game.round.illustration_service import RoundIllustrationService
+            from src.services.image_storage import ImageStorageService
+
+            # 创建新的数据库会话（在线程中）
+            db = SessionLocal()
+
+            try:
+                image_client = ImageClient()
+                image_storage = ImageStorageService()
+                illustration_service = RoundIllustrationService(
+                    image_client=image_client,
+                    image_storage=image_storage,
+                    db_session=db,
+                )
+
+                # 获取已有的图片列表（用于参考）
+                existing_images = (
+                    db.query(ImageModel).filter(ImageModel.game_id == game_id).all()
+                )
+
+                existing_image_list = [
+                    {
+                        "image_id": img.image_id,
+                        "image_type": img.image_type,
+                        "entity_name": img.entity_name,
+                        "image_url": image_storage.get_image_url(
+                            str(img.storage_path), str(img.storage_type)  # type: ignore[arg-type]
+                        ),
+                    }
+                    for img in existing_images
+                ]
+
+                # 获取玩家形象图片ID
+                player_image = illustration_service._get_player_image(existing_image_list)
+                player_image_id = player_image.get("image_id") if player_image else None
+
+                week_display = f"第{week + 1}周" if week is not None else "未知周"
+                logger.info(
+                    f"[Background Generation] Starting scene generation for "
+                    f"game={game_id}, {week_display}, round={round_number}, stage={stage}"
+                )
+
+                # 生成场景插画
+                scene_image = illustration_service.generate_round_scene(
+                    game_id=game_id,
+                    round_number=round_number,
+                    story_text=story_text,
+                    character_settings=character_settings,
+                    player_name=player_name,
+                    player_image_id=player_image_id,
+                    stage=stage,
+                    week=week,
+                )
+
+                if scene_image:
+                    logger.info(
+                        f"[Background Generation] Scene generated successfully: "
+                        f"scene_id={scene_image.scene_id}, game={game_id}, {week_display}, "
+                        f"round={round_number}, stage={stage}"
+                    )
+                else:
+                    logger.warning(
+                        f"[Background Generation] Scene generation returned None: "
+                        f"game={game_id}, {week_display}, round={round_number}, stage={stage}"
+                    )
+
+            except Exception as e:
+                logger.exception(f"[Background Generation] Error in thread: {e}")
+            finally:
+                db.close()
+
+        except Exception as e:
+            logger.exception(f"[Background Generation] Failed to setup generation: {e}")
+
+    # 启动后台线程
+    thread = threading.Thread(
+        target=generate_in_thread,
+        name=f"scene-gen-{game_id}-{week}-{round_number}-{stage}",
+        daemon=True,
+    )
+    thread.start()
+    logger.info(
+        f"[Background Generation] Thread started for game={game_id}, week={week}, "
+        f"round={round_number}, stage={stage}"
+    )

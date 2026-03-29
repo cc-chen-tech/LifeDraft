@@ -182,12 +182,25 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
         setPlayError(`"${song.name}" ${errorType}，尝试下一首...`);
         setSkippedSongs(prev => new Set(prev).add(song.id));
         
+        // 清理当前音频
+        audio.pause();
+        audio.src = "";
+        
         // 播放出错时尝试下一首
         if (recommendation?.songs.length) {
           const currentIndex = recommendation.songs.findIndex((s) => s.id === song.id);
           const nextIndex = (currentIndex + 1) % recommendation.songs.length;
-          if (nextIndex !== currentIndex && !skippedSongs.has(recommendation.songs[nextIndex].id)) {
-            setTimeout(() => loadAndPlaySong(recommendation.songs[nextIndex]), 500);
+          // 确保不会无限循环 - 如果所有歌曲都跳过了，重置跳过列表
+          const allSkipped = recommendation.songs.every(s => 
+            s.id === song.id || skippedSongs.has(s.id)
+          );
+          if (allSkipped) {
+            setSkippedSongs(new Set());
+            console.log('[MusicPlayer] All songs skipped, resetting skip list');
+          }
+          if (nextIndex !== currentIndex) {
+            console.log(`[MusicPlayer] Error occurred, trying next song: ${recommendation.songs[nextIndex].name}`);
+            setTimeout(() => loadAndPlaySong(recommendation.songs[nextIndex]), 800);
           }
         }
       };

@@ -103,11 +103,12 @@ class NeteaseMusicClient:
             logger.exception(f"Failed to search music: {e}")
             return []
 
-    async def get_song_url(self, song_id: int) -> Optional[str]:
+    async def get_song_url(self, song_id: int, retry: int = 2) -> Optional[str]:
         """获取歌曲播放 URL
 
         Args:
             song_id: 歌曲 ID
+            retry: 重试次数
 
         Returns:
             播放 URL
@@ -145,6 +146,11 @@ class NeteaseMusicClient:
             return None
 
         except Exception as e:
+            if retry > 0 and "503" in str(e):
+                logger.warning(f"[NeteaseMusic] 503 error, retrying... ({retry} attempts left)")
+                import asyncio
+                await asyncio.sleep(0.5)  # 等待500ms后重试
+                return await self.get_song_url(song_id, retry - 1)
             logger.exception(f"[NeteaseMusic] Failed to get song URL: {e}")
             return None
 

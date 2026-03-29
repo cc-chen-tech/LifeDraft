@@ -900,6 +900,7 @@ async def stream_regenerate(
             if player_state:
                 current_week = player_state.week
                 current_round = player_state.current_round
+
                 # 清除 last_round_full_story 强制重新生成故事
                 if hasattr(player_state, "last_round_full_story"):
                     player_state.last_round_full_story = (
@@ -974,6 +975,7 @@ async def stream_regenerate(
             new_event = game_loop.generate_round_event(
                 stream_callback=stream_cb,
                 status_callback=status_cb,
+                session=session,  # ★ 传递 session 以支持选项缓存
             )
 
             if new_event and new_event.options:
