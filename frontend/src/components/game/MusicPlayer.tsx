@@ -65,6 +65,7 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
   const skippedSongsRef = useRef<Set<number>>(new Set()); // 同步跟踪跳过的歌曲
   const preloadedAudioRef = useRef<HTMLAudioElement | null>(null);
   const preloadedSongRef = useRef<Song | null>(null);
+  const activeAudioRef = useRef<HTMLAudioElement | null>(null); // 当前正在播放的音频
 
   // 获取音乐推荐
   const fetchRecommendation = useCallback(async () => {
@@ -103,6 +104,14 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
     isLoadingSongRef.current = true;
     
     try {
+      // 停止所有正在播放的音频（包括预加载的）
+      if (activeAudioRef.current) {
+        console.log('[MusicPlayer] Stopping active audio from ref');
+        activeAudioRef.current.pause();
+        activeAudioRef.current.src = "";
+        activeAudioRef.current = null;
+      }
+      
       // 清理旧的音频 - 完全清理避免多个音频同时播放
       if (audioElement) {
         audioElement.pause();
@@ -114,9 +123,18 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
         audioElement.onloadedmetadata = null;
         audioElement.onended = null;
         audioElement.onerror = null;
-        // 触发垃圾回收
-        setAudioElement(null);
       }
+      
+      // 清理预加载的音频
+      if (preloadedAudioRef.current) {
+        preloadedAudioRef.current.pause();
+        preloadedAudioRef.current.src = "";
+        preloadedAudioRef.current = null;
+        preloadedSongRef.current = null;
+      }
+      
+      // 重置音频元素状态
+      setAudioElement(null);
       
       // 清除之前的播放错误
       setPlayError(null);
@@ -170,6 +188,7 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       audio.onended = () => {
         setIsPlaying(false);
         setCurrentTime(0);
+        activeAudioRef.current = null; // 清理活动音频引用
         // 自动播放下一首 - 使用传入的 song 参数而不是 currentSong
         if (recommendation?.songs.length) {
           const currentIndex = recommendation.songs.findIndex(
@@ -206,6 +225,7 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
         setSkippedSongs(new Set(skippedSongsRef.current));
         
         // 清理当前音频
+        activeAudioRef.current = null; // 清理活动音频引用
         audio.pause();
         audio.src = "";
         
@@ -238,6 +258,7 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       // 先设置当前歌曲（不播放），等待音频准备好
       setCurrentSong({ ...song, url });
       setAudioElement(audio);
+      activeAudioRef.current = audio; // 记录当前活动的音频
       
       // 播放（使用 try-catch 捕获播放错误）
       try {
@@ -411,6 +432,17 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
   // 清理
   useEffect(() => {
     return () => {
+      // 停止所有音频
+      if (activeAudioRef.current) {
+        activeAudioRef.current.pause();
+        activeAudioRef.current.src = "";
+        activeAudioRef.current = null;
+      }
+      if (preloadedAudioRef.current) {
+        preloadedAudioRef.current.pause();
+        preloadedAudioRef.current.src = "";
+        preloadedAudioRef.current = null;
+      }
       cleanup();
     };
   }, [cleanup]);
