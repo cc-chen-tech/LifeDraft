@@ -30,7 +30,8 @@ def extract_json(text: str) -> Optional[Dict[str, Any]]:
 
     # Try 1: Direct JSON parse
     try:
-        return json.loads(text)
+        result1: Dict[str, Any] = json.loads(text)
+        return result1
     except json.JSONDecodeError:
         pass
 
@@ -38,7 +39,8 @@ def extract_json(text: str) -> Optional[Dict[str, Any]]:
     if "```json" in text:
         try:
             json_str = text.split("```json")[1].split("```")[0].strip()
-            return json.loads(json_str)
+            result2: Dict[str, Any] = json.loads(json_str)  # type: ignore[no-any-return]
+            return result2
         except (IndexError, json.JSONDecodeError):
             pass
 
@@ -46,7 +48,8 @@ def extract_json(text: str) -> Optional[Dict[str, Any]]:
     if "```" in text:
         try:
             json_str = text.split("```")[1].split("```")[0].strip()
-            return json.loads(json_str)
+            result3: Dict[str, Any] = json.loads(json_str)  # type: ignore[no-any-return]
+            return result3
         except (IndexError, json.JSONDecodeError):
             pass
 
@@ -54,14 +57,16 @@ def extract_json(text: str) -> Optional[Dict[str, Any]]:
     if "'''json" in text:
         try:
             json_str = text.split("'''json")[1].split("'''")[0].strip()
-            return json.loads(json_str)
+            result4: Dict[str, Any] = json.loads(json_str)  # type: ignore[no-any-return]
+            return result4
         except (IndexError, json.JSONDecodeError):
             pass
 
     if "'''" in text:
         try:
             json_str = text.split("'''")[1].split("'''")[0].strip()
-            return json.loads(json_str)
+            result5: Dict[str, Any] = json.loads(json_str)  # type: ignore[no-any-return]
+            return result5
         except (IndexError, json.JSONDecodeError):
             pass
 
@@ -69,7 +74,8 @@ def extract_json(text: str) -> Optional[Dict[str, Any]]:
     json_match = re.search(r"\{[\s\S]*\}", text)
     if json_match:
         try:
-            return json.loads(json_match.group())
+            result6: Dict[str, Any] = json.loads(json_match.group())  # type: ignore[no-any-return]
+            return result6
         except json.JSONDecodeError:
             pass
 

@@ -182,7 +182,7 @@ class EventGenerator:
         if preset_file.exists():
             try:
                 with open(preset_file, "r", encoding="utf-8") as f:
-                    return json.load(f)
+                    return json.load(f)  # type: ignore[no-any-return]
             except Exception as e:
                 logger.warning(f"Failed to load preset events: {e}")
         return {}

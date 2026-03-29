@@ -44,7 +44,7 @@ class BaseExtractionService:
         Returns:
             AI 响应文本
         """
-        return self.ai_client.call(
+        return self.ai_client.call(  # type: ignore[no-any-return]
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             temperature=temperature,

@@ -827,7 +827,8 @@ def _build_world_model_constraints(world_model: Optional[Any], language: str) ->
     if world_model is None:
         return ""
     try:
-        return world_model.build_constraints_text(language)
+        result: str = world_model.build_constraints_text(language)
+        return result
     except Exception:
         return ""
 

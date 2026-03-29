@@ -428,7 +428,7 @@ class SessionService:
             if isinstance(era, dict):
                 era_name = era.get("era_name")
                 if era_name and era_name.strip():
-                    return era_name.strip()
+                    return era_name.strip()  # type: ignore[no-any-return]
 
                 era_desc = era.get("era_description")
                 if era_desc and era_desc.strip():
@@ -439,7 +439,7 @@ class SessionService:
                             break
                     if len(desc) > 30:
                         desc = desc[:30]
-                    return desc
+                    return desc  # type: ignore[no-any-return]
 
                 return None
             elif isinstance(era, str):

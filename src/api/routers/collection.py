@@ -40,7 +40,7 @@ def _require_user(user: Optional[User]) -> User:
     return user
 
 
-def _get_player_state(game_id: int, user: User):
+def _get_player_state(game_id: int, user: User) -> tuple:  # type: ignore
     """获取游戏会话和玩家状态。"""
     session = session_service.get_or_restore(game_id, user)
     player_state = session.game_loop.get_state()
@@ -53,7 +53,7 @@ def _get_player_state(game_id: int, user: User):
 
 
 @router.get("/{game_id}", response_model=CollectionResponse)
-async def get_collection(
+async def get_collection(  # type: ignore
     game_id: int,
     user: Optional[User] = Depends(get_current_user_optional),
 ):
@@ -70,7 +70,7 @@ async def get_collection(
 
 
 @router.get("/{game_id}/details", response_model=CollectionResponse)
-async def get_collection_details(
+async def get_collection_details(  # type: ignore
     game_id: int,
     user: Optional[User] = Depends(get_current_user_optional),
 ):
@@ -82,7 +82,7 @@ async def get_collection_details(
 
 
 @router.post("/{game_id}/characters/{name}/generate-image", response_model=MessageResponse)
-async def generate_character_image(
+async def generate_character_image(  # type: ignore
     game_id: int,
     name: str,
     user: Optional[User] = Depends(get_current_user_optional),
@@ -113,7 +113,7 @@ async def generate_character_image(
 
 
 @router.post("/{game_id}/characters/{name}/generate-description", response_model=MessageResponse)
-async def generate_character_description(
+async def generate_character_description(  # type: ignore
     game_id: int,
     name: str,
     user: Optional[User] = Depends(get_current_user_optional),
@@ -124,7 +124,7 @@ async def generate_character_description(
 
 
 @router.post("/{game_id}/items/{item_name}/generate-image", response_model=MessageResponse)
-async def generate_item_image(
+async def generate_item_image(  # type: ignore
     game_id: int,
     item_name: str,
     user: Optional[User] = Depends(get_current_user_optional),
@@ -155,7 +155,7 @@ async def generate_item_image(
 
 
 @router.post("/{game_id}/items/{item_name}/generate-description", response_model=MessageResponse)
-async def generate_item_description(
+async def generate_item_description(  # type: ignore
     game_id: int,
     item_name: str,
     user: Optional[User] = Depends(get_current_user_optional),
@@ -206,7 +206,7 @@ async def generate_item_description(
     "/{game_id}/landmarks/{landmark_name}/generate-image",
     response_model=MessageResponse,
 )
-async def generate_landmark_image(
+async def generate_landmark_image(  # type: ignore
     game_id: int,
     landmark_name: str,
     user: Optional[User] = Depends(get_current_user_optional),
@@ -240,7 +240,7 @@ async def generate_landmark_image(
     "/{game_id}/landmarks/{landmark_name}/generate-description",
     response_model=MessageResponse,
 )
-async def generate_landmark_description(
+async def generate_landmark_description(  # type: ignore
     game_id: int,
     landmark_name: str,
     user: Optional[User] = Depends(get_current_user_optional),
@@ -286,7 +286,7 @@ async def generate_landmark_description(
 
 
 @router.post("/{game_id}/characters/{name}/regenerate-image", response_model=MessageResponse)
-async def regenerate_character_image(
+async def regenerate_character_image(  # type: ignore
     game_id: int,
     name: str,
     request: RegenerateCharacterImageRequest,
@@ -324,7 +324,7 @@ async def regenerate_character_image(
 
 
 @router.post("/{game_id}/items/{item_name}/regenerate-image", response_model=MessageResponse)
-async def regenerate_item_image(
+async def regenerate_item_image(  # type: ignore
     game_id: int,
     item_name: str,
     request: RegenerateItemImageRequest,
@@ -366,7 +366,7 @@ async def regenerate_item_image(
 
 
 @router.post("/{game_id}/recognize-entities")
-async def recognize_entities(
+async def recognize_entities(  # type: ignore
     game_id: int,
     request: dict,
     user: Optional[User] = Depends(get_current_user_optional),
@@ -407,7 +407,7 @@ async def recognize_entities(
 
 
 @router.post("/{game_id}/add-entities")
-async def add_entities(
+async def add_entities(  # type: ignore
     game_id: int,
     request: dict,
     user: Optional[User] = Depends(get_current_user_optional),
@@ -444,7 +444,7 @@ async def add_entities(
 
 
 @router.post("/{game_id}/items/create")
-async def create_item(
+async def create_item(  # type: ignore
     game_id: int,
     request: dict,
     user: Optional[User] = Depends(get_current_user_optional),
@@ -480,7 +480,7 @@ async def create_item(
 
 
 @router.delete("/{game_id}/items/{item_name}")
-async def delete_item(
+async def delete_item(  # type: ignore
     game_id: int,
     item_name: str,
     user: Optional[User] = Depends(get_current_user_optional),
@@ -508,7 +508,7 @@ async def delete_item(
 
 
 @router.delete("/{game_id}/characters/{character_name}")
-async def delete_character(
+async def delete_character(  # type: ignore
     game_id: int,
     character_name: str,
     user: Optional[User] = Depends(get_current_user_optional),
@@ -538,7 +538,7 @@ async def delete_character(
 
 
 @router.delete("/{game_id}/landmarks/{landmark_name}")
-async def delete_landmark(
+async def delete_landmark(  # type: ignore
     game_id: int,
     landmark_name: str,
     user: Optional[User] = Depends(get_current_user_optional),

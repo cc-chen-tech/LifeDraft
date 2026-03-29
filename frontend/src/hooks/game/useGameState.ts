@@ -209,9 +209,15 @@ export function useGameState({
 
               const receivedOptions = eventData.options || [];
               if (receivedOptions.length > 0) {
+                // ★ CRITICAL: 重新生成时，优先使用后端返回的完整故事
+                // 因为重新生成会创建全新的故事内容，不应该与前端累积的流式文本比较
                 const backendStory = eventData.event_description || eventData.story || "";
                 const frontendStory = useGameStore.getState().storyText;
-                const finalStory = backendStory.length > frontendStory.length ? backendStory : frontendStory;
+                
+                // 如果后端返回了有效故事，使用后端的故事；否则回退到前端累积的文本
+                const finalStory = backendStory.length > 50 ? backendStory : frontendStory;
+                
+                console.log(`[handleRegenerate] Using story: backend=${backendStory.length} chars, frontend=${frontendStory.length} chars, final=${finalStory.length} chars`);
 
                 setStoryText(finalStory);
                 setOptions(receivedOptions);

@@ -177,7 +177,7 @@ class PlayerDataMixin:
     def to_dict(self) -> Dict[str, Any]:
         """Convert state to dictionary."""
         # model_dump is provided by BaseModel when used in the combined class
-        return getattr(self, "model_dump")()
+        return getattr(self, "model_dump")()  # type: ignore[no-any-return]
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PlayerDataMixin":

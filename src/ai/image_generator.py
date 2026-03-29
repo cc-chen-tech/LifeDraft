@@ -109,7 +109,7 @@ class ImageGenerator:
         cached_result = _image_cache.get(cache_key)
         if cached_result is not None:
             logger.info(f"[ImageCache] Cache hit for prompt hash: {cache_key[:8]}...")
-            return cached_result
+            return cached_result  # type: ignore[no-any-return]
 
         last_error = None
 
@@ -340,14 +340,14 @@ class ImageGenerator:
             logger.error(error_msg)
             raise ImageGenerationError(error_msg)
 
-        return response.json()
+        return response.json()  # type: ignore[no-any-return]
 
     def _download_image(self, url: str) -> bytes:
         """下载图片"""
         response = self.session.get(url, timeout=self.timeout)
         if response.status_code != 200:
             raise ImageGenerationError(f"Failed to download image: {response.status_code}")
-        return response.content
+        return response.content  # type: ignore[no-any-return]
 
     def edit_image(
         self,
@@ -565,7 +565,7 @@ class ImageGenerator:
 
             raise ImageGenerationError(error_msg)
 
-        return response.json()
+        return response.json()  # type: ignore[no-any-return]
 
     def generate_character_images(
         self,

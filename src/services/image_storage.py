@@ -312,7 +312,7 @@ class ImageStorageService:
             # 生成签名URL（有效期1小时）
             client = self._get_oss_client()
             url = client.sign_url("GET", object_key, 3600)
-            return url
+            return url  # type: ignore[no-any-return]
 
         except (ValueError, KeyError) as e:
             logger.error(f"Invalid OSS path format: {e}")
@@ -372,7 +372,7 @@ class ImageStorageService:
                 object_key = storage_path
 
             result = client.get_object(object_key)
-            return result.read()
+            return result.read()  # type: ignore[no-any-return]
 
         except (ValueError, KeyError) as e:
             logger.error(f"Invalid OSS path format: {e}")
@@ -453,7 +453,7 @@ class ImageStorageService:
                 else:
                     object_key = storage_path
 
-                return client.object_exists(object_key)
+                return client.object_exists(object_key)  # type: ignore[no-any-return]
             else:
                 return False
 

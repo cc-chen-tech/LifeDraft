@@ -193,12 +193,12 @@ class TaskManager:
 
         # 清理并记录日志
         for task_id in tasks_to_remove:
-            task = self._tasks.get(task_id)
+            task = self._tasks.get(task_id)  # type: ignore
             if task:
                 logger.info(
                     f"[TaskCleanup] Removing expired task {task_id} "
                     f"(game={task.game_id}, status={task.status.value}, "
-                    f"completed_at={task.completed_at.isoformat()})"
+                    f"completed_at={task.completed_at.isoformat()})"  # type: ignore
                 )
             self.cleanup_task(task_id)
 

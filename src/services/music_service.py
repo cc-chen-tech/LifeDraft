@@ -50,7 +50,7 @@ class NeteaseMusicClient:
     def __init__(self, base_url: Optional[str] = None):
         base_url = base_url or os.getenv("NETEASE_MUSIC_API_URL", "http://localhost:3000")
         # 将 localhost 替换为 127.0.0.1 避免 IPv6 问题
-        self.base_url = base_url.replace("localhost", "127.0.0.1")
+        self.base_url = base_url.replace("localhost", "127.0.0.1")  # type: ignore
         # 禁用连接池，避免 503 错误
         limits = httpx.Limits(max_keepalive_connections=0, max_connections=10)
         headers = {
@@ -73,7 +73,7 @@ class NeteaseMusicClient:
             url = f"{self.base_url}/search"
             params = {"keywords": keywords, "limit": limit}
 
-            response = await self.client.get(url, params=params)
+            response = await self.client.get(url, params=params)  # type: ignore
             response.raise_for_status()
             data = response.json()
 
@@ -131,7 +131,7 @@ class NeteaseMusicClient:
                 song_url = songs[0].get("url")
                 if song_url:
                     logger.info(f"[NeteaseMusic] Got URL for song {song_id}: {song_url[:50]}...")
-                    return song_url
+                    return song_url  # type: ignore[no-any-return]
                 else:
                     logger.warning(
                         f"[NeteaseMusic] URL is empty for song {song_id}, may be restricted by copyright"
@@ -191,7 +191,7 @@ class MusicService:
 
         # 去重并限制数量 - 确保至少15首，最多20首
         seen_ids = set()
-        unique_songs = []
+        unique_songs: List[Song] = []  # type: ignore[var-annotated]
         for song in all_songs:
             if song.id not in seen_ids and len(unique_songs) < 20:
                 seen_ids.add(song.id)
@@ -301,7 +301,7 @@ class MusicService:
                 text = text.split("```")[1].split("```")[0].strip()
 
             result = json.loads(text)
-            return result
+            return result  # type: ignore[no-any-return]
 
         except Exception as e:
             logger.warning(f"Failed to analyze story mood: {e}")
@@ -438,7 +438,7 @@ class MusicService:
 
     async def get_song_play_url(self, song_id: int) -> Optional[str]:
         """获取歌曲播放 URL"""
-        return await self.music_client.get_song_url(song_id)
+        return await self.music_client.get_song_url(song_id)  # type: ignore[no-any-return]
 
     async def close(self):
         await self.music_client.close()

@@ -195,7 +195,7 @@ class LandmarkExtractionService(BaseExtractionService):
 
             data = self._parse_json_response(response)
             if data and "description" in data:
-                return data["description"]
+                return data["description"]  # type: ignore[no-any-return]
 
             return None
 

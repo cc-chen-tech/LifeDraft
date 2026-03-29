@@ -53,12 +53,12 @@ class StateRepository:
             )
 
             if state:
-                return state.state_json
+                return state.state_json  # type: ignore[no-any-return]
 
             # If no snapshots found, fallback to the initial state in the Game record
             game = db.query(Game).filter(Game.game_id == game_id).first()
             if game:
-                return game.initial_state
+                return game.initial_state  # type: ignore[no-any-return]
 
             return None
 

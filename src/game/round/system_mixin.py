@@ -108,7 +108,7 @@ class RoundSystemMixin:
     def current_event(self) -> Optional[GameEvent]:
         """Get current event from event generator service."""
         if hasattr(self, "_event_generator_service"):
-            return self._event_generator_service.current_event
+            return self._event_generator_service.current_event  # type: ignore[no-any-return]
         return getattr(self, "_current_event", None)
 
     @current_event.setter

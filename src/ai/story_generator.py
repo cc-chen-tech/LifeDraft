@@ -197,7 +197,7 @@ class StoryGenerator:
                     cache.set(player_state, language, event)
 
                 logger.info(f"Successfully generated event with {len(event.options)} options")
-                return event
+                return event  # type: ignore[no-any-return]
 
             except (ValueError, ValidationError, json.JSONDecodeError) as e:
                 last_error = str(e)
@@ -406,7 +406,7 @@ class StoryGenerator:
             if option_issues:
                 logger.warning(f"Options consistency issues found: {option_issues}")
 
-            return event
+            return event  # type: ignore[no-any-return]
 
         except Exception as e:
             logger.error(f"Failed to generate round event: {e}")

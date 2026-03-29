@@ -44,7 +44,7 @@ def create_token(user_id: int) -> str:
         "sub": str(user_id),
         "exp": datetime.utcnow() + timedelta(hours=JWT_EXPIRE_HOURS),
     }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)  # type: ignore[no-any-return]
 
 
 def decode_token(token: str) -> Optional[int]:

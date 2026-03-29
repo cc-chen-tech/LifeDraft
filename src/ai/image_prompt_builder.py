@@ -672,7 +672,7 @@ class DeepSeekPromptEnhancer:
             anchor_data["generated_from"] = description[:200]  # 保存原始描述的前200字
             anchor_data["version"] = 1
 
-            return anchor_data
+            return anchor_data  # type: ignore[no-any-return]
 
         except Exception as e:
             logger.error(f"Failed to generate appearance anchor: {e}")

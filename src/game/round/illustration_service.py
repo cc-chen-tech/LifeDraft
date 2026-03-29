@@ -704,14 +704,14 @@ class RoundIllustrationService:
             if game_state and game_state.state_json:
                 week = game_state.state_json.get("week")
                 if week is not None:
-                    return week
+                    return week  # type: ignore[no-any-return]
 
             # 如果没有 GameState，从 Game.initial_state 获取
             game = self.db.query(Game).filter(Game.game_id == game_id).first()
             if game and game.initial_state:
                 week = game.initial_state.get("week")
                 if week is not None:
-                    return week
+                    return week  # type: ignore[no-any-return]
         except Exception as e:
             logger.warning(f"[RoundIllustration] Failed to get current week from database: {e}")
 

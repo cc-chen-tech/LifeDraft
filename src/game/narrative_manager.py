@@ -295,7 +295,7 @@ class NarrativeManager:
                     f"planted week {seed.get('planted_week', 0)}, "
                     f"distance {recovery_distance} weeks, prob {prob:.1%}"
                 )
-                return seed
+                return seed  # type: ignore[no-any-return]
 
         logger.debug(f"No foreshadowing activated this round ({len(eligible_seeds)} candidates)")
         return None

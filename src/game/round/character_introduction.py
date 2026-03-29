@@ -115,7 +115,7 @@ class CharacterIntroductionService:
                 f"新人物 {new_name} 已加入待引入队列（场景：{intro_context}，优先级：{pending_entry['priority']}）"
             )
 
-            return new_person
+            return new_person  # type: ignore[no-any-return]
 
         except Exception as e:
             logger.error(f"生成新人物失败：{e}")
@@ -262,14 +262,14 @@ class CharacterIntroductionService:
                 logger.info(
                     f"待引入人物 {entry['character_data'].get('name')} 已等待{waiting_weeks}周，强制引入"
                 )
-                return entry
+                return entry  # type: ignore[no-any-return]
 
             # 检查是否有匹配的引入场景
             if self.matches_introduction_scene(intro_context):
                 logger.info(
                     f"发现匹配的引入场景 [{intro_context}]，准备引入 {entry['character_data'].get('name')}"
                 )
-                return entry
+                return entry  # type: ignore[no-any-return]
 
         return None
 
@@ -406,7 +406,7 @@ class CharacterIntroductionService:
 
             logger.info(f"新人物 {new_name} 已正式引入（初始亲密度：{initial_affinity}）")
 
-            return new_person
+            return new_person  # type: ignore[no-any-return]
 
         except Exception as e:
             logger.error(f"引入人物失败：{e}")

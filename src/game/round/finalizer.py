@@ -149,7 +149,7 @@ class RoundFinalizer:
             }
 
         try:
-            return self.ai_generator.generate_weekly_summary(
+            return self.ai_generator.generate_weekly_summary(  # type: ignore[no-any-return]
                 rounds=week_rounds,
                 character_settings=player_state.character_settings,
                 language=self.language,
@@ -170,7 +170,7 @@ class RoundFinalizer:
         pending_storylines = player_state.pending_storylines if player_state else []
         established_facts = player_state.established_facts if player_state else []
         character_habits = player_state.character_habits if player_state else []
-        return self.story_service.compress_story(
+        return self.story_service.compress_story(  # type: ignore[no-any-return]
             story, choice, pending_storylines, established_facts, character_habits
         )
 
@@ -207,7 +207,7 @@ class RoundFinalizer:
         player_state = self.player_state
         if not player_state or not player_state.character_settings:
             return []
-        return self.character_creator.generate_family_members_details(
+        return self.character_creator.generate_family_members_details(  # type: ignore[no-any-return]
             old_format_members,
             player_state.character_settings,
             player_state.player_name or "主角",

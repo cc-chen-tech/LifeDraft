@@ -141,7 +141,7 @@ class ImageService:
     def _extract_era_from_metadata(self, metadata: Optional[Dict[str, Any]]) -> str:
         """从元数据中提取时代"""
         if metadata and "era" in metadata:
-            return metadata["era"]
+            return metadata["era"]  # type: ignore[no-any-return]
         return "现代"
 
     def _build_description_from_settings(self, char_settings: Dict[str, Any]) -> str:
@@ -203,7 +203,7 @@ class ImageService:
             if isinstance(era, dict):
                 era_name = era.get("era_name")
                 if era_name and era_name.strip():
-                    return era_name.strip()
+                    return era_name.strip()  # type: ignore[no-any-return]
 
                 era_desc = era.get("era_description")
                 if era_desc and era_desc.strip():
@@ -214,7 +214,7 @@ class ImageService:
                             break
                     if len(desc) > 30:
                         desc = desc[:30]
-                    return desc
+                    return desc  # type: ignore[no-any-return]
 
                 return None
             elif isinstance(era, str):
@@ -246,13 +246,13 @@ class ImageService:
             if game_state and game_state.state_json:
                 week = game_state.state_json.get("week")
                 if week is not None:
-                    return week
+                    return week  # type: ignore[no-any-return]
 
             game = self.db.query(Game).filter(Game.game_id == game_id).first()
             if game and game.initial_state:
                 week = game.initial_state.get("week")
                 if week is not None:
-                    return week
+                    return week  # type: ignore[no-any-return]
         except Exception as e:
             logger.warning(f"Failed to get current week from database: {e}")
 

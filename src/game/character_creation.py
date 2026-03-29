@@ -448,7 +448,7 @@ class CharacterCreator:
             )
 
             if result:
-                return result.get("relationships_description", "")
+                return result.get("relationships_description", "")  # type: ignore[no-any-return]
             raise ValueError("AI returned no valid JSON for relationships summary")
         except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
             logger.warning(f"Failed to generate relationships summary: {e}")
@@ -845,7 +845,7 @@ class CharacterCreator:
                 max_tokens=4096,  # Maximum tokens - no truncation
             )
 
-            return response  # type: ignore[return-value]  # Return the stream object
+            return response  # type: ignore[return-value, no-any-return]  # Return the stream object
         except (ValueError, TypeError, KeyError) as e:
             logger.warning(f"Failed to generate opening story: {e}")
             # Fall through to fallback
@@ -918,7 +918,7 @@ class CharacterCreator:
                 max_tokens=4096,  # Increased for detailed family info
             )
             if data:
-                return data.get("members", [])
+                return data.get("members", [])  # type: ignore[no-any-return]
         except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
             logger.warning(f"生成家庭成员详情失败: {e}")
         except Exception as e:
