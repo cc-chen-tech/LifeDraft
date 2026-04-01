@@ -45,6 +45,7 @@
   ],
   "dependencies": {
     "axios": "^0.24.0",
+    "body-parser": "^2.2.2",
     "express": "^4.17.1",
     "express-fileupload": "^1.1.9",
     "md5": "^2.3.0",

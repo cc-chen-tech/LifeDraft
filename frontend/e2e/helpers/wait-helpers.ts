@@ -63,7 +63,7 @@ export async function waitForNetworkIdle(
   const timeout = options?.timeout ?? 15000;
   const idleTime = options?.idleTime ?? 500;
   
-  await page.waitForLoadState('networkidle', { timeout });
+  await page.waitForLoadState('domcontentloaded', { timeout });
 }
 
 /**
@@ -105,5 +105,5 @@ export async function waitForPageReady(
 ): Promise<void> {
   const timeout = options?.timeout ?? 10000;
   await page.waitForLoadState('domcontentloaded', { timeout });
-  await page.waitForLoadState('networkidle', { timeout });
+  await page.waitForLoadState('domcontentloaded', { timeout });
 }

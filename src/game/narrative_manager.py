@@ -102,6 +102,75 @@ class NarrativeManager:
         player_state.pending_storylines = updated_storylines
 
     # ------------------------------------------------------------------
+    # Overdue storyline escalation
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def escalate_overdue_storylines(player_state) -> int:
+        """检测并标记过期的高重要性剧情线。
+
+        当一条 high 重要性剧情线长期未被提及或推进时（沉寂 > 4 周），
+        将其标记为 overdue，使 prompt 构建时对其采用强制约束（"本轮必须处理"）。
+
+        这解决了以下系统性问题：
+        - pending_storylines 的 "至少涉及一条" 约束太弱，大量剧情线被长期忽略
+        - 包含时间承诺的剧情线（如"下月初一"）没有升级机制，只会被降级后移除
+        - 三套追踪系统（storylines / commitments / scheduled_events）互不联动
+
+        Args:
+            player_state: PlayerState 实例
+
+        Returns:
+            被升级标记为 overdue 的剧情线数量
+        """
+        if not player_state or not player_state.pending_storylines:
+            return 0
+
+        current_week = player_state.week
+        escalated_count = 0
+
+        # 时间相关关键词 — 包含这些词的剧情线更可能有隐含的时间承诺
+        time_keywords = [
+            "初一", "十五", "月底", "月初", "下月", "约定", "仪式",
+            "承诺", "期限", "截止", "到期", "答应", "保证",
+            "天后", "周后", "月后", "明天", "后天",
+        ]
+
+        for sl in player_state.pending_storylines:
+            importance = sl.get("importance", "medium")
+            if importance != "high":
+                continue
+
+            # 如果已经标记为 overdue，跳过
+            if sl.get("overdue", False):
+                continue
+
+            weeks_since_mention = current_week - sl.get("last_mentioned_week", 0)
+
+            # 判断是否包含时间承诺关键词
+            desc = sl.get("description", "")
+            has_time_ref = any(kw in desc for kw in time_keywords)
+
+            # 升级条件：
+            # - 含时间关键词的剧情线：沉寂 > 3 周即升级（它们更紧迫）
+            # - 普通高重要性剧情线：沉寂 > 5 周才升级
+            threshold = 3 if has_time_ref else 5
+
+            if weeks_since_mention >= threshold:
+                sl["overdue"] = True
+                sl["overdue_since_week"] = current_week
+                escalated_count += 1
+                logger.warning(
+                    f"🚨 剧情线升级为 overdue: {desc[:50]}... "
+                    f"(沉寂{weeks_since_mention}周, 含时间引用={has_time_ref})"
+                )
+
+        if escalated_count > 0:
+            logger.info(f"🚨 共 {escalated_count} 条剧情线被升级为 overdue")
+
+        return escalated_count
+
+    # ------------------------------------------------------------------
     # Fact updates
     # ------------------------------------------------------------------
 

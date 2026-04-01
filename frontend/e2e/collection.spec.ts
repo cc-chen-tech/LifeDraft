@@ -29,7 +29,7 @@ test.describe('Collection System E2E Tests', () => {
 
   test('3. Collection Panel UI - Home page loads', async ({ page }) => {
     await page.goto(BASE_URL);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     const title = await page.title();
     expect(title).toBeTruthy();
@@ -71,7 +71,7 @@ test.describe('Collection System E2E Tests', () => {
 
   test('6. Collection Panel Component - Renders without errors', async ({ page }) => {
     await page.goto(BASE_URL);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Check for any console errors
     const consoleErrors: string[] = [];
@@ -81,7 +81,7 @@ test.describe('Collection System E2E Tests', () => {
       }
     });
 
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Filter out known non-critical errors
     const criticalErrors = consoleErrors.filter(e =>
@@ -126,7 +126,7 @@ test.describe('Collection API Integration Tests', () => {
 test.describe('Collection Panel UI Tests', () => {
   test('11. Play Page - Collection button visible', async ({ page }) => {
     await page.goto(BASE_URL);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Take screenshot
     await page.screenshot({ path: '/tmp/collection-test-play.png' });
@@ -138,7 +138,7 @@ test.describe('Collection Panel UI Tests', () => {
 
   test('12. Collection Panel - Tab switching works', async ({ page }) => {
     await page.goto(BASE_URL);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Check for any JavaScript errors
     const errors: string[] = [];
@@ -146,7 +146,7 @@ test.describe('Collection Panel UI Tests', () => {
       errors.push(error.message);
     });
 
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Should not have module import errors
     const moduleErrors = errors.filter(e => e.includes('module') || e.includes('import'));
@@ -199,7 +199,7 @@ test.describe('Full Collection Flow Test', () => {
 
   test('15. Frontend - Collection panel imports work', async ({ page }) => {
     await page.goto(BASE_URL);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Check for module errors
     const moduleErrors: string[] = [];
@@ -209,7 +209,7 @@ test.describe('Full Collection Flow Test', () => {
       }
     });
 
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Should not have module not found errors for collection
     const collectionErrors = moduleErrors.filter(e => e.toLowerCase().includes('collection'));
@@ -218,7 +218,7 @@ test.describe('Full Collection Flow Test', () => {
 
   test('16. Collection Store - State structure', async ({ page }) => {
     await page.goto(BASE_URL);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Verify the store exports are correct by checking for runtime errors
     const runtimeErrors: string[] = [];
@@ -226,7 +226,7 @@ test.describe('Full Collection Flow Test', () => {
       runtimeErrors.push(error.message);
     });
 
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Should not have zustand or collection store errors
     const storeErrors = runtimeErrors.filter(e =>

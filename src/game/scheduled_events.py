@@ -212,9 +212,38 @@ def parse_time_reference(
         if "下下周" in time_ref:
             return {"scheduled_week": current_week + 2, "scheduled_round": 1}
 
-        # X天后
+        # 下月 / 下个月（约 4 周）
+        if "下月初" in time_ref or "下月一" in time_ref:
+            # "下月初一"“下月初”等 → 约 4 周后的周一
+            return {"scheduled_week": current_week + 4, "scheduled_round": 0}
+        if "下月中" in time_ref:
+            # "下月中旬"等 → 约 6 周后
+            return {"scheduled_week": current_week + 6, "scheduled_round": 1}
+        if "下月底" in time_ref or "下月末" in time_ref:
+            # "下月底"“下月末” → 约 8 周后
+            return {"scheduled_week": current_week + 8, "scheduled_round": 2}
+        if "下月" in time_ref or "下个月" in time_ref:
+            # 笼统的"下月" → 约 4 周后
+            return {"scheduled_week": current_week + 4, "scheduled_round": 0}
+
+        # 两个月 / 三个月
         import re
 
+        # 支持中文数字和阿拉伯数字
+        _cn_nums = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6}
+        months_match = re.search(r"([\d一二两三四五六])个月", time_ref)
+        if months_match:
+            val = months_match.group(1)
+            months = _cn_nums.get(val, None)
+            if months is None:
+                try:
+                    months = int(val)
+                except ValueError:
+                    months = None
+            if months:
+                return {"scheduled_week": current_week + months * 4, "scheduled_round": 0}
+
+        # X天后
         days_match = re.search(r"(\d+)天[后以]", time_ref)
         if days_match:
             days = int(days_match.group(1))

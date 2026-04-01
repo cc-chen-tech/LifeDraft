@@ -322,6 +322,10 @@ def get_scheduled_commitment_extraction_prompt(
    - "明天" → current_round+1
    - "下周一" → current_week+1, round=0
    - "下下周" → current_week+2
+   - "下月初一" → current_week+4, round=0（一个月≈4周）
+   - "下月中旬" → current_week+6, round=1
+   - "下月底" → current_week+8, round=2
+   - "两个月后" → current_week+8, round=0
 
 2. 不提取模糊承诺：
    - "有机会"、"改天"、"以后"、"找时间" → 不提取
@@ -345,6 +349,11 @@ def get_scheduled_commitment_extraction_prompt(
 - 下周一: week={current_week+1}, round=0
 - 下周中: week={current_week+1}, round=1
 - 下周末: week={current_week+1}, round=2
+- 下下周: week={current_week+2}
+- 下月初/下月初一: week={current_week+4}, round=0（1个月≈4周）
+- 下月中旬: week={current_week+6}, round=1
+- 下月底/下月末: week={current_week+8}, round=2
+- X个月后: week={current_week}+X*4, round=0
 - 明天: round=(current_round+1)%3, week根据进位调整
 - 后天: round=(current_round+2)%3, week根据进位调整
 - X天后: 需要计算周数和轮次

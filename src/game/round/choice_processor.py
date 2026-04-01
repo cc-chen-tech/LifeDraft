@@ -306,6 +306,10 @@ class RoundChoiceProcessor:
         WorldModelUpdater.process_commitment_updates(
             player_state, compression_result.get("commitment_updates", [])
         )
+
+        # ★ 5. 检测并升级过期剧情线（在 storyline + commitment 更新之后执行）
+        NarrativeManager.escalate_overdue_storylines(player_state)
+
         WorldModelUpdater.process_causal_updates(
             player_state, compression_result.get("causal_updates", [])
         )

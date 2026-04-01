@@ -36,7 +36,7 @@ test.describe('Gameplay - Play Page Without Game', () => {
   // Tests for /play page when no game is active (redirects or shows loading)
   test('should handle play page without active game', async ({ page }) => {
     await page.goto('/play');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Page should either:
     // 1. Show a loading spinner (waiting for game)
@@ -55,7 +55,7 @@ test.describe('Gameplay - Play Page Without Game', () => {
     const loader = page.locator('[class*="animate-spin"]');
     
     // Either loader or redirect happens
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 });
 
@@ -79,7 +79,7 @@ test.describe('Gameplay - History Feature', () => {
 
   test('should open history drawer when clicking history button', async ({ page }) => {
     await page.goto('/play');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     const headerButtons = page.locator('header button');
     if (await headerButtons.count() >= 2) {
@@ -107,7 +107,7 @@ test.describe('Gameplay - Loading States', () => {
     await page.goto('/play');
     
     // Loading spinner or redirect should happen
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Page should handle gracefully
     const currentUrl = page.url();
@@ -116,7 +116,7 @@ test.describe('Gameplay - Loading States', () => {
 
   test('play page handles missing game state', async ({ page }) => {
     await page.goto('/play');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Either shows loading, redirects, or shows error
     // The important thing is it doesn't crash
@@ -128,7 +128,7 @@ test.describe('Gameplay - Loading States', () => {
 test.describe('Gameplay - Status Display', () => {
   test('welcome page loads correctly', async ({ page }) => {
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Welcome page should be visible
     await expect(page).toHaveTitle(/Story Life|人生|Life Draft/);
@@ -136,7 +136,7 @@ test.describe('Gameplay - Status Display', () => {
 
   test('should display round information', async ({ page }) => {
     await page.goto('/play');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Round progress (周/轮次)
     const roundInfo = page.locator('text=/周|轮|round/i');

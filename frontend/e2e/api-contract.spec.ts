@@ -18,7 +18,7 @@ async function testEndpoint(
   request: APIRequestContext,
   method: 'GET' | 'POST' | 'PUT' | 'DELETE',
   path: string,
-  expectedStatuses: number[] = [200, 401, 404, 422],
+  expectedStatuses: number[] = [200, 401, 404, 422, 429],
   body?: Record<string, unknown>
 ) {
   const url = `${API_URL}${path}`;

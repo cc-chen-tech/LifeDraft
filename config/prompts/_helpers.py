@@ -211,66 +211,94 @@ def _build_pending_storylines_context(
     if not pending_storylines:
         return ""
 
-    # 分离高/中重要性剧情线
+    # ★ 三级分离：overdue（过期必须处理）/ high / medium
+    overdue_storylines = [
+        sl for sl in pending_storylines
+        if sl.get("importance") == "high" and sl.get("overdue", False)
+    ]
     high_storylines = [
-        sl for sl in pending_storylines if sl.get("importance") == "high"
+        sl for sl in pending_storylines
+        if sl.get("importance") == "high" and not sl.get("overdue", False)
     ]
     medium_storylines = [
         sl for sl in pending_storylines if sl.get("importance") != "high"
     ]
 
+    def _fmt_storyline(sl: dict, lang: str) -> str:
+        """格式化单条剧情线"""
+        desc = sl.get("description", "")
+        created_week = sl.get("created_week", 0) + (1 if lang == "zh" else 0)
+        characters = sl.get("related_characters", [])
+        if lang == "zh":
+            char_str = f"，涉及人物: {'、'.join(characters)}" if characters else ""
+            return f"第{created_week}周起: {desc}{char_str}"
+        else:
+            char_str = f", involving: {', '.join(characters)}" if characters else ""
+            return f"Since week {created_week}: {desc}{char_str}"
+
     if language == "zh":
         lines = ["\n【未完结的重要剧情线】"]
+
+        # ★ 最高优先级：overdue 剧情线 — 独立强制约束
+        if overdue_storylines:
+            lines.append("\n🚨 **以下剧情线已严重滞后，本轮故事必须推进或解决其中至少一条：**")
+            for sl in overdue_storylines:
+                lines.append(f"- 🚨【逾期】{_fmt_storyline(sl, 'zh')}")
+            lines.append(
+                "强制要求：以上剧情线已被搁置太久，故事必须明确推进、回应或解决至少一条。"
+                "不能继续回避。如涉及时间承诺（约定、仪式等），必须让事件发生或给出合理交代。"
+            )
+
         if high_storylines:
-            lines.append("**必须在故事中涉及以下高重要性剧情线（至少一条）：**")
+            lines.append("\n**必须在故事中涉及以下高重要性剧情线（至少一条）：**")
             for sl in high_storylines:
-                desc = sl.get("description", "")
-                created_week = sl.get("created_week", 0) + 1  # ★ week 从0开始，显示时+1
-                characters = sl.get("related_characters", [])
-                char_str = f"，涉及人物: {'、'.join(characters)}" if characters else ""
-                lines.append(f"- 【高】第{created_week}周起: {desc}{char_str}")
+                lines.append(f"- 【高】{_fmt_storyline(sl, 'zh')}")
         if medium_storylines:
             lines.append("\n可选择性延续的剧情线：")
             for sl in medium_storylines:
-                desc = sl.get("description", "")
-                created_week = sl.get("created_week", 0) + 1  # ★ week 从0开始，显示时+1
-                characters = sl.get("related_characters", [])
-                char_str = f"，涉及人物: {'、'.join(characters)}" if characters else ""
-                lines.append(f"- 【中】第{created_week}周起: {desc}{char_str}")
-        if high_storylines:
+                lines.append(f"- 【中】{_fmt_storyline(sl, 'zh')}")
+        if high_storylines and not overdue_storylines:
             lines.append(
                 "\n强制要求：故事必须自然地涉及至少一条高重要性剧情线，可以是续写发展、回应或解决。不能完全忽略这些未完结的重要事件。"
             )
-        else:
+        elif not overdue_storylines:
             lines.append(
                 "\n建议自然地延续或回应以上剧情线。如果剧情自然结束，无需强行续写。"
             )
         return "\n".join(lines)
     else:
         lines = ["\n[Pending Important Storylines]"]
+
+        # ★ Overdue storylines — separate MUST constraint
+        if overdue_storylines:
+            lines.append(
+                "\n🚨 **OVERDUE: The following storylines have been stalled too long. "
+                "MUST advance or resolve at least one in THIS round:**"
+            )
+            for sl in overdue_storylines:
+                lines.append(f"- 🚨[OVERDUE] {_fmt_storyline(sl, 'en')}")
+            lines.append(
+                "MANDATORY: These storylines have been neglected too long. "
+                "Story MUST explicitly advance, address, or resolve at least one. "
+                "If it involves a time commitment (appointment, ceremony, etc.), "
+                "the event MUST happen or a clear explanation must be given."
+            )
+
         if high_storylines:
             lines.append(
-                "**MUST address at least one of these HIGH-importance storylines in the story:**"
+                "\n**MUST address at least one of these HIGH-importance storylines in the story:**"
             )
             for sl in high_storylines:
-                desc = sl.get("description", "")
-                created_week = sl.get("created_week", 0)
-                characters = sl.get("related_characters", [])
-                char_str = f", involving: {', '.join(characters)}" if characters else ""
-                lines.append(f"- [HIGH] Since week {created_week}: {desc}{char_str}")
+                lines.append(f"- [HIGH] {_fmt_storyline(sl, 'en')}")
         if medium_storylines:
             lines.append("\nOptional storylines to continue:")
             for sl in medium_storylines:
-                desc = sl.get("description", "")
-                created_week = sl.get("created_week", 0)
-                characters = sl.get("related_characters", [])
-                char_str = f", involving: {', '.join(characters)}" if characters else ""
-                lines.append(f"- [MEDIUM] Since week {created_week}: {desc}{char_str}")
-        if high_storylines:
+                lines.append(f"- [MEDIUM] {_fmt_storyline(sl, 'en')}")
+        if high_storylines and not overdue_storylines:
             lines.append(
                 "\nMANDATORY: Story MUST naturally involve at least one high-importance storyline - continue, address, or resolve it. Cannot completely ignore these unresolved important events."
             )
-        else:
+        elif not overdue_storylines:
             lines.append(
                 "\nSuggested: Naturally continue or address the above storylines. Don't force continuation if the plot naturally concludes."
             )

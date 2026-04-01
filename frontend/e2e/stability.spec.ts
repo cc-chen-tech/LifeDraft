@@ -16,7 +16,7 @@ test.describe('Stability E2E', () => {
 
     // 进入游戏页面（如果有活动游戏）
     await page.goto(`${BASE_URL}/play`);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // 记录控制台错误
     const consoleErrors: string[] = [];
@@ -40,7 +40,7 @@ test.describe('Stability E2E', () => {
     await page.context().setOffline(false);
 
     // 等待重连
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // 页面应该还能正常工作
     const bodyContent = page.locator('body');
@@ -121,7 +121,7 @@ test.describe('Stability E2E', () => {
     }
 
     // 最终等待页面稳定
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // 检查连接泄漏相关的错误
     const connectionErrors = consoleErrors.filter(
@@ -174,7 +174,7 @@ test.describe('Stability E2E', () => {
     const startTime = Date.now();
 
     await page.goto(`${BASE_URL}/play`);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     const loadTime = Date.now() - startTime;
 
@@ -201,7 +201,7 @@ test.describe('Stability E2E', () => {
     });
 
     await page.goto(`${BASE_URL}/create`);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // 填写角色名触发 AI 生成
     const nameInput = page.getByPlaceholder(/角色名|姓名|Name/i);
@@ -212,7 +212,7 @@ test.describe('Stability E2E', () => {
 
     if (await saveButton.isVisible().catch(() => false)) {
       await saveButton.click();
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
 
       // 如果发送了保存请求，应该成功或返回合理的错误
       if (saveRequestSent) {
@@ -239,8 +239,8 @@ test.describe('Stability E2E', () => {
       await page2.goto(`${BASE_URL}/saves`);
 
       // 等待两个页面加载
-      await page1.waitForLoadState('networkidle');
-      await page2.waitForLoadState('networkidle');
+      await page1.waitForLoadState('domcontentloaded');
+      await page2.waitForLoadState('domcontentloaded');
 
       // 两个页面都应该正常工作
       await expect(page1).toHaveURL(/create/);
@@ -258,7 +258,7 @@ test.describe('Stability E2E', () => {
       const returnButton = page2.getByRole('button', { name: /返回/i });
       if (await returnButton.isVisible().catch(() => false)) {
         await returnButton.click();
-        await page2.waitForLoadState('networkidle');
+        await page2.waitForLoadState('domcontentloaded');
       }
 
       // 第一个标签页的内容应该保持
@@ -273,21 +273,21 @@ test.describe('Stability E2E', () => {
     await ensureAuthenticated(page, context);
 
     await page.goto(`${BASE_URL}/create`);
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // 进行一些操作
     const nameInput = page.getByPlaceholder(/角色名|姓名|Name/i);
     await nameInput.fill('刷新测试角色');
 
     // 等待可能的自动保存
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // 记录当前 URL
     const urlBeforeReload = page.url();
 
     // 刷新页面
     await page.reload();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // 验证 URL 保持不变
     expect(page.url()).toBe(urlBeforeReload);

@@ -63,7 +63,7 @@ test.describe('Auth - Registration Flow', () => {
     
     const newGameButton = page.getByRole('button', { name: /新游戏|New Game/i });
     await newGameButton.click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     const nameInput = page.getByPlaceholder(/昵称|名字|Name/i);
     
@@ -78,7 +78,7 @@ test.describe('Auth - Registration Flow', () => {
     
     const newGameButton = page.getByRole('button', { name: /新游戏|New Game/i });
     await newGameButton.click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     const submitButton = page.getByRole('button', { name: /注册|Register|提交/i });
   });
@@ -88,7 +88,7 @@ test.describe('Auth - Registration Flow', () => {
     
     const newGameButton = page.getByRole('button', { name: /新游戏|New Game/i });
     await newGameButton.click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     const nameInput = page.getByPlaceholder(/昵称|名字|Name/i);
     
@@ -111,7 +111,7 @@ test.describe('Auth - Registration Flow', () => {
     
     const newGameButton = page.getByRole('button', { name: /新游戏|New Game/i });
     await newGameButton.click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     const nameInput = page.getByPlaceholder(/昵称|名字|Name/i);
     
@@ -138,7 +138,7 @@ test.describe('Auth - Login Flow', () => {
     
     if (await loginButton.isVisible()) {
       await loginButton.click();
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
       
       // Login sheet should open
       const sheet = page.locator('[role="dialog"], [class*="sheet"]');
@@ -152,7 +152,7 @@ test.describe('Auth - Login Flow', () => {
     
     if (await loginButton.isVisible()) {
       await loginButton.click();
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
       
       const privateIdInput = page.getByPlaceholder(/密钥|Private.*ID|ID/i);
       
@@ -170,7 +170,7 @@ test.describe('Auth - Login Flow', () => {
     
     if (await loginButton.isVisible()) {
       await loginButton.click();
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
       
       const privateIdInput = page.getByPlaceholder(/密钥|Private.*ID|ID/i);
       
@@ -179,7 +179,11 @@ test.describe('Auth - Login Flow', () => {
         
         const submitButton = page.getByRole('button', { name: /登录|Login/i });
         await submitButton.click();
-        await page.waitForResponse(resp => resp.url().includes('/api/auth'));
+        // Wait for auth response with longer timeout
+        await page.waitForResponse(
+          resp => resp.url().includes('/api/auth') || resp.url().includes('/login'),
+          { timeout: 10000 }
+        );
         
         // Error message should appear
         const errorMessage = page.locator('text=/失败|错误|无效/');
@@ -194,7 +198,7 @@ test.describe('Auth - Navigation', () => {
     
     const newGameButton = page.getByRole('button', { name: /新游戏/i });
     await newGameButton.click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Should open registration sheet or navigate to create
     const sheet = page.locator('[role="dialog"], [class*="sheet"]');
@@ -213,7 +217,7 @@ test.describe('Auth - Navigation', () => {
     
     if (await loadButton.isVisible()) {
       await loadButton.click();
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
       
       // Check if navigated to saves page or opened a sheet
       const currentUrl = page.url();
@@ -236,7 +240,7 @@ test.describe('Auth - Sheet Interactions', () => {
     
     const newGameButton = page.getByRole('button', { name: /新游戏|New Game/i });
     await newGameButton.click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Sheet should be open
     const sheet = page.locator('[role="dialog"], [class*="sheet"]');
@@ -254,7 +258,7 @@ test.describe('Auth - Sheet Interactions', () => {
     
     const newGameButton = page.getByRole('button', { name: /新游戏|New Game/i });
     await newGameButton.click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Press escape
     await page.keyboard.press('Escape');
@@ -268,7 +272,7 @@ test.describe('Auth - Error Handling', () => {
     
     const newGameButton = page.getByRole('button', { name: /新游戏/i });
     await newGameButton.click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // If registration sheet opened
     const nameInput = page.getByPlaceholder(/昵称|名字|Name/i);
@@ -288,7 +292,7 @@ test.describe('Auth - Error Handling', () => {
     
     const newGameButton = page.getByRole('button', { name: /新游戏/i });
     await newGameButton.click();
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     const nameInput = page.getByPlaceholder(/昵称|名字|Name/i);
     

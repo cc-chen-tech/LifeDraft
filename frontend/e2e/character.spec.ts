@@ -97,7 +97,7 @@ test.describe('Character Creation - Step Content', () => {
     await nameInput.fill('测试角色');
     
     // Wait for auto-generation to potentially start
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
   });
 });
 
@@ -110,7 +110,7 @@ test.describe('Character Creation - Navigation', () => {
     await nameInput.fill('测试角色');
     
     // Wait for generation
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Use .first() to avoid matching Next.js Dev Tools button
     const nextButton = page.getByRole('button', { name: /下一步|Next/i }).first();
@@ -118,7 +118,7 @@ test.describe('Character Creation - Navigation', () => {
     // Click next if enabled
     if (await nextButton.isEnabled()) {
       await nextButton.click();
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
       
       // Step indicator should show progress - check if still on create page
       await expect(page).toHaveURL('/create');
@@ -140,12 +140,12 @@ test.describe('Character Creation - Navigation', () => {
     // Enter name and proceed to step 2
     const nameInput = page.getByPlaceholder(/角色名|姓名/i);
     await nameInput.fill('测试角色');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     const nextButton = page.getByRole('button', { name: /下一步|Next/i }).first();
     if (await nextButton.isEnabled()) {
       await nextButton.click();
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
       
       // Now click on first dot to go back
       const stepDots = page.locator('button[class*="rounded-full"]');
@@ -164,7 +164,7 @@ test.describe('Character Creation - Auto Generation', () => {
     await nameInput.fill('测试角色');
     
     // Look for loading indicator
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     const loadingIndicator = page.locator('text=/生成中|AI正在生成/');
     const spinner = page.locator('[class*="animate-spin"]');
@@ -180,7 +180,7 @@ test.describe('Character Creation - Auto Generation', () => {
     
     // Wait for generation to complete
     await page.waitForResponse(resp => resp.url().includes('/api/') && resp.status() === 200).catch(() => {});
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Generated setting should appear
     const settingDisplay = page.locator('[class*="setting"], [class*="content"]');
@@ -191,7 +191,7 @@ test.describe('Character Creation - Auto Generation', () => {
     
     const nameInput = page.getByPlaceholder(/角色名|姓名/i);
     await nameInput.fill('测试角色');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Regenerate button (refresh icon)
     const regenerateButton = page.getByRole('button').filter({ has: page.locator('svg') });
@@ -202,7 +202,7 @@ test.describe('Character Creation - Auto Generation', () => {
     
     const nameInput = page.getByPlaceholder(/角色名|姓名/i);
     await nameInput.fill('测试角色');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Feedback input
     const feedbackInput = page.getByPlaceholder(/不满意|你的想法/i);
@@ -236,7 +236,7 @@ test.describe('Character Creation - Preset Sheet', () => {
     
     if (await saveButton.isVisible()) {
       await saveButton.click();
-      await page.waitForLoadState('networkidle');
+      await page.waitForLoadState('domcontentloaded');
       
       // Sheet should open
       const sheet = page.locator('[role="dialog"], [class*="sheet"]');
@@ -257,7 +257,7 @@ test.describe('Character Creation - Error Handling', () => {
     const nameInput = page.getByPlaceholder(/角色名|姓名/i);
     await nameInput.fill('测试角色');
     
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
     
     // Error toast should appear
     const errorToast = page.locator('text=/失败|错误|重试/');

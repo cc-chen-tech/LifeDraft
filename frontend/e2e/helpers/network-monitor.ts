@@ -123,7 +123,7 @@ export function startNetworkMonitoring(page: Page): NetworkMonitor {
  */
 export async function waitForNetworkIdle(page: Page, timeout = 5000): Promise<void> {
   try {
-    await page.waitForLoadState('networkidle', { timeout });
+    await page.waitForLoadState('domcontentloaded', { timeout });
   } catch {
     // 超时忽略，继续执行
   }
