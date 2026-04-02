@@ -304,7 +304,9 @@ class StoryGenerator:
         decision_history = player_state.get("decision_history", [])
         overused_phrases = extract_overused_phrases(decision_history, language=language)
         if overused_phrases:
-            logger.info(f"[AntiRepeat] Round: Injected dynamic ban list ({len(overused_phrases)} chars)")
+            logger.info(
+                f"[AntiRepeat] Round: Injected dynamic ban list ({len(overused_phrases)} chars)"
+            )
 
         # Get round story prompt
         prompt = get_round_event_prompt(

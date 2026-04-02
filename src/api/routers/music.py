@@ -68,7 +68,7 @@ async def recommend_music(
 
         # 批量获取所有歌曲的播放 URL（并行）
         import asyncio
-        
+
         async def get_song_url_with_id(song):
             """获取歌曲 URL 并返回 (id, url)"""
             try:
@@ -77,11 +77,11 @@ async def recommend_music(
             except Exception as e:
                 logger.warning(f"Failed to get URL for song {song.id}: {e}")
                 return (song.id, None)
-        
+
         # 并行获取所有歌曲的 URL
         url_tasks = [get_song_url_with_id(song) for song in recommendation.songs]
         url_results = await asyncio.gather(*url_tasks, return_exceptions=True)
-        
+
         # 构建 URL 映射
         url_map = {}
         for result in url_results:
@@ -89,7 +89,7 @@ async def recommend_music(
                 song_id, url = result
                 if url:
                     url_map[song_id] = url
-        
+
         logger.info(f"[MusicAPI] Fetched {len(url_map)}/{len(recommendation.songs)} song URLs")
 
         # 转换为响应格式（包含 URL）

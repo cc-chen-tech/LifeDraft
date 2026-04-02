@@ -204,12 +204,14 @@ class PromptEnhancer:
 
             # 如果负面反馈较多，增加严格约束
             if len(negative_feedback) >= 2:
-                enhancements.append("""
+                enhancements.append(
+                    """
 【重要】该角色近期生成质量不稳定，请严格遵循以下要求：
 - 仔细参照角色的外貌锚点描述
 - 保持面部特征的高度一致性
 - 确保与之前成功生成的形象一致
-""")
+"""
+                )
 
             # 基于反馈内容匹配规则
             for feedback in negative_feedback:
