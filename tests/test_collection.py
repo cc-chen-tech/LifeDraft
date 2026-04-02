@@ -591,6 +591,7 @@ class TestRegenerateCharacterImageEndpoint:
     def test_character_in_characters_affinity_49_rejected(self, app):
         """Test that character in player_state.characters with affinity 49 is rejected."""
         from src.api.deps import get_current_user_optional
+        from src.services.image_service import ImageService
 
         mock_user = MagicMock()
         mock_user.user_id = 1
@@ -609,29 +610,40 @@ class TestRegenerateCharacterImageEndpoint:
         mock_session.game_loop = mock_game_loop
 
         mock_db_session = MagicMock()
-        # Mock verify_game_ownership query
-        mock_db_session.query.return_value.filter.return_value.first.return_value = (
-            mock_game
+        mock_image = MagicMock()
+        mock_image.image_id = 123
+        mock_db_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+            mock_image
         )
 
         with patch("src.api.routers.collection.session_service") as mock_ss:
-            with patch("src.api.routers.collection.SessionLocal") as mock_db:
-                mock_ss.get_or_restore.return_value = mock_session
-                mock_db.return_value = mock_db_session
+            with patch("src.api.routers.collection.SessionLocal") as mock_db_class:
+                with patch.object(
+                    CollectionService, "verify_game_ownership"
+                ) as mock_verify:
+                    with patch.object(
+                        ImageService, "regenerate_image"
+                    ) as mock_regenerate:
+                        mock_ss.get_or_restore.return_value = mock_session
+                        mock_db_class.return_value = mock_db_session
+                        mock_verify.return_value = mock_game
+                        mock_regenerate.return_value = [mock_image]
 
-                app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+                        app.dependency_overrides[get_current_user_optional] = (
+                            lambda: mock_user
+                        )
 
-                test_client = TestClient(app)
-                response = test_client.post(
-                    "/collection/1/characters/李四/regenerate-image",
-                    json={"feedback": "头发变长"},
-                )
+                        test_client = TestClient(app)
+                        response = test_client.post(
+                            "/collection/1/characters/李四/regenerate-image",
+                            json={"feedback": "头发变长"},
+                        )
 
-                # affinity < 50 should be rejected with 403
-                assert response.status_code == 403
-                assert "亲密度" in response.json()["detail"]
+                        # affinity < 50 should be rejected with 403
+                        assert response.status_code == 403
+                        assert "亲密度" in response.json()["detail"]
 
-                app.dependency_overrides.clear()
+                        app.dependency_overrides.clear()
 
     def test_character_in_characters_affinity_50_allowed(self, app):
         """Test that character in player_state.characters with affinity 50 is allowed."""
@@ -786,6 +798,7 @@ class TestRegenerateCharacterImageEndpoint:
     def test_character_in_characters_priority_over_key_people(self, app):
         """Test that player_state.characters is checked first and affinity is validated."""
         from src.api.deps import get_current_user_optional
+        from src.services.image_service import ImageService
 
         # Character exists in BOTH characters (with low affinity) AND key_people
         # Should use characters data and apply affinity check
@@ -812,28 +825,40 @@ class TestRegenerateCharacterImageEndpoint:
         mock_session.game_loop = mock_game_loop
 
         mock_db_session = MagicMock()
-        mock_db_session.query.return_value.filter.return_value.first.return_value = (
-            mock_game
+        mock_image = MagicMock()
+        mock_image.image_id = 123
+        mock_db_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
+            mock_image
         )
 
         with patch("src.api.routers.collection.session_service") as mock_ss:
-            with patch("src.api.routers.collection.SessionLocal") as mock_db:
-                mock_ss.get_or_restore.return_value = mock_session
-                mock_db.return_value = mock_db_session
+            with patch("src.api.routers.collection.SessionLocal") as mock_db_class:
+                with patch.object(
+                    CollectionService, "verify_game_ownership"
+                ) as mock_verify:
+                    with patch.object(
+                        ImageService, "regenerate_image"
+                    ) as mock_regenerate:
+                        mock_ss.get_or_restore.return_value = mock_session
+                        mock_db_class.return_value = mock_db_session
+                        mock_verify.return_value = mock_game
+                        mock_regenerate.return_value = [mock_image]
 
-                app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+                        app.dependency_overrides[get_current_user_optional] = (
+                            lambda: mock_user
+                        )
 
-                test_client = TestClient(app)
-                response = test_client.post(
-                    "/collection/1/characters/林月如/regenerate-image",
-                    json={"feedback": "换个发型"},
-                )
+                        test_client = TestClient(app)
+                        response = test_client.post(
+                            "/collection/1/characters/林月如/regenerate-image",
+                            json={"feedback": "换个发型"},
+                        )
 
-                # Should check affinity from characters, not bypass
-                assert response.status_code == 403
-                assert "亲密度" in response.json()["detail"]
+                        # Should check affinity from characters, not bypass
+                        assert response.status_code == 403
+                        assert "亲密度" in response.json()["detail"]
 
-                app.dependency_overrides.clear()
+                        app.dependency_overrides.clear()
 
 
 class TestRegenerateItemImageEndpoint:
