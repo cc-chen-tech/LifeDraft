@@ -165,28 +165,34 @@ test.describe('Auth - Login Flow', () => {
 
   test('should show error for invalid private ID', async ({ page }) => {
     await page.goto('/');
-    
+
     const loginButton = page.getByRole('button', { name: /登录|Login/i });
-    
+
     if (await loginButton.isVisible()) {
       await loginButton.click();
       await page.waitForLoadState('domcontentloaded');
-      
+
       const privateIdInput = page.getByPlaceholder(/密钥|Private.*ID|ID/i);
-      
+
       if (await privateIdInput.isVisible()) {
         await privateIdInput.fill('invalid-id');
-        
+
         const submitButton = page.getByRole('button', { name: /登录|Login/i });
         await submitButton.click();
-        // Wait for auth response with longer timeout
-        await page.waitForResponse(
-          resp => resp.url().includes('/api/auth') || resp.url().includes('/login'),
-          { timeout: 10000 }
-        );
-        
-        // Error message should appear
-        const errorMessage = page.locator('text=/失败|错误|无效/');
+
+        // Wait for any response or error indication (API might not be called for invalid ID)
+        await page.waitForTimeout(2000);
+
+        // Error message should appear or page should show error state
+        const errorMessage = page.locator('text=/失败|错误|无效|error|invalid/i');
+        const hasError = await errorMessage.isVisible().catch(() => false);
+
+        // If no visible error, check for alert or toast
+        if (!hasError) {
+          const alert = page.locator('[role="alert"], .toast, .alert');
+          const hasAlert = await alert.isVisible().catch(() => false);
+          expect(hasError || hasAlert).toBeTruthy();
+        }
       }
     }
   });
