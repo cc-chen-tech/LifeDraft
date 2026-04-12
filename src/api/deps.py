@@ -10,7 +10,7 @@ from jose import JWTError, jwt
 
 from src.api.services.session_service import session_service
 from src.api.session_store import GameLoopSession
-from src.database.singletons import get_game_db, get_user_manager
+from src.database.singletons import get_game_db, get_user_manager  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
