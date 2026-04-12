@@ -139,7 +139,7 @@ export function StreamingText({
         </p>
       ))}
       {/* If no paragraphs yet but streaming, show cursor */}
-      {paragraphs.length === 0 && stillTyping && (
+      {paragraphs.length === 0 && isStreaming && (
         <p className="animate-fade-in-word">
           <span className="typewriter-cursor" />
         </p>
