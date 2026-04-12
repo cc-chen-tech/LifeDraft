@@ -11,7 +11,7 @@ Usage:
 
 import logging
 import threading
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from fastapi import HTTPException
 
@@ -172,8 +172,6 @@ class SessionService:
             state_data: 游戏状态数据
         """
         try:
-            from src.database.models import Image as ImageModel
-            from src.database.models import SceneImage
             from src.services.image_storage import ImageStorageService
 
             db = SessionLocal()  # ★ 使用 SessionLocal 获取真正的 SQLAlchemy session
@@ -258,7 +256,7 @@ class SessionService:
             .filter(
                 ImageModel.game_id == game_id,
                 ImageModel.image_type == "character",
-                ImageModel.is_active == True,
+                ImageModel.is_active is True,
             )
             .all()
         )

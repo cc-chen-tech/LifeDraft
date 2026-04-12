@@ -7,9 +7,9 @@
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Any
 
-from .constraint_registry import ConstraintRegistry, ConstraintType, Priority, ConstraintDefinition
+from .constraint_registry import ConstraintRegistry, Priority, ConstraintDefinition
 
 logger = logging.getLogger(__name__)
 

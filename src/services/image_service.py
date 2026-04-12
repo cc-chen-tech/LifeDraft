@@ -10,12 +10,12 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from config.settings import settings
-from src.ai.image_client import ContentInspectionError, ImageClient, ImageGenerationError
+from src.ai.image_client import ImageClient
+from src.ai.image_exceptions import ContentInspectionError, ImageGenerationError
 from src.database.models import Image as ImageModel
 from src.services.image.character_service import CharacterImageService
 from src.services.image.scene_service import SceneImageService
-from src.services.image_storage import ImageStorageError, ImageStorageService
+from src.services.image_storage import ImageStorageService
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +37,6 @@ def shutdown_image_thread_pool(wait: bool = True) -> None:
 
 class ImageServiceError(Exception):
     """图像服务错误"""
-
-    pass
 
 
 class ImageContentError(ImageServiceError):
@@ -421,7 +419,7 @@ class ImageService:
                 ImageModel.game_id == game_id,
                 ImageModel.image_type == image_type,
                 ImageModel.entity_name == entity_name,
-                ImageModel.is_active == True,
+                ImageModel.is_active is True,
             )
             .order_by(ImageModel.version.desc())
             .first()
@@ -435,7 +433,7 @@ class ImageService:
         """获取游戏的所有图片"""
         query = self.db.query(ImageModel).filter(
             ImageModel.game_id == game_id,
-            ImageModel.is_active == True,
+            ImageModel.is_active is True,
         )
 
         if image_type:
@@ -714,7 +712,7 @@ class ImageService:
                 .filter(
                     ImageModel.game_id == game_id,
                     ImageModel.image_type == "character",
-                    ImageModel.is_primary == True,
+                    ImageModel.is_primary is True,
                 )
                 .order_by(ImageModel.image_id.desc())
                 .first()

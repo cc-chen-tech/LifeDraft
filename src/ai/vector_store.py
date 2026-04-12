@@ -11,7 +11,7 @@ Configuration:
 import logging
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,6 @@ class VectorStore:
         try:
             # Try to import chromadb (preferred)
             import chromadb
-            from chromadb.config import Settings
 
             # Use in-memory or persistent storage based on config
             persist_dir = os.getenv("VECTOR_STORE_PATH", "./data/vector_store")

@@ -189,7 +189,7 @@ class StoryService:
 
                 if ps_obj:
                     world_model = WorldModel.from_player_state(ps_obj)
-                    logger.debug(f"[StoryContinuation] Built WorldModel for validation")
+                    logger.debug("[StoryContinuation] Built WorldModel for validation")
             except (ImportError, ValueError, TypeError, KeyError) as e:
                 logger.warning(f"[StoryContinuation] Failed to build WorldModel: {e}")
                 return continuation
@@ -383,7 +383,7 @@ class StoryService:
                 last_error = str(e)
                 logger.warning(f"Attempt {attempt + 1}/2 failed (unexpected): {e}")
 
-        logger.error(f"Failed to generate custom choice effects after 2 attempts, using fallback")
+        logger.error("Failed to generate custom choice effects after 2 attempts, using fallback")
         return {"energy": -5, "mood": 5, "knowledge": 0, "wealth": 0}
 
     def generate_custom_choice_result(
@@ -450,7 +450,7 @@ class StoryService:
                 last_error = str(e)
                 logger.warning(f"Attempt {attempt + 1}/2 failed (unexpected): {e}")
 
-        logger.error(f"Failed to generate custom choice result after 2 attempts, using fallback")
+        logger.error("Failed to generate custom choice result after 2 attempts, using fallback")
         return {
             "story_continuation": f"你决定{custom_text}。这是一个有趣的选择，让我们看看接下来会发生什么...",
             "effects": {"energy": -5, "mood": 5},

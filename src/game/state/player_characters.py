@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
     from src.game.state.character_state import CharacterState
-    from src.game.state.player_state import PlayerState
 
 logger = logging.getLogger(__name__)
 

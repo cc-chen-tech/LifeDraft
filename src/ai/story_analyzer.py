@@ -19,7 +19,7 @@ Design Principles:
 import hashlib
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from src.ai.system_prompts import get_system_prompt
 from src.ai.utils import extract_json

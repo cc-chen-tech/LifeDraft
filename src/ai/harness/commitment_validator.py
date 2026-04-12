@@ -7,7 +7,7 @@
 
 import logging
 import re
-from typing import List, Tuple
+from typing import Tuple
 
 logger = logging.getLogger(__name__)
 

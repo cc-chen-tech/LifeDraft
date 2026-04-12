@@ -6,7 +6,6 @@
 """
 
 import logging
-import random
 from typing import Dict, List, Optional
 
 from src.ai.narrative.style_manifest import StyleManifest

@@ -5,7 +5,7 @@ L3 创意增强层 - 新颖度评分与多样性建议。
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 # 尝试导入向量存储
 _vector_store_available = False
 try:
-    from src.ai.vector_store import get_vector_store, is_vector_search_enabled
+    pass
 
     _vector_store_available = True
 except ImportError:

@@ -6,7 +6,6 @@ from typing import Any, Dict, Optional, Tuple
 from config.settings import settings
 from src.database.db import GameDatabase
 from src.game.game_loop import GameLoop
-from src.game.state import PlayerState
 
 logger = logging.getLogger(__name__)
 

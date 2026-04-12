@@ -20,8 +20,6 @@ logger = logging.getLogger(__name__)
 class ImageStorageError(Exception):
     """图片存储错误"""
 
-    pass
-
 
 class ImageStorageService:
     """图片存储服务 - 支持本地存储和OSS存储"""

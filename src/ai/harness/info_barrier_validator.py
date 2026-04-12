@@ -7,7 +7,7 @@
 
 import logging
 import re
-from typing import Dict, List, Tuple
+from typing import Dict, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,6 @@ class InformationBarrierValidator:
             )
 
             # 按角色分组检查
-            checked_chars: set = set()
             for char_name in characters:
                 char_knowledge_raw = knowledge_sets.get(char_name, {})
                 if not char_knowledge_raw:

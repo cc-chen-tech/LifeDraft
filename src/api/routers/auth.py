@@ -2,7 +2,6 @@
 
 import logging
 import os
-from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import JSONResponse

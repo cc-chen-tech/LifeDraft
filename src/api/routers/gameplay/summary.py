@@ -35,7 +35,7 @@ async def clear_session_for_debug(
 ):
     """Debug: Clear session for specified game, simulating session expiry."""
     session_store.remove(game_id, user_id)
-    logger.info(f"[DEBUG] Cleared session for game_id={game_id}, user_id={user_id}")
+    logger.debug(f"Cleared session for game_id={game_id}, user_id={user_id}")
     return {"message": f"Session cleared for game {game_id}"}
 
 

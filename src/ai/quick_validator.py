@@ -7,7 +7,7 @@ before the optional AI-based consistency validation.
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +161,7 @@ class QuickValidator:
             if isinstance(match, tuple):
                 match = match[0] if match[0] else match[1] if len(match) > 1 else ""
 
-            match_lower = match.lower()
+            match.lower()
 
             # 检查是否在允许的上下文中
             is_allowed = False

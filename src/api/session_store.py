@@ -3,7 +3,7 @@
 import logging
 import threading
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from src.game.game_loop import GameLoop
 

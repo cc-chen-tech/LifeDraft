@@ -5,11 +5,10 @@ Handles the generation of events for each round in the game.
 
 import logging
 import time
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Optional
 
 from src.ai.models import GameEvent
 from src.game.narrative_manager import NarrativeManager
-from src.game.world_model_updater import WorldModelUpdater
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +140,7 @@ class RoundEventGenerator:
                         f"\n\n{story_continuation}" if story_continuation else ""
                     )
                     resume_source = "round_history"
-                    logger.info(f"[Resume Check] Found current round story in round_history")
+                    logger.info("[Resume Check] Found current round story in round_history")
 
                 # Case 2: Last round is current_round - 1, and last_round_full_story exists
                 # This means story was generated but choice not made yet
@@ -165,7 +164,7 @@ class RoundEventGenerator:
                 existing_story = last_round_full_story
                 resume_source = "last_round_full_story_only"
                 logger.info(
-                    f"[Resume Check] Using last_round_full_story (no round_history match, round 0 with current_event)"
+                    "[Resume Check] Using last_round_full_story (no round_history match, round 0 with current_event)"
                 )
 
             if existing_story and len(existing_story) > 100:
@@ -443,7 +442,7 @@ class RoundEventGenerator:
         """Generate a fallback event when AI generation fails."""
         from src.ai.models import EventOption
 
-        player_state = self.player_state
+        self.player_state
         language = self.language
 
         if language == "zh":
@@ -509,7 +508,7 @@ class RoundEventGenerator:
 
         # 构建强制事件的提示
         combined_description = "；".join(descriptions)
-        combined_hint = "；".join(event_hints) if event_hints else ""
+        "；".join(event_hints) if event_hints else ""
         parties_str = "、".join(all_parties) if all_parties else ""
 
         logger.info(f"生成预定事件: {combined_description[:60]}... (涉及: {parties_str})")

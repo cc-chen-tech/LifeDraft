@@ -8,15 +8,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from src.game.relationship_events import (
-    RELATIONSHIP_EVENTS,
     EventCategory,
     RelationshipEventDef,
-    get_event_by_type,
     get_events_by_category,
 )
 
 if TYPE_CHECKING:
-    from src.game.state import CharacterState, PlayerState
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -353,10 +351,8 @@ class RelationshipMCPService:
         # 获取时代
         era_info = char_settings.get("era", {})
         era_name = era_info.get("era", era)
-
         # 遍历所有角色检测事件
         for char_data in player.characters.values():
-            from src.game.state import CharacterState
 
             # char_data 可能是 CharacterState 对象或 dict
             if isinstance(char_data, CharacterState):
@@ -402,7 +398,6 @@ class RelationshipMCPService:
         char_data = player.characters[character_name]
 
         # char_data 可能是 CharacterState 对象或 dict
-        from src.game.state import CharacterState
 
         if isinstance(char_data, CharacterState):
             if event_type not in char_data.triggered_events:
@@ -438,7 +433,6 @@ class RelationshipMCPService:
         char_data = player.characters[character_name]
 
         # char_data 可能是 CharacterState 对象或 dict
-        from src.game.state import CharacterState
 
         # 恒爱萌芽 -> 改变感情状态
         if event_type == "romance_spark":

@@ -8,7 +8,6 @@ import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
-from src.ai.narrative.style_manifest import StyleManifest, get_style
 
 logger = logging.getLogger(__name__)
 

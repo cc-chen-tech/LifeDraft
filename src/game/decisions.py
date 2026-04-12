@@ -1,12 +1,12 @@
 """Decision processing and result generation."""
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from config.prompts import get_result_generation_prompt
 from src.ai.generator import EventGenerator
 from src.ai.system_prompts import get_system_prompt
-from src.game.state import CharacterState, PlayerState
+from src.game.state import PlayerState
 
 logger = logging.getLogger(__name__)
 

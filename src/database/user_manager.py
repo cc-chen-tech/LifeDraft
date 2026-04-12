@@ -123,7 +123,7 @@ class UserManager:
             self.db.commit()
             logger.info(f"User logged in: public_id={user.public_id}")
         else:
-            logger.warning(f"Login failed: private_id not found")
+            logger.warning("Login failed: private_id not found")
 
         return user
 
@@ -337,9 +337,10 @@ class UserManager:
             if sender:
                 result.append(
                     {
-                        "friendship_id": req.id,
-                        "sender_public_id": sender.public_id,
-                        "sender_display_name": sender.display_name or sender.public_id,
+                        "request_id": req.id,
+                        "from_user_id": req.user_id,
+                        "from_public_id": sender.public_id,
+                        "from_display_name": sender.display_name or sender.public_id,
                         "created_at": req.created_at,
                     }
                 )
@@ -436,7 +437,7 @@ class UserManager:
 
         return (
             self.db.query(Game)
-            .filter(Game.user_id == friend_user_id, Game.is_public == True)
+            .filter(Game.user_id == friend_user_id, Game.is_public is True)
             .order_by(Game.created_at.desc())
             .all()
         )

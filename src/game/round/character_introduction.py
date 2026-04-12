@@ -187,7 +187,7 @@ class CharacterIntroductionService:
 
         # 根据当前玩家状态判断
         player_state = self.player_state
-        character_settings = player_state.character_settings or {}
+        player_state.character_settings or {}
         world_model = player_state.world_model_data or {}
 
         # 检查是否有最近的工作变化
@@ -284,7 +284,7 @@ class CharacterIntroductionService:
             是否匹配
         """
         player_state = self.player_state
-        character_settings = player_state.character_settings or {}
+        player_state.character_settings or {}
         world_model = player_state.world_model_data or {}
         round_history = player_state.round_history or []
 

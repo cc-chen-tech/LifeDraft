@@ -1,7 +1,6 @@
 """Prompt 注入防护工具"""
 
 import re
-from typing import Optional
 
 # 最大用户输入长度
 MAX_USER_INPUT_LENGTH = 500

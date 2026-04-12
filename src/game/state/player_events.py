@@ -30,7 +30,6 @@ class PlayerEventsMixin:
         Args:
             event: ScheduledEvent 实例
         """
-        from src.game.scheduled_events import ScheduledEvent
 
         # 检查是否已存在
         existing_ids = [e.get("event_id") for e in self.scheduled_events]

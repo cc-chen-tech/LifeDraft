@@ -7,7 +7,7 @@
 
 import logging
 import re
-from typing import Dict, List, Tuple
+from typing import Dict, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +80,6 @@ class CauseEffectConsistencyValidator:
 
             story_history = player_state.get("story_history", [])
 
-            violations = []
             details: Dict = {
                 "decisions_checked": 0,
                 "pending_consequences": [],
@@ -136,7 +135,6 @@ class CauseEffectConsistencyValidator:
                     f"决策'{d.get('decision', '')[:30]}'(第{d.get('week', 0)}周)后果未体现"
                     for d in long_overdue[:3]
                 ]
-                violations = violation_msgs
                 return (
                     False,
                     f"因果后果违规: {'; '.join(violation_msgs)}",
@@ -194,7 +192,7 @@ class CauseEffectConsistencyValidator:
 
     def check_consequence_reflection(self, story_text: str, pending: dict) -> bool:
         """检查文本是否对该决策有后果体现。"""
-        decision_text = pending.get("decision", "")
+        pending.get("decision", "")
         keywords = pending.get("keywords", [])
 
         if not keywords:
@@ -387,7 +385,7 @@ class CauseEffectConsistencyValidator:
     ) -> str:
         """检查故事是否包含与预期后果矛盾的内容。"""
         # 提取触发事件和预期后果中的关键实体
-        event_keywords = self._extract_decision_keywords(trigger_event)
+        self._extract_decision_keywords(trigger_event)
         consequence_keywords = self._extract_decision_keywords(expected_consequence)
 
         # 查找正面预期的反面表达

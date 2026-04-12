@@ -8,7 +8,6 @@ T1日常/T2区域/T3史诗 三级池冲突管理。
 import logging
 from typing import Dict, List, Optional
 
-from src.ai.narrative.style_manifest import StyleManifest
 
 logger = logging.getLogger(__name__)
 

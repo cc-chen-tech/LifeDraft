@@ -78,25 +78,25 @@ class HarnessMetrics:
             # 创建索引提高查询性能
             cursor.execute(
                 """
-                CREATE INDEX IF NOT EXISTS idx_runs_timestamp 
+                CREATE INDEX IF NOT EXISTS idx_runs_timestamp
                 ON generation_runs(timestamp)
             """
             )
             cursor.execute(
                 """
-                CREATE INDEX IF NOT EXISTS idx_runs_game_id 
+                CREATE INDEX IF NOT EXISTS idx_runs_game_id
                 ON generation_runs(game_id)
             """
             )
             cursor.execute(
                 """
-                CREATE INDEX IF NOT EXISTS idx_checks_run_id 
+                CREATE INDEX IF NOT EXISTS idx_checks_run_id
                 ON constraint_checks(run_id)
             """
             )
             cursor.execute(
                 """
-                CREATE INDEX IF NOT EXISTS idx_checks_constraint_type 
+                CREATE INDEX IF NOT EXISTS idx_checks_constraint_type
                 ON constraint_checks(constraint_type)
             """
             )
@@ -155,9 +155,9 @@ class HarnessMetrics:
             # 插入生成运行记录
             cursor.execute(
                 """
-                INSERT INTO generation_runs 
+                INSERT INTO generation_runs
                 (game_id, week, timestamp, attempts, final_score, passed,
-                 prompt_token_estimate, latency_ms, preflight_passed, 
+                 prompt_token_estimate, latency_ms, preflight_passed,
                  preflight_missing, error_message)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
@@ -183,7 +183,7 @@ class HarnessMetrics:
                 for ctype, check in validation_result["detailed_checks"].items():
                     cursor.execute(
                         """
-                        INSERT INTO constraint_checks 
+                        INSERT INTO constraint_checks
                         (run_id, constraint_type, priority, passed, evidence, details)
                         VALUES (?, ?, ?, ?, ?, ?)
                     """,
@@ -224,7 +224,7 @@ class HarnessMetrics:
             # 获取最近N次run的ID
             cursor.execute(
                 """
-                SELECT id FROM generation_runs 
+                SELECT id FROM generation_runs
                 ORDER BY timestamp DESC LIMIT ?
             """,
                 (last_n,),
@@ -237,10 +237,10 @@ class HarnessMetrics:
             placeholders = ",".join(["?"] * len(run_ids))
             cursor.execute(
                 f"""
-                SELECT constraint_type, 
+                SELECT constraint_type,
                        COUNT(*) as total,
                        SUM(passed) as passed_count
-                FROM constraint_checks 
+                FROM constraint_checks
                 WHERE run_id IN ({placeholders})
                 GROUP BY constraint_type
             """,
@@ -278,7 +278,7 @@ class HarnessMetrics:
                 """
                 SELECT attempts, COUNT(*) as count
                 FROM (
-                    SELECT attempts FROM generation_runs 
+                    SELECT attempts FROM generation_runs
                     ORDER BY timestamp DESC LIMIT ?
                 )
                 GROUP BY attempts
@@ -311,7 +311,7 @@ class HarnessMetrics:
 
             cursor.execute(
                 """
-                SELECT cc.constraint_type, 
+                SELECT cc.constraint_type,
                        COUNT(*) as failure_count,
                        GROUP_CONCAT(cc.evidence, ' | ') as recent_evidence
                 FROM constraint_checks cc

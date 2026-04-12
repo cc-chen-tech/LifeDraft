@@ -4,7 +4,7 @@
 包含所有 Pydantic 字段定义、验证器和序列化方法。
 """
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from pydantic import Field, field_validator
 
@@ -12,7 +12,7 @@ from config.settings import settings
 
 # 在 TYPE_CHECKING 中声明 BaseModel 的方法
 if TYPE_CHECKING:
-    from pydantic import BaseModel
+    pass
 
 
 class PlayerDataMixin:

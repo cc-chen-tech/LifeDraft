@@ -8,7 +8,7 @@
 
 import logging
 import re
-from typing import Dict, List, Tuple
+from typing import Dict, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -136,29 +136,25 @@ class NPCAttributeStabilityValidator:
         issues = []
 
         # 获取已存储的属性
-        stored_identity = ""
         stored_appearance = ""
-        stored_personality = ""
         if isinstance(profile, dict):
-            stored_identity = profile.get("identity", "")
+            profile.get("identity", "")
             stored_appearance = profile.get("appearance", "")
-            stored_personality = profile.get("personality", "")
+            profile.get("personality", "")
         elif hasattr(profile, "identity"):
-            stored_identity = getattr(profile, "identity", "")
+            getattr(profile, "identity", "")
             stored_appearance = getattr(profile, "appearance", "")
-            stored_personality = getattr(profile, "personality", "")
+            getattr(profile, "personality", "")
 
-        stored_traits = []
         if hasattr(profile, "behavioral_traits"):
-            stored_traits = profile.behavioral_traits
+            profile.behavioral_traits
         elif isinstance(profile, dict):
-            stored_traits = profile.get("behavioral_traits", [])
+            profile.get("behavioral_traits", [])
 
-        stored_speech = ""
         if hasattr(profile, "speech_style"):
-            stored_speech = profile.speech_style
+            profile.speech_style
         elif isinstance(profile, dict):
-            stored_speech = profile.get("speech_style", "")
+            profile.get("speech_style", "")
 
         # 检查描写间的自相矛盾
         attrs_found = [d["attribute"] for d in descriptions]

@@ -29,7 +29,6 @@ class PlayerLandmarksMixin:
         Args:
             landmark: LandmarkState实例
         """
-        from src.game.state.landmark_state import LandmarkState
 
         self.landmarks[landmark.name] = landmark.model_dump()
         logger.debug(f"Added landmark: {landmark.name} (importance: {landmark.importance})")

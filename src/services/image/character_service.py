@@ -6,7 +6,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from src.ai.image_client import ContentInspectionError, ImageClient, ImageGenerationError
+from src.ai.image_client import ImageClient
+from src.ai.image_exceptions import ContentInspectionError, ImageGenerationError
 from src.database.models import Image as ImageModel
 from src.services.image import ImageContentError, ImageServiceError
 from src.services.image_storage import ImageStorageService

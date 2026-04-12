@@ -4,10 +4,9 @@ import logging
 from typing import Generator, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import Response as FastAPIResponse
 from sqlalchemy.orm import Session
 
-from src.api.deps import get_current_user, get_current_user_optional, get_db
+from src.api.deps import get_current_user, get_current_user_optional
 from src.api.schemas import (
     BatchGenerateCharactersRequest,
     GenerateImageRequest,
@@ -716,7 +715,6 @@ async def get_image_file(
         storage_service = ImageStorageService()
 
         # 构建存储路径
-        from pathlib import Path
 
         # C-01: 路径遍历防护
         base_path = storage_service.local_path.resolve()
@@ -1227,10 +1225,6 @@ def _trigger_scene_generation_in_background(
                     for img in existing_images
                 ]
 
-                # 获取玩家形象图片ID
-                player_image = illustration_service._get_player_image(existing_image_list)
-                player_image_id = player_image.get("image_id") if player_image else None
-
                 week_display = f"第{week + 1}周" if week is not None else "未知周"
                 logger.info(
                     f"[Background Generation] Starting scene generation for "
@@ -1238,28 +1232,23 @@ def _trigger_scene_generation_in_background(
                 )
 
                 # 生成场景插画
-                scene_image = illustration_service.generate_round_scene(
+                illustration_service._generate_round_illustration_sync(
                     game_id=game_id,
                     round_number=round_number,
                     story_text=story_text,
                     character_settings=character_settings,
                     player_name=player_name,
-                    player_image_id=player_image_id,
+                    existing_images=existing_image_list,
                     stage=stage,
                     week=week,
                 )
 
-                if scene_image:
-                    logger.info(
-                        f"[Background Generation] Scene generated successfully: "
-                        f"scene_id={scene_image.scene_id}, game={game_id}, {week_display}, "
-                        f"round={round_number}, stage={stage}"
-                    )
-                else:
-                    logger.warning(
-                        f"[Background Generation] Scene generation returned None: "
-                        f"game={game_id}, {week_display}, round={round_number}, stage={stage}"
-                    )
+                week_display = f"第{week + 1}周" if week is not None else "未知周"
+                logger.info(
+                    f"[Background Generation] Scene generated successfully: "
+                    f"game={game_id}, {week_display}, "
+                    f"round={round_number}, stage={stage}"
+                )
 
             except Exception as e:
                 logger.exception(f"[Background Generation] Error in thread: {e}")

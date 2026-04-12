@@ -1,7 +1,6 @@
 """Game repository for game CRUD operations."""
 
 import logging
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import func

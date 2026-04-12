@@ -297,7 +297,6 @@ class OptionGenerator:
 
         # 1. 检查选项是否与故事结尾相关
         # 简单启发式：检查选项文本是否与故事最后200字符有词汇重叠
-        story_end = story_description[-500:] if len(story_description) > 500 else story_description
 
         for i, option in enumerate(event.options):
             # 检查选项文本长度

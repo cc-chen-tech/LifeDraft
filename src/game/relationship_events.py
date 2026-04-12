@@ -5,7 +5,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Callable, Dict, List, Optional
+from typing import Dict, List, Optional
 
 
 class EventCategory(Enum):

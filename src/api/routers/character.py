@@ -5,17 +5,15 @@ import json
 import logging
 import threading
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from src.api.deps import get_current_user_optional
 from src.api.schemas import (
     GenerateAttributesRequest,
     GenerateRelationshipRequest,
     GenerateSettingRequest,
-    MessageResponse,
     OpeningStoryRequest,
     RelationshipsSummaryRequest,
 )

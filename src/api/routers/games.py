@@ -125,7 +125,7 @@ async def get_active_game(
     try:
         game_loop = GameLoop(language=language)
         game_loop.load_game(state_data)
-        logger.info(f"[get_active_game] GameLoop loaded successfully")
+        logger.info("[get_active_game] GameLoop loaded successfully")
     except Exception as e:
         logger.exception(f"[get_active_game] Failed to load game: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to load game state: {str(e)}")
@@ -136,7 +136,7 @@ async def get_active_game(
     try:
         state = game_loop.get_state()
         player_state_dict = state.to_dict() if state else {}
-        logger.info(f"[get_active_game] State converted to dict successfully")
+        logger.info("[get_active_game] State converted to dict successfully")
     except Exception as e:
         logger.exception(f"[get_active_game] Failed to convert state to dict: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to serialize game state: {str(e)}")

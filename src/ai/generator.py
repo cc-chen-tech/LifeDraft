@@ -12,18 +12,16 @@ All existing public method signatures are preserved for backward compatibility.
 
 import json
 import logging
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from config.settings import PRESETS_DIR, settings
 from src.ai.cache import EventCache
 from src.ai.client import AIClient
-from src.ai.models import EventOption, GameEvent
+from src.ai.models import GameEvent
 from src.ai.option_generator import OptionGenerator
 from src.ai.story_generator import StoryGenerator
 from src.ai.story_rewriter import StoryRewriter
 from src.ai.summary_generator import SummaryGenerator
-from src.ai.utils import extract_json
 
 logger = logging.getLogger(__name__)
 

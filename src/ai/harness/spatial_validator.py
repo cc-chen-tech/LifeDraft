@@ -7,7 +7,7 @@
 
 import logging
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +82,7 @@ class SpatialMovementValidator:
             if not character_locations:
                 return True, "", {"skipped": True, "reason": "no character_locations"}
 
-            player_state = context.get("player_state", {})
+            context.get("player_state", {})
 
             violations = []
             details: Dict = {

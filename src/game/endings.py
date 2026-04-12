@@ -3,7 +3,6 @@
 import logging
 from typing import Any, Dict, Optional
 
-from config.prompts import get_ending_prompt
 from src.ai.generator import EventGenerator
 from src.ai.system_prompts import get_system_prompt
 from src.game.state import PlayerState
@@ -42,7 +41,7 @@ class EndingEvaluator:
         Returns:
             Dictionary with ending information
         """
-        state_dict = player_state.to_dict()
+        player_state.to_dict()
 
         # Calculate scores
         avg_attribute = (player_state.energy + player_state.mood + player_state.knowledge) / 3

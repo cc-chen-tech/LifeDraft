@@ -5,10 +5,9 @@ L3 创意增强层 - 伏笔回收技法匹配与选项钩子注入。
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-from src.ai.narrative.style_manifest import StyleManifest, get_style
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +111,7 @@ class ForeshadowingTechniqueLibrary:
         try:
             name = foreshadowing.get("name", "未知伏笔")
             description = foreshadowing.get("description", "")
-            seed_type = foreshadowing.get("type", "")
+            foreshadowing.get("type", "")
 
             # 获取风格回收技巧
             if style:

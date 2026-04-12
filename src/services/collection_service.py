@@ -32,25 +32,17 @@ logger = logging.getLogger(__name__)
 class CollectionError(Exception):
     """收集系统业务逻辑异常基类"""
 
-    pass
-
 
 class EntityNotFoundError(CollectionError):
     """实体不存在"""
-
-    pass
 
 
 class PermissionDeniedError(CollectionError):
     """权限不足"""
 
-    pass
-
 
 class ImageGenerationError(CollectionError):
     """图片生成失败"""
-
-    pass
 
 
 @dataclass

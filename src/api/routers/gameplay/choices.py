@@ -18,7 +18,6 @@ from src.api.deps import get_current_user_optional, get_db
 from src.api.routers.gameplay.sse_helpers import stream_choice
 from src.api.schemas import CustomChoiceRequest, MakeChoiceRequest
 from src.api.services.session_service import session_service
-from src.api.session_store import session_store
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

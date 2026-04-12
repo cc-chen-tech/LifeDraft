@@ -6,9 +6,9 @@ Prompt 预检查器。
 
 import logging
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional
+from typing import List, Dict
 
-from .constraint_registry import ConstraintRegistry, ConstraintType, Priority
+from .constraint_registry import ConstraintRegistry
 
 logger = logging.getLogger(__name__)
 

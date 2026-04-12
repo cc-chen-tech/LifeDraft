@@ -18,8 +18,6 @@ logger = logging.getLogger(__name__)
 class ImageServiceError(Exception):
     """图像服务错误"""
 
-    pass
-
 
 class ImageContentError(ImageServiceError):
     """图像内容审核错误"""

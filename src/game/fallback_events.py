@@ -4,7 +4,7 @@ Provides centralized fallback event generation for when AI generation fails.
 Extracted from game_loop.py and round/event_generator.py to avoid duplication.
 """
 
-from typing import Any, Dict, Optional
+from typing import Optional
 
 from src.ai.models import EventOption, GameEvent
 
@@ -22,7 +22,6 @@ def generate_fallback_event(
     Returns:
         GameEvent with fallback description and options
     """
-    player_state = None  # Not used in fallback
 
     if is_round:
         # Get round name based on language and round number
@@ -146,12 +145,6 @@ def generate_simple_round_event(language: str = "zh", current_round: int = 0) ->
     Returns:
         GameEvent with simple round event
     """
-    round_names = ["周一", "周中", "周末"] if language == "zh" else ["Monday", "Midweek", "Weekend"]
-    round_name = (
-        round_names[current_round]
-        if 0 <= current_round < len(round_names)
-        else f"Round {current_round}"
-    )
 
     if language == "zh":
         description = "一个平静的日子，没有特别的事情发生。"

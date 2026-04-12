@@ -5,10 +5,10 @@ L3 创意增强层 - 基于关键词+规则的情感弧线追踪与干预。
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-from src.ai.narrative.style_manifest import StyleManifest, get_style
+from src.ai.narrative.style_manifest import get_style
 
 logger = logging.getLogger(__name__)
 
@@ -211,9 +211,8 @@ class EmotionalArcAnalyzer:
     ) -> str:
         """基于风格配置生成节奏干预建议。"""
         try:
-            style_manifest = None
             if style:
-                style_manifest = get_style(style)
+                get_style(style)
 
             # 基于风格生成建议
             if style == "gothic":
