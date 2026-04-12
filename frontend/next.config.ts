@@ -26,9 +26,7 @@ export default sentryEnabled
       // 静默模式，不在构建时输出 Sentry 日志
       silent: true,
       // 不自动上传 source maps（需要 Sentry auth token）
-      // @ts-expect-error - Sentry 类型定义可能不完整
       disableServerWebpackPlugin: true,
-      // @ts-expect-error - Sentry 类型定义可能不完整
       disableClientWebpackPlugin: true,
     })
   : nextConfig;
