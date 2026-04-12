@@ -175,7 +175,7 @@ export function useEventGenerator({
           setConnectionStatus(null);
 
           const maxPollingTime = 120000;
-          const pollInterval = 3000;
+          const pollInterval = 10000;
           const startTime = Date.now();
 
           const pollForCompletion = async (): Promise<boolean> => {
