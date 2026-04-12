@@ -3906,7 +3906,7 @@
           "Music"
         ],
         "summary": "Stream Song",
-        "description": "代理音乐流，绕过 CDN 的 Referer 限制。\n\n浏览器直接请求网易云 CDN 会被 403/ORB 拦截（因为 Referer 是 localhost），\n通过后端代理请求并流式返回音频数据即可绕过。",
+        "description": "代理音乐流，绕过 CDN 的 Referer 限制。\n\n浏览器直接请求网易云 CDN 会被 403/ORB 拦截（因为 Referer 是 localhost），\n通过后端代理请求并流式返回音频数据即可绕过。\n支持 Range 请求转发（用于拖拽跳转），以及 403/401 时自动刷新 URL 重试。",
         "operationId": "stream_song_api_music_stream__song_id__get",
         "parameters": [
           {

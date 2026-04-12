@@ -1585,6 +1585,7 @@ export interface paths {
          *
          *     浏览器直接请求网易云 CDN 会被 403/ORB 拦截（因为 Referer 是 localhost），
          *     通过后端代理请求并流式返回音频数据即可绕过。
+         *     支持 Range 请求转发（用于拖拽跳转），以及 403/401 时自动刷新 URL 重试。
          */
         get: operations["stream_song_api_music_stream__song_id__get"];
         put?: never;
