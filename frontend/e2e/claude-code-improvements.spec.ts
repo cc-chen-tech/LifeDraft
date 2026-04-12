@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
+ 
 
 /**
  * Claude Code Improvements - E2E Validation

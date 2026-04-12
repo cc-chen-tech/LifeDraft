@@ -74,7 +74,7 @@ export function StreamingText({
     }, frameInterval);
 
     return () => clearInterval(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [text, isStreaming, charsPerFrame, frameInterval]);
 
   // ★ 智能自动滚动：只在用户没有手动滚动时自动滚到底部

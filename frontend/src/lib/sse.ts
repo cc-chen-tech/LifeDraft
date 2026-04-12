@@ -31,7 +31,7 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
     }
 
     function pump(): Promise<void> {
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+       
       return reader!.read().then(({ done, value }) => {
         if (done) {
           // Stream ended - use the last complete event data if received
@@ -285,7 +285,7 @@ export async function streamRewrite(
 
   return new Promise((resolve, reject) => {
     function pump(): Promise<void> {
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+       
       return reader!.read().then(({ done, value }) => {
         if (done) {
           completed = true;
@@ -409,7 +409,7 @@ export async function streamOpeningStory(
 
   return new Promise((resolve, reject) => {
     function pump(): Promise<void> {
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+       
       return reader!.read().then(({ done, value }) => {
         if (done) {
           callbacks.onComplete?.({});
