@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useGameStore } from "@/stores/useGameStore";
+import { useGameStore, useSessionStore, useEventStore } from "@/stores/useGameStore";
 import { useHydration } from "@/hooks/useHydration";
 import { games } from "@/lib/api";
 import type { EventOption } from "@/lib/types";
@@ -214,12 +214,20 @@ export function usePlayGame() {
 
   // ===== Session Recovery (remains in main hook) =====
   const redirectCheckedRef = useRef(false);
+  const recoveryInProgressRef = useRef(false);
 
   useEffect(() => {
     if (!hydrated) return;
 
     const attemptRecovery = async () => {
       if (!gameId) {
+        // Prevent concurrent recovery attempts
+        if (recoveryInProgressRef.current) {
+          console.log("[play] Recovery already in progress, skipping");
+          return;
+        }
+        recoveryInProgressRef.current = true;
+
         console.warn("[play] No gameId in localStorage, attempting server-side recovery...");
 
         try {
@@ -254,16 +262,23 @@ export function usePlayGame() {
               }
             }
 
-            useGameStore.setState({
+            // ★ FIX: Update sub-stores directly instead of useGameStore.setState()
+            // Setting useGameStore directly causes _syncFromSubStores() to overwrite
+            // gameId back to null (from useSessionStore), creating an infinite loop
+            // of getActive() calls.
+            useSessionStore.setState({
               gameId: state.game_id,
               playerState: state.player_state,
               progress: state.progress,
               roundInfo: state.round_info,
+            });
+            useEventStore.setState({
               currentEvent: event,
               storyText: recoveredStoryText,
             });
 
             console.log("[play] State restored, will continue game");
+            recoveryInProgressRef.current = false;
             return;
           }
         } catch (err) {
@@ -275,6 +290,7 @@ export function usePlayGame() {
           }
         }
 
+        recoveryInProgressRef.current = false;
         router.replace("/");
       } else {
         console.log("[play] gameId exists:", gameId);

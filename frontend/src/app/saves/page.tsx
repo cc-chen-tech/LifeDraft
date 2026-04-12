@@ -12,6 +12,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useGameStore } from "@/stores/useGameStore";
+import { useUserStore } from "@/stores/useUserStore";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
@@ -50,6 +51,7 @@ export default function SavesPage() {
     setGameSession,
     resetCreation,
   } = useGameStore();
+  const { isAuthenticated } = useUserStore();
 
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -64,6 +66,10 @@ export default function SavesPage() {
   };
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      setIsLoading(false);
+      return;
+    }
     const loadSaves = async () => {
       try {
         await fetchSavedGames();
@@ -83,7 +89,7 @@ export default function SavesPage() {
     };
     
     loadSaves();
-  }, [fetchSavedGames]);
+  }, [isAuthenticated, fetchSavedGames]);
 
   const handleLoad = async (gameId: number) => {
     setLoadingGameId(gameId);
@@ -136,6 +142,7 @@ export default function SavesPage() {
           <div className="text-center py-12">
             <p className="text-destructive mb-4">{loadError}</p>
             <Button onClick={() => {
+              if (!isAuthenticated) return;
               setLoadError(null);
               setIsLoading(true);
               fetchSavedGames().finally(() => setIsLoading(false));
