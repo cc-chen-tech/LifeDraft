@@ -174,8 +174,8 @@ export function useEventGenerator({
           setProcessing(true, "generating_story");
           setConnectionStatus(null);
 
-          const maxPollingTime = 120000;
-          const pollInterval = 10000;
+          const maxPollingTime = 180000;  // 3 分钟，覆盖最长生成时间 + 余量
+          const pollInterval = 8000;      // 8 秒，平衡检测速度和请求频率
           const startTime = Date.now();
 
           const pollForCompletion = async (): Promise<boolean> => {
