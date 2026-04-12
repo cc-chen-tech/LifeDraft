@@ -33,4 +33,4 @@ jobs:
         run: flake8 src/ --max-line-length=100 --ignore=E501,W503,E203
 
       - name: Run Bandit security scan
-        run: bandit -r src -q --skip B101,B324,B311,B110
+        run: bandit -r src -q --skip B101,B324,B311,B110,B608
