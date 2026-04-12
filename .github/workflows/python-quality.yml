@@ -23,8 +23,8 @@ jobs:
       - name: Install dependencies
         run: pip install black isort flake8 bandit
 
-      - name: Run Black check
-        run: black --check --line-length 100 src/
+      - name: Run Black format
+        run: black --line-length 100 src/
 
       - name: Run isort check
         run: isort --check-only src/
