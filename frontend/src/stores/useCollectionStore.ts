@@ -7,6 +7,9 @@ import { create } from "zustand";
 import type { CharacterCollectionItem, ItemCollectionItem, LandmarkCollectionItem, CollectionResponse, RecognizedEntity, EntityRecognitionResponse } from "@/lib/types";
 import api from "@/lib/api";
 
+// ★ 请求去重：防止同一 gameId 的 fetchCollection 被多次并发调用
+let _fetchInFlight: { gameId: number; promise: Promise<void> } | null = null;
+
 interface CollectionState {
   // 数据
   characters: CharacterCollectionItem[];
@@ -106,6 +109,12 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
       return;
     }
 
+    // ★ 请求去重：如果已有相同 gameId 的请求在进行中，直接复用
+    if (!isRefresh && _fetchInFlight && _fetchInFlight.gameId === gameId) {
+      console.log("[fetchCollection] 复用已有请求 gameId=", gameId);
+      return _fetchInFlight.promise;
+    }
+
     // 保存当前选中的人物/物品/标志物名称，以便刷新后恢复选中状态
     const currentSelected = get();
     const selectedCharacterName = currentSelected.selectedCharacter?.name;
@@ -124,7 +133,18 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
     }
 
     try {
-      const result: CollectionResponse = await api.collection.get(gameId);
+      const fetchPromise = api.collection.get(gameId);
+      // ★ 记录当前请求以供去重
+      if (!isRefresh) {
+        const wrappedPromise = fetchPromise.then(() => {}).catch(() => {}).finally(() => {
+          if (_fetchInFlight?.gameId === gameId) {
+            _fetchInFlight = null;
+          }
+        });
+        _fetchInFlight = { gameId, promise: wrappedPromise };
+      }
+
+      const result: CollectionResponse = await fetchPromise;
 
       const newCharacters = result.characters || [];
       const newItems = result.items || [];
@@ -362,13 +382,13 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
   // ==================== 实体识别 Actions ====================
 
   // 识别实体
-  recognizeEntities: async (gameId: number, minAppearances: number = 3) => {
+  recognizeEntities: async (gameId: number, minAppearances?: number) => {
     set({ isRecognizing: true, error: null });
 
     try {
       const result = await api.collection.recognizeEntities(gameId, {
         entity_types: ["item", "character", "landmark"],
-        min_appearances: minAppearances,
+        ...(minAppearances != null ? { min_appearances: minAppearances } : {}),
       });
 
       set({ recognizedEntities: result, isRecognizing: false });

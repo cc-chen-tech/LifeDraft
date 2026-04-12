@@ -52,6 +52,7 @@ export default function SavesPage() {
   } = useGameStore();
 
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [loadingGameId, setLoadingGameId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -63,9 +64,25 @@ export default function SavesPage() {
   };
 
   useEffect(() => {
-    fetchSavedGames()
-      .catch(console.error)
-      .finally(() => setIsLoading(false));
+    const loadSaves = async () => {
+      try {
+        await fetchSavedGames();
+        // 成功获取数据，重置 loading 状态
+        setIsLoading(false);
+      } catch (err: unknown) {
+        const error = err as { status?: number; name?: string };
+        // 401 错误会在 api.ts 中处理重定向，不需要重置 loading 状态
+        // 其他错误（非 401、非 AbortError）记录日志并重置 loading
+        if (error.status !== 401 && error.name !== 'AbortError') {
+          console.error("Failed to fetch saved games:", err);
+          setLoadError("加载存档失败，请刷新页面重试");
+          setIsLoading(false);
+        }
+        // 401 和 AbortError 不重置 loading，因为页面即将重定向或组件已卸载
+      }
+    };
+    
+    loadSaves();
   }, [fetchSavedGames]);
 
   const handleLoad = async (gameId: number) => {
@@ -114,6 +131,17 @@ export default function SavesPage() {
           <div className="text-center py-12 text-muted-foreground">
             <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
             加载中...
+          </div>
+        ) : loadError ? (
+          <div className="text-center py-12">
+            <p className="text-destructive mb-4">{loadError}</p>
+            <Button onClick={() => {
+              setLoadError(null);
+              setIsLoading(true);
+              fetchSavedGames().finally(() => setIsLoading(false));
+            }}>
+              重试
+            </Button>
           </div>
         ) : savedGames.length === 0 ? (
           <div className="text-center py-12">

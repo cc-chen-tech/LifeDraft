@@ -125,7 +125,7 @@ describe('RecognizeDialog', () => {
       
       await user.click(screen.getByText('智能识别'));
       
-      expect(mockRecognizeEntities).toHaveBeenCalledWith(1, 3);
+      expect(mockRecognizeEntities).toHaveBeenCalledWith(1);
     });
 
     it('disables button while recognizing', () => {

@@ -1,0 +1,6148 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "人生草稿本 API",
+    "description": "Life Draft Book — Interactive narrative game API",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/auth/register": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Register",
+        "description": "Register a new user and return JWT token (both in body and Cookie).",
+        "operationId": "register_api_auth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Login",
+        "description": "Login with private_id and return JWT token (both in body and Cookie).",
+        "operationId": "login_api_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Get Me",
+        "description": "Get current user info from JWT token.",
+        "operationId": "get_me_api_auth_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInfo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Logout",
+        "description": "Logout — clear the auth Cookie and instruct client to discard token.\n\n★ 同时清除Cookie和提示客户端清除localStorage\n★ 需要认证才能登出",
+        "operationId": "logout_api_auth_logout_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/friends/request": {
+      "post": {
+        "tags": [
+          "Friends"
+        ],
+        "summary": "Send Friend Request",
+        "description": "Send a friend request to another user by public_id.",
+        "operationId": "send_friend_request_api_friends_request_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FriendRequestCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/friends/respond": {
+      "post": {
+        "tags": [
+          "Friends"
+        ],
+        "summary": "Respond To Friend Request",
+        "description": "Accept or reject a friend request.",
+        "operationId": "respond_to_friend_request_api_friends_respond_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FriendRequestRespond"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/friends": {
+      "get": {
+        "tags": [
+          "Friends"
+        ],
+        "summary": "Get Friends",
+        "description": "Get current user's friend list.",
+        "operationId": "get_friends_api_friends_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FriendInfo"
+                  },
+                  "type": "array",
+                  "title": "Response Get Friends Api Friends Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/friends/requests": {
+      "get": {
+        "tags": [
+          "Friends"
+        ],
+        "summary": "Get Pending Requests",
+        "description": "Get pending friend requests for current user.",
+        "operationId": "get_pending_requests_api_friends_requests_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FriendRequestInfo"
+                  },
+                  "type": "array",
+                  "title": "Response Get Pending Requests Api Friends Requests Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/friends/{friend_user_id}": {
+      "delete": {
+        "tags": [
+          "Friends"
+        ],
+        "summary": "Remove Friend",
+        "description": "Remove a friend.",
+        "operationId": "remove_friend_api_friends__friend_user_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "friend_user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Friend User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games": {
+      "post": {
+        "tags": [
+          "Games"
+        ],
+        "summary": "Create Game",
+        "description": "Create a new game from character settings.",
+        "operationId": "create_game_api_games_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGameRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameStateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Games"
+        ],
+        "summary": "List Games",
+        "description": "List saved games for the current user.",
+        "operationId": "list_games_api_games_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GameListItem"
+                  },
+                  "title": "Response List Games Api Games Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/active": {
+      "get": {
+        "tags": [
+          "Games"
+        ],
+        "summary": "Get Active Game",
+        "description": "★ 获取用户当前活跃的游戏并自动恢复。\n\n用于iPad等设备上localStorage失效时的会话恢复。\n如果用户有活跃游戏，自动加载并返回游戏状态。\n如果没有活跃游戏，返回404。",
+        "operationId": "get_active_game_api_games_active_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameStateResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/games/{game_id}": {
+      "get": {
+        "tags": [
+          "Games"
+        ],
+        "summary": "Load Game",
+        "description": "Load a saved game and create a GameLoop session.",
+        "operationId": "load_game_api_games__game_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameStateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Games"
+        ],
+        "summary": "Delete Game",
+        "description": "Delete a saved game.",
+        "operationId": "delete_game_api_games__game_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{game_id}/save": {
+      "post": {
+        "tags": [
+          "Games"
+        ],
+        "summary": "Save Game",
+        "description": "Save current game progress to database.\n\n使用 SessionService 统一处理 session 获取和恢复逻辑。",
+        "operationId": "save_game_api_games__game_id__save_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveGameResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{game_id}/clear-cache": {
+      "post": {
+        "tags": [
+          "Games"
+        ],
+        "summary": "Clear Game Cache",
+        "description": "Clear session cache for a game (useful after database restoration).",
+        "operationId": "clear_game_cache_api_games__game_id__clear_cache_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{game_id}/save-point": {
+      "post": {
+        "tags": [
+          "Games"
+        ],
+        "summary": "Create Save Point",
+        "description": "★ 创建存档点（手动存档）。\n\n与自动保存不同，存档点会被持久化展示，用户可以随时回溯到这个时间点。",
+        "operationId": "create_save_point_api_games__game_id__save_point_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateSavePointRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Req"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveGameResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{game_id}/save-points": {
+      "get": {
+        "tags": [
+          "Games"
+        ],
+        "summary": "List Save Points",
+        "description": "★ 列出游戏的所有存档点。",
+        "operationId": "list_save_points_api_games__game_id__save_points_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavePointListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{game_id}/timeline": {
+      "get": {
+        "tags": [
+          "Games"
+        ],
+        "summary": "Get State Timeline",
+        "description": "★ 获取游戏状态时间线（包括自动快照和手动存档）。\n\n用于展示完整的时间回溯历史。",
+        "operationId": "get_state_timeline_api_games__game_id__timeline_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateTimelineResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/load-save-point/{state_id}": {
+      "get": {
+        "tags": [
+          "Games"
+        ],
+        "summary": "Load Save Point",
+        "description": "★ 加载特定存档点（时间回溯）。\n\n恢复到指定存档点的游戏状态。",
+        "operationId": "load_save_point_api_games_load_save_point__state_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "state_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "State Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameStateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/save-point/{state_id}": {
+      "delete": {
+        "tags": [
+          "Games"
+        ],
+        "summary": "Delete Save Point",
+        "description": "★ 删除存档点。",
+        "operationId": "delete_save_point_api_games_save_point__state_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "state_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "State Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/character/setting": {
+      "post": {
+        "tags": [
+          "Character"
+        ],
+        "summary": "Generate Setting",
+        "description": "Generate a character setting (era, age, gender, world, family, relationships, traits, wealth).",
+        "operationId": "generate_setting_api_character_setting_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateSettingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/character/relationship": {
+      "post": {
+        "tags": [
+          "Character"
+        ],
+        "summary": "Generate Relationship",
+        "description": "Generate a single relationship person with rich attributes.",
+        "operationId": "generate_relationship_api_character_relationship_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateRelationshipRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/character/attributes": {
+      "post": {
+        "tags": [
+          "Character"
+        ],
+        "summary": "Generate Attributes",
+        "description": "Generate initial character attributes (energy, mood, knowledge, wealth).",
+        "operationId": "generate_attributes_api_character_attributes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateAttributesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/character/opening-story": {
+      "post": {
+        "tags": [
+          "Character"
+        ],
+        "summary": "Generate Opening Story",
+        "description": "Generate opening story via SSE streaming.",
+        "operationId": "generate_opening_story_api_character_opening_story_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpeningStoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/character/relationships-summary": {
+      "post": {
+        "tags": [
+          "Character"
+        ],
+        "summary": "Generate Relationships Summary",
+        "description": "Generate a narrative summary of all relationships.",
+        "operationId": "generate_relationships_summary_api_character_relationships_summary_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelationshipsSummaryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/presets": {
+      "post": {
+        "tags": [
+          "Presets"
+        ],
+        "summary": "Create Preset",
+        "description": "Save a character preset.",
+        "operationId": "create_preset_api_presets_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePresetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresetInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Presets"
+        ],
+        "summary": "List Presets",
+        "description": "List character presets for the current user.",
+        "operationId": "list_presets_api_presets_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PresetInfo"
+                  },
+                  "title": "Response List Presets Api Presets Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/presets/{preset_id}": {
+      "get": {
+        "tags": [
+          "Presets"
+        ],
+        "summary": "Get Preset",
+        "description": "Get a single character preset.",
+        "operationId": "get_preset_api_presets__preset_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "preset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Preset Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresetInfo"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Presets"
+        ],
+        "summary": "Delete Preset",
+        "description": "Delete a character preset.",
+        "operationId": "delete_preset_api_presets__preset_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "preset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Preset Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{game_id}/event": {
+      "get": {
+        "tags": [
+          "Gameplay"
+        ],
+        "summary": "Generate Event",
+        "description": "Generate a round event via SSE streaming.\n\nSupports reconnection via Last-Event-ID header for mobile network resilience.",
+        "operationId": "generate_event_api_games__game_id__event_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{game_id}/event-sync": {
+      "post": {
+        "tags": [
+          "Gameplay"
+        ],
+        "summary": "Generate Event Sync",
+        "description": "Generate a round event (non-streaming fallback for mobile).",
+        "operationId": "generate_event_sync_api_games__game_id__event_sync_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{game_id}/choice": {
+      "post": {
+        "tags": [
+          "Gameplay"
+        ],
+        "summary": "Make Choice",
+        "description": "Process a player choice via SSE streaming (story continuation + post-processing).\n\nSupports reconnection via Last-Event-ID header for mobile network resilience.",
+        "operationId": "make_choice_api_games__game_id__choice_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MakeChoiceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{game_id}/custom-choice": {
+      "post": {
+        "tags": [
+          "Gameplay"
+        ],
+        "summary": "Make Custom Choice",
+        "description": "Process a custom player choice via SSE streaming.\n\nSupports reconnection via Last-Event-ID header for mobile network resilience.",
+        "operationId": "make_custom_choice_api_games__game_id__custom_choice_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomChoiceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{game_id}/choice-sync": {
+      "post": {
+        "tags": [
+          "Gameplay"
+        ],
+        "summary": "Make Choice Sync",
+        "description": "Process a player choice (non-streaming fallback for mobile).",
+        "operationId": "make_choice_sync_api_games__game_id__choice_sync_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MakeChoiceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{game_id}/custom-choice-sync": {
+      "post": {
+        "tags": [
+          "Gameplay"
+        ],
+        "summary": "Make Custom Choice Sync",
+        "description": "Process a custom player choice (non-streaming fallback for mobile).",
+        "operationId": "make_custom_choice_sync_api_games__game_id__custom_choice_sync_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CustomChoiceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{game_id}/session-debug": {
+      "delete": {
+        "tags": [
+          "Gameplay"
+        ],
+        "summary": "Clear Session For Debug",
+        "description": "Debug: Clear session for specified game, simulating session expiry.",
+        "operationId": "clear_session_for_debug_api_games__game_id__session_debug_delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{game_id}/state": {
+      "get": {
+        "tags": [
+          "Gameplay"
+        ],
+        "summary": "Get Game State",
+        "description": "Get current game state, progress, and round info.",
+        "operationId": "get_game_state_api_games__game_id__state_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameStateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{game_id}/summary": {
+      "post": {
+        "tags": [
+          "Gameplay"
+        ],
+        "summary": "Generate Summary",
+        "description": "Generate life summary based on complete story history.",
+        "operationId": "generate_summary_api_games__game_id__summary_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateSummaryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{game_id}/ending": {
+      "get": {
+        "tags": [
+          "Gameplay"
+        ],
+        "summary": "Get Ending",
+        "description": "Evaluate and return the game ending.",
+        "operationId": "get_ending_api_games__game_id__ending_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{game_id}/rewrite": {
+      "post": {
+        "tags": [
+          "Story"
+        ],
+        "summary": "Rewrite Story",
+        "description": "Partially rewrite a segment of the current story.\n\n★ 使用前端传来的 full_story，不强制依赖 current_event",
+        "operationId": "rewrite_story_api_games__game_id__rewrite_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RewriteStoryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{game_id}/regenerate": {
+      "post": {
+        "tags": [
+          "Story"
+        ],
+        "summary": "Regenerate Story",
+        "description": "Regenerate the entire current story and generate new options (non-streaming).\n\n★ 现在使用完整的 generate_round_event 流程，\n确保一致性校验、关系事件、世界模型等都正常工作。",
+        "operationId": "regenerate_story_api_games__game_id__regenerate_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegenerateStoryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{game_id}/rewrite-stream": {
+      "post": {
+        "tags": [
+          "Story"
+        ],
+        "summary": "Rewrite Story Stream",
+        "description": "Rewrite story segment via SSE streaming.\n\n流式改写故事段落，实时输出改写结果。\n\nYields:\n    - status: rewrite progress\n    - story: streamed story chunks\n    - complete: final rewritten story",
+        "operationId": "rewrite_story_stream_api_games__game_id__rewrite_stream_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RewriteStoryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{game_id}/regenerate-stream": {
+      "get": {
+        "tags": [
+          "Story"
+        ],
+        "summary": "Regenerate Story Stream",
+        "description": "Regenerate the entire current story via SSE streaming.\n\n★ 现在使用完整的 generate_round_event 流程，\n确保一致性校验、关系事件、世界模型等都正常工作。\n\nYields:\n    - status: regeneration progress\n    - story: streamed story chunks\n    - complete: final event with options",
+        "operationId": "regenerate_story_stream_api_games__game_id__regenerate_stream_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{game_id}/chat": {
+      "post": {
+        "tags": [
+          "Story"
+        ],
+        "summary": "Story Assistant Chat",
+        "description": "Ask the story assistant a question about the game world, characters, etc.",
+        "operationId": "story_assistant_chat_api_games__game_id__chat_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoryChatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoryChatResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/images/generate": {
+      "post": {
+        "tags": [
+          "Images"
+        ],
+        "summary": "Generate Image",
+        "description": "生成图片\n\n支持生成人物形象、地点、物品等图片\n人物形象默认并行生成4张不同姿势的全身像",
+        "operationId": "generate_image_api_images_generate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateImageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/images/batch-characters": {
+      "post": {
+        "tags": [
+          "Images"
+        ],
+        "summary": "Batch Generate Character Images",
+        "description": "批量生成关键人物画像\n\n从 character_settings 中提取 family_members 和 key_people，\n为每个人物生成画像。\n使用 DeepSeek 生成描述，然后用 qwen-image-max 生成图片。",
+        "operationId": "batch_generate_character_images_api_images_batch_characters_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchGenerateCharactersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/images/opening-illustration": {
+      "post": {
+        "tags": [
+          "Images"
+        ],
+        "summary": "Generate Opening Illustration",
+        "description": "生成开场故事插画\n\n使用 DeepSeek 分析故事文本，选择重要场景，\n然后使用千问 image-edit 模型生成插画。\n如果有玩家形象图片，会将其作为参考以保持人物一致性。",
+        "operationId": "generate_opening_illustration_api_images_opening_illustration_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateOpeningIllustrationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpeningIllustrationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/images/opening-illustration/regenerate": {
+      "post": {
+        "tags": [
+          "Images"
+        ],
+        "summary": "Regenerate Opening Illustration",
+        "description": "基于用户输入重新生成开场故事插画\n\n使用当前插画作为参考，结合用户自定义提示词重新生成。\n保持场景和人物的一致性，同时应用用户的修改意见。",
+        "operationId": "regenerate_opening_illustration_api_images_opening_illustration_regenerate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegenerateOpeningIllustrationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpeningIllustrationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/images/regenerate": {
+      "post": {
+        "tags": [
+          "Images"
+        ],
+        "summary": "Regenerate Image",
+        "description": "重新生成图片（保持人物一致性）\n\n基于用户反馈重新生成图片，使用主图作为参考保证人物一致",
+        "operationId": "regenerate_image_api_images_regenerate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegenerateImageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/images/regenerate-fresh": {
+      "post": {
+        "tags": [
+          "Images"
+        ],
+        "summary": "Regenerate Fresh Image",
+        "description": "完全重新生成图片（抛弃历史修改）\n\n使用 DeepSeek 生成优化的 prompt，然后用 qwen-image-max 文生图\n不使用参考图片，完全从头生成",
+        "operationId": "regenerate_fresh_image_api_images_regenerate_fresh_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegenerateFreshImageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/images/game/{game_id}": {
+      "get": {
+        "tags": [
+          "Images"
+        ],
+        "summary": "Get Game Images",
+        "description": "获取游戏的所有图片",
+        "operationId": "get_game_images_api_images_game__game_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          },
+          {
+            "name": "image_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Image Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/images/file/{game_id}/{image_type}/{filename}": {
+      "get": {
+        "tags": [
+          "Images"
+        ],
+        "summary": "Get Image File",
+        "description": "获取图片文件\n\n直接返回图片二进制数据，用于前端显示",
+        "operationId": "get_image_file_api_images_file__game_id___image_type___filename__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          },
+          {
+            "name": "image_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Image Type"
+            }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Filename"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/images/scene/{game_id}/{round_number}": {
+      "get": {
+        "tags": [
+          "Images"
+        ],
+        "summary": "Get Round Scene Image",
+        "description": "获取指定轮次的场景插画\n\n参数:\n- week: 必需，指定周数。防止返回其他周次的同轮次图片\n- stage: 可选，指定阶段 (event/result)。如果不指定，返回该轮次最新的插画\n\n如果插画尚未生成，自动触发生成并返回 202 Accepted，前端可以轮询查询",
+        "operationId": "get_round_scene_image_api_images_scene__game_id___round_number__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          },
+          {
+            "name": "round_number",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Round Number"
+            }
+          },
+          {
+            "name": "week",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Week"
+            }
+          },
+          {
+            "name": "stage",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stage"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/images/scenes/{game_id}": {
+      "get": {
+        "tags": [
+          "Images"
+        ],
+        "summary": "Get All Round Scene Images",
+        "description": "获取游戏的所有场景插画",
+        "operationId": "get_all_round_scene_images_api_images_scenes__game_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/images/scene/generate": {
+      "post": {
+        "tags": [
+          "Images"
+        ],
+        "summary": "Generate Round Scene Image",
+        "description": "自动生成每轮场景插画\n\n流程：\n1. 使用 DeepSeek 分析故事，选择场景\n2. 如果有玩家形象图片，使用图生图\n3. 否则使用文生图\n4. 保存到数据库\n\n如果该轮次的场景插画已存在，直接返回现有记录。",
+        "operationId": "generate_round_scene_image_api_images_scene_generate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateRoundSceneRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoundSceneResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/images/scene/regenerate": {
+      "post": {
+        "tags": [
+          "Images"
+        ],
+        "summary": "Regenerate Round Scene Image",
+        "description": "基于用户输入重新生成每轮场景插画\n\n流程：\n1. 使用 DeepSeek 分析故事，选择场景\n2. 结合用户自定义提示词\n3. 使用当前场景插画作为参考（保持场景一致性）\n4. 如果有玩家形象图片，也作为参考\n5. 保存新图片到数据库",
+        "operationId": "regenerate_round_scene_image_api_images_scene_regenerate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegenerateRoundSceneRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoundSceneResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/images/{image_id}": {
+      "get": {
+        "tags": [
+          "Images"
+        ],
+        "summary": "Get Image",
+        "description": "获取图片信息",
+        "operationId": "get_image_api_images__image_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Image Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Images"
+        ],
+        "summary": "Delete Image",
+        "description": "删除图片（软删除，标记为不活跃）",
+        "operationId": "delete_image_api_images__image_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Image Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/{game_id}": {
+      "get": {
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Get Collection",
+        "description": "获取游戏的收集数据（人物和物品）",
+        "operationId": "get_collection_api_collection__game_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/{game_id}/details": {
+      "get": {
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Get Collection Details",
+        "description": "获取游戏的收集数据 - 与 /{game_id} 相同，为兼容前端路径",
+        "operationId": "get_collection_details_api_collection__game_id__details_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/{game_id}/characters/{name}/generate-image": {
+      "post": {
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Generate Character Image",
+        "description": "生成人物图片",
+        "operationId": "generate_character_image_api_collection__game_id__characters__name__generate_image_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/{game_id}/characters/{name}/generate-description": {
+      "post": {
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Generate Character Description",
+        "description": "生成人物描述（人物描述已存在于角色设定中）",
+        "operationId": "generate_character_description_api_collection__game_id__characters__name__generate_description_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/{game_id}/items/{item_name}/generate-image": {
+      "post": {
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Generate Item Image",
+        "description": "生成物品图片",
+        "operationId": "generate_item_image_api_collection__game_id__items__item_name__generate_image_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          },
+          {
+            "name": "item_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/{game_id}/items/{item_name}/generate-description": {
+      "post": {
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Generate Item Description",
+        "description": "生成物品描述",
+        "operationId": "generate_item_description_api_collection__game_id__items__item_name__generate_description_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          },
+          {
+            "name": "item_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/{game_id}/landmarks/{landmark_name}/generate-image": {
+      "post": {
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Generate Landmark Image",
+        "description": "生成标志物图片",
+        "operationId": "generate_landmark_image_api_collection__game_id__landmarks__landmark_name__generate_image_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          },
+          {
+            "name": "landmark_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Landmark Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/{game_id}/landmarks/{landmark_name}/generate-description": {
+      "post": {
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Generate Landmark Description",
+        "description": "生成标志物描述",
+        "operationId": "generate_landmark_description_api_collection__game_id__landmarks__landmark_name__generate_description_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          },
+          {
+            "name": "landmark_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Landmark Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/{game_id}/characters/{name}/regenerate-image": {
+      "post": {
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Regenerate Character Image",
+        "description": "基于用户文字描述重新生成人物画像",
+        "operationId": "regenerate_character_image_api_collection__game_id__characters__name__regenerate_image_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegenerateCharacterImageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/{game_id}/items/{item_name}/regenerate-image": {
+      "post": {
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Regenerate Item Image",
+        "description": "基于用户文字描述重新生成物品图片",
+        "operationId": "regenerate_item_image_api_collection__game_id__items__item_name__regenerate_image_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          },
+          {
+            "name": "item_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegenerateItemImageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/{game_id}/recognize-entities": {
+      "post": {
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Recognize Entities",
+        "description": "从历史故事中识别重复出现的实体（物品、人物、地点）",
+        "operationId": "recognize_entities_api_collection__game_id__recognize_entities_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/{game_id}/add-entities": {
+      "post": {
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Add Entities",
+        "description": "批量添加识别出的实体到收集系统",
+        "operationId": "add_entities_api_collection__game_id__add_entities_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/{game_id}/items/create": {
+      "post": {
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Create Item",
+        "description": "手动创建物品，可选从历史中提取描述",
+        "operationId": "create_item_api_collection__game_id__items_create_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/{game_id}/items/{item_name}": {
+      "delete": {
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Delete Item",
+        "description": "删除物品",
+        "operationId": "delete_item_api_collection__game_id__items__item_name__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          },
+          {
+            "name": "item_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/{game_id}/characters/{character_name}": {
+      "delete": {
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Delete Character",
+        "description": "删除人物",
+        "operationId": "delete_character_api_collection__game_id__characters__character_name__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          },
+          {
+            "name": "character_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Character Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/{game_id}/landmarks/{landmark_name}": {
+      "delete": {
+        "tags": [
+          "Collection"
+        ],
+        "summary": "Delete Landmark",
+        "description": "删除地点/标志物",
+        "operationId": "delete_landmark_api_collection__game_id__landmarks__landmark_name__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          },
+          {
+            "name": "landmark_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Landmark Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/music/recommend": {
+      "post": {
+        "tags": [
+          "Music"
+        ],
+        "summary": "Recommend Music",
+        "description": "根据故事内容推荐音乐\n\n分析故事的情绪和场景，搜索匹配的音乐\n并批量获取所有歌曲的播放 URL",
+        "operationId": "recommend_music_api_music_recommend_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MusicRecommendationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MusicRecommendationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/music/song-url": {
+      "get": {
+        "tags": [
+          "Music"
+        ],
+        "summary": "Get Song Url",
+        "description": "获取歌曲播放 URL\n\n注意：URL 有过期时间，需要时重新获取",
+        "operationId": "get_song_url_api_music_song_url_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "song_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "description": "歌曲ID",
+              "title": "Song Id"
+            },
+            "description": "歌曲ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/music/search": {
+      "get": {
+        "tags": [
+          "Music"
+        ],
+        "summary": "Search Music",
+        "description": "直接搜索音乐",
+        "operationId": "search_music_api_music_search_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 50,
+              "description": "搜索关键词",
+              "title": "Keyword"
+            },
+            "description": "搜索关键词"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 30,
+              "minimum": 1,
+              "description": "返回数量",
+              "default": 10,
+              "title": "Limit"
+            },
+            "description": "返回数量"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/music/stream/{song_id}": {
+      "get": {
+        "tags": [
+          "Music"
+        ],
+        "summary": "Stream Song",
+        "description": "代理音乐流，绕过 CDN 的 Referer 限制。\n\n浏览器直接请求网易云 CDN 会被 403/ORB 拦截（因为 Referer 是 localhost），\n通过后端代理请求并流式返回音频数据即可绕过。",
+        "operationId": "stream_song_api_music_stream__song_id__get",
+        "parameters": [
+          {
+            "name": "song_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Song Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "summary": "Health Check",
+        "description": "Health check endpoint.",
+        "operationId": "health_check_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/client-log": {
+      "post": {
+        "summary": "Client Log",
+        "description": "Receive and log client-side errors — useful for debugging mobile issues.",
+        "operationId": "client_log_api_client_log_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientLogEntry"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AuthResponse": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserInfo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token",
+          "user"
+        ],
+        "title": "AuthResponse"
+      },
+      "BatchGenerateCharactersRequest": {
+        "properties": {
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "character_settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Character Settings",
+            "description": "角色设定（包含family和relationships）"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "description": "语言",
+            "default": "zh"
+          }
+        },
+        "type": "object",
+        "required": [
+          "game_id",
+          "character_settings"
+        ],
+        "title": "BatchGenerateCharactersRequest",
+        "description": "批量生成关键人物画像请求"
+      },
+      "CharacterCollectionItem": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role",
+            "default": ""
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "affinity": {
+            "type": "integer",
+            "title": "Affinity",
+            "default": 50
+          },
+          "age": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Age"
+          },
+          "gender": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gender"
+          },
+          "occupation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occupation"
+          },
+          "personality_traits": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Personality Traits"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "image_generated": {
+            "type": "boolean",
+            "title": "Image Generated",
+            "default": false
+          },
+          "description_generated": {
+            "type": "boolean",
+            "title": "Description Generated",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "CharacterCollectionItem",
+        "description": "人物收集项"
+      },
+      "ClientLogEntry": {
+        "properties": {
+          "level": {
+            "type": "string",
+            "title": "Level",
+            "default": "error"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "ua": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ua"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "ClientLogEntry"
+      },
+      "CollectionResponse": {
+        "properties": {
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "characters": {
+            "items": {
+              "$ref": "#/components/schemas/CharacterCollectionItem"
+            },
+            "type": "array",
+            "title": "Characters"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ItemCollectionItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "landmarks": {
+            "items": {
+              "$ref": "#/components/schemas/LandmarkCollectionItem"
+            },
+            "type": "array",
+            "title": "Landmarks"
+          },
+          "total_characters": {
+            "type": "integer",
+            "title": "Total Characters"
+          },
+          "total_items": {
+            "type": "integer",
+            "title": "Total Items"
+          },
+          "total_landmarks": {
+            "type": "integer",
+            "title": "Total Landmarks",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "game_id",
+          "characters",
+          "items",
+          "total_characters",
+          "total_items"
+        ],
+        "title": "CollectionResponse",
+        "description": "收集数据响应"
+      },
+      "CreateGameRequest": {
+        "properties": {
+          "character_settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Character Settings"
+          },
+          "player_name": {
+            "type": "string",
+            "title": "Player Name"
+          },
+          "life_vision": {
+            "type": "string",
+            "title": "Life Vision"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "default": "zh"
+          }
+        },
+        "type": "object",
+        "required": [
+          "character_settings",
+          "player_name",
+          "life_vision"
+        ],
+        "title": "CreateGameRequest"
+      },
+      "CreatePresetRequest": {
+        "properties": {
+          "preset_name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Preset Name"
+          },
+          "player_name": {
+            "type": "string",
+            "title": "Player Name"
+          },
+          "life_vision": {
+            "type": "string",
+            "title": "Life Vision",
+            "default": ""
+          },
+          "character_settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Character Settings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "preset_name",
+          "player_name"
+        ],
+        "title": "CreatePresetRequest"
+      },
+      "CreateSavePointRequest": {
+        "properties": {
+          "save_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Save Name",
+            "description": "存档名称（可选）"
+          }
+        },
+        "type": "object",
+        "title": "CreateSavePointRequest",
+        "description": "创建存档点请求"
+      },
+      "CustomChoiceRequest": {
+        "properties": {
+          "custom_text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Custom Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "custom_text"
+        ],
+        "title": "CustomChoiceRequest"
+      },
+      "FriendInfo": {
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "title": "User Id"
+          },
+          "public_id": {
+            "type": "string",
+            "title": "Public Id"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "public_id"
+        ],
+        "title": "FriendInfo"
+      },
+      "FriendRequestCreate": {
+        "properties": {
+          "to_public_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "To Public Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "to_public_id"
+        ],
+        "title": "FriendRequestCreate"
+      },
+      "FriendRequestInfo": {
+        "properties": {
+          "request_id": {
+            "type": "integer",
+            "title": "Request Id"
+          },
+          "from_user": {
+            "$ref": "#/components/schemas/FriendInfo"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "from_user"
+        ],
+        "title": "FriendRequestInfo"
+      },
+      "FriendRequestRespond": {
+        "properties": {
+          "request_id": {
+            "type": "integer",
+            "title": "Request Id"
+          },
+          "accept": {
+            "type": "boolean",
+            "title": "Accept"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "accept"
+        ],
+        "title": "FriendRequestRespond"
+      },
+      "GameListItem": {
+        "properties": {
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "player_name": {
+            "type": "string",
+            "title": "Player Name"
+          },
+          "week": {
+            "type": "integer",
+            "title": "Week"
+          },
+          "age": {
+            "type": "integer",
+            "title": "Age"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "has_progress": {
+            "type": "boolean",
+            "title": "Has Progress",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "game_id",
+          "player_name",
+          "week",
+          "age"
+        ],
+        "title": "GameListItem"
+      },
+      "GameStateResponse": {
+        "properties": {
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "player_state": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Player State"
+          },
+          "progress": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Progress"
+          },
+          "round_info": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Round Info"
+          },
+          "current_event": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Event"
+          }
+        },
+        "type": "object",
+        "required": [
+          "game_id",
+          "player_state",
+          "progress",
+          "round_info"
+        ],
+        "title": "GameStateResponse"
+      },
+      "GenerateAttributesRequest": {
+        "properties": {
+          "character_settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Character Settings"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "default": "zh"
+          }
+        },
+        "type": "object",
+        "required": [
+          "character_settings"
+        ],
+        "title": "GenerateAttributesRequest"
+      },
+      "GenerateImageRequest": {
+        "properties": {
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "image_type": {
+            "type": "string",
+            "title": "Image Type",
+            "description": "character|location|item"
+          },
+          "entity_name": {
+            "type": "string",
+            "title": "Entity Name",
+            "description": "人物名/地点名/物品名"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "描述文本"
+          },
+          "entity_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Key",
+            "description": "实体唯一标识"
+          },
+          "era": {
+            "type": "string",
+            "title": "Era",
+            "description": "时代背景",
+            "default": "现代"
+          },
+          "extra_context": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extra Context",
+            "description": "额外上下文"
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback",
+            "description": "重新生成时的修改意见"
+          }
+        },
+        "type": "object",
+        "required": [
+          "game_id",
+          "image_type",
+          "entity_name",
+          "description"
+        ],
+        "title": "GenerateImageRequest",
+        "description": "生成图片请求"
+      },
+      "GenerateOpeningIllustrationRequest": {
+        "properties": {
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "story_text": {
+            "type": "string",
+            "title": "Story Text",
+            "description": "开场故事文本"
+          },
+          "character_settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Character Settings",
+            "description": "角色设定"
+          },
+          "player_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Player Image Id",
+            "description": "可选：已有的人物图片ID"
+          },
+          "player_name": {
+            "type": "string",
+            "title": "Player Name",
+            "description": "角色姓名"
+          }
+        },
+        "type": "object",
+        "required": [
+          "game_id",
+          "story_text",
+          "player_name"
+        ],
+        "title": "GenerateOpeningIllustrationRequest",
+        "description": "生成开场插画请求"
+      },
+      "GenerateRelationshipRequest": {
+        "properties": {
+          "player_name": {
+            "type": "string",
+            "title": "Player Name"
+          },
+          "life_vision": {
+            "type": "string",
+            "title": "Life Vision"
+          },
+          "previous_settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Previous Settings"
+          },
+          "existing_people": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Existing People"
+          },
+          "person_index": {
+            "type": "integer",
+            "title": "Person Index",
+            "default": 0
+          },
+          "total_needed": {
+            "type": "integer",
+            "title": "Total Needed",
+            "default": 3
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "default": "zh"
+          }
+        },
+        "type": "object",
+        "required": [
+          "player_name",
+          "life_vision"
+        ],
+        "title": "GenerateRelationshipRequest"
+      },
+      "GenerateRoundSceneRequest": {
+        "properties": {
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "week": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Week",
+            "description": "周数（可选，不传则自动从数据库获取）"
+          },
+          "round_number": {
+            "type": "integer",
+            "title": "Round Number",
+            "description": "轮次"
+          },
+          "story_text": {
+            "type": "string",
+            "title": "Story Text",
+            "description": "该轮的故事文本"
+          },
+          "character_settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Character Settings",
+            "description": "角色设定"
+          },
+          "player_name": {
+            "type": "string",
+            "title": "Player Name",
+            "description": "角色姓名"
+          },
+          "player_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Player Image Id",
+            "description": "可选：已有的人物图片ID"
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage",
+            "description": "场景阶段: event(事件故事) 或 result(结果故事)",
+            "default": "result"
+          }
+        },
+        "type": "object",
+        "required": [
+          "game_id",
+          "round_number",
+          "story_text",
+          "player_name"
+        ],
+        "title": "GenerateRoundSceneRequest",
+        "description": "自动生成每轮场景插画请求"
+      },
+      "GenerateSettingRequest": {
+        "properties": {
+          "setting_type": {
+            "type": "string",
+            "title": "Setting Type",
+            "description": "era|age|gender|world|family|relationships|traits|wealth"
+          },
+          "player_name": {
+            "type": "string",
+            "title": "Player Name"
+          },
+          "life_vision": {
+            "type": "string",
+            "title": "Life Vision"
+          },
+          "previous_settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Previous Settings"
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "default": "zh"
+          }
+        },
+        "type": "object",
+        "required": [
+          "setting_type",
+          "player_name",
+          "life_vision"
+        ],
+        "title": "GenerateSettingRequest"
+      },
+      "GenerateSummaryRequest": {
+        "properties": {
+          "weeks": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Weeks",
+            "default": 10
+          }
+        },
+        "type": "object",
+        "title": "GenerateSummaryRequest"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ImageListResponse": {
+        "properties": {
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/ImageResponse"
+            },
+            "type": "array",
+            "title": "Images"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "images",
+          "total"
+        ],
+        "title": "ImageListResponse",
+        "description": "图片列表响应"
+      },
+      "ImageResponse": {
+        "properties": {
+          "image_id": {
+            "type": "integer",
+            "title": "Image Id"
+          },
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "image_type": {
+            "type": "string",
+            "title": "Image Type"
+          },
+          "entity_name": {
+            "type": "string",
+            "title": "Entity Name"
+          },
+          "entity_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Key"
+          },
+          "image_url": {
+            "type": "string",
+            "title": "Image Url"
+          },
+          "prompt_used": {
+            "type": "string",
+            "title": "Prompt Used"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "default": 1
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image_id",
+          "game_id",
+          "image_type",
+          "entity_name",
+          "image_url",
+          "prompt_used"
+        ],
+        "title": "ImageResponse",
+        "description": "图片响应"
+      },
+      "ItemCollectionItem": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "importance": {
+            "type": "string",
+            "title": "Importance",
+            "default": "normal"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "default": "other"
+          },
+          "acquired_week": {
+            "type": "integer",
+            "title": "Acquired Week",
+            "default": 0
+          },
+          "acquired_context": {
+            "type": "string",
+            "title": "Acquired Context",
+            "default": ""
+          },
+          "is_key_item": {
+            "type": "boolean",
+            "title": "Is Key Item",
+            "default": false
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "image_generated": {
+            "type": "boolean",
+            "title": "Image Generated",
+            "default": false
+          },
+          "description_generated": {
+            "type": "boolean",
+            "title": "Description Generated",
+            "default": false
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "ItemCollectionItem",
+        "description": "物品收集项"
+      },
+      "LandmarkCollectionItem": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "default": "other"
+          },
+          "importance": {
+            "type": "string",
+            "title": "Importance",
+            "default": "normal"
+          },
+          "first_appear_week": {
+            "type": "integer",
+            "title": "First Appear Week",
+            "default": 0
+          },
+          "appear_count": {
+            "type": "integer",
+            "title": "Appear Count",
+            "default": 1
+          },
+          "last_appear_week": {
+            "type": "integer",
+            "title": "Last Appear Week",
+            "default": 0
+          },
+          "context": {
+            "type": "string",
+            "title": "Context",
+            "default": ""
+          },
+          "is_key_location": {
+            "type": "boolean",
+            "title": "Is Key Location",
+            "default": false
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "image_generated": {
+            "type": "boolean",
+            "title": "Image Generated",
+            "default": false
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "LandmarkCollectionItem",
+        "description": "标志物收集项"
+      },
+      "LoginRequest": {
+        "properties": {
+          "private_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Private Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "private_id"
+        ],
+        "title": "LoginRequest"
+      },
+      "MakeChoiceRequest": {
+        "properties": {
+          "option_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Option Index"
+          }
+        },
+        "type": "object",
+        "required": [
+          "option_index"
+        ],
+        "title": "MakeChoiceRequest"
+      },
+      "MessageResponse": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "default": true
+          },
+          "data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "MessageResponse"
+      },
+      "MusicRecommendationRequest": {
+        "properties": {
+          "story_text": {
+            "type": "string",
+            "title": "Story Text"
+          },
+          "game_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "story_text"
+        ],
+        "title": "MusicRecommendationRequest",
+        "description": "音乐推荐请求"
+      },
+      "MusicRecommendationResponse": {
+        "properties": {
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Keywords"
+          },
+          "mood": {
+            "type": "string",
+            "title": "Mood"
+          },
+          "scene_type": {
+            "type": "string",
+            "title": "Scene Type"
+          },
+          "environment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Environment"
+          },
+          "story_style": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Story Style"
+          },
+          "music_style": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Music Style"
+          },
+          "instruments": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instruments"
+          },
+          "pacing": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pacing"
+          },
+          "time_weather": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Weather"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "songs": {
+            "items": {
+              "$ref": "#/components/schemas/SongResponse"
+            },
+            "type": "array",
+            "title": "Songs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "keywords",
+          "mood",
+          "scene_type",
+          "songs"
+        ],
+        "title": "MusicRecommendationResponse",
+        "description": "音乐推荐响应"
+      },
+      "OpeningIllustrationResponse": {
+        "properties": {
+          "image_id": {
+            "type": "integer",
+            "title": "Image Id"
+          },
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "image_url": {
+            "type": "string",
+            "title": "Image Url"
+          },
+          "scene_description": {
+            "type": "string",
+            "title": "Scene Description",
+            "description": "DeepSeek选择的场景描述"
+          },
+          "prompt_used": {
+            "type": "string",
+            "title": "Prompt Used",
+            "description": "生成时使用的提示词"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image_id",
+          "game_id",
+          "image_url",
+          "scene_description",
+          "prompt_used"
+        ],
+        "title": "OpeningIllustrationResponse",
+        "description": "开场插画响应"
+      },
+      "OpeningStoryRequest": {
+        "properties": {
+          "character_settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Character Settings"
+          },
+          "player_name": {
+            "type": "string",
+            "title": "Player Name"
+          },
+          "life_vision": {
+            "type": "string",
+            "title": "Life Vision"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "default": "zh"
+          }
+        },
+        "type": "object",
+        "required": [
+          "character_settings",
+          "player_name",
+          "life_vision"
+        ],
+        "title": "OpeningStoryRequest"
+      },
+      "PresetInfo": {
+        "properties": {
+          "preset_id": {
+            "type": "integer",
+            "title": "Preset Id"
+          },
+          "preset_name": {
+            "type": "string",
+            "title": "Preset Name"
+          },
+          "player_name": {
+            "type": "string",
+            "title": "Player Name"
+          },
+          "life_vision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Life Vision"
+          },
+          "character_settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Character Settings"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "preset_id",
+          "preset_name",
+          "player_name"
+        ],
+        "title": "PresetInfo"
+      },
+      "RegenerateCharacterImageRequest": {
+        "properties": {
+          "feedback": {
+            "type": "string",
+            "title": "Feedback",
+            "description": "用户修改意见，例如：头发变长一点、换一件蓝色衣服"
+          },
+          "image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Id",
+            "description": "可选：指定要修改的图片ID，不传则使用当前活跃图片"
+          }
+        },
+        "type": "object",
+        "required": [
+          "feedback"
+        ],
+        "title": "RegenerateCharacterImageRequest",
+        "description": "重新生成人物画像请求"
+      },
+      "RegenerateFreshImageRequest": {
+        "properties": {
+          "image_id": {
+            "type": "integer",
+            "title": "Image Id"
+          },
+          "use_deepseek_prompt": {
+            "type": "boolean",
+            "title": "Use Deepseek Prompt",
+            "description": "是否使用DeepSeek生成优化prompt",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "image_id"
+        ],
+        "title": "RegenerateFreshImageRequest",
+        "description": "完全重新生成图片请求（抛弃历史修改）"
+      },
+      "RegenerateImageRequest": {
+        "properties": {
+          "image_id": {
+            "type": "integer",
+            "title": "Image Id"
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Feedback",
+            "description": "修改意见"
+          },
+          "new_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Description",
+            "description": "新描述"
+          }
+        },
+        "type": "object",
+        "required": [
+          "image_id"
+        ],
+        "title": "RegenerateImageRequest",
+        "description": "重新生成图片请求"
+      },
+      "RegenerateItemImageRequest": {
+        "properties": {
+          "feedback": {
+            "type": "string",
+            "title": "Feedback",
+            "description": "用户修改意见"
+          }
+        },
+        "type": "object",
+        "required": [
+          "feedback"
+        ],
+        "title": "RegenerateItemImageRequest",
+        "description": "重新生成物品图片请求"
+      },
+      "RegenerateOpeningIllustrationRequest": {
+        "properties": {
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "story_text": {
+            "type": "string",
+            "title": "Story Text",
+            "description": "开场故事文本"
+          },
+          "character_settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Character Settings",
+            "description": "角色设定"
+          },
+          "player_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Player Image Id",
+            "description": "可选：已有的人物图片ID"
+          },
+          "player_name": {
+            "type": "string",
+            "title": "Player Name",
+            "description": "角色姓名"
+          },
+          "user_prompt": {
+            "type": "string",
+            "title": "User Prompt",
+            "description": "用户自定义提示词/修改意见"
+          },
+          "current_illustration_id": {
+            "type": "integer",
+            "title": "Current Illustration Id",
+            "description": "当前插画ID，作为参考"
+          }
+        },
+        "type": "object",
+        "required": [
+          "game_id",
+          "story_text",
+          "player_name",
+          "user_prompt",
+          "current_illustration_id"
+        ],
+        "title": "RegenerateOpeningIllustrationRequest",
+        "description": "重新生成开场插画请求"
+      },
+      "RegenerateRoundSceneRequest": {
+        "properties": {
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "round_number": {
+            "type": "integer",
+            "title": "Round Number",
+            "description": "轮次"
+          },
+          "story_text": {
+            "type": "string",
+            "title": "Story Text",
+            "description": "该轮的故事文本"
+          },
+          "character_settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Character Settings",
+            "description": "角色设定"
+          },
+          "player_name": {
+            "type": "string",
+            "title": "Player Name",
+            "description": "角色姓名"
+          },
+          "user_prompt": {
+            "type": "string",
+            "title": "User Prompt",
+            "description": "用户自定义提示词/修改意见"
+          },
+          "current_scene_id": {
+            "type": "integer",
+            "title": "Current Scene Id",
+            "description": "当前场景插画ID，作为参考"
+          },
+          "player_image_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Player Image Id",
+            "description": "可选：已有的人物图片ID"
+          }
+        },
+        "type": "object",
+        "required": [
+          "game_id",
+          "round_number",
+          "story_text",
+          "player_name",
+          "user_prompt",
+          "current_scene_id"
+        ],
+        "title": "RegenerateRoundSceneRequest",
+        "description": "重新生成每轮场景插画请求"
+      },
+      "RegenerateStoryRequest": {
+        "properties": {
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "default": "zh"
+          }
+        },
+        "type": "object",
+        "title": "RegenerateStoryRequest"
+      },
+      "RegisterRequest": {
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Display Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "display_name"
+        ],
+        "title": "RegisterRequest"
+      },
+      "RelationshipsSummaryRequest": {
+        "properties": {
+          "player_name": {
+            "type": "string",
+            "title": "Player Name"
+          },
+          "life_vision": {
+            "type": "string",
+            "title": "Life Vision"
+          },
+          "previous_settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Previous Settings"
+          },
+          "key_people": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Key People"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "default": "zh"
+          }
+        },
+        "type": "object",
+        "required": [
+          "player_name",
+          "life_vision"
+        ],
+        "title": "RelationshipsSummaryRequest"
+      },
+      "RewriteStoryRequest": {
+        "properties": {
+          "full_story": {
+            "type": "string",
+            "title": "Full Story"
+          },
+          "segment_to_replace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Segment To Replace"
+          },
+          "user_instruction": {
+            "type": "string",
+            "title": "User Instruction"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "default": "zh"
+          }
+        },
+        "type": "object",
+        "required": [
+          "full_story",
+          "user_instruction"
+        ],
+        "title": "RewriteStoryRequest"
+      },
+      "RoundSceneResponse": {
+        "properties": {
+          "scene_id": {
+            "type": "integer",
+            "title": "Scene Id"
+          },
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "week": {
+            "type": "integer",
+            "title": "Week",
+            "default": 0
+          },
+          "round_number": {
+            "type": "integer",
+            "title": "Round Number"
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage",
+            "default": "result"
+          },
+          "image_url": {
+            "type": "string",
+            "title": "Image Url"
+          },
+          "scene_description": {
+            "type": "string",
+            "title": "Scene Description"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scene_id",
+          "game_id",
+          "round_number",
+          "image_url",
+          "scene_description"
+        ],
+        "title": "RoundSceneResponse",
+        "description": "场景插画响应"
+      },
+      "SaveGameResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "title": "SaveGameResponse"
+      },
+      "SavePointItem": {
+        "properties": {
+          "state_id": {
+            "type": "integer",
+            "title": "State Id"
+          },
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "week": {
+            "type": "integer",
+            "title": "Week"
+          },
+          "age": {
+            "type": "integer",
+            "title": "Age"
+          },
+          "save_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Save Name"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "player_name": {
+            "type": "string",
+            "title": "Player Name",
+            "default": "未命名"
+          },
+          "is_save_point": {
+            "type": "boolean",
+            "title": "Is Save Point",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "state_id",
+          "game_id",
+          "week",
+          "age"
+        ],
+        "title": "SavePointItem",
+        "description": "存档点信息"
+      },
+      "SavePointListResponse": {
+        "properties": {
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "player_name": {
+            "type": "string",
+            "title": "Player Name"
+          },
+          "save_points": {
+            "items": {
+              "$ref": "#/components/schemas/SavePointItem"
+            },
+            "type": "array",
+            "title": "Save Points"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "game_id",
+          "player_name",
+          "save_points",
+          "total"
+        ],
+        "title": "SavePointListResponse",
+        "description": "存档点列表响应"
+      },
+      "SongResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "artists": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Artists"
+          },
+          "album": {
+            "type": "string",
+            "title": "Album"
+          },
+          "duration": {
+            "type": "integer",
+            "title": "Duration"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "artists",
+          "album",
+          "duration"
+        ],
+        "title": "SongResponse",
+        "description": "歌曲响应"
+      },
+      "StateSnapshotItem": {
+        "properties": {
+          "state_id": {
+            "type": "integer",
+            "title": "State Id"
+          },
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "week": {
+            "type": "integer",
+            "title": "Week"
+          },
+          "age": {
+            "type": "integer",
+            "title": "Age"
+          },
+          "is_save_point": {
+            "type": "boolean",
+            "title": "Is Save Point"
+          },
+          "save_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Save Name"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "player_name": {
+            "type": "string",
+            "title": "Player Name",
+            "default": "未命名"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state_id",
+          "game_id",
+          "week",
+          "age",
+          "is_save_point"
+        ],
+        "title": "StateSnapshotItem",
+        "description": "状态快照信息（包括自动快照和手动存档）"
+      },
+      "StateTimelineResponse": {
+        "properties": {
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "player_name": {
+            "type": "string",
+            "title": "Player Name"
+          },
+          "snapshots": {
+            "items": {
+              "$ref": "#/components/schemas/StateSnapshotItem"
+            },
+            "type": "array",
+            "title": "Snapshots"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "game_id",
+          "player_name",
+          "snapshots",
+          "total"
+        ],
+        "title": "StateTimelineResponse",
+        "description": "状态时间线响应"
+      },
+      "StoryChatRequest": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Message"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "default": "zh"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "StoryChatRequest"
+      },
+      "StoryChatResponse": {
+        "properties": {
+          "reply": {
+            "type": "string",
+            "title": "Reply"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reply"
+        ],
+        "title": "StoryChatResponse"
+      },
+      "UserInfo": {
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "title": "User Id"
+          },
+          "public_id": {
+            "type": "string",
+            "title": "Public Id"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "private_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Private Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "public_id"
+        ],
+        "title": "UserInfo"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

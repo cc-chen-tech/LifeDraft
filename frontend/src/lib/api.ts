@@ -87,6 +87,12 @@ async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: num
       throw Object.assign(new Error(error.message || 'Request failed'), { status: response.status });
     }
 
+    // ★ 401 未授权 - 收集面板请求静默处理，不触发重定向
+    if (response.status === 401 && url.includes('/collection/')) {
+      console.warn(`[API] Collection API 401 — cookie may not have been forwarded: ${url}`);
+      throw Object.assign(new Error(error.message || 'Authentication required'), { status: response.status });
+    }
+
     // ★ 404 未找到 - 对于场景图片查询，这是正常的未生成状态，不显示错误日志
     if (response.status === 404 && url.includes('/images/scene/')) {
       // 静默处理，前端会轮询直到图片生成完成
@@ -198,7 +204,7 @@ export const api = {
         progress: GameProgress;
         round_info: RoundInfo;
         current_event: CurrentEventData | null;
-      }>(`/games/${gameId}/state`),
+      }>(`/games/${gameId}`),
     generateEvent: (gameId: number, data?: { custom_choices?: string[] }) =>
       fetchJson<{
         story: string;

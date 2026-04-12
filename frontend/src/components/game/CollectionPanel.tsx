@@ -96,7 +96,8 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
     if (gameId) {
       fetchCollection(gameId);
     }
-  }, [gameId, fetchCollection]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchCollection 是 zustand 稳定引用，仅在 gameId 变化时重新获取
+  }, [gameId]);
 
   // ==================== 点击处理函数 ====================
 
@@ -192,7 +193,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
 
   const handleOpenRecognize = async () => {
     setShowRecognizeDialog(true);
-    const result = await recognizeEntities(gameId, 3);
+    const result = await recognizeEntities(gameId);
     if (result) {
       setSelectedRecognizedItems(result.items || []);
       setSelectedRecognizedCharacters(result.characters || []);

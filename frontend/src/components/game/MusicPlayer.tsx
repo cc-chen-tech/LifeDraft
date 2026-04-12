@@ -69,6 +69,7 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
   const [isSwitchingSong, setIsSwitchingSong] = useState(false); // 切换歌曲时的加载状态
   const [preloadProgress, setPreloadProgress] = useState(0); // 预加载进度
   const songUrlMapRef = useRef<Map<number, string>>(new Map()); // 预加载的歌曲 URL 映射
+  const retryCountRef = useRef<Map<number, number>>(new Map()); // 每首歌的重试计数
 
   // 获取音乐推荐
   const fetchRecommendation = useCallback(async () => {
@@ -219,8 +220,9 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
         return;
       }
 
-      // 创建新的音频元素
-      const audio = new Audio(url);
+      // 创建新的音频元素 — 使用后端流式代理绕过 CDN Referer 限制
+      const streamUrl = `/api/music/stream/${song.id}`;
+      const audio = new Audio(streamUrl);
       audio.volume = volume;
 
       // 绑定事件
@@ -242,7 +244,23 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
           loadAndPlaySong(recommendation.songs[nextIndex]);
         }
       };
-      audio.onerror = (e) => {
+      // 缓冲事件处理（解决播放中突然停止）
+      audio.onstalled = () => {
+        console.log(`[MusicPlayer] Audio stalled for "${song.name}" — buffering...`);
+        setPlayError(`"${song.name}" 缓冲中...`);
+      };
+      audio.onwaiting = () => {
+        console.log(`[MusicPlayer] Audio waiting for data: "${song.name}"`);
+        setPlayError(`"${song.name}" 等待数据...`);
+      };
+      audio.oncanplay = () => {
+        // 清除缓冲相关的错误提示
+        setPlayError((prev) =>
+          prev && (prev.includes("缓冲中") || prev.includes("等待数据")) ? null : prev
+        );
+      };
+
+      audio.onerror = async (e) => {
         const errorCode = audio.error?.code;
         const errorMessage = audio.error?.message;
         const errorTypes: { [key: number]: string } = {
@@ -261,6 +279,25 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
         });
         
         setIsPlaying(false);
+        
+        // 检查是否可以重试：每首歌最多重试 1 次
+        const currentRetries = retryCountRef.current.get(song.id) || 0;
+        if (currentRetries < 1) {
+          retryCountRef.current.set(song.id, currentRetries + 1);
+          console.log(`[MusicPlayer] Retrying "${song.name}" via stream proxy (attempt ${currentRetries + 1})`);
+          setPlayError(`"${song.name}" ${errorType}，正在重试...`);
+          
+          // 清理当前失败的音频
+          audio.pause();
+          audio.src = "";
+          activeAudioRef.current = null;
+          
+          // 直接重试，流式代理会重新获取 CDN URL（给后端更多恢复时间）
+          setTimeout(() => loadAndPlaySong(song), 2000);
+          return;
+        }
+        
+        // 重试失败或已用尽重试次数，走跳下一首逻辑
         setPlayError(`"${song.name}" ${errorType}，尝试下一首...`);
         
         // 同步更新 ref 和 state
@@ -268,7 +305,7 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
         setSkippedSongs(new Set(skippedSongsRef.current));
         
         // 清理当前音频
-        activeAudioRef.current = null; // 清理活动音频引用
+        activeAudioRef.current = null;
         audio.pause();
         audio.src = "";
         
@@ -284,7 +321,7 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
             const nextSong = recommendation.songs[nextIndex];
             if (!skippedSongsRef.current.has(nextSong.id)) {
               console.log(`[MusicPlayer] Error occurred, trying next song: ${nextSong.name}`);
-              setTimeout(() => loadAndPlaySong(nextSong), 800);
+              setTimeout(() => loadAndPlaySong(nextSong), 1500);
               return;
             }
             nextIndex = (nextIndex + 1) % recommendation.songs.length;
@@ -295,6 +332,7 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
           console.log('[MusicPlayer] All songs skipped, resetting skip list');
           skippedSongsRef.current = new Set();
           setSkippedSongs(new Set());
+          retryCountRef.current = new Map(); // 重置重试计数
         }
       };
 
@@ -334,20 +372,18 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
     if (preloadedSongRef.current?.id === nextSong.id) return;
     
     try {
-      const url = await fetchSongUrl(nextSong.id);
-      if (url) {
-        // 创建并预加载音频
-        const audio = new Audio(url);
-        audio.preload = "auto";
-        audio.volume = 0; // 静音预加载
-        
-        // 等待音频足够加载
-        audio.oncanplaythrough = () => {
-          preloadedAudioRef.current = audio;
-          preloadedSongRef.current = { ...nextSong, url };
-          console.log(`[MusicPlayer] Preloaded next song: ${nextSong.name}`);
-        };
-      }
+      // 使用后端流式代理 URL 进行预加载
+      const streamUrl = `/api/music/stream/${nextSong.id}`;
+      const audio = new Audio(streamUrl);
+      audio.preload = "auto";
+      audio.volume = 0; // 静音预加载
+      
+      // 等待音频足够加载
+      audio.oncanplaythrough = () => {
+        preloadedAudioRef.current = audio;
+        preloadedSongRef.current = { ...nextSong };
+        console.log(`[MusicPlayer] Preloaded next song: ${nextSong.name}`);
+      };
     } catch (error) {
       console.warn(`[MusicPlayer] Failed to preload next song: ${nextSong.name}`, error);
     }
@@ -384,21 +420,42 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       // 如果音乐正在播放但时间没有前进，可能是卡住了
       if (audioElement.currentTime === lastTime && !audioElement.paused) {
         stuckCount++;
-        console.log(`[MusicPlayer] Audio may be stuck (${stuckCount}/3)`);
+        console.log(`[MusicPlayer] Audio may be stuck (${stuckCount}/8)`);
         
-        // 连续3次检测都卡住，尝试恢复播放
-        if (stuckCount >= 3) {
-          console.log('[MusicPlayer] Attempting to resume playback...');
-          audioElement.play().catch(() => {
-            // 如果恢复失败，跳到下一首
-            console.log('[MusicPlayer] Resume failed, switching to next song');
-            if (recommendation?.songs.length) {
-              const currentIndex = recommendation.songs.findIndex((s) => s.id === currentSong.id);
-              const nextIndex = (currentIndex + 1) % recommendation.songs.length;
-              loadAndPlaySong(recommendation.songs[nextIndex]);
-            }
+        // 连续4次检测都卡住（共12秒），开始恢复策略
+        if (stuckCount >= 4 && stuckCount <= 5) {
+          // 第一层：仅尝试 play()
+          console.log('[MusicPlayer] Recovery layer 1: trying play()...');
+          audioElement.play().then(() => {
+            console.log('[MusicPlayer] Recovery: play() succeeded');
+            stuckCount = 0;
+          }).catch(() => {
+            console.log('[MusicPlayer] Recovery: play() failed, will retry next interval');
           });
+        } else if (stuckCount >= 6 && stuckCount <= 7) {
+          // 第二层：尝试 seek + play()
+          console.log('[MusicPlayer] Recovery layer 2: trying seek + play()...');
+          try {
+            const seekTarget = Math.max(0, audioElement.currentTime - 0.5);
+            audioElement.currentTime = seekTarget;
+            audioElement.play().then(() => {
+              console.log('[MusicPlayer] Recovery: seek + play() succeeded');
+              stuckCount = 0;
+            }).catch(() => {
+              console.log('[MusicPlayer] Recovery: seek + play() failed, will retry next interval');
+            });
+          } catch {
+            console.log('[MusicPlayer] Recovery: seek threw error');
+          }
+        } else if (stuckCount >= 8) {
+          // 第三层：24秒完全无进度，切歌
+          console.log('[MusicPlayer] Recovery layer 3: switching to next song (stuck for 24s)');
           stuckCount = 0;
+          if (recommendation?.songs.length) {
+            const currentIndex = recommendation.songs.findIndex((s) => s.id === currentSong.id);
+            const nextIndex = (currentIndex + 1) % recommendation.songs.length;
+            loadAndPlaySong(recommendation.songs[nextIndex]);
+          }
         }
       } else {
         stuckCount = 0;
