@@ -266,7 +266,7 @@ describe('Set-Cookie 响应转发', () => {
 describe('流式响应处理', () => {
   it('content-type 为 text/event-stream 时返回流式响应（body 为 ReadableStream）', async () => {
     const stream = new ReadableStream({
-      start(controller) {
+      start(controller: ReadableStreamDefaultController) {
         controller.enqueue(new TextEncoder().encode('data: hello\n\n'));
         controller.close();
       },
@@ -291,7 +291,7 @@ describe('流式响应处理', () => {
 
   it('content-type 为 audio/* 时返回流式响应', async () => {
     const stream = new ReadableStream({
-      start(controller) {
+      start(controller: ReadableStreamDefaultController) {
         controller.enqueue(new Uint8Array([0xff, 0xfb]));
         controller.close();
       },
@@ -352,7 +352,7 @@ describe('普通 JSON 响应', () => {
     expect(res.status).toBe(200);
     // body should be an ArrayBuffer (cross-realm, so check constructor name)
     expect(res.body).toBeTruthy();
-    expect(res.body.constructor.name).toBe('ArrayBuffer');
+    expect(res.body?.constructor.name).toBe('ArrayBuffer');
   });
 
   it('非 200 状态码正确透传', async () => {
