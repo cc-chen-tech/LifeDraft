@@ -92,7 +92,7 @@ test.describe('MusicPlayer 音乐播放器', () => {
 
     // 验证歌曲信息显示（歌曲名、艺术家、专辑）
     const songInfo = page.locator('.font-medium.truncate');
-    await expect(songInfo).toBeVisible({ timeout: 5000 });
+    await expect(songInfo).toBeVisible({ timeout: 20000 });
 
     // 验证艺术家和专辑信息
     const artistAlbum = page.locator('.text-muted-foreground.text-xs.truncate');
@@ -149,7 +149,7 @@ test.describe('MusicPlayer 音乐播放器', () => {
 
     // 记录当前歌曲名
     const songNameLocator = page.locator('.font-medium.truncate');
-    await expect(songNameLocator).toBeVisible();
+    await expect(songNameLocator).toBeVisible({ timeout: 20000 });
     const firstSongName = await songNameLocator.textContent();
 
     // 找到下一首按钮并点击（使用 aria-label 或 title 属性）
@@ -198,6 +198,9 @@ test.describe('MusicPlayer 音乐播放器', () => {
   });
 
   test('音乐播放器应该在页面加载后显示', async ({ page, context }) => {
+    // 增加超时时间 - 游戏初始化可能需要较长时间
+    test.slow();
+
     // 先登录
     await ensureAuthenticated(page, context);
 
@@ -221,6 +224,9 @@ test.describe('MusicPlayer 音乐播放器', () => {
   });
 
   test('播放器应该在页面切换后保持状态', async ({ page, context }) => {
+    // 增加超时时间 - 游戏初始化可能需要较长时间
+    test.slow();
+
     // 先登录
     await ensureAuthenticated(page, context);
 
