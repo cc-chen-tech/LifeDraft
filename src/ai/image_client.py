@@ -14,9 +14,6 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 # Re-export settings for backward compatibility (needed by tests)
-
-# Re-export utility function for backward compatibility
-
 # Re-export exceptions for backward compatibility
 from src.ai.image_exceptions import ImageGenerationError
 
