@@ -52,6 +52,17 @@ class TestRegister:
         # Assert
         assert response.status_code == 200
         data = response.json()
+        # Schema validation: AuthResponse
+        assert "token" in data
+        assert isinstance(data["token"], str)
+        assert "user" in data
+        assert isinstance(data["user"], dict)
+        # Schema validation: UserInfo fields
+        assert isinstance(data["user"]["user_id"], int)
+        assert isinstance(data["user"]["public_id"], str)
+        assert isinstance(data["user"]["display_name"], str)
+        assert isinstance(data["user"]["private_id"], str)
+        # Value checks
         assert data["token"] == "test_jwt_token"
         assert data["user"]["user_id"] == 1
         assert data["user"]["public_id"] == "ABC123"
@@ -99,6 +110,18 @@ class TestLogin:
         # Assert
         assert response.status_code == 200
         data = response.json()
+        # Schema validation: AuthResponse
+        assert "token" in data
+        assert isinstance(data["token"], str)
+        assert "user" in data
+        assert isinstance(data["user"], dict)
+        # Schema validation: UserInfo fields
+        assert "user_id" in data["user"]
+        assert isinstance(data["user"]["user_id"], int)
+        assert "public_id" in data["user"]
+        assert isinstance(data["user"]["public_id"], str)
+        assert "display_name" in data["user"]
+        # Value checks
         assert data["token"] == "test_jwt_token"
         assert data["user"]["user_id"] == 1
         assert "private_id" not in data["user"] or data["user"]["private_id"] is None
@@ -141,8 +164,16 @@ class TestGetMe:
             # Assert
             assert response.status_code == 200
             data = response.json()
+            # Schema validation: UserInfo fields
+            assert "user_id" in data
+            assert isinstance(data["user_id"], int)
+            assert "public_id" in data
+            assert isinstance(data["public_id"], str)
+            assert "display_name" in data
+            # Value checks
             assert data["user_id"] == 1
             assert data["public_id"] == "ABC123"
+            assert data["display_name"] == "TestUser"
 
     def test_get_me_no_token(self, client):
         """Test getting user info without token."""
@@ -187,7 +218,11 @@ class TestLogout:
             )
 
         assert response.status_code == 200
-        assert response.json()["message"] == "Logged out successfully"
+        data = response.json()
+        # Schema validation: MessageResponse
+        assert "message" in data
+        assert isinstance(data["message"], str)
+        assert data["message"] == "Logged out successfully"
 
 
 class TestCookieAuth:
@@ -237,10 +272,17 @@ class TestCookieAuth:
             mock_decode.return_value = 1
 
             # 使用Cookie而不是Header进行认证
-            response = client.get("/api/auth/me", cookies={"auth_token": "valid_token"})
+            client.cookies.set("auth_token", "valid_token")
+            response = client.get("/api/auth/me")
 
             assert response.status_code == 200
             data = response.json()
+            # Schema validation: UserInfo fields
+            assert "user_id" in data
+            assert isinstance(data["user_id"], int)
+            assert "public_id" in data
+            assert isinstance(data["public_id"], str)
+            assert "display_name" in data
             assert data["user_id"] == 1
 
     def test_cookie_takes_priority_over_header(self, client, mock_user_manager):
@@ -256,10 +298,10 @@ class TestCookieAuth:
             mock_decode.return_value = 1
 
             # 同时发送Cookie和Header，Cookie应该优先
+            client.cookies.set("auth_token", "cookie_token")
             response = client.get(
                 "/api/auth/me",
                 headers={"Authorization": "Bearer different_token"},
-                cookies={"auth_token": "cookie_token"},
             )
 
             assert response.status_code == 200

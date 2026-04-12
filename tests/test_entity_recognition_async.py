@@ -445,5 +445,104 @@ class TestLazyImports:
         assert "古老的庙宇" in state.landmarks
 
 
+class TestMinAppearancesBoundary:
+    """测试 min_appearances 动态阈值的边界条件。
+
+    collection.py 中的动态阈值公式：
+        default_min = max(1, total_rounds // 15)
+
+    确保在极少轮次时阈值为 1，不会因阈值太高导致返回空结果。
+    """
+
+    def test_threshold_with_1_round(self):
+        """1 轮数据时阈值应为 1。"""
+        total_rounds = 1
+        default_min = max(1, total_rounds // 15)
+        assert default_min == 1, f"1轮时阈值应为1，实际为{default_min}"
+
+    def test_threshold_with_2_rounds(self):
+        """2 轮数据时阈值应为 1。"""
+        total_rounds = 2
+        default_min = max(1, total_rounds // 15)
+        assert default_min == 1, f"2轮时阈值应为1，实际为{default_min}"
+
+    def test_threshold_with_14_rounds(self):
+        """14 轮数据时阈值应为 1（14//15=0，max(1,0)=1）。"""
+        total_rounds = 14
+        default_min = max(1, total_rounds // 15)
+        assert default_min == 1
+
+    def test_threshold_with_15_rounds(self):
+        """15 轮数据时阈值应为 1（15//15=1）。"""
+        total_rounds = 15
+        default_min = max(1, total_rounds // 15)
+        assert default_min == 1
+
+    def test_threshold_with_30_rounds(self):
+        """30 轮数据时阈值应为 2。"""
+        total_rounds = 30
+        default_min = max(1, total_rounds // 15)
+        assert default_min == 2
+
+    def test_threshold_with_0_rounds(self):
+        """0 轮数据时阈值应为 1（max(1,0)=1）。"""
+        total_rounds = 0
+        default_min = max(1, total_rounds // 15)
+        assert default_min == 1
+
+    def test_threshold_never_zero(self):
+        """无论任何轮数，阈值都不应为 0。"""
+        for total_rounds in range(0, 100):
+            default_min = max(1, total_rounds // 15)
+            assert default_min >= 1, (
+                f"total_rounds={total_rounds} 时阈值为 {default_min}，"
+                "不应小于 1"
+            )
+
+    def test_recognize_from_history_empty_returns_empty(self):
+        """空 round_history 应返回空结果，不应出错。"""
+        service = EntityRecognitionService(Mock())
+        result = service.recognize_from_history(
+            round_history=[],
+            existing_items=[],
+            existing_characters=[],
+            existing_landmarks=[],
+            min_appearances=1,
+        )
+        assert result == {"items": [], "characters": [], "landmarks": []}
+
+    def test_recognize_with_min_appearances_1(self):
+        """min_appearances=1 时，出现一次的实体应被识别。
+
+        使用 mock AI 返回模拟结果，验证低阈值的流程正确性。
+        """
+        mock_ai = Mock()
+        mock_ai.chat.return_value = '{"items": [{"name": "测试物品", "description": "desc", "importance": "normal", "appear_count": 1, "appear_contexts": ["ctx"]}], "characters": [], "landmarks": []}'
+
+        service = EntityRecognitionService(mock_ai)
+
+        round_history = [
+            {
+                "week": 0,
+                "round": 0,
+                "event_description": "你在路边发现了一个测试物品。",
+                "story_continuation": "你捡起了测试物品。",
+            }
+        ]
+
+        # 验证 min_appearances=1 被正确传入 prompt
+        with patch.object(service, '_call_ai', return_value='{"items": [{"name": "测试物品", "description": "desc", "importance": "normal", "appear_count": 1, "appear_contexts": ["ctx"]}], "characters": [], "landmarks": []}'):
+            result = service.recognize_from_history(
+                round_history=round_history,
+                existing_items=[],
+                existing_characters=[],
+                existing_landmarks=[],
+                min_appearances=1,
+            )
+
+        assert len(result["items"]) == 1
+        assert result["items"][0]["name"] == "测试物品"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

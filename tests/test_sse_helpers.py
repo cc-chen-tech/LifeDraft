@@ -176,7 +176,7 @@ class TestSSEAsyncFunctions:
     async def test_stream_round_event_with_mock(self):
         """测试流式事件生成"""
         game_loop = MagicMock()
-        game_loop.generate_round_event = AsyncMock()
+        game_loop.generate_round_event = MagicMock()
         game_loop.player_state = MagicMock()
         game_loop.player_state.current_round = 1
 
