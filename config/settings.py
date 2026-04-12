@@ -166,5 +166,26 @@ class Settings:
         return cls.DEFAULT_LANGUAGE
 
 
+# ---------------------------------------------------------------------------
+# Feature Flags integration
+# ---------------------------------------------------------------------------
+# 通过 feature_flags 模块统一管理实验性功能开关。
+# 每个 flag 可通过对应环境变量控制（默认均为 False）：
+#   ENABLE_CONSTRAINT_HARNESS       — 约束评估引擎
+#   ENABLE_NARRATIVE_STYLE_ENGINE   — 叙事风格引擎
+#   ENABLE_CREATIVE_ENHANCEMENT     — 创意增强
+#   ENABLE_EPIC_NARRATIVE           — 史诗叙事
+#   ENABLE_VECTOR_SEARCH            — 向量搜索
+#   ENABLE_MODEL_FALLBACK           — 模型降级
+#   ENABLE_TRUNCATION_RECOVERY      — 截断恢复
+#   ENABLE_REACTIVE_COMPRESSION     — 响应式压缩
+#   ENABLE_PARALLEL_POSTPROCESSING  — 并行后处理
+#
+# 使用方式:
+#   from config.settings import get_feature, get_all_features
+#   if get_feature("model_fallback"): ...
+# ---------------------------------------------------------------------------
+from config.feature_flags import get_all_features, get_feature  # noqa: E402
+
 # Create a singleton instance
 settings = Settings()

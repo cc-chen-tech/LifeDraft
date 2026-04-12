@@ -13,34 +13,110 @@ from typing import Dict, List, Tuple
 logger = logging.getLogger(__name__)
 
 # 豁免关键词：在这些语境中，死亡/受伤角色的出现是合理的
-EXEMPTION_KEYWORDS = ["回忆", "梦境", "幻觉", "梦中", "记忆中", "往事", "曾经", "想起", "梦里", "幻影"]
+EXEMPTION_KEYWORDS = [
+    "回忆",
+    "梦境",
+    "幻觉",
+    "梦中",
+    "记忆中",
+    "往事",
+    "曾经",
+    "想起",
+    "梦里",
+    "幻影",
+]
 
 # 主动行为动词（用于检测死亡角色不应有的行为）
 ACTIVE_ACTION_VERBS = [
-    "说道", "说", "笑道", "叹道", "喊道", "问道", "答道", "道",
-    "走", "跑", "骑", "飞", "来到", "赶到", "出现在", "踏入",
-    "拿起", "拔出", "挥动", "举起", "扔", "推", "拉",
-    "打", "砍", "刺", "击", "攻", "挡", "闪",
-    "吃", "喝", "坐", "站", "躺",
-    "决定", "选择", "同意", "拒绝", "答应",
+    "说道",
+    "说",
+    "笑道",
+    "叹道",
+    "喊道",
+    "问道",
+    "答道",
+    "道",
+    "走",
+    "跑",
+    "骑",
+    "飞",
+    "来到",
+    "赶到",
+    "出现在",
+    "踏入",
+    "拿起",
+    "拔出",
+    "挥动",
+    "举起",
+    "扔",
+    "推",
+    "拉",
+    "打",
+    "砍",
+    "刺",
+    "击",
+    "攻",
+    "挡",
+    "闪",
+    "吃",
+    "喝",
+    "坐",
+    "站",
+    "躺",
+    "决定",
+    "选择",
+    "同意",
+    "拒绝",
+    "答应",
 ]
 
 # 剧烈行动词（重伤角色不应有的行为）
 VIGOROUS_ACTION_VERBS = [
-    "奔跑", "飞奔", "疾驰", "冲锋", "跳跃", "翻滚",
-    "搏斗", "激战", "厮杀", "格斗", "挥刀", "舞剑",
-    "攀爬", "翻墙", "跳下", "飞身",
-    "举起重物", "搬运", "扛", "抱起", "举过",
-    "全力", "拼命", "猛",
-    "双手", "双臂",
+    "奔跑",
+    "飞奔",
+    "疾驰",
+    "冲锋",
+    "跳跃",
+    "翻滚",
+    "搏斗",
+    "激战",
+    "厮杀",
+    "格斗",
+    "挥刀",
+    "舞剑",
+    "攀爬",
+    "翻墙",
+    "跳下",
+    "飞身",
+    "举起重物",
+    "搬运",
+    "扛",
+    "抱起",
+    "举过",
+    "全力",
+    "拼命",
+    "猛",
+    "双手",
+    "双臂",
 ]
 
 # 自由行动词（被囚禁角色不应有的行为）
 FREE_MOVEMENT_VERBS = [
-    "自由地", "随意地", "悠闲地",
-    "逛街", "散步", "游玩", "旅行",
-    "前往", "赶往", "出城", "离开",
-    "在街上", "在市场", "在酒楼", "在广场",
+    "自由地",
+    "随意地",
+    "悠闲地",
+    "逛街",
+    "散步",
+    "游玩",
+    "旅行",
+    "前往",
+    "赶往",
+    "出城",
+    "离开",
+    "在街上",
+    "在市场",
+    "在酒楼",
+    "在广场",
 ]
 
 # 死亡状态关键词
@@ -113,9 +189,7 @@ class CharacterStateContinuityValidator:
             logger.warning(f"角色状态连续性验证异常: {e}")
             return True, "", {}
 
-    def check_dead_character_action(
-        self, text: str, character_states: dict
-    ) -> list:
+    def check_dead_character_action(self, text: str, character_states: dict) -> list:
         """已死亡角色不应有主动行为（回忆/梦境豁免）。"""
         issues = []
         dead_chars = character_states.get("dead", {})
@@ -136,21 +210,21 @@ class CharacterStateContinuityValidator:
                 if match:
                     ctx_start = max(0, match.start() - 10)
                     ctx_end = min(len(text), match.end() + 10)
-                    issues.append({
-                        "character": name,
-                        "status": "dead",
-                        "action": verb,
-                        "context": text[ctx_start:ctx_end],
-                        "message": f"已死亡角色'{name}'出现主动行为'{verb}'",
-                        "hint": f"角色{name}当前状态为死亡({state_info})，不应有主动行为'{verb}'",
-                    })
+                    issues.append(
+                        {
+                            "character": name,
+                            "status": "dead",
+                            "action": verb,
+                            "context": text[ctx_start:ctx_end],
+                            "message": f"已死亡角色'{name}'出现主动行为'{verb}'",
+                            "hint": f"角色{name}当前状态为死亡({state_info})，不应有主动行为'{verb}'",
+                        }
+                    )
                     break  # 每个角色只报告第一个违规
 
         return issues
 
-    def check_injured_ability(
-        self, text: str, character_states: dict
-    ) -> list:
+    def check_injured_ability(self, text: str, character_states: dict) -> list:
         """重伤角色不应有剧烈行动。"""
         issues = []
         injured_chars = character_states.get("severe_injury", {})
@@ -168,22 +242,22 @@ class CharacterStateContinuityValidator:
                 if match:
                     ctx_start = max(0, match.start() - 10)
                     ctx_end = min(len(text), match.end() + 10)
-                    issues.append({
-                        "character": name,
-                        "status": "severe_injury",
-                        "condition": state_info,
-                        "action": verb,
-                        "context": text[ctx_start:ctx_end],
-                        "message": f"重伤角色'{name}'({state_info})出现剧烈行动'{verb}'",
-                        "hint": f"角色{name}当前为重伤状态({state_info})，不应有剧烈行动'{verb}'",
-                    })
+                    issues.append(
+                        {
+                            "character": name,
+                            "status": "severe_injury",
+                            "condition": state_info,
+                            "action": verb,
+                            "context": text[ctx_start:ctx_end],
+                            "message": f"重伤角色'{name}'({state_info})出现剧烈行动'{verb}'",
+                            "hint": f"角色{name}当前为重伤状态({state_info})，不应有剧烈行动'{verb}'",
+                        }
+                    )
                     break
 
         return issues
 
-    def check_imprisoned_freedom(
-        self, text: str, character_states: dict
-    ) -> list:
+    def check_imprisoned_freedom(self, text: str, character_states: dict) -> list:
         """被囚禁角色不应自由行动。"""
         issues = []
         imprisoned_chars = character_states.get("imprisoned", {})
@@ -201,15 +275,17 @@ class CharacterStateContinuityValidator:
                 if match:
                     ctx_start = max(0, match.start() - 10)
                     ctx_end = min(len(text), match.end() + 10)
-                    issues.append({
-                        "character": name,
-                        "status": "imprisoned",
-                        "condition": state_info,
-                        "action": verb,
-                        "context": text[ctx_start:ctx_end],
-                        "message": f"被囚禁角色'{name}'出现自由行动'{verb}'",
-                        "hint": f"角色{name}当前为囚禁状态({state_info})，不应自由行动'{verb}'",
-                    })
+                    issues.append(
+                        {
+                            "character": name,
+                            "status": "imprisoned",
+                            "condition": state_info,
+                            "action": verb,
+                            "context": text[ctx_start:ctx_end],
+                            "message": f"被囚禁角色'{name}'出现自由行动'{verb}'",
+                            "hint": f"角色{name}当前为囚禁状态({state_info})，不应自由行动'{verb}'",
+                        }
+                    )
                     break
 
         return issues
@@ -233,7 +309,11 @@ class CharacterStateContinuityValidator:
                 # 也支持 conditions 列表格式
                 conditions_list = state.get("conditions", [])
                 if not condition and conditions_list:
-                    condition = " ".join(conditions_list) if isinstance(conditions_list, list) else str(conditions_list)
+                    condition = (
+                        " ".join(conditions_list)
+                        if isinstance(conditions_list, list)
+                        else str(conditions_list)
+                    )
                 severity = state.get("severity", "moderate")
                 # 从 status 字段推断分类
                 status = state.get("status", "")
@@ -281,8 +361,6 @@ class CharacterStateContinuityValidator:
         return True
 
 
-def validate_character_state_continuity(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_character_state_continuity(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """模块级验证函数。"""
     return CharacterStateContinuityValidator().validate(story_text, context)

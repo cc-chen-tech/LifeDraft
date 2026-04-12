@@ -172,9 +172,7 @@ class ConflictTower:
             if not t3_conflicts:
                 return None
 
-            milestones = (
-                self._main_storyline.get("milestones", []) if self._main_storyline else []
-            )
+            milestones = self._main_storyline.get("milestones", []) if self._main_storyline else []
 
             # Boss trigger conditions:
             # 1. Milestone is at least "集齐神器" (3rd milestone or later)
@@ -243,9 +241,7 @@ class ConflictTower:
             return {}
 
     @classmethod
-    def from_state_dict(
-        cls, data: Dict, style: Optional[str] = None
-    ) -> "ConflictTower":
+    def from_state_dict(cls, data: Dict, style: Optional[str] = None) -> "ConflictTower":
         """从状态恢复。"""
         tower = cls(style=style or (data.get("style") if data else None))
         try:

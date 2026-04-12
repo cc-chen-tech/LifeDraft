@@ -178,7 +178,9 @@ class ConstraintViolationDiagnostic:
             return "包含第一人称的句子: " + "; ".join(matched)
         return "检测到第一人称用法"
 
-    def generate_report(self, story_text: str, validation_result: ValidationResult) -> DiagnosticReport:
+    def generate_report(
+        self, story_text: str, validation_result: ValidationResult
+    ) -> DiagnosticReport:
         """生成完整的诊断报告。
 
         遍历验证结果中所有失败的约束检查，提取证据并生成修复建议。
@@ -240,9 +242,7 @@ class ConstraintViolationDiagnostic:
             if fix_hint:
                 report.suggested_fixes.append(f"[{check.constraint_type}] {fix_hint}")
             else:
-                report.suggested_fixes.append(
-                    f"[{check.constraint_type}] 请修正该约束的违反"
-                )
+                report.suggested_fixes.append(f"[{check.constraint_type}] 请修正该约束的违反")
 
             if check.priority == Priority.CRITICAL.name:
                 report.critical_count += 1

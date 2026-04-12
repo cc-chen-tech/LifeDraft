@@ -19,9 +19,7 @@ logger = logging.getLogger(__name__)
 # ============================================================
 
 
-def validate_available_people(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_available_people(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """检查故事中是否使用了可用人物列表外的人名。
 
     通过匹配上下文中提供的已知人名列表，统计哪些人名在故事中被提及。
@@ -44,9 +42,7 @@ def validate_available_people(
     return True, "", {"mentioned_people": mentioned_people}
 
 
-def validate_third_person(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_third_person(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """检查故事是否使用第三人称叙事（不应有大量"我"、"我们"作为主角视角）。
 
     策略：统计不在引号/对话内的第一人称句子占比，超过阈值则判定失败。
@@ -64,7 +60,8 @@ def validate_third_person(
             continue
         # 检查以第一人称动词开头的非对话句
         if re.match(
-            r"^[^""「『]*我(?:想|觉得|认为|决定|走|看|说|听|感到|发现|知道|明白|记得|需要|必须|应该|可以|能|会|要|把|被|在|从|向|对|给|跟|和)",
+            r"^[^"
+            "「『]*我(?:想|觉得|认为|决定|走|看|说|听|感到|发现|知道|明白|记得|需要|必须|应该|可以|能|会|要|把|被|在|从|向|对|给|跟|和)",
             sentence,
         ):
             first_person_count += 1
@@ -84,9 +81,7 @@ def validate_third_person(
     return True, "", {}
 
 
-def validate_no_meta_narration(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_no_meta_narration(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """检查是否存在跳脱叙事（打破第四面墙）。
 
     检测关键词：提及 AI/系统/游戏机制/作者旁白等元叙述内容。
@@ -123,9 +118,7 @@ def validate_no_meta_narration(
     return True, "", {}
 
 
-def validate_decision_point_ending(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_decision_point_ending(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """检查故事结尾是否包含决策点。
 
     取末尾 300 字，检测是否含有选择/决策/抉择相关词汇。
@@ -175,9 +168,7 @@ def validate_decision_point_ending(
     )
 
 
-def validate_overdue_storylines(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_overdue_storylines(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """检查 overdue 剧情线是否在故事中被提及。
 
     遍历上下文中的 overdue_storylines，提取每条剧情线的关键词，
@@ -213,9 +204,7 @@ def validate_overdue_storylines(
     return True, "", {"mentioned": mentioned}
 
 
-def validate_no_fabrication(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_no_fabrication(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """检查是否编造了未记录的过往事件（基础规则版本）。
 
     检测故事中是否引用了"上次"、"之前"、"曾经"等回忆性表述。
@@ -238,17 +227,19 @@ def validate_no_fabrication(
     # 基础版本：记录潜在回忆引用，不直接判定失败
     # 完整版本需与 established_facts 交叉比对
     if recalls:
-        return True, "", {
-            "potential_recalls": recalls[:5],
-            "note": "需LLM二次验证",
-        }
+        return (
+            True,
+            "",
+            {
+                "potential_recalls": recalls[:5],
+                "note": "需LLM二次验证",
+            },
+        )
 
     return True, "", {}
 
 
-def validate_established_facts(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_established_facts(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """检查故事是否与已建立事实矛盾（基础关键词版本）。
 
     完整的矛盾检测需要 LLM 语义理解，此处仅提供基础统计。
@@ -258,10 +249,14 @@ def validate_established_facts(
         return True, "", {"skipped": True, "reason": "no established_facts in context"}
 
     # 基础实现：统计事实数量，完整验证需 LLM 支持
-    return True, "", {
-        "facts_count": len(facts),
-        "note": "基础版本，完整矛盾验证需LLM支持",
-    }
+    return (
+        True,
+        "",
+        {
+            "facts_count": len(facts),
+            "note": "基础版本，完整矛盾验证需LLM支持",
+        },
+    )
 
 
 # ============================================================
@@ -269,9 +264,7 @@ def validate_established_facts(
 # ============================================================
 
 
-def validate_scene_continuity(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_scene_continuity(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """检查场景是否与上一轮结尾地点连贯。
 
     检查故事开头 200 字是否提及上一个地点或包含合理的移动/过渡描写。
@@ -316,9 +309,7 @@ def validate_scene_continuity(
     )
 
 
-def validate_high_storylines(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_high_storylines(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """检查高重要性剧情线是否在故事中被涉及。"""
     high_storylines = context.get("high_storylines", [])
     if not high_storylines:
@@ -349,9 +340,7 @@ def validate_high_storylines(
     )
 
 
-def validate_character_consistency(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_character_consistency(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """检查角色性格一致性（基础版本）。
 
     完整验证需要 LLM 语义理解，此处仅提供占位实现。
@@ -368,9 +357,7 @@ def validate_character_consistency(
 # ============================================================
 
 
-def validate_character_habits(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_character_habits(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """检查人物习惯是否在故事中有所体现（基础版本）。"""
     habits = context.get("character_habits", [])
     if not habits:
@@ -384,16 +371,18 @@ def validate_character_habits(
         if any(kw in story_text for kw in keywords if len(kw) >= 2):
             reflected_count += 1
 
-    return True, "", {
-        "total_habits": len(habits),
-        "reflected_count": reflected_count,
-        "note": "基础版本，仅统计关键词匹配",
-    }
+    return (
+        True,
+        "",
+        {
+            "total_habits": len(habits),
+            "reflected_count": reflected_count,
+            "note": "基础版本，仅统计关键词匹配",
+        },
+    )
 
 
-def validate_foreshadowing(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_foreshadowing(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """检查伏笔回响是否被编织进故事（基础版本）。"""
     activated_seed = context.get("activated_seed")
     if not activated_seed:
@@ -416,9 +405,7 @@ def validate_foreshadowing(
     )
 
 
-def validate_medium_storylines(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_medium_storylines(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """检查中重要性剧情线涉及情况（仅统计，不判定失败）。"""
     medium_storylines = context.get("medium_storylines", [])
     if not medium_storylines:
@@ -432,16 +419,18 @@ def validate_medium_storylines(
             mentioned.append(desc[:50])
 
     # 中等优先级：仅统计，不判定失败
-    return True, "", {
-        "total": len(medium_storylines),
-        "mentioned_count": len(mentioned),
-        "mentioned": mentioned,
-    }
+    return (
+        True,
+        "",
+        {
+            "total": len(medium_storylines),
+            "mentioned_count": len(mentioned),
+            "mentioned": mentioned,
+        },
+    )
 
 
-def validate_logic_constraints(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_logic_constraints(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """检查时间逻辑一致性（基础版本）。
 
     检测明显的季节/时间矛盾。
@@ -479,16 +468,10 @@ def validate_logic_constraints(
 # ============================================================
 
 
-def validate_anti_repetition(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_anti_repetition(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """检查故事内部是否有明显的重复段落。"""
     # 按句子切分，检查是否有完全相同的长句重复出现
-    sentences = [
-        s.strip()
-        for s in re.split(r"[。！？\n]", story_text)
-        if len(s.strip()) >= 15
-    ]
+    sentences = [s.strip() for s in re.split(r"[。！？\n]", story_text) if len(s.strip()) >= 15]
 
     seen: dict = {}
     duplicates: list = []
@@ -510,9 +493,7 @@ def validate_anti_repetition(
     return True, "", {}
 
 
-def validate_vector_context(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_vector_context(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """检查历史上下文参考情况（仅统计，不判定失败）。"""
     vector_context = context.get("vector_context", "")
     if not vector_context:

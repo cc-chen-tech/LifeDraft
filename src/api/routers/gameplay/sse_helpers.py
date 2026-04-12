@@ -39,8 +39,7 @@ def _trigger_round_illustration_generation(
             from src.database.models import Game
             from src.database.models import Image as ImageModel
             from src.database.models import SessionLocal
-            from src.game.round.illustration_service import \
-                RoundIllustrationService
+            from src.game.round.illustration_service import RoundIllustrationService
             from src.services.image_storage import ImageStorageService
 
             # 创建数据库会话
@@ -204,8 +203,7 @@ def _ensure_entity_images_exist(
         try:
             from src.ai.image_client import ImageClient
             from src.database.models import SessionLocal
-            from src.game.round.illustration_service import \
-                RoundIllustrationService
+            from src.game.round.illustration_service import RoundIllustrationService
             from src.services.image_storage import ImageStorageService
 
             db = SessionLocal()

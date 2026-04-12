@@ -10,9 +10,13 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional
 
-from src.game.constants import (DEFAULT_CAREER_LEVEL, GENERIC_CHARACTER_NAMES,
-                                IMPORTANCE_ORDER, ROLE_KEYWORDS,
-                                VALID_CAREER_LEVELS)
+from src.game.constants import (
+    DEFAULT_CAREER_LEVEL,
+    GENERIC_CHARACTER_NAMES,
+    IMPORTANCE_ORDER,
+    ROLE_KEYWORDS,
+    VALID_CAREER_LEVELS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -605,8 +609,7 @@ class WorldModelUpdater:
         if not player_state or not scheduled_commitments:
             return
 
-        from src.game.scheduled_events import (
-            ScheduledEvent, create_scheduled_event_from_commitment)
+        from src.game.scheduled_events import ScheduledEvent, create_scheduled_event_from_commitment
 
         current_week = player_state.week
 

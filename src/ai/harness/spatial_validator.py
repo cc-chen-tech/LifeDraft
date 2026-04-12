@@ -51,8 +51,18 @@ LOCATION_CHANGE_PATTERNS = [
 
 # 交通工具关键词（可加速旅行）
 FAST_TRAVEL_KEYWORDS = [
-    "骑马", "马车", "轿子", "快马", "驱车", "乘船", "飞", "传送",
-    "日夜兼程", "快马加鞭", "星夜赶路", "连夜赶",
+    "骑马",
+    "马车",
+    "轿子",
+    "快马",
+    "驱车",
+    "乘船",
+    "飞",
+    "传送",
+    "日夜兼程",
+    "快马加鞭",
+    "星夜赶路",
+    "连夜赶",
 ]
 
 
@@ -102,9 +112,7 @@ class SpatialMovementValidator:
                     continue
 
                 # 提取文本中该角色的位置变化
-                new_locations = self._extract_character_locations(
-                    story_text, char_name
-                )
+                new_locations = self._extract_character_locations(story_text, char_name)
 
                 # 获取角色的当前region
                 prev_region = ""
@@ -118,9 +126,7 @@ class SpatialMovementValidator:
                         continue
 
                     # 计算距离
-                    distance = self.get_location_distance(
-                        prev_location, new_loc, location_graph
-                    )
+                    distance = self.get_location_distance(prev_location, new_loc, location_graph)
 
                     # 使用region信息增强距离计算
                     if prev_region and distance == DEFAULT_DISTANCE:
@@ -130,23 +136,27 @@ class SpatialMovementValidator:
 
                     # 检查旅行可行性（假设每轮1回合）
                     required_rounds = DISTANCE_TRAVEL_ROUNDS.get(distance, 2)
-                    feasible = (1 >= required_rounds)  # elapsed_rounds=1
+                    feasible = 1 >= required_rounds  # elapsed_rounds=1
 
                     if not feasible and not has_fast_travel:
-                        violations.append({
-                            "character": char_name,
-                            "from": prev_location,
-                            "to": new_loc,
-                            "distance": distance,
-                            "message": f"角色'{char_name}'从'{prev_location}'到'{new_loc}'"
-                            f"距离等级{distance}，一轮内无法到达",
-                        })
-                        details["movement_issues"].append({
-                            "character": char_name,
-                            "from": prev_location,
-                            "to": new_loc,
-                            "distance": distance,
-                        })
+                        violations.append(
+                            {
+                                "character": char_name,
+                                "from": prev_location,
+                                "to": new_loc,
+                                "distance": distance,
+                                "message": f"角色'{char_name}'从'{prev_location}'到'{new_loc}'"
+                                f"距离等级{distance}，一轮内无法到达",
+                            }
+                        )
+                        details["movement_issues"].append(
+                            {
+                                "character": char_name,
+                                "from": prev_location,
+                                "to": new_loc,
+                                "distance": distance,
+                            }
+                        )
 
             if violations:
                 return (
@@ -202,9 +212,7 @@ class SpatialMovementValidator:
         required_rounds = DISTANCE_TRAVEL_ROUNDS.get(distance, 2)
         return elapsed_rounds >= required_rounds
 
-    def _extract_character_locations(
-        self, text: str, character_name: str
-    ) -> List[str]:
+    def _extract_character_locations(self, text: str, character_name: str) -> List[str]:
         """提取文本中角色的位置变化。"""
         locations = []
 
@@ -261,8 +269,6 @@ class SpatialMovementValidator:
         return 3  # 远距离
 
 
-def validate_spatial_movement(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_spatial_movement(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """模块级验证函数。"""
     return SpatialMovementValidator().validate(story_text, context)

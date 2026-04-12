@@ -28,17 +28,68 @@ class EmotionalArcAnalyzer:
     """关键词+规则驱动的情感弧线分析器。"""
 
     POSITIVE_KEYWORDS = [
-        "喜悦", "欢笑", "幸福", "温暖", "希望", "庆祝", "成功", "胜利", "拥抱", "微笑",
-        "阳光", "美好", "轻笑", "笑", "花", "梦", "快乐", "庆贺", "凯旋", "欢天喜地",
-        "载歌载舞", "哈哈大笑",
+        "喜悦",
+        "欢笑",
+        "幸福",
+        "温暖",
+        "希望",
+        "庆祝",
+        "成功",
+        "胜利",
+        "拥抱",
+        "微笑",
+        "阳光",
+        "美好",
+        "轻笑",
+        "笑",
+        "花",
+        "梦",
+        "快乐",
+        "庆贺",
+        "凯旋",
+        "欢天喜地",
+        "载歌载舞",
+        "哈哈大笑",
     ]
     NEGATIVE_KEYWORDS = [
-        "悲伤", "痛苦", "恐惧", "愤怒", "绝望", "失败", "死亡", "哭泣", "孤独", "背叛",
-        "泪水", "恩怨", "阴冷", "嘶哑", "冷汗", "黑暗", "墓碑", "乌鸦", "枯树",
+        "悲伤",
+        "痛苦",
+        "恐惧",
+        "愤怒",
+        "绝望",
+        "失败",
+        "死亡",
+        "哭泣",
+        "孤独",
+        "背叛",
+        "泪水",
+        "恩怨",
+        "阴冷",
+        "嘶哑",
+        "冷汗",
+        "黑暗",
+        "墓碑",
+        "乌鸦",
+        "枯树",
     ]
     HIGH_AROUSAL_KEYWORDS = [
-        "战斗", "奔跑", "爆炸", "尖叫", "追逐", "冲突", "决斗", "逃亡", "危险", "紧急",
-        "屏住呼吸", "脚步声", "转动", "追击", "攀上", "挑战", "闯入",
+        "战斗",
+        "奔跑",
+        "爆炸",
+        "尖叫",
+        "追逐",
+        "冲突",
+        "决斗",
+        "逃亡",
+        "危险",
+        "紧急",
+        "屏住呼吸",
+        "脚步声",
+        "转动",
+        "追击",
+        "攀上",
+        "挑战",
+        "闯入",
     ]
 
     # 铺垫/收尾相关词
@@ -103,9 +154,7 @@ class EmotionalArcAnalyzer:
             logger.warning("Error in analyze_arc: %s", e)
             return EmotionalArcResult(pattern="")
 
-    def detect_flatline(
-        self, history: List[str], style: Optional[str] = None
-    ) -> bool:
+    def detect_flatline(self, history: List[str], style: Optional[str] = None) -> bool:
         """连续3段情感平坦时返回 True。"""
         try:
             if not history or len(history) < 3:
@@ -208,8 +257,9 @@ class EmotionalArcAnalyzer:
         """计算激活度 (0 到 1)。"""
         arousal_count = sum(1 for kw in self.HIGH_AROUSAL_KEYWORDS if kw in text)
         # 正负情感关键词也贡献一定激活度
-        emotional_count = sum(1 for kw in self.POSITIVE_KEYWORDS if kw in text) + \
-                          sum(1 for kw in self.NEGATIVE_KEYWORDS if kw in text)
+        emotional_count = sum(1 for kw in self.POSITIVE_KEYWORDS if kw in text) + sum(
+            1 for kw in self.NEGATIVE_KEYWORDS if kw in text
+        )
 
         # 综合计算
         raw = (arousal_count * 2 + emotional_count) / 10.0

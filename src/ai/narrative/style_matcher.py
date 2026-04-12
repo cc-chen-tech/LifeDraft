@@ -98,9 +98,7 @@ class StyleMatcher:
                 continue
 
             if not isinstance(matching_keywords, dict):
-                logger.debug(
-                    "Style %s has no matching_keywords, skipping for matching.", style_id
-                )
+                logger.debug("Style %s has no matching_keywords, skipping for matching.", style_id)
                 continue
 
             self._keywords[style_id] = matching_keywords
@@ -142,9 +140,7 @@ class StyleMatcher:
         best = max(scores, key=scores.get)  # type: ignore[arg-type]
         return StyleMatchResult(style_id=best, confidence=scores[best], all_scores=scores)
 
-    def match_top_n(
-        self, character_settings: dict, n: int = 3
-    ) -> List[StyleMatchResult]:
+    def match_top_n(self, character_settings: dict, n: int = 3) -> List[StyleMatchResult]:
         """返回 Top N 候选风格。
 
         Args:
@@ -155,13 +151,9 @@ class StyleMatcher:
             按置信度降序排列的 StyleMatchResult 列表。
         """
         result = self.match(character_settings)
-        sorted_styles = sorted(
-            result.all_scores.items(), key=lambda x: x[1], reverse=True
-        )
+        sorted_styles = sorted(result.all_scores.items(), key=lambda x: x[1], reverse=True)
         return [
-            StyleMatchResult(
-                style_id=sid, confidence=score, all_scores=result.all_scores
-            )
+            StyleMatchResult(style_id=sid, confidence=score, all_scores=result.all_scores)
             for sid, score in sorted_styles[:n]
         ]
 

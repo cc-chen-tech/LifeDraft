@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 KNOWLEDGE_CLAIM_PATTERNS = [
     r"{char}.{0,10}(?:知道|得知|听说|了解到|发现|察觉到|意识到|看到了|看见了)",
     r"{char}.{0,10}(?:说道|说|告诉|写信道|道|叫道|喊道).{0,30}(?:知道|听说|了解|听闻|发现|看到)",
-    r"[""「]{char}.{0,5}(?:知道|听说|了解|发现|看到)",
+    r"[" "「]{char}.{0,5}(?:知道|听说|了解|发现|看到)",
 ]
 
 # 宽泛的对话模式（用于秘密信息检测，不用于一般可及性检查）
@@ -25,8 +25,16 @@ SPEECH_PATTERNS = [
 
 # 秘密/隐私关键词
 SECRET_INDICATORS = [
-    "秘密", "隐瞒", "不为人知", "暗中", "偷偷", "私下",
-    "只有.*知道", "没人知道", "无人知晓", "瞒着",
+    "秘密",
+    "隐瞒",
+    "不为人知",
+    "暗中",
+    "偷偷",
+    "私下",
+    "只有.*知道",
+    "没人知道",
+    "无人知晓",
+    "瞒着",
 ]
 
 
@@ -104,9 +112,7 @@ class InformationBarrierValidator:
                 # 检查知识声明的可及性
                 char_claims = [c for c in all_claims if c.get("character") == char_name]
                 for claim in char_claims:
-                    accessible = self.check_knowledge_accessibility(
-                        claim, known_info
-                    )
+                    accessible = self.check_knowledge_accessibility(claim, known_info)
                     if not accessible:
                         violation = {
                             "character": char_name,
@@ -136,9 +142,7 @@ class InformationBarrierValidator:
             logger.warning(f"信息屏障验证异常: {e}")
             return True, "", {}
 
-    def extract_knowledge_claims(
-        self, text: str, characters: list
-    ) -> list:
+    def extract_knowledge_claims(self, text: str, characters: list) -> list:
         """提取角色表达的知识声明。"""
         claims = []
 
@@ -151,16 +155,18 @@ class InformationBarrierValidator:
                 for match in re.finditer(pattern, text):
                     ctx_start = max(0, match.start() - 10)
                     ctx_end = min(len(text), match.end() + 40)
-                    content = text[match.end():min(len(text), match.end() + 30)]
+                    content = text[match.end() : min(len(text), match.end() + 30)]
                     # 清理内容
-                    content = re.sub(r"[。！？""」\n].*", "", content)
+                    content = re.sub(r"[。！？" "」\n].*", "", content)
 
-                    claims.append({
-                        "character": char_name,
-                        "content": content.strip(),
-                        "context": text[ctx_start:ctx_end],
-                        "position": match.start(),
-                    })
+                    claims.append(
+                        {
+                            "character": char_name,
+                            "content": content.strip(),
+                            "context": text[ctx_start:ctx_end],
+                            "position": match.start(),
+                        }
+                    )
 
         return claims
 
@@ -175,19 +181,19 @@ class InformationBarrierValidator:
                 for match in re.finditer(pattern, text):
                     ctx_start = max(0, match.start() - 10)
                     ctx_end = min(len(text), match.end() + 40)
-                    content = text[match.end():min(len(text), match.end() + 50)]
-                    content = re.sub(r"[。！？""」\n].*", "", content)
-                    claims.append({
-                        "character": char_name,
-                        "content": content.strip(),
-                        "context": text[ctx_start:ctx_end],
-                        "position": match.start(),
-                    })
+                    content = text[match.end() : min(len(text), match.end() + 50)]
+                    content = re.sub(r"[。！？" "」\n].*", "", content)
+                    claims.append(
+                        {
+                            "character": char_name,
+                            "content": content.strip(),
+                            "context": text[ctx_start:ctx_end],
+                            "position": match.start(),
+                        }
+                    )
         return claims
 
-    def check_knowledge_accessibility(
-        self, claim: dict, character_knowledge: set
-    ) -> bool:
+    def check_knowledge_accessibility(self, claim: dict, character_knowledge: set) -> bool:
         """验证角色是否有途径获知此信息。"""
         content = claim.get("content", "")
         context = claim.get("context", "")
@@ -225,8 +231,6 @@ class InformationBarrierValidator:
         return False
 
 
-def validate_information_barrier(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_information_barrier(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """模块级验证函数。"""
     return InformationBarrierValidator().validate(story_text, context)

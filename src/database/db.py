@@ -11,8 +11,7 @@ from typing import Any, Dict, List, Optional
 from src.database.character_preset_repository import CharacterPresetRepository
 from src.database.decision_repository import DecisionRepository
 from src.database.game_repository import GameRepository
-from src.database.models import (CharacterPreset, Decision, Game, SessionLocal,
-                                 get_db, init_db)
+from src.database.models import CharacterPreset, Decision, Game, SessionLocal, get_db, init_db
 from src.database.save_point_repository import SavePointRepository
 from src.database.session_repository import SessionRepository
 from src.database.state_repository import StateRepository

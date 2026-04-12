@@ -14,14 +14,39 @@ logger = logging.getLogger(__name__)
 
 # 中文数字映射
 CHINESE_DIGITS = {
-    "零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4,
-    "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
+    "零": 0,
+    "一": 1,
+    "二": 2,
+    "两": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
+    "十": 10,
     "百": 100,
 }
 
 # 回忆/梦境豁免关键词
-FLASHBACK_KEYWORDS = ["回忆", "梦境", "幻觉", "梦中", "记忆中", "往事", "曾经", "想起", "梦里",
-                      "幻影", "恍惚", "仿佛回到", "回到了", "当年", "从前"]
+FLASHBACK_KEYWORDS = [
+    "回忆",
+    "梦境",
+    "幻觉",
+    "梦中",
+    "记忆中",
+    "往事",
+    "曾经",
+    "想起",
+    "梦里",
+    "幻影",
+    "恍惚",
+    "仿佛回到",
+    "回到了",
+    "当年",
+    "从前",
+]
 
 # 季节映射: week 0-11=春, 12-23=夏, 24-35=秋, 36-47=冬 (每年48周)
 WEEKS_PER_YEAR = 48
@@ -123,9 +148,7 @@ class TemporalConsistencyValidator:
             details["time_references"] = time_refs
 
             # 2. 季节一致性检查
-            season_ok, season_info = self.check_season_consistency(
-                story_text, current_week
-            )
+            season_ok, season_info = self.check_season_consistency(story_text, current_week)
             details["season_check"] = season_info
             if not season_ok:
                 violations.append(season_info.get("violation", "季节描写与当前周数矛盾"))
@@ -164,16 +187,16 @@ class TemporalConsistencyValidator:
         refs = []
         for pattern, ref_type in TIME_REFERENCE_PATTERNS:
             for match in re.finditer(pattern, text):
-                refs.append({
-                    "text": match.group(),
-                    "type": ref_type,
-                    "position": match.start(),
-                })
+                refs.append(
+                    {
+                        "text": match.group(),
+                        "type": ref_type,
+                        "position": match.start(),
+                    }
+                )
         return refs
 
-    def check_season_consistency(
-        self, text: str, current_week: int
-    ) -> Tuple[bool, dict]:
+    def check_season_consistency(self, text: str, current_week: int) -> Tuple[bool, dict]:
         """验证季节描写与游戏周数匹配。"""
         current_season = self._get_season(current_week)
         conflicts = SEASON_CONFLICT_KEYWORDS.get(current_season, [])
@@ -246,8 +269,6 @@ class TemporalConsistencyValidator:
         return "春"
 
 
-def validate_temporal_consistency(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_temporal_consistency(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """模块级验证函数。"""
     return TemporalConsistencyValidator().validate(story_text, context)

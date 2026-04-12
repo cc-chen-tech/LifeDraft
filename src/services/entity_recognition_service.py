@@ -50,8 +50,11 @@ class EntityRecognitionService(BaseExtractionService):
 
             # 统计有效事件数量
             valid_events = sum(
-                1 for entry in round_history
-                if entry.get("event_description") or entry.get("story_continuation") or entry.get("summary")
+                1
+                for entry in round_history
+                if entry.get("event_description")
+                or entry.get("story_continuation")
+                or entry.get("summary")
             )
             logger.info(
                 f"Entity recognition: {len(round_history)} rounds, "
@@ -59,8 +62,7 @@ class EntityRecognitionService(BaseExtractionService):
                 f"min_appearances={min_appearances}"
             )
 
-            from config.prompts.entity_recognition_prompt import \
-                get_entity_recognition_prompt
+            from config.prompts.entity_recognition_prompt import get_entity_recognition_prompt
 
             prompt = get_entity_recognition_prompt(
                 story_text=story_text,
@@ -131,8 +133,9 @@ class EntityRecognitionService(BaseExtractionService):
             contexts = contexts[:5]
             story_text = "\n\n---\n\n".join(contexts)
 
-            from config.prompts.entity_recognition_prompt import \
-                get_item_description_extraction_prompt
+            from config.prompts.entity_recognition_prompt import (
+                get_item_description_extraction_prompt,
+            )
 
             prompt = get_item_description_extraction_prompt(
                 item_name=item_name,

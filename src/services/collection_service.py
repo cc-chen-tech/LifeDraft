@@ -12,8 +12,12 @@ from urllib.parse import unquote
 
 from sqlalchemy.orm import Session
 
-from src.api.schemas import (CharacterCollectionItem, CollectionResponse,
-                             ItemCollectionItem, LandmarkCollectionItem)
+from src.api.schemas import (
+    CharacterCollectionItem,
+    CollectionResponse,
+    ItemCollectionItem,
+    LandmarkCollectionItem,
+)
 from src.database.models import Game
 from src.database.models import Image as ImageModel
 from src.game.state import PlayerState
@@ -875,8 +879,7 @@ class CollectionService:
 
         # 如果需要从历史中提取描述
         if generate_description and player_state.round_history and ai_client:
-            from src.services.entity_recognition_service import \
-                EntityRecognitionService
+            from src.services.entity_recognition_service import EntityRecognitionService
 
             recognition_service = EntityRecognitionService(ai_client)
             item_info = recognition_service.extract_item_description(

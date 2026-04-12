@@ -28,14 +28,41 @@ class PreferenceLearner:
     """从决策历史中提取玩家隐性偏好。"""
 
     PREFERENCE_CATEGORIES = [
-        "suspense", "romance", "adventure", "investigation", "social", "introspection",
+        "suspense",
+        "romance",
+        "adventure",
+        "investigation",
+        "social",
+        "introspection",
     ]
 
     # 类型关键词映射(用于从 choice 文本推断类型)
     TYPE_KEYWORDS: Dict[str, List[str]] = {
-        "adventure": ["冒险", "进入", "闯入", "跳下", "攀上", "挑战", "追击", "战斗", "探索", "寻宝"],
+        "adventure": [
+            "冒险",
+            "进入",
+            "闯入",
+            "跳下",
+            "攀上",
+            "挑战",
+            "追击",
+            "战斗",
+            "探索",
+            "寻宝",
+        ],
         "social": ["邀请", "调解", "拜访", "组织", "交谈", "合作", "帮助", "村民", "朋友", "共进"],
-        "investigation": ["检查", "翻阅", "查找", "线索", "询问", "调查", "观察", "分析", "推理", "证据"],
+        "investigation": [
+            "检查",
+            "翻阅",
+            "查找",
+            "线索",
+            "询问",
+            "调查",
+            "观察",
+            "分析",
+            "推理",
+            "证据",
+        ],
     }
 
     def learn(self, decision_history: Optional[List[Dict]]) -> PlayerPreferences:
@@ -146,7 +173,7 @@ class PreferenceLearner:
             # 控制长度
             max_chars = min(max_tokens * 4, 300)
             if len(hint) > max_chars:
-                hint = hint[:max_chars - 1] + "。"
+                hint = hint[: max_chars - 1] + "。"
 
             return hint
 

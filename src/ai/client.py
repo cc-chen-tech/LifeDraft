@@ -11,17 +11,23 @@ OpenAI SDK or private methods. This ensures:
 import logging
 import re
 import threading
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import openai
 
+from config.feature_flags import get_feature
 from config.settings import settings
+from src.ai.model_fallback import FallbackChain, ModelFallbackConfig
+from src.ai.truncation_recovery import TruncationRecovery, TruncationRecoveryConfig
 from src.ai.utils import extract_json
 
 logger = logging.getLogger(__name__)
 
 # ★ max_tokens 自动降级配置
 MAX_TOKENS_FALLBACK_LEVELS = [8000, 6000, 4000]  # 降级序列
+
+# ★ 模型降级链默认备选模型
+_DEFAULT_FALLBACK_MODELS: List[str] = ["deepseek-chat", "gpt-4o-mini"]
 
 
 def _is_max_tokens_error(error_message: str) -> bool:

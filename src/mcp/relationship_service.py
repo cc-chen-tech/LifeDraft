@@ -7,10 +7,13 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from src.game.relationship_events import (RELATIONSHIP_EVENTS, EventCategory,
-                                          RelationshipEventDef,
-                                          get_event_by_type,
-                                          get_events_by_category)
+from src.game.relationship_events import (
+    RELATIONSHIP_EVENTS,
+    EventCategory,
+    RelationshipEventDef,
+    get_event_by_type,
+    get_events_by_category,
+)
 
 if TYPE_CHECKING:
     from src.game.state import CharacterState, PlayerState

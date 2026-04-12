@@ -13,15 +13,36 @@ logger = logging.getLogger(__name__)
 
 # 承诺处理相关关键词
 FULFILLMENT_KEYWORDS = [
-    "履行", "兑现", "完成", "做到", "遵守", "赴约", "如约",
-    "答应过", "承诺", "约定", "保证", "守信", "践行",
+    "履行",
+    "兑现",
+    "完成",
+    "做到",
+    "遵守",
+    "赴约",
+    "如约",
+    "答应过",
+    "承诺",
+    "约定",
+    "保证",
+    "守信",
+    "践行",
 ]
 
 # 承诺违反/打破关键词
 BREACH_KEYWORDS = [
-    "失约", "爽约", "食言", "违背", "毁约", "反悔",
-    "没能", "未能", "无法", "忘了", "忘记",
-    "抱歉.*没", "对不起.*没",
+    "失约",
+    "爽约",
+    "食言",
+    "违背",
+    "毁约",
+    "反悔",
+    "没能",
+    "未能",
+    "无法",
+    "忘了",
+    "忘记",
+    "抱歉.*没",
+    "对不起.*没",
 ]
 
 # 矛盾行为关键词模板 (verb patterns that indicate contradiction)
@@ -65,18 +86,14 @@ class CommitmentFulfillmentValidator:
             }
 
             # 1. 检查到期承诺
-            overdue_issues = self.check_overdue_commitments(
-                commitments, current_week, story_text
-            )
+            overdue_issues = self.check_overdue_commitments(commitments, current_week, story_text)
             details["overdue_issues"] = overdue_issues
             for issue in overdue_issues:
                 if issue.get("importance") == "critical":
                     violations.append(issue["message"])
 
             # 2. 检查承诺矛盾
-            contradiction_issues = self.check_commitment_contradiction(
-                story_text, commitments
-            )
+            contradiction_issues = self.check_commitment_contradiction(story_text, commitments)
             details["contradiction_issues"] = contradiction_issues
             for issue in contradiction_issues:
                 violations.append(issue["message"])
@@ -119,26 +136,26 @@ class CommitmentFulfillmentValidator:
             parties = self._get_attr(commitment, "parties", [])
 
             # 检查承诺是否在文本中被提及
-            mentioned = self._check_commitment_mentioned(
-                description, parties, story_text
-            )
+            mentioned = self._check_commitment_mentioned(description, parties, story_text)
 
             if not mentioned:
-                issues.append({
-                    "commitment": description[:50],
-                    "importance": importance,
-                    "deadline_week": deadline,
-                    "current_week": current_week,
-                    "message": f"CRITICAL承诺'{description[:30]}'已到期(第{deadline}周)但未在故事中处理"
-                    if importance == "critical"
-                    else f"承诺'{description[:30]}'已到期但未处理",
-                })
+                issues.append(
+                    {
+                        "commitment": description[:50],
+                        "importance": importance,
+                        "deadline_week": deadline,
+                        "current_week": current_week,
+                        "message": (
+                            f"CRITICAL承诺'{description[:30]}'已到期(第{deadline}周)但未在故事中处理"
+                            if importance == "critical"
+                            else f"承诺'{description[:30]}'已到期但未处理"
+                        ),
+                    }
+                )
 
         return issues
 
-    def check_commitment_contradiction(
-        self, story_text: str, active_commitments: list
-    ) -> list:
+    def check_commitment_contradiction(self, story_text: str, active_commitments: list) -> list:
         """检查行为是否与承诺矛盾。"""
         issues = []
         for commitment in active_commitments:
@@ -159,19 +176,19 @@ class CommitmentFulfillmentValidator:
                     if match:
                         context_start = max(0, match.start() - 20)
                         context_end = min(len(story_text), match.end() + 20)
-                        issues.append({
-                            "commitment": description[:50],
-                            "contradiction": story_text[context_start:context_end],
-                            "party": party,
-                            "message": f"行为与承诺'{description[:30]}'矛盾: "
-                            f"对{party}有违反行为",
-                        })
+                        issues.append(
+                            {
+                                "commitment": description[:50],
+                                "contradiction": story_text[context_start:context_end],
+                                "party": party,
+                                "message": f"行为与承诺'{description[:30]}'矛盾: "
+                                f"对{party}有违反行为",
+                            }
+                        )
 
         return issues
 
-    def _check_commitment_mentioned(
-        self, description: str, parties: list, story_text: str
-    ) -> bool:
+    def _check_commitment_mentioned(self, description: str, parties: list, story_text: str) -> bool:
         """检查承诺是否在故事文本中被提及。"""
         # 检查承诺描述中的关键词
         keywords = re.split(r"[，。、；\s]+", description)
@@ -196,8 +213,6 @@ class CommitmentFulfillmentValidator:
         return getattr(obj, attr, default)
 
 
-def validate_commitment_fulfillment(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_commitment_fulfillment(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """模块级验证函数。"""
     return CommitmentFulfillmentValidator().validate(story_text, context)

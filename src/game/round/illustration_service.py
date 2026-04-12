@@ -12,8 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
-from src.ai.image_client import (ContentInspectionError, ImageClient,
-                                 ImageGenerationError)
+from src.ai.image_client import ContentInspectionError, ImageClient, ImageGenerationError
 from src.database.models import Image as ImageModel
 from src.database.models import SceneImage
 from src.services.image_service import get_image_thread_pool  # C-05: 使用共享线程池

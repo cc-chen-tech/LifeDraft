@@ -4,6 +4,7 @@ import logging
 import random
 from typing import Any, Callable, Dict, Optional
 
+from config.feature_flags import get_feature
 from config.settings import settings
 from src.ai.generator import EventGenerator
 from src.ai.models import EventOption, GameEvent
@@ -11,6 +12,7 @@ from src.game.character_creation import CharacterCreator
 from src.game.decisions import process_decision
 from src.game.historical_summary_selector import HistoricalSummarySelector
 from src.game.narrative_manager import NarrativeManager
+from src.game.parallel_postprocessor import ParallelPostProcessor
 from src.game.round.system_mixin import RoundSystemMixin
 from src.game.state import PlayerState
 from src.game.story_service import StoryService
@@ -64,6 +66,8 @@ class GameLoop(RoundSystemMixin):
         self.last_year_start_week = 0  # Track year boundaries
         self.last_year_start_state: Optional[dict[str, Any]] = None  # Track state at year start
         self.last_event_week = -1  # Track when last event was generated
+        # Parallel post-processor (lazy init, managed by feature flag)
+        self._parallel_postprocessor: Optional[ParallelPostProcessor] = None
 
     def start_new_game(self, initial_state: Optional[Dict[str, Any]] = None) -> PlayerState:
         """
@@ -351,6 +355,10 @@ class GameLoop(RoundSystemMixin):
             }
             self.player_state.story_history.append(story_entry)
 
+            # Parallel post-processing (feature-gated)
+            if get_feature("parallel_postprocessing"):
+                self._run_parallel_postprocessing(self.current_event.event_description)
+
         # Apply weekly decay if applicable
         self._apply_weekly_decay()
 
@@ -629,6 +637,49 @@ class GameLoop(RoundSystemMixin):
                     ),
                 ],
             )
+
+    def _run_parallel_postprocessing(self, story_text: str) -> None:
+        """Run parallel post-processing for the current story turn.
+
+        Only called when feature flag 'parallel_postprocessing' is enabled.
+        """
+        if not self.player_state:
+            return
+
+        # Lazy-init the processor
+        if self._parallel_postprocessor is None:
+            self._parallel_postprocessor = ParallelPostProcessor()
+
+        # Determine the last choice text (from most recent decision)
+        choice = ""
+        if self.player_state.decision_history:
+            last_decision = self.player_state.decision_history[-1]
+            choice = last_decision.get("choice_text", "")
+
+        try:
+            pp_result = self._parallel_postprocessor.process(
+                player_state=self.player_state,
+                story_text=story_text,
+                choice=choice,
+                language=self.language,
+                summary_generator=self.ai_generator,
+                world_model_updater=self.world_updater,
+            )
+            if pp_result.errors:
+                logger.warning(
+                    "Parallel post-processing completed with errors: %s",
+                    pp_result.errors,
+                )
+            else:
+                logger.debug("Parallel post-processing completed successfully")
+        except Exception as e:
+            logger.error("Parallel post-processing failed: %s", e, exc_info=True)
+
+    def shutdown(self) -> None:
+        """Shutdown managed resources (e.g. thread pool)."""
+        if self._parallel_postprocessor is not None:
+            self._parallel_postprocessor.shutdown()
+            self._parallel_postprocessor = None
 
     def get_state(self) -> Optional[PlayerState]:
         """Get current player state."""

@@ -48,8 +48,7 @@ class LandmarkExtractionService(BaseExtractionService):
             return []
 
         try:
-            from config.prompts.landmark_extraction_prompt import \
-                get_landmark_extraction_prompt
+            from config.prompts.landmark_extraction_prompt import get_landmark_extraction_prompt
 
             # 构建已存在标志物列表
             existing_landmarks_list = (
@@ -173,8 +172,9 @@ class LandmarkExtractionService(BaseExtractionService):
             生成的描述，失败返回None
         """
         try:
-            from config.prompts.landmark_extraction_prompt import \
-                get_landmark_description_generation_prompt
+            from config.prompts.landmark_extraction_prompt import (
+                get_landmark_description_generation_prompt,
+            )
 
             prompt = get_landmark_description_generation_prompt(
                 landmark_name=landmark_name,

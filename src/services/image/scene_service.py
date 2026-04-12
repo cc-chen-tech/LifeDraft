@@ -6,8 +6,7 @@ from typing import Any, Callable, Dict, Optional
 
 from sqlalchemy.orm import Session
 
-from src.ai.image_client import (ContentInspectionError, ImageClient,
-                                 ImageGenerationError)
+from src.ai.image_client import ContentInspectionError, ImageClient, ImageGenerationError
 from src.database.models import Image as ImageModel
 from src.database.models import SceneImage
 from src.services.image import ImageContentError, ImageServiceError

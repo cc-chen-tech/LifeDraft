@@ -13,18 +13,49 @@ logger = logging.getLogger(__name__)
 
 # 物品使用动词
 ITEM_USE_VERBS = [
-    "拔出", "拿出", "取出", "掏出", "拿起", "举起", "握住", "持",
-    "使用", "挥动", "挥舞", "舞动", "抽出", "亮出",
-    "戴上", "穿上", "披上", "系上", "装上",
-    "打开", "翻开", "展开",
-    "吃下", "喝下", "服下", "饮下",
-    "投掷", "扔出", "射出",
+    "拔出",
+    "拿出",
+    "取出",
+    "掏出",
+    "拿起",
+    "举起",
+    "握住",
+    "持",
+    "使用",
+    "挥动",
+    "挥舞",
+    "舞动",
+    "抽出",
+    "亮出",
+    "戴上",
+    "穿上",
+    "披上",
+    "系上",
+    "装上",
+    "打开",
+    "翻开",
+    "展开",
+    "吃下",
+    "喝下",
+    "服下",
+    "饮下",
+    "投掷",
+    "扔出",
+    "射出",
 ]
 
 # 物品获得动词（表明物品可能是新获得的）
 ITEM_ACQUIRE_VERBS = [
-    "得到", "获得", "捡到", "拾起", "接过", "收到",
-    "买了", "购得", "换到", "赢得",
+    "得到",
+    "获得",
+    "捡到",
+    "拾起",
+    "接过",
+    "收到",
+    "买了",
+    "购得",
+    "换到",
+    "赢得",
 ]
 
 
@@ -64,13 +95,17 @@ class ItemContinuityValidator:
                 item_name = usage.get("item", "")
                 if not self.check_item_possession(item_name, inventory):
                     # 检查是否在文本中有获得该物品的描写（新获得物品豁免）
-                    if not self._check_item_acquired_in_text(story_text, item_name, usage.get("position", 0)):
-                        violations.append({
-                            "item": item_name,
-                            "action": usage.get("action", ""),
-                            "context": usage.get("context", ""),
-                            "message": f"使用了未持有的物品'{item_name}'",
-                        })
+                    if not self._check_item_acquired_in_text(
+                        story_text, item_name, usage.get("position", 0)
+                    ):
+                        violations.append(
+                            {
+                                "item": item_name,
+                                "action": usage.get("action", ""),
+                                "context": usage.get("context", ""),
+                                "message": f"使用了未持有的物品'{item_name}'",
+                            }
+                        )
                         details["missing_items"].append(item_name)
 
             if violations:
@@ -106,13 +141,15 @@ class ItemContinuityValidator:
                 for match in re.finditer(pattern, text):
                     ctx_start = max(0, match.start() - 15)
                     ctx_end = min(len(text), match.end() + 15)
-                    usages.append({
-                        "item": item,
-                        "action": verb,
-                        "position": match.start(),
-                        "context": text[ctx_start:ctx_end],
-                        "in_inventory": True,
-                    })
+                    usages.append(
+                        {
+                            "item": item,
+                            "action": verb,
+                            "position": match.start(),
+                            "context": text[ctx_start:ctx_end],
+                            "in_inventory": True,
+                        }
+                    )
 
         # 策略2：检查 "已知物品 + 使用相关描述"
         for item in known_items:
@@ -123,13 +160,15 @@ class ItemContinuityValidator:
             for match in re.finditer(pattern, text):
                 ctx_start = max(0, match.start() - 10)
                 ctx_end = min(len(text), match.end() + 10)
-                usages.append({
-                    "item": item,
-                    "action": "描述性使用",
-                    "position": match.start(),
-                    "context": text[ctx_start:ctx_end],
-                    "in_inventory": True,
-                })
+                usages.append(
+                    {
+                        "item": item,
+                        "action": "描述性使用",
+                        "position": match.start(),
+                        "context": text[ctx_start:ctx_end],
+                        "in_inventory": True,
+                    }
+                )
 
         return usages
 
@@ -155,9 +194,7 @@ class ItemContinuityValidator:
         return False
 
     @staticmethod
-    def _check_item_acquired_in_text(
-        text: str, item_name: str, use_position: int
-    ) -> bool:
+    def _check_item_acquired_in_text(text: str, item_name: str, use_position: int) -> bool:
         """检查物品是否在使用前在文本中被获得。"""
         # 只检查使用位置之前的文本
         text_before = text[:use_position]
@@ -171,8 +208,6 @@ class ItemContinuityValidator:
         return False
 
 
-def validate_item_continuity(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_item_continuity(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """模块级验证函数。"""
     return ItemContinuityValidator().validate(story_text, context)

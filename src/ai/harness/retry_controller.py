@@ -59,9 +59,7 @@ class RetryController:
             (是否重试, 修正指令文本)。不重试时修正指令为 None。
         """
         try:
-            return self._should_retry_inner(
-                validation_result, diagnostic_report, attempt
-            )
+            return self._should_retry_inner(validation_result, diagnostic_report, attempt)
         except Exception as e:
             logger.error(f"重试决策异常: {e}")
             return False, None
@@ -198,7 +196,7 @@ class RetryController:
         prefix = f"[{constraint_type}] "
         for fix in diagnostic_report.suggested_fixes:
             if fix.startswith(prefix):
-                return fix[len(prefix):]
+                return fix[len(prefix) :]
         return ""
 
     def _build_gentle_hint(self, validation_result: ValidationResult) -> str:

@@ -95,9 +95,7 @@ async def recommend_music(
         logger.info(f"[MusicAPI] Fetched {len(url_map)}/{len(recommendation.songs)} song URLs")
 
         # 过滤掉没有有效 URL 的歌曲
-        filtered_out = [
-            song for song in recommendation.songs if song.id not in url_map
-        ]
+        filtered_out = [song for song in recommendation.songs if song.id not in url_map]
         if filtered_out:
             filtered_ids = [s.id for s in filtered_out]
             logger.info(
@@ -227,7 +225,9 @@ async def stream_song(song_id: int, request: Request):
 
         # 如果 CDN 返回 403/401（URL 过期），尝试刷新 URL 重试一次
         if response.status_code in (403, 401):
-            logger.info(f"[MusicStream] CDN returned {response.status_code} for song {song_id}, refreshing URL...")
+            logger.info(
+                f"[MusicStream] CDN returned {response.status_code} for song {song_id}, refreshing URL..."
+            )
             await response.aclose()
             await client.aclose()
 
@@ -241,9 +241,7 @@ async def stream_song(song_id: int, request: Request):
             status = response.status_code
             await response.aclose()
             await client.aclose()
-            raise HTTPException(
-                status_code=status, detail="CDN request failed"
-            )
+            raise HTTPException(status_code=status, detail="CDN request failed")
 
         async def audio_generator():
             try:

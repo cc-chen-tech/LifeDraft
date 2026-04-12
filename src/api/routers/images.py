@@ -8,21 +8,25 @@ from fastapi.responses import Response as FastAPIResponse
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user, get_current_user_optional, get_db
-from src.api.schemas import (BatchGenerateCharactersRequest,
-                             GenerateImageRequest,
-                             GenerateOpeningIllustrationRequest,
-                             GenerateRoundSceneRequest, ImageListResponse,
-                             ImageResponse, MessageResponse,
-                             OpeningIllustrationResponse,
-                             RegenerateFreshImageRequest,
-                             RegenerateImageRequest,
-                             RegenerateOpeningIllustrationRequest,
-                             RegenerateRoundSceneRequest, RoundSceneResponse)
+from src.api.schemas import (
+    BatchGenerateCharactersRequest,
+    GenerateImageRequest,
+    GenerateOpeningIllustrationRequest,
+    GenerateRoundSceneRequest,
+    ImageListResponse,
+    ImageResponse,
+    MessageResponse,
+    OpeningIllustrationResponse,
+    RegenerateFreshImageRequest,
+    RegenerateImageRequest,
+    RegenerateOpeningIllustrationRequest,
+    RegenerateRoundSceneRequest,
+    RoundSceneResponse,
+)
 from src.database.models import Game
 from src.database.models import Image as ImageModel
 from src.database.models import SessionLocal, User
-from src.services.image_service import (ImageContentError, ImageService,
-                                        ImageServiceError)
+from src.services.image_service import ImageContentError, ImageService, ImageServiceError
 from src.services.image_storage import ImageStorageError, ImageStorageService
 
 logger = logging.getLogger(__name__)
@@ -851,9 +855,12 @@ async def get_round_scene_image(
     from src.database.models import GameState
 
     try:
-        latest_state = db.query(GameState).filter(
-            GameState.game_id == game_id
-        ).order_by(GameState.week.desc()).first()
+        latest_state = (
+            db.query(GameState)
+            .filter(GameState.game_id == game_id)
+            .order_by(GameState.week.desc())
+            .first()
+        )
 
         if latest_state and latest_state.state_json:
             game_state = latest_state.state_json  # 已是 dict，无需 json.loads
@@ -1190,8 +1197,7 @@ def _trigger_scene_generation_in_background(
             from src.ai.image_client import ImageClient
             from src.database.models import Image as ImageModel
             from src.database.models import SessionLocal
-            from src.game.round.illustration_service import \
-                RoundIllustrationService
+            from src.game.round.illustration_service import RoundIllustrationService
             from src.services.image_storage import ImageStorageService
 
             # 创建新的数据库会话（在线程中）

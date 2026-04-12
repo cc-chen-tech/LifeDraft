@@ -308,7 +308,7 @@ class ImageStorageService:
                     marker = "data/images/"
                     marker_idx = storage_path.find(marker)
                     if marker_idx != -1:
-                        relative_path = storage_path[marker_idx + len(marker):]
+                        relative_path = storage_path[marker_idx + len(marker) :]
                     else:
                         relative_path = storage_path
             else:

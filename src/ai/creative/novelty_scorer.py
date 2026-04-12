@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 _vector_store_available = False
 try:
     from src.ai.vector_store import get_vector_store, is_vector_search_enabled
+
     _vector_store_available = True
 except ImportError:
     logger.info("Vector store not available, will use text-based similarity fallback.")
@@ -36,9 +37,7 @@ class NoveltyScorer:
     def __init__(self, use_vector_store: bool = True):
         self._use_vector_store = use_vector_store and _vector_store_available
 
-    def score(
-        self, current_text: str, history: Optional[List[str]] = None
-    ) -> NoveltyResult:
+    def score(self, current_text: str, history: Optional[List[str]] = None) -> NoveltyResult:
         """
         计算新颖度: novelty_score = 1.0 - max_similarity。
         无历史时返回高新颖度 (1.0)。
@@ -135,7 +134,7 @@ class NoveltyScorer:
 
             # 2. Bigram Jaccard
             def get_ngrams(text: str, n: int) -> set:
-                return set(text[i:i + n] for i in range(len(text) - n + 1))
+                return set(text[i : i + n] for i in range(len(text) - n + 1))
 
             bi_a = get_ngrams(text_a, 2)
             bi_b = get_ngrams(text_b, 2)

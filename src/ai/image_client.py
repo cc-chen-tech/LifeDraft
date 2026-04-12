@@ -15,15 +15,16 @@ from typing import Any, Dict, List, Optional, Tuple
 
 # Re-export settings for backward compatibility (needed by tests)
 from config.settings import settings
+
 # Re-export utility function for backward compatibility
 from src.ai.image_config import create_retry_session
+
 # Re-export exceptions for backward compatibility
-from src.ai.image_exceptions import (ContentInspectionError,
-                                     ImageGenerationError)
+from src.ai.image_exceptions import ContentInspectionError, ImageGenerationError
+
 # Import internal modules
 from src.ai.image_generator import ImageGenerator
-from src.ai.image_prompt_builder import (DeepSeekPromptEnhancer,
-                                         ImagePromptBuilder)
+from src.ai.image_prompt_builder import DeepSeekPromptEnhancer, ImagePromptBuilder
 
 logger = logging.getLogger(__name__)
 

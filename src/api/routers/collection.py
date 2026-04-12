@@ -7,15 +7,20 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user_optional
-from src.api.schemas import (CollectionResponse, MessageResponse,
-                             RegenerateCharacterImageRequest,
-                             RegenerateItemImageRequest)
+from src.api.schemas import (
+    CollectionResponse,
+    MessageResponse,
+    RegenerateCharacterImageRequest,
+    RegenerateItemImageRequest,
+)
 from src.api.services.session_service import session_service
 from src.database.models import SessionLocal
-from src.services.collection_service import (CollectionService,
-                                             EntityNotFoundError,
-                                             ImageGenerationError,
-                                             PermissionDeniedError)
+from src.services.collection_service import (
+    CollectionService,
+    EntityNotFoundError,
+    ImageGenerationError,
+    PermissionDeniedError,
+)
 from src.services.image_service import ImageContentError, ImageServiceError
 from src.services.item_extraction_service import ItemExtractionService
 from src.services.landmark_extraction_service import LandmarkExtractionService
@@ -387,8 +392,7 @@ async def recognize_entities(  # type: ignore
         existing_characters.append(player_name)
 
     try:
-        from src.services.entity_recognition_service import \
-            EntityRecognitionService
+        from src.services.entity_recognition_service import EntityRecognitionService
 
         # 根据游戏进度动态计算阈值
         total_rounds = len(player_state.round_history) if player_state.round_history else 0

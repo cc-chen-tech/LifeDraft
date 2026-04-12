@@ -159,10 +159,9 @@ async def generate_summary(
             all_weeks = sorted(set(item.get("week", 0) for item in story_history))
             if len(all_weeks) > req.weeks:
                 # 只保留最近 N 周的数据
-                recent_weeks = set(all_weeks[-req.weeks:])
+                recent_weeks = set(all_weeks[-req.weeks :])
                 story_history = [
-                    item for item in story_history
-                    if item.get("week", 0) in recent_weeks
+                    item for item in story_history if item.get("week", 0) in recent_weeks
                 ]
 
         # Build story text

@@ -13,16 +13,41 @@ logger = logging.getLogger(__name__)
 
 # 重大决策关键词（用于判断决策的重要性）
 MAJOR_DECISION_INDICATORS = [
-    "重要", "关键", "改变", "转折", "生死", "命运",
-    "决裂", "背叛", "结盟", "放弃", "牺牲", "选择",
+    "重要",
+    "关键",
+    "改变",
+    "转折",
+    "生死",
+    "命运",
+    "决裂",
+    "背叛",
+    "结盟",
+    "放弃",
+    "牺牲",
+    "选择",
 ]
 
 # 后果体现关键词
 CONSEQUENCE_KEYWORDS = [
-    "因为", "由于", "所以", "因此", "导致", "结果",
-    "后果", "报应", "代价", "影响", "连锁", "波及",
-    "那次", "上次", "之前的", "当初",
-    "终于", "果然", "不出所料",
+    "因为",
+    "由于",
+    "所以",
+    "因此",
+    "导致",
+    "结果",
+    "后果",
+    "报应",
+    "代价",
+    "影响",
+    "连锁",
+    "波及",
+    "那次",
+    "上次",
+    "之前的",
+    "当初",
+    "终于",
+    "果然",
+    "不出所料",
 ]
 
 # 决策历史中值得追踪的最近轮数
@@ -65,9 +90,7 @@ class CauseEffectConsistencyValidator:
             }
 
             # 1. 检查因果链中的到期未体现后果
-            chain_violations = self._check_causal_chains(
-                causal_chains, current_week, story_text
-            )
+            chain_violations = self._check_causal_chains(causal_chains, current_week, story_text)
             details["causal_chain_issues"] = chain_violations
             if chain_violations:
                 violation_msgs = [v["message"] for v in chain_violations]
@@ -86,32 +109,24 @@ class CauseEffectConsistencyValidator:
                 return True, "", details
 
             # 获取待体现后果的重大决策
-            pending = self.get_pending_consequences(
-                decision_history, story_history, current_week
-            )
+            pending = self.get_pending_consequences(decision_history, story_history, current_week)
             details["pending_consequences"] = [
-                {"decision": p.get("decision", "")[:50], "week": p.get("week", 0)}
-                for p in pending
+                {"decision": p.get("decision", "")[:50], "week": p.get("week", 0)} for p in pending
             ]
             details["decisions_checked"] = len(pending)
 
             # 检查每个待体现后果的决策
             for pending_item in pending:
-                reflected = self.check_consequence_reflection(
-                    story_text, pending_item
-                )
+                reflected = self.check_consequence_reflection(story_text, pending_item)
                 if reflected:
-                    details["reflected_consequences"].append(
-                        pending_item.get("decision", "")[:50]
-                    )
+                    details["reflected_consequences"].append(pending_item.get("decision", "")[:50])
                 else:
-                    details["missing_consequences"].append(
-                        pending_item.get("decision", "")[:50]
-                    )
+                    details["missing_consequences"].append(pending_item.get("decision", "")[:50])
 
             # 因果验证相对宽松：只在有多个重大决策长期未体现时才警告
             long_overdue = [
-                p for p in pending
+                p
+                for p in pending
                 if current_week - p.get("week", current_week) > 6
                 and p.get("decision", "")[:50] in details["missing_consequences"]
             ]
@@ -129,10 +144,7 @@ class CauseEffectConsistencyValidator:
                         **details,
                         "violations": violation_msgs,
                         "correction_hint": "以下重大决策的后果长期未在故事中体现: "
-                        + "; ".join(
-                            f"'{d.get('decision', '')[:30]}'"
-                            for d in long_overdue[:3]
-                        ),
+                        + "; ".join(f"'{d.get('decision', '')[:30]}'" for d in long_overdue[:3]),
                     },
                 )
 
@@ -170,17 +182,17 @@ class CauseEffectConsistencyValidator:
             )
 
             if not already_reflected:
-                pending.append({
-                    "decision": decision_text,
-                    "week": decision_week,
-                    "keywords": self._extract_decision_keywords(decision_text),
-                })
+                pending.append(
+                    {
+                        "decision": decision_text,
+                        "week": decision_week,
+                        "keywords": self._extract_decision_keywords(decision_text),
+                    }
+                )
 
         return pending
 
-    def check_consequence_reflection(
-        self, story_text: str, pending: dict
-    ) -> bool:
+    def check_consequence_reflection(self, story_text: str, pending: dict) -> bool:
         """检查文本是否对该决策有后果体现。"""
         decision_text = pending.get("decision", "")
         keywords = pending.get("keywords", [])
@@ -255,9 +267,38 @@ class CauseEffectConsistencyValidator:
     @staticmethod
     def _extract_decision_keywords(text: str) -> list:
         """从决策文本中提取关键词。"""
-        stop_words = {"的", "了", "在", "是", "和", "与", "被", "将", "要", "会",
-                      "到", "从", "对", "向", "把", "让", "给", "也", "都", "又",
-                      "已", "还", "就", "而", "但", "却", "只", "很", "不", "选择"}
+        stop_words = {
+            "的",
+            "了",
+            "在",
+            "是",
+            "和",
+            "与",
+            "被",
+            "将",
+            "要",
+            "会",
+            "到",
+            "从",
+            "对",
+            "向",
+            "把",
+            "让",
+            "给",
+            "也",
+            "都",
+            "又",
+            "已",
+            "还",
+            "就",
+            "而",
+            "但",
+            "却",
+            "只",
+            "很",
+            "不",
+            "选择",
+        }
         # 先按标点分割
         segments = re.split(r"[，。！？、；：\s]+", text)
         keywords = []
@@ -275,14 +316,12 @@ class CauseEffectConsistencyValidator:
                 # 对仍然较长的片段，尝试按2-3字滑动窗口提取
                 if len(seg) > 6:
                     for i in range(0, len(seg) - 1, 2):
-                        chunk = seg[i:i+3] if i + 3 <= len(seg) else seg[i:]
+                        chunk = seg[i : i + 3] if i + 3 <= len(seg) else seg[i:]
                         if len(chunk) >= 2 and chunk not in stop_words:
                             keywords.append(chunk)
         return keywords
 
-    def _check_causal_chains(
-        self, causal_chains: list, current_week: int, story_text: str
-    ) -> list:
+    def _check_causal_chains(self, causal_chains: list, current_week: int, story_text: str) -> list:
         """检查因果链中到期未体现的后果和矛盾。"""
         issues = []
         for chain in causal_chains:
@@ -309,16 +348,20 @@ class CauseEffectConsistencyValidator:
 
                 # 需要触发事件和预期后果的关键词同时出现才算体现
                 trigger_reflected = any(kw in story_text for kw in trigger_keywords if len(kw) >= 2)
-                consequence_reflected = any(kw in story_text for kw in consequence_keywords if len(kw) >= 2)
+                consequence_reflected = any(
+                    kw in story_text for kw in consequence_keywords if len(kw) >= 2
+                )
 
                 if not (trigger_reflected and consequence_reflected) and not consequence_reflected:
-                    issues.append({
-                        "trigger_event": trigger_event,
-                        "trigger_week": trigger_week,
-                        "weeks_elapsed": weeks_elapsed,
-                        "message": f"事件'{trigger_event[:30]}'(第{trigger_week}周)已过{weeks_elapsed}轮，"
-                        f"后果未在故事中体现",
-                    })
+                    issues.append(
+                        {
+                            "trigger_event": trigger_event,
+                            "trigger_week": trigger_week,
+                            "weeks_elapsed": weeks_elapsed,
+                            "message": f"事件'{trigger_event[:30]}'(第{trigger_week}周)已过{weeks_elapsed}轮，"
+                            f"后果未在故事中体现",
+                        }
+                    )
 
             # 检查因果矛盾：故事内容与预期后果相反
             if expected_consequences:
@@ -328,12 +371,14 @@ class CauseEffectConsistencyValidator:
                         story_text, trigger_event, expected
                     )
                     if contradiction_found:
-                        issues.append({
-                            "trigger_event": trigger_event,
-                            "expected": expected,
-                            "contradiction": contradiction_found,
-                            "message": f"事件'{trigger_event[:30]}'的后果与预期'{expected}'矛盾: {contradiction_found}",
-                        })
+                        issues.append(
+                            {
+                                "trigger_event": trigger_event,
+                                "expected": expected,
+                                "contradiction": contradiction_found,
+                                "message": f"事件'{trigger_event[:30]}'的后果与预期'{expected}'矛盾: {contradiction_found}",
+                            }
+                        )
 
         return issues
 
@@ -347,9 +392,15 @@ class CauseEffectConsistencyValidator:
 
         # 查找正面预期的反面表达
         positive_negative_pairs = [
-            ("感恩", "报复"), ("优待", "报复"), ("感谢", "报复"),
-            ("帮助", "陷害"), ("恩情", "仇恨"), ("友好", "敌对"),
-            ("保护", "攻击"), ("信任", "背叛"), ("合作", "对抗"),
+            ("感恩", "报复"),
+            ("优待", "报复"),
+            ("感谢", "报复"),
+            ("帮助", "陷害"),
+            ("恩情", "仇恨"),
+            ("友好", "敌对"),
+            ("保护", "攻击"),
+            ("信任", "背叛"),
+            ("合作", "对抗"),
         ]
 
         # 检查预期后果关键词和相反行为
@@ -362,8 +413,6 @@ class CauseEffectConsistencyValidator:
         return ""
 
 
-def validate_cause_effect_consistency(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_cause_effect_consistency(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """模块级验证函数。"""
     return CauseEffectConsistencyValidator().validate(story_text, context)
