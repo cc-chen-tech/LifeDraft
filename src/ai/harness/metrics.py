@@ -236,7 +236,7 @@ class HarnessMetrics:
 
             placeholders = ",".join(["?"] * len(run_ids))
             cursor.execute(
-                f"""
+                f"""  # nosec B608
                 SELECT constraint_type,
                        COUNT(*) as total,
                        SUM(passed) as passed_count
