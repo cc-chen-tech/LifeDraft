@@ -6,8 +6,9 @@
 import asyncio
 import logging
 import os
+import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
@@ -47,6 +48,9 @@ class MusicRecommendation:
 
 class NeteaseMusicClient:
     """网易云音乐 API 客户端"""
+
+    _url_cache: Dict[int, Tuple[str, float]] = {}  # song_id -> (url, expire_timestamp)
+    URL_CACHE_TTL = 1200  # 20 分钟
 
     def __init__(self, base_url: Optional[str] = None):
         base_url = base_url or os.getenv("NETEASE_MUSIC_API_URL", "http://localhost:3000")
@@ -138,6 +142,19 @@ class NeteaseMusicClient:
         Returns:
             播放 URL
         """
+        # 检查缓存
+        cached = self._url_cache.get(song_id)
+        if cached:
+            url, expire_ts = cached
+            if time.time() < expire_ts:
+                logger.info(f"[MusicCache] 缓存命中: song_id={song_id}")
+                return url
+            else:
+                logger.info(f"[MusicCache] 缓存未命中/过期: song_id={song_id}, 重新获取")
+                del self._url_cache[song_id]
+        else:
+            logger.info(f"[MusicCache] 缓存未命中/过期: song_id={song_id}, 重新获取")
+
         try:
             url = f"{self.base_url}/song/url"
             params = {"id": song_id}
@@ -158,6 +175,8 @@ class NeteaseMusicClient:
                 song_url = songs[0].get("url")
                 if song_url:
                     logger.info(f"[NeteaseMusic] Got URL for song {song_id}: {song_url[:50]}...")
+                    # 写入缓存
+                    self._url_cache[song_id] = (song_url, time.time() + self.URL_CACHE_TTL)
                     return song_url  # type: ignore[no-any-return]
                 else:
                     logger.warning(

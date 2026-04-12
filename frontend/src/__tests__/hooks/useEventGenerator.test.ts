@@ -48,6 +48,7 @@ describe('useEventGenerator', () => {
     event: { story: string; options: { text: string }[] } | null;
   } | null> = { current: null };
   const mockPrefetchingRef: React.MutableRefObject<boolean> = { current: false };
+  const mockIsRetryingRef: React.MutableRefObject<boolean> = { current: false };
 
   const mockSetters = {
     setPhase: jest.fn(),
@@ -84,6 +85,7 @@ describe('useEventGenerator', () => {
     prefetchAbortRef: mockPrefetchAbortRef,
     prefetchResultRef: mockPrefetchResultRef,
     prefetchingRef: mockPrefetchingRef,
+    isRetryingRef: mockIsRetryingRef,
   };
 
   beforeEach(() => {
@@ -92,6 +94,7 @@ describe('useEventGenerator', () => {
     mockGeneratingRef.current = false;
     mockPollingRef.current = false;
     mockPrefetchingRef.current = false;
+    mockIsRetryingRef.current = false;
     mockAbortRef.current = null;
     mockPrefetchAbortRef.current = null;
     mockPrefetchResultRef.current = null;
@@ -480,7 +483,7 @@ describe('useEventGenerator', () => {
         await result.current.generateEvent();
       });
 
-      expect(handleStatusUpdate).toHaveBeenCalledWith('generating_story', mockSetters.setProcessing);
+      expect(handleStatusUpdate).toHaveBeenCalledWith('generating_story', mockSetters.setProcessing, {"current": false});
     });
 
     it('clears reconnect attempt on non-reconnecting status', async () => {

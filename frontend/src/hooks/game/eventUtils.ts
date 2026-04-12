@@ -52,6 +52,7 @@ export interface EventHandlers {
   setConnectionStatus: (status: string | null) => void;
   appendStoryText: (text: string) => void;
   generatingRef: React.MutableRefObject<boolean>;
+  isRetryingRef: React.MutableRefObject<boolean>;
 }
 
 // ==================== Story Helpers ====================
@@ -130,11 +131,13 @@ export function handleEventComplete(
     setConnectionStatus,
     appendStoryText,
     generatingRef,
+    isRetryingRef,
   } = handlers;
 
   setProcessing(false);
   setConnectionStatus(null);
   generatingRef.current = false;
+  isRetryingRef.current = false;
 
   const eventData = data as EventData;
   console.log("[onComplete] Options:", eventData.options?.length ?? "undefined");
@@ -232,10 +235,12 @@ export function handleEventComplete(
  */
 export function handleStatusUpdate(
   status: { phase: string },
-  setProcessing: (processing: boolean, message?: string) => void
+  setProcessing: (processing: boolean, message?: string) => void,
+  isRetryingRef?: React.MutableRefObject<boolean>
 ): void {
   if (status.phase === "retrying") {
     console.log("[onStatus] Retrying detected, story will be regenerated");
+    if (isRetryingRef) isRetryingRef.current = true;
     setProcessing(true, "retrying");
     return;
   }
@@ -243,6 +248,8 @@ export function handleStatusUpdate(
     console.log("[onStatus] Retry event received, clearing story for new content");
     // ★ 标记发生了重试，complete 时会强制使用后端故事
     markRetry();
+    if (isRetryingRef) isRetryingRef.current = true;
+    // ★ 直接通过 store setState 清空，不触发 setter 的 useEffect 依赖
     useGameStore.setState({ storyText: "" });
     setProcessing(true, "retrying");
     return;

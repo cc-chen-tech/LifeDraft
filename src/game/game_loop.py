@@ -128,16 +128,35 @@ class GameLoop(RoundSystemMixin):
             f"[LoadGame] current_event_data exists: {self.player_state.current_event_data is not None}"
         )
         if self.player_state.current_event_data:
-            try:
-                from src.ai.models import GameEvent
+            # 检查 round_history 是否已有当前轮次条目
+            current_week = self.player_state.week
+            current_round = self.player_state.current_round
+            round_history = self.player_state.round_history or []
 
-                self.current_event = GameEvent(**self.player_state.current_event_data)
+            already_processed = any(
+                entry.get("week") == current_week and entry.get("round") == current_round
+                for entry in round_history
+            )
+
+            if already_processed:
                 logger.info(
-                    f"[LoadGame] Restored current event from saved state: {self.current_event.event_description[:50]}..."
+                    f"[LoadGame] current_event_data is stale "
+                    f"(round {current_week}-{current_round} already in history), clearing"
                 )
-            except Exception as e:
-                logger.warning(f"[LoadGame] Failed to restore current event: {e}")
+                self.player_state.current_event_data = None
                 self.current_event = None
+            else:
+                try:
+                    from src.ai.models import GameEvent
+
+                    self.current_event = GameEvent(**self.player_state.current_event_data)
+                    logger.info(
+                        f"[LoadGame] Restored current event from saved state: "
+                        f"{self.current_event.event_description[:50]}..."
+                    )
+                except Exception as e:
+                    logger.warning(f"[LoadGame] Failed to restore current event: {e}")
+                    self.current_event = None
         else:
             logger.info("[LoadGame] No current_event_data, setting current_event to None")
             self.current_event = None

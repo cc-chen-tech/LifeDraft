@@ -24,6 +24,12 @@ jest.mock('@/stores/useGameStore', () => ({
     selector ? selector(mockGameState) : mockGameState,
 }));
 
+// Mock useUserStore
+jest.mock('@/stores/useUserStore', () => ({
+  useUserStore: (selector?: (state: Record<string, unknown>) => unknown) =>
+    selector ? selector({ isAuthenticated: true }) : { isAuthenticated: true },
+}));
+
 describe('SavesPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();

@@ -83,6 +83,7 @@ export function usePlayGame() {
     event: { story: string; options: EventOption[] } | null;
   } | null>(null);
   const prefetchingRef = useRef(false);
+  const isRetryingRef = useRef(false);
   const generateEventRef = useRef<() => Promise<void>>(async () => {});
 
   // ===== Phase Manager =====
@@ -159,6 +160,7 @@ export function usePlayGame() {
     prefetchAbortRef,
     prefetchResultRef,
     prefetchingRef,
+    isRetryingRef,
   });
   
   // Update generateEventRef for useGameState

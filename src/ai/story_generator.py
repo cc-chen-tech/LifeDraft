@@ -1257,6 +1257,15 @@ class StoryGenerator:
             f"[_validate_and_retry_story] Entered with stream_callback={stream_callback is not None}"
         )
 
+        # 防循环守卫：如果本轮已经重试过一致性校验，跳过
+        retry_key = f"{player_state.get('week', 0)}-{player_state.get('current_round', 0)}"
+        if hasattr(self, '_last_retry_key') and self._last_retry_key == retry_key:
+            logger.info(
+                f"[Validation] Skipping consistency check for round {retry_key} "
+                f"(already retried this round)"
+            )
+            return story_text
+
         try:
             from src.ai.consistency_validator import ConsistencyValidator
 
@@ -1281,53 +1290,104 @@ class StoryGenerator:
                 logger.info(f"一致性校验有 {len(validation.warning_issues)} 个WARNING，不触发重试")
                 return story_text
 
-            # CRITICAL issues found - retry once
-            logger.warning(
-                f"一致性校验不通过，{len(validation.critical_issues)} 个CRITICAL问题，触发重试"
+            # CRITICAL issues found - trigger local fix (not full regeneration)
+            logger.info(
+                f"一致性校验发现 {len(validation.critical_issues)} 个CRITICAL问题，"
+                f"触发局部修正（非全文重新生成）"
             )
             for issue in validation.critical_issues:
                 logger.warning(f"  CRITICAL [{issue.dimension}]: {issue.description[:80]}")
 
-            # Regenerate with fix instructions appended
-            # ★ 重要：重试时也需要流式输出，否则前端会显示不完整的旧内容
-            retry_prompt = original_prompt + validation.fix_instructions
+            # 构建局部修正 prompt
+            if language == "en":
+                fix_prompt = f"""You are a professional story editor. Below is a completed story that has some issues requiring correction.
+
+Please **only modify the problematic paragraphs** and keep the rest of the content completely unchanged. Output the full story text after modification.
+
+[Original Story]
+{story_text}
+
+[Issues to Fix]
+"""
+                for issue in validation.critical_issues:
+                    fix_prompt += f"\n- [{issue.dimension}] {issue.description}"
+                    if issue.fix_suggestion:
+                        fix_prompt += f"\n  Suggested fix: {issue.fix_suggestion}"
+
+                fix_prompt += """
+
+[Correction Requirements]
+1. Only modify sentences or paragraphs directly related to the above issues
+2. Keep the overall structure, plot direction, and character relationships unchanged
+3. Ensure the modified content flows naturally with the surrounding context
+4. Output the corrected full story text directly, without any explanations or markers
+"""
+                fix_system_prompt = (
+                    "You are a precise story editor who excels at fixing specific "
+                    "issues while preserving the overall narrative."
+                )
+            else:
+                fix_prompt = f"""你是一位专业的故事编辑。以下是一段已完成的故事，但存在一些需要修正的问题。
+
+请**仅修改有问题的段落**，保留其余内容完全不变。修改后输出完整的故事文本。
+
+【原始故事】
+{story_text}
+
+【需要修正的问题】
+"""
+                for issue in validation.critical_issues:
+                    fix_prompt += f"\n- [{issue.dimension}] {issue.description}"
+                    if issue.fix_suggestion:
+                        fix_prompt += f"\n  修正建议：{issue.fix_suggestion}"
+
+                fix_prompt += """
+
+【修正要求】
+1. 只修改与上述问题直接相关的句子或段落
+2. 保持故事的整体结构、情节走向和人物关系不变
+3. 确保修改后的内容与上下文自然衔接
+4. 直接输出修正后的完整故事文本，不要添加任何解释或标记
+"""
+                fix_system_prompt = (
+                    "你是一位精准的故事编辑，擅长在保持整体不变的前提下修正具体问题。"
+                )
 
             # ★ 先发送状态提示，让前端显示"正在优化故事"
             if status_callback:
-                logger.info("★ 发送 retrying 状态提示")
+                logger.info("★ 发送 retrying 状态提示（局部修正）")
                 status_callback("retrying")
 
             # ★ 发送特殊的 retry 事件让前端清空故事（通过 status 回调）
-            # 不再使用 stream_callback 发送 RETRY 标记，避免干扰故事流
             if status_callback:
                 logger.info("★ 发送 retry 事件让前端清空故事")
-                status_callback("retry")  # 前端会识别这个状态并清空故事
+                status_callback("retry")
 
-            # ★ 诊断日志：确认 stream_callback 状态
-            if stream_callback is None:
-                logger.warning("★★★ stream_callback is None in retry! This should not happen.")
-            else:
-                logger.info(f"★ stream_callback is present in retry: {stream_callback}")
+            # 记录防循环守卫 key
+            self._last_retry_key = retry_key
 
-            # ★ 优化：重试时使用固定的低温度 0.7，确保更保守、更符合约束
             logger.info(
-                f"Consistency retry with temperature=0.7 (conservative), stream_callback={stream_callback is not None}"
+                f"Local fix call with temperature=0.5, stream_callback={stream_callback is not None}"
             )
 
-            retry_story = self.client.call(
-                system_prompt=sys_prompt,
-                user_prompt=retry_prompt,
-                temperature=0.7,  # 固定低温度，确保严格遵守约束
+            # 用较低温度进行局部修正
+            fixed_story = self.client.call(
+                system_prompt=fix_system_prompt,
+                user_prompt=fix_prompt,
+                temperature=0.5,  # 低温度确保精确修正
                 max_tokens=8192,
                 stream_callback=stream_callback,
-                frequency_penalty=0.3,  # ★ 重试时也保持反重复
+                frequency_penalty=0.3,
                 presence_penalty=0.3,
             )
 
-            if retry_story:
-                logger.info(f"重试生成完成，故事长度: {len(retry_story)}")
-                return retry_story
+            if fixed_story:
+                logger.info(
+                    f"局部修正完成，故事长度: {len(fixed_story)} (原: {len(story_text)})"
+                )
+                return fixed_story
 
+            logger.warning("局部修正返回空结果，回退到原始故事")
             return story_text
 
         except Exception as e:

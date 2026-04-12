@@ -202,6 +202,15 @@ async def stream_song(song_id: int, request: Request):
     if not url:
         raise HTTPException(status_code=404, detail="Song URL not available")
 
+    def _sanitize_url(u: str) -> str:
+        """脱敏URL，只保留域名和路径前缀。"""
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(u)
+            return f"{parsed.scheme}://{parsed.netloc}/...{parsed.path[-20:] if len(parsed.path) > 20 else parsed.path}"
+        except Exception:
+            return u[:30] + "..."
+
     async def _do_stream(target_url: str) -> StreamingResponse:
         """向 CDN 发起流式请求并返回 StreamingResponse。"""
         client = httpx.AsyncClient(follow_redirects=True, timeout=30.0)
@@ -211,9 +220,16 @@ async def stream_song(song_id: int, request: Request):
             if "range" in request.headers:
                 cdn_headers["Range"] = request.headers["range"]
 
+            logger.info(
+                f"[MusicStream] CDN 请求发起: song_id={song_id}, url={_sanitize_url(target_url)}"
+            )
             response = await client.send(
                 client.build_request("GET", target_url, headers=cdn_headers),
                 stream=True,
+            )
+            logger.info(
+                f"[MusicStream] CDN 响应: song_id={song_id}, "
+                f"status={response.status_code}, content_type={response.headers.get('content-type', 'N/A')}"
             )
             return response, client
         except httpx.HTTPError as exc:
@@ -225,20 +241,34 @@ async def stream_song(song_id: int, request: Request):
 
         # 如果 CDN 返回 403/401（URL 过期），尝试刷新 URL 重试一次
         if response.status_code in (403, 401):
-            logger.info(
-                f"[MusicStream] CDN returned {response.status_code} for song {song_id}, refreshing URL..."
+            logger.warning(
+                f"[MusicStream] CDN 返回 {response.status_code} (URL可能过期): "
+                f"song_id={song_id}, url={_sanitize_url(url)}"
             )
             await response.aclose()
             await client.aclose()
 
+            # 清除缓存以强制重新获取
+            from src.services.music_service import NeteaseMusicClient
+            if song_id in NeteaseMusicClient._url_cache:
+                del NeteaseMusicClient._url_cache[song_id]
+                logger.info(f"[MusicStream] URL刷新: 已清除 song_id={song_id} 的缓存")
+
             fresh_url = await music_service.get_song_play_url(song_id)
             if not fresh_url:
                 raise HTTPException(status_code=404, detail="Song URL not available after refresh")
+            logger.info(
+                f"[MusicStream] URL刷新成功: song_id={song_id}, new_url={_sanitize_url(fresh_url)}"
+            )
 
             response, client = await _do_stream(fresh_url)
 
         if response.status_code not in (200, 206):
             status = response.status_code
+            logger.error(
+                f"[MusicStream] CDN 返回非200状态码: song_id={song_id}, "
+                f"status={status}, headers={dict(response.headers)}"
+            )
             await response.aclose()
             await client.aclose()
             raise HTTPException(status_code=status, detail="CDN request failed")

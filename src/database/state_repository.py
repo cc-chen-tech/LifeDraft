@@ -83,6 +83,25 @@ class StateRepository:
             f"save_game_progress: Saving game_id={game_id}, {week_display}, age={player_state.age}"
         )
 
+        # 检查 state 的 round_history 和 current_event_data 一致性
+        round_history = getattr(player_state, "round_history", None) or []
+        current_week = getattr(player_state, "week", None)
+        current_round_val = getattr(player_state, "current_round", None)
+
+        if round_history and current_week is not None and current_round_val is not None:
+            last_entry = round_history[-1] if isinstance(round_history[-1], dict) else {}
+            if (
+                last_entry.get("week") == current_week
+                and last_entry.get("round") == current_round_val
+            ):
+                ced = getattr(player_state, "current_event_data", None)
+                if ced is not None:
+                    logger.warning(
+                        "[SaveGame] Inconsistent state: round already in history "
+                        "but current_event_data exists. Clearing."
+                    )
+                    player_state.current_event_data = None
+
         db = SessionLocal()
         try:
             # 保存新的状态快照

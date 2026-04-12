@@ -176,7 +176,7 @@ describe('useUserStore', () => {
         });
       });
 
-      (api.auth.me as jest.Mock).mockRejectedValue(new Error('Unauthorized'));
+      (api.auth.me as jest.Mock).mockRejectedValue(Object.assign(new Error('Unauthorized'), { status: 401 }));
 
       await act(async () => {
         await useUserStore.getState().fetchMe();

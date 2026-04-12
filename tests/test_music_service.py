@@ -151,6 +151,8 @@ class TestNeteaseMusicClientGetSongUrl:
     def _setup(self):
         self.client = NeteaseMusicClient(base_url="http://127.0.0.1:3000")
         self.client.client = MagicMock()
+        # 清除类级别的 URL 缓存，避免测试间互相影响
+        NeteaseMusicClient._url_cache.clear()
 
     async def test_get_song_url_normal(self):
         """正常返回 URL。"""

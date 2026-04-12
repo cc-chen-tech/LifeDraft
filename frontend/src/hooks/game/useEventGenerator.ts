@@ -34,6 +34,7 @@ interface UseEventGeneratorParams {
     event: { story: string; options: EventOption[] } | null;
   } | null>;
   prefetchingRef: React.MutableRefObject<boolean>;
+  isRetryingRef: React.MutableRefObject<boolean>;
 }
 
 /**
@@ -61,6 +62,7 @@ export function useEventGenerator({
   prefetchAbortRef,
   prefetchResultRef,
   prefetchingRef,
+  isRetryingRef,
 }: UseEventGeneratorParams) {
   // Event handlers object for utility functions
   const eventHandlers: EventHandlers = {
@@ -74,6 +76,7 @@ export function useEventGenerator({
     setConnectionStatus: setConnectionStatus as (status: string | null) => void,
     appendStoryText,
     generatingRef,
+    isRetryingRef,
   };
 
   // Generate event function
@@ -90,6 +93,10 @@ export function useEventGenerator({
     }
     if (generatingRef.current) {
       console.warn("[generateEvent] Blocked: already generating");
+      return;
+    }
+    if (isRetryingRef.current) {
+      console.warn("[generateEvent] Blocked: retry in progress within existing SSE stream");
       return;
     }
 
@@ -120,7 +127,7 @@ export function useEventGenerator({
       gameId,
       {
         onStory: appendStoryText,
-        onStatus: (status) => handleStatusUpdate(status, setProcessing),
+        onStatus: (status) => handleStatusUpdate(status, setProcessing, isRetryingRef),
         onConnectionStatus: (status) => {
           setConnectionStatus(status);
           if (status !== "reconnecting") {
@@ -216,6 +223,7 @@ export function useEventGenerator({
           setConnectionStatus("error");
           generatingRef.current = false;
           pollingRef.current = false;
+          isRetryingRef.current = false;
           setPhase("error");
         },
       },
@@ -311,6 +319,7 @@ export function useEventGenerator({
       generatingRef.current = false;
       pollingRef.current = false;
       prefetchingRef.current = false;
+      isRetryingRef.current = false;
     };
   }, []);
 

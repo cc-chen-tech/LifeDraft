@@ -274,8 +274,11 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
         console.error(`[MusicPlayer] Audio error for "${song.name}": ${errorType}`, {
           code: errorCode,
           message: errorMessage,
-          url: url?.substring(0, 50) + '...',
-          event: e
+          attempt: (retryCountRef.current.get(song.id) || 0) + 1,
+          maxRetries: 3,
+          networkOnline: navigator.onLine,
+          src: audio.src ? '(has src)' : '(no src)',
+          timestamp: new Date().toISOString(),
         });
         
         setIsPlaying(false);

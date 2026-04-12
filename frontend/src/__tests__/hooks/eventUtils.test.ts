@@ -42,6 +42,7 @@ describe('eventUtils', () => {
     setConnectionStatus: jest.fn(),
     appendStoryText: jest.fn(),
     generatingRef: { current: true },
+    isRetryingRef: { current: false },
   };
 
   beforeEach(() => {
@@ -611,6 +612,7 @@ describe('eventUtils', () => {
         setConnectionStatus: jest.fn(),
         appendStoryText: jest.fn(),
         generatingRef: { current: true },
+        isRetryingRef: { current: false },
       };
 
       localHandleEventComplete(data as Record<string, unknown>, localHandlers);
@@ -660,6 +662,7 @@ describe('eventUtils', () => {
         setConnectionStatus: jest.fn(),
         appendStoryText: jest.fn(),
         generatingRef: { current: true },
+        isRetryingRef: { current: false },
       };
     
       localHandleEventComplete(data as Record<string, unknown>, localHandlers);
