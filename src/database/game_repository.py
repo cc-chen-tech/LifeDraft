@@ -19,6 +19,7 @@ class GameRepository:
         language: str = "en",
         initial_state: Optional[Dict[str, Any]] = None,
         user_id: Optional[int] = None,
+        narrative_style_id: Optional[str] = None,
     ) -> int:
         """
         Create a new game record.
@@ -27,13 +28,19 @@ class GameRepository:
             language: Language code
             initial_state: Initial player state
             user_id: 用户ID(可选)
+            narrative_style_id: 叙事风格ID(可选)
 
         Returns:
             Game ID
         """
         db = SessionLocal()
         try:
-            game = Game(language=language, initial_state=initial_state or {}, user_id=user_id)
+            game = Game(
+                language=language,
+                initial_state=initial_state or {},
+                user_id=user_id,
+                narrative_style_id=narrative_style_id,
+            )
             db.add(game)
             db.commit()
             db.refresh(game)

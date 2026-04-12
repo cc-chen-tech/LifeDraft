@@ -12,6 +12,11 @@ load_dotenv()
 # Project root directory
 PROJECT_ROOT = Path(__file__).parent.parent
 
+# Sentry 错误监控配置
+SENTRY_DSN = os.getenv("SENTRY_DSN", "")
+SENTRY_ENVIRONMENT = os.getenv("SENTRY_ENVIRONMENT", "development")
+SENTRY_TRACES_SAMPLE_RATE = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1"))
+
 # Data directories
 DATA_DIR = PROJECT_ROOT / "data"
 PRESETS_DIR = DATA_DIR / "presets"

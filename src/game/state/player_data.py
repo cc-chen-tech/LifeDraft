@@ -4,7 +4,7 @@
 包含所有 Pydantic 字段定义、验证器和序列化方法。
 """
 
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from pydantic import Field, field_validator
 
@@ -167,6 +167,38 @@ class PlayerDataMixin:
     # 到达指定轮次时，这些事件会被强制触发
     # Structure: [ScheduledEvent.to_dict()] - 详见 src/game/scheduled_events.py
     scheduled_events: list = Field(default_factory=list)
+
+    # ==================== 创意增强字段 ====================
+
+    # 情感弧线历史：追踪每轮的情感变化
+    # Structure: [{"week": 0, "round": 0, "valence": 0.5, "arousal": 0.5, "scene_type": "conflict"}]
+    emotional_arc_history: list = Field(default_factory=list)
+
+    # 新颖度评分：评估每周故事与历史故事的差异度
+    # Structure: [{"week": 0, "score": 0.8, "similar_to_week": 3}]
+    novelty_scores: list = Field(default_factory=list)
+
+    # 玩家偏好：通过选择行为学习到的偏好权重
+    # Structure: {"suspense": 0.7, "romance": 0.3, "conflict": 0.5, ...}
+    player_preferences: Dict[str, float] = Field(default_factory=dict)
+
+    # ==================== 史诗叙事字段 ====================
+
+    # 角色弧光状态：追踪每个角色的成长阶段
+    # Structure: {name: {"phase": "rising", "flaw": "傲慢", "desire": "权力", "growth_score": 0.3}}
+    character_arc_state: Dict[str, Dict] = Field(default_factory=dict)
+
+    # 冲突层级塔：分层管理冲突
+    # Structure: {"tier1": [...内心冲突], "tier2": [...人际冲突], "tier3": [...社会/命运冲突]}
+    conflict_levels: Dict[str, Any] = Field(default_factory=dict)
+
+    # 宿命回响条目：可在未来触发的宿命元素
+    # Structure: [{"proposition": "命题", "planted_week": 0, "echo_conditions": [...], "resolved": false}]
+    fate_entries: list = Field(default_factory=list)
+
+    # 世界呼吸事件：独立于主角的世界背景事件
+    # Structure: [{"event": "描述", "week": 0, "visibility": "background", "affected_npcs": [...]}]
+    world_breathing_events: list = Field(default_factory=list)
 
     @field_validator("relationships")
     @classmethod

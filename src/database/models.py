@@ -5,8 +5,7 @@ from typing import Any
 
 from sqlalchemy import (JSON, Boolean, Column, DateTime, ForeignKey, Index,
                         Integer, String, Text, create_engine)
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker
+from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
 from config.settings import settings
 
@@ -91,6 +90,7 @@ class Game(Base):
     ending_type = Column(String(50), nullable=True)
     ending_summary = Column(Text, nullable=True)
     is_public = Column(Boolean, default=False)  # 是否公开给好友查看
+    narrative_style_id = Column(String, nullable=True)  # 叙事风格ID
 
     # Relationships
     user = relationship("User", back_populates="games", foreign_keys=[user_id])
@@ -176,6 +176,7 @@ class CharacterPreset(Base):
     player_name = Column(String(100), nullable=False)
     life_vision = Column(Text, nullable=True)
     character_settings = Column(JSON, nullable=False)
+    narrative_style_id = Column(String, default="chinese_classic_saga")  # 叙事风格ID
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -220,7 +221,10 @@ class Image(Base):
     game = relationship("Game", back_populates="images")
 
     # 索引
-    __table_args__ = (Index("ix_images_game_type_entity", "game_id", "image_type", "entity_name"),)
+    __table_args__ = (
+        Index("ix_images_game_type_entity", "game_id", "image_type", "entity_name"),
+        Index("idx_image_lookup", "game_id", "image_type", "entity_name", "is_active"),
+    )
 
 
 class SceneImage(Base):

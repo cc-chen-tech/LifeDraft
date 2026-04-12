@@ -191,6 +191,18 @@ class PlayerLogicMixin:
                 parts.append(f"→ 后续发展: {continuation}")
             context_parts.append("\n".join(parts))
 
+        # 在最后一轮的文本后添加场景提示，帮助AI保持场景连贯性
+        if earlier_rounds:
+            last_round = earlier_rounds[-1]
+            last_story = last_round.get("story_continuation", "") or last_round.get(
+                "event_description", ""
+            )
+            if last_story:
+                last_sentences = last_story.strip().split("。")[-3:]
+                scene_hint = "。".join(s for s in last_sentences if s.strip())
+                if scene_hint:
+                    context_parts.append(f"\n【上一轮结束场景】{scene_hint}")
+
         return "\n\n".join(context_parts)
 
     def is_game_over(self) -> bool:

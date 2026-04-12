@@ -8,7 +8,7 @@ and validate generated stories.
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -267,6 +267,10 @@ class WorldModel:
         self.current_week: int = 0
         self.era: str = "modern"
 
+        # ★ 新增字段：位置图谱与角色知识集
+        self.location_graph: Dict[str, Dict[str, int]] = {}  # {"城市A": {"城市B": 2, "城市C": 3}}
+        self.character_knowledge_sets: Dict[str, set] = {}  # {"角色A": {"秘密1", "事件2"}}
+
     # -------------------- Factory --------------------
 
     @classmethod
@@ -327,6 +331,16 @@ class WorldModel:
                 logger.warning(f"Skipping invalid character profile data for {name}: {e}")
             except Exception as e:
                 logger.error(f"Unexpected error parsing character profile {name}: {e}")
+
+        # ---------- Read location graph ----------
+        for loc_name, distances in wmd.get("location_graph", {}).items():
+            if isinstance(distances, dict):
+                wm.location_graph[loc_name] = distances
+
+        # ---------- Read character knowledge sets ----------
+        for char_name, knowledge in wmd.get("character_knowledge_sets", {}).items():
+            if isinstance(knowledge, (list, set)):
+                wm.character_knowledge_sets[char_name] = set(knowledge)
 
         # ---------- Supplement from legacy established_facts ----------
         for fact in getattr(player_state, "established_facts", []):
@@ -457,6 +471,52 @@ class WorldModel:
             for name, p in self.character_profiles.items()
             if p.evidence_count >= 4 and p.constraint_text
         ]
+
+    # -------------------- Epic Narrative Query Methods --------------------
+
+    def get_character_arc(self, name: str) -> Optional[Dict]:
+        """获取角色弧光状态（从 PlayerState.character_arc_state 读取）。
+
+        注意：此方法需要 PlayerState 上下文，调用方应传入 player_state.character_arc_state。
+        WorldModel 本身不存储此数据，而是作为查询代理。
+        返回 None 表示该角色无弧光数据。
+        """
+        # character_arc_state 存储在 PlayerState 中，WorldModel 不直接持有
+        # 此方法作为接口预留，实际调用时由上层传入数据
+        return None
+
+    def get_active_conflicts(self, tier: int) -> List[Dict]:
+        """获取指定层级的活跃冲突（从 PlayerState.conflict_levels 读取）。
+
+        Args:
+            tier: 冲突层级 (1=内心, 2=人际, 3=社会/命运)
+
+        Returns:
+            该层级的冲突列表，无数据时返回空列表。
+        """
+        return []
+
+    def get_pending_fate_echoes(self, current_week: int) -> List[Dict]:
+        """获取当前周可能触发的宿命回响条目（从 PlayerState.fate_entries 读取）。
+
+        Args:
+            current_week: 当前周数
+
+        Returns:
+            未解决且满足回响条件的条目列表。
+        """
+        return []
+
+    def get_world_events(self, recent_n: int = 5) -> List[Dict]:
+        """获取最近的世界呼吸事件（从 PlayerState.world_breathing_events 读取）。
+
+        Args:
+            recent_n: 返回最近 N 条事件
+
+        Returns:
+            最近的世界事件列表。
+        """
+        return []
 
     # -------------------- Constraint Text Generation --------------------
 
@@ -919,6 +979,10 @@ class WorldModel:
             "physical_states": {n: ps.to_dict() for n, ps in self.physical_states.items()},
             "dynamic_facts": [df.to_dict() for df in self.dynamic_facts if hasattr(df, "to_dict")],
             "character_profiles": {n: cp.to_dict() for n, cp in self.character_profiles.items()},
+            "location_graph": self.location_graph,
+            "character_knowledge_sets": {
+                n: list(ks) for n, ks in self.character_knowledge_sets.items()
+            },
         }
 
 
