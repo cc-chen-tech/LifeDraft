@@ -8,9 +8,26 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+// Next.js App Router 的最大执行时长（秒），覆盖平台默认值（Vercel Hobby 10s / Pro 60s）
+export const maxDuration = 300; // 5分钟
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000';
-const PROXY_TIMEOUT = 120000; // 2分钟
+const PROXY_TIMEOUT = 120_000; // 普通请求 2分钟
+const SSE_CONNECT_TIMEOUT = 300_000; // SSE 流式请求连接阶段 5分钟（AI 生成可能很慢）
+
+// 已知的 SSE 流式路径模式（后端返回 text/event-stream）
+const SSE_PATH_PATTERNS = [
+  '/choice',
+  '/custom-choice',
+  '/event',
+  '/regenerate-stream',
+  '/rewrite-stream',
+  '/opening-story',
+];
+
+function isSSEPath(pathname: string): boolean {
+  return SSE_PATH_PATTERNS.some(p => pathname.endsWith(p));
+}
 
 // 不应转发的请求头
 const SKIP_REQUEST_HEADERS = new Set([
@@ -70,8 +87,11 @@ async function proxyRequest(request: NextRequest): Promise<NextResponse> {
   }
 
   // 使用 AbortController 实现超时
+  // SSE 路径使用更长的连接超时（AI 生成故事可能需要数分钟）
+  const sseRequest = isSSEPath(pathname);
+  const timeout = sseRequest ? SSE_CONNECT_TIMEOUT : PROXY_TIMEOUT;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), PROXY_TIMEOUT);
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
 
   try {
     const response = await fetch(targetUrl, {
@@ -137,9 +157,9 @@ async function proxyRequest(request: NextRequest): Promise<NextResponse> {
 
     // 超时错误
     if (error instanceof Error && error.name === 'AbortError') {
-      console.error(`[API Proxy] Timeout after ${PROXY_TIMEOUT}ms: ${pathname}`);
+      console.error(`[API Proxy] Timeout after ${timeout}ms (sse=${sseRequest}): ${pathname}`);
       return NextResponse.json(
-        { error: 'Gateway timeout', message: 'Request timed out' },
+        { error: 'Gateway timeout', message: `Request timed out after ${timeout / 1000}s` },
         { status: 504 }
       );
     }

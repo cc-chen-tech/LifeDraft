@@ -149,7 +149,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # ---- Register routers ----
-from src.api.routers import (
+from src.api.routers import (  # noqa: E402
     auth,
     character,
     collection,
@@ -185,10 +185,10 @@ async def health_check():
     }
 
 
-from typing import Optional
+from typing import Optional  # noqa: E402
 
-# ---- Client-side log collector ----
-from pydantic import BaseModel
+# ---- Client-side log collector ----  # noqa: E402
+from pydantic import BaseModel  # noqa: E402
 
 client_logger = logging.getLogger("client")
 

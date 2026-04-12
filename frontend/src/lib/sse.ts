@@ -148,6 +148,10 @@ export async function streamChoice(
   });
 
   if (!response.ok) {
+    // 504 通常是代理层超时，给出更具体的错误信息
+    if (response.status === 504) {
+      throw new Error('服务器响应超时，AI 正在生成故事，请稍后重试');
+    }
     throw new Error(`HTTP error! status: ${response.status}`);
   }
 
@@ -174,6 +178,9 @@ export async function streamCustomChoice(
   });
 
   if (!response.ok) {
+    if (response.status === 504) {
+      throw new Error('服务器响应超时，AI 正在生成故事，请稍后重试');
+    }
     throw new Error(`HTTP error! status: ${response.status}`);
   }
 

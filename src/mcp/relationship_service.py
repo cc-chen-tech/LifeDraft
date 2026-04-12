@@ -5,7 +5,7 @@
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from src.game.relationship_events import (
     EventCategory,
@@ -13,8 +13,8 @@ from src.game.relationship_events import (
     get_events_by_category,
 )
 
-if TYPE_CHECKING:
-    pass
+# Import at runtime to avoid circular imports
+from src.game.state import CharacterState, PlayerState
 
 logger = logging.getLogger(__name__)
 
