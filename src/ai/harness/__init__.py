@@ -45,6 +45,13 @@ from .npc_attribute_validator import validate_npc_attribute_stability
 from .info_barrier_validator import validate_information_barrier
 from .cause_effect_validator import validate_cause_effect_consistency
 from src.ai.narrative.style_validator import StyleAwareValidator
+from src.ai.harness.narrative_validators import (
+    validate_three_act_structure,
+    validate_pacing_variety,
+    validate_arc_hint_compliance,
+    validate_world_event_integration,
+    validate_conflict_directive_compliance,
+)
 
 __all__ = [
     # 核心类
@@ -447,5 +454,64 @@ default_registry.register(
         validator=_style_validator.validate_style_technique,
         inject_in_prompt=False,
         weight=1.0,
+    )
+)
+
+# --- 第二层：中观章节验证 ---
+
+default_registry.register(
+    ConstraintDefinition(
+        type=ConstraintType.THREE_ACT_STRUCTURE,
+        priority=Priority.HIGH,
+        description="三幕结构完整性：故事应有铺垫、发展/转折、高潮/收束",
+        validator=validate_three_act_structure,
+        inject_in_prompt=False,
+        weight=1.5,
+    )
+)
+
+default_registry.register(
+    ConstraintDefinition(
+        type=ConstraintType.PACING_VARIETY,
+        priority=Priority.HIGH,
+        description="节奏多样性：节奏干预后故事应打破平坦模式",
+        validator=validate_pacing_variety,
+        inject_in_prompt=False,
+        weight=1.5,
+    )
+)
+
+# --- 第三层：宏观结构验证 ---
+
+default_registry.register(
+    ConstraintDefinition(
+        type=ConstraintType.ARC_HINT_COMPLIANCE,
+        priority=Priority.HIGH,
+        description="人物弧光遵从：故事应体现请求的弧光阶段特征",
+        validator=validate_arc_hint_compliance,
+        inject_in_prompt=False,
+        weight=1.5,
+    )
+)
+
+default_registry.register(
+    ConstraintDefinition(
+        type=ConstraintType.WORLD_EVENT_INTEGRATION,
+        priority=Priority.MEDIUM,
+        description="世界事件融入：故事应融入注入的世界事件元素",
+        validator=validate_world_event_integration,
+        inject_in_prompt=False,
+        weight=1.5,
+    )
+)
+
+default_registry.register(
+    ConstraintDefinition(
+        type=ConstraintType.CONFLICT_DIRECTIVE_COMPLIANCE,
+        priority=Priority.MEDIUM,
+        description="冲突指令遵从：故事应体现请求的冲突层级",
+        validator=validate_conflict_directive_compliance,
+        inject_in_prompt=False,
+        weight=1.5,
     )
 )
