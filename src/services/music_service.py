@@ -3,6 +3,7 @@
 基于故事内容搜索匹配的音乐
 """
 
+import asyncio
 import logging
 import os
 from dataclasses import dataclass
@@ -59,47 +60,73 @@ class NeteaseMusicClient:
         }
         self.client = httpx.AsyncClient(timeout=30.0, limits=limits, headers=headers)
 
-    async def search(self, keywords: str, limit: int = 10) -> List[Song]:
+    async def search(self, keywords: str, limit: int = 10, max_retries: int = 2) -> List[Song]:
         """搜索歌曲
 
         Args:
             keywords: 搜索关键词
             limit: 返回数量
+            max_retries: 最大重试次数（针对 5xx 等暂时性错误）
 
         Returns:
             歌曲列表
         """
-        try:
-            url = f"{self.base_url}/search"
-            params = {"keywords": keywords, "limit": limit}
+        last_error: Optional[Exception] = None
+        for attempt in range(max_retries + 1):
+            try:
+                url = f"{self.base_url}/search"
+                params = {"keywords": keywords, "limit": limit}
 
-            response = await self.client.get(url, params=params)  # type: ignore
-            response.raise_for_status()
-            data = response.json()
+                response = await self.client.get(url, params=params)  # type: ignore
+                response.raise_for_status()
+                data = response.json()
 
-            if data.get("code") != 200:
-                logger.warning(f"Search failed: {data}")
+                if data.get("code") != 200:
+                    logger.warning(f"Search failed: {data}")
+                    return []
+
+                songs = []
+                result = data.get("result", {})
+                song_list = result.get("songs", [])
+
+                for song_data in song_list:
+                    song = Song(
+                        id=song_data.get("id", 0),
+                        name=song_data.get("name", ""),
+                        artists=[a.get("name", "") for a in song_data.get("artists", [])],
+                        album=song_data.get("album", {}).get("name", ""),
+                        duration=song_data.get("duration", 0),
+                    )
+                    songs.append(song)
+
+                return songs
+
+            except httpx.HTTPStatusError as e:
+                last_error = e
+                status_code = e.response.status_code
+                if status_code >= 500 and attempt < max_retries:
+                    logger.warning(
+                        f"[NeteaseMusic] Search got {status_code} for '{keywords}', "
+                        f"retrying in 1s... ({attempt + 1}/{max_retries})"
+                    )
+                    await asyncio.sleep(1)
+                    continue
+                logger.exception(f"Failed to search music: {e}")
+                return []
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries:
+                    logger.warning(
+                        f"[NeteaseMusic] Search error for '{keywords}': {e}, "
+                        f"retrying in 1s... ({attempt + 1}/{max_retries})"
+                    )
+                    await asyncio.sleep(1)
+                    continue
+                logger.exception(f"Failed to search music: {e}")
                 return []
 
-            songs = []
-            result = data.get("result", {})
-            song_list = result.get("songs", [])
-
-            for song_data in song_list:
-                song = Song(
-                    id=song_data.get("id", 0),
-                    name=song_data.get("name", ""),
-                    artists=[a.get("name", "") for a in song_data.get("artists", [])],
-                    album=song_data.get("album", {}).get("name", ""),
-                    duration=song_data.get("duration", 0),
-                )
-                songs.append(song)
-
-            return songs
-
-        except Exception as e:
-            logger.exception(f"Failed to search music: {e}")
-            return []
+        logger.error(f"[NeteaseMusic] Search exhausted retries for '{keywords}': {last_error}")
+        return []
 
     async def get_song_url(self, song_id: int, retry: int = 2) -> Optional[str]:
         """获取歌曲播放 URL
@@ -141,12 +168,24 @@ class NeteaseMusicClient:
             logger.warning(f"[NeteaseMusic] No data returned for song {song_id}")
             return None
 
+        except httpx.HTTPStatusError as e:
+            status_code = e.response.status_code
+            if retry > 0 and status_code >= 500:
+                logger.warning(
+                    f"[NeteaseMusic] {status_code} error for song {song_id}, "
+                    f"retrying in 1s... ({retry} attempts left)"
+                )
+                await asyncio.sleep(1)
+                return await self.get_song_url(song_id, retry - 1)
+            logger.exception(f"[NeteaseMusic] Failed to get song URL: {e}")
+            return None
         except Exception as e:
-            if retry > 0 and "503" in str(e):
-                logger.warning(f"[NeteaseMusic] 503 error, retrying... ({retry} attempts left)")
-                import asyncio
-
-                await asyncio.sleep(0.5)  # 等待500ms后重试
+            if retry > 0:
+                logger.warning(
+                    f"[NeteaseMusic] Error getting URL for song {song_id}: {e}, "
+                    f"retrying in 0.5s... ({retry} attempts left)"
+                )
+                await asyncio.sleep(0.5)
                 return await self.get_song_url(song_id, retry - 1)
             logger.exception(f"[NeteaseMusic] Failed to get song URL: {e}")
             return None

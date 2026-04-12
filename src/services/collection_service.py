@@ -134,9 +134,12 @@ class CollectionService:
         added_names: set[str] = set()
         character_settings = player_state.character_settings or {}
 
+        # 批量获取所有 character 图片，避免 N+1 查询
+        image_cache = self._get_entity_images_batch(game_id, "character")
+
         # 0. 添加主角
         player_char = self._build_player_character(
-            game_id, player_state, character_settings, added_names
+            game_id, player_state, character_settings, added_names, image_cache
         )
         if player_char:
             characters.append(player_char)
@@ -146,7 +149,7 @@ class CollectionService:
             if name in added_names:
                 continue
             added_names.add(name)
-            image_url, image_generated = self._get_entity_image(game_id, "character", name)
+            image_url, image_generated = image_cache.get(name, (None, False))
             characters.append(
                 CharacterCollectionItem(
                     name=name,
@@ -168,7 +171,7 @@ class CollectionService:
         key_people = character_settings.get("relationships", {}).get("key_people", [])
         for person in key_people:
             if isinstance(person, dict):
-                char = self._build_key_person(game_id, person, added_names)
+                char = self._build_key_person(game_id, person, added_names, image_cache)
                 if char:
                     characters.append(char)
 
@@ -176,7 +179,7 @@ class CollectionService:
         family_members = character_settings.get("family", {}).get("family_members", [])
         for member in family_members:
             if isinstance(member, dict):
-                char = self._build_family_member(game_id, member, added_names)
+                char = self._build_family_member(game_id, member, added_names, image_cache)
                 if char:
                     characters.append(char)
 
@@ -188,6 +191,7 @@ class CollectionService:
         player_state: PlayerState,
         character_settings: Dict[str, Any],
         added_names: set,
+        image_cache: Optional[Dict[str, Tuple[Optional[str], bool]]] = None,
     ) -> Optional[CharacterCollectionItem]:
         """构建主角信息。"""
         player_name = player_state.player_name or character_settings.get("player_name", "")
@@ -195,7 +199,10 @@ class CollectionService:
             return None
 
         added_names.add(player_name)
-        image_url, image_generated = self._get_entity_image(game_id, "character", player_name)
+        if image_cache is not None:
+            image_url, image_generated = image_cache.get(player_name, (None, False))
+        else:
+            image_url, image_generated = self._get_entity_image(game_id, "character", player_name)
 
         # 处理可能的嵌套字典
         age_val = self._extract_nested_value(character_settings.get("age"), "age")
@@ -233,6 +240,7 @@ class CollectionService:
         game_id: int,
         person: Dict[str, Any],
         added_names: set,
+        image_cache: Optional[Dict[str, Tuple[Optional[str], bool]]] = None,
     ) -> Optional[CharacterCollectionItem]:
         """构建关键人物信息。"""
         name = person.get("name", "")
@@ -240,7 +248,10 @@ class CollectionService:
             return None
         added_names.add(name)
 
-        image_url, image_generated = self._get_entity_image(game_id, "character", name)
+        if image_cache is not None:
+            image_url, image_generated = image_cache.get(name, (None, False))
+        else:
+            image_url, image_generated = self._get_entity_image(game_id, "character", name)
 
         return CharacterCollectionItem(
             name=name,
@@ -263,6 +274,7 @@ class CollectionService:
         game_id: int,
         member: Dict[str, Any],
         added_names: set,
+        image_cache: Optional[Dict[str, Tuple[Optional[str], bool]]] = None,
     ) -> Optional[CharacterCollectionItem]:
         """构建家庭成员信息。"""
         name = member.get("name", "")
@@ -270,7 +282,10 @@ class CollectionService:
             return None
         added_names.add(name)
 
-        image_url, image_generated = self._get_entity_image(game_id, "character", name)
+        if image_cache is not None:
+            image_url, image_generated = image_cache.get(name, (None, False))
+        else:
+            image_url, image_generated = self._get_entity_image(game_id, "character", name)
 
         return CharacterCollectionItem(
             name=name,
@@ -293,8 +308,10 @@ class CollectionService:
     ) -> List[ItemCollectionItem]:
         """构建物品列表。"""
         items = []
+        # 批量获取所有 item 图片，避免 N+1 查询
+        image_cache = self._get_entity_images_batch(game_id, "item")
         for name, item_data in player_state.items.items():
-            image_url, image_generated = self._get_entity_image(game_id, "item", name)
+            image_url, image_generated = image_cache.get(name, (None, False))
             items.append(
                 ItemCollectionItem(
                     name=name,
@@ -319,8 +336,10 @@ class CollectionService:
     ) -> List[LandmarkCollectionItem]:
         """构建标志物列表。"""
         landmarks = []
+        # 批量获取所有 landmark 图片，避免 N+1 查询
+        image_cache = self._get_entity_images_batch(game_id, "landmark")
         for name, landmark_data in player_state.landmarks.items():
-            image_url, image_generated = self._get_entity_image(game_id, "landmark", name)
+            image_url, image_generated = image_cache.get(name, (None, False))
             landmarks.append(
                 LandmarkCollectionItem(
                     name=name,
@@ -339,6 +358,42 @@ class CollectionService:
             )
         return landmarks
 
+    def _get_entity_images_batch(
+        self,
+        game_id: int,
+        image_type: str,
+    ) -> Dict[str, Tuple[Optional[str], bool]]:
+        """批量获取某类型所有实体的图片信息。
+
+        一次性查询 game_id + image_type 下所有 is_active=True 的图片，
+        避免在循环中逐个查询导致 N+1 问题。
+
+        Args:
+            game_id: 游戏ID
+            image_type: 图片类型 (character/item/landmark)
+
+        Returns:
+            Dict[entity_name, (image_url, image_generated)]
+        """
+        images = (
+            self.db.query(ImageModel)
+            .filter(
+                ImageModel.game_id == game_id,
+                ImageModel.image_type == image_type,
+                ImageModel.is_active.is_(True),
+            )
+            .order_by(ImageModel.created_at.desc())
+            .all()
+        )
+
+        result: Dict[str, Tuple[Optional[str], bool]] = {}
+        for img in images:
+            entity_name = str(img.entity_name)
+            # 只保留每个实体最新的一张（已按 created_at desc 排序）
+            if entity_name not in result:
+                result[entity_name] = (self.image_service.get_image_url(img), True)
+        return result
+
     def _get_entity_image(
         self,
         game_id: int,
@@ -346,6 +401,8 @@ class CollectionService:
         entity_name: str,
     ) -> Tuple[Optional[str], bool]:
         """获取实体图片信息。
+
+        保留此方法以兼容其他调用点。
 
         Returns:
             (image_url, image_generated) 元组

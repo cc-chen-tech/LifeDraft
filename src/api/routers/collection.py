@@ -390,13 +390,18 @@ async def recognize_entities(  # type: ignore
         from src.services.entity_recognition_service import \
             EntityRecognitionService
 
+        # 根据游戏进度动态计算阈值
+        total_rounds = len(player_state.round_history) if player_state.round_history else 0
+        default_min = max(1, total_rounds // 15)  # 每15回合+1，最低1
+        min_appearances = request.get("min_appearances") or default_min
+
         recognition_service = EntityRecognitionService(session.game_loop.ai_generator.ai_client)
         return recognition_service.recognize_from_history(
             round_history=player_state.round_history,
             existing_items=existing_items,
             existing_characters=existing_characters,
             existing_landmarks=existing_landmarks,
-            min_appearances=request.get("min_appearances", 3),
+            min_appearances=min_appearances,
             language=session.language,
         )
     except (ValueError, TypeError, KeyError) as e:

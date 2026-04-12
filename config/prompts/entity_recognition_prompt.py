@@ -37,30 +37,41 @@ def get_entity_recognition_prompt(
         existing_context += f"\n【已存在的地点】{', '.join(existing_landmarks)}\n"
 
     if language == "zh":
-        return f"""请分析以下完整的故事历史，识别其中重复出现的重要实体（物品、人物、地点）。
+        # 根据阈值动态生成描述
+        if min_appearances <= 1:
+            freq_desc = "在故事中出现过的"
+            freq_rule = "在故事中至少被提及过"
+        elif min_appearances == 2:
+            freq_desc = "在故事中出现至少2次的"
+            freq_rule = "至少出现2次"
+        else:
+            freq_desc = f"在故事中出现至少{min_appearances}次的"
+            freq_rule = f"至少出现{min_appearances}次"
+
+        return f"""请分析以下完整的故事历史，识别其中{freq_desc}重要实体（物品、人物、地点）。
 
 **任务说明：**
-你需要仔细阅读整个故事，找出至少出现{min_appearances}次的实体，并生成它们的详细描述。
+你需要仔细阅读整个故事，找出{freq_desc}实体，并生成它们的详细描述。
 
 **识别规则：**
 
 1. **物品识别规则：**
-   - 至少出现{min_appearances}次
-   - 对剧情有影响或有特殊意义的物品
-   - 排除普通日常用品（普通的笔、纸、衣服、手机等）
-   - 包括：武器、工具、纪念品、宝物、文件、关键道具等
+   - {freq_rule}
+   - 对剧情有影响、有特殊意义、或与角色有情感联系的物品
+   - 排除完全没有剧情意义的日常用品
+   - 包括：武器、工具、纪念品、宝物、文件、关键道具、有故事背景的物件等
 
 2. **人物识别规则：**
-   - 至少被提及{min_appearances}次
+   - {freq_rule}
    - 有名字或有明确身份的角色
-   - 排除只提及一次的路人、服务员等龙套角色
+   - 排除完全没有剧情作用的背景路人
    - 包括：朋友、家人、同事、对手、重要NPC等
 
 3. **地点识别规则：**
-   - 至少出现{min_appearances}次
-   - 有明确名称或特征的场所
-   - 排除泛泛的地点描述（如"街上"、"某个餐厅"）
-   - 包括：具体建筑、房间、自然景观、标志性地点等
+   - {freq_rule}
+   - 有明确名称或显著特征的场所
+   - 排除完全没有辨识度的泛泛描述（如"路上"）
+   - 包括：具体建筑、房间、自然景观、标志性地点、故事中反复提到的场所等
 
 **已有实体（不要重复识别）：**
 {existing_context}
@@ -103,7 +114,7 @@ def get_entity_recognition_prompt(
 }}
 
 **注意事项：**
-1. 只返回至少出现{min_appearances}次的实体
+1. 只返回{freq_desc}实体
 2. 不要返回已存在的实体
 3. description必须详细，便于后续生成图片
 4. appear_contexts列出3-5个关键出现场景（包含周数和简要描述）
@@ -115,30 +126,41 @@ def get_entity_recognition_prompt(
 7. 确保输出是有效的JSON格式
 """
     else:
-        return f"""Please analyze the following complete story history and identify important entities (items, characters, locations) that appear multiple times.
+        # Dynamic frequency description for English
+        if min_appearances <= 1:
+            freq_desc = "that appear in the story"
+            freq_rule = "Appears at least once in the story"
+        elif min_appearances == 2:
+            freq_desc = "that appear at least 2 times"
+            freq_rule = "Must appear at least 2 times"
+        else:
+            freq_desc = f"that appear at least {min_appearances} times"
+            freq_rule = f"Must appear at least {min_appearances} times"
+
+        return f"""Please analyze the following complete story history and identify important entities (items, characters, locations) {freq_desc}.
 
 **Task Description:**
-Read the entire story carefully and find entities that appear at least {min_appearances} times, generating detailed descriptions for them.
+Read the entire story carefully and find entities {freq_desc}, generating detailed descriptions for them.
 
 **Recognition Rules:**
 
 1. **Item Recognition Rules:**
-   - Must appear at least {min_appearances} times
-   - Items that impact the plot or have special significance
-   - Exclude ordinary daily items (pens, paper, regular clothes, phones, etc.)
-   - Include: weapons, tools, keepsakes, treasures, documents, key props, etc.
+   - {freq_rule}
+   - Items that impact the plot, have special significance, or emotional connection with characters
+   - Exclude items with absolutely no plot significance
+   - Include: weapons, tools, keepsakes, treasures, documents, key props, story-relevant objects, etc.
 
 2. **Character Recognition Rules:**
-   - Must be mentioned at least {min_appearances} times
+   - {freq_rule}
    - Named characters or those with clear identities
-   - Exclude one-time mentions (passersby, waiters, etc.)
+   - Exclude background extras with no plot relevance
    - Include: friends, family, colleagues, rivals, important NPCs, etc.
 
 3. **Location Recognition Rules:**
-   - Must appear at least {min_appearances} times
-   - Places with specific names or characteristics
-   - Exclude generic location descriptions (e.g., "on the street", "some restaurant")
-   - Include: specific buildings, rooms, natural landscapes, iconic locations, etc.
+   - {freq_rule}
+   - Places with specific names or notable characteristics
+   - Exclude completely generic descriptions with no identifiable features (e.g., "on the road")
+   - Include: specific buildings, rooms, natural landscapes, iconic locations, recurring story locations, etc.
 
 **Existing Entities (DO NOT duplicate):**
 {existing_context}
@@ -181,7 +203,7 @@ Read the entire story carefully and find entities that appear at least {min_appe
 }}
 
 **Notes:**
-1. Only return entities that appear at least {min_appearances} times
+1. Only return entities {freq_desc}
 2. Do not return existing entities
 3. Descriptions must be detailed enough for image generation
 4. appear_contexts should list 3-5 key appearances (with week number and brief description)

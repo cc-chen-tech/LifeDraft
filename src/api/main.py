@@ -5,6 +5,7 @@ import os
 import time
 from contextlib import asynccontextmanager
 
+import sentry_sdk
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,9 +14,19 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 from starlette.responses import Response
 
+from config.settings import SENTRY_DSN, SENTRY_ENVIRONMENT, SENTRY_TRACES_SAMPLE_RATE
 from src.database.models import init_db
 
 load_dotenv()
+
+# Initialize Sentry (before app creation)
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=SENTRY_ENVIRONMENT,
+        traces_sample_rate=SENTRY_TRACES_SAMPLE_RATE,
+        send_default_pii=False,  # 不发送用户隐私数据
+    )
 
 # Setup logging
 logging.basicConfig(

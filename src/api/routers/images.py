@@ -847,15 +847,23 @@ async def get_round_scene_image(
     if not game:
         raise HTTPException(status_code=404, detail="游戏不存在")
 
-    # 从游戏状态获取故事文本和角色设定
-    import json
+    # 获取最新的游戏状态快照（从 GameState 表）
+    from src.database.models import GameState
 
     try:
-        game_state = json.loads(game.player_state) if game.player_state else {}
+        latest_state = db.query(GameState).filter(
+            GameState.game_id == game_id
+        ).order_by(GameState.week.desc()).first()
+
+        if latest_state and latest_state.state_json:
+            game_state = latest_state.state_json  # 已是 dict，无需 json.loads
+        else:
+            game_state = game.initial_state or {}
+
         story_text = game_state.get("current_event_data", {}).get("event_description", "")
         character_settings = game_state.get("character_settings", {})
         player_name = character_settings.get("identity", {}).get("name", "主角")
-    except (json.JSONDecodeError, AttributeError) as e:
+    except AttributeError as e:
         logger.warning(f"[get_round_scene_image] Failed to parse game state: {e}")
         story_text = ""
         character_settings = {}
