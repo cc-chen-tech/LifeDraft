@@ -280,25 +280,26 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
         
         setIsPlaying(false);
         
-        // 检查是否可以重试：每首歌最多重试 1 次
+        // 检查是否可以重试：每首歌最多重试 3 次
         const currentRetries = retryCountRef.current.get(song.id) || 0;
-        if (currentRetries < 1) {
+        if (currentRetries < 3) {
           retryCountRef.current.set(song.id, currentRetries + 1);
-          console.log(`[MusicPlayer] Retrying "${song.name}" via stream proxy (attempt ${currentRetries + 1})`);
-          setPlayError(`"${song.name}" ${errorType}，正在重试...`);
+          const retryDelay = Math.min(1000 * Math.pow(2, currentRetries), 4000);
+          console.log(`[MusicPlayer] Retrying "${song.name}" via stream proxy (attempt ${currentRetries + 1}/3, delay ${retryDelay}ms)`);
+          setPlayError(`"${song.name}" 加载失败，正在重试 (${currentRetries + 1}/3)...`);
           
           // 清理当前失败的音频
           audio.pause();
           audio.src = "";
           activeAudioRef.current = null;
           
-          // 直接重试，流式代理会重新获取 CDN URL（给后端更多恢复时间）
-          setTimeout(() => loadAndPlaySong(song), 2000);
+          // 指数退避重试，流式代理会重新获取 CDN URL（给后端更多恢复时间）
+          setTimeout(() => loadAndPlaySong(song), retryDelay);
           return;
         }
         
-        // 重试失败或已用尽重试次数，走跳下一首逻辑
-        setPlayError(`"${song.name}" ${errorType}，尝试下一首...`);
+        // 3 次重试全部失败，自动切换下一首
+        setPlayError(`"${song.name}" 暂时无法播放，正在切换下一首...`);
         
         // 同步更新 ref 和 state
         skippedSongsRef.current.add(song.id);
