@@ -17,10 +17,10 @@ logger = logging.getLogger(__name__)
 # JWT configuration
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-in-production")
 JWT_ALGORITHM = "HS256"
-# H-04: Token 有效期从 30 天改为 60 分钟
-ACCESS_TOKEN_EXPIRE_MINUTES = 60  # 60 分钟
-REFRESH_TOKEN_EXPIRE_DAYS = 7  # 新增 refresh token 过期时间
-JWT_EXPIRE_HOURS = ACCESS_TOKEN_EXPIRE_MINUTES / 60  # 保持向后兼容
+# Token 有效期：7 天（游戏应用场景，用户会话需要持久化）
+ACCESS_TOKEN_EXPIRE_DAYS = 7
+REFRESH_TOKEN_EXPIRE_DAYS = 7  # refresh token 过期时间
+JWT_EXPIRE_HOURS = ACCESS_TOKEN_EXPIRE_DAYS * 24  # 保持向后兼容
 
 # Security scheme (optional bearer token)
 _bearer = HTTPBearer(auto_error=False)

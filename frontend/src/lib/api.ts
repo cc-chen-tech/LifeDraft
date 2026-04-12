@@ -15,6 +15,29 @@ import type {
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 /**
+ * 401 重定向防抖：防止并发请求竞态导致多次重定向
+ * 一旦触发登出，后续 401 不再重复处理
+ */
+let isRedirectingTo401 = false;
+
+function handle401Redirect() {
+  if (isRedirectingTo401) return; // 已在处理中，跳过
+  isRedirectingTo401 = true;
+  
+  console.warn('[API] Session expired or invalid, redirecting to home...');
+  // 清除 localStorage 中的游戏状态
+  localStorage.removeItem('gameId');
+  localStorage.removeItem('gameState');
+  // 跳转到首页（如果不是已经在首页）
+  if (typeof window !== 'undefined' && window.location.pathname !== '/') {
+    window.location.href = '/';
+  }
+  
+  // 3 秒后重置标志，允许后续重新触发（以防跳转失败）
+  setTimeout(() => { isRedirectingTo401 = false; }, 3000);
+}
+
+/**
  * L-03: Fetch with retry mechanism for transient failures
  * Implements exponential backoff for server errors (5xx)
  */
@@ -43,8 +66,13 @@ async function fetchWithRetry(
       
       if (timeoutId) clearTimeout(timeoutId);
       
-      // Only retry on server errors (5xx), not client errors (4xx)
-      if (response.ok || response.status < 500) {
+      // Only retry on server errors (5xx) or transient 401 (cookie forwarding race)
+      if (response.ok || (response.status < 500 && response.status !== 401)) {
+        return response;
+      }
+      
+      // 401 只重试一次（第一次可能是 cookie 转发竞态）
+      if (response.status === 401 && i > 0) {
         return response;
       }
       
@@ -101,16 +129,9 @@ async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: num
 
     console.error(`[API Error] ${url} failed with ${response.status}:`, error.message || response.statusText);
     
-    // ★ 401 未授权 - 清除本地认证状态并跳转到首页（登录页）
+    // ★ 401 未授权 - 使用防竞态的重定向处理
     if (response.status === 401) {
-      console.warn('[API] Session expired or invalid, redirecting to home...');
-      // 清除 localStorage 中的游戏状态
-      localStorage.removeItem('gameId');
-      localStorage.removeItem('gameState');
-      // 跳转到首页（如果不是已经在首页）
-      if (typeof window !== 'undefined' && window.location.pathname !== '/') {
-        window.location.href = '/';
-      }
+      handle401Redirect();
     }
     
     throw Object.assign(new Error(error.message || 'Request failed'), { status: response.status });
@@ -383,7 +404,7 @@ export const api = {
       extra_context?: Record<string, unknown>; // Intentionally flexible
       feedback?: string;
     }) =>
-      fetchJson<{ images: Array<{ image_id: number; image_url: string }>; total: number }>('/images', {
+      fetchJson<{ images: Array<{ image_id: number; image_url: string }>; total: number }>('/images/generate', {
         method: 'POST',
         body: JSON.stringify(data),
       }),

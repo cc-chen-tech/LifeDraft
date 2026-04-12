@@ -71,8 +71,14 @@ export const useUserStore = create<UserState>((set, get) => ({
     try {
       const user = await api.auth.me();
       set({ user, isAuthenticated: true });
-    } catch {
-      set({ user: null, isAuthenticated: false });
+    } catch (err: unknown) {
+      // 仅在 401（token 无效/过期）时清除认证状态
+      // 网络错误等其他异常不应清除已有的登录状态
+      const status = (err as { status?: number })?.status;
+      if (status === 401) {
+        set({ user: null, isAuthenticated: false });
+      }
+      // 其他错误（网络异常等）保持当前状态不变
     }
   },
 
