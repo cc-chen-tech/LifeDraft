@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 # Re-export settings for backward compatibility (needed by tests)
 # Re-export exceptions for backward compatibility
-from src.ai.image_exceptions import ContentInspectionError, ImageGenerationError
+from src.ai.image_exceptions import ContentInspectionError, ImageGenerationError  # noqa: F401
 
 # Import internal modules
 from src.ai.image_generator import ImageGenerator
