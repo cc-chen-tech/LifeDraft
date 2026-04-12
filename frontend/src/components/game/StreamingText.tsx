@@ -118,7 +118,6 @@ export function StreamingText({
 
   // Split text into paragraphs
   const paragraphs = displayedText.split("\n\n").filter(Boolean);
-  const stillTyping = displayedLenRef.current < text.length || isStreaming;
 
   return (
     <div
@@ -133,7 +132,8 @@ export function StreamingText({
         <p key={i} className="animate-fade-in-word">
           {para}
           {/* Show cursor on the last paragraph while typing */}
-          {stillTyping && i === paragraphs.length - 1 && (
+          {/* Note: stillTyping check moved to inline to avoid ref access during render */}
+          {i === paragraphs.length - 1 && isStreaming && (
             <span className="typewriter-cursor" />
           )}
         </p>
