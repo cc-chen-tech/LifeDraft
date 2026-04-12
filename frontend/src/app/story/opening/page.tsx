@@ -42,7 +42,7 @@ export default function OpeningStoryPage() {
   
   // ★ 添加渲染计数器来诊断问题
   const renderCountRef = useRef(0);
-  renderCountRef.current++;
+  // Note: ref access moved to useEffect to avoid React warning
   
   useEffect(() => {
     console.log(`[OpeningStory] Render #${renderCountRef.current}, hydrated=${hydrated}, initialized=${initializedRef.current}`);

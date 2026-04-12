@@ -99,7 +99,7 @@ async function proxyRequest(request: NextRequest): Promise<NextResponse> {
       headers,
       body,
       signal: controller.signal,
-      // @ts-ignore - Next.js/Node.js 需要 duplex 支持流式请求体
+      // @ts-expect-error - Next.js/Node.js 需要 duplex 支持流式请求体
       duplex: 'half',
     });
 
