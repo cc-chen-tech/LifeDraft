@@ -947,6 +947,10 @@ def get_story_only_prompt(
     fate_echo_hint: str = "",  # ★ 宿命回响提示
     preference_hint: str = "",  # ★ 偏好适配提示
     foreshadowing_technique_hint: str = "",  # ★ 伏笔技法提示
+    chapter_opening: str = "",  # ★ 章节开头约束
+    chapter_ending: str = "",  # ★ 章节结尾约束
+    three_act_hint: str = "",  # ★ 三幕结构提示
+    pacing_intervention: str = "",  # ★ 节奏干预指令
 ) -> str:
     """
     Generate prompt for story-only generation (no JSON, pure narrative).
@@ -1085,6 +1089,10 @@ def get_story_only_prompt(
     narrative_enhancements_en = ""
     _enhancement_parts_zh = []
     _enhancement_parts_en = []
+    # ★ 节奏干预指令（最高优先级，MUST 级别）
+    if pacing_intervention:
+        _enhancement_parts_zh.append(f"\n[MUST] 【节奏干预】{pacing_intervention}")
+        _enhancement_parts_en.append(f"\n[MUST] [Pacing Intervention] {pacing_intervention}")
     if style_constraints:
         _enhancement_parts_zh.append(f"\n【风格约束】\n{style_constraints}")
         _enhancement_parts_en.append(f"\n[Style Constraints]\n{style_constraints}")
@@ -1106,6 +1114,16 @@ def get_story_only_prompt(
     if foreshadowing_technique_hint:
         _enhancement_parts_zh.append(f"\n【伏笔技法】{foreshadowing_technique_hint}")
         _enhancement_parts_en.append(f"\n[Foreshadowing Technique] {foreshadowing_technique_hint}")
+    # ★ 章节结构约束（中观层）
+    if three_act_hint:
+        _enhancement_parts_zh.append(f"\n[SHOULD] 【三幕结构】{three_act_hint}")
+        _enhancement_parts_en.append(f"\n[SHOULD] [Three-Act Structure] {three_act_hint}")
+    if chapter_opening:
+        _enhancement_parts_zh.append(f"\n[SHOULD] 【章节开头约束】{chapter_opening}")
+        _enhancement_parts_en.append(f"\n[SHOULD] [Chapter Opening] {chapter_opening}")
+    if chapter_ending:
+        _enhancement_parts_zh.append(f"\n[SHOULD] 【章节结尾约束】{chapter_ending}")
+        _enhancement_parts_en.append(f"\n[SHOULD] [Chapter Ending] {chapter_ending}")
     if _enhancement_parts_zh:
         narrative_enhancements_zh = "\n".join(_enhancement_parts_zh)
     if _enhancement_parts_en:
@@ -1258,6 +1276,10 @@ def get_round_event_prompt(
     fate_echo_hint: str = "",  # ★ 宿命回响提示
     preference_hint: str = "",  # ★ 偏好适配提示
     foreshadowing_technique_hint: str = "",  # ★ 伏笔技法提示
+    chapter_opening: str = "",  # ★ 章节开头约束
+    chapter_ending: str = "",  # ★ 章节结尾约束
+    three_act_hint: str = "",  # ★ 三幕结构提示
+    pacing_intervention: str = "",  # ★ 节奏干预指令
 ) -> str:
     """
     Generate prompt for a single round's story within a week.
@@ -1359,6 +1381,9 @@ def get_round_event_prompt(
         # ★ 构建叙事引擎增强约束块（round）
         round_enhancements_zh = ""
         _re_parts_zh = []
+        # ★ 节奏干预指令（最高优先级，MUST 级别）
+        if pacing_intervention:
+            _re_parts_zh.append(f"\n[MUST] 【节奏干预】{pacing_intervention}")
         if style_constraints:
             _re_parts_zh.append(f"\n【风格约束】\n{style_constraints}")
         if arc_hint:
@@ -1373,6 +1398,13 @@ def get_round_event_prompt(
             _re_parts_zh.append(f"\n[SHOULD] 【偏好适配】{preference_hint}")
         if foreshadowing_technique_hint:
             _re_parts_zh.append(f"\n【伏笔技法】{foreshadowing_technique_hint}")
+        # ★ 章节结构约束（中观层）
+        if three_act_hint:
+            _re_parts_zh.append(f"\n[SHOULD] 【三幕结构】{three_act_hint}")
+        if chapter_opening:
+            _re_parts_zh.append(f"\n[SHOULD] 【章节开头约束】{chapter_opening}")
+        if chapter_ending:
+            _re_parts_zh.append(f"\n[SHOULD] 【章节结尾约束】{chapter_ending}")
         if _re_parts_zh:
             round_enhancements_zh = "\n".join(_re_parts_zh)
 
@@ -1495,6 +1527,9 @@ Continue the story based on the above, maintaining continuity."""
         # ★ 构建叙事引擎增强约束块（round EN）
         round_enhancements_en = ""
         _re_parts_en = []
+        # ★ 节奏干预指令（最高优先级，MUST 级别）
+        if pacing_intervention:
+            _re_parts_en.append(f"\n[MUST] [Pacing Intervention] {pacing_intervention}")
         if style_constraints:
             _re_parts_en.append(f"\n[Style Constraints]\n{style_constraints}")
         if arc_hint:
@@ -1509,6 +1544,13 @@ Continue the story based on the above, maintaining continuity."""
             _re_parts_en.append(f"\n[SHOULD] [Preference Hint] {preference_hint}")
         if foreshadowing_technique_hint:
             _re_parts_en.append(f"\n[Foreshadowing Technique] {foreshadowing_technique_hint}")
+        # ★ 章节结构约束（中观层）
+        if three_act_hint:
+            _re_parts_en.append(f"\n[SHOULD] [Three-Act Structure] {three_act_hint}")
+        if chapter_opening:
+            _re_parts_en.append(f"\n[SHOULD] [Chapter Opening] {chapter_opening}")
+        if chapter_ending:
+            _re_parts_en.append(f"\n[SHOULD] [Chapter Ending] {chapter_ending}")
         if _re_parts_en:
             round_enhancements_en = "\n".join(_re_parts_en)
 

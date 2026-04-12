@@ -217,6 +217,28 @@ class StoryGenerator:
             except Exception as e:
                 logger.warning(f"Style constraints build failed: {e}")
 
+            # 章节开头/结尾约束
+            if self._style_engine_enabled and self._prompt_builder:
+                try:
+                    # 章节开头约束
+                    previous_summary = ""
+                    dh = player_state.get("decision_history", [])
+                    if dh and isinstance(dh[-1], dict):
+                        previous_summary = dh[-1].get("event", "")[:200]
+                    chapter_opening = self._prompt_builder.build_chapter_opening(previous_summary)
+                    if chapter_opening:
+                        hints["chapter_opening"] = chapter_opening
+
+                    # 章节结尾约束
+                    chapter_ending = self._prompt_builder.build_chapter_ending_hint()
+                    if chapter_ending:
+                        hints["chapter_ending"] = chapter_ending
+
+                    # 三幕结构提示
+                    hints["three_act_hint"] = "[SHOULD] 戏剧结构: 本段故事应有清晰的起承转合——开头铺垫引入情境，中段推进发展或制造转折，结尾收束或留下悬念。"
+                except Exception as e:
+                    logger.warning(f"Chapter hints build failed: {e}")
+
         if self._epic_enabled:
             if self._character_arc_engine:
                 try:
@@ -286,6 +308,27 @@ class StoryGenerator:
                     )
                 except Exception as e:
                     logger.warning(f"Foreshadowing technique hint failed: {e}")
+
+            # 节奏平坦检测与主动干预
+            if self._emotional_arc:
+                try:
+                    recent_texts = [
+                        d.get("event", "")
+                        for d in player_state.get("decision_history", [])[-3:]
+                        if isinstance(d, dict) and d.get("event")
+                    ]
+                    if len(recent_texts) >= 3:
+                        style_key = self._style_manifest.style_id if self._style_manifest else None
+                        is_flat = self._emotional_arc.detect_flatline(recent_texts, style=style_key)
+                        if is_flat:
+                            intervention = self._emotional_arc.suggest_intervention(
+                                history=recent_texts, style=style_key
+                            )
+                            if intervention:
+                                hints["pacing_intervention"] = f"[MUST] 节奏干预: {intervention}"
+                                logger.info("Pacing flatline detected, intervention injected")
+                except Exception as e:
+                    logger.warning(f"Pacing intervention check failed: {e}")
 
         return hints
 
@@ -511,6 +554,7 @@ class StoryGenerator:
                     last_event_description,
                     character_habits=character_habits,
                 )
+                validation_context["narrative_hints"] = narrative_hints
                 preflight_result = self._preflight_checker.check_prompt_completeness(
                     story_prompt, validation_context
                 )
@@ -572,7 +616,6 @@ class StoryGenerator:
                 # ★ StateTracker: 记录温度调整
                 if state_tracker and attempt > 0:
                     try:
-                        from src.ai.generation_state import TransitionReason
 
                         state_tracker.transition(
                             TransitionReason.TEMPERATURE_ADJUST,

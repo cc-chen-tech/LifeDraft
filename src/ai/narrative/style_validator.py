@@ -217,6 +217,28 @@ class StyleAwareValidator:
                         details,
                     )
 
+            # 三幕结构检测（信息记录，非硬性失败）
+            act_phases_found = []
+            text_len = len(story_text)
+            if text_len > 200:
+                opening_text = story_text[:text_len // 4]
+                middle_text = story_text[text_len // 4 : 3 * text_len // 4]
+                ending_text = story_text[3 * text_len // 4:]
+
+                setup_keywords = ["走进", "坐下", "来到", "踏入", "清晨", "这一天"]
+                development_keywords = ["然而", "却", "突然", "不料", "意外", "转折"]
+                climax_keywords = ["终于", "再也", "紧紧", "猛然", "决定", "爆发"]
+
+                if any(kw in opening_text for kw in setup_keywords):
+                    act_phases_found.append("铺垫")
+                if any(kw in middle_text for kw in development_keywords):
+                    act_phases_found.append("发展/转折")
+                if any(kw in ending_text for kw in climax_keywords):
+                    act_phases_found.append("高潮/收束")
+
+            details["three_act_phases_found"] = act_phases_found
+            details["three_act_completeness"] = len(act_phases_found) >= 2
+
             return True, "", details
 
         except Exception as e:
