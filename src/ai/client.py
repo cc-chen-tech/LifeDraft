@@ -18,7 +18,7 @@ import openai
 from config.feature_flags import get_feature
 from config.settings import settings
 from src.ai.model_fallback import FallbackChain, ModelFallbackConfig
-from src.ai.truncation_recovery import TruncationRecovery, TruncationRecoveryConfig
+from src.ai.truncation_recovery import TruncationRecovery
 from src.ai.utils import extract_json
 
 logger = logging.getLogger(__name__)
@@ -105,6 +105,18 @@ class AIClient:
         """
         # C-04: 使用信号量限制并发调用
         with self._semaphore:
+            # ★ 模型降级链：开启时自动切换备选模型
+            if get_feature("model_fallback"):
+                return self._call_with_model_fallback(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    stream_callback=stream_callback,
+                    model=model,
+                    frequency_penalty=frequency_penalty,
+                    presence_penalty=presence_penalty,
+                )
             return self._call_impl(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
@@ -115,6 +127,70 @@ class AIClient:
                 frequency_penalty=frequency_penalty,
                 presence_penalty=presence_penalty,
             )
+
+    def _call_with_model_fallback(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.8,
+        max_tokens: int = 2000,
+        stream_callback: Optional[Callable[[str], None]] = None,
+        model: Optional[str] = None,
+        frequency_penalty: float = 0.0,
+        presence_penalty: float = 0.0,
+    ) -> str:
+        """Call AI with automatic model fallback using FallbackChain config.
+
+        Uses ModelFallbackConfig for configuration and iterates through
+        available models on retryable API errors, calling _call_impl directly
+        to avoid semaphore re-entry.
+        """
+        use_model = model or self.model
+        fallback_models = [m for m in _DEFAULT_FALLBACK_MODELS if m != use_model]
+        config = ModelFallbackConfig(
+            primary_model=use_model,
+            fallback_models=fallback_models,
+        )
+        chain = FallbackChain(config, self)
+        models = chain.get_available_models()
+
+        last_error: Optional[Exception] = None
+        attempts = min(config.max_fallback_attempts, len(models))
+        for i in range(attempts):
+            current_model = models[i]
+            try:
+                return self._call_impl(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    stream_callback=stream_callback,
+                    model=current_model,
+                    frequency_penalty=frequency_penalty,
+                    presence_penalty=presence_penalty,
+                )
+            except Exception as e:
+                last_error = e
+                status_code = getattr(e, "status_code", None)
+                is_retryable = (
+                    isinstance(e, openai.APIError)
+                    and status_code is not None
+                    and status_code in config.retry_on_status_codes
+                )
+                if is_retryable and i < attempts - 1:
+                    next_model = models[i + 1]
+                    logger.warning(
+                        "Model %s failed (status %s), falling back to %s",
+                        current_model,
+                        status_code,
+                        next_model,
+                    )
+                    # Clear stream_callback for fallback attempts
+                    stream_callback = None
+                    continue
+                raise
+
+        raise last_error  # type: ignore[misc]
 
     def _call_impl(
         self,
@@ -182,6 +258,19 @@ class AIClient:
                             f"Output length: {len(full_text)} chars. "
                             f"Consider increasing max_tokens."
                         )
+                        # ★ 截断恢复：自动续写被截断的输出
+                        if get_feature("truncation_recovery"):
+                            recovery = TruncationRecovery()
+                            if recovery.detect_truncation(full_text, finish_reason):
+                                full_text = recovery.recover(
+                                    client_call=self._call_impl,
+                                    system_prompt=system_prompt,
+                                    original_prompt=user_prompt,
+                                    partial_response=full_text,
+                                    temperature=temperature,
+                                    max_tokens=current_max_tokens,
+                                    model=use_model,
+                                )
 
                     return full_text.strip()
                 else:
@@ -200,15 +289,28 @@ class AIClient:
                     )
 
                     finish_reason = response.choices[0].finish_reason
+                    content = response.choices[0].message.content or ""
                     if finish_reason == "length":
-                        content = response.choices[0].message.content or ""
                         logger.warning(
                             f"⚠️ AI response truncated by max_tokens ({current_max_tokens}). "
                             f"Output length: {len(content)} chars. "
                             f"Consider increasing max_tokens."
                         )
+                        # ★ 截断恢复：自动续写被截断的输出
+                        if get_feature("truncation_recovery"):
+                            recovery = TruncationRecovery()
+                            if recovery.detect_truncation(content, finish_reason):
+                                content = recovery.recover(
+                                    client_call=self._call_impl,
+                                    system_prompt=system_prompt,
+                                    original_prompt=user_prompt,
+                                    partial_response=content,
+                                    temperature=temperature,
+                                    max_tokens=current_max_tokens,
+                                    model=use_model,
+                                )
 
-                    return (response.choices[0].message.content or "").strip()
+                    return content.strip()
 
             except openai.APIError as e:
                 error_msg = str(e)
