@@ -26,7 +26,6 @@ from src.ai.image_prompt_builder import DeepSeekPromptEnhancer, ImagePromptBuild
 
 logger = logging.getLogger(__name__)
 
-
 class ImageClient:
     """图像生成客户端 - Facade 模式，委托给专门的模块
 
