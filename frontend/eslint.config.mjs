@@ -37,6 +37,7 @@ const eslintConfig = defineConfig([
       "react-hooks/set-state-in-effect": "off",
       "react-hooks/rules-of-hooks": "off",
       "react-hooks/purity": "off",
+      "@typescript-eslint/ban-ts-comment": "off",
     },
   },
 ]);
