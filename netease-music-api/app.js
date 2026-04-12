@@ -83,7 +83,7 @@ fs.readdirSync(path.join(__dirname, 'module'))
 
     app.use(route, (req, res) => {
       ;[req.query, req.body].forEach((item) => {
-        if (typeof item.cookie === 'string') {
+        if (item && typeof item.cookie === 'string') {
           item.cookie = cookieToJson(decode(item.cookie))
         }
       })
@@ -92,7 +92,7 @@ fs.readdirSync(path.join(__dirname, 'module'))
         { cookie: req.cookies },
         req.query,
         req.body,
-        req.files,
+        req.files || {},
       )
 
       question(query, request)

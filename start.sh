@@ -41,7 +41,7 @@ start_backend() {
     echo -e "${YELLOW}启动后端服务 (端口 $BACKEND_PORT)...${NC}"
     cd "$PROJECT_DIR"
     source venv/bin/activate
-    python run_api.py > $BACKEND_LOG 2>&1 &
+    python3 run_api.py > $BACKEND_LOG 2>&1 &
     sleep 2
     if lsof -ti:$BACKEND_PORT > /dev/null 2>&1; then
         echo -e "${GREEN}✓ 后端启动成功${NC}"

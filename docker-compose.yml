@@ -19,6 +19,11 @@ services:
       # 应用配置
       - DEFAULT_LANGUAGE=${DEFAULT_LANGUAGE:-zh}
       - CACHE_EVENTS=${CACHE_EVENTS:-true}
+      # 叙事引擎三大系统
+      - ENABLE_CONSTRAINT_HARNESS=${ENABLE_CONSTRAINT_HARNESS:-true}
+      - ENABLE_NARRATIVE_STYLE_ENGINE=${ENABLE_NARRATIVE_STYLE_ENGINE:-true}
+      - ENABLE_CREATIVE_ENHANCEMENT=${ENABLE_CREATIVE_ENHANCEMENT:-true}
+      - ENABLE_EPIC_NARRATIVE=${ENABLE_EPIC_NARRATIVE:-true}
     volumes:
       # 持久化数据目录
       - ./data:/app/data

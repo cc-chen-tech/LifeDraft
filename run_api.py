@@ -29,6 +29,8 @@ def main():
         port=port,
         reload=reload,
         reload_dirs=["src"],
+        reload_delay=2.0,  # 等待2秒再重启，合并多次文件变动
+        reload_excludes=["tests/*", "scripts/*", "data/*", "logs/*", "*.pyc", "__pycache__/*"],
     )
 
 

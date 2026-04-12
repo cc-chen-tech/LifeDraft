@@ -87,7 +87,7 @@ run_contract() {
     source venv/bin/activate
     
     echo -e "${YELLOW}运行 API 契约测试...${NC}"
-    python -m pytest tests/test_api_contract.py -v
+    python -m pytest tests/test_api_contract.py tests/test_model_contracts.py tests/test_narrative_style_contract.py -v
     local result=$?
     
     print_layer_result "contract" $result
@@ -102,7 +102,7 @@ run_db() {
     source venv/bin/activate
     
     echo -e "${YELLOW}运行真实数据库集成测试...${NC}"
-    python -m pytest tests/test_integration_real_db.py tests/test_database.py -v
+    python -m pytest tests/test_integration_real_db.py tests/test_database.py tests/test_narrative_db_migration.py -v
     local result=$?
     
     print_layer_result "db" $result

@@ -25,8 +25,7 @@ jobs:
         run: cd frontend && npm ci
 
       - name: Run ESLint
-        run: cd frontend && npm run lint || echo "⚠️ ESLint issues found"
-        continue-on-error: true
+        run: cd frontend && npm run lint
 
       - name: Run TypeScript type check
         run: cd frontend && npx tsc --noEmit

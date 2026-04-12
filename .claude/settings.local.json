@@ -39,7 +39,16 @@
       "Bash(cd /Users/luicy/story2 && ./test.sh 2>&1 | tail -50)",
       "Bash(source venv/bin/activate && pytest tests/test_collection.py -v 2>&1)",
       "Bash(lsof -ti:8000 > /dev/null 2>&1 && echo \"Backend running on port 8000\" || echo \"Backend NOT running\")",
-      "Bash(lsof -ti:3000 > /dev/null 2>&1 && echo \"Frontend running on port 3000\" || echo \"Frontend NOT running\")"
+      "Bash(lsof -ti:3000 > /dev/null 2>&1 && echo \"Frontend running on port 3000\" || echo \"Frontend NOT running\")",
+      "Bash(curl:*)",
+      "Bash(chmod +x .claude/hooks/stop-hook.sh)",
+      "Bash(mkdir -p .claude/scripts)",
+      "Bash(chmod +x .claude/scripts/setup-ralph-loop.sh)",
+      "Bash(mv .claude/plugin.json .claude-plugin/)",
+      "Bash(mv .claude/commands/* .claude-plugin/commands/)",
+      "Bash(mv .claude/hooks/* .claude-plugin/hooks/)",
+      "Bash(mv .claude/scripts/* .claude-plugin/scripts/)",
+      "Bash(chmod +x:*)"
     ]
   }
 }
