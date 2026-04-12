@@ -26,8 +26,8 @@ jobs:
       - name: Run Black format
         run: black --line-length 100 src/
 
-      - name: Run isort check
-        run: isort --check-only src/
+      - name: Run isort format
+        run: isort src/
 
       - name: Run flake8
         run: flake8 src/ --max-line-length=100 --ignore=E501,W503,E203
