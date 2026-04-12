@@ -6,6 +6,7 @@ consistency validation with retry, and life-phase determination.
 
 import json
 import logging
+import os
 from typing import Any, Callable, Dict, Optional
 
 from pydantic import ValidationError
@@ -25,6 +26,349 @@ class StoryGenerator:
 
     def __init__(self, client: AIClient):
         self.client = client
+
+        # Harness 约束监控系统（通过环境变量控制）
+        self._harness_enabled = os.environ.get("ENABLE_CONSTRAINT_HARNESS", "").lower() in (
+            "true", "1", "yes"
+        )
+        self._harness_registry = None
+        self._preflight_checker = None
+        self._validation_pipeline = None
+        self._diagnostics = None
+        self._retry_controller = None
+        self._harness_metrics = None
+
+        if self._harness_enabled:
+            try:
+                from src.ai.harness import default_registry
+                from src.ai.harness.preflight_checker import PreflightChecker
+                from src.ai.harness.validation_pipeline import ValidationPipeline
+                from src.ai.harness.diagnostics import ConstraintViolationDiagnostic
+                from src.ai.harness.retry_controller import RetryController
+                from src.ai.harness.metrics import HarnessMetrics
+
+                self._harness_registry = default_registry
+                self._preflight_checker = PreflightChecker(default_registry)
+                self._validation_pipeline = ValidationPipeline(default_registry)
+                self._diagnostics = ConstraintViolationDiagnostic()
+                self._retry_controller = RetryController(max_retries=2)
+                self._harness_metrics = HarnessMetrics()
+                logger.info("Constraint Harness system initialized successfully")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Constraint Harness: {e}")
+                self._harness_enabled = False
+
+        # ★ 三大叙事系统环境变量控制
+        self._style_engine_enabled = os.environ.get(
+            "ENABLE_NARRATIVE_STYLE_ENGINE", "false"
+        ).lower() == "true"
+        self._creative_enabled = os.environ.get(
+            "ENABLE_CREATIVE_ENHANCEMENT", "false"
+        ).lower() == "true"
+        self._epic_enabled = os.environ.get(
+            "ENABLE_EPIC_NARRATIVE", "false"
+        ).lower() == "true"
+
+        # 延迟初始化（在有 style_id 时初始化）
+        self._style_manifest = None
+        self._prompt_builder = None
+        self._style_validator = None
+        self._character_arc_engine = None
+        self._world_breathing_engine = None
+        self._conflict_tower = None
+        self._fate_echo_db = None
+        self._emotional_arc = None
+        self._novelty_scorer = None
+        self._foreshadowing_lib = None
+        self._hook_injector = None
+        self._preference_learner = None
+        self._narrative_systems_initialized = False
+
+    # -------------------- Narrative Systems --------------------
+
+    def _init_narrative_systems(self, style_id: str, player_state: Dict[str, Any]) -> None:
+        """根据 style_id 初始化三大叙事系统（延迟初始化，首次调用时执行）。
+
+        非侵入式：任何子系统初始化失败只 logger.warning()，不影响核心流程。
+        """
+        if self._narrative_systems_initialized:
+            return
+
+        self._narrative_systems_initialized = True
+
+        # --- 风格引擎 ---
+        if self._style_engine_enabled:
+            try:
+                from src.ai.narrative.style_manifest import get_style
+                from src.ai.narrative.style_prompt_builder import StyleAwarePromptBuilder
+                from src.ai.narrative.style_validator import StyleAwareValidator
+
+                self._style_manifest = get_style(style_id)
+                if self._style_manifest:
+                    self._prompt_builder = StyleAwarePromptBuilder(self._style_manifest)
+                    self._style_validator = StyleAwareValidator(self._style_manifest)
+                    logger.info(f"Style engine initialized: {style_id}")
+                else:
+                    logger.warning(f"Style '{style_id}' not found, style engine disabled")
+            except Exception as e:
+                logger.warning(f"Failed to initialize style engine: {e}")
+
+        # --- 史诗叙事 ---
+        if self._epic_enabled:
+            try:
+                from src.ai.narrative.character_arc import CharacterArcEngine
+                self._character_arc_engine = CharacterArcEngine(style=self._style_manifest)
+                arc_state = player_state.get("character_arc_state")
+                if arc_state and hasattr(self._character_arc_engine, "from_state_dict"):
+                    self._character_arc_engine.from_state_dict(arc_state)
+            except Exception as e:
+                logger.warning(f"Failed to init CharacterArcEngine: {e}")
+
+            try:
+                from src.ai.narrative.world_breathing import WorldBreathingEngine
+                era = ""
+                cs = player_state.get("character_settings") or {}
+                if isinstance(cs, dict) and "era" in cs:
+                    era = cs["era"].get("era_description", "modern")
+                self._world_breathing_engine = WorldBreathingEngine(
+                    style=self._style_manifest, era=era
+                )
+                wb_state = player_state.get("world_breathing_events")
+                if wb_state and hasattr(self._world_breathing_engine, "from_state_list"):
+                    self._world_breathing_engine.from_state_list(wb_state)
+            except Exception as e:
+                logger.warning(f"Failed to init WorldBreathingEngine: {e}")
+
+            try:
+                from src.ai.narrative.conflict_tower import ConflictTower
+                self._conflict_tower = ConflictTower(style=style_id or None)
+                ct_state = player_state.get("conflict_tower_state")
+                if ct_state and hasattr(self._conflict_tower, "from_state_dict"):
+                    self._conflict_tower.from_state_dict(ct_state)
+            except Exception as e:
+                logger.warning(f"Failed to init ConflictTower: {e}")
+
+            try:
+                from src.ai.narrative.fate_echo import FateEchoDatabase
+                self._fate_echo_db = FateEchoDatabase(style=self._style_manifest)
+                fe_state = player_state.get("fate_echo_state")
+                if fe_state and hasattr(self._fate_echo_db, "from_state_list"):
+                    self._fate_echo_db.from_state_list(fe_state)
+            except Exception as e:
+                logger.warning(f"Failed to init FateEchoDatabase: {e}")
+
+        # --- 创意增强 ---
+        if self._creative_enabled:
+            try:
+                from src.ai.creative.emotional_arc import EmotionalArcAnalyzer
+                self._emotional_arc = EmotionalArcAnalyzer()
+            except Exception as e:
+                logger.warning(f"Failed to init EmotionalArcAnalyzer: {e}")
+            try:
+                from src.ai.creative.novelty_scorer import NoveltyScorer
+                self._novelty_scorer = NoveltyScorer()
+            except Exception as e:
+                logger.warning(f"Failed to init NoveltyScorer: {e}")
+            try:
+                from src.ai.creative.foreshadowing_tech import (
+                    ForeshadowingTechniqueLibrary, HookInjector,
+                )
+                self._foreshadowing_lib = ForeshadowingTechniqueLibrary()
+                self._hook_injector = HookInjector()
+            except Exception as e:
+                logger.warning(f"Failed to init ForeshadowingTechniqueLibrary: {e}")
+            try:
+                from src.ai.creative.preference_learner import PreferenceLearner
+                self._preference_learner = PreferenceLearner()
+            except Exception as e:
+                logger.warning(f"Failed to init PreferenceLearner: {e}")
+
+        logger.info(
+            f"Narrative systems init: style={self._style_engine_enabled}, "
+            f"epic={self._epic_enabled}, creative={self._creative_enabled}"
+        )
+
+    def _gather_narrative_hints(
+        self,
+        player_state: Dict[str, Any],
+        activated_foreshadowing: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, str]:
+        """收集所有叙事系统产出的 hint 文本，供 prompt 构建使用。"""
+        hints: Dict[str, str] = {}
+
+        if self._style_engine_enabled and self._prompt_builder:
+            try:
+                from config.prompts._helpers import _build_style_constraints_text
+                hints["style_constraints"] = _build_style_constraints_text(
+                    self._prompt_builder, "zh"
+                )
+            except Exception as e:
+                logger.warning(f"Style constraints build failed: {e}")
+
+        if self._epic_enabled:
+            if self._character_arc_engine:
+                try:
+                    from config.prompts._helpers import _build_arc_context
+                    player_name = self._extract_player_name(player_state)
+                    hints["arc_hint"] = _build_arc_context(
+                        self._character_arc_engine, player_name
+                    )
+                except Exception as e:
+                    logger.warning(f"Arc hint build failed: {e}")
+
+            if self._conflict_tower:
+                try:
+                    hints["conflict_directive"] = self._conflict_tower.get_conflict_directive()
+                except Exception as e:
+                    logger.warning(f"Conflict directive failed: {e}")
+
+            if self._world_breathing_engine:
+                try:
+                    week = player_state.get("week", 0)
+                    self._world_breathing_engine.advance_to_week(week)
+                    active = self._world_breathing_engine.get_active_events(week)
+                    snippets = []
+                    for ev in active[:3]:
+                        eid = ev.get("id", "")
+                        if eid:
+                            s = self._world_breathing_engine.generate_permeation_snippet(eid)
+                            if s:
+                                snippets.append(s)
+                    if snippets:
+                        hints["world_event_context"] = "\n".join(snippets)
+                except Exception as e:
+                    logger.warning(f"World event context failed: {e}")
+
+            if self._fate_echo_db:
+                try:
+                    week = player_state.get("week", 0)
+                    pending = self._fate_echo_db.get_pending_echoes(week)
+                    if pending:
+                        prop_id = pending[0].get("id", "")
+                        style_key = (
+                            self._style_manifest.style_id if self._style_manifest else None
+                        )
+                        if prop_id:
+                            hint = self._fate_echo_db.generate_echo_hint(
+                                prop_id, style=style_key
+                            )
+                            if hint:
+                                hints["fate_echo_hint"] = hint
+                except Exception as e:
+                    logger.warning(f"Fate echo hint failed: {e}")
+
+        if self._creative_enabled:
+            if self._preference_learner:
+                try:
+                    decision_history = player_state.get("decision_history", [])
+                    prefs = self._preference_learner.learn(decision_history)
+                    style_key = (
+                        self._style_manifest.style_id if self._style_manifest else None
+                    )
+                    hints["preference_hint"] = self._preference_learner.build_preference_hint(
+                        prefs, style=style_key
+                    )
+                except Exception as e:
+                    logger.warning(f"Preference hint failed: {e}")
+
+            if self._foreshadowing_lib and activated_foreshadowing:
+                try:
+                    style_key = (
+                        self._style_manifest.style_id if self._style_manifest else ""
+                    )
+                    hints["foreshadowing_technique_hint"] = (
+                        self._foreshadowing_lib.build_recovery_hint(
+                            activated_foreshadowing, style=style_key
+                        )
+                    )
+                except Exception as e:
+                    logger.warning(f"Foreshadowing technique hint failed: {e}")
+
+        return hints
+
+    def _post_generation_analysis(
+        self, story_text: str, player_state: Dict[str, Any]
+    ) -> None:
+        """生成后分析：情感弧线、新颖度、弧光更新（非阻塞）。"""
+        if self._creative_enabled:
+            if self._emotional_arc and story_text:
+                try:
+                    self._emotional_arc.analyze(story_text)
+                except Exception as e:
+                    logger.warning(f"Emotional arc analysis failed: {e}")
+            if self._novelty_scorer and story_text:
+                try:
+                    history = [
+                        d.get("event", "")
+                        for d in player_state.get("decision_history", [])
+                        if isinstance(d, dict) and d.get("event")
+                    ]
+                    self._novelty_scorer.score(story_text, history)
+                except Exception as e:
+                    logger.warning(f"Novelty scoring failed: {e}")
+
+        if self._epic_enabled and self._character_arc_engine and story_text:
+            try:
+                player_name = self._extract_player_name(player_state)
+                if player_name:
+                    arc = self._character_arc_engine.arcs.get(player_name)
+                    if arc:
+                        self._character_arc_engine.process_event(
+                            arc, {"story_text": story_text}
+                        )
+            except Exception as e:
+                logger.warning(f"Character arc update failed: {e}")
+
+    def _resolve_temperature(
+        self, attempt: int, base_temperature: float, temperature_decay: float,
+        scene_type: str = "",
+    ) -> float:
+        """温度优先级链：
+        1. Harness 重试温度（attempt>0 时递减）
+        2. StyleManifest.global_parameters.temperature
+        3. temperature_schedule（场景类型微调）
+        4. PreferenceLearner 调节
+        5. 默认 base_temperature
+        """
+        if attempt > 0:
+            return max(0.7, base_temperature - (attempt * temperature_decay))
+
+        if self._style_engine_enabled and self._style_manifest:
+            try:
+                style_temp = self._style_manifest.global_parameters.temperature
+                if style_temp and style_temp != 0.85:
+                    if scene_type and self._prompt_builder:
+                        try:
+                            sched = self._prompt_builder.get_scene_temperature(scene_type)
+                            if sched != style_temp:
+                                return sched
+                        except Exception:
+                            pass
+                    return style_temp
+            except Exception:
+                pass
+
+        if self._creative_enabled and self._preference_learner:
+            try:
+                adjusted = self._preference_learner.adjust_temperature(base_temperature)
+                if adjusted != base_temperature:
+                    return adjusted
+            except Exception:
+                pass
+
+        return base_temperature
+
+    @staticmethod
+    def _extract_player_name(player_state: Dict[str, Any]) -> str:
+        """从 player_state 中提取主角名称。"""
+        name = player_state.get("player_name", "")
+        if not name:
+            cs = player_state.get("character_settings") or {}
+            if isinstance(cs, dict):
+                identity = cs.get("identity", {})
+                if isinstance(identity, dict):
+                    name = identity.get("name", "")
+        return name
 
     # -------------------- Public API --------------------
 
@@ -106,13 +450,26 @@ class StoryGenerator:
                         f"[VectorStore] Injected {len(vector_context)} chars of vector context"
                     )
             except Exception as e:
-                logger.warning(f"Vector search failed: {e}")
+                logger.error(f"Vector search failed, constraint degraded: {e}")
+                vector_context = "[注意: 历史上下文检索暂不可用，请完全基于已提供的约束信息生成故事]"
 
         # ★ 动态提取历史故事中的高频重复短语，生成禁用列表
         decision_history = player_state.get("decision_history", [])
         overused_phrases = extract_overused_phrases(decision_history, language=language)
         if overused_phrases:
             logger.info(f"[AntiRepeat] Injected dynamic ban list ({len(overused_phrases)} chars)")
+
+        # ★ 叙事系统初始化 + hint 收集
+        narrative_hints: Dict[str, str] = {}
+        style_id = (
+            player_state.get("narrative_style_id")
+            or (character_settings or {}).get("narrative_style_id", "")
+        )
+        if style_id:
+            self._init_narrative_systems(style_id, player_state)
+        narrative_hints = self._gather_narrative_hints(
+            player_state, activated_foreshadowing=activated_foreshadowing
+        )
 
         story_prompt = get_story_only_prompt(
             player_state,
@@ -132,7 +489,31 @@ class StoryGenerator:
             character_habits,
             vector_context=vector_context,  # ★ 注入向量检索上下文
             overused_phrases=overused_phrases,  # ★ 注入动态禁用列表
+            **narrative_hints,  # ★ 注入叙事系统 hints
         )
+
+        # ★ 约束完整性检查
+        self._log_constraint_completeness(story_prompt)
+
+        # ★ Harness: 位置A — preflight 检查（构建 prompt 之后、调用 AI 之前）
+        preflight_result = None
+        validation_context = None
+        if self._harness_enabled:
+            try:
+                validation_context = self._extract_validation_context(
+                    player_state, character_settings, pending_storylines,
+                    established_facts, last_event_description,
+                    character_habits=character_habits,
+                )
+                preflight_result = self._preflight_checker.check_prompt_completeness(
+                    story_prompt, validation_context
+                )
+                if not preflight_result.all_present:
+                    logger.warning(
+                        f"Harness preflight: missing {preflight_result.missing_constraints}"
+                    )
+            except Exception as e:
+                logger.warning(f"Harness preflight check failed: {e}")
 
         sys_prompt = get_system_prompt("story_novelist", language)
         last_error: Optional[str] = None
@@ -154,8 +535,10 @@ class StoryGenerator:
                     else:
                         prompt += f"\n\n[Previous attempt failed: {last_error}. Please avoid the same issue.]"
 
-                # 计算当前温度：随着重试次数递减
-                current_temp = max(0.7, base_temperature - (attempt * temperature_decay))
+                # ★ 温度优先级链：Harness重试 > Style > Schedule > Preference > 默认
+                current_temp = self._resolve_temperature(
+                    attempt, base_temperature, temperature_decay
+                )
                 logger.info(
                     f"Story generation attempt {attempt + 1}/{retry_count}, temperature={current_temp}"
                 )
@@ -176,6 +559,68 @@ class StoryGenerator:
                 logger.info(f"Generated story with {len(story_text)} characters")
                 logger.debug(f"Story preview (first 200 chars): {story_text[:200]}...")
                 logger.debug(f"Story preview (last 200 chars): ...{story_text[-200:]}")
+
+                # ★ Harness: 位置B — AI 生成故事文本之后
+                if self._harness_enabled and story_text and validation_context:
+                    try:
+                        import time as _time
+                        _harness_start = _time.time()
+
+                        harness_validation = self._validation_pipeline.validate(
+                            story_text, validation_context
+                        )
+
+                        if not harness_validation.passed:
+                            diagnostic_report = self._diagnostics.generate_report(
+                                story_text, harness_validation
+                            )
+                            should_retry, correction_hint = self._retry_controller.should_retry(
+                                harness_validation, diagnostic_report, attempt=attempt
+                            )
+
+                            if should_retry and correction_hint:
+                                logger.warning(
+                                    f"Harness recommends retry: "
+                                    f"{len(harness_validation.critical_failures)} critical failures"
+                                )
+                                # 将修正指令追加到下一次重试的 prompt 中
+                                last_error = correction_hint
+
+                        _harness_latency = (_time.time() - _harness_start) * 1000
+
+                        # 记录 metrics
+                        self._harness_metrics.record_generation(
+                            game_id=player_state.get("game_id")
+                            if isinstance(player_state, dict)
+                            else getattr(player_state, "game_id", None),
+                            week=player_state.get("current_week")
+                            if isinstance(player_state, dict)
+                            else getattr(player_state, "current_week", None),
+                            attempts=attempt + 1,
+                            preflight_result={
+                                "all_present": preflight_result.all_present,
+                                "missing_constraints": preflight_result.missing_constraints,
+                            } if preflight_result else None,
+                            validation_result={
+                                "passed": harness_validation.passed,
+                                "score": harness_validation.score,
+                                "detailed_checks": harness_validation.detailed_checks,
+                            },
+                            latency_ms=_harness_latency,
+                        )
+
+                        # 如果 harness 建议重试且有修正指令，跳过本次直接进入下一轮
+                        if not harness_validation.passed and last_error == correction_hint:
+                            if attempt < retry_count - 1:
+                                logger.info(
+                                    f"Harness triggered retry (attempt {attempt + 1})"
+                                )
+                                continue
+                    except Exception as e:
+                        logger.warning(f"Harness post-validation failed (non-blocking): {e}")
+
+                # ★ 叙事系统后处理（非阻塞）
+                self._post_generation_analysis(story_text, player_state)
 
                 # Step 2: Generate options based on the story
                 if option_generator is None:
@@ -308,6 +753,18 @@ class StoryGenerator:
                 f"[AntiRepeat] Round: Injected dynamic ban list ({len(overused_phrases)} chars)"
             )
 
+        # ★ 叙事系统初始化 + hint 收集（round）
+        narrative_hints_round: Dict[str, str] = {}
+        style_id = (
+            player_state.get("narrative_style_id")
+            or (character_settings or {}).get("narrative_style_id", "")
+        )
+        if style_id:
+            self._init_narrative_systems(style_id, player_state)
+        narrative_hints_round = self._gather_narrative_hints(
+            player_state, activated_foreshadowing=activated_foreshadowing
+        )
+
         # Get round story prompt
         prompt = get_round_event_prompt(
             player_state,
@@ -329,10 +786,31 @@ class StoryGenerator:
             new_character=new_character,
             vector_context=vector_context,  # ★ 注入向量检索上下文
             overused_phrases=overused_phrases,  # ★ 注入动态禁用列表
+            **narrative_hints_round,  # ★ 注入叙事系统 hints
         )
 
         # Step 1: Generate story text (with optional streaming)
         sys_prompt = get_system_prompt("story_novelist", language)
+
+        # ★ Harness: preflight 检查（generate_round_event）
+        preflight_result = None
+        validation_context = None
+        if self._harness_enabled:
+            try:
+                validation_context = self._extract_validation_context(
+                    player_state, character_settings, pending_storylines,
+                    established_facts, last_event_description=None,
+                    character_habits=character_habits,
+                )
+                preflight_result = self._preflight_checker.check_prompt_completeness(
+                    prompt, validation_context
+                )
+                if not preflight_result.all_present:
+                    logger.warning(
+                        f"Harness preflight (round): missing {preflight_result.missing_constraints}"
+                    )
+            except Exception as e:
+                logger.warning(f"Harness preflight check failed (round): {e}")
 
         # ★ 动态温度策略：根据上下文调整温度
         # - 有未完结剧情线或上一轮未结束时，使用更保守的温度
@@ -340,13 +818,14 @@ class StoryGenerator:
         has_pending = pending_storylines and len(pending_storylines) > 0
         needs_continuation = not last_event_concluded
         if has_pending or needs_continuation:
-            temperature = 0.65  # 更保守，确保剧情连贯
-            logger.info(
-                f"Dynamic temperature: {temperature} (pending_storylines={has_pending}, continuation={needs_continuation})"
-            )
+            base_round_temp = 0.65  # 更保守，确保剧情连贯
         else:
-            temperature = 0.75  # 允许更多创意
-            logger.info(f"Dynamic temperature: {temperature} (new event)")
+            base_round_temp = 0.75  # 允许更多创意
+        # ★ 温度优先级链
+        temperature = self._resolve_temperature(0, base_round_temp, 0.0)
+        logger.info(
+            f"Dynamic temperature: {temperature} (pending={has_pending}, continuation={needs_continuation})"
+        )
 
         # ★ 在 try 块外初始化，确保 except 块能访问已生成的故事
         story_text = None
@@ -385,6 +864,56 @@ class StoryGenerator:
                 # 让 AI 校验来决定是否需要重试
             elif quick_result.warnings:
                 logger.info(f"Quick validation warnings: {quick_result.warnings}")
+
+            # ★ Harness: 位置B — AI 生成故事文本之后（generate_round_event）
+            if self._harness_enabled and story_text and validation_context:
+                try:
+                    import time as _time
+                    _harness_start = _time.time()
+
+                    harness_validation = self._validation_pipeline.validate(
+                        story_text, validation_context
+                    )
+
+                    if not harness_validation.passed:
+                        diagnostic_report = self._diagnostics.generate_report(
+                            story_text, harness_validation
+                        )
+                        should_retry, correction_hint = self._retry_controller.should_retry(
+                            harness_validation, diagnostic_report, attempt=0
+                        )
+                        if should_retry and correction_hint:
+                            logger.warning(
+                                f"Harness (round) recommends retry: "
+                                f"{len(harness_validation.critical_failures)} critical failures"
+                            )
+
+                    _harness_latency = (_time.time() - _harness_start) * 1000
+
+                    self._harness_metrics.record_generation(
+                        game_id=player_state.get("game_id")
+                        if isinstance(player_state, dict)
+                        else getattr(player_state, "game_id", None),
+                        week=player_state.get("current_week")
+                        if isinstance(player_state, dict)
+                        else getattr(player_state, "current_week", None),
+                        attempts=1,
+                        preflight_result={
+                            "all_present": preflight_result.all_present,
+                            "missing_constraints": preflight_result.missing_constraints,
+                        } if preflight_result else None,
+                        validation_result={
+                            "passed": harness_validation.passed,
+                            "score": harness_validation.score,
+                            "detailed_checks": harness_validation.detailed_checks,
+                        },
+                        latency_ms=_harness_latency,
+                    )
+                except Exception as e:
+                    logger.warning(f"Harness post-validation failed (round, non-blocking): {e}")
+
+            # ★ 叙事系统后处理（round，非阻塞）
+            self._post_generation_analysis(story_text, player_state)
 
             # Step 1.5: AI-based consistency validation (if world_model is provided)
             if world_model and story_text:
@@ -560,6 +1089,99 @@ class StoryGenerator:
         except Exception as e:
             logger.error(f"Story validation/retry failed: {e}")
             return story_text
+
+    def _log_constraint_completeness(self, prompt: str) -> None:
+        """检查 prompt 中是否包含关键约束标记"""
+        expected_markers = {
+            "可用人物": "人物名单约束",
+            "世界事实": "已建立事实约束",
+        }
+        missing = []
+        for marker, desc in expected_markers.items():
+            if marker not in prompt:
+                missing.append(desc)
+        if missing:
+            logger.warning(f"Constraint completeness check FAILED - missing: {missing}")
+        else:
+            logger.debug("Constraint completeness check passed")
+
+    def _extract_validation_context(
+        self,
+        player_state: dict,
+        character_settings: Optional[dict] = None,
+        pending_storylines: Optional[list] = None,
+        established_facts: Optional[list] = None,
+        last_event_description: Optional[str] = None,
+        **kwargs,
+    ) -> dict:
+        """从生成参数中提取 Harness 验证所需的上下文。
+
+        Args:
+            player_state: 当前玩家状态
+            character_settings: 角色设定
+            pending_storylines: 待处理剧情线
+            established_facts: 已建立事实
+            last_event_description: 上一事件描述
+            **kwargs: 额外参数（如 character_habits）
+
+        Returns:
+            供验证管道使用的上下文 dict
+        """
+        # 提取可用人物名称列表
+        available_people: list = []
+        if character_settings:
+            # 尝试从 character_settings 中提取人物名
+            try:
+                from config.prompts._helpers import _collect_available_people
+                people = _collect_available_people(character_settings)
+                available_people = [
+                    p.get("name", "") for p in people if p.get("name")
+                ]
+            except Exception:
+                pass
+
+        if not available_people and isinstance(player_state, dict):
+            # fallback: 从 player_state 的 relationships 中提取
+            relationships = player_state.get("relationships", {})
+            if isinstance(relationships, dict):
+                available_people = list(relationships.keys())
+
+        # 提取 overdue 剧情线
+        overdue_storylines: list = []
+        high_storylines: list = []
+        medium_storylines: list = []
+        if pending_storylines:
+            for sl in pending_storylines:
+                if isinstance(sl, dict):
+                    if sl.get("overdue"):
+                        overdue_storylines.append(sl)
+                    priority = sl.get("priority", "").lower()
+                    if priority == "high":
+                        high_storylines.append(sl)
+                    elif priority == "medium":
+                        medium_storylines.append(sl)
+
+        # 提取 last_location
+        last_location = ""
+        if isinstance(player_state, dict):
+            last_location = player_state.get("current_location", "") or player_state.get(
+                "location", ""
+            )
+        else:
+            last_location = getattr(player_state, "current_location", "") or getattr(
+                player_state, "location", ""
+            )
+
+        return {
+            "available_people": available_people,
+            "established_facts": established_facts or [],
+            "pending_storylines": pending_storylines or [],
+            "overdue_storylines": overdue_storylines,
+            "high_storylines": high_storylines,
+            "medium_storylines": medium_storylines,
+            "last_location": last_location,
+            "character_habits": kwargs.get("character_habits", []),
+        }
 
     @staticmethod
     def _get_phase_from_state(player_state: Dict[str, Any]) -> str:
