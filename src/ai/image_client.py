@@ -25,6 +25,8 @@ from src.ai.image_generator import ImageGenerator
 from src.ai.image_prompt_builder import DeepSeekPromptEnhancer, ImagePromptBuilder
 
 logger = logging.getLogger(__name__)
+
+
 class ImageClient:  # noqa: E303
     """图像生成客户端 - Facade 模式，委托给专门的模块
 
