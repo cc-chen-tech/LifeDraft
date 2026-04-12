@@ -235,8 +235,8 @@ class HarnessMetrics:
                 return {}
 
             placeholders = ",".join(["?"] * len(run_ids))
-            cursor.execute(
-                f"""  # nosec B608 - placeholders are safe ? parameters
+            cursor.execute(  # nosec B608 - placeholders are safe ? parameters
+                f"""
                 SELECT constraint_type,
                        COUNT(*) as total,
                        SUM(passed) as passed_count

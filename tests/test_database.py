@@ -276,7 +276,6 @@ class TestGameDatabase:
 
     # Modules and their available attributes to patch
     _MODULES_TO_PATCH = {
-        "src.database.db": ["SessionLocal", "get_db"],
         "src.database.game_repository": ["SessionLocal", "get_db"],
         "src.database.state_repository": ["SessionLocal", "get_db"],
         "src.database.decision_repository": ["SessionLocal", "get_db"],
@@ -689,7 +688,7 @@ class TestUserManager:
 
         pending = user_manager.get_pending_friend_requests(user2.user_id)
         assert len(pending) == 1
-        assert pending[0]["sender_public_id"] == user1.public_id
+        assert pending[0]["from_public_id"] == user1.public_id
 
     def test_remove_friend(self, user_manager):
         """Test removing a friend."""
