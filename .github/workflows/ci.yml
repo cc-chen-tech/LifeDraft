@@ -52,5 +52,5 @@ jobs:
       - name: Check API types are up to date
         run: |
           python scripts/export_openapi.py
-          cd frontend && npx openapi-typescript src/types/openapi-schema.json -o src/types/api-generated.d.ts
+          cd frontend && npx openapi-typescript src/types/openapi-schema.json -o src/types/api-generated.d.ts && cd ..
           git diff --exit-code frontend/src/types/api-generated.d.ts || (echo "::error::API types are out of date. Run 'cd frontend && npm run sync:api-types' to update." && exit 1)
