@@ -26,8 +26,18 @@ logger = logging.getLogger(__name__)
 class StoryGenerator:
     """Generates story text for events and rounds."""
 
-    def __init__(self, client: AIClient):
+    def __init__(self, client: AIClient, quality_level=None):
         self.client = client
+
+        # ★ 质量级别配置
+        from src.ai.harness.quality_level import QualityLevel, PROFILES
+
+        if quality_level is None:
+            quality_level = QualityLevel.EXPERT
+        elif isinstance(quality_level, str):
+            quality_level = QualityLevel(quality_level)
+        self.quality_level = quality_level
+        self.harness_profile = PROFILES[self.quality_level]
 
         # Harness 约束监控系统（通过环境变量控制）
         self._harness_enabled = os.environ.get("ENABLE_CONSTRAINT_HARNESS", "").lower() in (
@@ -35,12 +45,15 @@ class StoryGenerator:
             "1",
             "yes",
         )
-        self._harness_registry = None
-        self._preflight_checker = None
-        self._validation_pipeline = None
-        self._diagnostics = None
-        self._retry_controller = None
-        self._harness_metrics = None
+        self._harness_registry: Any = None
+        self._preflight_checker: Any = None
+        self._validation_pipeline: Any = None
+        self._diagnostics: Any = None
+        self._retry_controller: Any = None
+        self._harness_metrics: Any = None
+        self._polish_controller: Any = None
+        self._master_retry_counts: Dict[str, int] = {}
+        self._last_retry_key: Optional[str] = None
 
         if self._harness_enabled:
             try:
@@ -55,9 +68,16 @@ class StoryGenerator:
                 self._preflight_checker = PreflightChecker(default_registry)
                 self._validation_pipeline = ValidationPipeline(default_registry)
                 self._diagnostics = ConstraintViolationDiagnostic()
-                self._retry_controller = RetryController(max_retries=2)
+                self._retry_controller = RetryController(profile=self.harness_profile)
                 self._harness_metrics = HarnessMetrics()
-                logger.info("Constraint Harness system initialized successfully")
+                if self.harness_profile.enable_polish:
+                    from src.ai.harness.polish_controller import PolishController
+
+                    self._polish_controller = PolishController(client=self.client)
+                logger.info(
+                    f"Constraint Harness system initialized successfully "
+                    f"(quality_level={self.quality_level.value})"
+                )
             except Exception as e:
                 logger.warning(f"Failed to initialize Constraint Harness: {e}")
                 self._harness_enabled = False
@@ -72,18 +92,18 @@ class StoryGenerator:
         self._epic_enabled = os.environ.get("ENABLE_EPIC_NARRATIVE", "false").lower() == "true"
 
         # 延迟初始化（在有 style_id 时初始化）
-        self._style_manifest = None
-        self._prompt_builder = None
-        self._style_validator = None
-        self._character_arc_engine = None
-        self._world_breathing_engine = None
-        self._conflict_tower = None
-        self._fate_echo_db = None
-        self._emotional_arc = None
-        self._novelty_scorer = None
-        self._foreshadowing_lib = None
-        self._hook_injector = None
-        self._preference_learner = None
+        self._style_manifest: Any = None
+        self._prompt_builder: Any = None
+        self._style_validator: Any = None
+        self._character_arc_engine: Any = None
+        self._world_breathing_engine: Any = None
+        self._conflict_tower: Any = None
+        self._fate_echo_db: Any = None
+        self._emotional_arc: Any = None
+        self._novelty_scorer: Any = None
+        self._foreshadowing_lib: Any = None
+        self._hook_injector: Any = None
+        self._preference_learner: Any = None
         self._narrative_systems_initialized = False
 
     # -------------------- Narrative Systems --------------------
@@ -386,10 +406,10 @@ class StoryGenerator:
                         try:
                             sched = self._prompt_builder.get_scene_temperature(scene_type)
                             if sched != style_temp:
-                                return sched
+                                return float(sched)
                         except Exception:
                             pass
-                    return style_temp
+                    return float(style_temp)
             except Exception:
                 pass
 
@@ -397,7 +417,7 @@ class StoryGenerator:
             try:
                 adjusted = self._preference_learner.adjust_temperature(base_temperature)
                 if adjusted != base_temperature:
-                    return adjusted
+                    return float(adjusted)
             except Exception:
                 pass
 
@@ -413,7 +433,7 @@ class StoryGenerator:
                 identity = cs.get("identity", {})
                 if isinstance(identity, dict):
                     name = identity.get("name", "")
-        return name
+        return str(name)
 
     # -------------------- Public API --------------------
 
@@ -535,6 +555,7 @@ class StoryGenerator:
             character_habits,
             vector_context=vector_context,  # ★ 注入向量检索上下文
             overused_phrases=overused_phrases,  # ★ 注入动态禁用列表
+            quality_level=self.quality_level.value,  # ★ 注入质量级别约束
             **narrative_hints,  # ★ 注入叙事系统 hints
         )
 
@@ -641,6 +662,7 @@ class StoryGenerator:
                 )
 
                 story_text = story_text.strip()
+                story_text = self._normalize_punctuation(story_text, language)
                 logger.info(f"Generated story with {len(story_text)} characters")
                 logger.debug(f"Story preview (first 200 chars): {story_text[:200]}...")
                 logger.debug(f"Story preview (last 200 chars): ...{story_text[-200:]}")
@@ -937,6 +959,7 @@ class StoryGenerator:
             new_character=new_character,
             vector_context=vector_context,  # ★ 注入向量检索上下文
             overused_phrases=overused_phrases,  # ★ 注入动态禁用列表
+            quality_level=self.quality_level.value,  # ★ 注入质量级别约束
             **narrative_hints_round,  # ★ 注入叙事系统 hints
         )
 
@@ -998,170 +1021,221 @@ class StoryGenerator:
             base_round_temp = 0.65  # 更保守，确保剧情连贯
         else:
             base_round_temp = 0.75  # 允许更多创意
-        # ★ 温度优先级链
-        temperature = self._resolve_temperature(0, base_round_temp, 0.0)
-        logger.info(
-            f"Dynamic temperature: {temperature} (pending={has_pending}, continuation={needs_continuation})"
-        )
+        temperature_decay = 0.15
 
-        # ★ 在 try 块外初始化，确保 except 块能访问已生成的故事
+        # ★ 重试次数由质量级别决定
+        retry_count = self.harness_profile.max_retries + 1
+        last_error = None
         story_text = None
 
-        try:
-            story_text = self.client.call(
-                system_prompt=sys_prompt,
-                user_prompt=prompt,
-                temperature=temperature,
-                max_tokens=8192,
-                stream_callback=stream_callback,
-                frequency_penalty=0.4,  # ★ 轮次级别更强的反重复，因为同周多轮更容易重复
-                presence_penalty=0.4,  # ★ 鼓励每轮使用不同的表达方式
-            )
-            logger.info(f"Generated round story with {len(story_text)} characters")
+        # 提前提取可用人物，供后续 option 校验使用
+        from config.prompts._helpers import _collect_available_people
+        from src.ai.quick_validator import quick_validate_story
 
-            # Step 1.4: Quick rule-based validation (before AI validation)
-            from config.prompts._helpers import _collect_available_people
-            from src.ai.quick_validator import quick_validate_story
+        available_people_names = [
+            p.get("name", "")
+            for p in _collect_available_people(character_settings)
+            if p.get("name")
+        ]
 
-            available_people_names = [
-                p.get("name", "")
-                for p in _collect_available_people(character_settings)
-                if p.get("name")
-            ]
-            quick_result = quick_validate_story(
-                story_text=story_text,
-                character_settings=character_settings,
-                available_people=available_people_names,
-                language=language,
-            )
-
-            if not quick_result.passed:
-                logger.warning(f"Quick validation failed: {quick_result.issues}")
-                # 快速校验失败时，记录问题但不立即重试
-                # 让 AI 校验来决定是否需要重试
-            elif quick_result.warnings:
-                logger.info(f"Quick validation warnings: {quick_result.warnings}")
-
-            # ★ Harness: 位置B — AI 生成故事文本之后（generate_round_event）
-            if self._harness_enabled and story_text and validation_context:
-                try:
-                    import time as _time
-
-                    _harness_start = _time.time()
-
-                    harness_validation = self._validation_pipeline.validate(
-                        story_text, validation_context
-                    )
-
-                    if not harness_validation.passed:
-                        diagnostic_report = self._diagnostics.generate_report(
-                            story_text, harness_validation
-                        )
-                        should_retry, correction_hint = self._retry_controller.should_retry(
-                            harness_validation, diagnostic_report, attempt=0
-                        )
-                        if should_retry and correction_hint:
-                            logger.warning(
-                                f"Harness (round) recommends retry: "
-                                f"{len(harness_validation.critical_failures)} critical failures"
-                            )
-                            # ★ StateTracker: 记录 round 级 harness 重试
-                            if state_tracker_round:
-                                try:
-                                    from src.ai.generation_state import TransitionReason
-
-                                    state_tracker_round.transition(
-                                        TransitionReason.HARNESS_RETRY,
-                                        metrics={"harness_score": harness_validation.score},
-                                    )
-                                except Exception:
-                                    pass
-
-                            # ★ ReactiveCompressor: round 级 harness 重试时压缩上下文
-                            if reactive_compressor_round:
-                                try:
-                                    prompt_tokens = reactive_compressor_round.estimate_tokens(
-                                        prompt
-                                    )
-                                    if reactive_compressor_round.should_compact(
-                                        prompt_tokens, 8192
-                                    ):
-                                        compact_texts = {
-                                            k: v for k, v in narrative_hints_round.items() if v
-                                        }
-                                        if vector_context:
-                                            compact_texts["vector_context"] = vector_context
-                                        if overused_phrases:
-                                            compact_texts["overused_phrases"] = overused_phrases
-                                        result = reactive_compressor_round.compact(compact_texts)
-                                        logger.info(
-                                            f"ReactiveCompressor (round): {result.original_token_count} -> "
-                                            f"{result.compressed_token_count} tokens, "
-                                            f"removed: {result.removed_sections}"
-                                        )
-                                        if state_tracker_round:
-                                            try:
-                                                state_tracker_round.transition(
-                                                    TransitionReason.CONTEXT_COMPACT,
-                                                    context_budget_factor=result.budget_factor,
-                                                )
-                                            except Exception:
-                                                pass
-                                except Exception as e:
-                                    logger.warning(
-                                        f"ReactiveCompressor (round) failed (non-blocking): {e}"
-                                    )
-
-                    _harness_latency = (_time.time() - _harness_start) * 1000
-
-                    self._harness_metrics.record_generation(
-                        game_id=(
-                            player_state.get("game_id")
-                            if isinstance(player_state, dict)
-                            else getattr(player_state, "game_id", None)
-                        ),
-                        week=(
-                            player_state.get("current_week")
-                            if isinstance(player_state, dict)
-                            else getattr(player_state, "current_week", None)
-                        ),
-                        attempts=1,
-                        preflight_result=(
-                            {
-                                "all_present": preflight_result.all_present,
-                                "missing_constraints": preflight_result.missing_constraints,
-                            }
-                            if preflight_result
-                            else None
-                        ),
-                        validation_result={
-                            "passed": harness_validation.passed,
-                            "score": harness_validation.score,
-                            "detailed_checks": harness_validation.detailed_checks,
-                        },
-                        latency_ms=_harness_latency,
-                    )
-                except Exception as e:
-                    logger.warning(f"Harness post-validation failed (round, non-blocking): {e}")
-
-            # ★ 叙事系统后处理（round，非阻塞）
-            self._post_generation_analysis(story_text, player_state)
-
-            # Step 1.5: AI-based consistency validation (if world_model is provided)
-            if world_model and story_text:
-                story_text = self._validate_and_retry_story(
-                    story_text=story_text,
-                    world_model=world_model,
-                    player_state=player_state,
-                    character_settings=character_settings or {},
-                    language=language,
-                    original_prompt=prompt,
-                    sys_prompt=sys_prompt,
-                    stream_callback=stream_callback,
-                    status_callback=status_callback,  # ★ 传递 status_callback
+        for attempt in range(retry_count):
+            try:
+                current_temp = self._resolve_temperature(
+                    attempt, base_round_temp, temperature_decay
                 )
 
-            # Step 2: Generate options based on the story
+                current_prompt = prompt
+                if attempt > 0 and last_error:
+                    if language == "zh":
+                        current_prompt += f"\n\n【上次生成失败，原因：{last_error}。请避免同样的问题。】"
+                    else:
+                        current_prompt += f"\n\n[Previous attempt failed: {last_error}. Please avoid the same issue.]"
+
+                logger.info(
+                    f"Dynamic temperature: {current_temp} "
+                    f"(pending={has_pending}, continuation={needs_continuation}, "
+                    f"attempt={attempt + 1}/{retry_count})"
+                )
+
+                cb = stream_callback if attempt == 0 else None
+                story_text = self.client.call(
+                    system_prompt=sys_prompt,
+                    user_prompt=current_prompt,
+                    temperature=current_temp,
+                    max_tokens=8192,
+                    stream_callback=cb,
+                    frequency_penalty=0.4,
+                    presence_penalty=0.4,
+                )
+                logger.info(f"Generated round story with {len(story_text)} characters")
+                story_text = self._normalize_punctuation(story_text, language)
+
+                # Step 1.4: Quick rule-based validation
+                quick_result = quick_validate_story(
+                    story_text=story_text,
+                    character_settings=character_settings,
+                    available_people=available_people_names,
+                    language=language,
+                )
+
+                if not quick_result.passed:
+                    logger.warning(f"Quick validation failed: {quick_result.issues}")
+                elif quick_result.warnings:
+                    logger.info(f"Quick validation warnings: {quick_result.warnings}")
+
+                # ★ Harness: 位置B — AI 生成故事文本之后（generate_round_event）
+                harness_should_retry = False
+                harness_correction = None
+                if self._harness_enabled and story_text and validation_context:
+                    try:
+                        import time as _time
+
+                        _harness_start = _time.time()
+
+                        harness_validation = self._validation_pipeline.validate(
+                            story_text, validation_context, profile=self.harness_profile
+                        )
+
+                        if not harness_validation.passed:
+                            diagnostic_report = self._diagnostics.generate_report(
+                                story_text, harness_validation
+                            )
+                            should_retry, correction_hint = self._retry_controller.should_retry(
+                                harness_validation, diagnostic_report, attempt=attempt
+                            )
+                            if should_retry and correction_hint:
+                                logger.warning(
+                                    f"Harness (round) recommends retry: "
+                                    f"{len(harness_validation.critical_failures)} critical failures"
+                                )
+                                harness_should_retry = True
+                                harness_correction = correction_hint
+                                # ★ StateTracker: 记录 round 级 harness 重试
+                                if state_tracker_round:
+                                    try:
+                                        from src.ai.generation_state import TransitionReason
+
+                                        state_tracker_round.transition(
+                                            TransitionReason.HARNESS_RETRY,
+                                            metrics={"harness_score": harness_validation.score},
+                                        )
+                                    except Exception:
+                                        pass
+
+                                # ★ ReactiveCompressor: round 级 harness 重试时压缩上下文
+                                if reactive_compressor_round:
+                                    try:
+                                        prompt_tokens = reactive_compressor_round.estimate_tokens(
+                                            current_prompt
+                                        )
+                                        if reactive_compressor_round.should_compact(
+                                            prompt_tokens, 8192
+                                        ):
+                                            compact_texts = {
+                                                k: v for k, v in narrative_hints_round.items() if v
+                                            }
+                                            if vector_context:
+                                                compact_texts["vector_context"] = vector_context
+                                            if overused_phrases:
+                                                compact_texts["overused_phrases"] = overused_phrases
+                                            result = reactive_compressor_round.compact(
+                                                compact_texts
+                                            )
+                                            logger.info(
+                                                f"ReactiveCompressor (round): "
+                                                f"{result.original_token_count} -> "
+                                                f"{result.compressed_token_count} tokens, "
+                                                f"removed: {result.removed_sections}"
+                                            )
+                                            if state_tracker_round:
+                                                try:
+                                                    state_tracker_round.transition(
+                                                        TransitionReason.CONTEXT_COMPACT,
+                                                        context_budget_factor=result.budget_factor,
+                                                    )
+                                                except Exception:
+                                                    pass
+                                    except Exception as e:
+                                        logger.warning(
+                                            f"ReactiveCompressor (round) failed (non-blocking): {e}"
+                                        )
+
+                        _harness_latency = (_time.time() - _harness_start) * 1000
+
+                        self._harness_metrics.record_generation(
+                            game_id=(
+                                player_state.get("game_id")
+                                if isinstance(player_state, dict)
+                                else getattr(player_state, "game_id", None)
+                            ),
+                            week=(
+                                player_state.get("current_week")
+                                if isinstance(player_state, dict)
+                                else getattr(player_state, "current_week", None)
+                            ),
+                            attempts=attempt + 1,
+                            preflight_result=(
+                                {
+                                    "all_present": preflight_result.all_present,
+                                    "missing_constraints": preflight_result.missing_constraints,
+                                }
+                                if preflight_result
+                                else None
+                            ),
+                            validation_result={
+                                "passed": harness_validation.passed,
+                                "score": harness_validation.score,
+                                "detailed_checks": harness_validation.detailed_checks,
+                            },
+                            latency_ms=_harness_latency,
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Harness post-validation failed (round, non-blocking): {e}"
+                        )
+
+                if harness_should_retry and harness_correction and attempt < retry_count - 1:
+                    last_error = harness_correction
+                    continue
+
+                # ★ 叙事系统后处理（round，非阻塞）
+                self._post_generation_analysis(story_text, player_state)
+
+                # Step 1.5: AI-based consistency validation (if world_model is provided)
+                if world_model and story_text:
+                    story_text = self._validate_and_retry_story(
+                        story_text=story_text,
+                        world_model=world_model,
+                        player_state=player_state,
+                        character_settings=character_settings or {},
+                        language=language,
+                        original_prompt=current_prompt,
+                        sys_prompt=sys_prompt,
+                        stream_callback=stream_callback,
+                        status_callback=status_callback,
+                    )
+
+                # 成功生成并校验通过，跳出重试循环
+                break
+
+            except (ValueError, ValidationError, json.JSONDecodeError) as e:
+                last_error = str(e)
+                logger.warning(f"Round attempt {attempt + 1} failed: {e}")
+                if attempt == retry_count - 1:
+                    break
+                continue
+            except Exception as e:
+                last_error = str(e)
+                logger.error(f"Unexpected error during round event generation: {e}")
+                if attempt == retry_count - 1:
+                    break
+                continue
+
+        # Step 2: Generate options based on the story
+        try:
+            if story_text is None:
+                raise ValueError("All generation attempts failed")
+
             if option_generator is None:
                 raise ValueError("option_generator is required")
 
@@ -1257,14 +1331,29 @@ class StoryGenerator:
             f"[_validate_and_retry_story] Entered with stream_callback={stream_callback is not None}"
         )
 
-        # 防循环守卫：如果本轮已经重试过一致性校验，跳过
-        retry_key = f"{player_state.get('week', 0)}-{player_state.get('current_round', 0)}"
-        if hasattr(self, '_last_retry_key') and self._last_retry_key == retry_key:
-            logger.info(
-                f"[Validation] Skipping consistency check for round {retry_key} "
-                f"(already retried this round)"
-            )
+        # FAST 模式：直接跳过 AI 一致性校验
+        if self.harness_profile.skip_ai_consistency_check:
             return story_text
+
+        retry_key = f"{player_state.get('week', 0)}-{player_state.get('current_round', 0)}"
+
+        # 防循环守卫：按级别差异化控制
+        if self.quality_level.value == "master":
+            # MASTER：允许最多 2 次局部修正
+            if self._master_retry_counts.get(retry_key, 0) >= 2:
+                logger.info(
+                    f"[Validation] Skipping consistency check for round {retry_key} "
+                    f"(already retried 2 times in master mode)"
+                )
+                return story_text
+        else:
+            # EXPERT：保持原有布尔守卫（每轮最多 1 次）
+            if self._last_retry_key == retry_key:
+                logger.info(
+                    f"[Validation] Skipping consistency check for round {retry_key} "
+                    f"(already retried this round)"
+                )
+                return story_text
 
         try:
             from src.ai.consistency_validator import ConsistencyValidator
@@ -1363,8 +1452,11 @@ Please **only modify the problematic paragraphs** and keep the rest of the conte
                 logger.info("★ 发送 retry 事件让前端清空故事")
                 status_callback("retry")
 
-            # 记录防循环守卫 key
-            self._last_retry_key = retry_key
+            # 记录防循环守卫
+            if self.quality_level.value == "master":
+                self._master_retry_counts[retry_key] = self._master_retry_counts.get(retry_key, 0) + 1
+            else:
+                self._last_retry_key = retry_key
 
             logger.info(
                 f"Local fix call with temperature=0.5, stream_callback={stream_callback is not None}"
@@ -1385,6 +1477,7 @@ Please **only modify the problematic paragraphs** and keep the rest of the conte
                 logger.info(
                     f"局部修正完成，故事长度: {len(fixed_story)} (原: {len(story_text)})"
                 )
+                fixed_story = self._normalize_punctuation(fixed_story, language)
                 return fixed_story
 
             logger.warning("局部修正返回空结果，回退到原始故事")
@@ -1485,6 +1578,50 @@ Please **only modify the problematic paragraphs** and keep the rest of the conte
             "last_location": last_location,
             "character_habits": kwargs.get("character_habits", []),
         }
+
+    @staticmethod
+    def _normalize_punctuation(text: str, language: str = "zh") -> str:
+        """将英文标点统一替换为中文标点（仅中文模式）。"""
+        if not text or language != "zh":
+            return text
+
+        # 成对引号需要交替处理
+        result = []
+        dquote_open = False
+        squote_open = False
+        for ch in text:
+            if ch in ('"', '"'):
+                ch = '“' if not dquote_open else '”'
+                dquote_open = not dquote_open
+            elif ch in ("'", "'"):
+                ch = '‘' if not squote_open else '’'
+                squote_open = not squote_open
+            result.append(ch)
+        text = "".join(result)
+
+        # 直接映射替换
+        replacements = {
+            ',': '，',
+            '.': '。',
+            '!': '！',
+            '?': '？',
+            ':': '：',
+            ';': '；',
+            '(': '（',
+            ')': '）',
+        }
+        for en, zh in replacements.items():
+            text = text.replace(en, zh)
+
+        # 省略号规范化
+        text = text.replace('...', '……').replace('..', '……')
+
+        # 清理中文标点后多余的空格
+        import re
+
+        text = re.sub(r'([，。！？：；、……“”‘’（）])\s+', r'\1', text)
+
+        return text
 
     @staticmethod
     def _get_phase_from_state(player_state: Dict[str, Any]) -> str:
