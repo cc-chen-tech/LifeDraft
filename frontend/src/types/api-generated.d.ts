@@ -387,6 +387,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/games/{game_id}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Game Settings
+         * @description ★ 更新游戏设置（如 constraint_level）。
+         */
+        patch: operations["update_game_settings_api_games__game_id__settings_patch"];
+        trace?: never;
+    };
     "/api/games/save-point/{state_id}": {
         parameters: {
             query?: never;
@@ -1764,6 +1784,11 @@ export interface components {
              * @default zh
              */
             language: string;
+            /**
+             * Constraint Level
+             * @default expert
+             */
+            constraint_level: string;
         };
         /** CreatePresetRequest */
         CreatePresetRequest: {
@@ -1866,6 +1891,11 @@ export interface components {
             current_event?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Constraint Level
+             * @default expert
+             */
+            constraint_level: string;
         };
         /** GenerateAttributesRequest */
         GenerateAttributesRequest: {
@@ -2681,6 +2711,11 @@ export interface components {
             /** Reply */
             reply: string;
         };
+        /** UpdateGameSettingsRequest */
+        UpdateGameSettingsRequest: {
+            /** Constraint Level */
+            constraint_level?: string | null;
+        };
         /** UserInfo */
         UserInfo: {
             /** User Id */
@@ -3282,6 +3317,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GameStateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_game_settings_api_games__game_id__settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateGameSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
                 };
             };
             /** @description Validation Error */

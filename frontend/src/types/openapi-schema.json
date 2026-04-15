@@ -882,6 +882,64 @@
         }
       }
     },
+    "/api/games/{game_id}/settings": {
+      "patch": {
+        "tags": [
+          "Games"
+        ],
+        "summary": "Update Game Settings",
+        "description": "★ 更新游戏设置（如 constraint_level）。",
+        "operationId": "update_game_settings_api_games__game_id__settings_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateGameSettingsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/games/save-point/{state_id}": {
       "delete": {
         "tags": [
@@ -4254,6 +4312,11 @@
             "type": "string",
             "title": "Language",
             "default": "zh"
+          },
+          "constraint_level": {
+            "type": "string",
+            "title": "Constraint Level",
+            "default": "expert"
           }
         },
         "type": "object",
@@ -4503,6 +4566,11 @@
               }
             ],
             "title": "Current Event"
+          },
+          "constraint_level": {
+            "type": "string",
+            "title": "Constraint Level",
+            "default": "expert"
           }
         },
         "type": "object",
@@ -6056,6 +6124,23 @@
           "reply"
         ],
         "title": "StoryChatResponse"
+      },
+      "UpdateGameSettingsRequest": {
+        "properties": {
+          "constraint_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Constraint Level"
+          }
+        },
+        "type": "object",
+        "title": "UpdateGameSettingsRequest"
       },
       "UserInfo": {
         "properties": {
