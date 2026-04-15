@@ -84,6 +84,7 @@ describe('Session Recovery', () => {
         progress: { week: 5, current_round: 1, rounds_per_week: 3 },
         round_info: { current_round: 1, week: 5 },
         current_event: null,
+        constraint_level: "expert",
       });
 
       // 这里测试的是 API 是否被正确调用
@@ -115,6 +116,7 @@ describe('Session Recovery', () => {
         game_id: 456,
         player_state: { player_name: 'Recovered', life_vision: '', energy: 80, mood: 100, knowledge: 0, wealth: 0, age: 25, week: 10, current_round: 2, rounds_per_week: 3, character_settings: {} },
         progress: { week: 10, current_round: 2, rounds_per_week: 3 },
+        constraint_level: "expert",
         round_info: { current_round: 2, week: 10 },
         current_event: {
           event_description: 'Recovered story text',
@@ -138,6 +140,7 @@ describe('Session Recovery', () => {
         progress: { week: 1, current_round: 1, rounds_per_week: 3 },
         round_info: { current_round: 1, week: 1 },
         current_event: null,
+        constraint_level: "expert",
       });
 
       const result = await mockGames.getActive();
@@ -166,6 +169,7 @@ describe('Session Recovery', () => {
         progress: { week: 1, current_round: 1, rounds_per_week: 3 },
         round_info: { current_round: 1, week: 1 },
         current_event: null,
+        constraint_level: "expert",
       });
 
       const result = await mockGames.getActive();
@@ -186,6 +190,7 @@ describe('Session Recovery', () => {
         game_id: 100,
         player_state: { player_name: '', life_vision: '', energy: 100, mood: 100, knowledge: 0, wealth: 0, age: 18, week: 1, current_round: 1, rounds_per_week: 3, character_settings: {} },
         progress: { week: 1, current_round: 1, rounds_per_week: 3 },
+        constraint_level: "expert",
         round_info: { current_round: 1, week: 1 },
         current_event: mockEvent,
       });
@@ -213,6 +218,7 @@ describe('Redirect behavior', () => {
       progress: { week: 1, current_round: 1, rounds_per_week: 3 },
       round_info: { current_round: 1, week: 1 },
       current_event: null,
+        constraint_level: "expert",
     });
 
     const result = await mockGames.getActive();

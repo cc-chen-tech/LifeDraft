@@ -437,7 +437,7 @@ class UserManager:
 
         return (
             self.db.query(Game)
-            .filter(Game.user_id == friend_user_id, Game.is_public == True)
+            .filter(Game.user_id == friend_user_id, Game.is_public == True)  # noqa: E712
             .order_by(Game.created_at.desc())
             .all()
         )
