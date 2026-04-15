@@ -51,6 +51,9 @@ class GameInitializer:
         if not player_name:
             raise ValueError("player_name is required")
 
+        # 提取 constraint_level（从 character_settings 或默认 expert）
+        constraint_level = character_settings.get("constraint_level", "expert") if character_settings else "expert"
+
         # Create initial player state
         initial_state = {
             "player_name": player_name,
@@ -76,6 +79,7 @@ class GameInitializer:
             "foreshadowing_seeds": [],
             "character_habits": [],
             "pending_character_introductions": [],
+            "constraint_level": constraint_level,
         }
 
         # Initialize relationships from character settings
@@ -111,9 +115,11 @@ class GameInitializer:
                 initial_state=initial_state,
                 user_id=user_id,
                 narrative_style_id=style_id,
+                constraint_level=constraint_level,
             )
             logger.info(
-                f"Created new game: game_id={game_id}, player={player_name}, user_id={user_id}"
+                f"Created new game: game_id={game_id}, player={player_name}, user_id={user_id}, "
+                f"constraint_level={constraint_level}"
             )
         else:
             # If no database, generate a fake ID
@@ -123,7 +129,7 @@ class GameInitializer:
             logger.warning(f"No database provided, using temporary game_id={game_id}")
 
         # Create GameLoop and load the state
-        game_loop = GameLoop(language=self.language)
+        game_loop = GameLoop(language=self.language, quality_level=constraint_level)
         game_loop.load_game(initial_state)
 
         return game_loop, game_id

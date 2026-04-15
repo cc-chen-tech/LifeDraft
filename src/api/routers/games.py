@@ -17,9 +17,11 @@ from src.api.schemas import (
     SavePointListResponse,
     StateSnapshotItem,
     StateTimelineResponse,
+    UpdateGameSettingsRequest,
 )
 from src.api.services.session_service import session_service
 from src.api.session_store import session_store
+from src.database.models import Game, SessionLocal
 from src.game.game_initializer import GameInitializer
 from src.game.game_loop import GameLoop
 from src.utils.language import detect_language_from_state
@@ -36,9 +38,13 @@ async def create_game(
     """Create a new game from character settings."""
     db = get_db()
     try:
+        # 将 constraint_level 注入 character_settings
+        character_settings = dict(req.character_settings)
+        character_settings["constraint_level"] = req.constraint_level
+
         initializer = GameInitializer(game_db=db, language=req.language)
         game_loop, game_id = initializer.initialize_game_from_settings(
-            character_settings=req.character_settings,
+            character_settings=character_settings,
             player_name=req.player_name,
             life_vision=req.life_vision,
             user_id=user_id,
@@ -60,6 +66,7 @@ async def create_game(
         progress=game_loop.get_progress(),
         round_info=game_loop.get_round_info(),
         current_event=(game_loop.current_event.model_dump() if game_loop.current_event else None),
+        constraint_level=req.constraint_level,
     )
 
 
@@ -123,7 +130,8 @@ async def get_active_game(
 
     # 创建 GameLoop 并加载状态
     try:
-        game_loop = GameLoop(language=language)
+        constraint_level = state_data.get("constraint_level", "expert") if state_data else "expert"
+        game_loop = GameLoop(language=language, quality_level=constraint_level)
         game_loop.load_game(state_data)
         logger.info("[get_active_game] GameLoop loaded successfully")
     except Exception as e:
@@ -147,6 +155,7 @@ async def get_active_game(
         progress=game_loop.get_progress(),
         round_info=game_loop.get_round_info(),
         current_event=(game_loop.current_event.model_dump() if game_loop.current_event else None),
+        constraint_level=constraint_level,
     )
 
 
@@ -165,7 +174,8 @@ async def load_game(
     language = detect_language_from_state(state_data)
 
     # Create GameLoop and load state
-    game_loop = GameLoop(language=language)
+    constraint_level = state_data.get("constraint_level", "expert") if state_data else "expert"
+    game_loop = GameLoop(language=language, quality_level=constraint_level)
     game_loop.load_game(state_data)
 
     # Store in session
@@ -181,6 +191,7 @@ async def load_game(
         progress=game_loop.get_progress(),
         round_info=game_loop.get_round_info(),
         current_event=(game_loop.current_event.model_dump() if game_loop.current_event else None),
+        constraint_level=constraint_level,
     )
 
 
@@ -377,7 +388,8 @@ async def load_save_point(
     language = detect_language_from_state(state_data)
 
     # 创建 GameLoop 并加载状态
-    game_loop = GameLoop(language=language)
+    constraint_level = state_data.get("constraint_level", "expert") if state_data else "expert"
+    game_loop = GameLoop(language=language, quality_level=constraint_level)
     game_loop.load_game(state_data)
 
     # 存储到会话
@@ -393,7 +405,58 @@ async def load_save_point(
         progress=game_loop.get_progress(),
         round_info=game_loop.get_round_info(),
         current_event=(game_loop.current_event.model_dump() if game_loop.current_event else None),
+        constraint_level=constraint_level,
     )
+
+
+@router.patch("/{game_id}/settings", response_model=MessageResponse)
+async def update_game_settings(
+    game_id: int,
+    req: UpdateGameSettingsRequest,
+    user_id: int = Depends(get_current_user),
+):
+    """
+    ★ 更新游戏设置（如 constraint_level）。
+    """
+    db = get_db()
+    state_data = db.load_saved_game(game_id, user_id)
+    if state_data is None:
+        raise HTTPException(status_code=404, detail="Game not found or not owned by user")
+
+    if req.constraint_level is not None:
+        # 持久化到 Game 表
+        db_session = SessionLocal()
+        try:
+            game = db_session.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
+            if game:
+                setattr(game, "constraint_level", req.constraint_level)
+                db_session.commit()
+        finally:
+            db_session.close()
+
+        # 同步更新会话中的 GameLoop
+        game_session = session_store.get(game_id)
+        if game_session and game_session.game_loop:
+            game_session.game_loop.quality_level = req.constraint_level
+            from src.ai.generator import EventGenerator
+
+            from src.game.character_creator import CharacterCreator
+            from src.game.story_service import StoryService
+            from src.game.yearly_summary import YearlySummaryGenerator
+
+            game_session.game_loop.ai_generator = EventGenerator(quality_level=req.constraint_level)
+            # 重新创建依赖 ai_generator 的服务
+            game_session.game_loop.yearly_summary_gen = YearlySummaryGenerator(
+                game_session.game_loop.ai_generator, game_session.game_loop.language
+            )
+            game_session.game_loop.character_creator = CharacterCreator(
+                ai_generator=game_session.game_loop.ai_generator, language=game_session.game_loop.language
+            )
+            game_session.game_loop.story_service = StoryService(
+                game_session.game_loop.ai_generator, game_session.game_loop.language
+            )
+
+    return MessageResponse(success=True, message="Settings updated")
 
 
 @router.delete("/save-point/{state_id}", response_model=MessageResponse)

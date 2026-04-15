@@ -35,6 +35,7 @@ class GameLoop(RoundSystemMixin):
         ai_generator: Optional[EventGenerator] = None,
         event_callback: Optional[Callable] = None,
         result_callback: Optional[Callable] = None,
+        quality_level=None,
     ):
         """
         Initialize the game loop.
@@ -44,9 +45,11 @@ class GameLoop(RoundSystemMixin):
             ai_generator: Optional EventGenerator instance
             event_callback: Optional callback for when events are generated
             result_callback: Optional callback for when decisions are processed
+            quality_level: Story generation quality level (fast/expert/master)
         """
         self.language = language
-        self.ai_generator = ai_generator or EventGenerator()
+        self.ai_generator = ai_generator or EventGenerator(quality_level=quality_level)
+        self.quality_level = quality_level
         self.event_callback = event_callback
         self.result_callback = result_callback
         self.player_state: Optional[PlayerState] = None  # type: ignore[assignment]

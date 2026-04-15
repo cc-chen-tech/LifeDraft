@@ -1,7 +1,7 @@
 """Music API router for story-based music recommendation."""
 
 import logging
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -211,7 +211,7 @@ async def stream_song(song_id: int, request: Request):
         except Exception:
             return u[:30] + "..."
 
-    async def _do_stream(target_url: str) -> StreamingResponse:
+    async def _do_stream(target_url: str) -> Tuple[httpx.Response, httpx.AsyncClient]:
         """向 CDN 发起流式请求并返回 StreamingResponse。"""
         client = httpx.AsyncClient(follow_redirects=True, timeout=30.0)
         try:

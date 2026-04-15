@@ -163,7 +163,7 @@ export const api = {
   games: {
     list: () =>
       fetchJson<Array<{ game_id: number; player_name: string; age: number; week: number; updated_at: string }>>('/games'),
-    create: (data: { player_name: string; life_vision?: string; character_settings?: CharacterSettings; language?: string }) =>
+    create: (data: { player_name: string; life_vision?: string; character_settings?: CharacterSettings; language?: string; constraint_level?: string }) =>
       fetchJson<{ game_id: number }>('/games', {
         method: 'POST',
         body: JSON.stringify(data),
@@ -175,6 +175,7 @@ export const api = {
         progress: GameProgress;
         round_info: RoundInfo;
         current_event: CurrentEventData | null;
+        constraint_level: "fast" | "expert" | "master";
       }>(`/games/${gameId}`),
     save: (gameId: number) =>
       fetchJson<{ success: boolean }>(`/games/${gameId}/save`, { method: 'POST' }),
@@ -187,7 +188,13 @@ export const api = {
         progress: GameProgress;
         round_info: RoundInfo;
         current_event: CurrentEventData | null;
+        constraint_level: "fast" | "expert" | "master";
       }>('/games/active'),
+    updateSettings: (gameId: number, data: { constraint_level?: string }) =>
+      fetchJson<{ success: boolean; message: string }>(`/games/${gameId}/settings`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
     getEnding: (gameId: number) =>
       fetchJson<{
         ending_name: string;
@@ -225,6 +232,7 @@ export const api = {
         progress: GameProgress;
         round_info: RoundInfo;
         current_event: CurrentEventData | null;
+        constraint_level: "fast" | "expert" | "master";
       }>(`/games/${gameId}`),
     generateEvent: (gameId: number, data?: { custom_choices?: string[] }) =>
       fetchJson<{

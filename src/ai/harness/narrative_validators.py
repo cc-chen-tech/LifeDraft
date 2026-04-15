@@ -70,7 +70,7 @@ def validate_pacing_variety(
 
     try:
         analyzer = EmotionalArcAnalyzer()
-        result = analyzer.analyze_segment(story_text)
+        result = analyzer.analyze_segment(story_text)  # type: ignore[attr-defined]
 
         valence = result.valence if hasattr(result, "valence") else result.get("valence", 0.0)
         arousal = result.arousal if hasattr(result, "arousal") else result.get("arousal", 0.0)

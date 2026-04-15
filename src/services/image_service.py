@@ -419,7 +419,7 @@ class ImageService:
                 ImageModel.game_id == game_id,
                 ImageModel.image_type == image_type,
                 ImageModel.entity_name == entity_name,
-                ImageModel.is_active is True,
+                ImageModel.is_active == True,
             )
             .order_by(ImageModel.version.desc())
             .first()
@@ -433,7 +433,7 @@ class ImageService:
         """获取游戏的所有图片"""
         query = self.db.query(ImageModel).filter(
             ImageModel.game_id == game_id,
-            ImageModel.is_active is True,
+            ImageModel.is_active == True,
         )
 
         if image_type:
@@ -712,7 +712,7 @@ class ImageService:
                 .filter(
                     ImageModel.game_id == game_id,
                     ImageModel.image_type == "character",
-                    ImageModel.is_primary is True,
+                    ImageModel.is_primary == True,
                 )
                 .order_by(ImageModel.image_id.desc())
                 .first()

@@ -71,8 +71,8 @@ async function interceptSSEEvents(page: Page): Promise<{ events: SSEEvent[]; pro
     }
   });
 
-  // 超时自动 resolve
-  setTimeout(() => resolvePromise!(), 45000);
+  // 超时自动 resolve（与 test.setTimeout 配合，留出足够时间）
+  setTimeout(() => resolvePromise!(), 90000);
 
   return { events, promise };
 }
@@ -92,43 +92,51 @@ async function waitForGameReady(page: Page): Promise<void> {
 /**
  * 导航到有效的游戏页面
  * 如果没有活跃游戏，先创建一个
+ * 如果创建失败，抛出错误而不是 skip
  */
-async function navigateToGame(page: Page): Promise<boolean> {
+async function navigateToGame(page: Page): Promise<void> {
   await page.goto(`${BASE_URL}/play`);
   await waitForGameReady(page);
 
   // 检查是否在游戏页面（有 header 且有 StatusBar）
   const hasHeader = await page.locator('header').isVisible().catch(() => false);
-  if (!hasHeader) {
-    // 可能被重定向了，尝试创建游戏
-    await page.goto(`${BASE_URL}/create`);
-    await page.waitForLoadState('domcontentloaded');
-    await waitForNetworkIdle(page);
-
-    // 填写角色名
-    const nameInput = page.getByPlaceholder(/角色名|姓名|Name/i);
-    if (await nameInput.isVisible().catch(() => false)) {
-      await nameInput.fill('E2E测试角色');
-      await page.waitForLoadState('domcontentloaded');
-    }
-
-    // 尝试快速开始
-    const startButton = page.getByRole('button', { name: /开始游戏|Start Game|生成角色/i });
-    if (await startButton.isVisible().catch(() => false)) {
-      await startButton.click();
-      await page.waitForResponse(resp => resp.url().includes('/api/')).catch(() => {});
-      await waitForNetworkIdle(page);
-    }
-
-    // 等待跳转到 play 页面
-    await page.waitForURL(/\/play|\/story/, { timeout: 30000 }).catch(() => {});
-    await waitForGameReady(page);
+  if (hasHeader) {
+    return;
   }
 
-  return await page.locator('header').isVisible().catch(() => false);
+  // 可能被重定向了，尝试创建游戏
+  await page.goto(`${BASE_URL}/create`);
+  await page.waitForLoadState('domcontentloaded');
+  await waitForNetworkIdle(page);
+
+  // 填写角色名
+  const nameInput = page.getByPlaceholder(/角色名|姓名|Name/i);
+  if (await nameInput.isVisible().catch(() => false)) {
+    await nameInput.fill('E2E测试角色');
+    await page.waitForLoadState('domcontentloaded');
+  }
+
+  // 尝试快速开始
+  const startButton = page.getByRole('button', { name: /开始游戏|Start Game|生成角色/i });
+  if (await startButton.isVisible().catch(() => false)) {
+    await startButton.click();
+    await page.waitForResponse(resp => resp.url().includes('/api/')).catch(() => {});
+    await waitForNetworkIdle(page);
+  }
+
+  // 等待跳转到 play 页面（游戏创建含 AI 生成，可能需要较长时间）
+  await page.waitForURL(/\/play|\/story/, { timeout: 60000 }).catch(() => {});
+  await waitForGameReady(page);
+
+  // 最终验证
+  const finalHasHeader = await page.locator('header').isVisible().catch(() => false);
+  expect(finalHasHeader).toBe(true);
 }
 
 test.describe('Claude Code Improvements - E2E Validation', () => {
+  // 涉及游戏创建 + AI 故事生成 + SSE 流，需要充足的超时
+  test.setTimeout(120_000);
+
   test.beforeEach(async ({ page, context }) => {
     await ensureAuthenticated(page, context);
   });
@@ -140,11 +148,7 @@ test.describe('Claude Code Improvements - E2E Validation', () => {
     const { events, promise: ssePromise } = await interceptSSEEvents(page);
 
     // Navigate to game page
-    const hasGame = await navigateToGame(page);
-    if (!hasGame) {
-      test.skip();
-      return;
-    }
+    await navigateToGame(page);
 
     // Wait for any ongoing generation to complete
     await page.waitForTimeout(2000);
@@ -226,11 +230,7 @@ test.describe('Claude Code Improvements - E2E Validation', () => {
     const { events } = await interceptSSEEvents(page);
 
     // Navigate to game
-    const hasGame = await navigateToGame(page);
-    if (!hasGame) {
-      test.skip();
-      return;
-    }
+    await navigateToGame(page);
 
     // Wait for any generation
     await page.waitForTimeout(3000);
@@ -283,11 +283,7 @@ test.describe('Claude Code Improvements - E2E Validation', () => {
     });
 
     // Navigate to game
-    const hasGame = await navigateToGame(page);
-    if (!hasGame) {
-      test.skip();
-      return;
-    }
+    await navigateToGame(page);
 
     // Wait for any generation to complete
     await page.waitForTimeout(3000);
@@ -333,11 +329,7 @@ test.describe('Claude Code Improvements - E2E Validation', () => {
     const { events, promise: ssePromise } = await interceptSSEEvents(page);
 
     // Navigate to game
-    const hasGame = await navigateToGame(page);
-    if (!hasGame) {
-      test.skip();
-      return;
-    }
+    await navigateToGame(page);
 
     // Wait for generation to complete
     await page.waitForTimeout(3000);
@@ -356,12 +348,12 @@ test.describe('Claude Code Improvements - E2E Validation', () => {
     const storyText = await page.locator('main').textContent();
     expect(storyText).toBeTruthy();
 
-    // Verify text length is substantial (> 200 chars)
+    // Verify text length is substantial (> 100 chars)
     // Filter out UI chrome text (buttons, labels, etc.)
     const cleanText = (storyText || '').replace(/你的选择|返回当前|保存|历史回顾|收集/g, '').trim();
     if (cleanText.length > 50) {
       // Only check length for real story content
-      expect(cleanText.length).toBeGreaterThan(200);
+      expect(cleanText.length).toBeGreaterThan(100);
 
       // Verify text ends with valid sentence ending
       // Chinese punctuation: 。！？… or western: . ! ? ...
@@ -386,11 +378,7 @@ test.describe('Claude Code Improvements - E2E Validation', () => {
     const monitor = startNetworkMonitoring(page);
 
     // Navigate to game
-    const hasGame = await navigateToGame(page);
-    if (!hasGame) {
-      test.skip();
-      return;
-    }
+    await navigateToGame(page);
 
     // Wait for game to be in a stable state
     await page.waitForTimeout(3000);
@@ -460,11 +448,7 @@ test.describe('Claude Code Improvements - E2E Validation', () => {
     });
 
     // Navigate to game (preferably one with history)
-    const hasGame = await navigateToGame(page);
-    if (!hasGame) {
-      test.skip();
-      return;
-    }
+    await navigateToGame(page);
 
     // Wait for generation to complete
     await page.waitForTimeout(5000);

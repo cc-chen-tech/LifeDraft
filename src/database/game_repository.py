@@ -19,6 +19,8 @@ class GameRepository:
         initial_state: Optional[Dict[str, Any]] = None,
         user_id: Optional[int] = None,
         narrative_style_id: Optional[str] = None,
+        constraint_level: Optional[str] = None,
+        db=None,
     ) -> int:
         """
         Create a new game record.
@@ -28,24 +30,31 @@ class GameRepository:
             initial_state: Initial player state
             user_id: 用户ID(可选)
             narrative_style_id: 叙事风格ID(可选)
+            constraint_level: 叙事质量级别(可选)，默认 expert
+            db: 可选的数据库会话，用于测试注入
 
         Returns:
             Game ID
         """
-        db = SessionLocal()
+        close_db = False
+        if db is None:
+            db = SessionLocal()
+            close_db = True
         try:
             game = Game(
                 language=language,
                 initial_state=initial_state or {},
                 user_id=user_id,
                 narrative_style_id=narrative_style_id,
+                constraint_level=constraint_level or "expert",
             )
             db.add(game)
             db.commit()
             db.refresh(game)
             return int(game.game_id)  # type: ignore[return-value]
         finally:
-            db.close()
+            if close_db:
+                db.close()
 
     def get_game(self, game_id: int, user_id: Optional[int] = None) -> Optional[Game]:
         """

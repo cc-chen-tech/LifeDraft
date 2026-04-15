@@ -108,8 +108,14 @@ class SessionService:
                 f"Auto-restored session from database: game_id={game_id}, has_current_event={game_loop.current_event is not None}"
             )
 
-            # ★ 检查并补充缺失的场景插画
-            self._check_and_generate_missing_illustrations(game_id, game_loop, state_data)
+            # ★ 检查并补充缺失的场景插画（改为异步延迟执行，避免阻塞 API 响应）
+            timer = threading.Timer(
+                0,
+                self._check_and_generate_missing_illustrations,
+                args=[game_id, game_loop, state_data],
+            )
+            timer.daemon = True
+            timer.start()
 
             return session
 

@@ -441,21 +441,24 @@ def mock_cache_with_ttl():
             self._cache = {}
             self._access_times = {}
             self._creation_times = {}
-
+            self._access_counter = 0
+    
         def get(self, key):
             if key in self._cache:
                 if time.time() - self._creation_times[key] > self.ttl:
                     self.delete(key)
                     return None
-                self._access_times[key] = time.time()
+                self._access_counter += 1
+                self._access_times[key] = self._access_counter
                 return self._cache[key]
             return None
-
+    
         def set(self, key, value):
             if len(self._cache) >= self.max_size and key not in self._cache:
                 self._evict_lru()
             self._cache[key] = value
-            self._access_times[key] = time.time()
+            self._access_counter += 1
+            self._access_times[key] = self._access_counter
             self._creation_times[key] = time.time()
 
         def delete(self, key):

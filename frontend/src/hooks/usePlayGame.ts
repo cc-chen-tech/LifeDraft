@@ -273,6 +273,7 @@ export function usePlayGame() {
               playerState: state.player_state,
               progress: state.progress,
               roundInfo: state.round_info,
+              constraintLevel: ((state as { constraint_level?: string }).constraint_level || "expert") as "fast" | "expert" | "master",
             });
             useEventStore.setState({
               currentEvent: event,

@@ -21,6 +21,7 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
   let completeData: Record<string, unknown> | null = null;
   let isCompleteReceived = false;
   let isResolved = false;
+  let hasError = false;
 
   return new Promise((resolve, reject) => {
     function safeResolve() {
@@ -31,15 +32,17 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
     }
 
     function pump(): Promise<void> {
-       
+
       return reader!.read().then(({ done, value }) => {
         if (done) {
           // Stream ended - use the last complete event data if received
-          console.log('[SSE] Stream ended, isCompleteReceived:', isCompleteReceived, 'completeData keys:', Object.keys(completeData || {}));
-          if (isCompleteReceived && completeData) {
-            callbacks.onComplete?.(completeData);
-          } else if (!isCompleteReceived) {
-            callbacks.onComplete?.({});
+          console.log('[SSE] Stream ended, isCompleteReceived:', isCompleteReceived, 'hasError:', hasError, 'completeData keys:', Object.keys(completeData || {}));
+          if (!hasError) {
+            if (isCompleteReceived && completeData) {
+              callbacks.onComplete?.(completeData);
+            } else if (!isCompleteReceived) {
+              callbacks.onComplete?.({});
+            }
           }
           safeResolve();
           return;
@@ -86,6 +89,7 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
 
               // ★ Handle error events from backend
               if (currentEventType === 'error' || parsed.type === 'error' || parsed.event === 'error') {
+                hasError = true;
                 const errorMsg = parsed.error || parsed.message || 'Unknown server error';
                 console.error('[SSE] Error event received:', errorMsg);
                 callbacks.onError?.({ message: errorMsg });

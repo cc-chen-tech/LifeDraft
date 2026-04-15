@@ -10,6 +10,10 @@ import api from "@/lib/api";
 // ★ 请求去重：防止同一 gameId 的 fetchCollection 被多次并发调用
 let _fetchInFlight: { gameId: number; promise: Promise<void> } | null = null;
 
+// ★ 短时缓存：30 秒内重复打开收集面板不重新请求
+let _collectionCache: { gameId: number; timestamp: number } | null = null;
+const CACHE_TTL_MS = 30000;
+
 interface CollectionState {
   // 数据
   characters: CharacterCollectionItem[];
@@ -115,6 +119,22 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
       return _fetchInFlight.promise;
     }
 
+    // ★ 短时缓存：30 秒内且已有数据时直接返回（强制刷新除外）
+    if (!isRefresh) {
+      const now = Date.now();
+      const state = get();
+      const hasData = state.characters.length > 0 || state.items.length > 0 || state.landmarks.length > 0;
+      if (
+        _collectionCache &&
+        _collectionCache.gameId === gameId &&
+        now - _collectionCache.timestamp < CACHE_TTL_MS &&
+        hasData
+      ) {
+        console.log("[fetchCollection] 命中缓存，跳过请求 gameId=", gameId);
+        return;
+      }
+    }
+
     // 保存当前选中的人物/物品/标志物名称，以便刷新后恢复选中状态
     const currentSelected = get();
     const selectedCharacterName = currentSelected.selectedCharacter?.name;
@@ -146,6 +166,11 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
 
       const result: CollectionResponse = await fetchPromise;
 
+      // 请求完成后同步清空去重标记，避免 finally 的 microtask 延迟导致测试/快速重入时误判
+      if (_fetchInFlight?.gameId === gameId) {
+        _fetchInFlight = null;
+      }
+
       const newCharacters = result.characters || [];
       const newItems = result.items || [];
       const newLandmarks = result.landmarks || [];
@@ -160,6 +185,9 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
       const newSelectedLandmark = selectedLandmarkName
         ? newLandmarks.find(l => l.name === selectedLandmarkName) || null
         : null;
+
+      // 更新缓存时间戳
+      _collectionCache = { gameId, timestamp: Date.now() };
 
       console.log("[fetchCollection] 数据更新完成:", {
         charactersCount: newCharacters.length,

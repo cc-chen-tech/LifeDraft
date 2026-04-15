@@ -57,7 +57,7 @@ run_mypy() {
     source venv/bin/activate
     
     echo -e "${YELLOW}运行 mypy 静态类型检查...${NC}"
-    python -m mypy src/ --ignore-missing-imports
+    python3 -m mypy src/ --ignore-missing-imports
     local result=$?
     
     print_layer_result "mypy" $result
@@ -72,7 +72,7 @@ run_imports() {
     source venv/bin/activate
     
     echo -e "${YELLOW}运行导入验证测试...${NC}"
-    python -m pytest tests/test_imports.py -v
+    python3 -m pytest tests/test_imports.py tests/test_collection_imports.py -v
     local result=$?
     
     print_layer_result "imports" $result
@@ -87,7 +87,7 @@ run_contract() {
     source venv/bin/activate
     
     echo -e "${YELLOW}运行 API 契约测试...${NC}"
-    python -m pytest tests/test_api_contract.py tests/test_model_contracts.py tests/test_narrative_style_contract.py -v
+    python3 -m pytest tests/test_api_contract.py tests/test_model_contracts.py tests/test_narrative_style_contract.py tests/test_quality_level_contract.py tests/test_prompt_constraints_quality_level.py tests/test_collection_contract.py tests/test_constraint_level_api_contract.py -v
     local result=$?
     
     print_layer_result "contract" $result
@@ -102,7 +102,7 @@ run_db() {
     source venv/bin/activate
     
     echo -e "${YELLOW}运行真实数据库集成测试...${NC}"
-    python -m pytest tests/test_integration_real_db.py tests/test_database.py tests/test_narrative_db_migration.py -v
+    python3 -m pytest tests/test_integration_real_db.py tests/test_database.py tests/test_narrative_db_migration.py tests/test_constraint_level_db.py tests/test_constraint_level_persistence_db.py tests/test_collection_cache_db.py -v
     local result=$?
     
     print_layer_result "db" $result
@@ -150,7 +150,7 @@ run_e2e_browser() {
     return $result
 }
 
-# 单元测试 (pytest -m unit)
+# 单元测试 (pytest -m unit + 质量级别相关测试)
 run_unit() {
     echo -e "${BLUE}========================================${NC}"
     echo -e "${YELLOW}运行单元测试 (pytest -m unit)...${NC}"
@@ -158,8 +158,17 @@ run_unit() {
     cd "$PROJECT_DIR"
     source venv/bin/activate
     
-    python -m pytest tests/ -m unit -v
-    local result=$?
+    python3 -m pytest tests/ -m unit -v
+    local unit_result=$?
+    
+    echo -e "${YELLOW}运行 StoryGenerator 质量级别单元测试...${NC}"
+    python3 -m pytest tests/test_story_generator_quality_level.py tests/test_generate_round_event_retry.py -v
+    local story_result=$?
+    
+    local result=0
+    if [ $unit_result -ne 0 ] || [ $story_result -ne 0 ]; then
+        result=1
+    fi
     
     if [ $result -eq 0 ]; then
         echo -e "${GREEN}✓ 单元测试通过${NC}"
@@ -177,7 +186,7 @@ run_integration() {
     cd "$PROJECT_DIR"
     source venv/bin/activate
     
-    python -m pytest tests/ -m integration -v
+    python3 -m pytest tests/ -m integration -v
     local result=$?
     
     if [ $result -eq 0 ]; then
@@ -196,7 +205,7 @@ run_api() {
     cd "$PROJECT_DIR"
     source venv/bin/activate
     
-    python -m pytest tests/ -m api -v
+    python3 -m pytest tests/ -m api -v
     local result=$?
     
     if [ $result -eq 0 ]; then
@@ -250,7 +259,7 @@ run_backend() {
     echo -e "${BLUE}========================================${NC}"
     cd "$PROJECT_DIR"
     source venv/bin/activate
-    pytest tests/ -v --tb=short
+    python3 -m pytest tests/ -v --tb=short
     local result=$?
     if [ $result -eq 0 ]; then
         echo -e "${GREEN}✓ 后端测试通过${NC}"

@@ -101,6 +101,7 @@ class Game(Base):
     ending_summary = Column(Text, nullable=True)
     is_public = Column(Boolean, default=False)  # 是否公开给好友查看
     narrative_style_id = Column(String, nullable=True)  # 叙事风格ID
+    constraint_level = Column(String, default="expert")  # 叙事质量级别: fast/expert/master
 
     # Relationships
     user = relationship("User", back_populates="games", foreign_keys=[user_id])
@@ -187,6 +188,7 @@ class CharacterPreset(Base):
     life_vision = Column(Text, nullable=True)
     character_settings = Column(JSON, nullable=False)
     narrative_style_id = Column(String, default="chinese_classic_saga")  # 叙事风格ID
+    constraint_level = Column(String, default="expert")  # 叙事质量级别: fast/expert/master
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

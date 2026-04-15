@@ -19,20 +19,21 @@ async function testEndpoint(
   method: 'GET' | 'POST' | 'PUT' | 'DELETE',
   path: string,
   expectedStatuses: number[] = [200, 401, 404, 422, 429],
-  body?: Record<string, unknown>
+  body?: Record<string, unknown>,
+  requestTimeout: number = 15000
 ) {
   const url = `${API_URL}${path}`;
   let response;
 
   try {
     if (method === 'GET') {
-      response = await request.get(url);
+      response = await request.get(url, { timeout: requestTimeout });
     } else if (method === 'POST') {
-      response = await request.post(url, { data: body || {} });
+      response = await request.post(url, { data: body || {}, timeout: requestTimeout });
     } else if (method === 'PUT') {
-      response = await request.put(url, { data: body || {} });
+      response = await request.put(url, { data: body || {}, timeout: requestTimeout });
     } else if (method === 'DELETE') {
-      response = await request.delete(url);
+      response = await request.delete(url, { timeout: requestTimeout });
     }
 
     const status = response!.status();
@@ -542,26 +543,31 @@ test.describe('API Contract - Friends Endpoints', () => {
 });
 
 test.describe('API Contract - Music Endpoints', () => {
+  // 音乐 API 依赖外部网易云服务，响应可能较慢，给更长的超时
+  const MUSIC_API_TIMEOUT = 30000;
+  // recommend 需要 AI 分析故事 + 搜索歌曲，耗时更长
+  const MUSIC_RECOMMEND_TIMEOUT = 60000;
+
   test('POST /api/music/recommend should exist', async ({ request }) => {
-    const result = await testEndpoint(request, 'POST', '/api/music/recommend', [200, 401, 422, 429, 500], { story_text: 'A quiet evening in the village.' });
+    const result = await testEndpoint(request, 'POST', '/api/music/recommend', [200, 401, 422, 429, 500], { story_text: 'A quiet evening in the village.' }, MUSIC_RECOMMEND_TIMEOUT);
     expect(result.exists).toBe(true);
     expect(result.error).toBeNull();
   });
 
   test('GET /api/music/song-url should exist', async ({ request }) => {
-    const result = await testEndpoint(request, 'GET', '/api/music/song-url?song_id=1');
+    const result = await testEndpoint(request, 'GET', '/api/music/song-url?song_id=1', undefined, undefined, MUSIC_API_TIMEOUT);
     expect(result.exists).toBe(true);
     expect(result.error).toBeNull();
   });
 
   test('GET /api/music/search should exist', async ({ request }) => {
-    const result = await testEndpoint(request, 'GET', '/api/music/search?keyword=test');
+    const result = await testEndpoint(request, 'GET', '/api/music/search?keyword=test', undefined, undefined, MUSIC_API_TIMEOUT);
     expect(result.exists).toBe(true);
     expect(result.error).toBeNull();
   });
 
   test('GET /api/music/stream/:songId should exist', async ({ request }) => {
-    const result = await testEndpoint(request, 'GET', '/api/music/stream/1', [200, 206, 404, 500, 502]);
+    const result = await testEndpoint(request, 'GET', '/api/music/stream/1', [200, 206, 404, 500, 502], undefined, MUSIC_API_TIMEOUT);
     expect(result.exists).toBe(true);
     expect(result.error).toBeNull();
   });

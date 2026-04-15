@@ -236,6 +236,7 @@ export interface GameStateResponse {
   progress: GameProgress;
   round_info: RoundInfo;
   current_event: CurrentEventData | null;
+  constraint_level: "fast" | "expert" | "master";
 }
 
 // ==================== Test Utility Types ====================

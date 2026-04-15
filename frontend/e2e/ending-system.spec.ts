@@ -1,9 +1,8 @@
- 
-
 /**
  * Ending System E2E Test - 结局系统测试
  *
- * 覆盖结局页面渲染、API 端点、成就系统、导航等
+ * 覆盖结局页面渲染、API 端点、导航等
+ * 原则：不 mock，直接调用真实 API 或验证页面结构
  */
 
 import { test, expect } from '@playwright/test';
@@ -27,34 +26,12 @@ test.describe('Ending System - Page Routing & Rendering', () => {
   });
 
   // TC-04: 结局页面组件结构（标题/描述/统计区域）
-  test('TC-04: ending page component structure with mock data', async ({ page }) => {
-    // Mock ending API 返回
-    await page.route('**/games/*/ending', route => {
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          ending_type: 'balanced',
-          ending_name: '平衡人生',
-          summary: '这是一段精彩的人生旅程。\n\n你在各方面都取得了平衡的发展。',
-          achievements: { list: ['博学多才', '社交达人'] },
-          final_stats: {
-            energy: 75,
-            mood: 80,
-            knowledge: 85,
-            wealth: 50000,
-            relationships: { '张三': 80, '李四': 65 },
-          },
-        }),
-      });
-    });
-
+  test('TC-04: ending page component structure', async ({ page }) => {
     // 先导航到首页操作 localStorage
     await page.goto(`${BASE_URL}/`);
     await page.evaluate(() => {
       const storeKey = Object.keys(localStorage).find(k => k.includes('game'));
       if (!storeKey) {
-        // 尝试设置 zustand store
         localStorage.setItem(
           'game-store',
           JSON.stringify({ state: { gameId: 999, playerState: { player_name: '测试角色' } }, version: 0 })
@@ -98,109 +75,60 @@ test.describe('Ending System - API Endpoints', () => {
     expect([400, 401, 404, 422, 500]).toContain(response.status());
   });
 
-  // TC-03: 结局 API 响应格式验证
-  test('TC-03: ending API response format validation via mock', async ({ page }) => {
-    // 通过 route mock 验证前端对 API 响应格式的处理
-    const expectedResponse = {
-      ending_type: 'wealthy',
-      ending_name: '财富自由',
-      summary: '你通过不懈的努力积累了大量财富。',
-      achievements: { list: ['百万富翁', '财务自由'] },
-      final_stats: {
-        energy: 60,
-        mood: 70,
-        knowledge: 65,
-        wealth: 120000,
-        relationships: {},
-      },
-    };
+  // TC-03: 结局 API 响应格式验证（真实 API 调用）
+  test('TC-03: ending API response format validation', async ({ page }) => {
+    const response = await page.request.get(`${API_BASE}/games/99999/ending`);
 
-    await page.route('**/games/*/ending', route => {
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(expectedResponse),
-      });
-    });
+    // 端点应该存在
+    expect(response.status()).not.toBe(405);
 
-    // 先导航到页面再设置 localStorage
-    await page.goto(`${BASE_URL}/`);
-    await page.evaluate(() => {
-      localStorage.setItem(
-        'game-store',
-        JSON.stringify({ state: { gameId: 1, playerState: { player_name: '测试角色' } }, version: 0 })
-      );
-    });
+    // 验证响应体是合法 JSON（即使返回错误也应有统一格式）
+    const bodyText = await response.text();
+    let bodyJson: Record<string, unknown> | null = null;
+    expect(() => {
+      bodyJson = JSON.parse(bodyText);
+    }).not.toThrow();
 
-    await page.goto(`${BASE_URL}/ending`, { waitUntil: 'domcontentloaded' }).catch(() => {});
-    await page.waitForTimeout(2000);
-
-    if (page.url().includes('/ending')) {
-      // 等待加载完成（loading skeleton 消失）
-      await page.waitForFunction(() => {
-        return !document.body.textContent?.includes('正在回顾你的一生');
-      }, { timeout: 10000 }).catch(() => {});
-
-      // 验证 ending_name 显示
-      const endingNameText = page.locator('text=财富自由');
-      if (await endingNameText.isVisible().catch(() => false)) {
-        await expect(endingNameText).toBeVisible();
+    // 如果返回 200，验证结局数据结构
+    if (response.status() === 200 && bodyJson) {
+      const json = bodyJson as Record<string, unknown>;
+      if ('ending_type' in json) {
+        expect(typeof json.ending_type).toBe('string');
+      }
+      if ('ending_name' in json) {
+        expect(typeof json.ending_name).toBe('string');
+      }
+      if ('achievements' in json && json.achievements) {
+        const achievements = json.achievements as Record<string, unknown>;
+        if ('list' in achievements) {
+          expect(Array.isArray(achievements.list)).toBe(true);
+        }
       }
     }
   });
 
   // TC-05: 成就系统 API 验证（通过 ending 端点返回的 achievements）
   test('TC-05: achievements data in ending response', async ({ page }) => {
-    const achievementsList = ['知识渊博', '博学多才', '社交达人'];
+    const response = await page.request.get(`${API_BASE}/games/99999/ending`);
 
-    await page.route('**/games/*/ending', route => {
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          ending_type: 'scholar',
-          ending_name: '学术之路',
-          summary: '你在学术上取得了非凡的成就。',
-          achievements: { list: achievementsList },
-          final_stats: {
-            energy: 55,
-            mood: 60,
-            knowledge: 95,
-            wealth: 30000,
-            relationships: { '导师': 90 },
-          },
-        }),
-      });
-    });
+    // 端点存在即可
+    expect(response.status()).not.toBe(405);
 
-    // 先导航到首页设置 localStorage
-    await page.goto(`${BASE_URL}/`);
-    await page.evaluate(() => {
-      localStorage.setItem(
-        'game-store',
-        JSON.stringify({ state: { gameId: 1, playerState: { player_name: '学者' } }, version: 0 })
-      );
-    });
+    // 解析响应
+    const bodyText = await response.text();
+    let bodyJson: Record<string, unknown> | null = null;
+    try {
+      bodyJson = JSON.parse(bodyText);
+    } catch {
+      // 非 JSON 响应也接受
+    }
 
-    await page.goto(`${BASE_URL}/ending`, { waitUntil: 'domcontentloaded' }).catch(() => {});
-    await page.waitForTimeout(2000);
-
-    if (page.url().includes('/ending')) {
-      // 等待加载完成
-      await page.waitForFunction(() => {
-        return !document.body.textContent?.includes('正在回顾你的一生');
-      }, { timeout: 10000 }).catch(() => {});
-
-      // 成就区域应显示
-      const achievementSection = page.locator('text=人生成就');
-      if (await achievementSection.isVisible().catch(() => false)) {
-        await expect(achievementSection).toBeVisible();
-
-        // 验证各成就显示
-        for (const achievement of achievementsList) {
-          const achievementItem = page.locator(`text=${achievement}`);
-          await expect(achievementItem).toBeVisible();
-        }
+    // 如果返回了结局数据，验证 achievements 字段格式
+    if (response.status() === 200 && bodyJson && 'achievements' in bodyJson) {
+      const achievements = bodyJson.achievements as Record<string, unknown>;
+      expect(achievements).toBeTruthy();
+      if ('list' in achievements) {
+        expect(Array.isArray(achievements.list)).toBe(true);
       }
     }
   });
@@ -209,20 +137,6 @@ test.describe('Ending System - API Endpoints', () => {
 test.describe('Ending System - Navigation', () => {
   // TC-06: 结局页面导航（返回首页）
   test('TC-06: navigate from ending page to home', async ({ page }) => {
-    await page.route('**/games/*/ending', route => {
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          ending_type: 'balanced',
-          ending_name: '平衡人生',
-          summary: '故事结束。',
-          achievements: { list: [] },
-          final_stats: { energy: 50, mood: 50, knowledge: 50, wealth: 10000, relationships: {} },
-        }),
-      });
-    });
-
     // 先导航到首页设置 localStorage
     await page.goto(`${BASE_URL}/`);
     await page.evaluate(() => {
@@ -309,21 +223,16 @@ test.describe('Ending System - Summary API', () => {
 });
 
 test.describe('Ending System - Error Handling', () => {
-  // TC-10: 结局系统错误处理
+  // TC-10: 结局系统错误处理（真实 API 错误响应）
   test('TC-10: handle ending API error gracefully', async ({ page }) => {
     const consoleErrors: string[] = [];
     page.on('pageerror', error => {
       consoleErrors.push(error.message);
     });
 
-    // Mock API 返回 500 错误
-    await page.route('**/games/*/ending', route => {
-      route.fulfill({
-        status: 500,
-        contentType: 'application/json',
-        body: JSON.stringify({ detail: 'Internal server error' }),
-      });
-    });
+    // 直接调用真实 API 获取一个错误响应（游戏不存在）
+    const response = await page.request.get(`${API_BASE}/games/99999/ending`);
+    expect(response.status()).not.toBe(405);
 
     // 先导航到首页设置 localStorage
     await page.goto(`${BASE_URL}/`);
@@ -350,14 +259,12 @@ test.describe('Ending System - Error Handling', () => {
   });
 
   test('TC-10b: handle game not over (400) response', async ({ page }) => {
-    // Mock API 返回 400（游戏未结束）
-    await page.route('**/games/*/ending', route => {
-      route.fulfill({
-        status: 400,
-        contentType: 'application/json',
-        body: JSON.stringify({ detail: 'Game is not over yet' }),
-      });
-    });
+    // 直接调用真实 API，游戏未结束或不存在时会返回 400/404
+    const response = await page.request.get(`${API_BASE}/games/1/ending`);
+
+    // 端点应该存在，返回合理的错误状态码
+    expect(response.status()).not.toBe(405);
+    expect([200, 400, 401, 404, 422]).toContain(response.status());
 
     // 先导航到首页设置 localStorage
     await page.goto(`${BASE_URL}/`);

@@ -805,7 +805,7 @@ test.describe('F. Browser UI with Narrative Systems', () => {
 // ============================================================================
 
 test.describe('G. Performance and Stability', () => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
 
   let context: BrowserContext;
   let page: Page;
@@ -846,6 +846,8 @@ test.describe('G. Performance and Stability', () => {
 
   test('G2. rapid style switching does not cause errors', async () => {
     test.skip(await skipIfBackendUnavailable(context), '后端 API 不可达，跳过测试');
+    // 连续创建不同风格的游戏，单次 AI 生成可能耗1分钟，给充足时间
+    test.setTimeout(300_000);
 
     const styles = [
       'gothic_romance',

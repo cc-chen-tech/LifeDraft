@@ -122,7 +122,7 @@ def _estimate_tokens(text: str) -> int:
 
 def _allocate_constraint_budget(
     constraint_texts: Dict[str, str],
-    budget: Dict[str, int] = None,
+    budget: Optional[Dict[str, int]] = None,
 ) -> Dict[str, str]:
     """
     根据 Token 预算分配约束文本。
@@ -1312,7 +1312,7 @@ def _format_effects(effects: Dict[str, Any], language: str) -> str:
 # ==================== Common Constraints ====================
 
 
-def _build_common_story_constraints(language: str) -> str:
+def _build_common_story_constraints(language: str, quality_level: str = "expert") -> str:
     """
     构建故事生成的公共约束，所有故事生成提示词都应包含。
 
@@ -1324,11 +1324,44 @@ def _build_common_story_constraints(language: str) -> str:
 
     Args:
         language: 语言代码
+        quality_level: 质量级别 (fast/expert/master)
 
     Returns:
         公共约束字符串
     """
+    level = quality_level.lower() if quality_level else "expert"
+
     if language == "zh":
+        if level == "fast":
+            return f"""
+【核心叙事约束 - 快速模式】
+1. {CONSTRAINT_MUST} **人称要求**：必须使用第三人称叙事（"他/她"而非"我/你"）
+2. {CONSTRAINT_MUST} **禁止跳脱叙事**：禁止提及"游戏""系统""属性值"等元信息
+3. {CONSTRAINT_MUST} **故事结尾要求**：故事结尾必须停在一个具体决策点
+"""
+        if level == "master":
+            return f"""
+【核心叙事约束 - 大师级严格标准】
+1. {CONSTRAINT_MUST} **人称要求**：必须使用第三人称叙事（"他/她"而非"我/你"），保持全文人称绝对统一，严禁任何视角滑移
+2. {CONSTRAINT_MUST} **禁止跳脱叙事**：故事中绝对不能出现任何打破第四面墙的内容，包括但不限于：
+   - 提及"游戏""模拟""系统""属性值""精力值""情绪值"等元信息
+   - 出现作者旁白、对读者说话、解释创作意图
+   - 出现对故事本身的评论或总结性元叙述
+   故事应完全沉浸在角色的世界中，杜绝一切元叙事
+3. {CONSTRAINT_MUST} **禁止编造过往事件**：故事中提到的任何过去发生的事情，必须来自提供的上下文（上周故事、近期总结、年度回顾、剧情线等）。绝对禁止凭空捏造从未发生过的回忆、对话、事件或经历。不确定的过往不要提及
+4. {CONSTRAINT_MUST} **故事结尾要求**：故事结尾必须停在一个具体、明确的决策点！
+   - 正确示例：「她说："明天一早跟我走，怎么样？"」「他递来一把钥匙："这是你自己的选择了。"」「父亲沉声道："你自己拿主意吧。"」
+   - 错误示例：「他们相视而笑。」（无决策点）、「一切都已经不一样了。」（纯情感结尾）
+   - 故事结尾必须是：某人说出一句话需要主角回应、面临两个选择、需要做出承诺、需要表态等
+   - **绝对禁止**以纯情感描写或感慨收尾，必须有具体的"下一步怎么办"的悬念
+5. {CONSTRAINT_MUST} **文学编辑标准**：
+   - 每个场景必须有清晰的环境描写和感官细节
+   - 对话必须自然推动情节，避免功能性说明
+   - 人物行为必须符合其性格和背景设定
+   - 情绪变化必须有充分的情节铺垫
+6. {CONSTRAINT_SHOULD} **大师级写作建议**：注意故事节奏的张弛有度，避免平铺直叙；在关键决策点前营造适当的紧张感或期待感
+"""
+        # expert (default)
         return f"""
 【核心叙事约束 - 必须严格遵守】
 1. {CONSTRAINT_MUST} **人称要求**：必须使用第三人称叙事（"他/她"而非"我/你"），保持全文人称统一
@@ -1346,6 +1379,36 @@ def _build_common_story_constraints(language: str) -> str:
 5. {CONSTRAINT_SHOULD} **写作建议**：注意故事节奏的张弛有度，避免平铺直叙
 """
     else:
+        if level == "fast":
+            return f"""
+[Core Narrative Constraints - Fast Mode]
+1. {CONSTRAINT_MUST} **Perspective**: MUST use third-person narration ("he/she" not "I/you")
+2. {CONSTRAINT_MUST} **NO FOURTH-WALL BREAKING**: Never mention 'game', 'system', 'stats', etc.
+3. {CONSTRAINT_MUST} **STORY ENDING REQUIREMENT**: Story MUST end at a concrete decision point
+"""
+        if level == "master":
+            return f"""
+[Core Narrative Constraints - Master Strict Standard]
+1. {CONSTRAINT_MUST} **Perspective**: MUST use third-person narration ("he/she" not "I/you"), maintain absolutely consistent perspective throughout, no perspective drift allowed
+2. {CONSTRAINT_MUST} **NO FOURTH-WALL BREAKING**: The story must NEVER contain:
+   - References to 'game', 'simulation', 'system', 'stats', 'energy points', 'mood value', or any meta-information
+   - Author asides, addressing the reader, explaining creative intent
+   - Commentary or meta-narrative about the story itself
+   The story must remain fully immersed in the character's world; eliminate all meta-narrative
+3. {CONSTRAINT_MUST} **DO NOT FABRICATE PAST EVENTS**: Any past events mentioned in the story MUST come from the provided context (previous story, recent summary, annual review, storylines, etc.). ABSOLUTELY FORBIDDEN to invent memories, conversations, events or experiences that never happened. Do not mention uncertain past events
+4. {CONSTRAINT_MUST} **STORY ENDING REQUIREMENT**: Story MUST end at a concrete, specific decision point!
+   - Good: 'She said, "Come with me tomorrow morning, what do you say?"' 'He handed over a key: "This is your choice now."' 'Father said gravely: "Make your own decision."'
+   - Bad: 'They looked at each other and smiled.' (no decision point) 'Everything has changed.' (pure emotional ending)
+   - Ending MUST be: someone asks a question requiring response, facing two paths, needing to make a promise, needing to take a stance, etc.
+   - **ABSOLUTELY FORBIDDEN** to end with pure emotional reflection or sentiment - there must be a concrete "what happens next" tension
+5. {CONSTRAINT_MUST} **Literary Editor Standard**:
+   - Every scene must have clear environmental description and sensory details
+   - Dialogue must naturally advance the plot, avoid functional exposition
+   - Character actions MUST align with their personality and background
+   - Emotional changes MUST have sufficient plot buildup
+6. {CONSTRAINT_SHOULD} **Master-Level Writing Advice**: Pay attention to story pacing; create appropriate tension or anticipation before key decision points
+"""
+        # expert (default)
         return f"""
 [Core Narrative Constraints - MUST STRICTLY FOLLOW]
 1. {CONSTRAINT_MUST} **Perspective**: MUST use third-person narration ("he/she" not "I/you"), maintain consistent perspective throughout
@@ -1665,7 +1728,7 @@ def _build_arc_context(character_arc_engine, player_name: str) -> str:
         return ""
     try:
         arc = character_arc_engine.arcs.get(player_name)
-        return character_arc_engine.generate_constraint(arc)
+        return character_arc_engine.generate_constraint(arc)  # type: ignore[no-any-return]
     except Exception as e:
         logger.warning("_build_arc_context failed: %s", e)
         return ""

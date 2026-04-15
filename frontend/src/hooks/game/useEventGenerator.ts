@@ -181,7 +181,7 @@ export function useEventGenerator({
           setProcessing(true, "generating_story");
           setConnectionStatus(null);
 
-          const maxPollingTime = 180000;  // 3 分钟，覆盖最长生成时间 + 余量
+          const maxPollingTime = 300000;  // 5 分钟，覆盖 MASTER 模式最长生成时间 + 余量
           const pollInterval = 8000;      // 8 秒，平衡检测速度和请求频率
           const startTime = Date.now();
 
@@ -218,7 +218,7 @@ export function useEventGenerator({
             console.log(`Polling... (${Math.round((Date.now() - startTime) / 1000)}s elapsed)`);
           }
 
-          console.error("Polling timeout");
+          console.warn("Polling timeout after 5 minutes, entering error state");
           setProcessing(false);
           setConnectionStatus("error");
           generatingRef.current = false;

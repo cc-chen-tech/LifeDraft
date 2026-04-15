@@ -163,6 +163,8 @@ class StateRepository:
 
             if state_data:
                 state_data["_game_id"] = game_id  # 添加 game_id 以便后续保存
+                # 注入 constraint_level，优先从 game 记录获取
+                state_data["constraint_level"] = getattr(game, "constraint_level", "expert") or "expert"
 
                 # 从 initial_state 补充 player_name 和 life_vision（旧存档可能没有这些字段）
                 if not state_data.get("player_name") and initial_data.get("player_name"):

@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 from config.prompts._helpers import (
     _build_available_people_constraint,
     _build_character_habits_context,
+    _build_common_story_constraints,
     _build_continuation_mandate,
     _build_critical_summary,
     _build_established_facts_context,
@@ -951,6 +952,7 @@ def get_story_only_prompt(
     chapter_ending: str = "",  # ★ 章节结尾约束
     three_act_hint: str = "",  # ★ 三幕结构提示
     pacing_intervention: str = "",  # ★ 节奏干预指令
+    quality_level: str = "expert",  # ★ 叙事质量级别
 ) -> str:
     """
     Generate prompt for story-only generation (no JSON, pure narrative).
@@ -1129,6 +1131,9 @@ def get_story_only_prompt(
     if _enhancement_parts_en:
         narrative_enhancements_en = "\n".join(_enhancement_parts_en)
 
+    # ★ 构建公共叙事约束（根据质量级别）
+    common_constraints = _build_common_story_constraints(language, quality_level)
+
     if language == "zh":
         # === 开头：红线约束摘要 ===
         critical_open = f"\n{critical_summary}\n" if critical_summary else ""
@@ -1154,17 +1159,15 @@ def get_story_only_prompt(
 [REF] 参考信息：
 {vector_context_section}
 
+{common_constraints}
+
 【写作要求】
-0. **必须使用第三人称叙事**（"他/她"而非"我/你"），保持全文人称统一
 1. **故事应该800-1200字**，包含3-5轮对话交流，对话用""包裹
 2. 包含环境描写、表情动作、内心独白等细节，事件必须严格符合角色设定
 3. 故事中出现的人物必须来自可用人物列表，标点禁止中英混用
 4. **场景连贯性**：检查上一轮结束地点，禁止无故跳跃场景。开头前3句明确当前地点
-5. **故事结尾必须停在具体决策点**：某人说一句话需要主角回应、面临选择、需要表态等。禁止以纯情感描写收尾
-6. **只返回故事文本**，不要JSON、选项列表或其他标记
-7. **严禁跳脱叙事**：禁止提及"游戏""系统""属性值"等元信息，禁止作者旁白
-8. **严禁编造过往**：过往必须来自上下文，禁止捏造从未发生的回忆
-9. **反重复红线**：禁止套路开头/万能道具/重复登场方式/回收氛围。结构和冲突类型必须变化
+5. **只返回故事文本**，不要JSON、选项列表或其他标记
+6. **反重复红线**：禁止套路开头/万能道具/重复登场方式/回收氛围。结构和冲突类型必须变化
 {overused_phrases}
 {critical_close}
 现在请开始写故事："""
@@ -1192,17 +1195,15 @@ Wealth: ${wealth:,} | Relationships: {rel_str}
 [REF] Reference information:
 {vector_context_section}
 
+{common_constraints}
+
 [Writing Requirements]
-0. **MUST use third-person narration** ("he/she" not "I/you"), keep consistent perspective throughout
 1. **Story should be 800-1200 words**, include 3-5 dialogue exchanges using quotation marks
 2. Include environment descriptions, expressions, actions, inner thoughts; must match character settings
 3. Characters must come from available people list
 4. **Scene continuity**: Check previous round ending location. No unexplained scene jumps. First 3 sentences must establish location
-5. **Story MUST end at a concrete decision point**: someone needs response, facing choices, needing to take a stance. FORBIDDEN to end with pure emotion
-6. **Return ONLY story text**, no JSON, no option lists
-7. **NO fourth-wall breaking**: never mention 'game', 'system', 'stats'. No author asides
-8. **DO NOT fabricate past events**: past must come from context, never invent memories
-9. **Anti-repetition red lines**: No cliché openings/recycled props/repeated entrances/recycled atmosphere. Vary structure and conflict types
+5. **Return ONLY story text**, no JSON, no option lists
+6. **Anti-repetition red lines**: No cliché openings/recycled props/repeated entrances/recycled atmosphere. Vary structure and conflict types
 
 {critical_close_en}
 Now begin writing the story:"""
@@ -1280,6 +1281,7 @@ def get_round_event_prompt(
     chapter_ending: str = "",  # ★ 章节结尾约束
     three_act_hint: str = "",  # ★ 三幕结构提示
     pacing_intervention: str = "",  # ★ 节奏干预指令
+    quality_level: str = "expert",  # ★ 叙事质量级别
 ) -> str:
     """
     Generate prompt for a single round's story within a week.
@@ -1367,6 +1369,9 @@ def get_round_event_prompt(
     round_name_en = (
         round_names_en[round_number] if round_number < 3 else f"Round {round_number+1}"
     )
+
+    # ★ 构建公共叙事约束（根据质量级别）
+    common_constraints = _build_common_story_constraints(language, quality_level)
 
     if language == "zh":
         # Build previous rounds context
@@ -1501,17 +1506,15 @@ def get_round_event_prompt(
 [REF] 参考信息：
 {vector_context_section}
 
+{common_constraints}
+
 【写作要求】
-0. **必须使用第三人称叙事**（"他/她"而非"我/你"），保持全文人称统一
 1. **故事应该1500-2000字**，包含4-6轮对话交流，对话用""包裹
 2. 包含环境描写、表情动作、内心独白等细节，事件必须符合角色设定
 3. 人物必须来自可用人物列表，标点禁止中英混用
 4. **场景连贯性**：开头前3句明确当前地点，禁止无故跳跃场景
-5. **故事结尾必须停在具体决策点**：某人需要主角回应、面临选择、需要表态。禁止以纯情感描写收尾
-6. **只返回故事文本**，不要JSON、选项列表
-7. **严禁跳脱叙事**：禁止提及"游戏""系统""属性值"等元信息
-8. **严禁编造过往**：过往必须来自上下文，禁止捏造
-9. **反重复红线**：禁止套路开头/万能道具/重复登场方式/回收氛围。结构和冲突类型必须变化
+5. **只返回故事文本**，不要JSON、选项列表
+6. **反重复红线**：禁止套路开头/万能道具/重复登场方式/回收氛围。结构和冲突类型必须变化
 {overused_phrases}
 {critical_close_zh}
 现在请开始写{round_name}的故事："""
@@ -1651,17 +1654,15 @@ Wealth: ${wealth:,} | Relationships: {rel_str}{context_section}{rel_events_conte
 [REF] Reference information:
 {vector_context_section_en}
 
+{common_constraints}
+
 [Writing Requirements]
-0. **MUST use third-person narration** ("he/she" not "I/you"), keep consistent perspective
 1. **Story should be 1500-2000 words**, include 4-6 dialogue exchanges using quotation marks
 2. Include environment descriptions, expressions, actions, inner thoughts; must match character settings
 3. Characters must come from available people list
 4. **Scene continuity**: First 3 sentences must establish location. No unexplained scene jumps
-5. **Story MUST end at a concrete decision point**: someone needs response, facing choices, needing to take a stance. FORBIDDEN to end with pure emotion
-6. **Return ONLY story text**, no JSON, no options
-7. **NO fourth-wall breaking**: never mention 'game', 'system', 'stats'. No author asides
-8. **DO NOT fabricate past events**: past must come from context, never invent memories
-9. **Anti-repetition red lines**: No cliché openings/recycled props/repeated entrances/recycled atmosphere. Vary structure and conflict types
+5. **Return ONLY story text**, no JSON, no options
+6. **Anti-repetition red lines**: No cliché openings/recycled props/repeated entrances/recycled atmosphere. Vary structure and conflict types
 
 {critical_close_en}
 Now write the {round_name_en} story:"""

@@ -4,6 +4,19 @@ import { useState, Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+} from "@/components/ui/dropdown-menu";
+import {
   Sheet,
   SheetContent,
   SheetHeader,
@@ -134,6 +147,12 @@ export default function PlayPage() {
     currentRound,
   } = usePlayGame();
 
+  // ★ 游戏设置
+  const constraintLevel = useGameStore((state) => state.constraintLevel);
+  const setConstraintLevel = useGameStore((state) => state.setConstraintLevel);
+  const enableSceneImage = useGameStore((state) => state.enableSceneImage);
+  const setEnableSceneImage = useGameStore((state) => state.setEnableSceneImage);
+
   // Don't render until hydrated
   if (!hydrated) {
     return (
@@ -211,18 +230,36 @@ export default function PlayPage() {
                 <Save className="w-4 h-4" />
               )}
             </Button>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="h-8 w-8"
-              onClick={() => {
-                const current = useGameStore.getState().enableSceneImage;
-                useGameStore.getState().setEnableSceneImage(!current);
-              }}
-              title="场景插画设置"
-            >
-              <Settings className="w-4 h-4" />
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8" title="设置">
+                  <Settings className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>设置</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                
+                {/* 叙事质量 */}
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>叙事质量</DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuRadioGroup value={constraintLevel} onValueChange={(value) => setConstraintLevel(value as "fast" | "expert" | "master")}>
+                      <DropdownMenuRadioItem value="fast">快速</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="expert">专家</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="master">大师</DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                
+                <DropdownMenuSeparator />
+                
+                {/* 场景插画开关 */}
+                <DropdownMenuItem onClick={() => setEnableSceneImage(!enableSceneImage)}>
+                  {enableSceneImage ? "关闭场景插画" : "开启场景插画"}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>

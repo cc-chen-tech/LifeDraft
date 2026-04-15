@@ -147,10 +147,11 @@ test.describe('Security E2E', () => {
       "UNION SELECT * FROM users",
     ];
 
-    // 在可能的搜索/查询端点测试
+    // 在可能的搜索/查询端点测试，每个请求加独立超时防止服务端挂起
     for (const payload of sqlPayloads) {
       const response = await context.request.get(
-        `${API_URL}/api/games?search=${encodeURIComponent(payload)}`
+        `${API_URL}/api/games?search=${encodeURIComponent(payload)}`,
+        { timeout: 10000 }
       );
 
       // 应该返回正常的空结果或错误，而不是注入成功

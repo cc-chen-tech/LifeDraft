@@ -38,6 +38,7 @@ class EventGenerator:
         api_key: Optional[str] = None,
         model: Optional[str] = None,
         use_cache: bool = True,
+        quality_level=None,
     ):
         """
         Initialize the event generator.
@@ -46,6 +47,7 @@ class EventGenerator:
             api_key: OpenAI API key (defaults to settings)
             model: OpenAI model name (defaults to settings)
             use_cache: Whether to use event cache
+            quality_level: Story generation quality level (fast/expert/master)
         """
         # Core AI client (new abstraction)
         self.ai_client = AIClient(api_key, model)
@@ -58,7 +60,7 @@ class EventGenerator:
         self.preset_events = self._load_preset_events()
 
         # Sub-services
-        self.story_gen = StoryGenerator(self.ai_client)
+        self.story_gen = StoryGenerator(self.ai_client, quality_level=quality_level)
         self.option_gen = OptionGenerator(self.ai_client)
         self.summary_gen = SummaryGenerator(self.ai_client)
         self.rewriter = StoryRewriter(self.ai_client)

@@ -97,7 +97,7 @@ class SavePointRepository:
             # 查询所有存档点
             save_points = (
                 db.query(GameState)
-                .filter(GameState.game_id == game_id, GameState.is_save_point is True)
+                .filter(GameState.game_id == game_id, GameState.is_save_point == True)
                 .order_by(GameState.created_at.desc())
                 .all()
             )
@@ -174,7 +174,7 @@ class SavePointRepository:
             # 查询存档点并验证权限
             save_point = (
                 db.query(GameState)
-                .filter(GameState.state_id == state_id, GameState.is_save_point is True)
+                .filter(GameState.state_id == state_id, GameState.is_save_point == True)
                 .first()
             )
 

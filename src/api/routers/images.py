@@ -1,7 +1,7 @@
 """Image generation router - 图片生成API路由"""
 
 import logging
-from typing import Generator, Optional
+from typing import Any, Generator, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
@@ -860,6 +860,7 @@ async def get_round_scene_image(
             .first()
         )
 
+        game_state: Any
         if latest_state and latest_state.state_json:
             game_state = latest_state.state_json  # 已是 dict，无需 json.loads
         else:

@@ -206,7 +206,7 @@ class CommitmentFulfillmentValidator:
         return False
 
     @staticmethod
-    def _get_attr(obj, attr: str, default=None):
+    def _get_attr(obj, attr: str, default=None):  # type: ignore[no-untyped-def]
         """安全获取属性，支持dataclass和dict。"""
         if isinstance(obj, dict):
             return obj.get(attr, default)

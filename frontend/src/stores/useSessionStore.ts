@@ -42,6 +42,7 @@ export interface SessionState {
 
   // ★ 游戏设置
   enableSceneImage: boolean;
+  constraintLevel: "fast" | "expert" | "master";
 
   // Actions
   setGameId: (gameId: number) => void;
@@ -51,6 +52,7 @@ export interface SessionState {
     storyText: string;
     characterSettings?: CharacterSettings;
     playerName?: string;
+    constraintLevel?: "fast" | "expert" | "master";
   }>;
   syncState: () => Promise<{
     event: { story: string; options: EventOption[] } | null;
@@ -62,6 +64,7 @@ export interface SessionState {
   resetSession: () => void;
   setGameOver: (over: boolean) => void;
   setEnableSceneImage: (enabled: boolean) => void;
+  setConstraintLevel: (level: "fast" | "expert" | "master") => void;
 }
 
 export const useSessionStore = create<SessionState>()(
@@ -74,6 +77,7 @@ export const useSessionStore = create<SessionState>()(
     roundInfo: null,
     isGameOver: false,
     enableSceneImage: true,
+    constraintLevel: "expert",
 
     // Actions
     setGameId: (gameId) => set({ gameId }),
@@ -123,6 +127,7 @@ export const useSessionStore = create<SessionState>()(
         progress: state.progress,
         roundInfo: state.round_info,
         isGameOver: false,
+        constraintLevel: state.constraint_level || "expert",
       });
       console.log(`[loadGameState] Loaded game ${gameId}`);
 
@@ -132,6 +137,7 @@ export const useSessionStore = create<SessionState>()(
         storyText,
         characterSettings: loadedCharacterSettings,
         playerName: loadedPlayerName,
+        constraintLevel: state.constraint_level || "expert",
       };
     },
 
@@ -148,9 +154,13 @@ export const useSessionStore = create<SessionState>()(
         if (error.status === 404 || String(error.message || "").includes("404")) {
           console.warn("[syncState] Session expired (404), reloading game to restore session...");
           try {
-            await get().loadGameState(gameId);
+            const loaded = await get().loadGameState(gameId);
             console.log("[syncState] Game reloaded successfully");
-            return;
+            return {
+              event: loaded.event,
+              hasNewOptions: (loaded.event?.options?.length ?? 0) > 0,
+              eventStory: loaded.storyText,
+            };
           } catch (reloadErr) {
             const reloadError = reloadErr as { status?: number; message?: string };
             console.error("[syncState] Failed to reload game:", reloadError);
@@ -189,6 +199,9 @@ export const useSessionStore = create<SessionState>()(
       }
       if (shallowChanged(state.round_info, currentState.roundInfo, ["current_round", "week"])) {
         updates.roundInfo = state.round_info;
+      }
+      if (state.constraint_level && state.constraint_level !== currentState.constraintLevel) {
+        updates.constraintLevel = state.constraint_level;
       }
 
       if (Object.keys(updates).length > 0) {
@@ -242,6 +255,9 @@ export const useSessionStore = create<SessionState>()(
       if (shallowChanged(state.round_info, currentState.roundInfo, ["current_round", "week"])) {
         updates.roundInfo = state.round_info;
       }
+      if (state.constraint_level && state.constraint_level !== currentState.constraintLevel) {
+        updates.constraintLevel = state.constraint_level;
+      }
 
       if (Object.keys(updates).length > 0) {
         console.log(`[syncPlayerState] Updating fields: ${Object.keys(updates).join(', ')}`);
@@ -271,5 +287,16 @@ export const useSessionStore = create<SessionState>()(
 
     setGameOver: (over) => set({ isGameOver: over }),
     setEnableSceneImage: (enabled) => set({ enableSceneImage: enabled }),
+    setConstraintLevel: async (level) => {
+      const { gameId } = get();
+      if (gameId) {
+        try {
+          await api.games.updateSettings(gameId, { constraint_level: level });
+        } catch (err) {
+          console.error("[setConstraintLevel] Failed to update settings:", err);
+        }
+      }
+      set({ constraintLevel: level });
+    },
   })
 );

@@ -59,6 +59,7 @@ class CreateGameRequest(BaseModel):
     player_name: str
     life_vision: str
     language: str = "zh"
+    constraint_level: str = "expert"
 
 
 class GameListItem(BaseModel):
@@ -77,6 +78,7 @@ class GameStateResponse(BaseModel):
     progress: Dict[str, Any]
     round_info: Dict[str, Any]
     current_event: Optional[Dict[str, Any]] = None
+    constraint_level: str = "expert"
 
 
 class SaveGameResponse(BaseModel):
@@ -112,6 +114,10 @@ class GenerateRelationshipRequest(BaseModel):
 class GenerateAttributesRequest(BaseModel):
     character_settings: Dict[str, Any]
     language: str = "zh"
+
+
+class UpdateGameSettingsRequest(BaseModel):
+    constraint_level: Optional[str] = None
 
 
 class OpeningStoryRequest(BaseModel):

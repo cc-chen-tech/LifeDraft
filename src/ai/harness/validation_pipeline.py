@@ -7,9 +7,10 @@
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from .constraint_registry import ConstraintRegistry, Priority, ConstraintDefinition
+from .quality_level import HarnessProfile
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,12 @@ class ValidationPipeline:
     def __init__(self, registry: ConstraintRegistry):
         self.registry = registry
 
-    def validate(self, story_text: str, context: dict) -> ValidationResult:
+    def validate(
+        self,
+        story_text: str,
+        context: dict,
+        profile: Optional["HarnessProfile"] = None,
+    ) -> ValidationResult:
         """
         对故事文本执行完整验证（所有约束）。
 
@@ -64,13 +70,28 @@ class ValidationPipeline:
             context: 验证上下文，包含 available_people, established_facts,
                      pending_storylines, overdue_storylines, world_model_state,
                      character_habits, last_location 等
+            profile: 可选的 Harness 质量级别配置，用于过滤约束
 
         Returns:
             ValidationResult 验证结果
         """
+        import time
+
         start_time = time.time()
 
         constraints = self.registry.get_all_for_validation()
+        if profile:
+            from .quality_level import NARRATIVE_VALIDATOR_TYPES
+
+            constraints = [
+                c
+                for c in constraints
+                if c.priority in profile.enabled_priorities
+                and (
+                    profile.include_narrative_validators
+                    or c.type.value not in NARRATIVE_VALIDATOR_TYPES
+                )
+            ]
 
         result = ValidationResult(passed=True)
         score = 100.0

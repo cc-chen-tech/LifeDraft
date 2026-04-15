@@ -53,14 +53,16 @@ class GameDatabase:
         initial_state: Optional[Dict[str, Any]] = None,
         user_id: Optional[int] = None,
         narrative_style_id: Optional[str] = None,
+        constraint_level: Optional[str] = None,
     ) -> int:
         """Create a new game record."""
-        return self._game_repo.create_game(
+        return self._game_repo.create_game(  # type: ignore[no-any-return]
             language=language,
             initial_state=initial_state,
             user_id=user_id,
             narrative_style_id=narrative_style_id,
-        )  # type: ignore[no-any-return]
+            constraint_level=constraint_level,
+        )
 
     def get_game(self, game_id: int, user_id: Optional[int] = None) -> Optional[Game]:
         """Get game record."""

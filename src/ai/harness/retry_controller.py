@@ -9,6 +9,7 @@ from typing import List, Optional, Tuple
 
 from .constraint_registry import Priority
 from .diagnostics import DiagnosticReport
+from .quality_level import PROFILES, QualityLevel, HarnessProfile
 from .validation_pipeline import ValidationResult
 
 logger = logging.getLogger(__name__)
@@ -30,15 +31,22 @@ class RetryController:
         score_threshold: 低于此分数时建议重试
     """
 
-    def __init__(self, max_retries: int = 2, score_threshold: float = 70.0):
+    def __init__(
+        self,
+        max_retries: int = 2,
+        score_threshold: float = 70.0,
+        profile: Optional["HarnessProfile"] = None,
+    ):
         """初始化重试控制器。
 
         Args:
             max_retries: 最大重试次数，默认 2
             score_threshold: 分数阈值，低于此值时在首次尝试后建议重试，默认 70.0
+            profile: Harness 质量级别配置，传入后优先使用 profile 中的参数
         """
-        self.max_retries = max_retries
-        self.score_threshold = score_threshold
+        self.profile = profile or PROFILES[QualityLevel.EXPERT]
+        self.max_retries = self.profile.max_retries
+        self.score_threshold = self.profile.score_threshold
 
     def should_retry(
         self,
@@ -81,9 +89,9 @@ class RetryController:
             (是否重试, 修正指令文本)
         """
         # 1. 超过最大重试次数，不再重试
-        if attempt >= self.max_retries:
+        if attempt >= self.profile.max_retries:
             logger.info(
-                f"已达最大重试次数 ({self.max_retries})，不再重试。"
+                f"已达最大重试次数 ({self.profile.max_retries})，不再重试。"
                 f"最终评分: {validation_result.score:.1f}"
             )
             return False, None
@@ -97,16 +105,25 @@ class RetryController:
             )
             return True, correction
 
-        # 3. 无 CRITICAL 但分数低于阈值，且是首次尝试
-        if validation_result.score < self.score_threshold and attempt == 0:
+        # 3. 大师级：HIGH 警告也触发重试
+        if self.profile.retry_on_high_warnings and len(validation_result.high_warnings) > 0:
             hint = self._build_gentle_hint(validation_result)
             logger.info(
-                f"评分 {validation_result.score:.1f} 低于阈值 {self.score_threshold}，"
-                f"首次尝试触发温和重试"
+                f"MASTER 模式检测到 {len(validation_result.high_warnings)} 个 HIGH 警告，"
+                f"触发重试 (attempt={attempt})"
             )
             return True, hint
 
-        # 4. 其他情况不重试
+        # 4. 无 CRITICAL 但分数低于阈值触发重试
+        if validation_result.score < self.profile.score_threshold:
+            hint = self._build_gentle_hint(validation_result)
+            logger.info(
+                f"评分 {validation_result.score:.1f} 低于阈值 {self.profile.score_threshold}，"
+                f"触发温和重试 (attempt={attempt})"
+            )
+            return True, hint
+
+        # 5. 其他情况不重试
         logger.debug(
             f"无需重试: score={validation_result.score:.1f}, "
             f"critical={diagnostic_report.critical_count}, attempt={attempt}"

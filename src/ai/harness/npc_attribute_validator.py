@@ -8,7 +8,7 @@
 
 import logging
 import re
-from typing import Dict, Tuple
+from typing import Any, Dict, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +131,7 @@ class NPCAttributeStabilityValidator:
 
         return descriptions
 
-    def check_attribute_consistency(self, npc_name: str, descriptions: list, profile) -> list:
+    def check_attribute_consistency(self, npc_name: str, descriptions: list, profile: Any) -> list:
         """对比描写与存储属性。"""
         issues = []
 
@@ -191,7 +191,7 @@ class NPCAttributeStabilityValidator:
 
         return issues
 
-    def _check_behavioral_boundaries(self, text: str, npc_name: str, profile) -> list:
+    def _check_behavioral_boundaries(self, text: str, npc_name: str, profile: Any) -> list:
         """检查NPC是否突破行为边界。"""
         issues = []
 
@@ -237,7 +237,7 @@ class NPCAttributeStabilityValidator:
 
         return issues
 
-    def _check_identity_contradiction(self, text: str, npc_name: str, profile) -> list:
+    def _check_identity_contradiction(self, text: str, npc_name: str, profile: Any) -> list:
         """检查NPC身份描写是否与存储身份矛盾。"""
         issues: list = []
         stored_identity = ""
@@ -303,7 +303,7 @@ class NPCAttributeStabilityValidator:
 
         return issues
 
-    def _check_personality_contradiction(self, text: str, npc_name: str, profile) -> list:
+    def _check_personality_contradiction(self, text: str, npc_name: str, profile: Any) -> list:
         """检查NPC性格描写是否与存储性格矛盾。"""
         issues: list = []
         stored_personality = ""
