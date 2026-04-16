@@ -1,0 +1,125 @@
+name: Frontend Integration Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  integration-tests:
+    name: Run Integration Tests
+    runs-on: ubuntu-latest
+    needs: [unit-tests]  # Run after unit tests pass
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run integration tests with coverage
+        run: npm run test:integration -- --coverage
+        env:
+          CI: true
+
+      - name: Upload integration test coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-coverage-report
+          path: frontend/coverage/
+          retention-days: 30
+
+      - name: Comment PR with coverage summary
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'frontend/coverage/lcov-report/index.html';
+
+            let coverageMessage = '## Integration Test Coverage\n\n';
+
+            // Try to read coverage summary if available
+            const coveragePath = 'frontend/coverage/coverage-summary.json';
+            if (fs.existsSync(coveragePath)) {
+              const coverage = JSON.parse(fs.readFileSync(coveragePath, 'utf8'));
+              const total = coverage.total || {};
+
+              coverageMessage += '| Metric | Coverage |\n';
+              coverageMessage += '|--------|----------|\n';
+              coverageMessage += `| Statements | ${total.statements?.pct || 'N/A'}% |\n`;
+              coverageMessage += `| Branches | ${total.branches?.pct || 'N/A'}% |\n`;
+              coverageMessage += `| Functions | ${total.functions?.pct || 'N/A'}% |\n`;
+              coverageMessage += `| Lines | ${total.lines?.pct || 'N/A'}% |\n`;
+            } else {
+              coverageMessage += 'Coverage report generated. Download artifacts to view detailed report.\n';
+            }
+
+            coverageMessage += `\n**Test Result:** ${process.env.TEST_RESULT === 'success' ? '✅ Passed' : '❌ Failed'}\n`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: coverageMessage
+            });
+        env:
+          TEST_RESULT: ${{ job.status }}
+
+  # Placeholder job for unit tests that integration tests depend on
+  unit-tests:
+    name: Unit Tests (Dependency)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run unit tests
+        working-directory: frontend
+        run: npm run test:unit
+        env:
+          CI: true
+
+  # Optional: Trigger E2E tests after integration tests pass
+  # Uncomment to enable E2E as part of the workflow
+  # e2e-tests:
+  #   name: E2E Tests
+  #   runs-on: ubuntu-latest
+  #   needs: [integration-tests]
+  #   if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  #   steps:
+  #     - name: Trigger E2E workflow
+  #       uses: actions/github-script@v7
+  #       with:
+  #         script: |
+  #           await github.rest.actions.createWorkflowDispatch({
+  #             owner: context.repo.owner,
+  #             repo: context.repo.repo,
+  #             workflow_id: 'e2e-tests.yml',
+  #             ref: 'main'
+  #           });
