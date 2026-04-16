@@ -97,7 +97,7 @@ function createMockSSEStream(events: Array<{ type: string; data?: unknown }>) {
 function setupGameStore(options: {
   gameId?: number | null;
   storyText?: string;
-  currentEvent?: { story: string; options: Array<{ text: string; outcome: string }> } | null;
+  currentEvent?: { story: string; options: Array<{ text: string }> } | null;
   isGameOver?: boolean;
 } = {}) {
   const { gameId = 1, storyText = '', currentEvent = null, isGameOver = false } = options;
@@ -157,7 +157,7 @@ describe('usePlayGame - Phase State Machine', () => {
             type: 'complete',
             data: {
               event_description: 'Test story',
-              options: [{ text: 'Option 1', outcome: 'outcome1' }],
+              options: [{ text: 'Option 1' }],
             },
           },
         ])
@@ -191,8 +191,8 @@ describe('usePlayGame - Phase State Machine', () => {
             data: {
               event_description: 'Complete story',
               options: [
-                { text: 'Option 1', outcome: 'outcome1' },
-                { text: 'Option 2', outcome: 'outcome2' },
+                { text: 'Option 1' },
+                { text: 'Option 2' },
               ],
             },
           },
@@ -224,8 +224,8 @@ describe('usePlayGame - Phase State Machine', () => {
         currentEvent: {
           story: 'Test story',
           options: [
-            { text: 'Option 1', outcome: 'outcome1' },
-            { text: 'Option 2', outcome: 'outcome2' },
+            { text: 'Option 1' },
+            { text: 'Option 2' },
           ],
         },
       });
@@ -238,7 +238,7 @@ describe('usePlayGame - Phase State Machine', () => {
             type: 'complete',
             data: {
               event_description: 'Result story',
-              options: [{ text: 'Next Option', outcome: 'next' }],
+              options: [{ text: 'Next Option' }],
             },
           },
         ])
@@ -370,12 +370,12 @@ describe('usePlayGame - Phase State Machine', () => {
       setupGameStore({ gameId: 1, storyText: '' });
 
       const storyChunks = ['Chunk 1 ', 'Chunk 2 ', 'Chunk 3'];
-      const events = storyChunks.map((chunk) => ({ type: 'story', data: chunk }));
+      const events: Array<{ type: string; data?: unknown }> = storyChunks.map((chunk) => ({ type: 'story', data: chunk }));
       events.push({
         type: 'complete',
         data: {
           event_description: 'Full story',
-          options: [{ text: 'Option', outcome: 'outcome' }],
+          options: [{ text: 'Option' }],
         },
       });
 
@@ -453,7 +453,7 @@ describe('usePlayGame - Phase State Machine', () => {
             setTimeout(() => {
               callbacks.onComplete?.({
                 event_description: 'Story',
-                options: [{ text: 'Option', outcome: 'outcome' }],
+                options: [{ text: 'Option' }],
               });
               resolve();
             }, 40);
@@ -494,7 +494,7 @@ describe('usePlayGame - Phase State Machine', () => {
             type: 'complete',
             data: {
               event_description: 'New story after retry',
-              options: [{ text: 'Option', outcome: 'outcome' }],
+              options: [{ text: 'Option' }],
             },
           },
         ])
@@ -530,7 +530,7 @@ describe('usePlayGame - Phase State Machine', () => {
             type: 'complete',
             data: {
               event_description: 'Story',
-              options: [{ text: 'Option', outcome: 'outcome' }],
+              options: [{ text: 'Option' }],
             },
           },
         ])
@@ -567,7 +567,7 @@ describe('usePlayGame - Phase State Machine', () => {
             type: 'complete',
             data: {
               event_description: 'Success story',
-              options: [{ text: 'Option', outcome: 'outcome' }],
+              options: [{ text: 'Option' }],
             },
           },
         ])
@@ -609,7 +609,7 @@ describe('usePlayGame - Phase State Machine', () => {
             type: 'complete',
             data: {
               event_description: 'Recovered story',
-              options: [{ text: 'Option', outcome: 'outcome' }],
+              options: [{ text: 'Option' }],
             },
           },
         ])
@@ -704,7 +704,7 @@ describe('usePlayGame - Phase State Machine', () => {
             type: 'complete',
             data: {
               event_description: 'Story content',
-              options: [{ text: 'Option', outcome: 'outcome' }],
+              options: [{ text: 'Option' }],
             },
           },
         ])
@@ -742,7 +742,7 @@ describe('usePlayGame - Phase State Machine', () => {
             type: 'complete',
             data: {
               event_description: 'Polled story',
-              options: [{ text: 'Polled Option', outcome: 'polled' }],
+              options: [{ text: 'Polled Option' }],
             },
           },
         ])
@@ -782,8 +782,8 @@ describe('usePlayGame - Phase State Machine', () => {
             data: {
               event_description: 'Event story',
               options: [
-                { text: 'Choice 1', outcome: 'outcome1' },
-                { text: 'Choice 2', outcome: 'outcome2' },
+                { text: 'Choice 1' },
+                { text: 'Choice 2' },
               ],
             },
           },
@@ -813,7 +813,7 @@ describe('usePlayGame - Phase State Machine', () => {
             type: 'complete',
             data: {
               event_description: 'Event story\n\nChoice result story',
-              options: [{ text: 'Next option', outcome: 'next' }],
+              options: [{ text: 'Next option' }],
             },
           },
         ])
@@ -841,7 +841,7 @@ describe('usePlayGame - Phase State Machine', () => {
         storyText: 'Initial story',
         currentEvent: {
           story: 'Initial story',
-          options: [{ text: 'Option', outcome: 'outcome' }],
+          options: [{ text: 'Option' }],
         },
       });
 
@@ -887,7 +887,7 @@ describe('usePlayGame - Phase State Machine', () => {
         storyText: 'Old story',
         currentEvent: {
           story: 'Old story',
-          options: [{ text: 'Old option', outcome: 'old' }],
+          options: [{ text: 'Old option' }],
         },
       });
 
@@ -899,8 +899,8 @@ describe('usePlayGame - Phase State Machine', () => {
             data: {
               event_description: 'New regenerated story',
               options: [
-                { text: 'New option 1', outcome: 'new1' },
-                { text: 'New option 2', outcome: 'new2' },
+                { text: 'New option 1' },
+                { text: 'New option 2' },
               ],
             },
           },
@@ -932,7 +932,7 @@ describe('usePlayGame - Phase State Machine', () => {
             type: 'complete',
             data: {
               event_description: 'Story content',
-              options: [{ text: 'Option', outcome: 'outcome' }],
+              options: [{ text: 'Option' }],
             },
           },
         ])
@@ -970,8 +970,8 @@ describe('usePlayGame - Phase State Machine', () => {
           currentEvent: {
             story: 'Test story',
             options: [
-              { text: 'Option 1', outcome: 'outcome1' },
-              { text: 'Option 2', outcome: 'outcome2' },
+              { text: 'Option 1' },
+              { text: 'Option 2' },
             ],
           },
         });
@@ -985,7 +985,7 @@ describe('usePlayGame - Phase State Machine', () => {
             type: 'complete',
             data: {
               event_description: 'Choice result',
-              options: [{ text: 'Next option', outcome: 'next' }],
+              options: [{ text: 'Next option' }],
             },
           },
         ])
@@ -1075,7 +1075,7 @@ describe('usePlayGame - Phase State Machine', () => {
       setupGameStore({ gameId: 1, storyText: '' });
 
       (sse.streamGameEvent as jest.Mock).mockImplementation(
-        (_gameId: number, callbacks: { onConnectionStatus?: (status: string | null) => void }) => {
+        (_gameId: number, callbacks: { onConnectionStatus?: (status: string | null) => void; onComplete?: (data: Record<string, unknown>) => void }) => {
           return new Promise<void>((resolve) => {
             setTimeout(() => {
               callbacks.onConnectionStatus?.('connecting');
@@ -1086,7 +1086,7 @@ describe('usePlayGame - Phase State Machine', () => {
             setTimeout(() => {
               callbacks.onComplete?.({
                 event_description: 'Story',
-                options: [{ text: 'Option', outcome: 'outcome' }],
+                options: [{ text: 'Option' }],
               });
               resolve();
             }, 30);
@@ -1121,6 +1121,7 @@ describe('usePlayGame - Phase State Machine', () => {
           callbacks: {
             onConnectionStatus?: (status: string) => void;
             onReconnecting?: (attempt: number, maxRetries: number) => void;
+            onComplete?: (data: Record<string, unknown>) => void;
           }
         ) => {
           return new Promise<void>((resolve) => {
@@ -1134,7 +1135,7 @@ describe('usePlayGame - Phase State Machine', () => {
             setTimeout(() => {
               callbacks.onComplete?.({
                 event_description: 'Story',
-                options: [{ text: 'Option', outcome: 'outcome' }],
+                options: [{ text: 'Option' }],
               });
               resolve();
             }, 30);

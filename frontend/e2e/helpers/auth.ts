@@ -50,8 +50,9 @@ export async function ensureAuthenticated(page: Page, context: BrowserContext): 
     // 未登录，使用 API 直接注册（更可靠）
     const testUserName = `TestUser_${Date.now()}`;
 
-    // 直接使用 context.request 调用 API，绕过 UI
-    const registerResponse = await context.request.post(`${API_URL}/api/auth/register`, {
+    // 直接使用 page.request 调用 API，绕过 UI
+    // ★ 使用 page.request 而非 context.request，确保 cookie 绑定到该 page
+    const registerResponse = await page.request.post(`${API_URL}/api/auth/register`, {
       data: { display_name: testUserName }
     });
 
@@ -60,7 +61,14 @@ export async function ensureAuthenticated(page: Page, context: BrowserContext): 
       throw new Error(`Registration failed: ${registerResponse.status()} ${errorText}`);
     }
 
-    // Cookie 已通过 context.request 自动设置到浏览器上下文中
+    // 显式同步 cookie 到 context（WebKit 移动端需要）
+    const cookies = await context.cookies();
+    const apiCookies = cookies.filter(c => API_URL.includes(c.domain) || c.domain === 'localhost');
+    if (apiCookies.length > 0) {
+      await context.addCookies(apiCookies.map(c => ({ ...c, domain: 'localhost' })));
+    }
+
+    // Cookie 已通过 page.request 自动设置到浏览器上下文中
     // 现在刷新页面，让前端从 Cookie 恢复登录状态
     await page.reload();
     await page.waitForLoadState('domcontentloaded');

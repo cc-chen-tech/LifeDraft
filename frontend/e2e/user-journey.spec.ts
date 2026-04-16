@@ -39,9 +39,9 @@ test.describe('User Journey - Landing Page', () => {
     expect(typeof isVisible).toBe('boolean');
   });
 
-  test.skip(({ browserName, isMobile }) => browserName === 'webkit' && isMobile, 'Auth cookie sharing is flaky in Mobile Safari WebKit');
-
   test('should navigate to create page on new game click', async ({ page, context }) => {
+    // 先登录
+    await ensureAuthenticated(page, context);
     // 先登录
     await ensureAuthenticated(page, context);
 
@@ -283,18 +283,36 @@ test.describe('User Journey - Accessibility', () => {
     await expect(nameInput).toBeFocused();
   });
 
-  test('should support keyboard navigation', async ({ page, isMobile }) => {
-    test.skip(isMobile, 'Keyboard navigation is not primary on touch devices');
-
+  test('should support keyboard navigation', async ({ page }) => {
     await page.goto('/');
 
-    // Tab through elements
-    await page.keyboard.press('Tab');
-    await page.keyboard.press('Tab');
+    // 检查页面有可聚焦元素（通用，不依赖 Tab 键模拟）
+    const focusableElements = page.locator('button, a, input, [tabindex]:not([tabindex="-1"])');
+    const count = await focusableElements.count();
+    expect(count).toBeGreaterThan(0);
 
-    // Some element should be focused
-    const focusedElement = page.locator(':focus');
-    await expect(focusedElement).toBeVisible();
+    // 检查 focus-visible 样式存在（保证键盘导航时有视觉反馈）
+    const hasFocusVisible = await page.evaluate(() => {
+      const styles = Array.from(document.styleSheets)
+        .flatMap(sheet => {
+          try {
+            return Array.from(sheet.cssRules);
+          } catch {
+            return [];
+          }
+        })
+        .some(rule => rule.cssText?.includes(':focus-visible') || rule.cssText?.includes(':focus'));
+      return styles;
+    });
+    expect(hasFocusVisible).toBe(true);
+
+    // 在桌面端额外验证 Tab 键可以移动焦点
+    const viewport = page.viewportSize();
+    if (viewport && viewport.width >= 768) {
+      await page.keyboard.press('Tab');
+      const focusedElement = page.locator(':focus');
+      await expect(focusedElement).toBeVisible();
+    }
   });
 });
 
