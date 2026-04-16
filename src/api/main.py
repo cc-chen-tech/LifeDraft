@@ -13,8 +13,13 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 
+from typing import Optional
+
 from config.settings import (SENTRY_DSN, SENTRY_ENVIRONMENT,
                              SENTRY_TRACES_SAMPLE_RATE)
+from pydantic import BaseModel
+from src.api.routers import (auth, character, collection, friends, gameplay,
+                             games, images, music, presets, story)
 from src.database.models import init_db
 
 load_dotenv()
@@ -150,10 +155,6 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # ---- Register routers ----
-from src.api.routers import (auth, character, collection,  # noqa: E402
-                             friends, gameplay, games, images, music, presets,
-                             story)
-
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(friends.router, prefix="/api/friends", tags=["Friends"])
 app.include_router(games.router, prefix="/api/games", tags=["Games"])
@@ -176,11 +177,6 @@ async def health_check():
         "active_sessions": session_store.active_count,
     }
 
-
-from typing import Optional  # noqa: E402
-
-# ---- Client-side log collector ----  # noqa: E402
-from pydantic import BaseModel  # noqa: E402
 
 client_logger = logging.getLogger("client")
 
