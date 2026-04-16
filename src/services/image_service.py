@@ -11,7 +11,8 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from src.ai.image_client import ImageClient
-from src.ai.image_exceptions import ContentInspectionError, ImageGenerationError
+from src.ai.image_exceptions import (ContentInspectionError,
+                                     ImageGenerationError)
 from src.database.models import Image as ImageModel
 from src.services.image.character_service import CharacterImageService
 from src.services.image.scene_service import SceneImageService

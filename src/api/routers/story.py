@@ -7,13 +7,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from src.api.deps import get_current_user_optional
-from src.api.routers.gameplay.sse_helpers import stream_regenerate, stream_rewrite
-from src.api.schemas import (
-    RegenerateStoryRequest,
-    RewriteStoryRequest,
-    StoryChatRequest,
-    StoryChatResponse,
-)
+from src.api.routers.gameplay.sse_helpers import (stream_regenerate,
+                                                  stream_rewrite)
+from src.api.schemas import (RegenerateStoryRequest, RewriteStoryRequest,
+                             StoryChatRequest, StoryChatResponse)
 from src.api.services.session_service import session_service
 
 logger = logging.getLogger(__name__)

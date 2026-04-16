@@ -5,7 +5,8 @@ import logging
 from typing import Any, Callable, Dict, List, Optional
 
 from src.ai.generator import EventGenerator
-from src.ai.prompt_sanitizer import sanitize_custom_action, sanitize_user_choice
+from src.ai.prompt_sanitizer import (sanitize_custom_action,
+                                     sanitize_user_choice)
 from src.ai.system_prompts import get_system_prompt
 
 logger = logging.getLogger(__name__)
@@ -332,9 +333,7 @@ class StoryService:
             Dictionary with effects: {"energy": int, "mood": int, "knowledge": int, "wealth": int}
         """
         from config.prompts.story_prompts import (
-            get_custom_choice_effects_prompt,
-            get_custom_choice_user_prompt,
-        )
+            get_custom_choice_effects_prompt, get_custom_choice_user_prompt)
 
         current_state = current_state or {}
 
@@ -406,9 +405,7 @@ class StoryService:
             Dictionary with 'effects' and 'story_continuation'
         """
         from config.prompts.story_prompts import (
-            get_custom_choice_result_prompt,
-            get_custom_choice_user_prompt,
-        )
+            get_custom_choice_result_prompt, get_custom_choice_user_prompt)
 
         current_state = current_state or {}
 

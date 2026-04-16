@@ -91,7 +91,7 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
               if (currentEventType === 'error' || parsed.type === 'error' || parsed.event === 'error') {
                 hasError = true;
                 const errorMsg = parsed.error || parsed.message || 'Unknown server error';
-                console.error('[SSE] Error event received:', errorMsg);
+                console.warn('[SSE] Error event received:', errorMsg);
                 callbacks.onError?.({ message: errorMsg });
                 currentEventType = null;
                 continue;

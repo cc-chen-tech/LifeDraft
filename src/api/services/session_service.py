@@ -67,7 +67,8 @@ class SessionService:
             return session
 
         # 内存中没有 session，尝试从数据库恢复
-        logger.info(
+        # 改为 DEBUG 级别，避免正常情况下的日志噪音
+        logger.debug(
             f"Session not in memory for game_id={game_id}, attempting auto-restore from database..."
         )
         return self._restore_from_database(game_id, user_id)
@@ -565,7 +566,8 @@ class SessionService:
         def generate_in_background():
             try:
                 from src.ai.image_client import ImageClient
-                from src.game.round.illustration_service import RoundIllustrationService
+                from src.game.round.illustration_service import \
+                    RoundIllustrationService
                 from src.services.image_storage import ImageStorageService
 
                 # 创建新的数据库会话（在线程中）

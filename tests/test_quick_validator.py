@@ -1,6 +1,6 @@
 """Tests for quick_validator module."""
 
-import pytest
+import pytest  # noqa: F401
 
 from src.ai.quick_validator import (QuickValidationResult, QuickValidator,
                                     quick_validate_story)
@@ -57,13 +57,16 @@ class TestQuickValidator:
         assert result.passed is True
 
     def test_validate_first_person_zh(self):
-        """Test detection of first-person perspective in Chinese."""
+        """Test detection of first-person perspective in Chinese.
+
+        第一人称「我」应该被检测并导致验证失败。
+        """
         validator = QuickValidator()
-        # Use a longer text without quotes to test first-person detection
         story = "我走在街上。阳光很好。"
         result = validator.validate(story, language="zh")
-        # Verify the validator runs without error
-        assert result is not None
+        # First-person should cause validation to fail
+        assert result.passed is False
+        assert any("第一人称" in issue or "我" in issue for issue in result.issues)
 
     def test_validate_second_person_zh(self):
         """Test detection of second-person perspective in Chinese."""

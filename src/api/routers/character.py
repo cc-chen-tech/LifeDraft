@@ -10,13 +10,10 @@ from typing import Any, Dict
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from src.api.schemas import (
-    GenerateAttributesRequest,
-    GenerateRelationshipRequest,
-    GenerateSettingRequest,
-    OpeningStoryRequest,
-    RelationshipsSummaryRequest,
-)
+from src.api.schemas import (GenerateAttributesRequest,
+                             GenerateRelationshipRequest,
+                             GenerateSettingRequest, OpeningStoryRequest,
+                             RelationshipsSummaryRequest)
 from src.game.character_creation import CharacterCreator
 
 logger = logging.getLogger(__name__)

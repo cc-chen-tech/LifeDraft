@@ -7,25 +7,21 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user, get_current_user_optional
-from src.api.schemas import (
-    BatchGenerateCharactersRequest,
-    GenerateImageRequest,
-    GenerateOpeningIllustrationRequest,
-    GenerateRoundSceneRequest,
-    ImageListResponse,
-    ImageResponse,
-    MessageResponse,
-    OpeningIllustrationResponse,
-    RegenerateFreshImageRequest,
-    RegenerateImageRequest,
-    RegenerateOpeningIllustrationRequest,
-    RegenerateRoundSceneRequest,
-    RoundSceneResponse,
-)
+from src.api.schemas import (BatchGenerateCharactersRequest,
+                             GenerateImageRequest,
+                             GenerateOpeningIllustrationRequest,
+                             GenerateRoundSceneRequest, ImageListResponse,
+                             ImageResponse, MessageResponse,
+                             OpeningIllustrationResponse,
+                             RegenerateFreshImageRequest,
+                             RegenerateImageRequest,
+                             RegenerateOpeningIllustrationRequest,
+                             RegenerateRoundSceneRequest, RoundSceneResponse)
 from src.database.models import Game
 from src.database.models import Image as ImageModel
 from src.database.models import SessionLocal, User
-from src.services.image_service import ImageContentError, ImageService, ImageServiceError
+from src.services.image_service import (ImageContentError, ImageService,
+                                        ImageServiceError)
 from src.services.image_storage import ImageStorageError, ImageStorageService
 
 logger = logging.getLogger(__name__)
@@ -875,15 +871,14 @@ async def get_round_scene_image(
         character_settings = {}
         player_name = "主角"
 
-    # 如果没有故事文本，无法生成插画，返回 404
+    # 如果没有故事文本，无法生成插画，返回 204 No Content
+    # 这不是错误，而是新游戏的预期状态（week=0 时尚未生成故事）
     if not story_text:
-        logger.warning(
-            f"[get_round_scene_image] Cannot generate scene image: no story text available "
-            f"for game={game_id}, week={week}, round={round_number}"
+        logger.info(
+            f"[get_round_scene_image] No story text available for game={game_id}, "
+            f"week={week}, round={round_number} - returning 204 (expected for new games)"
         )
-        raise HTTPException(
-            status_code=404, detail="该轮次场景插画尚未生成，且无法获取故事文本进行自动生成"
-        )
+        return Response(status_code=204)
 
     # ★ 后台触发生成
     try:
@@ -1196,7 +1191,8 @@ def _trigger_scene_generation_in_background(
             from src.ai.image_client import ImageClient
             from src.database.models import Image as ImageModel
             from src.database.models import SessionLocal
-            from src.game.round.illustration_service import RoundIllustrationService
+            from src.game.round.illustration_service import \
+                RoundIllustrationService
             from src.services.image_storage import ImageStorageService
 
             # 创建新的数据库会话（在线程中）

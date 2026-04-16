@@ -335,7 +335,8 @@ class RoundFinalizer:
         Args:
             week: 当前周数
         """
-        from src.services.landmark_extraction_service import LandmarkExtractionService
+        from src.services.landmark_extraction_service import \
+            LandmarkExtractionService
 
         player_state = self.player_state
         if not player_state:

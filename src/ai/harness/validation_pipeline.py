@@ -7,9 +7,10 @@
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
-from .constraint_registry import ConstraintRegistry, Priority, ConstraintDefinition
+from .constraint_registry import (ConstraintDefinition, ConstraintRegistry,
+                                  Priority)
 from .quality_level import HarnessProfile
 
 logger = logging.getLogger(__name__)

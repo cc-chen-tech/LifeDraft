@@ -60,11 +60,11 @@ class ConstraintType(Enum):
     STYLE_TECHNIQUE = "style_technique"  # 核心技法合规
 
     # 第二层：中观章节验证
-    THREE_ACT_STRUCTURE = "three_act_structure"      # 三幕结构完整性
-    PACING_VARIETY = "pacing_variety"                # 节奏多样性（非平坦）
+    THREE_ACT_STRUCTURE = "three_act_structure"  # 三幕结构完整性
+    PACING_VARIETY = "pacing_variety"  # 节奏多样性（非平坦）
 
     # 第三层：宏观结构验证
-    ARC_HINT_COMPLIANCE = "arc_hint_compliance"      # 人物弧光指令遵从
+    ARC_HINT_COMPLIANCE = "arc_hint_compliance"  # 人物弧光指令遵从
     WORLD_EVENT_INTEGRATION = "world_event_integration"  # 世界事件融入
     CONFLICT_DIRECTIVE_COMPLIANCE = "conflict_directive_compliance"  # 冲突指令遵从
 

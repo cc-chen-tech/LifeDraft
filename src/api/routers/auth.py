@@ -6,8 +6,10 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import JSONResponse
 
-from src.api.deps import JWT_EXPIRE_HOURS, create_token, get_current_user, get_user_manager
-from src.api.schemas import AuthResponse, LoginRequest, MessageResponse, RegisterRequest, UserInfo
+from src.api.deps import (JWT_EXPIRE_HOURS, create_token, get_current_user,
+                          get_user_manager)
+from src.api.schemas import (AuthResponse, LoginRequest, MessageResponse,
+                             RegisterRequest, UserInfo)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

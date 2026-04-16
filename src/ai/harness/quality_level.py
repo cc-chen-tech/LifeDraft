@@ -14,7 +14,7 @@ from .constraint_registry import Priority
 class QualityLevel(str, Enum):
     """故事生成质量级别."""
 
-    FAST = "fast"      # 快速：最小延迟，零校验零重试
+    FAST = "fast"  # 快速：最小延迟，零校验零重试
     EXPERT = "expert"  # 专家：平衡质量与速度（默认）
     MASTER = "master"  # 大师：严格校验 + 多轮重试 + 事后精修
 
@@ -36,24 +36,24 @@ class HarnessProfile:
     level: QualityLevel
 
     # --- 验证范围 ---
-    enabled_priorities: Set[Priority]          # 启用哪些优先级的约束
-    skip_preflight: bool                       # 是否跳过 preflight
-    skip_ai_consistency_check: bool            # 是否跳过 ConsistencyValidator
+    enabled_priorities: Set[Priority]  # 启用哪些优先级的约束
+    skip_preflight: bool  # 是否跳过 preflight
+    skip_ai_consistency_check: bool  # 是否跳过 ConsistencyValidator
 
     # --- 重试策略 ---
-    max_retries: int                           # 最大重试次数
-    score_threshold: float                     # 触发重试的分数阈值
-    retry_on_high_warnings: bool               # HIGH 级别警告是否触发重试
-    enforce_validation_on_all_attempts: bool   # 是否每次 attempt 都校验
+    max_retries: int  # 最大重试次数
+    score_threshold: float  # 触发重试的分数阈值
+    retry_on_high_warnings: bool  # HIGH 级别警告是否触发重试
+    enforce_validation_on_all_attempts: bool  # 是否每次 attempt 都校验
 
     # --- 大师级精修 ---
-    enable_polish: bool                        # 是否启用事后精修
-    polish_score_threshold: float              # 低于此分触发精修
-    max_polish_rounds: int                     # 最大精修轮数
+    enable_polish: bool  # 是否启用事后精修
+    polish_score_threshold: float  # 低于此分触发精修
+    max_polish_rounds: int  # 最大精修轮数
 
     # --- Prompt 注入策略 ---
-    prompt_constraint_mode: str                # "minimal" / "standard" / "strict"
-    include_narrative_validators: bool          # 是否启用中观/宏观叙事验证
+    prompt_constraint_mode: str  # "minimal" / "standard" / "strict"
+    include_narrative_validators: bool  # 是否启用中观/宏观叙事验证
 
 
 PROFILES = {

@@ -12,15 +12,13 @@ import requests  # type: ignore[import-untyped]
 from cachetools import TTLCache  # type: ignore[import-untyped]
 
 from config.settings import settings
-from src.ai.image_config import (
-    CHARACTER_VARIANTS,
-    DEFAULT_EDIT_NEGATIVE_PROMPT,
-    DEFAULT_NEGATIVE_PROMPT,
-    create_retry_session,
-    get_image_edit_models,
-    get_text_to_image_models,
-)
-from src.ai.image_exceptions import ContentInspectionError, ImageGenerationError
+from src.ai.image_config import (CHARACTER_VARIANTS,
+                                 DEFAULT_EDIT_NEGATIVE_PROMPT,
+                                 DEFAULT_NEGATIVE_PROMPT, create_retry_session,
+                                 get_image_edit_models,
+                                 get_text_to_image_models)
+from src.ai.image_exceptions import (ContentInspectionError,
+                                     ImageGenerationError)
 
 logger = logging.getLogger(__name__)
 

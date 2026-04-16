@@ -4,6 +4,8 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // Disable Strict Mode to prevent double SSE connections in development
   reactStrictMode: false,
+  // 禁用 Next.js Dev Overlay，避免 E2E 测试中拦截点击事件
+  devIndicators: false,
   // Allow LAN/mobile dev access without cross-origin warnings
   allowedDevOrigins: ["http://192.168.0.107:3000"],
   // Only forward NEXT_PUBLIC_API_BASE if explicitly set in environment.

@@ -5,12 +5,12 @@
 提供查询接口用于统计分析和趋势观察。
 """
 
-import sqlite3
 import json
 import logging
 import os
+import sqlite3
 from datetime import datetime
-from typing import Optional, Dict, List, Any
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 

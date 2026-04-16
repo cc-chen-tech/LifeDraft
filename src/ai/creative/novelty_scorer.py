@@ -119,8 +119,8 @@ class NoveltyScorer:
                 return 0.0
 
             # 1. 字符频率余弦相似度
-            from collections import Counter
             import math
+            from collections import Counter
 
             freq_a = Counter(text_a)
             freq_b = Counter(text_b)

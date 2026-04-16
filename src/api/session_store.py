@@ -9,8 +9,9 @@ from src.game.game_loop import GameLoop
 
 logger = logging.getLogger(__name__)
 
-# Session timeout in seconds (2 hours)
-SESSION_TIMEOUT = 2 * 60 * 60
+# Session timeout in seconds (4 hours)
+# Extended to reduce database restore frequency
+SESSION_TIMEOUT = 4 * 60 * 60
 
 
 class GameLoopSession:

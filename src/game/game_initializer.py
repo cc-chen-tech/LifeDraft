@@ -52,7 +52,9 @@ class GameInitializer:
             raise ValueError("player_name is required")
 
         # 提取 constraint_level（从 character_settings 或默认 expert）
-        constraint_level = character_settings.get("constraint_level", "expert") if character_settings else "expert"
+        constraint_level = (
+            character_settings.get("constraint_level", "expert") if character_settings else "expert"
+        )
 
         # Create initial player state
         initial_state = {

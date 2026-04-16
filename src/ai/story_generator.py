@@ -11,14 +11,13 @@ from typing import Any, Callable, Dict, Optional
 
 from pydantic import ValidationError
 
+from config.feature_flags import get_feature
 from config.prompts import get_round_event_prompt, get_story_only_prompt
 from config.prompts._helpers import extract_overused_phrases
 from src.ai.client import AIClient
 from src.ai.models import EventOption, GameEvent
 from src.ai.system_prompts import get_system_prompt
 from src.ai.vector_store import get_vector_store, is_vector_search_enabled
-
-from config.feature_flags import get_feature
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +29,7 @@ class StoryGenerator:
         self.client = client
 
         # ★ 质量级别配置
-        from src.ai.harness.quality_level import QualityLevel, PROFILES
+        from src.ai.harness.quality_level import PROFILES, QualityLevel
 
         if quality_level is None:
             quality_level = QualityLevel.EXPERT
@@ -58,11 +57,13 @@ class StoryGenerator:
         if self._harness_enabled:
             try:
                 from src.ai.harness import default_registry
-                from src.ai.harness.preflight_checker import PreflightChecker
-                from src.ai.harness.validation_pipeline import ValidationPipeline
-                from src.ai.harness.diagnostics import ConstraintViolationDiagnostic
-                from src.ai.harness.retry_controller import RetryController
+                from src.ai.harness.diagnostics import \
+                    ConstraintViolationDiagnostic
                 from src.ai.harness.metrics import HarnessMetrics
+                from src.ai.harness.preflight_checker import PreflightChecker
+                from src.ai.harness.retry_controller import RetryController
+                from src.ai.harness.validation_pipeline import \
+                    ValidationPipeline
 
                 self._harness_registry = default_registry
                 self._preflight_checker = PreflightChecker(default_registry)
@@ -71,7 +72,8 @@ class StoryGenerator:
                 self._retry_controller = RetryController(profile=self.harness_profile)
                 self._harness_metrics = HarnessMetrics()
                 if self.harness_profile.enable_polish:
-                    from src.ai.harness.polish_controller import PolishController
+                    from src.ai.harness.polish_controller import \
+                        PolishController
 
                     self._polish_controller = PolishController(client=self.client)
                 logger.info(
@@ -122,8 +124,10 @@ class StoryGenerator:
         if self._style_engine_enabled:
             try:
                 from src.ai.narrative.style_manifest import get_style
-                from src.ai.narrative.style_prompt_builder import StyleAwarePromptBuilder
-                from src.ai.narrative.style_validator import StyleAwareValidator
+                from src.ai.narrative.style_prompt_builder import \
+                    StyleAwarePromptBuilder
+                from src.ai.narrative.style_validator import \
+                    StyleAwareValidator
 
                 self._style_manifest = get_style(style_id)
                 if self._style_manifest:
@@ -148,7 +152,8 @@ class StoryGenerator:
                 logger.warning(f"Failed to init CharacterArcEngine: {e}")
 
             try:
-                from src.ai.narrative.world_breathing import WorldBreathingEngine
+                from src.ai.narrative.world_breathing import \
+                    WorldBreathingEngine
 
                 era = ""
                 cs = player_state.get("character_settings") or {}
@@ -199,16 +204,15 @@ class StoryGenerator:
                 logger.warning(f"Failed to init NoveltyScorer: {e}")
             try:
                 from src.ai.creative.foreshadowing_tech import (
-                    ForeshadowingTechniqueLibrary,
-                    HookInjector,
-                )
+                    ForeshadowingTechniqueLibrary, HookInjector)
 
                 self._foreshadowing_lib = ForeshadowingTechniqueLibrary()
                 self._hook_injector = HookInjector()
             except Exception as e:
                 logger.warning(f"Failed to init ForeshadowingTechniqueLibrary: {e}")
             try:
-                from src.ai.creative.preference_learner import PreferenceLearner
+                from src.ai.creative.preference_learner import \
+                    PreferenceLearner
 
                 self._preference_learner = PreferenceLearner()
             except Exception as e:
@@ -229,7 +233,8 @@ class StoryGenerator:
 
         if self._style_engine_enabled and self._prompt_builder:
             try:
-                from config.prompts._helpers import _build_style_constraints_text
+                from config.prompts._helpers import \
+                    _build_style_constraints_text
 
                 hints["style_constraints"] = _build_style_constraints_text(
                     self._prompt_builder, "zh"
@@ -255,7 +260,9 @@ class StoryGenerator:
                         hints["chapter_ending"] = chapter_ending
 
                     # 三幕结构提示
-                    hints["three_act_hint"] = "[SHOULD] 戏剧结构: 本段故事应有清晰的起承转合——开头铺垫引入情境，中段推进发展或制造转折，结尾收束或留下悬念。"
+                    hints["three_act_hint"] = (
+                        "[SHOULD] 戏剧结构: 本段故事应有清晰的起承转合——开头铺垫引入情境，中段推进发展或制造转折，结尾收束或留下悬念。"
+                    )
                 except Exception as e:
                     logger.warning(f"Chapter hints build failed: {e}")
 
@@ -593,7 +600,8 @@ class StoryGenerator:
         state_tracker = None
         if get_feature("generation_state_tracking"):
             try:
-                from src.ai.generation_state import StateTracker, TransitionReason
+                from src.ai.generation_state import (StateTracker,
+                                                     TransitionReason)
 
                 state_tracker = StateTracker(
                     initial_model=getattr(self.client, "model", ""),
@@ -731,7 +739,8 @@ class StoryGenerator:
                                 # ★ StateTracker: 记录 harness 重试
                                 if state_tracker:
                                     try:
-                                        from src.ai.generation_state import TransitionReason
+                                        from src.ai.generation_state import \
+                                            TransitionReason
 
                                         state_tracker.transition(
                                             TransitionReason.HARNESS_RETRY,
@@ -760,9 +769,8 @@ class StoryGenerator:
                                             )
                                             if state_tracker:
                                                 try:
-                                                    from src.ai.generation_state import (
-                                                        TransitionReason,
-                                                    )
+                                                    from src.ai.generation_state import \
+                                                        TransitionReason
 
                                                     state_tracker.transition(
                                                         TransitionReason.CONTEXT_COMPACT,
@@ -1047,7 +1055,9 @@ class StoryGenerator:
                 current_prompt = prompt
                 if attempt > 0 and last_error:
                     if language == "zh":
-                        current_prompt += f"\n\n【上次生成失败，原因：{last_error}。请避免同样的问题。】"
+                        current_prompt += (
+                            f"\n\n【上次生成失败，原因：{last_error}。请避免同样的问题。】"
+                        )
                     else:
                         current_prompt += f"\n\n[Previous attempt failed: {last_error}. Please avoid the same issue.]"
 
@@ -1113,7 +1123,8 @@ class StoryGenerator:
                                 # ★ StateTracker: 记录 round 级 harness 重试
                                 if state_tracker_round:
                                     try:
-                                        from src.ai.generation_state import TransitionReason
+                                        from src.ai.generation_state import \
+                                            TransitionReason
 
                                         state_tracker_round.transition(
                                             TransitionReason.HARNESS_RETRY,
@@ -1190,9 +1201,7 @@ class StoryGenerator:
                             latency_ms=_harness_latency,
                         )
                     except Exception as e:
-                        logger.warning(
-                            f"Harness post-validation failed (round, non-blocking): {e}"
-                        )
+                        logger.warning(f"Harness post-validation failed (round, non-blocking): {e}")
 
                 if harness_should_retry and harness_correction and attempt < retry_count - 1:
                     last_error = harness_correction
@@ -1454,7 +1463,9 @@ Please **only modify the problematic paragraphs** and keep the rest of the conte
 
             # 记录防循环守卫
             if self.quality_level.value == "master":
-                self._master_retry_counts[retry_key] = self._master_retry_counts.get(retry_key, 0) + 1
+                self._master_retry_counts[retry_key] = (
+                    self._master_retry_counts.get(retry_key, 0) + 1
+                )
             else:
                 self._last_retry_key = retry_key
 
@@ -1474,9 +1485,7 @@ Please **only modify the problematic paragraphs** and keep the rest of the conte
             )
 
             if fixed_story:
-                logger.info(
-                    f"局部修正完成，故事长度: {len(fixed_story)} (原: {len(story_text)})"
-                )
+                logger.info(f"局部修正完成，故事长度: {len(fixed_story)} (原: {len(story_text)})")
                 fixed_story = self._normalize_punctuation(fixed_story, language)
                 return fixed_story
 
@@ -1591,35 +1600,35 @@ Please **only modify the problematic paragraphs** and keep the rest of the conte
         squote_open = False
         for ch in text:
             if ch in ('"', '"'):
-                ch = '“' if not dquote_open else '”'
+                ch = "“" if not dquote_open else "”"
                 dquote_open = not dquote_open
             elif ch in ("'", "'"):
-                ch = '‘' if not squote_open else '’'
+                ch = "‘" if not squote_open else "’"
                 squote_open = not squote_open
             result.append(ch)
         text = "".join(result)
 
         # 直接映射替换
         replacements = {
-            ',': '，',
-            '.': '。',
-            '!': '！',
-            '?': '？',
-            ':': '：',
-            ';': '；',
-            '(': '（',
-            ')': '）',
+            ",": "，",
+            ".": "。",
+            "!": "！",
+            "?": "？",
+            ":": "：",
+            ";": "；",
+            "(": "（",
+            ")": "）",
         }
         for en, zh in replacements.items():
             text = text.replace(en, zh)
 
         # 省略号规范化
-        text = text.replace('...', '……').replace('..', '……')
+        text = text.replace("...", "……").replace("..", "……")
 
         # 清理中文标点后多余的空格
         import re
 
-        text = re.sub(r'([，。！？：；、……“”‘’（）])\s+', r'\1', text)
+        text = re.sub(r"([，。！？：；、……“”‘’（）])\s+", r"\1", text)
 
         return text
 

@@ -5,13 +5,11 @@ import logging
 import random
 from typing import Any, Dict, List, Optional
 
-from config.prompts import (
-    get_character_setting_prompt,
-    get_initial_attributes_prompt,
-    get_opening_story_prompt,
-    get_relationship_person_prompt,
-    get_relationships_summary_prompt,
-)
+from config.prompts import (get_character_setting_prompt,
+                            get_initial_attributes_prompt,
+                            get_opening_story_prompt,
+                            get_relationship_person_prompt,
+                            get_relationships_summary_prompt)
 from src.ai.generator import EventGenerator
 from src.ai.system_prompts import get_system_prompt
 from src.ai.utils import extract_json

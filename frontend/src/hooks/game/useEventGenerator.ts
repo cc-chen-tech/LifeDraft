@@ -165,10 +165,13 @@ export function useEventGenerator({
             }
           }
 
-          if (!errorMsg.includes("404") && errorMsg !== "undefined" && errorMsg !== "Unknown error") {
+          const isTimeout = errorMsg.includes("Timeout waiting for event generation");
+          const isRecoverable = errorMsg === "Unknown error" || errorMsg === "undefined" || isTimeout;
+
+          if (!errorMsg.includes("404") && !isRecoverable) {
             console.error("SSE final error:", err);
-          } else if (errorMsg === "Unknown error" || errorMsg === "undefined") {
-            console.warn("[generateEvent] SSE connection interrupted, will start polling...");
+          } else if (isRecoverable) {
+            console.warn("[generateEvent] SSE connection interrupted or timed out, will start polling...");
           }
 
           if (pollingRef.current) {

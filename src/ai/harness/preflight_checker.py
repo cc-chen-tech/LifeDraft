@@ -6,7 +6,7 @@ Prompt 预检查器。
 
 import logging
 from dataclasses import dataclass, field
-from typing import List, Dict
+from typing import Dict, List
 
 from .constraint_registry import ConstraintRegistry
 
@@ -88,7 +88,14 @@ class PreflightChecker:
         context_completeness = {}
         for field_name in self.CRITICAL_CONTEXT_FIELDS:
             data = context.get(field_name)
-            is_present = data is not None and (not isinstance(data, (list, str)) or len(data) > 0)
+            # established_facts 可以是空列表（新游戏正常情况）
+            # 只要字段存在（即使是空列表）就算完整
+            if field_name == "established_facts":
+                is_present = data is not None
+            else:
+                is_present = data is not None and (
+                    not isinstance(data, (list, str)) or len(data) > 0
+                )
             context_completeness[field_name] = is_present
             if not is_present:
                 warnings.append(f"关键上下文数据缺失: {field_name}")

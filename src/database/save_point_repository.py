@@ -174,7 +174,10 @@ class SavePointRepository:
             # 查询存档点并验证权限
             save_point = (
                 db.query(GameState)
-                .filter(GameState.state_id == state_id, GameState.is_save_point == True)  # noqa: E712
+                .filter(
+                    GameState.state_id == state_id,
+                    GameState.is_save_point == True,  # noqa: E712
+                )
                 .first()
             )
 

@@ -11,9 +11,7 @@ from typing import Tuple
 logger = logging.getLogger(__name__)
 
 
-def validate_three_act_structure(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_three_act_structure(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """检测故事是否具备三幕结构（铺垫、发展、高潮）。
 
     仅对 > 500 字的文本生效，<= 500 字自动通过。
@@ -49,9 +47,7 @@ def validate_three_act_structure(
     return False, f"三幕结构不完整，仅检测到 {phases_count} 个阶段: {phases_found}", details
 
 
-def validate_pacing_variety(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_pacing_variety(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """验证节奏干预是否生效。
 
     仅当 narrative_hints 中存在非空 pacing_intervention 时生效。
@@ -100,9 +96,7 @@ ARC_STAGE_KEYWORDS = {
 }
 
 
-def validate_arc_hint_compliance(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_arc_hint_compliance(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """验证故事是否遵从弧光阶段提示。
 
     仅当 narrative_hints 中存在非空 arc_hint 时生效。
@@ -142,17 +136,49 @@ def validate_arc_hint_compliance(
 
 
 _WORLD_EVENT_STOP_WORDS = {
-    "的", "了", "在", "是", "和", "与", "或", "但", "而", "也",
-    "都", "就", "将", "会", "被", "把", "让", "给", "从", "到",
-    "这", "那", "有", "没", "不", "可以", "应该", "需要", "可能",
-    "已经", "正在", "当前", "目前", "世界", "事件", "背景", "环境",
-    "影响", "渗透",
+    "的",
+    "了",
+    "在",
+    "是",
+    "和",
+    "与",
+    "或",
+    "但",
+    "而",
+    "也",
+    "都",
+    "就",
+    "将",
+    "会",
+    "被",
+    "把",
+    "让",
+    "给",
+    "从",
+    "到",
+    "这",
+    "那",
+    "有",
+    "没",
+    "不",
+    "可以",
+    "应该",
+    "需要",
+    "可能",
+    "已经",
+    "正在",
+    "当前",
+    "目前",
+    "世界",
+    "事件",
+    "背景",
+    "环境",
+    "影响",
+    "渗透",
 }
 
 
-def validate_world_event_integration(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_world_event_integration(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """验证故事是否融入了世界事件关键词。
 
     仅当 narrative_hints 中存在非空 world_event_context 时生效。
@@ -184,9 +210,22 @@ def validate_world_event_integration(
 
 
 _CONFLICT_BASE_KEYWORDS = [
-    "冲突", "对抗", "争执", "紧张", "矛盾", "对峙",
-    "威胁", "危机", "挑战", "压力", "争吵", "抗争",
-    "敌意", "反对", "阻碍", "困境",
+    "冲突",
+    "对抗",
+    "争执",
+    "紧张",
+    "矛盾",
+    "对峙",
+    "威胁",
+    "危机",
+    "挑战",
+    "压力",
+    "争吵",
+    "抗争",
+    "敌意",
+    "反对",
+    "阻碍",
+    "困境",
 ]
 
 

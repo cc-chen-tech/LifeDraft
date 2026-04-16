@@ -8,8 +8,8 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .diagnostics import DiagnosticReport
     from ..client import AIClient
+    from .diagnostics import DiagnosticReport
 
 logger = logging.getLogger(__name__)
 

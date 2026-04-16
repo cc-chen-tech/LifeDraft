@@ -221,9 +221,9 @@ class StyleAwareValidator:
             act_phases_found = []
             text_len = len(story_text)
             if text_len > 200:
-                opening_text = story_text[:text_len // 4]
+                opening_text = story_text[: text_len // 4]
                 middle_text = story_text[text_len // 4 : 3 * text_len // 4]
-                ending_text = story_text[3 * text_len // 4:]
+                ending_text = story_text[3 * text_len // 4 :]
 
                 setup_keywords = ["走进", "坐下", "来到", "踏入", "清晨", "这一天"]
                 development_keywords = ["然而", "却", "突然", "不料", "意外", "转折"]

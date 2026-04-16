@@ -62,7 +62,8 @@ class EntityRecognitionService(BaseExtractionService):
                 f"min_appearances={min_appearances}"
             )
 
-            from config.prompts.entity_recognition_prompt import get_entity_recognition_prompt
+            from config.prompts.entity_recognition_prompt import \
+                get_entity_recognition_prompt
 
             prompt = get_entity_recognition_prompt(
                 story_text=story_text,
@@ -133,9 +134,8 @@ class EntityRecognitionService(BaseExtractionService):
             contexts = contexts[:5]
             story_text = "\n\n---\n\n".join(contexts)
 
-            from config.prompts.entity_recognition_prompt import (
-                get_item_description_extraction_prompt,
-            )
+            from config.prompts.entity_recognition_prompt import \
+                get_item_description_extraction_prompt
 
             prompt = get_item_description_extraction_prompt(
                 item_name=item_name,

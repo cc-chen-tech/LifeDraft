@@ -3,18 +3,8 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import (
-    JSON,
-    Boolean,
-    Column,
-    DateTime,
-    ForeignKey,
-    Index,
-    Integer,
-    String,
-    Text,
-    create_engine,
-)
+from sqlalchemy import (JSON, Boolean, Column, DateTime, ForeignKey, Index,
+                        Integer, String, Text, create_engine)
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
 from config.settings import settings

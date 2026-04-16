@@ -197,21 +197,42 @@ class QuickValidator:
 
         if language == "zh":
             # 检查是否混用了第一人称
-            first_person_pattern = re.compile(r"(?:^|[^\w])(我)(?:[^\w]|$)")
-            second_person_pattern = re.compile(r"(?:^|[^\w])(你)(?:[^\w]|$)")
+            # 方法：在文本前后添加空格，然后匹配被空格/标点包围的"我"或"你"
+            # 这样可以避免字符串开头/结尾的特殊边界问题
 
-            # 排除对话中的第一/第二人称
-            # 简单方法：检查非引号部分
-            # 使用更安全的方式移除引号内容
+            # 先移除所有引号内的内容（对话允许使用第一/第二人称）
             text_without_quotes = text
-            for quote_pair in [('"', '"'), ("'", "'"), ("「", "」"), ("『", "』")]:
-                # 简单移除配对引号内的内容
-                pattern = re.escape(quote_pair[0]) + r".*?" + re.escape(quote_pair[1])
-                text_without_quotes = re.sub(pattern, "", text_without_quotes, flags=re.DOTALL)
+            text_without_quotes = re.sub(r'"[^"]*"', " ", text_without_quotes)
+            text_without_quotes = re.sub(r"'[^']*'", " ", text_without_quotes)
+            text_without_quotes = re.sub(r"「[^」]*」", " ", text_without_quotes)
+            text_without_quotes = re.sub(r"『[^』]*』", " ", text_without_quotes)
 
-            if first_person_pattern.search(text_without_quotes):
+            # 在文本前后添加空格，简化边界检测
+            padded_text = " " + text_without_quotes + " "
+
+            # 匹配被空白或标点包围的"我"或"你"
+            # 使用简单的方法：找到所有"我"或"你"的位置，检查前后字符
+            # 边界字符：空白、标点、字符串开头/结尾
+            boundary_chars = set(" \t\n\r。，！？；：,;:!?\"'\"'()（）【】[]《》<>{}")
+
+            has_first_person = False
+            has_second_person = False
+
+            for i, char in enumerate(padded_text):
+                if char == "我":
+                    # 检查前一个字符是否是边界字符
+                    # "我"后面可以是任何字符（中文或标点），只要前面是边界即可
+                    prev_char = padded_text[i - 1] if i > 0 else " "
+                    if prev_char in boundary_chars:
+                        has_first_person = True
+                elif char == "你":
+                    prev_char = padded_text[i - 1] if i > 0 else " "
+                    if prev_char in boundary_chars:
+                        has_second_person = True
+
+            if has_first_person:
                 issues.append("故事中使用了第一人称「我」，应使用第三人称")
-            if second_person_pattern.search(text_without_quotes):
+            if has_second_person:
                 issues.append("故事中使用了第二人称「你」，应使用第三人称")
         else:
             # 英文检查

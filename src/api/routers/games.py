@@ -7,18 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from src.api.deps import get_current_user, get_current_user_optional, get_db
 from src.api.schemas import CreateGameRequest  # 时间回溯存档系统
-from src.api.schemas import (
-    CreateSavePointRequest,
-    GameListItem,
-    GameStateResponse,
-    MessageResponse,
-    SaveGameResponse,
-    SavePointItem,
-    SavePointListResponse,
-    StateSnapshotItem,
-    StateTimelineResponse,
-    UpdateGameSettingsRequest,
-)
+from src.api.schemas import (CreateSavePointRequest, GameListItem,
+                             GameStateResponse, MessageResponse,
+                             SaveGameResponse, SavePointItem,
+                             SavePointListResponse, StateSnapshotItem,
+                             StateTimelineResponse, UpdateGameSettingsRequest)
 from src.api.services.session_service import session_service
 from src.api.session_store import session_store
 from src.database.models import Game, SessionLocal
@@ -427,7 +420,11 @@ async def update_game_settings(
         # 持久化到 Game 表
         db_session = SessionLocal()
         try:
-            game = db_session.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
+            game = (
+                db_session.query(Game)
+                .filter(Game.game_id == game_id, Game.user_id == user_id)
+                .first()
+            )
             if game:
                 setattr(game, "constraint_level", req.constraint_level)
                 db_session.commit()
@@ -439,7 +436,6 @@ async def update_game_settings(
         if game_session and game_session.game_loop:
             game_session.game_loop.quality_level = req.constraint_level
             from src.ai.generator import EventGenerator
-
             from src.game.character_creator import CharacterCreator
             from src.game.story_service import StoryService
             from src.game.yearly_summary import YearlySummaryGenerator
@@ -450,7 +446,8 @@ async def update_game_settings(
                 game_session.game_loop.ai_generator, game_session.game_loop.language
             )
             game_session.game_loop.character_creator = CharacterCreator(
-                ai_generator=game_session.game_loop.ai_generator, language=game_session.game_loop.language
+                ai_generator=game_session.game_loop.ai_generator,
+                language=game_session.game_loop.language,
             )
             game_session.game_loop.story_service = StoryService(
                 game_session.game_loop.ai_generator, game_session.game_loop.language

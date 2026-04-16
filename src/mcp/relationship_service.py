@@ -7,12 +7,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from src.game.relationship_events import (
-    EventCategory,
-    RelationshipEventDef,
-    get_events_by_category,
-)
-
+from src.game.relationship_events import (EventCategory, RelationshipEventDef,
+                                          get_events_by_category)
 # Import at runtime to avoid circular imports
 from src.game.state import CharacterState, PlayerState
 

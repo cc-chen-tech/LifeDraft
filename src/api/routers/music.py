@@ -206,6 +206,7 @@ async def stream_song(song_id: int, request: Request):
         """脱敏URL，只保留域名和路径前缀。"""
         try:
             from urllib.parse import urlparse
+
             parsed = urlparse(u)
             return f"{parsed.scheme}://{parsed.netloc}/...{parsed.path[-20:] if len(parsed.path) > 20 else parsed.path}"
         except Exception:
@@ -250,6 +251,7 @@ async def stream_song(song_id: int, request: Request):
 
             # 清除缓存以强制重新获取
             from src.services.music_service import NeteaseMusicClient
+
             if song_id in NeteaseMusicClient._url_cache:
                 del NeteaseMusicClient._url_cache[song_id]
                 logger.info(f"[MusicStream] URL刷新: 已清除 song_id={song_id} 的缓存")

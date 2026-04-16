@@ -13,7 +13,8 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 
-from config.settings import SENTRY_DSN, SENTRY_ENVIRONMENT, SENTRY_TRACES_SAMPLE_RATE
+from config.settings import (SENTRY_DSN, SENTRY_ENVIRONMENT,
+                             SENTRY_TRACES_SAMPLE_RATE)
 from src.database.models import init_db
 
 load_dotenv()
@@ -149,18 +150,9 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # ---- Register routers ----
-from src.api.routers import (  # noqa: E402
-    auth,
-    character,
-    collection,
-    friends,
-    gameplay,
-    games,
-    images,
-    music,
-    presets,
-    story,
-)
+from src.api.routers import (auth, character, collection,  # noqa: E402
+                             friends, gameplay, games, images, music, presets,
+                             story)
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(friends.router, prefix="/api/friends", tags=["Friends"])

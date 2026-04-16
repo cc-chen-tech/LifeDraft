@@ -15,12 +15,8 @@ from fastapi.responses import StreamingResponse
 
 from src.api.deps import get_current_user_optional
 from src.api.routers.gameplay.sse_helpers import (
-    replay_cached_and_wait,
-    replay_cached_then_complete,
-    return_existing_event,
-    return_sse_error,
-    stream_round_event_with_asyncio_lock,
-)
+    replay_cached_and_wait, replay_cached_then_complete, return_existing_event,
+    return_sse_error, stream_round_event_with_asyncio_lock)
 from src.api.services.session_service import session_service
 
 logger = logging.getLogger(__name__)

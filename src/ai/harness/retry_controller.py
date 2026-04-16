@@ -9,7 +9,7 @@ from typing import List, Optional, Tuple
 
 from .constraint_registry import Priority
 from .diagnostics import DiagnosticReport
-from .quality_level import PROFILES, QualityLevel, HarnessProfile
+from .quality_level import PROFILES, HarnessProfile, QualityLevel
 from .validation_pipeline import ValidationResult
 
 logger = logging.getLogger(__name__)
