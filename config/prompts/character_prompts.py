@@ -180,7 +180,7 @@ def get_character_setting_prompt(
 {'注意：用户反馈优先于人生愿景，必须遵循用户的具体要求。' if feedback else ''}
 返回JSON格式：
 {{
-    "year": 2024,
+    "year": <具体的公元年份数字>,
     "era_description": "时代背景的简短描述（50-100字）",
     "world_context": "世界大环境的描述（50-100字）"
 }}
@@ -294,7 +294,7 @@ Generated Settings:
 Generate an era setting (year AD). Consider the player's life vision and choose an appropriate era.
 Return JSON format:
 {{
-    "year": 2024,
+    "year": <specific year as a number>,
     "era_description": "Brief description of the era (50-100 words)",
     "world_context": "Description of the world context (50-100 words)"
 }}
