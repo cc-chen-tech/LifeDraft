@@ -10,11 +10,11 @@ services:
     volumes:
       - ./nginx/ecs-nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
-      - ./frontend/dist:/usr/share/nginx/html:ro
       - ./logs/nginx:/var/log/nginx
       - ./data/certbot-www:/var/www/certbot:ro
     depends_on:
       - backend
+      - frontend
       - music-api
     restart: unless-stopped
     networks:
@@ -44,6 +44,18 @@ services:
       timeout: 10s
       retries: 3
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    container_name: story2-frontend
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+    restart: unless-stopped
+    networks:
+      - story2-network
+
   music-api:
     build:
       context: ./netease-music-api
@@ -54,15 +66,6 @@ services:
     restart: unless-stopped
     networks:
       - story2-network
-
-  frontend-builder:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.prod
-    container_name: story2-frontend-builder
-    volumes:
-      - ./frontend/dist:/output
-    command: sh -c "cp -r /app/dist/* /output/ && echo 'Frontend build copied'"
 
 networks:
   story2-network:
