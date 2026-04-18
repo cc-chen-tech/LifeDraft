@@ -220,7 +220,8 @@ export default function OpeningStoryPage() {
     <div className="min-h-screen flex flex-col bg-background animate-page-enter">
       <div className="flex-1 flex items-center justify-center p-6 md:p-12">
         <div className="w-full max-w-[65ch] space-y-8">
-          {!storyText && !isStreaming && (
+          {/* ★ 修复：streaming 初始状态也显示 loading，避免空白 */}
+          {(!storyText || isStreaming) && (
             <SkeletonStory message="正在编写你的人生开篇..." />
           )}
 

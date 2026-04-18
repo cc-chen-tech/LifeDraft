@@ -257,8 +257,9 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
   
   useEffect(() => {
     hasGeneratedImage.current = false;
-    backgroundGenStartedRef.current = false;
-    setIsBackgroundGenerating(false);
+    // ★ 不再重置 backgroundGenStartedRef，因为后台生成可能在 world 步骤已提前启动
+    // backgroundGenStartedRef.current = false;
+    // setIsBackgroundGenerating(false);
   }, [gameId]);
   
   useEffect(() => {
@@ -354,13 +355,32 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
 
   // Start background generation on portrait step
   useEffect(() => {
-    if (isPortraitStep && gameId && !backgroundGenStartedRef.current) {
+    if (isPortraitStep && gameId) {
       const allDone = AUTO_ADVANCE_STEPS.every((step) => characterSettings[step] != null);
+
+      if (allDone) {
+        console.log("[portrait] All auto steps already done");
+        setAutoGenPhase("done");
+        backgroundGenStartedRef.current = true;
+        return;
+      }
+
+      // ★ 如果后台已提前从 world 步骤启动，不自动切换 UI，保持 portrait 页面显示
+      // 让用户在 portrait 步骤查看图片，点击"下一步"时再处理状态切换
+      if (backgroundGenStartedRef.current) {
+        console.log("[portrait] Background generation already started from world step");
+        // 只在后台已完成时自动切换到 done
+        if (!isBackgroundGenerating) {
+          setAutoGenPhase("done");
+        }
+        return;
+      }
+
+      // 后台未开始，启动它（例如从 preset 加载时）
       if (!allDone) {
-        console.log("[portrait] Starting background generation for family/relationships/traits/wealth...");
+        console.log("[portrait] Starting background generation...");
         backgroundGenStartedRef.current = true;
         setIsBackgroundGenerating(true);
-        
         runAutoGeneration().then(() => {
           console.log("[portrait] Background generation completed");
           setIsBackgroundGenerating(false);
@@ -368,12 +388,9 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
           console.error("[portrait] Background generation failed:", err);
           setIsBackgroundGenerating(false);
         });
-      } else {
-        console.log("[portrait] All auto steps already done (from preset)");
-        backgroundGenStartedRef.current = true;
       }
     }
-  }, [isPortraitStep, gameId, characterSettings, runAutoGeneration]);
+  }, [isPortraitStep, gameId, characterSettings, isBackgroundGenerating, runAutoGeneration]);
 
   const handleAcceptAndNext = useCallback(async () => {
     if (!isPortraitStep && generatedContent) {
@@ -393,6 +410,22 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
         });
         console.log("[create] Game created for portrait step:", result.game_id);
         setGameSession(result.game_id, result.game_id.toString());
+
+        // ★ 提前启动后台生成，与图片生成并行
+        const allDone = AUTO_ADVANCE_STEPS.every((step) => characterSettings[step] != null);
+        if (!allDone && !backgroundGenStartedRef.current) {
+          console.log("[world] Starting background generation early...");
+          backgroundGenStartedRef.current = true;
+          setIsBackgroundGenerating(true);
+          runAutoGeneration().then(() => {
+            console.log("[world] Background generation completed");
+            setIsBackgroundGenerating(false);
+          }).catch((err) => {
+            console.error("[world] Background generation failed:", err);
+            setIsBackgroundGenerating(false);
+          });
+        }
+
         nextCreationStep();
       } catch (err) {
         console.error("[create] Failed to create game for portrait:", err);
