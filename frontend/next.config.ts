@@ -16,6 +16,9 @@ const nextConfig: NextConfig = {
       ? { NEXT_PUBLIC_API_BASE: process.env.NEXT_PUBLIC_API_BASE }
       : {}),
   },
+  // 静态导出配置
+  output: 'export',
+  distDir: 'dist',
   // ★ API 代理已迁移到 src/app/api/[...path]/route.ts
   // 使用 API Route 可以正确转发 Set-Cookie 头
 };
