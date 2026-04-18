@@ -1,13 +1,13 @@
 FROM node:18-alpine
 
+# 先安装 git，然后克隆到 /app
+RUN apk add --no-cache git && \
+    git clone --depth 1 https://github.com/Binaryify/NeteaseCloudMusicApi.git /app
+
 WORKDIR /app
 
-# 安装 git 并克隆网易云音乐 API 仓库
-RUN apk add --no-cache git && \
-    git clone --depth 1 https://github.com/Binaryify/NeteaseCloudMusicApi.git /tmp/netease && \
-    cp -r /tmp/netease/* /app/ && \
-    rm -rf /tmp/netease && \
-    npm install && \
+# 安装依赖
+RUN npm install && \
     apk del git
 
 ENV PORT=3001
