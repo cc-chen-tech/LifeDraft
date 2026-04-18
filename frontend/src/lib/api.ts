@@ -104,7 +104,14 @@ async function fetchWithRetry(
 }
 
 async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: number }): Promise<T> {
+  const startTime = performance.now();
   const response = await fetchWithRetry(url, options || {});
+  const duration = Math.round(performance.now() - startTime);
+
+  // ★ 性能日志：记录慢请求（>200ms）用于排查加载问题
+  if (duration > 200) {
+    console.warn(`[API Perf] Slow request: ${url} took ${duration}ms`);
+  }
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: response.statusText }));

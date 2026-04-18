@@ -52,16 +52,27 @@ export default function OpeningStoryPage() {
   useEffect(() => {
     if (!hydrated || initializedRef.current) return;
     initializedRef.current = true;
-    
+
+    // ★ 支持测试数据注入（E2E 测试用）
+    const testData = (typeof window !== "undefined" && (window as any).__TEST_DATA__) || null;
+    if (testData) {
+      console.log("[OpeningStory] Using test data injection");
+    }
+
     const state = useGameStore.getState();
-    
+
+    // 使用测试数据或 store 状态
+    const characterSettings = testData?.characterSettings || state.characterSettings;
+    const playerName = testData?.playerName || state.playerName;
+    const lifeVision = testData?.lifeVision || state.lifeVision;
+
     console.log("[OpeningStory] Initializing:", {
       gameId: state.gameId,
       hasStory: !!state.openingStory,
-      playerName: state.playerName,
-      settingsCount: Object.keys(state.characterSettings).length,
+      playerName,
+      settingsCount: Object.keys(characterSettings).length,
     });
-    
+
     // 如果已有故事，直接显示
     if (state.openingStory) {
       console.log("[OpeningStory] Using existing story");
@@ -69,11 +80,11 @@ export default function OpeningStoryPage() {
       setIsComplete(true);
       return;
     }
-    
+
     // 检查是否有足够的数据生成故事
-    const hasSettings = Object.keys(state.characterSettings).length > 0;
-    const hasPlayerName = !!state.playerName;
-    
+    const hasSettings = Object.keys(characterSettings).length > 0;
+    const hasPlayerName = !!playerName;
+
     if (!hasSettings || !hasPlayerName) {
       console.error("[OpeningStory] Missing data:", { hasSettings, hasPlayerName });
       setError("缺少角色数据，无法生成开场故事");
@@ -230,7 +241,6 @@ export default function OpeningStoryPage() {
               text={storyText}
               isStreaming={isStreaming}
               narrative
-              className="max-h-[70vh]"
             />
           )}
           
