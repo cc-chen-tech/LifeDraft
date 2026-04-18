@@ -239,6 +239,63 @@ describe('SSE Streaming', () => {
       expect(body.life_vision).toBe('My vision');
       expect(body.character_settings).toEqual({ era: 'modern', age: 25 });
     });
+
+    it('parses backend SSE format: story and complete events', async () => {
+      // Backend format: event: story\ndata: "text"\n\nevent: complete\ndata: {"full_story":"..."}\n\n
+      const sseStream = [
+        'event: status\n',
+        'data: {"phase":"preparing"}\n\n',
+        'event: story\n',
+        'data: "从前有座山"\n\n',
+        'event: story\n',
+        'data: "山里有座庙"\n\n',
+        'event: complete\n',
+        'data: {"full_story":"从前有座山，山里有座庙"}\n\n',
+      ];
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: createMockStream(sseStream),
+      });
+
+      const onStory = jest.fn();
+      const onComplete = jest.fn();
+      await streamOpeningStory(
+        { era: 'modern' },
+        'TestPlayer',
+        'My vision',
+        'zh',
+        { onStory, onComplete }
+      );
+
+      expect(onStory).toHaveBeenCalledTimes(2);
+      expect(onStory).toHaveBeenNthCalledWith(1, '从前有座山');
+      expect(onStory).toHaveBeenNthCalledWith(2, '山里有座庙');
+      expect(onComplete).toHaveBeenCalledWith({ full_story: '从前有座山，山里有座庙' });
+    });
+
+    it('handles error events', async () => {
+      const sseStream = [
+        'event: status\n',
+        'data: {"phase":"preparing"}\n\n',
+        'event: error\n',
+        'data: {"error":"generation failed"}\n\n',
+      ];
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: createMockStream(sseStream),
+      });
+
+      const onError = jest.fn();
+      await streamOpeningStory(
+        { era: 'modern' },
+        'TestPlayer',
+        'My vision',
+        'zh',
+        { onError }
+      );
+
+      expect(onError).toHaveBeenCalledWith({ message: 'generation failed' });
+    });
   });
 
   describe('streamRegenerate', () => {

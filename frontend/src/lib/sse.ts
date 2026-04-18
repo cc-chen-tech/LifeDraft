@@ -410,10 +410,11 @@ export async function streamOpeningStory(
   // Parse SSE stream
   const decoder = new TextDecoder();
   let buffer = '';
+  let currentEventType = '';
 
   return new Promise((resolve, reject) => {
     function pump(): Promise<void> {
-       
+
       return reader!.read().then(({ done, value }) => {
         if (done) {
           callbacks.onComplete?.({});
@@ -425,8 +426,16 @@ export async function streamOpeningStory(
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
-        for (const line of lines) {
-          const trimmed = line.trim();
+        for (let i = 0; i < lines.length; i++) {
+          const trimmed = lines[i].trim();
+          if (trimmed === '') {
+            currentEventType = '';
+            continue;
+          }
+          if (trimmed.startsWith('event: ')) {
+            currentEventType = trimmed.slice(7);
+            continue;
+          }
           if (trimmed.startsWith('data: ')) {
             const data = trimmed.slice(6);
             if (data === '[DONE]') {
@@ -436,14 +445,24 @@ export async function streamOpeningStory(
             }
             try {
               const parsed = JSON.parse(data);
-              if (parsed.type === 'story_chunk' && parsed.content) {
-                callbacks.onStory?.(parsed.content);
-              } else if (parsed.type === 'complete') {
-                callbacks.onComplete?.(parsed.data || parsed);
+              if (currentEventType === 'story') {
+                // Backend sends raw string for story events
+                const text = typeof parsed === 'string' ? parsed : (parsed.content || '');
+                if (text) callbacks.onStory?.(text);
+              } else if (currentEventType === 'complete') {
+                callbacks.onComplete?.(parsed);
+              } else if (currentEventType === 'error') {
+                const msg = typeof parsed === 'object' && parsed && 'error' in parsed
+                  ? String(parsed.error)
+                  : 'Unknown server error';
+                callbacks.onError?.({ message: msg });
               }
+              // status events are ignored for opening story
             } catch {
-              // If not JSON, treat as story chunk
-              callbacks.onStory?.(data);
+              // If not JSON, treat as raw text for story events
+              if (currentEventType === 'story') {
+                callbacks.onStory?.(data);
+              }
             }
           }
         }
