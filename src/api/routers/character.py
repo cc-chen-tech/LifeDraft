@@ -138,6 +138,7 @@ async def generate_opening_story(req: OpeningStoryRequest):
 
         full_text_holder = [""]
         error_holder = [None]
+        last_activity = [time.time()]
 
         def run():
             try:
@@ -153,10 +154,12 @@ async def generate_opening_story(req: OpeningStoryRequest):
                         if hasattr(delta, "content") and delta.content:
                             text = delta.content
                             full_text_holder[0] += text
+                            last_activity[0] = time.time()
                             loop.call_soon_threadsafe(q.put_nowait, ("story", text))
                     elif isinstance(chunk, str):
                         # Fallback story
                         full_text_holder[0] = chunk
+                        last_activity[0] = time.time()
                         loop.call_soon_threadsafe(q.put_nowait, ("story", chunk))
                         break
             except Exception as e:
@@ -170,18 +173,33 @@ async def generate_opening_story(req: OpeningStoryRequest):
         thread = threading.Thread(target=run, daemon=True)
         thread.start()
 
+        # ★ 30秒超时（比120秒更快检测卡住），每5秒发送heartbeat保持连接
+        HEARTBEAT_INTERVAL = 5.0
+        QUEUE_TIMEOUT = 30.0
+        next_heartbeat = time.time() + HEARTBEAT_INTERVAL
+
         while True:
             try:
-                event_type, data = await asyncio.wait_for(q.get(), timeout=120)
+                # 使用较短的超时以便定期发送heartbeat
+                wait_time = min(QUEUE_TIMEOUT, max(0.1, next_heartbeat - time.time()))
+                event_type, data = await asyncio.wait_for(q.get(), timeout=wait_time)
             except asyncio.TimeoutError:
-                yield f"event: error\ndata: {json.dumps({'error': 'Timeout'}, ensure_ascii=False)}\n\n"
+                # 检查是否是heartbeat时间
+                if time.time() >= next_heartbeat:
+                    next_heartbeat = time.time() + HEARTBEAT_INTERVAL
+                    yield f"event: status\ndata: {json.dumps({'phase': 'writing'}, ensure_ascii=False)}\n\n"
+                    continue
+                # 真正的超时
+                yield f"event: error\ndata: {json.dumps({'error': 'Generation timeout'}, ensure_ascii=False)}\n\n"
                 break
 
             if event_type == "__done__":
                 break
             yield f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+            next_heartbeat = time.time() + HEARTBEAT_INTERVAL
 
-        thread.join(timeout=5)
+        # ★ 线程通常已完成，最多等0.1秒（原为5秒，导致不必要的延迟）
+        thread.join(timeout=0.1)
 
         # ★ 更新缓存
         with _cache_lock:

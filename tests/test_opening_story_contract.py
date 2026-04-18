@@ -150,6 +150,44 @@ class TestOpeningStoryAPIContract:
             f"超时后应允许新请求，实际返回 {response.status_code}"
         )
 
+    def test_opening_story_heartbeat_on_slow_generation(self, mock_auth):
+        """AI 生成缓慢时应发送 heartbeat status 事件保持连接活跃"""
+        import time
+
+        with patch("src.api.routers.character.CharacterCreator") as mock_creator_cls:
+            # 模拟缓慢生成器：第一个 chunk 延迟 6 秒后返回
+            def slow_stream():
+                time.sleep(6)
+                yield MagicMock(
+                    choices=[MagicMock(delta=MagicMock(content="慢速故事"))]
+                )
+
+            mock_creator = MagicMock()
+            mock_creator.generate_opening_story.return_value = slow_stream()
+            mock_creator_cls.return_value = mock_creator
+
+            from src.api.routers import character as char_module
+            with char_module._cache_lock:
+                char_module._opening_story_cache.clear()
+
+            response = client.post(
+                "/api/character/opening-story",
+                json={
+                    "character_settings": {"era": "现代"},
+                    "player_name": "TestHeartbeat",
+                    "life_vision": "探索世界",
+                    "language": "zh",
+                },
+                headers={"Authorization": "Bearer test_token"},
+            )
+
+            assert response.status_code == 200
+            body = response.text
+            # 验证包含 heartbeat status 事件（phase: writing）
+            assert "writing" in body, f"慢速生成应包含 heartbeat (writing)，实际响应: {body[:200]}"
+            # 验证最终仍有 complete 事件
+            assert "complete" in body, "慢速生成最终应有 complete 事件"
+
     def test_opening_story_cache_hit(self, mock_auth):
         """缓存命中时应直接返回缓存结果，不重新生成"""
         from src.api.routers import character as char_module
