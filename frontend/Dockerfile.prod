@@ -12,17 +12,23 @@ RUN npm ci
 # 复制源代码
 COPY . .
 
-# 构建静态导出
+# 构建
 ENV NEXT_PUBLIC_API_BASE=/api
 RUN npm run build
 
-# 阶段2：输出
-FROM alpine:latest
+# 阶段2：生产运行
+FROM node:20-alpine
 
 WORKDIR /app
 
-# 复制构建输出
-COPY --from=builder /app/dist ./dist
+# 复制 standalone 输出
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
 
-# 默认命令：复制构建产物到挂载卷
-CMD ["sh", "-c", "cp -r /app/dist/* /output/ 2>/dev/null || echo 'Build output ready in /app/dist'"]
+ENV PORT=3000
+ENV NODE_ENV=production
+
+EXPOSE 3000
+
+CMD ["node", "server.js"]
