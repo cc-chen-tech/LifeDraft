@@ -202,6 +202,8 @@ async def generate_item_description(  # type: ignore
             player_state.update_item(
                 item_name, description=new_description, description_generated=True
             )
+            # 持久化状态变更
+            _save_player_state(game_id, player_state)
             return MessageResponse(
                 message=f"物品 {item_name} 描述生成成功",
                 success=True,
@@ -290,6 +292,8 @@ async def generate_landmark_description(  # type: ignore
 
         if new_description:
             player_state.update_landmark(landmark_name, description=new_description)
+            # 持久化状态变更
+            _save_player_state(game_id, player_state)
             return MessageResponse(
                 message=f"标志物 {landmark_name} 描述生成成功",
                 success=True,
