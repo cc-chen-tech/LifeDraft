@@ -92,7 +92,9 @@ async def recommend_music(
                 if url:
                     url_map[song_id] = url
 
-        logger.info(f"[MusicAPI] Fetched {len(url_map)}/{len(recommendation.songs)} song URLs")
+        total_songs = len(recommendation.songs)
+        available_songs = len(url_map)
+        logger.info(f"[MusicAPI] Fetched {available_songs}/{total_songs} song URLs")
 
         # 过滤掉没有有效 URL 的歌曲
         filtered_out = [song for song in recommendation.songs if song.id not in url_map]
@@ -100,6 +102,18 @@ async def recommend_music(
             filtered_ids = [s.id for s in filtered_out]
             logger.info(
                 f"[MusicAPI] Filtered out {len(filtered_out)} songs without URL: {filtered_ids}"
+            )
+
+        # ★ 如果可用歌曲过少，记录警告（帮助排查版权问题）
+        if available_songs == 0 and total_songs > 0:
+            logger.warning(
+                f"[MusicAPI] All {total_songs} songs have no playable URL (copyright restrictions). "
+                f"Keywords: {recommendation.keywords}"
+            )
+        elif available_songs < 3 and total_songs > 0:
+            logger.warning(
+                f"[MusicAPI] Only {available_songs}/{total_songs} songs available. "
+                f"Consider adding more generic keywords. Keywords: {recommendation.keywords}"
             )
 
         # 转换为响应格式（只包含有 URL 的歌曲）

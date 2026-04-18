@@ -37,13 +37,13 @@ export const CharacterList = memo(function CharacterList({
           onClick={() => onCharacterClick(character)}
           className="text-left p-3 rounded-lg border bg-card hover:bg-accent transition-colors"
         >
-          {/* 图片区域 - 使用 object-top 确保显示头部 */}
-          <div className="aspect-[3/4] rounded-md bg-muted mb-2 overflow-hidden flex items-center justify-center">
+          {/* 图片区域 - 使用 object-contain 显示完整人物 */}
+          <div className="aspect-square rounded-md bg-muted mb-2 overflow-hidden flex items-center justify-center">
             {character.image_url ? (
               <img
                 src={character.image_url}
                 alt={character.name}
-                className="w-full h-full object-cover object-top"
+                className="w-full h-full object-contain"
               />
             ) : (
               <div className="flex flex-col items-center gap-1 text-muted-foreground">

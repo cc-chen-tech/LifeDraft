@@ -246,31 +246,31 @@ class MusicService:
 
         # 搜索歌曲 - 使用更多关键词，获取更多结果
         all_songs = []
-        # 增加关键词数量和每关键词的搜索数量
-        for keyword in search_keywords[:5]:  # 增加到5个关键词
-            songs = await self.music_client.search(keyword, limit=10)  # 每关键词10首
+        # ★ 增加关键词数量和每关键词的搜索数量，提高找到可用歌曲的概率
+        for keyword in search_keywords[:8]:  # 增加到8个关键词
+            songs = await self.music_client.search(keyword, limit=15)  # 每关键词15首
             all_songs.extend(songs)
 
-        # 去重并限制数量 - 确保至少15首，最多20首
+        # 去重并限制数量
         seen_ids = set()
         unique_songs: List[Song] = []  # type: ignore[var-annotated]
         for song in all_songs:
-            if song.id not in seen_ids and len(unique_songs) < 20:
+            if song.id not in seen_ids and len(unique_songs) < 30:
                 seen_ids.add(song.id)
                 unique_songs.append(song)
 
-        # 如果歌曲少于5首，使用更通用的关键词补充搜索
-        if len(unique_songs) < 5:
+        # ★ 如果歌曲少于15首，使用更通用的关键词补充搜索
+        if len(unique_songs) < 15:
             logger.warning(
                 f"[MusicService] Only found {len(unique_songs)} songs, searching with generic keywords"
             )
-            generic_keywords = ["轻音乐", "纯音乐", "背景音乐"]
+            generic_keywords = ["轻音乐", "纯音乐", "背景音乐", "流行", "经典", "华语"]
             for keyword in generic_keywords:
-                if len(unique_songs) >= 5:
+                if len(unique_songs) >= 15:
                     break
-                songs = await self.music_client.search(keyword, limit=10)
+                songs = await self.music_client.search(keyword, limit=15)
                 for song in songs:
-                    if song.id not in seen_ids and len(unique_songs) < 20:
+                    if song.id not in seen_ids and len(unique_songs) < 30:
                         seen_ids.add(song.id)
                         unique_songs.append(song)
 
