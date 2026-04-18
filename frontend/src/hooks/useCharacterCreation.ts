@@ -512,6 +512,15 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
 
       if (gameId) {
         console.log("[create] Game already exists:", gameId);
+        // Persist complete character_settings before starting
+        try {
+          await api.games.updateCharacterSettings(gameId, {
+            character_settings: characterSettings,
+          });
+          console.log("[create] Character settings updated for game:", gameId);
+        } catch (updateErr) {
+          console.warn("[create] Failed to update character settings (non-blocking):", updateErr);
+        }
         console.log("[create] Navigating to opening story...");
         router.push("/story/opening");
         return;

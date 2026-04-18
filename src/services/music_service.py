@@ -50,7 +50,11 @@ class NeteaseMusicClient:
     """网易云音乐 API 客户端"""
 
     _url_cache: Dict[int, Tuple[str, float]] = {}  # song_id -> (url, expire_timestamp)
-    URL_CACHE_TTL = 1200  # 20 分钟
+    # ★ 降低 TTL 从 20 分钟到 8 分钟
+    # 网易云 CDN URL 通常只有 5-10 分钟有效期
+    # 20 分钟导致缓存未过期但 URL 已失效（403）
+    # 8 分钟在 CDN 典型有效期内，减少 403 概率
+    URL_CACHE_TTL = 480  # 8 分钟
 
     def __init__(self, base_url: Optional[str] = None):
         base_url = base_url or os.getenv("NETEASE_MUSIC_API_URL", "http://localhost:3000")

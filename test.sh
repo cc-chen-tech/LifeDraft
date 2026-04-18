@@ -87,7 +87,7 @@ run_contract() {
     source venv/bin/activate
     
     echo -e "${YELLOW}运行 API 契约测试...${NC}"
-    python3 -m pytest tests/test_api_contract.py tests/test_model_contracts.py tests/test_narrative_style_contract.py tests/test_quality_level_contract.py tests/test_prompt_constraints_quality_level.py tests/test_collection_contract.py tests/test_constraint_level_api_contract.py tests/test_image_cache_contract.py -v
+    python3 -m pytest tests/test_api_contract.py tests/test_character_settings_api_contract.py tests/test_model_contracts.py tests/test_narrative_style_contract.py tests/test_quality_level_contract.py tests/test_prompt_constraints_quality_level.py tests/test_collection_contract.py tests/test_constraint_level_api_contract.py tests/test_image_cache_contract.py tests/test_sse_timeout_contract.py tests/test_event_generation_contract.py tests/test_music_cache_contract.py -v
     local result=$?
     
     print_layer_result "contract" $result
@@ -102,7 +102,7 @@ run_db() {
     source venv/bin/activate
     
     echo -e "${YELLOW}运行真实数据库集成测试...${NC}"
-    python3 -m pytest tests/test_integration_real_db.py tests/test_database.py tests/test_narrative_db_migration.py tests/test_constraint_level_db.py tests/test_constraint_level_persistence_db.py tests/test_collection_cache_db.py tests/test_image_compression_db.py -v
+    python3 -m pytest tests/test_integration_real_db.py tests/test_character_settings_persistence_db.py tests/test_database.py tests/test_narrative_db_migration.py tests/test_constraint_level_db.py tests/test_constraint_level_persistence_db.py tests/test_collection_cache_db.py tests/test_image_compression_db.py tests/test_sse_timeout_integration.py tests/test_event_generation_race_db.py tests/test_music_cache_integration.py -v
     local result=$?
     
     print_layer_result "db" $result

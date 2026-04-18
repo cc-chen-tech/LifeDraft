@@ -195,6 +195,11 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify(data),
       }),
+    updateCharacterSettings: (gameId: number, data: { character_settings: CharacterSettings }) =>
+      fetchJson<{ success: boolean; message: string }>(`/games/${gameId}/character-settings`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
     getEnding: (gameId: number) =>
       fetchJson<{
         ending_name: string;

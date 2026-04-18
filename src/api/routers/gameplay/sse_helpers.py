@@ -488,6 +488,10 @@ async def stream_round_event(
 
     # Heartbeat: send keep-alive every 5 seconds to prevent connection timeout
     heartbeat_interval = 5
+    # ★ 统一超时：SSE 超时必须 >= 前端 polling 超时 (300s) + 余量
+    # 前端 polling 在 SSE 断开后开始，超时 300s
+    # SSE 超时设为 330s，确保前端 polling 先超时，用户不会看到"生成失败"
+    SSE_STREAM_TIMEOUT = 330
     last_event_time = asyncio.get_event_loop().time()
 
     # Yield SSE events as they arrive — fully async, no thread pool overhead
@@ -497,9 +501,9 @@ async def stream_round_event(
             event_type, data = await asyncio.wait_for(q.get(), timeout=heartbeat_interval)
             last_event_time = asyncio.get_event_loop().time()
         except asyncio.TimeoutError:
-            # Check if overall timeout exceeded (120 seconds)
+            # Check if overall timeout exceeded
             elapsed = asyncio.get_event_loop().time() - last_event_time
-            if elapsed > 120:
+            if elapsed > SSE_STREAM_TIMEOUT:
                 yield make_sse_event("error", {"error": "Timeout waiting for event generation"})
                 break
             # Send heartbeat to keep connection alive
@@ -674,6 +678,8 @@ async def stream_choice(
 
     # Heartbeat: send keep-alive every 5 seconds to prevent connection timeout
     heartbeat_interval = 5
+    # 统一超时：choice 处理也使用 330s，与 event generation 一致
+    SSE_STREAM_TIMEOUT = 330
     last_event_time = asyncio.get_event_loop().time()
 
     while True:
@@ -681,9 +687,9 @@ async def stream_choice(
             event_type, data = await asyncio.wait_for(q.get(), timeout=heartbeat_interval)
             last_event_time = asyncio.get_event_loop().time()
         except asyncio.TimeoutError:
-            # Check if overall timeout exceeded (120 seconds)
+            # Check if overall timeout exceeded
             elapsed = asyncio.get_event_loop().time() - last_event_time
-            if elapsed > 120:
+            if elapsed > SSE_STREAM_TIMEOUT:
                 yield make_sse_event("error", {"error": "Timeout processing choice"})
                 break
             # Send heartbeat to keep connection alive
@@ -984,6 +990,8 @@ async def stream_regenerate(
 
     # Heartbeat mechanism
     heartbeat_interval = 5
+    # 统一超时：regenerate 也使用 330s
+    SSE_STREAM_TIMEOUT = 330
     last_event_time = asyncio.get_event_loop().time()
 
     while True:
@@ -992,7 +1000,7 @@ async def stream_regenerate(
             last_event_time = asyncio.get_event_loop().time()
         except asyncio.TimeoutError:
             elapsed = asyncio.get_event_loop().time() - last_event_time
-            if elapsed > 120:
+            if elapsed > SSE_STREAM_TIMEOUT:
                 yield make_sse_event("error", {"error": "Timeout during regeneration"})
                 break
             yield make_sse_event("status", {"phase": "processing", "heartbeat": True})
@@ -1154,6 +1162,8 @@ async def stream_rewrite(
 
     # Heartbeat mechanism
     heartbeat_interval = 5
+    # 统一超时：rewrite 也使用 330s
+    SSE_STREAM_TIMEOUT = 330
     last_event_time = asyncio.get_event_loop().time()
 
     while True:
@@ -1162,7 +1172,7 @@ async def stream_rewrite(
             last_event_time = asyncio.get_event_loop().time()
         except asyncio.TimeoutError:
             elapsed = asyncio.get_event_loop().time() - last_event_time
-            if elapsed > 120:
+            if elapsed > SSE_STREAM_TIMEOUT:
                 yield make_sse_event("error", {"error": "Timeout during rewrite"})
                 break
             yield make_sse_event("status", {"phase": "processing", "heartbeat": True})

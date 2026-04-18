@@ -120,6 +120,10 @@ class UpdateGameSettingsRequest(BaseModel):
     constraint_level: Optional[str] = None
 
 
+class UpdateCharacterSettingsRequest(BaseModel):
+    character_settings: Dict[str, Any]
+
+
 class OpeningStoryRequest(BaseModel):
     character_settings: Dict[str, Any]
     player_name: str

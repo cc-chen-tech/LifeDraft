@@ -11,7 +11,8 @@ from src.api.schemas import (CreateSavePointRequest, GameListItem,
                              GameStateResponse, MessageResponse,
                              SaveGameResponse, SavePointItem,
                              SavePointListResponse, StateSnapshotItem,
-                             StateTimelineResponse, UpdateGameSettingsRequest)
+                             StateTimelineResponse, UpdateCharacterSettingsRequest,
+                             UpdateGameSettingsRequest)
 from src.api.services.session_service import session_service
 from src.api.session_store import session_store
 from src.database.models import Game, SessionLocal
@@ -454,6 +455,50 @@ async def update_game_settings(
             )
 
     return MessageResponse(success=True, message="Settings updated")
+
+
+@router.patch("/{game_id}/character-settings", response_model=MessageResponse)
+async def update_character_settings(
+    game_id: int,
+    req: UpdateCharacterSettingsRequest,
+    user_id: int = Depends(get_current_user),
+):
+    """
+    Update character_settings for an existing game.
+    Used when auto-generated background settings need to be persisted
+    after initial game creation with partial settings.
+    """
+    db = get_db()
+    state_data = db.load_saved_game(game_id, user_id)
+    if state_data is None:
+        raise HTTPException(status_code=404, detail="Game not found or not owned by user")
+
+    db_session = SessionLocal()
+    try:
+        game = (
+            db_session.query(Game)
+            .filter(Game.game_id == game_id, Game.user_id == user_id)
+            .first()
+        )
+        if not game:
+            raise HTTPException(status_code=404, detail="Game not found or not owned by user")
+
+        # Merge new character_settings into existing initial_state
+        initial_state = dict(game.initial_state or {})
+        existing_settings = initial_state.get("character_settings", {})
+        merged_settings = {**existing_settings, **req.character_settings}
+        initial_state["character_settings"] = merged_settings
+        game.initial_state = initial_state  # type: ignore[assignment]
+        db_session.commit()
+
+        # Also update active session if it exists
+        game_session = session_store.get(game_id)
+        if game_session and game_session.game_loop and game_session.game_loop.player_state:
+            game_session.game_loop.player_state.character_settings = merged_settings
+
+        return MessageResponse(success=True, message="Character settings updated")
+    finally:
+        db_session.close()
 
 
 @router.delete("/save-point/{state_id}", response_model=MessageResponse)
