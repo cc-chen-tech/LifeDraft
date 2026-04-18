@@ -1,0 +1,28 @@
+# 阶段1：构建
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# 复制依赖文件
+COPY package*.json ./
+
+# 安装依赖
+RUN npm ci
+
+# 复制源代码
+COPY . .
+
+# 构建静态导出
+ENV NEXT_PUBLIC_API_BASE=/api
+RUN npm run build
+
+# 阶段2：输出
+FROM alpine:latest
+
+WORKDIR /app
+
+# 复制构建输出
+COPY --from=builder /app/dist ./dist
+
+# 默认命令：复制构建产物到挂载卷
+CMD ["sh", "-c", "cp -r /app/dist/* /output/ 2>/dev/null || echo 'Build output ready in /app/dist'"]

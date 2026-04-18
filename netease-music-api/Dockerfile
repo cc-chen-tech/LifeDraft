@@ -1,11 +1,15 @@
-FROM node:lts-alpine
+FROM node:18-alpine
 
 WORKDIR /app
-COPY . /app
 
-RUN npm config set registry "https://registry.npm.taobao.org/" \
-    && npm install -g npm husky \
-    && npm install --production
+# 安装 git 并克隆网易云音乐 API 仓库
+RUN apk add --no-cache git && \
+    git clone --depth 1 https://github.com/Binaryify/NeteaseCloudMusicApi.git . && \
+    npm install && \
+    apk del git
 
-EXPOSE 3000
+ENV PORT=3001
+
+EXPOSE 3001
+
 CMD ["node", "app.js"]

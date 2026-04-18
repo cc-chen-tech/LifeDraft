@@ -87,5 +87,6 @@ frontend/coverage/
 /*.gif
 /*.webp
 
-# Netease Cloud Music API (cloned at runtime)
-netease-music-api/
+# Netease Cloud Music API (cloned at runtime, but keep Dockerfile)
+netease-music-api/*
+!netease-music-api/Dockerfile
