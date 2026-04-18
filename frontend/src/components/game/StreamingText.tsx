@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 
 interface StreamingTextProps {
@@ -116,9 +118,6 @@ export function StreamingText({
 
   if (!displayedText && !isStreaming) return null;
 
-  // Split text into paragraphs
-  const paragraphs = displayedText.split("\n\n").filter(Boolean);
-
   return (
     <div
       ref={containerRef}
@@ -128,21 +127,25 @@ export function StreamingText({
         className
       )}
     >
-      {paragraphs.map((para, i) => (
-        <p key={i} className="animate-fade-in-word">
-          {para}
-          {/* Show cursor on the last paragraph while typing */}
-          {/* Note: stillTyping check moved to inline to avoid ref access during render */}
-          {i === paragraphs.length - 1 && isStreaming && (
-            <span className="typewriter-cursor" />
-          )}
-        </p>
-      ))}
-      {/* If no paragraphs yet but streaming, show cursor */}
-      {paragraphs.length === 0 && isStreaming && (
-        <p className="animate-fade-in-word">
-          <span className="typewriter-cursor" />
-        </p>
+      {narrative ? (
+        <div className="animate-fade-in-word">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {displayedText}
+          </ReactMarkdown>
+          {isStreaming && <span className="typewriter-cursor" />}
+        </div>
+      ) : (
+        <>
+          {/* Split text into paragraphs for non-narrative mode */}
+          {displayedText.split("\n\n").filter(Boolean).map((para, i, arr) => (
+            <p key={i} className="animate-fade-in-word">
+              {para}
+              {i === arr.length - 1 && isStreaming && (
+                <span className="typewriter-cursor" />
+              )}
+            </p>
+          ))}
+        </>
       )}
     </div>
   );

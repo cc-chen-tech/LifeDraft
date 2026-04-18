@@ -58,8 +58,9 @@ async def get_game_state(
     }
 
     # Build round info
+    # current_round lives on player_state, not game_loop directly
     round_info = {
-        "current_round": (game_loop.current_round if hasattr(game_loop, "current_round") else 0),
+        "current_round": player_state.get("current_round", 0),
         "game_over": game_loop.is_game_over(),
     }
 

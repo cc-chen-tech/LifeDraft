@@ -57,7 +57,7 @@ class NeteaseMusicClient:
     URL_CACHE_TTL = 480  # 8 分钟
 
     def __init__(self, base_url: Optional[str] = None):
-        base_url = base_url or os.getenv("NETEASE_MUSIC_API_URL", "http://localhost:3000")
+        base_url = base_url or os.getenv("NETEASE_MUSIC_API_URL", "http://music-api:3001")
         # 将 localhost 替换为 127.0.0.1 避免 IPv6 问题
         self.base_url = base_url.replace("localhost", "127.0.0.1")  # type: ignore
         # 禁用连接池，避免 503 错误

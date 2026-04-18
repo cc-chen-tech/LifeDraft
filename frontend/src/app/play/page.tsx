@@ -214,6 +214,8 @@ export default function PlayPage() {
               size="icon"
               className="h-8 w-8"
               onClick={() => router.push("/")}
+              title="返回首页"
+              aria-label="返回首页"
             >
               <Home className="w-4 h-4" />
             </Button>
@@ -223,6 +225,8 @@ export default function PlayPage() {
               className={cn("h-8 w-8", isSaving && "animate-pulse")}
               onClick={handleSave}
               disabled={isSaving}
+              title="保存游戏"
+              aria-label="保存游戏"
             >
               {isSaving ? (
                 <Loader2 className="w-4 h-4 animate-spin" />

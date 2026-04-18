@@ -138,6 +138,11 @@
   text-indent: 2em;
 }
 
+.prose-story strong {
+  font-weight: 700;
+  color: var(--primary);
+}
+
 /* ===== 打字机动画 ===== */
 @keyframes typewriter-cursor {
   0%, 100% { opacity: 1; }

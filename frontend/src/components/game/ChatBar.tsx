@@ -260,6 +260,8 @@ export function ChatBar({
           variant="ghost"
           className="h-8 w-8"
           onClick={() => setIsExpanded(false)}
+          title="关闭聊天"
+          aria-label="关闭聊天"
         >
           <X className="w-4 h-4" />
         </Button>
@@ -317,6 +319,8 @@ export function ChatBar({
           className="h-10 w-10"
           disabled={!message.trim() || isSending}
           onClick={handleSend}
+          title="发送消息"
+          aria-label="发送消息"
         >
           {isSending ? (
             <Loader2 className="w-4 h-4 animate-spin" />

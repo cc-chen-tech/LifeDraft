@@ -69,7 +69,11 @@ interface MusicState {
   cleanup: () => void;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== "undefined"
+    ? `${window.location.protocol}//${window.location.host}`
+    : "http://localhost:8000");
 
 export const useMusicStore = create<MusicState>((set, get) => ({
   // 初始状态
