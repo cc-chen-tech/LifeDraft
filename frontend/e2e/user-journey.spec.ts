@@ -6,11 +6,7 @@
  */
 import { test, expect } from '@playwright/test';
 import { ensureAuthenticated } from './helpers/auth';
-import { waitForPageReady, dismissNextJSDevOverlay } from './helpers/wait-helpers';
-
-test.beforeEach(async ({ page }) => {
-  await dismissNextJSDevOverlay(page);
-});
+import { waitForPageReady } from './helpers/wait-helpers';
 
 test.describe('User Journey - Landing Page', () => {
   test('should display welcome page with title', async ({ page }) => {
@@ -40,8 +36,6 @@ test.describe('User Journey - Landing Page', () => {
   });
 
   test('should navigate to create page on new game click', async ({ page, context }) => {
-    // 先登录
-    await ensureAuthenticated(page, context);
     // 先登录
     await ensureAuthenticated(page, context);
 
@@ -286,33 +280,13 @@ test.describe('User Journey - Accessibility', () => {
   test('should support keyboard navigation', async ({ page }) => {
     await page.goto('/');
 
-    // 检查页面有可聚焦元素（通用，不依赖 Tab 键模拟）
-    const focusableElements = page.locator('button, a, input, [tabindex]:not([tabindex="-1"])');
-    const count = await focusableElements.count();
-    expect(count).toBeGreaterThan(0);
+    // Tab through elements
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab');
 
-    // 检查 focus-visible 样式存在（保证键盘导航时有视觉反馈）
-    const hasFocusVisible = await page.evaluate(() => {
-      const styles = Array.from(document.styleSheets)
-        .flatMap(sheet => {
-          try {
-            return Array.from(sheet.cssRules);
-          } catch {
-            return [];
-          }
-        })
-        .some(rule => rule.cssText?.includes(':focus-visible') || rule.cssText?.includes(':focus'));
-      return styles;
-    });
-    expect(hasFocusVisible).toBe(true);
-
-    // 在桌面端额外验证 Tab 键可以移动焦点
-    const viewport = page.viewportSize();
-    if (viewport && viewport.width >= 768) {
-      await page.keyboard.press('Tab');
-      const focusedElement = page.locator(':focus');
-      await expect(focusedElement).toBeVisible();
-    }
+    // Some element should be focused
+    const focusedElement = page.locator(':focus');
+    await expect(focusedElement).toBeVisible();
   });
 });
 

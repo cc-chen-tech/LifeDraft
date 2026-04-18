@@ -6,14 +6,11 @@
  */
 import { test, expect, Page, BrowserContext } from '@playwright/test';
 import { ensureAuthenticated } from './helpers/auth';
-import { waitForApiResponse, waitForPageReady, waitForStableDOM, waitForNetworkIdle, dismissNextJSDevOverlay } from './helpers/wait-helpers';
+import { waitForApiResponse, waitForPageReady, waitForStableDOM, waitForNetworkIdle } from './helpers/wait-helpers';
 
 const BASE_URL = 'http://localhost:3000';
 
 test.describe('Stability E2E', () => {
-  test.beforeEach(async ({ page }) => {
-    await dismissNextJSDevOverlay(page);
-  });
   test('SSE connection recovers after disconnect', async ({ page, context }) => {
     await ensureAuthenticated(page, context);
 

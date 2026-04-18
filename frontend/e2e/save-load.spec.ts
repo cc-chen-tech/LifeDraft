@@ -5,11 +5,7 @@
  * Tests for game save and load functionality including save list, load, and delete
  */
 import { test, expect } from '@playwright/test';
-import { waitForPageReady, dismissNextJSDevOverlay } from './helpers/wait-helpers';
-
-test.beforeEach(async ({ page }) => {
-  await dismissNextJSDevOverlay(page);
-});
+import { waitForPageReady } from './helpers/wait-helpers';
 
 test.describe('Save/Load - Page Structure', () => {
   test.beforeEach(async ({ page }) => {
