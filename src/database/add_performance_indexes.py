@@ -14,8 +14,10 @@ logger = logging.getLogger(__name__)
 # ★ 需要创建的索引列表
 # 格式: (表名, 索引名, 列列表)
 PERFORMANCE_INDEXES = [
-    ("game_states", "ix_game_state_game_created", ["game_id", "created_at"]),
-    ("games", "ix_games_user_ending_updated", ["user_id", "ending_type", "updated_at"]),
+    ("game_states", "ix_game_state_game_created",
+     ["game_id", "created_at"]),
+    ("games", "ix_games_user_ending_updated",
+     ["user_id", "ending_type", "updated_at"]),
 ]
 
 
@@ -35,20 +37,30 @@ def create_performance_indexes():
 
         # 构建 CREATE INDEX 语句
         cols_str = ", ".join(columns)
-        sql = f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({cols_str})"
+        sql = (
+            f"CREATE INDEX IF NOT EXISTS {index_name} "
+            f"ON {table_name} ({cols_str})"
+        )
 
         try:
             with engine.begin() as conn:
                 conn.execute(text(sql))
             created.append(index_name)
-            logger.info(f"[DB Index] Created: {index_name} on {table_name}({cols_str})")
+            logger.info(
+                f"[DB Index] Created: {index_name} on "
+                f"{table_name}({cols_str})"
+            )
         except Exception as e:
             logger.warning(f"[DB Index] Failed to create {index_name}: {e}")
 
     if created:
-        logger.info(f"[DB Index] Created {len(created)} indexes: {created}")
+        logger.info(
+            f"[DB Index] Created {len(created)} indexes: {created}"
+        )
     if skipped:
-        logger.info(f"[DB Index] Skipped {len(skipped)} existing indexes: {skipped}")
+        logger.info(
+            f"[DB Index] Skipped {len(skipped)} existing indexes: {skipped}"
+        )
 
     return created, skipped
 
