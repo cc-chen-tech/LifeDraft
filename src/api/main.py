@@ -4,20 +4,19 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
+from typing import Optional
 
 import sentry_sdk
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
 
-from typing import Optional
-
 from config.settings import (SENTRY_DSN, SENTRY_ENVIRONMENT,
                              SENTRY_TRACES_SAMPLE_RATE)
-from pydantic import BaseModel
 from src.api.routers import (auth, character, collection, friends, gameplay,
                              games, images, music, presets, story)
 from src.database.models import init_db

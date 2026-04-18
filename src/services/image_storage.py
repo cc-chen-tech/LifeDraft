@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from config.settings import settings
+from src.utils.image_compressor import compress_image
 
 logger = logging.getLogger(__name__)
 
@@ -158,7 +159,7 @@ class ImageStorageService:
 
     def _save_local(self, image_data: bytes, filename: str) -> Tuple[str, str]:
         """
-        保存到本地
+        保存到本地（自动压缩）
 
         Args:
             image_data: 图片数据
@@ -167,8 +168,24 @@ class ImageStorageService:
         Returns:
             Tuple[str, str]: (存储路径, 存储类型)
         """
-        # 构建完整路径
+        # 压缩图片以减少文件大小
+        try:
+            compressed_data = compress_image(
+                image_data,
+                max_dimension=1024,
+                quality=85,
+                output_format="JPEG",
+            )
+        except ValueError as e:
+            logger.warning(f"Image compression failed, saving original: {e}")
+            compressed_data = image_data
+
+        # 构建完整路径（压缩后使用 .jpg 扩展名）
         full_path = self.local_path / filename
+        # 如果压缩成功且原文件是 png，改为 jpg 扩展名
+        if compressed_data != image_data and filename.lower().endswith(".png"):
+            filename = filename[:-4] + ".jpg"
+            full_path = self.local_path / filename
 
         # 确保目录存在
         full_path.parent.mkdir(parents=True, exist_ok=True)
@@ -176,7 +193,7 @@ class ImageStorageService:
         # 写入文件
         try:
             with open(full_path, "wb") as f:
-                f.write(image_data)
+                f.write(compressed_data)
 
             logger.info(f"Image saved to: {full_path}")
             # ★ 返回相对路径（相对于 self.local_path），而非绝对路径

@@ -12,7 +12,6 @@ Contains:
 
 from typing import Any, Dict, List, Optional
 
-from config.prompts._helpers import _format_effects
 from src.ai.prompt_sanitizer import sanitize_life_vision, sanitize_player_name
 
 
@@ -189,13 +188,13 @@ def get_character_setting_prompt(
 请生成玩家的起始年龄。考虑时代背景和人生愿景，选择一个合适的年龄。
 
 **重要**：必须根据已生成的时代年份计算出生年份！
-- 如果时代是2024年，年龄是22岁，那么出生年份必须是2002年
+- 例如：如果时代是1990年，年龄是25岁，那么出生年份必须是1965年
 - 出生年份 = 时代年份 - 年龄
 
 返回JSON格式：
 {{
-    "age": 22,
-    "birth_year": 2002,
+    "age": <具体年龄数字>,
+    "birth_year": <根据时代年份计算出的出生年份>,
     "age_description": "这个年龄段的特征描述（30-50字）"
 }}
 """,
@@ -203,7 +202,7 @@ def get_character_setting_prompt(
 请生成玩家的性别设定。
 返回JSON格式：
 {{
-    "gender": "男",
+    "gender": "<男/女/其他>",
     "gender_description": "性别相关的社会背景描述（30-50字）"
 }}
 """,
@@ -272,9 +271,9 @@ def get_character_setting_prompt(
 
 返回JSON格式：
 {{
-    "wealth": 50000,
-    "currency": "¥",
-    "currency_name": "人民币",
+    "wealth": <根据家庭背景和时代合理设定的财富数值>,
+    "currency": "<货币符号，如：¥/$/金币/信用点等>",
+    "currency_name": "<货币名称，如：人民币/美元/金币/信用点等>",
     "wealth_description": "财富来源和初始经济状况的详细描述（50-100字）"
 }}
 
@@ -303,13 +302,13 @@ Return JSON format:
 Generate the player's starting age. Consider the era and life vision.
 
 **IMPORTANT**: You MUST calculate the birth year based on the generated era year!
-- If era is 2024 and age is 22, then birth_year MUST be 2002
+- Example: If era is 1990 and age is 25, then birth_year MUST be 1965
 - birth_year = era_year - age
 
 Return JSON format:
 {{
-    "age": 22,
-    "birth_year": 2002,
+    "age": <specific age number>,
+    "birth_year": <calculated birth year based on era>,
     "age_description": "Description of this age stage (30-50 words)"
 }}
 """,
@@ -317,7 +316,7 @@ Return JSON format:
 Generate the player's gender setting.
 Return JSON format:
 {{
-    "gender": "Male",
+    "gender": "<Male/Female/Other>",
     "gender_description": "Social context related to gender (30-50 words)"
 }}
 """,
@@ -380,9 +379,9 @@ Requirements:
 
 Return JSON format:
 {{
-    "wealth": 50000,
-    "currency": "$",
-    "currency_name": "Dollar",
+    "wealth": <wealth amount based on family background and era>,
+    "currency": "<currency symbol, e.g.: $/¥/gold coins/credits>",
+    "currency_name": "<currency name, e.g.: Dollar/Yuan/Gold Coin/Credit>",
     "wealth_description": "Detailed description of wealth source and initial economic status (50-100 words)"
 }}
 
@@ -462,20 +461,20 @@ def get_relationship_person_prompt(
     "name": "具体姓名（必须严格匹配时代和地域文化，不能与已生成人物重复）",
     "role": "具体角色定位（如：大学室友、创业伙伴、青梅竹马、同事、邻居等）",
     "relationship_desc": "详细的关系描述（50-100字）：如何认识、关系特点、对玩家的影响、互动方式等",
-    "age": 25,
-    "gender": "男/女",
-    "occupation": "职业",
-    "personality_traits": ["性格特点1", "性格特点2", "性格特点3"],
-    "temperament": "sanguine/choleric/melancholic/phlegmatic/balanced",
-    "mood": 60,
-    "mood_stability": 70,
-    "social_status": "student/ordinary/professional/leader/elite",
-    "influence": 30,
-    "competence": 50,
-    "specialty": ["专长1", "专长2"],
-    "affinity": 55,
-    "trust": 50,
-    "respect": 50
+    "age": <具体年龄数字>,
+    "gender": "<男/女>",
+    "occupation": "<职业>",
+    "personality_traits": ["<性格特点1>", "<性格特点2>", "<性格特点3>"],
+    "temperament": "<sanguine/choleric/melancholic/phlegmatic/balanced>",
+    "mood": <0-100之间的数值>,
+    "mood_stability": <0-100之间的数值>,
+    "social_status": "<student/ordinary/professional/leader/elite>",
+    "influence": <0-100之间的数值>,
+    "competence": <0-100之间的数值>,
+    "specialty": ["<专长1>", "<专长2>"],
+    "affinity": <0-100之间的数值>,
+    "trust": <0-100之间的数值>,
+    "respect": <0-100之间的数值>
 }}
 
 **气质类型说明：**
@@ -631,7 +630,7 @@ def get_initial_attributes_prompt(
 
     if language == "zh":
         return f"""根据以下角色特点，生成初始的核心属性数值：
-            
+
 角色特点：
 - 年龄：{age}岁
 - 性格：{personality}

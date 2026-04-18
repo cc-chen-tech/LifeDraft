@@ -90,3 +90,6 @@ frontend/coverage/
 # Netease Cloud Music API (cloned at runtime, but keep Dockerfile)
 netease-music-api/*
 !netease-music-api/Dockerfile
+aliyun
+aliyun-cli-macosx-latest-universal.tgz
+.remember/tmp/

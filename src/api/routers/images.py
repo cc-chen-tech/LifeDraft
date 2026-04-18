@@ -742,11 +742,10 @@ async def get_image_file(
             content=image_data,
             media_type=content_type,
             headers={
-                # ★ 不缓存图片文件，确保重新生成后能立即看到新图片
-                # 前端通过 URL 参数 t=timestamp 实现缓存控制
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-                "Pragma": "no-cache",
-                "Expires": "0",
+                # ★ 允许浏览器缓存图片1小时，提升移动端加载速度
+                # 重新生成后 URL 会变化（含 timestamp 参数），无需担心缓存问题
+                "Cache-Control": "public, max-age=3600",
+                "Expires": "3600",
             },
         )
 
