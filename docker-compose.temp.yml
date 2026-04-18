@@ -15,7 +15,6 @@ services:
     depends_on:
       - backend
       - frontend
-      - music-api
     restart: unless-stopped
     networks:
       - story2-network
@@ -47,17 +46,6 @@ services:
     environment:
       - PORT=3000
       - NODE_ENV=production
-    restart: unless-stopped
-    networks:
-      - story2-network
-
-  music-api:
-    build:
-      context: ./netease-music-api
-      dockerfile: Dockerfile
-    container_name: story2-music
-    environment:
-      - PORT=3001
     restart: unless-stopped
     networks:
       - story2-network
