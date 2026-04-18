@@ -2,6 +2,7 @@
 
 import logging
 from typing import Generator, Optional
+from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -12,6 +13,8 @@ from src.api.schemas import (CollectionResponse, MessageResponse,
                              RegenerateItemImageRequest)
 from src.api.services.session_service import session_service
 from src.database.models import SessionLocal
+from src.database.singletons import get_game_db
+from src.game.state import PlayerState
 from src.services.collection_service import (CollectionService,
                                              EntityNotFoundError,
                                              ImageGenerationError,
@@ -47,6 +50,15 @@ def _get_player_state(game_id: int, user_id: int) -> tuple:  # type: ignore
     if not player_state:
         raise HTTPException(status_code=400, detail="游戏状态不存在")
     return session, player_state
+
+
+def _save_player_state(game_id: int, player_state: PlayerState) -> None:
+    """将玩家状态持久化到数据库。"""
+    try:
+        db = get_game_db()
+        db.save_game_progress(game_id, player_state)
+    except Exception as e:
+        logger.warning(f"保存游戏状态失败 (非阻塞): {e}")
 
 
 # ==================== 获取收集数据 ====================
@@ -132,12 +144,16 @@ async def generate_item_image(  # type: ignore
     """生成物品图片"""
     user_id = _require_user(user_id)
     _, player_state = _get_player_state(game_id, user_id)
+    item_name = unquote(item_name)
 
     db = SessionLocal()
     try:
         service = CollectionService(db)
         service.verify_game_ownership(game_id, user_id)
         image_id = service.generate_item_image(game_id, item_name, player_state)
+
+        # 持久化状态变更
+        _save_player_state(game_id, player_state)
 
         return MessageResponse(
             message=f"物品 {item_name} 图片生成成功",
@@ -163,6 +179,7 @@ async def generate_item_description(  # type: ignore
     """生成物品描述"""
     user_id = _require_user(user_id)
     session, player_state = _get_player_state(game_id, user_id)
+    item_name = unquote(item_name)
 
     item_data = player_state.items.get(item_name)
     if not item_data:
@@ -214,12 +231,16 @@ async def generate_landmark_image(  # type: ignore
     """生成标志物图片"""
     user_id = _require_user(user_id)
     _, player_state = _get_player_state(game_id, user_id)
+    landmark_name = unquote(landmark_name)
 
     db = SessionLocal()
     try:
         service = CollectionService(db)
         service.verify_game_ownership(game_id, user_id)
         image_id = service.generate_landmark_image(game_id, landmark_name, player_state)
+
+        # 持久化状态变更
+        _save_player_state(game_id, player_state)
 
         return MessageResponse(
             message=f"标志物 {landmark_name} 图片生成成功",
@@ -248,6 +269,7 @@ async def generate_landmark_description(  # type: ignore
     """生成标志物描述"""
     user_id = _require_user(user_id)
     session, player_state = _get_player_state(game_id, user_id)
+    landmark_name = unquote(landmark_name)
 
     landmark_data = player_state.landmarks.get(landmark_name)
     if not landmark_data:
@@ -333,6 +355,7 @@ async def regenerate_item_image(  # type: ignore
     """基于用户文字描述重新生成物品图片"""
     user_id = _require_user(user_id)
     _, player_state = _get_player_state(game_id, user_id)
+    item_name = unquote(item_name)
 
     db = SessionLocal()
     try:
@@ -429,6 +452,10 @@ async def add_entities(  # type: ignore
             request.get("items", []),
             request.get("landmarks", []),
         )
+
+        # 持久化状态变更
+        _save_player_state(game_id, player_state)
+
         return {
             "message": f"成功添加 {len(result['added_items'])} 个物品, {len(result['added_landmarks'])} 个地点",
             "success": True,
@@ -468,6 +495,10 @@ async def create_item(  # type: ignore
             language=session.language,
             generate_description=request.get("generate_description", False),
         )
+
+        # 持久化状态变更
+        _save_player_state(game_id, player_state)
+
         return {
             "message": f"物品 '{item_info['name']}' 创建成功",
             "success": True,
@@ -500,6 +531,10 @@ async def delete_item(  # type: ignore
         success = service.delete_item(game_id, item_name, player_state)
         if not success:
             raise HTTPException(status_code=500, detail="删除失败")
+
+        # 持久化状态变更
+        _save_player_state(game_id, player_state)
+
         return {"message": f"物品 '{item_name}' 已删除", "success": True}
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -528,6 +563,10 @@ async def delete_character(  # type: ignore
         success = service.delete_character(game_id, character_name, player_state)
         if not success:
             raise HTTPException(status_code=500, detail="删除失败")
+
+        # 持久化状态变更
+        _save_player_state(game_id, player_state)
+
         return {"message": f"人物 '{character_name}' 已删除", "success": True}
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -558,6 +597,10 @@ async def delete_landmark(  # type: ignore
         success = service.delete_landmark(game_id, landmark_name, player_state)
         if not success:
             raise HTTPException(status_code=500, detail="删除失败")
+
+        # 持久化状态变更
+        _save_player_state(game_id, player_state)
+
         return {"message": f"地点 '{landmark_name}' 已删除", "success": True}
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
