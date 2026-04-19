@@ -195,11 +195,7 @@ class GameRepository:
         """
         db = SessionLocal()
         try:
-            game = (
-                db.query(Game)
-                .filter(Game.game_id == game_id, Game.user_id == user_id)
-                .first()
-            )
+            game = db.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
 
             if game:
                 db.delete(game)  # cascade 会自动删除关联的 states 和 decisions

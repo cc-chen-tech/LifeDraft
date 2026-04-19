@@ -175,7 +175,7 @@ def get_character_setting_prompt(
 """
         prompts = {
             "era": f"""{base_context}
-{'【用户明确要求：' + feedback + '，必须严格按照用户要求生成时代背景】' if feedback else '请生成一个时代背景设定（公元年份）。考虑玩家的人生愿景，选择一个合适的时代。'}
+{'【用户明确要求：' + feedback + '，必须严格按照用户要求生成时代背景】' if feedback else '请生成一个时代背景设定（公元年份）。考虑玩家的人生愿景和姓名的文化背景，选择一个合适的时代。'}
 {'注意：用户反馈优先于人生愿景，必须遵循用户的具体要求。' if feedback else ''}
 返回JSON格式：
 {{

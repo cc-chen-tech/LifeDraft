@@ -11,7 +11,8 @@ from src.api.schemas import (CreateSavePointRequest, GameListItem,
                              GameStateResponse, MessageResponse,
                              SaveGameResponse, SavePointItem,
                              SavePointListResponse, StateSnapshotItem,
-                             StateTimelineResponse, UpdateCharacterSettingsRequest,
+                             StateTimelineResponse,
+                             UpdateCharacterSettingsRequest,
                              UpdateGameSettingsRequest)
 from src.api.services.session_service import session_service
 from src.api.session_store import session_store
@@ -476,9 +477,7 @@ async def update_character_settings(
     db_session = SessionLocal()
     try:
         game = (
-            db_session.query(Game)
-            .filter(Game.game_id == game_id, Game.user_id == user_id)
-            .first()
+            db_session.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
         )
         if not game:
             raise HTTPException(status_code=404, detail="Game not found or not owned by user")
