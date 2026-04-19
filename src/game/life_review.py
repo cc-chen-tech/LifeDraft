@@ -52,7 +52,7 @@ class LifeReviewGenerator:
         dim_counts: Dict[str, int] = {}
         for a in achievements:
             dim_counts[a.dimension] = dim_counts.get(a.dimension, 0) + 1
-        top_dim = max(dim_counts, key=dim_counts.get) if dim_counts else ""
+        top_dim = max(dim_counts, key=lambda k: dim_counts[k]) if dim_counts else ""
         if top_dim == "trajectory":
             labels.append("稳健派" if zh else "Steady")
         elif top_dim == "decision_style":
@@ -69,7 +69,7 @@ class LifeReviewGenerator:
 
     def _extract_turning_points(self, player: PlayerState) -> List[Dict[str, Any]]:
         """Extract key turning points from round history."""
-        turning_points = []
+        turning_points: List[Dict[str, Any]] = []
         if not player.round_history:
             return turning_points
 
@@ -107,12 +107,12 @@ class LifeReviewGenerator:
 
         for r in player.round_history:
             effects = r.get("effects", {})
-            energy_curve.append(max(0, min(100, energy_curve[-1] + effects.get("energy", 0))))
-            mood_curve.append(max(0, min(100, mood_curve[-1] + effects.get("mood", 0))))
+            energy_curve.append(max(0, min(100, energy_curve[-1] + int(effects.get("energy", 0)))))
+            mood_curve.append(max(0, min(100, mood_curve[-1] + int(effects.get("mood", 0)))))
             knowledge_curve.append(
-                max(0, min(100, knowledge_curve[-1] + effects.get("knowledge", 0)))
+                max(0, min(100, knowledge_curve[-1] + int(effects.get("knowledge", 0))))
             )
-            wealth_curve.append(max(0, wealth_curve[-1] + effects.get("wealth", 0)))
+            wealth_curve.append(max(0, wealth_curve[-1] + int(effects.get("wealth", 0))))
 
         # Pad to match week count
         while len(energy_curve) < weeks:
@@ -144,7 +144,7 @@ class LifeReviewGenerator:
 
     def _build_relationship_network(self, player: PlayerState) -> Dict[str, Any]:
         """Build relationship network data."""
-        nodes = [
+        nodes: List[Dict[str, Any]] = [
             {"name": name, "affinity": affinity}
             for name, affinity in player.relationships.items()
         ]
