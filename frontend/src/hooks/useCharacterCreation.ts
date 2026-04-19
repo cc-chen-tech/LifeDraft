@@ -237,16 +237,20 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     [currentStepKey, playerName, lifeVision, characterSettings, language, hasBasicInfo, showToast]
   );
 
-  // Reset autoGenTriggeredRef when navigating back to a previous step
+  // Reset autoGenTriggeredRef and clear subsequent steps when navigating back
   useEffect(() => {
-    // When current step changes, reset the trigger for steps that haven't been saved yet
-    // This allows re-generation when user goes back and then forward again
+    // When user navigates back, reset the trigger and clear settings for all subsequent steps
+    // This allows re-generation when user goes back, modifies, and then forward again
     CREATION_STEPS.forEach((step, index) => {
-      if (index > creationStep && characterSettings[step] == null) {
+      if (index > creationStep) {
         autoGenTriggeredRef.current[step] = false;
+        // Clear the setting for subsequent steps to force re-generation
+        if (characterSettings[step] != null) {
+          updateCharacterSetting(step, null);
+        }
       }
     });
-  }, [creationStep, characterSettings]);
+  }, [creationStep, characterSettings, updateCharacterSetting]);
 
   // Auto-generate on step enter
   useEffect(() => {

@@ -14,6 +14,14 @@ A text-based life simulation game with AI-generated events, resource management,
 - **Bilingual Support**: Play in Chinese (default) or English
 - **Multiple Endings**: Experience different life outcomes based on your choices
 
+## Repo Wiki
+
+For maintainability, upgrade planning, and new feature design, see:
+
+- [docs/wiki/README.md](docs/wiki/README.md)
+- Includes quick start, architecture, API/session model, troubleshooting,
+  feature playbooks, release checklist, module index, and glossary.
+
 ## Tech Stack
 
 - **Backend**: Python 3.9+, FastAPI, SQLAlchemy

@@ -422,7 +422,9 @@ export const useGameStore = create<GameState>()(
 
     updateCharacterSetting: (key, value) => {
       useCharacterStore.getState().updateCharacterSetting(key, value);
-      set({ characterSettings: useCharacterStore.getState().characterSettings });
+      set((state) => ({
+        characterSettings: { ...state.characterSettings, [key]: value },
+      }));
     },
 
     setPlayerName: (name) => {
