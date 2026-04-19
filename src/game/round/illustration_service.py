@@ -240,11 +240,14 @@ class RoundIllustrationService:
 
         except ContentInspectionError as e:
             logger.warning(f"[RoundIllustration] Content inspection failed: {e}")
+            raise  # ★ 重新抛出，让调用方知悉失败
         except ImageGenerationError as e:
             logger.error(f"[RoundIllustration] Image generation failed: {e}")
+            raise  # ★ 重新抛出，避免外层打印虚假的 "success" 日志
         except Exception as e:
             logger.error(f"[RoundIllustration] Unexpected error: {e}")
             self.db.rollback()
+            raise  # ★ 重新抛出未知异常
 
     def _generate_scene_image(
         self,
