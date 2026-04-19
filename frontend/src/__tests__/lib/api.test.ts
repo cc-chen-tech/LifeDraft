@@ -92,7 +92,7 @@ describe('music', () => {
     // Music API uses full URL (API_BASE_URL + /api/music/recommend)
     expect(url).toContain('/api/music/recommend');
     expect(options.method).toBe('POST');
-    expect(JSON.parse(options.body)).toEqual({ story_text: 'A gentle breeze...', game_id: 10 });
+    expect(JSON.parse(options.body)).toEqual({ story_text: 'A gentle breeze...', game_id: 10, refresh: false });
   });
 
   it('fetchSongUrl calls GET /api/music/song-url with song_id param', async () => {

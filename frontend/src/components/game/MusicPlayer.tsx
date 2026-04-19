@@ -72,7 +72,7 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
   const retryCountRef = useRef<Map<number, number>>(new Map()); // 每首歌的重试计数
 
   // 获取音乐推荐
-  const fetchRecommendation = useCallback(async () => {
+  const fetchRecommendation = useCallback(async (isRefresh = false) => {
     if (!storyText || isLoadingRecommendation) return;
 
     setIsLoadingRecommendation(true);
@@ -87,7 +87,7 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
         return;
       }
 
-      const result = await fetchMusicRecommendation(storyText, gameId);
+      const result = await fetchMusicRecommendation(storyText, gameId, isRefresh);
       setRecommendation(result);
       
       // URL 已由后端批量返回，无需前端预加载
@@ -589,7 +589,7 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
         <Button
           variant="ghost"
           size="sm"
-          onClick={fetchRecommendation}
+          onClick={() => fetchRecommendation(true)}
           disabled={isLoadingRecommendation}
         >
           {isLoadingRecommendation ? (

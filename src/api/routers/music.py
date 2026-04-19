@@ -21,6 +21,7 @@ class MusicRecommendationRequest(BaseModel):
 
     story_text: str
     game_id: Optional[int] = None
+    refresh: bool = False  # 刷新模式：复用缓存的 AI 分析，重新搜索歌曲
 
 
 class SongResponse(BaseModel):
@@ -66,6 +67,7 @@ async def recommend_music(
         # 分析故事并获取推荐
         recommendation = await music_service.analyze_story_for_music(
             story_text=request.story_text,
+            refresh=request.refresh,
         )
 
         # 批量获取所有歌曲的播放 URL（并行）
@@ -272,7 +274,9 @@ async def stream_song(song_id: int, request: Request):
 
             fresh_url = await music_service.get_song_play_url(song_id)
             if not fresh_url:
-                raise HTTPException(status_code=404, detail="Song URL not available after refresh")
+                raise HTTPException(
+                    status_code=404, detail="Song URL not available after refresh"
+                )
             logger.info(
                 f"[MusicStream] URL刷新成功: song_id={song_id}, new_url={_sanitize_url(fresh_url)}"
             )

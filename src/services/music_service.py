@@ -57,7 +57,9 @@ class NeteaseMusicClient:
     URL_CACHE_TTL = 480  # 8 分钟
 
     def __init__(self, base_url: Optional[str] = None):
-        base_url = base_url or os.getenv("NETEASE_MUSIC_API_URL", "http://music-api:3001")
+        base_url = base_url or os.getenv(
+            "NETEASE_MUSIC_API_URL", "http://music-api:3001"
+        )
         # 将 localhost 替换为 127.0.0.1 避免 IPv6 问题
         self.base_url = base_url.replace("localhost", "127.0.0.1")  # type: ignore
         # 禁用连接池，避免 503 错误
@@ -68,7 +70,9 @@ class NeteaseMusicClient:
         }
         self.client = httpx.AsyncClient(timeout=30.0, limits=limits, headers=headers)
 
-    async def search(self, keywords: str, limit: int = 10, max_retries: int = 2) -> List[Song]:
+    async def search(
+        self, keywords: str, limit: int = 10, max_retries: int = 2
+    ) -> List[Song]:
         """搜索歌曲
 
         Args:
@@ -101,7 +105,9 @@ class NeteaseMusicClient:
                     song = Song(
                         id=song_data.get("id", 0),
                         name=song_data.get("name", ""),
-                        artists=[a.get("name", "") for a in song_data.get("artists", [])],
+                        artists=[
+                            a.get("name", "") for a in song_data.get("artists", [])
+                        ],
                         album=song_data.get("album", {}).get("name", ""),
                         duration=song_data.get("duration", 0),
                     )
@@ -133,7 +139,9 @@ class NeteaseMusicClient:
                 logger.exception(f"Failed to search music: {e}")
                 return []
 
-        logger.error(f"[NeteaseMusic] Search exhausted retries for '{keywords}': {last_error}")
+        logger.error(
+            f"[NeteaseMusic] Search exhausted retries for '{keywords}': {last_error}"
+        )
         return []
 
     async def get_song_url(self, song_id: int, retry: int = 2) -> Optional[str]:
@@ -154,7 +162,9 @@ class NeteaseMusicClient:
                 logger.info(f"[MusicCache] 缓存命中: song_id={song_id}")
                 return url
             else:
-                logger.info(f"[MusicCache] 缓存未命中/过期: song_id={song_id}, 重新获取")
+                logger.info(
+                    f"[MusicCache] 缓存未命中/过期: song_id={song_id}, 重新获取"
+                )
                 del self._url_cache[song_id]
         else:
             logger.info(f"[MusicCache] 缓存未命中/过期: song_id={song_id}, 重新获取")
@@ -178,9 +188,14 @@ class NeteaseMusicClient:
             if songs and len(songs) > 0:
                 song_url = songs[0].get("url")
                 if song_url:
-                    logger.info(f"[NeteaseMusic] Got URL for song {song_id}: {song_url[:50]}...")
+                    logger.info(
+                        f"[NeteaseMusic] Got URL for song {song_id}: {song_url[:50]}..."
+                    )
                     # 写入缓存
-                    self._url_cache[song_id] = (song_url, time.time() + self.URL_CACHE_TTL)
+                    self._url_cache[song_id] = (
+                        song_url,
+                        time.time() + self.URL_CACHE_TTL,
+                    )
                     return song_url  # type: ignore[no-any-return]
                 else:
                     logger.warning(
@@ -220,29 +235,80 @@ class NeteaseMusicClient:
 class MusicService:
     """音乐服务：基于故事内容推荐音乐"""
 
+    # ★ 缓存：基于故事文本 hash 缓存分析结果，避免重复 AI 调用
+    # key: story_hash -> value: (analysis_dict, timestamp)
+    _analysis_cache: Dict[str, tuple[Dict[str, Any], float]] = {}
+    _CACHE_TTL = 3600  # 1 小时
+
     def __init__(self):
         self.ai_client = AIClient()
         self.music_client = NeteaseMusicClient()
+
+    def _story_hash(self, story_text: str) -> str:
+        """生成故事文本的 hash 用于缓存。"""
+        import hashlib
+
+        # 取前 500 字作为 hash 输入（足够区分不同场景，同时避免大文本）
+        preview = story_text[:500] if len(story_text) > 500 else story_text
+        return hashlib.md5(preview.encode("utf-8")).hexdigest()
 
     async def analyze_story_for_music(
         self,
         story_text: str,
         character_settings: Optional[Dict] = None,
+        refresh: bool = False,
     ) -> MusicRecommendation:
         """分析故事内容，提取音乐搜索关键词
 
         Args:
             story_text: 故事文本
             character_settings: 角色设定
+            refresh: 是否刷新（复用缓存的 AI 分析结果，但重新搜索歌曲）
 
         Returns:
             音乐推荐结果
         """
-        # 使用 AI 分析故事情绪和场景
-        analysis = await self._analyze_story_mood(story_text, character_settings)
+        story_hash = self._story_hash(story_text)
+        now = time.time()
+
+        # ★ 尝试从缓存获取 AI 分析结果（避免重复调用 AI）
+        cached = self._analysis_cache.get(story_hash)
+        if cached and not refresh:
+            analysis, cached_at = cached
+            if now - cached_at < self._CACHE_TTL:
+                logger.info(
+                    f"[MusicCache] 命中分析缓存: hash={story_hash[:8]}, "
+                    f"age={int(now - cached_at)}s, mood={analysis.get('mood')}"
+                )
+            else:
+                logger.info(f"[MusicCache] 缓存过期，重新分析: hash={story_hash[:8]}")
+                cached = None
+        else:
+            if refresh:
+                logger.info(
+                    f"[MusicCache] 刷新模式，复用缓存分析: hash={story_hash[:8]}"
+                )
+
+        if cached:
+            analysis, _ = cached
+        else:
+            # 使用 AI 分析故事情绪和场景
+            analysis = await self._analyze_story_mood(story_text, character_settings)
+            self._analysis_cache[story_hash] = (analysis, now)
+            logger.info(f"[MusicCache] 缓存新分析结果: hash={story_hash[:8]}")
 
         # 构建搜索关键词
         search_keywords = self._build_search_keywords(analysis)
+
+        # ★ 刷新模式：打乱关键词顺序，尝试获取更多不同歌曲
+        if refresh:
+            import random
+
+            # 复制一份并打乱，保持前3个关键词不变（最相关的）
+            shuffled = search_keywords[3:]
+            random.shuffle(shuffled)
+            search_keywords = search_keywords[:3] + shuffled
+            logger.info("[MusicCache] 刷新: 关键词重排，前3固定+其余随机")
 
         # 搜索歌曲 - 使用更多关键词，获取更多结果
         all_songs = []
@@ -307,9 +373,13 @@ class MusicService:
                     setting_info.append(f"时代背景：{era.get('era_description', '')}")
                     setting_info.append(f"时代特征：{era.get('era_name', '')}")
             if "world_description" in character_settings:
-                setting_info.append(f"世界观：{character_settings['world_description']}")
+                setting_info.append(
+                    f"世界观：{character_settings['world_description']}"
+                )
             if "character_style" in character_settings:
-                setting_info.append(f"角色风格：{character_settings['character_style']}")
+                setting_info.append(
+                    f"角色风格：{character_settings['character_style']}"
+                )
 
         era_info = "\n".join(setting_info) if setting_info else ""
 

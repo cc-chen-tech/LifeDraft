@@ -216,7 +216,8 @@ export const useMusicStore = create<MusicState>((set, get) => ({
 // API 函数
 export async function fetchMusicRecommendation(
   storyText: string,
-  gameId?: number
+  gameId?: number,
+  refresh: boolean = false
 ): Promise<MusicRecommendation> {
   const response = await fetch(`${API_BASE_URL}/api/music/recommend`, {
     method: "POST",
@@ -224,7 +225,7 @@ export async function fetchMusicRecommendation(
       "Content-Type": "application/json",
     },
     credentials: "include",
-    body: JSON.stringify({ story_text: storyText, game_id: gameId }),
+    body: JSON.stringify({ story_text: storyText, game_id: gameId, refresh }),
   });
 
   if (!response.ok) {
