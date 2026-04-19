@@ -5,6 +5,8 @@ from typing import Any, Dict, Optional
 
 from src.ai.generator import EventGenerator
 from src.ai.system_prompts import get_system_prompt
+from src.game.achievements import AchievementEngine
+from src.game.life_review import LifeReviewGenerator
 from src.game.state import PlayerState
 
 logger = logging.getLogger(__name__)
@@ -58,14 +60,23 @@ class EndingEvaluator:
         # Generate summary
         summary = self._generate_summary(player_state, ending_type, language)
 
-        # Calculate achievements
-        achievements = self._calculate_achievements(player_state, language)
+        # Calculate achievements with new engine
+        engine = AchievementEngine(language=language)
+        achievement_objects = engine.evaluate(player_state)
+
+        # Generate life review
+        review_generator = LifeReviewGenerator(language=language)
+        life_review = review_generator.generate(player_state, achievement_objects)
 
         return {
             "ending_type": ending_type,
             "ending_name": self.ENDING_TYPES[ending_type][language],
             "summary": summary,
-            "achievements": achievements,
+            "achievements": {
+                "list": [a.__dict__ for a in achievement_objects],
+                "count": len(achievement_objects),
+            },
+            "life_review": life_review,
             "final_stats": {
                 "energy": player_state.energy,
                 "mood": player_state.mood,
@@ -236,38 +247,3 @@ Be vivid and specific, reflecting the character's uniqueness."""
             }
 
         return summaries.get(ending_type, summaries["balanced"])
-
-    def _calculate_achievements(self, player_state: PlayerState, language: str) -> Dict[str, Any]:
-        """Calculate achievements."""
-        achievements = []
-
-        # Wealth milestones
-        if player_state.wealth >= 100000:
-            achievements.append("百万富翁" if language == "zh" else "Millionaire")
-        elif player_state.wealth >= 50000:
-            achievements.append("财务自由" if language == "zh" else "Financial Freedom")
-
-        # Knowledge milestones
-        if player_state.knowledge >= 90:
-            achievements.append("知识渊博" if language == "zh" else "Knowledgeable")
-
-        # Relationship milestones
-        if len(player_state.relationships) >= 5:
-            achievements.append("社交达人" if language == "zh" else "Social Butterfly")
-
-        # Decision milestones
-        if len(player_state.decision_history) >= 50:
-            achievements.append("经验丰富" if language == "zh" else "Experienced")
-
-        # Perfect weeks (all attributes > 70)
-        perfect_weeks = sum(
-            1
-            for _ in range(len(player_state.decision_history))
-            if player_state.energy > 70 and player_state.mood > 70 and player_state.knowledge > 70
-        )
-        if perfect_weeks > 0:
-            achievements.append(
-                f"{perfect_weeks}个完美周" if language == "zh" else f"{perfect_weeks} Perfect Weeks"
-            )
-
-        return {"list": achievements, "count": len(achievements)}

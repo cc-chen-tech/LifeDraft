@@ -33,7 +33,7 @@ class TestAchievementAPIContract:
             mock_session.language = "zh"
             mock_service.get_or_restore.return_value = mock_session
 
-            response = client.get("/games/1/ending")
+            response = client.get("/api/games/1/ending")
             assert response.status_code == 200
             data = response.json()
             assert "life_review" in data
@@ -62,7 +62,7 @@ class TestAchievementAPIContract:
             mock_session.language = "zh"
             mock_service.get_or_restore.return_value = mock_session
 
-            response = client.get("/games/1/ending")
+            response = client.get("/api/games/1/ending")
             assert response.status_code == 200
             data = response.json()
             achievements = data.get("achievements", {})
@@ -87,7 +87,7 @@ class TestAchievementAPIContract:
             mock_session.game_loop = mock_game_loop
             mock_service.get_or_restore.return_value = mock_session
 
-            response = client.get("/games/1/ending")
+            response = client.get("/api/games/1/ending")
             assert response.status_code == 400
             data = response.json()
             assert "detail" in data
@@ -109,7 +109,7 @@ class TestAchievementAPIContract:
             mock_session.language = "zh"
             mock_service.get_or_restore.return_value = mock_session
 
-            response = client.get("/games/1/ending")
+            response = client.get("/api/games/1/ending")
             data = response.json()
             curves = data["life_review"]["resource_curves"]
             assert "energy" in curves
@@ -138,7 +138,7 @@ class TestAchievementAPIContract:
             mock_session.language = "zh"
             mock_service.get_or_restore.return_value = mock_session
 
-            response = client.get("/games/1/ending")
+            response = client.get("/api/games/1/ending")
             data = response.json()
             badges = data["life_review"]["achievement_badge_wall"]
             assert isinstance(badges, list)

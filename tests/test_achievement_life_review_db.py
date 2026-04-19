@@ -76,7 +76,7 @@ class TestAchievementPersistence:
             round_history=[{"week": i, "choice": "A", "summary": "test"} for i in range(20)],
             relationships={"Alice": 85},
         )
-        achievements = [Achievement(id="test", name="Test", rarity="common", dimension="trajectory")]
+        achievements = [Achievement(id="test", name="Test", description="Test", rarity="common", dimension="trajectory")]
         generator = LifeReviewGenerator(language="zh")
         review = generator.generate(player, achievements)
 
