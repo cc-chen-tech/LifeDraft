@@ -300,9 +300,13 @@ async def get_ending(
     # Save ending to database
     db = get_db()
     try:
+        # Merge life_review and achievements into final_state for persistence
+        final_state = dict(ending_data["final_stats"])
+        final_state["life_review"] = ending_data.get("life_review")
+        final_state["achievements"] = ending_data.get("achievements")
         db.save_ending(
             game_id,
-            ending_data["final_stats"],
+            final_state,
             ending_data["ending_type"],
             ending_data["summary"],
             ending_data.get("achievements"),

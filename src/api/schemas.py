@@ -81,6 +81,72 @@ class GameStateResponse(BaseModel):
     constraint_level: str = "expert"
 
 
+# ==================== Achievements & Life Review ====================
+
+
+class AchievementItem(BaseModel):
+    id: str
+    name: str
+    description: str
+    rarity: str  # common, rare, epic, legendary
+    dimension: str
+    unlocked_at_week: int = 0
+    icon: str = ""
+
+
+class AchievementList(BaseModel):
+    list: List[AchievementItem]
+    count: int
+
+
+class TurningPointItem(BaseModel):
+    week: int
+    description: str
+    impact_score: float
+
+
+class ResourceCurves(BaseModel):
+    energy: List[int]
+    mood: List[int]
+    knowledge: List[int]
+    wealth: List[int]
+
+
+class RelationshipNode(BaseModel):
+    name: str
+    affinity: int
+
+
+class RelationshipEdge(BaseModel):
+    source: str
+    target: str
+    strength: float
+
+
+class RelationshipNetwork(BaseModel):
+    nodes: List[RelationshipNode]
+    edges: List[RelationshipEdge]
+
+
+class BadgeWallItem(BaseModel):
+    id: str
+    name: str
+    rarity: str
+    unlocked_at_week: int
+
+
+class LifeReviewData(BaseModel):
+    personality_labels: List[str]
+    key_turning_points: List[TurningPointItem]
+    resource_curves: ResourceCurves
+    achievement_badge_wall: List[BadgeWallItem]
+    relationship_network: RelationshipNetwork
+    life_motto: str
+    play_duration_minutes: int
+    total_decisions: int
+    favorite_choice_type: str
+
+
 class SaveGameResponse(BaseModel):
     success: bool
     message: str = ""
