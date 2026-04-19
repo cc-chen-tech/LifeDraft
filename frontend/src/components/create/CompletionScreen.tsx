@@ -10,6 +10,7 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { SettingDisplay } from "@/components/game/SettingDisplay";
+import { SettingFeedbackCard } from "./SettingFeedbackCard";
 import { CREATION_STEPS } from "@/stores/useGameStore";
 import {
   ArrowLeft,
@@ -54,6 +55,7 @@ interface CompletionScreenProps {
   onBack: () => void;
   onStartGame: () => Promise<void>;
   onSavePreset: () => Promise<void>;
+  onRegenerateSetting: (stepKey: string, feedback: string) => Promise<void>;
 }
 
 export function CompletionScreen({
@@ -74,6 +76,7 @@ export function CompletionScreen({
   onBack,
   onStartGame,
   onSavePreset,
+  onRegenerateSetting,
 }: CompletionScreenProps) {
   return (
     <div className="min-h-screen bg-background animate-page-enter flex flex-col">
@@ -142,15 +145,13 @@ export function CompletionScreen({
               const data = characterSettings[step];
               if (!data) return null;
               return (
-                <div key={step} className="space-y-1">
-                  <h3 className="text-xs font-medium text-primary">
-                    {STEP_LABELS[step]}
-                  </h3>
-                  <SettingDisplay
-                    stepKey={step}
-                    data={data as Record<string, unknown>}
-                  />
-                </div>
+                <SettingFeedbackCard
+                  key={step}
+                  stepKey={step}
+                  stepLabel={STEP_LABELS[step]}
+                  data={data as Record<string, unknown>}
+                  onRegenerate={(feedback) => onRegenerateSetting(step, feedback)}
+                />
               );
             })}
           </div>

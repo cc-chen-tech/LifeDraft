@@ -58,7 +58,8 @@ export default function CreatePage() {
     setImageFeedback,
     regeneratePlayerImage,
     regenerateFreshPlayerImage,
-    
+    regenerateSetting,
+
     // Local state
     isGenerating,
     feedback,
@@ -128,6 +129,7 @@ export default function CreatePage() {
         }}
         onStartGame={handleStartGame}
         onSavePreset={handleSavePreset}
+        onRegenerateSetting={regenerateSetting}
       />
     );
   }
