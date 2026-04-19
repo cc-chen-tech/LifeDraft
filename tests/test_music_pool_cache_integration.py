@@ -347,3 +347,120 @@ class TestRefreshPoolUrls:
 
         service.music_client.search.assert_called()
         assert len(pool.verified_songs) >= 2
+
+
+class TestAnalyzeStoryForMusicWithPool:
+    """验证 analyze_story_for_music 使用缓存池。"""
+
+    @pytest.fixture(autouse=True)
+    def _clear_caches(self):
+        MusicService._analysis_cache.clear()
+        MusicService._pool_cache.clear()
+
+    async def test_returns_music_recommendation(self):
+        """返回 MusicRecommendation 类型。"""
+        service = MusicService()
+
+        service._analyze_story_mood = AsyncMock(return_value={
+            "mood": "悲伤",
+            "keywords": ["伤感"],
+            "scene_type": "叙事",
+        })
+        service.music_client.search = AsyncMock(return_value=[
+            Song(id=9001, name="歌曲1", artists=["A"], album="X", duration=200000),
+            Song(id=9002, name="歌曲2", artists=["B"], album="Y", duration=210000),
+        ])
+        service.music_client.get_song_url = AsyncMock(
+            side_effect=lambda song_id: f"https://cdn.example.com/{song_id}.mp3"
+        )
+
+        result = await service.analyze_story_for_music("一个悲伤的故事")
+
+        from src.services.music_service import MusicRecommendation
+        assert isinstance(result, MusicRecommendation)
+        assert result.mood == "悲伤"
+
+    async def test_returns_5_to_8_songs(self):
+        """返回 5-8 首歌曲。"""
+        service = MusicService()
+
+        service._analyze_story_mood = AsyncMock(return_value={
+            "mood": "悲伤",
+            "keywords": ["伤感"],
+            "scene_type": "叙事",
+        })
+
+        # 生成足够多的歌曲
+        songs = []
+        for i in range(30):
+            songs.append(
+                Song(id=10000 + i, name=f"歌曲{i}", artists=[f"歌手{i}"],
+                     album=f"专辑{i}", duration=200000 + i * 1000)
+            )
+        service.music_client.search = AsyncMock(return_value=songs)
+        service.music_client.get_song_url = AsyncMock(
+            side_effect=lambda song_id: f"https://cdn.example.com/{song_id}.mp3"
+        )
+
+        result = await service.analyze_story_for_music("一个悲伤的故事")
+
+        assert 5 <= len(result.songs) <= 8, (
+            f"返回 {len(result.songs)} 首，不在 5-8 范围内"
+        )
+
+    async def test_all_returned_songs_have_url(self):
+        """返回的歌曲全部有 URL。"""
+        service = MusicService()
+
+        service._analyze_story_mood = AsyncMock(return_value={
+            "mood": "悲伤",
+            "keywords": ["伤感"],
+            "scene_type": "叙事",
+        })
+
+        songs = []
+        for i in range(30):
+            songs.append(
+                Song(id=11000 + i, name=f"歌曲{i}", artists=[f"歌手{i}"],
+                     album=f"专辑{i}", duration=200000 + i * 1000)
+            )
+        service.music_client.search = AsyncMock(return_value=songs)
+        service.music_client.get_song_url = AsyncMock(
+            side_effect=lambda song_id: f"https://cdn.example.com/{song_id}.mp3"
+        )
+
+        result = await service.analyze_story_for_music("一个悲伤的故事")
+
+        for song in result.songs:
+            assert song.url, f"歌曲 {song.name} 必须有 URL"
+
+    async def test_cache_hit_returns_from_pool(self):
+        """缓存命中时从池中返回。"""
+        service = MusicService()
+        story_text = "缓存测试故事"
+        story_hash = service._story_hash(story_text)
+
+        # 预填充缓存池
+        pool = CachedMusicPool(
+            analysis={"mood": "欢快"},
+            verified_songs=[
+                CachedSong(
+                    id=12001, name="缓存歌曲", artists=["C"], album="Z",
+                    duration=180000, url="https://cdn.example.com/12001.mp3",
+                    url_expires_at=time.time() + 480, verified_at=time.time(),
+                )
+                for _ in range(10)
+            ],
+            created_at=time.time(),
+        )
+        MusicService._pool_cache[story_hash] = (pool, time.time())
+
+        # Mock search — 不应该被调用
+        service.music_client.search = AsyncMock(
+            side_effect=Exception("Should not search when pool cache hits")
+        )
+
+        result = await service.analyze_story_for_music(story_text)
+
+        assert result.mood == "欢快"
+        service.music_client.search.assert_not_called()

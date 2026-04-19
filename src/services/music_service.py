@@ -501,7 +501,12 @@ class MusicService:
         character_settings: Optional[Dict] = None,
         refresh: bool = False,
     ) -> MusicRecommendation:
-        """分析故事内容，提取音乐搜索关键词
+        """分析故事内容，提取音乐搜索关键词，返回推荐歌曲。
+
+        ★ 使用缓存池优化：
+        - 首次：AI分析 + 搜索 + URL验证 → 缓存池
+        - 后续：从缓存池中随机选择 5-8 首
+        - 刷新：复用AI分析，打乱关键词重新搜索
 
         Args:
             story_text: 故事文本
@@ -509,90 +514,45 @@ class MusicService:
             refresh: 是否刷新（复用缓存的 AI 分析结果，但重新搜索歌曲）
 
         Returns:
-            音乐推荐结果
+            音乐推荐结果（5-8首已验证URL的歌曲）
         """
-        story_hash = self._story_hash(story_text)
-        now = time.time()
+        # 获取或构建缓存池
+        pool = await self._get_or_build_pool(story_text, refresh, character_settings)
 
-        # ★ 尝试从缓存获取 AI 分析结果（避免重复调用 AI）
-        cached = self._analysis_cache.get(story_hash)
-        if cached and not refresh:
-            analysis, cached_at = cached
-            if now - cached_at < self._CACHE_TTL:
-                logger.info(
-                    f"[MusicCache] 命中分析缓存: hash={story_hash[:8]}, "
-                    f"age={int(now - cached_at)}s, mood={analysis.get('mood')}"
-                )
-            else:
-                logger.info(f"[MusicCache] 缓存过期，重新分析: hash={story_hash[:8]}")
-                cached = None
-        else:
-            if refresh:
-                logger.info(f"[MusicCache] 刷新模式，复用缓存分析: hash={story_hash[:8]}")
+        # 刷新池中过期 URL
+        await self._refresh_pool_urls(pool)
 
-        if cached:
-            analysis, _ = cached
-        else:
-            # 使用 AI 分析故事情绪和场景
-            analysis = await self._analyze_story_mood(story_text, character_settings)
-            self._analysis_cache[story_hash] = (analysis, now)
-            logger.info(f"[MusicCache] 缓存新分析结果: hash={story_hash[:8]}")
+        # 从池中随机选择歌曲
+        selected = self._random_select_songs(pool)
 
-        # 构建搜索关键词
-        search_keywords = self._build_search_keywords(analysis)
+        logger.info(
+            f"[MusicPool] 返回推荐: {len(selected)} 首, "
+            f"pool={len(pool.verified_songs)} 首"
+        )
 
-        # ★ 刷新模式：打乱关键词顺序，尝试获取更多不同歌曲
-        if refresh:
-            import random
-
-            # 复制一份并打乱，保持前3个关键词不变（最相关的）
-            shuffled = search_keywords[3:]
-            random.shuffle(shuffled)
-            search_keywords = search_keywords[:3] + shuffled
-            logger.info("[MusicCache] 刷新: 关键词重排，前3固定+其余随机")
-
-        # 搜索歌曲 - 使用更多关键词，获取更多结果
-        all_songs = []
-        # ★ 增加关键词数量和每关键词的搜索数量，提高找到可用歌曲的概率
-        for keyword in search_keywords[:8]:  # 增加到8个关键词
-            songs = await self.music_client.search(keyword, limit=15)  # 每关键词15首
-            all_songs.extend(songs)
-
-        # 去重并限制数量
-        seen_ids = set()
-        unique_songs: List[Song] = []  # type: ignore[var-annotated]
-        for song in all_songs:
-            if song.id not in seen_ids and len(unique_songs) < 30:
-                seen_ids.add(song.id)
-                unique_songs.append(song)
-
-        # ★ 如果歌曲少于15首，使用更通用的关键词补充搜索
-        if len(unique_songs) < 15:
-            logger.warning(
-                f"[MusicService] Only found {len(unique_songs)} songs, searching with generic keywords"
-            )
-            generic_keywords = ["轻音乐", "纯音乐", "背景音乐", "流行", "经典", "华语"]
-            for keyword in generic_keywords:
-                if len(unique_songs) >= 15:
-                    break
-                songs = await self.music_client.search(keyword, limit=15)
-                for song in songs:
-                    if song.id not in seen_ids and len(unique_songs) < 30:
-                        seen_ids.add(song.id)
-                        unique_songs.append(song)
-
+        # 转换为 MusicRecommendation 格式
         return MusicRecommendation(
-            keywords=search_keywords,
-            mood=analysis.get("mood", "未知"),
-            scene_type=analysis.get("scene_type", "未知"),
-            songs=unique_songs,
-            environment=analysis.get("environment"),
-            story_style=analysis.get("story_style"),
-            music_style=analysis.get("music_style"),
-            instruments=analysis.get("instruments"),
-            pacing=analysis.get("pacing"),
-            time_weather=analysis.get("time_weather"),
-            description=analysis.get("description"),
+            keywords=self._build_search_keywords(pool.analysis),
+            mood=pool.analysis.get("mood", "未知"),
+            scene_type=pool.analysis.get("scene_type", "未知"),
+            songs=[
+                Song(
+                    id=s.id,
+                    name=s.name,
+                    artists=s.artists,
+                    album=s.album,
+                    duration=s.duration,
+                    url=s.url,
+                )
+                for s in selected
+            ],
+            environment=pool.analysis.get("environment"),
+            story_style=pool.analysis.get("story_style"),
+            music_style=pool.analysis.get("music_style"),
+            instruments=pool.analysis.get("instruments"),
+            pacing=pool.analysis.get("pacing"),
+            time_weather=pool.analysis.get("time_weather"),
+            description=pool.analysis.get("description"),
         )
 
     async def _analyze_story_mood(
