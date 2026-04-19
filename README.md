@@ -21,6 +21,9 @@ For maintainability, upgrade planning, and new feature design, see:
 - [docs/wiki/README.md](docs/wiki/README.md)
 - Includes quick start, architecture, API/session model, troubleshooting,
   feature playbooks, release checklist, module index, and glossary.
+- Team templates are included (PR template, ADR template, incident retro template).
+- Includes ADR example and role-based reading paths for onboarding.
+- Wiki integrity is validated in CI via `.github/workflows/wiki-check.yml`.
 
 ## Tech Stack
 
