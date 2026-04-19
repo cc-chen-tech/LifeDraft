@@ -19,6 +19,7 @@ from src.api.session_store import session_store
 from src.database.models import Game, SessionLocal
 from src.game.game_initializer import GameInitializer
 from src.game.game_loop import GameLoop
+from src.ai.narrative.style_matcher import auto_match_style
 from src.utils.language import detect_language_from_state
 
 logger = logging.getLogger(__name__)
@@ -494,6 +495,24 @@ async def update_character_settings(
         game_session = session_store.get(game_id)
         if game_session and game_session.game_loop and game_session.game_loop.player_state:
             game_session.game_loop.player_state.character_settings = merged_settings
+
+        # Auto-match narrative style if settings are complete
+        if merged_settings.get("family_members"):
+            try:
+                match_result = auto_match_style(merged_settings)
+                if match_result.confidence >= 0.3:
+                    game.narrative_style_id = match_result.style_id
+                    merged_settings["narrative_style_id"] = match_result.style_id
+                    initial_state["character_settings"] = merged_settings
+                    initial_state["narrative_style_id"] = match_result.style_id
+                    game.initial_state = initial_state  # type: ignore[assignment]
+                    db_session.commit()
+                    logger.info(
+                        f"Auto-matched narrative style for game {game_id}: "
+                        f"{match_result.style_id} (confidence={match_result.confidence:.2f})"
+                    )
+            except Exception as e:
+                logger.warning(f"Style auto-match failed for game {game_id}: {e}")
 
         return MessageResponse(success=True, message="Character settings updated")
     finally:
