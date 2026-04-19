@@ -225,3 +225,125 @@ class TestGetOrBuildPool:
         assert pool.analysis["mood"] == "悲伤"
         service._analyze_story_mood.assert_not_called()
         assert len(pool.verified_songs) >= 1
+
+
+class TestRefreshPoolUrls:
+    """验证 _refresh_pool_urls 方法。"""
+
+    @pytest.fixture(autouse=True)
+    def _clear_caches(self):
+        MusicService._analysis_cache.clear()
+        MusicService._pool_cache.clear()
+
+    async def test_refreshes_expired_urls(self):
+        """过期的 URL 被重新获取。"""
+        service = MusicService()
+        now = time.time()
+
+        # 创建有过期 URL 的池
+        pool = CachedMusicPool(
+            analysis={"mood": "悲伤"},
+            verified_songs=[
+                CachedSong(
+                    id=5001, name="过期歌曲", artists=["F"], album="U",
+                    duration=200000, url="https://old.example.com/5001.mp3",
+                    url_expires_at=now - 10,  # 已过期
+                    verified_at=now - 600,
+                ),
+            ],
+            created_at=now,
+        )
+
+        # Mock URL refresh
+        service.music_client.get_song_url = AsyncMock(
+            return_value="https://fresh.example.com/5001.mp3"
+        )
+
+        await service._refresh_pool_urls(pool)
+
+        assert pool.verified_songs[0].url == "https://fresh.example.com/5001.mp3"
+        assert pool.verified_songs[0].url_expires_at > now
+
+    async def test_removes_song_when_url_refresh_fails(self):
+        """URL 刷新失败时从池中移除歌曲。"""
+        service = MusicService()
+        now = time.time()
+
+        pool = CachedMusicPool(
+            analysis={"mood": "悲伤"},
+            verified_songs=[
+                CachedSong(
+                    id=6001, name="失败歌曲", artists=["G"], album="T",
+                    duration=200000, url="https://old.example.com/6001.mp3",
+                    url_expires_at=now - 10,  # 已过期
+                    verified_at=now - 600,
+                ),
+            ],
+            created_at=now,
+        )
+
+        # Mock URL refresh failure
+        service.music_client.get_song_url = AsyncMock(return_value=None)
+
+        await service._refresh_pool_urls(pool)
+
+        assert len(pool.verified_songs) == 0
+
+    async def test_keeps_fresh_urls_unchanged(self):
+        """未过期的 URL 保持不变。"""
+        service = MusicService()
+        now = time.time()
+
+        pool = CachedMusicPool(
+            analysis={"mood": "悲伤"},
+            verified_songs=[
+                CachedSong(
+                    id=7001, name="新鲜歌曲", artists=["H"], album="S",
+                    duration=200000, url="https://fresh.example.com/7001.mp3",
+                    url_expires_at=now + 400,  # 未过期
+                    verified_at=now,
+                ),
+            ],
+            created_at=now,
+        )
+
+        # Mock that should NOT be called
+        service.music_client.get_song_url = AsyncMock(
+            side_effect=Exception("Should not refresh fresh URLs")
+        )
+
+        await service._refresh_pool_urls(pool)
+
+        assert pool.verified_songs[0].url == "https://fresh.example.com/7001.mp3"
+        service.music_client.get_song_url.assert_not_called()
+
+    async def test_supplemental_search_when_pool_too_small(self):
+        """池歌曲 < 5 首时触发补充搜索。"""
+        service = MusicService()
+        now = time.time()
+
+        pool = CachedMusicPool(
+            analysis={"mood": "悲伤"},
+            verified_songs=[
+                CachedSong(
+                    id=8001, name="唯一歌曲", artists=["I"], album="R",
+                    duration=200000, url="https://cdn.example.com/8001.mp3",
+                    url_expires_at=now + 400,
+                    verified_at=now,
+                ),
+            ],
+            created_at=now,
+        )
+
+        # Mock search for supplemental
+        service.music_client.search = AsyncMock(return_value=[
+            Song(id=8002, name="补充歌曲", artists=["J"], album="Q", duration=210000),
+        ])
+        service.music_client.get_song_url = AsyncMock(
+            return_value="https://cdn.example.com/8002.mp3"
+        )
+
+        await service._refresh_pool_urls(pool)
+
+        service.music_client.search.assert_called()
+        assert len(pool.verified_songs) >= 2

@@ -391,6 +391,91 @@ class MusicService:
         )
         return pool
 
+    async def _refresh_pool_urls(self, pool: CachedMusicPool) -> None:
+        """刷新池中过期 URL 的歌曲。
+
+        过期的 URL 重新获取，获取失败的从池中移除。
+        如果池中歌曲 <5 首，触发补充搜索。
+
+        Args:
+            pool: 缓存池
+        """
+        now = time.time()
+        refreshed: List[CachedSong] = []
+        removed = 0
+
+        for song in pool.verified_songs:
+            if song.url_expires_at < now:
+                # URL 过期，重新获取
+                try:
+                    new_url = await self.music_client.get_song_url(song.id)
+                    if new_url:
+                        refreshed.append(
+                            CachedSong(
+                                id=song.id,
+                                name=song.name,
+                                artists=song.artists,
+                                album=song.album,
+                                duration=song.duration,
+                                url=new_url,
+                                url_expires_at=now + NeteaseMusicClient.URL_CACHE_TTL,
+                                verified_at=now,
+                            )
+                        )
+                        logger.info(f"[MusicPool] URL 刷新成功: {song.id}")
+                    else:
+                        removed += 1
+                        logger.warning(f"[MusicPool] URL 刷新失败，移除: {song.id}")
+                except Exception as e:
+                    removed += 1
+                    logger.warning(f"[MusicPool] URL 刷新异常，移除: {song.id}: {e}")
+            else:
+                refreshed.append(song)
+
+        pool.verified_songs = refreshed
+
+        # 补充搜索（如果太少）
+        if len(refreshed) < 5:
+            logger.info(f"[MusicPool] 歌曲不足({len(refreshed)}<5)，触发补充搜索")
+            generic_keywords = ["轻音乐", "纯音乐", "背景音乐", "流行", "经典"]
+            seen_ids = {s.id for s in refreshed}
+
+            for keyword in generic_keywords:
+                if len(refreshed) >= 5:
+                    break
+                try:
+                    songs = await self.music_client.search(keyword, limit=10)
+                    for song in songs:
+                        if song.id in seen_ids or len(refreshed) >= 10:
+                            continue
+                        try:
+                            url = await self.music_client.get_song_url(song.id)
+                            if url:
+                                refreshed.append(
+                                    CachedSong(
+                                        id=song.id,
+                                        name=song.name,
+                                        artists=song.artists,
+                                        album=song.album,
+                                        duration=song.duration,
+                                        url=url,
+                                        url_expires_at=now + NeteaseMusicClient.URL_CACHE_TTL,
+                                        verified_at=now,
+                                    )
+                                )
+                                seen_ids.add(song.id)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+            pool.verified_songs = refreshed
+
+        if removed > 0:
+            logger.info(
+                f"[MusicPool] URL 刷新完成: 保留 {len(refreshed)} 首, 移除 {removed} 首"
+            )
+
     def _random_select_songs(self, pool: CachedMusicPool) -> List[CachedSong]:
         """从缓存池中随机选择 5-8 首歌曲。
 
