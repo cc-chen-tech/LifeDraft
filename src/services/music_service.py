@@ -272,6 +272,125 @@ class MusicService:
         preview = story_text[:500] if len(story_text) > 500 else story_text
         return hashlib.md5(preview.encode("utf-8")).hexdigest()
 
+    async def _get_or_build_pool(
+        self,
+        story_text: str,
+        refresh: bool = False,
+        character_settings: Optional[Dict] = None,
+    ) -> CachedMusicPool:
+        """获取或构建缓存池。
+
+        Args:
+            story_text: 故事文本
+            refresh: 是否刷新（复用分析，重新搜索）
+            character_settings: 角色设定
+
+        Returns:
+            缓存池
+        """
+        story_hash = self._story_hash(story_text)
+        now = time.time()
+
+        # 检查缓存
+        if not refresh:
+            cached = self._pool_cache.get(story_hash)
+            if cached:
+                pool, cached_at = cached
+                if now - cached_at < self.POOL_CACHE_TTL:
+                    logger.info(
+                        f"[MusicPool] 命中缓存池: hash={story_hash[:8]}, "
+                        f"age={int(now - cached_at)}s, songs={len(pool.verified_songs)}"
+                    )
+                    return pool
+                else:
+                    logger.info(f"[MusicPool] 缓存池过期: hash={story_hash[:8]}")
+
+        # 需要构建/重建池
+        logger.info(f"[MusicPool] 构建缓存池: hash={story_hash[:8]}, refresh={refresh}")
+
+        # 获取/复用 AI 分析结果
+        if refresh:
+            cached_analysis = self._analysis_cache.get(story_hash)
+            if cached_analysis:
+                analysis, _ = cached_analysis
+                logger.info("[MusicPool] 刷新: 复用缓存分析")
+            else:
+                analysis = await self._analyze_story_mood(story_text, character_settings)
+                self._analysis_cache[story_hash] = (analysis, now)
+        else:
+            analysis = await self._analyze_story_mood(story_text, character_settings)
+            self._analysis_cache[story_hash] = (analysis, now)
+
+        # 构建搜索关键词
+        search_keywords = self._build_search_keywords(analysis)
+
+        # 刷新模式：打乱关键词顺序
+        if refresh and len(search_keywords) > 3:
+            shuffled = search_keywords[3:]
+            random.shuffle(shuffled)
+            search_keywords = search_keywords[:3] + shuffled
+            logger.info("[MusicPool] 刷新: 关键词重排")
+
+        # 搜索歌曲
+        all_songs: List[Song] = []
+        for keyword in search_keywords[:8]:
+            songs = await self.music_client.search(keyword, limit=15)
+            all_songs.extend(songs)
+
+        # 去重
+        seen_ids: set[int] = set()
+        unique_songs: List[Song] = []
+        for song in all_songs:
+            if song.id not in seen_ids and len(unique_songs) < 30:
+                seen_ids.add(song.id)
+                unique_songs.append(song)
+
+        # 补充搜索（如果太少）
+        if len(unique_songs) < 15:
+            generic_keywords = ["轻音乐", "纯音乐", "背景音乐", "流行", "经典", "华语"]
+            for keyword in generic_keywords:
+                if len(unique_songs) >= 15:
+                    break
+                songs = await self.music_client.search(keyword, limit=15)
+                for song in songs:
+                    if song.id not in seen_ids and len(unique_songs) < 30:
+                        seen_ids.add(song.id)
+                        unique_songs.append(song)
+
+        # 批量获取 URL，只保留有 URL 的
+        verified_songs: List[CachedSong] = []
+        for song in unique_songs[:self.POOL_TARGET_SIZE]:
+            try:
+                url = await self.music_client.get_song_url(song.id)
+                if url:
+                    verified_songs.append(
+                        CachedSong(
+                            id=song.id,
+                            name=song.name,
+                            artists=song.artists,
+                            album=song.album,
+                            duration=song.duration,
+                            url=url,
+                            url_expires_at=now + NeteaseMusicClient.URL_CACHE_TTL,
+                            verified_at=now,
+                        )
+                    )
+            except Exception as e:
+                logger.warning(f"[MusicPool] Failed to get URL for {song.id}: {e}")
+
+        pool = CachedMusicPool(
+            analysis=analysis,
+            verified_songs=verified_songs,
+            created_at=now,
+        )
+        self._pool_cache[story_hash] = (pool, now)
+
+        logger.info(
+            f"[MusicPool] 池构建完成: hash={story_hash[:8]}, "
+            f"verified={len(verified_songs)}/{len(unique_songs)}"
+        )
+        return pool
+
     def _random_select_songs(self, pool: CachedMusicPool) -> List[CachedSong]:
         """从缓存池中随机选择 5-8 首歌曲。
 
