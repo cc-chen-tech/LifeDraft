@@ -196,6 +196,7 @@ export default function PlayPage() {
               className="h-8 w-8"
               onClick={() => setShowCollection(true)}
               title="收集"
+              aria-label="收集"
             >
               <BookOpen className="w-4 h-4" />
             </Button>
@@ -206,6 +207,7 @@ export default function PlayPage() {
               className={cn("h-8 w-8", isViewingHistory && "text-primary")}
               onClick={handleOpenHistory}
               title="历史回顾"
+              aria-label="历史回顾"
             >
               <History className="w-4 h-4" />
             </Button>
@@ -236,7 +238,7 @@ export default function PlayPage() {
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8" title="设置">
+                <Button variant="ghost" size="icon" className="h-8 w-8" title="设置" aria-label="设置">
                   <Settings className="w-4 h-4" />
                 </Button>
               </DropdownMenuTrigger>

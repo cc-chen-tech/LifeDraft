@@ -61,6 +61,9 @@ export function usePlayGame() {
     fetchHistorySceneImage,
     generateHistorySceneImage,
     regenerateHistorySceneImage,
+    // ★ SSE
+    subscribeToSceneImageEvents,
+    unsubscribeFromSceneImageEvents,
   } = useGameStore();
 
   const hydrated = useHydration();
@@ -395,6 +398,16 @@ export function usePlayGame() {
   // ★ 场景插画自动生成已由后端 GET 端点处理
   // 当调用 fetchRoundSceneImage 时，如果图片不存在，后端会自动触发生成并返回 202
   // 前端只需轮询等待即可，无需主动触发生成
+
+  // ===== SSE 场景图片推送 =====
+  useEffect(() => {
+    if (gameId && subscribeToSceneImageEvents) {
+      subscribeToSceneImageEvents(gameId);
+    }
+    return () => {
+      unsubscribeFromSceneImageEvents?.();
+    };
+  }, [gameId, subscribeToSceneImageEvents, unsubscribeFromSceneImageEvents]);
 
   // ===== Grouped Return Objects =====
   // M-04: Organized return values into logical groups

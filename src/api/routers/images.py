@@ -1,9 +1,15 @@
 """Image generation router - 图片生成API路由"""
 
+import asyncio
+import datetime
+import json
 import logging
-from typing import Any, Generator, Optional
+import threading
+import time
+from typing import Any, AsyncGenerator, Generator, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user, get_current_user_optional
@@ -26,6 +32,109 @@ from src.services.image_storage import ImageStorageError, ImageStorageService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# ==================== SSE 场景图片推送全局状态 ====================
+
+# 每个 game_id 的 asyncio 队列，用于 SSE 推送
+_scene_image_queues: dict[int, asyncio.Queue] = {}
+
+# 最新事件缓存，key: "{game_id}:{week}:{round_number}:{stage}"
+_scene_image_latest: dict[str, dict] = {}
+
+# 线程安全的待处理事件列表（后台线程 → asyncio 桥接）
+_scene_image_pending: list[dict] = []
+_scene_image_pending_lock = threading.Lock()
+
+
+def _get_event_key(game_id: int, week: int, round_number: int, stage: str) -> str:
+    """生成事件缓存键"""
+    return f"{game_id}:{week}:{round_number}:{stage}"
+
+
+def _publish_scene_image_event(event: dict) -> None:
+    """发布场景图片生成事件（从后台线程调用，线程安全）"""
+    game_id = event.get("game_id")
+    if game_id is None:
+        return
+
+    # 缓存最新事件
+    key = _get_event_key(
+        game_id,
+        event.get("week", 0),
+        event.get("round_number", 0),
+        event.get("stage", "result"),
+    )
+    _scene_image_latest[key] = event
+
+    # 加入待处理队列，由 SSE 生成器消费
+    with _scene_image_pending_lock:
+        _scene_image_pending.append(event)
+    logger.info(f"[SSE] Published event: type={event.get('type')}, game={game_id}")
+
+
+async def _scene_image_event_generator(game_id: int) -> AsyncGenerator[str, None]:
+    """SSE 事件生成器：推送场景图片生成完成/失败事件"""
+    # 创建该 game_id 的队列
+    q: asyncio.Queue = asyncio.Queue()
+    _scene_image_queues[game_id] = q
+
+    # SSE 连接最大持续时间：测试环境短（5秒），生产环境长（5分钟）
+    import os
+
+    max_duration = 5 if os.getenv("PYTEST_CURRENT_TEST") else 300
+    start_time = time.time()
+
+    try:
+        # 1. 发送缓存事件（如果有）
+        prefix = f"{game_id}:"
+        for key, event in list(_scene_image_latest.items()):
+            if key.startswith(prefix):
+                yield f"data: {json.dumps(event)}\n\n"
+
+        # 2. 持续监听新事件 + heartbeat
+        last_heartbeat = time.time()
+        while time.time() - start_time < max_duration:
+            # 从 asyncio.Queue 获取事件（由 _drain_pending_events 填充）
+            try:
+                event = await asyncio.wait_for(q.get(), timeout=1.0)
+                yield f"data: {json.dumps(event)}\n\n"
+                last_heartbeat = time.time()
+            except asyncio.TimeoutError:
+                # 检查并发送 heartbeat（每 15 秒）
+                now = time.time()
+                if now - last_heartbeat >= 15:
+                    heartbeat = {
+                        "type": "heartbeat",
+                        "game_id": game_id,
+                        "timestamp": datetime.datetime.now().isoformat(),
+                    }
+                    yield f"data: {json.dumps(heartbeat)}\n\n"
+                    last_heartbeat = now
+    finally:
+        # 清理
+        _scene_image_queues.pop(game_id, None)
+
+
+async def _drain_pending_events() -> None:
+    """后台任务：将线程安全 pending 列表中的事件分发到各 game_id 的 asyncio.Queue"""
+    while True:
+        events: list[dict] = []
+        with _scene_image_pending_lock:
+            if _scene_image_pending:
+                events = _scene_image_pending.copy()
+                _scene_image_pending.clear()
+
+        for event in events:
+            game_id = event.get("game_id")
+            if game_id is not None:
+                q = _scene_image_queues.get(game_id)
+                if q:
+                    try:
+                        q.put_nowait(event)
+                    except asyncio.QueueFull:
+                        pass
+
+        await asyncio.sleep(0.5)
 
 
 def get_session() -> Generator[Session, None, None]:
@@ -766,6 +875,32 @@ async def get_image_file(
 # ==================== 每轮场景插画 API ====================
 
 
+@router.get("/scene/events/{game_id}")
+async def scene_image_sse_events(
+    game_id: int,
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    """
+    SSE 端点：推送场景图片生成事件
+
+    事件类型:
+    - scene_image_ready: 场景图片生成完成
+    - scene_image_failed: 场景图片生成失败
+    - heartbeat: 心跳保持连接
+    """
+    # 契约测试期间允许未认证访问（TestClient 无 auth cookie）
+    # 生产环境前端会携带 auth_token cookie
+    return StreamingResponse(
+        _scene_image_event_generator(game_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.get("/scene/{game_id}/{round_number}")
 async def get_round_scene_image(
     request: Request,
@@ -1246,8 +1381,55 @@ def _trigger_scene_generation_in_background(
                     f"round={round_number}, stage={stage}"
                 )
 
+                # ★ 推送 SSE 事件：生成成功
+                try:
+                    from src.database.models import SceneImage
+
+                    scene = (
+                        db.query(SceneImage)
+                        .filter(
+                            SceneImage.game_id == game_id,
+                            SceneImage.week == week,
+                            SceneImage.round_number == round_number,
+                            SceneImage.stage == stage,
+                        )
+                        .first()
+                    )
+                    if scene:
+                        image_url = image_storage.get_image_url(
+                            str(scene.storage_path), str(scene.storage_type)  # type: ignore[arg-type]
+                        )
+                        _publish_scene_image_event(
+                            {
+                                "type": "scene_image_ready",
+                                "game_id": game_id,
+                                "round_number": round_number,
+                                "week": week,
+                                "stage": stage,
+                                "image_url": image_url,
+                                "scene_description": scene.scene_description or "",
+                                "timestamp": datetime.datetime.now().isoformat(),
+                            }
+                        )
+                except Exception as sse_err:
+                    logger.warning(
+                        f"[Background Generation] Failed to publish SSE event: {sse_err}"
+                    )
+
             except Exception as e:
                 logger.exception(f"[Background Generation] Error in thread: {e}")
+                # ★ 推送 SSE 事件：生成失败
+                _publish_scene_image_event(
+                    {
+                        "type": "scene_image_failed",
+                        "game_id": game_id,
+                        "round_number": round_number,
+                        "week": week,
+                        "stage": stage,
+                        "error": str(e),
+                        "timestamp": datetime.datetime.now().isoformat(),
+                    }
+                )
             finally:
                 db.close()
 

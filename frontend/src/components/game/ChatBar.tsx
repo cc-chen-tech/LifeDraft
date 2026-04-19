@@ -166,6 +166,7 @@ export function ChatBar({
           size="icon"
           className="h-12 w-12 rounded-full shadow-lg bg-primary hover:bg-primary/90"
           onClick={() => setIsExpanded(true)}
+          aria-label="打开聊天"
         >
           <MessageCircle className="w-5 h-5" />
         </Button>
@@ -250,6 +251,7 @@ export function ChatBar({
             className="h-8 w-8 text-muted-foreground"
             onClick={() => setChatHistory([])}
             title="清空对话"
+            aria-label="清空对话"
           >
             <Trash2 className="w-3.5 h-3.5" />
           </Button>

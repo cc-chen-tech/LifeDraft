@@ -15,6 +15,19 @@ import type { CharacterSettings } from "@/lib/types";
 // 重导出 RoundSceneImage 类型
 export type { RoundSceneImage };
 
+// SSE 事件类型
+interface SceneImageSSEEvent {
+  type: "scene_image_ready" | "scene_image_failed" | "heartbeat";
+  game_id: number;
+  round_number: number;
+  week: number;
+  stage: string;
+  image_url?: string;
+  scene_description?: string;
+  error?: string;
+  timestamp: string;
+}
+
 interface SceneImageState {
   // ★ 当前轮次场景插画
   roundSceneImages: RoundSceneImage[];
@@ -30,6 +43,9 @@ interface SceneImageState {
   isLoadingHistoryImage: boolean;
   isGeneratingHistoryImage: boolean;
   isRegeneratingHistoryImage: boolean;
+
+  // ★ SSE 连接
+  sseConnection: EventSource | null;
 
   // Actions — Current Round Scene
   setCurrentRoundSceneImage: (image: RoundSceneImage | null) => void;
@@ -81,6 +97,10 @@ interface SceneImageState {
   }) => Promise<void>;
   setHistorySceneImage: (image: RoundSceneImage | null) => void;
 
+  // Actions — SSE
+  subscribeToSceneImageEvents: (gameId: number) => void;
+  unsubscribeFromSceneImageEvents: () => void;
+
   // Actions — Cache
   clearImageCache: () => void;
   clearCurrentRoundImages: () => void;
@@ -102,6 +122,9 @@ export const useSceneImageStore = create<SceneImageState>()(
     isLoadingHistoryImage: false,
     isGeneratingHistoryImage: false,
     isRegeneratingHistoryImage: false,
+
+    // SSE
+    sseConnection: null,
 
     // ==================== Current Round Scene Actions ====================
     setCurrentRoundSceneImage: (image) => set({ currentRoundSceneImage: image }),
@@ -478,6 +501,104 @@ export const useSceneImageStore = create<SceneImageState>()(
         eventSceneImage: null,
         resultSceneImage: null,
       });
+    },
+
+    // ==================== SSE Actions ====================
+    subscribeToSceneImageEvents: (gameId) => {
+      const { sseConnection } = get();
+
+      // 关闭已有连接
+      if (sseConnection) {
+        sseConnection.close();
+      }
+
+      if (typeof window === "undefined" || typeof EventSource === "undefined") return;
+
+      const url = `/api/images/scene/events/${gameId}`;
+      console.log(`[SSE] Connecting to ${url}`);
+
+      const es = new EventSource(url);
+
+      es.onopen = () => {
+        console.log(`[SSE] Connected for game ${gameId}`);
+      };
+
+      es.onmessage = (event) => {
+        try {
+          const data: SceneImageSSEEvent = JSON.parse(event.data);
+          console.log(`[SSE] Received event: type=${data.type}, game=${data.game_id}, round=${data.round_number}, stage=${data.stage}`);
+
+          if (data.type === "heartbeat") {
+            return;
+          }
+
+          if (data.type === "scene_image_failed") {
+            console.warn(`[SSE] Scene generation failed: ${data.error}`);
+            set({ isLoadingRoundSceneImage: false });
+            return;
+          }
+
+          if (data.type === "scene_image_ready") {
+            const newScene: RoundSceneImage = {
+              scene_id: 0, // SSE 事件不包含 scene_id，后续 fetch 会补充
+              week: data.week,
+              round_number: data.round_number,
+              stage: data.stage,
+              image_url: data.image_url || "",
+              scene_description: data.scene_description || "",
+              referenced_images: [],
+              created_at: data.timestamp,
+            };
+
+            set((state) => {
+              const updates: Partial<SceneImageState> = {
+                isLoadingRoundSceneImage: false,
+                roundSceneImages: state.roundSceneImages.some(
+                  (s) => s.week === newScene.week && s.round_number === newScene.round_number && s.stage === newScene.stage
+                )
+                  ? state.roundSceneImages.map((s) =>
+                      s.week === newScene.week && s.round_number === newScene.round_number && s.stage === newScene.stage
+                        ? newScene
+                        : s
+                    )
+                  : [...state.roundSceneImages, newScene],
+              };
+
+              // 更新当前轮次对应 stage 的图片
+              if (newScene.stage === "event") {
+                updates.eventSceneImage = newScene;
+              } else if (newScene.stage === "result") {
+                updates.resultSceneImage = newScene;
+              }
+
+              // 如果当前轮次没有明确区分 event/result，也更新 currentRoundSceneImage
+              updates.currentRoundSceneImage = newScene;
+
+              return updates;
+            });
+
+            console.log(`[SSE] Scene image updated: week=${data.week}, round=${data.round_number}, stage=${data.stage}`);
+          }
+        } catch (err) {
+          console.error("[SSE] Failed to parse event:", err);
+        }
+      };
+
+      es.onerror = (err) => {
+        console.warn("[SSE] Connection error:", err);
+        // EventSource 会自动重连，无需手动处理
+      };
+
+      set({ sseConnection: es });
+    },
+
+    unsubscribeFromSceneImageEvents: () => {
+      const { sseConnection } = get();
+      if (sseConnection) {
+        console.log("[SSE] Closing connection");
+        sseConnection.close();
+        set({ sseConnection: null });
+      }
     },
   })
 );

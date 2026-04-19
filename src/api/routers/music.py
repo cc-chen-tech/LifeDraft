@@ -274,9 +274,7 @@ async def stream_song(song_id: int, request: Request):
 
             fresh_url = await music_service.get_song_play_url(song_id)
             if not fresh_url:
-                raise HTTPException(
-                    status_code=404, detail="Song URL not available after refresh"
-                )
+                raise HTTPException(status_code=404, detail="Song URL not available after refresh")
             logger.info(
                 f"[MusicStream] URL刷新成功: song_id={song_id}, new_url={_sanitize_url(fresh_url)}"
             )

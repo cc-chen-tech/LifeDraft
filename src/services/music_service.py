@@ -359,7 +359,7 @@ class MusicService:
 
         # 批量获取 URL，只保留有 URL 的
         verified_songs: List[CachedSong] = []
-        for song in unique_songs[:self.POOL_TARGET_SIZE]:
+        for song in unique_songs[: self.POOL_TARGET_SIZE]:
             try:
                 url = await self.music_client.get_song_url(song.id)
                 if url:
@@ -472,9 +472,7 @@ class MusicService:
             pool.verified_songs = refreshed
 
         if removed > 0:
-            logger.info(
-                f"[MusicPool] URL 刷新完成: 保留 {len(refreshed)} 首, 移除 {removed} 首"
-            )
+            logger.info(f"[MusicPool] URL 刷新完成: 保留 {len(refreshed)} 首, 移除 {removed} 首")
 
     def _random_select_songs(self, pool: CachedMusicPool) -> List[CachedSong]:
         """从缓存池中随机选择 5-8 首歌曲。
@@ -526,8 +524,7 @@ class MusicService:
         selected = self._random_select_songs(pool)
 
         logger.info(
-            f"[MusicPool] 返回推荐: {len(selected)} 首, "
-            f"pool={len(pool.verified_songs)} 首"
+            f"[MusicPool] 返回推荐: {len(selected)} 首, " f"pool={len(pool.verified_songs)} 首"
         )
 
         # 转换为 MusicRecommendation 格式

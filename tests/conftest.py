@@ -22,8 +22,25 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.api.main import app
-from src.database.models import Base, Game, GameState, User
+from src.database.models import Base, Game, User
 from src.game.state import PlayerState
+
+# Patch httpx.Response for SSE contract tests (must be after all imports)
+import httpx
+
+if not hasattr(httpx.Response, "__enter__"):
+    httpx.Response.__enter__ = lambda self: self
+    httpx.Response.__exit__ = lambda self, *args: None
+
+_original_iter_lines = httpx.Response.iter_lines
+
+
+def _patched_iter_lines(self):
+    for line in _original_iter_lines(self):
+        yield line.encode("utf-8")
+
+
+httpx.Response.iter_lines = _patched_iter_lines
 
 # ==================== FastAPI Client Fixtures ====================
 
@@ -442,7 +459,7 @@ def mock_cache_with_ttl():
             self._access_times = {}
             self._creation_times = {}
             self._access_counter = 0
-    
+
         def get(self, key):
             if key in self._cache:
                 if time.time() - self._creation_times[key] > self.ttl:
@@ -452,7 +469,7 @@ def mock_cache_with_ttl():
                 self._access_times[key] = self._access_counter
                 return self._cache[key]
             return None
-    
+
         def set(self, key, value):
             if len(self._cache) >= self.max_size and key not in self._cache:
                 self._evict_lru()
@@ -483,7 +500,7 @@ def mock_cache_with_ttl():
 
 
 @pytest.fixture
-def mock_session_service():
+def mock_collection_session_service():
     """Mock session_service for collection/images API tests.
 
     Provides a configured mock session with game_loop and player_state.

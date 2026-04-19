@@ -48,7 +48,17 @@ async def lifespan(app: FastAPI):
     logger.info("FastAPI server starting...")
     init_db()
     logger.info("Database initialized")
+
+    # 启动 SSE 场景图片事件分发任务
+    import asyncio
+
+    from src.api.routers.images import _drain_pending_events
+
+    drain_task = asyncio.create_task(_drain_pending_events())
+
     yield
+
+    drain_task.cancel()
     logger.info("FastAPI server shutting down...")
 
 

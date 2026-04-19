@@ -276,18 +276,34 @@ class RoundIllustrationService:
 {illustration_prompt}
 保持人物的外貌特征和服装不变，融入新的场景环境中。"""
 
-            results = self.image_client.edit_image(
-                reference_image=reference_urls[0],  # 使用主参考图
-                prompt=edit_prompt,
-                size="1664*928",  # 16:9 宽屏
-                num_images=1,
-            )
+            try:
+                results = self.image_client.edit_image(
+                    reference_image=reference_urls[0],  # 使用主参考图
+                    prompt=edit_prompt,
+                    size="1664*928",  # 16:9 宽屏
+                    num_images=1,
+                )
 
-            if results:
-                image_data, _ = results[0]
-                return image_data, final_prompt
-            else:
-                raise ImageGenerationError("Failed to generate scene image with reference")
+                if results:
+                    image_data, _ = results[0]
+                    return image_data, final_prompt
+            except ContentInspectionError:
+                # 内容审核错误不重试，直接抛出（降级也无意义，prompt 本身有问题）
+                raise
+            except ImageGenerationError as e:
+                logger.warning(
+                    f"[RoundIllustration] Edit image failed: {e}, "
+                    f"falling back to text-to-image (reference_urls={len(reference_urls)})"
+                )
+
+            # ★ 降级到文生图：edit 失败时仍要保证用户能看到场景插画
+            logger.info("[RoundIllustration] Falling back to text-to-image generation")
+            image_data, _ = self.image_client.generate_image(
+                prompt=final_prompt,
+                size="1664*928",
+                extra_params={"prompt_extend": True},
+            )
+            return image_data, final_prompt
         else:
             # 没有参考图片，使用文生图
             image_data, _ = self.image_client.generate_image(

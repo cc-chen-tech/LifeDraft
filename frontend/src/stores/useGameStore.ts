@@ -145,6 +145,10 @@ interface GameState {
   regenerateHistorySceneImage: (week: number, round: number, storyText: string, userPrompt: string, sceneId: number) => Promise<void>;
   setHistorySceneImage: (image: RoundSceneImage | null) => void;
 
+  // Actions — SSE
+  subscribeToSceneImageEvents: (gameId: number) => void;
+  unsubscribeFromSceneImageEvents: () => void;
+
   // Internal sync method
   _syncFromSubStores: () => void;
 }
@@ -588,6 +592,14 @@ export const useGameStore = create<GameState>()(
     setHistorySceneImage: (image) => {
       useSceneImageStore.getState().setHistorySceneImage(image);
       set({ historySceneImage: image });
+    },
+
+    // SSE 代理方法
+    subscribeToSceneImageEvents: (gameId) => {
+      useSceneImageStore.getState().subscribeToSceneImageEvents(gameId);
+    },
+    unsubscribeFromSceneImageEvents: () => {
+      useSceneImageStore.getState().unsubscribeFromSceneImageEvents();
     },
   })
 );

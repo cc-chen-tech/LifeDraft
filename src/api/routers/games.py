@@ -5,6 +5,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from src.ai.narrative.style_matcher import auto_match_style
 from src.api.deps import get_current_user, get_current_user_optional, get_db
 from src.api.schemas import CreateGameRequest  # 时间回溯存档系统
 from src.api.schemas import (CreateSavePointRequest, GameListItem,
@@ -19,7 +20,6 @@ from src.api.session_store import session_store
 from src.database.models import Game, SessionLocal
 from src.game.game_initializer import GameInitializer
 from src.game.game_loop import GameLoop
-from src.ai.narrative.style_matcher import auto_match_style
 from src.utils.language import detect_language_from_state
 
 logger = logging.getLogger(__name__)
