@@ -72,7 +72,7 @@ run_imports() {
     source venv/bin/activate
     
     echo -e "${YELLOW}运行导入验证测试...${NC}"
-    python3 -m pytest tests/test_imports.py tests/test_collection_imports.py -v
+    python3 -m pytest tests/test_imports.py tests/test_collection_imports.py tests/test_narrative_imports.py -v
     local result=$?
     
     print_layer_result "imports" $result
@@ -102,7 +102,7 @@ run_db() {
     source venv/bin/activate
     
     echo -e "${YELLOW}运行真实数据库集成测试...${NC}"
-    python3 -m pytest tests/test_integration_real_db.py tests/test_character_settings_persistence_db.py tests/test_database.py tests/test_narrative_db_migration.py tests/test_constraint_level_db.py tests/test_constraint_level_persistence_db.py tests/test_collection_cache_db.py tests/test_image_compression_db.py tests/test_sse_timeout_integration.py tests/test_event_generation_race_db.py tests/test_music_cache_integration.py -v
+    python3 -m pytest tests/test_integration_real_db.py tests/test_character_settings_persistence_db.py tests/test_database.py tests/test_narrative_db_migration.py tests/test_constraint_level_db.py tests/test_constraint_level_persistence_db.py tests/test_collection_cache_db.py tests/test_image_compression_db.py tests/test_sse_timeout_integration.py tests/test_event_generation_race_db.py tests/test_music_cache_integration.py tests/test_style_auto_match_integration.py -v
     local result=$?
     
     print_layer_result "db" $result
@@ -162,7 +162,7 @@ run_unit() {
     local unit_result=$?
     
     echo -e "${YELLOW}运行 StoryGenerator 质量级别单元测试...${NC}"
-    python3 -m pytest tests/test_story_generator_quality_level.py tests/test_generate_round_event_retry.py -v
+    python3 -m pytest tests/test_story_generator_quality_level.py tests/test_generate_round_event_retry.py tests/test_story_generator_narrative.py -v
     local story_result=$?
     
     local result=0
