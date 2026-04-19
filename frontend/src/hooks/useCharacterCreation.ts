@@ -104,6 +104,7 @@ export interface UseCharacterCreationReturn {
   // Handlers
   handleGenerate: (fb?: string) => Promise<void>;
   handleRegenerate: () => void;
+  regenerateSetting: (stepKey: string, feedback: string) => Promise<void>;
   handleAcceptAndNext: () => Promise<void>;
   handleSavePreset: () => Promise<void>;
   handleStartGame: () => Promise<void>;
@@ -493,6 +494,36 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     setFeedback("");
   }, [handleGenerate, feedback]);
 
+  const regenerateSetting = useCallback(async (stepKey: string, feedback: string) => {
+    if (!gameId) {
+      console.error("[regenerateSetting] No gameId available");
+      throw new Error("游戏未创建");
+    }
+
+    setIsGenerating(true);
+    try {
+      console.log(`[regenerateSetting] Regenerating ${stepKey} with feedback:`, feedback);
+
+      const result = await api.character.generateSetting({
+        setting_type: stepKey,
+        player_name: playerName,
+        life_vision: lifeVision,
+        previous_settings: characterSettings,
+        language,
+        feedback: feedback || null,
+      });
+
+      // Update characterSettings with the regenerated content
+      updateCharacterSetting(stepKey, result);
+      console.log(`[regenerateSetting] ${stepKey} regenerated successfully`);
+    } catch (err) {
+      console.error(`[regenerateSetting] Failed to regenerate ${stepKey}:`, err);
+      throw err;
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [gameId, playerName, lifeVision, characterSettings, language, updateCharacterSetting]);
+
   const handleSavePreset = useCallback(async () => {
     if (!presetName.trim()) return;
     setIsSavingPreset(true);
@@ -652,6 +683,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     // Handlers
     handleGenerate,
     handleRegenerate,
+    regenerateSetting,
     handleAcceptAndNext,
     handleSavePreset,
     handleStartGame,
