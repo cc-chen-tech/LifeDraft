@@ -30,6 +30,29 @@ class Song:
 
 
 @dataclass
+class CachedSong:
+    """已验证 URL 的歌曲缓存项。"""
+
+    id: int
+    name: str
+    artists: List[str]
+    album: str
+    duration: int
+    url: str
+    url_expires_at: float
+    verified_at: float
+
+
+@dataclass
+class CachedMusicPool:
+    """音乐缓存池。"""
+
+    analysis: Dict[str, Any]
+    verified_songs: List[CachedSong]
+    created_at: float
+
+
+@dataclass
 class MusicRecommendation:
     """音乐推荐结果"""
 
@@ -239,6 +262,14 @@ class MusicService:
     # key: story_hash -> value: (analysis_dict, timestamp)
     _analysis_cache: Dict[str, tuple[Dict[str, Any], float]] = {}
     _CACHE_TTL = 3600  # 1 小时
+
+    # ★ 缓存池：基于故事文本 hash 缓存已验证 URL 的歌曲池
+    _pool_cache: Dict[str, tuple[CachedMusicPool, float]] = {}
+    POOL_CACHE_TTL = 3600  # 1 小时（池整体重建）
+    POOL_TARGET_SIZE = 25  # 目标池大小
+    POOL_MIN_SIZE = 20  # 最小池大小（低于此值触发补充搜索）
+    POOL_RETURN_MIN = 5  # 最少返回歌曲数
+    POOL_RETURN_MAX = 8  # 最多返回歌曲数
 
     def __init__(self):
         self.ai_client = AIClient()
