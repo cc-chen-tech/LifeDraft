@@ -130,10 +130,14 @@ class StoryGenerator:
                     StyleAwareValidator
 
                 self._style_manifest = get_style(style_id)
+                if not self._style_manifest and not style_id:
+                    # Use default style when no style_id is matched
+                    self._style_manifest = get_style("chinese_classic_saga")
+                    logger.info("Using default style: chinese_classic_saga")
                 if self._style_manifest:
                     self._prompt_builder = StyleAwarePromptBuilder(self._style_manifest)
                     self._style_validator = StyleAwareValidator(self._style_manifest)
-                    logger.info(f"Style engine initialized: {style_id}")
+                    logger.info(f"Style engine initialized: {self._style_manifest.style_id}")
                 else:
                     logger.warning(f"Style '{style_id}' not found, style engine disabled")
             except Exception as e:
@@ -538,8 +542,7 @@ class StoryGenerator:
         style_id = player_state.get("narrative_style_id") or (character_settings or {}).get(
             "narrative_style_id", ""
         )
-        if style_id:
-            self._init_narrative_systems(style_id, player_state)
+        self._init_narrative_systems(style_id, player_state)
         narrative_hints = self._gather_narrative_hints(
             player_state, activated_foreshadowing=activated_foreshadowing
         )
@@ -940,8 +943,7 @@ class StoryGenerator:
         style_id = player_state.get("narrative_style_id") or (character_settings or {}).get(
             "narrative_style_id", ""
         )
-        if style_id:
-            self._init_narrative_systems(style_id, player_state)
+        self._init_narrative_systems(style_id, player_state)
         narrative_hints_round = self._gather_narrative_hints(
             player_state, activated_foreshadowing=activated_foreshadowing
         )

@@ -3,8 +3,6 @@
 import os
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from src.ai.story_generator import StoryGenerator
 
 
@@ -40,13 +38,16 @@ class TestNarrativeSystemInitialization:
                     "decision_history": [],
                     "week": 1,
                 }
+                mock_opt_gen = MagicMock()
+                mock_event = MagicMock()
+                mock_event.options = []
+                mock_opt_gen.generate_options_only.return_value = mock_event
                 with patch.object(gen, "_gather_narrative_hints", return_value={}):
                     with patch.object(gen.client, "call", return_value="test story"):
                         with patch("src.ai.story_generator.get_story_only_prompt", return_value="prompt"):
                             with patch("src.ai.story_generator.get_system_prompt", return_value="sys"):
                                 with patch.object(gen, "_log_constraint_completeness"):
-                                    with pytest.raises(Exception):
-                                        gen.generate_event(player_state, option_generator=MagicMock())
+                                    gen.generate_event(player_state, option_generator=mock_opt_gen)
 
                 mock_init.assert_called_once()
                 call_args = mock_init.call_args
@@ -65,13 +66,16 @@ class TestNarrativeSystemInitialization:
                     "decision_history": [],
                     "week": 1,
                 }
+                mock_opt_gen = MagicMock()
+                mock_event = MagicMock()
+                mock_event.options = []
+                mock_opt_gen.generate_options_only.return_value = mock_event
                 with patch.object(gen, "_gather_narrative_hints", return_value={}):
                     with patch.object(gen.client, "call", return_value="test story"):
                         with patch("src.ai.story_generator.get_story_only_prompt", return_value="prompt"):
                             with patch("src.ai.story_generator.get_system_prompt", return_value="sys"):
                                 with patch.object(gen, "_log_constraint_completeness"):
-                                    with pytest.raises(Exception):
-                                        gen.generate_event(player_state, option_generator=MagicMock())
+                                    gen.generate_event(player_state, option_generator=mock_opt_gen)
 
                 mock_init.assert_called_once()
                 call_args = mock_init.call_args
