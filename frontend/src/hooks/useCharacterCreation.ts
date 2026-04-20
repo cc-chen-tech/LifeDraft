@@ -237,20 +237,16 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     [currentStepKey, playerName, lifeVision, characterSettings, language, hasBasicInfo, showToast]
   );
 
-  // Reset autoGenTriggeredRef and clear subsequent steps when navigating back
+  // Reset autoGenTriggeredRef when navigating back to allow re-generation
   useEffect(() => {
-    // When user navigates back, reset the trigger and clear settings for all subsequent steps
+    // When user navigates to a different step, reset the trigger for subsequent steps
     // This allows re-generation when user goes back, modifies, and then forward again
     CREATION_STEPS.forEach((step, index) => {
       if (index > creationStep) {
         autoGenTriggeredRef.current[step] = false;
-        // Clear the setting for subsequent steps to force re-generation
-        if (characterSettings[step] != null) {
-          updateCharacterSetting(step, null);
-        }
       }
     });
-  }, [creationStep, characterSettings, updateCharacterSetting]);
+  }, [creationStep]);
 
   // Auto-generate on step enter
   useEffect(() => {
@@ -509,6 +505,22 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     setFeedback("");
   }, [handleGenerate, feedback]);
 
+  // Wrapper for prevCreationStep that clears subsequent settings
+  const handlePrevStep = useCallback(() => {
+    // Clear settings for all subsequent steps (including current) to force re-generation when going forward again
+    // When user goes back from step N to step N-1, steps N, N+1, N+2... should all be cleared
+    const targetStepIndex = creationStep - 1;
+    CREATION_STEPS.forEach((step, index) => {
+      if (index > targetStepIndex && characterSettings[step] != null) {
+        updateCharacterSetting(step, null);
+      }
+    });
+    // Clear generatedContent to prevent displaying stale content with wrong stepKey
+    setGeneratedContent(null);
+    setFeedback("");
+    prevCreationStep();
+  }, [creationStep, characterSettings, updateCharacterSetting, prevCreationStep]);
+
   const regenerateSetting = useCallback(async (stepKey: string, feedback: string) => {
     if (!gameId) {
       console.error("[regenerateSetting] No gameId available");
@@ -642,7 +654,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     // Game store actions
     setCreationStep,
     nextCreationStep,
-    prevCreationStep,
+    prevCreationStep: handlePrevStep,
     updateCharacterSetting,
     setPlayerName,
     setLifeVision,

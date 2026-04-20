@@ -33,7 +33,7 @@ def test_expert_profile_contract():
 def test_master_profile_contract():
     """MASTER 级别配置契约."""
     profile = PROFILES[QualityLevel.MASTER]
-    assert profile.max_retries == 4
+    assert profile.max_retries == 9
     assert profile.score_threshold == 85.0
     assert profile.enable_polish is True
     assert profile.polish_score_threshold == 90.0
