@@ -120,6 +120,12 @@ export default function CreatePage() {
         showPresetSheet={showPresetSheet}
         presetName={presetName}
         isSavingPreset={isSavingPreset}
+        isGeneratingImage={isGeneratingImage}
+        imageFeedback={imageFeedback}
+        onImageFeedbackChange={setImageFeedback}
+        onRegenerateImage={() => regeneratePlayerImage(imageFeedback)}
+        onRegenerateFreshImage={regenerateFreshPlayerImage}
+        showToast={showToast}
         onSetShowDetails={setShowDetails}
         onSetShowPresetSheet={setShowPresetSheet}
         onSetPresetName={setPresetName}

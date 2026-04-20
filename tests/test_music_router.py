@@ -339,6 +339,38 @@ class TestStreamSong:
 
     @patch("src.api.routers.music.httpx.AsyncClient")
     @patch("src.api.routers.music.get_music_service")
+    def test_stream_uses_small_chunk_size(self, mock_get_svc, mock_async_client_cls, client):
+        """流式代理应使用 8KB chunk_size 保证低延迟，避免 64KB 大 chunk 导致卡顿。"""
+        svc = MagicMock()
+        svc.get_song_play_url = AsyncMock(return_value="https://cdn.example.com/song.mp3")
+        mock_get_svc.return_value = svc
+
+        fake_response = AsyncMock()
+        fake_response.status_code = 200
+        fake_response.headers = {"content-type": "audio/mpeg"}
+
+        async def fake_iter():
+            yield b"chunk"
+
+        fake_response.aiter_bytes = MagicMock(return_value=fake_iter())
+        fake_response.aclose = AsyncMock()
+
+        fake_client = MagicMock()
+        fake_client.build_request.return_value = MagicMock()
+        fake_client.send = AsyncMock(return_value=fake_response)
+        fake_client.aclose = AsyncMock()
+        mock_async_client_cls.return_value = fake_client
+
+        resp = client.get("/api/music/stream/12345")
+
+        assert resp.status_code == 200
+        # 验证 aiter_bytes 被调用且 chunk_size=8192
+        fake_response.aiter_bytes.assert_called_once()
+        call_kwargs = fake_response.aiter_bytes.call_args.kwargs
+        assert call_kwargs.get("chunk_size") == 8192
+
+    @patch("src.api.routers.music.httpx.AsyncClient")
+    @patch("src.api.routers.music.get_music_service")
     def test_stream_cdn_403_retry_success(self, mock_get_svc, mock_async_client_cls, client):
         """CDN 返回 403 时应刷新 URL 并重试，重试成功则正常返回。"""
         svc = MagicMock()

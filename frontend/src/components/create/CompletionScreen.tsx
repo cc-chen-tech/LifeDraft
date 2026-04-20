@@ -21,6 +21,8 @@ import {
   ChevronDown,
   ChevronUp,
   Eye,
+  RefreshCw,
+  RotateCcw,
 } from "lucide-react";
 
 const STEP_LABELS: Record<string, string> = {
@@ -49,6 +51,13 @@ interface CompletionScreenProps {
   showPresetSheet: boolean;
   presetName: string;
   isSavingPreset: boolean;
+  // Image regeneration
+  isGeneratingImage: boolean;
+  imageFeedback: string;
+  onImageFeedbackChange: (feedback: string) => void;
+  onRegenerateImage: () => Promise<void>;
+  onRegenerateFreshImage: () => Promise<void>;
+  showToast: (type: "success" | "error", message: string) => void;
   onSetShowDetails: (show: boolean) => void;
   onSetShowPresetSheet: (show: boolean) => void;
   onSetPresetName: (name: string) => void;
@@ -70,6 +79,12 @@ export function CompletionScreen({
   showPresetSheet,
   presetName,
   isSavingPreset,
+  isGeneratingImage,
+  imageFeedback,
+  onImageFeedbackChange,
+  onRegenerateImage,
+  onRegenerateFreshImage,
+  showToast,
   onSetShowDetails,
   onSetShowPresetSheet,
   onSetPresetName,
@@ -104,15 +119,67 @@ export function CompletionScreen({
 
       {/* Centered completion message */}
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-8">
-        {/* 主角图片展示 */}
+        {/* 主角图片展示 + 重新生成 */}
         {playerImages.length > 0 && (
-          <div className="mb-6 flex flex-col items-center">
-            <img
-              src={playerImages[selectedImageIndex]?.image_url || playerImages[0]?.image_url}
-              alt={playerName || "主角"}
-              className="w-32 h-48 object-cover rounded-lg border-2 border-primary/30 shadow-lg"
-            />
+          <div className="mb-6 flex flex-col items-center w-full max-w-xs">
+            {isGeneratingImage ? (
+              <div className="w-32 h-48 bg-secondary rounded-lg flex items-center justify-center">
+                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <img
+                src={playerImages[selectedImageIndex]?.image_url || playerImages[0]?.image_url}
+                alt={playerName || "主角"}
+                className="w-32 h-48 object-cover rounded-lg border-2 border-primary/30 shadow-lg"
+              />
+            )}
             <span className="text-sm font-medium text-foreground mt-2">{playerName}</span>
+
+            {/* 图片反馈重新生成 */}
+            {!isGeneratingImage && (
+              <div className="w-full mt-3 space-y-2">
+                <Input
+                  value={imageFeedback}
+                  onChange={(e) => onImageFeedbackChange(e.target.value)}
+                  placeholder="不满意？描述你想要的修改..."
+                  className="bg-secondary border-border text-sm h-9"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 h-8 text-xs"
+                    disabled={!imageFeedback.trim()}
+                    onClick={async () => {
+                      try {
+                        await onRegenerateImage();
+                        onImageFeedbackChange("");
+                      } catch (err) {
+                        showToast("error", String(err) || "重新生成失败");
+                      }
+                    }}
+                  >
+                    <RefreshCw className="w-3 h-3 mr-1" />
+                    根据意见修改
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 text-xs text-muted-foreground"
+                    onClick={async () => {
+                      try {
+                        await onRegenerateFreshImage();
+                      } catch (err) {
+                        showToast("error", String(err) || "重新生成失败");
+                      }
+                    }}
+                  >
+                    <RotateCcw className="w-3 h-3 mr-1" />
+                    完全重生成
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
         
