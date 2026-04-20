@@ -70,6 +70,7 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
   const [preloadProgress, setPreloadProgress] = useState(0); // 预加载进度
   const songUrlMapRef = useRef<Map<number, string>>(new Map()); // 预加载的歌曲 URL 映射
   const retryCountRef = useRef<Map<number, number>>(new Map()); // 每首歌的重试计数
+  const timeUpdateThrottleRef = useRef<number>(0); // timeupdate 节流，减少 React re-render
 
   // 获取音乐推荐
   const fetchRecommendation = useCallback(async (isRefresh = false) => {
@@ -228,7 +229,14 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       // 绑定事件
       audio.onplay = () => setIsPlaying(true);
       audio.onpause = () => setIsPlaying(false);
-      audio.ontimeupdate = () => setCurrentTime(audio.currentTime);
+      audio.ontimeupdate = () => {
+        // 250ms 节流，减少 timeupdate 触发的 React re-render 频率
+        const now = Date.now();
+        if (now - timeUpdateThrottleRef.current >= 250) {
+          timeUpdateThrottleRef.current = now;
+          setCurrentTime(audio.currentTime);
+        }
+      };
       audio.onloadedmetadata = () => setDuration(audio.duration || 0);
       audio.onended = () => {
         setIsPlaying(false);
