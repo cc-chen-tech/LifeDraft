@@ -1037,6 +1037,7 @@ class StoryGenerator:
         retry_count = self.harness_profile.max_retries + 1
         last_error = None
         story_text = None
+        best_story_text = ""  # 记录所有尝试中生成的最佳故事，避免全部失败后直接 fallback
 
         # 提前提取可用人物，供后续 option 校验使用
         from config.prompts._helpers import _collect_available_people
@@ -1081,6 +1082,10 @@ class StoryGenerator:
                 )
                 logger.info(f"Generated round story with {len(story_text)} characters")
                 story_text = self._normalize_punctuation(story_text, language)
+
+                # 记录最佳故事（即使后续校验失败，也保留作为最终 fallback）
+                if len(story_text) > len(best_story_text):
+                    best_story_text = story_text
 
                 # Step 1.4: Quick rule-based validation
                 quick_result = quick_validate_story(
@@ -1244,8 +1249,16 @@ class StoryGenerator:
 
         # Step 2: Generate options based on the story
         try:
-            if story_text is None:
-                raise ValueError("All generation attempts failed")
+            # 如果最后一次尝试没有成功生成故事，但之前某次生成了有效的故事文本，使用它
+            if not story_text or len(story_text) <= 50:
+                if best_story_text and len(best_story_text) > 50:
+                    logger.info(
+                        f"All validation attempts failed, using best story from previous attempt "
+                        f"({len(best_story_text)} chars)"
+                    )
+                    story_text = best_story_text
+                else:
+                    raise ValueError("All generation attempts failed")
 
             if option_generator is None:
                 raise ValueError("option_generator is required")
@@ -1290,11 +1303,13 @@ class StoryGenerator:
         except Exception as e:
             logger.error(f"Failed to generate round event: {e}")
             # ★ 如果故事已生成但后续步骤（如选项生成）失败，保留真实故事而非使用 fallback
-            if story_text and len(story_text) > 50:
+            # 优先使用最后一次的 story_text，否则回退到所有尝试中的最佳故事
+            effective_story = story_text if (story_text and len(story_text) > 50) else best_story_text
+            if effective_story and len(effective_story) > 50:
                 logger.info(
-                    f"Using already-generated story ({len(story_text)} chars) with fallback options"
+                    f"Using already-generated story ({len(effective_story)} chars) with fallback options"
                 )
-                fallback_desc = story_text
+                fallback_desc = effective_story
             else:
                 fallback_desc = (
                     "这一天平静地度过了。" if language == "zh" else "This day passed quietly."
