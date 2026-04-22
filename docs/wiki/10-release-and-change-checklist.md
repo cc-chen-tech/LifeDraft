@@ -1,5 +1,7 @@
 # 10 - Release And Change Checklist
 
+> 最后核对：2026-04-19
+
 ## PR 级检查
 
 - [ ] 需求范围与非目标写清楚  

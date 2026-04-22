@@ -136,7 +136,7 @@ run_e2e_browser() {
     fi
     
     echo -e "${YELLOW}运行 Playwright E2E 测试 (chromium)...${NC}"
-    npx playwright test --project=chromium --reporter=list --workers=3
+    npx playwright test --project=chromium --reporter=list --workers=2
     local result=$?
     
     # 清理：如果是我们启动的后端，关掉它

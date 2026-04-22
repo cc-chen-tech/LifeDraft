@@ -1,5 +1,8 @@
 # Auto-Match Narrative Style Implementation Plan
 
+> Status: Implemented (kept as historical implementation plan)  
+> Last reviewed: 2026-04-19
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** In `update_character_settings`, automatically match a narrative style after saving complete character settings, and decouple `style_id` from the on/off switch of the three narrative systems.

@@ -78,7 +78,7 @@ test.describe('收集面板缓存优化', () => {
 
     // 验证面板内容加载完成
     await expect(page.locator('text=人物、物品和标志物收集记录')).toBeVisible();
-    await expect(page.locator('text=/人物.*\(/')).toBeVisible();
+    await expect(page.getByText(/人物.*\(/)).toBeVisible();
   });
 
   test('收集面板关闭后重新打开应快速显示', async ({ page }) => {
@@ -114,9 +114,9 @@ test.describe('收集面板缓存优化', () => {
     await openCollectionPanel(page);
 
     // 应有人物、物品、标志物三个分类标签
-    await expect(page.locator('text=/人物.*\(/')).toBeVisible();
-    await expect(page.locator('text=/物品.*\(/')).toBeVisible();
-    await expect(page.locator('text=/标志物.*\(/')).toBeVisible();
+    await expect(page.getByText(/人物.*\(/)).toBeVisible();
+    await expect(page.getByText(/物品.*\(/)).toBeVisible();
+    await expect(page.getByText(/标志物.*\(/)).toBeVisible();
 
     // 应显示主角
     await expect(page.locator('text=缓存测试角色')).toBeVisible();
@@ -130,7 +130,7 @@ test.describe('收集面板缓存优化', () => {
     await openCollectionPanel(page);
 
     // 获取物品标签
-    const itemsTab = page.locator('text=/物品.*\(/');
+    const itemsTab = page.getByText(/物品.*\(/);
     await expect(itemsTab).toBeVisible();
 
     // 记录网络请求
@@ -147,12 +147,12 @@ test.describe('收集面板缓存优化', () => {
     await page.waitForTimeout(300);
 
     // 点击标志物标签
-    const landmarksTab = page.locator('text=/标志物.*\(/');
+    const landmarksTab = page.getByText(/标志物.*\(/);
     await landmarksTab.click();
     await page.waitForTimeout(300);
 
     // 切回人物标签
-    const charactersTab = page.locator('text=/人物.*\(/');
+    const charactersTab = page.getByText(/人物.*\(/);
     await charactersTab.click();
     await page.waitForTimeout(300);
 

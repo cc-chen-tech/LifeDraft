@@ -1,5 +1,7 @@
 # 02 - System Architecture
 
+> 最后核对：2026-04-19
+
 ## 分层结构
 
 - `frontend/`：Next.js 前端 UI、状态管理（Zustand）、SSE 消费

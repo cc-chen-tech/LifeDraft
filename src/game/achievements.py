@@ -343,7 +343,7 @@ class AchievementEngine:
             return 0.0
         mean = sum(moods) / len(moods)
         variance = sum((m - mean) ** 2 for m in moods) / len(moods)
-        return variance ** 0.5
+        return float(variance ** 0.5)
 
     def _wealth_steady_growth(self, player: PlayerState) -> bool:
         """Check if wealth grew every 10 weeks."""

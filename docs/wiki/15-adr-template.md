@@ -1,5 +1,7 @@
 # 15 - ADR Template
 
+> 最后核对：2026-04-19
+
 ADR（Architecture Decision Record）模板：
 
 ```md

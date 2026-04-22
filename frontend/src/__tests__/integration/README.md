@@ -1,5 +1,7 @@
 # Integration Tests
 
+> Last reviewed: 2026-04-19
+
 This directory contains integration tests that verify the interaction between multiple units of the application.
 
 ## Directory Structure

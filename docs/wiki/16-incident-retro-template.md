@@ -1,5 +1,7 @@
 # 16 - Incident Retro Template
 
+> 最后核对：2026-04-19
+
 用于线上事故/严重 bug 复盘：
 
 ```md

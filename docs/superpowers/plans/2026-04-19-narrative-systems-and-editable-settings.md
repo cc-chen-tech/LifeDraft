@@ -1,5 +1,8 @@
 # Narrative Systems & Editable Settings Implementation Plan
 
+> Status: Implemented (kept as historical implementation plan)  
+> Last reviewed: 2026-04-19
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the three narrative systems actually initialize by auto-matching a narrative style when settings are complete, and allow users to give AI feedback to regenerate auto-generated settings from the CompletionScreen.

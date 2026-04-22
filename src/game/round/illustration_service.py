@@ -411,7 +411,7 @@ class RoundIllustrationService:
 
             from PIL import Image
 
-            img = Image.open(io.BytesIO(image_data))
+            img: Image.Image = Image.open(io.BytesIO(image_data))
 
             # 如果图片尺寸超过限制，等比缩放
             width, height = img.size

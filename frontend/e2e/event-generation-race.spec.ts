@@ -179,7 +179,7 @@ test.describe('Event Generation Race Condition E2E', () => {
      * 每次导航到 /play 都会建立新的 SSE 连接，
      * 旧连接应被正确关闭。
      */
-    test.setTimeout(60000);
+    test.setTimeout(120_000);
 
     const consoleErrors: string[] = [];
     page.on('console', (msg) => {

@@ -1,5 +1,7 @@
 # 09 - Feature Playbooks
 
+> 最后核对：2026-04-19
+
 ## Playbook A: 新增一个 Gameplay API
 
 1. 在 `src/api/schemas.py` 定义请求/响应模型。  

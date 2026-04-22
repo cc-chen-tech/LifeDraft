@@ -2,7 +2,8 @@
 
 > **文档版本**: v1.0  
 > **创建日期**: 2026-02-26  
-> **状态**: 待评审
+> **状态**: 历史设计稿（与当前代码可能部分不一致）  
+> **建议**: 实际实现请优先参考 `docs/wiki/02-system-architecture.md` 与 `docs/wiki/05-upgrade-and-feature-design.md`
 
 ---
 

@@ -1,5 +1,7 @@
 # ADR-20260419-sse-over-websocket
 
+> 最后核对：2026-04-19
+
 ## 状态
 
 Accepted

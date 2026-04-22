@@ -1,5 +1,7 @@
 # 04 - Development And Testing
 
+> 最后核对：2026-04-19
+
 ## 日常开发命令
 
 后端：

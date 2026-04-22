@@ -84,12 +84,16 @@ async def get_game_state(
     else:
         logger.info("[GetGameState] No current_event, returning None")
 
+    _raw_quality_level = getattr(game_loop, "quality_level", None)
+    constraint_level = _raw_quality_level if isinstance(_raw_quality_level, str) else "expert"
+
     return GameStateResponse(
         game_id=game_id,
         player_state=player_state,
         progress=progress,
         round_info=round_info,
         current_event=current_event,
+        constraint_level=constraint_level,
     )
 
 

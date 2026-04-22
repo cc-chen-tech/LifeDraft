@@ -1,188 +1,191 @@
 # 人生草稿本 (Life Draft Book)
 
-A text-based life simulation game with AI-generated events, resource management, and decision-making gameplay.
+AI 叙事人生模拟游戏：通过多轮事件生成、选择推进、关系与世界状态演化，体验不同人生轨迹。
 
-人生草稿本 - 用 AI 生成事件，管理资源，做出选择，体验不同的人生轨迹。
+## 当前实现（以代码为准）
 
-## Features
+- 前端：Next.js 16 + React 19（`frontend/`）
+- 后端：FastAPI（`src/api`）
+- 游戏核心：`src/game`
+- AI 生成与叙事系统：`src/ai`
+- 数据层：SQLAlchemy + Repository/Facade（`src/database`）
+- 图片与音乐：`src/services/image*`、`src/services/music_service.py`
 
-- **AI-Generated Events**: Dynamic, personalized life events generated in real-time using GPT-4
-- **Resource Management**: Balance energy, mood, knowledge, and wealth
-- **Decision-Making**: Make choices that affect your life trajectory
-- **Dual Interfaces**: Both Streamlit and Next.js web interfaces
-- **Save System**: Save and load your game progress
-- **Bilingual Support**: Play in Chinese (default) or English
-- **Multiple Endings**: Experience different life outcomes based on your choices
+> 当前仓库是 **FastAPI + Next.js** 主体；不包含 `src/ui/streamlit_app.py`。
+
+## 主要能力
+
+- 多轮事件生成与选择推进（SSE 流式 + 同步回退）
+- 会话恢复（内存 session + 数据库自动恢复）
+- 时间回溯存档（save points + timeline）
+- 叙事质量档位（`fast / expert / master`）
+- 场景插画与角色/物品/地标收集系统
+- 音乐推荐与流式代理播放
+- 好友系统、角色预设与开场生成功能
+
+## 快速开始
+
+### 方式一：一键启动（推荐开发）
+
+```bash
+./start.sh
+./start.sh status
+./start.sh tail
+./start.sh stop
+```
+
+默认端口：
+
+- 前端：`3000`
+- 后端：`8000`
+- 音乐服务：`3001`
+
+### 方式二：手动启动
+
+1. 安装后端依赖
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+2. 安装前端依赖
+
+```bash
+cd frontend
+npm install
+cd ..
+```
+
+3. 配置环境变量
+
+```bash
+cp .env.example .env
+```
+
+4. 启动后端
+
+```bash
+python3 run_api.py
+```
+
+5. 启动前端（新终端）
+
+```bash
+cd frontend
+npm run dev
+```
+
+访问：`http://localhost:3000`
+
+### 方式三：容器部署（ECS 配置）
+
+```bash
+docker compose -f docker-compose.ecs.yml up -d --build
+```
+
+## 环境变量（核心）
+
+请以 [`.env.example`](.env.example) 为准。最常用字段：
+
+- `OPENAI_API_KEY`（必填）
+- `OPENAI_MODEL`（默认 `gpt-4`）
+- `DATABASE_URL`（可选，不填则使用本地 SQLite）
+- `DEFAULT_LANGUAGE`（`zh` / `en`）
+- `ENABLE_*` 叙事与实验开关（feature flags）
+
+## 开发与测试
+
+### 后端
+
+```bash
+source venv/bin/activate
+pytest tests/ -v
+```
+
+### 前端
+
+```bash
+cd frontend
+npm test
+npm run test:e2e
+```
+
+### 五层测试入口（推荐）
+
+```bash
+./test.sh all
+./test.sh contract
+./test.sh db
+./test.sh e2e
+```
+
+### API 类型同步（前后端契约）
+
+```bash
+cd frontend
+npm run sync:api-types
+```
+
+## 仓库结构（简版）
+
+```text
+story2/
+├── src/
+│   ├── api/          # FastAPI 路由、依赖、会话服务
+│   ├── game/         # 游戏循环与状态推进
+│   ├── ai/           # LLM 生成、叙事系统、约束校验
+│   ├── services/     # 图片/音乐/实体识别等服务
+│   └── database/     # ORM、Repository、Facade
+├── frontend/         # Next.js 前端
+├── config/           # 配置、Prompt、Feature Flags
+├── tests/            # 后端测试
+├── docs/wiki/        # 项目知识库（持续维护）
+├── docker-compose.ecs.yml
+├── run_api.py
+├── start.sh
+└── test.sh
+```
 
 ## Repo Wiki
 
-For maintainability, upgrade planning, and new feature design, see:
+项目维护、升级设计与新功能规划请看：
 
 - [docs/wiki/README.md](docs/wiki/README.md)
-- Includes quick start, architecture, API/session model, troubleshooting,
-  feature playbooks, release checklist, module index, and glossary.
-- Team templates are included (PR template, ADR template, incident retro template).
-- Includes ADR example and role-based reading paths for onboarding.
-- Wiki integrity is validated in CI via `.github/workflows/wiki-check.yml`.
+- 含架构、API/Session、排障、发布清单、模板（PR/ADR/事故复盘）
+- 含 ADR 示例与按角色阅读路径
+- CI 校验：`.github/workflows/wiki-check.yml`
 
-## Tech Stack
+## 文档索引（按角色）
 
-- **Backend**: Python 3.9+, FastAPI, SQLAlchemy
-- **Frontend**: Next.js 16, React 19, TypeScript, Tailwind CSS 4
-- **AI**: OpenAI GPT-4 API
-- **Database**: SQLite (default) / PostgreSQL (production)
-- **Testing**: pytest, Jest, Playwright (E2E)
-- **Deployment**: Docker, Docker Compose
+| 角色 | 推荐入口 |
+|---|---|
+| 后端开发 | [02-system-architecture](docs/wiki/02-system-architecture.md), [03-api-and-session](docs/wiki/03-api-and-session.md), [11-module-index](docs/wiki/11-module-index.md) |
+| 前端开发 | [01-quick-start](docs/wiki/01-quick-start.md), [06-api-call-matrix](docs/wiki/06-api-call-matrix.md), [08-troubleshooting](docs/wiki/08-troubleshooting.md) |
+| 测试工程 | [04-development-and-testing](docs/wiki/04-development-and-testing.md), [10-release-and-change-checklist](docs/wiki/10-release-and-change-checklist.md) |
+| 运维/发布 | [DEPLOYMENT.md](DEPLOYMENT.md), [10-release-and-change-checklist](docs/wiki/10-release-and-change-checklist.md), [08-troubleshooting](docs/wiki/08-troubleshooting.md) |
+| 架构评审 | [15-adr-template](docs/wiki/15-adr-template.md), [ADR 示例](docs/wiki/adr/ADR-20260419-sse-over-websocket.md), [13-documentation-governance](docs/wiki/13-documentation-governance.md) |
 
-## Quick Start
+完整角色路径见：[17-role-based-reading-paths](docs/wiki/17-role-based-reading-paths.md)
 
-### Option 1: Using start.sh (Recommended for Development)
+## 文档索引（按任务）
 
-```bash
-# Start both backend and frontend
-./start.sh
+| 任务 | 文档 |
+|---|---|
+| 快速本地启动 | [01-quick-start](docs/wiki/01-quick-start.md) |
+| 理解系统架构 | [02-system-architecture](docs/wiki/02-system-architecture.md) |
+| 查 API 与会话机制 | [03-api-and-session](docs/wiki/03-api-and-session.md) |
+| 前后端接口对齐 | [06-api-call-matrix](docs/wiki/06-api-call-matrix.md) |
+| 新功能设计与落地 | [05-upgrade-and-feature-design](docs/wiki/05-upgrade-and-feature-design.md), [09-feature-playbooks](docs/wiki/09-feature-playbooks.md) |
+| 上线前检查 | [10-release-and-change-checklist](docs/wiki/10-release-and-change-checklist.md) |
+| 故障排查 | [08-troubleshooting](docs/wiki/08-troubleshooting.md) |
+| PR/ADR/复盘模板 | [14-pr-template](docs/wiki/14-pr-template.md), [15-adr-template](docs/wiki/15-adr-template.md), [16-incident-retro-template](docs/wiki/16-incident-retro-template.md) |
 
-# Other commands
-./start.sh stop      # Stop all services
-./start.sh restart   # Restart services
-./start.sh status    # Check service status
-./start.sh tail      # View real-time logs
-```
+## 说明
 
-### Option 2: Using Docker
-
-```bash
-# Build and start with Docker Compose
-make deploy-dev
-
-# Or manually:
-docker-compose up -d
-```
-
-### Option 3: Manual Setup
-
-1. **Clone and setup Python environment**:
-   ```bash
-   python -m venv venv
-   source venv/bin/activate
-   pip install -r requirements.txt
-   ```
-
-2. **Setup environment variables**:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your OpenAI API key
-   ```
-
-3. **Start backend**:
-   ```bash
-   python run_api.py
-   ```
-
-4. **Start frontend** (in another terminal):
-   ```bash
-   cd frontend
-   npm install
-   npm run dev
-   ```
-
-5. **Open** http://localhost:3000
-
-## Environment Variables
-
-Create a `.env` file in the project root:
-
-```bash
-# Required
-OPENAI_API_KEY=your-openai-api-key-here
-OPENAI_MODEL=gpt-4
-
-# Optional
-DEFAULT_LANGUAGE=zh        # zh or en
-CACHE_EVENTS=true          # Enable event caching
-DATABASE_URL=              # PostgreSQL URL (optional, uses SQLite by default)
-```
-
-See `.env.example` for all available options.
-
-## Development Commands
-
-### Using Makefile
-
-```bash
-make test           # Run all tests
-make test-cov       # Run tests with coverage report
-make format         # Format code with black and isort
-make lint           # Run flake8 linting
-make type-check     # Run mypy type checking
-make quality        # Run all quality checks
-
-make docker-up      # Start Docker services
-make docker-down    # Stop Docker services
-make deploy-dev     # Deploy development environment
-make deploy-prod    # Deploy production environment
-```
-
-### Testing
-
-**Backend tests:**
-```bash
-pytest tests/ -v
-pytest tests/ -v --cov=src --cov-report=html
-```
-
-**Frontend tests:**
-```bash
-cd frontend
-npm test              # Unit tests with Jest
-npm run test:e2e      # E2E tests with Playwright
-```
-
-## Project Structure
-
-```
-story2/
-├── src/
-│   ├── game/         # Core game logic and state management
-│   ├── ai/           # AI event generation and LLM integration
-│   ├── api/          # FastAPI backend
-│   ├── ui/           # Streamlit interface
-│   └── database/     # Database models and operations
-├── frontend/         # Next.js frontend application
-├── tests/            # Backend tests
-├── config/           # Configuration and AI prompts
-├── data/             # Game data, presets, and cache
-├── docker-compose.yml
-├── Dockerfile
-├── Makefile          # Development commands
-├── start.sh          # Quick start script
-└── DEPLOYMENT.md     # Detailed deployment guide
-```
-
-## Deployment
-
-See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment options:
-
-- **Streamlit Cloud** - Easiest, free tier available
-- **Docker Deployment** - Recommended for VPS/cloud servers
-- **Full Production Setup** - With Nginx, SSL, monitoring
-
-Quick Docker deployment:
-```bash
-# Development
-make deploy-dev
-
-# Production
-make deploy-prod
-```
-
-## Gameplay
-
-- Start at age 22 and simulate until age 30 (96 weeks)
-- Each week, face 2-3 AI-generated events based on your current situation
-- Make decisions that affect your resources (energy, mood, knowledge, wealth)
-- Build relationships with NPCs
-- Experience different endings based on your life choices
+- 部署以 `DEPLOYMENT.md`（当前版本）为准；历史方案请以文档内状态说明识别。  
+- 如 README 与代码不一致，以代码实现为准，并欢迎直接提交文档修复。
 
 ## License
 

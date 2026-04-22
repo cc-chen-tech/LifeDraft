@@ -501,7 +501,7 @@ async def update_character_settings(
             try:
                 match_result = auto_match_style(merged_settings)
                 if match_result.confidence >= 0.3:
-                    game.narrative_style_id = match_result.style_id
+                    game.narrative_style_id = match_result.style_id  # type: ignore[assignment]
                     merged_settings["narrative_style_id"] = match_result.style_id
                     initial_state["character_settings"] = merged_settings
                     initial_state["narrative_style_id"] = match_result.style_id

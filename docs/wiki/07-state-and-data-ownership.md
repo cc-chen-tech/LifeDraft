@@ -1,5 +1,7 @@
 # 07 - State And Data Ownership
 
+> 最后核对：2026-04-19
+
 ## 状态归属一览
 
 - 前端临时 UI 状态：Zustand stores（`frontend/src/stores/*`）

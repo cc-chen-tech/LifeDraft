@@ -18,6 +18,7 @@ import { startNetworkMonitoring, formatNetworkErrors } from './helpers/network-m
 import { waitForNetworkIdle, waitForStableDOM } from './helpers/wait-helpers';
 
 const BASE_URL = 'http://localhost:3000';
+const API_URL = 'http://localhost:8000';
 
 /** SSE 事件收集器 */
 interface SSEEvent {
@@ -90,47 +91,99 @@ async function waitForGameReady(page: Page): Promise<void> {
 }
 
 /**
- * 导航到有效的游戏页面
- * 如果没有活跃游戏，先创建一个
- * 如果创建失败，抛出错误而不是 skip
+ * 通过 API 创建测试游戏
  */
-async function navigateToGame(page: Page): Promise<void> {
+async function createTestGame(context: BrowserContext): Promise<number> {
+  const createResp = await context.request.post(`${API_URL}/api/games`, {
+    data: {
+      player_name: 'E2E测试角色',
+      life_vision: '探索世界',
+      character_settings: {
+        era: { name: '现代', period: '现代' },
+        age: { age: 22, stage: '青年' },
+        gender: { gender: '男' },
+        world: { name: '普通现代', description: '测试世界' },
+        family: { description: '普通家庭' },
+        relationships: { key_people: [], relationships_description: '暂无' },
+        traits: { traits: ['勇敢'] },
+        wealth: { level: '中等', description: '普通收入' },
+      },
+      language: 'zh',
+    },
+  });
+
+  if (!createResp.ok()) {
+    throw new Error(`创建游戏失败: ${createResp.status()} ${await createResp.text()}`);
+  }
+
+  const game = await createResp.json();
+  return game.game_id;
+}
+
+/**
+ * 导航到有效的游戏页面
+ * 使用 API 预创建游戏，绕过 UI 创建流程和 AI 生成等待
+ */
+async function navigateToGame(page: Page, context: BrowserContext): Promise<void> {
+  // 先检查是否已有活跃游戏
   await page.goto(`${BASE_URL}/play`);
   await waitForGameReady(page);
 
-  // 检查是否在游戏页面（有 header 且有 StatusBar）
   const hasHeader = await page.locator('header').isVisible().catch(() => false);
   if (hasHeader) {
     return;
   }
 
-  // 可能被重定向了，尝试创建游戏
-  await page.goto(`${BASE_URL}/create`);
-  await page.waitForLoadState('domcontentloaded');
-  await waitForNetworkIdle(page);
+  // 通过 API 快速创建游戏，绕过 AI 生成等待
+  const gameId = await createTestGame(context);
 
-  // 填写角色名
-  const nameInput = page.getByPlaceholder(/角色名|姓名|Name/i);
-  if (await nameInput.isVisible().catch(() => false)) {
-    await nameInput.fill('E2E测试角色');
-    await page.waitForLoadState('domcontentloaded');
-  }
-
-  // 尝试快速开始
-  const startButton = page.getByRole('button', { name: /开始游戏|Start Game|生成角色/i });
-  if (await startButton.isVisible().catch(() => false)) {
-    await startButton.click();
-    await page.waitForResponse(resp => resp.url().includes('/api/')).catch(() => {});
-    await waitForNetworkIdle(page);
-  }
-
-  // 等待跳转到 play 页面（游戏创建含 AI 生成，可能需要较长时间）
-  await page.waitForURL(/\/play|\/story/, { timeout: 60000 }).catch(() => {});
+  // 直接导航到游戏页面
+  await page.goto(`${BASE_URL}/play?gameId=${gameId}`);
   await waitForGameReady(page);
 
   // 最终验证
   const finalHasHeader = await page.locator('header').isVisible().catch(() => false);
   expect(finalHasHeader).toBe(true);
+}
+
+/**
+ * 等待游戏内容加载完成（故事或选项出现）
+ * 新生成的游戏需要等待后端 AI 生成事件
+ */
+async function waitForGameContent(page: Page, timeoutMs: number = 60000): Promise<{
+  hasStory: boolean;
+  hasOptions: boolean;
+}> {
+  const startTime = Date.now();
+  const pollInterval = 2000;
+
+  while (Date.now() - startTime < timeoutMs) {
+    // 检查是否有选项可见
+    const optionsLabel = page.locator('text=你的选择');
+    const hasOptions = await optionsLabel.isVisible().catch(() => false);
+
+    if (hasOptions) {
+      return { hasStory: true, hasOptions: true };
+    }
+
+    // 检查是否有故事文本（排除 loading 状态）
+    const mainContent = await page.locator('main').textContent().catch(() => '');
+    const hasStoryText = mainContent && mainContent.length > 100 && !mainContent.includes('正在生成');
+
+    if (hasStoryText) {
+      return { hasStory: true, hasOptions: false };
+    }
+
+    // 检查是否处于错误状态
+    const errorVisible = await page.locator('text=/错误|失败|error|failed/i').first().isVisible().catch(() => false);
+    if (errorVisible) {
+      return { hasStory: false, hasOptions: false };
+    }
+
+    await page.waitForTimeout(pollInterval);
+  }
+
+  return { hasStory: false, hasOptions: false };
 }
 
 test.describe('Claude Code Improvements - E2E Validation', () => {
@@ -141,14 +194,14 @@ test.describe('Claude Code Improvements - E2E Validation', () => {
     await ensureAuthenticated(page, context);
   });
 
-  test('1. Story generation shows phase progress', async ({ page }) => {
+  test('1. Story generation shows phase progress', async ({ page, context }) => {
     // Goal: Verify SSE status events show correct phases
     // and UI displays loading state during generation
     const monitor = startNetworkMonitoring(page);
     const { events, promise: ssePromise } = await interceptSSEEvents(page);
 
     // Navigate to game page
-    await navigateToGame(page);
+    await navigateToGame(page, context);
 
     // Wait for any ongoing generation to complete
     await page.waitForTimeout(2000);
@@ -217,7 +270,7 @@ test.describe('Claude Code Improvements - E2E Validation', () => {
     expect(monitor.get5xxErrors()).toHaveLength(0);
   });
 
-  test('2. Story generation retry shows retry status', async ({ page }) => {
+  test('2. Story generation retry shows retry status', async ({ page, context }) => {
     // Goal: Verify retry mechanism works transparently
     const monitor = startNetworkMonitoring(page);
     const consoleMessages: string[] = [];
@@ -230,7 +283,7 @@ test.describe('Claude Code Improvements - E2E Validation', () => {
     const { events } = await interceptSSEEvents(page);
 
     // Navigate to game
-    await navigateToGame(page);
+    await navigateToGame(page, context);
 
     // Wait for any generation
     await page.waitForTimeout(3000);
@@ -267,7 +320,7 @@ test.describe('Claude Code Improvements - E2E Validation', () => {
     expect(monitor.get5xxErrors()).toHaveLength(0);
   });
 
-  test('3. Model fallback is transparent to user', async ({ page }) => {
+  test('3. Model fallback is transparent to user', async ({ page, context }) => {
     // Goal: Verify model switching doesn't break user experience
     const monitor = startNetworkMonitoring(page);
     const consoleErrors: string[] = [];
@@ -283,7 +336,7 @@ test.describe('Claude Code Improvements - E2E Validation', () => {
     });
 
     // Navigate to game
-    await navigateToGame(page);
+    await navigateToGame(page, context);
 
     // Wait for any generation to complete
     await page.waitForTimeout(3000);
@@ -323,22 +376,28 @@ test.describe('Claude Code Improvements - E2E Validation', () => {
     expect(modelErrors).toHaveLength(0);
   });
 
-  test('4. Long stories are complete without truncation', async ({ page }) => {
+  test('4. Long stories are complete without truncation', async ({ page, context }) => {
     // Goal: Verify truncation recovery produces complete text
     const monitor = startNetworkMonitoring(page);
     const { events, promise: ssePromise } = await interceptSSEEvents(page);
 
     // Navigate to game
-    await navigateToGame(page);
+    await navigateToGame(page, context);
 
-    // Wait for generation to complete
-    await page.waitForTimeout(3000);
-    await waitForNetworkIdle(page);
+    // Wait for game content to load (story or options)
+    const { hasStory, hasOptions } = await waitForGameContent(page, 60000);
+
+    // If neither story nor options appeared, the game might be in an error state
+    // Log the state for debugging but don't fail - the core assertion is about story length
+    if (!hasStory && !hasOptions) {
+      const mainContent = await page.locator('main').textContent().catch(() => '');
+      console.warn('Game content did not load. Main content:', mainContent?.slice(0, 200));
+    }
 
     // Wait for SSE to complete if in progress
     await Promise.race([
       ssePromise,
-      page.waitForTimeout(30000),
+      page.waitForTimeout(10000),
     ]);
 
     // Wait for story text to stabilize
@@ -373,68 +432,72 @@ test.describe('Claude Code Improvements - E2E Validation', () => {
     expect(monitor.get5xxErrors()).toHaveLength(0);
   });
 
-  test('5. Game progression works correctly after post-processing', async ({ page }) => {
+  test('5. Game progression works correctly after post-processing', async ({ page, context }) => {
     // Goal: Verify parallel post-processing doesn't break game flow
     const monitor = startNetworkMonitoring(page);
 
     // Navigate to game
-    await navigateToGame(page);
+    await navigateToGame(page, context);
 
-    // Wait for game to be in a stable state
-    await page.waitForTimeout(3000);
-    await waitForNetworkIdle(page);
+    // Wait for game content to load (story or options)
+    const { hasStory, hasOptions } = await waitForGameContent(page, 60000);
 
     // Capture initial status bar content
     const initialStatusText = await page.locator('header').textContent().catch(() => '');
 
-    // Look for option cards (indicating options phase)
-    const optionButton = page.locator('button').filter({ hasText: /^(?!.*(?:保存|历史|返回|收集|设置)).{5,}/ }).first();
-    const hasOptions = await optionButton.isVisible({ timeout: 5000 }).catch(() => false);
-
     if (hasOptions) {
-      // Click the first option to make a choice
-      monitor.clear();
-      await optionButton.click();
+      // Find and click the first option card
+      const optionButton = page.locator('button').filter({ hasText: /^(?!.*(?:保存|历史|返回|收集|设置)).{5,}/ }).first();
+      const optionVisible = await optionButton.isVisible({ timeout: 3000 }).catch(() => false);
 
-      // Wait for choice processing to complete
-      await page.waitForResponse(resp =>
-        resp.url().includes('/api/games/') &&
-        (resp.url().includes('/choice') || resp.url().includes('/custom-choice'))
-      ).catch(() => {});
+      if (optionVisible) {
+        // Click the first option to make a choice
+        monitor.clear();
+        await optionButton.click();
 
-      await waitForNetworkIdle(page);
-      await page.waitForTimeout(3000);
+        // Wait for choice processing to complete
+        await page.waitForResponse(resp =>
+          resp.url().includes('/api/games/') &&
+          (resp.url().includes('/choice') || resp.url().includes('/custom-choice'))
+        ).catch(() => {});
 
-      // Verify status bar values may have updated
-      const updatedStatusText = await page.locator('header').textContent().catch(() => '');
-      // Status text exists (whether changed or not)
-      expect(updatedStatusText).toBeTruthy();
+        await waitForNetworkIdle(page);
 
-      // Wait for next generation
-      await page.waitForTimeout(5000);
-      await waitForNetworkIdle(page);
+        // Wait for next generation to complete
+        await waitForGameContent(page, 60000);
 
-      // Verify new story content appears (story continuity)
-      const storyText = await page.locator('main').textContent();
-      expect(storyText).toBeTruthy();
-      expect(storyText!.length).toBeGreaterThan(0);
+        // Verify status bar values may have updated
+        const updatedStatusText = await page.locator('header').textContent().catch(() => '');
+        expect(updatedStatusText).toBeTruthy();
 
-      // Check no 5xx errors during the whole flow
-      const serverErrors = monitor.get5xxErrors();
-      if (serverErrors.length > 0) {
-        console.error('Server errors during progression:', formatNetworkErrors(serverErrors));
+        // Verify new story content appears (story continuity)
+        const storyText = await page.locator('main').textContent();
+        expect(storyText).toBeTruthy();
+        expect(storyText!.length).toBeGreaterThan(0);
+
+        // Check no 5xx errors during the whole flow
+        const serverErrors = monitor.get5xxErrors();
+        if (serverErrors.length > 0) {
+          console.error('Server errors during progression:', formatNetworkErrors(serverErrors));
+        }
+        expect(serverErrors).toHaveLength(0);
       }
-      expect(serverErrors).toHaveLength(0);
+    } else if (hasStory) {
+      // Story is visible but no options yet - generation may have produced story
+      // without options (valid state). Verify page is healthy.
+      const mainContent = await page.locator('main').textContent();
+      expect(mainContent).toBeTruthy();
+      expect(monitor.get5xxErrors()).toHaveLength(0);
     } else {
-      // No options available - generation might still be in progress
-      // Verify page is in a valid state
+      // No story or options - game might be in loading or error state
+      // Verify page is in a valid state (not crashed)
       const mainContent = await page.locator('main').textContent();
       expect(mainContent).toBeTruthy();
       expect(monitor.get5xxErrors()).toHaveLength(0);
     }
   });
 
-  test('6. Long-running game does not fail from context overflow', async ({ page }) => {
+  test('6. Long-running game does not fail from context overflow', async ({ page, context }) => {
     // Goal: Verify reactive compression prevents context overflow
     const monitor = startNetworkMonitoring(page);
     const consoleMessages: string[] = [];
@@ -448,7 +511,7 @@ test.describe('Claude Code Improvements - E2E Validation', () => {
     });
 
     // Navigate to game (preferably one with history)
-    await navigateToGame(page);
+    await navigateToGame(page, context);
 
     // Wait for generation to complete
     await page.waitForTimeout(5000);

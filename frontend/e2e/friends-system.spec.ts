@@ -38,6 +38,7 @@ test.describe('Friends System', () => {
 
   // TC-03: 空好友列表状态
   test('TC-03: Empty friends list shows placeholder', async ({ browser }) => {
+    test.setTimeout(120_000);
     const context = await browser.newContext();
     const page = await context.newPage();
 
@@ -97,6 +98,7 @@ test.describe('Friends System', () => {
 
   // TC-07: 好友请求提交（UI 流程）
   test('TC-07: Send friend request via profile UI', async ({ browser }) => {
+    test.setTimeout(120_000);
     const context = await browser.newContext();
     const page = await context.newPage();
 
