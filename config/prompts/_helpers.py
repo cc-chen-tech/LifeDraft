@@ -986,87 +986,97 @@ def _build_image_era_constraints(
 角色设定为古代/前现代背景，画面绝对禁止出现以下现代视觉元素：
 - 现代建筑：摩天大楼、玻璃幕墙、霓虹灯、现代桥梁、电线杆
 - 现代交通工具：汽车、飞机、火车、摩托车、自行车（古代可用马匹、轿子、马车、木船）
-- 现代商业标识：星巴克、麦当劳、广告牌、LED屏幕、二维码
-- 现代物品：手机、电脑、电视、相机、路灯、红绿灯、空调外机
-- 现代服饰：西装、领带、牛仔裤、运动鞋、眼镜（古代可用传统服饰、布鞋）
-- 现代场景：咖啡厅、商场、超市、地铁站、机场、医院（古代可用茶馆、集市、药铺、驿站）
-- 画面中的建筑必须是古代风格：木质结构、瓦片屋顶、砖石城墙
-- 画面中的服饰必须是古代服装：长袍、襦裙、汉服、盔甲
-- 画面中的器具必须是古代器物：陶瓷、青铜、木质家具、油纸伞"""
+- 现代商业标识：星巴克、麦当劳、肯德基、必胜客、汉堡王、苹果、华为、小米、耐克、阿迪达斯、优衣库、ZARA、H&M、可口可乐、百事、广告牌、LED屏幕、二维码
+- 现代物品：手机、电脑、电视、相机、路灯、红绿灯、空调外机、冰箱、洗衣机、电梯
+- 现代服饰：西装、领带、牛仔裤、运动鞋、眼镜、T恤、卫衣、风衣、羽绒服（古代可用传统服饰、布鞋、长袍、襦裙、汉服、盔甲）
+- 现代场景：咖啡厅、商场、超市、地铁站、机场、医院（古代可用茶馆、集市、药铺、驿站、书院、衙门）
+- 画面中的建筑必须是古代风格：木质结构、瓦片屋顶、砖石城墙、飞檐斗拱
+- 画面中的服饰必须是古代服装：长袍、襦裙、汉服、盔甲、布衣、绸缎
+- 画面中的器具必须是古代器物：陶瓷、青铜、木质家具、油纸伞、竹简、毛笔
+- 人物一致性：同一人物的多张图片必须是同一个人，相同脸型、相同五官比例、相同发型，仅允许服装和姿势变化"""
         else:
             return """\n[★ VISUAL ERA RED LINE (violation = failure) ★]
 Character is set in a historical/pre-modern era. The image MUST NOT contain these modern visual elements:
 - Modern buildings: skyscrapers, glass facades, neon lights, modern bridges, power lines
 - Modern vehicles: cars, airplanes, trains, motorcycles, bicycles (use horses, sedan chairs, carriages, wooden boats)
-- Modern commercial signs: Starbucks, McDonald's, billboards, LED screens, QR codes
-- Modern objects: phones, computers, TVs, cameras, street lamps, traffic lights, AC units
-- Modern clothing: suits, ties, jeans, sneakers, glasses (use traditional robes, cloth shoes)
-- Modern venues: coffee shops, malls, supermarkets, subway stations, airports, hospitals (use tea houses, markets, apothecaries, post stations)
-- Buildings must be ancient style: wooden structures, tile roofs, brick/stone walls
-- Clothing must be ancient/traditional: robes, hanfu, armor
-- Objects must be ancient: ceramics, bronze, wooden furniture, oil-paper umbrellas"""
+- Modern commercial signs: Starbucks, McDonald's, KFC, Pizza Hut, Burger King, Apple, Huawei, Xiaomi, Nike, Adidas, Uniqlo, ZARA, H&M, Coca-Cola, Pepsi, billboards, LED screens, QR codes
+- Modern objects: phones, computers, TVs, cameras, street lamps, traffic lights, AC units, refrigerators, washing machines, elevators
+- Modern clothing: suits, ties, jeans, sneakers, glasses, T-shirts, hoodies, windbreakers, down jackets (use traditional robes, cloth shoes, long robes, ruqun, hanfu, armor)
+- Modern venues: coffee shops, malls, supermarkets, subway stations, airports, hospitals (use tea houses, markets, apothecaries, post stations, academies, government offices)
+- Buildings must be ancient style: wooden structures, tile roofs, brick/stone walls, flying eaves
+- Clothing must be ancient/traditional: robes, ruqun, hanfu, armor, cloth garments, silk
+- Objects must be ancient: ceramics, bronze, wooden furniture, oil-paper umbrellas, bamboo slips, writing brushes
+- Character consistency: multiple images of the same person MUST be the same individual: same face shape, same facial proportions, same hairstyle. Only clothing and pose may vary"""
 
-    # Modern era — STRICT anti-sci-fi constraints (QA found cyberpunk invading realism)
+    # Modern era — anti-sci-fi/fantasy + anti-brand constraints (QA found cyberpunk and brand logos invading realistic modern stories)
     if language == "zh":
-        return """\n【★ 画面现实主义红线（违反即失败）★】
-角色设定为现代/当代中国背景（2020年代），画面必须严格遵守写实主义原则：
+        return """\n【★ 画面写实主义红线（违反即失败）★】
+角色设定为现代/当代背景，画面必须严格遵守写实主义原则，绝对禁止科幻、奇幻、超现实元素入侵：
 
-【绝对禁止的科幻/未来元素】
-- 禁止赛博朋克风格：金属质感夹克、电路纹理服装、发光线条装饰、机械义肢
-- 禁止全息投影：全息屏幕、全息城市、全息古建筑线框、悬浮信息面板
-- 禁止发光效果：红色/蓝色发光眼睛、发光物体、霓虹光效人物轮廓
-- 禁止未来交通工具：飞行汽车、悬浮载具、科幻飞行器
-- 禁止科幻场景：科幻城市、未来都市天际线、高科技实验室、太空背景
+【绝对禁止的科幻/未来/奇幻元素】
+- 禁止赛博朋克风格：金属质感夹克、电路纹理服装、发光线条装饰、机械义肢、电子眼
+- 禁止全息投影：全息屏幕、全息城市、全息古建筑线框、悬浮信息面板、AR投影
+- 禁止发光效果：红色/蓝色/紫色发光眼睛、发光物体、霓虹光效人物轮廓、身体发光
+- 禁止未来交通工具：科幻飞车、悬浮载具、未来飞行器、喷气背包
+- 禁止科幻场景：科幻城市、未来都市天际线、高科技实验室、太空背景、末日废墟
+- 禁止奇幻元素：精灵耳朵、魔法光环、异色瞳（非自然色）、翅膀、角、鳞片
+- 禁止超现实元素：多重曝光、 surrealist 变形、非自然比例、抽象几何入侵
 
-【绝对禁止的品牌植入】
-- 禁止出现任何真实商业品牌Logo：星巴克（Starbucks）、苹果（Apple）、麦当劳等
-- 禁止出现带有商标的咖啡杯、购物袋、电子设备
-- 如需饮品/物品，使用无品牌标识的普通杯子/包装
+【绝对禁止的真实商业品牌标识】
+- 禁止出现任何真实品牌的Logo、商标、标志性配色或包装
+- 包括但不限于：星巴克、麦当劳、苹果、耐克、阿迪达斯、可口可乐、肯德基、华为、小米等
+- 如有咖啡厅场景，不得出现星巴克标志性绿色；如有快餐场景，不得出现麦当劳金色拱门
+- 人物穿着的衣服不得带有任何真实品牌的Logo或标志性图案
 
-【服装要求（2024年中国日常）】
-- 男性：衬衫、T恤、休闲外套、牛仔裤/休闲裤、运动鞋/皮鞋
-- 女性：连衣裙、衬衫、针织衫、牛仔裤、风衣、简约配饰
-- 禁止：金属质感服装、未来感盔甲、电路纹理、发光装饰、夸张科幻造型
+【服装要求（现代日常写实）】
+- 男性：衬衫、T恤、 Polo衫、休闲外套、牛仔裤/休闲裤、运动鞋/皮鞋/帆布鞋
+- 女性：连衣裙、衬衫、针织衫、牛仔裤、风衣、简约配饰、平底鞋/低跟鞋
+- 禁止：金属质感服装、未来感盔甲、电路纹理、发光装饰、夸张科幻造型、透明材质服装、机甲风格
 
 【背景要求】
-- 真实城市环境：现代建筑街道、公园、咖啡厅内部、办公室、住宅
-- 自然光线：日光、室内灯光、街灯，禁止彩色霓虹光效
-- 禁止科幻城市天际线、禁止全息投影叠加
+- 真实城市/自然环境：现代建筑街道、公园、咖啡厅内部、办公室、住宅、校园、自然风景
+- 自然光线：日光、室内灯光、街灯、黄昏光，禁止彩色霓虹光效、禁止非自然色光源
+- 禁止科幻城市天际线、禁止全息投影叠加、禁止悬浮建筑
 
-【人物一致性要求】
-- 同一人物的多张图片必须是同一个人：相同脸型、相同五官比例、相同发型
-- 仅允许服装和姿势变化，面部特征必须保持一致
-- 写实摄影风格，禁止动漫风、油画风、科幻风"""
+【人物一致性要求（严格遵守）】
+- 同一人物的多张图片必须是同一个人：相同脸型、相同五官比例、相同发型、相同肤色
+- 仅允许服装和姿势变化，面部特征必须绝对保持一致
+- 写实摄影风格，禁止动漫风、油画风、科幻风、插画风、水彩风
+- 人物比例必须符合真实人类，禁止九头身、过大眼睛等非自然比例"""
     else:
         return """\n[★ VISUAL REALISM RED LINE (violation = failure) ★]
-Character is set in modern/contemporary China (2020s). The image MUST strictly follow realism principles:
+Character is set in a modern/contemporary era. The image MUST strictly follow realism principles and ABSOLUTELY FORBID sci-fi, fantasy, or surreal elements from invading:
 
-[ABSOLUTELY FORBIDDEN sci-fi/future elements]
-- NO cyberpunk style: metallic jackets, circuit-textured clothing, glowing line decorations, mechanical prosthetics
-- NO holographic projections: holographic screens, holographic cities, holographic building wireframes, floating info panels
-- NO glowing effects: red/blue glowing eyes, glowing objects, neon light effects on people
-- NO future vehicles: flying cars, hover vehicles, sci-fi aircraft
-- NO sci-fi scenes: sci-fi cities, future city skylines, high-tech labs, space backgrounds
+[ABSOLUTELY FORBIDDEN sci-fi/future/fantasy elements]
+- NO cyberpunk style: metallic jackets, circuit-textured clothing, glowing line decorations, mechanical prosthetics, electronic eyes
+- NO holographic projections: holographic screens, holographic cities, holographic building wireframes, floating info panels, AR projections
+- NO glowing effects: red/blue/purple glowing eyes, glowing objects, neon light effects on people, body glow
+- NO future vehicles: flying cars, hover vehicles, sci-fi aircraft, jetpacks
+- NO sci-fi scenes: sci-fi cities, future city skylines, high-tech labs, space backgrounds, post-apocalyptic ruins
+- NO fantasy elements: elf ears, magic auras, unnatural eye colors (purple, red, glowing), wings, horns, scales
+- NO surreal elements: double exposure, surrealist deformations, unnatural proportions, abstract geometric intrusions
 
-[ABSOLUTELY FORBIDDEN brand placement]
-- NO real commercial brand logos: Starbucks, Apple, McDonald's, etc.
-- NO trademarked coffee cups, shopping bags, electronic devices
-- Use generic cups/packaging without brand marks
+[ABSOLUTELY FORBIDDEN real commercial brand logos]
+- NO real brand logos, trademarks, iconic color schemes, or packaging
+- Including but not limited to: Starbucks, McDonald's, Apple, Nike, Adidas, Coca-Cola, KFC, Huawei, Xiaomi
+- If cafe scene: NO Starbucks iconic green. If fast food scene: NO McDonald's golden arches
+- Clothing MUST NOT display any real brand logos or iconic patterns
 
-[Clothing requirements (2024 China everyday)]
-- Men: shirts, T-shirts, casual jackets, jeans/casual pants, sneakers/leather shoes
-- Women: dresses, blouses, knitwear, jeans, windbreakers, simple accessories
-- FORBIDDEN: metallic clothing, futuristic armor, circuit textures, glowing decorations, exaggerated sci-fi styling
+[Clothing requirements (modern everyday realism)]
+- Men: shirts, T-shirts, polo shirts, casual jackets, jeans/casual pants, sneakers/leather shoes/canvas shoes
+- Women: dresses, blouses, knitwear, jeans, windbreakers, simple accessories, flats/low heels
+- FORBIDDEN: metallic clothing, futuristic armor, circuit textures, glowing decorations, exaggerated sci-fi styling, transparent material clothing, mecha style
 
 [Background requirements]
-- Real urban environments: modern building streets, parks, cafe interiors, offices, homes
-- Natural lighting: daylight, indoor lighting, street lamps. NO colored neon light effects
-- NO sci-fi city skylines, NO holographic projection overlays
+- Real urban/natural environments: modern building streets, parks, cafe interiors, offices, homes, campuses, natural scenery
+- Natural lighting: daylight, indoor lighting, street lamps, dusk light. NO colored neon light effects, NO unnatural colored light sources
+- NO sci-fi city skylines, NO holographic projection overlays, NO floating buildings
 
-[Character consistency requirements]
-- Multiple images of the same person MUST be the same individual: same face shape, same facial proportions, same hairstyle
-- Only clothing and pose may vary; facial features MUST remain consistent
-- Realistic photography style. NO anime style, oil painting style, sci-fi style"""
+[Character consistency requirements (strictly follow)]
+- Multiple images of the same person MUST be the same individual: same face shape, same facial proportions, same hairstyle, same skin tone
+- Only clothing and pose may vary; facial features MUST remain absolutely consistent
+- Realistic photography style. NO anime style, oil painting style, sci-fi style, illustration style, watercolor style
+- Human proportions MUST match real humans. NO nine-head-body-ratio, oversized eyes, or other unnatural proportions"""
 
 
 def _build_logic_constraints(

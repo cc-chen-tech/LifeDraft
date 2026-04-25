@@ -88,10 +88,10 @@ class SceneStyleManager:
             description="适合浪漫、温情场景",
             primary_colors=["粉紫色", "玫瑰金", "淡粉色"],
             secondary_colors=["薰衣草紫", "香槟色"],
-            lighting="柔和的散射光，暖色边缘光，梦幻光晕",
+            lighting="柔和的散射光，暖色边缘光，自然柔焦效果",
             saturation="中高",
             contrast="低",
-            atmosphere="浪漫、温柔、梦幻",
+            atmosphere="浪漫、温柔、温馨",
         ),
         MoodType.MYSTERIOUS: ColorPalette(
             name="神秘",
@@ -331,12 +331,21 @@ class SceneStyleManager:
             palette = self.get_palette(MoodType.WARM_DAILY)
 
         # 构建提示词
-        prompt = f"""电影感故事场景插画。
+        prompt = f"""电影感故事场景插画，写实摄影风格，禁止动漫风/油画风/插画风/水彩风。
 时代背景：{era}。
 场景：{scene_desc}
 
 视觉风格约束（必须严格遵守）：
 {palette.build_prompt_segment()}
+
+【写实主义基线约束（所有场景通用）】
+- 画面必须是真实世界的自然呈现，禁止科幻、奇幻、超现实元素
+- 禁止赛博朋克：金属质感服装、电路纹理、发光装饰、机械义肢、电子眼
+- 禁止全息投影：全息屏幕、悬浮信息面板、全息建筑线框
+- 禁止发光效果：发光眼睛、发光物体、霓虹光效人物轮廓
+- 禁止未来科技：飞行汽车、悬浮载具、科幻飞行器
+- 禁止品牌Logo：星巴克、麦当劳、苹果、耐克、阿迪达斯、可口可乐、肯德基、华为、小米等任何真实商业品牌标识
+- 人物比例符合真实人类，禁止九头身、过大眼睛等非自然比例
 
 整体色彩饱和度保持一致，画面色调统一，光影风格连贯。"""
 

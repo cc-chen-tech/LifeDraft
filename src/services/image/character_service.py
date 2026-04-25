@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
+from config.prompts._helpers import _build_image_era_constraints
 from src.ai.image_client import ImageClient
 from src.ai.image_exceptions import (ContentInspectionError,
                                      ImageGenerationError)
@@ -88,11 +89,17 @@ class CharacterImageService:
             )
             logger.info(f"Appearance anchor generated for {name}")
 
+            # ★ 构建并注入图像时代约束（防止科幻/赛博朋克入侵写实风格）
+            era_constraints = _build_image_era_constraints(character_settings, "zh")
+            combined_style_hint = style_hint or ""
+            if era_constraints:
+                combined_style_hint = f"{combined_style_hint}\n{era_constraints}".strip()
+
             images_data, primary_image_url = self.image_client.generate_character_images(
                 name=name,
                 description=description,
                 era=era,
-                style_hint=style_hint,
+                style_hint=combined_style_hint,
                 num_images=num_images,
                 reference_image_url=reference_image_url,
                 feedback=feedback,

@@ -196,10 +196,11 @@ class TestEraAnachronismContract:
             "zh",
         )
 
-        # 现代背景不应禁止现代视觉元素
-        assert "星巴克" not in result
+        # 现代背景允许现代建筑和交通工具，但禁止真实商业品牌Logo（写实主义要求）
         assert "摩天大楼" not in result
         assert "汽车" not in result
+        # 品牌Logo禁令适用于所有时代（防止真实品牌植入）
+        assert "星巴克" in result or "品牌" in result
 
     def test_scene_service_uses_image_era_constraints(self):
         """SceneImageService 应在生成场景插画时使用图像时代约束"""
