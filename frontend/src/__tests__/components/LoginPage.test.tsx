@@ -37,6 +37,16 @@ jest.mock("@/hooks/useHydration", () => ({
   useHydration: () => true,
 }));
 
+// Mock Sheet to render inline in tests (Radix UI portals don't work well in JSDOM)
+jest.mock("@/components/ui/sheet", () => ({
+  Sheet: ({ children, open }: { children: React.ReactNode; open?: boolean }) =>
+    open ? <div data-testid="sheet">{children}</div> : null,
+  SheetContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  SheetHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  SheetTitle: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  SheetDescription: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+
 describe("Login Page Accessibility", () => {
   it("login input has accessible attributes for snapshot selectors", async () => {
     render(<WelcomePage />);
