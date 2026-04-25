@@ -474,18 +474,28 @@ describe('eventUtils', () => {
   });
 
   describe('selectFinalStory remainingText branch', () => {
-    it('returns remainingText when frontend is long enough but backend is longer', () => {
-      // When frontend >= 10 and backend > frontend, should return remainingText
+    it('returns remainingText when frontend is a prefix of backend', () => {
+      // When frontend is a prefix of backend, return remainingText to stream-append
+      const backendStory = 'This is a frontend story that is longer';
+      const frontendStory = 'This is a frontend'; // 18 chars >= 10
+
+      const result = selectFinalStory(backendStory, frontendStory);
+
+      expect(result.useBackend).toBe(false);
+      expect(result.finalStory).toBe(frontendStory);
+      expect(result.remainingText).toBe(' story that is longer');
+    });
+
+    it('uses backend when frontend is not a prefix of backend (divergence)', () => {
+      // Backend rewrote the story — frontend is not a prefix, so use backend
       const backendStory = 'This is a backend story that is longer than the frontend story';
       const frontendStory = 'This is a frontend'; // 18 chars >= 10
 
       const result = selectFinalStory(backendStory, frontendStory);
 
-      // Frontend >= 10, so useBackendStory = false
-      // But backend > frontend, so returns remainingText
-      expect(result.useBackend).toBe(false);
-      expect(result.finalStory).toBe(frontendStory);
-      expect(result.remainingText).toBe('story that is longer than the frontend story');
+      expect(result.useBackend).toBe(true);
+      expect(result.finalStory).toBe(backendStory);
+      expect(result.remainingText).toBeUndefined();
     });
 
     it('uses frontend when it is longer than backend', () => {

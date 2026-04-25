@@ -29,7 +29,9 @@ class CharacterAppearanceAnchor:
     skin_tone: str = ""  # 肤色：白皙、小麦色、黝黑等
 
     # 面部签名 - 用于精确区分不同人物的面部测量/比例描述
-    facial_signature: str = ""  # 如：两眼间距约为一眼宽度，鼻梁中等高度略带弧度，嘴唇厚度适中上唇略薄，下巴微尖，颧骨平缓
+    facial_signature: str = (
+        ""  # 如：两眼间距约为一眼宽度，鼻梁中等高度略带弧度，嘴唇厚度适中上唇略薄，下巴微尖，颧骨平缓
+    )
 
     # 发型特征
     hair_style: str = ""  # 发型：黑色中长发、短发、卷发、马尾等

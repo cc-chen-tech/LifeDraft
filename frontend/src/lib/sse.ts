@@ -40,8 +40,15 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
           if (!hasError) {
             if (isCompleteReceived && completeData) {
               callbacks.onComplete?.(completeData);
+              safeResolve();
+              return;
             } else if (!isCompleteReceived) {
-              callbacks.onComplete?.({});
+              // ★ 修复：流在未收到 complete 事件的情况下结束（网络断开）
+              // 不应调用 onComplete({}) 伪装成功，而应触发错误以便上层重连
+              const error = new Error('Stream ended without complete event');
+              callbacks.onError?.(error);
+              reject(error);
+              return;
             }
           }
           safeResolve();
@@ -286,14 +293,20 @@ export async function streamRewrite(
   let currentEventType: string | null = null;
 
   let completed = false;
+  let hasError = false;
 
   return new Promise((resolve, reject) => {
     function pump(): Promise<void> {
        
       return reader!.read().then(({ done, value }) => {
         if (done) {
-          completed = true;
-          callbacks.onComplete?.({});
+          // ★ 修复：流在未收到 complete 事件或 [DONE] 的情况下结束
+          if (!completed && !hasError) {
+            const error = new Error('Stream ended without complete event');
+            callbacks.onError?.(error);
+            reject({ completed: false, error });
+            return;
+          }
           resolve({ completed: true, error: undefined });
           return;
         }
@@ -411,13 +424,21 @@ export async function streamOpeningStory(
   const decoder = new TextDecoder();
   let buffer = '';
   let currentEventType = '';
+  let isCompleteReceived = false;
+  let hasError = false;
 
   return new Promise((resolve, reject) => {
     function pump(): Promise<void> {
 
       return reader!.read().then(({ done, value }) => {
         if (done) {
-          callbacks.onComplete?.({});
+          // ★ 修复：流在未收到 complete 事件或 [DONE] 的情况下结束
+          if (!isCompleteReceived && !hasError) {
+            const error = new Error('Stream ended without complete event');
+            callbacks.onError?.(error);
+            reject(error);
+            return;
+          }
           resolve();
           return;
         }
@@ -439,6 +460,7 @@ export async function streamOpeningStory(
           if (trimmed.startsWith('data: ')) {
             const data = trimmed.slice(6);
             if (data === '[DONE]') {
+              isCompleteReceived = true;
               callbacks.onComplete?.({});
               resolve();
               return;
@@ -450,8 +472,10 @@ export async function streamOpeningStory(
                 const text = typeof parsed === 'string' ? parsed : (parsed.content || '');
                 if (text) callbacks.onStory?.(text);
               } else if (currentEventType === 'complete') {
+                isCompleteReceived = true;
                 callbacks.onComplete?.(parsed);
               } else if (currentEventType === 'error') {
+                hasError = true;
                 const msg = typeof parsed === 'object' && parsed && 'error' in parsed
                   ? String(parsed.error)
                   : 'Unknown server error';

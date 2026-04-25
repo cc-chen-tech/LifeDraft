@@ -1,7 +1,5 @@
 """Harness 质量级别模块导入验证测试 (Layer 2)."""
 
-import pytest
-
 
 def test_quality_level_module_importable():
     """quality_level 模块可导入且包含预期符号."""
@@ -49,7 +47,10 @@ def test_validation_pipeline_accepts_profile():
 
 def test_era_validator_importable():
     """era_validator 模块可导入且 validate_era_consistency 存在."""
-    from src.ai.harness.era_validator import validate_era_consistency, _ANCIENT_FORBIDDEN_MODERN
+    from src.ai.harness.era_validator import (
+        validate_era_consistency,
+        _ANCIENT_FORBIDDEN_MODERN,
+    )
 
     assert validate_era_consistency is not None
     assert isinstance(_ANCIENT_FORBIDDEN_MODERN, list)

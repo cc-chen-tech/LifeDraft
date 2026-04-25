@@ -67,20 +67,38 @@ export function selectFinalStory(
   // 如果前端故事为空或极短，才使用后端故事
   // 避免流式生成过程中被后端文本覆盖
   const useBackendStory = frontendStory.length < 10;
-  
+
   if (useBackendStory && backendStory.length > 0) {
     return { useBackend: true, finalStory: backendStory };
   }
-  
-  // 如果后端故事比前端长，需要流式补充剩余部分
-  if (backendStory.length > frontendStory.length) {
-    return {
-      useBackend: false,
-      finalStory: frontendStory,
-      remainingText: backendStory.slice(frontendStory.length),
-    };
+
+  // 如果后端故事明显短于前端（fallback 情况），优先前端
+  if (backendStory.length < frontendStory.length * 0.5) {
+    return { useBackend: false, finalStory: frontendStory };
   }
-  
+
+  // ★ 检查前端故事是否是后端故事的前缀
+  // 如果是，可以安全地追加剩余部分，避免重复
+  if (backendStory.startsWith(frontendStory)) {
+    const remaining = backendStory.slice(frontendStory.length);
+    if (remaining.length > 0) {
+      return {
+        useBackend: false,
+        finalStory: frontendStory,
+        remainingText: remaining,
+      };
+    }
+    // 完全一致
+    return { useBackend: false, finalStory: backendStory };
+  }
+
+  // ★ 前端不是后端的前缀 —— 检测到 divergence
+  // 这意味着后端重写/修改了故事，不应尝试切片追加
+  // 直接使用更长的那个版本
+  if (backendStory.length > frontendStory.length) {
+    return { useBackend: true, finalStory: backendStory };
+  }
+
   // 使用前端故事
   return { useBackend: false, finalStory: frontendStory };
 }

@@ -1659,6 +1659,24 @@ Please **only modify the problematic paragraphs** and keep the rest of the conte
                 player_state, "location", ""
             )
 
+        # 提取 era 和 era_type
+        era = ""
+        era_type = ""
+        if isinstance(character_settings, dict):
+            era_info = character_settings.get("era", {})
+            if isinstance(era_info, dict):
+                era = era_info.get("era_description", "")
+            elif isinstance(era_info, str):
+                era = era_info
+
+        era_str = str(era).lower()
+        if "现代" in era_str or "当代" in era_str or "未来" in era_str or "202" in era_str or "201" in era_str or "200" in era_str:
+            era_type = "modern"
+        elif any(kw in era_str for kw in ["唐", "宋", "元", "明", "清", "汉", "秦", "周", "春秋", "战国", "三国", "晋", "隋", "古代", " medieval", "ancient", "historic"]):
+            era_type = "ancient"
+        elif any(kw in era_str for kw in [" medieval", "ancient", " historic"]):
+            era_type = "ancient"
+
         return {
             "available_people": available_people,
             "established_facts": established_facts or [],
@@ -1668,6 +1686,8 @@ Please **only modify the problematic paragraphs** and keep the rest of the conte
             "medium_storylines": medium_storylines,
             "last_location": last_location,
             "character_habits": kwargs.get("character_habits", []),
+            "era": era,
+            "era_type": era_type,
         }
 
     @staticmethod

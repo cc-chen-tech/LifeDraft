@@ -122,6 +122,21 @@ describe('SSE Streaming', () => {
       expect(onComplete).toHaveBeenCalledWith({});
     });
 
+    it('rejects when stream ends without complete event or [DONE]', async () => {
+      const onComplete = jest.fn();
+      const onError = jest.fn();
+      const callbacks: StreamCallbacks = { onComplete, onError };
+
+      // Stream ends prematurely (network disconnect) without [DONE] or complete event
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: createMockStream(['data: {"content":"Hello"}\n\n']),
+      });
+
+      await expect(streamGameEvent(123, callbacks)).rejects.toThrow('Stream ended without complete event');
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
     it('throws on HTTP errors', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,

@@ -14,7 +14,9 @@ class TestChineseTextNormalizationContract:
 
         text = "蘇錦年走進茶館，這裏很熱鬧"
         normalized = _normalize_punctuation(text, language="zh")
-        assert "苏锦年" in normalized, f"应转换繁体字 '蘇錦年' 为 '苏锦年', 得到: {normalized}"
+        assert (
+            "苏锦年" in normalized
+        ), f"应转换繁体字 '蘇錦年' 为 '苏锦年', 得到: {normalized}"
         assert "这里" in normalized, f"应转换 '這裏' 为 '这里', 得到: {normalized}"
         assert "热闹" in normalized, f"应转换 '熱鬧' 为 '热闹', 得到: {normalized}"
 
