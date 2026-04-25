@@ -343,7 +343,7 @@ class AchievementEngine:
             return 0.0
         mean = sum(moods) / len(moods)
         variance = sum((m - mean) ** 2 for m in moods) / len(moods)
-        return float(variance ** 0.5)
+        return float(variance**0.5)
 
     def _wealth_steady_growth(self, player: PlayerState) -> bool:
         """Check if wealth grew every 10 weeks."""
@@ -401,9 +401,7 @@ class AchievementEngine:
         early_wealth = sum(
             r.get("effects", {}).get("wealth", 0) for r in player.round_history[:mid]
         )
-        late_wealth = sum(
-            r.get("effects", {}).get("wealth", 0) for r in player.round_history[mid:]
-        )
+        late_wealth = sum(r.get("effects", {}).get("wealth", 0) for r in player.round_history[mid:])
         return late_wealth < early_wealth and player.mood < 40
 
     def _rags_to_riches_check(self, player: PlayerState) -> bool:
@@ -412,7 +410,6 @@ class AchievementEngine:
             return False
         # 简化：检查早期是否有低财富记录
         early_poor = any(
-            r.get("effects", {}).get("wealth", 1000) < 1000
-            for r in player.round_history[:10]
+            r.get("effects", {}).get("wealth", 1000) < 1000 for r in player.round_history[:10]
         )
         return early_poor or player.wealth > 50000

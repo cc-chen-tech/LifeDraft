@@ -1304,7 +1304,9 @@ class StoryGenerator:
             logger.error(f"Failed to generate round event: {e}")
             # ★ 如果故事已生成但后续步骤（如选项生成）失败，保留真实故事而非使用 fallback
             # 优先使用最后一次的 story_text，否则回退到所有尝试中的最佳故事
-            effective_story = story_text if (story_text and len(story_text) > 50) else best_story_text
+            effective_story = (
+                story_text if (story_text and len(story_text) > 50) else best_story_text
+            )
             if effective_story and len(effective_story) > 50:
                 logger.info(
                     f"Using already-generated story ({len(effective_story)} chars) with fallback options"
@@ -1397,7 +1399,7 @@ class StoryGenerator:
                 character_settings=character_settings,
                 language=language,
             )
-            
+
             # ★ 校验完成后，如果通过则立即返回，避免不必要的处理
             if validation.passed:
                 logger.info("[Validation] Story passed consistency check")

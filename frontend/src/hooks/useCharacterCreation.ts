@@ -507,11 +507,11 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
 
   // Wrapper for prevCreationStep that clears subsequent settings
   const handlePrevStep = useCallback(() => {
-    // Clear settings for all subsequent steps (including current) to force re-generation when going forward again
-    // When user goes back from step N to step N-1, steps N, N+1, N+2... should all be cleared
-    const targetStepIndex = creationStep - 1;
+    // Clear settings for steps AFTER the current one (not including current).
+    // When user goes back from step N to step N-1, only steps N+1, N+2... are cleared.
+    // The current step N is preserved so returning forward does not force re-generation.
     CREATION_STEPS.forEach((step, index) => {
-      if (index > targetStepIndex && characterSettings[step] != null) {
+      if (index > creationStep && characterSettings[step] != null) {
         updateCharacterSetting(step, null);
       }
     });

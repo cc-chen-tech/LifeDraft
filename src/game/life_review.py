@@ -86,7 +86,9 @@ class LifeReviewGenerator:
                 turning_points.append(
                     {
                         "week": r.get("week", i),
-                        "description": r.get("summary", r.get("event_description", "重要时刻"))[:50],
+                        "description": r.get("summary", r.get("event_description", "重要时刻"))[
+                            :50
+                        ],
                         "impact_score": min(impact / 50, 1.0),
                     }
                 )
@@ -145,8 +147,7 @@ class LifeReviewGenerator:
     def _build_relationship_network(self, player: PlayerState) -> Dict[str, Any]:
         """Build relationship network data."""
         nodes: List[Dict[str, Any]] = [
-            {"name": name, "affinity": affinity}
-            for name, affinity in player.relationships.items()
+            {"name": name, "affinity": affinity} for name, affinity in player.relationships.items()
         ]
         # Simple edges: connect everyone to everyone with moderate strength
         edges = []
