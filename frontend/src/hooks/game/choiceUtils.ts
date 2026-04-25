@@ -1,6 +1,7 @@
 "use client";
 
 import { useGameStore } from "@/stores/useGameStore";
+import { useEventStore } from "@/stores/useEventStore";
 import { gameplay } from "@/lib/api";
 import type { EventOption } from "@/lib/types";
 import type { Phase } from "./usePhaseManager";
@@ -67,7 +68,8 @@ export function handleChoiceComplete(
   const wasRetry = checkAndClearRetry();
   if (wasRetry && result.story_continuation) {
     console.log(`[handleChoiceComplete] Retry detected, using backend story (${(result.story_continuation as string).length} chars)`);
-    setStoryText(result.story_continuation as string);
+    // ★ 修复：使用 appendStoryText 追加 continuation，而非 setStoryText 替换全部文本
+    useEventStore.getState().appendStoryText(result.story_continuation as string);
   }
 
   if (result.summary && typeof result.summary === "string") {

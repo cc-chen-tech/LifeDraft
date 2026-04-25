@@ -62,6 +62,13 @@ class SceneImageService:
 - 背景环境：真实城市/街道/室内/自然场景，自然光线，禁止科幻城市天际线、禁止全息投影叠加、禁止悬浮建筑
 - 人物比例：必须符合真实人类比例，禁止九头身、过大眼睛等非自然比例
 
+【人物面部一致性 - 最高优先级，绝对不可违反】
+- 这是同一个人物（IDENTICAL PERSON），面部特征必须100%保持一致
+- 必须保持：完全相同的脸型轮廓、完全相同的五官比例和位置、完全相同的眼型/鼻型/嘴型、完全相同的发型（包括发际线、刘海方向、发梢形态）、完全相同的肤色和肤质
+- 仅允许改变：姿势、角度、表情、服装、所处环境
+- 绝对禁止：改变任何面部结构、改变任何五官形状、换脸成另一个人、与其他人物面部混淆
+- 如果场景中有多个不同人物，每个人物必须有明显不同的面部特征（不同脸型、不同五官、不同发型），严禁所有人物看起来像同一张脸
+
 【质量要求】
 - 写实摄影风格，细节清晰，纹理丰富，禁止动漫风、油画风、插画风、水彩风
 - 光影自然，过渡柔和，避免过度后期感，禁止彩色霓虹光效
@@ -209,13 +216,18 @@ class SceneImageService:
                 anchor_desc = appearance_anchor.build_prompt_segment()
                 logger.info(f"Using appearance anchor for scene generation: {anchor_desc[:100]}...")
 
-                # 将锚点描述融入场景提示词
+                # 将锚点描述融入场景提示词 - 使用强一致性语言
                 enhanced_illustration = f"""{illustration_prompt}
 
-人物外貌特征（必须严格保持一致）：
+【人物外貌特征 - 绝对不可改变】
 {anchor_desc}
 
-重要：人物的面部特征、发型、体型必须与上述描述完全一致，仅姿势和场景环境可以改变。"""
+【面部一致性 - 最高优先级】
+- 这是同一个IDENTICAL PERSON，面部必须100%一致
+- 必须保持：完全相同的脸型轮廓、完全相同的五官比例和位置、完全相同的眼型/鼻型/嘴型、完全相同的发型（包括发际线、刘海方向、发梢形态）、完全相同的肤色和肤质
+- 仅允许改变：姿势、角度、表情、服装、所处环境
+- 绝对禁止：改变任何面部结构、改变任何五官形状、换脸成另一个人
+- 如果场景中有其他人物，该人物必须有独特且与其他人明显不同的面部特征"""
             else:
                 enhanced_illustration = illustration_prompt
                 logger.warning("No appearance anchor found, using basic character info")
@@ -238,25 +250,32 @@ class SceneImageService:
                     # ★ 使用锚点构建更精确的编辑提示词
                     if appearance_anchor:
                         anchor_desc = appearance_anchor.build_prompt_segment()
-                        edit_prompt = f"""将人物融入以下场景：{scene_desc}。
+                        facial_sig = appearance_anchor.facial_signature or ""
+                        edit_prompt = f"""将参考图片中的同一个人物（IDENTICAL PERSON）融入以下新场景：{scene_desc}。
 
 {era_constraints}
 
-人物必须具有以下外貌特征（严格保持一致）：
+【人物外貌特征 - 绝对不可改变】
 {anchor_desc}
 
+【面部比例签名 - 这是识别该人物的关键】
+{facial_sig}
+
 场景动作和氛围：{illustration_prompt}
 
 光线要求：{lighting_desc}
 色彩调性：{palette.build_prompt_segment()}
 
-重要：
-- 保持人物的面部特征、发型、体型完全一致
+【面部一致性 - 最高优先级，绝对不可违反】
+- 这是同一个人物（IDENTICAL PERSON），面部特征必须100%保持一致
+- 必须保持：完全相同的脸型轮廓、完全相同的五官比例和位置、完全相同的眼型/鼻型/嘴型、完全相同的发型（包括发际线、刘海方向、发梢形态）、完全相同的肤色和肤质
+- 仅允许改变：姿势、角度、表情、服装、所处环境
+- 绝对禁止：改变任何面部结构、改变任何五官形状、换脸成另一个人
+- 如果场景中有其他人物，每个人物必须有明显不同的面部特征（不同脸型、不同五官、不同发型），严禁所有人物看起来像同一张脸
 - 人物与新场景的光影要自然融合，投影方向一致
-- 色调要与场景整体调性协调
-- 只改变姿势和融入新场景，不改变外貌特征"""
+- 色调要与场景整体调性协调"""
                     else:
-                        edit_prompt = f"""将人物融入以下场景：{scene_desc}。
+                        edit_prompt = f"""将参考图片中的同一个人物（IDENTICAL PERSON）融入以下新场景：{scene_desc}。
 
 {era_constraints}
 
@@ -264,7 +283,12 @@ class SceneImageService:
 光线要求：{lighting_desc}
 色彩调性：{palette.build_prompt_segment()}
 
-保持人物的外貌特征和服装不变，确保光影融合自然。"""
+【面部一致性 - 最高优先级】
+- 这是同一个人物，面部特征必须100%保持一致
+- 仅允许改变：姿势、角度、表情、服装、所处环境
+- 绝对禁止：改变任何面部结构、换脸成另一个人
+- 人物与新场景的光影要自然融合，投影方向一致
+- 色调要与场景整体调性协调"""
 
                     results = self.image_client.edit_image(
                         reference_image=reference_url,
@@ -286,8 +310,23 @@ class SceneImageService:
                     return image_data, final_prompt
 
             # 尝试生成，如果触发内容审核则改写后重试
+            # ★ 如果edit_image无法保持面部一致性，回退到generate_image使用详细面部描述
             try:
                 image_data, used_prompt = generate_image()
+            except ImageGenerationError as e:
+                # edit_image可能无法保持面部特征，回退到generate_image
+                if reference_url and appearance_anchor:
+                    logger.warning(
+                        f"edit_image failed or may not preserve face well, "
+                        f"falling back to generate_image with explicit facial description: {e}"
+                    )
+                    image_data, used_prompt = self.image_client.generate_image(
+                        prompt=final_prompt,
+                        size="1664*928",
+                        extra_params={"prompt_extend": True},
+                    )
+                else:
+                    raise
             except ContentInspectionError as e:
                 logger.warning("Content inspection failed, attempting prompt rewrite and retry...")
                 api_error = e.api_error_message or str(e)

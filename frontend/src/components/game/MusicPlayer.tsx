@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
+import { useShallow } from "zustand/react/shallow";
 import {
   useMusicStore,
   fetchMusicRecommendation,
@@ -33,30 +34,49 @@ interface MusicPlayerProps {
 }
 
 export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerProps) {
-  const {
-    recommendation,
-    isLoadingRecommendation,
-    recommendationError,
-    currentSong,
-    isPlaying,
-    volume,
-    currentTime,
-    duration,
-    audioElement,
-    setRecommendation,
-    setIsLoadingRecommendation,
-    setRecommendationError,
-    setCurrentSong,
-    setIsPlaying,
-    setVolume,
-    setCurrentTime,
-    setDuration,
-    setAudioElement,
-    play,
-    pause,
-    cleanup,
-    fadeVolume,
-  } = useMusicStore();
+  // ★ 使用 selector 分组订阅，避免全量重渲染
+  // 以前：useMusicStore() 订阅全部状态，任何变更都触发整组件重渲染
+  // 现在：按变更频率分组，currentTime(500ms) 的更新不会触发 recommendation 相关重渲染
+
+  const { recommendation, isLoadingRecommendation, recommendationError } = useMusicStore(
+    useShallow((state) => ({
+      recommendation: state.recommendation,
+      isLoadingRecommendation: state.isLoadingRecommendation,
+      recommendationError: state.recommendationError,
+    }))
+  );
+
+  const { currentSong, isPlaying, audioElement } = useMusicStore(
+    useShallow((state) => ({
+      currentSong: state.currentSong,
+      isPlaying: state.isPlaying,
+      audioElement: state.audioElement,
+    }))
+  );
+
+  const { currentTime, duration } = useMusicStore(
+    useShallow((state) => ({
+      currentTime: state.currentTime,
+      duration: state.duration,
+    }))
+  );
+
+  const volume = useMusicStore((state) => state.volume);
+
+  // Actions 是稳定引用，单独 selector 不会导致额外重渲染
+  const setRecommendation = useMusicStore((state) => state.setRecommendation);
+  const setIsLoadingRecommendation = useMusicStore((state) => state.setIsLoadingRecommendation);
+  const setRecommendationError = useMusicStore((state) => state.setRecommendationError);
+  const setCurrentSong = useMusicStore((state) => state.setCurrentSong);
+  const setIsPlaying = useMusicStore((state) => state.setIsPlaying);
+  const setVolume = useMusicStore((state) => state.setVolume);
+  const setCurrentTime = useMusicStore((state) => state.setCurrentTime);
+  const setDuration = useMusicStore((state) => state.setDuration);
+  const setAudioElement = useMusicStore((state) => state.setAudioElement);
+  const play = useMusicStore((state) => state.play);
+  const pause = useMusicStore((state) => state.pause);
+  const cleanup = useMusicStore((state) => state.cleanup);
+  const fadeVolume = useMusicStore((state) => state.fadeVolume);
 
   const hasFetchedRef = useRef(false);
   const isLoadingSongRef = useRef(false);

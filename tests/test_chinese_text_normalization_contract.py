@@ -28,13 +28,23 @@ class TestChineseTextNormalizationContract:
         assert "……" in normalized, "应使用标准省略号"
 
     def test_english_ellipsis_preserved(self):
-        """英文省略号 ... 也转换为……"""
+        """英文模式下英文省略号保持原样"""
         from src.ai.story_generator import _normalize_punctuation
 
         text = "He paused... then spoke"
         normalized = _normalize_punctuation(text, language="en")
-        # 英文模式下不转换
-        assert "..." in normalized or "……" in normalized
+        # 英文模式下不转换，应保留原始省略号
+        assert "..." in normalized
+        assert "……" not in normalized
+
+    def test_chinese_ellipsis_converted(self):
+        """中文模式下英文省略号转换为中文省略号"""
+        from src.ai.story_generator import _normalize_punctuation
+
+        text = "他停顿了...然后说话"
+        normalized = _normalize_punctuation(text, language="zh")
+        assert "……" in normalized
+        assert "..." not in normalized
 
     def test_non_chinese_language_skipped(self):
         """非中文语言应跳过繁简转换"""

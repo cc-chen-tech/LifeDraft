@@ -423,8 +423,8 @@ export default function PlayPage() {
           // ★ 当前模式下显示当前轮次的场景插画
           storyText && (
             <>
-              {/* ★ 事件插画：options 阶段和 result 阶段都显示 */}
-              {(phase === "options" || phase === "result") && eventSceneImage && (
+              {/* ★ 事件插画：只在 options 阶段显示 */}
+              {phase === "options" && eventSceneImage && (
                 <RoundSceneImageDisplay
                   sceneImage={eventSceneImage}
                   isLoading={isLoadingRoundSceneImage && phase === "options"}
@@ -445,6 +445,19 @@ export default function PlayPage() {
                   currentRound={currentRound}
                   label="结果场景"
                   onRefresh={() => fetchRoundSceneImage(currentRound, "result")}
+                  onRegenerate={regenerateRoundSceneImage}
+                />
+              )}
+
+              {/* ★ result 阶段兜底：没有 result 插画时回退显示事件插画 */}
+              {phase === "result" && !resultSceneImage && eventSceneImage && (
+                <RoundSceneImageDisplay
+                  sceneImage={eventSceneImage}
+                  isLoading={isLoadingRoundSceneImage}
+                  isRegenerating={isRegeneratingRoundScene}
+                  currentRound={currentRound}
+                  label="事件场景"
+                  onRefresh={() => fetchRoundSceneImage(currentRound, "event")}
                   onRegenerate={regenerateRoundSceneImage}
                 />
               )}

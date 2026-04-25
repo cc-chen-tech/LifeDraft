@@ -28,6 +28,9 @@ class CharacterAppearanceAnchor:
     expression: str = ""  # 常设表情：温和、严肃、活泼、忧郁等
     skin_tone: str = ""  # 肤色：白皙、小麦色、黝黑等
 
+    # 面部签名 - 用于精确区分不同人物的面部测量/比例描述
+    facial_signature: str = ""  # 如：两眼间距约为一眼宽度，鼻梁中等高度略带弧度，嘴唇厚度适中上唇略薄，下巴微尖，颧骨平缓
+
     # 发型特征
     hair_style: str = ""  # 发型：黑色中长发、短发、卷发、马尾等
     hair_color: str = ""  # 发色：乌黑、棕色、银白等
@@ -75,16 +78,24 @@ class CharacterAppearanceAnchor:
         """
         parts = []
 
-        # 面部（最重要）
-        if self.face_shape or self.facial_features:
-            face_desc = f"脸型{self.face_shape}，{self.facial_features}".strip("，")
-            parts.append(f"面部特征：{face_desc}")
+        # 面部（最重要）- 使用强一致性语言
+        face_parts = []
+        if self.face_shape:
+            face_parts.append(f"脸型{self.face_shape}")
+        if self.facial_features:
+            face_parts.append(self.facial_features)
+        if face_parts:
+            parts.append(f"【必须保持一致的面部特征】{''.join(face_parts)}")
+
+        # 面部签名 - 精确区分不同人物
+        if self.facial_signature:
+            parts.append(f"【面部比例签名 - 绝对不可改变】{self.facial_signature}")
 
         if self.expression:
-            parts.append(f"常设表情：{self.expression}")
+            parts.append(f"【表情气质】{self.expression}")
 
         if self.skin_tone:
-            parts.append(f"肤色：{self.skin_tone}")
+            parts.append(f"【肤色】{self.skin_tone}")
 
         # 发型
         hair_parts = []
@@ -95,7 +106,7 @@ class CharacterAppearanceAnchor:
         if self.hair_details:
             hair_parts.append(self.hair_details)
         if hair_parts:
-            parts.append(f"发型：{''.join(hair_parts)}")
+            parts.append(f"【必须保持一致的发型】{''.join(hair_parts)}")
 
         # 体型
         body_parts = []
@@ -104,28 +115,28 @@ class CharacterAppearanceAnchor:
         if self.body_type:
             body_parts.append(self.body_type)
         if body_parts:
-            parts.append(f"体型：{''.join(body_parts)}")
+            parts.append(f"【体型】{''.join(body_parts)}")
 
         if self.posture:
-            parts.append(f"体态：{self.posture}")
+            parts.append(f"【体态】{self.posture}")
 
         # 标志性特征
         if self.distinctive_marks:
             marks = "、".join(self.distinctive_marks)
-            parts.append(f"标志性特征：{marks}")
+            parts.append(f"【标志性识别特征】{marks}")
 
         # 服装（场景生成时可能需要调整）
         if self.typical_outfit:
-            parts.append(f"典型服装：{self.typical_outfit}")
+            parts.append(f"【典型服装】{self.typical_outfit}")
 
         # 配饰
         if self.accessories:
             acc = "、".join(self.accessories)
-            parts.append(f"配饰：{acc}")
+            parts.append(f"【配饰】{acc}")
 
         # 气质
         if self.aura:
-            parts.append(f"整体气质：{self.aura}")
+            parts.append(f"【整体气质】{self.aura}")
 
         return "；".join(parts) if parts else ""
 
@@ -134,6 +145,7 @@ class CharacterAppearanceAnchor:
         scene_context: str = "",
         pose_hint: str = "",
         outfit_override: str = "",
+        position_hint: str = "",
     ) -> str:
         """构建用于场景生成的完整提示词.
 
@@ -141,16 +153,27 @@ class CharacterAppearanceAnchor:
             scene_context: 场景上下文
             pose_hint: 姿势提示
             outfit_override: 服装覆盖（如场景需要换装）
+            position_hint: 画面位置提示（如"画面左侧"、"画面右侧"）
 
         Returns:
             完整的场景生成提示词
         """
         parts = [f"人物：{self.name}"]
 
-        # 外貌（必须严格保持）
+        # 画面位置（用于多人物场景区分）
+        if position_hint:
+            parts.append(f"【画面位置】{position_hint}")
+
+        # 外貌（必须严格保持）- 使用更强的一致性指令
         appearance = self.build_prompt_segment()
         if appearance:
-            parts.append(f"外貌特征（必须严格一致）：{appearance}")
+            parts.append(f"【外貌特征 - 必须绝对一致，禁止改变】{appearance}")
+
+        # 面部签名强调
+        if self.facial_signature:
+            parts.append(
+                f"【面部比例签名 - 这是识别该人物的关键，绝对不可改变】{self.facial_signature}"
+            )
 
         # 服装（可覆盖）
         outfit = outfit_override or self.typical_outfit
@@ -175,6 +198,12 @@ class CharacterAppearanceAnchor:
         if self.lighting_preference:
             parts.append(f"光线：{self.lighting_preference}")
 
+        # 强制一致性声明
+        parts.append(
+            "【一致性要求】该人物的面部特征、五官比例、发型、肤色必须与参考形象完全相同，"
+            "仅可改变姿势、表情和服装。禁止与其他人物面部混淆。"
+        )
+
         return "。".join(parts)
 
     def validate(self) -> List[str]:
@@ -187,6 +216,7 @@ class CharacterAppearanceAnchor:
         critical_fields = [
             ("face_shape", "脸型"),
             ("facial_features", "五官特征"),
+            ("facial_signature", "面部比例签名"),
             ("hair_style", "发型"),
             ("body_type", "体型"),
         ]

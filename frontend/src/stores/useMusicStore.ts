@@ -154,10 +154,11 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   },
 
   fadeVolume: (targetVolume: number, duration: number = 1000) => {
-    const { audioElement, volume } = get();
+    const { audioElement } = get();
     if (!audioElement) return;
 
-    const startVolume = volume;
+    // 直接从 audioElement 读取当前音量，避免 store 中的 volume 滞后
+    const startVolume = audioElement.volume;
     const startTime = Date.now();
     const volumeDiff = targetVolume - startVolume;
 
@@ -166,11 +167,14 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       const progress = Math.min(elapsed / duration, 1);
       const newVolume = startVolume + volumeDiff * progress;
 
+      // 仅更新 DOM audio 音量，不更新 store
+      // 避免 50ms/次 的 set() 调用导致 20 次重渲染/秒
       audioElement.volume = newVolume;
-      set({ volume: newVolume });
 
       if (progress >= 1) {
         clearInterval(fadeInterval);
+        // 渐变结束后一次性同步回 store
+        set({ volume: targetVolume });
       }
     }, 50);
   },

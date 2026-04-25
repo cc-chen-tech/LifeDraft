@@ -630,6 +630,7 @@ class DeepSeekPromptEnhancer:
 {
     "face_shape": "脸型描述，如：标准的鹅蛋脸",
     "facial_features": "五官详细描述，如：单眼皮但眼睛有神，鼻梁挺直，嘴唇薄而线条分明",
+    "facial_signature": "面部比例签名，用于精确识别该人物。必须包含可测量的面部比例描述，如：两眼间距约等于一眼宽度，鼻梁中等高度从眉心自然延伸，嘴唇厚度适中上唇略薄于下唇，下巴微尖与颧骨形成柔和过渡，面部整体呈上宽下窄的倒三角比例",
     "expression": "常设表情，如：温和中带着一丝坚毅",
     "skin_tone": "肤色，如：健康的小麦色",
     "hair_style": "发型，如：黑色中长发，自然垂落至肩部",
@@ -765,5 +766,14 @@ class DeepSeekPromptEnhancer:
             anchor["hair_color"] = "金色"
         elif "棕发" in desc_lower or "棕色头发" in desc_lower:
             anchor["hair_color"] = "棕色"
+
+        # 生成基础面部签名（fallback情况下）
+        if anchor["face_shape"] or anchor["facial_features"]:
+            sig_parts = []
+            if anchor["face_shape"]:
+                sig_parts.append(f"{anchor['face_shape']}，面部轮廓清晰可辨")
+            if anchor["facial_features"]:
+                sig_parts.append(anchor["facial_features"])
+            anchor["facial_signature"] = "。".join(sig_parts) if sig_parts else ""
 
         return anchor

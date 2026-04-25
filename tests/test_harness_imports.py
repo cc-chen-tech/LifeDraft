@@ -45,3 +45,24 @@ def test_validation_pipeline_accepts_profile():
     result = pipeline.validate("", {}, profile=profile)
     assert result is not None
     assert hasattr(result, "passed")
+
+
+def test_era_validator_importable():
+    """era_validator 模块可导入且 validate_era_consistency 存在."""
+    from src.ai.harness.era_validator import validate_era_consistency, _ANCIENT_FORBIDDEN_MODERN
+
+    assert validate_era_consistency is not None
+    assert isinstance(_ANCIENT_FORBIDDEN_MODERN, list)
+    assert len(_ANCIENT_FORBIDDEN_MODERN) > 0
+
+
+def test_era_validator_runs_with_context():
+    """validate_era_consistency 接受 story_text 和 context 并返回三元组."""
+    from src.ai.harness.era_validator import validate_era_consistency
+
+    passed, evidence, info = validate_era_consistency(
+        "test", {"era": "宋朝", "era_type": "ancient"}
+    )
+    assert isinstance(passed, bool)
+    assert isinstance(evidence, str)
+    assert isinstance(info, dict)

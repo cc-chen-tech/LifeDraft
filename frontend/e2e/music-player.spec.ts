@@ -278,4 +278,47 @@ test.describe('MusicPlayer 音乐播放器', () => {
 
     await page.screenshot({ path: 'test-results/music-player-persisted.png' });
   });
+
+  test('播放时页面应保持流畅，不应出现频繁重渲染导致的卡顿', async ({ page, context }) => {
+    await ensureAuthenticated(page, context);
+
+    const gameId = await ensureActiveGame(page, context);
+    await page.goto(`${BASE_URL}/play?gameId=${gameId}`);
+    await page.waitForLoadState('domcontentloaded');
+
+    const hasSongs = await waitForMusicPlayerWithSongs(page);
+    expect(hasSongs).toBe(true);
+
+    const musicPlayerContainer = page.locator('.bg-card.border.rounded-lg').filter({ hasText: '场景音乐' });
+    const playButton = musicPlayerContainer.locator('button.h-10.w-10');
+    await expect(playButton).toBeVisible();
+
+    // 使用 PerformanceObserver 在页面内统计 layout shift / long task
+    const perfMetrics = await page.evaluate(async () => {
+      return new Promise<{ longTasks: number; maxDuration: number }>((resolve) => {
+        const longTasks: PerformanceEntry[] = [];
+        const observer = new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) {
+            longTasks.push(entry);
+          }
+        });
+        observer.observe({ entryTypes: ['longtask'] });
+
+        setTimeout(() => {
+          observer.disconnect();
+          const maxDuration = longTasks.reduce(
+            (max, e) => Math.max(max, (e as PerformanceEntry).duration),
+            0
+          );
+          resolve({ longTasks: longTasks.length, maxDuration });
+        }, 5000);
+      });
+    });
+
+    // 播放期间不应出现超过 100ms 的 long task（即无卡顿）
+    expect(perfMetrics.maxDuration).toBeLessThan(100);
+
+    // 截图留档
+    await page.screenshot({ path: 'test-results/music-player-performance.png' });
+  });
 });

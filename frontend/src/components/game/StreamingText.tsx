@@ -160,7 +160,7 @@ export function StreamingText({
  * 移除文本末尾不完整的 markdown 标记。
  * 在流式显示时，避免用户看到 `**bold` 这种未闭合的原始语法。
  */
-function stripIncompleteMarkdown(text: string): string {
+export function stripIncompleteMarkdown(text: string): string {
   if (!text) return text;
 
   // 检查末尾是否有未闭合的 `**`（粗体）
@@ -176,6 +176,20 @@ function stripIncompleteMarkdown(text: string): string {
   // 检查末尾是否有未闭合的 `*`（斜体）—— 注意不能误删 ** 的一部分
   // 简单处理：如果末尾是单独的 *，移除它
   if (text.endsWith("*") && !text.endsWith("**")) {
+    text = text.slice(0, -1);
+  }
+
+  // 检查末尾是否有未闭合的 `~~`（删除线 / strikethrough）
+  const strikeCount = (text.match(/~~/g) || []).length;
+  if (strikeCount % 2 !== 0) {
+    const lastIdx = text.lastIndexOf("~~");
+    if (lastIdx !== -1 && lastIdx > text.length - 4) {
+      text = text.slice(0, lastIdx) + text.slice(lastIdx + 2);
+    }
+  }
+
+  // 检查末尾是否有单独的 `~`（可能是删除线的开始）
+  if (text.endsWith("~") && !text.endsWith("~~")) {
     text = text.slice(0, -1);
   }
 
