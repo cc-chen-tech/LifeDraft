@@ -8,6 +8,7 @@ from config.prompts._helpers import (
     _build_common_story_constraints,
     _build_continuation_mandate,
     _build_critical_summary,
+    _build_era_anachronism_constraints,
     _build_established_facts_context,
     _build_foreshadowing_context,
     _build_full_character_context,
@@ -314,6 +315,9 @@ def _get_english_prompt(
     # Build logic constraints
     logic_constraints = _build_logic_constraints(game_date_info, "en")
 
+    # Build era anachronism constraints
+    era_constraints = _build_era_anachronism_constraints(character_settings, "en")
+
     # Build decision history summary
     history_str = "None"
     decision_history = player_state.get("decision_history", [])
@@ -402,6 +406,7 @@ Key Relationships: {rel_str}{storylines_context}{facts_context}{world_model_cont
     - **FORBIDDEN atmosphere recycling**: Do not repeat the same weather/atmosphere descriptions (rain, fog, candlelight shadows)
     - **Vary story structure**: Start from different moments (mid-conversation, mid-action, a surprising discovery) rather than always from "morning in a room"
     - **Vary conflict types**: Rotate between interpersonal conflicts, moral dilemmas, unexpected discoveries, external crises, personal growth moments{logic_constraints}
+{era_constraints}
 13. **NO FOURTH-WALL BREAKING**: The story must NEVER contain meta-commentary, references to 'game', 'simulation', 'system', 'stats', 'energy points', 'mood value', etc. No author asides, no addressing the reader, no explaining creative intent. The story must remain fully immersed in the character's world.
 14. **DO NOT FABRICATE PAST EVENTS**: Any past events referenced in the story MUST come from the context provided above. ABSOLUTELY FORBIDDEN to invent memories, conversations, events or experiences that never happened. Do not mention uncertain past events.
 
@@ -497,6 +502,9 @@ def _get_chinese_prompt(
 
     # Build logic constraints
     logic_constraints = _build_logic_constraints(game_date_info, "zh")
+
+    # Build era anachronism constraints
+    era_constraints = _build_era_anachronism_constraints(character_settings, "zh")
 
     # Build decision history summary
     history_str = "无"
@@ -630,6 +638,7 @@ def _get_chinese_prompt(
     - **故事结构必须变化**：不要总是"早晨在房间"开始，可从对话中场、行动中场、意外发现、突发危机开始
     - **冲突类型必须轮换**：人际矛盾、道德困境、意外发现、外部危机、个人成长等交替使用
     - **注意区分**：核心道具/人物/地点的剧情性复现是正常的，重复指的是用相同的句式、结构、氛围词偷懒{logic_constraints}
+{era_constraints}
 13. **严禁跳脱叙事**：故事中绝对不能出现任何打破第四面墙的内容，包括但不限于：提及"游戏""模拟""系统""属性值""精力值""情绪值"等元信息；出现作者旁白、对读者说话、解释创作意图；出现对故事本身的评论或总结性元叙述。故事应完全沉浸在角色的世界中。
 14. **严禁编造过往事件**：故事中提到的任何过去发生的事情，必须来自上面提供的上下文（上周故事、近期总结、年度回顾等）。绝对禁止凭空捏造从未发生过的回忆、对话、事件或经历。不确定的过往不要提及。
 

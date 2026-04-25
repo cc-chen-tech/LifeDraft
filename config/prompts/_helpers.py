@@ -876,6 +876,77 @@ def _build_foreshadowing_context(
         return "\n".join(lines)
 
 
+def _build_era_anachronism_constraints(
+    character_settings: Optional[Dict[str, Any]], language: str
+) -> str:
+    """
+    构建时代错位预防约束，明确列出各时代禁止出现的事物。
+    用于注入事件生成提示词，防止AI生成时代不符的内容。
+    """
+    if not character_settings:
+        return ""
+
+    era = character_settings.get("era", {})
+    era_desc = (era.get("era_description", "") + " " + era.get("world_context", "")).lower()
+    world = character_settings.get("world", {})
+    tech_level = (world.get("technology_level", "") + " " + world.get("world_description", "")).lower()
+
+    # 判断是否为古代/前现代背景
+    is_historical = any(
+        word in era_desc or word in tech_level
+        for word in ["古代", "ancient", "medieval", "中世纪", "宋朝", "唐朝", "明朝", "清朝", "southern song", "tang", "ming", "qing", "dynasty", "pre-modern"]
+    )
+
+    # 判断是否为现代/当代背景
+    is_modern = any(
+        word in era_desc or word in tech_level
+        for word in ["现代", "当代", "modern", "contemporary", "future", "科幻", "sci-fi", "赛博"]
+    )
+
+    if not is_historical and not is_modern:
+        # 无法判断时代，返回通用约束
+        if language == "zh":
+            return "\n【时代一致性约束】请确保故事中的科技、社会制度、生活方式与角色设定的时代背景严格一致。"
+        else:
+            return "\n[Era Consistency] Ensure technology, social systems, and lifestyle match the character's era setting."
+
+    if is_historical:
+        if language == "zh":
+            return """\n【★ 时代错位红线（违反即失败）★】
+角色设定为古代/前现代背景，故事中绝对禁止出现以下现代概念：
+- 电子设备：手机、电脑、电话、电视、收音机、相机、录音笔
+- 交通工具：汽车、飞机、火车、地铁、高铁、摩托车、自行车（古代可用马匹、轿子、马车、船只）
+- 现代场所：公司、办公室、星巴克、咖啡厅、商场、超市、电影院、健身房、医院（古代可用客栈、茶楼、集市、药铺、医馆）
+- 现代制度：客户提案、导师制度、周五下班、KPI、PPT、会议、合同、签证、护照
+- 互联网与通讯：互联网、微信、QQ、邮件、短信、社交媒体、APP、网站
+- 现代娱乐：电子游戏、网络小说、电视剧、电影、流行音乐、演唱会
+- 现代科技：电灯泡、电梯、空调、冰箱、洗衣机、微波炉、塑料、橡胶
+- 现代货币与金融：股票、基金、比特币、信用卡、支付宝、微信支付、银行转账
+- 现代教育：高考、大学专业、考研、论文答辩、实验室、科研项目
+- 如果出现"咖啡"，必须是古代茶饮或酒；如果出现"医院"，必须是古代医馆或药铺
+- 古代人物穿古装、用古代器具、遵循古代礼仪，绝对禁止穿西装、打领带、用现代物品"""
+        else:
+            return """\n[★ ERA ANACHRONISM RED LINE (violation = failure) ★]
+The character is set in a historical/pre-modern era. The following modern concepts are ABSOLUTELY FORBIDDEN:
+- Electronics: phones, computers, telephones, TVs, radios, cameras, recorders
+- Transportation: cars, airplanes, trains, subways, high-speed rail, motorcycles, bicycles (use horses, sedan chairs, carriages, boats)
+- Modern venues: companies, offices, Starbucks, coffee shops, malls, supermarkets, cinemas, gyms, hospitals (use inns, tea houses, markets, apothecaries)
+- Modern systems: client proposals, mentorship programs, "Friday off", KPIs, PowerPoint, meetings, contracts, visas, passports
+- Internet & communication: internet, WeChat, email, social media, apps, websites
+- Modern entertainment: video games, web novels, TV shows, movies, pop music, concerts
+- Modern technology: light bulbs, elevators, air conditioning, refrigerators, washing machines, plastic, rubber
+- Modern finance: stocks, funds, Bitcoin, credit cards, mobile payments, bank transfers
+- Modern education: college entrance exams, university majors, graduate school, thesis defense, laboratories
+- If "coffee" appears, it must be ancient tea or wine; if "hospital" appears, it must be an ancient apothecary
+- Characters must wear ancient clothing, use ancient tools, follow ancient etiquette. NO suits, ties, or modern items"""
+
+    # Modern era — lighter constraints
+    if language == "zh":
+        return "\n【时代一致性约束】角色设定为现代/当代背景，故事中可以使用现代科技、交通工具和生活方式，但应符合角色的具体时代（如2020年代不应出现过于超前的科技）。"
+    else:
+        return "\n[Era Consistency] Character is set in a modern/contemporary era. Modern technology, transportation, and lifestyle are appropriate, but should match the specific time period."
+
+
 def _build_logic_constraints(
     game_date_info: Optional[Dict[str, Any]], language: str
 ) -> str:
