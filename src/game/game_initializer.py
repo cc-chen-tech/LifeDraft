@@ -96,7 +96,7 @@ class GameInitializer:
                 from src.ai.narrative.style_matcher import auto_match_style
 
                 result = auto_match_style(character_settings)
-                if result.confidence >= 0.3:  # 最低置信度阈值
+                if result.confidence >= 0.15:  # 最低置信度阈值
                     style_id = result.style_id
                     logger.info(
                         f"Auto-matched narrative style: {result.style_id} "
