@@ -333,7 +333,7 @@ def _get_english_prompt(
     # ★ 拐点提取：从较多的历史中提取关键信息，帮助AI识别重复模式
     recent_topics_str = ""
     if len(decision_history) > 5:
-        older_decisions = decision_history[-15:-5]  # 6-15个前的决策
+        older_decisions = decision_history[-30:-5]  # 6-30个前的决策
         if older_decisions:
             topic_parts = []
             for d in older_decisions:
@@ -522,7 +522,7 @@ def _get_chinese_prompt(
     # ★ 拐点提取：从较多的历史中提取关键信息，帮助AI识别重复模式
     recent_topics_str = ""
     if len(decision_history) > 5:
-        older_decisions = decision_history[-15:-5]  # 6-15个前的决策
+        older_decisions = decision_history[-30:-5]  # 6-30个前的决策
         if older_decisions:
             topic_parts = []
             for d in older_decisions:

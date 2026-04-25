@@ -22,6 +22,67 @@ from src.ai.vector_store import get_vector_store, is_vector_search_enabled
 logger = logging.getLogger(__name__)
 
 
+def _normalize_punctuation(text: str, language: str = "zh") -> str:
+    """将英文标点统一替换为中文标点，并进行繁简转换（仅中文模式）。"""
+    if not text or language != "zh":
+        return text
+
+    # ★ 繁简转换：AI 模型偶尔输出繁体字，统一转为简体
+    try:
+        from opencc import OpenCC
+
+        converter = OpenCC("t2s")
+        text = converter.convert(text)
+        # 补充 opencc 未覆盖的异体字映射
+        _VARIANT_MAP = {
+            "擡": "抬",
+            "裏": "里",
+        }
+        for variant, standard in _VARIANT_MAP.items():
+            text = text.replace(variant, standard)
+    except Exception:
+        pass  # opencc 不可用时静默跳过
+
+    # 成对引号需要交替处理
+    result = []
+    dquote_open = False
+    squote_open = False
+    for ch in text:
+        if ch in ('"', '"'):
+            ch = "“" if not dquote_open else "”"
+            dquote_open = not dquote_open
+        elif ch in ("'", "'"):
+            ch = "‘" if not squote_open else "’"
+            squote_open = not squote_open
+        result.append(ch)
+    text = "".join(result)
+
+    # 直接映射替换
+    replacements = {
+        ",": "，",
+        ".": "。",
+        "!": "！",
+        "?": "？",
+        ":": "：",
+        ";": "；",
+        "(": "（",
+        ")": "）",
+    }
+    for en, zh in replacements.items():
+        text = text.replace(en, zh)
+
+    # 省略号规范化（含中文句号省略号）
+    text = text.replace("...", "……").replace("..", "……")
+    text = text.replace("。。。", "……")
+
+    # 清理中文标点后多余的空格
+    import re
+
+    text = re.sub(r"""([，。！？：；、……""''（）])\s+""", r"\1", text)
+
+    return text
+
+
 class StoryGenerator:
     """Generates story text for events and rounds."""
 
@@ -674,7 +735,7 @@ class StoryGenerator:
                 )
 
                 story_text = story_text.strip()
-                story_text = self._normalize_punctuation(story_text, language)
+                story_text = _normalize_punctuation(story_text, language)
                 logger.info(f"Generated story with {len(story_text)} characters")
                 logger.debug(f"Story preview (first 200 chars): {story_text[:200]}...")
                 logger.debug(f"Story preview (last 200 chars): ...{story_text[-200:]}")
@@ -1083,7 +1144,7 @@ class StoryGenerator:
                     presence_penalty=0.4,
                 )
                 logger.info(f"Generated round story with {len(story_text)} characters")
-                story_text = self._normalize_punctuation(story_text, language)
+                story_text = _normalize_punctuation(story_text, language)
 
                 # 记录最佳故事（即使后续校验失败，也保留作为最终 fallback）
                 if len(story_text) > len(best_story_text):
@@ -1507,7 +1568,7 @@ Please **only modify the problematic paragraphs** and keep the rest of the conte
 
             if fixed_story:
                 logger.info(f"局部修正完成，故事长度: {len(fixed_story)} (原: {len(story_text)})")
-                fixed_story = self._normalize_punctuation(fixed_story, language)
+                fixed_story = _normalize_punctuation(fixed_story, language)
                 return fixed_story
 
             logger.warning("局部修正返回空结果，回退到原始故事")
@@ -1608,50 +1669,6 @@ Please **only modify the problematic paragraphs** and keep the rest of the conte
             "last_location": last_location,
             "character_habits": kwargs.get("character_habits", []),
         }
-
-    @staticmethod
-    def _normalize_punctuation(text: str, language: str = "zh") -> str:
-        """将英文标点统一替换为中文标点（仅中文模式）。"""
-        if not text or language != "zh":
-            return text
-
-        # 成对引号需要交替处理
-        result = []
-        dquote_open = False
-        squote_open = False
-        for ch in text:
-            if ch in ('"', '"'):
-                ch = "“" if not dquote_open else "”"
-                dquote_open = not dquote_open
-            elif ch in ("'", "'"):
-                ch = "‘" if not squote_open else "’"
-                squote_open = not squote_open
-            result.append(ch)
-        text = "".join(result)
-
-        # 直接映射替换
-        replacements = {
-            ",": "，",
-            ".": "。",
-            "!": "！",
-            "?": "？",
-            ":": "：",
-            ";": "；",
-            "(": "（",
-            ")": "）",
-        }
-        for en, zh in replacements.items():
-            text = text.replace(en, zh)
-
-        # 省略号规范化
-        text = text.replace("...", "……").replace("..", "……")
-
-        # 清理中文标点后多余的空格
-        import re
-
-        text = re.sub(r"([，。！？：；、……“”‘’（）])\s+", r"\1", text)
-
-        return text
 
     @staticmethod
     def _get_phase_from_state(player_state: Dict[str, Any]) -> str:

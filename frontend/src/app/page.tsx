@@ -257,6 +257,8 @@ export default function WelcomePage() {
               />
             ) : (
               <Input
+                id="private-id-input"
+                name="privateId"
                 value={privateId}
                 onChange={(e) => setPrivateId(e.target.value)}
                 placeholder="私有密钥 (如: XXXX-XXXX-XXXX-...)"
@@ -266,6 +268,8 @@ export default function WelcomePage() {
                   if (e.key === "Enter") handleLogin();
                 }}
                 autoFocus
+                aria-label="私有密钥"
+                data-testid="private-id-input"
               />
             )}
 

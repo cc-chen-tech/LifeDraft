@@ -16,6 +16,7 @@ from .commitment_validator import validate_commitment_fulfillment
 from .constraint_registry import (ConstraintDefinition, ConstraintRegistry,
                                   ConstraintType, Priority)
 from .diagnostics import ConstraintViolationDiagnostic, DiagnosticReport
+from .era_validator import validate_era_consistency
 from .info_barrier_validator import validate_information_barrier
 from .item_continuity_validator import validate_item_continuity
 from .npc_attribute_validator import validate_npc_attribute_stability
@@ -193,6 +194,18 @@ default_registry.register(
     )
 )
 
+# ★ 时代一致性验证：防止古代背景出现现代元素
+default_registry.register(
+    ConstraintDefinition(
+        type=ConstraintType.ERA_CONSISTENCY,
+        priority=Priority.CRITICAL,
+        description="时代一致性：古代背景中不可出现现代物品、品牌、概念",
+        validator=validate_era_consistency,
+        prompt_marker="[MUST] **时代约束**",
+        weight=3.0,
+    )
+)
+
 # --- HIGH 级别（weight=2.0）---
 
 default_registry.register(
@@ -273,16 +286,16 @@ default_registry.register(
     )
 )
 
-# --- LOW 级别（weight=0.5）---
+# --- MEDIUM 级别（反重复约束提升至 MEDIUM，防止 token 预算挤占导致失效）---
 
 default_registry.register(
     ConstraintDefinition(
         type=ConstraintType.ANTI_REPETITION,
-        priority=Priority.LOW,
+        priority=Priority.MEDIUM,
         description="避免故事内部出现重复段落或句式",
         validator=validate_anti_repetition,
         inject_in_prompt=False,
-        weight=0.5,
+        weight=1.5,
     )
 )
 

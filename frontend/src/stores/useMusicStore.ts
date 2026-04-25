@@ -69,11 +69,9 @@ interface MusicState {
   cleanup: () => void;
 }
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== "undefined"
-    ? `${window.location.protocol}//${window.location.host}`
-    : "http://localhost:8000");
+// ★ Use the same relative /api path as api.ts to ensure consistency.
+// Absolute URLs bypass the Next.js proxy and can cause CORS/timeout issues.
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api";
 
 export const useMusicStore = create<MusicState>((set, get) => ({
   // 初始状态
@@ -219,7 +217,7 @@ export async function fetchMusicRecommendation(
   gameId?: number,
   refresh: boolean = false
 ): Promise<MusicRecommendation> {
-  const response = await fetch(`${API_BASE_URL}/api/music/recommend`, {
+  const response = await fetch(`${API_BASE}/music/recommend`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -238,7 +236,7 @@ export async function fetchMusicRecommendation(
 
 export async function fetchSongUrl(songId: number): Promise<string> {
   const response = await fetch(
-    `${API_BASE_URL}/api/music/song-url?song_id=${songId}`,
+    `${API_BASE}/music/song-url?song_id=${songId}`,
     {
       credentials: "include",
     }
@@ -301,7 +299,7 @@ export async function searchMusic(
   limit: number = 10
 ): Promise<{ songs: Song[] }> {
   const response = await fetch(
-    `${API_BASE_URL}/api/music/search?keyword=${encodeURIComponent(
+    `${API_BASE}/music/search?keyword=${encodeURIComponent(
       keyword
     )}&limit=${limit}`,
     {

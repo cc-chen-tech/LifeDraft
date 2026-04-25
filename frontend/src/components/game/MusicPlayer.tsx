@@ -600,6 +600,8 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
           size="sm"
           onClick={() => fetchRecommendation(true)}
           disabled={isLoadingRecommendation}
+          aria-label="刷新音乐推荐"
+          title="刷新音乐推荐"
         >
           {isLoadingRecommendation ? (
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -696,6 +698,8 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
                 className="h-8 w-8"
                 onClick={playPrev}
                 disabled={!recommendation.songs.length}
+                aria-label="上一首"
+                title="上一首"
               >
                 <SkipBack className="w-4 h-4" />
               </Button>
@@ -705,6 +709,8 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
                 className="h-10 w-10"
                 onClick={togglePlay}
                 disabled={!recommendation.songs.length}
+                aria-label={isPlaying ? "暂停" : "播放"}
+                title={isPlaying ? "暂停" : "播放"}
               >
                 {isPlaying ? (
                   <Pause className="w-5 h-5" />
@@ -718,6 +724,8 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
                 className="h-8 w-8"
                 onClick={playNext}
                 disabled={!recommendation.songs.length}
+                aria-label="下一首"
+                title="下一首"
               >
                 <SkipForward className="w-4 h-4" />
               </Button>
@@ -730,6 +738,8 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
                 size="icon"
                 className="h-6 w-6"
                 onClick={() => handleVolumeChange([volume === 0 ? 0.5 : 0])}
+                aria-label={volume === 0 ? "取消静音" : "静音"}
+                title={volume === 0 ? "取消静音" : "静音"}
               >
                 {volume === 0 ? (
                   <VolumeX className="w-3 h-3" />

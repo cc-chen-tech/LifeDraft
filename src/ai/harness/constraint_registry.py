@@ -27,6 +27,7 @@ class ConstraintType(Enum):
     THIRD_PERSON_NARRATION = "third_person"  # 第三人称叙事
     DECISION_POINT_ENDING = "decision_point_ending"  # 结尾有决策点
     NO_META_NARRATION = "no_meta_narration"  # 禁止跳脱叙事
+    ERA_CONSISTENCY = "era_consistency"  # 时代一致性
 
     # HIGH 级别
     HIGH_STORYLINES = "high_storylines"  # 高重要性剧情线

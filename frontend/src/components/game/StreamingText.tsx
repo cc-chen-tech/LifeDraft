@@ -116,6 +116,11 @@ export function StreamingText({
     };
   }, []);
 
+  // ★ 流式模式下隐藏不完整的 markdown 标记，避免用户看到原始语法
+  const sanitizedText = isStreaming
+    ? stripIncompleteMarkdown(displayedText)
+    : displayedText;
+
   if (!displayedText && !isStreaming) return null;
 
   return (
@@ -130,7 +135,7 @@ export function StreamingText({
       {narrative ? (
         <div className="animate-fade-in-word">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {displayedText}
+            {sanitizedText}
           </ReactMarkdown>
           {isStreaming && <span className="typewriter-cursor" />}
         </div>
@@ -149,4 +154,47 @@ export function StreamingText({
       )}
     </div>
   );
+}
+
+/**
+ * 移除文本末尾不完整的 markdown 标记。
+ * 在流式显示时，避免用户看到 `**bold` 这种未闭合的原始语法。
+ */
+function stripIncompleteMarkdown(text: string): string {
+  if (!text) return text;
+
+  // 检查末尾是否有未闭合的 `**`（粗体）
+  const boldOpenCount = (text.match(/\*\*/g) || []).length;
+  if (boldOpenCount % 2 !== 0) {
+    // 奇数个 **，最后一个未闭合，移除它
+    const lastIdx = text.lastIndexOf("**");
+    if (lastIdx !== -1 && lastIdx > text.length - 4) {
+      text = text.slice(0, lastIdx) + text.slice(lastIdx + 2);
+    }
+  }
+
+  // 检查末尾是否有未闭合的 `*`（斜体）—— 注意不能误删 ** 的一部分
+  // 简单处理：如果末尾是单独的 *，移除它
+  if (text.endsWith("*") && !text.endsWith("**")) {
+    text = text.slice(0, -1);
+  }
+
+  // 检查末尾是否有未闭合的 `_`（斜体/下划线）
+  if (text.endsWith("_")) {
+    const underscoreCount = (text.match(/_/g) || []).length;
+    if (underscoreCount % 2 !== 0) {
+      text = text.slice(0, -1);
+    }
+  }
+
+  // 检查末尾是否有未闭合的 `` ` ``（行内代码）
+  const backtickCount = (text.match(/`/g) || []).length;
+  if (backtickCount % 2 !== 0) {
+    const lastIdx = text.lastIndexOf("`");
+    if (lastIdx !== -1 && lastIdx > text.length - 3) {
+      text = text.slice(0, lastIdx) + text.slice(lastIdx + 1);
+    }
+  }
+
+  return text;
 }

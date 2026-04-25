@@ -239,6 +239,12 @@ run_frontend() {
     echo -e "${YELLOW}--- Jest 单元测试 ---${NC}"
     npm test -- --passWithNoTests
     local jest_result=$?
+
+    # 前端集成/契约测试
+    echo ""
+    echo -e "${YELLOW}--- 前端集成契约测试 ---${NC}"
+    npx jest src/__tests__/integration/api-contracts.test.ts --passWithNoTests
+    local contract_result=$?
     
     if [ $jest_result -eq 0 ]; then
         echo -e "${GREEN}✓ Jest 测试通过${NC}"
@@ -247,8 +253,8 @@ run_frontend() {
     fi
     
     local result=0
-    [ $tsc_result -ne 0 ] || [ $jest_result -ne 0 ] && result=1
-    
+    [ $tsc_result -ne 0 ] || [ $jest_result -ne 0 ] || [ $contract_result -ne 0 ] && result=1
+
     return $result
 }
 

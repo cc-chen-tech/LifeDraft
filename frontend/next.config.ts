@@ -18,6 +18,10 @@ const nextConfig: NextConfig = {
   },
   // Standalone 输出模式用于生产部署
   output: 'standalone',
+  // 显式设置 Turbopack root 以避免多 lockfile 导致的模块解析错误
+  turbopack: {
+    root: __dirname,
+  },
   // ★ API 代理已迁移到 src/app/api/[...path]/route.ts
   // 使用 API Route 可以正确转发 Set-Cookie 头
 };

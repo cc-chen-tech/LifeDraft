@@ -6,12 +6,12 @@ from typing import Any, Callable, Dict, Optional
 
 from sqlalchemy.orm import Session
 
+from config.prompts._helpers import _build_image_era_constraints
 from src.ai.image_client import ImageClient
 from src.ai.image_exceptions import (ContentInspectionError,
                                      ImageGenerationError)
 from src.database.models import Image as ImageModel
 from src.database.models import SceneImage
-from config.prompts._helpers import _build_image_era_constraints
 from src.services.image import ImageContentError, ImageServiceError
 from src.services.image.appearance_anchor import CharacterAppearanceAnchor
 from src.services.image.style_manager import style_manager

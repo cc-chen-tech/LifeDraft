@@ -39,6 +39,8 @@ import { useGameIdFromUrl } from "@/hooks/useGameIdFromUrl";
 import { useGameStore } from "@/stores/useGameStore";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   Save,
   Loader2,
@@ -225,50 +227,54 @@ export default function PlayPage() {
             {/* ★ 收集按钮 */}
             <Button
               variant="ghost"
-              size="icon"
-              className="h-8 w-8"
+              size="sm"
+              className="h-8 px-2"
               onClick={() => setShowCollection(true)}
               title="收集"
               aria-label="收集"
             >
-              <BookOpen className="w-4 h-4" />
+              <BookOpen className="w-4 h-4 md:mr-1.5" />
+              <span className="hidden md:inline text-xs">收集</span>
             </Button>
             {/* ★ 好友按钮 */}
             <Button
               variant="ghost"
-              size="icon"
-              className="h-8 w-8"
+              size="sm"
+              className="h-8 px-2"
               onClick={() => router.push("/profile")}
               title="好友"
               aria-label="好友"
             >
-              <Users className="w-4 h-4" />
+              <Users className="w-4 h-4 md:mr-1.5" />
+              <span className="hidden md:inline text-xs">好友</span>
             </Button>
             {/* ★ 历史回顾按钮 */}
             <Button
               variant="ghost"
-              size="icon"
-              className={cn("h-8 w-8", isViewingHistory && "text-primary")}
+              size="sm"
+              className={cn("h-8 px-2", isViewingHistory && "text-primary")}
               onClick={handleOpenHistory}
               title="历史回顾"
               aria-label="历史回顾"
             >
-              <History className="w-4 h-4" />
+              <History className="w-4 h-4 md:mr-1.5" />
+              <span className="hidden md:inline text-xs">历史</span>
             </Button>
             <Button
               variant="ghost"
-              size="icon"
-              className="h-8 w-8"
+              size="sm"
+              className="h-8 px-2"
               onClick={() => router.push("/")}
               title="返回首页"
               aria-label="返回首页"
             >
-              <Home className="w-4 h-4" />
+              <Home className="w-4 h-4 md:mr-1.5" />
+              <span className="hidden md:inline text-xs">首页</span>
             </Button>
             <Button
               variant="ghost"
-              size="icon"
-              className={cn("h-8 w-8", isSaving && "animate-pulse")}
+              size="sm"
+              className={cn("h-8 px-2", isSaving && "animate-pulse")}
               onClick={handleSave}
               disabled={isSaving}
               title="保存游戏"
@@ -277,13 +283,15 @@ export default function PlayPage() {
               {isSaving ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                <Save className="w-4 h-4" />
+                <Save className="w-4 h-4 md:mr-1.5" />
               )}
+              <span className="hidden md:inline text-xs">保存</span>
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8" title="设置" aria-label="设置">
-                  <Settings className="w-4 h-4" />
+                <Button variant="ghost" size="sm" className="h-8 px-2" title="设置" aria-label="设置">
+                  <Settings className="w-4 h-4 md:mr-1.5" />
+                  <span className="hidden md:inline text-xs">设置</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -363,6 +371,7 @@ export default function PlayPage() {
           <SkeletonStory
             message={phase === "loading" ? "故事生成中..." : getLoadingMessage()}
             elapsedSeconds={elapsedSeconds}
+            phase={phase === "generating" || phase === "choosing" ? getLoadingMessage() : undefined}
           />
         )}
 
@@ -462,7 +471,9 @@ export default function PlayPage() {
             style={{ background: 'rgba(99, 102, 241, 0.2)' }}
           >
             <span className="text-[#818cf8] text-sm font-medium">📝 轮次小结：</span>
-            <span className="text-[#e2e8f0] text-sm ml-2">{roundSummary}</span>
+            <span className="text-[#e2e8f0] text-sm ml-2 prose-story-inline">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{roundSummary}</ReactMarkdown>
+            </span>
           </div>
         )}
 
@@ -526,9 +537,7 @@ export default function PlayPage() {
                 周总结
               </h3>
               <div className="prose-story text-sm">
-                {summaryText.split("\n").map((line, i) => (
-                  <p key={i}>{line}</p>
-                ))}
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{summaryText}</ReactMarkdown>
               </div>
             </Card>
             <Button

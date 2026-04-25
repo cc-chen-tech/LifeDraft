@@ -37,7 +37,7 @@ describe('auth', () => {
 
 // ─── gameplay API path verification ────────────────────────────
 describe('gameplay', () => {
-  it('getState calls /games/{id} (not /games/{id}/state)', async () => {
+  it('getState calls /games/{id}/state for live session state', async () => {
     global.fetch = jest.fn(() =>
       mockFetchResponse({ player_state: {}, progress: {}, round_info: {}, current_event: null })
     );
@@ -46,7 +46,8 @@ describe('gameplay', () => {
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
     const [url, options] = (global.fetch as jest.Mock).mock.calls[0];
-    expect(url).toBe('/api/games/296');
+    // CRITICAL FIX: Must use /state endpoint (live session), not /games/{id} (stale DB)
+    expect(url).toBe('/api/games/296/state');
     // Default method should be GET (undefined or 'GET')
     expect(options.method).toBeUndefined();
   });

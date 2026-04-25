@@ -248,6 +248,9 @@ export const api = {
 
   // Gameplay
   gameplay: {
+    // ★ CRITICAL FIX: Use /games/{id}/state (get_game_state) instead of /games/{id} (load_game)
+    // load_game reads from DB (stale), get_game_state reads from live session (fresh).
+    // Without this fix, week/progress never updates after game progression.
     getState: (gameId: number) =>
       fetchJson<{
         player_state: PlayerState;
@@ -255,7 +258,7 @@ export const api = {
         round_info: RoundInfo;
         current_event: CurrentEventData | null;
         constraint_level: "fast" | "expert" | "master";
-      }>(`/games/${gameId}`),
+      }>(`/games/${gameId}/state`),
     generateEvent: (gameId: number, data?: { custom_choices?: string[] }) =>
       fetchJson<{
         story: string;
