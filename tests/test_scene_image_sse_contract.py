@@ -9,12 +9,27 @@
 """
 
 import json
+import os
+from datetime import datetime, timedelta
 
 from fastapi.testclient import TestClient
+from jose import jwt
 
-from src.api.main import app
+os.environ["JWT_SECRET"] = "test-secret-for-sse-contract"
+
+from src.api.main import app  # noqa: E402
 
 client = TestClient(app)
+
+
+def _auth_headers(user_id: int = 1) -> dict:
+    """生成有效的认证请求头"""
+    token = jwt.encode(
+        {"sub": str(user_id), "exp": datetime.utcnow() + timedelta(hours=1)},
+        os.environ["JWT_SECRET"],
+        algorithm="HS256",
+    )
+    return {"Authorization": f"Bearer {token}"}
 
 
 class TestSceneImageSSEContract:
@@ -39,7 +54,7 @@ class TestSceneImageSSEContract:
         _scene_image_latest[f"{game_id}:0:1:result"] = event
 
         try:
-            with client.get(f"/api/images/scene/events/{game_id}") as response:
+            with client.get(f"/api/images/scene/events/{game_id}", headers=_auth_headers()) as response:
                 assert response.status_code == 200
                 # 读取第一行（应该是缓存事件）
                 line = response.iter_lines().__next__()
@@ -74,7 +89,7 @@ class TestSceneImageSSEContract:
         _scene_image_latest[f"{game_id}:1:2:event"] = event
 
         try:
-            with client.get(f"/api/images/scene/events/{game_id}") as response:
+            with client.get(f"/api/images/scene/events/{game_id}", headers=_auth_headers()) as response:
                 line = response.iter_lines().__next__()
                 data = json.loads(line[6:].decode())
 
@@ -104,7 +119,7 @@ class TestSceneImageSSEContract:
             _scene_image_latest[f"{game_id}:0:0:result:{event_type}"] = event
 
         try:
-            with client.get(f"/api/images/scene/events/{game_id}") as response:
+            with client.get(f"/api/images/scene/events/{game_id}", headers=_auth_headers()) as response:
                 line = response.iter_lines().__next__()
                 data = json.loads(line[6:].decode())
                 assert data["type"] in valid_types
@@ -114,8 +129,8 @@ class TestSceneImageSSEContract:
 
     def test_sse_requires_auth(self):
         """SSE 端点应需要认证"""
-        # 未认证访问应返回 401 或 403
+        # 未认证访问应返回 401
         response = client.get("/api/images/scene/events/1")
-        # 注意：实际行为取决于认证中间件配置
-        # 契约测试验证端点存在且受保护
-        assert response.status_code in (200, 401, 403)
+        assert response.status_code == 401, (
+            f"未认证访问 SSE 端点应返回 401，但返回了 {response.status_code}"
+        )

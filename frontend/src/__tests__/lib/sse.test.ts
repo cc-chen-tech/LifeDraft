@@ -423,6 +423,30 @@ describe('SSE Streaming', () => {
 
       await expect(streamRewrite(123, 'context', 'instruction', 'segment', 'zh', callbacks)).rejects.toThrow('HTTP error');
     });
+
+    it('rejects with Error when stream ends without complete event', async () => {
+      const onError = jest.fn();
+      const callbacks = {
+        onStory: jest.fn(),
+        onStatus: jest.fn(),
+        onComplete: jest.fn(),
+        onError,
+      };
+
+      // Stream ends prematurely without [DONE] or complete event
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: createMockStream(['data: {"content":"Hello"}\n\n']),
+      });
+
+      // ★ 契约：必须抛出 Error 实例（与 streamGameEvent/streamOpeningStory 一致）
+      // 不能抛出 { completed: false, error: Error } 这种对象
+      await expect(
+        streamRewrite(123, 'context', 'instruction', 'segment', 'zh', callbacks)
+      ).rejects.toThrow('Stream ended without complete event');
+
+      expect(onError).toHaveBeenCalledWith(expect.any(Error));
+    });
   });
 
   describe('Stream parsing edge cases', () => {

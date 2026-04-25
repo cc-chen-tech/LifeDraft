@@ -304,7 +304,7 @@ export async function streamRewrite(
           if (!completed && !hasError) {
             const error = new Error('Stream ended without complete event');
             callbacks.onError?.(error);
-            reject({ completed: false, error });
+            reject(error);
             return;
           }
           resolve({ completed: true, error: undefined });
@@ -375,7 +375,7 @@ export async function streamRewrite(
         return pump();
       }).catch((error) => {
         callbacks.onError?.(error);
-        resolve({ completed, error });
+        reject(error);
       });
     }
 

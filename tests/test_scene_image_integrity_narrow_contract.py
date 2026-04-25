@@ -45,12 +45,17 @@ class TestSceneImageIntegrityNarrowContract:
 
         service = SceneImageService(db=db_session)
 
-        with patch.object(service.image_client, "analyze_story_for_illustration") as mock_analyze, \
-             patch.object(service.image_client, "generate_image") as mock_generate, \
-             patch.object(service.storage_service, "save_image") as mock_save:
+        with patch.object(
+            service.image_client, "analyze_story_for_illustration"
+        ) as mock_analyze, patch.object(
+            service.image_client, "generate_image"
+        ) as mock_generate, patch.object(
+            service.storage_service, "save_image"
+        ) as mock_save:
 
             mock_analyze.return_value = ("场景", "提示词")
-            mock_generate.return_value = (b"\x89PNG\r\n\x1a\n" + b"\x00" * 100, "prompt")
+            png_header = b"\x89PNG\r\n\x1a\n"
+            mock_generate.return_value = (png_header + b"\x00" * 100, "prompt")
             mock_save.return_value = ("/tmp/new.png", "local")
 
             # 模拟 commit 时抛出包含 "UNIQUE constraint failed" 的 IntegrityError
@@ -66,7 +71,8 @@ class TestSceneImageIntegrityNarrowContract:
                 # 第二次 commit（插入新记录）触发唯一约束冲突
                 raise IntegrityError(
                     "(sqlite3.IntegrityError) UNIQUE constraint failed: "
-                    "scene_images.game_id, scene_images.week, scene_images.round_number, scene_images.stage",
+                    "scene_images.game_id, scene_images.week, "
+                    "scene_images.round_number, scene_images.stage",
                     "",
                     "",
                 )
@@ -92,12 +98,17 @@ class TestSceneImageIntegrityNarrowContract:
         """非唯一约束的 IntegrityError（如外键违反）应重新抛出，不应吞掉。"""
         service = SceneImageService(db=db_session)
 
-        with patch.object(service.image_client, "analyze_story_for_illustration") as mock_analyze, \
-             patch.object(service.image_client, "generate_image") as mock_generate, \
-             patch.object(service.storage_service, "save_image") as mock_save:
+        with patch.object(
+            service.image_client, "analyze_story_for_illustration"
+        ) as mock_analyze, patch.object(
+            service.image_client, "generate_image"
+        ) as mock_generate, patch.object(
+            service.storage_service, "save_image"
+        ) as mock_save:
 
             mock_analyze.return_value = ("场景", "提示词")
-            mock_generate.return_value = (b"\x89PNG\r\n\x1a\n" + b"\x00" * 100, "prompt")
+            png_header = b"\x89PNG\r\n\x1a\n"
+            mock_generate.return_value = (png_header + b"\x00" * 100, "prompt")
             mock_save.return_value = ("/tmp/new.png", "local")
 
             # 模拟外键违反（不包含 "unique" 或 "duplicate" 关键词）
@@ -121,8 +132,10 @@ class TestSceneImageIntegrityNarrowContract:
                         week=0,
                         stage="result",
                     )
-                # 错误消息应包含原始错误信息，而非"无法获取或创建记录"
-                assert "FOREIGN KEY" in str(exc_info.value) or "数据库完整性错误" in str(exc_info.value)
+                # 错误消息应包含原始错误信息，
+                # 而非"无法获取或创建记录"
+                err_str = str(exc_info.value)
+                assert "FOREIGN KEY" in err_str or "数据库完整性错误" in err_str
             finally:
                 # 恢复 db_session.commit
                 db_session.rollback()

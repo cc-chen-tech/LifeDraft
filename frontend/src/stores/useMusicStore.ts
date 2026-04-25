@@ -44,6 +44,9 @@ interface MusicState {
   // 播放器实例（HTMLAudioElement）
   audioElement: HTMLAudioElement | null;
 
+  // fadeVolume interval 引用，防止多个渐变冲突
+  fadeInterval: ReturnType<typeof setInterval> | null;
+
   // Actions
   setRecommendation: (recommendation: MusicRecommendation | null) => void;
   setIsLoadingRecommendation: (loading: boolean) => void;
@@ -55,6 +58,7 @@ interface MusicState {
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
   setAudioElement: (audio: HTMLAudioElement | null) => void;
+  setFadeInterval: (interval: ReturnType<typeof setInterval> | null) => void;
 
   // 播放控制
   play: () => void;
@@ -85,6 +89,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   currentTime: 0,
   duration: 0,
   audioElement: null,
+  fadeInterval: null,
 
   // Setters
   setRecommendation: (recommendation) => set({ recommendation }),
@@ -107,6 +112,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   setCurrentTime: (currentTime) => set({ currentTime }),
   setDuration: (duration) => set({ duration }),
   setAudioElement: (audioElement) => set({ audioElement }),
+  setFadeInterval: (fadeInterval) => set({ fadeInterval }),
 
   // 播放控制
   play: () => {
@@ -154,15 +160,20 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   },
 
   fadeVolume: (targetVolume: number, duration: number = 1000) => {
-    const { audioElement } = get();
+    const { audioElement, fadeInterval } = get();
     if (!audioElement) return;
+
+    // 清除已有的 fade interval，防止多个渐变同时运行
+    if (fadeInterval) {
+      clearInterval(fadeInterval);
+    }
 
     // 直接从 audioElement 读取当前音量，避免 store 中的 volume 滞后
     const startVolume = audioElement.volume;
     const startTime = Date.now();
     const volumeDiff = targetVolume - startVolume;
 
-    const fadeInterval = setInterval(() => {
+    const newFadeInterval = setInterval(() => {
       const elapsed = Date.now() - startTime;
       const progress = Math.min(elapsed / duration, 1);
       const newVolume = startVolume + volumeDiff * progress;
@@ -172,16 +183,21 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       audioElement.volume = newVolume;
 
       if (progress >= 1) {
-        clearInterval(fadeInterval);
+        clearInterval(newFadeInterval);
         // 渐变结束后一次性同步回 store
-        set({ volume: targetVolume });
+        set({ volume: targetVolume, fadeInterval: null });
       }
     }, 50);
+
+    set({ fadeInterval: newFadeInterval });
   },
 
   // 清理
   reset: () => {
-    const { audioElement } = get();
+    const { audioElement, fadeInterval } = get();
+    if (fadeInterval) {
+      clearInterval(fadeInterval);
+    }
     if (audioElement) {
       audioElement.pause();
       audioElement.src = "";
@@ -195,11 +211,15 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       currentTime: 0,
       duration: 0,
       audioElement: null,
+      fadeInterval: null,
     });
   },
 
   cleanup: () => {
-    const { audioElement } = get();
+    const { audioElement, fadeInterval } = get();
+    if (fadeInterval) {
+      clearInterval(fadeInterval);
+    }
     if (audioElement) {
       audioElement.pause();
       audioElement.src = "";
@@ -211,7 +231,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       audioElement.onloadedmetadata = null;
       audioElement.onerror = null;
     }
-    set({ audioElement: null, isPlaying: false });
+    set({ audioElement: null, isPlaying: false, fadeInterval: null });
   },
 }));
 

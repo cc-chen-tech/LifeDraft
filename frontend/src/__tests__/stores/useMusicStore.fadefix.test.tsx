@@ -125,4 +125,33 @@ describe("fadeVolume — 不应对 store 产生高频更新", () => {
       expect(useMusicStore.getState().volume).toBe(1.0);
     });
   });
+
+  it("连续调用 fadeVolume 时应取消前一个 interval，避免多个渐变冲突", async () => {
+    const store = useMusicStore.getState();
+    const audio = createFakeAudio(0.1);
+    store.setAudioElement(audio);
+
+    // 第一次：从 0.1 渐变到 1.0（300ms）
+    store.fadeVolume(1.0, 300);
+
+    // 等待 100ms（渐变中）
+    await new Promise((r) => setTimeout(r, 100));
+    const volumeAfterFirstFadeMid = audio.volume;
+    expect(volumeAfterFirstFadeMid).toBeGreaterThan(0.1);
+
+    // 第二次：反向渐变到 0.0（150ms）——应取消第一次
+    store.fadeVolume(0.0, 150);
+
+    // 等待第二次完成
+    await new Promise((r) => setTimeout(r, 250));
+
+    // 如果第一次 interval 没被清除，audio.volume 会朝 1.0 走
+    // 实际应该朝 0.0 走
+    expect(audio.volume).toBeCloseTo(0.0, 1);
+    expect(useMusicStore.getState().volume).toBe(0.0);
+
+    // 再等待一段时间（确保第一个 interval 的残留不会把音量拉回去）
+    await new Promise((r) => setTimeout(r, 300));
+    expect(audio.volume).toBeCloseTo(0.0, 1);
+  });
 });

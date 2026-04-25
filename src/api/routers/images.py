@@ -878,7 +878,7 @@ async def get_image_file(
 @router.get("/scene/events/{game_id}")
 async def scene_image_sse_events(
     game_id: int,
-    user: Optional[User] = Depends(get_current_user_optional),
+    user: User = Depends(get_current_user),
 ):
     """
     SSE 端点：推送场景图片生成事件
@@ -887,9 +887,9 @@ async def scene_image_sse_events(
     - scene_image_ready: 场景图片生成完成
     - scene_image_failed: 场景图片生成失败
     - heartbeat: 心跳保持连接
+
+    ★ 安全要求：必须认证才能访问，防止未授权用户监听其他游戏的图片生成事件
     """
-    # 契约测试期间允许未认证访问（TestClient 无 auth cookie）
-    # 生产环境前端会携带 auth_token cookie
     return StreamingResponse(
         _scene_image_event_generator(game_id),
         media_type="text/event-stream",

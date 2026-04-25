@@ -8,11 +8,26 @@
 """
 
 import json
+import os
+from datetime import datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
+from jose import jwt
 
-from src.api.main import app
+os.environ["JWT_SECRET"] = "test-secret-for-sse-integration"
+
+from src.api.main import app  # noqa: E402
+
+
+def _auth_headers(user_id: int = 1) -> dict:
+    """生成有效的认证请求头"""
+    token = jwt.encode(
+        {"sub": str(user_id), "exp": datetime.utcnow() + timedelta(hours=1)},
+        os.environ["JWT_SECRET"],
+        algorithm="HS256",
+    )
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.mark.integration
@@ -65,7 +80,7 @@ class TestSceneImageSSEIntegration:
 
         try:
             with TestClient(app) as client:
-                with client.get(f"/api/images/scene/events/{game_id}") as response:
+                with client.get(f"/api/images/scene/events/{game_id}", headers=_auth_headers()) as response:
                     assert response.status_code == 200
                     line = response.iter_lines().__next__()
                     data = json.loads(line[6:].decode())
@@ -99,7 +114,7 @@ class TestSceneImageSSEIntegration:
             assert _scene_image_latest[key]["error"] == "Image generation timeout after 180s"
 
             with TestClient(app) as client:
-                with client.get(f"/api/images/scene/events/{game_id}") as response:
+                with client.get(f"/api/images/scene/events/{game_id}", headers=_auth_headers()) as response:
                     line = response.iter_lines().__next__()
                     data = json.loads(line[6:].decode())
                     assert data["type"] == "scene_image_failed"
@@ -129,7 +144,7 @@ class TestSceneImageSSEIntegration:
             assert key in _scene_image_latest
 
             with TestClient(app) as client:
-                with client.get(f"/api/images/scene/events/{game_id}") as response:
+                with client.get(f"/api/images/scene/events/{game_id}", headers=_auth_headers()) as response:
                     line = response.iter_lines().__next__()
                     data = json.loads(line[6:].decode())
                     assert data["type"] == "scene_image_ready"

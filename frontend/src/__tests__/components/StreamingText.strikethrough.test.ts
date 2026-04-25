@@ -47,6 +47,19 @@ describe("stripIncompleteMarkdown — strikethrough", () => {
     const text = "普通文本没有任何标记";
     expect(stripIncompleteMarkdown(text)).toBe(text);
   });
+
+  it("中文文本末尾的 ~ 会被移除（已知行为， narrative 文本中风险低）", () => {
+    // ★ 契约说明：单字 ~ 在末尾会被当作未完成的 strikethrough 移除。
+    // 在正式叙事文本中，~ 极少作为语气词出现在句尾；
+    // 若未来需要保留，可将此条件改为检查前方是否有配对 ~。
+    const text = "今天天气真好~";
+    expect(stripIncompleteMarkdown(text)).toBe("今天天气真好");
+  });
+
+  it("中文文本中间的 ~ 不会被移除", () => {
+    const text = "价格~500~元";
+    expect(stripIncompleteMarkdown(text)).toBe(text);
+  });
 });
 
 describe("stripIncompleteMarkdown — 其他 markdown 标记", () => {
