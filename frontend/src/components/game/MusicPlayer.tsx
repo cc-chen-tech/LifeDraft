@@ -230,9 +230,10 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       audio.onplay = () => setIsPlaying(true);
       audio.onpause = () => setIsPlaying(false);
       audio.ontimeupdate = () => {
-        // 250ms 节流，减少 timeupdate 触发的 React re-render 频率
+        // 500ms 节流，减少 timeupdate 触发的 React re-render 频率
+        // 250ms → 500ms：进一步降低重渲染开销，改善播放卡顿
         const now = Date.now();
-        if (now - timeUpdateThrottleRef.current >= 250) {
+        if (now - timeUpdateThrottleRef.current >= 500) {
           timeUpdateThrottleRef.current = now;
           setCurrentTime(audio.currentTime);
         }
