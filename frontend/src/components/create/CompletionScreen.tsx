@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -93,6 +94,42 @@ export function CompletionScreen({
   onSavePreset,
   onRegenerateSetting,
 }: CompletionScreenProps) {
+  const [isGoingBack, setIsGoingBack] = useState(false);
+  const [isRegeneratingFresh, setIsRegeneratingFresh] = useState(false);
+  const [isRegeneratingImage, setIsRegeneratingImage] = useState(false);
+
+  const handleBack = async () => {
+    setIsGoingBack(true);
+    try {
+      await onBack();
+    } finally {
+      setIsGoingBack(false);
+    }
+  };
+
+  const handleRegenerateFresh = async () => {
+    setIsRegeneratingFresh(true);
+    try {
+      await onRegenerateFreshImage();
+    } catch (err) {
+      showToast("error", String(err) || "重新生成失败");
+    } finally {
+      setIsRegeneratingFresh(false);
+    }
+  };
+
+  const handleRegenerateImage = async () => {
+    setIsRegeneratingImage(true);
+    try {
+      await onRegenerateImage();
+      onImageFeedbackChange("");
+    } catch (err) {
+      showToast("error", String(err) || "重新生成失败");
+    } finally {
+      setIsRegeneratingImage(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background animate-page-enter flex flex-col">
       <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-sm border-b border-border">
@@ -100,9 +137,15 @@ export function CompletionScreen({
           <Button
             variant="ghost"
             size="sm"
-            onClick={onBack}
+            onClick={handleBack}
+            disabled={isGoingBack}
+            data-testid="back-button"
           >
-            <ArrowLeft className="w-4 h-4 mr-1" />
+            {isGoingBack ? (
+              <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+            ) : (
+              <ArrowLeft className="w-4 h-4 mr-1" />
+            )}
             返回修改
           </Button>
           <span className="text-sm text-muted-foreground">角色创建完成</span>
@@ -149,32 +192,28 @@ export function CompletionScreen({
                     variant="outline"
                     size="sm"
                     className="flex-1 h-8 text-xs"
-                    disabled={!imageFeedback.trim()}
-                    onClick={async () => {
-                      try {
-                        await onRegenerateImage();
-                        onImageFeedbackChange("");
-                      } catch (err) {
-                        showToast("error", String(err) || "重新生成失败");
-                      }
-                    }}
+                    disabled={!imageFeedback.trim() || isRegeneratingImage}
+                    onClick={handleRegenerateImage}
                   >
-                    <RefreshCw className="w-3 h-3 mr-1" />
+                    {isRegeneratingImage ? (
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-3 h-3 mr-1" />
+                    )}
                     根据意见修改
                   </Button>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="h-8 text-xs text-muted-foreground"
-                    onClick={async () => {
-                      try {
-                        await onRegenerateFreshImage();
-                      } catch (err) {
-                        showToast("error", String(err) || "重新生成失败");
-                      }
-                    }}
+                    disabled={isRegeneratingFresh}
+                    onClick={handleRegenerateFresh}
                   >
-                    <RotateCcw className="w-3 h-3 mr-1" />
+                    {isRegeneratingFresh ? (
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    ) : (
+                      <RotateCcw className="w-3 h-3 mr-1" />
+                    )}
                     完全重生成
                   </Button>
                 </div>
