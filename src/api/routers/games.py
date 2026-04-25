@@ -5,6 +5,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from src.ai.narrative.style_manifest import StyleLoader, get_style
 from src.ai.narrative.style_matcher import auto_match_style
 from src.api.deps import get_current_user, get_current_user_optional, get_db
 from src.api.schemas import CreateGameRequest  # 时间回溯存档系统
@@ -14,7 +15,8 @@ from src.api.schemas import (CreateSavePointRequest, GameListItem,
                              SavePointListResponse, StateSnapshotItem,
                              StateTimelineResponse,
                              UpdateCharacterSettingsRequest,
-                             UpdateGameSettingsRequest)
+                             UpdateGameSettingsRequest,
+                             UpdateNarrativeStyleRequest)
 from src.api.services.session_service import session_service
 from src.api.session_store import session_store
 from src.database.models import Game, SessionLocal
@@ -145,6 +147,15 @@ async def get_active_game(
         logger.exception(f"[get_active_game] Failed to convert state to dict: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to serialize game state: {str(e)}")
 
+    # Get narrative style info
+    _raw_style_id = getattr(game_loop, "narrative_style_id", None)
+    narrative_style_id = _raw_style_id if isinstance(_raw_style_id, str) else None
+    narrative_style_name = None
+    if narrative_style_id:
+        style = get_style(narrative_style_id)
+        if style:
+            narrative_style_name = style.style_name
+
     return GameStateResponse(
         game_id=active_game_id,
         player_state=player_state_dict,
@@ -152,6 +163,8 @@ async def get_active_game(
         round_info=game_loop.get_round_info(),
         current_event=(game_loop.current_event.model_dump() if game_loop.current_event else None),
         constraint_level=constraint_level,
+        narrative_style_id=narrative_style_id,
+        narrative_style_name=narrative_style_name,
     )
 
 
@@ -181,6 +194,15 @@ async def load_game(
     db.set_active_game(user_id, game_id)
 
     state = game_loop.get_state()
+    # Get narrative style info
+    _raw_style_id = getattr(game_loop, "narrative_style_id", None)
+    narrative_style_id = _raw_style_id if isinstance(_raw_style_id, str) else None
+    narrative_style_name = None
+    if narrative_style_id:
+        style = get_style(narrative_style_id)
+        if style:
+            narrative_style_name = style.style_name
+
     return GameStateResponse(
         game_id=game_id,
         player_state=state.to_dict() if state else {},
@@ -188,6 +210,8 @@ async def load_game(
         round_info=game_loop.get_round_info(),
         current_event=(game_loop.current_event.model_dump() if game_loop.current_event else None),
         constraint_level=constraint_level,
+        narrative_style_id=narrative_style_id,
+        narrative_style_name=narrative_style_name,
     )
 
 
@@ -534,3 +558,104 @@ async def delete_save_point(
         raise HTTPException(status_code=404, detail="Save point not found or not owned by user")
 
     return MessageResponse(message="Save point deleted")
+
+
+# ==================== 叙事风格选择 ====================
+
+
+@router.get("/{game_id}/narrative-style-options")
+async def list_narrative_styles(
+    game_id: int,
+    user_id: int = Depends(get_current_user),
+):
+    """
+    列出所有可用的叙事风格，供用户选择。
+    """
+    loader = StyleLoader()
+    loader.load_all()
+
+    styles = []
+    for style_id in loader.get_all_style_ids():
+        style = loader.get_style(style_id)
+        if style:
+            styles.append(
+                {
+                    "style_id": style.style_id,
+                    "style_name": style.style_name,
+                    "description": style.description,
+                }
+            )
+
+    return styles
+
+
+@router.get("/{game_id}/narrative-style")
+async def get_game_narrative_style(
+    game_id: int,
+    user_id: int = Depends(get_current_user),
+):
+    """
+    获取游戏当前的叙事风格。
+    """
+    db_session = SessionLocal()
+    try:
+        game = (
+            db_session.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
+        )
+        if not game:
+            raise HTTPException(status_code=404, detail="Game not found or not owned by user")
+
+        style_id = getattr(game, "narrative_style_id", None) or "chinese_classic_saga"
+        style = get_style(style_id)
+
+        return {
+            "style_id": style_id,
+            "style_name": style.style_name if style else style_id,
+            "description": style.description if style else "",
+        }
+    finally:
+        db_session.close()
+
+
+@router.put("/{game_id}/narrative-style", response_model=MessageResponse)
+async def update_game_narrative_style(
+    game_id: int,
+    req: UpdateNarrativeStyleRequest,
+    user_id: int = Depends(get_current_user),
+):
+    """
+    更新游戏的叙事风格。
+    """
+    # Validate style exists
+    style = get_style(req.style_id)
+    if not style:
+        raise HTTPException(status_code=400, detail=f"Invalid style_id: {req.style_id}")
+
+    db_session = SessionLocal()
+    try:
+        game = (
+            db_session.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
+        )
+        if not game:
+            raise HTTPException(status_code=404, detail="Game not found or not owned by user")
+
+        game.narrative_style_id = req.style_id  # type: ignore[assignment]
+
+        # Also update initial_state
+        initial_state = dict(game.initial_state or {})
+        initial_state["narrative_style_id"] = req.style_id
+        game.initial_state = initial_state  # type: ignore[assignment]
+
+        db_session.commit()
+
+        # Update active session if exists
+        game_session = session_store.get(game_id)
+        if game_session and game_session.game_loop:
+            game_session.game_loop.narrative_style_id = req.style_id
+
+        return MessageResponse(
+            success=True,
+            message=f"叙事风格已更新为: {style.style_name}",
+        )
+    finally:
+        db_session.close()

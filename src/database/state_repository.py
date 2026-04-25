@@ -168,6 +168,13 @@ class StateRepository:
                     getattr(game, "constraint_level", "expert") or "expert"
                 )
 
+                # 注入 narrative_style_id，优先从 game 记录获取
+                style_id = getattr(game, "narrative_style_id", None)
+                if style_id:
+                    state_data["narrative_style_id"] = style_id
+                elif initial_data.get("narrative_style_id"):
+                    state_data["narrative_style_id"] = initial_data["narrative_style_id"]
+
                 # 从 initial_state 补充 player_name 和 life_vision（旧存档可能没有这些字段）
                 if not state_data.get("player_name") and initial_data.get("player_name"):
                     state_data["player_name"] = initial_data["player_name"]

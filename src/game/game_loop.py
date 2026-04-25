@@ -192,6 +192,12 @@ class GameLoop(RoundSystemMixin):
                 # No event saved, allow generation
                 self.last_event_week = current_week - 1
 
+        # Restore narrative_style_id from saved state
+        style_id = state_dict.get("narrative_style_id")
+        if style_id:
+            self.narrative_style_id = style_id
+            logger.info(f"[LoadGame] Restored narrative_style_id={style_id}")
+
         logger.info(f"Loaded game at age {self.player_state.age}, 第{self.player_state.week + 1}周")
         return self.player_state
 

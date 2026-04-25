@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -36,6 +36,7 @@ import { MusicPlayer } from "@/components/game/MusicPlayer";
 import { usePlayGame, STATUS_MESSAGES } from "@/hooks/usePlayGame";
 import { useGameIdFromUrl } from "@/hooks/useGameIdFromUrl";
 import { useGameStore } from "@/stores/useGameStore";
+import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
   Save,
@@ -153,6 +154,35 @@ export default function PlayPage() {
   const enableSceneImage = useGameStore((state) => state.enableSceneImage);
   const setEnableSceneImage = useGameStore((state) => state.setEnableSceneImage);
 
+  // ★ 叙事风格
+  const [narrativeStyleId, setNarrativeStyleId] = useState<string>("");
+  const [availableStyles, setAvailableStyles] = useState<Array<{ style_id: string; style_name: string }>>([]);
+  const [isLoadingStyles, setIsLoadingStyles] = useState(false);
+
+  useEffect(() => {
+    if (!gameId) return;
+    setIsLoadingStyles(true);
+    Promise.all([
+      api.games.getNarrativeStyle(gameId).catch(() => null),
+      api.games.listNarrativeStyles(gameId).catch(() => []),
+    ])
+      .then(([current, styles]) => {
+        if (current) setNarrativeStyleId(current.style_id);
+        if (styles) setAvailableStyles(styles);
+      })
+      .finally(() => setIsLoadingStyles(false));
+  }, [gameId]);
+
+  const handleUpdateNarrativeStyle = async (styleId: string) => {
+    if (!gameId || styleId === narrativeStyleId) return;
+    try {
+      await api.games.updateNarrativeStyle(gameId, { style_id: styleId });
+      setNarrativeStyleId(styleId);
+    } catch (e) {
+      console.error("[NarrativeStyle] Failed to update:", e);
+    }
+  };
+
   // Don't render until hydrated
   if (!hydrated) {
     return (
@@ -260,6 +290,27 @@ export default function PlayPage() {
                 
                 <DropdownMenuSeparator />
                 
+                {/* 叙事风格 */}
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    {isLoadingStyles ? "叙事风格..." : "叙事风格"}
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuRadioGroup
+                      value={narrativeStyleId}
+                      onValueChange={(value) => handleUpdateNarrativeStyle(value)}
+                    >
+                      {availableStyles.map((style) => (
+                        <DropdownMenuRadioItem key={style.style_id} value={style.style_id}>
+                          {style.style_name}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+
+                <DropdownMenuSeparator />
+
                 {/* 场景插画开关 */}
                 <DropdownMenuItem onClick={() => setEnableSceneImage(!enableSceneImage)}>
                   {enableSceneImage ? "关闭场景插画" : "开启场景插画"}

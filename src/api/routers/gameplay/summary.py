@@ -12,6 +12,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from src.ai.narrative.style_manifest import get_style
 from src.api.deps import get_current_user_optional, get_db
 from src.api.schemas import GameStateResponse, GenerateSummaryRequest
 from src.api.services.session_service import session_service
@@ -87,6 +88,19 @@ async def get_game_state(
     _raw_quality_level = getattr(game_loop, "quality_level", None)
     constraint_level = _raw_quality_level if isinstance(_raw_quality_level, str) else "expert"
 
+    # Include narrative style in player_state for frontend access
+    _raw_style_id = getattr(game_loop, "narrative_style_id", None)
+    narrative_style_id = _raw_style_id if isinstance(_raw_style_id, str) else None
+    if narrative_style_id:
+        player_state["narrative_style_id"] = narrative_style_id
+
+    # Get narrative style name
+    narrative_style_name = None
+    if narrative_style_id:
+        style = get_style(narrative_style_id)
+        if style:
+            narrative_style_name = style.style_name
+
     return GameStateResponse(
         game_id=game_id,
         player_state=player_state,
@@ -94,6 +108,8 @@ async def get_game_state(
         round_info=round_info,
         current_event=current_event,
         constraint_level=constraint_level,
+        narrative_style_id=narrative_style_id,
+        narrative_style_name=narrative_style_name,
     )
 
 

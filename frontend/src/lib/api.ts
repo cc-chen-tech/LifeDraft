@@ -207,6 +207,16 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify(data),
       }),
+    // Narrative style
+    listNarrativeStyles: (gameId: number) =>
+      fetchJson<Array<{ style_id: string; style_name: string; description: string }>>(`/games/${gameId}/narrative-style-options`),
+    getNarrativeStyle: (gameId: number) =>
+      fetchJson<{ style_id: string; style_name: string; description: string }>(`/games/${gameId}/narrative-style`),
+    updateNarrativeStyle: (gameId: number, data: { style_id: string }) =>
+      fetchJson<{ success: boolean; message: string }>(`/games/${gameId}/narrative-style`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
     getEnding: (gameId: number) =>
       fetchJson<{
         ending_name: string;

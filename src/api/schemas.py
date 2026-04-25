@@ -79,6 +79,8 @@ class GameStateResponse(BaseModel):
     round_info: Dict[str, Any]
     current_event: Optional[Dict[str, Any]] = None
     constraint_level: str = "expert"
+    narrative_style_id: Optional[str] = None
+    narrative_style_name: Optional[str] = None
 
 
 # ==================== Achievements & Life Review ====================
@@ -188,6 +190,10 @@ class UpdateGameSettingsRequest(BaseModel):
 
 class UpdateCharacterSettingsRequest(BaseModel):
     character_settings: Dict[str, Any]
+
+
+class UpdateNarrativeStyleRequest(BaseModel):
+    style_id: str
 
 
 class OpeningStoryRequest(BaseModel):
