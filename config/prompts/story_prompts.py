@@ -18,7 +18,6 @@ from config.prompts._helpers import (
     _build_world_model_constraints,
     _collect_available_people,
     _format_people_names,
-    extract_overused_phrases,
 )
 from src.ai.prompt_sanitizer import sanitize_user_choice
 
@@ -953,6 +952,7 @@ def get_story_only_prompt(
     three_act_hint: str = "",  # ★ 三幕结构提示
     pacing_intervention: str = "",  # ★ 节奏干预指令
     quality_level: str = "expert",  # ★ 叙事质量级别
+    player_name: Optional[str] = None,  # ★ 主角名称
 ) -> str:
     """
     Generate prompt for story-only generation (no JSON, pure narrative).
@@ -1024,6 +1024,14 @@ def get_story_only_prompt(
             char_parts.append(f"""个人特点：{traits.get('traits_description', '')}""")
 
         character_context = "\n".join(char_parts)
+
+    # Build player name instruction
+    name_instruction = ""
+    if player_name:
+        if language == "zh":
+            name_instruction = f"""\n【主角名称】\n主角名称是：{player_name}。请始终使用这个名字称呼主角，禁止编造其他名字、添加后缀或改变主角名称。"""
+        else:
+            name_instruction = f"""\n[Protagonist Name]\nThe protagonist's name is: {player_name}. Always use this exact name. Do not invent alternative names, add suffixes, or change the protagonist's name."""
 
     # Build story context
     story_context = ""
@@ -1145,7 +1153,7 @@ def get_story_only_prompt(
 {story_context}{summary_context}
 
 【角色设定】
-{character_context if character_context else "标准现代青年"}{available_people_str}{time_context}
+{character_context if character_context else "标准现代青年"}{name_instruction}{available_people_str}{time_context}
 
 【玩家当前状态】
 年龄：{age}岁 | 第{week}周
@@ -1181,7 +1189,7 @@ def get_story_only_prompt(
 {story_context}{summary_context}
 
 [Character Settings]
-{character_context if character_context else "Standard modern young adult"}{available_people_str}{time_context}
+{character_context if character_context else "Standard modern young adult"}{name_instruction}{available_people_str}{time_context}
 
 [Current Player State]
 Age: {age} | Week {week}
@@ -1282,6 +1290,7 @@ def get_round_event_prompt(
     three_act_hint: str = "",  # ★ 三幕结构提示
     pacing_intervention: str = "",  # ★ 节奏干预指令
     quality_level: str = "expert",  # ★ 叙事质量级别
+    player_name: Optional[str] = None,  # ★ 主角名称
 ) -> str:
     """
     Generate prompt for a single round's story within a week.
@@ -1358,6 +1367,14 @@ def get_round_event_prompt(
 
         if char_parts:
             character_context = "\n".join(char_parts)
+
+    # Build player name instruction
+    name_instruction = ""
+    if player_name:
+        if language == "zh":
+            name_instruction = f"""\n【主角名称】\n主角名称是：{player_name}。请始终使用这个名字称呼主角，禁止编造其他名字、添加后缀或改变主角名称。"""
+        else:
+            name_instruction = f"""\n[Protagonist Name]\nThe protagonist's name is: {player_name}. Always use this exact name. Do not invent alternative names, add suffixes, or change the protagonist's name."""
 
     # Round names
     round_names_zh = ["周一", "周中", "周末"]
@@ -1487,7 +1504,7 @@ def get_round_event_prompt(
 {critical_open_zh}
 
 【角色设定】
-{character_context if character_context else "标准现代青年"}{available_people_str}{time_context}
+{character_context if character_context else "标准现代青年"}{name_instruction}{available_people_str}{time_context}
 
 【当前状态】
 年龄：{age}岁 | 第{week}周 - {round_name}
@@ -1635,7 +1652,7 @@ Usage tip: Use as character memories, dialogue references, or background context
 {critical_open_en}
 
 [Character Settings]
-{character_context if character_context else "Standard modern young adult"}{available_people_str}{time_context}
+{character_context if character_context else "Standard modern young adult"}{name_instruction}{available_people_str}{time_context}
 
 [Current State]
 Age: {age} | Week {week} - {round_name_en}

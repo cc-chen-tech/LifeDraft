@@ -566,6 +566,7 @@ class StoryGenerator:
             vector_context=vector_context,  # ★ 注入向量检索上下文
             overused_phrases=overused_phrases,  # ★ 注入动态禁用列表
             quality_level=self.quality_level.value,  # ★ 注入质量级别约束
+            player_name=self._extract_player_name(player_state),  # ★ 注入主角名称
             **narrative_hints,  # ★ 注入叙事系统 hints
         )
 
@@ -970,6 +971,7 @@ class StoryGenerator:
             vector_context=vector_context,  # ★ 注入向量检索上下文
             overused_phrases=overused_phrases,  # ★ 注入动态禁用列表
             quality_level=self.quality_level.value,  # ★ 注入质量级别约束
+            player_name=self._extract_player_name(player_state),  # ★ 注入主角名称
             **narrative_hints_round,  # ★ 注入叙事系统 hints
         )
 
