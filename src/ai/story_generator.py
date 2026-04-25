@@ -1397,17 +1397,21 @@ class StoryGenerator:
                 character_settings=character_settings,
                 language=language,
             )
-
+            
+            # ★ 校验完成后，如果通过则立即返回，避免不必要的处理
             if validation.passed:
+                logger.info("[Validation] Story passed consistency check")
                 return story_text
 
             if not validation.has_critical_issues:
-                logger.info(f"一致性校验有 {len(validation.warning_issues)} 个WARNING，不触发重试")
+                logger.info(
+                    f"[Validation] 一致性校验有 {len(validation.warning_issues)} 个WARNING，不触发重试"
+                )
                 return story_text
 
             # CRITICAL issues found - trigger local fix (not full regeneration)
             logger.info(
-                f"一致性校验发现 {len(validation.critical_issues)} 个CRITICAL问题，"
+                f"[Validation] 一致性校验发现 {len(validation.critical_issues)} 个CRITICAL问题，"
                 f"触发局部修正（非全文重新生成）"
             )
             for issue in validation.critical_issues:
@@ -1468,15 +1472,11 @@ Please **only modify the problematic paragraphs** and keep the rest of the conte
                     "你是一位精准的故事编辑，擅长在保持整体不变的前提下修正具体问题。"
                 )
 
-            # ★ 先发送状态提示，让前端显示"正在优化故事"
+            # ★ 发送局部修正状态提示
             if status_callback:
-                logger.info("★ 发送 retrying 状态提示（局部修正）")
+                logger.info("[Validation] 发送 retrying + retry 状态（局部修正）")
                 status_callback("retrying")
-
-            # ★ 发送特殊的 retry 事件让前端清空故事（通过 status 回调）
-            if status_callback:
-                logger.info("★ 发送 retry 事件让前端清空故事")
-                status_callback("retry")
+                status_callback("retry")  # 让前端清空旧故事，准备接收修正后的内容
 
             # 记录防循环守卫
             if self.quality_level.value == "master":
