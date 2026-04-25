@@ -553,6 +553,75 @@ describe('useCollectionStore', () => {
       });
     });
 
+    describe('batchGenerateLandmarkImages', () => {
+      it('returns early without gameId', async () => {
+        await useCollectionStore.getState().batchGenerateLandmarkImages(0);
+
+        expect(api.collection.generateLandmarkImage).not.toHaveBeenCalled();
+      });
+
+      it('returns early when no pending landmarks', async () => {
+        useCollectionStore.setState({
+          landmarks: [
+            { name: 'GeneratedLandmark', description: '', category: 'building', importance: 'normal', first_appear_week: 0, appear_count: 1, last_appear_week: 0, context: '', is_key_location: false, image_url: 'url', image_generated: true, metadata: {} },
+          ],
+        });
+
+        await useCollectionStore.getState().batchGenerateLandmarkImages(1);
+
+        expect(api.collection.generateLandmarkImage).not.toHaveBeenCalled();
+      });
+
+      it('generates images for all pending landmarks', async () => {
+        (api.collection.generateLandmarkImage as jest.Mock).mockResolvedValue({ success: true });
+        const mockResponse = {
+          game_id: 1,
+          characters: [],
+          items: [],
+          landmarks: [
+            { name: 'Landmark1', description: '', category: 'building', importance: 'normal', first_appear_week: 0, appear_count: 1, last_appear_week: 0, context: '', is_key_location: false, image_url: 'url1', image_generated: true, metadata: {} },
+            { name: 'Landmark2', description: '', category: 'nature', importance: 'normal', first_appear_week: 0, appear_count: 1, last_appear_week: 0, context: '', is_key_location: false, image_url: 'url2', image_generated: true, metadata: {} },
+          ],
+          total_characters: 0,
+          total_items: 0,
+        };
+        (api.collection.get as jest.Mock).mockResolvedValue(mockResponse);
+
+        useCollectionStore.setState({
+          landmarks: [
+            { name: 'Landmark1', description: '', category: 'building', importance: 'normal', first_appear_week: 0, appear_count: 1, last_appear_week: 0, context: '', is_key_location: false, image_url: null, image_generated: false, metadata: {} },
+            { name: 'Landmark2', description: '', category: 'nature', importance: 'normal', first_appear_week: 0, appear_count: 1, last_appear_week: 0, context: '', is_key_location: false, image_url: null, image_generated: false, metadata: {} },
+          ],
+        });
+
+        await useCollectionStore.getState().batchGenerateLandmarkImages(1);
+
+        expect(api.collection.generateLandmarkImage).toHaveBeenCalledTimes(2);
+        expect(api.collection.generateLandmarkImage).toHaveBeenCalledWith(1, 'Landmark1');
+        expect(api.collection.generateLandmarkImage).toHaveBeenCalledWith(1, 'Landmark2');
+        expect(useCollectionStore.getState().generatingImageFor).toBeNull();
+      });
+
+      it('stops on first error during batch generation', async () => {
+        (api.collection.generateLandmarkImage as jest.Mock)
+          .mockResolvedValueOnce({ success: true })
+          .mockRejectedValueOnce(new Error('Generation failed'));
+
+        useCollectionStore.setState({
+          landmarks: [
+            { name: 'Landmark1', description: '', category: 'building', importance: 'normal', first_appear_week: 0, appear_count: 1, last_appear_week: 0, context: '', is_key_location: false, image_url: null, image_generated: false, metadata: {} },
+            { name: 'Landmark2', description: '', category: 'nature', importance: 'normal', first_appear_week: 0, appear_count: 1, last_appear_week: 0, context: '', is_key_location: false, image_url: null, image_generated: false, metadata: {} },
+          ],
+        });
+
+        await useCollectionStore.getState().batchGenerateLandmarkImages(1);
+
+        expect(api.collection.generateLandmarkImage).toHaveBeenCalledTimes(2);
+        expect(useCollectionStore.getState().error).toBe('Generation failed');
+        expect(useCollectionStore.getState().generatingImageFor).toBeNull();
+      });
+    });
+
     describe('generateItemImage', () => {
       it('returns early without gameId', async () => {
         await useCollectionStore.getState().generateItemImage(0, 'TestItem');

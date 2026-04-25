@@ -53,6 +53,7 @@ interface CollectionState {
   generateCharacterImage: (gameId: number, name: string) => Promise<void>;
   generateItemImage: (gameId: number, itemName: string) => Promise<void>;
   generateLandmarkImage: (gameId: number, landmarkName: string) => Promise<void>;
+  batchGenerateLandmarkImages: (gameId: number) => Promise<void>;
   generateCharacterDescription: (gameId: number, name: string) => Promise<void>;
   generateItemDescription: (gameId: number, itemName: string) => Promise<void>;
   generateLandmarkDescription: (gameId: number, landmarkName: string) => Promise<void>;
@@ -380,6 +381,32 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
       const errorMsg = err instanceof Error ? err.message : "生成标志物图片失败";
       set({ error: errorMsg, generatingImageFor: null });
     }
+  },
+
+  // 批量生成所有待生成标志物图片
+  batchGenerateLandmarkImages: async (gameId: number) => {
+    if (!gameId) return;
+
+    const { landmarks } = get();
+    const pendingLandmarks = landmarks.filter((l) => !l.image_generated);
+    if (pendingLandmarks.length === 0) return;
+
+    set({ error: null });
+
+    for (const landmark of pendingLandmarks) {
+      set({ generatingImageFor: landmark.name });
+      try {
+        await api.collection.generateLandmarkImage(gameId, landmark.name);
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : "批量生成标志物图片失败";
+        set({ error: errorMsg, generatingImageFor: null });
+        break;
+      }
+    }
+
+    // Refresh collection data after batch generation
+    await get().fetchCollection(gameId, true);
+    set({ generatingImageFor: null });
   },
 
   // 生成标志物描述

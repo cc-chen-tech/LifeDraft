@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Package, Wand2, Loader2, Plus } from "lucide-react";
+import { Package, Wand2, Loader2, Plus, Image } from "lucide-react";
 import { useCollectionStore } from "@/stores/useCollectionStore";
 import type { CharacterCollectionItem, ItemCollectionItem, LandmarkCollectionItem, RecognizedEntity } from "@/lib/types";
 
@@ -57,6 +57,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
     generateCharacterImage,
     generateItemImage,
     generateLandmarkImage,
+    batchGenerateLandmarkImages,
     generateItemDescription,
     generateLandmarkDescription,
     regenerateCharacterImage,
@@ -147,6 +148,10 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
 
   const handleGenerateLandmarkImage = async (landmarkName: string) => {
     await generateLandmarkImage(gameId, landmarkName);
+  };
+
+  const handleBatchGenerateLandmarkImages = async () => {
+    await batchGenerateLandmarkImages(gameId);
   };
 
   const handleGenerateLandmarkDescription = async (landmarkName: string) => {
@@ -343,6 +348,22 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
           >
             <Plus className="w-4 h-4 mr-1" />
             手动添加
+          </Button>
+        )}
+        {activeTab === "landmarks" && landmarks.some((l) => !l.image_generated) && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleBatchGenerateLandmarkImages}
+            disabled={!!generatingImageFor}
+            className="flex-1"
+          >
+            {generatingImageFor ? (
+              <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+            ) : (
+              <Image className="w-4 h-4 mr-1" />
+            )}
+            批量生成图片
           </Button>
         )}
       </div>
