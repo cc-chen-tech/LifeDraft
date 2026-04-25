@@ -391,6 +391,7 @@ Key Relationships: {rel_str}{storylines_context}{facts_context}{world_model_cont
    - Use commas and semicolons for clause breaks; no run-on sentences over 30 words without punctuation
    - No paragraphs without any punctuation
    - Do not mix Chinese and English punctuation
+   - **Paragraph breaks**: Change paragraphs appropriately. Keep each paragraph between 200-400 words. NO paragraphs exceeding 600 words without a break
 7. Options should present real trade-offs - no option should be clearly superior
 8. Relationship effects should be specified as "relationships": {{"name": +/-value}}, **name MUST come from Available People List**
 9. **IMPORTANT: Based on the character's personality, abilities, interests, and life vision, mark each option with "likely_choice": true/false to indicate what the character would most likely choose. At least one option should have likely_choice: true.**
@@ -622,6 +623,7 @@ def _get_chinese_prompt(
    - 句内必须使用逗号、顿号合理断句，禁止出现超过30字无标点的情况
    - 禁止出现没有标点的大段连续文字
    - 标点禁止中英混用
+   - **合理分段**：适时换段，每段控制在200-400字，禁止出现超过600字无换行的超长段落
 7. 选项应呈现真实的权衡取舍，不应有明显最优选项
 8. 关系影响应指定为"relationships": {{"姓名": +/-数值}}，**姓名必须来自可用人物列表**
 9. **重要：根据角色的性格特点、能力、兴趣和人生愿景，在选项中标注"likely_choice": true/false，表示该角色最可能做出的选择。每个事件至少有一个likely_choice为true的选项。**
@@ -729,6 +731,8 @@ def get_result_generation_prompt(
 5. 语言生动流畅，有细节感，对话要体现人物性格
 6. 正确使用标点符号：对话必须用""包裹，句末使用句号/问号/感叹号，句内用逗号合理断句。禁止出现没有标点的大段连续文字
 7. 严禁跳脱叙事：不得提及"游戏""模拟""系统""属性值"等元信息，不得出现作者旁白
+8. **选择必须产生独特影响**：这个续写必须是因这个特定选择才发生的，不能是换任何一个选项都能套用的通用剧情。必须体现：如果玩家选择了另一个完全不同的选项，故事的走向和发展会明显不同
+9. **合理分段**：每段控制在150-300字，适时换段，禁止出现超过500字无换行的超长段落
 
 仅返回续写的故事内容，不要其他说明或标题。"""
     else:
@@ -753,6 +757,8 @@ def get_result_generation_prompt(
 5. Vivid and fluid language with good details, dialogue should reflect character personality
 6. Proper punctuation: dialogue MUST be in quotation marks, every sentence MUST end with a period/question/exclamation, use commas for clause breaks. No run-on paragraphs without punctuation
 7. NO FOURTH-WALL BREAKING: never mention 'game', 'simulation', 'system', 'stats', etc. No author asides
+8. **Choice must have UNIQUE impact**: This continuation MUST be a direct result of THIS specific choice. It cannot be a generic outcome that would apply to any option. Show that if the player had chosen a completely different option, the story direction and development would be noticeably different
+9. **Paragraph breaks**: Keep each paragraph between 150-300 words. Change paragraphs appropriately. NO paragraphs exceeding 500 words without a break
 
 Return only the story continuation, no other explanations or headers."""
 
