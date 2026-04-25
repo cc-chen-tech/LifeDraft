@@ -42,32 +42,46 @@ export function StreamingText({
   const displayedLenRef = useRef(0);
   const userScrollingRef = useRef(false);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const prevIsStreamingRef = useRef(isStreaming);
 
-  // ★ 逐字显示效果（仅在 isStreaming 时启用）
+  // ★ 逐字显示效果
+  // 关键修复：isStreaming 从 true 变为 false 时，如果打字机还没打完，
+  // 不瞬间显示全部文本（避免"闪一下"），而是继续打字直到追平。
+  // 其他情况（初始渲染非流式、新文本非流式）仍立即显示完整文本。
   useEffect(() => {
-    // ★ 关键修复：如果不是流式模式，直接显示全部文本
-    if (!isStreaming) {
-      // 使用 ref 获取最新值，避免 React 状态延迟问题
-      if (displayedLenRef.current < text.length) {
-        setDisplayedText(text);
-        displayedLenRef.current = text.length;
-      }
-      return;
-    }
-    
-    if (text.length <= displayedLenRef.current) {
-      // 文本被重置或没有新内容
-      if (text.length < displayedLenRef.current) {
-        setDisplayedText(text);
-        displayedLenRef.current = text.length;
-      }
+    const justStoppedStreaming =
+      prevIsStreamingRef.current && !isStreaming;
+    const midTyping =
+      displayedLenRef.current > 0 &&
+      displayedLenRef.current < text.length;
+    prevIsStreamingRef.current = isStreaming;
+
+    // 非流式且不是"刚停止流式且正在打字中"：立即显示全部
+    if (!isStreaming && !(justStoppedStreaming && midTyping)) {
+      setDisplayedText(text);
+      displayedLenRef.current = text.length;
       return;
     }
 
-    // 逐字追加
+    if (text.length < displayedLenRef.current) {
+      // 文本被重置
+      setDisplayedText(text);
+      displayedLenRef.current = text.length;
+      return;
+    }
+
+    if (displayedLenRef.current >= text.length) {
+      // 已经追平，没有新内容
+      return;
+    }
+
+    // 逐字追加（流式模式，或刚停止流式但还没打完）
     const timer = setInterval(() => {
       if (displayedLenRef.current < text.length) {
-        const nextLen = Math.min(displayedLenRef.current + charsPerFrame, text.length);
+        const nextLen = Math.min(
+          displayedLenRef.current + charsPerFrame,
+          text.length
+        );
         displayedLenRef.current = nextLen;
         setDisplayedText(text.slice(0, nextLen));
       } else {
@@ -76,7 +90,6 @@ export function StreamingText({
     }, frameInterval);
 
     return () => clearInterval(timer);
-   
   }, [text, isStreaming, charsPerFrame, frameInterval]);
 
   // ★ 智能自动滚动：只在用户没有手动滚动时自动滚到底部

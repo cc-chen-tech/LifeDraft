@@ -4,6 +4,7 @@ import base64
 import logging
 from typing import Any, Callable, Dict, Optional
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from config.prompts._helpers import _build_image_era_constraints
@@ -380,6 +381,7 @@ class SceneImageService:
             )
 
             # Step 5: 创建 SceneImage 记录
+            # ★ 使用 try/except 处理 IntegrityError，防止并发请求重复写入
             new_scene = SceneImage(
                 game_id=game_id,
                 week=week,
@@ -393,14 +395,33 @@ class SceneImageService:
                 importance_score="medium",
             )
             self.db.add(new_scene)
-            self.db.commit()
-            self.db.refresh(new_scene)
-            week_display = f"第{week + 1}周" if week is not None else "未知周"
-            logger.info(
-                f"场景插画创建完成: scene_id={new_scene.scene_id}, {week_display}"
-            )
-
-            return new_scene
+            try:
+                self.db.commit()
+                self.db.refresh(new_scene)
+                week_display = f"第{week + 1}周" if week is not None else "未知周"
+                logger.info(
+                    f"场景插画创建完成: scene_id={new_scene.scene_id}, {week_display}"
+                )
+                return new_scene
+            except IntegrityError:
+                self.db.rollback()
+                logger.warning(
+                    f"场景插画唯一约束冲突: game={game_id}, week={week}, "
+                    f"round={round_number}, stage={stage}，返回已有记录"
+                )
+                existing = (
+                    self.db.query(SceneImage)
+                    .filter(
+                        SceneImage.game_id == game_id,
+                        SceneImage.week == week,
+                        SceneImage.round_number == round_number,
+                        SceneImage.stage == stage,
+                    )
+                    .first()
+                )
+                if existing:
+                    return existing
+                raise ImageServiceError("场景插画创建失败：无法获取或创建记录")
 
         except ContentInspectionError as e:
             logger.warning(f"Content inspection failed for round scene: {e}")

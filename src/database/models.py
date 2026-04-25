@@ -268,7 +268,7 @@ class SceneImage(Base):
     # 关联
     game = relationship("Game", back_populates="scene_images")
 
-    # 索引 - 包含 week 的复合索引，支持按游戏、周、轮次、阶段查询
+    # 索引 - 包含 week 的唯一复合索引，防止并发时重复写入同一场景
     __table_args__ = (
         Index(
             "ix_scene_images_game_week_round_stage",
@@ -276,6 +276,7 @@ class SceneImage(Base):
             "week",
             "round_number",
             "stage",
+            unique=True,
         ),
     )
 
