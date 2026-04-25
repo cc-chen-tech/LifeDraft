@@ -150,3 +150,60 @@ class TestEraAnachronismContract:
         # 现代背景不应禁止手机/电脑
         assert "手机" not in result_modern
         assert "电脑" not in result_modern
+
+    def test_image_era_constraints_for_historical_settings(self):
+        """图像生成时代约束应对古代背景返回明确的现代视觉禁止词"""
+        from config.prompts._helpers import _build_image_era_constraints
+
+        result = _build_image_era_constraints(
+            {
+                "era": {
+                    "era_description": "南宋",
+                    "world_context": "中国历史上的南宋时期",
+                },
+                "world": {
+                    "world_description": "古代中国",
+                    "technology_level": "古代科技",
+                },
+            },
+            "zh",
+        )
+
+        # 古代背景应包含明确的现代视觉禁止词
+        visual_forbidden = ["摩天大楼", "星巴克", "汽车", "飞机", "霓虹灯", "西装", "牛仔裤"]
+        assert any(term in result for term in visual_forbidden), (
+            f"古代背景图像约束应包含明确的现代视觉禁止词。实际未找到: {visual_forbidden}"
+        )
+        assert "画面" in result or "visual" in result.lower(), (
+            "图像约束应明确针对画面视觉元素"
+        )
+
+    def test_image_era_constraints_for_modern_settings(self):
+        """图像生成时代约束对现代背景应较宽松"""
+        from config.prompts._helpers import _build_image_era_constraints
+
+        result = _build_image_era_constraints(
+            {
+                "era": {
+                    "era_description": "现代",
+                    "world_context": "现代社会",
+                },
+                "world": {
+                    "world_description": "现代世界",
+                    "technology_level": "现代科技",
+                },
+            },
+            "zh",
+        )
+
+        # 现代背景不应禁止现代视觉元素
+        assert "星巴克" not in result
+        assert "摩天大楼" not in result
+        assert "汽车" not in result
+
+    def test_scene_service_uses_image_era_constraints(self):
+        """SceneImageService 应在生成场景插画时使用图像时代约束"""
+        from src.services.image.scene_service import SceneImageService
+
+        # 验证模板中包含 era_constraints 占位符
+        assert "{era_constraints}" in SceneImageService.SCENE_PROMPT_TEMPLATE

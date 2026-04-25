@@ -11,6 +11,7 @@ from src.ai.image_exceptions import (ContentInspectionError,
                                      ImageGenerationError)
 from src.database.models import Image as ImageModel
 from src.database.models import SceneImage
+from config.prompts._helpers import _build_image_era_constraints
 from src.services.image import ImageContentError, ImageServiceError
 from src.services.image.appearance_anchor import CharacterAppearanceAnchor
 from src.services.image.style_manager import style_manager
@@ -27,6 +28,7 @@ class SceneImageService:
 
 【时代背景】
 {era}
+{era_constraints}
 
 【场景描述】
 {scene_desc}
@@ -203,9 +205,13 @@ class SceneImageService:
                 enhanced_illustration = illustration_prompt
                 logger.warning("No appearance anchor found, using basic character info")
 
+            # ★ 构建时代约束
+            era_constraints = _build_image_era_constraints(character_settings, "zh")
+
             # ★ 使用优化后的模板生成最终提示词
             final_prompt = self.SCENE_PROMPT_TEMPLATE.format(
                 era=char_info["era"],
+                era_constraints=era_constraints,
                 scene_desc=scene_desc,
                 lighting_desc=lighting_desc,
                 illustration_prompt=enhanced_illustration,
@@ -218,6 +224,8 @@ class SceneImageService:
                     if appearance_anchor:
                         anchor_desc = appearance_anchor.build_prompt_segment()
                         edit_prompt = f"""将人物融入以下场景：{scene_desc}。
+
+{era_constraints}
 
 人物必须具有以下外貌特征（严格保持一致）：
 {anchor_desc}
@@ -234,6 +242,8 @@ class SceneImageService:
 - 只改变姿势和融入新场景，不改变外貌特征"""
                     else:
                         edit_prompt = f"""将人物融入以下场景：{scene_desc}。
+
+{era_constraints}
 
 场景动作和氛围：{illustration_prompt}
 光线要求：{lighting_desc}
@@ -366,6 +376,9 @@ class SceneImageService:
 
         char_info = self._build_char_info(character_settings, player_name)
 
+        # ★ 构建时代约束（防止画面出现时代错位元素）
+        era_constraints = _build_image_era_constraints(character_settings, "zh")
+
         # 获取参考图片URL
         reference_url = None
         if player_image_id and get_player_image_func:
@@ -377,6 +390,7 @@ class SceneImageService:
                 character_info=char_info,
                 reference_image_url=reference_url,
                 size="1664*928",
+                era_constraints=era_constraints,
             )
 
             storage_path, storage_type = self.storage_service.save_image(
@@ -463,6 +477,9 @@ class SceneImageService:
 
         char_info = self._build_char_info(character_settings, player_name)
 
+        # ★ 构建时代约束（防止画面出现时代错位元素）
+        era_constraints = _build_image_era_constraints(character_settings, "zh")
+
         # 获取当前插画作为参考
         current_illustration = (
             self.db.query(ImageModel).filter(ImageModel.image_id == current_illustration_id).first()
@@ -495,7 +512,9 @@ class SceneImageService:
             combined_prompt = f"""{user_prompt}
 
 场景：{scene_desc}
-{illustration_prompt}"""
+{illustration_prompt}
+
+{era_constraints}"""
 
             logger.debug(f"Combined prompt: {combined_prompt[:100]}...")
 

@@ -947,6 +947,72 @@ The character is set in a historical/pre-modern era. The following modern concep
         return "\n[Era Consistency] Character is set in a modern/contemporary era. Modern technology, transportation, and lifestyle are appropriate, but should match the specific time period."
 
 
+def _build_image_era_constraints(
+    character_settings: Optional[Dict[str, Any]], language: str
+) -> str:
+    """
+    构建图像生成时代约束，防止场景插画中出现时代不符的元素。
+    用于注入图像生成提示词，确保古代背景不会出现星巴克、汽车等现代视觉元素。
+    """
+    if not character_settings:
+        return ""
+
+    era = character_settings.get("era", {})
+    era_desc = (era.get("era_description", "") + " " + era.get("world_context", "")).lower()
+    world = character_settings.get("world", {})
+    tech_level = (world.get("technology_level", "") + " " + world.get("world_description", "")).lower()
+
+    # 判断是否为古代/前现代背景
+    is_historical = any(
+        word in era_desc or word in tech_level
+        for word in ["古代", "ancient", "medieval", "中世纪", "宋朝", "唐朝", "明朝", "清朝", "southern song", "tang", "ming", "qing", "dynasty", "pre-modern"]
+    )
+
+    # 判断是否为现代/当代背景
+    is_modern = any(
+        word in era_desc or word in tech_level
+        for word in ["现代", "当代", "modern", "contemporary", "future", "科幻", "sci-fi", "赛博"]
+    )
+
+    if not is_historical and not is_modern:
+        if language == "zh":
+            return "\n【画面时代一致性】确保画面中的建筑、服饰、道具与时代背景严格一致。"
+        else:
+            return "\n[Visual Era Consistency] Ensure architecture, clothing, and props match the era."
+
+    if is_historical:
+        if language == "zh":
+            return """\n【★ 画面时代红线（违反即失败）★】
+角色设定为古代/前现代背景，画面绝对禁止出现以下现代视觉元素：
+- 现代建筑：摩天大楼、玻璃幕墙、霓虹灯、现代桥梁、电线杆
+- 现代交通工具：汽车、飞机、火车、摩托车、自行车（古代可用马匹、轿子、马车、木船）
+- 现代商业标识：星巴克、麦当劳、广告牌、LED屏幕、二维码
+- 现代物品：手机、电脑、电视、相机、路灯、红绿灯、空调外机
+- 现代服饰：西装、领带、牛仔裤、运动鞋、眼镜（古代可用传统服饰、布鞋）
+- 现代场景：咖啡厅、商场、超市、地铁站、机场、医院（古代可用茶馆、集市、药铺、驿站）
+- 画面中的建筑必须是古代风格：木质结构、瓦片屋顶、砖石城墙
+- 画面中的服饰必须是古代服装：长袍、襦裙、汉服、盔甲
+- 画面中的器具必须是古代器物：陶瓷、青铜、木质家具、油纸伞"""
+        else:
+            return """\n[★ VISUAL ERA RED LINE (violation = failure) ★]
+Character is set in a historical/pre-modern era. The image MUST NOT contain these modern visual elements:
+- Modern buildings: skyscrapers, glass facades, neon lights, modern bridges, power lines
+- Modern vehicles: cars, airplanes, trains, motorcycles, bicycles (use horses, sedan chairs, carriages, wooden boats)
+- Modern commercial signs: Starbucks, McDonald's, billboards, LED screens, QR codes
+- Modern objects: phones, computers, TVs, cameras, street lamps, traffic lights, AC units
+- Modern clothing: suits, ties, jeans, sneakers, glasses (use traditional robes, cloth shoes)
+- Modern venues: coffee shops, malls, supermarkets, subway stations, airports, hospitals (use tea houses, markets, apothecaries, post stations)
+- Buildings must be ancient style: wooden structures, tile roofs, brick/stone walls
+- Clothing must be ancient/traditional: robes, hanfu, armor
+- Objects must be ancient: ceramics, bronze, wooden furniture, oil-paper umbrellas"""
+
+    # Modern era — lighter constraints for images
+    if language == "zh":
+        return "\n【画面时代一致性】角色设定为现代/当代背景，画面中的建筑、服饰、道具应符合现代或指定时代特征。"
+    else:
+        return "\n[Visual Era Consistency] Character is set in a modern/contemporary era. Architecture, clothing, and props should match modern or specified time period."
+
+
 def _build_logic_constraints(
     game_date_info: Optional[Dict[str, Any]], language: str
 ) -> str:

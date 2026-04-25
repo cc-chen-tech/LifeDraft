@@ -418,6 +418,7 @@ class ImageClient:  # noqa: E303
         character_info: Dict[str, Any],
         reference_image_url: Optional[str] = None,
         size: str = "1664*928",
+        era_constraints: Optional[str] = None,
     ) -> Tuple[bytes, str, str]:
         """
         生成开场故事插画
@@ -432,6 +433,7 @@ class ImageClient:  # noqa: E303
             character_info: 角色信息
             reference_image_url: 可选的人物形象图片URL
             size: 图片尺寸
+            era_constraints: 可选的时代约束文本（用于防止画面时代错位）
 
         Returns:
             Tuple[bytes, str, str]: (图片数据, 提示词, 场景描述)
@@ -446,6 +448,12 @@ class ImageClient:  # noqa: E303
 
         logger.info(f"Selected scene: {scene_desc[:50]}...")
         logger.debug(f"Illustration prompt: {illustration_prompt[:100]}...")
+
+        # ★ 注入时代约束，防止画面出现时代错位元素
+        if era_constraints:
+            illustration_prompt = f"""{illustration_prompt}
+
+{era_constraints}"""
 
         # Step 2: 生成插画
         if reference_image_url:
