@@ -10,7 +10,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.api.routers.gameplay.events import _get_game_lock
-from src.api.routers.gameplay.sse_helpers import make_sse_event
 
 
 class TestGameLockContract:
@@ -200,7 +199,7 @@ class TestSSEErrorFormatContract:
                 chunks.append(chunk)
             return chunks
 
-        chunks = asyncio.get_event_loop().run_until_complete(_collect())
+        chunks = asyncio.run(_collect())
         assert len(chunks) == 1
         assert "event: error" in chunks[0]
         assert "Event generation in progress, please wait" in chunks[0]

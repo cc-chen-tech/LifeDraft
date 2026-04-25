@@ -1,9 +1,6 @@
 """Tests for RoundIllustrationService."""
 
-import base64
-from unittest.mock import MagicMock, PropertyMock, patch
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from src.ai.image_client import ContentInspectionError, ImageGenerationError
 from src.game.round.illustration_service import RoundIllustrationService
@@ -292,10 +289,13 @@ class TestGenerateSceneImage:
         assert image_data == b"fake_image_data"
         mock_client.generate_image.assert_called_once()
 
-    def test_generate_with_reference_fails(self):
-        """Test error when reference generation fails."""
+    def test_generate_with_reference_falls_back(self):
+        """Test fallback to text-to-image when reference generation returns empty."""
         mock_client = MagicMock()
         mock_client.edit_image = MagicMock(return_value=[])
+        mock_client.generate_image = MagicMock(
+            return_value=(b"fallback_image_data", "prompt1")
+        )
 
         service = RoundIllustrationService(
             image_client=mock_client,
@@ -303,13 +303,16 @@ class TestGenerateSceneImage:
             db_session=MagicMock(),
         )
 
-        with pytest.raises(ImageGenerationError):
-            service._generate_scene_image(
-                scene_desc="A beautiful sunset",
-                illustration_prompt="cinematic lighting",
-                reference_urls=["base64_data"],
-                era="现代",
-            )
+        image_data, prompt = service._generate_scene_image(
+            scene_desc="A beautiful sunset",
+            illustration_prompt="cinematic lighting",
+            reference_urls=["base64_data"],
+            era="现代",
+        )
+
+        assert image_data == b"fallback_image_data"
+        mock_client.edit_image.assert_called_once()
+        mock_client.generate_image.assert_called_once()
 
 
 class TestGetImageUrlAsBase64:
