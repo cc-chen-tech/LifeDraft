@@ -578,6 +578,7 @@ class ImageGenerator:
         reference_image_url: Optional[str] = None,
         feedback: Optional[str] = None,
         prompt_builder=None,  # 注入 prompt builder
+        extra_params: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[Tuple[bytes, str]], Optional[str]]:
         """
         生成人物全身像（保证人物一致性）
@@ -596,6 +597,7 @@ class ImageGenerator:
             reference_image_url: 已有的参考图片URL（用于重新生成）
             feedback: 用户修改意见（会被特别强调）
             prompt_builder: Prompt 构建器实例
+            extra_params: 额外参数（如 negative_prompt, seed）
 
         Returns:
             Tuple[List of (图片数据, prompt), 主图URL]
@@ -665,6 +667,7 @@ class ImageGenerator:
                     self.generate_image_with_url(
                         prompt=main_prompt,
                         size=size,
+                        extra_params=extra_params,
                     )
                 )
                 results.append((main_image_bytes, main_prompt_used))

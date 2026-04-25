@@ -5,7 +5,7 @@
 
 import asyncio
 import time
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import httpx
 import pytest
@@ -36,7 +36,7 @@ class TestCacheHitAvoidsNetworkRequest:
         NeteaseMusicClient._url_cache[10001] = (test_url, time.time() + 1200)
 
         # 验证缓存命中直接返回，不调用 API
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             client.get_song_url(10001)
         )
         assert result == test_url
@@ -69,7 +69,7 @@ class TestCacheHitAvoidsNetworkRequest:
             time.time() - 10,  # 已过期
         )
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             client.get_song_url(10002)
         )
 
@@ -97,7 +97,7 @@ class TestCacheHitAvoidsNetworkRequest:
         client.client = MagicMock()
         client.client.get = mock_get
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             client.get_song_url(10003)
         )
 
@@ -138,7 +138,7 @@ class TestCacheExpiredDeletesEntry:
         client.client = MagicMock()
         client.client.get = mock_get
 
-        result = asyncio.get_event_loop().run_until_complete(client.get_song_url(10004))
+        result = asyncio.run(client.get_song_url(10004))
 
         # 验证过期缓存被替换为新值（不是旧值）
         assert result == "https://cdn.example.com/new.mp3", (
@@ -169,7 +169,7 @@ class TestCacheExpiredDeletesEntry:
             side_effect=Exception("Should not be called")
         )
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             client.get_song_url(10005)
         )
 
@@ -223,7 +223,7 @@ class TestCacheClearedExternallyRefreshes:
         client.client.get = mock_get
 
         # 步骤 1：缓存命中，直接返回旧 URL
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             client.get_song_url(10006)
         )
         assert result == old_url
@@ -234,7 +234,7 @@ class TestCacheClearedExternallyRefreshes:
             del NeteaseMusicClient._url_cache[10006]
 
         # 步骤 3：再次请求，应触发新 API 调用
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             client.get_song_url(10006)
         )
 
@@ -268,7 +268,7 @@ class TestCacheEntryWrittenAfterFetch:
 
         assert 10007 not in NeteaseMusicClient._url_cache
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             client.get_song_url(10007)
         )
 
@@ -305,16 +305,17 @@ class TestCacheTTLConfiguration:
         client.client.get = mock_get
 
         before = time.time()
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             client.get_song_url(10008)
         )
-        after = time.time()
 
         cached = NeteaseMusicClient._url_cache[10008]
         ttl = cached[1] - before
 
         assert ttl >= NeteaseMusicClient.URL_CACHE_TTL - 1, (
-            f"缓存 TTL ({ttl:.0f}s) 应接近 URL_CACHE_TTL ({NeteaseMusicClient.URL_CACHE_TTL}s)"
+            f"缓存 TTL ({ttl:.0f}s) "
+            f"应接近 URL_CACHE_TTL "
+            f"({NeteaseMusicClient.URL_CACHE_TTL}s)"
         )
 
         # 清理

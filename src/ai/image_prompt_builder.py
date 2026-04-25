@@ -16,6 +16,109 @@ logger = logging.getLogger(__name__)
 class ImagePromptBuilder:
     """图像 Prompt 构建器"""
 
+    # Sci-fi triggering words that should be removed from era descriptions
+    # for image generation, as they cause the model to generate cyberpunk/
+    # futuristic visuals even when negative prompts are used.
+    _SCI_FI_ERA_KEYWORDS = [
+        "人工智能",
+        "AI",
+        "数字化",
+        "虚拟现实",
+        "VR",
+        "全息投影",
+        "全息",
+        "科技飞速进步",
+        "科技革命",
+        "赛博朋克",
+        "机械义肢",
+        "电子眼",
+        "飞行汽车",
+        "悬浮载具",
+        "发光",
+        "霓虹",
+        "量子",
+        "纳米",
+        "基因编辑",
+        "脑机接口",
+        "元宇宙",
+        "区块链",
+        "数字孪生",
+        "虚拟与现实交织",
+        "抽象光影",
+    ]
+
+    def _sanitize_era_for_image(self, era: str) -> str:
+        """清洗 era 描述中的科幻暗示词，防止图像模型生成 sci-fi 视觉。
+
+        故事生成的 era 描述通常包含叙事性词汇（如"人工智能时代"），
+        这些词汇对图像模型是强 sci-fi 暗示。本函数将其替换为中性视觉描述。
+
+        Args:
+            era: 原始 era 描述
+
+        Returns:
+            清洗后的 era 描述，保留时间/地点信息，移除科幻暗示
+        """
+        if not era:
+            return "现代"
+
+        era_clean = era
+        # 直接移除/替换科幻触发词
+        replacements = {
+            "人工智能": "",
+            "AI": "",
+            "数字化与实体交融": "现代生活",
+            "数字化": "",
+            "虚拟现实": "",
+            "VR": "",
+            "全息投影": "",
+            "全息": "",
+            "科技飞速进步": "",
+            "科技革命": "",
+            "赛博朋克": "",
+            "机械义肢": "",
+            "电子眼": "",
+            "飞行汽车": "",
+            "悬浮载具": "",
+            "发光": "",
+            "霓虹": "",
+            "量子": "",
+            "纳米": "",
+            "基因编辑": "",
+            "脑机接口": "",
+            "元宇宙": "",
+            "区块链": "",
+            "数字孪生": "",
+            "虚拟与现实交织": "现实",
+            "抽象光影": "自然光线",
+        }
+
+        for old, new in replacements.items():
+            era_clean = era_clean.replace(old, new)
+
+        # 清理多余的标点、空格和空片段
+        import re
+
+        era_clean = re.sub(r"[，,、]\s*[，,、]", "，", era_clean)
+        era_clean = re.sub(r"[。.]\s*[。.]", "。", era_clean)
+        era_clean = era_clean.strip("，,。.")
+
+        # 如果清洗后内容过短或为空，使用默认安全描述
+        if len(era_clean) < 5 or era_clean in ("现代", "当代", ""):
+            # 尝试提取年份
+            year_match = re.search(r"20\d{2}", era)
+            year = year_match.group(0) if year_match else "2024"
+            return f"{year}年中国，现代都市生活，写实主义风格"
+
+        # 如果清洗后仍包含太多科幻残余，强制 fallback
+        for kw in self._SCI_FI_ERA_KEYWORDS:
+            if kw in era_clean:
+                year_match = re.search(r"20\d{2}", era)
+                year = year_match.group(0) if year_match else "2024"
+                return f"{year}年中国，现代都市生活，写实主义风格"
+
+        return era_clean
+
     def build_character_prompt(
         self,
         name: str,
@@ -39,13 +142,14 @@ class ImagePromptBuilder:
         Returns:
             构建好的prompt
         """
+        # ★ 清洗 era 描述中的科幻暗示词，防止污染图像生成
+        safe_era = self._sanitize_era_for_image(era)
+
         parts = []
 
         # 最重要：用户的修改意见放在最前面
         if feedback:
-            parts.append(
-                f"【必须执行的修改】{feedback}。这是最重要的要求，必须严格体现在图片中。"
-            )
+            parts.append(f"【必须执行的修改】{feedback}。这是最重要的要求，必须严格体现在图片中。")
 
         # ★ 写实主义红线约束放在最前面，确保模型优先关注
         parts.extend(
@@ -66,7 +170,7 @@ class ImagePromptBuilder:
         parts.extend(
             [
                 f"【人物】{name}",
-                f"【时代背景】{era}",
+                f"【时代背景】{safe_era}",
             ]
         )
 
@@ -148,9 +252,7 @@ class ImagePromptBuilder:
         else:
             parts.append("风格：写实风格，细节丰富，氛围感强。")
 
-        parts.append(
-            "要求：场景清晰、构图美观、有代入感。画面中不要出现任何人物，仅展示场景本身。"
-        )
+        parts.append("要求：场景清晰、构图美观、有代入感。画面中不要出现任何人物，仅展示场景本身。")
 
         return "".join(parts)
 
@@ -463,9 +565,7 @@ class DeepSeekPromptEnhancer:
         api_key, base_url, model = get_scene_analyzer_config()
 
         if not api_key:
-            logger.warning(
-                "No DeepSeek API key for prompt rewrite, using simplified prompt"
-            )
+            logger.warning("No DeepSeek API key for prompt rewrite, using simplified prompt")
             return ImagePromptBuilder().simplify_prompt(original_prompt, scene_desc)
 
         player_name = character_info.get("name", "主角")
@@ -599,9 +699,7 @@ class DeepSeekPromptEnhancer:
 
         if not api_key:
             logger.warning("No API key for anchor generation, using fallback")
-            return self._fallback_appearance_anchor(
-                name, description, era, character_settings
-            )
+            return self._fallback_appearance_anchor(name, description, era, character_settings)
 
         # 提取额外的角色信息
         age = ""
@@ -712,9 +810,7 @@ class DeepSeekPromptEnhancer:
 
         except Exception as e:
             logger.error(f"Failed to generate appearance anchor: {e}")
-            return self._fallback_appearance_anchor(
-                name, description, era, character_settings
-            )
+            return self._fallback_appearance_anchor(name, description, era, character_settings)
 
     def _fallback_appearance_anchor(
         self,

@@ -1670,9 +1670,37 @@ Please **only modify the problematic paragraphs** and keep the rest of the conte
                 era = era_info
 
         era_str = str(era).lower()
-        if "现代" in era_str or "当代" in era_str or "未来" in era_str or "202" in era_str or "201" in era_str or "200" in era_str:
+        if (
+            "现代" in era_str
+            or "当代" in era_str
+            or "未来" in era_str
+            or "202" in era_str
+            or "201" in era_str
+            or "200" in era_str
+        ):
             era_type = "modern"
-        elif any(kw in era_str for kw in ["唐", "宋", "元", "明", "清", "汉", "秦", "周", "春秋", "战国", "三国", "晋", "隋", "古代", " medieval", "ancient", "historic"]):
+        elif any(
+            kw in era_str
+            for kw in [
+                "唐",
+                "宋",
+                "元",
+                "明",
+                "清",
+                "汉",
+                "秦",
+                "周",
+                "春秋",
+                "战国",
+                "三国",
+                "晋",
+                "隋",
+                "古代",
+                " medieval",
+                "ancient",
+                "historic",
+            ]
+        ):
             era_type = "ancient"
         elif any(kw in era_str for kw in [" medieval", "ancient", " historic"]):
             era_type = "ancient"
