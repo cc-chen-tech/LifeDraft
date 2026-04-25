@@ -93,6 +93,14 @@ class CharacterAppearanceAnchor:
         if self.facial_signature:
             parts.append(f"【面部比例签名 - 绝对不可改变】{self.facial_signature}")
 
+        # 标志性特征 - 最高优先级，用于精确识别和区分不同人物
+        if self.distinctive_marks:
+            marks = "、".join(self.distinctive_marks)
+            parts.append(
+                f"【标志性识别特征 - 最高优先级，绝对不可丢失】{marks}。"
+                f"这些特征是该人物区别于其他人的关键标识，必须在所有图片中清晰可见且保持一致"
+            )
+
         if self.expression:
             parts.append(f"【表情气质】{self.expression}")
 
@@ -121,11 +129,6 @@ class CharacterAppearanceAnchor:
 
         if self.posture:
             parts.append(f"【体态】{self.posture}")
-
-        # 标志性特征
-        if self.distinctive_marks:
-            marks = "、".join(self.distinctive_marks)
-            parts.append(f"【标志性识别特征】{marks}")
 
         # 服装（场景生成时可能需要调整）
         if self.typical_outfit:
@@ -175,6 +178,13 @@ class CharacterAppearanceAnchor:
         if self.facial_signature:
             parts.append(
                 f"【面部比例签名 - 这是识别该人物的关键，绝对不可改变】{self.facial_signature}"
+            )
+
+        # 标志性特征 - 场景中必须清晰可见，用于区分不同人物
+        if self.distinctive_marks:
+            marks = "、".join(self.distinctive_marks)
+            parts.append(
+                f"【标志性识别特征 - 场景中必须清晰可见，不可丢失】{marks}"
             )
 
         # 服装（可覆盖）

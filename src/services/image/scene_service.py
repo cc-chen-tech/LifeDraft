@@ -2,7 +2,7 @@
 
 import base64
 import logging
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -34,10 +34,16 @@ class SceneImageService:
 【场景描述】
 {scene_desc}
 
+【人物清单 - 以下所有人物必须在场景中同时出现】
+{character_manifest}
+- 要求：以上列出的每一个人物都必须在画面中清晰可见，不得遗漏任何一人
+- 位置安排：如果有多个人物，必须在画面中分配不同的空间位置（左侧、右侧、中间、前景、背景等），避免重叠遮挡
+
 【画面构图】
 - 构图：电影级构图，视觉焦点明确，景深自然
 - 人物位置：黄金分割点或画面中心偏左/右，避免呆板居中
 - 镜头角度：略高于人物视线的俯视角度，增强代入感
+- 多人物安排：如果有多个人物，必须在画面中分配不同位置，确保每个人物都完整可见
 
 【光线与氛围】
 {lighting_desc}
@@ -68,7 +74,8 @@ class SceneImageService:
 - 必须保持：完全相同的脸型轮廓、完全相同的五官比例和位置、完全相同的眼型/鼻型/嘴型、完全相同的发型（包括发际线、刘海方向、发梢形态）、完全相同的肤色和肤质
 - 仅允许改变：姿势、角度、表情、服装、所处环境
 - 绝对禁止：改变任何面部结构、改变任何五官形状、换脸成另一个人、与其他人物面部混淆
-- 如果场景中有多个不同人物，每个人物必须有明显不同的面部特征（不同脸型、不同五官、不同发型），严禁所有人物看起来像同一张脸
+- 如果场景中有多个不同人物，每个人物必须有明显不同的面部特征（不同脸型、不同五官、不同发型、不同肤色、不同身高体型），严禁所有人物看起来像同一张脸
+- 多人物区分要求：同性别同年龄段的人物必须有至少3处明显不同的外貌特征（如不同发型、不同脸型、不同肤色、不同身高、不同配饰等）
 
 【质量要求】
 - 写实摄影风格，细节清晰，纹理丰富，禁止动漫风、油画风、插画风、水彩风
@@ -76,7 +83,8 @@ class SceneImageService:
 - 色彩饱和度适中，整体色调统一协调
 - 电影质感，故事感强，氛围渲染到位
 - 人物面部特征必须与参考形象绝对保持一致：相同脸型、相同五官比例、相同发型、相同肤色，仅姿势和环境可变
-- 同一人物在多张图片中必须是同一个人，禁止换脸或改变面部特征"""
+- 同一人物在多张图片中必须是同一个人，禁止换脸或改变面部特征
+- 多人物场景：确保所有人物都完整出现在画面中，不得遗漏或部分裁剪任何人物"""
 
     def __init__(
         self,
@@ -236,11 +244,26 @@ class SceneImageService:
             # ★ 构建时代约束
             era_constraints = _build_image_era_constraints(character_settings, "zh")
 
+            # ★ 提取故事中的角色并构建人物清单
+            story_characters = self._extract_story_characters(
+                story_text, character_settings, player_name
+            )
+            character_manifest = self._build_character_manifest(
+                story_characters,
+                appearance_anchor=appearance_anchor,
+                player_name=player_name,
+            )
+            logger.info(
+                f"Scene characters detected: {[c['name'] for c in story_characters]}, "
+                f"manifest length={len(character_manifest)}"
+            )
+
             # ★ 使用优化后的模板生成最终提示词
             final_prompt = self.SCENE_PROMPT_TEMPLATE.format(
                 era=char_info["era"],
                 era_constraints=era_constraints,
                 scene_desc=scene_desc,
+                character_manifest=character_manifest,
                 lighting_desc=lighting_desc,
                 illustration_prompt=enhanced_illustration,
                 color_palette=palette.build_prompt_segment(),
@@ -255,6 +278,10 @@ class SceneImageService:
                         edit_prompt = f"""将参考图片中的同一个人物（IDENTICAL PERSON）融入以下新场景：{scene_desc}。
 
 {era_constraints}
+
+【人物清单 - 以下所有人物必须在场景中同时出现】
+{character_manifest}
+- 要求：以上列出的每一个人物都必须在画面中清晰可见，不得遗漏任何一人
 
 【人物外貌特征 - 绝对不可改变】
 {anchor_desc}
@@ -273,12 +300,17 @@ class SceneImageService:
 - 仅允许改变：姿势、角度、表情、服装、所处环境
 - 绝对禁止：改变任何面部结构、改变任何五官形状、换脸成另一个人
 - 如果场景中有其他人物，每个人物必须有明显不同的面部特征（不同脸型、不同五官、不同发型），严禁所有人物看起来像同一张脸
+- 多人物区分要求：同性别同年龄段的人物必须有至少3处明显不同的外貌特征
 - 人物与新场景的光影要自然融合，投影方向一致
 - 色调要与场景整体调性协调"""
                     else:
                         edit_prompt = f"""将参考图片中的同一个人物（IDENTICAL PERSON）融入以下新场景：{scene_desc}。
 
 {era_constraints}
+
+【人物清单 - 以下所有人物必须在场景中同时出现】
+{character_manifest}
+- 要求：以上列出的每一个人物都必须在画面中清晰可见，不得遗漏任何一人
 
 场景动作和氛围：{illustration_prompt}
 光线要求：{lighting_desc}
@@ -288,6 +320,7 @@ class SceneImageService:
 - 这是同一个人物，面部特征必须100%保持一致
 - 仅允许改变：姿势、角度、表情、服装、所处环境
 - 绝对禁止：改变任何面部结构、换脸成另一个人
+- 如果场景中有其他人物，每个人物必须有明显不同的面部特征，严禁所有人物看起来像同一张脸
 - 人物与新场景的光影要自然融合，投影方向一致
 - 色调要与场景整体调性协调"""
 
@@ -666,6 +699,163 @@ class SceneImageService:
             logger.error(f"Unexpected error in regenerate_opening_illustration: {e}")
             self.db.rollback()
             raise ImageServiceError(f"重新生成开场插画失败: {e}")
+
+    def _extract_story_characters(
+        self,
+        story_text: str,
+        character_settings: Dict[str, Any],
+        player_name: str,
+    ) -> List[Dict[str, str]]:
+        """从故事文本中提取出现的所有角色（包括玩家和NPC）。
+
+        从 character_settings 的 relationships.key_people 和 family.family_members
+        中提取角色，并检查哪些在 story_text 中被提及。
+
+        Returns:
+            角色列表，每个角色包含 name 和 description
+        """
+        characters: List[Dict[str, str]] = []
+
+        # 1. 添加玩家角色
+        player_desc = self._build_character_desc_from_settings(
+            character_settings, player_name
+        )
+        characters.append({"name": player_name, "description": player_desc})
+
+        # 2. 从 relationships.key_people 提取
+        relationships = character_settings.get("relationships", {})
+        key_people = relationships.get("key_people", []) if isinstance(relationships, dict) else []
+        for person in key_people:
+            name = person.get("name", "")
+            if name and name != player_name and name in story_text:
+                desc = self._build_character_desc(person)
+                characters.append({"name": name, "description": desc})
+
+        # 3. 从 family.family_members 提取
+        family = character_settings.get("family", {})
+        family_members = family.get("family_members", []) if isinstance(family, dict) else []
+        for member in family_members:
+            name = member.get("name", "")
+            if name and name != player_name and name not in [c["name"] for c in characters] and name in story_text:
+                desc = self._build_character_desc(member)
+                characters.append({"name": name, "description": desc})
+
+        return characters
+
+    @staticmethod
+    def _build_character_desc(person: Dict[str, Any]) -> str:
+        """从人物数据构建简短描述."""
+        parts = []
+        if person.get("relationship"):
+            parts.append(str(person["relationship"]))
+        if person.get("age"):
+            parts.append(f"{person['age']}岁")
+        if person.get("gender"):
+            parts.append(str(person["gender"]))
+        if person.get("occupation"):
+            parts.append(str(person["occupation"]))
+        if person.get("appearance"):
+            parts.append(str(person["appearance"]))
+        if person.get("personality"):
+            parts.append(str(person["personality"]))
+        return "，".join(parts) if parts else "一个普通人"
+
+    @staticmethod
+    def _build_character_desc_from_settings(
+        character_settings: Dict[str, Any], name: str
+    ) -> str:
+        """从 character_settings 构建玩家角色描述."""
+        parts = []
+        age = character_settings.get("age")
+        if age:
+            if isinstance(age, dict):
+                age_val = age.get("age", "")
+                if age_val:
+                    parts.append(f"{age_val}岁")
+            elif isinstance(age, (int, float)):
+                parts.append(f"{age}岁")
+        gender = character_settings.get("gender")
+        if gender:
+            if isinstance(gender, dict):
+                parts.append(str(gender.get("gender", "")))
+            elif isinstance(gender, str):
+                parts.append(gender)
+        appearance = character_settings.get("appearance")
+        if appearance:
+            if isinstance(appearance, dict):
+                app_parts = []
+                for k in ["face", "hair", "eyes", "height", "build", "style"]:
+                    v = appearance.get(k)
+                    if v:
+                        app_parts.append(str(v))
+                if app_parts:
+                    parts.append("，".join(app_parts))
+            elif isinstance(appearance, str):
+                parts.append(appearance)
+        return "，".join(parts) if parts else name
+
+    def _build_character_manifest(
+        self,
+        characters: List[Dict[str, str]],
+        appearance_anchor: Optional[CharacterAppearanceAnchor] = None,
+        player_name: str = "",
+    ) -> str:
+        """构建人物清单段落，用于注入场景提示词。
+
+        Args:
+            characters: 角色列表（来自 _extract_story_characters）
+            appearance_anchor: 玩家角色的外貌锚点（如果有）
+            player_name: 玩家角色名称
+
+        Returns:
+            格式化的人物清单文本
+        """
+        if not characters:
+            return "- 主角在场景中"
+
+        lines = []
+        for idx, char in enumerate(characters):
+            name = char["name"]
+            desc = char["description"]
+            position = self._get_character_position_hint(idx, len(characters))
+
+            # 如果是玩家角色且有外貌锚点，使用锚点描述
+            if name == player_name and appearance_anchor:
+                anchor_desc = appearance_anchor.build_prompt_segment()
+                lines.append(
+                    f"- {name}（{position}）：{desc}。"
+                    f"【外貌锚点 - 绝对不可改变】{anchor_desc}"
+                )
+            else:
+                lines.append(f"- {name}（{position}）：{desc}")
+
+        # 添加多人物区分要求
+        if len(characters) > 1:
+            lines.append(
+                "- 【人物区分要求】以上每个人物必须有明显不同的面部特征和外貌，"
+                "禁止任何两个人物看起来像同一张脸"
+            )
+
+        return "\n".join(lines)
+
+    @staticmethod
+    def _get_character_position_hint(index: int, total: int) -> str:
+        """根据人物数量和索引返回画面位置提示."""
+        if total == 1:
+            return "画面中央"
+        if total == 2:
+            positions = ["画面左侧", "画面右侧"]
+            return positions[index % 2]
+        if total == 3:
+            positions = ["画面左侧", "画面中央", "画面右侧"]
+            return positions[index % 3]
+        # 4+ 人物
+        positions = [
+            "画面左侧前景", "画面右侧前景",
+            "画面左侧背景", "画面右侧背景",
+            "画面中央", "画面中央偏左", "画面中央偏右",
+        ]
+        return positions[index % len(positions)]
 
     def _build_char_info(
         self, character_settings: Dict[str, Any], player_name: str
