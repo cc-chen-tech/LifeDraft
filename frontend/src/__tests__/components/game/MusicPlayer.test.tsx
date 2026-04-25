@@ -185,23 +185,23 @@ describe('MusicPlayer timeupdate 节流', () => {
   });
 
   /**
-   * 模拟 MusicPlayer 中 timeupdate 的 250ms 节流逻辑。
+   * 模拟 MusicPlayer 中 timeupdate 的 500ms 节流逻辑。
    *
    * 组件中 timeUpdateThrottleRef.current 初始值为 0，Date.now() 初始值很大，
-   * 所以第一次触发一定通过。之后按 250ms 间隔节流。
+   * 所以第一次触发一定通过。之后按 500ms 间隔节流。
    */
   function simulateThrottledTimeupdate(opts: {
     /** 每次 timeupdate 触发的时间点（相对于起始时间的毫秒数） */
     triggerTimes: number[];
   }) {
     // 初始 ref 值为 0，但 Date.now() 是从系统时间开始，所以首次触发条件
-    // 实际上是 (firstTriggerTime + baseTime) - 0 >= 250，总是成立。
+    // 实际上是 (firstTriggerTime + baseTime) - 0 >= 500，总是成立。
     // 这里用负无穷表示"首次总是通过"。
     let lastUpdateTime = Number.NEGATIVE_INFINITY;
     const callLog: number[] = [];
 
     for (const triggerTime of opts.triggerTimes) {
-      if (triggerTime - lastUpdateTime >= 250) {
+      if (triggerTime - lastUpdateTime >= 500) {
         lastUpdateTime = triggerTime;
         callLog.push(triggerTime);
       }
@@ -210,49 +210,49 @@ describe('MusicPlayer timeupdate 节流', () => {
     return { callLog, totalCalls: callLog.length };
   }
 
-  it('250ms 内多次 timeupdate 只执行一次 setCurrentTime', () => {
-    // 在 200ms 内触发 5 次（时间间隔都小于 250ms）
+  it('500ms 内多次 timeupdate 只执行一次 setCurrentTime', () => {
+    // 在 400ms 内触发 5 次（时间间隔都小于 500ms）
     const result = simulateThrottledTimeupdate({
-      triggerTimes: [0, 50, 100, 150, 200],
+      triggerTimes: [0, 100, 200, 300, 400],
     });
 
     expect(result.totalCalls).toBe(1);
     expect(result.callLog).toEqual([0]);
   });
 
-  it('间隔超过 250ms 后允许再次触发', () => {
-    // t=0, t=300（间隔 300ms > 250ms，允许）
+  it('间隔超过 500ms 后允许再次触发', () => {
+    // t=0, t=600（间隔 600ms > 500ms，允许）
     const result = simulateThrottledTimeupdate({
-      triggerTimes: [0, 300],
+      triggerTimes: [0, 600],
     });
 
     expect(result.totalCalls).toBe(2);
-    expect(result.callLog).toEqual([0, 300]);
+    expect(result.callLog).toEqual([0, 600]);
   });
 
   it('密集触发后间隔够长再触发，应计数两次', () => {
-    // 快速触发 3 次 → 等待 300ms → 再触发 2 次
+    // 快速触发 3 次 → 等待 600ms → 再触发 2 次
     const result = simulateThrottledTimeupdate({
-      triggerTimes: [0, 50, 100, 400, 450],
+      triggerTimes: [0, 100, 200, 800, 900],
     });
 
-    expect(result.totalCalls).toBe(2); // t=0 和 t=400 各一次
-    expect(result.callLog).toEqual([0, 400]);
+    expect(result.totalCalls).toBe(2); // t=0 和 t=800 各一次
+    expect(result.callLog).toEqual([0, 800]);
   });
 
-  it('恰好 250ms 间隔应允许触发', () => {
+  it('恰好 500ms 间隔应允许触发', () => {
     const result = simulateThrottledTimeupdate({
-      triggerTimes: [0, 250, 500, 750],
+      triggerTimes: [0, 500, 1000, 1500],
     });
 
     expect(result.totalCalls).toBe(4);
-    expect(result.callLog).toEqual([0, 250, 500, 750]);
+    expect(result.callLog).toEqual([0, 500, 1000, 1500]);
   });
 
   it('连续密集触发应被节流为一次', () => {
-    // 所有触发点都在 250ms 窗口内
+    // 所有触发点都在 500ms 窗口内
     const result = simulateThrottledTimeupdate({
-      triggerTimes: [0, 50, 100, 150, 200],
+      triggerTimes: [0, 100, 200, 300, 400],
     });
 
     expect(result.totalCalls).toBe(1);
