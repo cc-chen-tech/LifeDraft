@@ -145,6 +145,10 @@ class ImagePromptBuilder:
         # ★ 清洗 era 描述中的科幻暗示词，防止污染图像生成
         safe_era = self._sanitize_era_for_image(era)
 
+        # ★ 消毒人物名称，防止 prompt 注入
+        from src.ai.prompt_sanitizer import sanitize_player_name
+        safe_name = sanitize_player_name(name)
+
         parts = []
 
         # 最重要：用户的修改意见放在最前面
@@ -169,7 +173,7 @@ class ImagePromptBuilder:
         # 基础信息
         parts.extend(
             [
-                f"【人物】{name}",
+                f"【人物】{safe_name}",
                 f"【时代背景】{safe_era}",
             ]
         )

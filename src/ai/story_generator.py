@@ -497,7 +497,9 @@ class StoryGenerator:
 
     @staticmethod
     def _extract_player_name(player_state: Dict[str, Any]) -> str:
-        """从 player_state 中提取主角名称。"""
+        """从 player_state 中提取并消毒主角名称。"""
+        from src.ai.prompt_sanitizer import sanitize_player_name
+
         name = player_state.get("player_name", "")
         if not name:
             cs = player_state.get("character_settings") or {}
@@ -505,7 +507,7 @@ class StoryGenerator:
                 identity = cs.get("identity", {})
                 if isinstance(identity, dict):
                     name = identity.get("name", "")
-        return str(name)
+        return sanitize_player_name(str(name))
 
     # -------------------- Public API --------------------
 

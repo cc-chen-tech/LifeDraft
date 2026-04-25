@@ -4,6 +4,61 @@
 
 export type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "error" | null;
 
+/**
+ * SSE fetch with retry for transient server errors (502/504).
+ * Implements exponential backoff to avoid thundering herd.
+ *
+ * ★ 修复 Bug #15, #32: SSE 流在 502/504 时自动重试，防止永久卡死。
+ */
+async function fetchSSEWithRetry(
+  url: string,
+  init: RequestInit,
+  retries = 3
+): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < retries; attempt++) {
+    // Check abort signal before each attempt
+    if (init.signal?.aborted) {
+      throw new Error('Request aborted');
+    }
+
+    try {
+      const response = await fetch(url, init);
+
+      if (response.ok) {
+        return response;
+      }
+
+      // Only retry on server errors (502 Bad Gateway / 504 Gateway Timeout)
+      if (response.status === 502 || response.status === 504) {
+        lastError = new Error(`Server error: ${response.status}`);
+        console.warn(`[SSE] ${response.status} on attempt ${attempt + 1}/${retries}, will retry...`);
+      } else {
+        // Non-retryable error (4xx or other 5xx) - throw immediately
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+    } catch (error) {
+      // Don't retry on abort or non-network errors
+      if (error instanceof Error) {
+        if (error.name === 'AbortError' || error.message === 'Request aborted') {
+          throw error;
+        }
+        lastError = error;
+      }
+    }
+
+    // Exponential backoff: 1s, 2s, 4s, ... (skip delay on last attempt)
+    if (attempt < retries - 1) {
+      const delayMs = Math.pow(2, attempt) * 1000;
+      console.log(`[SSE] Retrying in ${delayMs}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+
+  throw lastError || new Error('Max retries exceeded');
+}
+
 export interface StreamCallbacks {
   onStory?: (text: string) => void;
   onChunk?: (chunk: string) => void;
@@ -150,21 +205,13 @@ export async function streamChoice(
   callbacks: StreamCallbacks,
   options?: { signal?: AbortSignal }
 ): Promise<void> {
-  const response = await fetch(`/api/games/${gameId}/choice`, {
+  const response = await fetchSSEWithRetry(`/api/games/${gameId}/choice`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({ option_index: choiceIndex }),
     signal: options?.signal,
   });
-
-  if (!response.ok) {
-    // 504 通常是代理层超时，给出更具体的错误信息
-    if (response.status === 504) {
-      throw new Error('服务器响应超时，AI 正在生成故事，请稍后重试');
-    }
-    throw new Error(`HTTP error! status: ${response.status}`);
-  }
 
   const reader = response.body?.getReader();
   if (!reader) {
@@ -180,20 +227,13 @@ export async function streamCustomChoice(
   callbacks: StreamCallbacks,
   options?: { signal?: AbortSignal }
 ): Promise<void> {
-  const response = await fetch(`/api/games/${gameId}/custom-choice`, {
+  const response = await fetchSSEWithRetry(`/api/games/${gameId}/custom-choice`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({ custom_text: customChoice }),
     signal: options?.signal,
   });
-
-  if (!response.ok) {
-    if (response.status === 504) {
-      throw new Error('服务器响应超时，AI 正在生成故事，请稍后重试');
-    }
-    throw new Error(`HTTP error! status: ${response.status}`);
-  }
 
   const reader = response.body?.getReader();
   if (!reader) {
@@ -398,7 +438,7 @@ export async function streamOpeningStory(
   },
   options?: { signal?: AbortSignal; enableReconnect?: boolean }
 ): Promise<void> {
-  const response = await fetch('/api/character/opening-story', {
+  const response = await fetchSSEWithRetry('/api/character/opening-story', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -410,10 +450,6 @@ export async function streamOpeningStory(
     }),
     signal: options?.signal,
   });
-
-  if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
-  }
 
   const reader = response.body?.getReader();
   if (!reader) {
