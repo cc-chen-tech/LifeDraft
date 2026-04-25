@@ -229,5 +229,36 @@ describe('useHistoryViewer', () => {
       });
       expect(result.current.showHistory).toBe(false);
     });
+
+    it('resets history viewing state when closing drawer while viewing history', () => {
+      const playerState = {
+        round_history: [{ week: 0, round: 0, event_description: 'Story' }],
+      };
+
+      const { result } = renderHook(() =>
+        useHistoryViewer({ ...defaultParams, playerState })
+      );
+
+      // 1. Open drawer
+      act(() => {
+        result.current.setShowHistory(true);
+      });
+
+      // 2. Select a history round
+      act(() => {
+        result.current.handleSelectHistoryRound(0);
+      });
+      expect(result.current.isViewingHistory).toBe(true);
+
+      // 3. Close drawer (simulates clicking outside or pressing Escape)
+      act(() => {
+        result.current.setShowHistory(false);
+      });
+
+      // ★ Should reset history viewing state
+      expect(result.current.showHistory).toBe(false);
+      expect(result.current.historyRoundIndex).toBeNull();
+      expect(result.current.isViewingHistory).toBe(false);
+    });
   });
 });
