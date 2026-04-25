@@ -940,6 +940,64 @@
         }
       }
     },
+    "/api/games/{game_id}/character-settings": {
+      "patch": {
+        "tags": [
+          "Games"
+        ],
+        "summary": "Update Character Settings",
+        "description": "Update character_settings for an existing game.\nUsed when auto-generated background settings need to be persisted\nafter initial game creation with partial settings.",
+        "operationId": "update_character_settings_api_games__game_id__character_settings_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCharacterSettingsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/games/save-point/{state_id}": {
       "delete": {
         "tags": [
@@ -964,6 +1022,154 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{game_id}/narrative-style-options": {
+      "get": {
+        "tags": [
+          "Games"
+        ],
+        "summary": "List Narrative Styles",
+        "description": "列出所有可用的叙事风格，供用户选择。",
+        "operationId": "list_narrative_styles_api_games__game_id__narrative_style_options_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{game_id}/narrative-style": {
+      "get": {
+        "tags": [
+          "Games"
+        ],
+        "summary": "Get Game Narrative Style",
+        "description": "获取游戏当前的叙事风格。",
+        "operationId": "get_game_narrative_style_api_games__game_id__narrative_style_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Games"
+        ],
+        "summary": "Update Game Narrative Style",
+        "description": "更新游戏的叙事风格。",
+        "operationId": "update_game_narrative_style_api_games__game_id__narrative_style_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateNarrativeStyleRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2549,6 +2755,52 @@
             "schema": {
               "type": "string",
               "title": "Filename"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/images/scene/events/{game_id}": {
+      "get": {
+        "tags": [
+          "Images"
+        ],
+        "summary": "Scene Image Sse Events",
+        "description": "SSE 端点：推送场景图片生成事件\n\n事件类型:\n- scene_image_ready: 场景图片生成完成\n- scene_image_failed: 场景图片生成失败\n- heartbeat: 心跳保持连接",
+        "operationId": "scene_image_sse_events_api_images_scene_events__game_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
             }
           }
         ],
@@ -4571,6 +4823,28 @@
             "type": "string",
             "title": "Constraint Level",
             "default": "expert"
+          },
+          "narrative_style_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narrative Style Id"
+          },
+          "narrative_style_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narrative Style Name"
           }
         },
         "type": "object",
@@ -5222,6 +5496,11 @@
               }
             ],
             "title": "Game Id"
+          },
+          "refresh": {
+            "type": "boolean",
+            "title": "Refresh",
+            "default": false
           }
         },
         "type": "object",
@@ -6125,6 +6404,20 @@
         ],
         "title": "StoryChatResponse"
       },
+      "UpdateCharacterSettingsRequest": {
+        "properties": {
+          "character_settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Character Settings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "character_settings"
+        ],
+        "title": "UpdateCharacterSettingsRequest"
+      },
       "UpdateGameSettingsRequest": {
         "properties": {
           "constraint_level": {
@@ -6141,6 +6434,19 @@
         },
         "type": "object",
         "title": "UpdateGameSettingsRequest"
+      },
+      "UpdateNarrativeStyleRequest": {
+        "properties": {
+          "style_id": {
+            "type": "string",
+            "title": "Style Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "style_id"
+        ],
+        "title": "UpdateNarrativeStyleRequest"
       },
       "UserInfo": {
         "properties": {

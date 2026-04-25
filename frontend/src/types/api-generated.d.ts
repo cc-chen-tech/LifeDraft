@@ -407,6 +407,28 @@ export interface paths {
         patch: operations["update_game_settings_api_games__game_id__settings_patch"];
         trace?: never;
     };
+    "/api/games/{game_id}/character-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Character Settings
+         * @description Update character_settings for an existing game.
+         *     Used when auto-generated background settings need to be persisted
+         *     after initial game creation with partial settings.
+         */
+        patch: operations["update_character_settings_api_games__game_id__character_settings_patch"];
+        trace?: never;
+    };
     "/api/games/save-point/{state_id}": {
         parameters: {
             query?: never;
@@ -422,6 +444,50 @@ export interface paths {
          * @description ★ 删除存档点。
          */
         delete: operations["delete_save_point_api_games_save_point__state_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/games/{game_id}/narrative-style-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Narrative Styles
+         * @description 列出所有可用的叙事风格，供用户选择。
+         */
+        get: operations["list_narrative_styles_api_games__game_id__narrative_style_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/games/{game_id}/narrative-style": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Game Narrative Style
+         * @description 获取游戏当前的叙事风格。
+         */
+        get: operations["get_game_narrative_style_api_games__game_id__narrative_style_get"];
+        /**
+         * Update Game Narrative Style
+         * @description 更新游戏的叙事风格。
+         */
+        put: operations["update_game_narrative_style_api_games__game_id__narrative_style_put"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1074,6 +1140,31 @@ export interface paths {
          *     直接返回图片二进制数据，用于前端显示
          */
         get: operations["get_image_file_api_images_file__game_id___image_type___filename__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/images/scene/events/{game_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Scene Image Sse Events
+         * @description SSE 端点：推送场景图片生成事件
+         *
+         *     事件类型:
+         *     - scene_image_ready: 场景图片生成完成
+         *     - scene_image_failed: 场景图片生成失败
+         *     - heartbeat: 心跳保持连接
+         */
+        get: operations["scene_image_sse_events_api_images_scene_events__game_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1896,6 +1987,10 @@ export interface components {
              * @default expert
              */
             constraint_level: string;
+            /** Narrative Style Id */
+            narrative_style_id?: string | null;
+            /** Narrative Style Name */
+            narrative_style_name?: string | null;
         };
         /** GenerateAttributesRequest */
         GenerateAttributesRequest: {
@@ -2282,6 +2377,11 @@ export interface components {
             story_text: string;
             /** Game Id */
             game_id?: number | null;
+            /**
+             * Refresh
+             * @default false
+             */
+            refresh: boolean;
         };
         /**
          * MusicRecommendationResponse
@@ -2711,10 +2811,22 @@ export interface components {
             /** Reply */
             reply: string;
         };
+        /** UpdateCharacterSettingsRequest */
+        UpdateCharacterSettingsRequest: {
+            /** Character Settings */
+            character_settings: {
+                [key: string]: unknown;
+            };
+        };
         /** UpdateGameSettingsRequest */
         UpdateGameSettingsRequest: {
             /** Constraint Level */
             constraint_level?: string | null;
+        };
+        /** UpdateNarrativeStyleRequest */
+        UpdateNarrativeStyleRequest: {
+            /** Style Id */
+            style_id: string;
         };
         /** UserInfo */
         UserInfo: {
@@ -3365,6 +3477,41 @@ export interface operations {
             };
         };
     };
+    update_character_settings_api_games__game_id__character_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCharacterSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     delete_save_point_api_games_save_point__state_id__delete: {
         parameters: {
             query?: never;
@@ -3375,6 +3522,103 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_narrative_styles_api_games__game_id__narrative_style_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_game_narrative_style_api_games__game_id__narrative_style_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_game_narrative_style_api_games__game_id__narrative_style_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateNarrativeStyleRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -4427,6 +4671,37 @@ export interface operations {
                 game_id: number;
                 image_type: string;
                 filename: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    scene_image_sse_events_api_images_scene_events__game_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: number;
             };
             cookie?: never;
         };
