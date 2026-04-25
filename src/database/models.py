@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import (JSON, Boolean, Column, DateTime, ForeignKey, Index,
+from sqlalchemy import (JSON, Boolean, Column, DateTime, Float, ForeignKey, Index,
                         Integer, String, Text, create_engine)
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
@@ -102,6 +102,9 @@ class Game(Base):
     )
     images = relationship("Image", back_populates="game", cascade="all, delete-orphan")
     scene_images = relationship("SceneImage", back_populates="game", cascade="all, delete-orphan")
+    playlist = relationship(
+        "GamePlaylist", back_populates="game", uselist=False, cascade="all, delete-orphan"
+    )
 
     # ★ 复合索引：加速 list_saved_games 查询 (user_id + ending_type IS NULL + ORDER BY updated_at)
     __table_args__ = (
@@ -279,6 +282,37 @@ class SceneImage(Base):
             unique=True,
         ),
     )
+
+
+class GamePlaylist(Base):
+    """Per-game persistent music playlist.
+
+    Stores the current song, upcoming queue, and playback state
+    so music survives page navigation and game progression.
+    """
+
+    __tablename__ = "game_playlists"
+
+    playlist_id = Column(Integer, primary_key=True, autoincrement=True)
+    game_id = Column(Integer, ForeignKey("games.game_id"), nullable=False, unique=True, index=True)
+
+    # Playback state
+    current_song_json = Column(JSON, nullable=True)   # type: ignore[var-annotated]
+    queue_json = Column(JSON, default=list)           # type: ignore[var-annotated]
+    played_songs_json = Column(JSON, default=list)    # type: ignore[var-annotated]
+    is_playing = Column(Boolean, default=False)
+    volume = Column(Float, default=0.5)
+    current_position_ms = Column(Integer, default=0)
+
+    # Recommendation metadata
+    recommendation_mood = Column(String(50), nullable=True)
+    recommendation_keywords = Column(JSON, nullable=True)  # type: ignore[var-annotated]
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    game = relationship("Game", back_populates="playlist")
 
 
 # Create engine and session
