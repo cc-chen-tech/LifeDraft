@@ -55,7 +55,7 @@ describe('ChatBar', () => {
       );
 
       // Should show the expand button (MessageCircle icon)
-      const expandButton = screen.getByRole('button');
+      const expandButton = screen.getByLabelText('打开聊天');
       expect(expandButton).toBeInTheDocument();
     });
 
@@ -85,7 +85,7 @@ describe('ChatBar', () => {
         />
       );
 
-      const expandButton = screen.getByRole('button');
+      const expandButton = screen.getByLabelText('打开聊天');
       await user.click(expandButton);
 
       await waitFor(() => {
@@ -104,7 +104,7 @@ describe('ChatBar', () => {
         />
       );
 
-      await user.click(screen.getByRole('button'));
+      await user.click(screen.getByLabelText('打开聊天'));
 
       await waitFor(() => {
         expect(screen.getByText('保存')).toBeInTheDocument();
@@ -126,7 +126,7 @@ describe('ChatBar', () => {
       );
 
       // Expand first
-      await user.click(screen.getByRole('button'));
+      await user.click(screen.getByLabelText('打开聊天'));
       
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/向剧情助手提问/i)).toBeInTheDocument();
@@ -154,7 +154,7 @@ describe('ChatBar', () => {
       );
       
       // Expand the chat bar
-      await user.click(screen.getByRole('button'));
+      await user.click(screen.getByLabelText('打开聊天'));
       await waitFor(() => {
         expect(screen.getByText('保存')).toBeInTheDocument();
       });
@@ -200,7 +200,7 @@ describe('ChatBar', () => {
         />
       );
 
-      await user.click(screen.getByRole('button'));
+      await user.click(screen.getByLabelText('打开聊天'));
       
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/向剧情助手提问/i)).toBeInTheDocument();
@@ -223,7 +223,7 @@ describe('ChatBar', () => {
         />
       );
 
-      await user.click(screen.getByRole('button'));
+      await user.click(screen.getByLabelText('打开聊天'));
       
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/向剧情助手提问/i)).toBeInTheDocument();
@@ -253,7 +253,7 @@ describe('ChatBar', () => {
         />
       );
 
-      await user.click(screen.getByRole('button'));
+      await user.click(screen.getByLabelText('打开聊天'));
       
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/向剧情助手提问/i)).toBeInTheDocument();
@@ -279,7 +279,7 @@ describe('ChatBar', () => {
         />
       );
 
-      await user.click(screen.getByRole('button'));
+      await user.click(screen.getByLabelText('打开聊天'));
       
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/向剧情助手提问/i)).toBeInTheDocument();
@@ -305,7 +305,7 @@ describe('ChatBar', () => {
         />
       );
 
-      await user.click(screen.getByRole('button'));
+      await user.click(screen.getByLabelText('打开聊天'));
       
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/向剧情助手提问/i)).toBeInTheDocument();
@@ -331,7 +331,7 @@ describe('ChatBar', () => {
         />
       );
 
-      await user.click(screen.getByRole('button'));
+      await user.click(screen.getByLabelText('打开聊天'));
       
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/向剧情助手提问/i)).toBeInTheDocument();
@@ -360,7 +360,7 @@ describe('ChatBar', () => {
         />
       );
 
-      await user.click(screen.getByRole('button'));
+      await user.click(screen.getByLabelText('打开聊天'));
       
       await waitFor(() => {
         expect(screen.getByText('保存')).toBeInTheDocument();
@@ -383,7 +383,7 @@ describe('ChatBar', () => {
         />
       );
 
-      await user.click(screen.getByRole('button'));
+      await user.click(screen.getByLabelText('打开聊天'));
       
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/向剧情助手提问/i)).toBeInTheDocument();
@@ -416,7 +416,7 @@ describe('ChatBar', () => {
         />
       );
 
-      await user.click(screen.getByRole('button'));
+      await user.click(screen.getByLabelText('打开聊天'));
       
       await waitFor(() => {
         expect(screen.getByText('总结')).toBeInTheDocument();

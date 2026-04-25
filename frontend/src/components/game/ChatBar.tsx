@@ -158,10 +158,23 @@ export function ChatBar({
     return (
       <div
         className={cn(
-          "fixed bottom-4 right-4 z-50",
+          "fixed bottom-4 right-4 z-50 flex items-center gap-2",
           className
         )}
       >
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-10 px-3 rounded-full shadow-lg bg-card border-border hover:bg-accent touch-target"
+          onClick={onAdjustStory}
+          disabled={isViewingHistory}
+          title={isViewingHistory ? "历史回顾模式下不可用" : "改写当前故事"}
+          data-testid="rewrite-button"
+        >
+          <Pencil className="w-4 h-4 mr-1" />
+          改写
+        </Button>
+
         <Button
           size="icon"
           className="h-12 w-12 rounded-full shadow-lg bg-primary hover:bg-primary/90"

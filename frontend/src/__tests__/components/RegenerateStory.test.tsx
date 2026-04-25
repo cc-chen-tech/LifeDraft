@@ -121,7 +121,7 @@ describe('ChatBar 重新生成测试', () => {
     );
     
     // ChatBar 初始为收起状态，点击展开按钮
-    const expandButton = screen.getByRole('button');
+    const expandButton = screen.getByLabelText('打开聊天');
     await user.click(expandButton);
     
     // 等待展开后找到重新生成按钮
