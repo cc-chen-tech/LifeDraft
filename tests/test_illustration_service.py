@@ -1,5 +1,6 @@
 """Tests for RoundIllustrationService."""
 
+import pytest
 from unittest.mock import MagicMock, patch
 
 from src.ai.image_client import ContentInspectionError, ImageGenerationError
@@ -361,7 +362,7 @@ class TestGetImageUrlAsBase64:
 
         result = service._get_image_url_as_base64({"image_id": 1})
         assert result is not None
-        assert result.startswith("data:image/png;base64,")
+        assert result.startswith("data:image/jpeg;base64,")
 
     def test_get_image_as_base64_jpeg(self):
         """Test base64 conversion for JPEG."""
@@ -426,15 +427,16 @@ class TestSyncGeneration:
             db_session=mock_db,
         )
 
-        # Should not raise, just log warning
-        service._generate_round_illustration_sync(
-            game_id=1,
-            round_number=1,
-            story_text="Test",
-            character_settings={},
-            player_name="Player",
-            existing_images=[],
-        )
+        # Should re-raise ContentInspectionError
+        with pytest.raises(ContentInspectionError):
+            service._generate_round_illustration_sync(
+                game_id=1,
+                round_number=1,
+                story_text="Test",
+                character_settings={},
+                player_name="Player",
+                existing_images=[],
+            )
 
         # Should not add anything to DB
         mock_db.add.assert_not_called()
@@ -454,15 +456,16 @@ class TestSyncGeneration:
             db_session=mock_db,
         )
 
-        # Should not raise, just log error
-        service._generate_round_illustration_sync(
-            game_id=1,
-            round_number=1,
-            story_text="Test",
-            character_settings={},
-            player_name="Player",
-            existing_images=[],
-        )
+        # Should re-raise ImageGenerationError
+        with pytest.raises(ImageGenerationError):
+            service._generate_round_illustration_sync(
+                game_id=1,
+                round_number=1,
+                story_text="Test",
+                character_settings={},
+                player_name="Player",
+                existing_images=[],
+            )
 
         mock_db.add.assert_not_called()
 
@@ -481,15 +484,16 @@ class TestSyncGeneration:
             db_session=mock_db,
         )
 
-        # Should rollback on error
-        service._generate_round_illustration_sync(
-            game_id=1,
-            round_number=1,
-            story_text="Test",
-            character_settings={},
-            player_name="Player",
-            existing_images=[],
-        )
+        # Should rollback and re-raise
+        with pytest.raises(RuntimeError):
+            service._generate_round_illustration_sync(
+                game_id=1,
+                round_number=1,
+                story_text="Test",
+                character_settings={},
+                player_name="Player",
+                existing_images=[],
+            )
 
         mock_db.rollback.assert_called_once()
 

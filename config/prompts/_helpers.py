@@ -1006,11 +1006,67 @@ Character is set in a historical/pre-modern era. The image MUST NOT contain thes
 - Clothing must be ancient/traditional: robes, hanfu, armor
 - Objects must be ancient: ceramics, bronze, wooden furniture, oil-paper umbrellas"""
 
-    # Modern era — lighter constraints for images
+    # Modern era — STRICT anti-sci-fi constraints (QA found cyberpunk invading realism)
     if language == "zh":
-        return "\n【画面时代一致性】角色设定为现代/当代背景，画面中的建筑、服饰、道具应符合现代或指定时代特征。"
+        return """\n【★ 画面现实主义红线（违反即失败）★】
+角色设定为现代/当代中国背景（2020年代），画面必须严格遵守写实主义原则：
+
+【绝对禁止的科幻/未来元素】
+- 禁止赛博朋克风格：金属质感夹克、电路纹理服装、发光线条装饰、机械义肢
+- 禁止全息投影：全息屏幕、全息城市、全息古建筑线框、悬浮信息面板
+- 禁止发光效果：红色/蓝色发光眼睛、发光物体、霓虹光效人物轮廓
+- 禁止未来交通工具：飞行汽车、悬浮载具、科幻飞行器
+- 禁止科幻场景：科幻城市、未来都市天际线、高科技实验室、太空背景
+
+【绝对禁止的品牌植入】
+- 禁止出现任何真实商业品牌Logo：星巴克（Starbucks）、苹果（Apple）、麦当劳等
+- 禁止出现带有商标的咖啡杯、购物袋、电子设备
+- 如需饮品/物品，使用无品牌标识的普通杯子/包装
+
+【服装要求（2024年中国日常）】
+- 男性：衬衫、T恤、休闲外套、牛仔裤/休闲裤、运动鞋/皮鞋
+- 女性：连衣裙、衬衫、针织衫、牛仔裤、风衣、简约配饰
+- 禁止：金属质感服装、未来感盔甲、电路纹理、发光装饰、夸张科幻造型
+
+【背景要求】
+- 真实城市环境：现代建筑街道、公园、咖啡厅内部、办公室、住宅
+- 自然光线：日光、室内灯光、街灯，禁止彩色霓虹光效
+- 禁止科幻城市天际线、禁止全息投影叠加
+
+【人物一致性要求】
+- 同一人物的多张图片必须是同一个人：相同脸型、相同五官比例、相同发型
+- 仅允许服装和姿势变化，面部特征必须保持一致
+- 写实摄影风格，禁止动漫风、油画风、科幻风"""
     else:
-        return "\n[Visual Era Consistency] Character is set in a modern/contemporary era. Architecture, clothing, and props should match modern or specified time period."
+        return """\n[★ VISUAL REALISM RED LINE (violation = failure) ★]
+Character is set in modern/contemporary China (2020s). The image MUST strictly follow realism principles:
+
+[ABSOLUTELY FORBIDDEN sci-fi/future elements]
+- NO cyberpunk style: metallic jackets, circuit-textured clothing, glowing line decorations, mechanical prosthetics
+- NO holographic projections: holographic screens, holographic cities, holographic building wireframes, floating info panels
+- NO glowing effects: red/blue glowing eyes, glowing objects, neon light effects on people
+- NO future vehicles: flying cars, hover vehicles, sci-fi aircraft
+- NO sci-fi scenes: sci-fi cities, future city skylines, high-tech labs, space backgrounds
+
+[ABSOLUTELY FORBIDDEN brand placement]
+- NO real commercial brand logos: Starbucks, Apple, McDonald's, etc.
+- NO trademarked coffee cups, shopping bags, electronic devices
+- Use generic cups/packaging without brand marks
+
+[Clothing requirements (2024 China everyday)]
+- Men: shirts, T-shirts, casual jackets, jeans/casual pants, sneakers/leather shoes
+- Women: dresses, blouses, knitwear, jeans, windbreakers, simple accessories
+- FORBIDDEN: metallic clothing, futuristic armor, circuit textures, glowing decorations, exaggerated sci-fi styling
+
+[Background requirements]
+- Real urban environments: modern building streets, parks, cafe interiors, offices, homes
+- Natural lighting: daylight, indoor lighting, street lamps. NO colored neon light effects
+- NO sci-fi city skylines, NO holographic projection overlays
+
+[Character consistency requirements]
+- Multiple images of the same person MUST be the same individual: same face shape, same facial proportions, same hairstyle
+- Only clothing and pose may vary; facial features MUST remain consistent
+- Realistic photography style. NO anime style, oil painting style, sci-fi style"""
 
 
 def _build_logic_constraints(
