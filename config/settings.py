@@ -43,7 +43,7 @@ class Settings:
     # 图像生成API（OpenAI兼容接口）
     IMAGE_API_KEY: Optional[str] = os.getenv("IMAGE_API_KEY")
     IMAGE_API_BASE_URL: Optional[str] = os.getenv("IMAGE_API_BASE_URL")
-    IMAGE_MODEL: str = os.getenv("IMAGE_MODEL", "wanx-v1")
+    IMAGE_MODEL: str = os.getenv("IMAGE_MODEL", "qwen-image-max")
 
     # 场景分析服务（复用现有DeepSeek配置或独立配置）
     SCENE_ANALYZER_API_KEY: Optional[str] = os.getenv("SCENE_ANALYZER_API_KEY")
@@ -66,9 +66,9 @@ class Settings:
     )  # ★ 默认120秒，图生图需要更长时间
     IMAGE_MAX_RETRIES: int = int(os.getenv("IMAGE_MAX_RETRIES", "3"))
 
-    # ★ 模型降级配置（逗号分隔，必须在.env中显式配置）
-    TEXT_TO_IMAGE_MODELS: str = os.getenv("TEXT_TO_IMAGE_MODELS", "")
-    IMAGE_EDIT_MODELS: str = os.getenv("IMAGE_EDIT_MODELS", "")
+    # ★ 模型降级配置（逗号分隔，可在.env中覆盖）
+    TEXT_TO_IMAGE_MODELS: str = os.getenv("TEXT_TO_IMAGE_MODELS", "qwen-image-max,wanx2.1-v2,qwen-image-plus")
+    IMAGE_EDIT_MODELS: str = os.getenv("IMAGE_EDIT_MODELS", "qwen-image-edit-max,qwen-image-edit-plus")
 
     # Game Configuration
     DEFAULT_LANGUAGE: str = os.getenv("DEFAULT_LANGUAGE", "zh")  # en or zh
