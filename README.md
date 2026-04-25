@@ -19,9 +19,14 @@ AI 叙事人生模拟游戏：通过多轮事件生成、选择推进、关系�
 - 会话恢复（内存 session + 数据库自动恢复）
 - 时间回溯存档（save points + timeline）
 - 叙事质量档位（`fast / expert / master`）
-- 场景插画与角色/物品/地标收集系统
-- 音乐推荐与流式代理播放
+- 叙事风格系统（古风/现代/科幻等风格自动匹配）
+- 场景插画与角色/物品/地标收集系统（批量生成、时代一致性约束）
+- 音乐推荐与流式代理播放（混合缓存池）
 - 好友系统、角色预设与开场生成功能
+- 成就系统（AchievementEngine）与人生回顾（LifeReview）
+- 4D 资源状态（energy / mood / knowledge / wealth）
+- 选择影响可视化（资源变化反馈）
+- 角色创建 AI 反馈与设置再生（SettingFeedbackCard）
 
 ## 快速开始
 
@@ -90,10 +95,10 @@ docker compose -f docker-compose.ecs.yml up -d --build
 请以 [`.env.example`](.env.example) 为准。最常用字段：
 
 - `OPENAI_API_KEY`（必填）
-- `OPENAI_MODEL`（默认 `gpt-4`）
+- `OPENAI_MODEL`（默认 `gpt-4`，支持 DeepSeek V4 flash 等）
 - `DATABASE_URL`（可选，不填则使用本地 SQLite）
 - `DEFAULT_LANGUAGE`（`zh` / `en`）
-- `ENABLE_*` 叙事与实验开关（feature flags）
+- `ENABLE_*` 叙事与实验开关（feature flags：constraint_harness, narrative_style_engine, creative_enhancement, epic_narrative, vector_search, model_fallback, truncation_recovery, reactive_compression, parallel_postprocessing, generation_state_tracking）
 
 ## 开发与测试
 
@@ -186,6 +191,10 @@ story2/
 
 - 部署以 `DEPLOYMENT.md`（当前版本）为准；历史方案请以文档内状态说明识别。  
 - 如 README 与代码不一致，以代码实现为准，并欢迎直接提交文档修复。
+
+## 最近更新
+
+- **2026-04-26**：成就系统 + 人生回顾卡片、叙事风格引擎、音乐混合缓存池、安全加固（JWT/SSE/auth/图片/ SQL/序列化）、时代一致性验证器、4D 资源状态、角色创建 AI 反馈
 
 ## License
 

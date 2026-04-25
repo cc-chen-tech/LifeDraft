@@ -1,6 +1,6 @@
 # 08 - Troubleshooting
 
-> 最后核对：2026-04-19
+> 最后核对：2026-04-26
 
 ## 1) 前端一直转圈，事件不出来
 
@@ -63,11 +63,26 @@
 
 - 播放 URL 不是长期链接，服务端会刷新。  
 - 建议走 `/api/music/stream/{song_id}` 代理播放，不直接打 CDN。
+- 服务端已启用混合缓存池（CachedMusicPool），优先从缓存获取 URL，减少重复分析。
 
 定位入口：
 
 - 路由：`src/api/routers/music.py`  
 - 服务：`src/services/music_service.py`
+
+## 6) SSE 场景图事件 401
+
+自安全加固后，`/api/games/{id}/scene-events` 要求认证：
+
+- 检查 `auth_token` Cookie 是否有效且未过期。  
+- 检查前端请求是否携带 `credentials: 'include'`。
+- 检查 Nginx 代理是否正确透传 Cookie 头。
+
+## 7) JWT 签名失败或登录态异常
+
+- 确认 `.env` 中 `JWT_SECRET_KEY` 已设置且不是默认值。
+- 生产环境必须配置独立的密钥，已移除硬编码 fallback。
+- 密钥变更后所有已签发 token 失效，用户需重新登录。
 
 ## 6) 升级后旧存档加载异常
 

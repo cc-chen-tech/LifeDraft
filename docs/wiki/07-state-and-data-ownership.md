@@ -1,6 +1,6 @@
 # 07 - State And Data Ownership
 
-> 最后核对：2026-04-19
+> 最后核对：2026-04-26
 
 ## 状态归属一览
 
@@ -18,18 +18,22 @@
 
 ## 数据表职责（核心）
 
-- `games`：会话主记录（用户归属、语言、结束态、约束级别）
+- `games`：会话主记录（用户归属、语言、结束态、约束级别、叙事风格 `narrative_style_id`）
 - `game_states`：状态快照（支持普通进度与手动存档点）
-- `decisions`：关键选择记录（检索与摘要）
-- `images` / `scene_images`：角色/物品/场景图片资产
+- `decisions`：关键选择记录（检索与摘要，含决策历史扩展）
+- `images` / `scene_images`：角色/物品/场景图片资产（时代一致性约束）
 - `users` / `friendships`：账号与社交关系
+- `game_playlists`：游戏剧情音乐播放列表（GamePlaylist）
+- `achievements` / `life_reviews`：成就记录与人生回顾
 
 ## 升级时的 ownership 规则
 
 1. 改前端 store 字段时，确认是否只是 UI 字段，还是会回写后端状态。  
 2. 改 `PlayerState` 结构时，必须考虑旧 `state_json` 反序列化兼容。  
-3. 改 `current_event` 生命周期时，必须覆盖“断线恢复 + 重连 replay + choice 幂等”场景。  
+3. 改 `current_event` 生命周期时，必须覆盖”断线恢复 + 重连 replay + choice 幂等”场景。  
 4. 改图片生成流程时，确认 `scene_images` 查询键（`game_id + week + round + stage`）不被破坏。
+5. 改 `Game.narrative_style_id` 时，必须保证旧存档的默认回退逻辑。
+6. 改 4D 资源（energy / mood / knowledge / wealth）时，前后端显示与消耗逻辑同步更新。
 
 ## 最容易引发回归的问题
 

@@ -1,6 +1,6 @@
 # 14 - PR Template
 
-> 最后核对：2026-04-19
+> 最后核对：2026-04-26
 
 将以下内容复制到 PR 描述中：
 
@@ -23,9 +23,10 @@
 - 回滚方案：
 
 ## 测试与验证
-- [ ] ./test.sh contract
+- [ ] ./test.sh contract（含 security 契约测试 C-01~C-06）
 - [ ] ./test.sh db
 - [ ] ./test.sh e2e（关键链路）
+- [ ] 安全：无硬编码密钥、SSE 端点已认证、无 pickle/raw SQL
 - 补充说明：
 
 ## 文档更新

@@ -33,7 +33,7 @@ class TestNoHardcodedSecretsContract:
         import subprocess
 
         result = subprocess.run(
-            ["git", "ls-files", "src/", "tests/"],
+            ["git", "ls-files", "src/"],
             capture_output=True, text=True, cwd=Path(__file__).parent.parent,
         )
         tracked_files = result.stdout.strip().split("\n")

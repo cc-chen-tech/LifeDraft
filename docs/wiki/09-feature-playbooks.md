@@ -1,6 +1,6 @@
 # 09 - Feature Playbooks
 
-> 最后核对：2026-04-19
+> 最后核对：2026-04-26
 
 ## Playbook A: 新增一个 Gameplay API
 

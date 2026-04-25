@@ -23,6 +23,45 @@ class TestSSERetryMechanismContract:
         with open(sse_path, "r", encoding="utf-8") as f:
             return f.read()
 
+    def _extract_function_body(self, source: str, func_name: str) -> str:
+        """Extract function body by brace counting."""
+        pattern = rf"export async function {func_name}\("
+        match = re.search(pattern, source)
+        assert match, f"必须能找到 {func_name} 函数"
+
+        # Find the function body's opening brace by looking for 'Promise<' then ') {' pattern
+        # Skip any '{' inside parameter list (e.g., options?: { signal?: AbortSignal })
+        search_start = match.end()
+        # Find the closing ')' of the parameter list
+        paren_depth = 1
+        paren_end = search_start
+        for i, c in enumerate(source[search_start:], search_start):
+            if c == "(":
+                paren_depth += 1
+            elif c == ")":
+                paren_depth -= 1
+                if paren_depth == 0:
+                    paren_end = i
+                    break
+
+        # Find opening brace after parameter list
+        brace_start = source.find("{", paren_end)
+        assert brace_start != -1, f"必须能找到 {func_name} 的函数体起始位置"
+
+        # Count braces to find matching close
+        depth = 0
+        brace_end = brace_start
+        for i, c in enumerate(source[brace_start:], brace_start):
+            if c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    brace_end = i
+                    break
+
+        return source[brace_start + 1 : brace_end]
+
     def test_stream_choice_has_retry_logic(self):
         """streamChoice 必须包含 502/504 重试逻辑。
 
@@ -30,15 +69,7 @@ class TestSSERetryMechanismContract:
         ★ 修复后: 遇到 502/504 时自动重试，最多 3 次，指数退避。
         """
         source = self._get_sse_source()
-
-        # 查找 streamChoice 函数体内的重试相关代码
-        choice_match = re.search(
-            r"export async function streamChoice\([^)]+\)\s*\{([^}]*(?:\{[^}]*\}[^}]*)*)",
-            source,
-            re.DOTALL,
-        )
-        assert choice_match, "必须能找到 streamChoice 函数"
-        choice_body = choice_match.group(1)
+        choice_body = self._extract_function_body(source, "streamChoice")
 
         # 必须有重试机制（循环或递归）
         has_retry_loop = "for" in choice_body or "while" in choice_body or "retry" in choice_body.lower()
@@ -53,14 +84,7 @@ class TestSSERetryMechanismContract:
     def test_stream_custom_choice_has_retry_logic(self):
         """streamCustomChoice 必须包含 502/504 重试逻辑。"""
         source = self._get_sse_source()
-
-        custom_match = re.search(
-            r"export async function streamCustomChoice\([^)]+\)\s*\{([^}]*(?:\{[^}]*\}[^}]*)*)",
-            source,
-            re.DOTALL,
-        )
-        assert custom_match, "必须能找到 streamCustomChoice 函数"
-        custom_body = custom_match.group(1)
+        custom_body = self._extract_function_body(source, "streamCustomChoice")
 
         has_retry = "for" in custom_body or "while" in custom_body or "retry" in custom_body.lower()
         has_helper = "fetchWithRetry" in custom_body or "retry" in custom_body.lower()
@@ -76,14 +100,7 @@ class TestSSERetryMechanismContract:
         ★ 修复后: 自动重试最多 3 次，失败后保留登录态并提供重试按钮。
         """
         source = self._get_sse_source()
-
-        opening_match = re.search(
-            r"export async function streamOpeningStory\([^)]+\)\s*\{([^}]*(?:\{[^}]*\}[^}]*)*)",
-            source,
-            re.DOTALL,
-        )
-        assert opening_match, "必须能找到 streamOpeningStory 函数"
-        opening_body = opening_match.group(1)
+        opening_body = self._extract_function_body(source, "streamOpeningStory")
 
         has_retry = "for" in opening_body or "while" in opening_body or "retry" in opening_body.lower()
         has_helper = "fetchWithRetry" in opening_body or "retry" in opening_body.lower()

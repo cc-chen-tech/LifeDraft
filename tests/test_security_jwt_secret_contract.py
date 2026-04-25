@@ -67,12 +67,15 @@ class TestJWTSecretSecurityContract:
                 f"发现硬编码的 JWT 回退密钥: {secret!r}"
             )
 
-    def test_decode_token_rejects_invalid_secret(self):
+    def test_decode_token_rejects_invalid_secret(self, monkeypatch):
         """decode_token 必须拒绝用错误密钥签名的 token"""
-        from src.api.deps import decode_token
+        monkeypatch.setenv("JWT_SECRET", "test-secret-for-contract-tests")
 
-        import os
-        os.environ.setdefault("JWT_SECRET", "test-secret-for-contract-tests")
+        # ★ 重新导入以确保使用当前环境变量
+        import importlib
+        from src.api import deps as deps_module
+        importlib.reload(deps_module)
+        decode_token = deps_module.decode_token
 
         from datetime import datetime, timedelta
         from jose import jwt

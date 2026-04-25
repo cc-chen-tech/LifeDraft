@@ -1,6 +1,6 @@
 # 02 - System Architecture
 
-> 最后核对：2026-04-19
+> 最后核对：2026-04-26
 
 ## 分层结构
 
@@ -40,12 +40,15 @@
 
 开关在 `config/feature_flags.py` 统一定义，默认关闭。典型开关：
 
-- `constraint_harness`
-- `narrative_style_engine`
-- `creative_enhancement`
-- `epic_narrative`
-- `vector_search`
-- `model_fallback`
-- `parallel_postprocessing`
+- `constraint_harness`：叙事约束验证与重试控制
+- `narrative_style_engine`：叙事风格模板系统（风格选择、自动匹配）
+- `creative_enhancement`：创意增强（情绪弧线、新颖性、伏笔）
+- `epic_narrative`：史诗叙事（角色弧线、世界演进、冲突塔）
+- `vector_search`：向量检索
+- `model_fallback`：模型降级兜底
+- `truncation_recovery`：截断恢复
+- `reactive_compression`：响应式压缩
+- `parallel_postprocessing`：并行后处理
+- `generation_state_tracking`：生成状态追踪
 
 设计新能力时，优先通过 flag 做灰度，不直接全量放开。
