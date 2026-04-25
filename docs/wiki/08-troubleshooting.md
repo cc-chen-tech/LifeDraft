@@ -84,7 +84,19 @@
 - 生产环境必须配置独立的密钥，已移除硬编码 fallback。
 - 密钥变更后所有已签发 token 失效，用户需重新登录。
 
-## 6) 升级后旧存档加载异常
+## 8) SSE 502/504 网关错误与断流
+
+前端 SSE 连接遇到 502/504 时自动重试（指数退避，最多 3 次）：
+
+- 检查 Nginx 网关超时设置（`proxy_read_timeout`、`proxy_connect_timeout`）。
+- 检查后端服务是否健康（`/api/health`）。
+- 检查 ECS 服务器资源是否耗尽（CPU/内存）。
+
+定位入口：
+- 前端：`frontend/src/lib/sse.ts`（`fetchSSEWithRetry`）
+- Nginx：`nginx/ecs-nginx.conf`
+
+## 9) 升级后旧存档加载异常
 
 先检查：
 

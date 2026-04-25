@@ -33,6 +33,7 @@ cp .env.example .env
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL`
 - `DATABASE_URL`（可选，不填使用本地 SQLite）
+- `JWT_SECRET_KEY`（生产环境必须设置独立密钥，已移除硬编码 fallback）
 - `COOKIE_SECURE=true`（生产环境建议）
 - `COOKIE_SAMESITE=lax`（按域名策略调整）
 
@@ -118,10 +119,12 @@ docker compose -f docker-compose.ecs.yml up -d --build
 - 检查 `COOKIE_SECURE`/`COOKIE_SAMESITE` 与协议/域名是否匹配
 - 检查前端是否走同域代理路径 `/api/*`
 
-### 7.2 SSE 长连接经常断开
+### 7.2 SSE 长连接经常断开或返回 502/504
 
 - 检查 Nginx 对 `text/event-stream` 的超时与缓冲设置
 - 确认代理没有提前切断长连接
+- 前端已实现 `fetchSSEWithRetry`，对 502/504 自动指数退避重试（最多 3 次）
+- 若频繁出现 502/504，检查后端健康状态与服务器资源
 
 ### 7.3 音乐播放 403
 

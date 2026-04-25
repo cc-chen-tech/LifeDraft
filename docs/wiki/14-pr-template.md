@@ -23,7 +23,7 @@
 - 回滚方案：
 
 ## 测试与验证
-- [ ] ./test.sh contract（含 security 契约测试 C-01~C-06）
+- [ ] ./test.sh contract（含 security 契约测试 C-01~C-07）
 - [ ] ./test.sh db
 - [ ] ./test.sh e2e（关键链路）
 - [ ] 安全：无硬编码密钥、SSE 端点已认证、无 pickle/raw SQL

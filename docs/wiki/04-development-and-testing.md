@@ -47,7 +47,7 @@ npm run test:e2e
 
 - Python：`black`、`isort`、`flake8`、`mypy`
 - Frontend：`eslint`、TypeScript strict、Jest/Playwright
-- 安全：`./test.sh security`（Bandit）+ 契约安全测试系列（C-01~C-06：JWT secret、硬编码密钥、SSE auth、图片 base64、SQLAlchemy raw SQL、pickle 禁用）
+- 安全：`./test.sh security`（Bandit）+ 契约安全测试系列（C-01~C-07：JWT secret、硬编码密钥、SSE auth、图片 base64、SQLAlchemy raw SQL、pickle 禁用、prompt injection）
 - 性能：`./test.sh perf`（Locust）
 
 ## 数据与配置注意点

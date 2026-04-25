@@ -1,6 +1,6 @@
 # 06 - API Call Matrix (Frontend -> Backend)
 
-> 最后核对：2026-04-19
+> 最后核对：2026-04-26
 
 ## 为什么要有这页
 
@@ -27,15 +27,21 @@
 - `POST /api/games/{gameId}/custom-choice-sync`
 - `POST /api/games/{gameId}/event-sync`
 
+成就与结局：
+
+- `GET /api/games/{gameId}/ending`
+- `GET /api/achievements`
+
 ## 常见模块映射
 
-- `api.games.*` -> `/api/games/*`（创建/加载/保存/设置/结局）
+- `api.games.*` -> `/api/games/*`（创建/加载/保存/设置/结局/成就）
 - `api.character.*` -> `/api/character/*`
 - `api.story.*` -> `/api/games/{id}/rewrite|regenerate|chat`
 - `api.images.*` -> `/api/images/*`
-- `api.collection.*` -> `/api/collection/*`
+- `api.collection.*` -> `/api/collection/*`（含批量生成地标图）
 - `api.auth.*` -> `/api/auth/*`
 - `api.music.*`（如果直接使用）-> `/api/music/*`
+- `api.achievements.*` -> `/api/achievements/*`
 
 ## 需要特别注意的“历史/兼容”路径
 

@@ -17,9 +17,10 @@
 - [ ] 错误码和错误信息可被前端识别  
 - [ ] 关键日志保留，避免静默失败  
 - [ ] 兼容旧状态快照
-- [ ] 无硬编码密钥或 secret fallback（security 契约测试 C-01~C-06）
+- [ ] 无硬编码密钥或 secret fallback（security 契约测试 C-01~C-07）
 - [ ] SSE 端点已检查认证要求（如场景图事件）
 - [ ] 图片/文件处理无 pickle、无 raw SQL 拼接
+- [ ] 用户输入已消毒（prompt injection 防护，如 `sanitize_player_name`）
 
 ## 测试级检查
 

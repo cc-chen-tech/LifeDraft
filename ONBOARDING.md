@@ -25,7 +25,7 @@ Top MCP Servers:
 ## Your Setup Checklist
 
 ### Codebases
-- [ ] lifedraft — https://github.com/cc-chen-tech/lifedraft
+- [x] LifeDraft — https://github.com/cc-chen-tech/LifeDraft
   - A life-simulation narrative game with AI-generated storylines, character creation, and music integration.
 
 ### MCP Servers to Activate
@@ -34,9 +34,10 @@ Top MCP Servers:
 ### Skills to Know About
 - `/batch` — run multiple prompts in parallel. Used heavily for bulk tasks.
 - `/superpowers:brainstorming` — explore designs and requirements before writing code. Used for feature planning.
+- `/superpowers:test-driven-development` — write failing tests first, then implement. Enforced for all production code.
 - `/plan` — create implementation plans for multi-step tasks.
 - `/superpowers:writing-plans` — write detailed implementation plans for agentic execution.
-- `/ralph-loop:ralph-loop` — start a Ralph Loop session (plugin-based workflow).
+- `/ralph-loop:ralph-loop` — start a Ralph Loop session (plugin-based iterative workflow).
 - `/clear` — clear conversation context when it gets too long.
 
 ## Team Tips
@@ -54,8 +55,8 @@ Top MCP Servers:
 
 1. **Clone the repo**
    ```bash
-   git clone https://github.com/cc-chen-tech/lifedraft.git
-   cd lifedraft
+   git clone https://github.com/cc-chen-tech/LifeDraft.git
+   cd LifeDraft
    ```
 
 2. **Install Claude Code and plugins**
@@ -69,7 +70,7 @@ Top MCP Servers:
 
 3. **Start the local stack**
    ```bash
-   docker compose up -d
+   ./start.sh
    ```
 
 4. **Read the project docs**
