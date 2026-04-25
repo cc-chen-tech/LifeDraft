@@ -169,9 +169,6 @@ def _allocate_constraint_budget(
         if current <= allowed:
             continue
 
-        # 需要从这个项目削减的量
-        trim_amount = min(current - allowed, excess)
-
         # 计算允许的字符数：根据 token/char 比率反推
         chinese_chars = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
         if chinese_chars > len(text) * 0.3:
@@ -819,22 +816,22 @@ def _build_foreshadowing_context(
             lines.append(f"当时的场景：{context}")
         if chars_str:
             lines.append(f"涉及人物：{chars_str}")
-        lines.append(f"")
+        lines.append("")
         lines.append(f"请{intensity_zh}将这个伏笔的回响编织进本轮故事：{type_hint}。")
-        lines.append(f"")
+        lines.append("")
         lines.append(f"【隐蔽度指导】{intensity_detail_zh}")
         lines.append(f"【回收方式】{recycle_hint}")
         lines.append(f"【叙事角色】{weight_hint}")
-        lines.append(f"")
-        lines.append(f"克制与延迟满足的艺术：")
-        lines.append(f"- 不要一次揭示全部——留白是力量。只展现伏笔回响的一个切面")
-        lines.append(f"- 回响可以引发新的疑问，而非回答所有问题")
-        lines.append(f"- 让读者自己'发现'关联，而非由叙述者指出")
+        lines.append("")
+        lines.append("克制与延迟满足的艺术：")
+        lines.append("- 不要一次揭示全部——留白是力量。只展现伏笔回响的一个切面")
+        lines.append("- 回响可以引发新的疑问，而非回答所有问题")
+        lines.append("- 让读者自己'发现'关联，而非由叙述者指出")
         lines.append(
-            f"- 引入方式：人物对话、巧合重逢、意外发现、消息传来、梦境、相似情境"
+            "- 引入方式：人物对话、巧合重逢、意外发现、消息传来、梦境、相似情境"
         )
         lines.append(
-            f"- 禁止直接提及'伏笔''回响''草蛇灰线''呼应''命运''前因后果'等元叙述词汇"
+            "- 禁止直接提及'伏笔''回响''草蛇灰线''呼应''命运''前因后果'等元叙述词汇"
         )
         return "\n".join(lines)
     else:
@@ -851,30 +848,30 @@ def _build_foreshadowing_context(
             lines.append(f"Original scene: {context}")
         if chars_str:
             lines.append(f"Characters involved: {', '.join(characters)}")
-        lines.append(f"")
+        lines.append("")
         lines.append(
             f"Weave this echo {intensity_en} into the current story: {type_hint}."
         )
-        lines.append(f"")
+        lines.append("")
         lines.append(f"[Concealment Guidance] {intensity_detail_en}")
         lines.append(f"[Recovery Method] {recycle_hint}")
         lines.append(f"[Narrative Role] {weight_hint}")
-        lines.append(f"")
-        lines.append(f"The Art of Restraint & Delayed Gratification:")
+        lines.append("")
+        lines.append("The Art of Restraint & Delayed Gratification:")
         lines.append(
-            f"- Don't reveal everything at once — show only ONE facet of the echo"
+            "- Don't reveal everything at once — show only ONE facet of the echo"
         )
         lines.append(
-            f"- The echo can raise new questions rather than answering all of them"
+            "- The echo can raise new questions rather than answering all of them"
         )
         lines.append(
-            f"- Let readers 'discover' the connection themselves, don't spell it out"
+            "- Let readers 'discover' the connection themselves, don't spell it out"
         )
         lines.append(
-            f"- Introduction methods: dialogue, coincidental meeting, unexpected discovery, news arriving, dreams, parallel situations"
+            "- Introduction methods: dialogue, coincidental meeting, unexpected discovery, news arriving, dreams, parallel situations"
         )
         lines.append(
-            f"- NEVER mention 'foreshadowing', 'echo', 'callback', 'destiny', 'fate', 'cause and effect', or any meta-narrative terms"
+            "- NEVER mention 'foreshadowing', 'echo', 'callback', 'destiny', 'fate', 'cause and effect', or any meta-narrative terms"
         )
         return "\n".join(lines)
 
@@ -1018,12 +1015,8 @@ def _build_established_facts_context(
 
         category = fact.get("category", "fact")
         cat_label = labels.get(category, labels.get("fact", "Fact"))
-        subject = fact.get("subject", "")
-        fact_text = fact.get("fact", "")
-        source_week = fact.get("source_week", "")
 
         # 构建单条事实（使用压缩模式）
-        priority = get_priority(fact)
         compressed = _compress_fact(fact, language)
         if language == "zh":
             line = f"- 【{cat_label}】{compressed}"
@@ -1338,6 +1331,7 @@ def _build_common_story_constraints(language: str, quality_level: str = "expert"
 1. {CONSTRAINT_MUST} **人称要求**：必须使用第三人称叙事（"他/她"而非"我/你"）
 2. {CONSTRAINT_MUST} **禁止跳脱叙事**：禁止提及"游戏""系统""属性值"等元信息
 3. {CONSTRAINT_MUST} **故事结尾要求**：故事结尾必须停在一个具体决策点
+4. {CONSTRAINT_MUST} **正确使用标点**：对话必须用""包裹，句末使用句号/问号/感叹号，句内用逗号/顿号合理断句。禁止出现没有标点的大段连续文字
 """
         if level == "master":
             return f"""
@@ -1359,7 +1353,13 @@ def _build_common_story_constraints(language: str, quality_level: str = "expert"
    - 对话必须自然推动情节，避免功能性说明
    - 人物行为必须符合其性格和背景设定
    - 情绪变化必须有充分的情节铺垫
-6. {CONSTRAINT_SHOULD} **大师级写作建议**：注意故事节奏的张弛有度，避免平铺直叙；在关键决策点前营造适当的紧张感或期待感
+6. {CONSTRAINT_MUST} **标点符号规范（违反即失败）**：
+   - 对话必须用中文引号 "" 包裹，如：她说："你今天怎么来了？"
+   - 每句话末尾必须使用句号、问号或感叹号
+   - 句内必须使用逗号、顿号合理断句，禁止出现超过30字无标点的情况
+   - 禁止出现没有标点的大段连续文字
+   - 标点禁止中英混用
+7. {CONSTRAINT_SHOULD} **大师级写作建议**：注意故事节奏的张弛有度，避免平铺直叙；在关键决策点前营造适当的紧张感或期待感
 """
         # expert (default)
         return f"""
@@ -1376,7 +1376,13 @@ def _build_common_story_constraints(language: str, quality_level: str = "expert"
    - 错误示例：「他们相视而笑。」（无决策点）、「一切都已经不一样了。」（纯情感结尾）
    - 故事结尾必须是：某人说出一句话需要主角回应、面临两个选择、需要做出承诺、需要表态等
    - **绝对禁止**以纯情感描写或感慨收尾，必须有具体的"下一步怎么办"的悬念
-5. {CONSTRAINT_SHOULD} **写作建议**：注意故事节奏的张弛有度，避免平铺直叙
+5. {CONSTRAINT_MUST} **正确使用标点符号**：
+   - 对话必须用中文引号 "" 包裹
+   - 每句话末尾必须使用句号、问号或感叹号
+   - 句内必须使用逗号、顿号合理断句，禁止出现超过30字无标点的情况
+   - 禁止出现没有标点的大段连续文字
+   - 标点禁止中英混用
+6. {CONSTRAINT_SHOULD} **写作建议**：注意故事节奏的张弛有度，避免平铺直叙
 """
     else:
         if level == "fast":
@@ -1385,6 +1391,7 @@ def _build_common_story_constraints(language: str, quality_level: str = "expert"
 1. {CONSTRAINT_MUST} **Perspective**: MUST use third-person narration ("he/she" not "I/you")
 2. {CONSTRAINT_MUST} **NO FOURTH-WALL BREAKING**: Never mention 'game', 'system', 'stats', etc.
 3. {CONSTRAINT_MUST} **STORY ENDING REQUIREMENT**: Story MUST end at a concrete decision point
+4. {CONSTRAINT_MUST} **Proper Punctuation**: Dialogue MUST be in quotation marks. Every sentence MUST end with a period, question mark, or exclamation. Use commas and semicolons for clause breaks. No run-on paragraphs without punctuation
 """
         if level == "master":
             return f"""
@@ -1406,7 +1413,13 @@ def _build_common_story_constraints(language: str, quality_level: str = "expert"
    - Dialogue must naturally advance the plot, avoid functional exposition
    - Character actions MUST align with their personality and background
    - Emotional changes MUST have sufficient plot buildup
-6. {CONSTRAINT_SHOULD} **Master-Level Writing Advice**: Pay attention to story pacing; create appropriate tension or anticipation before key decision points
+6. {CONSTRAINT_MUST} **Proper Punctuation (violation = failure)**:
+   - Dialogue MUST be wrapped in quotation marks, e.g.: She said, "Why are you here today?"
+   - Every sentence MUST end with a period, question mark, or exclamation mark
+   - Use commas and semicolons for clause breaks; no run-on sentences over 30 words without punctuation
+   - No paragraphs without any punctuation
+   - Do not mix Chinese and English punctuation
+7. {CONSTRAINT_SHOULD} **Master-Level Writing Advice**: Pay attention to story pacing; create appropriate tension or anticipation before key decision points
 """
         # expert (default)
         return f"""
@@ -1423,7 +1436,13 @@ def _build_common_story_constraints(language: str, quality_level: str = "expert"
    - Bad: 'They looked at each other and smiled.' (no decision point) 'Everything has changed.' (pure emotional ending)
    - Ending MUST be: someone asks a question requiring response, facing two paths, needing to make a promise, needing to take a stance, etc.
    - **ABSOLUTELY FORBIDDEN** to end with pure emotional reflection or sentiment - there must be a concrete "what happens next" tension
-5. {CONSTRAINT_SHOULD} **Writing Advice**: Pay attention to story pacing, avoid flat narration
+5. {CONSTRAINT_MUST} **Proper Punctuation**:
+   - Dialogue MUST be wrapped in quotation marks
+   - Every sentence MUST end with a period, question mark, or exclamation mark
+   - Use commas and semicolons for clause breaks; no run-on sentences over 30 words without punctuation
+   - No paragraphs without any punctuation
+   - Do not mix Chinese and English punctuation
+6. {CONSTRAINT_SHOULD} **Writing Advice**: Pay attention to story pacing, avoid flat narration
 """
 
 

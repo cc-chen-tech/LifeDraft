@@ -381,23 +381,29 @@ Key Relationships: {rel_str}{storylines_context}{facts_context}{world_model_cont
    - Include essential dialogue, expressions, actions, inner thoughts
    - Use quotation marks for dialogue, e.g.: She said, "Why are you here today?"
    - Focus on the key decision point while building atmosphere
-6. Options should present real trade-offs - no option should be clearly superior
-7. Relationship effects should be specified as "relationships": {{"name": +/-value}}, **name MUST come from Available People List**
-8. **IMPORTANT: Based on the character's personality, abilities, interests, and life vision, mark each option with "likely_choice": true/false to indicate what the character would most likely choose. At least one option should have likely_choice: true.**
-9. **ABSOLUTELY FORBIDDEN to generate events that don't match character background**, for example:
+6. **Proper Punctuation (violation = failure)**:
+   - Dialogue MUST be wrapped in quotation marks
+   - Every sentence MUST end with a period, question mark, or exclamation mark
+   - Use commas and semicolons for clause breaks; no run-on sentences over 30 words without punctuation
+   - No paragraphs without any punctuation
+   - Do not mix Chinese and English punctuation
+7. Options should present real trade-offs - no option should be clearly superior
+8. Relationship effects should be specified as "relationships": {{"name": +/-value}}, **name MUST come from Available People List**
+9. **IMPORTANT: Based on the character's personality, abilities, interests, and life vision, mark each option with "likely_choice": true/false to indicate what the character would most likely choose. At least one option should have likely_choice: true.**
+10. **ABSOLUTELY FORBIDDEN to generate events that don't match character background**, for example:
     - Ancient character encounters "company", "client proposal", "mentor", "Friday after work" etc. modern concepts
     - Student character encounters "company innovation competition", "client proposal" etc. workplace events
     - Spy character encounters "company innovation competition", "client proposal" etc. ordinary workplace events
     - Event contains people not in the "Available People List"
-10. **CRITICAL: Each generated event should be completely different from recent history. Avoid repeating the same plot and options. Be creative and create diverse life scenarios.**
+11. **CRITICAL: Each generated event should be completely different from recent history. Avoid repeating the same plot and options. Be creative and create diverse life scenarios.**
     - **FORBIDDEN opening patterns**: Do not start with "XX sat in the study", "candles flickered", "dawn was breaking" or similar cliché openings that have been used before
     - **FORBIDDEN repeated props**: Do not reuse the same props (e.g. "three documents on the desk", "a letter", "a report") across consecutive events
     - **FORBIDDEN repeated entrances**: Do not have characters always "push open the door" or "walk in quickly" - vary how characters appear
     - **FORBIDDEN atmosphere recycling**: Do not repeat the same weather/atmosphere descriptions (rain, fog, candlelight shadows)
     - **Vary story structure**: Start from different moments (mid-conversation, mid-action, a surprising discovery) rather than always from "morning in a room"
     - **Vary conflict types**: Rotate between interpersonal conflicts, moral dilemmas, unexpected discoveries, external crises, personal growth moments{logic_constraints}
-12. **NO FOURTH-WALL BREAKING**: The story must NEVER contain meta-commentary, references to 'game', 'simulation', 'system', 'stats', 'energy points', 'mood value', etc. No author asides, no addressing the reader, no explaining creative intent. The story must remain fully immersed in the character's world.
-13. **DO NOT FABRICATE PAST EVENTS**: Any past events referenced in the story MUST come from the context provided above. ABSOLUTELY FORBIDDEN to invent memories, conversations, events or experiences that never happened. Do not mention uncertain past events.
+13. **NO FOURTH-WALL BREAKING**: The story must NEVER contain meta-commentary, references to 'game', 'simulation', 'system', 'stats', 'energy points', 'mood value', etc. No author asides, no addressing the reader, no explaining creative intent. The story must remain fully immersed in the character's world.
+14. **DO NOT FABRICATE PAST EVENTS**: Any past events referenced in the story MUST come from the context provided above. ABSOLUTELY FORBIDDEN to invent memories, conversations, events or experiences that never happened. Do not mention uncertain past events.
 
 REMINDER: event_description should be 800-1200 words - engaging and immersive. Focus on the key moment with atmosphere and depth.
 
@@ -602,15 +608,21 @@ def _get_chinese_prompt(
    - 包含必要的对话、表情、动作、内心活动
    - 对话用引号表示，如：她说："你今天怎么来了？"
    - 聚焦核心决策点，同时营造氛围
-6. 选项应呈现真实的权衡取舍，不应有明显最优选项
-7. 关系影响应指定为"relationships": {{"姓名": +/-数值}}，**姓名必须来自可用人物列表**
-8. **重要：根据角色的性格特点、能力、兴趣和人生愿景，在选项中标注"likely_choice": true/false，表示该角色最可能做出的选择。每个事件至少有一个likely_choice为true的选项。**
-9. **绝对禁止生成与角色背景不符的事件**，例如：
+6. **正确使用标点符号（违反即失败）**：
+   - 对话必须用中文引号 "" 包裹
+   - 每句话末尾必须使用句号、问号或感叹号
+   - 句内必须使用逗号、顿号合理断句，禁止出现超过30字无标点的情况
+   - 禁止出现没有标点的大段连续文字
+   - 标点禁止中英混用
+7. 选项应呈现真实的权衡取舍，不应有明显最优选项
+8. 关系影响应指定为"relationships": {{"姓名": +/-数值}}，**姓名必须来自可用人物列表**
+9. **重要：根据角色的性格特点、能力、兴趣和人生愿景，在选项中标注"likely_choice": true/false，表示该角色最可能做出的选择。每个事件至少有一个likely_choice为true的选项。**
+10. **绝对禁止生成与角色背景不符的事件**，例如：
     - 古代角色遇到"公司"、"客户提案"、"导师"、"周五下班"等现代概念
     - 学生角色遇到"公司内部创新大赛"、"客户提案"等职场事件
     - 间谍角色遇到"公司内部创新大赛"、"客户提案"等普通职场事件
     - 事件中出现不在"可用人物列表"中的人物
-10. **CRITICAL：每次生成的事件应该与近期历史完全不同，避免重复相同的情节和选项。发挥创意，创造多样化的生活场景。**
+11. **CRITICAL：每次生成的事件应该与近期历史完全不同，避免重复相同的情节和选项。发挥创意，创造多样化的生活场景。**
     - **禁止套路开头**：不要再用"某人坐在书房"、"烛火摇曳"、"晨光熙微"、"天还未亮"等已用过的开头
     - **禁止万能道具开场**：不要用"案上攓着三份文书"、"一封密报"等作为通用场景道具——核心剧情物件正常提及不受限，但描写角度必须变化
     - **禁止重复登场**：人物不要每次都"推门进来""快步走来"，应变化登场方式
@@ -618,8 +630,8 @@ def _get_chinese_prompt(
     - **故事结构必须变化**：不要总是"早晨在房间"开始，可从对话中场、行动中场、意外发现、突发危机开始
     - **冲突类型必须轮换**：人际矛盾、道德困境、意外发现、外部危机、个人成长等交替使用
     - **注意区分**：核心道具/人物/地点的剧情性复现是正常的，重复指的是用相同的句式、结构、氛围词偷懒{logic_constraints}
-12. **严禁跳脱叙事**：故事中绝对不能出现任何打破第四面墙的内容，包括但不限于：提及"游戏""模拟""系统""属性值""精力值""情绪值"等元信息；出现作者旁白、对读者说话、解释创作意图；出现对故事本身的评论或总结性元叙述。故事应完全沉浸在角色的世界中。
-13. **严禁编造过往事件**：故事中提到的任何过去发生的事情，必须来自上面提供的上下文（上周故事、近期总结、年度回顾等）。绝对禁止凭空捏造从未发生过的回忆、对话、事件或经历。不确定的过往不要提及。
+13. **严禁跳脱叙事**：故事中绝对不能出现任何打破第四面墙的内容，包括但不限于：提及"游戏""模拟""系统""属性值""精力值""情绪值"等元信息；出现作者旁白、对读者说话、解释创作意图；出现对故事本身的评论或总结性元叙述。故事应完全沉浸在角色的世界中。
+14. **严禁编造过往事件**：故事中提到的任何过去发生的事情，必须来自上面提供的上下文（上周故事、近期总结、年度回顾等）。绝对禁止凭空捏造从未发生过的回忆、对话、事件或经历。不确定的过往不要提及。
 
 再次强调：event_description应该800-1200字，生动有深度。既不过长影响节奏，也不过短缺乏沉浸感！
 
@@ -706,7 +718,8 @@ def get_result_generation_prompt(
 3. 展现这个选择带来的即时后果和情感变化
 4. 保持沉浸式第二人称叙事（"你"的视角）
 5. 语言生动流畅，有细节感，对话要体现人物性格
-6. 严禁跳脱叙事：不得提及"游戏""模拟""系统""属性值"等元信息，不得出现作者旁白
+6. 正确使用标点符号：对话必须用""包裹，句末使用句号/问号/感叹号，句内用逗号合理断句。禁止出现没有标点的大段连续文字
+7. 严禁跳脱叙事：不得提及"游戏""模拟""系统""属性值"等元信息，不得出现作者旁白
 
 仅返回续写的故事内容，不要其他说明或标题。"""
     else:
@@ -729,7 +742,8 @@ def get_result_generation_prompt(
 3. Show immediate consequences and emotional changes from this choice
 4. Maintain immersive second-person narrative ("you" perspective)
 5. Vivid and fluid language with good details, dialogue should reflect character personality
-6. NO FOURTH-WALL BREAKING: never mention 'game', 'simulation', 'system', 'stats', etc. No author asides
+6. Proper punctuation: dialogue MUST be in quotation marks, every sentence MUST end with a period/question/exclamation, use commas for clause breaks. No run-on paragraphs without punctuation
+7. NO FOURTH-WALL BREAKING: never mention 'game', 'simulation', 'system', 'stats', etc. No author asides
 
 Return only the story continuation, no other explanations or headers."""
 
