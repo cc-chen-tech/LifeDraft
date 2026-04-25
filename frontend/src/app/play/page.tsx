@@ -48,6 +48,7 @@ import {
   History,
   Settings,
   BookOpen,
+  Users,
 } from "lucide-react";
 
 /**
@@ -231,6 +232,17 @@ export default function PlayPage() {
               aria-label="收集"
             >
               <BookOpen className="w-4 h-4" />
+            </Button>
+            {/* ★ 好友按钮 */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => router.push("/profile")}
+              title="好友"
+              aria-label="好友"
+            >
+              <Users className="w-4 h-4" />
             </Button>
             {/* ★ 历史回顾按钮 */}
             <Button

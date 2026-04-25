@@ -262,6 +262,23 @@ describe('PlayPage', () => {
     });
   });
 
+  describe('Navigation buttons', () => {
+    it('shows friends button that navigates to profile', () => {
+      const mockRouter = { push: jest.fn() };
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        router: mockRouter,
+      });
+
+      render(<PlayPage />);
+      const friendsButton = screen.getByRole('button', { name: /好友|社交|friends/i });
+      expect(friendsButton).toBeInTheDocument();
+      fireEvent.click(friendsButton);
+      expect(mockRouter.push).toHaveBeenCalledWith('/profile');
+    });
+  });
+
   describe('History functionality', () => {
     it('shows history button', () => {
       render(<PlayPage />);
