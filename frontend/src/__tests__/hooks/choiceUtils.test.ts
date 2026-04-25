@@ -16,6 +16,7 @@ jest.mock('@/stores/useGameStore', () => ({
       },
       roundInfo: { current_round: 1 },
       generateRoundSceneImage: jest.fn().mockResolvedValue(undefined),
+      setLastChoiceEffects: jest.fn(),
     })),
   },
 }));
@@ -53,6 +54,7 @@ const resetMockStore = (overrides = {}) => {
     },
     roundInfo: { current_round: 1 },
     generateRoundSceneImage: jest.fn().mockResolvedValue(undefined),
+    setLastChoiceEffects: jest.fn(),
     ...overrides,
   });
 };

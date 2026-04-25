@@ -20,6 +20,7 @@ jest.mock('@/stores/useGameStore', () => ({
       syncPlayerState: mockSyncPlayerState,
       generateSummary: mockGenerateSummary,
     })),
+    setState: jest.fn(),
   },
 }));
 

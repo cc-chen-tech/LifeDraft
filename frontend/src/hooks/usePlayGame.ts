@@ -540,6 +540,7 @@ export function usePlayGame() {
     storyText,
     currentEvent,
     isGameOver,
+    lastChoiceEffects: useGameStore((state) => state.lastChoiceEffects),
 
     // Refs
     storyContainerRef,

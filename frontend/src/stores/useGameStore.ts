@@ -57,6 +57,7 @@ interface GameState {
   currentEvent: GameEvent | null;
   storyText: string;
   lastSummary: Record<string, unknown> | null; // Summary is intentionally flexible
+  lastChoiceEffects: Record<string, number> | null;
 
   // Saves & presets
   savedGames: GameListItem[];
@@ -106,6 +107,7 @@ interface GameState {
   setGameOver: (over: boolean) => void;
   generateSummary: (weeks?: number) => Promise<void>;
   clearSummary: () => void;
+  setLastChoiceEffects: (effects: Record<string, number> | null) => void;
 
   // Actions — Lists
   fetchSavedGames: () => Promise<void>;
@@ -170,6 +172,7 @@ export const useGameStore = create<GameState>()(
     currentEvent: null,
     storyText: "",
     lastSummary: null,
+    lastChoiceEffects: null,
 
     // Lists
     savedGames: [],
@@ -381,6 +384,10 @@ export const useGameStore = create<GameState>()(
     clearSummary: () => {
       useEventStore.getState().clearSummary();
       set({ lastSummary: null });
+    },
+
+    setLastChoiceEffects: (effects) => {
+      set({ lastChoiceEffects: effects });
     },
 
     // ==================== List Actions ====================

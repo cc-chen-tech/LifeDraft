@@ -78,6 +78,24 @@ export function handleChoiceComplete(
 
   setCurrentEvent(null);
 
+  // ★ 提取并保存选择影响（资源变化）
+  const effectsApplied = result.effects_applied as Record<string, number> | undefined;
+  const bonusEffects = result.bonus_effects as Record<string, number> | undefined;
+  const allEffects: Record<string, number> = {};
+  if (effectsApplied) {
+    Object.entries(effectsApplied).forEach(([key, val]) => {
+      if (typeof val === "number") allEffects[key] = val;
+    });
+  }
+  if (bonusEffects) {
+    Object.entries(bonusEffects).forEach(([key, val]) => {
+      if (typeof val === "number") {
+        allEffects[key] = (allEffects[key] || 0) + val;
+      }
+    });
+  }
+  useGameStore.getState().setLastChoiceEffects(Object.keys(allEffects).length > 0 ? allEffects : null);
+
   // ★ 故事完成后，异步生成结果插画 (stage='result')
   const state = useGameStore.getState();
   const roundNumber = (state.roundInfo?.current_round as number) || 0;

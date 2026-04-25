@@ -33,6 +33,7 @@ import { RoundSceneImageDisplay } from "@/components/game/RoundSceneImage";
 import { HistorySceneImage } from "@/components/game/HistorySceneImage";
 import { CollectionPanel } from "@/components/game/CollectionPanel";
 import { MusicPlayer } from "@/components/game/MusicPlayer";
+import { ChoiceImpactDisplay } from "@/components/game/ChoiceImpactDisplay";
 import { usePlayGame, STATUS_MESSAGES } from "@/hooks/usePlayGame";
 import { useGameIdFromUrl } from "@/hooks/useGameIdFromUrl";
 import { useGameStore } from "@/stores/useGameStore";
@@ -89,6 +90,7 @@ export default function PlayPage() {
     roundInfo,
     storyText,
     isGameOver,
+    lastChoiceEffects,
 
     // Refs
     storyContainerRef,
@@ -443,13 +445,18 @@ export default function PlayPage() {
 
         {/* Round summary - only in result phase */}
         {roundSummary && phase === "result" && (
-          <div 
-            className="mb-4 rounded-lg px-4 py-3 animate-fade-in-word" 
+          <div
+            className="mb-4 rounded-lg px-4 py-3 animate-fade-in-word"
             style={{ background: 'rgba(99, 102, 241, 0.2)' }}
           >
             <span className="text-[#818cf8] text-sm font-medium">📝 轮次小结：</span>
             <span className="text-[#e2e8f0] text-sm ml-2">{roundSummary}</span>
           </div>
+        )}
+
+        {/* Choice impact - show resource changes after choice */}
+        {phase === "result" && (
+          <ChoiceImpactDisplay effects={lastChoiceEffects} className="mb-4" />
         )}
 
         {/* Options */}
