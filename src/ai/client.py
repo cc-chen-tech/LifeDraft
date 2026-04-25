@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 MAX_TOKENS_FALLBACK_LEVELS = [8000, 6000, 4000]  # 降级序列
 
 # ★ 模型降级链默认备选模型
-_DEFAULT_FALLBACK_MODELS: List[str] = ["deepseek-chat", "gpt-4o-mini"]
+_DEFAULT_FALLBACK_MODELS: List[str] = ["deepseek-v4-flash", "deepseek-chat", "gpt-4o-mini"]
 
 
 def _is_max_tokens_error(error_message: str) -> bool:

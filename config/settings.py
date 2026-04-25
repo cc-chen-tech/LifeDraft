@@ -48,7 +48,7 @@ class Settings:
     # 场景分析服务（复用现有DeepSeek配置或独立配置）
     SCENE_ANALYZER_API_KEY: Optional[str] = os.getenv("SCENE_ANALYZER_API_KEY")
     SCENE_ANALYZER_BASE_URL: Optional[str] = os.getenv("SCENE_ANALYZER_BASE_URL")
-    SCENE_ANALYZER_MODEL: str = os.getenv("SCENE_ANALYZER_MODEL", "deepseek-chat")
+    SCENE_ANALYZER_MODEL: str = os.getenv("SCENE_ANALYZER_MODEL", "deepseek-v4-flash")
 
     # 图片存储配置
     IMAGE_STORAGE_TYPE: str = os.getenv("IMAGE_STORAGE_TYPE", "local")  # local | oss
@@ -185,7 +185,7 @@ class Settings:
 #   from config.settings import get_feature, get_all_features
 #   if get_feature("model_fallback"): ...
 # ---------------------------------------------------------------------------
-from config.feature_flags import get_all_features, get_feature  # noqa: E402
+from config.feature_flags import get_all_features, get_feature  # noqa: E402,F401
 
 # Create a singleton instance
 settings = Settings()
