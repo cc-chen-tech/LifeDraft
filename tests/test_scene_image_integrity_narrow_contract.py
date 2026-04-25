@@ -5,6 +5,8 @@
 Layer 3: 契约测试
 """
 
+import os
+import tempfile
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,8 +20,16 @@ class TestSceneImageIntegrityNarrowContract:
     """IntegrityError 捕获范围契约测试。"""
 
     def test_unique_constraint_conflict_returns_existing(self, db_session):
-        """唯一约束冲突时应回滚并返回已有记录。"""
-        # 预置一条记录
+        """唯一约束冲突时应回滚并返回已有记录。
+
+        模拟并发场景：pre-insert 查询返回 None（另一个线程尚未提交），
+        但插入时触发唯一约束冲突，fallback 查询返回已有记录。
+        """
+        # 预置一条记录，使用真实存在的临时文件
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+            f.write(b"\x89PNG\r\n\x1a\n")
+            temp_path = f.name
+
         existing = SceneImage(
             game_id=10,
             week=0,
@@ -27,7 +37,7 @@ class TestSceneImageIntegrityNarrowContract:
             stage="result",
             scene_description="已有",
             final_prompt="prompt",
-            storage_path="/tmp/existing.png",
+            storage_path=temp_path,
             storage_type="local",
         )
         db_session.add(existing)
@@ -49,14 +59,14 @@ class TestSceneImageIntegrityNarrowContract:
 
             def side_effect_commit():
                 call_count[0] += 1
-                # 区分删除旧记录的 commit 和插入新记录的 commit
                 if call_count[0] == 1:
                     # 第一次 commit（删除旧记录）允许通过
                     original_commit()
                     return
                 # 第二次 commit（插入新记录）触发唯一约束冲突
                 raise IntegrityError(
-                    "(sqlite3.IntegrityError) UNIQUE constraint failed: scene_images.game_id, scene_images.week, scene_images.round_number, scene_images.stage",
+                    "(sqlite3.IntegrityError) UNIQUE constraint failed: "
+                    "scene_images.game_id, scene_images.week, scene_images.round_number, scene_images.stage",
                     "",
                     "",
                 )
@@ -76,6 +86,7 @@ class TestSceneImageIntegrityNarrowContract:
                 assert result.scene_id == existing.scene_id
             finally:
                 db_session.commit = original_commit
+                os.unlink(temp_path)
 
     def test_non_unique_integrity_error_is_re_raised(self, db_session):
         """非唯一约束的 IntegrityError（如外键违反）应重新抛出，不应吞掉。"""

@@ -14,9 +14,21 @@ from src.database.singletons import get_game_db, get_user_manager  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
-# JWT configuration
-JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-in-production")
+# JWT configuration — 必须从环境变量读取，禁止硬编码回退值
 JWT_ALGORITHM = "HS256"
+
+
+def _get_jwt_secret() -> str:
+    """延迟获取 JWT_SECRET，首次使用时检查环境变量。"""
+    secret = os.getenv("JWT_SECRET")
+    if not secret:
+        raise RuntimeError(
+            "JWT_SECRET environment variable is required. "
+            "Set it before starting the application."
+        )
+    return secret
+
+
 # Token 有效期：7 天（游戏应用场景，用户会话需要持久化）
 ACCESS_TOKEN_EXPIRE_DAYS = 7
 REFRESH_TOKEN_EXPIRE_DAYS = 7  # refresh token 过期时间
@@ -44,13 +56,13 @@ def create_token(user_id: int) -> str:
         "sub": str(user_id),
         "exp": datetime.utcnow() + timedelta(hours=JWT_EXPIRE_HOURS),
     }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)  # type: ignore[no-any-return]
+    return jwt.encode(payload, _get_jwt_secret(), algorithm=JWT_ALGORITHM)  # type: ignore[no-any-return]
 
 
 def decode_token(token: str) -> Optional[int]:
     """Decode a JWT token and return user_id, or None if invalid."""
     try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(token, _get_jwt_secret(), algorithms=[JWT_ALGORITHM])
         user_id_str = payload.get("sub")
         if user_id_str is None:
             return None
