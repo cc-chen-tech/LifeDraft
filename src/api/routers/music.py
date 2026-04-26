@@ -9,6 +9,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from src.api.deps import get_current_user_optional
+from src.database.models import SessionLocal
+from src.services.music_playlist_service import get_music_playlist_service
 from src.services.music_service import get_music_service
 
 logger = logging.getLogger(__name__)
@@ -49,6 +51,22 @@ class MusicRecommendationResponse(BaseModel):
     time_weather: Optional[str] = None  # 时间天气
     description: Optional[str] = None  # 音乐氛围描述
     songs: List[SongResponse]
+
+
+class PlaylistUpdateRequest(BaseModel):
+    """Request body for updating a game playlist with new recommendation songs."""
+
+    songs: List[SongResponse]
+    mood: Optional[str] = None
+    keywords: Optional[List[str]] = None
+
+
+class PlaylistSyncRequest(BaseModel):
+    """Request body for syncing playback state."""
+
+    current_position_ms: int = 0
+    is_playing: bool = False
+    volume: float = 0.5
 
 
 @router.post("/music/recommend", response_model=MusicRecommendationResponse)
@@ -330,3 +348,72 @@ async def stream_song(song_id: int, request: Request):
     except httpx.HTTPError as exc:
         logger.warning(f"[MusicStream] Failed to fetch audio for song {song_id}: {exc}")
         raise HTTPException(status_code=502, detail="Failed to fetch audio from CDN")
+
+
+@router.get("/music/playlist/{game_id}")
+async def get_playlist(game_id: int):
+    """Get the current playlist state for a game."""
+    db = SessionLocal()
+    try:
+        from src.database.models import Game
+
+        game = db.query(Game).filter_by(game_id=game_id).first()
+        if game is None:
+            raise HTTPException(status_code=404, detail="Game not found")
+
+        service = get_music_playlist_service()
+        state = service.get_state(db, game_id)
+        return state.to_dict()
+    finally:
+        db.close()
+
+
+@router.put("/music/playlist/{game_id}")
+async def update_playlist(game_id: int, request: PlaylistUpdateRequest):
+    """Merge new recommendation songs into the playlist.
+
+    Preserves the currently playing song; only the upcoming queue is replaced.
+    """
+    db = SessionLocal()
+    try:
+        service = get_music_playlist_service()
+        state = service.merge_songs(
+            db=db,
+            game_id=game_id,
+            songs=[s.model_dump() for s in request.songs],
+            mood=request.mood,
+            keywords=request.keywords,
+        )
+        return state.to_dict()
+    finally:
+        db.close()
+
+
+@router.post("/music/playlist/{game_id}/sync")
+async def sync_playlist_state(game_id: int, request: PlaylistSyncRequest):
+    """Sync current playback position and state."""
+    db = SessionLocal()
+    try:
+        service = get_music_playlist_service()
+        result = service.sync_state(
+            db=db,
+            game_id=game_id,
+            current_position_ms=request.current_position_ms,
+            is_playing=request.is_playing,
+            volume=request.volume,
+        )
+        return result
+    finally:
+        db.close()
+
+
+@router.post("/music/playlist/{game_id}/advance")
+async def advance_playlist(game_id: int):
+    """Advance to the next song in the queue."""
+    db = SessionLocal()
+    try:
+        service = get_music_playlist_service()
+        state = service.advance(db, game_id)
+        return state.to_dict()
+    finally:
+        db.close()
