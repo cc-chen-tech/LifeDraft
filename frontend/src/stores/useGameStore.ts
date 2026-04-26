@@ -57,7 +57,6 @@ interface GameState {
   currentEvent: GameEvent | null;
   storyText: string;
   lastSummary: Record<string, unknown> | null; // Summary is intentionally flexible
-  lastChoiceEffects: Record<string, number> | null;
 
   // Saves & presets
   savedGames: GameListItem[];
@@ -107,7 +106,6 @@ interface GameState {
   setGameOver: (over: boolean) => void;
   generateSummary: (weeks?: number) => Promise<void>;
   clearSummary: () => void;
-  setLastChoiceEffects: (effects: Record<string, number> | null) => void;
 
   // Actions — Lists
   fetchSavedGames: () => Promise<void>;
@@ -147,10 +145,6 @@ interface GameState {
   regenerateHistorySceneImage: (week: number, round: number, storyText: string, userPrompt: string, sceneId: number) => Promise<void>;
   setHistorySceneImage: (image: RoundSceneImage | null) => void;
 
-  // Actions — SSE
-  subscribeToSceneImageEvents: (gameId: number) => void;
-  unsubscribeFromSceneImageEvents: () => void;
-
   // Internal sync method
   _syncFromSubStores: () => void;
 }
@@ -172,7 +166,6 @@ export const useGameStore = create<GameState>()(
     currentEvent: null,
     storyText: "",
     lastSummary: null,
-    lastChoiceEffects: null,
 
     // Lists
     savedGames: [],
@@ -386,10 +379,6 @@ export const useGameStore = create<GameState>()(
       set({ lastSummary: null });
     },
 
-    setLastChoiceEffects: (effects) => {
-      set({ lastChoiceEffects: effects });
-    },
-
     // ==================== List Actions ====================
     fetchSavedGames: async () => {
       await useGameListStore.getState().fetchSavedGames();
@@ -429,9 +418,7 @@ export const useGameStore = create<GameState>()(
 
     updateCharacterSetting: (key, value) => {
       useCharacterStore.getState().updateCharacterSetting(key, value);
-      set((state) => ({
-        characterSettings: { ...state.characterSettings, [key]: value },
-      }));
+      set({ characterSettings: useCharacterStore.getState().characterSettings });
     },
 
     setPlayerName: (name) => {
@@ -601,14 +588,6 @@ export const useGameStore = create<GameState>()(
     setHistorySceneImage: (image) => {
       useSceneImageStore.getState().setHistorySceneImage(image);
       set({ historySceneImage: image });
-    },
-
-    // SSE 代理方法
-    subscribeToSceneImageEvents: (gameId) => {
-      useSceneImageStore.getState().subscribeToSceneImageEvents(gameId);
-    },
-    unsubscribeFromSceneImageEvents: () => {
-      useSceneImageStore.getState().unsubscribeFromSceneImageEvents();
     },
   })
 );

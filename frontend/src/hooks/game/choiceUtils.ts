@@ -96,8 +96,6 @@ export function handleChoiceComplete(
       }
     });
   }
-  useGameStore.getState().setLastChoiceEffects(Object.keys(allEffects).length > 0 ? allEffects : null);
-
   // ★ 故事完成后，异步生成结果插画 (stage='result')
   const state = useGameStore.getState();
   const roundNumber = (state.roundInfo?.current_round as number) || 0;

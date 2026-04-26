@@ -283,9 +283,6 @@ export const useSessionStore = create<SessionState>()(
         progress: null,
         roundInfo: null,
         isGameOver: false,
-        // ★ 重置时恢复默认设置
-        enableSceneImage: true,
-        constraintLevel: "expert",
       }),
 
     setGameOver: (over) => set({ isGameOver: over }),

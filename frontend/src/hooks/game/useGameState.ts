@@ -95,7 +95,6 @@ export function useGameState({
   // Continue after summary
   const handleContinueAfterSummary = useCallback(() => {
     setSummaryText("");
-    useGameStore.setState({ lastChoiceEffects: null });
     if (isGameOver) {
       setPhase("ending");
     } else {
@@ -111,7 +110,6 @@ export function useGameState({
   const handleContinueToNextRound = useCallback(() => {
     console.log(`[handleContinueToNextRound] User clicked continue button`);
     setRoundSummary(null);
-    useGameStore.setState({ lastChoiceEffects: null });
 
     // Check for prefetched result
     const prefetchResult = prefetchResultRef.current;

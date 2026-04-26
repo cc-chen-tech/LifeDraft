@@ -227,20 +227,11 @@ export const useMusicStore = create<MusicState>((set, get) => ({
     set({ fadeInterval: newFadeInterval });
   },
 
-  // Playlist actions
+  // Playlist actions (local-only; server playlist endpoints have been removed)
   loadPlaylist: async (gameId: number) => {
     set({ isLoadingPlaylist: true });
     try {
-      const { api } = await import('@/lib/api');
-      const data = await api.music.playlist.get(gameId);
-      set({
-        playlistGameId: gameId,
-        currentSong: data.current_song,
-        queue: data.queue.map((s: Song) => ({ ...s })),
-        playedSongs: data.played_songs.map((s: Song) => ({ ...s })),
-        isPlaying: data.is_playing,
-        volume: data.volume,
-      });
+      set({ playlistGameId: gameId });
     } catch (error) {
       console.error('[MusicStore] Failed to load playlist:', error);
     } finally {
@@ -248,57 +239,28 @@ export const useMusicStore = create<MusicState>((set, get) => ({
     }
   },
 
-  mergePlaylist: async (gameId: number, songs: Song[], mood?: string, keywords?: string[]) => {
-    try {
-      const { api } = await import('@/lib/api');
-      const data = await api.music.playlist.update(gameId, {
-        songs: songs.map((s) => ({
-          id: s.id,
-          name: s.name,
-          artists: s.artists,
-          album: s.album,
-          duration: s.duration,
-        })),
-        mood,
-        keywords,
-      });
-      set({
-        currentSong: data.current_song,
-        queue: data.queue.map((s: Song) => ({ ...s })),
-        playedSongs: data.played_songs.map((s: Song) => ({ ...s })),
-      });
-    } catch (error) {
-      console.error('[MusicStore] Failed to merge playlist:', error);
-    }
+  mergePlaylist: async (_gameId: number, songs: Song[], _mood?: string, _keywords?: string[]) => {
+    set({
+      currentSong: songs[0] ?? null,
+      queue: songs.slice(1),
+      playedSongs: [],
+    });
   },
 
-  syncPlaylistState: async (gameId: number, positionMs: number, isPlaying: boolean, volume: number) => {
-    try {
-      const { api } = await import('@/lib/api');
-      await api.music.playlist.sync(gameId, {
-        current_position_ms: positionMs,
-        is_playing: isPlaying,
-        volume,
-      });
-    } catch (error) {
-      console.error('[MusicStore] Failed to sync playlist state:', error);
-    }
+  syncPlaylistState: async (_gameId: number, _positionMs: number, _isPlaying: boolean, _volume: number) => {
+    // Local-only: state is managed client-side
   },
 
   advanceQueue: async () => {
-    const { playlistGameId } = get();
-    if (!playlistGameId) return;
-    try {
-      const { api } = await import('@/lib/api');
-      const data = await api.music.playlist.advance(playlistGameId);
-      set({
-        currentSong: data.current_song,
-        queue: data.queue.map((s: Song) => ({ ...s })),
-        playedSongs: data.played_songs.map((s: Song) => ({ ...s })),
-      });
-    } catch (error) {
-      console.error('[MusicStore] Failed to advance queue:', error);
-    }
+    const { queue, currentSong, playedSongs } = get();
+    if (queue.length === 0) return;
+    const nextSong = queue[0];
+    const newQueue = queue.slice(1);
+    set({
+      currentSong: nextSong,
+      queue: newQueue,
+      playedSongs: currentSong ? [...playedSongs, { ...currentSong }] : playedSongs,
+    });
   },
 
   // 清理
