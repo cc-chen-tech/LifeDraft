@@ -42,15 +42,32 @@ test.describe('Music Playlist Persistence', () => {
     await ensureAuthenticated(page, context);
     const gameId = await ensureActiveGame(page, context);
 
-    // Navigate to game page
+    // Seed a playlist via API so the global player has something to render
+    const putResp = await context.request.put(`${API_URL}/api/music/playlist/${gameId}`, {
+      data: {
+        songs: [
+          { id: 2001, name: '导航测试歌曲A', artists: ['歌手A'], album: '专辑X', duration: 180 },
+          { id: 2002, name: '导航测试歌曲B', artists: ['歌手B'], album: '专辑Y', duration: 200 },
+        ],
+        mood: '测试',
+        keywords: ['测试'],
+      },
+    });
+    expect(putResp.ok()).toBe(true);
+
+    // Set gameId in localStorage so GlobalMusicPlayer loads the persisted playlist
     await page.goto(`${BASE_URL}/play?gameId=${gameId}`);
     await page.waitForLoadState('domcontentloaded');
+    await page.evaluate((id) => localStorage.setItem('gameId', String(id)), gameId);
 
-    // Wait for music player to appear
-    await page.waitForSelector('text=场景音乐', { timeout: 120000 });
+    // Reload so GlobalMusicWrapper picks up the gameId and loads the playlist
+    await page.reload();
+    await page.waitForLoadState('domcontentloaded');
 
-    // Record current song name
-    const songNameLocator = page.locator('.bg-card.border.rounded-lg').filter({ hasText: '场景音乐' }).locator('.font-medium.truncate');
+    // Wait for music player to appear (playlist mode shows "播放列表")
+    await page.waitForSelector('text=播放列表', { timeout: 30000 });
+
+    const songNameLocator = page.locator('.bg-card.border.rounded-lg').filter({ hasText: '播放列表' }).locator('.font-medium.truncate');
     await expect(songNameLocator).toBeVisible({ timeout: 30000 });
     const firstSongName = await songNameLocator.textContent();
     expect(firstSongName).toBeTruthy();
@@ -65,14 +82,10 @@ test.describe('Music Playlist Persistence', () => {
     await page.waitForLoadState('domcontentloaded');
 
     // Music player should still be present
-    await page.waitForSelector('text=场景音乐', { timeout: 30000 });
+    await page.waitForSelector('text=播放列表', { timeout: 30000 });
     const restoredSongName = await songNameLocator.textContent();
     expect(restoredSongName).toBeTruthy();
 
-    // The current song should be the same (persisted via DB playlist)
-    // Note: if the playlist was empty before, the first song might differ after reload
-    // because the recommendation is regenerated. The key invariant is that
-    // the player renders and the playlist API returns state successfully.
     await page.screenshot({ path: 'test-results/playlist-persisted-navigation.png' });
   });
 
