@@ -63,14 +63,16 @@ describe("SettingFeedbackCard", () => {
       expect(screen.getByText("重新生成")).toBeInTheDocument();
     });
 
-    it("changes button text to cancel when editing", async () => {
+    it("changes feedback trigger button text to reflect editing state", async () => {
       const user = userEvent.setup();
       render(<SettingFeedbackCard {...baseProps} />);
 
       const button = screen.getByTestId("background-feedback-button");
-      await user.click(button);
+      expect(button).toHaveTextContent("给反馈重新生成");
 
-      expect(screen.getByText("取消")).toBeInTheDocument();
+      await user.click(button);
+      // After clicking, the button text changes to include "取消"
+      expect(button).toHaveTextContent("取消");
     });
 
     it("hides feedback input when clicking cancel", async () => {
@@ -165,7 +167,8 @@ describe("SettingFeedbackCard", () => {
         />
       );
       expect(screen.getByText("人际关系")).toBeInTheDocument();
-      expect(screen.getByTestId("relationships-feedback-input")).toBeUndefined(); // not yet expanded
+      // Feedback input should not exist before clicking the feedback button
+      expect(screen.queryByTestId("relationships-feedback-input")).not.toBeInTheDocument();
     });
   });
 

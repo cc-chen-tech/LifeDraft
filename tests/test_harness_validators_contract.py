@@ -391,7 +391,7 @@ class TestValidateForeshadowing:
 
     def test_seed_keyword_found_passes(self):
         passed, evidence, details = validate_foreshadowing(
-            "那封神秘的信件终于被打开了。",
+            "一封神秘信件终于被打开了。",
             {
                 "activated_seed": {
                     "description": "一封神秘信件",

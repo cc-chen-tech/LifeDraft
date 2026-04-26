@@ -20,7 +20,7 @@ def test_fast_mode_single_attempt():
     """FAST 模式下 generate_round_event 只尝试 1 次."""
     gen, client = _make_generator(QualityLevel.FAST)
 
-    with patch.object(gen, "generate_round_event") as mock_method:
+    with patch.object(gen, "generate_round_event") as mock_method:  # noqa: F841
         # 我们直接验证方法签名和内部逻辑，通过 spy 方式
         pass
 

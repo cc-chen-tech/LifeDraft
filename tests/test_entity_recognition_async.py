@@ -136,7 +136,7 @@ class TestAsyncTaskManagerIntegration:
 
         # 模拟业务逻辑：检查后再创建
         if not manager.has_active_task(1):
-            task2 = manager.create_task(game_id=1, user_id=1)
+            manager.create_task(game_id=1, user_id=1)
 
         # 验证仍然只有第一个任务
         assert manager.get_task(task1.task_id) is not None

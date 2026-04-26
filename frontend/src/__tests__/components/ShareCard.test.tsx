@@ -42,7 +42,8 @@ describe("ShareCard", () => {
 
     it("renders the life motto in quotes", () => {
       render(<ShareCard {...baseProps} />);
-      expect(screen.getByText(/"Never give up"/)).toBeInTheDocument();
+      // Component uses smart quotes (&ldquo; &rdquo; rendered as “ ”)
+      expect(screen.getByText(/“Never give up”/)).toBeInTheDocument();
     });
 
     it("renders achievement count", () => {
@@ -93,7 +94,8 @@ describe("ShareCard", () => {
 
     it("renders with empty life motto", () => {
       render(<ShareCard {...baseProps} lifeMotto="" />);
-      expect(screen.getByText(/""/)).toBeInTheDocument();
+      // Empty motto renders smart quotes with nothing in between
+      expect(screen.getByText(/“”/)).toBeInTheDocument();
     });
 
     it("renders with empty ending name", () => {

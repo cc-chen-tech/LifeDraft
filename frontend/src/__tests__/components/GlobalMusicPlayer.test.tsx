@@ -93,7 +93,8 @@ describe("GlobalMusicPlayer", () => {
       });
 
       render(<GlobalMusicPlayer />);
-      expect(screen.getByText("等待音乐...")).toBeInTheDocument();
+      // Recommendation provides song name fallback when no currentSong
+      expect(screen.getByText("Test Song")).toBeInTheDocument();
     });
 
     it("renders when there is a currentSong from persisted state", () => {

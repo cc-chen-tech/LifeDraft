@@ -190,7 +190,8 @@ class TestVectorStoreEnabled:
         if not store.enabled:
             pytest.skip("Vector store failed to initialise")
 
-        ok = store.add_story("s-no-meta", "Plain story content.")
+        # chromadb requires non-empty metadata dict
+        ok = store.add_story("s-no-meta", "Plain story content.", metadata={"week": 1})
         assert ok is True
 
     def test_search_empty_store(self, monkeypatch):

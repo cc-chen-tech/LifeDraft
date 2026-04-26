@@ -5,13 +5,11 @@ to verify request/response contract, error handling, and required fields.
 """
 
 import pytest
-from sqlalchemy.orm import Session
 
-from src.database.models import Game, Image as ImageModel
+from src.database.models import Image as ImageModel
 from src.services.image import ImageContentError, ImageServiceError
 from src.services.image.character_service import CharacterImageService
 from src.services.image_storage import ImageStorageService
-
 
 # ---------------------------------------------------------------------------
 # Stub classes -- hand-rolled fakes, NOT unittest.mock
@@ -31,10 +29,16 @@ class StubImageClient:
             "distinctive_features": [],
             "anchor_summary_sn": "黑色短发，棕色眼睛，中等身材",
         }
-        self.images_data = images_data or [
-            (b"\x89PNG\r\n\x1a\nfake_image", "test character prompt"),
-        ]
-        self.primary_url = images_data and "https://example.com/primary.png" or None
+        self.images_data = (
+            images_data
+            if images_data is not None
+            else [(b"\x89PNG\r\n\x1a\nfake_image", "test character prompt")]
+        )
+        self.primary_url = (
+            "https://example.com/primary.png"
+            if images_data is not None and len(images_data) > 0
+            else None
+        )
         self.last_generate_call = None
         self.last_anchor_call = None
 
@@ -278,9 +282,7 @@ class TestGenerateCharacterImage:
         assert result[1].is_primary is False
 
     def test_reference_image_sets_is_primary_false(self, db_session):
-        client = StubImageClient(
-            images_data=[(b"img1", "p1")]
-        )
+        client = StubImageClient(images_data=[(b"img1", "p1")])
         service = self._make_service(db_session, client=client)
         result = service.generate_character_image(
             game_id=1,
@@ -316,25 +318,19 @@ class TestGenerateCharacterImage:
         client = StubImageClient(images_data=[])
         service = self._make_service(db_session, client=client)
         with pytest.raises(ImageServiceError, match="没有成功生成任何图片"):
-            service.generate_character_image(
-                game_id=1, name="Test", description="test"
-            )
+            service.generate_character_image(game_id=1, name="Test", description="test")
 
     def test_image_generation_error_raises_service_error(self, db_session):
         client = FailingImageClient()
         service = self._make_service(db_session, client=client)
         with pytest.raises(ImageServiceError, match="图像生成失败"):
-            service.generate_character_image(
-                game_id=1, name="Test", description="test"
-            )
+            service.generate_character_image(game_id=1, name="Test", description="test")
 
     def test_content_inspection_error_raises_content_error(self, db_session):
         client = ContentFailingImageClient()
         service = self._make_service(db_session, client=client)
         with pytest.raises(ImageContentError):
-            service.generate_character_image(
-                game_id=1, name="Test", description="test"
-            )
+            service.generate_character_image(game_id=1, name="Test", description="test")
 
     def test_images_persisted_in_db(self, db_session):
         service = self._make_service(db_session)
@@ -345,9 +341,7 @@ class TestGenerateCharacterImage:
         )
         # Query back from DB
         saved = (
-            db_session.query(ImageModel)
-            .filter(ImageModel.image_id == result[0].image_id)
-            .first()
+            db_session.query(ImageModel).filter(ImageModel.image_id == result[0].image_id).first()
         )
         assert saved is not None
         assert saved.entity_name == "db_test"
@@ -400,9 +394,7 @@ class TestGenerateCharacterImage:
     def test_storage_save_called(self, db_session):
         storage = StubImageStorage()
         service = self._make_service(db_session, storage=storage)
-        service.generate_character_image(
-            game_id=1, name="Test", description="test"
-        )
+        service.generate_character_image(game_id=1, name="Test", description="test")
         assert storage.last_save_call is not None
         assert storage.last_save_call["game_id"] == 1
         assert storage.last_save_call["image_type"] == "character"
@@ -522,7 +514,9 @@ class TestCharacterServiceEdgeCases:
 
     def test_generate_with_style_hint(self, db_session):
         client = StubImageClient()
-        service = CharacterImageService(db_session, image_client=client, storage_service=StubImageStorage())
+        service = CharacterImageService(
+            db_session, image_client=client, storage_service=StubImageStorage()
+        )
         result = service.generate_character_image(
             game_id=1,
             name="Test",

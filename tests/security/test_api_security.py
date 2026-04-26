@@ -115,7 +115,7 @@ class TestAuthentication:
         ]
 
         for token in invalid_tokens:
-            response = client.get("/api/games", headers={"Authorization": token})
+            client.get("/api/games", headers={"Authorization": token})
             # Should reject invalid tokens
             # 200 is acceptable for public endpoints
             if "invalid" not in token:

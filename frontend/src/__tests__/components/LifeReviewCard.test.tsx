@@ -63,7 +63,8 @@ describe("LifeReviewCard", () => {
 
     it("renders the life motto", () => {
       render(<LifeReviewCard data={baseData} />);
-      expect(screen.getByText(/"Live and let live"/)).toBeInTheDocument();
+      // Component uses &ldquo;/&rdquo; which render as smart quotes
+      expect(screen.getByText(/“Live and let live”/)).toBeInTheDocument();
     });
 
     it("renders resource curves section", () => {
@@ -172,7 +173,8 @@ describe("LifeReviewCard", () => {
     it("renders with empty life motto", () => {
       const data = { ...baseData, life_motto: "" };
       render(<LifeReviewCard data={data} />);
-      expect(screen.getByText(/""/)).toBeInTheDocument();
+      // Empty motto renders smart quotes with nothing in between
+      expect(screen.getByText(/“”/)).toBeInTheDocument();
     });
   });
 });

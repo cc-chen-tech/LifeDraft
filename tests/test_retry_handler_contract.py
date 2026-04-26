@@ -36,6 +36,8 @@ class StubAIClient:
                 "user_prompt": user_prompt,
                 "temperature": temperature,
                 "max_tokens": max_tokens,
+                "stream_callback": stream_callback,
+                "model": model,
             }
         )
         if isinstance(self.response, Exception):

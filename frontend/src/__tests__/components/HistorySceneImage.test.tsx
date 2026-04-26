@@ -89,15 +89,16 @@ describe("HistorySceneImage", () => {
       expect(onGenerate).toHaveBeenCalledWith(0, 0, "Test story text");
     });
 
-    it("disables generate button when loading", () => {
+    it("shows loading state instead of generate button when loading", () => {
       render(
         <HistorySceneImage
           {...baseProps}
           isLoading={true}
         />
       );
-      const button = screen.getByText("生成场景插画").closest("button");
-      expect(button).toBeDisabled();
+      // When loading with no sceneImage, should show loading text, not generate button
+      expect(screen.getByText("正在加载场景插画...")).toBeInTheDocument();
+      expect(screen.queryByText("生成场景插画")).not.toBeInTheDocument();
     });
   });
 

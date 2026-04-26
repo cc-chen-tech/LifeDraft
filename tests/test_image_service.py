@@ -309,7 +309,7 @@ class TestKeepOldActive:
             mock_char_service.regenerate_image.return_value = [mock_image]
 
             # 调用 regenerate_image
-            result = service.regenerate_image(image_id=1, feedback="头发变长")
+            service.regenerate_image(image_id=1, feedback="头发变长")
 
             # 验证 regenerate_image 被调用
             assert mock_char_service.regenerate_image.called

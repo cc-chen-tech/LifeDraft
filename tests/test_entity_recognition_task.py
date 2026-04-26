@@ -246,7 +246,7 @@ class TestTaskManager:
         task3 = manager.create_task(game_id=3, user_id=1)
         task3.mark_failed("error")
 
-        task4 = manager.create_task(game_id=4, user_id=1)
+        manager.create_task(game_id=4, user_id=1)
         # 保持 pending 状态
 
         stats = manager.get_stats()
