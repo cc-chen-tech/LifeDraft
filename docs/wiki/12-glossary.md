@@ -23,5 +23,5 @@
 - `LifeReview`：人生回顾生成器，在游戏结局时汇总玩家整局经历。
 - `GamePlaylist`：游戏剧情音乐播放列表，关联游戏与推荐歌曲缓存。
 - `CachedMusicPool`：音乐混合缓存池，缓存音乐分析与 URL 减少重复调用。
-- `Narrative Style`：叙事风格（如 chinese_classic_saga、modern_urban 等），独立于系统开关控制文本风格。
+- `Narrative Style`：叙事风格（如 magical_realism、modern_urban 等），独立于系统开关控制文本风格。默认回退风格为 `magical_realism`（Bug #12 修复）。
 - `SettingFeedbackCard`：角色创建 AI 反馈卡片，支持按维度（家庭/关系/特质/财富/肖像）反馈并再生设定。

@@ -75,7 +75,7 @@ if style_id:
 ### 改动
 
 1. **移除 `if style_id:` 条件**：环境变量为开关，`style_id` 只决定风格引擎使用哪种 manifest
-2. **`style_id` 为空时使用默认风格**：`get_style("")` 返回 None 时，回退到 `get_style("chinese_classic_saga")`
+2. **`style_id` 为空时使用默认风格**：`get_style("")` 返回 None 时，回退到 `get_style("magical_realism")`
 
 ### 影响范围
 
@@ -330,12 +330,12 @@ echo "=== All tests passed ==="
 1. **Placeholder scan**：无 TBD/TODO，所有字段名和函数名与代码库一致
 2. **内部一致性**：
    - `auto_match_style` 调用方式与 `game_initializer.py:96-99` 一致
-   - `get_style("chinese_classic_saga")` 与 `style_manifest.py` 接口一致
+   - `get_style("magical_realism")` 与 `style_manifest.py` 接口一致（Bug #12 修复）
    - `api.character.generateSetting` 参数与现有 `useCharacterCreation.ts:219-224` 一致
 3. **Scope检查**：聚焦在三件事上——自动匹配、解除开关、反馈重新生成，无额外功能
 4. **歧义检查**：
    - "设定完整" 明确定义为 `family_members` 存在
-   - 默认风格明确为 `chinese_classic_saga`
+   - 默认风格明确为 `magical_realism`（Bug #12 修复）
    - 反馈重新生成调用已有 API，不新增后端端点
 
 ---

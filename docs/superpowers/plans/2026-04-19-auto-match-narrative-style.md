@@ -384,8 +384,8 @@ To:
                 self._style_manifest = get_style(style_id)
                 if not self._style_manifest and not style_id:
                     # Use default style when no style_id is matched
-                    self._style_manifest = get_style("chinese_classic_saga")
-                    logger.info("Using default style: chinese_classic_saga")
+                    self._style_manifest = get_style("magical_realism")
+                    logger.info("Using default style: magical_realism")
                 if self._style_manifest:
                     self._prompt_builder = StyleAwarePromptBuilder(self._style_manifest)
                     self._style_validator = StyleAwareValidator(self._style_manifest)
@@ -419,7 +419,7 @@ git commit -m "feat(narrative): decouple style_id from system on/off switch"
 | 匹配的 `style_id` 写入 `Game.narrative_style_id` 和 `character_settings` | Task 1 |
 | 设定不完整时（无 family_members）跳过匹配 | Task 1 |
 | 解除 `style_id` 作为三大系统开关条件 | Task 2 |
-| `style_id` 为空时使用默认风格 `chinese_classic_saga` | Task 2 |
+| `style_id` 为空时使用默认风格 `magical_realism` | Task 2 |
 
 ## Placeholder Scan
 
@@ -428,7 +428,7 @@ No placeholders found. All code blocks contain complete, runnable code.
 ## Type Consistency Check
 
 - `StyleMatchResult` used in Task 1 matches definition in `style_matcher.py` (has `style_id`, `confidence`, `all_scores`)
-- `get_style("chinese_classic_saga")` matches `style_manifest.py` interface
+- `get_style("magical_realism")` matches `style_manifest.py` interface
 - `StoryGenerator._init_narrative_systems` signature unchanged: `(self, style_id: str, player_state: Dict[str, Any])`
 
 ---

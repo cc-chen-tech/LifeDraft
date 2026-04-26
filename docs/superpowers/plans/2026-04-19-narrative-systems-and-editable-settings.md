@@ -1,7 +1,9 @@
 # Narrative Systems & Editable Settings Implementation Plan
 
 > Status: Implemented (kept as historical implementation plan)  
-> Last reviewed: 2026-04-19
+> Last reviewed: 2026-04-26
+>
+> **Note:** Default style changed from `chinese_classic_saga` to `magical_realism` (Bug #12 fix, commit 7960409).
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -172,7 +174,7 @@ class TestStyleAutoMatch:
         """When family_members is present, narrative_style_id should be auto-matched."""
         with patch("src.api.routers.games.auto_match_style") as mock_match:
             mock_match.return_value.confidence = 0.75
-            mock_match.return_value.style_id = "chinese_classic_saga"
+            mock_match.return_value.style_id = "magical_realism"
 
             resp = client.patch(
                 f"/api/games/{game_id}/character-settings",
@@ -192,7 +194,7 @@ class TestStyleAutoMatch:
         state_resp = client.get(f"/api/games/{game_id}/state", headers=auth_headers)
         assert state_resp.status_code == 200
         state = state_resp.json()
-        assert state["game_state"]["narrative_style_id"] == "chinese_classic_saga"
+        assert state["game_state"]["narrative_style_id"] == "magical_realism"
 
     def test_incomplete_settings_skips_style_match(self, auth_headers, game_id):
         """When family_members is absent, style matching should be skipped."""
@@ -508,8 +510,8 @@ To:
                 self._style_manifest = get_style(style_id)
                 if not self._style_manifest and not style_id:
                     # Use default style when no style_id is matched
-                    self._style_manifest = get_style("chinese_classic_saga")
-                    logger.info("Using default style: chinese_classic_saga")
+                    self._style_manifest = get_style("magical_realism")
+                    logger.info("Using default style: magical_realism")
                 if self._style_manifest:
                     self._prompt_builder = StyleAwarePromptBuilder(self._style_manifest)
                     self._style_validator = StyleAwareValidator(self._style_manifest)
