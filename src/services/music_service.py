@@ -270,7 +270,7 @@ class MusicService:
 
         # 取前 500 字作为 hash 输入（足够区分不同场景，同时避免大文本）
         preview = story_text[:500] if len(story_text) > 500 else story_text
-        return hashlib.md5(preview.encode("utf-8"), usedforsecurity=False).hexdigest()
+        return hashlib.md5(preview.encode("utf-8")).hexdigest()
 
     async def _get_or_build_pool(
         self,
@@ -333,8 +333,8 @@ class MusicService:
 
         # 搜索歌曲
         all_songs: List[Song] = []
-        for keyword in search_keywords[:8]:
-            songs = await self.music_client.search(keyword, limit=15)
+        for keyword in search_keywords[:12]:
+            songs = await self.music_client.search(keyword, limit=25)
             all_songs.extend(songs)
 
         # 去重
@@ -346,7 +346,7 @@ class MusicService:
                 unique_songs.append(song)
 
         # 补充搜索（如果太少）
-        if len(unique_songs) < 15:
+        if len(unique_songs) < 10:
             generic_keywords = ["轻音乐", "纯音乐", "背景音乐", "流行", "经典", "华语"]
             for keyword in generic_keywords:
                 if len(unique_songs) >= 15:
@@ -760,7 +760,7 @@ class MusicService:
             if "音乐" not in kw and "歌曲" not in kw and len(final_keywords) < 6:
                 final_keywords.append(f"{kw} 音乐")
 
-        return final_keywords[:6]  # 最多返回6个关键词
+        return final_keywords[:12]  # 最多返回12个关键词
 
     async def get_song_play_url(self, song_id: int) -> Optional[str]:
         """获取歌曲播放 URL"""

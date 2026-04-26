@@ -311,9 +311,9 @@ async def stream_song(song_id: int, request: Request):
 
         async def audio_generator():
             try:
-                # 使用较小的 chunk_size (8KB) 保证低延迟流式传输，
-                # 避免 64KB 大 chunk 导致的播放器缓冲卡顿
-                async for chunk in response.aiter_bytes(chunk_size=8192):
+                # 使用 128KB chunk_size 提高吞吐量，每 chunk 约 8 秒音频
+                # 大 chunk 让浏览器积累更多缓冲，减少播放中卡顿
+                async for chunk in response.aiter_bytes(chunk_size=131072):
                     yield chunk
             except Exception:
                 # 客户端断开连接是正常行为（切歌），静默处理
