@@ -234,6 +234,82 @@ describe('useSceneImageStore', () => {
       // 202 应该保持加载状态
       expect(state.isLoadingRoundSceneImage).toBe(true);
     });
+
+    /**
+     * ★ 关键测试：并发请求去重
+     * 同一参数并发调用时，只应发一次 API 请求
+     */
+    it('should deduplicate concurrent requests with same parameters', async () => {
+      let resolveCall: (value: unknown) => void;
+      const callPromise = new Promise((resolve) => {
+        resolveCall = resolve;
+      });
+
+      (api.images.getRoundSceneImage as jest.Mock).mockImplementation(() => callPromise);
+
+      const store = useSceneImageStore.getState();
+
+      // 并发发起 3 次相同参数的调用
+      const promise1 = store.fetchRoundSceneImage(1, 0, 0);
+      const promise2 = store.fetchRoundSceneImage(1, 0, 0);
+      const promise3 = store.fetchRoundSceneImage(1, 0, 0);
+
+      // API 应该只被调用一次
+      expect(api.images.getRoundSceneImage).toHaveBeenCalledTimes(1);
+
+      // 完成底层请求
+      resolveCall!({
+        scene_id: 1,
+        week: 0,
+        round_number: 0,
+        stage: 'result',
+        image_url: 'http://example.com/scene.png',
+        scene_description: '测试场景',
+        referenced_images: [],
+        created_at: '2024-01-01T00:00:00Z',
+      });
+
+      // 所有调用都应该解析
+      await Promise.all([promise1, promise2, promise3]);
+
+      // 仍然只调用了一次 API
+      expect(api.images.getRoundSceneImage).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * ★ 测试：不同参数的调用不应被去重
+     */
+    it('should not deduplicate requests with different parameters', async () => {
+      (api.images.getRoundSceneImage as jest.Mock)
+        .mockResolvedValueOnce({
+          scene_id: 1,
+          week: 0,
+          round_number: 0,
+          stage: 'result',
+          image_url: 'http://example.com/scene1.png',
+          scene_description: '场景1',
+          referenced_images: [],
+          created_at: '2024-01-01T00:00:00Z',
+        })
+        .mockResolvedValueOnce({
+          scene_id: 2,
+          week: 0,
+          round_number: 1,
+          stage: 'result',
+          image_url: 'http://example.com/scene2.png',
+          scene_description: '场景2',
+          referenced_images: [],
+          created_at: '2024-01-01T00:00:00Z',
+        });
+
+      const store = useSceneImageStore.getState();
+
+      await store.fetchRoundSceneImage(1, 0, 0);
+      await store.fetchRoundSceneImage(1, 1, 0);
+
+      // 不同参数应该调用两次
+      expect(api.images.getRoundSceneImage).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('addRoundSceneImage', () => {

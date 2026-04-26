@@ -108,7 +108,14 @@ interface SceneImageState {
 }
 
 export const useSceneImageStore = create<SceneImageState>()(
-  (set, get) => ({
+  (set, get) => {
+    // ★ 请求去重：跟踪进行中的 fetchRoundSceneImage 请求
+    const pendingRequests = new Map<string, Promise<void>>();
+
+    const makeRequestKey = (gameId: number, roundNumber: number, week: number, stage?: string) =>
+      `${gameId}-${roundNumber}-${week}-${stage || 'default'}`;
+
+    return {
     // Initial State
     roundSceneImages: [],
     currentRoundSceneImage: null,
@@ -203,52 +210,65 @@ export const useSceneImageStore = create<SceneImageState>()(
     fetchRoundSceneImage: async (gameId, roundNumber, week, stage) => {
       if (!gameId) return;
 
-      set({ isLoadingRoundSceneImage: true });
-
-      try {
-        const scene = stage
-          ? await api.images.getRoundSceneImageByStage(gameId, roundNumber, stage, week)
-          : await api.images.getRoundSceneImage(gameId, roundNumber, week);
-
-        if (scene && scene.scene_id) {
-          const sceneWithStage: RoundSceneImage = {
-            scene_id: scene.scene_id,
-            week: scene.week || week,
-            round_number: scene.round_number,
-            stage: scene.stage || stage || 'result',
-            image_url: scene.image_url,
-            scene_description: scene.scene_description,
-            referenced_images: (scene as { referenced_images?: number[] }).referenced_images || [],
-            created_at: scene.created_at,
-          };
-
-          set((state) => ({
-            // ★ 只更新对应 stage 的图片，不更新 currentRoundSceneImage
-            // currentRoundSceneImage 由 fetchAllRoundSceneImages 统一管理
-            eventSceneImage: sceneWithStage.stage === 'event' ? sceneWithStage : state.eventSceneImage,
-            resultSceneImage: sceneWithStage.stage === 'result' ? sceneWithStage : state.resultSceneImage,
-            roundSceneImages: state.roundSceneImages.some(s => s.week === sceneWithStage.week && s.round_number === roundNumber && s.stage === sceneWithStage.stage)
-              ? state.roundSceneImages.map(s => s.week === sceneWithStage.week && s.round_number === roundNumber && s.stage === sceneWithStage.stage ? sceneWithStage : s)
-              : [...state.roundSceneImages, sceneWithStage],
-            isLoadingRoundSceneImage: false,
-          }));
-        } else {
-          set({ isLoadingRoundSceneImage: false });
-        }
-      } catch (err) {
-        const error = err as { status?: number; message?: string };
-        if (error.status === 202) {
-          // ★ 202 Accepted - 后端已触发生成，保持加载状态
-          console.log(`[fetchRoundSceneImage] Generation triggered by backend, waiting...`);
-          // 保持 isLoadingRoundSceneImage = true，前端会继续轮询
-        } else if (error.status !== 404) {
-          console.error(`[fetchRoundSceneImage] Failed:`, err);
-          set({ isLoadingRoundSceneImage: false });
-        } else {
-          // 404 - 未找到且无法生成，停止加载
-          set({ isLoadingRoundSceneImage: false });
-        }
+      const key = makeRequestKey(gameId, roundNumber, week, stage);
+      const existing = pendingRequests.get(key);
+      if (existing) {
+        return existing;
       }
+
+      const promise = (async () => {
+        set({ isLoadingRoundSceneImage: true });
+
+        try {
+          const scene = stage
+            ? await api.images.getRoundSceneImageByStage(gameId, roundNumber, stage, week)
+            : await api.images.getRoundSceneImage(gameId, roundNumber, week);
+
+          if (scene && scene.scene_id) {
+            const sceneWithStage: RoundSceneImage = {
+              scene_id: scene.scene_id,
+              week: scene.week || week,
+              round_number: scene.round_number,
+              stage: scene.stage || stage || 'result',
+              image_url: scene.image_url,
+              scene_description: scene.scene_description,
+              referenced_images: (scene as { referenced_images?: number[] }).referenced_images || [],
+              created_at: scene.created_at,
+            };
+
+            set((state) => ({
+              // ★ 只更新对应 stage 的图片，不更新 currentRoundSceneImage
+              // currentRoundSceneImage 由 fetchAllRoundSceneImages 统一管理
+              eventSceneImage: sceneWithStage.stage === 'event' ? sceneWithStage : state.eventSceneImage,
+              resultSceneImage: sceneWithStage.stage === 'result' ? sceneWithStage : state.resultSceneImage,
+              roundSceneImages: state.roundSceneImages.some(s => s.week === sceneWithStage.week && s.round_number === roundNumber && s.stage === sceneWithStage.stage)
+                ? state.roundSceneImages.map(s => s.week === sceneWithStage.week && s.round_number === roundNumber && s.stage === sceneWithStage.stage ? sceneWithStage : s)
+                : [...state.roundSceneImages, sceneWithStage],
+              isLoadingRoundSceneImage: false,
+            }));
+          } else {
+            set({ isLoadingRoundSceneImage: false });
+          }
+        } catch (err) {
+          const error = err as { status?: number; message?: string };
+          if (error.status === 202) {
+            // ★ 202 Accepted - 后端已触发生成，保持加载状态
+            console.log(`[fetchRoundSceneImage] Generation triggered by backend, waiting...`);
+            // 保持 isLoadingRoundSceneImage = true，前端会继续轮询
+          } else if (error.status !== 404) {
+            console.error(`[fetchRoundSceneImage] Failed:`, err);
+            set({ isLoadingRoundSceneImage: false });
+          } else {
+            // 404 - 未找到且无法生成，停止加载
+            set({ isLoadingRoundSceneImage: false });
+          }
+        } finally {
+          pendingRequests.delete(key);
+        }
+      })();
+
+      pendingRequests.set(key, promise);
+      return promise;
     },
 
     fetchAllRoundSceneImages: async (gameId, currentRound, currentWeek) => {
@@ -601,5 +621,5 @@ export const useSceneImageStore = create<SceneImageState>()(
         set({ sseConnection: null });
       }
     },
-  })
-);
+  }})
+;

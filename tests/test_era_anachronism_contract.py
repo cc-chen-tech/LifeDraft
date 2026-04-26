@@ -232,9 +232,9 @@ class TestEraAnachronismContract:
         )
 
         # week=2, current_round=0, rounds_per_week=3 -> total_chapter = 2*3+0+1 = 7
-        assert "第七回" in prompt, f"提示词应包含正确的章节号'第七回'"
-        assert "第7章" in prompt, f"提示词应包含数字章节号'第7章'"
-        assert "章节号约束" in prompt, f"提示词应包含章节号约束区块"
+        assert "第七回" in prompt, "提示词应包含正确的章节号'第七回'"
+        assert "第7章" in prompt, "提示词应包含数字章节号'第7章'"
+        assert "章节号约束" in prompt, "提示词应包含章节号约束区块"
 
     def test_currency_is_carbon_credit_in_prompt(self):
         """提示词中的货币单位必须是'碳信用'而非'元'（Bug #24 回归测试）"""
@@ -258,11 +258,11 @@ class TestEraAnachronismContract:
             character_settings=character_settings,
         )
 
-        assert "碳信用" in prompt, f"提示词中的货币单位应为'碳信用'"
+        assert "碳信用" in prompt, "提示词中的货币单位应为'碳信用'"
         # 检查财富行不使用旧的"元"货币单位（排除"元素""多元"等合法用法）
         # 旧格式: 财富：10,000元 | 新格式: 财富：10,000碳信用
         import re
-        wealth_lines = [l for l in prompt.split("\n") if "财富：" in l]
+        wealth_lines = [line for line in prompt.split("\n") if "财富：" in line]
         for line in wealth_lines:
             assert "碳信用" in line, f"财富行应使用'碳信用': {line}"
             assert not re.search(r"\d元", line), f"财富行不应使用'元'作为货币单位: {line}"
@@ -290,5 +290,5 @@ class TestEraAnachronismContract:
         )
 
         # week=0, current_round=0 -> total_chapter = 1
-        assert "第一回" in prompt, f"第一章应显示'第一回'"
-        assert "绝对禁止提及" in prompt, f"第一章应包含禁止提及'上回'的约束"
+        assert "第一回" in prompt, "第一章应显示'第一回'"
+        assert "绝对禁止提及" in prompt, "第一章应包含禁止提及'上回'的约束"

@@ -1,20 +1,17 @@
 """Tests for database layer: models, db operations, and user management."""
 
-import os
-import tempfile
-from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import sessionmaker
 
-# Integration tests - database operations
-pytestmark = pytest.mark.integration
-
 from src.database.models import (Base, CharacterPreset, Decision, Ending,
                                  Friendship, Game, GameState, User)
 from src.game.state import PlayerState
+
+# Integration tests - database operations
+pytestmark = pytest.mark.integration
 
 # ==================== Fixtures ====================
 
@@ -286,8 +283,6 @@ class TestGameDatabase:
 
     def _make_game_db(self, db_session):
         """Helper to create a GameDatabase with mocked session."""
-        from unittest.mock import MagicMock
-
         from src.database.db import GameDatabase
 
         self._patchers = []
@@ -417,10 +412,6 @@ class TestGameDatabase:
 
     def test_list_games(self, db_session):
         """Test listing games."""
-        from unittest.mock import MagicMock
-
-        from src.database.db import GameDatabase
-
         # Clear any existing games from previous tests
         db_session.query(Game).delete()
         db_session.commit()
@@ -758,7 +749,7 @@ class TestActiveGameSession:
         game_db = GameDatabase()
 
         # 测试设置活跃游戏
-        with patch.object(game_db, "get_active_game") as mock_get:
+        with patch.object(game_db, "get_active_game"):
             # 直接测试数据库操作
             user.last_active_game_id = game.game_id
             db_session.commit()

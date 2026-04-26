@@ -1,7 +1,9 @@
 # Auto-Match Narrative Style Implementation Plan
 
 > Status: Implemented (kept as historical implementation plan)  
-> Last reviewed: 2026-04-19
+> Last reviewed: 2026-04-26
+>
+> **Note:** Default style changed from `chinese_classic_saga` to `magical_realism` (Bug #12 fix, commit 7960409).
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -69,7 +71,7 @@ def test_update_character_settings_triggers_style_match():
     # Update character_settings with complete settings (includes family_members)
     with patch("src.api.routers.games.auto_match_style") as mock_match:
         mock_match.return_value.confidence = 0.75
-        mock_match.return_value.style_id = "chinese_classic_saga"
+        mock_match.return_value.style_id = "magical_realism"
 
         resp = client.patch(
             f"/api/games/{game_id}/character-settings",
@@ -89,7 +91,7 @@ def test_update_character_settings_triggers_style_match():
     state_resp = client.get(f"/api/games/{game_id}/state", headers=headers)
     assert state_resp.status_code == 200
     state = state_resp.json()
-    assert state["game_state"]["narrative_style_id"] == "chinese_classic_saga"
+    assert state["game_state"]["narrative_style_id"] == "magical_realism"
 
 
 def test_update_character_settings_skips_match_when_incomplete():
