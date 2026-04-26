@@ -3,8 +3,9 @@
 # 用法: ./test.sh [命令]
 #
 # 5 层测试架构:
-#   Layer 1: 静态分析 (mypy)      - 类型不匹配、不存在的属性
-#   Layer 2: 导入验证 (imports)   - 所有延迟导入路径可达
+#   Layer 1:   静态分析 (mypy)      - Python 类型不匹配、不存在的属性
+#   Layer 1.5: 前端类型检查 (tsc)   - TypeScript 类型不匹配、缺失方法/属性
+#   Layer 2:   导入验证 (imports)    - 所有延迟导入路径可达
 #   Layer 3: 契约测试 (contract)  - 生产者/消费者字段名一致
 #   Layer 4: DB集成测试 (db)      - 保存→读取链路完整
 #   Layer 5: E2E浏览器测试        - 前端进度显示、面板交互 (需 browser-agent)
@@ -27,6 +28,7 @@ NC='\033[0m' # No Color
 
 # 测试结果跟踪
 MYPY_RESULT=0
+TSC_RESULT=0
 IMPORTS_RESULT=0
 CONTRACT_RESULT=0
 DB_RESULT=0
@@ -66,6 +68,21 @@ run_mypy() {
     
     print_layer_result "mypy" $result
     MYPY_RESULT=$result
+    return $result
+}
+
+# Layer 1.5: 前端 TypeScript 类型检查
+run_tsc() {
+    print_layer_header "1.5" "前端 TypeScript 类型检查" "类型不匹配、缺失方法/属性检测"
+    cd "$PROJECT_DIR/frontend"
+
+    echo -e "${YELLOW}运行 TypeScript 类型检查 (tsc --noEmit)...${NC}"
+    npx tsc --noEmit
+    local result=$?
+    
+    print_layer_result "tsc" $result
+    TSC_RESULT=$result
+    cd "$PROJECT_DIR"
     return $result
 }
 
@@ -328,13 +345,16 @@ run_perf() {
 run_all() {
     echo -e "${MAGENTA}╔════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${MAGENTA}║${NC}           ${CYAN}Story2 五层测试架构 - 自动化测试${NC}               ${MAGENTA}║${NC}"
-    echo -e "${MAGENTA}║${NC}           ${YELLOW}(Layer 1-5 全自动化)${NC}                       ${MAGENTA}║${NC}"
+    echo -e "${MAGENTA}║${NC}           ${YELLOW}(Layer 1-1.5-2-3-4-5 全自动化)${NC}              ${MAGENTA}║${NC}"
     echo -e "${MAGENTA}╚════════════════════════════════════════════════════════════╝${NC}"
     
     local failed=0
     
     # Layer 1: 静态分析
     run_mypy || ((failed++))
+    
+    # Layer 1.5: 前端 TypeScript 类型检查
+    run_tsc || ((failed++))
     
     # Layer 2: 导入验证
     run_imports || ((failed++))
@@ -356,9 +376,14 @@ run_all() {
     echo ""
     
     if [ $MYPY_RESULT -eq 0 ]; then
-        echo -e "  Layer 1 - mypy:     ${GREEN}✓ PASS${NC}"
+        echo -e "  Layer 1   - mypy:     ${GREEN}✓ PASS${NC}"
     else
-        echo -e "  Layer 1 - mypy:     ${RED}✗ FAIL${NC}"
+        echo -e "  Layer 1   - mypy:     ${RED}✗ FAIL${NC}"
+    fi
+    if [ $TSC_RESULT -eq 0 ]; then
+        echo -e "  Layer 1.5 - tsc:      ${GREEN}✓ PASS${NC}"
+    else
+        echo -e "  Layer 1.5 - tsc:      ${RED}✗ FAIL${NC}"
     fi
     if [ $IMPORTS_RESULT -eq 0 ]; then
         echo -e "  Layer 2 - imports:  ${GREEN}✓ PASS${NC}"
@@ -384,7 +409,7 @@ run_all() {
     
     if [ $failed -eq 0 ]; then
         echo -e "${GREEN}══════════════════════════════════════════════════════════════${NC}"
-        echo -e "${GREEN}✓ 所有测试通过！ (5/5 layers)${NC}"
+        echo -e "${GREEN}✓ 所有测试通过！ (6/6 layers)${NC}"
         echo -e "${GREEN}══════════════════════════════════════════════════════════════${NC}"
     else
         echo -e "${RED}══════════════════════════════════════════════════════════════${NC}"
@@ -402,7 +427,8 @@ show_help() {
     echo "用法: ./test.sh [命令]"
     echo ""
     echo -e "${YELLOW}五层测试命令:${NC}"
-    echo "  mypy          - Layer 1: 静态分析 (类型检查)"
+    echo "  mypy          - Layer 1: 静态分析 (Python 类型检查)"
+    echo "  tsc           - Layer 1.5: 前端 TypeScript 类型检查"
     echo "  imports       - Layer 2: 导入验证测试"
     echo "  contract      - Layer 3: API 契约测试"
     echo "  db            - Layer 4: 真实 DB 集成测试"
@@ -414,7 +440,7 @@ show_help() {
     echo "  api           - 运行 pytest -m api"
     echo ""
     echo -e "${YELLOW}其他命令:${NC}"
-    echo "  all           - 运行全部测试 (Layer 1-5)"
+    echo "  all           - 运行全部测试 (Layer 1-1.5-2-3-4-5)"
     echo "  backend       - 运行后端全量 pytest 测试"
     echo "  frontend      - 运行前端 tsc + Jest 测试"
     echo "  coverage      - 运行测试并生成覆盖率报告"
@@ -434,6 +460,9 @@ show_help() {
 case "$1" in
     mypy)
         run_mypy
+        ;;
+    tsc)
+        run_tsc
         ;;
     imports)
         run_imports
