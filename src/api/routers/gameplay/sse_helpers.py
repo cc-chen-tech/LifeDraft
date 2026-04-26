@@ -10,8 +10,6 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
-from src.api.deps import get_db
-
 logger = logging.getLogger(__name__)
 
 # 线程池用于 SSE 后台任务
@@ -571,11 +569,16 @@ async def stream_round_event(
         # Auto-save game state after event generation
         # This ensures user can resume from this point even if they close the page
         try:
-            db = get_db()
-            state = game_loop.get_state()
-            if state:
-                db.save_game_progress(game_id, state)
-                logger.info(f"Auto-saved game state after event generation: game_id={game_id}")
+            from src.database.models import SessionLocal
+
+            db = SessionLocal()
+            try:
+                state = game_loop.get_state()
+                if state:
+                    db.save_game_progress(game_id, state)
+                    logger.info(f"Auto-saved game state after event generation: game_id={game_id}")
+            finally:
+                db.close()
         except (OSError, IOError) as e:
             logger.warning(f"Auto-save IO error after event generation: {e}")
         except Exception as e:
@@ -742,11 +745,16 @@ async def stream_choice(
 
         # Auto-save after choice to persist current_event_data=None
         try:
-            db = get_db()
-            state = game_loop.get_state()
-            if state:
-                db.save_game_progress(game_id, state)
-                logger.info(f"Auto-saved game state after choice: game_id={game_id}")
+            from src.database.models import SessionLocal
+
+            db = SessionLocal()
+            try:
+                state = game_loop.get_state()
+                if state:
+                    db.save_game_progress(game_id, state)
+                    logger.info(f"Auto-saved game state after choice: game_id={game_id}")
+            finally:
+                db.close()
         except (OSError, IOError) as e:
             logger.warning(f"Auto-save IO error after choice: {e}")
         except Exception as e:
@@ -1056,11 +1064,16 @@ async def stream_regenerate(
 
         # Auto-save game state
         try:
-            db = get_db()
-            state = game_loop.get_state()
-            if state:
-                db.save_game_progress(game_id, state)
-                logger.info(f"Auto-saved game state after regeneration: game_id={game_id}")
+            from src.database.models import SessionLocal
+
+            db = SessionLocal()
+            try:
+                state = game_loop.get_state()
+                if state:
+                    db.save_game_progress(game_id, state)
+                    logger.info(f"Auto-saved game state after regeneration: game_id={game_id}")
+            finally:
+                db.close()
         except (OSError, IOError) as e:
             logger.warning(f"Auto-save IO error after regeneration: {e}")
         except Exception as e:
