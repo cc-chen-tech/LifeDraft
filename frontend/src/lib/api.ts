@@ -774,6 +774,56 @@ export const api = {
         method: 'DELETE',
       }),
   },
+  // Music (playlist)
+  music: {
+    playlist: {
+      get: (gameId: number) =>
+        fetchJson<{
+          game_id: number;
+          current_song: { id: number; name: string; artists: string[]; album: string; duration: number; url?: string } | null;
+          queue: Array<{ id: number; name: string; artists: string[]; album: string; duration: number }>;
+          played_songs: Array<{ id: number; name: string; artists: string[]; album: string; duration: number }>;
+          is_playing: boolean;
+          volume: number;
+          current_position_ms: number;
+          recommendation_mood: string | null;
+          updated_at: string | null;
+        }>(`/music/playlist/${gameId}`),
+      update: (gameId: number, data: {
+        songs: Array<{ id: number; name: string; artists: string[]; album: string; duration: number }>;
+        mood?: string;
+        keywords?: string[];
+      }) =>
+        fetchJson<{
+          game_id: number;
+          current_song: { id: number; name: string; artists: string[]; album: string; duration: number; url?: string } | null;
+          queue: Array<{ id: number; name: string; artists: string[]; album: string; duration: number }>;
+          played_songs: Array<{ id: number; name: string; artists: string[]; album: string; duration: number }>;
+          is_playing: boolean;
+          volume: number;
+          current_position_ms: number;
+          recommendation_mood: string | null;
+          updated_at: string | null;
+        }>(`/music/playlist/${gameId}`, { method: 'PUT', body: JSON.stringify(data) }),
+      sync: (gameId: number, data: { current_position_ms: number; is_playing: boolean; volume: number }) =>
+        fetchJson<{ success: boolean; updated_at: string | null }>(`/music/playlist/${gameId}/sync`, {
+          method: 'POST',
+          body: JSON.stringify(data),
+        }),
+      advance: (gameId: number) =>
+        fetchJson<{
+          game_id: number;
+          current_song: { id: number; name: string; artists: string[]; album: string; duration: number; url?: string } | null;
+          queue: Array<{ id: number; name: string; artists: string[]; album: string; duration: number }>;
+          played_songs: Array<{ id: number; name: string; artists: string[]; album: string; duration: number }>;
+          is_playing: boolean;
+          volume: number;
+          current_position_ms: number;
+          recommendation_mood: string | null;
+          updated_at: string | null;
+        }>(`/music/playlist/${gameId}/advance`, { method: 'POST' }),
+    },
+  },
 };
 
 export default api;

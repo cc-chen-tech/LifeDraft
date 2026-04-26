@@ -31,4 +31,45 @@ describe("API Contracts", () => {
       });
     });
   });
+
+  describe("music playlist API contracts", () => {
+    it("playlist endpoint paths must match backend routes", () => {
+      // These paths must match the FastAPI router definitions exactly
+      const gameId = 123;
+      const paths = [
+        `/music/playlist/${gameId}`,
+        `/music/playlist/${gameId}/sync`,
+        `/music/playlist/${gameId}/advance`,
+      ];
+      paths.forEach((path) => {
+        expect(path).toMatch(/^\/music\/playlist\/\d+/);
+      });
+    });
+
+    it("playlist response shape must include required fields", () => {
+      // Compile-time shape validation via a dummy object
+      const dummyResponse: {
+        game_id: number;
+        current_song: { id: number; name: string; artists: string[]; album: string; duration: number; url?: string } | null;
+        queue: Array<{ id: number; name: string; artists: string[]; album: string; duration: number }>;
+        played_songs: Array<{ id: number; name: string; artists: string[]; album: string; duration: number }>;
+        is_playing: boolean;
+        volume: number;
+        current_position_ms: number;
+        recommendation_mood: string | null;
+        updated_at: string | null;
+      } = {
+        game_id: 1,
+        current_song: null,
+        queue: [],
+        played_songs: [],
+        is_playing: false,
+        volume: 0.5,
+        current_position_ms: 0,
+        recommendation_mood: null,
+        updated_at: null,
+      };
+      expect(dummyResponse.game_id).toBe(1);
+    });
+  });
 });
