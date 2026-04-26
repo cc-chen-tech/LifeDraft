@@ -163,19 +163,6 @@ export function ChatBar({
         )}
       >
         <Button
-          size="sm"
-          variant="outline"
-          className="h-10 px-3 rounded-full shadow-lg bg-card border-border hover:bg-accent touch-target"
-          onClick={onAdjustStory}
-          disabled={isViewingHistory}
-          title={isViewingHistory ? "历史回顾模式下不可用" : "改写当前故事"}
-          data-testid="rewrite-button"
-        >
-          <Pencil className="w-4 h-4 mr-1" />
-          改写
-        </Button>
-
-        <Button
           size="icon"
           className="h-12 w-12 rounded-full shadow-lg bg-primary hover:bg-primary/90"
           onClick={() => setIsExpanded(true)}
@@ -198,33 +185,6 @@ export function ChatBar({
     >
       {/* Quick actions row */}
       <div className="flex items-center gap-2 mb-2">
-        <Button
-          size="sm"
-          variant="outline"
-          className="text-xs touch-target"
-          onClick={onSave}
-          disabled={isSaving}
-        >
-          {isSaving ? (
-            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-          ) : (
-            <Save className="w-3 h-3 mr-1" />
-          )}
-          保存
-        </Button>
-
-        <Button
-          size="sm"
-          variant="outline"
-          className="text-xs touch-target"
-          onClick={onAdjustStory}
-          disabled={isViewingHistory}
-          title={isViewingHistory ? "历史回顾模式下不可用" : undefined}
-        >
-          <Pencil className="w-3 h-3 mr-1" />
-          改写
-        </Button>
-
         <Button
           size="sm"
           variant="outline"

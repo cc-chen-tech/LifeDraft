@@ -18,6 +18,8 @@ export function GlobalMusicPlayer() {
   const currentSong = useMusicStore((state) => state.currentSong);
   const queue = useMusicStore((state) => state.queue);
   const recommendation = useMusicStore((state) => state.recommendation);
+  const activeStoryText = useMusicStore((state) => state.activeStoryText);
+  const activeGameId = useMusicStore((state) => state.activeGameId);
 
   // On mount, try to restore the active game playlist from localStorage
   useEffect(() => {
@@ -33,16 +35,15 @@ export function GlobalMusicPlayer() {
     }
   }, [loadPlaylist]);
 
-  // Build a synthetic storyText for MusicPlayer so it renders.
-  // When playlist is loaded from DB, we don't need fresh recommendation.
-  // The MusicPlayer component uses storyText to trigger fetchRecommendation.
-  // We pass a non-empty placeholder to ensure the player UI renders,
-  // but we suppress automatic recommendation fetching when a playlist exists.
-  const syntheticStoryText =
-    recommendation || currentSong || queue.length > 0 ? "persisted" : "";
+  // Determine storyText: use activeStoryText from play page, or "persisted" if music already loaded
+  const storyText =
+    activeStoryText || (recommendation || currentSong || queue.length > 0 ? "persisted" : "");
 
-  // Only render if we have any music state (prevents empty player on non-game pages)
-  if (!syntheticStoryText) return null;
+  // Only render if we have storyText (either from play page or persisted state)
+  if (!storyText) return null;
+
+  // Determine gameId: prefer activeGameId from play page, fallback to playlistGameId
+  const effectiveGameId = activeGameId ?? playlistGameId ?? undefined;
 
   // Always render as a fixed compact bottom bar on all pages
   return (
@@ -50,8 +51,8 @@ export function GlobalMusicPlayer() {
       className="fixed z-50 transition-all duration-300 bottom-0 left-0 right-0 md:bottom-4 md:left-auto md:right-4 md:w-80"
     >
       <MusicPlayer
-        storyText={syntheticStoryText}
-        gameId={playlistGameId ?? undefined}
+        storyText={storyText}
+        gameId={effectiveGameId}
         className="rounded-none md:rounded-lg"
       />
     </div>

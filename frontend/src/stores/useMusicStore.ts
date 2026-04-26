@@ -53,6 +53,10 @@ interface MusicState {
   playlistGameId: number | null;
   isLoadingPlaylist: boolean;
 
+  // Active story context (set by play page)
+  activeStoryText: string | null;
+  activeGameId: number | null;
+
   // Actions
   setRecommendation: (recommendation: MusicRecommendation | null) => void;
   setIsLoadingRecommendation: (loading: boolean) => void;
@@ -83,6 +87,10 @@ interface MusicState {
   syncPlaylistState: (gameId: number, positionMs: number, isPlaying: boolean, volume: number) => Promise<void>;
   advanceQueue: () => Promise<void>;
 
+  // Active story context setters
+  setActiveStoryText: (text: string | null) => void;
+  setActiveGameId: (gameId: number | null) => void;
+
   // 清理
   reset: () => void;
   cleanup: () => void;
@@ -109,6 +117,8 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   playedSongs: [],
   playlistGameId: null,
   isLoadingPlaylist: false,
+  activeStoryText: null,
+  activeGameId: null,
 
   // Setters
   setRecommendation: (recommendation) => set({ recommendation }),
@@ -136,6 +146,8 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   setQueue: (queue) => set({ queue }),
   setPlayedSongs: (playedSongs) => set({ playedSongs }),
   setPlaylistGameId: (playlistGameId) => set({ playlistGameId }),
+  setActiveStoryText: (activeStoryText) => set({ activeStoryText }),
+  setActiveGameId: (activeGameId) => set({ activeGameId }),
 
   // 播放控制
   play: () => {

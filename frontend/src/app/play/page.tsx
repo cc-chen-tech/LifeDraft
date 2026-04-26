@@ -36,6 +36,7 @@ import { ChoiceImpactDisplay } from "@/components/game/ChoiceImpactDisplay";
 import { usePlayGame, STATUS_MESSAGES } from "@/hooks/usePlayGame";
 import { useGameIdFromUrl } from "@/hooks/useGameIdFromUrl";
 import { useGameStore } from "@/stores/useGameStore";
+import { useMusicStore } from "@/stores/useMusicStore";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
@@ -152,6 +153,26 @@ export default function PlayPage() {
     isRegeneratingHistoryImage,
     currentRound,
   } = usePlayGame();
+
+  // ★ 音乐 store：将当前故事文本和 gameId 传递给 GlobalMusicPlayer
+  const setActiveStoryText = useMusicStore((state) => state.setActiveStoryText);
+  const setActiveGameId = useMusicStore((state) => state.setActiveGameId);
+
+  useEffect(() => {
+    if (storyText && !isViewingHistory) {
+      setActiveStoryText(storyText);
+    }
+  }, [storyText, isViewingHistory, setActiveStoryText]);
+
+  useEffect(() => {
+    if (gameId) {
+      setActiveGameId(Number(gameId));
+    }
+    return () => {
+      setActiveStoryText(null);
+      setActiveGameId(null);
+    };
+  }, [gameId, setActiveStoryText, setActiveGameId]);
 
   // ★ 游戏设置
   const constraintLevel = useGameStore((state) => state.constraintLevel);
@@ -271,22 +292,7 @@ export default function PlayPage() {
               <Home className="w-4 h-4 md:mr-1.5" />
               <span className="hidden md:inline text-xs">首页</span>
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn("h-8 px-2", isSaving && "animate-pulse")}
-              onClick={handleSave}
-              disabled={isSaving}
-              title="保存游戏"
-              aria-label="保存游戏"
-            >
-              {isSaving ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Save className="w-4 h-4 md:mr-1.5" />
-              )}
-              <span className="hidden md:inline text-xs">保存</span>
-            </Button>
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="h-8 px-2" title="设置" aria-label="设置">
