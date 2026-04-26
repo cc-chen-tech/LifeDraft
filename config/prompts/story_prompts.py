@@ -461,6 +461,10 @@ def _get_chinese_prompt(
     mood = player_state.get("mood", 60)
     knowledge = player_state.get("knowledge", 50)
     wealth = player_state.get("wealth", 10000)
+    # ★ 从 character_settings 提取动态货币单位
+    currency_name = "货币"
+    if character_settings and isinstance(character_settings.get("wealth"), dict):
+        currency_name = character_settings["wealth"].get("currency_name", "货币")
     week = player_state.get("week", 0)
     current_round = player_state.get("current_round", 0)
     rounds_per_week = player_state.get("rounds_per_week", 3)
@@ -609,7 +613,7 @@ def _get_chinese_prompt(
 精力：{energy}/100
 情绪：{mood}/100
 学识：{knowledge}/100
-财富：{wealth:,}碳信用
+财富：{wealth:,}{currency_name}
 关键关系：{rel_str}{storylines_context}{facts_context}{world_model_context}
 
 【生成要求 - 必须严格遵守】
@@ -1046,6 +1050,10 @@ def get_story_only_prompt(
     mood = player_state.get("mood", 60)
     knowledge = player_state.get("knowledge", 50)
     wealth = player_state.get("wealth", 10000)
+    # ★ 从 character_settings 提取动态货币单位
+    currency_name = "货币"
+    if character_settings and isinstance(character_settings.get("wealth"), dict):
+        currency_name = character_settings["wealth"].get("currency_name", "货币")
     relationships = player_state.get("relationships", {})
 
     rel_str = (
@@ -1224,7 +1232,7 @@ def get_story_only_prompt(
 【玩家当前状态】
 年龄：{age}岁 | 第{week}周
 精力：{energy}/100 | 情绪：{mood}/100 | 学识：{knowledge}/100
-财富：{wealth:,}碳信用 | 关系：{rel_str}
+财富：{wealth:,}{currency_name} | 关系：{rel_str}
 
 [MUST] 强制约束（违反即重新生成）：{storylines_context}{facts_context}{world_model_context}{continuation_mandate}
 
@@ -1376,6 +1384,10 @@ def get_round_event_prompt(
     mood = player_state.get("mood", 60)
     knowledge = player_state.get("knowledge", 50)
     wealth = player_state.get("wealth", 10000)
+    # ★ 从 character_settings 提取动态货币单位
+    currency_name = "货币"
+    if character_settings and isinstance(character_settings.get("wealth"), dict):
+        currency_name = character_settings["wealth"].get("currency_name", "货币")
     relationships = player_state.get("relationships", {})
 
     rel_str = (
@@ -1561,7 +1573,7 @@ def get_round_event_prompt(
 【当前状态】
 年龄：{age}岁 | 第{week}周 - {round_name}
 精力：{energy}/100 | 情绪：{mood}/100 | 学识：{knowledge}/100
-财富：{wealth:,}碳信用 | 关系：{rel_str}{context_section}{rel_events_context}{memory_context}
+财富：{wealth:,}{currency_name} | 关系：{rel_str}{context_section}{rel_events_context}{memory_context}
 
 [MUST] 强制约束（违反即重新生成）：{world_model_context}{storylines_context}{facts_context}{continuation_mandate}{new_char_context}
 

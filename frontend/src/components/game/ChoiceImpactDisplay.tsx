@@ -8,6 +8,7 @@ import { Zap, Heart, BookOpen, Coins, ArrowUp, ArrowDown } from "lucide-react";
 interface ChoiceImpactDisplayProps {
   effects: Record<string, number> | null;
   className?: string;
+  currencyName?: string;
 }
 
 interface ResourceDef {
@@ -27,6 +28,7 @@ const RESOURCE_MAP: ResourceDef[] = [
 export const ChoiceImpactDisplay = memo(function ChoiceImpactDisplay({
   effects,
   className,
+  currencyName = "货币",
 }: ChoiceImpactDisplayProps) {
   if (!effects || Object.keys(effects).length === 0) return null;
 
@@ -63,7 +65,7 @@ export const ChoiceImpactDisplay = memo(function ChoiceImpactDisplay({
               )}
               <span>
                 {res.key === "wealth"
-                  ? `${Math.abs(value).toLocaleString()}碳信用`
+                  ? `${Math.abs(value).toLocaleString()}${currencyName}`
                   : Math.abs(value)}
               </span>
             </div>

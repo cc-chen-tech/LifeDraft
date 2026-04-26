@@ -58,6 +58,11 @@ export const StatusBar = memo(function StatusBar({
   const totalRounds = progress ? Number(progress.total_rounds) || 1 : 1;
   const hasProgress = !!progress && currentRound > 0;
 
+  // ★ 从 character_settings 提取动态货币单位
+  const characterSettings = playerState.character_settings as Record<string, unknown> | undefined;
+  const wealthSettings = characterSettings?.wealth as Record<string, unknown> | undefined;
+  const currencyName = (wealthSettings?.currency_name as string) || "货币";
+
   if (compact) {
     return (
       <div data-testid="status-bar" className={cn("flex items-center gap-2 flex-wrap", className)}>
@@ -73,7 +78,7 @@ export const StatusBar = memo(function StatusBar({
         {RESOURCES.map((res) => {
           const value = getResourceValue(playerState, res.key);
           if (value === null) return null;
-          const displayValue = res.key === "wealth" ? `${value.toLocaleString()}碳信用` : value;
+          const displayValue = res.key === "wealth" ? `${value.toLocaleString()}${currencyName}` : value;
           return (
             <Badge
               key={res.key}
@@ -144,7 +149,7 @@ export const StatusBar = memo(function StatusBar({
                   getAttributeColor(value, res.max)
                 )}
               >
-                {res.key === "wealth" ? `${value.toLocaleString()}碳信用` : value}
+                {res.key === "wealth" ? `${value.toLocaleString()}${currencyName}` : value}
               </span>
             </div>
           );

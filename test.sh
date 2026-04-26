@@ -10,6 +10,11 @@
 #   Layer 5: E2E浏览器测试        - 前端进度显示、面板交互 (需 browser-agent)
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PYTHON="$PROJECT_DIR/venv/bin/python3"
+
+# 确保 JWT_SECRET 已设置（.env 中可能没有，但测试需要）
+export JWT_SECRET="${JWT_SECRET:-story2-test-secret-key}"
+export DEFAULT_LANGUAGE="${DEFAULT_LANGUAGE:-zh}"
 
 # 颜色定义
 RED='\033[0;31m'
@@ -54,10 +59,9 @@ print_layer_result() {
 run_mypy() {
     print_layer_header "1" "静态分析 (mypy)" "类型检查、不存在的属性检测"
     cd "$PROJECT_DIR"
-    source venv/bin/activate
-    
+
     echo -e "${YELLOW}运行 mypy 静态类型检查...${NC}"
-    python3 -m mypy src/ --ignore-missing-imports
+    $PYTHON -m mypy src/ --ignore-missing-imports
     local result=$?
     
     print_layer_result "mypy" $result
@@ -69,10 +73,9 @@ run_mypy() {
 run_imports() {
     print_layer_header "2" "导入验证" "所有延迟导入路径可达"
     cd "$PROJECT_DIR"
-    source venv/bin/activate
-    
+
     echo -e "${YELLOW}运行导入验证测试...${NC}"
-    python3 -m pytest tests/test_imports.py tests/test_collection_imports.py tests/test_narrative_imports.py tests/test_harness_imports.py tests/test_scene_image_imports.py tests/test_music_playlist_imports.py -v
+    $PYTHON -m pytest tests/test_imports.py tests/test_collection_imports.py tests/test_narrative_imports.py -v
     local result=$?
     
     print_layer_result "imports" $result
@@ -84,10 +87,9 @@ run_imports() {
 run_contract() {
     print_layer_header "3" "契约测试" "生产者/消费者字段名一致性"
     cd "$PROJECT_DIR"
-    source venv/bin/activate
-    
+
     echo -e "${YELLOW}运行 API 契约测试...${NC}"
-    python3 -m pytest tests/test_api_contract.py tests/test_character_settings_api_contract.py tests/test_model_contracts.py tests/test_narrative_style_contract.py tests/test_quality_level_contract.py tests/test_prompt_constraints_quality_level.py tests/test_collection_contract.py tests/test_constraint_level_api_contract.py tests/test_image_cache_contract.py tests/test_sse_timeout_contract.py tests/test_sse_thread_pool_contract.py tests/test_image_thread_pool_contract.py tests/test_event_generation_contract.py tests/test_music_cache_contract.py tests/test_opening_story_contract.py tests/test_music_service_url_contract.py tests/test_game_state_round_contract.py tests/test_docker_compose_contract.py tests/test_image_edit_fallback_contract.py tests/test_music_pool_cache_contract.py tests/test_scene_image_sse_contract.py tests/test_achievement_contract.py tests/test_quick_validator_curly_quotes_contract.py tests/test_quality_level_master_retries_contract.py tests/test_deepseek_v4_model_contract.py tests/test_player_name_in_prompts_contract.py tests/test_punctuation_enforcement_contract.py tests/test_chinese_text_normalization_contract.py tests/test_era_validator_production_contract.py tests/test_scene_image_constraint_contract.py tests/test_scene_image_integrity_narrow_contract.py tests/test_security_jwt_secret_contract.py tests/test_security_no_hardcoded_secrets_contract.py tests/test_security_sse_auth_contract.py tests/test_security_image_base64_contract.py tests/test_security_sqlalchemy_raw_sql_contract.py tests/test_security_no_pickle_contract.py tests/test_security_prompt_injection_contract.py tests/test_sse_retry_contract.py tests/test_error_recovery_contract.py tests/test_music_playlist_contract.py -v
+    $PYTHON -m pytest tests/test_api_contract.py tests/test_character_settings_api_contract.py tests/test_model_contracts.py tests/test_narrative_style_contract.py tests/test_quality_level_contract.py tests/test_prompt_constraints_quality_level.py tests/test_collection_contract.py tests/test_constraint_level_api_contract.py tests/test_image_cache_contract.py tests/test_sse_timeout_contract.py tests/test_event_generation_contract.py tests/test_music_cache_contract.py tests/test_opening_story_contract.py tests/test_music_service_url_contract.py tests/test_game_state_round_contract.py tests/test_docker_compose_contract.py tests/test_image_edit_fallback_contract.py tests/test_music_pool_cache_contract.py tests/test_scene_image_sse_contract.py tests/test_achievement_contract.py tests/test_exceptions_contract.py tests/test_fallback_events_contract.py tests/test_language_contract.py tests/test_model_fallback_contract.py tests/test_truncation_recovery_contract.py tests/test_polish_controller_contract.py tests/test_relationship_events_contract.py tests/test_monthly_summary_contract.py tests/test_scheduled_events_contract.py tests/test_temporal_validator_contract.py tests/test_emotional_arc_contract.py tests/test_retry_controller_contract.py tests/test_validation_pipeline_contract.py tests/test_character_state_contract.py tests/test_yearly_summary_contract.py tests/test_endings_contract.py tests/test_currency_contract.py -v
     local result=$?
     
     print_layer_result "contract" $result
@@ -99,10 +101,9 @@ run_contract() {
 run_db() {
     print_layer_header "4" "真实 DB 集成测试" "保存→读取链路完整性"
     cd "$PROJECT_DIR"
-    source venv/bin/activate
-    
+
     echo -e "${YELLOW}运行真实数据库集成测试...${NC}"
-    python3 -m pytest tests/test_integration_real_db.py tests/test_character_settings_persistence_db.py tests/test_database.py tests/test_narrative_db_migration.py tests/test_constraint_level_db.py tests/test_constraint_level_persistence_db.py tests/test_collection_cache_db.py tests/test_image_compression_db.py tests/test_sse_timeout_integration.py tests/test_event_generation_race_db.py tests/test_music_cache_integration.py tests/test_music_pool_cache_integration.py tests/test_style_auto_match_integration.py tests/test_image_edit_fallback_db.py tests/test_scene_image_sse_integration.py tests/test_achievement_life_review_db.py tests/test_story_generator_best_story_db.py tests/test_era_validator_integration.py tests/test_scene_image_integrity_db.py tests/test_save_persistence_db.py tests/test_custom_choice_persistence_db.py tests/test_music_playlist_db.py -v
+    $PYTHON -m pytest tests/test_integration_real_db.py tests/test_character_settings_persistence_db.py tests/test_database.py tests/test_narrative_db_migration.py tests/test_constraint_level_db.py tests/test_constraint_level_persistence_db.py tests/test_collection_cache_db.py tests/test_image_compression_db.py tests/test_sse_timeout_integration.py tests/test_event_generation_race_db.py tests/test_music_cache_integration.py tests/test_music_pool_cache_integration.py tests/test_style_auto_match_integration.py tests/test_image_edit_fallback_db.py tests/test_scene_image_sse_integration.py tests/test_achievement_life_review_db.py tests/test_image_compressor_db.py tests/test_session_repository_db.py tests/test_decision_repository_db.py tests/test_save_point_repository_db.py tests/test_state_repository_db.py -v
     local result=$?
     
     print_layer_result "db" $result
@@ -119,8 +120,7 @@ run_e2e_browser() {
     if ! lsof -ti:8000 > /dev/null 2>&1; then
         echo -e "${YELLOW}后端未运行，正在启动...${NC}"
         cd "$PROJECT_DIR"
-        source venv/bin/activate
-        python run_api.py > /tmp/backend_e2e.log 2>&1 &
+        $PYTHON run_api.py > /tmp/backend_e2e.log 2>&1 &
         BACKEND_PID=$!
         sleep 3
         if ! lsof -ti:8000 > /dev/null 2>&1; then
@@ -156,13 +156,12 @@ run_unit() {
     echo -e "${YELLOW}运行单元测试 (pytest -m unit)...${NC}"
     echo -e "${BLUE}========================================${NC}"
     cd "$PROJECT_DIR"
-    source venv/bin/activate
-    
-    python3 -m pytest tests/ -m unit -v
+
+    $PYTHON -m pytest tests/ -m unit -v
     local unit_result=$?
     
     echo -e "${YELLOW}运行 StoryGenerator 质量级别单元测试...${NC}"
-    python3 -m pytest tests/test_story_generator_quality_level.py tests/test_generate_round_event_retry.py tests/test_story_generator_narrative.py -v
+    $PYTHON -m pytest tests/test_story_generator_quality_level.py tests/test_generate_round_event_retry.py tests/test_story_generator_narrative.py -v
     local story_result=$?
     
     local result=0
@@ -184,9 +183,8 @@ run_integration() {
     echo -e "${YELLOW}运行集成测试 (pytest -m integration)...${NC}"
     echo -e "${BLUE}========================================${NC}"
     cd "$PROJECT_DIR"
-    source venv/bin/activate
-    
-    python3 -m pytest tests/ -m integration -v
+
+    $PYTHON -m pytest tests/ -m integration -v
     local result=$?
     
     if [ $result -eq 0 ]; then
@@ -203,9 +201,8 @@ run_api() {
     echo -e "${YELLOW}运行 API 测试 (pytest -m api)...${NC}"
     echo -e "${BLUE}========================================${NC}"
     cd "$PROJECT_DIR"
-    source venv/bin/activate
-    
-    python3 -m pytest tests/ -m api -v
+
+    $PYTHON -m pytest tests/ -m api -v
     local result=$?
     
     if [ $result -eq 0 ]; then
@@ -239,12 +236,6 @@ run_frontend() {
     echo -e "${YELLOW}--- Jest 单元测试 ---${NC}"
     npm test -- --passWithNoTests
     local jest_result=$?
-
-    # 前端集成/契约测试
-    echo ""
-    echo -e "${YELLOW}--- 前端集成契约测试 ---${NC}"
-    npx jest src/__tests__/integration/api-contracts.test.ts --passWithNoTests
-    local contract_result=$?
     
     if [ $jest_result -eq 0 ]; then
         echo -e "${GREEN}✓ Jest 测试通过${NC}"
@@ -253,8 +244,8 @@ run_frontend() {
     fi
     
     local result=0
-    [ $tsc_result -ne 0 ] || [ $jest_result -ne 0 ] || [ $contract_result -ne 0 ] && result=1
-
+    [ $tsc_result -ne 0 ] || [ $jest_result -ne 0 ] && result=1
+    
     return $result
 }
 
@@ -264,8 +255,7 @@ run_backend() {
     echo -e "${YELLOW}运行后端 Python 测试...${NC}"
     echo -e "${BLUE}========================================${NC}"
     cd "$PROJECT_DIR"
-    source venv/bin/activate
-    python3 -m pytest tests/ -v --tb=short
+$PYTHON -m pytest tests/ -v --tb=short
     local result=$?
     if [ $result -eq 0 ]; then
         echo -e "${GREEN}✓ 后端测试通过${NC}"
@@ -284,8 +274,7 @@ run_coverage() {
     # 后端覆盖率
     echo -e "${YELLOW}--- 后端覆盖率 ---${NC}"
     cd "$PROJECT_DIR"
-    source venv/bin/activate
-    pytest tests/ --cov=src --cov-report=term-missing --cov-report=html:htmlcov/backend
+    $PYTHON -m pytest tests/ --cov=src --cov-report=term-missing --cov-report=html:htmlcov/backend
     
     # 前端覆盖率
     echo ""
@@ -305,8 +294,7 @@ run_security() {
     echo -e "${YELLOW}运行安全扫描 (Bandit)...${NC}"
     echo -e "${BLUE}========================================${NC}"
     cd "$PROJECT_DIR"
-    source venv/bin/activate
-    bandit -r src -c .bandit
+    $PYTHON -m bandit -r src -c .bandit
     local result=$?
     if [ $result -eq 0 ]; then
         echo -e "${GREEN}✓ 安全扫描通过${NC}"
@@ -322,19 +310,18 @@ run_perf() {
     echo -e "${YELLOW}运行性能测试 (Locust)...${NC}"
     echo -e "${BLUE}========================================${NC}"
     cd "$PROJECT_DIR"
-    source venv/bin/activate
-    
+
     # 检查后端是否运行
     if ! lsof -ti:8000 > /dev/null 2>&1; then
         echo -e "${YELLOW}后端未运行，正在启动...${NC}"
-        python run_api.py > /tmp/backend_test.log 2>&1 &
+        $PYTHON run_api.py > /tmp/backend_test.log 2>&1 &
         sleep 3
     fi
     
     echo -e "${YELLOW}启动 Locust 性能测试...${NC}"
     echo -e "${YELLOW}访问 http://localhost:8089 进行测试配置${NC}"
     cd tests/performance
-    locust -f locustfile.py --host=http://localhost:8000
+    $PYTHON -m locust -f locustfile.py --host=http://localhost:8000
 }
 
 # 运行所有自动化测试 (4 层，不含 E2E 浏览器)
