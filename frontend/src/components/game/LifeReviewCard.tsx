@@ -17,7 +17,7 @@ interface TurningPoint {
   impact_score: number;
 }
 
-interface LifeReviewData {
+export interface LifeReviewData {
   personality_labels: string[];
   key_turning_points: TurningPoint[];
   resource_curves: {

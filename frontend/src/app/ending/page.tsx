@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { SkeletonStory } from "@/components/game/SkeletonStory";
-import { LifeReviewCard } from "@/components/game/LifeReviewCard";
+import { LifeReviewCard, LifeReviewData } from "@/components/game/LifeReviewCard";
 import { ShareCard } from "@/components/game/ShareCard";
 import { useGameStore } from "@/stores/useGameStore";
 import { useHydration } from "@/hooks/useHydration";

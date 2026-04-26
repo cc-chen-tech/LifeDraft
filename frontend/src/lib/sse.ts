@@ -337,7 +337,7 @@ export async function streamRewrite(
 
   return new Promise((resolve, reject) => {
     function pump(): Promise<void> {
-       
+
       return reader!.read().then(({ done, value }) => {
         if (done) {
           // ★ 修复：流在未收到 complete 事件或 [DONE] 的情况下结束
@@ -414,6 +414,7 @@ export async function streamRewrite(
 
         return pump();
       }).catch((error) => {
+        hasError = true;
         callbacks.onError?.(error);
         reject(error);
       });

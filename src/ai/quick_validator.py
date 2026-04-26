@@ -192,7 +192,12 @@ class QuickValidator:
         return warnings
 
     def _check_perspective_consistency(self, text: str, language: str) -> List[str]:
-        """Check for consistent third-person perspective."""
+        """Check that narrative does not use first-person perspective.
+
+        The game uses second-person perspective ("你" / "you") for immersion,
+        so only first-person ("我" / "I") is prohibited in narrative text.
+        Dialogue inside quotes may use any perspective.
+        """
         issues = []
 
         if language == "zh":
@@ -200,7 +205,7 @@ class QuickValidator:
             # 方法：在文本前后添加空格，然后匹配被空格/标点包围的"我"或"你"
             # 这样可以避免字符串开头/结尾的特殊边界问题
 
-            # 先移除所有引号内的内容（对话允许使用第一/第二人称）
+            # 先移除所有引号内的内容（对话允许使用任何人称）
             text_without_quotes = text
             text_without_quotes = re.sub(r'"[^"]*"', " ", text_without_quotes)
             text_without_quotes = re.sub(r"'[^']*'", " ", text_without_quotes)
@@ -213,13 +218,12 @@ class QuickValidator:
             # 在文本前后添加空格，简化边界检测
             padded_text = " " + text_without_quotes + " "
 
-            # 匹配被空白或标点包围的"我"或"你"
+            # 匹配被空白或标点包围的"我"
             # 使用简单的方法：找到所有"我"或"你"的位置，检查前后字符
             # 边界字符：空白、标点、字符串开头/结尾
             boundary_chars = set(" \t\n\r。，！？；：,;:!?\"'\"'()（）【】[]《》<>{}")
 
             has_first_person = False
-            has_second_person = False
 
             for i, char in enumerate(padded_text):
                 if char == "我":
@@ -228,26 +232,17 @@ class QuickValidator:
                     prev_char = padded_text[i - 1] if i > 0 else " "
                     if prev_char in boundary_chars:
                         has_first_person = True
-                elif char == "你":
-                    prev_char = padded_text[i - 1] if i > 0 else " "
-                    if prev_char in boundary_chars:
-                        has_second_person = True
 
             if has_first_person:
                 issues.append("故事中使用了第一人称「我」，应使用第三人称")
-            if has_second_person:
-                issues.append("故事中使用了第二人称「你」，应使用第三人称")
         else:
             # 英文检查
             text_without_quotes = re.sub(r'"[^"]*"', "", text)
 
             first_person_pattern = re.compile(r"\bI\b")
-            second_person_pattern = re.compile(r"\byou\b", re.IGNORECASE)
 
             if first_person_pattern.search(text_without_quotes):
                 issues.append("Story uses first-person 'I', should use third-person")
-            if second_person_pattern.search(text_without_quotes):
-                issues.append("Story uses second-person 'you', should use third-person")
 
         return issues
 
