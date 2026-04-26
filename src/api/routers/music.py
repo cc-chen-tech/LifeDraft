@@ -1,11 +1,13 @@
 """Music API router for story-based music recommendation."""
 
+import asyncio
 import logging
+import re
+from collections import OrderedDict
 from typing import List, Optional, Tuple
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 
 from src.api.deps import get_current_user_optional
@@ -16,6 +18,11 @@ from src.services.music_service import get_music_service
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# LRU 内存缓存：最多缓存 10 首歌的完整音频，避免重复下载
+_audio_cache: OrderedDict[int, Tuple[bytes, str]] = OrderedDict()
+_AUDIO_CACHE_MAX = 10
+_audio_cache_lock = asyncio.Lock()
 
 
 class MusicRecommendationRequest(BaseModel):
@@ -223,67 +230,26 @@ async def search_music(
         raise HTTPException(status_code=500, detail=f"搜索失败: {str(e)}")
 
 
-@router.get("/music/stream/{song_id}")
-async def stream_song(song_id: int, request: Request):
-    """代理音乐流，绕过 CDN 的 Referer 限制。
+async def _get_or_download_audio(song_id: int, url: str) -> Tuple[bytes, str]:
+    """下载完整音频到内存，带 LRU 缓存。MP3 通常 3-5MB，内存可接受。"""
+    # 先检查缓存（短锁）
+    async with _audio_cache_lock:
+        if song_id in _audio_cache:
+            _audio_cache.move_to_end(song_id)
+            logger.info(f"[MusicStream] 缓存命中: song_id={song_id}")
+            return _audio_cache[song_id]
 
-    浏览器直接请求网易云 CDN 会被 403/ORB 拦截（因为 Referer 是 localhost），
-    通过后端代理请求并流式返回音频数据即可绕过。
-    支持 Range 请求转发（用于拖拽跳转），以及 403/401 时自动刷新 URL 重试。
-    """
+    # 下载完整文件（不持锁）
     music_service = get_music_service()
-    url = await music_service.get_song_play_url(song_id)
-    if not url:
-        raise HTTPException(status_code=404, detail="Song URL not available")
+    async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+        cdn_headers = {"Referer": ""}
+        response = await client.get(url, headers=cdn_headers)
 
-    def _sanitize_url(u: str) -> str:
-        """脱敏URL，只保留域名和路径前缀。"""
-        try:
-            from urllib.parse import urlparse
-
-            parsed = urlparse(u)
-            return f"{parsed.scheme}://{parsed.netloc}/...{parsed.path[-20:] if len(parsed.path) > 20 else parsed.path}"
-        except Exception:
-            return u[:30] + "..."
-
-    async def _do_stream(target_url: str) -> Tuple[httpx.Response, httpx.AsyncClient]:
-        """向 CDN 发起流式请求并返回 StreamingResponse。"""
-        client = httpx.AsyncClient(follow_redirects=True, timeout=30.0)
-        try:
-            # 不发送 Referer，避免 CDN 拒绝；转发 Range 头以支持拖拽跳转
-            cdn_headers: dict[str, str] = {"Referer": ""}
-            if "range" in request.headers:
-                cdn_headers["Range"] = request.headers["range"]
-
-            logger.info(
-                f"[MusicStream] CDN 请求发起: song_id={song_id}, url={_sanitize_url(target_url)}"
-            )
-            response = await client.send(
-                client.build_request("GET", target_url, headers=cdn_headers),
-                stream=True,
-            )
-            logger.info(
-                f"[MusicStream] CDN 响应: song_id={song_id}, "
-                f"status={response.status_code}, content_type={response.headers.get('content-type', 'N/A')}"
-            )
-            return response, client
-        except httpx.HTTPError as exc:
-            await client.aclose()
-            raise exc
-
-    try:
-        response, client = await _do_stream(url)
-
-        # 如果 CDN 返回 403/401（URL 过期），尝试刷新 URL 重试一次
+        # URL 过期 → 刷新重试
         if response.status_code in (403, 401):
             logger.warning(
-                f"[MusicStream] CDN 返回 {response.status_code} (URL可能过期): "
-                f"song_id={song_id}, url={_sanitize_url(url)}"
+                f"[MusicStream] CDN 返回 {response.status_code} (URL可能过期): song_id={song_id}"
             )
-            await response.aclose()
-            await client.aclose()
-
-            # 清除缓存以强制重新获取
             from src.services.music_service import NeteaseMusicClient
 
             if song_id in NeteaseMusicClient._url_cache:
@@ -293,61 +259,83 @@ async def stream_song(song_id: int, request: Request):
             fresh_url = await music_service.get_song_play_url(song_id)
             if not fresh_url:
                 raise HTTPException(status_code=404, detail="Song URL not available after refresh")
-            logger.info(
-                f"[MusicStream] URL刷新成功: song_id={song_id}, new_url={_sanitize_url(fresh_url)}"
-            )
-
-            response, client = await _do_stream(fresh_url)
+            logger.info(f"[MusicStream] URL刷新成功: song_id={song_id}")
+            response = await client.get(fresh_url, headers={"Referer": ""})
 
         if response.status_code not in (200, 206):
-            status = response.status_code
-            logger.error(
-                f"[MusicStream] CDN 返回非200状态码: song_id={song_id}, "
-                f"status={status}, headers={dict(response.headers)}"
-            )
-            await response.aclose()
-            await client.aclose()
-            raise HTTPException(status_code=status, detail="CDN request failed")
+            raise HTTPException(status_code=response.status_code, detail="CDN request failed")
 
-        async def audio_generator():
-            try:
-                # 使用 128KB chunk_size 提高吞吐量，每 chunk 约 8 秒音频
-                # 大 chunk 让浏览器积累更多缓冲，减少播放中卡顿
-                async for chunk in response.aiter_bytes(chunk_size=131072):
-                    yield chunk
-            except Exception:
-                # 客户端断开连接是正常行为（切歌），静默处理
-                pass
-            finally:
-                try:
-                    await response.aclose()
-                except Exception:
-                    pass
-                try:
-                    await client.aclose()
-                except Exception:
-                    pass
-
+        audio_data = response.content
         content_type = response.headers.get("content-type", "audio/mpeg")
-        resp_headers: dict[str, str] = {
-            "accept-ranges": "bytes",
-            "cache-control": "public, max-age=300",
-        }
-        # 转发 content-range 头（206 Partial Content 时需要）
-        if "content-range" in response.headers:
-            resp_headers["content-range"] = response.headers["content-range"]
-        # 注意：不设置 content-length。流式响应中设置该头会导致客户端提前断开时
-        # h11 报 "Too little data for declared Content-Length" 错误。
 
-        return StreamingResponse(
-            audio_generator(),
-            status_code=response.status_code,
-            media_type=content_type,
-            headers=resp_headers,
-        )
+    logger.info(
+        f"[MusicStream] 下载完成: song_id={song_id}, size={len(audio_data)} bytes"
+    )
+
+    # 存入缓存
+    async with _audio_cache_lock:
+        _audio_cache[song_id] = (audio_data, content_type)
+        if len(_audio_cache) > _AUDIO_CACHE_MAX:
+            evicted_id, _ = _audio_cache.popitem(last=False)
+            logger.info(f"[MusicStream] 缓存淘汰: song_id={evicted_id}")
+
+    return audio_data, content_type
+
+
+@router.get("/music/stream/{song_id}")
+async def stream_song(song_id: int, request: Request):
+    """代理音乐流，绕过 CDN 的 Referer 限制。
+
+    完整下载 CDN 音频后一次性返回（带 content-length），
+    避免流式代理链延迟导致浏览器 waiting/stalled。
+    支持 Range 请求（用于拖拽跳转），以及 403/401 时自动刷新 URL 重试。
+    内存 LRU 缓存最多 10 首歌，避免重复下载。
+    """
+    music_service = get_music_service()
+    url = await music_service.get_song_play_url(song_id)
+    if not url:
+        raise HTTPException(status_code=404, detail="Song URL not available")
+
+    try:
+        audio_data, content_type = await _get_or_download_audio(song_id, url)
     except httpx.HTTPError as exc:
         logger.warning(f"[MusicStream] Failed to fetch audio for song {song_id}: {exc}")
         raise HTTPException(status_code=502, detail="Failed to fetch audio from CDN")
+
+    # 处理 Range 请求（浏览器拖拽进度条）
+    range_header = request.headers.get("range")
+    if range_header:
+        range_match = re.match(r"bytes=(\d+)-(\d*)", range_header)
+        if range_match:
+            start = int(range_match.group(1))
+            end = int(range_match.group(2)) if range_match.group(2) else len(audio_data) - 1
+            end = min(end, len(audio_data) - 1)
+            if start > end or start >= len(audio_data):
+                raise HTTPException(status_code=416, detail="Range not satisfiable")
+            chunk = audio_data[start : end + 1]
+            return Response(
+                content=chunk,
+                status_code=206,
+                media_type=content_type,
+                headers={
+                    "content-range": f"bytes {start}-{end}/{len(audio_data)}",
+                    "content-length": str(len(chunk)),
+                    "accept-ranges": "bytes",
+                    "cache-control": "public, max-age=300",
+                },
+            )
+
+    # 完整响应
+    return Response(
+        content=audio_data,
+        status_code=200,
+        media_type=content_type,
+        headers={
+            "content-length": str(len(audio_data)),
+            "accept-ranges": "bytes",
+            "cache-control": "public, max-age=300",
+        },
+    )
 
 
 @router.get("/music/playlist/{game_id}")
