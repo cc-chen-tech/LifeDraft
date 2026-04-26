@@ -47,6 +47,12 @@ interface MusicState {
   // fadeVolume interval 引用，防止多个渐变冲突
   fadeInterval: ReturnType<typeof setInterval> | null;
 
+  // Playlist queue state
+  queue: Song[];
+  playedSongs: Song[];
+  playlistGameId: number | null;
+  isLoadingPlaylist: boolean;
+
   // Actions
   setRecommendation: (recommendation: MusicRecommendation | null) => void;
   setIsLoadingRecommendation: (loading: boolean) => void;
@@ -67,6 +73,15 @@ interface MusicState {
   seek: (time: number) => void;
   changeVolume: (volume: number) => void;
   fadeVolume: (targetVolume: number, duration?: number) => void;  // 音量渐变
+
+  // Playlist actions
+  setQueue: (queue: Song[]) => void;
+  setPlayedSongs: (songs: Song[]) => void;
+  setPlaylistGameId: (gameId: number | null) => void;
+  loadPlaylist: (gameId: number) => Promise<void>;
+  mergePlaylist: (gameId: number, songs: Song[], mood?: string, keywords?: string[]) => Promise<void>;
+  syncPlaylistState: (gameId: number, positionMs: number, isPlaying: boolean, volume: number) => Promise<void>;
+  advanceQueue: () => Promise<void>;
 
   // 清理
   reset: () => void;
@@ -90,6 +105,10 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   duration: 0,
   audioElement: null,
   fadeInterval: null,
+  queue: [],
+  playedSongs: [],
+  playlistGameId: null,
+  isLoadingPlaylist: false,
 
   // Setters
   setRecommendation: (recommendation) => set({ recommendation }),
@@ -113,6 +132,10 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   setDuration: (duration) => set({ duration }),
   setAudioElement: (audioElement) => set({ audioElement }),
   setFadeInterval: (fadeInterval) => set({ fadeInterval }),
+
+  setQueue: (queue) => set({ queue }),
+  setPlayedSongs: (playedSongs) => set({ playedSongs }),
+  setPlaylistGameId: (playlistGameId) => set({ playlistGameId }),
 
   // 播放控制
   play: () => {
@@ -192,6 +215,80 @@ export const useMusicStore = create<MusicState>((set, get) => ({
     set({ fadeInterval: newFadeInterval });
   },
 
+  // Playlist actions
+  loadPlaylist: async (gameId: number) => {
+    set({ isLoadingPlaylist: true });
+    try {
+      const { api } = await import('@/lib/api');
+      const data = await api.music.playlist.get(gameId);
+      set({
+        playlistGameId: gameId,
+        currentSong: data.current_song,
+        queue: data.queue.map((s: Song) => ({ ...s })),
+        playedSongs: data.played_songs.map((s: Song) => ({ ...s })),
+        isPlaying: data.is_playing,
+        volume: data.volume,
+      });
+    } catch (error) {
+      console.error('[MusicStore] Failed to load playlist:', error);
+    } finally {
+      set({ isLoadingPlaylist: false });
+    }
+  },
+
+  mergePlaylist: async (gameId: number, songs: Song[], mood?: string, keywords?: string[]) => {
+    try {
+      const { api } = await import('@/lib/api');
+      const data = await api.music.playlist.update(gameId, {
+        songs: songs.map((s) => ({
+          id: s.id,
+          name: s.name,
+          artists: s.artists,
+          album: s.album,
+          duration: s.duration,
+        })),
+        mood,
+        keywords,
+      });
+      set({
+        currentSong: data.current_song,
+        queue: data.queue.map((s: Song) => ({ ...s })),
+        playedSongs: data.played_songs.map((s: Song) => ({ ...s })),
+      });
+    } catch (error) {
+      console.error('[MusicStore] Failed to merge playlist:', error);
+    }
+  },
+
+  syncPlaylistState: async (gameId: number, positionMs: number, isPlaying: boolean, volume: number) => {
+    try {
+      const { api } = await import('@/lib/api');
+      await api.music.playlist.sync(gameId, {
+        current_position_ms: positionMs,
+        is_playing: isPlaying,
+        volume,
+      });
+    } catch (error) {
+      console.error('[MusicStore] Failed to sync playlist state:', error);
+    }
+  },
+
+  advanceQueue: async () => {
+    const { playlistGameId } = get();
+    if (!playlistGameId) return;
+    try {
+      const { api } = await import('@/lib/api');
+      const data = await api.music.playlist.advance(playlistGameId);
+      set({
+        currentSong: data.current_song,
+        queue: data.queue.map((s: Song) => ({ ...s })),
+        playedSongs: data.played_songs.map((s: Song) => ({ ...s })),
+      });
+    } catch (error) {
+      console.error('[MusicStore] Failed to advance queue:', error);
+    }
+  },
+
   // 清理
   reset: () => {
     const { audioElement, fadeInterval } = get();
@@ -212,6 +309,10 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       duration: 0,
       audioElement: null,
       fadeInterval: null,
+      queue: [],
+      playedSongs: [],
+      playlistGameId: null,
+      isLoadingPlaylist: false,
     });
   },
 

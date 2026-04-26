@@ -717,9 +717,7 @@ class SceneImageService:
         characters: List[Dict[str, str]] = []
 
         # 1. 添加玩家角色
-        player_desc = self._build_character_desc_from_settings(
-            character_settings, player_name
-        )
+        player_desc = self._build_character_desc_from_settings(character_settings, player_name)
         characters.append({"name": player_name, "description": player_desc})
 
         # 2. 从 relationships.key_people 提取
@@ -736,7 +734,12 @@ class SceneImageService:
         family_members = family.get("family_members", []) if isinstance(family, dict) else []
         for member in family_members:
             name = member.get("name", "")
-            if name and name != player_name and name not in [c["name"] for c in characters] and name in story_text:
+            if (
+                name
+                and name != player_name
+                and name not in [c["name"] for c in characters]
+                and name in story_text
+            ):
                 desc = self._build_character_desc(member)
                 characters.append({"name": name, "description": desc})
 
@@ -761,9 +764,7 @@ class SceneImageService:
         return "，".join(parts) if parts else "一个普通人"
 
     @staticmethod
-    def _build_character_desc_from_settings(
-        character_settings: Dict[str, Any], name: str
-    ) -> str:
+    def _build_character_desc_from_settings(character_settings: Dict[str, Any], name: str) -> str:
         """从 character_settings 构建玩家角色描述."""
         parts = []
         age = character_settings.get("age")
@@ -823,8 +824,7 @@ class SceneImageService:
             if name == player_name and appearance_anchor:
                 anchor_desc = appearance_anchor.build_prompt_segment()
                 lines.append(
-                    f"- {name}（{position}）：{desc}。"
-                    f"【外貌锚点 - 绝对不可改变】{anchor_desc}"
+                    f"- {name}（{position}）：{desc}。" f"【外貌锚点 - 绝对不可改变】{anchor_desc}"
                 )
             else:
                 lines.append(f"- {name}（{position}）：{desc}")
@@ -851,9 +851,13 @@ class SceneImageService:
             return positions[index % 3]
         # 4+ 人物
         positions = [
-            "画面左侧前景", "画面右侧前景",
-            "画面左侧背景", "画面右侧背景",
-            "画面中央", "画面中央偏左", "画面中央偏右",
+            "画面左侧前景",
+            "画面右侧前景",
+            "画面左侧背景",
+            "画面右侧背景",
+            "画面中央",
+            "画面中央偏左",
+            "画面中央偏右",
         ]
         return positions[index % len(positions)]
 

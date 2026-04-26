@@ -15,7 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 from jose import jwt
 
-os.environ["JWT_SECRET"] = "test-secret-for-sse-integration"
+os.environ.setdefault("JWT_SECRET", "test-secret-for-sse-integration")
 
 from src.api.main import app  # noqa: E402
 

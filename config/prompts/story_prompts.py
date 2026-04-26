@@ -280,9 +280,7 @@ def _get_english_prompt(
     wealth = player_state.get("wealth", 10000)
     relationships = player_state.get("relationships", {})
 
-    rel_str = ", ".join(
-        [f"{name}({affinity})" for name, affinity in relationships.items()]
-    )
+    rel_str = ", ".join([f"{name}({affinity})" for name, affinity in relationships.items()])
     if not rel_str:
         rel_str = "None"
 
@@ -295,9 +293,7 @@ def _get_english_prompt(
     phase_desc = phase_descriptions.get(current_phase, current_phase)
 
     # Build character context and available people
-    character_context, available_people = _build_full_character_context(
-        character_settings, "en"
-    )
+    character_context, available_people = _build_full_character_context(character_settings, "en")
     available_people_str = _build_available_people_constraint(available_people, "en")
 
     # Build time context
@@ -337,7 +333,7 @@ def _get_english_prompt(
         if older_decisions:
             topic_parts = []
             for d in older_decisions:
-                event_snippet = d.get('event', '')[:80]
+                event_snippet = d.get("event", "")[:80]
                 topic_parts.append(f"W{d.get('week')}: {event_snippet}")
             recent_topics_str = "\n".join(topic_parts)
 
@@ -345,8 +341,7 @@ def _get_english_prompt(
     older_history_section_en = ""
     if recent_topics_str:
         older_history_section_en = (
-            "\n\n【Older History Summaries - MUST NOT repeat these plots】\n"
-            + recent_topics_str
+            "\n\n【Older History Summaries - MUST NOT repeat these plots】\n" + recent_topics_str
         )
 
     prompt = f"""You are a "fate engine" for a life simulation game. Generate a life event that requires the player to make a meaningful choice.
@@ -469,9 +464,7 @@ def _get_chinese_prompt(
     week = player_state.get("week", 0)
     relationships = player_state.get("relationships", {})
 
-    rel_str = "，".join(
-        [f"{name}({affinity})" for name, affinity in relationships.items()]
-    )
+    rel_str = "，".join([f"{name}({affinity})" for name, affinity in relationships.items()])
     if not rel_str:
         rel_str = "无"
 
@@ -484,9 +477,7 @@ def _get_chinese_prompt(
     phase_desc = phase_descriptions.get(current_phase, current_phase)
 
     # Build character context and available people
-    character_context, available_people = _build_full_character_context(
-        character_settings, "zh"
-    )
+    character_context, available_people = _build_full_character_context(character_settings, "zh")
     available_people_str = _build_available_people_constraint(available_people, "zh")
 
     # Build time context
@@ -526,7 +517,7 @@ def _get_chinese_prompt(
         if older_decisions:
             topic_parts = []
             for d in older_decisions:
-                event_snippet = d.get('event', '')[:80]
+                event_snippet = d.get("event", "")[:80]
                 topic_parts.append(f"第{d.get('week')}周: {event_snippet}")
             recent_topics_str = "\n".join(topic_parts)
 
@@ -563,8 +554,7 @@ def _get_chinese_prompt(
     older_history_section = ""
     if recent_topics_str:
         older_history_section = (
-            "\n\n【更早的历史事件摘要 - 禁止与这些情节雷同】\n"
-            + recent_topics_str
+            "\n\n【更早的历史事件摘要 - 禁止与这些情节雷同】\n" + recent_topics_str
         )
 
     prompt = f"""你是一个人生模拟游戏的“命运引擎”。请根据以下玩家状态和角色设定，以故事续写的方式生成一个需要拉择的生活事件。
@@ -686,6 +676,7 @@ def get_result_generation_prompt(
     language: str = "en",
     character_settings: Optional[Dict[str, Any]] = None,
     recent_context: str = "",
+    is_custom: bool = False,
 ) -> str:
     """
     Generate prompt for story continuation after player's choice.
@@ -708,6 +699,27 @@ def get_result_generation_prompt(
         if "occupation" in character_settings:
             occupation = character_settings["occupation"]
             char_context += f"\n职业：{occupation.get('occupation', '未知')}"
+
+    # ★ Bug #26: 自定义选择需要更强的 prompt 约束，确保 AI 严格遵循
+    custom_constraint_zh = ""
+    custom_constraint_en = ""
+    if is_custom:
+        custom_constraint_zh = (
+            "\n10. **[MUST] 严格遵循自定义选择**："
+            "这是玩家自由输入的自定义行动，不是预设选项。"
+            "你必须严格按照这个选择的字面意思生成后续剧情，"
+            "绝对不允许偏离、忽略、替换为其他行为，"
+            "也不允许将其解释为预设选项中的某一个。"
+            "续写的内容必须直接体现玩家输入的这个具体行动。"
+        )
+        custom_constraint_en = (
+            "\n10. **[MUST] STRICTLY FOLLOW CUSTOM CHOICE**: "
+            "This is a free-form custom action entered by the player, NOT a preset option. "
+            "You MUST generate the continuation strictly according to the literal meaning of this choice. "
+            "You are absolutely FORBIDDEN from deviating, ignoring, substituting with another action, "
+            "or interpreting it as one of the preset options. "
+            "The continuation MUST directly reflect the specific action the player entered."
+        )
 
     if language == "zh":
         return f"""你是一个沉浸式叙事小说作家。现在请续写以下故事，展示玩家做出选择后发生了什么。
@@ -732,7 +744,7 @@ def get_result_generation_prompt(
 6. 正确使用标点符号：对话必须用""包裹，句末使用句号/问号/感叹号，句内用逗号合理断句。禁止出现没有标点的大段连续文字
 7. 严禁跳脱叙事：不得提及"游戏""模拟""系统""属性值"等元信息，不得出现作者旁白
 8. **选择必须产生独特影响**：这个续写必须是因这个特定选择才发生的，不能是换任何一个选项都能套用的通用剧情。必须体现：如果玩家选择了另一个完全不同的选项，故事的走向和发展会明显不同
-9. **合理分段**：每段控制在150-300字，适时换段，禁止出现超过500字无换行的超长段落
+9. **合理分段**：每段控制在150-300字，适时换段，禁止出现超过500字无换行的超长段落{custom_constraint_zh}
 
 仅返回续写的故事内容，不要其他说明或标题。"""
     else:
@@ -758,7 +770,7 @@ def get_result_generation_prompt(
 6. Proper punctuation: dialogue MUST be in quotation marks, every sentence MUST end with a period/question/exclamation, use commas for clause breaks. No run-on paragraphs without punctuation
 7. NO FOURTH-WALL BREAKING: never mention 'game', 'simulation', 'system', 'stats', etc. No author asides
 8. **Choice must have UNIQUE impact**: This continuation MUST be a direct result of THIS specific choice. It cannot be a generic outcome that would apply to any option. Show that if the player had chosen a completely different option, the story direction and development would be noticeably different
-9. **Paragraph breaks**: Keep each paragraph between 150-300 words. Change paragraphs appropriately. NO paragraphs exceeding 500 words without a break
+9. **Paragraph breaks**: Keep each paragraph between 150-300 words. Change paragraphs appropriately. NO paragraphs exceeding 500 words without a break{custom_constraint_en}
 
 Return only the story continuation, no other explanations or headers."""
 
@@ -811,26 +823,20 @@ def get_options_only_prompt(
             traits_desc = traits.get("traits_description", "")
             if traits_desc:
                 char_context_parts.append(
-                    f"性格：{traits_desc}"
-                    if language == "zh"
-                    else f"Traits: {traits_desc}"
+                    f"性格：{traits_desc}" if language == "zh" else f"Traits: {traits_desc}"
                 )
         if "world" in character_settings:
             world = character_settings["world"]
             world_desc = world.get("world_description", "")
             if world_desc:
                 char_context_parts.append(
-                    f"世界：{world_desc}"
-                    if language == "zh"
-                    else f"World: {world_desc}"
+                    f"世界：{world_desc}" if language == "zh" else f"World: {world_desc}"
                 )
 
     char_context_str = "\n".join(char_context_parts)
 
     if language == "zh":
-        char_section = (
-            f"\n\n【角色背景】\n{char_context_str}" if char_context_str else ""
-        )
+        char_section = f"\n\n【角色背景】\n{char_context_str}" if char_context_str else ""
         return f"""你是一个人生模拟游戏的选项生成器。基于以下故事描述，生成2-4个用户可以选择的选项。
 
 【故事描述】
@@ -892,9 +898,7 @@ def get_options_only_prompt(
 仅返回JSON，不要其他内容。"""
     else:
         char_section_en = (
-            f"\n\n[Character Background]\n{char_context_str}"
-            if char_context_str
-            else ""
+            f"\n\n[Character Background]\n{char_context_str}" if char_context_str else ""
         )
         return f"""You are an options generator for a life simulation game. Based on the following story description, generate 2-4 options for the user to choose from.
 
@@ -1105,9 +1109,7 @@ def get_story_only_prompt(
     )
 
     # Build foreshadowing echo context (if a seed was activated)
-    foreshadowing_context = _build_foreshadowing_context(
-        activated_foreshadowing, language
-    )
+    foreshadowing_context = _build_foreshadowing_context(activated_foreshadowing, language)
 
     # Build character habits context
     habits_context = _build_character_habits_context(character_habits, language)
@@ -1269,9 +1271,7 @@ def get_relationship_event_context(events: list, era: str, language: str) -> str
             lines.append(f"- **{event['character_name']}**: {event['era_name']}")
             lines.append(f"  {event['description']}")
         lines.append("")
-        lines.append(
-            "请将以上关系事件自然地融入本轮故事中，使其感觉是故事发展的自然结果。"
-        )
+        lines.append("请将以上关系事件自然地融入本轮故事中，使其感觉是故事发展的自然结果。")
         lines.append("事件表达方式应符合时代背景，避免突兀。")
     else:
         lines = ["\n[IMPORTANT RELATIONSHIP EVENT - MUST INTEGRATE INTO STORY]"]
@@ -1279,9 +1279,7 @@ def get_relationship_event_context(events: list, era: str, language: str) -> str
             lines.append(f"- **{event['character_name']}**: {event['era_name']}")
             lines.append(f"  {event['description']}")
         lines.append("")
-        lines.append(
-            "Naturally integrate the above relationship events into this round's story."
-        )
+        lines.append("Naturally integrate the above relationship events into this round's story.")
         lines.append("Events should feel like natural story developments, not forced.")
 
     return "\n".join(lines)
@@ -1409,12 +1407,8 @@ def get_round_event_prompt(
     round_names_zh = ["周一", "周中", "周末"]
     round_names_en = ["Monday", "Midweek", "Weekend"]
 
-    round_name = (
-        round_names_zh[round_number] if round_number < 3 else f"第{round_number+1}轮"
-    )
-    round_name_en = (
-        round_names_en[round_number] if round_number < 3 else f"Round {round_number+1}"
-    )
+    round_name = round_names_zh[round_number] if round_number < 3 else f"第{round_number+1}轮"
+    round_name_en = round_names_en[round_number] if round_number < 3 else f"Round {round_number+1}"
 
     # ★ 构建公共叙事约束（根据质量级别）
     common_constraints = _build_common_story_constraints(language, quality_level)
@@ -1467,9 +1461,7 @@ def get_round_event_prompt(
                 if character_settings
                 else ""
             )
-            rel_events_context = get_relationship_event_context(
-                relationship_events, era, language
-            )
+            rel_events_context = get_relationship_event_context(relationship_events, era, language)
 
         # Build historical memory context (as flashback/reminiscence)
         memory_context = ""
@@ -1479,20 +1471,18 @@ def get_round_event_prompt(
                 memory_parts.append(f"「往年回忆」{historical_yearly_summary}")
             if historical_weekly_summary:
                 memory_parts.append(f"「近期回忆」{historical_weekly_summary}")
-            memory_parts.append(
-                "提示：当人物回忆过去或谈论往事时，可以自然引用以上内容。"
-            )
+            memory_parts.append("提示：当人物回忆过去或谈论往事时，可以自然引用以上内容。")
             memory_context = "\n".join(memory_parts)
 
         # Build time and storyline contexts
         time_context = _build_time_context(game_date_info, language)
-        storylines_context = _build_pending_storylines_context(
-            pending_storylines, language
-        )
+        storylines_context = _build_pending_storylines_context(pending_storylines, language)
         facts_context = _build_established_facts_context(established_facts, language)
 
         # Build world model constraints
-        world_model_context = _build_world_model_constraints(world_model, language, established_facts)
+        world_model_context = _build_world_model_constraints(
+            world_model, language, established_facts
+        )
 
         # Build continuation mandate (if previous event not concluded)
         continuation_mandate = _build_continuation_mandate(
@@ -1500,9 +1490,7 @@ def get_round_event_prompt(
         )
 
         # Build foreshadowing echo context
-        foreshadowing_context = _build_foreshadowing_context(
-            activated_foreshadowing, language
-        )
+        foreshadowing_context = _build_foreshadowing_context(activated_foreshadowing, language)
 
         # Build character habits context
         habits_context = _build_character_habits_context(character_habits, language)
@@ -1611,9 +1599,7 @@ Continue the story based on the above, maintaining continuity."""
                 if character_settings
                 else ""
             )
-            rel_events_context = get_relationship_event_context(
-                relationship_events, era, language
-            )
+            rel_events_context = get_relationship_event_context(relationship_events, era, language)
 
         # Build historical memory context (as flashback/reminiscence)
         memory_context = ""
@@ -1632,13 +1618,13 @@ Continue the story based on the above, maintaining continuity."""
 
         # Build time and storyline contexts
         time_context = _build_time_context(game_date_info, language)
-        storylines_context = _build_pending_storylines_context(
-            pending_storylines, language
-        )
+        storylines_context = _build_pending_storylines_context(pending_storylines, language)
         facts_context = _build_established_facts_context(established_facts, language)
 
         # Build world model constraints
-        world_model_context_en = _build_world_model_constraints(world_model, language, established_facts)
+        world_model_context_en = _build_world_model_constraints(
+            world_model, language, established_facts
+        )
 
         # Build continuation mandate (if previous event not concluded)
         continuation_mandate_en = _build_continuation_mandate(
@@ -1646,17 +1632,13 @@ Continue the story based on the above, maintaining continuity."""
         )
 
         # Build foreshadowing echo context
-        foreshadowing_context_en = _build_foreshadowing_context(
-            activated_foreshadowing, language
-        )
+        foreshadowing_context_en = _build_foreshadowing_context(activated_foreshadowing, language)
 
         # Build character habits context
         habits_context_en = _build_character_habits_context(character_habits, language)
 
         # Build new character introduction context
-        new_char_context_en = _build_new_character_intro_context(
-            new_character, language
-        )
+        new_char_context_en = _build_new_character_intro_context(new_character, language)
 
         # ★ 向量检索上下文
         vector_context_section_en = ""

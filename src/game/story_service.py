@@ -28,6 +28,7 @@ class StoryService:
         player_state: Optional[Dict[str, Any]] = None,
         stream_callback: Optional[Callable[[str], None]] = None,
         status_callback: Optional[Callable[[str], None]] = None,
+        is_custom: bool = False,
     ) -> str:
         """
         Generate a detailed story continuation after the player's choice.
@@ -63,6 +64,7 @@ class StoryService:
                 effects=effects,
                 language=self.language,
                 character_settings=character_settings or {},  # type: ignore[arg-type]
+                is_custom=is_custom,
             )
 
             sys_prompt = get_system_prompt("story_continuation", self.language)

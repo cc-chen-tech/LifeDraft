@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 
 # ★ 必须在导入 src.api.deps 之前设置环境变量，因为模块导入时会验证
-os.environ["JWT_SECRET"] = "test-secret-for-contract-tests"
+os.environ.setdefault("JWT_SECRET", "test-secret-for-contract-tests")
 
 
 class TestJWTSecretSecurityContract:

@@ -183,9 +183,7 @@ class CharacterAppearanceAnchor:
         # 标志性特征 - 场景中必须清晰可见，用于区分不同人物
         if self.distinctive_marks:
             marks = "、".join(self.distinctive_marks)
-            parts.append(
-                f"【标志性识别特征 - 场景中必须清晰可见，不可丢失】{marks}"
-            )
+            parts.append(f"【标志性识别特征 - 场景中必须清晰可见，不可丢失】{marks}")
 
         # 服装（可覆盖）
         outfit = outfit_override or self.typical_outfit

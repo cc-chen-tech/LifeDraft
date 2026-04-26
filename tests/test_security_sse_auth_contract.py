@@ -7,7 +7,7 @@ Layer 3: 契约测试 — 敏感数据的 SSE 流必须要求认证。
 import os
 from fastapi.testclient import TestClient
 
-os.environ["JWT_SECRET"] = "test-secret-for-sse-auth-contract"
+os.environ.setdefault("JWT_SECRET", "test-secret-for-sse-auth-contract")
 
 from src.api.main import app  # noqa: E402
 

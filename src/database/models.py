@@ -3,8 +3,8 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import (JSON, Boolean, Column, DateTime, Float, ForeignKey, Index,
-                        Integer, String, Text, create_engine)
+from sqlalchemy import (JSON, Boolean, Column, DateTime, Float, ForeignKey,
+                        Index, Integer, String, Text, create_engine)
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
 from config.settings import settings
@@ -297,9 +297,9 @@ class GamePlaylist(Base):
     game_id = Column(Integer, ForeignKey("games.game_id"), nullable=False, unique=True, index=True)
 
     # Playback state
-    current_song_json = Column(JSON, nullable=True)   # type: ignore[var-annotated]
-    queue_json = Column(JSON, default=list)           # type: ignore[var-annotated]
-    played_songs_json = Column(JSON, default=list)    # type: ignore[var-annotated]
+    current_song_json = Column(JSON, nullable=True)  # type: ignore[var-annotated]
+    queue_json = Column(JSON, default=list)  # type: ignore[var-annotated]
+    played_songs_json = Column(JSON, default=list)  # type: ignore[var-annotated]
     is_playing = Column(Boolean, default=False)
     volume = Column(Float, default=0.5)
     current_position_ms = Column(Integer, default=0)

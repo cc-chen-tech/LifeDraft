@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 from fastapi.testclient import TestClient
 from jose import jwt
 
-os.environ["JWT_SECRET"] = "test-secret-for-sse-contract"
+os.environ.setdefault("JWT_SECRET", "test-secret-for-sse-contract")
 
 from src.api.main import app  # noqa: E402
 

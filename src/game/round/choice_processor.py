@@ -185,12 +185,14 @@ class RoundChoiceProcessor:
         logger.debug(f"Applied effects from custom choice: {effects}")
 
         # 3. 生成故事续写（流式输出）
+        # ★ Bug #26: 传递 is_custom=True 以确保 prompt 中包含强约束
         story_continuation = self._generate_story_continuation(
             current_event.event_description,
             custom_text,
             effects,
             stream_callback=stream_callback,
             status_callback=status_callback,
+            is_custom=True,
         )
 
         # 4. Build full story and delegate to shared pipeline
@@ -462,6 +464,7 @@ class RoundChoiceProcessor:
         effects: Dict[str, Any],
         stream_callback: Optional[Callable[[str], None]] = None,
         status_callback: Optional[Callable[[str], None]] = None,
+        is_custom: bool = False,
     ) -> str:
         """Generate a detailed story continuation. Delegates to StoryService."""
         player_state = self.player_state
@@ -475,4 +478,5 @@ class RoundChoiceProcessor:
             player_state=player_state_dict,
             stream_callback=stream_callback,
             status_callback=status_callback,
+            is_custom=is_custom,
         )

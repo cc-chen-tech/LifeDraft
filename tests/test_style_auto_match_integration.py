@@ -2,11 +2,20 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from src.api.main import app
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def mock_auth_local():
+    """Patch auth at router level to survive module reloads from JWT contract tests."""
+    with patch("src.api.routers.games.get_current_user") as mock:
+        mock.return_value = {"user_id": 1}
+        yield mock
 
 
 class TestStyleAutoMatch:
@@ -34,7 +43,7 @@ class TestStyleAutoMatch:
 
         return mock_db, mock_sess, mock_game
 
-    def test_complete_settings_triggers_style_match(self, mock_auth):
+    def test_complete_settings_triggers_style_match(self):
         """When family_members is present, narrative_style_id should be auto-matched."""
         mock_db, mock_sess, mock_game = self._setup_mocks()
 
@@ -65,7 +74,7 @@ class TestStyleAutoMatch:
         # Verify narrative_style_id was persisted
         assert mock_game.initial_state.get("narrative_style_id") == "chinese_classic_saga"
 
-    def test_incomplete_settings_skips_style_match(self, mock_auth):
+    def test_incomplete_settings_skips_style_match(self):
         """When family_members is absent, style matching should be skipped."""
         mock_db, mock_sess, mock_game = self._setup_mocks()
 
@@ -89,7 +98,7 @@ class TestStyleAutoMatch:
             assert resp.status_code == 200
             mock_match.assert_not_called()
 
-    def test_low_confidence_skips_persistence(self, mock_auth):
+    def test_low_confidence_skips_persistence(self):
         """When confidence < 0.3, narrative_style_id should NOT be written."""
         mock_db, mock_sess, mock_game = self._setup_mocks()
 
@@ -116,7 +125,7 @@ class TestStyleAutoMatch:
 
         assert mock_game.initial_state.get("narrative_style_id") is None
 
-    def test_match_exception_is_non_blocking(self, mock_auth):
+    def test_match_exception_is_non_blocking(self):
         """When auto_match_style raises, the API should still return 200."""
         mock_db, mock_sess, mock_game = self._setup_mocks()
 
