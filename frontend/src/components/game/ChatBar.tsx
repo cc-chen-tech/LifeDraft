@@ -158,7 +158,7 @@ export function ChatBar({
     return (
       <div
         className={cn(
-          "fixed bottom-4 right-4 z-50 flex items-center gap-2",
+          "fixed bottom-14 right-4 z-50 flex items-center gap-2",
           className
         )}
       >
@@ -177,7 +177,7 @@ export function ChatBar({
   return (
     <div
       className={cn(
-        "fixed bottom-0 left-0 right-0 z-50",
+        "fixed bottom-12 left-0 right-0 z-50",
         "bg-card/95 backdrop-blur-sm border-t border-border",
         "p-3 safe-area-pb",
         className

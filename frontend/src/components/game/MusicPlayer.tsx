@@ -264,6 +264,7 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       // 创建新的音频元素 — 使用后端流式代理绕过 CDN Referer 限制
       const streamUrl = `/api/music/stream/${song.id}`;
       const audio = new Audio(streamUrl);
+      audio.preload = "auto";
       audio.volume = volume;
 
       // 绑定事件
@@ -303,7 +304,16 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       };
       audio.onwaiting = () => {
         console.log(`[MusicPlayer] Audio waiting for data: "${song.name}"`);
-        setPlayError(`"${song.name}" 等待数据...`);
+        setPlayError(`"${song.name}" 缓冲中...`);
+        // 5秒后如果还在 waiting 状态，尝试重新加载当前位置
+        setTimeout(() => {
+          if (audio.readyState < 3 && !audio.paused) {
+            const currentPos = audio.currentTime;
+            audio.load();
+            audio.currentTime = currentPos;
+            audio.play().catch(() => {});
+          }
+        }, 5000);
       };
       audio.oncanplay = () => {
         // 清除缓冲相关的错误提示
@@ -397,13 +407,31 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       setAudioElement(audio);
       activeAudioRef.current = audio; // 记录当前活动的音频
       
-      // 播放（使用 try-catch 捕获播放错误）
+      // 播放（等待缓冲后再播放，减少卡顿）
       try {
         audio.volume = volume;
-        await audio.play();
+        const playWhenReady = () => {
+          audio.play().then(() => {
+            console.log(`[MusicPlayer] Playback started for "${song.name}"`);
+          }).catch((err) => {
+            console.warn(`[MusicPlayer] Play interrupted for "${song.name}":`, err);
+          });
+        };
+        // 如果已有足够缓冲（HAVE_FUTURE_DATA），直接播放；否则等待 canplay 事件
+        if (audio.readyState >= 3) {
+          playWhenReady();
+        } else {
+          audio.addEventListener('canplay', playWhenReady, { once: true });
+          // 安全超时：10秒后如果还没触发 canplay，强制尝试播放
+          setTimeout(() => {
+            if (audio.paused && activeAudioRef.current === audio) {
+              console.log(`[MusicPlayer] canplay timeout, forcing play for "${song.name}"`);
+              playWhenReady();
+            }
+          }, 10000);
+        }
       } catch (playError) {
-        console.warn(`[MusicPlayer] Play interrupted for "${song.name}":`, playError);
-        // 播放被中断（可能是用户切换了歌曲），不显示错误
+        console.warn(`[MusicPlayer] Play setup error for "${song.name}":`, playError);
       }
     } catch (error) {
       console.error("[MusicPlayer] Failed to load song:", error);

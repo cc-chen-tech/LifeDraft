@@ -32,7 +32,7 @@ import { RoundHistoryDrawer } from "@/components/game/RoundHistoryDrawer";
 import { RoundSceneImageDisplay } from "@/components/game/RoundSceneImage";
 import { HistorySceneImage } from "@/components/game/HistorySceneImage";
 import { CollectionPanel } from "@/components/game/CollectionPanel";
-import { ChoiceImpactDisplay } from "@/components/game/ChoiceImpactDisplay";
+
 import { usePlayGame, STATUS_MESSAGES } from "@/hooks/usePlayGame";
 import { useGameIdFromUrl } from "@/hooks/useGameIdFromUrl";
 import { useGameStore } from "@/stores/useGameStore";
@@ -94,7 +94,6 @@ export default function PlayPage() {
     roundInfo,
     storyText,
     isGameOver,
-    lastChoiceEffects,
 
     // Refs
     storyContainerRef,
@@ -179,35 +178,6 @@ export default function PlayPage() {
   const setConstraintLevel = useGameStore((state) => state.setConstraintLevel);
   const enableSceneImage = useGameStore((state) => state.enableSceneImage);
   const setEnableSceneImage = useGameStore((state) => state.setEnableSceneImage);
-
-  // ★ 叙事风格
-  const [narrativeStyleId, setNarrativeStyleId] = useState<string>("");
-  const [availableStyles, setAvailableStyles] = useState<Array<{ style_id: string; style_name: string }>>([]);
-  const [isLoadingStyles, setIsLoadingStyles] = useState(false);
-
-  useEffect(() => {
-    if (!gameId) return;
-    setIsLoadingStyles(true);
-    Promise.all([
-      api.games.getNarrativeStyle(gameId).catch(() => null),
-      api.games.listNarrativeStyles(gameId).catch(() => []),
-    ])
-      .then(([current, styles]) => {
-        if (current) setNarrativeStyleId(current.style_id);
-        if (styles) setAvailableStyles(styles);
-      })
-      .finally(() => setIsLoadingStyles(false));
-  }, [gameId]);
-
-  const handleUpdateNarrativeStyle = async (styleId: string) => {
-    if (!gameId || styleId === narrativeStyleId) return;
-    try {
-      await api.games.updateNarrativeStyle(gameId, { style_id: styleId });
-      setNarrativeStyleId(styleId);
-    } catch (e) {
-      console.error("[NarrativeStyle] Failed to update:", e);
-    }
-  };
 
   // Don't render until hydrated
   if (!hydrated) {
@@ -318,24 +288,8 @@ export default function PlayPage() {
                 
                 <DropdownMenuSeparator />
                 
-                {/* 叙事风格 */}
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger>
-                    {isLoadingStyles ? "叙事风格..." : "叙事风格"}
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="max-h-[60vh] overflow-y-auto">
-                    <DropdownMenuRadioGroup
-                      value={narrativeStyleId}
-                      onValueChange={(value) => handleUpdateNarrativeStyle(value)}
-                    >
-                      {availableStyles.map((style) => (
-                        <DropdownMenuRadioItem key={style.style_id} value={style.style_id}>
-                          {style.style_name}
-                        </DropdownMenuRadioItem>
-                      ))}
-                    </DropdownMenuRadioGroup>
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
+
+
 
                 <DropdownMenuSeparator />
 
@@ -352,7 +306,7 @@ export default function PlayPage() {
       {/* Main content area */}
       <main
         ref={storyContainerRef}
-        className="flex-1 max-w-3xl mx-auto w-full px-4 py-6 pb-20"
+        className="flex-1 max-w-3xl mx-auto w-full px-4 py-6 pb-28"
       >
         {/* ★ 历史模式提示 */}
         {isViewingHistory && (
@@ -487,10 +441,7 @@ export default function PlayPage() {
           </div>
         )}
 
-        {/* Choice impact - show resource changes after choice */}
-        {phase === "result" && (
-          <ChoiceImpactDisplay effects={lastChoiceEffects} className="mb-4" />
-        )}
+        {/* Choice impact display removed — effect tracking no longer stored */}
 
         {/* Options */}
         {phase === "options" && options.length > 0 && (
