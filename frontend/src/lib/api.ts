@@ -113,6 +113,11 @@ async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: num
     console.warn(`[API Perf] Slow request: ${url} took ${duration}ms`);
   }
 
+  // ★ 204 No Content - 正常空响应，不解析 JSON
+  if (response.status === 204) {
+    return undefined as unknown as T;
+  }
+
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: response.statusText }));
 

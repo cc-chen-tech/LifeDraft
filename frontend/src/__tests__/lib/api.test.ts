@@ -162,3 +162,36 @@ describe('credentials', () => {
     expect(options.credentials).toBe('include');
   });
 });
+
+// ─── 204 No Content handling ───────────────────────────────────
+describe('204 No Content', () => {
+  it('returns undefined gracefully on 204 without parsing JSON', async () => {
+    global.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        status: 204,
+        json: () => Promise.reject(new Error('Should not be called')),
+        headers: new Headers(),
+      } as unknown as globalThis.Response)
+    );
+
+    const result = await api.games.list();
+
+    expect(result).toBeUndefined();
+  });
+
+  it('does not throw on 204 for scene image endpoint', async () => {
+    global.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        status: 204,
+        json: () => Promise.reject(new Error('Should not be called')),
+        headers: new Headers(),
+      } as unknown as globalThis.Response)
+    );
+
+    const result = await api.images.getRoundSceneImage(1, 0, 0);
+
+    expect(result).toBeUndefined();
+  });
+});
