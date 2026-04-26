@@ -11,11 +11,16 @@ client = TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def mock_auth_local():
-    """Patch auth at router level to survive module reloads from JWT contract tests."""
-    with patch("src.api.routers.games.get_current_user") as mock:
-        mock.return_value = {"user_id": 1}
-        yield mock
+def mock_auth_override():
+    """Override FastAPI dependency to survive module reloads from JWT contract tests."""
+    from src.api.routers.games import get_current_user
+
+    async def override():
+        return 1
+
+    app.dependency_overrides[get_current_user] = override
+    yield
+    app.dependency_overrides.pop(get_current_user, None)
 
 
 class TestStyleAutoMatch:
