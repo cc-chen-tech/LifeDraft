@@ -1,7 +1,5 @@
 """Tests for CharacterState (NPC attributes system)."""
 
-import pytest
-
 from src.game.state import CharacterState
 
 

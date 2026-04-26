@@ -110,7 +110,9 @@ class StyleLoader:
         self._cache.clear()
 
         if not self._styles_dir.exists():
-            logger.warning("Styles directory not found: %s, creating it.", self._styles_dir)
+            logger.warning(
+                "Styles directory not found: %s, creating it.", self._styles_dir
+            )
             try:
                 self._styles_dir.mkdir(parents=True, exist_ok=True)
             except OSError as e:
@@ -152,14 +154,18 @@ class StyleLoader:
             return None
 
         if not isinstance(raw, dict):
-            logger.warning("Style file %s does not contain a JSON object, skipping.", file_path)
+            logger.warning(
+                "Style file %s does not contain a JSON object, skipping.", file_path
+            )
             return None
 
         # 验证必填字段
         missing = _REQUIRED_FIELDS - set(raw.keys())
         if missing:
             logger.warning(
-                "Style file %s missing required fields %s, skipping.", file_path, missing
+                "Style file %s missing required fields %s, skipping.",
+                file_path,
+                missing,
             )
             return None
 

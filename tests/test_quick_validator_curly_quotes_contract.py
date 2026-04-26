@@ -69,12 +69,7 @@ class TestQuickValidatorCurlyQuotesEdgeCases:
     def test_multiple_curly_quote_pairs(self):
         """多组弯引号应全部被过滤"""
         validator = QuickValidator()
-        story = (
-            "“你来了？”他问。"
-            "“我来了。”她答。"
-            "“为什么？”"
-            "“因为我想你。”"
-        )
+        story = "“你来了？”他问。" "“我来了。”她答。" "“为什么？”" "“因为我想你。”"
         result = validator.validate(story, language="zh")
         assert result.passed is True
 

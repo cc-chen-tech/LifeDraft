@@ -7,26 +7,18 @@ import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-
-from src.api.deps import get_current_user, get_current_user_optional, get_db
-from src.api.schemas import CreateGameRequest  # 时间回溯存档系统
-from src.api.schemas import (
-    CreateSavePointRequest,
-    GameListItem,
-    GameStateResponse,
-    MessageResponse,
-    SaveGameResponse,
-    SavePointItem,
-    SavePointListResponse,
-    StateSnapshotItem,
-    StateTimelineResponse,
-    UpdateGameSettingsRequest,
-)
-from src.api.services.session_service import session_service
-from src.api.session_store import session_store
 from pydantic import BaseModel
 
 from src.ai.narrative.style_manifest import get_default_loader, get_style
+from src.api.deps import get_current_user, get_current_user_optional, get_db
+from src.api.schemas import CreateGameRequest  # 时间回溯存档系统
+from src.api.schemas import (CreateSavePointRequest, GameListItem,
+                             GameStateResponse, MessageResponse,
+                             SaveGameResponse, SavePointItem,
+                             SavePointListResponse, StateSnapshotItem,
+                             StateTimelineResponse, UpdateGameSettingsRequest)
+from src.api.services.session_service import session_service
+from src.api.session_store import session_store
 from src.database.models import Game, SessionLocal
 from src.game.game_initializer import GameInitializer
 from src.game.game_loop import GameLoop
@@ -71,7 +63,9 @@ async def create_game(
         player_state=state.to_dict() if state else {},
         progress=game_loop.get_progress(),
         round_info=game_loop.get_round_info(),
-        current_event=(game_loop.current_event.model_dump() if game_loop.current_event else None),
+        current_event=(
+            game_loop.current_event.model_dump() if game_loop.current_event else None
+        ),
         constraint_level=req.constraint_level,
     )
 
@@ -112,7 +106,9 @@ async def get_active_game(
     """
     # ★ 调试日志：检查认证信息
     cookie_token = request.cookies.get("auth_token")
-    logger.info(f"[get_active_game] user_id={user_id}, has_auth_token={cookie_token is not None}")
+    logger.info(
+        f"[get_active_game] user_id={user_id}, has_auth_token={cookie_token is not None}"
+    )
 
     db = get_db()
     active_game_id = db.get_active_game(user_id)
@@ -120,7 +116,9 @@ async def get_active_game(
     if not active_game_id:
         raise HTTPException(status_code=404, detail="No active game found")
 
-    logger.info(f"[get_active_game] Found active game for user {user_id}: game_id={active_game_id}")
+    logger.info(
+        f"[get_active_game] Found active game for user {user_id}: game_id={active_game_id}"
+    )
 
     # 加载游戏状态
     state_data = db.load_saved_game(active_game_id, user_id)
@@ -136,13 +134,17 @@ async def get_active_game(
 
     # 创建 GameLoop 并加载状态
     try:
-        constraint_level = state_data.get("constraint_level", "expert") if state_data else "expert"
+        constraint_level = (
+            state_data.get("constraint_level", "expert") if state_data else "expert"
+        )
         game_loop = GameLoop(language=language, quality_level=constraint_level)
         game_loop.load_game(state_data)
         logger.info("[get_active_game] GameLoop loaded successfully")
     except Exception as e:
         logger.exception(f"[get_active_game] Failed to load game: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to load game state: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to load game state: {str(e)}"
+        )
 
     # 存储到会话
     session_store.put(active_game_id, game_loop, user_id=user_id, language=language)
@@ -153,14 +155,18 @@ async def get_active_game(
         logger.info("[get_active_game] State converted to dict successfully")
     except Exception as e:
         logger.exception(f"[get_active_game] Failed to convert state to dict: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to serialize game state: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to serialize game state: {str(e)}"
+        )
 
     return GameStateResponse(
         game_id=active_game_id,
         player_state=player_state_dict,
         progress=game_loop.get_progress(),
         round_info=game_loop.get_round_info(),
-        current_event=(game_loop.current_event.model_dump() if game_loop.current_event else None),
+        current_event=(
+            game_loop.current_event.model_dump() if game_loop.current_event else None
+        ),
         constraint_level=constraint_level,
     )
 
@@ -174,13 +180,17 @@ async def load_game(
     db = get_db()
     state_data = db.load_saved_game(game_id, user_id)
     if state_data is None:
-        raise HTTPException(status_code=404, detail="Game not found or not owned by user")
+        raise HTTPException(
+            status_code=404, detail="Game not found or not owned by user"
+        )
 
     # Determine language from state
     language = detect_language_from_state(state_data)
 
     # Create GameLoop and load state
-    constraint_level = state_data.get("constraint_level", "expert") if state_data else "expert"
+    constraint_level = (
+        state_data.get("constraint_level", "expert") if state_data else "expert"
+    )
     game_loop = GameLoop(language=language, quality_level=constraint_level)
     game_loop.load_game(state_data)
 
@@ -196,7 +206,9 @@ async def load_game(
         player_state=state.to_dict() if state else {},
         progress=game_loop.get_progress(),
         round_info=game_loop.get_round_info(),
-        current_event=(game_loop.current_event.model_dump() if game_loop.current_event else None),
+        current_event=(
+            game_loop.current_event.model_dump() if game_loop.current_event else None
+        ),
         constraint_level=constraint_level,
     )
 
@@ -237,7 +249,9 @@ async def delete_game(
 
     success = db.delete_saved_game(game_id, user_id)
     if not success:
-        raise HTTPException(status_code=404, detail="Game not found or not owned by user")
+        raise HTTPException(
+            status_code=404, detail="Game not found or not owned by user"
+        )
 
     # Also remove from session store
     session_store.remove(game_id, user_id)
@@ -324,7 +338,9 @@ async def list_save_points(
                 week=sp["week"],
                 age=sp["age"],
                 save_name=sp.get("save_name"),
-                created_at=(sp["created_at"].isoformat() if sp.get("created_at") else None),
+                created_at=(
+                    sp["created_at"].isoformat() if sp.get("created_at") else None
+                ),
                 player_name=sp.get("player_name", "未命名"),
             )
             for sp in save_points
@@ -386,7 +402,9 @@ async def load_save_point(
     state_data = db.load_save_point(state_id, user_id)
 
     if state_data is None:
-        raise HTTPException(status_code=404, detail="Save point not found or not owned by user")
+        raise HTTPException(
+            status_code=404, detail="Save point not found or not owned by user"
+        )
 
     game_id = state_data.get("_game_id")
 
@@ -394,7 +412,9 @@ async def load_save_point(
     language = detect_language_from_state(state_data)
 
     # 创建 GameLoop 并加载状态
-    constraint_level = state_data.get("constraint_level", "expert") if state_data else "expert"
+    constraint_level = (
+        state_data.get("constraint_level", "expert") if state_data else "expert"
+    )
     game_loop = GameLoop(language=language, quality_level=constraint_level)
     game_loop.load_game(state_data)
 
@@ -410,7 +430,9 @@ async def load_save_point(
         player_state=state.to_dict() if state else {},
         progress=game_loop.get_progress(),
         round_info=game_loop.get_round_info(),
-        current_event=(game_loop.current_event.model_dump() if game_loop.current_event else None),
+        current_event=(
+            game_loop.current_event.model_dump() if game_loop.current_event else None
+        ),
         constraint_level=constraint_level,
     )
 
@@ -427,13 +449,19 @@ async def update_game_settings(
     db = get_db()
     state_data = db.load_saved_game(game_id, user_id)
     if state_data is None:
-        raise HTTPException(status_code=404, detail="Game not found or not owned by user")
+        raise HTTPException(
+            status_code=404, detail="Game not found or not owned by user"
+        )
 
     if req.constraint_level is not None:
         # 持久化到 Game 表
         db_session = SessionLocal()
         try:
-            game = db_session.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
+            game = (
+                db_session.query(Game)
+                .filter(Game.game_id == game_id, Game.user_id == user_id)
+                .first()
+            )
             if game:
                 setattr(game, "constraint_level", req.constraint_level)
                 db_session.commit()
@@ -445,18 +473,20 @@ async def update_game_settings(
         if game_session and game_session.game_loop:
             game_session.game_loop.quality_level = req.constraint_level
             from src.ai.generator import EventGenerator
-
             from src.game.character_creator import CharacterCreator
             from src.game.story_service import StoryService
             from src.game.yearly_summary import YearlySummaryGenerator
 
-            game_session.game_loop.ai_generator = EventGenerator(quality_level=req.constraint_level)
+            game_session.game_loop.ai_generator = EventGenerator(
+                quality_level=req.constraint_level
+            )
             # 重新创建依赖 ai_generator 的服务
             game_session.game_loop.yearly_summary_gen = YearlySummaryGenerator(
                 game_session.game_loop.ai_generator, game_session.game_loop.language
             )
             game_session.game_loop.character_creator = CharacterCreator(
-                ai_generator=game_session.game_loop.ai_generator, language=game_session.game_loop.language
+                ai_generator=game_session.game_loop.ai_generator,
+                language=game_session.game_loop.language,
             )
             game_session.game_loop.story_service = StoryService(
                 game_session.game_loop.ai_generator, game_session.game_loop.language
@@ -521,7 +551,7 @@ async def get_narrative_style(
         if not game:
             raise HTTPException(status_code=404, detail="Game not found")
 
-        style_id = game.narrative_style_id or "chinese_classic_saga"
+        style_id = str(game.narrative_style_id or "chinese_classic_saga")
         style_name = style_id
         manifest = get_style(style_id)
         if manifest:
@@ -579,6 +609,8 @@ async def delete_save_point(
     success = db.delete_save_point(state_id, user_id)
 
     if not success:
-        raise HTTPException(status_code=404, detail="Save point not found or not owned by user")
+        raise HTTPException(
+            status_code=404, detail="Save point not found or not owned by user"
+        )
 
     return MessageResponse(message="Save point deleted")

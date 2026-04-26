@@ -52,7 +52,9 @@ class PlayerLogicMixin:
             )
 
         if mood is not None:
-            self.mood = max(settings.MIN_RESOURCE, min(settings.MAX_RESOURCE, self.mood + mood))
+            self.mood = max(
+                settings.MIN_RESOURCE, min(settings.MAX_RESOURCE, self.mood + mood)
+            )
 
         if knowledge is not None:
             self.knowledge = max(
@@ -77,7 +79,9 @@ class PlayerLogicMixin:
         self.current_round = 0
         # Update age: every 52 weeks = 1 year
         # Get the starting age from character settings if available
-        starting_age = self.character_settings.get("age", {}).get("age", settings.STARTING_AGE)
+        starting_age = self.character_settings.get("age", {}).get(
+            "age", settings.STARTING_AGE
+        )
         self.age = starting_age + int(self.week / settings.WEEKS_PER_YEAR)
 
     def advance_round(self) -> bool:
@@ -172,7 +176,9 @@ class PlayerLogicMixin:
         for r in earlier_rounds:
             round_idx = r.get("round", 0)
             round_name = (
-                round_names[round_idx] if round_idx < len(round_names) else f"第{round_idx+1}轮"
+                round_names[round_idx]
+                if round_idx < len(round_names)
+                else f"第{round_idx+1}轮"
             )
             date_str = r.get("date_info", {}).get("date_string", "")
             date_prefix = f"({date_str}) " if date_str else ""

@@ -72,9 +72,15 @@ class TestSSERetryMechanismContract:
         choice_body = self._extract_function_body(source, "streamChoice")
 
         # 必须有重试机制（循环或递归）
-        has_retry_loop = "for" in choice_body or "while" in choice_body or "retry" in choice_body.lower()
+        has_retry_loop = (
+            "for" in choice_body
+            or "while" in choice_body
+            or "retry" in choice_body.lower()
+        )
         # 或者调用了带重试的辅助函数
-        has_retry_helper = "fetchWithRetry" in choice_body or "retry" in choice_body.lower()
+        has_retry_helper = (
+            "fetchWithRetry" in choice_body or "retry" in choice_body.lower()
+        )
 
         assert has_retry_loop or has_retry_helper, (
             "streamChoice 必须包含重试循环或调用重试辅助函数，"
@@ -86,12 +92,14 @@ class TestSSERetryMechanismContract:
         source = self._get_sse_source()
         custom_body = self._extract_function_body(source, "streamCustomChoice")
 
-        has_retry = "for" in custom_body or "while" in custom_body or "retry" in custom_body.lower()
+        has_retry = (
+            "for" in custom_body
+            or "while" in custom_body
+            or "retry" in custom_body.lower()
+        )
         has_helper = "fetchWithRetry" in custom_body or "retry" in custom_body.lower()
 
-        assert has_retry or has_helper, (
-            "streamCustomChoice 必须包含重试机制 (Bug #15)"
-        )
+        assert has_retry or has_helper, "streamCustomChoice 必须包含重试机制 (Bug #15)"
 
     def test_stream_opening_story_has_retry_logic(self):
         """streamOpeningStory 必须包含 502/504 重试逻辑。
@@ -102,12 +110,14 @@ class TestSSERetryMechanismContract:
         source = self._get_sse_source()
         opening_body = self._extract_function_body(source, "streamOpeningStory")
 
-        has_retry = "for" in opening_body or "while" in opening_body or "retry" in opening_body.lower()
+        has_retry = (
+            "for" in opening_body
+            or "while" in opening_body
+            or "retry" in opening_body.lower()
+        )
         has_helper = "fetchWithRetry" in opening_body or "retry" in opening_body.lower()
 
-        assert has_retry or has_helper, (
-            "streamOpeningStory 必须包含重试机制 (Bug #32)"
-        )
+        assert has_retry or has_helper, "streamOpeningStory 必须包含重试机制 (Bug #32)"
 
     def test_retry_max_attempts_is_three(self):
         """重试次数必须最多 3 次（1 次原始 + 2 次重试 = 3 次总计）。
@@ -241,8 +251,7 @@ class TestSSERetryMechanismContract:
         has_abort_check = any(re.search(p, source) for p in abort_patterns)
 
         assert has_abort_check, (
-            "SSE 重试机制必须检查 AbortSignal，"
-            "确保用户取消操作后停止重试"
+            "SSE 重试机制必须检查 AbortSignal，" "确保用户取消操作后停止重试"
         )
 
     def test_opening_story_error_shows_retry_ui(self):
@@ -252,15 +261,24 @@ class TestSSERetryMechanismContract:
         """
         # 检查 useCharacterCreation.ts 或相关 hook 中的错误处理
         creation_path = os.path.join(
-            os.path.dirname(__file__), "..", "frontend", "src", "hooks", "useCharacterCreation.ts"
+            os.path.dirname(__file__),
+            "..",
+            "frontend",
+            "src",
+            "hooks",
+            "useCharacterCreation.ts",
         )
         if os.path.exists(creation_path):
             with open(creation_path, "r", encoding="utf-8") as f:
                 creation_source = f.read()
 
             # 错误处理不应直接跳转到首页
-            has_redirect_on_error = "router.push" in creation_source or "router.replace" in creation_source
-            has_retry_ui = "retry" in creation_source.lower() or "重试" in creation_source
+            has_redirect_on_error = (
+                "router.push" in creation_source or "router.replace" in creation_source
+            )
+            has_retry_ui = (
+                "retry" in creation_source.lower() or "重试" in creation_source
+            )
 
             # 如果存在错误跳转，必须同时存在重试机制
             if has_redirect_on_error:
@@ -281,9 +299,9 @@ class TestAPIFetchWithRetryContract:
         with open(api_path, "r", encoding="utf-8") as f:
             source = f.read()
 
-        assert "function fetchWithRetry" in source or "const fetchWithRetry" in source, (
-            "api.ts 必须定义 fetchWithRetry 函数用于 REST API 重试"
-        )
+        assert (
+            "function fetchWithRetry" in source or "const fetchWithRetry" in source
+        ), "api.ts 必须定义 fetchWithRetry 函数用于 REST API 重试"
 
     def test_fetch_with_retry_has_exponential_backoff(self):
         """fetchWithRetry 必须实现指数退避。"""
@@ -293,9 +311,9 @@ class TestAPIFetchWithRetryContract:
         with open(api_path, "r", encoding="utf-8") as f:
             source = f.read()
 
-        assert "Math.pow(2, i)" in source or "* 1000" in source, (
-            "fetchWithRetry 必须实现指数退避延迟"
-        )
+        assert (
+            "Math.pow(2, i)" in source or "* 1000" in source
+        ), "fetchWithRetry 必须实现指数退避延迟"
 
     def test_fetch_with_retry_handles_502(self):
         """fetchWithRetry 必须在 502 时重试。"""
@@ -305,6 +323,6 @@ class TestAPIFetchWithRetryContract:
         with open(api_path, "r", encoding="utf-8") as f:
             source = f.read()
 
-        assert "response.status < 500" in source or "502" in source or "504" in source, (
-            "fetchWithRetry 必须处理 5xx 错误并触发重试"
-        )
+        assert (
+            "response.status < 500" in source or "502" in source or "504" in source
+        ), "fetchWithRetry 必须处理 5xx 错误并触发重试"

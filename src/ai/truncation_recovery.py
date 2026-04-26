@@ -50,7 +50,11 @@ class TruncationRecovery:
         if response:
             last_char = response.rstrip()[-1:] if response.rstrip() else ""
             terminal_puncts = set("。！？.!?\"'）)】」』\n")
-            if last_char and "\u4e00" <= last_char <= "\u9fff" and last_char not in terminal_puncts:
+            if (
+                last_char
+                and "\u4e00" <= last_char <= "\u9fff"
+                and last_char not in terminal_puncts
+            ):
                 return True
         return False
 
@@ -58,13 +62,17 @@ class TruncationRecovery:
         self, original_prompt: str, partial_response: str, language: str = "zh"
     ) -> str:
         """Build a prompt to continue from truncation point."""
-        tail = partial_response[-500:] if len(partial_response) > 500 else partial_response
+        tail = (
+            partial_response[-500:] if len(partial_response) > 500 else partial_response
+        )
         continuation_instruction = (
             self._config.continuation_prompt_zh
             if language == "zh"
             else self._config.continuation_prompt_en
         )
-        prompt = f"以下是之前的输出（已被截断）:\n\n...{tail}\n\n{continuation_instruction}"
+        prompt = (
+            f"以下是之前的输出（已被截断）:\n\n...{tail}\n\n{continuation_instruction}"
+        )
         return prompt
 
     def recover(
@@ -104,7 +112,9 @@ class TruncationRecovery:
             # Check if continuation ends with a complete sentence
             stripped = continuation_text.rstrip()
             if stripped and stripped[-1] in terminal_puncts:
-                logger.info("Truncation recovery: complete sentence detected, stopping.")
+                logger.info(
+                    "Truncation recovery: complete sentence detected, stopping."
+                )
                 break
 
         return full_text

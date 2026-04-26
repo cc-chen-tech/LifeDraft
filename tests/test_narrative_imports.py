@@ -20,9 +20,9 @@ def test_style_engine_imports():
 def test_epic_narrative_imports():
     """Character arc, world breathing, conflict tower, fate echo must be importable."""
     from src.ai.narrative.character_arc import CharacterArcEngine
-    from src.ai.narrative.world_breathing import WorldBreathingEngine
     from src.ai.narrative.conflict_tower import ConflictTower
     from src.ai.narrative.fate_echo import FateEchoDatabase
+    from src.ai.narrative.world_breathing import WorldBreathingEngine
 
     assert CharacterArcEngine is not None
     assert WorldBreathingEngine is not None
@@ -33,8 +33,9 @@ def test_epic_narrative_imports():
 def test_creative_enhancement_imports():
     """Emotional arc, novelty scorer, foreshadowing, preference learner must be importable."""
     from src.ai.creative.emotional_arc import EmotionalArcAnalyzer
+    from src.ai.creative.foreshadowing_tech import (
+        ForeshadowingTechniqueLibrary, HookInjector)
     from src.ai.creative.novelty_scorer import NoveltyScorer
-    from src.ai.creative.foreshadowing_tech import ForeshadowingTechniqueLibrary, HookInjector
     from src.ai.creative.preference_learner import PreferenceLearner
 
     assert EmotionalArcAnalyzer is not None

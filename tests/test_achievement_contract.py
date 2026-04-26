@@ -23,10 +23,17 @@ class TestAchievementAPIContract:
             mock_game_loop = MagicMock()
             mock_game_loop.is_game_over.return_value = True
             mock_game_loop.get_state.return_value = MagicMock(
-                energy=50, mood=50, knowledge=50, wealth=5000,
-                relationships={}, decision_history=[], week=10,
-                round_history=[], character_settings={},
-                four_week_summaries=[], age=25,
+                energy=50,
+                mood=50,
+                knowledge=50,
+                wealth=5000,
+                relationships={},
+                decision_history=[],
+                week=10,
+                round_history=[],
+                character_settings={},
+                four_week_summaries=[],
+                age=25,
             )
             mock_game_loop.ai_generator = None
             mock_session.game_loop = mock_game_loop
@@ -52,10 +59,17 @@ class TestAchievementAPIContract:
             mock_game_loop = MagicMock()
             mock_game_loop.is_game_over.return_value = True
             mock_game_loop.get_state.return_value = MagicMock(
-                energy=50, mood=50, knowledge=50, wealth=5000,
-                relationships={}, decision_history=[{"choice": "A"}] * 30,
-                week=10, round_history=[], character_settings={},
-                four_week_summaries=[], age=25,
+                energy=50,
+                mood=50,
+                knowledge=50,
+                wealth=5000,
+                relationships={},
+                decision_history=[{"choice": "A"}] * 30,
+                week=10,
+                round_history=[],
+                character_settings={},
+                four_week_summaries=[],
+                age=25,
             )
             mock_game_loop.ai_generator = None
             mock_session.game_loop = mock_game_loop
@@ -99,10 +113,17 @@ class TestAchievementAPIContract:
             mock_game_loop = MagicMock()
             mock_game_loop.is_game_over.return_value = True
             mock_game_loop.get_state.return_value = MagicMock(
-                energy=50, mood=50, knowledge=50, wealth=5000,
-                relationships={}, decision_history=[], week=10,
-                round_history=[], character_settings={},
-                four_week_summaries=[], age=25,
+                energy=50,
+                mood=50,
+                knowledge=50,
+                wealth=5000,
+                relationships={},
+                decision_history=[],
+                week=10,
+                round_history=[],
+                character_settings={},
+                four_week_summaries=[],
+                age=25,
             )
             mock_game_loop.ai_generator = None
             mock_session.game_loop = mock_game_loop
@@ -128,10 +149,17 @@ class TestAchievementAPIContract:
             mock_game_loop = MagicMock()
             mock_game_loop.is_game_over.return_value = True
             mock_game_loop.get_state.return_value = MagicMock(
-                energy=50, mood=50, knowledge=50, wealth=5000,
-                relationships={}, decision_history=[{"choice": "A"}] * 30,
-                week=10, round_history=[], character_settings={},
-                four_week_summaries=[], age=25,
+                energy=50,
+                mood=50,
+                knowledge=50,
+                wealth=5000,
+                relationships={},
+                decision_history=[{"choice": "A"}] * 30,
+                week=10,
+                round_history=[],
+                character_settings={},
+                four_week_summaries=[],
+                age=25,
             )
             mock_game_loop.ai_generator = None
             mock_session.game_loop = mock_game_loop

@@ -6,8 +6,8 @@ L3 创意增强层 - 玩家偏好学习与适配
 
 import pytest
 
-from src.ai.creative.preference_learner import PreferenceLearner, PlayerPreferences
-
+from src.ai.creative.preference_learner import (PlayerPreferences,
+                                                PreferenceLearner)
 
 # --------------- 测试数据 ---------------
 
@@ -114,7 +114,10 @@ class TestPreferenceLearner:
 
         assert isinstance(prefs, PlayerPreferences)
         # 默认偏好应是均衡的
-        assert prefs.primary_type == "balanced" or prefs.adventure_tendency == pytest.approx(0.5, abs=0.2)
+        assert (
+            prefs.primary_type == "balanced"
+            or prefs.adventure_tendency == pytest.approx(0.5, abs=0.2)
+        )
 
     def test_preference_decay(self):
         """近期选择权重更高（衰减机制）"""

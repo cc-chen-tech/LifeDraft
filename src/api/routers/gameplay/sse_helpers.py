@@ -15,7 +15,24 @@ from src.api.deps import get_db
 logger = logging.getLogger(__name__)
 
 # 线程池用于 SSE 后台任务
-_sse_thread_pool = ThreadPoolExecutor(max_workers=20, thread_name_prefix="sse-worker")
+_sse_thread_pool: Optional[ThreadPoolExecutor] = None
+
+
+def _get_sse_thread_pool() -> ThreadPoolExecutor:
+    global _sse_thread_pool
+    if _sse_thread_pool is None:
+        _sse_thread_pool = ThreadPoolExecutor(
+            max_workers=20, thread_name_prefix="sse-worker"
+        )
+    return _sse_thread_pool
+
+
+def shutdown_sse_thread_pool(wait: bool = True) -> None:
+    """关闭 SSE 线程池（用于应用退出时清理）。"""
+    global _sse_thread_pool
+    if _sse_thread_pool is not None:
+        _sse_thread_pool.shutdown(wait=wait)
+        _sse_thread_pool = None
 
 
 def _trigger_round_illustration_generation(
@@ -39,7 +56,8 @@ def _trigger_round_illustration_generation(
             from src.database.models import Game
             from src.database.models import Image as ImageModel
             from src.database.models import SessionLocal
-            from src.game.round.illustration_service import RoundIllustrationService
+            from src.game.round.illustration_service import \
+                RoundIllustrationService
             from src.services.image_storage import ImageStorageService
 
             # 创建数据库会话
@@ -184,7 +202,7 @@ def _trigger_round_illustration_generation(
             )
 
     # 在线程池中执行
-    _sse_thread_pool.submit(generate_illustration)
+    _get_sse_thread_pool().submit(generate_illustration)
 
 
 def _ensure_entity_images_exist(
@@ -209,7 +227,8 @@ def _ensure_entity_images_exist(
         try:
             from src.ai.image_client import ImageClient
             from src.database.models import SessionLocal
-            from src.game.round.illustration_service import RoundIllustrationService
+            from src.game.round.illustration_service import \
+                RoundIllustrationService
             from src.services.image_storage import ImageStorageService
 
             db = SessionLocal()
@@ -308,7 +327,7 @@ def _ensure_entity_images_exist(
             logger.exception(f"[EntityImages] Unexpected error in ensure_images: {e}")
 
     # 在线程池中执行
-    _sse_thread_pool.submit(ensure_images)
+    _get_sse_thread_pool().submit(ensure_images)
 
 
 def _prefetch_options(game_loop, game_id: int, session, event) -> None:
@@ -389,7 +408,7 @@ def _prefetch_options(game_loop, game_id: int, session, event) -> None:
                 session.finish_prefetching_options()
 
     # 在线程池中执行
-    _sse_thread_pool.submit(prefetch)
+    _get_sse_thread_pool().submit(prefetch)
 
 
 def make_sse_event(event_type: str, data, event_id: Optional[int] = None) -> str:
@@ -494,7 +513,7 @@ async def stream_round_event(
     # Immediately tell the client we're alive and processing
     yield make_sse_event("status", {"phase": "preparing"})
 
-    _sse_thread_pool.submit(run)
+    _get_sse_thread_pool().submit(run)
 
     # Heartbeat: send keep-alive every 5 seconds to prevent connection timeout
     heartbeat_interval = 5
@@ -696,7 +715,7 @@ async def stream_choice(
     # Immediately tell the client we're alive and processing
     yield make_sse_event("status", {"phase": "preparing"})
 
-    _sse_thread_pool.submit(run)
+    _get_sse_thread_pool().submit(run)
 
     # Heartbeat: send keep-alive every 5 seconds to prevent connection timeout
     heartbeat_interval = 5
@@ -1025,7 +1044,7 @@ async def stream_regenerate(
     # Tell client we're starting
     yield make_sse_event("status", {"phase": "regenerating"})
 
-    _sse_thread_pool.submit(run)
+    _get_sse_thread_pool().submit(run)
 
     # Heartbeat mechanism
     heartbeat_interval = 5
@@ -1207,7 +1226,7 @@ async def stream_rewrite(
     # Tell client we're starting
     yield make_sse_event("status", {"phase": "rewriting"})
 
-    _sse_thread_pool.submit(run)
+    _get_sse_thread_pool().submit(run)
 
     # Heartbeat mechanism
     heartbeat_interval = 5

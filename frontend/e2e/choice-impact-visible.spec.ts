@@ -41,8 +41,8 @@ test.describe("选择影响可见性", () => {
     await page.waitForLoadState("domcontentloaded");
     await page.waitForTimeout(3000);
 
-    // 等待选项出现
-    const optionButtons = page.locator("[data-testid='option-card']");
+    // 等待选项出现（OptionCards 使用 CSS class "option-card"）
+    const optionButtons = page.locator(".option-card");
     await expect(optionButtons.first()).toBeVisible({ timeout: 30000 });
 
     // 点击第一个选项
@@ -56,17 +56,19 @@ test.describe("选择影响可见性", () => {
     await expect(continueButton.first()).toBeVisible({ timeout: 30000 });
 
     // 如果存在资源变化显示，它应该在结果阶段可见
-    const impactSection = page.locator("[data-testid='choice-impact'], text=/精力|情绪|学识|财富/").first();
+    const impactSection = page.locator("[data-testid='choice-impact']").first();
+    const resourceSection = page.locator("text=/精力|情绪|学识|财富/").first();
     // 至少状态栏应该显示资源
-    await expect(impactSection).toBeVisible();
+    const visible = await impactSection.isVisible().catch(() => false) || await resourceSection.isVisible().catch(() => false);
+    expect(visible).toBe(true);
   });
 
   test("同步选择 API 返回 effects_applied", async ({ page, context }) => {
     await ensureAuthenticated(page, context);
     const gameId = await createTestGame(context);
 
-    // 先获取一个事件
-    const eventResp = await context.request.post(`${API_URL}/api/games/${gameId}/events`, {
+    // 先生成一个事件
+    const eventResp = await context.request.post(`${API_URL}/api/games/${gameId}/event-sync`, {
       data: {},
     });
     expect(eventResp.status()).toBe(200);

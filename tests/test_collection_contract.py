@@ -3,9 +3,6 @@
 验证 API 生产者/消费者字段名一致性，确保前端缓存逻辑与后端响应格式匹配。
 """
 
-from unittest.mock import MagicMock, patch
-
-import pytest
 from fastapi.testclient import TestClient
 
 from src.api.main import app
@@ -134,9 +131,9 @@ class TestSessionServiceContract:
 
     def test_get_or_restore_returns_gameloop_session(self):
         """验证 get_or_restore 返回 GameLoopSession"""
-        from src.api.services.session_service import session_service
-        from src.api.session_store import GameLoopSession
         import inspect
+
+        from src.api.services.session_service import session_service
 
         sig = inspect.signature(session_service.get_or_restore)
         params = list(sig.parameters.keys())
@@ -147,4 +144,6 @@ class TestSessionServiceContract:
         from src.api.services.session_service import SessionService
 
         assert hasattr(SessionService, "_check_and_generate_missing_illustrations")
-        assert callable(getattr(SessionService, "_check_and_generate_missing_illustrations"))
+        assert callable(
+            getattr(SessionService, "_check_and_generate_missing_illustrations")
+        )

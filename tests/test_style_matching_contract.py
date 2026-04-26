@@ -31,9 +31,9 @@ class TestStyleMatchingContract:
 
         result = auto_match_style(character_settings)
         # 赛博朋克背景不应只匹配到默认的 chinese_classic_saga
-        assert result.style_id != "chinese_classic_saga", (
-            f"赛博朋克背景不应匹配到默认的古典风格，实际匹配到: {result.style_id}"
-        )
+        assert (
+            result.style_id != "chinese_classic_saga"
+        ), f"赛博朋克背景不应匹配到默认的古典风格，实际匹配到: {result.style_id}"
         assert result.confidence > 0, "置信度应大于0"
 
     def test_modern_urban_matches_non_default_style(self):
@@ -57,9 +57,9 @@ class TestStyleMatchingContract:
 
         result = auto_match_style(character_settings)
         # 现代背景不应只匹配到古典风格
-        assert result.style_id != "chinese_classic_saga", (
-            f"现代都市背景不应匹配到古典风格，实际匹配到: {result.style_id}"
-        )
+        assert (
+            result.style_id != "chinese_classic_saga"
+        ), f"现代都市背景不应匹配到古典风格，实际匹配到: {result.style_id}"
 
     def test_ancient_china_matches_classic_saga(self):
         """古代中国背景可以匹配到 chinese_classic_saga"""
@@ -99,7 +99,9 @@ class TestStyleMatchingContract:
         result_modern = auto_match_style(modern)
 
         # 至少有两种不同的风格
-        styles = {result_cyber.style_id, result_ancient.style_id, result_modern.style_id}
-        assert len(styles) >= 2, (
-            f"不同设定应匹配到不同风格，实际都匹配到: {styles}"
-        )
+        styles = {
+            result_cyber.style_id,
+            result_ancient.style_id,
+            result_modern.style_id,
+        }
+        assert len(styles) >= 2, f"不同设定应匹配到不同风格，实际都匹配到: {styles}"

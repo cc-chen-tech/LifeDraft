@@ -258,12 +258,16 @@ async def _get_or_download_audio(song_id: int, url: str) -> Tuple[bytes, str]:
 
             fresh_url = await music_service.get_song_play_url(song_id)
             if not fresh_url:
-                raise HTTPException(status_code=404, detail="Song URL not available after refresh")
+                raise HTTPException(
+                    status_code=404, detail="Song URL not available after refresh"
+                )
             logger.info(f"[MusicStream] URL刷新成功: song_id={song_id}")
             response = await client.get(fresh_url, headers={"Referer": ""})
 
         if response.status_code not in (200, 206):
-            raise HTTPException(status_code=response.status_code, detail="CDN request failed")
+            raise HTTPException(
+                status_code=response.status_code, detail="CDN request failed"
+            )
 
         audio_data = response.content
         content_type = response.headers.get("content-type", "audio/mpeg")
@@ -308,7 +312,11 @@ async def stream_song(song_id: int, request: Request):
         range_match = re.match(r"bytes=(\d+)-(\d*)", range_header)
         if range_match:
             start = int(range_match.group(1))
-            end = int(range_match.group(2)) if range_match.group(2) else len(audio_data) - 1
+            end = (
+                int(range_match.group(2))
+                if range_match.group(2)
+                else len(audio_data) - 1
+            )
             end = min(end, len(audio_data) - 1)
             if start > end or start >= len(audio_data):
                 raise HTTPException(status_code=416, detail="Range not satisfiable")

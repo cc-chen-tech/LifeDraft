@@ -37,7 +37,9 @@ class NoveltyScorer:
     def __init__(self, use_vector_store: bool = True):
         self._use_vector_store = use_vector_store and _vector_store_available
 
-    def score(self, current_text: str, history: Optional[List[str]] = None) -> NoveltyResult:
+    def score(
+        self, current_text: str, history: Optional[List[str]] = None
+    ) -> NoveltyResult:
         """
         计算新颖度: novelty_score = 1.0 - max_similarity。
         无历史时返回高新颖度 (1.0)。

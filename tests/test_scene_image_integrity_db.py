@@ -35,13 +35,21 @@ class TestSceneImageIntegrityDb:
         service = SceneImageService(db=db_session)
 
         # Mock image generation to avoid external calls
-        with patch.object(service.image_client, "analyze_story_for_illustration") as mock_analyze, \
-             patch.object(service.image_client, "generate_image") as mock_generate, \
-             patch.object(service.storage_service, "save_image") as mock_save, \
-             patch.object(service.storage_service, "image_exists", return_value=True):
+        with patch.object(
+            service.image_client, "analyze_story_for_illustration"
+        ) as mock_analyze, patch.object(
+            service.image_client, "generate_image"
+        ) as mock_generate, patch.object(
+            service.storage_service, "save_image"
+        ) as mock_save, patch.object(
+            service.storage_service, "image_exists", return_value=True
+        ):
 
             mock_analyze.return_value = ("场景描述", "插画提示词")
-            mock_generate.return_value = (b"\x89PNG\r\n\x1a\n" + b"\x00" * 100, "prompt")
+            mock_generate.return_value = (
+                b"\x89PNG\r\n\x1a\n" + b"\x00" * 100,
+                "prompt",
+            )
             mock_save.return_value = ("/tmp/new.png", "local")
 
             # 模拟：generate 过程中已有记录存在且文件有效，直接返回已有记录
@@ -64,12 +72,19 @@ class TestSceneImageIntegrityDb:
         service = SceneImageService(db=db_session)
 
         # Mock image generation
-        with patch.object(service.image_client, "analyze_story_for_illustration") as mock_analyze, \
-             patch.object(service.image_client, "generate_image") as mock_generate, \
-             patch.object(service.storage_service, "save_image") as mock_save:
+        with patch.object(
+            service.image_client, "analyze_story_for_illustration"
+        ) as mock_analyze, patch.object(
+            service.image_client, "generate_image"
+        ) as mock_generate, patch.object(
+            service.storage_service, "save_image"
+        ) as mock_save:
 
             mock_analyze.return_value = ("场景描述", "插画提示词")
-            mock_generate.return_value = (b"\x89PNG\r\n\x1a\n" + b"\x00" * 100, "prompt")
+            mock_generate.return_value = (
+                b"\x89PNG\r\n\x1a\n" + b"\x00" * 100,
+                "prompt",
+            )
             mock_save.return_value = ("/tmp/new.png", "local")
 
             # 先正常提交一次（把已有记录写进去），让唯一约束生效
@@ -112,7 +127,9 @@ class TestSceneImageIntegrityDb:
             # 验证服务代码中的异常处理逻辑：
             # 当 commit 抛出 IntegrityError 时，rollback 后重新查询
             # 这里通过直接调用服务并确保不崩溃来验证
-            with patch.object(service.storage_service, "image_exists", return_value=True):
+            with patch.object(
+                service.storage_service, "image_exists", return_value=True
+            ):
                 result = service.generate_round_scene_image(
                     game_id=2,
                     round_number=1,
@@ -128,20 +145,30 @@ class TestSceneImageIntegrityDb:
         """当 IntegrityError 发生但查不到已有记录时，应抛出 ImageServiceError。"""
         service = SceneImageService(db=db_session)
 
-        with patch.object(service.image_client, "analyze_story_for_illustration") as mock_analyze, \
-             patch.object(service.image_client, "generate_image") as mock_generate, \
-             patch.object(service.storage_service, "save_image") as mock_save:
+        with patch.object(
+            service.image_client, "analyze_story_for_illustration"
+        ) as mock_analyze, patch.object(
+            service.image_client, "generate_image"
+        ) as mock_generate, patch.object(
+            service.storage_service, "save_image"
+        ) as mock_save:
 
             mock_analyze.return_value = ("场景描述", "插画提示词")
-            mock_generate.return_value = (b"\x89PNG\r\n\x1a\n" + b"\x00" * 100, "prompt")
+            mock_generate.return_value = (
+                b"\x89PNG\r\n\x1a\n" + b"\x00" * 100,
+                "prompt",
+            )
             mock_save.return_value = ("/tmp/new.png", "local")
 
             # Mock commit to always raise IntegrityError
             original_commit = db_session.commit
-            db_session.commit = MagicMock(side_effect=IntegrityError("duplicate", "", ""))
+            db_session.commit = MagicMock(
+                side_effect=IntegrityError("duplicate", "", "")
+            )
 
             try:
                 from src.services.image import ImageServiceError
+
                 with pytest.raises(ImageServiceError):
                     service.generate_round_scene_image(
                         game_id=99,

@@ -136,8 +136,12 @@ class GameRepository:
                     # COALESCE 链：最新 state > initial_state > 默认值
                     # ★ Bug #28 修复：使用 nullif 处理空字符串，确保 player_name 为空时回退到 initial_state
                     func.coalesce(
-                        func.nullif(func.json_extract(latest_state_json, "$.player_name"), ""),
-                        func.nullif(func.json_extract(initial_state_json, "$.player_name"), ""),
+                        func.nullif(
+                            func.json_extract(latest_state_json, "$.player_name"), ""
+                        ),
+                        func.nullif(
+                            func.json_extract(initial_state_json, "$.player_name"), ""
+                        ),
                         "",
                     ).label("player_name"),
                     func.coalesce(
@@ -196,7 +200,11 @@ class GameRepository:
         """
         db = SessionLocal()
         try:
-            game = db.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
+            game = (
+                db.query(Game)
+                .filter(Game.game_id == game_id, Game.user_id == user_id)
+                .first()
+            )
 
             if game:
                 db.delete(game)  # cascade 会自动删除关联的 states 和 decisions

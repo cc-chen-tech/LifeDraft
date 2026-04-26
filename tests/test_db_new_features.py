@@ -7,20 +7,17 @@ Tests save->read chain integrity for:
 - Model fallback tracking
 - Backward compatibility with old state format
 """
+
 import json
 import sqlite3
-import tempfile
 import threading
-import os
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
-from src.database.models import Base, Game, GameState, User
-
+from src.database.models import Game, GameState, User
 
 # --------------- helpers ---------------
+
 
 def _create_user(db_session) -> User:
     """Create a test user and return it."""
@@ -45,7 +42,9 @@ def _create_game(db_session, user: User) -> Game:
     return game
 
 
-def _save_game_state(db_session, game_id: int, week: int, age: int, state_json: dict) -> GameState:
+def _save_game_state(
+    db_session, game_id: int, week: int, age: int, state_json: dict
+) -> GameState:
     """Save a GameState row and return it."""
     gs = GameState(
         game_id=game_id,
@@ -61,6 +60,7 @@ def _save_game_state(db_session, game_id: int, week: int, age: int, state_json: 
 
 # --------------- fixtures ---------------
 
+
 @pytest.fixture
 def game_ctx(db_session):
     """Provide a (user, game) tuple ready for use."""
@@ -72,6 +72,7 @@ def game_ctx(db_session):
 # ====================================================================
 # Generation State Metrics Persistence
 # ====================================================================
+
 
 @pytest.mark.integration
 class TestGenerationStateMetricsPersistence:
@@ -89,7 +90,11 @@ class TestGenerationStateMetricsPersistence:
             "total_attempts": 3,
             "transitions": [
                 {"reason": "initial", "temperature": 0.85, "model": "deepseek-chat"},
-                {"reason": "harness_retry", "temperature": 0.9, "model": "deepseek-chat"},
+                {
+                    "reason": "harness_retry",
+                    "temperature": 0.9,
+                    "model": "deepseek-chat",
+                },
                 {"reason": "model_fallback", "temperature": 0.85, "model": "qwen-max"},
             ],
             "final_model": "qwen-max",
@@ -112,7 +117,9 @@ class TestGenerationStateMetricsPersistence:
                         "priority": "CRITICAL",
                         "passed": True,
                         "evidence": "names consistent",
-                        "details": {"transition_reasons": metrics_output["transition_reasons"]},
+                        "details": {
+                            "transition_reasons": metrics_output["transition_reasons"]
+                        },
                     }
                 },
             },
@@ -123,7 +130,10 @@ class TestGenerationStateMetricsPersistence:
         # Read back directly via sqlite3
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute("SELECT game_id, week, attempts, final_score, latency_ms FROM generation_runs WHERE id = ?", (run_id,))
+        cursor.execute(
+            "SELECT game_id, week, attempts, final_score, latency_ms FROM generation_runs WHERE id = ?",
+            (run_id,),
+        )
         row = cursor.fetchone()
         conn.close()
 
@@ -155,7 +165,9 @@ class TestGenerationStateMetricsPersistence:
         # Read back all
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM generation_runs WHERE game_id = ?", ("game_hist",))
+        cursor.execute(
+            "SELECT COUNT(*) FROM generation_runs WHERE game_id = ?", ("game_hist",)
+        )
         count = cursor.fetchone()[0]
         conn.close()
 
@@ -195,7 +207,10 @@ class TestGenerationStateMetricsPersistence:
         # Read back constraint check
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute("SELECT evidence, details FROM constraint_checks WHERE run_id = ?", (run_id,))
+        cursor.execute(
+            "SELECT evidence, details FROM constraint_checks WHERE run_id = ?",
+            (run_id,),
+        )
         row = cursor.fetchone()
         conn.close()
 
@@ -209,6 +224,7 @@ class TestGenerationStateMetricsPersistence:
 # ====================================================================
 # Parallel Post-Processing Data Integrity
 # ====================================================================
+
 
 @pytest.mark.integration
 class TestParallelPostProcessingDataIntegrity:
@@ -239,7 +255,9 @@ class TestParallelPostProcessingDataIntegrity:
             "world_model_data": world_model_data,
         }
 
-        gs = _save_game_state(db_session, game.game_id, week=5, age=25, state_json=state_json)
+        gs = _save_game_state(
+            db_session, game.game_id, week=5, age=25, state_json=state_json
+        )
 
         # Read back
         loaded = db_session.query(GameState).filter_by(state_id=gs.state_id).one()
@@ -284,13 +302,18 @@ class TestParallelPostProcessingDataIntegrity:
             "world_model_data": pp_result["world_model_updates"],
         }
 
-        gs = _save_game_state(db_session, game.game_id, week=5, age=25, state_json=state_json)
+        gs = _save_game_state(
+            db_session, game.game_id, week=5, age=25, state_json=state_json
+        )
 
         loaded = db_session.query(GameState).filter_by(state_id=gs.state_id).one()
         loaded_pp = loaded.state_json["post_processing"]
 
         assert loaded_pp["compression_result"]["compression_ratio"] == 0.65
-        assert loaded_pp["compression_result"]["key_events_preserved"] == ["遇见李白", "饮酒作诗"]
+        assert loaded_pp["compression_result"]["key_events_preserved"] == [
+            "遇见李白",
+            "饮酒作诗",
+        ]
         assert loaded_pp["vector_stored"] is True
         assert "主角在长安" in loaded_pp["weekly_summary"]
 
@@ -301,8 +324,12 @@ class TestParallelPostProcessingDataIntegrity:
         # Prepare base state
         base_state = {
             "player_name": "并发测试",
-            "energy": 100, "mood": 100, "knowledge": 50, "wealth": 500,
-            "week": 3, "age": 25,
+            "energy": 100,
+            "mood": 100,
+            "knowledge": 50,
+            "wealth": 500,
+            "week": 3,
+            "age": 25,
             "world_model_data": {
                 "character_locations": {},
                 "career_records": {},
@@ -314,12 +341,18 @@ class TestParallelPostProcessingDataIntegrity:
             },
         }
 
-        gs = _save_game_state(db_session, game.game_id, week=3, age=25, state_json=base_state)
+        gs = _save_game_state(
+            db_session, game.game_id, week=3, age=25, state_json=base_state
+        )
 
         # Use a separate engine for thread-safety (SQLite in-memory DBs aren't shared across connections)
         # Instead, we simulate concurrent dict merging and a single write
-        updates_a = {"character_locations": {"王维": {"location": "终南山", "since_week": 3}}}
-        updates_b = {"career_records": {"主角": {"current_job": "县令", "started_week": 2}}}
+        updates_a = {
+            "character_locations": {"王维": {"location": "终南山", "since_week": 3}}
+        }
+        updates_b = {
+            "career_records": {"主角": {"current_job": "县令", "started_week": 2}}
+        }
 
         # Simulate merge (what the parallel postprocessor would do)
         merged = base_state["world_model_data"].copy()
@@ -330,8 +363,13 @@ class TestParallelPostProcessingDataIntegrity:
             with lock:
                 results[key] = value
 
-        t1 = threading.Thread(target=apply_update, args=("character_locations", updates_a["character_locations"]))
-        t2 = threading.Thread(target=apply_update, args=("career_records", updates_b["career_records"]))
+        t1 = threading.Thread(
+            target=apply_update,
+            args=("character_locations", updates_a["character_locations"]),
+        )
+        t2 = threading.Thread(
+            target=apply_update, args=("career_records", updates_b["career_records"])
+        )
         t1.start()
         t2.start()
         t1.join()
@@ -368,12 +406,18 @@ class TestParallelPostProcessingDataIntegrity:
 
         state_json = {
             "player_name": "压缩测试",
-            "energy": 90, "mood": 75, "knowledge": 60, "wealth": 700,
-            "week": 3, "age": 25,
+            "energy": 90,
+            "mood": 75,
+            "knowledge": 60,
+            "wealth": 700,
+            "week": 3,
+            "age": 25,
             "compression_result": compression_result,
         }
 
-        gs = _save_game_state(db_session, game.game_id, week=3, age=25, state_json=state_json)
+        gs = _save_game_state(
+            db_session, game.game_id, week=3, age=25, state_json=state_json
+        )
 
         loaded = db_session.query(GameState).filter_by(state_id=gs.state_id).one()
         cr = loaded.state_json["compression_result"]
@@ -388,6 +432,7 @@ class TestParallelPostProcessingDataIntegrity:
 # ====================================================================
 # Backward Compatibility
 # ====================================================================
+
 
 @pytest.mark.integration
 class TestBackwardCompatibility:
@@ -412,7 +457,9 @@ class TestBackwardCompatibility:
             "story_history": ["第一周的故事..."],
         }
 
-        gs = _save_game_state(db_session, game.game_id, week=2, age=25, state_json=old_state_json)
+        gs = _save_game_state(
+            db_session, game.game_id, week=2, age=25, state_json=old_state_json
+        )
 
         loaded = db_session.query(GameState).filter_by(state_id=gs.state_id).one()
         sj = loaded.state_json
@@ -448,12 +495,18 @@ class TestBackwardCompatibility:
 
         state_json = {
             "player_name": "旧WM玩家",
-            "energy": 90, "mood": 80, "knowledge": 55, "wealth": 600,
-            "week": 4, "age": 26,
+            "energy": 90,
+            "mood": 80,
+            "knowledge": 55,
+            "wealth": 600,
+            "week": 4,
+            "age": 26,
             "world_model_data": old_wm,
         }
 
-        gs = _save_game_state(db_session, game.game_id, week=4, age=26, state_json=state_json)
+        gs = _save_game_state(
+            db_session, game.game_id, week=4, age=26, state_json=state_json
+        )
 
         loaded = db_session.query(GameState).filter_by(state_id=gs.state_id).one()
         loaded_wm = loaded.state_json["world_model_data"]
@@ -474,6 +527,7 @@ class TestBackwardCompatibility:
 # Feature Flag Non-Persistence
 # ====================================================================
 
+
 @pytest.mark.integration
 class TestFeatureFlagNonPersistence:
     """Test that feature flags are runtime-only."""
@@ -486,18 +540,26 @@ class TestFeatureFlagNonPersistence:
 
         state_json = {
             "player_name": "Flag测试",
-            "energy": 100, "mood": 100, "knowledge": 50, "wealth": 1000,
-            "week": 1, "age": 25,
+            "energy": 100,
+            "mood": 100,
+            "knowledge": 50,
+            "wealth": 1000,
+            "week": 1,
+            "age": 25,
         }
 
-        gs = _save_game_state(db_session, game.game_id, week=1, age=25, state_json=state_json)
+        gs = _save_game_state(
+            db_session, game.game_id, week=1, age=25, state_json=state_json
+        )
 
         loaded = db_session.query(GameState).filter_by(state_id=gs.state_id).one()
         sj = loaded.state_json
 
         # Verify no feature flag keys leaked into state_json
         for flag_name in FEATURE_DEFAULTS:
-            assert flag_name not in sj, f"Feature flag '{flag_name}' should not be in state_json"
+            assert (
+                flag_name not in sj
+            ), f"Feature flag '{flag_name}' should not be in state_json"
 
         assert "feature_flags" not in sj
         assert "constraint_harness" not in sj
@@ -510,21 +572,32 @@ class TestFeatureFlagNonPersistence:
         # Save a game state
         state_json = {
             "player_name": "FlagChange测试",
-            "energy": 80, "mood": 75, "knowledge": 60, "wealth": 900,
-            "week": 3, "age": 26,
+            "energy": 80,
+            "mood": 75,
+            "knowledge": 60,
+            "wealth": 900,
+            "week": 3,
+            "age": 26,
             "world_model_data": {
                 "character_locations": {"小红": {"location": "上海"}},
                 "career_records": {},
             },
         }
 
-        gs = _save_game_state(db_session, game.game_id, week=3, age=26, state_json=state_json)
+        gs = _save_game_state(
+            db_session, game.game_id, week=3, age=26, state_json=state_json
+        )
 
         # Read the game state back - it should be identical regardless of feature flags
         loaded = db_session.query(GameState).filter_by(state_id=gs.state_id).one()
         assert loaded.state_json["player_name"] == "FlagChange测试"
         assert loaded.state_json["energy"] == 80
-        assert loaded.state_json["world_model_data"]["character_locations"]["小红"]["location"] == "上海"
+        assert (
+            loaded.state_json["world_model_data"]["character_locations"]["小红"][
+                "location"
+            ]
+            == "上海"
+        )
 
         # Feature flags are runtime-only: state_json has no feature flag data
         assert "feature_flags" not in loaded.state_json
@@ -533,6 +606,7 @@ class TestFeatureFlagNonPersistence:
 # ====================================================================
 # Model Fallback Tracking
 # ====================================================================
+
 
 @pytest.mark.integration
 class TestModelFallbackTracking:
@@ -544,8 +618,12 @@ class TestModelFallbackTracking:
 
         state_json = {
             "player_name": "模型降级测试",
-            "energy": 90, "mood": 80, "knowledge": 55, "wealth": 1200,
-            "week": 7, "age": 27,
+            "energy": 90,
+            "mood": 80,
+            "knowledge": 55,
+            "wealth": 1200,
+            "week": 7,
+            "age": 27,
             "current_event_data": {
                 "event_description": "你在书院里遇到一位神秘的老师...",
                 "options": [
@@ -557,7 +635,9 @@ class TestModelFallbackTracking:
             },
         }
 
-        gs = _save_game_state(db_session, game.game_id, week=7, age=27, state_json=state_json)
+        gs = _save_game_state(
+            db_session, game.game_id, week=7, age=27, state_json=state_json
+        )
 
         loaded = db_session.query(GameState).filter_by(state_id=gs.state_id).one()
         event_data = loaded.state_json["current_event_data"]
@@ -572,8 +652,12 @@ class TestModelFallbackTracking:
 
         state_json = {
             "player_name": "降级链测试",
-            "energy": 85, "mood": 70, "knowledge": 50, "wealth": 1000,
-            "week": 10, "age": 28,
+            "energy": 85,
+            "mood": 70,
+            "knowledge": 50,
+            "wealth": 1000,
+            "week": 10,
+            "age": 28,
             "generation_metadata": {
                 "model_used": "qwen-max",
                 "fallback_chain": ["deepseek-chat", "deepseek-chat", "qwen-max"],
@@ -582,7 +666,9 @@ class TestModelFallbackTracking:
             },
         }
 
-        gs = _save_game_state(db_session, game.game_id, week=10, age=28, state_json=state_json)
+        gs = _save_game_state(
+            db_session, game.game_id, week=10, age=28, state_json=state_json
+        )
 
         loaded = db_session.query(GameState).filter_by(state_id=gs.state_id).one()
         meta = loaded.state_json["generation_metadata"]
@@ -603,18 +689,25 @@ class TestModelFallbackTracking:
             state_json = {
                 "player_name": "多模型测试",
                 "energy": 100 - i * 5,
-                "mood": 80, "knowledge": 50, "wealth": 1000,
-                "week": i + 1, "age": 25,
+                "mood": 80,
+                "knowledge": 50,
+                "wealth": 1000,
+                "week": i + 1,
+                "age": 25,
                 "current_event_data": {
                     "event_description": f"第{i+1}周事件",
                     "options": [],
                     "model_used": model,
                 },
             }
-            gs = _save_game_state(db_session, game.game_id, week=i + 1, age=25, state_json=state_json)
+            gs = _save_game_state(
+                db_session, game.game_id, week=i + 1, age=25, state_json=state_json
+            )
             state_ids.append(gs.state_id)
 
         # Verify each state has the correct model
         for sid, expected_model in zip(state_ids, models):
             loaded = db_session.query(GameState).filter_by(state_id=sid).one()
-            assert loaded.state_json["current_event_data"]["model_used"] == expected_model
+            assert (
+                loaded.state_json["current_event_data"]["model_used"] == expected_model
+            )

@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.database.models import Game, GamePlaylist, SessionLocal, engine, Base
+from src.database.models import Base, Game, GamePlaylist, SessionLocal, engine
 
 
 class TestGamePlaylistDB:

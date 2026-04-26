@@ -5,10 +5,9 @@
 """
 
 from unittest.mock import MagicMock, patch
-import pytest
 
-from src.ai.story_generator import StoryGenerator
 from src.ai.harness.quality_level import QualityLevel
+from src.ai.story_generator import StoryGenerator
 
 
 def test_story_generator_accepts_quality_level():
@@ -43,7 +42,9 @@ def test_expert_mode_keeps_consistency_guard():
     player_state = {"week": 1, "current_round": 1}
 
     # 第一次调用应进入校验逻辑（被 patch 拦截）
-    with patch("src.ai.consistency_validator.ConsistencyValidator") as mock_validator_cls:
+    with patch(
+        "src.ai.consistency_validator.ConsistencyValidator"
+    ) as mock_validator_cls:
         mock_validator = MagicMock()
         mock_validator.validate_story.return_value = MagicMock(passed=True)
         mock_validator_cls.return_value = mock_validator

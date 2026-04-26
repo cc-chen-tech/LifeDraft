@@ -31,10 +31,15 @@ class TestImageEditFallbackDb:
 
         # Mock: edit_image 失败，generate_image 成功
         service.image_client.edit_image.side_effect = ImageGenerationError("timeout")
-        service.image_client.generate_image.return_value = (b"fake_image_bytes", "prompt")
+        service.image_client.generate_image.return_value = (
+            b"fake_image_bytes",
+            "prompt",
+        )
 
         # 生成前数据库应无记录
-        before_count = db_session.query(SceneImage).filter(SceneImage.game_id == 999).count()
+        before_count = (
+            db_session.query(SceneImage).filter(SceneImage.game_id == 999).count()
+        )
         assert before_count == 0
 
         # 调用生成（带 reference_urls 会尝试 edit，然后降级到 generate）
@@ -69,8 +74,13 @@ class TestImageEditFallbackDb:
             storage = ImageStorageService(local_path=Path(tmpdir))
             service = self._create_service(db_session, storage)
 
-            service.image_client.edit_image.side_effect = ImageGenerationError("timeout")
-            service.image_client.generate_image.return_value = (b"fake_image_bytes", "prompt")
+            service.image_client.edit_image.side_effect = ImageGenerationError(
+                "timeout"
+            )
+            service.image_client.generate_image.return_value = (
+                b"fake_image_bytes",
+                "prompt",
+            )
 
             service._generate_round_illustration_sync(
                 game_id=999,
@@ -91,9 +101,11 @@ class TestImageEditFallbackDb:
             )
 
             # 验证文件存在
-            scene = db_session.query(SceneImage).filter(
-                SceneImage.game_id == 999, SceneImage.round_number == 1
-            ).first()
+            scene = (
+                db_session.query(SceneImage)
+                .filter(SceneImage.game_id == 999, SceneImage.round_number == 1)
+                .first()
+            )
             assert scene is not None
             assert scene.storage_path is not None
 
@@ -128,7 +140,8 @@ class TestImageEditFallbackDb:
         service.image_client = MagicMock()
         # analyze_story_for_illustration 返回 (scene_desc, illustration_prompt)
         service.image_client.analyze_story_for_illustration.return_value = (
-            "测试场景描述", "测试插画提示词"
+            "测试场景描述",
+            "测试插画提示词",
         )
         service.image_storage = storage or ImageStorageService(
             local_path=Path(tempfile.mkdtemp())

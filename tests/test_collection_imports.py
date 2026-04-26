@@ -14,7 +14,8 @@ class TestSessionServiceImports:
 
     def test_session_service_import(self):
         """测试 SessionService 可导入"""
-        from src.api.services.session_service import SessionService, session_service
+        from src.api.services.session_service import (SessionService,
+                                                      session_service)
 
         assert SessionService is not None
         assert session_service is not None
@@ -46,7 +47,6 @@ class TestCollectionStoreImports:
         """测试 useCollectionStore 可导入"""
         # 这是一个前端 TypeScript 模块，通过 Node 运行时验证
         # Python 层只需确认相关概念存在
-        pass
 
 
 class TestLazyImportPaths:
@@ -54,13 +54,13 @@ class TestLazyImportPaths:
 
     def test_session_service_lazy_imports(self):
         """验证 _check_and_generate_missing_illustrations 中的延迟导入"""
-        from src.services.image_storage import ImageStorageService
-        from src.database.models import SessionLocal
-        from src.database.models import Image as ImageModel
-        from src.database.models import SceneImage
         from src.ai.image_client import ImageClient
+        from src.database.models import Image as ImageModel
+        from src.database.models import SceneImage, SessionLocal
+        from src.game.round.illustration_service import \
+            RoundIllustrationService
         from src.services.image_service import ImageService
-        from src.game.round.illustration_service import RoundIllustrationService
+        from src.services.image_storage import ImageStorageService
 
         assert ImageStorageService is not None
         assert SessionLocal is not None

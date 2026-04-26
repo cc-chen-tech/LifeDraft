@@ -1,9 +1,6 @@
 """Tests for RoundFinalizer service."""
 
-from concurrent.futures import ThreadPoolExecutor
-from unittest.mock import MagicMock, call, patch
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from src.game.round.finalizer import RoundFinalizer
 
@@ -298,7 +295,7 @@ class TestCompressRoundStory:
             character_creator=MagicMock(),
         )
 
-        result = finalizer.compress_round_story("test story", "test choice")
+        finalizer.compress_round_story("test story", "test choice")
         mock_story_service.compress_story.assert_called_once_with(
             "test story", "test choice", [], [], []
         )
@@ -318,7 +315,7 @@ class TestCompressRoundStory:
             character_creator=MagicMock(),
         )
 
-        result = finalizer.compress_round_story("test story", "test choice")
+        finalizer.compress_round_story("test story", "test choice")
         mock_story_service.compress_story.assert_called_once_with(
             "test story", "test choice", [], [], []
         )

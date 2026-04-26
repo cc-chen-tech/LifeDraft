@@ -12,8 +12,8 @@ class TestEditImageExtraParamsPropagation:
 
     def test_edit_image_includes_default_negative_prompt(self):
         """edit_image 应在 API 请求中包含默认 negative_prompt"""
-        from src.ai.image_generator import ImageGenerator
         from src.ai.image_config import DEFAULT_EDIT_NEGATIVE_PROMPT
+        from src.ai.image_generator import ImageGenerator
 
         gen = ImageGenerator.__new__(ImageGenerator)
         gen.image_edit_models = ["qwen-image-edit"]
@@ -32,11 +32,7 @@ class TestEditImageExtraParamsPropagation:
             resp.json.return_value = {
                 "output": {
                     "choices": [
-                        {
-                            "message": {
-                                "content": [{"image": "http://test/image.png"}]
-                            }
-                        }
+                        {"message": {"content": [{"image": "http://test/image.png"}]}}
                     ]
                 }
             }
@@ -55,14 +51,13 @@ class TestEditImageExtraParamsPropagation:
         assert len(captured_payloads) == 1
         actual_negative = captured_payloads[0]["parameters"]["negative_prompt"]
         assert actual_negative == DEFAULT_EDIT_NEGATIVE_PROMPT, (
-            f"API 请求应包含默认 negative_prompt。"
-            f"实际: {actual_negative}"
+            f"API 请求应包含默认 negative_prompt。" f"实际: {actual_negative}"
         )
 
     def test_edit_image_without_extra_params_uses_default(self):
         """不传 extra_params 时应使用默认 negative_prompt"""
-        from src.ai.image_generator import ImageGenerator
         from src.ai.image_config import DEFAULT_EDIT_NEGATIVE_PROMPT
+        from src.ai.image_generator import ImageGenerator
 
         gen = ImageGenerator.__new__(ImageGenerator)
         gen.image_edit_models = ["qwen-image-edit"]
@@ -81,11 +76,7 @@ class TestEditImageExtraParamsPropagation:
             resp.json.return_value = {
                 "output": {
                     "choices": [
-                        {
-                            "message": {
-                                "content": [{"image": "http://test/image.png"}]
-                            }
-                        }
+                        {"message": {"content": [{"image": "http://test/image.png"}]}}
                     ]
                 }
             }
@@ -129,11 +120,7 @@ class TestEditImageExtraParamsPropagation:
             resp.json.return_value = {
                 "output": {
                     "choices": [
-                        {
-                            "message": {
-                                "content": [{"image": "http://test/image.png"}]
-                            }
-                        }
+                        {"message": {"content": [{"image": "http://test/image.png"}]}}
                     ]
                 }
             }
@@ -157,8 +144,8 @@ class TestEditImageExtraParamsPropagation:
 
     def test_edit_image_extra_params_override_negative_prompt(self):
         """extra_params 应能覆盖默认 negative_prompt"""
-        from src.ai.image_generator import ImageGenerator
         from src.ai.image_config import DEFAULT_EDIT_NEGATIVE_PROMPT
+        from src.ai.image_generator import ImageGenerator
 
         gen = ImageGenerator.__new__(ImageGenerator)
         gen.image_edit_models = ["qwen-image-edit"]
@@ -177,11 +164,7 @@ class TestEditImageExtraParamsPropagation:
             resp.json.return_value = {
                 "output": {
                     "choices": [
-                        {
-                            "message": {
-                                "content": [{"image": "http://test/image.png"}]
-                            }
-                        }
+                        {"message": {"content": [{"image": "http://test/image.png"}]}}
                     ]
                 }
             }

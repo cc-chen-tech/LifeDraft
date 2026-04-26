@@ -2,8 +2,6 @@
 
 import time
 
-import pytest
-
 
 class TestCacheManagement:
     """缓存 TTL 和大小限制测试"""

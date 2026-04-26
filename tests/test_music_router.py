@@ -146,7 +146,10 @@ class TestRecommendMusic:
         rec = _make_recommendation(songs)
 
         # Only songs 100 and 102 get valid URLs
-        url_map = {100: "https://cdn.example.com/a.mp3", 102: "https://cdn.example.com/b.mp3"}
+        url_map = {
+            100: "https://cdn.example.com/a.mp3",
+            102: "https://cdn.example.com/b.mp3",
+        }
         svc = AsyncMock()
         svc.analyze_story_for_music.return_value = rec
         svc.get_song_play_url = AsyncMock(side_effect=lambda sid: url_map.get(sid))
@@ -215,7 +218,9 @@ class TestStreamSong:
     def test_stream_normal(self, mock_get_svc, mock_async_client_cls, client):
         """正常流式返回音频数据。"""
         svc = MagicMock()
-        svc.get_song_play_url = AsyncMock(return_value="https://cdn.example.com/song.mp3")
+        svc.get_song_play_url = AsyncMock(
+            return_value="https://cdn.example.com/song.mp3"
+        )
         mock_get_svc.return_value = svc
 
         # Build a fake httpx response
@@ -245,10 +250,14 @@ class TestStreamSong:
 
     @patch("src.api.routers.music.httpx.AsyncClient")
     @patch("src.api.routers.music.get_music_service")
-    def test_stream_no_content_length(self, mock_get_svc, mock_async_client_cls, client):
+    def test_stream_no_content_length(
+        self, mock_get_svc, mock_async_client_cls, client
+    ):
         """流式响应不应包含 content-length 头。"""
         svc = MagicMock()
-        svc.get_song_play_url = AsyncMock(return_value="https://cdn.example.com/song.mp3")
+        svc.get_song_play_url = AsyncMock(
+            return_value="https://cdn.example.com/song.mp3"
+        )
         mock_get_svc.return_value = svc
 
         fake_response = AsyncMock()
@@ -274,10 +283,14 @@ class TestStreamSong:
 
     @patch("src.api.routers.music.httpx.AsyncClient")
     @patch("src.api.routers.music.get_music_service")
-    def test_stream_correct_content_type(self, mock_get_svc, mock_async_client_cls, client):
+    def test_stream_correct_content_type(
+        self, mock_get_svc, mock_async_client_cls, client
+    ):
         """流式响应的 content-type 应为 audio 类型。"""
         svc = MagicMock()
-        svc.get_song_play_url = AsyncMock(return_value="https://cdn.example.com/song.mp3")
+        svc.get_song_play_url = AsyncMock(
+            return_value="https://cdn.example.com/song.mp3"
+        )
         mock_get_svc.return_value = svc
 
         fake_response = AsyncMock()
@@ -318,7 +331,9 @@ class TestStreamSong:
     def test_stream_cdn_non_200(self, mock_get_svc, mock_async_client_cls, client):
         """CDN 返回非 200/206 且非 403/401 时应返回对应错误码。"""
         svc = MagicMock()
-        svc.get_song_play_url = AsyncMock(return_value="https://cdn.example.com/song.mp3")
+        svc.get_song_play_url = AsyncMock(
+            return_value="https://cdn.example.com/song.mp3"
+        )
         mock_get_svc.return_value = svc
 
         fake_response = AsyncMock()
@@ -339,10 +354,14 @@ class TestStreamSong:
 
     @patch("src.api.routers.music.httpx.AsyncClient")
     @patch("src.api.routers.music.get_music_service")
-    def test_stream_uses_small_chunk_size(self, mock_get_svc, mock_async_client_cls, client):
+    def test_stream_uses_small_chunk_size(
+        self, mock_get_svc, mock_async_client_cls, client
+    ):
         """流式代理应使用 8KB chunk_size 保证低延迟，避免 64KB 大 chunk 导致卡顿。"""
         svc = MagicMock()
-        svc.get_song_play_url = AsyncMock(return_value="https://cdn.example.com/song.mp3")
+        svc.get_song_play_url = AsyncMock(
+            return_value="https://cdn.example.com/song.mp3"
+        )
         mock_get_svc.return_value = svc
 
         fake_response = AsyncMock()
@@ -371,11 +390,16 @@ class TestStreamSong:
 
     @patch("src.api.routers.music.httpx.AsyncClient")
     @patch("src.api.routers.music.get_music_service")
-    def test_stream_cdn_403_retry_success(self, mock_get_svc, mock_async_client_cls, client):
+    def test_stream_cdn_403_retry_success(
+        self, mock_get_svc, mock_async_client_cls, client
+    ):
         """CDN 返回 403 时应刷新 URL 并重试，重试成功则正常返回。"""
         svc = MagicMock()
         svc.get_song_play_url = AsyncMock(
-            side_effect=["https://cdn.example.com/old.mp3", "https://cdn.example.com/fresh.mp3"]
+            side_effect=[
+                "https://cdn.example.com/old.mp3",
+                "https://cdn.example.com/fresh.mp3",
+            ]
         )
         mock_get_svc.return_value = svc
 
@@ -410,7 +434,9 @@ class TestStreamSong:
     def test_stream_range_request(self, mock_get_svc, mock_async_client_cls, client):
         """Range 请求头应被转发到 CDN，并返回 206 + content-range。"""
         svc = MagicMock()
-        svc.get_song_play_url = AsyncMock(return_value="https://cdn.example.com/song.mp3")
+        svc.get_song_play_url = AsyncMock(
+            return_value="https://cdn.example.com/song.mp3"
+        )
         mock_get_svc.return_value = svc
 
         async def partial_iter():
@@ -431,7 +457,9 @@ class TestStreamSong:
         fake_client.aclose = AsyncMock()
         mock_async_client_cls.return_value = fake_client
 
-        resp = client.get("/api/music/stream/12345", headers={"range": "bytes=1000-2000"})
+        resp = client.get(
+            "/api/music/stream/12345", headers={"range": "bytes=1000-2000"}
+        )
 
         assert resp.status_code == 206
         assert resp.headers.get("content-range") == "bytes 1000-2000/5000"

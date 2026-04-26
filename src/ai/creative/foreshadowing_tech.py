@@ -86,7 +86,9 @@ class ForeshadowingTechniqueLibrary:
             logger.warning("Error in match_technique: %s", e)
             return RecoveryTechnique(name="通用回收")
 
-    def get_style_recovery(self, foreshadowing: Dict, style: str = "") -> RecoveryTechnique:
+    def get_style_recovery(
+        self, foreshadowing: Dict, style: str = ""
+    ) -> RecoveryTechnique:
         """根据伏笔类型+风格匹配带风格变体的回收技巧。"""
         try:
             variant = self.STYLE_VARIANTS.get(style)

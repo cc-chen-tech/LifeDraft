@@ -23,7 +23,9 @@ _style_files = get_all_style_files()
 
 
 @pytest.mark.unit
-@pytest.mark.skipif(len(_style_files) == 0, reason="config/styles/ 目录下无 .style.json 文件")
+@pytest.mark.skipif(
+    len(_style_files) == 0, reason="config/styles/ 目录下无 .style.json 文件"
+)
 class TestStyleContract:
     """对每个 .style.json 文件进行契约验证。"""
 
@@ -38,7 +40,13 @@ class TestStyleContract:
         assert not missing_top, f"缺少顶级字段: {missing_top}"
 
         # 五维子配置
-        for section in ["philosophy", "structure", "techniques", "language", "global_parameters"]:
+        for section in [
+            "philosophy",
+            "structure",
+            "techniques",
+            "language",
+            "global_parameters",
+        ]:
             assert section in data, f"缺少子配置段: {section}"
             assert isinstance(data[section], dict), f"{section} 应为 dict"
 
@@ -60,9 +68,9 @@ class TestStyleContract:
 
         expected_id = Path(style_file).stem.replace(".style", "")
         actual_id = data.get("style_id", "")
-        assert actual_id == expected_id, (
-            f"style_id '{actual_id}' 与文件名 '{expected_id}' 不匹配"
-        )
+        assert (
+            actual_id == expected_id
+        ), f"style_id '{actual_id}' 与文件名 '{expected_id}' 不匹配"
 
     @pytest.mark.parametrize("style_file", _style_files, ids=lambda f: Path(f).stem)
     def test_loadable_by_style_loader(self, style_file):

@@ -67,7 +67,9 @@ class ConstraintViolationDiagnostic:
     纯规则与文本匹配，不调用任何 AI/LLM。
     """
 
-    def locate_evidence(self, story_text: str, violation_type: str, details: dict) -> str:
+    def locate_evidence(
+        self, story_text: str, violation_type: str, details: dict
+    ) -> str:
         """根据违反类型从故事文本中提取证据段落。
 
         Args:
@@ -88,7 +90,9 @@ class ConstraintViolationDiagnostic:
             logger.error(f"证据定位失败 [{violation_type}]: {e}")
             return "无法定位具体证据"
 
-    def _locate_evidence_inner(self, story_text: str, violation_type: str, details: dict) -> str:
+    def _locate_evidence_inner(
+        self, story_text: str, violation_type: str, details: dict
+    ) -> str:
         """内部证据定位逻辑。
 
         Args:
@@ -136,7 +140,9 @@ class ConstraintViolationDiagnostic:
         for name in unknown_names:
             for sentence in sentences:
                 if name in sentence and sentence.strip():
-                    matched_sentences.append(f"「{sentence.strip()}」(未知人物: {name})")
+                    matched_sentences.append(
+                        f"「{sentence.strip()}」(未知人物: {name})"
+                    )
                     break
 
         if matched_sentences:
@@ -226,13 +232,16 @@ class ConstraintViolationDiagnostic:
         failed_checks = [c for c in all_failures if not c.passed]
 
         for check in failed_checks:
-            evidence = self.locate_evidence(story_text, check.constraint_type, check.details)
+            evidence = self.locate_evidence(
+                story_text, check.constraint_type, check.details
+            )
 
             violation_entry = {
                 "constraint_type": check.constraint_type,
                 "priority": check.priority,
                 "evidence": evidence,
-                "description": check.evidence or f"约束 {check.constraint_type} 验证失败",
+                "description": check.evidence
+                or f"约束 {check.constraint_type} 验证失败",
             }
             report.violations.append(violation_entry)
             report.evidence_map[check.constraint_type] = evidence
@@ -242,7 +251,9 @@ class ConstraintViolationDiagnostic:
             if fix_hint:
                 report.suggested_fixes.append(f"[{check.constraint_type}] {fix_hint}")
             else:
-                report.suggested_fixes.append(f"[{check.constraint_type}] 请修正该约束的违反")
+                report.suggested_fixes.append(
+                    f"[{check.constraint_type}] 请修正该约束的违反"
+                )
 
             if check.priority == Priority.CRITICAL.name:
                 report.critical_count += 1
@@ -259,7 +270,9 @@ class ConstraintViolationDiagnostic:
 
         return report
 
-    def _build_summary(self, report: DiagnosticReport, validation_result: ValidationResult) -> str:
+    def _build_summary(
+        self, report: DiagnosticReport, validation_result: ValidationResult
+    ) -> str:
         """生成人类可读的诊断摘要。
 
         Args:

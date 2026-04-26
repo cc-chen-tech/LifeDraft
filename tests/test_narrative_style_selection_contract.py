@@ -89,12 +89,20 @@ class TestNarrativeStyleSelectionContract:
             mock_game_loop = MagicMock()
             mock_state = MagicMock()
             mock_state.to_dict.return_value = {
-                "energy": 50, "mood": 50, "knowledge": 50, "wealth": 1000,
-                "week": 1, "age": 22, "narrative_style_id": "chinese_classic_saga",
+                "energy": 50,
+                "mood": 50,
+                "knowledge": 50,
+                "wealth": 1000,
+                "week": 1,
+                "age": 22,
+                "narrative_style_id": "chinese_classic_saga",
             }
             mock_game_loop.get_state.return_value = mock_state
             mock_game_loop.get_progress.return_value = {"week": 1, "round": 0}
-            mock_game_loop.get_round_info.return_value = {"current_round": 0, "max_rounds": 3}
+            mock_game_loop.get_round_info.return_value = {
+                "current_round": 0,
+                "max_rounds": 3,
+            }
             mock_game_loop.current_event = None
             mock_store.get.return_value = mock_game_loop
 
@@ -103,6 +111,6 @@ class TestNarrativeStyleSelectionContract:
                 data = response.json()
                 # player_state 或顶层应包含 narrative_style_id
                 player_state = data.get("player_state", {})
-                assert "narrative_style_id" in player_state, (
-                    f"player_state 应包含 narrative_style_id。实际字段: {list(player_state.keys())[:20]}"
-                )
+                assert (
+                    "narrative_style_id" in player_state
+                ), f"player_state 应包含 narrative_style_id。实际字段: {list(player_state.keys())[:20]}"

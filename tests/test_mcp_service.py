@@ -1,7 +1,5 @@
 """Tests for relationship MCP service."""
 
-import pytest
-
 from src.game.relationship_events import get_event_by_type
 from src.game.state import CharacterState, PlayerState
 from src.mcp.relationship_service import RelationshipMCPService, TriggeredEvent

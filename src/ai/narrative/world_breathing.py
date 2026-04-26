@@ -37,7 +37,15 @@ _PERMEATION_TEMPLATES = {
 class WorldBreathingEngine:
     """独立的世界事件日历，背景事件自动发生。"""
 
-    VALID_TYPES = {"季节变化", "市场波动", "政治动荡", "自然灾害", "流言传播", "预言", "旅人传说"}
+    VALID_TYPES = {
+        "季节变化",
+        "市场波动",
+        "政治动荡",
+        "自然灾害",
+        "流言传播",
+        "预言",
+        "旅人传说",
+    }
 
     def __init__(self, style: Optional[StyleManifest] = None, era: str = "modern"):
         self.style = style
@@ -106,7 +114,9 @@ class WorldBreathingEngine:
             templates = _PERMEATION_TEMPLATES.get(
                 style or "default", _PERMEATION_TEMPLATES["default"]
             )
-            template = templates.get(event_type, templates.get("default", "{description}"))
+            template = templates.get(
+                event_type, templates.get("default", "{description}")
+            )
 
             snippet = template.format(description=description)
             return snippet
@@ -125,7 +135,11 @@ class WorldBreathingEngine:
     def get_active_events(self, current_week: int, recent_n: int = 5) -> List[dict]:
         """获取最近的活跃事件。"""
         try:
-            active = [e for e in self._events.values() if e.get("trigger_week", 0) <= current_week]
+            active = [
+                e
+                for e in self._events.values()
+                if e.get("trigger_week", 0) <= current_week
+            ]
             active.sort(key=lambda e: e.get("trigger_week", 0), reverse=True)
             return active[:recent_n]
         except Exception as e:

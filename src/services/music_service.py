@@ -79,11 +79,15 @@ class NeteaseMusicClient:
     # 20 分钟导致缓存未过期但 URL 已失效（403）
     # 8 分钟在 CDN 典型有效期内，减少 403 概率
     URL_CACHE_TTL = 480  # 8 分钟
+    HEALTH_CHECK_TIMEOUT = 3.0  # 快速连通性检查超时
 
     def __init__(self, base_url: Optional[str] = None):
-        base_url = base_url or os.getenv("NETEASE_MUSIC_API_URL", "http://music-api:3001")
+        base_url = base_url or os.getenv(
+            "NETEASE_MUSIC_API_URL", "http://music-api:3001"
+        )
         # 将 localhost 替换为 127.0.0.1 避免 IPv6 问题
         self.base_url = base_url.replace("localhost", "127.0.0.1")  # type: ignore
+        self._available: Optional[bool] = None  # None=未检查, True=可用, False=不可用
         # 禁用连接池，避免 503 错误
         limits = httpx.Limits(max_keepalive_connections=0, max_connections=10)
         headers = {
@@ -92,7 +96,26 @@ class NeteaseMusicClient:
         }
         self.client = httpx.AsyncClient(timeout=30.0, limits=limits, headers=headers)
 
-    async def search(self, keywords: str, limit: int = 10, max_retries: int = 2) -> List[Song]:
+    async def check_availability(self) -> bool:
+        """快速检查 music-api 是否可达。
+
+        使用短超时避免阻塞。结果会被缓存到 self._available，
+        后续 search/get_song_url 调用会直接跳过。
+        """
+        if self._available is not None:
+            return self._available
+        try:
+            async with httpx.AsyncClient(timeout=self.HEALTH_CHECK_TIMEOUT) as client:
+                response = await client.get(f"{self.base_url}/search", params={"keywords": "test", "limit": 1})
+                self._available = response.status_code < 500
+        except Exception:
+            self._available = False
+            logger.warning(f"[NeteaseMusic] music-api unreachable at {self.base_url} (checked in {self.HEALTH_CHECK_TIMEOUT}s)")
+        return self._available
+
+    async def search(
+        self, keywords: str, limit: int = 10, max_retries: int = 2
+    ) -> List[Song]:
         """搜索歌曲
 
         Args:
@@ -103,6 +126,8 @@ class NeteaseMusicClient:
         Returns:
             歌曲列表
         """
+        if self._available is False:
+            return []
         last_error: Optional[Exception] = None
         for attempt in range(max_retries + 1):
             try:
@@ -125,12 +150,15 @@ class NeteaseMusicClient:
                     song = Song(
                         id=song_data.get("id", 0),
                         name=song_data.get("name", ""),
-                        artists=[a.get("name", "") for a in song_data.get("artists", [])],
+                        artists=[
+                            a.get("name", "") for a in song_data.get("artists", [])
+                        ],
                         album=song_data.get("album", {}).get("name", ""),
                         duration=song_data.get("duration", 0),
                     )
                     songs.append(song)
 
+                self._available = True  # 成功则重置标记，允许后续请求
                 return songs
 
             except httpx.HTTPStatusError as e:
@@ -157,7 +185,9 @@ class NeteaseMusicClient:
                 logger.exception(f"Failed to search music: {e}")
                 return []
 
-        logger.error(f"[NeteaseMusic] Search exhausted retries for '{keywords}': {last_error}")
+        logger.error(
+            f"[NeteaseMusic] Search exhausted retries for '{keywords}': {last_error}"
+        )
         return []
 
     async def get_song_url(self, song_id: int, retry: int = 2) -> Optional[str]:
@@ -170,6 +200,8 @@ class NeteaseMusicClient:
         Returns:
             播放 URL
         """
+        if self._available is False:
+            return None
         # 检查缓存
         cached = self._url_cache.get(song_id)
         if cached:
@@ -178,7 +210,9 @@ class NeteaseMusicClient:
                 logger.info(f"[MusicCache] 缓存命中: song_id={song_id}")
                 return url
             else:
-                logger.info(f"[MusicCache] 缓存未命中/过期: song_id={song_id}, 重新获取")
+                logger.info(
+                    f"[MusicCache] 缓存未命中/过期: song_id={song_id}, 重新获取"
+                )
                 del self._url_cache[song_id]
         else:
             logger.info(f"[MusicCache] 缓存未命中/过期: song_id={song_id}, 重新获取")
@@ -202,12 +236,15 @@ class NeteaseMusicClient:
             if songs and len(songs) > 0:
                 song_url = songs[0].get("url")
                 if song_url:
-                    logger.info(f"[NeteaseMusic] Got URL for song {song_id}: {song_url[:50]}...")
+                    logger.info(
+                        f"[NeteaseMusic] Got URL for song {song_id}: {song_url[:50]}..."
+                    )
                     # 写入缓存
                     self._url_cache[song_id] = (
                         song_url,
                         time.time() + self.URL_CACHE_TTL,
                     )
+                    self._available = True  # 成功则重置标记
                     return song_url  # type: ignore[no-any-return]
                 else:
                     logger.warning(
@@ -315,7 +352,9 @@ class MusicService:
                 analysis, _ = cached_analysis
                 logger.info("[MusicPool] 刷新: 复用缓存分析")
             else:
-                analysis = await self._analyze_story_mood(story_text, character_settings)
+                analysis = await self._analyze_story_mood(
+                    story_text, character_settings
+                )
                 self._analysis_cache[story_hash] = (analysis, now)
         else:
             analysis = await self._analyze_story_mood(story_text, character_settings)
@@ -323,6 +362,17 @@ class MusicService:
 
         # 构建搜索关键词
         search_keywords = self._build_search_keywords(analysis)
+
+        # ★ 快速连通性检查：如果 music-api 不可达，跳过所有搜索
+        if not await self.music_client.check_availability():
+            logger.warning("[MusicPool] music-api unreachable, returning empty pool with AI analysis only")
+            pool = CachedMusicPool(
+                analysis=analysis,
+                verified_songs=[],
+                created_at=now,
+            )
+            self._pool_cache[story_hash] = (pool, now)
+            return pool
 
         # 刷新模式：打乱关键词顺序
         if refresh and len(search_keywords) > 3:
@@ -459,7 +509,8 @@ class MusicService:
                                         album=song.album,
                                         duration=song.duration,
                                         url=url,
-                                        url_expires_at=now + NeteaseMusicClient.URL_CACHE_TTL,
+                                        url_expires_at=now
+                                        + NeteaseMusicClient.URL_CACHE_TTL,
                                         verified_at=now,
                                     )
                                 )
@@ -472,7 +523,9 @@ class MusicService:
             pool.verified_songs = refreshed
 
         if removed > 0:
-            logger.info(f"[MusicPool] URL 刷新完成: 保留 {len(refreshed)} 首, 移除 {removed} 首")
+            logger.info(
+                f"[MusicPool] URL 刷新完成: 保留 {len(refreshed)} 首, 移除 {removed} 首"
+            )
 
     def _random_select_songs(self, pool: CachedMusicPool) -> List[CachedSong]:
         """从缓存池中随机选择 5-8 首歌曲。
@@ -489,7 +542,9 @@ class MusicService:
         if count <= self.POOL_RETURN_MIN:
             return songs[:]
 
-        select_count = random.randint(self.POOL_RETURN_MIN, min(self.POOL_RETURN_MAX, count))
+        select_count = random.randint(
+            self.POOL_RETURN_MIN, min(self.POOL_RETURN_MAX, count)
+        )
         selected = random.sample(songs, select_count)
         return selected
 
@@ -524,7 +579,8 @@ class MusicService:
         selected = self._random_select_songs(pool)
 
         logger.info(
-            f"[MusicPool] 返回推荐: {len(selected)} 首, " f"pool={len(pool.verified_songs)} 首"
+            f"[MusicPool] 返回推荐: {len(selected)} 首, "
+            f"pool={len(pool.verified_songs)} 首"
         )
 
         # 转换为 MusicRecommendation 格式
@@ -571,9 +627,13 @@ class MusicService:
                     setting_info.append(f"时代背景：{era.get('era_description', '')}")
                     setting_info.append(f"时代特征：{era.get('era_name', '')}")
             if "world_description" in character_settings:
-                setting_info.append(f"世界观：{character_settings['world_description']}")
+                setting_info.append(
+                    f"世界观：{character_settings['world_description']}"
+                )
             if "character_style" in character_settings:
-                setting_info.append(f"角色风格：{character_settings['character_style']}")
+                setting_info.append(
+                    f"角色风格：{character_settings['character_style']}"
+                )
 
         era_info = "\n".join(setting_info) if setting_info else ""
 

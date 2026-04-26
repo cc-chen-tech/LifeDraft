@@ -958,11 +958,14 @@ class TestDatabaseIndexes:
 class TestListSavedGamesNullifFallback:
     """list_saved_games nullif COALESCE fallback 测试 - 对应 Bug #28"""
 
-    def test_fallback_to_initial_state_when_latest_has_empty_player_name(self, db_session):
+    def test_fallback_to_initial_state_when_latest_has_empty_player_name(
+        self, db_session
+    ):
         """当最新 state_json 中 player_name 为空字符串时，应回退到 initial_state"""
         from unittest.mock import patch
-        from src.database.models import Game, GameState, User
+
         from src.database.game_repository import GameRepository
+        from src.database.models import Game, GameState, User
 
         user = User(
             private_id="nullif_test_user",
@@ -993,7 +996,9 @@ class TestListSavedGamesNullifFallback:
 
         repo = GameRepository()
         # Mock SessionLocal to use the test session
-        with patch("src.database.game_repository.SessionLocal", return_value=db_session):
+        with patch(
+            "src.database.game_repository.SessionLocal", return_value=db_session
+        ):
             games = repo.list_saved_games(user_id=user.user_id)
 
         assert len(games) == 1
@@ -1006,8 +1011,9 @@ class TestListSavedGamesNullifFallback:
     def test_fallback_to_empty_string_when_both_are_empty(self, db_session):
         """当 initial_state 和最新 state 的 player_name 都为空时，返回空字符串"""
         from unittest.mock import patch
-        from src.database.models import Game, GameState, User
+
         from src.database.game_repository import GameRepository
+        from src.database.models import Game, GameState, User
 
         user = User(
             private_id="nullif_test_user2",
@@ -1035,20 +1041,23 @@ class TestListSavedGamesNullifFallback:
         db_session.commit()
 
         repo = GameRepository()
-        with patch("src.database.game_repository.SessionLocal", return_value=db_session):
+        with patch(
+            "src.database.game_repository.SessionLocal", return_value=db_session
+        ):
             games = repo.list_saved_games(user_id=user.user_id)
 
         assert len(games) == 1
         # 两者都为空时，COALESCE 最终回退到 ""（空字符串）
-        assert games[0]["player_name"] == "", (
-            f"当 player_name 全为空时，应返回空字符串。实际得到: {games[0]['player_name']}"
-        )
+        assert (
+            games[0]["player_name"] == ""
+        ), f"当 player_name 全为空时，应返回空字符串。实际得到: {games[0]['player_name']}"
 
     def test_uses_latest_state_player_name_when_present(self, db_session):
         """当最新 state_json 中 player_name 非空时，应使用最新值"""
         from unittest.mock import patch
-        from src.database.models import Game, GameState, User
+
         from src.database.game_repository import GameRepository
+        from src.database.models import Game, GameState, User
 
         user = User(
             private_id="nullif_test_user3",
@@ -1076,11 +1085,13 @@ class TestListSavedGamesNullifFallback:
         db_session.commit()
 
         repo = GameRepository()
-        with patch("src.database.game_repository.SessionLocal", return_value=db_session):
+        with patch(
+            "src.database.game_repository.SessionLocal", return_value=db_session
+        ):
             games = repo.list_saved_games(user_id=user.user_id)
 
         assert len(games) == 1
         # 最新 state 有值时，应优先使用
-        assert games[0]["player_name"] == "NewName", (
-            f"当最新 state 有 player_name 时，应使用最新值。实际得到: {games[0]['player_name']}"
-        )
+        assert (
+            games[0]["player_name"] == "NewName"
+        ), f"当最新 state 有 player_name 时，应使用最新值。实际得到: {games[0]['player_name']}"

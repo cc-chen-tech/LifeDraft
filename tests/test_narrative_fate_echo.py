@@ -8,7 +8,6 @@ import pytest
 
 from src.ai.narrative.fate_echo import FateEchoDatabase
 
-
 # --------------- 测试数据 ---------------
 
 PROPOSITION_KARMA = {

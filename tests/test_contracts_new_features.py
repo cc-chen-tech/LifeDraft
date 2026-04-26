@@ -3,11 +3,9 @@
 每个测试组验证一个新模块与其依赖/消费者之间的接口契约，
 确保字段名、类型、参数签名等在集成时不会出现不兼容。
 """
+
 import inspect
 from typing import get_type_hints
-
-import pytest
-
 
 # ============================================================
 # 模型降级契约
@@ -45,19 +43,27 @@ class TestModelFallbackContracts:
         from src.ai.client import AIClient
         from src.ai.model_fallback import FallbackChain
 
-        client_params = set(inspect.signature(AIClient.call).parameters.keys()) - {"self"}
+        client_params = set(inspect.signature(AIClient.call).parameters.keys()) - {
+            "self"
+        }
         fallback_params = set(
             inspect.signature(FallbackChain.call_with_fallback).parameters.keys()
         ) - {"self", "kwargs", "status_callback"}
 
         # call_with_fallback 的核心参数必须是 AIClient.call() 参数的子集
-        core_params = {"system_prompt", "user_prompt", "temperature", "max_tokens", "stream_callback"}
-        assert core_params.issubset(fallback_params), (
-            f"FallbackChain.call_with_fallback 缺少参数: {core_params - fallback_params}"
-        )
-        assert core_params.issubset(client_params), (
-            f"AIClient.call 缺少参数: {core_params - client_params}"
-        )
+        core_params = {
+            "system_prompt",
+            "user_prompt",
+            "temperature",
+            "max_tokens",
+            "stream_callback",
+        }
+        assert core_params.issubset(
+            fallback_params
+        ), f"FallbackChain.call_with_fallback 缺少参数: {core_params - fallback_params}"
+        assert core_params.issubset(
+            client_params
+        ), f"AIClient.call 缺少参数: {core_params - client_params}"
 
     def test_fallback_status_codes_are_valid_http(self):
         """retry_on_status_codes 默认值都是合法 HTTP 状态码。
@@ -167,9 +173,9 @@ class TestGenerationStateContracts:
             "transition_reasons",
         ]
         for key in expected_keys:
-            assert key in docstring, (
-                f"to_metrics() docstring 未提及 key '{key}'，契约可能不完整"
-            )
+            assert (
+                key in docstring
+            ), f"to_metrics() docstring 未提及 key '{key}'，契约可能不完整"
 
     def test_generation_state_maps_to_sse_status_format(self):
         """GenerationState 的 transition_reason 可映射为 SSE status 事件中的 phase 字段。
@@ -181,9 +187,9 @@ class TestGenerationStateContracts:
 
         # 验证 TransitionReason 是 str 枚举
         for reason in TransitionReason:
-            assert isinstance(reason.value, str), (
-                f"TransitionReason.{reason.name} 的值不是 str: {reason.value}"
-            )
+            assert isinstance(
+                reason.value, str
+            ), f"TransitionReason.{reason.name} 的值不是 str: {reason.value}"
 
         # 验证 GenerationState.transition_reason 字段存在
         state_fields = {f.name for f in GenerationState.__dataclass_fields__.values()}
@@ -230,7 +236,7 @@ class TestFeatureFlagContracts:
         契约：FeatureFlags TypedDict 中声明的每个特性标志，
         都必须在 _ENV_VAR_MAP 中有对应的环境变量映射。
         """
-        from config.feature_flags import FeatureFlags, _ENV_VAR_MAP
+        from config.feature_flags import _ENV_VAR_MAP, FeatureFlags
 
         flag_keys = set(FeatureFlags.__annotations__.keys())
         env_map_keys = set(_ENV_VAR_MAP.keys())
@@ -247,9 +253,9 @@ class TestFeatureFlagContracts:
         from config.feature_flags import FEATURE_DEFAULTS
 
         for flag_name, default_value in FEATURE_DEFAULTS.items():
-            assert default_value is False, (
-                f"Feature flag '{flag_name}' default is {default_value}, expected False"
-            )
+            assert (
+                default_value is False
+            ), f"Feature flag '{flag_name}' default is {default_value}, expected False"
 
     def test_get_feature_returns_bool(self):
         """get_feature() 对已知和未知 flag 都返回 bool。
@@ -266,7 +272,8 @@ class TestFeatureFlagContracts:
 
         契约：_ENV_VAR_MAP 不能有 FeatureFlags 中不存在的 key，反之亦然。
         """
-        from config.feature_flags import FEATURE_DEFAULTS, FeatureFlags, _ENV_VAR_MAP
+        from config.feature_flags import (_ENV_VAR_MAP, FEATURE_DEFAULTS,
+                                          FeatureFlags)
 
         flag_keys = set(FeatureFlags.__annotations__.keys())
         default_keys = set(FEATURE_DEFAULTS.keys())
@@ -322,7 +329,6 @@ class TestParallelPostProcessorContracts:
         fact_updates, event_concluded, foreshadowing_seeds, habit_updates，
         PostProcessingResult.compression_result 应能承载这些字段。
         """
-        from src.ai.summary_generator import SummaryGenerator
         from src.game.parallel_postprocessor import PostProcessingResult
 
         # 从 compress_story 的返回结构中提取预期 keys
@@ -365,10 +371,16 @@ class TestParallelPostProcessorContracts:
 
         # WorldModelUpdater 接受的更新类型
         mock_world_updates = {
-            "location_updates": [{"action": "move", "character": "test", "to": "somewhere"}],
-            "career_updates": [{"action": "promote", "character": "test", "new_role": "manager"}],
+            "location_updates": [
+                {"action": "move", "character": "test", "to": "somewhere"}
+            ],
+            "career_updates": [
+                {"action": "promote", "character": "test", "new_role": "manager"}
+            ],
             "commitment_updates": [{"action": "new", "description": "test commitment"}],
-            "causal_updates": [{"action": "new", "cause": "A", "expected_consequence": "B"}],
+            "causal_updates": [
+                {"action": "new", "cause": "A", "expected_consequence": "B"}
+            ],
             "fact_updates": [],
             "foreshadowing_seeds": [],
             "habit_updates": [],
@@ -394,12 +406,13 @@ class TestReactiveCompressorContracts:
 
         契约：受保护字段永远不能被削减，因此不应出现在削减优先级列表中。
         """
-        from src.ai.reactive_compressor import DEFAULT_BUDGET_TRIM_ORDER, PROTECTED_FIELDS
+        from src.ai.reactive_compressor import (DEFAULT_BUDGET_TRIM_ORDER,
+                                                PROTECTED_FIELDS)
 
         overlap = set(PROTECTED_FIELDS) & set(DEFAULT_BUDGET_TRIM_ORDER)
-        assert len(overlap) == 0, (
-            f"以下字段同时出现在 PROTECTED_FIELDS 和 DEFAULT_BUDGET_TRIM_ORDER 中: {overlap}"
-        )
+        assert (
+            len(overlap) == 0
+        ), f"以下字段同时出现在 PROTECTED_FIELDS 和 DEFAULT_BUDGET_TRIM_ORDER 中: {overlap}"
 
     def test_budget_trim_order_matches_helpers(self):
         """DEFAULT_BUDGET_TRIM_ORDER 与 _helpers.py 中的优先级一致。
@@ -443,7 +456,8 @@ class TestReactiveCompressorContracts:
 
         契约：调用 compact() 后，PROTECTED_FIELDS 中的字段必须保留在结果中。
         """
-        from src.ai.reactive_compressor import PROTECTED_FIELDS, ReactiveCompressor
+        from src.ai.reactive_compressor import (PROTECTED_FIELDS,
+                                                ReactiveCompressor)
 
         compressor = ReactiveCompressor()
         constraint_texts = {
@@ -455,9 +469,9 @@ class TestReactiveCompressorContracts:
         }
         result = compressor.compact(constraint_texts, target_reduction=0.5)
         for field in PROTECTED_FIELDS:
-            assert field not in result.removed_sections, (
-                f"Protected field '{field}' was removed during compaction"
-            )
+            assert (
+                field not in result.removed_sections
+            ), f"Protected field '{field}' was removed during compaction"
 
     def test_compaction_result_fields_valid(self):
         """CompactionResult 字段类型正确。

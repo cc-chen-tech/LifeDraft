@@ -40,8 +40,7 @@ class HarnessMetrics:
             cursor = conn.cursor()
 
             # 生成运行记录表
-            cursor.execute(  # nosec B608
-                """
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS generation_runs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     game_id TEXT,
@@ -56,12 +55,10 @@ class HarnessMetrics:
                     preflight_missing TEXT,
                     error_message TEXT
                 )
-            """
-            )
+            """)  # nosec B608
 
             # 约束检查记录表
-            cursor.execute(  # nosec B608
-                """
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS constraint_checks (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     run_id INTEGER NOT NULL,
@@ -72,34 +69,25 @@ class HarnessMetrics:
                     details TEXT,
                     FOREIGN KEY (run_id) REFERENCES generation_runs(id)
                 )
-            """
-            )
+            """)  # nosec B608
 
             # 创建索引提高查询性能
-            cursor.execute(  # nosec B608
-                """
+            cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_runs_timestamp
                 ON generation_runs(timestamp)
-            """
-            )
-            cursor.execute(  # nosec B608
-                """
+            """)  # nosec B608
+            cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_runs_game_id
                 ON generation_runs(game_id)
-            """
-            )
-            cursor.execute(  # nosec B608
-                """
+            """)  # nosec B608
+            cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_checks_run_id
                 ON constraint_checks(run_id)
-            """
-            )
-            cursor.execute(  # nosec B608
-                """
+            """)  # nosec B608
+            cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_checks_constraint_type
                 ON constraint_checks(constraint_type)
-            """
-            )
+            """)  # nosec B608
 
             conn.commit()
         finally:
@@ -198,7 +186,9 @@ class HarnessMetrics:
                     )
 
             conn.commit()
-            logger.debug(f"Recorded generation run #{run_id}: score={final_score}, passed={passed}")
+            logger.debug(
+                f"Recorded generation run #{run_id}: score={final_score}, passed={passed}"
+            )
             return run_id
 
         except Exception as e:
@@ -382,7 +372,9 @@ class HarnessMetrics:
         lines.append("【高频失败模式】")
         if failures:
             for pattern in failures[:5]:
-                lines.append(f"  {pattern['constraint_type']}: {pattern['failure_count']}次失败")
+                lines.append(
+                    f"  {pattern['constraint_type']}: {pattern['failure_count']}次失败"
+                )
                 for ev in pattern["recent_evidence"][:1]:
                     lines.append(f"    证据: {ev[:80]}...")
         else:

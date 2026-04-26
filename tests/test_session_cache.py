@@ -3,7 +3,7 @@
 import time
 from unittest.mock import MagicMock
 
-from src.api.session_store import SessionStore, SESSION_TIMEOUT
+from src.api.session_store import SESSION_TIMEOUT, SessionStore
 from src.game.game_loop import GameLoop
 
 
@@ -43,7 +43,9 @@ class TestSessionCache:
         session = store.put(game_id=1, game_loop=mock_game_loop, user_id=1)
 
         # 设置缓存选项
-        session.set_cached_options(week=1, round_num=0, options=[{"id": 1, "text": "Test"}])
+        session.set_cached_options(
+            week=1, round_num=0, options=[{"id": 1, "text": "Test"}]
+        )
 
         # 更新 session（模拟新的 game_loop）
         new_mock_game_loop = MagicMock(spec=GameLoop)
@@ -95,7 +97,9 @@ class TestSessionCache:
     def test_session_timeout_is_extended(self):
         """Test that session timeout is at least 4 hours."""
         # 验证超时时间 >= 4 小时 (14400 秒)
-        assert SESSION_TIMEOUT >= 4 * 60 * 60, f"SESSION_TIMEOUT should be >= 4 hours, got {SESSION_TIMEOUT}"
+        assert (
+            SESSION_TIMEOUT >= 4 * 60 * 60
+        ), f"SESSION_TIMEOUT should be >= 4 hours, got {SESSION_TIMEOUT}"
 
     def test_session_not_expired_after_3_hours(self):
         """Test that session is still valid after 3 hours."""

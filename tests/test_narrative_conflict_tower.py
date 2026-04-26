@@ -8,22 +8,51 @@ import pytest
 
 from src.ai.narrative.conflict_tower import ConflictTower
 
-
 # --------------- 测试数据 ---------------
 
 T1_CONFLICTS = [
-    {"id": "t1_bandit", "tier": 1, "name": "山贼骚扰", "description": "小股山贼频频出没，骚扰来往商旅。"},
-    {"id": "t1_debt", "tier": 1, "name": "债务纠纷", "description": "因意外欠下一笔不小的债务。"},
-    {"id": "t1_rival", "tier": 1, "name": "同门之争", "description": "师兄弟之间为争夺传承暗中较量。"},
+    {
+        "id": "t1_bandit",
+        "tier": 1,
+        "name": "山贼骚扰",
+        "description": "小股山贼频频出没，骚扰来往商旅。",
+    },
+    {
+        "id": "t1_debt",
+        "tier": 1,
+        "name": "债务纠纷",
+        "description": "因意外欠下一笔不小的债务。",
+    },
+    {
+        "id": "t1_rival",
+        "tier": 1,
+        "name": "同门之争",
+        "description": "师兄弟之间为争夺传承暗中较量。",
+    },
 ]
 
 T2_CONFLICTS = [
-    {"id": "t2_sect_war", "tier": 2, "name": "门派之争", "description": "两大门派因秘籍归属爆发冲突。"},
-    {"id": "t2_conspiracy", "tier": 2, "name": "朝廷阴谋", "description": "有人暗中策划颠覆朝政。"},
+    {
+        "id": "t2_sect_war",
+        "tier": 2,
+        "name": "门派之争",
+        "description": "两大门派因秘籍归属爆发冲突。",
+    },
+    {
+        "id": "t2_conspiracy",
+        "tier": 2,
+        "name": "朝廷阴谋",
+        "description": "有人暗中策划颠覆朝政。",
+    },
 ]
 
 T3_CONFLICTS = [
-    {"id": "t3_demon_lord", "tier": 3, "name": "魔尊降世", "description": "封印千年的魔尊即将破封而出，天下大乱。"},
+    {
+        "id": "t3_demon_lord",
+        "tier": 3,
+        "name": "魔尊降世",
+        "description": "封印千年的魔尊即将破封而出，天下大乱。",
+    },
 ]
 
 MAIN_STORYLINE = {
@@ -115,7 +144,9 @@ class TestConflictTower:
         tier_config = tower.get_tier_config()
         assert tier_config is not None
         # 中国古典风格的命名或配置
-        assert tier_config.get("style") == "chinese_classic" or "劫难" in str(tier_config)
+        assert tier_config.get("style") == "chinese_classic" or "劫难" in str(
+            tier_config
+        )
 
     def test_style_western(self):
         """西方=学年大考/终极对决"""

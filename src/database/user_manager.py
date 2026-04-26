@@ -164,7 +164,9 @@ class UserManager:
 
     # ==================== 好友功能 ====================
 
-    def send_friend_request(self, user_id: int, friend_public_id: str) -> Dict[str, Any]:
+    def send_friend_request(
+        self, user_id: int, friend_public_id: str
+    ) -> Dict[str, Any]:
         """
         发送好友请求
 
@@ -243,7 +245,9 @@ class UserManager:
                 }
 
         # 创建新的好友请求
-        friendship = Friendship(user_id=user_id, friend_id=friend.user_id, status="pending")
+        friendship = Friendship(
+            user_id=user_id, friend_id=friend.user_id, status="pending"
+        )
         self.db.add(friendship)
         self.db.commit()
         self.db.refresh(friendship)
@@ -317,11 +321,7 @@ class UserManager:
         if not friend_ids:
             return []
 
-        friends = (
-            self.db.query(User)
-            .filter(User.user_id.in_(friend_ids))
-            .all()
-        )
+        friends = self.db.query(User).filter(User.user_id.in_(friend_ids)).all()
 
         return friends
 
@@ -447,7 +447,10 @@ class UserManager:
 
         return (
             self.db.query(Game)
-            .filter(Game.user_id == friend_user_id, Game.is_public == True)  # noqa: E712
+            .filter(
+                Game.user_id == friend_user_id,
+                Game.is_public.is_(True),
+            )
             .order_by(Game.created_at.desc())
             .all()
         )
@@ -464,7 +467,11 @@ class UserManager:
         Returns:
             是否设置成功
         """
-        game = self.db.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
+        game = (
+            self.db.query(Game)
+            .filter(Game.game_id == game_id, Game.user_id == user_id)
+            .first()
+        )
 
         if game:
             game.is_public = is_public  # type: ignore[assignment]

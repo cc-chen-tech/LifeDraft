@@ -21,9 +21,7 @@ class TestCharacterImageExtraParamsPropagation:
         captured_calls = []
 
         def mock_generate_image_with_url(prompt, size, extra_params=None):
-            captured_calls.append(
-                {"prompt": prompt, "extra_params": extra_params}
-            )
+            captured_calls.append({"prompt": prompt, "extra_params": extra_params})
             # 返回 (bytes, prompt, url)
             return b"fake", prompt, "http://fake.url/image.jpg"
 

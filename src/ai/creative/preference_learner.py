@@ -48,7 +48,18 @@ class PreferenceLearner:
             "探索",
             "寻宝",
         ],
-        "social": ["邀请", "调解", "拜访", "组织", "交谈", "合作", "帮助", "村民", "朋友", "共进"],
+        "social": [
+            "邀请",
+            "调解",
+            "拜访",
+            "组织",
+            "交谈",
+            "合作",
+            "帮助",
+            "村民",
+            "朋友",
+            "共进",
+        ],
         "investigation": [
             "检查",
             "翻阅",
@@ -197,7 +208,9 @@ class PreferenceLearner:
             # 简单方法：比较前半段和后半段均值
             mid = n // 2
             first_half_avg = sum(recent_scores[:mid]) / mid if mid > 0 else 0
-            second_half_avg = sum(recent_scores[mid:]) / (n - mid) if (n - mid) > 0 else 0
+            second_half_avg = (
+                sum(recent_scores[mid:]) / (n - mid) if (n - mid) > 0 else 0
+            )
 
             decline = first_half_avg - second_half_avg
 

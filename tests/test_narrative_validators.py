@@ -1,15 +1,15 @@
 """叙事验证器单元测试。"""
-import pytest
+
 from src.ai.harness.narrative_validators import (
-    validate_three_act_structure,
-    validate_pacing_variety,
-    validate_arc_hint_compliance,
-    validate_world_event_integration,
-    validate_conflict_directive_compliance,
-)
+    validate_arc_hint_compliance, validate_conflict_directive_compliance,
+    validate_pacing_variety, validate_three_act_structure,
+    validate_world_event_integration)
 
 
-def _make_long_text(base: str = "这是一段平凡的故事文本，描述着日常生活中的点点滴滴。", repeats: int = 40) -> str:
+def _make_long_text(
+    base: str = "这是一段平凡的故事文本，描述着日常生活中的点点滴滴。",
+    repeats: int = 40,
+) -> str:
     """生成 > 500 字的长文本。"""
     return base * repeats
 

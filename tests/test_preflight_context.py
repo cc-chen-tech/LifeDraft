@@ -1,8 +1,9 @@
 """Tests for preflight checker context handling."""
 
 import pytest
-from src.ai.harness.preflight_checker import PreflightChecker
+
 from src.ai.harness.constraint_registry import ConstraintRegistry
+from src.ai.harness.preflight_checker import PreflightChecker
 
 
 class TestPreflightContext:
@@ -42,7 +43,6 @@ class TestPreflightContext:
         但当前实现无法区分新游戏和中期游戏，所以这是一个限制。
         """
         # 这是一个已知限制，暂时跳过
-        pass
 
     def test_available_people_empty_reported(self, checker):
         """Test that empty available_people is always reported as missing."""

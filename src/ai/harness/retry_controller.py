@@ -67,7 +67,9 @@ class RetryController:
             (是否重试, 修正指令文本)。不重试时修正指令为 None。
         """
         try:
-            return self._should_retry_inner(validation_result, diagnostic_report, attempt)
+            return self._should_retry_inner(
+                validation_result, diagnostic_report, attempt
+            )
         except Exception as e:
             logger.error(f"重试决策异常: {e}")
             return False, None
@@ -106,7 +108,10 @@ class RetryController:
             return True, correction
 
         # 3. 大师级：HIGH 警告也触发重试
-        if self.profile.retry_on_high_warnings and len(validation_result.high_warnings) > 0:
+        if (
+            self.profile.retry_on_high_warnings
+            and len(validation_result.high_warnings) > 0
+        ):
             hint = self._build_gentle_hint(validation_result)
             logger.info(
                 f"MASTER 模式检测到 {len(validation_result.high_warnings)} 个 HIGH 警告，"
@@ -148,7 +153,9 @@ class RetryController:
             logger.error(f"构建修正指令失败: {e}")
             return "【重要修正要求】请严格遵守所有约束要求重新生成故事。"
 
-    def _build_correction_prompt_inner(self, diagnostic_report: DiagnosticReport) -> str:
+    def _build_correction_prompt_inner(
+        self, diagnostic_report: DiagnosticReport
+    ) -> str:
         """内部修正指令构建逻辑。
 
         Args:
@@ -200,7 +207,9 @@ class RetryController:
 
         return result
 
-    def _get_fix_for_type(self, constraint_type: str, diagnostic_report: DiagnosticReport) -> str:
+    def _get_fix_for_type(
+        self, constraint_type: str, diagnostic_report: DiagnosticReport
+    ) -> str:
         """从诊断报告的 suggested_fixes 中提取对应约束类型的修复建议。
 
         Args:

@@ -7,7 +7,6 @@
 import os
 from unittest.mock import patch
 
-
 from src.services.music_service import NeteaseMusicClient
 
 
@@ -19,9 +18,9 @@ class TestMusicServiceUrlContract:
         # 清除环境变量，强制使用默认值
         with patch.dict(os.environ, {}, clear=True):
             client = NeteaseMusicClient()
-            assert client.base_url == "http://music-api:3001", (
-                f"默认 URL 应为 http://music-api:3001，实际为 {client.base_url}"
-            )
+            assert (
+                client.base_url == "http://music-api:3001"
+            ), f"默认 URL 应为 http://music-api:3001，实际为 {client.base_url}"
 
     def test_env_override_works(self):
         """NETEASE_MUSIC_API_URL 环境变量应覆盖默认值"""

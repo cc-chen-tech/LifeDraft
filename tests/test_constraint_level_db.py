@@ -8,14 +8,16 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.database.models import Base, Game, CharacterPreset
 from src.database.game_repository import GameRepository
+from src.database.models import Base, CharacterPreset, Game
 
 
 @pytest.fixture(scope="module")
 def db_session():
     """使用内存 SQLite 创建测试数据库会话."""
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    engine = create_engine(
+        "sqlite:///:memory:", connect_args={"check_same_thread": False}
+    )
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     session = Session()

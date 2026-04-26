@@ -1,7 +1,5 @@
 """Tests for relationship events definition system."""
 
-import pytest
-
 from src.game.relationship_events import (RELATIONSHIP_EVENTS, EventCategory,
                                           RelationshipEventDef,
                                           get_event_by_type,

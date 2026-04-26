@@ -3,7 +3,8 @@
 
 def test_quality_level_module_importable():
     """quality_level 模块可导入且包含预期符号."""
-    from src.ai.harness.quality_level import QualityLevel, HarnessProfile, PROFILES
+    from src.ai.harness.quality_level import (PROFILES, HarnessProfile,
+                                              QualityLevel)
 
     assert QualityLevel.FAST.value == "fast"
     assert QualityLevel.EXPERT.value == "expert"
@@ -21,8 +22,8 @@ def test_polish_controller_importable():
 
 def test_retry_controller_accepts_profile():
     """RetryController 支持通过 profile 参数构造."""
-    from src.ai.harness.retry_controller import RetryController
     from src.ai.harness.quality_level import PROFILES, QualityLevel
+    from src.ai.harness.retry_controller import RetryController
 
     profile = PROFILES[QualityLevel.EXPERT]
     controller = RetryController(profile=profile)
@@ -31,9 +32,9 @@ def test_retry_controller_accepts_profile():
 
 def test_validation_pipeline_accepts_profile():
     """ValidationPipeline.validate 支持 profile 参数."""
-    from src.ai.harness.validation_pipeline import ValidationPipeline
     from src.ai.harness.constraint_registry import ConstraintRegistry
     from src.ai.harness.quality_level import PROFILES, QualityLevel
+    from src.ai.harness.validation_pipeline import ValidationPipeline
 
     registry = ConstraintRegistry()
     pipeline = ValidationPipeline(registry)
@@ -47,10 +48,8 @@ def test_validation_pipeline_accepts_profile():
 
 def test_era_validator_importable():
     """era_validator 模块可导入且 validate_era_consistency 存在."""
-    from src.ai.harness.era_validator import (
-        validate_era_consistency,
-        _ANCIENT_FORBIDDEN_MODERN,
-    )
+    from src.ai.harness.era_validator import (_ANCIENT_FORBIDDEN_MODERN,
+                                              validate_era_consistency)
 
     assert validate_era_consistency is not None
     assert isinstance(_ANCIENT_FORBIDDEN_MODERN, list)

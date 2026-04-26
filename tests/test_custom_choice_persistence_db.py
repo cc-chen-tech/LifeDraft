@@ -101,15 +101,13 @@ class TestCustomChoicePersistence:
 
         # ★ 核心断言：round_history 中必须保留 custom_text
         history = state_dict.get("round_history", [])
-        assert (
-            len(history) == 1
-        ), "round_history 必须包含一条记录"
+        assert len(history) == 1, "round_history 必须包含一条记录"
         assert (
             history[0].get("choice") == custom_text
         ), "round_history 必须保存玩家的自定义选择文本 (Bug #26)"
-        assert history[0].get("is_custom") is True, (
-            "自定义选择记录必须标记 is_custom=True"
-        )
+        assert (
+            history[0].get("is_custom") is True
+        ), "自定义选择记录必须标记 is_custom=True"
 
     def test_custom_choice_preserved_after_save_and_load(self, db_session):
         """save_game_progress + load_saved_game 必须保留自定义选择记录。

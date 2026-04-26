@@ -32,9 +32,9 @@ class TestMusicCacheTTLContract:
         from src.services.music_service import NeteaseMusicClient
 
         # 验证是类属性而非实例属性
-        assert "_url_cache" in NeteaseMusicClient.__dict__, (
-            "_url_cache 必须是类级变量，确保跨实例缓存共享"
-        )
+        assert (
+            "_url_cache" in NeteaseMusicClient.__dict__
+        ), "_url_cache 必须是类级变量，确保跨实例缓存共享"
 
     def test_cache_entry_structure(self):
         """缓存项应为 (url, expire_timestamp) 元组。"""
@@ -63,6 +63,7 @@ class TestMusicCacheHitContract:
     def _clear_cache(self):
         """每个测试前清除缓存。"""
         from src.services.music_service import NeteaseMusicClient
+
         NeteaseMusicClient._url_cache.clear()
 
     def test_cache_hit_returns_url_without_api_call(self):
@@ -71,9 +72,11 @@ class TestMusicCacheHitContract:
 
         client = NeteaseMusicClient(base_url="http://127.0.0.1:3000")
         # Mock httpx client
-        mock_client = type("MockClient", (), {
-            "get": lambda *args, **kwargs: pytest.fail("缓存命中时不应调用 API")
-        })()
+        mock_client = type(
+            "MockClient",
+            (),
+            {"get": lambda *args, **kwargs: pytest.fail("缓存命中时不应调用 API")},
+        )()
         client.client = mock_client
 
         # 预填充缓存
@@ -81,7 +84,7 @@ class TestMusicCacheHitContract:
         NeteaseMusicClient._url_cache[12345] = (test_url, time.time() + 1200)
 
         # 验证缓存命中直接返回
-        result = asyncio.run(client.get_song_url(12345))
+        result = asyncio.get_event_loop().run_until_complete(client.get_song_url(12345))
         assert result == test_url, "缓存命中应直接返回缓存的 URL"
 
     def test_cache_expired_deletes_entry(self):
@@ -96,10 +99,8 @@ class TestMusicCacheHitContract:
 
         # 验证过期缓存被删除
         assert 12346 in NeteaseMusicClient._url_cache
-        asyncio.run(client.get_song_url(12346))
-        assert 12346 not in NeteaseMusicClient._url_cache, (
-            "过期缓存条目必须被删除"
-        )
+        asyncio.get_event_loop().run_until_complete(client.get_song_url(12346))
+        assert 12346 not in NeteaseMusicClient._url_cache, "过期缓存条目必须被删除"
 
     def test_cache_miss_triggers_api_call(self):
         """缓存未命中时应触发 API 调用。"""
@@ -112,8 +113,8 @@ class TestMusicCacheHitContract:
         async def mock_get(*args, **kwargs):
             nonlocal api_called
             api_called = True
-            # 返回模拟响应
 
+            # 返回模拟响应
             class MockResponse:
                 status_code = 200
 
@@ -130,7 +131,7 @@ class TestMusicCacheHitContract:
 
         client.client = type("MockClient", (), {"get": mock_get})()
 
-        result = asyncio.run(client.get_song_url(12347))
+        result = asyncio.get_event_loop().run_until_complete(client.get_song_url(12347))
         assert api_called, "缓存未命中时必须触发 API 调用"
         assert result == "https://cdn.example.com/new.mp3"
 

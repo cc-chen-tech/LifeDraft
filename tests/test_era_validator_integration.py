@@ -6,9 +6,9 @@ Layer 4: 真实 DB 集成测试 — 保存→读取链路完整。
 
 import pytest
 
-from src.database.models import Game, SessionLocal, User
-from src.ai.story_generator import StoryGenerator
 from src.ai.client import AIClient
+from src.ai.story_generator import StoryGenerator
+from src.database.models import Game, SessionLocal, User
 
 
 class TestEraValidatorIntegration:
@@ -59,7 +59,9 @@ class TestEraValidatorIntegration:
         db_session.refresh(game)
 
         # 从 DB 重新加载
-        loaded_game = db_session.query(Game).filter(Game.game_id == game.game_id).first()
+        loaded_game = (
+            db_session.query(Game).filter(Game.game_id == game.game_id).first()
+        )
         assert loaded_game is not None
 
         loaded_state = loaded_game.initial_state or {}
@@ -107,7 +109,9 @@ class TestEraValidatorIntegration:
         db_session.commit()
         db_session.refresh(game)
 
-        loaded_game = db_session.query(Game).filter(Game.game_id == game.game_id).first()
+        loaded_game = (
+            db_session.query(Game).filter(Game.game_id == game.game_id).first()
+        )
         loaded_state = loaded_game.initial_state or {}
         loaded_character_settings = loaded_state.get("character_settings", {})
 
@@ -154,7 +158,9 @@ class TestEraValidatorIntegration:
         db_session.commit()
         db_session.refresh(game)
 
-        loaded_game = db_session.query(Game).filter(Game.game_id == game.game_id).first()
+        loaded_game = (
+            db_session.query(Game).filter(Game.game_id == game.game_id).first()
+        )
         loaded_state = loaded_game.initial_state or {}
         loaded_character_settings = loaded_state.get("character_settings", {})
 
@@ -170,4 +176,6 @@ class TestEraValidatorIntegration:
             ctx,
         )
         assert passed is False, f"应检测到现代元素: {evidence}"
-        assert "星巴克" in info.get("found_modern", []) or "拿铁" in info.get("found_modern", [])
+        assert "星巴克" in info.get("found_modern", []) or "拿铁" in info.get(
+            "found_modern", []
+        )

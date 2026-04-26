@@ -34,7 +34,9 @@ class TestNoHardcodedSecretsContract:
 
         result = subprocess.run(
             ["git", "ls-files", "src/"],
-            capture_output=True, text=True, cwd=Path(__file__).parent.parent,
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).parent.parent,
         )
         tracked_files = result.stdout.strip().split("\n")
 
@@ -63,9 +65,9 @@ class TestNoHardcodedSecretsContract:
                             continue
                         violations.append(f"{rel_path}:{i}: {line.strip()}")
 
-        assert not violations, (
-            f"发现 {len(violations)} 处可能的硬编码密钥:\n" + "\n".join(violations[:20])
-        )
+        assert (
+            not violations
+        ), f"发现 {len(violations)} 处可能的硬编码密钥:\n" + "\n".join(violations[:20])
 
     def test_env_file_not_tracked(self):
         """.env 文件不应被 git 跟踪"""
@@ -73,7 +75,9 @@ class TestNoHardcodedSecretsContract:
 
         result = subprocess.run(
             ["git", "ls-files", ".env"],
-            capture_output=True, text=True, cwd=Path(__file__).parent.parent,
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).parent.parent,
         )
         tracked = result.stdout.strip()
         assert not tracked, (

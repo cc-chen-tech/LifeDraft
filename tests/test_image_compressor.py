@@ -61,9 +61,7 @@ class TestImageCompressor:
 
         # Verify the compressed image dimensions
         img = Image.open(io.BytesIO(compressed))
-        assert max(img.size) <= 1024, (
-            f"Image not resized correctly: {img.size}"
-        )
+        assert max(img.size) <= 1024, f"Image not resized correctly: {img.size}"
 
     def test_compress_small_image_unchanged(self):
         """Small images (< max_dimension) should keep original dimensions."""
@@ -73,9 +71,7 @@ class TestImageCompressor:
         compressed = compress_image(original_data, max_dimension=1024)
 
         img = Image.open(io.BytesIO(compressed))
-        assert img.size == (500, 500), (
-            f"Small image should not be resized: {img.size}"
-        )
+        assert img.size == (500, 500), f"Small image should not be resized: {img.size}"
 
     def test_compress_invalid_data_raises(self):
         """Invalid image data should raise ValueError."""
@@ -93,9 +89,9 @@ class TestImageCompressor:
         low_quality = compress_image(original_data, quality=30)
         high_quality = compress_image(original_data, quality=95)
 
-        assert len(low_quality) < len(high_quality), (
-            "Lower quality should produce smaller file"
-        )
+        assert len(low_quality) < len(
+            high_quality
+        ), "Lower quality should produce smaller file"
 
     def test_compress_returns_bytes(self):
         """compress_image should return bytes."""

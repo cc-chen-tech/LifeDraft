@@ -6,22 +6,15 @@ Feature Toggle端到端、边界条件、回归。
 
 import json
 import os
+import threading
 import time
 import tracemalloc
-import threading
 
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
 
-from src.ai.harness import (
-    ConstraintType,
-    Priority,
-    ValidationPipeline,
-    default_registry,
-)
-from src.ai.narrative.style_manifest import StyleLoader, StyleManifest
+from src.ai.harness import ConstraintType, ValidationPipeline, default_registry
+from src.ai.narrative.style_manifest import StyleLoader
 from src.game.state import PlayerState
-
 
 # ============================================================
 # Fixtures
@@ -203,7 +196,9 @@ class TestPerformanceBaseline:
         elapsed = (time.perf_counter() - start) / iterations
 
         # 单次验证应 <200ms
-        assert elapsed < 0.200, f"Validation took {elapsed*1000:.1f}ms, exceeds 200ms baseline"
+        assert (
+            elapsed < 0.200
+        ), f"Validation took {elapsed*1000:.1f}ms, exceeds 200ms baseline"
 
     def test_fifty_styles_load_memory(self, tmp_path):
         """同时加载50个风格文件，内存增量<10MB。"""
@@ -234,7 +229,9 @@ class TestPerformanceBaseline:
                 "global_parameters": {"temperature": 0.85, "top_p": 1.0},
             }
             path = tmp_path / f"style_{i:03d}.style.json"
-            path.write_text(json.dumps(style_data, ensure_ascii=False), encoding="utf-8")
+            path.write_text(
+                json.dumps(style_data, ensure_ascii=False), encoding="utf-8"
+            )
 
         tracemalloc.start()
         snapshot_before = tracemalloc.take_snapshot()
@@ -251,7 +248,9 @@ class TestPerformanceBaseline:
         increase_mb = total_increase / (1024 * 1024)
 
         assert loader.get_all_style_ids().__len__() == 50
-        assert increase_mb < 10, f"Memory increase {increase_mb:.2f}MB exceeds 10MB limit"
+        assert (
+            increase_mb < 10
+        ), f"Memory increase {increase_mb:.2f}MB exceeds 10MB limit"
 
 
 # ============================================================
@@ -396,7 +395,9 @@ class TestEdgeCases:
                 "style_name": f"并发测试{i}",
             }
             path = tmp_path / f"concurrent_{i}.style.json"
-            path.write_text(json.dumps(style_data, ensure_ascii=False), encoding="utf-8")
+            path.write_text(
+                json.dumps(style_data, ensure_ascii=False), encoding="utf-8"
+            )
 
         loader = StyleLoader(styles_dir=str(tmp_path))
         results = []
@@ -510,9 +511,9 @@ class TestRegression:
 
     def test_default_registry_count(self):
         """default_registry 注册数量不低于18。"""
-        assert default_registry.count >= 18, (
-            f"Expected at least 18 constraints, got {default_registry.count}"
-        )
+        assert (
+            default_registry.count >= 18
+        ), f"Expected at least 18 constraints, got {default_registry.count}"
 
     def test_validation_pipeline_api_stable(self, mock_story_text):
         """ValidationPipeline.validate() 接口稳定。"""

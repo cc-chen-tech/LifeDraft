@@ -4,7 +4,8 @@
 Layer 3: 契约测试 — 反向提示词必须明确禁止科幻视觉元素。
 """
 
-from src.ai.image_config import DEFAULT_NEGATIVE_PROMPT, DEFAULT_EDIT_NEGATIVE_PROMPT
+from src.ai.image_config import (DEFAULT_EDIT_NEGATIVE_PROMPT,
+                                 DEFAULT_NEGATIVE_PROMPT)
 
 
 class TestNegativePromptContract:
@@ -71,8 +72,8 @@ class TestNegativePromptContract:
 
         client = ImageClient.__new__(ImageClient)
         # 模拟内部组件
-        from src.ai.image_prompt_builder import ImagePromptBuilder
         from src.ai.image_generator import ImageGenerator
+        from src.ai.image_prompt_builder import ImagePromptBuilder
 
         client._prompt_builder = ImagePromptBuilder()
         client._generator = ImageGenerator.__new__(ImageGenerator)

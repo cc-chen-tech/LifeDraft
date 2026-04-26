@@ -3,17 +3,16 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 # API tests - collection endpoints
 pytestmark = pytest.mark.api
 
-from src.api.routers.collection import router
-from src.game.state.item_state import ItemState
-from src.services.collection_service import (CollectionService,
-                                             EntityNotFoundError,
-                                             PermissionDeniedError)
+from src.api.routers.collection import router  # noqa: E402
+from src.game.state.item_state import ItemState  # noqa: E402
+from src.services.collection_service import (CollectionService,  # noqa: E402
+                                             EntityNotFoundError)
 
 
 @pytest.fixture
@@ -214,7 +213,7 @@ class TestCollectionRouterEndpoints:
     @patch("src.api.routers.collection.session_service")
     def test_generate_item_image_item_not_found(self, mock_session_service, client):
         """Test generate_item_image returns 404 when item not found."""
-        mock_user = MagicMock()
+        MagicMock()
 
         mock_game_loop = MagicMock()
         mock_player_state = MagicMock()
@@ -448,7 +447,7 @@ class TestRegenerateCharacterImageEndpoint:
         app = FastAPI()
         app.include_router(router, prefix="/collection")
 
-        test_client = TestClient(app)
+        TestClient(app)
 
         mock_user = MagicMock()
         mock_user.user_id = 1
@@ -903,14 +902,11 @@ class TestAffinityValidation:
         """Test that player (is_player=True) bypasses affinity check."""
         # Player should always have affinity 100 effectively
         # The backend should check is_player flag and skip affinity validation
-        pass
 
     def test_affinity_check_npc_below_threshold(self):
         """Test that NPC with affinity <= 50 is rejected."""
         # NPC with affinity 50 or below should get 403 error
-        pass
 
     def test_affinity_check_npc_above_threshold(self):
         """Test that NPC with affinity > 50 is allowed."""
         # NPC with affinity 51+ should be allowed to modify image
-        pass

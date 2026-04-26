@@ -56,7 +56,7 @@ test.describe("古代背景时代验证器无 false positive", () => {
     await expect(errorText).not.toBeVisible();
 
     // 等待故事区域出现（说明后端生成成功）
-    const storyArea = page.locator("[data-testid='story-text']").first();
+    const storyArea = page.locator(".prose-story").first();
     await expect(storyArea).toBeVisible({ timeout: 30000 });
 
     // 页面不应包含"检测到现代元素"的验证误报提示

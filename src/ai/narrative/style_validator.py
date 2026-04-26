@@ -28,7 +28,9 @@ class StyleAwareValidator:
     }
 
     def __init__(
-        self, style: Optional[StyleManifest] = None, weights: Optional[Dict[str, float]] = None
+        self,
+        style: Optional[StyleManifest] = None,
+        weights: Optional[Dict[str, float]] = None,
     ):
         self.style = style
         self._weights = weights if weights is not None else dict(self.DEFAULT_WEIGHTS)
@@ -37,7 +39,9 @@ class StyleAwareValidator:
     # 高层统一接口
     # ------------------------------------------------------------------
 
-    def validate(self, story_text: str, context: Optional[dict] = None) -> Tuple[bool, float, dict]:
+    def validate(
+        self, story_text: str, context: Optional[dict] = None
+    ) -> Tuple[bool, float, dict]:
         """统一验证入口，返回 (passed, score, details)。"""
         if not self.style:
             return True, 1.0, {"skipped": True, "reason": "no style configured"}
@@ -69,7 +73,9 @@ class StyleAwareValidator:
             scores[dim] = self._details_to_score(dim, passed, details)
         return scores
 
-    def get_overall_score(self, story_text: str, context: Optional[dict] = None) -> float:
+    def get_overall_score(
+        self, story_text: str, context: Optional[dict] = None
+    ) -> float:
         """返回加权综合分数 (0-1)。"""
         scores = self.get_dimension_scores(story_text, context)
         return self._compute_overall(scores)
@@ -136,7 +142,9 @@ class StyleAwareValidator:
     # 验证函数（均遵循标准签名）
     # ------------------------------------------------------------------
 
-    def validate_style_structure(self, story_text: str, context: dict) -> Tuple[bool, str, dict]:
+    def validate_style_structure(
+        self, story_text: str, context: dict
+    ) -> Tuple[bool, str, dict]:
         """检查结构合规（章回结尾/英雄之旅阶段/框架叙事等）。
 
         基于 style.structure 配置进行验证。
@@ -175,7 +183,9 @@ class StyleAwareValidator:
             logger.warning("validate_style_structure failed: %s", e)
             return True, "", {"error": str(e)}
 
-    def validate_style_pacing(self, story_text: str, context: dict) -> Tuple[bool, str, dict]:
+    def validate_style_pacing(
+        self, story_text: str, context: dict
+    ) -> Tuple[bool, str, dict]:
         """检查节奏规则合规。
 
         基于 style.structure.chapter_rules 进行验证。
@@ -190,7 +200,9 @@ class StyleAwareValidator:
             # 检查开头风格
             if chapter_rules.opening_style:
                 opening = story_text[:200] if len(story_text) > 200 else story_text
-                opening_indicators = self._get_opening_indicators(chapter_rules.opening_style)
+                opening_indicators = self._get_opening_indicators(
+                    chapter_rules.opening_style
+                )
                 found_opening = [ind for ind in opening_indicators if ind in opening]
                 details["opening_style"] = chapter_rules.opening_style
                 details["opening_indicators_found"] = found_opening
@@ -198,7 +210,9 @@ class StyleAwareValidator:
             # 检查结尾风格
             if chapter_rules.closing_style:
                 ending = story_text[-300:] if len(story_text) > 300 else story_text
-                closing_indicators = self._get_closing_indicators(chapter_rules.closing_style)
+                closing_indicators = self._get_closing_indicators(
+                    chapter_rules.closing_style
+                )
                 found_closing = [ind for ind in closing_indicators if ind in ending]
                 details["closing_style"] = chapter_rules.closing_style
                 details["closing_indicators_found"] = found_closing
@@ -245,7 +259,9 @@ class StyleAwareValidator:
             logger.warning("validate_style_pacing failed: %s", e)
             return True, "", {"error": str(e)}
 
-    def validate_style_language(self, story_text: str, context: dict) -> Tuple[bool, str, dict]:
+    def validate_style_language(
+        self, story_text: str, context: dict
+    ) -> Tuple[bool, str, dict]:
         """检查语言风格合规。
 
         基于 style.language 配置进行验证。
@@ -271,7 +287,9 @@ class StyleAwareValidator:
 
             # 检查对话风格
             if lang.dialogue:
-                dialogue_segments = re.findall(r"[" "「『]([^" "」』]*)[" "」』]", story_text)
+                dialogue_segments = re.findall(
+                    r"[" "「『]([^" "」』]*)[" "」』]", story_text
+                )
                 details["dialogue_count"] = len(dialogue_segments)
                 details["dialogue_style"] = lang.dialogue
 
@@ -285,7 +303,9 @@ class StyleAwareValidator:
             logger.warning("validate_style_language failed: %s", e)
             return True, "", {"error": str(e)}
 
-    def validate_style_technique(self, story_text: str, context: dict) -> Tuple[bool, str, dict]:
+    def validate_style_technique(
+        self, story_text: str, context: dict
+    ) -> Tuple[bool, str, dict]:
         """检查核心技法是否体现。
 
         基于 style.techniques 配置进行验证。
@@ -299,13 +319,17 @@ class StyleAwareValidator:
 
             # 检查核心技法
             if tech.core_techniques:
-                technique_evidence = self._check_techniques(story_text, tech.core_techniques)
+                technique_evidence = self._check_techniques(
+                    story_text, tech.core_techniques
+                )
                 details["core_techniques"] = tech.core_techniques
                 details["technique_evidence"] = technique_evidence
 
             # 检查修辞手法
             if tech.stylistic_devices:
-                device_evidence = self._check_stylistic_devices(story_text, tech.stylistic_devices)
+                device_evidence = self._check_stylistic_devices(
+                    story_text, tech.stylistic_devices
+                )
                 details["stylistic_devices"] = tech.stylistic_devices
                 details["device_evidence"] = device_evidence
 
@@ -424,7 +448,9 @@ class StyleAwareValidator:
 
     def _analyze_prose_style(self, story_text: str) -> Dict[str, object]:
         """分析散文风格指标。"""
-        sentences = [s.strip() for s in re.split(r"[。！？\n]", story_text) if s.strip()]
+        sentences = [
+            s.strip() for s in re.split(r"[。！？\n]", story_text) if s.strip()
+        ]
         if not sentences:
             return {"sentence_count": 0}
 
@@ -438,7 +464,9 @@ class StyleAwareValidator:
             "min_sentence_length": min(lengths) if lengths else 0,
         }
 
-    def _check_techniques(self, story_text: str, techniques: List[str]) -> Dict[str, bool]:
+    def _check_techniques(
+        self, story_text: str, techniques: List[str]
+    ) -> Dict[str, bool]:
         """检查核心技法是否有所体现。"""
         technique_patterns: Dict[str, List[str]] = {
             "白描": [r"[^，。！？]{4,8}[，。]"],  # 短句为主
@@ -459,7 +487,9 @@ class StyleAwareValidator:
 
         return evidence
 
-    def _check_stylistic_devices(self, story_text: str, devices: List[str]) -> Dict[str, bool]:
+    def _check_stylistic_devices(
+        self, story_text: str, devices: List[str]
+    ) -> Dict[str, bool]:
         """检查修辞/风格手法。"""
         device_patterns: Dict[str, List[str]] = {
             "象征": [r"象征", r"代表", r"意味着"],

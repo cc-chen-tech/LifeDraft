@@ -3,8 +3,6 @@
 预定事件系统测试：确保角色承诺在指定轮次强制触发。
 """
 
-import pytest
-
 from src.game.scheduled_events import (ScheduledEvent, ScheduledEventManager,
                                        create_scheduled_event_from_commitment,
                                        parse_time_reference)

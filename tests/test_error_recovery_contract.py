@@ -29,7 +29,9 @@ class TestHandle401RedirectContract:
         source = self._get_api_source()
 
         # 找到 handle401Redirect 的调用位置
-        redirect_calls = [m.start() for m in re.finditer(r"handle401Redirect\(\)", source)]
+        redirect_calls = [
+            m.start() for m in re.finditer(r"handle401Redirect\(\)", source)
+        ]
 
         # 检查每个调用前是否都有 401 判断
         for call_pos in redirect_calls:
@@ -74,7 +76,7 @@ class TestHandle401RedirectContract:
                         if depth == 0:
                             block_end = i
                             break
-                block = source[block_start + 1:block_end]
+                block = source[block_start + 1 : block_end]
 
                 assert "handle401Redirect" not in block, (
                     "502/504 错误处理中不得调用 handle401Redirect，"
@@ -94,13 +96,13 @@ class TestHandle401RedirectContract:
         assert func_match, "必须能找到 handle401Redirect 函数"
         func_body = func_match.group(1)
 
-        assert "localStorage.removeItem" in func_body, (
-            "handle401Redirect 必须清除 localStorage，防止过期状态干扰"
-        )
+        assert (
+            "localStorage.removeItem" in func_body
+        ), "handle401Redirect 必须清除 localStorage，防止过期状态干扰"
 
-        assert "gameId" in func_body or "gameState" in func_body, (
-            "handle401Redirect 必须清除游戏相关 localStorage 项"
-        )
+        assert (
+            "gameId" in func_body or "gameState" in func_body
+        ), "handle401Redirect 必须清除游戏相关 localStorage 项"
 
 
 class TestAttemptRecoveryContract:
@@ -108,7 +110,12 @@ class TestAttemptRecoveryContract:
 
     def _get_play_source(self):
         play_path = os.path.join(
-            os.path.dirname(__file__), "..", "frontend", "src", "hooks", "usePlayGame.ts"
+            os.path.dirname(__file__),
+            "..",
+            "frontend",
+            "src",
+            "hooks",
+            "usePlayGame.ts",
         )
         with open(play_path, "r", encoding="utf-8") as f:
             return f.read()
@@ -140,7 +147,9 @@ class TestAttemptRecoveryContract:
 
         # 错误处理中不应该直接跳转首页（至少在第一次错误时不应该）
         # 应该提供恢复 UI 或重试机制
-        has_router_replace = "router.replace" in recovery_body or "router.push" in recovery_body
+        has_router_replace = (
+            "router.replace" in recovery_body or "router.push" in recovery_body
+        )
 
         if has_router_replace:
             # 如果存在跳转，必须也有恢复/重试机制
@@ -168,7 +177,7 @@ class TestAttemptRecoveryContract:
         catch_start = 0
 
         for i, c in enumerate(source):
-            if source[i:i + 5] == "catch":
+            if source[i : i + 5] == "catch":
                 in_catch = True
                 catch_start = i
             elif in_catch and c == "{":
@@ -176,15 +185,14 @@ class TestAttemptRecoveryContract:
             elif in_catch and c == "}":
                 depth -= 1
                 if depth == 0:
-                    catch_blocks.append(source[catch_start:i + 1])
+                    catch_blocks.append(source[catch_start : i + 1])
                     in_catch = False
 
         for block in catch_blocks:
             # catch 块中如果包含跳转，必须有恢复逻辑
             if "router.replace" in block or "window.location" in block:
                 assert "recover" in block.lower() or "retry" in block.lower(), (
-                    "catch 块中的页面跳转必须与恢复机制共存，"
-                    "不能只有跳转 (Bug #27)"
+                    "catch 块中的页面跳转必须与恢复机制共存，" "不能只有跳转 (Bug #27)"
                 )
 
 
@@ -193,7 +201,13 @@ class TestChoiceErrorHandlerContract:
 
     def _get_choice_utils_source(self):
         utils_path = os.path.join(
-            os.path.dirname(__file__), "..", "frontend", "src", "hooks", "game", "choiceUtils.ts"
+            os.path.dirname(__file__),
+            "..",
+            "frontend",
+            "src",
+            "hooks",
+            "game",
+            "choiceUtils.ts",
         )
         with open(utils_path, "r", encoding="utf-8") as f:
             return f.read()
@@ -207,7 +221,7 @@ class TestChoiceErrorHandlerContract:
         # Find the closing ')' of the parameter list
         paren_depth = 1
         paren_end = match.end()
-        for i, c in enumerate(source[match.end():], match.end()):
+        for i, c in enumerate(source[match.end() :], match.end()):
             if c == "(":
                 paren_depth += 1
             elif c == ")":
@@ -261,9 +275,9 @@ class TestChoiceErrorHandlerContract:
         source = self._get_choice_utils_source()
         func_body = self._extract_function_body(source, "handleChoiceError")
 
-        assert "error" in func_body.lower(), (
-            "handleChoiceError 必须在无法恢复时设置 error phase"
-        )
+        assert (
+            "error" in func_body.lower()
+        ), "handleChoiceError 必须在无法恢复时设置 error phase"
 
 
 class TestErrorRecoverySSEContract:
@@ -290,6 +304,6 @@ class TestErrorRecoverySSEContract:
 
         # 检查流断开时的错误处理
         assert "onError" in source, "parseSSEStream 必须在错误时触发 onError"
-        assert "Stream ended without complete event" in source, (
-            "SSE 流在未收到 complete 时断开必须触发错误，不能静默失败"
-        )
+        assert (
+            "Stream ended without complete event" in source
+        ), "SSE 流在未收到 complete 时断开必须触发错误，不能静默失败"

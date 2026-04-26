@@ -18,6 +18,7 @@ class TestAchievementPersistence:
     def db_session(self):
         """提供数据库会话，测试后回滚"""
         from src.database.models import SessionLocal
+
         session = SessionLocal()
         try:
             yield session
@@ -29,10 +30,16 @@ class TestAchievementPersistence:
         """AchievementEngine 返回结构化 Achievement 列表"""
         player = PlayerState(
             player_name="Test",
-            energy=50, mood=50, knowledge=50, wealth=5000,
-            week=10, age=25,
+            energy=50,
+            mood=50,
+            knowledge=50,
+            wealth=5000,
+            week=10,
+            age=25,
             decision_history=[{"choice": "A"}] * 30,
-            round_history=[{"week": i, "choice": "A", "summary": "test"} for i in range(10)],
+            round_history=[
+                {"week": i, "choice": "A", "summary": "test"} for i in range(10)
+            ],
         )
         engine = AchievementEngine(language="zh")
         achievements = engine.evaluate(player)
@@ -44,19 +51,35 @@ class TestAchievementPersistence:
             assert ach.name is not None
             assert ach.rarity in ["common", "rare", "epic", "legendary"]
             assert ach.dimension in [
-                "trajectory", "decision_style", "relationships",
-                "collection", "narrative", "hidden"
+                "trajectory",
+                "decision_style",
+                "relationships",
+                "collection",
+                "narrative",
+                "hidden",
             ]
 
     def test_achievement_rarity_distribution(self):
         """稀有度分布合理（至少有一种 common 和一种 rare）"""
         player = PlayerState(
             player_name="Test",
-            energy=50, mood=50, knowledge=50, wealth=100000,
-            week=50, age=30,
+            energy=50,
+            mood=50,
+            knowledge=50,
+            wealth=100000,
+            week=50,
+            age=30,
             decision_history=[{"choice": "A"}] * 50,
-            round_history=[{"week": i, "choice": "A", "summary": "test"} for i in range(50)],
-            relationships={"Alice": 90, "Bob": 80, "Charlie": 70, "David": 60, "Eve": 50},
+            round_history=[
+                {"week": i, "choice": "A", "summary": "test"} for i in range(50)
+            ],
+            relationships={
+                "Alice": 90,
+                "Bob": 80,
+                "Charlie": 70,
+                "David": 60,
+                "Eve": 50,
+            },
         )
         engine = AchievementEngine(language="zh")
         achievements = engine.evaluate(player)
@@ -70,13 +93,27 @@ class TestAchievementPersistence:
         """LifeReviewGenerator 返回有效结构"""
         player = PlayerState(
             player_name="Test",
-            energy=80, mood=70, knowledge=60, wealth=10000,
-            week=20, age=27,
+            energy=80,
+            mood=70,
+            knowledge=60,
+            wealth=10000,
+            week=20,
+            age=27,
             decision_history=[{"choice": "A"}] * 20,
-            round_history=[{"week": i, "choice": "A", "summary": "test"} for i in range(20)],
+            round_history=[
+                {"week": i, "choice": "A", "summary": "test"} for i in range(20)
+            ],
             relationships={"Alice": 85},
         )
-        achievements = [Achievement(id="test", name="Test", description="Test", rarity="common", dimension="trajectory")]
+        achievements = [
+            Achievement(
+                id="test",
+                name="Test",
+                description="Test",
+                rarity="common",
+                dimension="trajectory",
+            )
+        ]
         generator = LifeReviewGenerator(language="zh")
         review = generator.generate(player, achievements)
 
@@ -95,10 +132,16 @@ class TestAchievementPersistence:
         """resource_curves 数组长度等于游戏周数"""
         player = PlayerState(
             player_name="Test",
-            energy=80, mood=70, knowledge=60, wealth=10000,
-            week=10, age=25,
+            energy=80,
+            mood=70,
+            knowledge=60,
+            wealth=10000,
+            week=10,
+            age=25,
             decision_history=[{"choice": "A"}] * 10,
-            round_history=[{"week": i, "choice": "A", "summary": "test"} for i in range(10)],
+            round_history=[
+                {"week": i, "choice": "A", "summary": "test"} for i in range(10)
+            ],
         )
         generator = LifeReviewGenerator(language="zh")
         review = generator.generate(player, [])
@@ -114,10 +157,16 @@ class TestAchievementPersistence:
         """personality_labels 至少有一个标签"""
         player = PlayerState(
             player_name="Test",
-            energy=80, mood=70, knowledge=60, wealth=10000,
-            week=20, age=27,
+            energy=80,
+            mood=70,
+            knowledge=60,
+            wealth=10000,
+            week=20,
+            age=27,
             decision_history=[{"choice": "A"}] * 20,
-            round_history=[{"week": i, "choice": "A", "summary": "test"} for i in range(20)],
+            round_history=[
+                {"week": i, "choice": "A", "summary": "test"} for i in range(20)
+            ],
         )
         generator = LifeReviewGenerator(language="zh")
         review = generator.generate(player, [])
@@ -133,10 +182,16 @@ class TestAchievementPersistence:
 
         player = PlayerState(
             player_name="Test",
-            energy=50, mood=50, knowledge=50, wealth=5000,
-            week=10, age=25,
+            energy=50,
+            mood=50,
+            knowledge=50,
+            wealth=5000,
+            week=10,
+            age=25,
             decision_history=[{"choice": "A"}] * 10,
-            round_history=[{"week": i, "choice": "A", "summary": "test"} for i in range(10)],
+            round_history=[
+                {"week": i, "choice": "A", "summary": "test"} for i in range(10)
+            ],
             relationships={},
         )
         evaluator = EndingEvaluator(ai_generator=None)

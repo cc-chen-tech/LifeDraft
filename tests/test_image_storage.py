@@ -1,7 +1,7 @@
 """Tests for ImageStorageService."""
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -361,9 +361,7 @@ class TestGetImageUrl:
             service = ImageStorageService()
 
         # ★ 新格式：使用相对路径
-        url = service.get_image_url(
-            "1/character/李逍遥_1.png", "local"
-        )
+        url = service.get_image_url("1/character/李逍遥_1.png", "local")
 
         # Chinese characters should be percent-encoded, slashes preserved
         assert "/api/images/file/1/character/" in url

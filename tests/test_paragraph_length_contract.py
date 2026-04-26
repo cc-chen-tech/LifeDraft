@@ -34,9 +34,9 @@ class TestParagraphLengthContract:
             or "换行" in prompt
             or "paragraph" in prompt.lower()
         )
-        assert has_paragraph_constraint, (
-            f"事件生成提示词应包含段落控制要求。prompt前800字: {prompt[:800]}"
-        )
+        assert (
+            has_paragraph_constraint
+        ), f"事件生成提示词应包含段落控制要求。prompt前800字: {prompt[:800]}"
 
     def test_english_event_prompt_requires_paragraph_breaks(self):
         """英文事件生成提示词应包含分段要求"""
@@ -55,7 +55,9 @@ class TestParagraphLengthContract:
             language="en",
         )
 
-        has_paragraph_constraint = "paragraph" in prompt.lower() or "break" in prompt.lower()
-        assert has_paragraph_constraint, (
-            f"英文事件生成提示词应包含段落控制要求。prompt前800字: {prompt[:800]}"
+        has_paragraph_constraint = (
+            "paragraph" in prompt.lower() or "break" in prompt.lower()
         )
+        assert (
+            has_paragraph_constraint
+        ), f"英文事件生成提示词应包含段落控制要求。prompt前800字: {prompt[:800]}"

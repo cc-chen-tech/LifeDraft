@@ -1,6 +1,6 @@
 """ImageClient 拆分后接口兼容性测试 - 对应 C-10"""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -112,11 +112,9 @@ class TestAIExtractionBase:
 
     def test_extraction_modules_share_pattern(self):
         """提取模块应共享类似的接口模式"""
-        from src.services import (
-            EntityRecognitionService,
-            ItemExtractionService,
-            LandmarkExtractionService,
-        )
+        from src.services import (EntityRecognitionService,
+                                  ItemExtractionService,
+                                  LandmarkExtractionService)
         from src.services.base_extraction import BaseExtractionService
 
         modules = [
@@ -127,11 +125,15 @@ class TestAIExtractionBase:
 
         # 验证所有模块都继承自 BaseExtractionService
         for mod in modules:
-            assert issubclass(mod, BaseExtractionService), f"{mod.__name__} should inherit from BaseExtractionService"
+            assert issubclass(
+                mod, BaseExtractionService
+            ), f"{mod.__name__} should inherit from BaseExtractionService"
 
         # 验证所有模块都有 __init__ 方法（继承自基类）
         for mod in modules:
-            assert hasattr(mod, "__init__"), f"{mod.__name__} should have __init__ method"
+            assert hasattr(
+                mod, "__init__"
+            ), f"{mod.__name__} should have __init__ method"
 
     def test_extraction_error_handling_pattern(self):
         """提取模块应有一致的错误处理"""

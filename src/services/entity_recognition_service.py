@@ -184,7 +184,9 @@ class EntityRecognitionService(BaseExtractionService):
         story_parts = []
 
         # 按周和回合排序
-        sorted_history = sorted(round_history, key=lambda x: (x.get("week", 0), x.get("round", 0)))
+        sorted_history = sorted(
+            round_history, key=lambda x: (x.get("week", 0), x.get("round", 0))
+        )
 
         for entry in sorted_history:
             week = entry.get("week", 0) + 1
@@ -214,7 +216,9 @@ class EntityRecognitionService(BaseExtractionService):
 
         return "\n".join(story_parts)
 
-    def _parse_recognition_response(self, response: str) -> Dict[str, List[Dict[str, Any]]]:
+    def _parse_recognition_response(
+        self, response: str
+    ) -> Dict[str, List[Dict[str, Any]]]:
         """解析AI识别响应。
 
         Args:
@@ -270,7 +274,9 @@ class EntityRecognitionService(BaseExtractionService):
             return False
 
         # 使用基类的验证方法
-        entity["importance"] = self._validate_importance(entity.get("importance", "normal"))
+        entity["importance"] = self._validate_importance(
+            entity.get("importance", "normal")
+        )
 
         # 验证出现次数
         appear_count = entity.get("appear_count", 0)
@@ -278,7 +284,9 @@ class EntityRecognitionService(BaseExtractionService):
             entity["appear_count"] = 1
 
         # 确保appear_contexts是列表
-        if "appear_contexts" not in entity or not isinstance(entity["appear_contexts"], list):
+        if "appear_contexts" not in entity or not isinstance(
+            entity["appear_contexts"], list
+        ):
             entity["appear_contexts"] = []
 
         return True

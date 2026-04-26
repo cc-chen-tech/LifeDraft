@@ -49,4 +49,3 @@ pytest-asyncio>=0.23.0
 
 # Sentry 错误监控
 sentry-sdk[fastapi]>=2.0.0
-opencc-python-reimplemented==0.1.7

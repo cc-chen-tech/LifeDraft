@@ -4,14 +4,15 @@
 查询次数不应随实体数量线性增长。
 """
 
-import pytest
-from sqlalchemy import create_engine, event
-from sqlalchemy.engine import Engine
-from sqlalchemy.orm import sessionmaker
 from unittest.mock import MagicMock, patch
 
-from src.database.models import Base, Game, User
+import pytest
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import sessionmaker
+
+from src.database.models import Base, Game
 from src.database.models import Image as ImageModel
+from src.database.models import User
 from src.game.state import PlayerState
 from src.services.collection_service import CollectionService
 
@@ -177,10 +178,10 @@ class TestCollectionQueryCount:
 
             # ★ 核心断言：查询次数应该是 O(1) 级别的批量查询
             # 3 次批量查询（character、item、landmark 各一次）+ 少量其他查询
-            assert query_count <= 10, (
-                f"查询次数过多：{query_count} 次（应 ≤ 10），"
-                f"可能存在 N+1 问题。\n查询列表：\n"
-                + "\n".join(f"  {i+1}. {q}" for i, q in enumerate(queries))
+            assert (
+                query_count <= 10
+            ), f"查询次数过多：{query_count} 次（应 ≤ 10），" f"可能存在 N+1 问题。\n查询列表：\n" + "\n".join(
+                f"  {i+1}. {q}" for i, q in enumerate(queries)
             )
 
         finally:
@@ -191,7 +192,9 @@ class TestCollectionQueryCount:
         game, player_state, _, _, _ = populated_game
         queried_types = []
 
-        def track_image_queries(conn, cursor, statement, parameters, context, executemany):
+        def track_image_queries(
+            conn, cursor, statement, parameters, context, executemany
+        ):
             stmt_lower = statement.lower()
             if "images" in stmt_lower and "image_type" in stmt_lower:
                 queried_types.append(statement)

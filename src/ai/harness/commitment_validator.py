@@ -65,7 +65,11 @@ class CommitmentFulfillmentValidator:
             player_state = context.get("player_state", {})
 
             if not world_model or not hasattr(world_model, "active_commitments"):
-                return True, "", {"skipped": True, "reason": "no world_model or commitments"}
+                return (
+                    True,
+                    "",
+                    {"skipped": True, "reason": "no world_model or commitments"},
+                )
 
             commitments = world_model.active_commitments
             if not commitments:
@@ -86,14 +90,18 @@ class CommitmentFulfillmentValidator:
             }
 
             # 1. 检查到期承诺
-            overdue_issues = self.check_overdue_commitments(commitments, current_week, story_text)
+            overdue_issues = self.check_overdue_commitments(
+                commitments, current_week, story_text
+            )
             details["overdue_issues"] = overdue_issues
             for issue in overdue_issues:
                 if issue.get("importance") == "critical":
                     violations.append(issue["message"])
 
             # 2. 检查承诺矛盾
-            contradiction_issues = self.check_commitment_contradiction(story_text, commitments)
+            contradiction_issues = self.check_commitment_contradiction(
+                story_text, commitments
+            )
             details["contradiction_issues"] = contradiction_issues
             for issue in contradiction_issues:
                 violations.append(issue["message"])
@@ -136,7 +144,9 @@ class CommitmentFulfillmentValidator:
             parties = self._get_attr(commitment, "parties", [])
 
             # 检查承诺是否在文本中被提及
-            mentioned = self._check_commitment_mentioned(description, parties, story_text)
+            mentioned = self._check_commitment_mentioned(
+                description, parties, story_text
+            )
 
             if not mentioned:
                 issues.append(
@@ -155,7 +165,9 @@ class CommitmentFulfillmentValidator:
 
         return issues
 
-    def check_commitment_contradiction(self, story_text: str, active_commitments: list) -> list:
+    def check_commitment_contradiction(
+        self, story_text: str, active_commitments: list
+    ) -> list:
         """检查行为是否与承诺矛盾。"""
         issues = []
         for commitment in active_commitments:
@@ -188,7 +200,9 @@ class CommitmentFulfillmentValidator:
 
         return issues
 
-    def _check_commitment_mentioned(self, description: str, parties: list, story_text: str) -> bool:
+    def _check_commitment_mentioned(
+        self, description: str, parties: list, story_text: str
+    ) -> bool:
         """检查承诺是否在故事文本中被提及。"""
         # 检查承诺描述中的关键词
         keywords = re.split(r"[，。、；\s]+", description)
@@ -199,7 +213,9 @@ class CommitmentFulfillmentValidator:
         # 检查相关方名字
         if any(party in story_text for party in parties if len(party) >= 2):
             # 同时检查是否有履行/处理相关词汇
-            has_action = any(kw in story_text for kw in FULFILLMENT_KEYWORDS + BREACH_KEYWORDS)
+            has_action = any(
+                kw in story_text for kw in FULFILLMENT_KEYWORDS + BREACH_KEYWORDS
+            )
             if has_action:
                 return True
 
@@ -213,6 +229,8 @@ class CommitmentFulfillmentValidator:
         return getattr(obj, attr, default)
 
 
-def validate_commitment_fulfillment(story_text: str, context: dict) -> Tuple[bool, str, dict]:
+def validate_commitment_fulfillment(
+    story_text: str, context: dict
+) -> Tuple[bool, str, dict]:
     """模块级验证函数。"""
     return CommitmentFulfillmentValidator().validate(story_text, context)

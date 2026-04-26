@@ -13,10 +13,9 @@ from fastapi.testclient import TestClient
 # API tests - collection endpoints
 pytestmark = pytest.mark.api
 
-from src.api.deps import get_current_user_optional
-from src.api.routers.collection import router
-from src.services.collection_service import (CollectionService,
-                                             EntityNotFoundError,
+from src.api.deps import get_current_user_optional  # noqa: E402
+from src.api.routers.collection import router  # noqa: E402
+from src.services.collection_service import (EntityNotFoundError,  # noqa: E402
                                              PermissionDeniedError)
 
 

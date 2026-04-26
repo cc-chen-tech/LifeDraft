@@ -9,11 +9,8 @@ class TestMusicPlaylistImports:
 
     def test_all_playlist_exports_are_reachable(self):
         from src.services.music_playlist_service import (
-            MusicPlaylistService,
-            PlaylistState,
-            SongDict,
-            get_music_playlist_service,
-        )
+            MusicPlaylistService, PlaylistState, SongDict,
+            get_music_playlist_service)
 
         assert callable(get_music_playlist_service)
         assert MusicPlaylistService is not None

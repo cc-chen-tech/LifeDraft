@@ -20,9 +20,12 @@ class TestChoiceImpactContract:
         )
 
         # 应包含要求选择产生独特/不同影响的指令
-        assert "独特" in prompt or "不同" in prompt or "unique" in prompt.lower() or "distinct" in prompt.lower(), (
-            f"结果生成提示词应要求选择产生独特影响。prompt前500字: {prompt[:500]}"
-        )
+        assert (
+            "独特" in prompt
+            or "不同" in prompt
+            or "unique" in prompt.lower()
+            or "distinct" in prompt.lower()
+        ), f"结果生成提示词应要求选择产生独特影响。prompt前500字: {prompt[:500]}"
 
     def test_result_prompt_requires_paragraph_breaks(self):
         """结果生成提示词应包含分段要求"""
@@ -34,9 +37,12 @@ class TestChoiceImpactContract:
         )
 
         # 应包含段落长度控制要求
-        assert "段" in prompt or "paragraph" in prompt.lower() or "换行" in prompt or "换段" in prompt, (
-            f"结果生成提示词应包含分段要求。prompt前500字: {prompt[:500]}"
-        )
+        assert (
+            "段" in prompt
+            or "paragraph" in prompt.lower()
+            or "换行" in prompt
+            or "换段" in prompt
+        ), f"结果生成提示词应包含分段要求。prompt前500字: {prompt[:500]}"
 
     def test_english_result_prompt_requires_unique_impact(self):
         """英文结果生成提示词必须要求选择产生独特影响"""
@@ -47,6 +53,8 @@ class TestChoiceImpactContract:
             language="en",
         )
 
-        assert "unique" in prompt.lower() or "distinct" in prompt.lower() or "different" in prompt.lower(), (
-            f"英文结果生成提示词应要求选择产生独特影响。prompt前500字: {prompt[:500]}"
-        )
+        assert (
+            "unique" in prompt.lower()
+            or "distinct" in prompt.lower()
+            or "different" in prompt.lower()
+        ), f"英文结果生成提示词应要求选择产生独特影响。prompt前500字: {prompt[:500]}"

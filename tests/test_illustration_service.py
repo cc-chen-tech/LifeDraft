@@ -1,7 +1,8 @@
 """Tests for RoundIllustrationService."""
 
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from src.ai.image_client import ContentInspectionError, ImageGenerationError
 from src.game.round.illustration_service import RoundIllustrationService

@@ -6,15 +6,11 @@
 
 import asyncio
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 from src.api.routers.gameplay.events import _get_game_lock
-from src.database.models import Base, Game
 
 
 class TestConcurrentGenerationOnlyOneSucceeds:
@@ -43,9 +39,7 @@ class TestConcurrentGenerationOnlyOneSucceeds:
                 pass  # 预期行为：获取超时
 
         await try_acquire()
-        assert not acquired_second, (
-            "lock 应已被占用，第二个获取者应该被阻塞"
-        )
+        assert not acquired_second, "lock 应已被占用，第二个获取者应该被阻塞"
 
         # 释放后第二个协程应该能获取
         lock.release()
@@ -74,10 +68,11 @@ class TestGenerationFlagClearedOnException:
         验证真实代码路径：event_generator.py 中 generate_round_event
         在 try/except 块的 finally 中重置 _generating 标志。
         """
-        from src.game.round.event_generator import RoundEventGenerator
-
         # 创建 RoundEventGenerator 实例（使用 mock 依赖）
         from unittest.mock import MagicMock
+
+        from src.game.round.event_generator import RoundEventGenerator
+
         eg = RoundEventGenerator(
             player_state_getter=MagicMock(return_value=MagicMock()),
             ai_generator=MagicMock(),
@@ -102,9 +97,9 @@ class TestGenerationFlagClearedOnException:
             eg._generating = False
             eg._generating_start_time = None
 
-        assert eg._generating is False, (
-            "异常后 _generating 必须被重置，否则后续请求会被错误拒绝"
-        )
+        assert (
+            eg._generating is False
+        ), "异常后 _generating 必须被重置，否则后续请求会被错误拒绝"
         assert eg._generating_start_time is None
 
     def test_generating_flag_timeout_auto_reset(self):
@@ -121,9 +116,7 @@ class TestGenerationFlagClearedOnException:
             game_loop._generating = False
             game_loop._generating_start_time = None
 
-        assert game_loop._generating is False, (
-            "_generating 超过 60s 必须被强制重置"
-        )
+        assert game_loop._generating is False, "_generating 超过 60s 必须被强制重置"
 
 
 class TestReconnectionDuringGeneration:
@@ -138,9 +131,13 @@ class TestReconnectionDuringGeneration:
         session = MagicMock()
         session._is_generating = True
         session.sse_cache = ["chunk1", "chunk2", "chunk3"]
-        session.get_cached_chunks_after = MagicMock(return_value=[
-            (1, "chunk1"), (2, "chunk2"), (3, "chunk3"),
-        ])
+        session.get_cached_chunks_after = MagicMock(
+            return_value=[
+                (1, "chunk1"),
+                (2, "chunk2"),
+                (3, "chunk3"),
+            ]
+        )
 
         # 收集重连事件
         events = []
@@ -151,9 +148,9 @@ class TestReconnectionDuringGeneration:
                 break
 
         # 验证收到了 resuming status
-        assert any("resuming" in e for e in events), (
-            "重连时应发送 'resuming' status 事件"
-        )
+        assert any(
+            "resuming" in e for e in events
+        ), "重连时应发送 'resuming' status 事件"
 
     def test_session_has_sse_cache_attribute(self):
         """session 必须有 sse_cache 属性用于断点续传。"""
@@ -162,9 +159,9 @@ class TestReconnectionDuringGeneration:
 
         game_loop = GameLoop(language="zh")
         session = GameLoopSession(game_loop=game_loop, game_id=1)
-        assert hasattr(session, "sse_cache"), (
-            "session 必须有 sse_cache 属性用于断点续传"
-        )
+        assert hasattr(
+            session, "sse_cache"
+        ), "session 必须有 sse_cache 属性用于断点续传"
         assert isinstance(session.sse_cache, list), "sse_cache 必须是列表"
 
 
@@ -174,9 +171,8 @@ class TestLockCleanupOnError:
     @pytest.mark.asyncio
     async def test_lock_released_in_finally(self):
         """stream_round_event_with_asyncio_lock 的 finally 中必须释放 lock。"""
-        from src.api.routers.gameplay.sse_helpers import (
-            stream_round_event_with_asyncio_lock,
-        )
+        from src.api.routers.gameplay.sse_helpers import \
+            stream_round_event_with_asyncio_lock
 
         lock = await _get_game_lock(2222)
         game_loop = MagicMock()
@@ -189,9 +185,7 @@ class TestLockCleanupOnError:
         assert lock.locked()
 
         # 模拟 streaming（即使失败也应释放 lock）
-        gen = stream_round_event_with_asyncio_lock(
-            game_loop, game_id=2222, lock=lock
-        )
+        gen = stream_round_event_with_asyncio_lock(game_loop, game_id=2222, lock=lock)
         try:
             async for _ in gen:
                 pass
@@ -202,9 +196,7 @@ class TestLockCleanupOnError:
             await gen.aclose()
 
         # 验证 lock 已被释放
-        assert not lock.locked(), (
-            "异常后 lock 必须被释放，否则会导致死锁"
-        )
+        assert not lock.locked(), "异常后 lock 必须被释放，否则会导致死锁"
 
 
 class TestEventGenerationStateConsistency:

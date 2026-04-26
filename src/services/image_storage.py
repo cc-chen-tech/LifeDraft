@@ -297,7 +297,9 @@ class ImageStorageService:
             return Path(storage_path)
         return self.local_path / storage_path
 
-    def get_image_url(self, storage_path: str, storage_type: Optional[str] = None) -> str:
+    def get_image_url(
+        self, storage_path: str, storage_type: Optional[str] = None
+    ) -> str:
         """
         获取图片访问URL
 
@@ -371,7 +373,9 @@ class ImageStorageService:
             logger.exception(f"Unexpected error generating OSS URL: {e}")
             raise ImageStorageError(f"获取OSS URL失败: {e}")
 
-    def get_image_data(self, storage_path: str, storage_type: Optional[str] = None) -> bytes:
+    def get_image_data(
+        self, storage_path: str, storage_type: Optional[str] = None
+    ) -> bytes:
         """
         获取图片二进制数据
 
@@ -432,7 +436,9 @@ class ImageStorageService:
             logger.exception(f"Unexpected error reading OSS image: {e}")
             raise ImageStorageError(f"读取OSS图片失败: {e}")
 
-    def delete_image(self, storage_path: str, storage_type: Optional[str] = None) -> bool:
+    def delete_image(
+        self, storage_path: str, storage_type: Optional[str] = None
+    ) -> bool:
         """
         删除图片
 
@@ -478,7 +484,9 @@ class ImageStorageService:
             logger.exception(f"Unexpected error deleting image: {e}")
             return False
 
-    def image_exists(self, storage_path: str, storage_type: Optional[str] = None) -> bool:
+    def image_exists(
+        self, storage_path: str, storage_type: Optional[str] = None
+    ) -> bool:
         """
         检查图片是否存在
 

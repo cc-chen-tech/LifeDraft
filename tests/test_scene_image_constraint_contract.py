@@ -30,9 +30,9 @@ class TestSceneImageConstraintContract:
             f"未找到 (game_id, week, round_number, stage) 索引。"
             f"现有索引: {[i.name for i in indexes]}"
         )
-        assert target_index.unique is True, (
-            f"索引 {target_index.name} 应为唯一索引，但 unique={target_index.unique}"
-        )
+        assert (
+            target_index.unique is True
+        ), f"索引 {target_index.name} 应为唯一索引，但 unique={target_index.unique}"
 
     def test_unique_constraint_columns(self):
         """唯一约束应包含正确的列顺序。"""

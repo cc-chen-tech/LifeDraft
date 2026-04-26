@@ -89,7 +89,9 @@ class CauseEffectConsistencyValidator:
             }
 
             # 1. 检查因果链中的到期未体现后果
-            chain_violations = self._check_causal_chains(causal_chains, current_week, story_text)
+            chain_violations = self._check_causal_chains(
+                causal_chains, current_week, story_text
+            )
             details["causal_chain_issues"] = chain_violations
             if chain_violations:
                 violation_msgs = [v["message"] for v in chain_violations]
@@ -108,9 +110,12 @@ class CauseEffectConsistencyValidator:
                 return True, "", details
 
             # 获取待体现后果的重大决策
-            pending = self.get_pending_consequences(decision_history, story_history, current_week)
+            pending = self.get_pending_consequences(
+                decision_history, story_history, current_week
+            )
             details["pending_consequences"] = [
-                {"decision": p.get("decision", "")[:50], "week": p.get("week", 0)} for p in pending
+                {"decision": p.get("decision", "")[:50], "week": p.get("week", 0)}
+                for p in pending
             ]
             details["decisions_checked"] = len(pending)
 
@@ -118,9 +123,13 @@ class CauseEffectConsistencyValidator:
             for pending_item in pending:
                 reflected = self.check_consequence_reflection(story_text, pending_item)
                 if reflected:
-                    details["reflected_consequences"].append(pending_item.get("decision", "")[:50])
+                    details["reflected_consequences"].append(
+                        pending_item.get("decision", "")[:50]
+                    )
                 else:
-                    details["missing_consequences"].append(pending_item.get("decision", "")[:50])
+                    details["missing_consequences"].append(
+                        pending_item.get("decision", "")[:50]
+                    )
 
             # 因果验证相对宽松：只在有多个重大决策长期未体现时才警告
             long_overdue = [
@@ -142,7 +151,9 @@ class CauseEffectConsistencyValidator:
                         **details,
                         "violations": violation_msgs,
                         "correction_hint": "以下重大决策的后果长期未在故事中体现: "
-                        + "; ".join(f"'{d.get('decision', '')[:30]}'" for d in long_overdue[:3]),
+                        + "; ".join(
+                            f"'{d.get('decision', '')[:30]}'" for d in long_overdue[:3]
+                        ),
                     },
                 )
 
@@ -306,7 +317,9 @@ class CauseEffectConsistencyValidator:
             # 对长段继续拆分（每2-4个字为一个关键词）
             if len(seg) > 4:
                 # 尝试按常见连接词进一步拆分
-                sub_segs = re.split(r"(?:在|偶遇|获得|前往|到达|进入|离开|帮助|寻找)", seg)
+                sub_segs = re.split(
+                    r"(?:在|偶遇|获得|前往|到达|进入|离开|帮助|寻找)", seg
+                )
                 for ss in sub_segs:
                     ss = ss.strip()
                     if len(ss) >= 2 and ss not in stop_words:
@@ -319,7 +332,9 @@ class CauseEffectConsistencyValidator:
                             keywords.append(chunk)
         return keywords
 
-    def _check_causal_chains(self, causal_chains: list, current_week: int, story_text: str) -> list:
+    def _check_causal_chains(
+        self, causal_chains: list, current_week: int, story_text: str
+    ) -> list:
         """检查因果链中到期未体现的后果和矛盾。"""
         issues = []
         for chain in causal_chains:
@@ -345,12 +360,17 @@ class CauseEffectConsistencyValidator:
                     consequence_keywords.extend(self._extract_decision_keywords(ec))
 
                 # 需要触发事件和预期后果的关键词同时出现才算体现
-                trigger_reflected = any(kw in story_text for kw in trigger_keywords if len(kw) >= 2)
+                trigger_reflected = any(
+                    kw in story_text for kw in trigger_keywords if len(kw) >= 2
+                )
                 consequence_reflected = any(
                     kw in story_text for kw in consequence_keywords if len(kw) >= 2
                 )
 
-                if not (trigger_reflected and consequence_reflected) and not consequence_reflected:
+                if (
+                    not (trigger_reflected and consequence_reflected)
+                    and not consequence_reflected
+                ):
                     issues.append(
                         {
                             "trigger_event": trigger_event,
@@ -411,6 +431,8 @@ class CauseEffectConsistencyValidator:
         return ""
 
 
-def validate_cause_effect_consistency(story_text: str, context: dict) -> Tuple[bool, str, dict]:
+def validate_cause_effect_consistency(
+    story_text: str, context: dict
+) -> Tuple[bool, str, dict]:
     """模块级验证函数。"""
     return CauseEffectConsistencyValidator().validate(story_text, context)

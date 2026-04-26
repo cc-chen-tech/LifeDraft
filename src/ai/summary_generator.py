@@ -110,15 +110,17 @@ class SummaryGenerator:
                     }
 
                 # JSON parsed but missing 'summary' field
-                last_error = (
-                    f"JSON缺少summary字段，返回keys: {list(data.keys()) if data else 'None'}"
-                )
+                last_error = f"JSON缺少summary字段，返回keys: {list(data.keys()) if data else 'None'}"
                 logger.warning(f"Attempt {attempt + 1}/2: {last_error}")
 
                 # On last attempt, try fallback extraction
                 if attempt == 1:
-                    logger.warning(f"Attempting summary-only extraction from: {content[:200]}...")
-                    summary_text = self._extract_summary_from_raw(content, story, language)
+                    logger.warning(
+                        f"Attempting summary-only extraction from: {content[:200]}..."
+                    )
+                    summary_text = self._extract_summary_from_raw(
+                        content, story, language
+                    )
                     summary_text = self._clean_summary_text(summary_text)
                     logger.info(f"Fallback summary: {len(summary_text)} chars")
                     return {
@@ -135,7 +137,9 @@ class SummaryGenerator:
                 logger.warning(f"Attempt {attempt + 1}/2 failed: {e}")
 
         # All retries exhausted — truncate story as fallback
-        logger.error("compress_story failed after 2 attempts, using truncation fallback")
+        logger.error(
+            "compress_story failed after 2 attempts, using truncation fallback"
+        )
         fallback = story[:97] + "..." if len(story) > 100 else story
         return {
             "summary": fallback,
@@ -211,13 +215,13 @@ class SummaryGenerator:
                         "storyline_updates": storyline_updates,
                     }
 
-                last_error = (
-                    f"JSON缺少summary字段，返回keys: {list(data.keys()) if data else 'None'}"
-                )
+                last_error = f"JSON缺少summary字段，返回keys: {list(data.keys()) if data else 'None'}"
                 logger.warning(f"[Narrative] Attempt {attempt + 1}/2: {last_error}")
 
                 if attempt == 1:
-                    summary_text = self._extract_summary_from_raw(content, story, language)
+                    summary_text = self._extract_summary_from_raw(
+                        content, story, language
+                    )
                     summary_text = self._clean_summary_text(summary_text)
                     return {
                         "summary": summary_text,
@@ -303,7 +307,9 @@ class SummaryGenerator:
                     result = {}
                     for key in _empty_result:
                         result[key] = data.get(key, [])
-                    total_items = sum(len(v) for v in result.values() if isinstance(v, list))
+                    total_items = sum(
+                        len(v) for v in result.values() if isinstance(v, list)
+                    )
                     logger.info(
                         f"[WorldExtract] Extracted {total_items} total items across {len(result)} categories"
                     )
@@ -346,7 +352,9 @@ class SummaryGenerator:
 
         logger.info(f"Generating weekly summary for {len(rounds)} rounds")
 
-        prompt = get_weekly_summary_prompt(rounds, character_settings, language, game_date_info)
+        prompt = get_weekly_summary_prompt(
+            rounds, character_settings, language, game_date_info
+        )
         sys_prompt = get_system_prompt("weekly_summary", language)
 
         last_error: Optional[str] = None
@@ -374,7 +382,11 @@ class SummaryGenerator:
                 if data:
                     summary = data.get(
                         "summary",
-                        ("本周平静地度过了。" if language == "zh" else "This week passed quietly."),
+                        (
+                            "本周平静地度过了。"
+                            if language == "zh"
+                            else "This week passed quietly."
+                        ),
                     )
                     bonus_effects = data.get("bonus_effects", {})
 
@@ -400,7 +412,11 @@ class SummaryGenerator:
         # Fallback
         logger.error("generate_weekly_summary failed after 2 attempts, using fallback")
         return {
-            "summary": ("本周平静地度过了。" if language == "zh" else "This week passed quietly."),
+            "summary": (
+                "本周平静地度过了。"
+                if language == "zh"
+                else "This week passed quietly."
+            ),
             "bonus_effects": {},
         }
 
@@ -446,7 +462,11 @@ class SummaryGenerator:
 
         except Exception as e:
             logger.error(f"Failed to generate 4-week summary after retries: {e}")
-            return "这4周平静地度过了。" if language == "zh" else "These 4 weeks passed quietly."
+            return (
+                "这4周平静地度过了。"
+                if language == "zh"
+                else "These 4 weeks passed quietly."
+            )
 
     # -------------------- Yearly Summary --------------------
 
@@ -525,7 +545,9 @@ class SummaryGenerator:
         cleaned = _re.sub(r"^\s*[Jj][Ss][Oo][Nn]\s*[：:]?\s*", "", cleaned)
 
         # Remove JSON structural prefix: {"summary":" or "summary":" or summary:
-        cleaned = _re.sub(r'^\s*\{?\s*["\']?summary["\']?\s*[：:]\s*["\']?', "", cleaned)
+        cleaned = _re.sub(
+            r'^\s*\{?\s*["\']?summary["\']?\s*[：:]\s*["\']?', "", cleaned
+        )
 
         # Remove trailing JSON artifacts: "} or '} or just }
         cleaned = _re.sub(r'["\']?\s*\}\s*$', "", cleaned)
@@ -538,7 +560,9 @@ class SummaryGenerator:
         return cleaned.strip()
 
     @staticmethod
-    def _extract_summary_from_raw(content: str, original_story: str, language: str) -> str:
+    def _extract_summary_from_raw(
+        content: str, original_story: str, language: str
+    ) -> str:
         """
         Try to extract a clean summary from raw/malformed AI response.
         Handles cases where JSON parsing fails but summary text exists.
@@ -557,7 +581,9 @@ class SummaryGenerator:
         summary_match = _re.search(r'"summary"\s*:\s*"((?:[^"\\]|\\.)*)"', text)
         if summary_match:
             extracted = summary_match.group(1)
-            extracted = extracted.replace("\\n", "\n").replace('\\"', '"').replace("\\\\", "\\")
+            extracted = (
+                extracted.replace("\\n", "\n").replace('\\"', '"').replace("\\\\", "\\")
+            )
             if len(extracted) > 700:
                 extracted = extracted[:697] + "..."
             return extracted
@@ -586,5 +612,7 @@ class SummaryGenerator:
             return cleaned
 
         # Strategy 4: Last resort - truncate original story
-        fallback = original_story[:97] + "..." if len(original_story) > 100 else original_story
+        fallback = (
+            original_story[:97] + "..." if len(original_story) > 100 else original_story
+        )
         return fallback

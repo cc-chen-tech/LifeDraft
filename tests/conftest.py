@@ -16,6 +16,8 @@ import time
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
+# Patch httpx.Response for SSE contract tests (must be after all imports)
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -24,9 +26,6 @@ from sqlalchemy.orm import sessionmaker
 from src.api.main import app
 from src.database.models import Base, Game, User
 from src.game.state import PlayerState
-
-# Patch httpx.Response for SSE contract tests (must be after all imports)
-import httpx
 
 if not hasattr(httpx.Response, "__enter__"):
     httpx.Response.__enter__ = lambda self: self
@@ -592,15 +591,13 @@ def sample_image_model():
 @pytest.fixture
 def sample_style_manifest():
     """最小合法的 StyleManifest，用于叙事风格测试。"""
-    from src.ai.narrative.style_manifest import (
-        ChapterRules,
-        GlobalParameters,
-        LanguageConfig,
-        PhilosophyConfig,
-        StructureConfig,
-        StyleManifest,
-        TechniqueConfig,
-    )
+    from src.ai.narrative.style_manifest import (ChapterRules,
+                                                 GlobalParameters,
+                                                 LanguageConfig,
+                                                 PhilosophyConfig,
+                                                 StructureConfig,
+                                                 StyleManifest,
+                                                 TechniqueConfig)
 
     return StyleManifest(
         style_id="test_style",
@@ -657,8 +654,18 @@ def sample_player_state_with_creative():
     ]
     state.world_model_data = {
         "character_locations": {
-            "李逍遥": {"location": "洛阳城", "region": "河南", "since_week": 11, "travel_mode": "visiting"},
-            "赵灵儿": {"location": "苗疆", "region": "云南", "since_week": 0, "travel_mode": "resident"},
+            "李逍遥": {
+                "location": "洛阳城",
+                "region": "河南",
+                "since_week": 11,
+                "travel_mode": "visiting",
+            },
+            "赵灵儿": {
+                "location": "苗疆",
+                "region": "云南",
+                "since_week": 0,
+                "travel_mode": "resident",
+            },
         },
         "career_records": {},
         "active_commitments": [
@@ -700,12 +707,32 @@ def sample_world_model_extended():
     """包含新字段的 WorldModel 扩展数据。"""
     return {
         "character_locations": {
-            "主角": {"location": "长安城东市", "region": "长安", "since_week": 5, "travel_mode": "resident"},
-            "王二": {"location": "长安城西市", "region": "长安", "since_week": 3, "travel_mode": "resident"},
-            "张三": {"location": "洛阳", "region": "洛阳", "since_week": 1, "travel_mode": "resident"},
+            "主角": {
+                "location": "长安城东市",
+                "region": "长安",
+                "since_week": 5,
+                "travel_mode": "resident",
+            },
+            "王二": {
+                "location": "长安城西市",
+                "region": "长安",
+                "since_week": 3,
+                "travel_mode": "resident",
+            },
+            "张三": {
+                "location": "洛阳",
+                "region": "洛阳",
+                "since_week": 1,
+                "travel_mode": "resident",
+            },
         },
         "career_records": {
-            "主角": {"current_job": "书生", "employer": "白鹿书院", "level": "junior", "since_week": 1},
+            "主角": {
+                "current_job": "书生",
+                "employer": "白鹿书院",
+                "level": "junior",
+                "since_week": 1,
+            },
         },
         "active_commitments": [
             {
@@ -736,7 +763,11 @@ def sample_world_model_extended():
         ],
         "physical_states": {
             "主角": {"status": "healthy", "conditions": [], "last_updated_week": 5},
-            "王二": {"status": "injured", "conditions": ["左臂骨折"], "last_updated_week": 4},
+            "王二": {
+                "status": "injured",
+                "conditions": ["左臂骨折"],
+                "last_updated_week": 4,
+            },
         },
         "dynamic_facts": [],
         "character_profiles": {

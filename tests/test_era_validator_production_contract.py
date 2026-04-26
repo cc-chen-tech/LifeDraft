@@ -10,8 +10,8 @@ class TestEraValidatorProductionContract:
 
     def test_extract_validation_context_emits_era_fields(self):
         """_extract_validation_context 必须返回包含 era 和 era_type 的上下文"""
-        from src.ai.story_generator import StoryGenerator
         from src.ai.client import AIClient
+        from src.ai.story_generator import StoryGenerator
 
         gen = StoryGenerator(AIClient())
         character_settings = {
@@ -35,8 +35,8 @@ class TestEraValidatorProductionContract:
 
     def test_extract_validation_context_modern_era(self):
         """_extract_validation_context 对现代背景应返回 modern era_type"""
-        from src.ai.story_generator import StoryGenerator
         from src.ai.client import AIClient
+        from src.ai.story_generator import StoryGenerator
 
         gen = StoryGenerator(AIClient())
         character_settings = {
@@ -112,18 +112,14 @@ class TestEraValidatorProductionContract:
             "一个普通的故事",
             {"era": "medieval Europe", "era_type": ""},
         )
-        assert info.get("skipped") is not True, (
-            "medieval Europe 应被识别为古代背景"
-        )
+        assert info.get("skipped") is not True, "medieval Europe 应被识别为古代背景"
 
         # historic period 应被识别为古代
         passed2, _, info2 = validate_era_consistency(
             "一个普通的故事",
             {"era": "historic period", "era_type": ""},
         )
-        assert info2.get("skipped") is not True, (
-            "historic period 应被识别为古代背景"
-        )
+        assert info2.get("skipped") is not True, "historic period 应被识别为古代背景"
 
     def test_modern_era_skips_validation(self):
         """现代背景应跳过古代验证"""

@@ -6,20 +6,12 @@ TDD先行：测试风格全链路、创意全链路、史诗叙事全链路、
 """
 
 import os
+from unittest.mock import patch
 
 import pytest
-from unittest.mock import patch, MagicMock
 
-from src.ai.harness import (
-    ConstraintRegistry,
-    ConstraintType,
-    Priority,
-    ValidationPipeline,
-    ValidationResult,
-    default_registry,
-)
-from src.ai.narrative.style_manifest import StyleLoader, StyleManifest
-
+from src.ai.harness import ConstraintType, ValidationPipeline, default_registry
+from src.ai.narrative.style_manifest import StyleLoader
 
 # ============================================================
 # Fixtures
@@ -84,7 +76,9 @@ def basic_validation_context(sample_player_state_with_creative):
         "character_habits": [
             {"character": "李逍遥", "habit": "每日清晨练剑"},
         ],
-        "world_model_state": state.world_model_data if hasattr(state, "world_model_data") else {},
+        "world_model_state": (
+            state.world_model_data if hasattr(state, "world_model_data") else {}
+        ),
         "player_state": state,
     }
 
@@ -109,7 +103,9 @@ class TestStyleFullPipeline:
         assert manifest.philosophy.narrative_voice != ""
         assert len(manifest.techniques.core_techniques) > 0
 
-    def test_style_constraints_in_prompt(self, style_loader_with_file, sample_player_state_with_creative):
+    def test_style_constraints_in_prompt(
+        self, style_loader_with_file, sample_player_state_with_creative
+    ):
         """风格约束成功注入story_prompts。
 
         TDD: 需要 PromptBuilder.build_style_constraints(manifest) 方法。
@@ -119,7 +115,8 @@ class TestStyleFullPipeline:
         assert manifest is not None
 
         # 使用 StyleAwarePromptBuilder 构建风格约束
-        from src.ai.narrative.style_prompt_builder import StyleAwarePromptBuilder
+        from src.ai.narrative.style_prompt_builder import \
+            StyleAwarePromptBuilder
 
         builder = StyleAwarePromptBuilder(style=manifest)
         constraint_str = builder.build()
@@ -172,7 +169,8 @@ class TestCreativeFullPipeline:
             "街道上人头攒动，节日的气氛浓厚。",
         ]
         try:
-            from src.ai.creative.novelty_scorer import NoveltyScorer, NoveltyResult
+            from src.ai.creative.novelty_scorer import (NoveltyResult,
+                                                        NoveltyScorer)
 
             scorer = NoveltyScorer()
             result = scorer.score(mock_story_text, history)
@@ -192,8 +190,16 @@ class TestCreativeFullPipeline:
             learner = PreferenceLearner()
             profile = learner.learn(
                 decision_history=[
-                    {"week": 10, "choice": "前往洛阳探索冒险", "effects": {"energy": -10}},
-                    {"week": 11, "choice": "接受师门挑战任务", "effects": {"knowledge": 5}},
+                    {
+                        "week": 10,
+                        "choice": "前往洛阳探索冒险",
+                        "effects": {"energy": -10},
+                    },
+                    {
+                        "week": 11,
+                        "choice": "接受师门挑战任务",
+                        "effects": {"knowledge": 5},
+                    },
                 ]
             )
             assert profile is not None
@@ -218,7 +224,9 @@ class TestEpicNarrativeFullPipeline:
         from src.ai.narrative.world_breathing import WorldBreathingEngine
 
         wb = WorldBreathingEngine()
-        wb.register_event({"id": "test_event", "trigger_week": 10, "description": "测试事件"})
+        wb.register_event(
+            {"id": "test_event", "trigger_week": 10, "description": "测试事件"}
+        )
         events = wb.advance_to_week(week=12)
         assert isinstance(events, list)
 
@@ -243,8 +251,12 @@ class TestEpicNarrativeFullPipeline:
         from src.ai.narrative.character_arc import CharacterArcEngine
 
         engine = CharacterArcEngine()
-        arc = engine.create_arc({"name": "李逍遥", "initial_flaw": "冲动", "desire": "守护"})
-        arc_state = engine.process_event(arc, {"description": "与王二重逢，决定一同冒险", "intensity": 0.6})
+        arc = engine.create_arc(
+            {"name": "李逍遥", "initial_flaw": "冲动", "desire": "守护"}
+        )
+        arc_state = engine.process_event(
+            arc, {"description": "与王二重逢，决定一同冒险", "intensity": 0.6}
+        )
         assert arc_state is not None
 
     def test_fate_echo_trigger(self, sample_player_state_with_creative):
@@ -255,12 +267,14 @@ class TestEpicNarrativeFullPipeline:
         from src.ai.narrative.fate_echo import FateEchoDatabase
 
         echo = FateEchoDatabase()
-        echo.register({
-            "id": "prop1",
-            "cause": "在洛阳偶遇神秘老者",
-            "expected_effect": "获得神秘线索",
-            "trigger_conditions": {"min_week": 1},
-        })
+        echo.register(
+            {
+                "id": "prop1",
+                "cause": "在洛阳偶遇神秘老者",
+                "expected_effect": "获得神秘线索",
+                "trigger_conditions": {"min_week": 1},
+            }
+        )
         result = echo.check_triggers({"current_week": 12, "encountered_characters": []})
         # 可能触发也可能不触发
         assert isinstance(result, list)
@@ -275,7 +289,9 @@ class TestEpicNarrativeFullPipeline:
 class TestThreeSystemSynergy:
     """三系统协同"""
 
-    def test_all_constraints_in_prompt(self, style_loader_with_file, sample_player_state_with_creative):
+    def test_all_constraints_in_prompt(
+        self, style_loader_with_file, sample_player_state_with_creative
+    ):
         """风格约束+创意建议+史诗指令同时注入Prompt。
 
         TDD: 需要统一的约束聚合器将三系统约束合并。
@@ -284,7 +300,8 @@ class TestThreeSystemSynergy:
         assert manifest is not None
 
         try:
-            from src.ai.narrative.style_prompt_builder import StyleAwarePromptBuilder
+            from src.ai.narrative.style_prompt_builder import \
+                StyleAwarePromptBuilder
 
             builder = StyleAwarePromptBuilder(style=manifest)
             # 风格约束
@@ -330,11 +347,8 @@ class TestThreeSystemSynergy:
 
     def test_helpers_budget_no_overflow(self):
         """新增约束参与Token预算分配，总量不溢出。"""
-        from config.prompts._helpers import (
-            CONSTRAINT_BUDGET,
-            _BUDGET_TRIM_ORDER,
-            _allocate_constraint_budget,
-        )
+        from config.prompts._helpers import (CONSTRAINT_BUDGET,
+                                             _allocate_constraint_budget)
 
         # 构造超出预算的约束文本
         constraint_texts = {}
@@ -385,7 +399,9 @@ class TestValidatorPipelineIntegration:
         }
         registered_types = {defn.type for defn in default_registry.get_all()}
         for ct in original_18:
-            assert ct in registered_types, f"{ct.value} not registered in default_registry"
+            assert (
+                ct in registered_types
+            ), f"{ct.value} not registered in default_registry"
 
     def test_all_new_constraint_types_registered(self):
         """全部8个新ConstraintType注册到ValidationPipeline。
@@ -415,10 +431,14 @@ class TestValidatorPipelineIntegration:
             if defn is None:
                 missing_from_registry.append(type_name)
 
-        assert not missing_from_enum, f"ConstraintType enum missing: {missing_from_enum}"
+        assert (
+            not missing_from_enum
+        ), f"ConstraintType enum missing: {missing_from_enum}"
         assert not missing_from_registry, f"Registry missing: {missing_from_registry}"
 
-    def test_critical_failure_triggers_retry(self, mock_story_text, basic_validation_context):
+    def test_critical_failure_triggers_retry(
+        self, mock_story_text, basic_validation_context
+    ):
         """CRITICAL失败触发重试。"""
         from src.ai.harness.diagnostics import ConstraintViolationDiagnostic
         from src.ai.harness.retry_controller import RetryController
@@ -432,12 +452,16 @@ class TestValidatorPipelineIntegration:
         controller = RetryController(max_retries=2)
 
         if result.critical_failures:
-            should_retry, correction = controller.should_retry(result, report, attempt=0)
+            should_retry, correction = controller.should_retry(
+                result, report, attempt=0
+            )
             assert should_retry is True
             assert correction is not None
             assert len(correction) > 0
 
-    def test_correction_hint_generation(self, mock_story_text, basic_validation_context):
+    def test_correction_hint_generation(
+        self, mock_story_text, basic_validation_context
+    ):
         """correction_hint正确生成。"""
         from src.ai.harness.diagnostics import ConstraintViolationDiagnostic
 
@@ -471,8 +495,9 @@ class TestValidatorPipelineIntegration:
             failed_types.add(check.constraint_type)
 
         # "third_person" 和 "decision_point_ending" 应该都被捕获
-        assert "third_person" in failed_types or "decision_point_ending" in failed_types, \
-            f"Expected multi-validator failures, got: {failed_types}"
+        assert (
+            "third_person" in failed_types or "decision_point_ending" in failed_types
+        ), f"Expected multi-validator failures, got: {failed_types}"
 
 
 # ============================================================
@@ -489,11 +514,19 @@ class TestFeatureToggle:
         monkeypatch.setenv("ENABLE_NARRATIVE_STYLE_ENGINE", "false")
         monkeypatch.setenv("ENABLE_CONSTRAINT_HARNESS", "true")
 
-        enabled = os.environ.get("ENABLE_NARRATIVE_STYLE_ENGINE", "").lower() in ("true", "1", "yes")
+        enabled = os.environ.get("ENABLE_NARRATIVE_STYLE_ENGINE", "").lower() in (
+            "true",
+            "1",
+            "yes",
+        )
         assert enabled is False
 
         # Harness 仍应可用
-        harness_enabled = os.environ.get("ENABLE_CONSTRAINT_HARNESS", "").lower() in ("true", "1", "yes")
+        harness_enabled = os.environ.get("ENABLE_CONSTRAINT_HARNESS", "").lower() in (
+            "true",
+            "1",
+            "yes",
+        )
         assert harness_enabled is True
 
     def test_disable_creative(self, monkeypatch):
@@ -501,7 +534,13 @@ class TestFeatureToggle:
         monkeypatch.setenv("ENABLE_CREATIVE_ENHANCEMENT", "false")
         monkeypatch.setenv("ENABLE_CONSTRAINT_HARNESS", "true")
 
-        creative_enabled = os.environ.get("ENABLE_CREATIVE_ENHANCEMENT", "").lower() in ("true", "1", "yes")
+        creative_enabled = os.environ.get(
+            "ENABLE_CREATIVE_ENHANCEMENT", ""
+        ).lower() in (
+            "true",
+            "1",
+            "yes",
+        )
         assert creative_enabled is False
 
     def test_disable_epic(self, monkeypatch):
@@ -509,7 +548,11 @@ class TestFeatureToggle:
         monkeypatch.setenv("ENABLE_EPIC_NARRATIVE", "false")
         monkeypatch.setenv("ENABLE_CONSTRAINT_HARNESS", "true")
 
-        epic_enabled = os.environ.get("ENABLE_EPIC_NARRATIVE", "").lower() in ("true", "1", "yes")
+        epic_enabled = os.environ.get("ENABLE_EPIC_NARRATIVE", "").lower() in (
+            "true",
+            "1",
+            "yes",
+        )
         assert epic_enabled is False
 
     def test_all_disabled(self, monkeypatch):

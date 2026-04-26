@@ -57,27 +57,27 @@ class TestGameLoopGeneratingFlagContract:
         from src.game.game_loop import GameLoop
 
         loop = GameLoop(language="zh")
-        assert hasattr(loop, "_generating"), (
-            "GameLoop 必须有 _generating 标志位用于并发控制"
-        )
+        assert hasattr(
+            loop, "_generating"
+        ), "GameLoop 必须有 _generating 标志位用于并发控制"
 
     def test_game_loop_has_generating_start_time(self):
         """game_loop 实例应有 _generating_start_time 属性。"""
         from src.game.game_loop import GameLoop
 
         loop = GameLoop(language="zh")
-        assert hasattr(loop, "_generating_start_time"), (
-            "GameLoop 必须有 _generating_start_time 用于超时检测"
-        )
+        assert hasattr(
+            loop, "_generating_start_time"
+        ), "GameLoop 必须有 _generating_start_time 用于超时检测"
 
     def test_generating_flag_defaults_to_false(self):
         """_generating 初始值应为 False。"""
         from src.game.game_loop import GameLoop
 
         loop = GameLoop(language="zh")
-        assert loop._generating is False, (
-            "_generating 初始值必须为 False，否则新游戏无法开始生成"
-        )
+        assert (
+            loop._generating is False
+        ), "_generating 初始值必须为 False，否则新游戏无法开始生成"
 
 
 class TestConcurrentRequestHandlingContract:
@@ -88,6 +88,7 @@ class TestConcurrentRequestHandlingContract:
         """Create a test client with events router mounted at /games."""
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
+
         from src.api.routers.gameplay.events import router
 
         app = FastAPI()
@@ -121,14 +122,13 @@ class TestConcurrentRequestHandlingContract:
                 "不能返回 HTTP 409（会破坏前端 SSE 解析逻辑）"
             )
             content = response.content.decode("utf-8")
-            assert "event: error" in content, (
-                "并发请求的响应中必须包含 'event: error'"
-            )
+            assert "event: error" in content, "并发请求的响应中必须包含 'event: error'"
 
     def test_generating_flag_timeout_reset(self, _event_client: TestClient):
         """_generating 标志超过 60 秒应被强制重置。"""
         import time
-        from src.ai.models import GameEvent, EventOption
+
+        from src.ai.models import EventOption, GameEvent
 
         with patch("src.api.routers.gameplay.events._require_session") as mock_require:
             mock_session = MagicMock()
@@ -147,8 +147,12 @@ class TestConcurrentRequestHandlingContract:
             real_event = GameEvent(
                 event_description="Test story for timeout reset",
                 options=[
-                    EventOption(text="Option 1", effects={"energy": -5}, likely_choice=False),
-                    EventOption(text="Option 2", effects={"energy": -3}, likely_choice=True),
+                    EventOption(
+                        text="Option 1", effects={"energy": -5}, likely_choice=False
+                    ),
+                    EventOption(
+                        text="Option 2", effects={"energy": -3}, likely_choice=True
+                    ),
                 ],
             )
             mock_game_loop.generate_round_event.return_value = real_event
@@ -158,9 +162,9 @@ class TestConcurrentRequestHandlingContract:
             # 70s > 60s 阈值，_generating 应被重置，请求应继续（返回 200）
             assert response.status_code == 200
             # 验证 _generating 被重置
-            assert mock_game_loop._generating is False, (
-                "_generating 超过 60s 必须被强制重置，否则卡死状态无法恢复"
-            )
+            assert (
+                mock_game_loop._generating is False
+            ), "_generating 超过 60s 必须被强制重置，否则卡死状态无法恢复"
 
 
 class TestLockReleaseContract:
@@ -180,9 +184,9 @@ class TestLockReleaseContract:
 
         # 模拟 streaming 结束后的 finally 释放
         lock.release()
-        assert not lock.locked(), (
-            "lock 必须在 streaming 结束后释放，否则后续请求会永远阻塞"
-        )
+        assert (
+            not lock.locked()
+        ), "lock 必须在 streaming 结束后释放，否则后续请求会永远阻塞"
 
 
 class TestSSEErrorFormatContract:
@@ -195,11 +199,13 @@ class TestSSEErrorFormatContract:
         # 由于 return_sse_error 是 async generator，需要迭代获取
         async def _collect():
             chunks = []
-            async for chunk in return_sse_error("Event generation in progress, please wait"):
+            async for chunk in return_sse_error(
+                "Event generation in progress, please wait"
+            ):
                 chunks.append(chunk)
             return chunks
 
-        chunks = asyncio.run(_collect())
+        chunks = asyncio.get_event_loop().run_until_complete(_collect())
         assert len(chunks) == 1
         assert "event: error" in chunks[0]
         assert "Event generation in progress, please wait" in chunks[0]

@@ -1,5 +1,6 @@
 """SQLite database models."""
 
+from contextlib import contextmanager
 from datetime import datetime
 from typing import Any
 
@@ -19,13 +20,17 @@ class User(Base):
 
     user_id = Column(Integer, primary_key=True, autoincrement=True)
     private_id = Column(String(32), unique=True, nullable=False, index=True)  # 登录用
-    public_id = Column(String(8), unique=True, nullable=False, index=True)  # 显示/加好友用
+    public_id = Column(
+        String(8), unique=True, nullable=False, index=True
+    )  # 显示/加好友用
     display_name = Column(String(50), nullable=True)  # 可选昵称
     created_at = Column(DateTime, default=datetime.utcnow)
     last_login = Column(DateTime, nullable=True)
 
     # ★ 服务端会话管理：记录最近活跃的游戏ID，用于自动恢复
-    last_active_game_id = Column(Integer, ForeignKey("games.game_id"), nullable=True, index=True)
+    last_active_game_id = Column(
+        Integer, ForeignKey("games.game_id"), nullable=True, index=True
+    )
 
     # 关联
     # 明确指定 foreign_keys，因为 users-games 之间存在两个外键路径
@@ -64,7 +69,9 @@ class Friendship(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # 关联
-    user = relationship("User", foreign_keys=[user_id], back_populates="sent_friend_requests")
+    user = relationship(
+        "User", foreign_keys=[user_id], back_populates="sent_friend_requests"
+    )
     friend = relationship(
         "User", foreign_keys=[friend_id], back_populates="received_friend_requests"
     )
@@ -79,7 +86,9 @@ class Game(Base):
     __tablename__ = "games"
 
     game_id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=True, index=True)  # 关联用户
+    user_id = Column(
+        Integer, ForeignKey("users.user_id"), nullable=True, index=True
+    )  # 关联用户
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, index=True
@@ -91,19 +100,30 @@ class Game(Base):
     ending_summary = Column(Text, nullable=True)
     is_public = Column(Boolean, default=False)  # 是否公开给好友查看
     narrative_style_id = Column(String, nullable=True)  # 叙事风格ID
-    constraint_level = Column(String, default="expert")  # 叙事质量级别: fast/expert/master
+    constraint_level = Column(
+        String, default="expert"
+    )  # 叙事质量级别: fast/expert/master
 
     # Relationships
     user = relationship("User", back_populates="games", foreign_keys=[user_id])
-    states = relationship("GameState", back_populates="game", cascade="all, delete-orphan")
-    decisions = relationship("Decision", back_populates="game", cascade="all, delete-orphan")
+    states = relationship(
+        "GameState", back_populates="game", cascade="all, delete-orphan"
+    )
+    decisions = relationship(
+        "Decision", back_populates="game", cascade="all, delete-orphan"
+    )
     ending = relationship(
         "Ending", back_populates="game", cascade="all, delete-orphan", uselist=False
     )
     images = relationship("Image", back_populates="game", cascade="all, delete-orphan")
-    scene_images = relationship("SceneImage", back_populates="game", cascade="all, delete-orphan")
+    scene_images = relationship(
+        "SceneImage", back_populates="game", cascade="all, delete-orphan"
+    )
     playlist = relationship(
-        "GamePlaylist", back_populates="game", uselist=False, cascade="all, delete-orphan"
+        "GamePlaylist",
+        back_populates="game",
+        uselist=False,
+        cascade="all, delete-orphan",
     )
 
     # ★ 复合索引：加速 list_saved_games 查询 (user_id + ending_type IS NULL + ORDER BY updated_at)
@@ -190,7 +210,9 @@ class CharacterPreset(Base):
     life_vision = Column(Text, nullable=True)
     character_settings = Column(JSON, nullable=False)
     narrative_style_id = Column(String, default="chinese_classic_saga")  # 叙事风格ID
-    constraint_level = Column(String, default="expert")  # 叙事质量级别: fast/expert/master
+    constraint_level = Column(
+        String, default="expert"
+    )  # 叙事质量级别: fast/expert/master
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -211,7 +233,9 @@ class Image(Base):
 
     # 实体标识（用于关联）
     entity_name = Column(String(100), nullable=False)  # 人物名/地点名/物品名
-    entity_key = Column(String(100), nullable=True)  # 唯一标识键（如 player_main, npc_1 等）
+    entity_key = Column(
+        String(100), nullable=True
+    )  # 唯一标识键（如 player_main, npc_1 等）
 
     # 图片信息
     prompt_text = Column(Text, nullable=False)  # 生成时使用的prompt
@@ -227,7 +251,9 @@ class Image(Base):
 
     # 主图/变体关系
     is_primary = Column(Boolean, default=False)  # 是否为主图（第一张）
-    primary_image_id = Column(Integer, ForeignKey("images.image_id"), nullable=True)  # 关联的主图ID
+    primary_image_id = Column(
+        Integer, ForeignKey("images.image_id"), nullable=True
+    )  # 关联的主图ID
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -294,7 +320,9 @@ class GamePlaylist(Base):
     __tablename__ = "game_playlists"
 
     playlist_id = Column(Integer, primary_key=True, autoincrement=True)
-    game_id = Column(Integer, ForeignKey("games.game_id"), nullable=False, unique=True, index=True)
+    game_id = Column(
+        Integer, ForeignKey("games.game_id"), nullable=False, unique=True, index=True
+    )
 
     # Playback state
     current_song_json = Column(JSON, nullable=True)  # type: ignore[var-annotated]
@@ -353,9 +381,12 @@ def init_db():
         # 索引创建失败不应阻塞应用启动
         import logging
 
-        logging.getLogger(__name__).warning("Failed to create performance indexes", exc_info=True)
+        logging.getLogger(__name__).warning(
+            "Failed to create performance indexes", exc_info=True
+        )
 
 
+@contextmanager
 def get_db():
     """Get database session as context manager."""
     db = SessionLocal()

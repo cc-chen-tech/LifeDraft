@@ -3,8 +3,8 @@
 验证服务定义、healthcheck 和网络配置符合预期。
 """
 
-import yaml
 import pytest
+import yaml
 
 
 class TestDockerComposeContract:

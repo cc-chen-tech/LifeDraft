@@ -119,10 +119,12 @@ class TestPlayerState:
         state = PlayerState.from_dict(state_dict)
 
         # Verify the value was converted to empty string
-        assert state.last_round_full_story == "", \
-            f"last_round_full_story should be empty string, got {state.last_round_full_story!r}"
-        assert isinstance(state.last_round_full_story, str), \
-            f"last_round_full_story should be string type, got {type(state.last_round_full_story)}"
+        assert (
+            state.last_round_full_story == ""
+        ), f"last_round_full_story should be empty string, got {state.last_round_full_story!r}"
+        assert isinstance(
+            state.last_round_full_story, str
+        ), f"last_round_full_story should be string type, got {type(state.last_round_full_story)}"
 
     def test_from_dict_preserves_valid_last_round_full_story(self):
         """Test that from_dict preserves valid non-None last_round_full_story values."""
@@ -135,5 +137,6 @@ class TestPlayerState:
 
         state = PlayerState.from_dict(state_dict)
 
-        assert state.last_round_full_story == "Some story content", \
-            "Valid last_round_full_story should be preserved"
+        assert (
+            state.last_round_full_story == "Some story content"
+        ), "Valid last_round_full_story should be preserved"

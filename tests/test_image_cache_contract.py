@@ -1,14 +1,11 @@
 """Contract tests for image file cache headers."""
 
-import os
 from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-os.environ.setdefault("JWT_SECRET", "test-secret-for-image-cache-contract")
-
-from src.api.deps import create_token  # noqa: E402
-from src.api.main import app  # noqa: E402
+from src.api.deps import create_token
+from src.api.main import app
 
 client = TestClient(app)
 
@@ -45,9 +42,9 @@ class TestImageCacheHeaders:
                     headers=TEST_AUTH_HEADERS,
                 )
 
-        assert "cache-control" in response.headers, (
-            f"Response missing Cache-Control header. Headers: {dict(response.headers)}"
-        )
+        assert (
+            "cache-control" in response.headers
+        ), f"Response missing Cache-Control header. Headers: {dict(response.headers)}"
 
     @patch("src.api.routers.images.ImageStorageService")
     def test_image_file_cache_control_value(self, mock_storage_class):
@@ -70,12 +67,12 @@ class TestImageCacheHeaders:
                 )
 
         cache_control = response.headers.get("cache-control", "")
-        assert "public" in cache_control, (
-            f"Cache-Control should allow public caching: {cache_control}"
-        )
-        assert "max-age=3600" in cache_control, (
-            f"Cache-Control should have 1 hour max-age: {cache_control}"
-        )
+        assert (
+            "public" in cache_control
+        ), f"Cache-Control should allow public caching: {cache_control}"
+        assert (
+            "max-age=3600" in cache_control
+        ), f"Cache-Control should have 1 hour max-age: {cache_control}"
 
     @patch("src.api.routers.images.ImageStorageService")
     def test_image_file_no_pragma_no_cache(self, mock_storage_class):
@@ -98,9 +95,9 @@ class TestImageCacheHeaders:
                 )
 
         pragma = response.headers.get("pragma", "")
-        assert "no-cache" not in pragma.lower(), (
-            f"Pragma should not contain no-cache: {pragma}"
-        )
+        assert (
+            "no-cache" not in pragma.lower()
+        ), f"Pragma should not contain no-cache: {pragma}"
 
     @patch("src.api.routers.images.ImageStorageService")
     def test_image_file_no_expires_zero(self, mock_storage_class):
@@ -123,6 +120,4 @@ class TestImageCacheHeaders:
                 )
 
         expires = response.headers.get("expires", "")
-        assert expires != "0", (
-            f"Expires should not be 0: {expires}"
-        )
+        assert expires != "0", f"Expires should not be 0: {expires}"

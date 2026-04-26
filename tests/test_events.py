@@ -2,8 +2,6 @@
 
 from unittest.mock import Mock, patch
 
-import pytest
-
 from src.ai.generator import EventGenerator
 from src.ai.models import EventOption, GameEvent
 

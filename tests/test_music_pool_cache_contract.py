@@ -64,31 +64,37 @@ class TestMusicServicePoolCacheContract:
         """_pool_cache 必须是类级变量，跨实例共享。"""
         from src.services.music_service import MusicService
 
-        assert "_pool_cache" in MusicService.__dict__, (
-            "_pool_cache 必须是类级变量，确保跨实例缓存共享"
-        )
+        assert (
+            "_pool_cache" in MusicService.__dict__
+        ), "_pool_cache 必须是类级变量，确保跨实例缓存共享"
 
     def test_pool_cache_ttl_value(self):
         """POOL_CACHE_TTL 应为 3600 秒（1 小时）。"""
         from src.services.music_service import MusicService
 
-        assert MusicService.POOL_CACHE_TTL == 3600, (
-            "POOL_CACHE_TTL 必须为 3600 秒（1 小时）"
-        )
+        assert (
+            MusicService.POOL_CACHE_TTL == 3600
+        ), "POOL_CACHE_TTL 必须为 3600 秒（1 小时）"
 
     def test_pool_cache_entry_structure(self):
         """缓存项应为 (CachedMusicPool, timestamp) 元组。"""
         import time
 
-        from src.services.music_service import CachedMusicPool, CachedSong, MusicService
+        from src.services.music_service import (CachedMusicPool, CachedSong,
+                                                MusicService)
 
         pool = CachedMusicPool(
             analysis={"mood": "悲伤"},
             verified_songs=[
                 CachedSong(
-                    id=1001, name="测试", artists=["A"], album="X",
-                    duration=1000, url="https://cdn.example.com/song.mp3",
-                    url_expires_at=time.time() + 480, verified_at=time.time(),
+                    id=1001,
+                    name="测试",
+                    artists=["A"],
+                    album="X",
+                    duration=1000,
+                    url="https://cdn.example.com/song.mp3",
+                    url_expires_at=time.time() + 480,
+                    verified_at=time.time(),
                 )
             ],
             created_at=time.time(),
@@ -99,7 +105,9 @@ class TestMusicServicePoolCacheContract:
         assert cached is not None
         assert isinstance(cached, tuple), "缓存项必须是元组"
         assert len(cached) == 2, "缓存项必须是 (pool, timestamp) 二元组"
-        assert isinstance(cached[0], CachedMusicPool), "第一个元素必须是 CachedMusicPool"
+        assert isinstance(
+            cached[0], CachedMusicPool
+        ), "第一个元素必须是 CachedMusicPool"
         assert isinstance(cached[1], float), "第二个元素必须是时间戳（float）"
 
         # 清理

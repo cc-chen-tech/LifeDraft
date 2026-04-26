@@ -4,24 +4,16 @@ TDD先行：测试重试链路完整性、修正指令注入、诊断报告准�
 降级安全、Metrics记录。
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
-from src.ai.harness import (
-    ConstraintRegistry,
-    ConstraintType,
-    Priority,
-    ValidationPipeline,
-    ValidationResult,
-    ConstraintCheckResult,
-    default_registry,
-)
-from src.ai.harness.diagnostics import (
-    ConstraintViolationDiagnostic,
-    DiagnosticReport,
-)
+from src.ai.harness import (ConstraintCheckResult, ConstraintRegistry,
+                            ConstraintType, Priority, ValidationPipeline,
+                            ValidationResult, default_registry)
+from src.ai.harness.diagnostics import (ConstraintViolationDiagnostic,
+                                        DiagnosticReport)
 from src.ai.harness.retry_controller import RetryController
-
 
 # ============================================================
 # Fixtures
@@ -143,7 +135,9 @@ def basic_validation_context(sample_player_state_with_creative):
         "character_habits": [
             {"character": "李逍遥", "habit": "每日清晨练剑"},
         ],
-        "world_model_state": state.world_model_data if hasattr(state, "world_model_data") else {},
+        "world_model_state": (
+            state.world_model_data if hasattr(state, "world_model_data") else {}
+        ),
         "player_state": state,
     }
 
@@ -205,9 +199,15 @@ class TestRetryChainIntegrity:
         with patch("src.ai.story_generator.AIClient") as mock_client:
             gen = StoryGenerator(mock_client())
             if hasattr(gen, "_resolve_temperature"):
-                assert gen._resolve_temperature(0, 0.85, 0.15) == pytest.approx(0.85, abs=0.05)
-                assert gen._resolve_temperature(1, 0.85, 0.15) == pytest.approx(0.70, abs=0.05)
-                assert gen._resolve_temperature(2, 0.85, 0.15) == pytest.approx(0.70, abs=0.05)
+                assert gen._resolve_temperature(0, 0.85, 0.15) == pytest.approx(
+                    0.85, abs=0.05
+                )
+                assert gen._resolve_temperature(1, 0.85, 0.15) == pytest.approx(
+                    0.70, abs=0.05
+                )
+                assert gen._resolve_temperature(2, 0.85, 0.15) == pytest.approx(
+                    0.70, abs=0.05
+                )
             else:
                 pytest.fail("_resolve_temperature not found on StoryGenerator")
 
@@ -256,7 +256,9 @@ class TestRetryChainIntegrity:
 class TestCorrectionInjection:
     """修正指令注入验证"""
 
-    def test_correction_in_retry_prompt(self, diagnostic_with_critical, failed_validation_result):
+    def test_correction_in_retry_prompt(
+        self, diagnostic_with_critical, failed_validation_result
+    ):
         """第二次prompt中包含上次生成失败修正指令"""
         controller = RetryController(max_retries=2)
         _, correction = controller.should_retry(
@@ -293,13 +295,17 @@ class TestCorrectionInjection:
         )
 
         controller = RetryController(max_retries=2)
-        vr = ValidationResult(passed=False, score=40.0, critical_failures=[
-            ConstraintCheckResult(
-                constraint_type="available_people",
-                priority="CRITICAL",
-                passed=False,
-            )
-        ])
+        vr = ValidationResult(
+            passed=False,
+            score=40.0,
+            critical_failures=[
+                ConstraintCheckResult(
+                    constraint_type="available_people",
+                    priority="CRITICAL",
+                    passed=False,
+                )
+            ],
+        )
 
         _, correction = controller.should_retry(vr, report, attempt=0)
         assert correction is not None
@@ -316,12 +322,14 @@ class TestCorrectionInjection:
         violations = []
         fixes = []
         for i in range(10):
-            violations.append({
-                "constraint_type": f"test_type_{i}",
-                "priority": "CRITICAL",
-                "evidence": "测试证据" * 20,
-                "description": "测试描述" * 20,
-            })
+            violations.append(
+                {
+                    "constraint_type": f"test_type_{i}",
+                    "priority": "CRITICAL",
+                    "evidence": "测试证据" * 20,
+                    "description": "测试描述" * 20,
+                }
+            )
             fixes.append(f"[test_type_{i}] 修复建议文本" * 10)
 
         report = DiagnosticReport(
@@ -333,13 +341,17 @@ class TestCorrectionInjection:
         )
 
         controller = RetryController(max_retries=2)
-        vr = ValidationResult(passed=False, score=0.0, critical_failures=[
-            ConstraintCheckResult(
-                constraint_type="test_type_0",
-                priority="CRITICAL",
-                passed=False,
-            )
-        ])
+        vr = ValidationResult(
+            passed=False,
+            score=0.0,
+            critical_failures=[
+                ConstraintCheckResult(
+                    constraint_type="test_type_0",
+                    priority="CRITICAL",
+                    passed=False,
+                )
+            ],
+        )
 
         _, correction = controller.should_retry(vr, report, attempt=0)
         assert correction is not None
@@ -358,7 +370,9 @@ class TestDiagnosticAccuracy:
     def test_violation_localization(self, mock_story_text, basic_validation_context):
         """输入已知违规文本→Diagnostics正确定位违规段落"""
         # 构造包含第一人称的文本
-        bad_text = "我走在洛阳城的街道上，看到了远方的山峦。我决定继续前进。" + mock_story_text
+        bad_text = (
+            "我走在洛阳城的街道上，看到了远方的山峦。我决定继续前进。" + mock_story_text
+        )
 
         pipeline = ValidationPipeline(default_registry)
         result = pipeline.validate(bad_text, basic_validation_context)
@@ -411,8 +425,11 @@ class TestDiagnosticAccuracy:
 class TestDegradationSafety:
     """降级安全"""
 
-    def test_validation_pipeline_exception(self, mock_story_text, basic_validation_context):
+    def test_validation_pipeline_exception(
+        self, mock_story_text, basic_validation_context
+    ):
         """ValidationPipeline抛异常→优雅降级返回原始故事"""
+
         # ValidationPipeline 的 _run_single_check 内部有异常保护
         # 当验证器抛异常时，默认返回 passed=True
         def broken_validator(story_text, context):
@@ -566,8 +583,12 @@ class TestMetricsRecording:
         db_path = str(tmp_path / "test_metrics_summary.db")
         metrics = HarnessMetrics(db_path=db_path)
 
-        metrics.record_generation(game_id="g1", week=1, attempts=1,
-                                  validation_result={"score": 90.0, "passed": True, "detailed_checks": {}})
+        metrics.record_generation(
+            game_id="g1",
+            week=1,
+            attempts=1,
+            validation_result={"score": 90.0, "passed": True, "detailed_checks": {}},
+        )
 
         report = metrics.get_summary_report(last_n=10)
         assert isinstance(report, str)

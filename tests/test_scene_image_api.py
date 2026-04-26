@@ -1,6 +1,7 @@
 """Tests for scene image API endpoints."""
 
 from fastapi import Response
+
 from src.api.main import app
 
 

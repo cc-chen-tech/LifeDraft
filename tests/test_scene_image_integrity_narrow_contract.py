@@ -122,6 +122,7 @@ class TestSceneImageIntegrityNarrowContract:
 
             try:
                 from src.services.image import ImageServiceError
+
                 with pytest.raises(ImageServiceError) as exc_info:
                     service.generate_round_scene_image(
                         game_id=999,

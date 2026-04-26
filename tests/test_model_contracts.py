@@ -4,10 +4,7 @@
 防止属性名错误、字段缺失等回归 bug。
 """
 
-import pytest
-from unittest.mock import MagicMock
-
-from src.database.models import Game, GameState, User, Image, SceneImage, Base
+from src.database.models import Game, GameState, Image, SceneImage, User
 from src.game.state import PlayerState
 
 
@@ -65,9 +62,7 @@ class TestGameStateModelContract:
 
     def test_game_state_has_state_json(self):
         """GameState 应有 state_json 字段（而非 state 或 player_state）。"""
-        assert hasattr(GameState, "state_json"), (
-            "GameState 模型缺少 state_json 字段"
-        )
+        assert hasattr(GameState, "state_json"), "GameState 模型缺少 state_json 字段"
 
     def test_game_state_has_no_state_field(self):
         """GameState 不应有名为 'state' 的字段（避免与 Game.state 混淆）。
@@ -76,9 +71,9 @@ class TestGameStateModelContract:
         这里检查 __table__.columns 中没有叫 'state' 的列。
         """
         column_names = [c.name for c in GameState.__table__.columns]
-        assert "state" not in column_names, (
-            "GameState 不应有 'state' 列，应使用 'state_json'"
-        )
+        assert (
+            "state" not in column_names
+        ), "GameState 不应有 'state' 列，应使用 'state_json'"
 
     def test_game_state_has_required_columns(self):
         """验证 GameState 模型包含所有必要字段。"""
@@ -167,7 +162,9 @@ class TestPlayerStateContract:
         assert hasattr(state, "characters"), "PlayerState 缺少 characters 属性"
         assert hasattr(state, "items"), "PlayerState 缺少 items 属性"
         assert hasattr(state, "landmarks"), "PlayerState 缺少 landmarks 属性"
-        assert hasattr(state, "character_settings"), "PlayerState 缺少 character_settings 属性"
+        assert hasattr(
+            state, "character_settings"
+        ), "PlayerState 缺少 character_settings 属性"
 
     def test_player_state_has_round_history(self):
         """验证 PlayerState 包含 round_history（供总结和识别使用）。"""
@@ -176,12 +173,12 @@ class TestPlayerStateContract:
 
     def test_player_state_has_no_player_state_field(self):
         """PlayerState 不应有 player_state 字段（避免嵌套混淆）。"""
-        state = PlayerState()
+        PlayerState()
         # player_state 是类名，不应作为字段名
         field_names = list(PlayerState.model_fields.keys())
-        assert "player_state" not in field_names, (
-            "PlayerState 不应有名为 'player_state' 的字段"
-        )
+        assert (
+            "player_state" not in field_names
+        ), "PlayerState 不应有名为 'player_state' 的字段"
 
 
 class TestApiSchemaContracts:
@@ -300,7 +297,8 @@ class TestNarrativeFieldContracts:
     def test_style_manifest_fields_consumed_by_prompt_builder(self):
         """StyleManifest 的字段应与 StyleAwarePromptBuilder 消费的字段一致"""
         from src.ai.narrative.style_manifest import StyleManifest
-        from src.ai.narrative.style_prompt_builder import StyleAwarePromptBuilder
+        from src.ai.narrative.style_prompt_builder import \
+            StyleAwarePromptBuilder
 
         manifest_fields = set(StyleManifest.__dataclass_fields__.keys())
         assert "philosophy" in manifest_fields
@@ -332,9 +330,9 @@ class TestNarrativeFieldContracts:
 
         # 至少注册了 30 个约束
         all_constraints = default_registry.get_all_for_validation()
-        assert len(all_constraints) >= 20, (
-            f"default_registry 应至少注册 20 个约束，实际: {len(all_constraints)}"
-        )
+        assert (
+            len(all_constraints) >= 20
+        ), f"default_registry 应至少注册 20 个约束，实际: {len(all_constraints)}"
 
     def test_player_state_new_fields_exist(self):
         """PlayerState 新增字段应存在"""

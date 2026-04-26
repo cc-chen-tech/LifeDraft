@@ -6,20 +6,15 @@ TDD先行：测试 StyleAwarePromptBuilder 将 StyleManifest 转化为
 
 import pytest
 
-from src.ai.narrative.style_manifest import (
-    GlobalParameters,
-    LanguageConfig,
-    PhilosophyConfig,
-    StructureConfig,
-    StyleManifest,
-    TechniqueConfig,
-)
+from src.ai.narrative.style_manifest import StyleManifest
 
 # TDD: 模块尚不存在，导入失败时标记整个模块为 xfail
 try:
     from src.ai.narrative.style_prompt_builder import StyleAwarePromptBuilder
 except ImportError:
-    pytestmark = pytest.mark.skip(reason="src.ai.narrative.style_prompt_builder 尚未实现（TDD红色阶段）")
+    pytestmark = pytest.mark.skip(
+        reason="src.ai.narrative.style_prompt_builder 尚未实现（TDD红色阶段）"
+    )
     StyleAwarePromptBuilder = None  # type: ignore
 
 
@@ -67,7 +62,11 @@ class TestStyleDimensionConversion:
         builder = StyleAwarePromptBuilder(sample_style_manifest)
         result = builder.build()
         # 叙事哲学应体现在输出中
-        assert "全知视角" in result or "narrative_voice" in result.lower() or "叙事" in result
+        assert (
+            "全知视角" in result
+            or "narrative_voice" in result.lower()
+            or "叙事" in result
+        )
 
     def test_structure_to_macro_arc(self, sample_style_manifest):
         """structure → macro/arc 转化。"""

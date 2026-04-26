@@ -66,7 +66,9 @@ class EntityRecognitionTask:
             "result": self.result,
             "error": self.error,
             "created_at": self.created_at.isoformat() if self.created_at else None,
-            "completed_at": (self.completed_at.isoformat() if self.completed_at else None),
+            "completed_at": (
+                self.completed_at.isoformat() if self.completed_at else None
+            ),
         }
 
     def mark_running(self):
@@ -203,7 +205,9 @@ class TaskManager:
             self.cleanup_task(task_id)
 
         if tasks_to_remove:
-            logger.info(f"[TaskCleanup] Cleaned up {len(tasks_to_remove)} expired tasks")
+            logger.info(
+                f"[TaskCleanup] Cleaned up {len(tasks_to_remove)} expired tasks"
+            )
         else:
             logger.info("[TaskCleanup] No expired tasks to clean up")
 

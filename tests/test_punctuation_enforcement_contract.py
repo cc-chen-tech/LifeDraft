@@ -4,12 +4,9 @@
 Layer 3: 契约测试 — prompt 输出必须包含标点使用规范要求。
 """
 
-from config.prompts import (
-    get_event_generation_prompt,
-    get_result_generation_prompt,
-    get_round_event_prompt,
-    get_story_only_prompt,
-)
+from config.prompts import (get_event_generation_prompt,
+                            get_result_generation_prompt,
+                            get_round_event_prompt, get_story_only_prompt)
 
 
 class TestPunctuationEnforcementInPrompts:
@@ -34,18 +31,15 @@ class TestPunctuationEnforcementInPrompts:
             language="zh",
         )
         # 必须包含对标点使用的明确要求
-        has_punctuation_req = (
-            "标点" in prompt
-            and (
-                "必须使用" in prompt
-                or "正确使用" in prompt
-                or "规范使用" in prompt
-                or "注意标点" in prompt
-            )
+        has_punctuation_req = "标点" in prompt and (
+            "必须使用" in prompt
+            or "正确使用" in prompt
+            or "规范使用" in prompt
+            or "注意标点" in prompt
         )
-        assert has_punctuation_req, (
-            f"prompt 必须包含强制正确使用标点的指令。prompt 前1000字: {prompt[:1000]}"
-        )
+        assert (
+            has_punctuation_req
+        ), f"prompt 必须包含强制正确使用标点的指令。prompt 前1000字: {prompt[:1000]}"
 
     def test_story_only_prompt_requires_quotation_marks_for_dialogue(self):
         """get_story_only_prompt 必须要求对话使用引号"""
@@ -54,14 +48,10 @@ class TestPunctuationEnforcementInPrompts:
             language="zh",
         )
         # 必须要求对话使用中文引号 "" 或英文引号
-        has_quote_req = (
-            '"' in prompt
-            or '"' in prompt
-            or "引号" in prompt
-        )
-        assert has_quote_req, (
-            f"prompt 必须要求对话使用引号。prompt 前1000字: {prompt[:1000]}"
-        )
+        has_quote_req = '"' in prompt or '"' in prompt or "引号" in prompt
+        assert (
+            has_quote_req
+        ), f"prompt 必须要求对话使用引号。prompt 前1000字: {prompt[:1000]}"
 
     def test_round_event_prompt_has_punctuation_requirement(self):
         """get_round_event_prompt 必须包含强制正确使用标点的指令"""
@@ -71,18 +61,15 @@ class TestPunctuationEnforcementInPrompts:
             round_number=0,
             round_context="",
         )
-        has_punctuation_req = (
-            "标点" in prompt
-            and (
-                "必须使用" in prompt
-                or "正确使用" in prompt
-                or "规范使用" in prompt
-                or "注意标点" in prompt
-            )
+        has_punctuation_req = "标点" in prompt and (
+            "必须使用" in prompt
+            or "正确使用" in prompt
+            or "规范使用" in prompt
+            or "注意标点" in prompt
         )
-        assert has_punctuation_req, (
-            f"round prompt 必须包含强制正确使用标点的指令。prompt 前1000字: {prompt[:1000]}"
-        )
+        assert (
+            has_punctuation_req
+        ), f"round prompt 必须包含强制正确使用标点的指令。prompt 前1000字: {prompt[:1000]}"
 
     def test_event_generation_prompt_has_punctuation_requirement(self):
         """get_event_generation_prompt 必须包含强制正确使用标点的指令"""
@@ -90,18 +77,15 @@ class TestPunctuationEnforcementInPrompts:
             player_state=self._make_player_state(),
             language="zh",
         )
-        has_punctuation_req = (
-            "标点" in prompt
-            and (
-                "必须使用" in prompt
-                or "正确使用" in prompt
-                or "规范使用" in prompt
-                or "注意标点" in prompt
-            )
+        has_punctuation_req = "标点" in prompt and (
+            "必须使用" in prompt
+            or "正确使用" in prompt
+            or "规范使用" in prompt
+            or "注意标点" in prompt
         )
-        assert has_punctuation_req, (
-            f"event generation prompt 必须包含强制正确使用标点的指令。prompt 前1000字: {prompt[:1000]}"
-        )
+        assert (
+            has_punctuation_req
+        ), f"event generation prompt 必须包含强制正确使用标点的指令。prompt 前1000字: {prompt[:1000]}"
 
     def test_result_generation_prompt_has_punctuation_requirement(self):
         """get_result_generation_prompt 必须包含强制正确使用标点的指令"""
@@ -111,14 +95,10 @@ class TestPunctuationEnforcementInPrompts:
             effects={"energy": 10},
             language="zh",
         )
-        has_punctuation_req = (
-            "标点" in prompt
-            or "对话" in prompt
-            or "引号" in prompt
-        )
-        assert has_punctuation_req, (
-            f"result generation prompt 应包含标点或对话规范要求。prompt 前1000字: {prompt[:1000]}"
-        )
+        has_punctuation_req = "标点" in prompt or "对话" in prompt or "引号" in prompt
+        assert (
+            has_punctuation_req
+        ), f"result generation prompt 应包含标点或对话规范要求。prompt 前1000字: {prompt[:1000]}"
 
     def test_english_prompts_have_punctuation_requirement(self):
         """英文版 prompt 也必须包含标点规范要求"""
@@ -131,6 +111,6 @@ class TestPunctuationEnforcementInPrompts:
             or "quotation marks" in prompt.lower()
             or "dialogue" in prompt.lower()
         )
-        assert has_punctuation_req, (
-            f"English prompt must contain punctuation or dialogue requirements. First 1000 chars: {prompt[:1000]}"
-        )
+        assert (
+            has_punctuation_req
+        ), f"English prompt must contain punctuation or dialogue requirements. First 1000 chars: {prompt[:1000]}"

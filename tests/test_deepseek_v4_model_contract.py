@@ -21,9 +21,9 @@ class TestDeepSeekV4ModelConfiguration:
         for line in content.splitlines():
             if line.startswith("OPENAI_MODEL="):
                 model = line.split("=", 1)[1].strip()
-                assert model == "deepseek-v4-flash", (
-                    f".env 中 OPENAI_MODEL 应为 'deepseek-v4-flash', 实际是 '{model}'"
-                )
+                assert (
+                    model == "deepseek-v4-flash"
+                ), f".env 中 OPENAI_MODEL 应为 'deepseek-v4-flash', 实际是 '{model}'"
                 return
 
         assert False, ".env 中未找到 OPENAI_MODEL 配置"
@@ -41,9 +41,9 @@ class TestDeepSeekV4ModelConfiguration:
 
             # SCENE_ANALYZER_MODEL 的默认值通过 os.getenv 获取
             default = os.getenv("SCENE_ANALYZER_MODEL", "deepseek-v4-flash")
-            assert default == "deepseek-v4-flash", (
-                f"SCENE_ANALYZER_MODEL 默认值应为 'deepseek-v4-flash', 实际是 '{default}'"
-            )
+            assert (
+                default == "deepseek-v4-flash"
+            ), f"SCENE_ANALYZER_MODEL 默认值应为 'deepseek-v4-flash', 实际是 '{default}'"
         finally:
             if original is not None:
                 os.environ["SCENE_ANALYZER_MODEL"] = original
@@ -79,6 +79,6 @@ class TestDeepSeekV4ModelConfiguration:
 
         # deepseek-chat 可以作为降级备选，但不应是首位
         if len(_DEFAULT_FALLBACK_MODELS) > 0:
-            assert _DEFAULT_FALLBACK_MODELS[0] != "deepseek-chat", (
-                "主要模型不应再使用即将弃用的 deepseek-chat"
-            )
+            assert (
+                _DEFAULT_FALLBACK_MODELS[0] != "deepseek-chat"
+            ), "主要模型不应再使用即将弃用的 deepseek-chat"

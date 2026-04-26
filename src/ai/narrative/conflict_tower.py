@@ -101,7 +101,10 @@ class ConflictTower:
                     unlocked = list(self._tiers.get(2, []))
                     if unlocked:
                         self._unlocked_t2 = True
-                        logger.info("T2 conflicts unlocked after %d consecutive weeks", consecutive)
+                        logger.info(
+                            "T2 conflicts unlocked after %d consecutive weeks",
+                            consecutive,
+                        )
                         return unlocked
 
             return []
@@ -170,7 +173,11 @@ class ConflictTower:
             if not t3_conflicts:
                 return None
 
-            milestones = self._main_storyline.get("milestones", []) if self._main_storyline else []
+            milestones = (
+                self._main_storyline.get("milestones", [])
+                if self._main_storyline
+                else []
+            )
 
             # Boss trigger conditions:
             # 1. Milestone is at least "集齐神器" (3rd milestone or later)
@@ -231,7 +238,9 @@ class ConflictTower:
                 "style": self.style,
                 "tiers": {str(k): v for k, v in self._tiers.items()},
                 "main_storyline": self._main_storyline,
-                "weekly_activity": {str(k): v for k, v in self._weekly_activity.items()},
+                "weekly_activity": {
+                    str(k): v for k, v in self._weekly_activity.items()
+                },
                 "unlocked_t2": self._unlocked_t2,
             }
         except Exception as e:
@@ -239,7 +248,9 @@ class ConflictTower:
             return {}
 
     @classmethod
-    def from_state_dict(cls, data: Dict, style: Optional[str] = None) -> "ConflictTower":
+    def from_state_dict(
+        cls, data: Dict, style: Optional[str] = None
+    ) -> "ConflictTower":
         """从状态恢复。"""
         tower = cls(style=style or (data.get("style") if data else None))
         try:

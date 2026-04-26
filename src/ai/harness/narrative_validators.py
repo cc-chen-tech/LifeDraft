@@ -11,7 +11,9 @@ from typing import Tuple
 logger = logging.getLogger(__name__)
 
 
-def validate_three_act_structure(story_text: str, context: dict) -> Tuple[bool, str, dict]:
+def validate_three_act_structure(
+    story_text: str, context: dict
+) -> Tuple[bool, str, dict]:
     """检测故事是否具备三幕结构（铺垫、发展、高潮）。
 
     仅对 > 500 字的文本生效，<= 500 字自动通过。
@@ -27,7 +29,16 @@ def validate_three_act_structure(story_text: str, context: dict) -> Tuple[bool, 
     last_quarter = story_text[quarter * 3 :]
 
     setup_keywords = ["走进", "来到", "踏入", "清晨", "这一天", "一个", "某天", "早晨"]
-    development_keywords = ["然而", "却", "突然", "不料", "意外", "转折", "没想到", "谁知"]
+    development_keywords = [
+        "然而",
+        "却",
+        "突然",
+        "不料",
+        "意外",
+        "转折",
+        "没想到",
+        "谁知",
+    ]
     climax_keywords = ["终于", "再也", "紧紧", "猛然", "决定", "爆发", "一把", "狠狠"]
 
     phases_found = []
@@ -44,7 +55,11 @@ def validate_three_act_structure(story_text: str, context: dict) -> Tuple[bool, 
 
     if phases_count >= 2:
         return True, "", details
-    return False, f"三幕结构不完整，仅检测到 {phases_count} 个阶段: {phases_found}", details
+    return (
+        False,
+        f"三幕结构不完整，仅检测到 {phases_count} 个阶段: {phases_found}",
+        details,
+    )
 
 
 def validate_pacing_variety(story_text: str, context: dict) -> Tuple[bool, str, dict]:
@@ -68,8 +83,12 @@ def validate_pacing_variety(story_text: str, context: dict) -> Tuple[bool, str, 
         analyzer = EmotionalArcAnalyzer()
         result = analyzer.analyze_segment(story_text)  # type: ignore[attr-defined]
 
-        valence = result.valence if hasattr(result, "valence") else result.get("valence", 0.0)
-        arousal = result.arousal if hasattr(result, "arousal") else result.get("arousal", 0.0)
+        valence = (
+            result.valence if hasattr(result, "valence") else result.get("valence", 0.0)
+        )
+        arousal = (
+            result.arousal if hasattr(result, "arousal") else result.get("arousal", 0.0)
+        )
 
         intervention_effective = not (abs(valence) < 0.15 and abs(arousal) < 0.15)
         details = {
@@ -96,7 +115,9 @@ ARC_STAGE_KEYWORDS = {
 }
 
 
-def validate_arc_hint_compliance(story_text: str, context: dict) -> Tuple[bool, str, dict]:
+def validate_arc_hint_compliance(
+    story_text: str, context: dict
+) -> Tuple[bool, str, dict]:
     """验证故事是否遵从弧光阶段提示。
 
     仅当 narrative_hints 中存在非空 arc_hint 时生效。
@@ -114,7 +135,11 @@ def validate_arc_hint_compliance(story_text: str, context: dict) -> Tuple[bool, 
             break
 
     if detected_stage is None:
-        return True, "", {"detected_stage": "", "matched_keywords": [], "compliant": True}
+        return (
+            True,
+            "",
+            {"detected_stage": "", "matched_keywords": [], "compliant": True},
+        )
 
     keywords = ARC_STAGE_KEYWORDS[detected_stage]
     matched_keywords = [kw for kw in keywords if kw in story_text]
@@ -178,7 +203,9 @@ _WORLD_EVENT_STOP_WORDS = {
 }
 
 
-def validate_world_event_integration(story_text: str, context: dict) -> Tuple[bool, str, dict]:
+def validate_world_event_integration(
+    story_text: str, context: dict
+) -> Tuple[bool, str, dict]:
     """验证故事是否融入了世界事件关键词。
 
     仅当 narrative_hints 中存在非空 world_event_context 时生效。
@@ -193,7 +220,11 @@ def validate_world_event_integration(story_text: str, context: dict) -> Tuple[bo
     extracted_keywords = [w for w in raw_words if w not in _WORLD_EVENT_STOP_WORDS]
 
     if not extracted_keywords:
-        return True, "", {"extracted_keywords": [], "found_in_story": [], "integrated": True}
+        return (
+            True,
+            "",
+            {"extracted_keywords": [], "found_in_story": [], "integrated": True},
+        )
 
     found_in_story = [kw for kw in extracted_keywords if kw in story_text]
     integrated = len(found_in_story) > 0

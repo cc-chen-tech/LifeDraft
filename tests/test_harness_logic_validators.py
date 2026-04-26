@@ -5,9 +5,9 @@ TDD先行：测试时间一致性、承诺履行、角色状态连续性、物�
 所有验证器 validate 签名: (story_text, context) -> Tuple[bool, str, dict]
 """
 
-import pytest
 from types import SimpleNamespace
-from typing import Tuple
+
+import pytest
 
 # TDD: 验证器模块尚不存在，导入失败时标记整个模块为 skip
 _import_errors = []
@@ -18,19 +18,22 @@ except ImportError as e:
     TemporalConsistencyValidator = None  # type: ignore
 
 try:
-    from src.ai.harness.commitment_validator import CommitmentFulfillmentValidator
+    from src.ai.harness.commitment_validator import \
+        CommitmentFulfillmentValidator
 except ImportError as e:
     _import_errors.append(str(e))
     CommitmentFulfillmentValidator = None  # type: ignore
 
 try:
-    from src.ai.harness.character_state_validator import CharacterStateContinuityValidator
+    from src.ai.harness.character_state_validator import \
+        CharacterStateContinuityValidator
 except ImportError as e:
     _import_errors.append(str(e))
     CharacterStateContinuityValidator = None  # type: ignore
 
 try:
-    from src.ai.harness.item_continuity_validator import ItemContinuityValidator
+    from src.ai.harness.item_continuity_validator import \
+        ItemContinuityValidator
 except ImportError as e:
     _import_errors.append(str(e))
     ItemContinuityValidator = None  # type: ignore
@@ -42,25 +45,30 @@ except ImportError as e:
     SpatialMovementValidator = None  # type: ignore
 
 try:
-    from src.ai.harness.npc_attribute_validator import NPCAttributeStabilityValidator
+    from src.ai.harness.npc_attribute_validator import \
+        NPCAttributeStabilityValidator
 except ImportError as e:
     _import_errors.append(str(e))
     NPCAttributeStabilityValidator = None  # type: ignore
 
 try:
-    from src.ai.harness.info_barrier_validator import InformationBarrierValidator
+    from src.ai.harness.info_barrier_validator import \
+        InformationBarrierValidator
 except ImportError as e:
     _import_errors.append(str(e))
     InformationBarrierValidator = None  # type: ignore
 
 try:
-    from src.ai.harness.cause_effect_validator import CauseEffectConsistencyValidator
+    from src.ai.harness.cause_effect_validator import \
+        CauseEffectConsistencyValidator
 except ImportError as e:
     _import_errors.append(str(e))
     CauseEffectConsistencyValidator = None  # type: ignore
 
 if _import_errors:
-    pytestmark = pytest.mark.skip(reason=f"硬性逻辑验证器尚未实现（TDD红色阶段）: {_import_errors[0]}")
+    pytestmark = pytest.mark.skip(
+        reason=f"硬性逻辑验证器尚未实现（TDD红色阶段）: {_import_errors[0]}"
+    )
 
 
 # ==================== Shared Helpers ====================
@@ -82,7 +90,8 @@ def _base_context(world_model_data=None, **overrides):
                 {"week": 11, "choice": "前往洛阳", "effects": {"energy": -10}},
             ],
         },
-        "world_model_data": world_model_data or {
+        "world_model_data": world_model_data
+        or {
             "character_locations": {
                 "李逍遥": {"location": "洛阳城", "region": "河南", "since_week": 11},
                 "赵灵儿": {"location": "苗疆", "region": "云南", "since_week": 0},
@@ -140,14 +149,16 @@ def _rebuild_world_model(ctx):
     """从 world_model_data 构建 world_model 对象。"""
     wmd = ctx.get("world_model_data")
     if wmd and isinstance(wmd, dict):
-        ctx["world_model"] = SimpleNamespace(**{
-            "current_week": ctx.get("current_week", 12),
-            "active_commitments": wmd.get("active_commitments", []),
-            "physical_states": wmd.get("physical_states", {}),
-            "character_profiles": wmd.get("character_profiles", {}),
-            "character_locations": wmd.get("character_locations", {}),
-            "causal_chains": wmd.get("causal_chains", []),
-        })
+        ctx["world_model"] = SimpleNamespace(
+            **{
+                "current_week": ctx.get("current_week", 12),
+                "active_commitments": wmd.get("active_commitments", []),
+                "physical_states": wmd.get("physical_states", {}),
+                "character_profiles": wmd.get("character_profiles", {}),
+                "character_locations": wmd.get("character_locations", {}),
+                "causal_chains": wmd.get("causal_chains", []),
+            }
+        )
 
 
 # ==================== 时间一致性验证器 ====================
@@ -239,8 +250,7 @@ class TestCommitmentFulfillmentValidator:
         """承诺在故事中被提及/处理 → 通过。"""
         v = CommitmentFulfillmentValidator()
         text = (
-            "李逍遥想起答应师父三日内取回灵药的承诺，"
-            "不敢再耽搁，立刻出城寻找灵药。"
+            "李逍遥想起答应师父三日内取回灵药的承诺，" "不敢再耽搁，立刻出城寻找灵药。"
         )
         ctx = _base_context()
         ctx["world_model_data"]["active_commitments"][0]["deadline_week"] = 12
@@ -527,7 +537,10 @@ class TestInformationBarrierValidator:
         v = InformationBarrierValidator()
         ctx = _base_context()
         ctx["character_knowledge_sets"] = {
-            "王二": {"knows": ["李逍遥在洛阳"], "secrets_unknown": ["藏宝图线索", "师门任务"]},
+            "王二": {
+                "knows": ["李逍遥在洛阳"],
+                "secrets_unknown": ["藏宝图线索", "师门任务"],
+            },
         }
         text = "王二对李逍遥说：'我听说你得到了藏宝图线索？那可是天大的秘密！'"
         passed, evidence, details = v.validate(text, ctx)
@@ -560,9 +573,7 @@ class TestInformationBarrierValidator:
             "王二": {"knows": ["李逍遥在洛阳"], "secrets_unknown": ["灵药任务"]},
             "赵灵儿": {"knows": ["李逍遥是剑客"], "secrets_unknown": ["洛阳之行"]},
         }
-        text = (
-            "赵灵儿写信道：'听闻你去了洛阳寻找灵药，务必小心。'"
-        )
+        text = "赵灵儿写信道：'听闻你去了洛阳寻找灵药，务必小心。'"
         passed, evidence, details = v.validate(text, ctx)
         assert passed is False, "赵灵儿不应知道洛阳之行和灵药任务"
 
@@ -646,34 +657,42 @@ class TestCauseEffectConsistencyValidator:
 class TestAllValidatorsDegradation:
     """所有验证器异常时返回空 ValidationResult（passed=True, 空 evidence）而非崩溃。"""
 
-    @pytest.mark.parametrize("ValidatorClass", [
-        TemporalConsistencyValidator,
-        CommitmentFulfillmentValidator,
-        CharacterStateContinuityValidator,
-        ItemContinuityValidator,
-        SpatialMovementValidator,
-        NPCAttributeStabilityValidator,
-        InformationBarrierValidator,
-        CauseEffectConsistencyValidator,
-    ])
+    @pytest.mark.parametrize(
+        "ValidatorClass",
+        [
+            TemporalConsistencyValidator,
+            CommitmentFulfillmentValidator,
+            CharacterStateContinuityValidator,
+            ItemContinuityValidator,
+            SpatialMovementValidator,
+            NPCAttributeStabilityValidator,
+            InformationBarrierValidator,
+            CauseEffectConsistencyValidator,
+        ],
+    )
     def test_empty_context_no_crash(self, ValidatorClass):
         """空 context 不崩溃。"""
         v = ValidatorClass()
         passed, evidence, details = v.validate("一段普通的故事文本。", {})
-        assert passed is True, f"{ValidatorClass.__name__} 空 context 应返回 passed=True"
+        assert (
+            passed is True
+        ), f"{ValidatorClass.__name__} 空 context 应返回 passed=True"
         assert isinstance(evidence, str)
         assert isinstance(details, dict)
 
-    @pytest.mark.parametrize("ValidatorClass", [
-        TemporalConsistencyValidator,
-        CommitmentFulfillmentValidator,
-        CharacterStateContinuityValidator,
-        ItemContinuityValidator,
-        SpatialMovementValidator,
-        NPCAttributeStabilityValidator,
-        InformationBarrierValidator,
-        CauseEffectConsistencyValidator,
-    ])
+    @pytest.mark.parametrize(
+        "ValidatorClass",
+        [
+            TemporalConsistencyValidator,
+            CommitmentFulfillmentValidator,
+            CharacterStateContinuityValidator,
+            ItemContinuityValidator,
+            SpatialMovementValidator,
+            NPCAttributeStabilityValidator,
+            InformationBarrierValidator,
+            CauseEffectConsistencyValidator,
+        ],
+    )
     def test_empty_story_no_crash(self, ValidatorClass):
         """空故事文本不崩溃。"""
         v = ValidatorClass()
@@ -683,16 +702,19 @@ class TestAllValidatorsDegradation:
         assert isinstance(evidence, str)
         assert isinstance(details, dict)
 
-    @pytest.mark.parametrize("ValidatorClass", [
-        TemporalConsistencyValidator,
-        CommitmentFulfillmentValidator,
-        CharacterStateContinuityValidator,
-        ItemContinuityValidator,
-        SpatialMovementValidator,
-        NPCAttributeStabilityValidator,
-        InformationBarrierValidator,
-        CauseEffectConsistencyValidator,
-    ])
+    @pytest.mark.parametrize(
+        "ValidatorClass",
+        [
+            TemporalConsistencyValidator,
+            CommitmentFulfillmentValidator,
+            CharacterStateContinuityValidator,
+            ItemContinuityValidator,
+            SpatialMovementValidator,
+            NPCAttributeStabilityValidator,
+            InformationBarrierValidator,
+            CauseEffectConsistencyValidator,
+        ],
+    )
     def test_none_fields_no_crash(self, ValidatorClass):
         """context 中关键字段为 None 不崩溃。"""
         v = ValidatorClass()
@@ -704,6 +726,8 @@ class TestAllValidatorsDegradation:
             "current_week": None,
         }
         passed, evidence, details = v.validate("一段故事。", ctx)
-        assert passed is True, f"{ValidatorClass.__name__} None fields 应优雅降级为 passed=True"
+        assert (
+            passed is True
+        ), f"{ValidatorClass.__name__} None fields 应优雅降级为 passed=True"
         assert isinstance(evidence, str)
         assert isinstance(details, dict)

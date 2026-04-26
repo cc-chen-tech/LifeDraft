@@ -74,7 +74,12 @@ PROFILES = {
     ),
     QualityLevel.EXPERT: HarnessProfile(
         level=QualityLevel.EXPERT,
-        enabled_priorities={Priority.CRITICAL, Priority.HIGH, Priority.MEDIUM, Priority.LOW},
+        enabled_priorities={
+            Priority.CRITICAL,
+            Priority.HIGH,
+            Priority.MEDIUM,
+            Priority.LOW,
+        },
         skip_preflight=False,
         skip_ai_consistency_check=False,
         max_retries=2,
@@ -89,7 +94,12 @@ PROFILES = {
     ),
     QualityLevel.MASTER: HarnessProfile(
         level=QualityLevel.MASTER,
-        enabled_priorities={Priority.CRITICAL, Priority.HIGH, Priority.MEDIUM, Priority.LOW},
+        enabled_priorities={
+            Priority.CRITICAL,
+            Priority.HIGH,
+            Priority.MEDIUM,
+            Priority.LOW,
+        },
         skip_preflight=False,
         skip_ai_consistency_check=False,
         max_retries=9,

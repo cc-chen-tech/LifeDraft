@@ -8,8 +8,7 @@ from fastapi.testclient import TestClient
 # API tests - gameplay endpoints
 pytestmark = pytest.mark.api
 
-from src.api import deps
-from src.api.main import app
+from src.api.main import app  # noqa: E402
 
 
 @pytest.fixture
@@ -431,30 +430,48 @@ class TestSummaryWeekRange:
         mock_player.energy = 80
         mock_player.mood = 70
         mock_player.round_history = [
-            {"week": 4, "round": 0, "event_description": "第五周事件", "story_continuation": "故事5", "choice": "选择5"},
-            {"week": 0, "round": 0, "event_description": "第一周事件", "story_continuation": "故事1", "choice": "选择1"},
-            {"week": 2, "round": 0, "event_description": "第三周事件", "story_continuation": "故事3", "choice": "选择3"},
+            {
+                "week": 4,
+                "round": 0,
+                "event_description": "第五周事件",
+                "story_continuation": "故事5",
+                "choice": "选择5",
+            },
+            {
+                "week": 0,
+                "round": 0,
+                "event_description": "第一周事件",
+                "story_continuation": "故事1",
+                "choice": "选择1",
+            },
+            {
+                "week": 2,
+                "round": 0,
+                "event_description": "第三周事件",
+                "story_continuation": "故事3",
+                "choice": "选择3",
+            },
         ]
         mock_player.decision_history = []
         mock_session.game_loop.player_state = mock_player
-        mock_session.game_loop.ai_generator.generate_completion.return_value = "这是一段总结。"
+        mock_session.game_loop.ai_generator.generate_completion.return_value = (
+            "这是一段总结。"
+        )
         mock_session_service.return_value = mock_session
 
-        response = client.post(
-            "/api/games/1/summary", json={}, headers=auth_headers
-        )
+        response = client.post("/api/games/1/summary", json={}, headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
 
         # week 是 0-based，显示时 +1
         # min(4,0,2)=0, max(4,0,2)=4 → start_week=1, end_week=5
-        assert data["start_week"] == 1, (
-            f"start_week 应为 1（min week 0 + 1），实际为 {data['start_week']}"
-        )
-        assert data["end_week"] == 5, (
-            f"end_week 应为 5（max week 4 + 1），实际为 {data['end_week']}"
-        )
+        assert (
+            data["start_week"] == 1
+        ), f"start_week 应为 1（min week 0 + 1），实际为 {data['start_week']}"
+        assert (
+            data["end_week"] == 5
+        ), f"end_week 应为 5（max week 4 + 1），实际为 {data['end_week']}"
 
     def test_summary_single_week(
         self, client, auth_headers, mock_auth, mock_session_service, mock_session
@@ -469,17 +486,27 @@ class TestSummaryWeekRange:
         mock_player.energy = 80
         mock_player.mood = 70
         mock_player.round_history = [
-            {"week": 2, "round": 0, "event_description": "事件", "story_continuation": "故事", "choice": "选择"},
-            {"week": 2, "round": 1, "event_description": "事件2", "story_continuation": "故事2", "choice": "选择2"},
+            {
+                "week": 2,
+                "round": 0,
+                "event_description": "事件",
+                "story_continuation": "故事",
+                "choice": "选择",
+            },
+            {
+                "week": 2,
+                "round": 1,
+                "event_description": "事件2",
+                "story_continuation": "故事2",
+                "choice": "选择2",
+            },
         ]
         mock_player.decision_history = []
         mock_session.game_loop.player_state = mock_player
         mock_session.game_loop.ai_generator.generate_completion.return_value = "总结。"
         mock_session_service.return_value = mock_session
 
-        response = client.post(
-            "/api/games/1/summary", json={}, headers=auth_headers
-        )
+        response = client.post("/api/games/1/summary", json={}, headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -504,9 +531,7 @@ class TestSummaryWeekRange:
         mock_session.game_loop.player_state = mock_player
         mock_session_service.return_value = mock_session
 
-        response = client.post(
-            "/api/games/1/summary", json={}, headers=auth_headers
-        )
+        response = client.post("/api/games/1/summary", json={}, headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()

@@ -64,10 +64,17 @@ test.describe('Music Playlist Persistence', () => {
     await page.reload();
     await page.waitForLoadState('domcontentloaded');
 
-    // Wait for music player to appear (playlist mode shows "播放列表")
-    await page.waitForSelector('text=播放列表', { timeout: 30000 });
+    // Wait for mini player bar and expand it
+    const miniBar = page.locator('.fixed.z-50.bottom-0 .gap-2.px-3.py-2.cursor-pointer').first();
+    await miniBar.waitFor({ state: 'visible', timeout: 30000 });
+    await miniBar.click();
 
-    const songNameLocator = page.locator('.bg-card.border.rounded-lg').filter({ hasText: '播放列表' }).locator('.font-medium.truncate');
+    // Wait for the expanded music player content (either "场景音乐" or "播放列表")
+    const fullPlayer = page.locator('text=/场景音乐|播放列表/').first();
+    await fullPlayer.waitFor({ state: 'visible', timeout: 30000 });
+
+    // Song name should be visible (current song from seeded playlist)
+    const songNameLocator = page.locator('.font-medium.truncate').first();
     await expect(songNameLocator).toBeVisible({ timeout: 30000 });
     const firstSongName = await songNameLocator.textContent();
     expect(firstSongName).toBeTruthy();
@@ -81,10 +88,17 @@ test.describe('Music Playlist Persistence', () => {
     await page.goto(`${BASE_URL}/play?gameId=${gameId}`);
     await page.waitForLoadState('domcontentloaded');
 
-    // Music player should still be present
-    await page.waitForSelector('text=播放列表', { timeout: 30000 });
-    const restoredSongName = await songNameLocator.textContent();
-    expect(restoredSongName).toBeTruthy();
+    // Expand mini bar again
+    const miniBar2 = page.locator('.fixed.z-50.bottom-0 .gap-2.px-3.py-2.cursor-pointer').first();
+    await miniBar2.waitFor({ state: 'visible', timeout: 30000 });
+    await miniBar2.click();
+
+    // Music player expanded content should still be present
+    const fullPlayer2 = page.locator('text=/场景音乐|播放列表/').first();
+    await fullPlayer2.waitFor({ state: 'visible', timeout: 30000 });
+
+    const restoredSongName = page.locator('.font-medium.truncate').first();
+    await expect(restoredSongName).toBeVisible({ timeout: 30000 });
 
     await page.screenshot({ path: 'test-results/playlist-persisted-navigation.png' });
   });

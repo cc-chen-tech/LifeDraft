@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 class WeeklySummaryGenerator:
     """Generates weekly summaries."""
 
-    def __init__(self, ai_generator: Optional[EventGenerator] = None, language: str = "zh"):
+    def __init__(
+        self, ai_generator: Optional[EventGenerator] = None, language: str = "zh"
+    ):
         """
         Initialize weekly summary generator.
 
@@ -47,11 +49,13 @@ class WeeklySummaryGenerator:
         """
         # Calculate changes
         changes = {
-            "energy": current_state.energy - previous_state.get("energy", current_state.energy),
+            "energy": current_state.energy
+            - previous_state.get("energy", current_state.energy),
             "mood": current_state.mood - previous_state.get("mood", current_state.mood),
             "knowledge": current_state.knowledge
             - previous_state.get("knowledge", current_state.knowledge),
-            "wealth": current_state.wealth - previous_state.get("wealth", current_state.wealth),
+            "wealth": current_state.wealth
+            - previous_state.get("wealth", current_state.wealth),
         }
 
         # Generate AI summary
@@ -116,7 +120,9 @@ Generate a vivid weekly summary describing the main changes and feelings."""
             logger.warning(f"Failed to generate AI summary: {e}")
             return self._get_fallback_summary(week, changes, language)
 
-    def _get_fallback_summary(self, week: int, changes: Dict[str, int], language: str) -> str:
+    def _get_fallback_summary(
+        self, week: int, changes: Dict[str, int], language: str
+    ) -> str:
         """Get fallback summary."""
         if language == "zh":
             return f"第{week}周过去了。精力变化{changes['energy']:+d}，情绪变化{changes['mood']:+d}，学识变化{changes['knowledge']:+d}，财富变化{changes['wealth']:+,}。"

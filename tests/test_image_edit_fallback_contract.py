@@ -23,13 +23,20 @@ class TestImageEditFallbackContract:
         service.image_client = MagicMock()
 
         # edit_image 失败
-        service.image_client.edit_image.side_effect = ImageGenerationError("API timeout")
+        service.image_client.edit_image.side_effect = ImageGenerationError(
+            "API timeout"
+        )
         # generate_image 成功
-        service.image_client.generate_image.return_value = (b"fake_image_data", "prompt_used")
+        service.image_client.generate_image.return_value = (
+            b"fake_image_data",
+            "prompt_used",
+        )
 
         # 调用真实的方法逻辑（通过 patch 让 _generate_scene_image 使用真实代码）
         with patch.object(
-            RoundIllustrationService, "_generate_scene_image", RoundIllustrationService._generate_scene_image
+            RoundIllustrationService,
+            "_generate_scene_image",
+            RoundIllustrationService._generate_scene_image,
         ):
             result = RoundIllustrationService._generate_scene_image(
                 self=service,
@@ -40,8 +47,7 @@ class TestImageEditFallbackContract:
             )
 
         assert result[0] == b"fake_image_data", (
-            f"edit 失败后应降级到 generate_image 并返回图片数据，"
-            f"实际返回: {result}"
+            f"edit 失败后应降级到 generate_image 并返回图片数据，" f"实际返回: {result}"
         )
         service.image_client.generate_image.assert_called_once()
 
@@ -54,7 +60,9 @@ class TestImageEditFallbackContract:
         service.image_client.generate_image.return_value = (b"fallback_image", "prompt")
 
         with patch.object(
-            RoundIllustrationService, "_generate_scene_image", RoundIllustrationService._generate_scene_image
+            RoundIllustrationService,
+            "_generate_scene_image",
+            RoundIllustrationService._generate_scene_image,
         ):
             result = RoundIllustrationService._generate_scene_image(
                 self=service,
@@ -74,7 +82,9 @@ class TestImageEditFallbackContract:
         service.image_client.generate_image.return_value = (b"direct_image", "prompt")
 
         with patch.object(
-            RoundIllustrationService, "_generate_scene_image", RoundIllustrationService._generate_scene_image
+            RoundIllustrationService,
+            "_generate_scene_image",
+            RoundIllustrationService._generate_scene_image,
         ):
             result = RoundIllustrationService._generate_scene_image(
                 self=service,
@@ -93,10 +103,14 @@ class TestImageEditFallbackContract:
         service = MagicMock(spec=RoundIllustrationService)
         service.image_client = MagicMock()
 
-        service.image_client.edit_image.return_value = [(b"edited_image", "edit_prompt")]
+        service.image_client.edit_image.return_value = [
+            (b"edited_image", "edit_prompt")
+        ]
 
         with patch.object(
-            RoundIllustrationService, "_generate_scene_image", RoundIllustrationService._generate_scene_image
+            RoundIllustrationService,
+            "_generate_scene_image",
+            RoundIllustrationService._generate_scene_image,
         ):
             result = RoundIllustrationService._generate_scene_image(
                 self=service,
@@ -121,7 +135,9 @@ class TestImageEditFallbackContract:
         )
 
         with patch.object(
-            RoundIllustrationService, "_generate_scene_image", RoundIllustrationService._generate_scene_image
+            RoundIllustrationService,
+            "_generate_scene_image",
+            RoundIllustrationService._generate_scene_image,
         ):
             try:
                 RoundIllustrationService._generate_scene_image(

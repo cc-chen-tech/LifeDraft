@@ -8,10 +8,10 @@ import pytest
 
 from src.services.music_service import NeteaseMusicClient, Song
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_response(status_code: int, json_data: Optional[dict] = None) -> MagicMock:
     """Create a fake httpx.Response."""
@@ -60,6 +60,7 @@ SONG_URL_OK_JSON = {
 # ---------------------------------------------------------------------------
 # search() tests
 # ---------------------------------------------------------------------------
+
 
 class TestNeteaseMusicClientSearch:
     """Tests for NeteaseMusicClient.search()."""
@@ -129,9 +130,7 @@ class TestNeteaseMusicClientSearch:
 
     async def test_search_400_no_retry(self):
         """400 错误不触发重试。"""
-        self.client.client.get = AsyncMock(
-            return_value=_make_response(400)
-        )
+        self.client.client.get = AsyncMock(return_value=_make_response(400))
 
         songs = await self.client.search("轻音乐", max_retries=2)
 
@@ -143,6 +142,7 @@ class TestNeteaseMusicClientSearch:
 # ---------------------------------------------------------------------------
 # get_song_url() tests
 # ---------------------------------------------------------------------------
+
 
 class TestNeteaseMusicClientGetSongUrl:
     """Tests for NeteaseMusicClient.get_song_url()."""
@@ -181,9 +181,7 @@ class TestNeteaseMusicClientGetSongUrl:
     async def test_get_song_url_null_url(self):
         """返回 null URL 时返回 None。"""
         json_data = {"code": 200, "data": [{"url": None}]}
-        self.client.client.get = AsyncMock(
-            return_value=_make_response(200, json_data)
-        )
+        self.client.client.get = AsyncMock(return_value=_make_response(200, json_data))
 
         url = await self.client.get_song_url(1001)
 

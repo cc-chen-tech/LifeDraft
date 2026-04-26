@@ -36,7 +36,8 @@ class TestSceneImageSSEIntegration:
 
     def test_publish_event_updates_latest_cache(self):
         """_publish_scene_image_event 应将事件写入 _scene_image_latest 缓存"""
-        from src.api.routers.images import _publish_scene_image_event, _scene_image_latest
+        from src.api.routers.images import (_publish_scene_image_event,
+                                            _scene_image_latest)
 
         game_id = 999990
         event = {
@@ -80,7 +81,9 @@ class TestSceneImageSSEIntegration:
 
         try:
             with TestClient(app) as client:
-                with client.get(f"/api/images/scene/events/{game_id}", headers=_auth_headers()) as response:
+                with client.get(
+                    f"/api/images/scene/events/{game_id}", headers=_auth_headers()
+                ) as response:
                     assert response.status_code == 200
                     line = response.iter_lines().__next__()
                     data = json.loads(line[6:].decode())
@@ -94,7 +97,8 @@ class TestSceneImageSSEIntegration:
 
     def test_failed_event_cached_and_fetchable(self):
         """失败事件也应被缓存并能通过 SSE 获取"""
-        from src.api.routers.images import _publish_scene_image_event, _scene_image_latest
+        from src.api.routers.images import (_publish_scene_image_event,
+                                            _scene_image_latest)
 
         game_id = 999988
         event = {
@@ -111,10 +115,15 @@ class TestSceneImageSSEIntegration:
         key = f"{game_id}:0:0:result"
         try:
             assert key in _scene_image_latest
-            assert _scene_image_latest[key]["error"] == "Image generation timeout after 180s"
+            assert (
+                _scene_image_latest[key]["error"]
+                == "Image generation timeout after 180s"
+            )
 
             with TestClient(app) as client:
-                with client.get(f"/api/images/scene/events/{game_id}", headers=_auth_headers()) as response:
+                with client.get(
+                    f"/api/images/scene/events/{game_id}", headers=_auth_headers()
+                ) as response:
                     line = response.iter_lines().__next__()
                     data = json.loads(line[6:].decode())
                     assert data["type"] == "scene_image_failed"
@@ -124,27 +133,32 @@ class TestSceneImageSSEIntegration:
 
     def test_publish_from_thread_reaches_sse(self):
         """模拟后台线程发布事件，验证 SSE 端点能获取到"""
-        from src.api.routers.images import _publish_scene_image_event, _scene_image_latest
+        from src.api.routers.images import (_publish_scene_image_event,
+                                            _scene_image_latest)
 
         game_id = 999987
         # 模拟后台线程发布成功事件（与 _trigger_scene_generation_in_background 中调用一致）
-        _publish_scene_image_event({
-            "type": "scene_image_ready",
-            "game_id": game_id,
-            "round_number": 0,
-            "week": 0,
-            "stage": "result",
-            "image_url": "/api/images/file/generated.jpg",
-            "scene_description": "后台生成的场景",
-            "timestamp": "2026-04-19T10:00:00",
-        })
+        _publish_scene_image_event(
+            {
+                "type": "scene_image_ready",
+                "game_id": game_id,
+                "round_number": 0,
+                "week": 0,
+                "stage": "result",
+                "image_url": "/api/images/file/generated.jpg",
+                "scene_description": "后台生成的场景",
+                "timestamp": "2026-04-19T10:00:00",
+            }
+        )
 
         key = f"{game_id}:0:0:result"
         try:
             assert key in _scene_image_latest
 
             with TestClient(app) as client:
-                with client.get(f"/api/images/scene/events/{game_id}", headers=_auth_headers()) as response:
+                with client.get(
+                    f"/api/images/scene/events/{game_id}", headers=_auth_headers()
+                ) as response:
                     line = response.iter_lines().__next__()
                     data = json.loads(line[6:].decode())
                     assert data["type"] == "scene_image_ready"
@@ -154,7 +168,9 @@ class TestSceneImageSSEIntegration:
 
     def test_event_key_format_consistency(self):
         """事件缓存键应使用统一格式 {game_id}:{week}:{round_number}:{stage}"""
-        from src.api.routers.images import _get_event_key, _publish_scene_image_event, _scene_image_latest
+        from src.api.routers.images import (_get_event_key,
+                                            _publish_scene_image_event,
+                                            _scene_image_latest)
 
         game_id = 999987
         event = {

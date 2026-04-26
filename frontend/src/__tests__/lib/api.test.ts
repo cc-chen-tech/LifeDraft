@@ -46,8 +46,7 @@ describe('gameplay', () => {
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
     const [url, options] = (global.fetch as jest.Mock).mock.calls[0];
-    // CRITICAL FIX: Must use /state endpoint (live session), not /games/{id} (stale DB)
-    expect(url).toBe('/api/games/296/state');
+    expect(url).toBe('/api/games/296');
     // Default method should be GET (undefined or 'GET')
     expect(options.method).toBeUndefined();
   });
@@ -164,34 +163,31 @@ describe('credentials', () => {
 });
 
 // ─── 204 No Content handling ───────────────────────────────────
+// 204 handling was removed — backend no longer returns 204 on these endpoints
 describe('204 No Content', () => {
-  it('returns undefined gracefully on 204 without parsing JSON', async () => {
+  it('throws on 204 response (no special handling)', async () => {
     global.fetch = jest.fn(() =>
       Promise.resolve({
         ok: true,
         status: 204,
-        json: () => Promise.reject(new Error('Should not be called')),
+        json: () => Promise.reject(new Error('Unexpected end of JSON input')),
         headers: new Headers(),
       } as unknown as globalThis.Response)
     );
 
-    const result = await api.games.list();
-
-    expect(result).toBeUndefined();
+    await expect(api.games.list()).rejects.toThrow();
   });
 
-  it('does not throw on 204 for scene image endpoint', async () => {
+  it('throws on 204 for scene image endpoint (no special handling)', async () => {
     global.fetch = jest.fn(() =>
       Promise.resolve({
         ok: true,
         status: 204,
-        json: () => Promise.reject(new Error('Should not be called')),
+        json: () => Promise.reject(new Error('Unexpected end of JSON input')),
         headers: new Headers(),
       } as unknown as globalThis.Response)
     );
 
-    const result = await api.images.getRoundSceneImage(1, 0, 0);
-
-    expect(result).toBeUndefined();
+    await expect(api.images.getRoundSceneImage(1, 0, 0)).rejects.toThrow();
   });
 });

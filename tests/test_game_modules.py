@@ -176,13 +176,17 @@ class TestEndingEvaluator:
     def test_template_summary_zh(self):
         """Test template summary in Chinese."""
         evaluator = EndingEvaluator()
-        summary = evaluator._generate_template_summary(PlayerState(age=25), "balanced", "zh")
+        summary = evaluator._generate_template_summary(
+            PlayerState(age=25), "balanced", "zh"
+        )
         assert "25岁" in summary
 
     def test_template_summary_en(self):
         """Test template summary in English."""
         evaluator = EndingEvaluator()
-        summary = evaluator._generate_template_summary(PlayerState(age=25), "balanced", "en")
+        summary = evaluator._generate_template_summary(
+            PlayerState(age=25), "balanced", "en"
+        )
         assert "age 25" in summary.lower()
 
     def test_ending_with_ai_generator(self):
@@ -259,7 +263,9 @@ class TestPlayerService:
     def test_update_nonexistent_character(self):
         """Test updating nonexistent character returns False."""
         player = PlayerState()
-        result = PlayerService.update_character_relationship(player, "Nobody", affinity_change=10)
+        result = PlayerService.update_character_relationship(
+            player, "Nobody", affinity_change=10
+        )
         assert result is False
 
     def test_get_characters_context(self):
@@ -307,7 +313,9 @@ class TestStoryService:
         """Test Chinese fallback continuation."""
         mock_gen = Mock()
         service = StoryService(ai_generator=mock_gen, language="zh")
-        result = service.generate_fallback_continuation("选择离开", {"mood": 5, "knowledge": 3})
+        result = service.generate_fallback_continuation(
+            "选择离开", {"mood": 5, "knowledge": 3}
+        )
         assert "选择离开" in result
         assert "心情" in result or "领悟" in result
 
@@ -329,7 +337,9 @@ class TestStoryService:
         """Test fallback with relationship changes."""
         mock_gen = Mock()
         service = StoryService(ai_generator=mock_gen, language="zh")
-        result = service.generate_fallback_continuation("帮助朋友", {"relationships": {"小明": 10}})
+        result = service.generate_fallback_continuation(
+            "帮助朋友", {"relationships": {"小明": 10}}
+        )
         assert "小明" in result
 
     def test_generate_story_continuation_ai_failure(self):
@@ -337,7 +347,9 @@ class TestStoryService:
         mock_gen = Mock()
         mock_gen.generate_completion.side_effect = Exception("API Error")
         service = StoryService(ai_generator=mock_gen, language="zh")
-        result = service.generate_story_continuation("An event", "A choice", {"mood": 5})
+        result = service.generate_story_continuation(
+            "An event", "A choice", {"mood": 5}
+        )
         assert len(result) > 0  # Should return fallback
 
     def test_generate_custom_choice_fallback(self):
@@ -345,7 +357,9 @@ class TestStoryService:
         mock_gen = Mock()
         mock_gen.generate_completion_json.side_effect = Exception("API Error")
         service = StoryService(ai_generator=mock_gen, language="zh")
-        result = service.generate_custom_choice_result("Event description", "自定义选择")
+        result = service.generate_custom_choice_result(
+            "Event description", "自定义选择"
+        )
         assert "story_continuation" in result
         assert "effects" in result
         assert "自定义选择" in result["story_continuation"]

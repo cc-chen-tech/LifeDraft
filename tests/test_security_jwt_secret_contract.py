@@ -35,7 +35,10 @@ class TestJWTSecretSecurityContract:
                             # 如果 os.getenv 有两个参数，第二个就是 fallback
                             if len(node.value.args) >= 2:
                                 fallback = node.value.args[1]
-                                if isinstance(fallback, ast.Constant) and fallback.value:
+                                if (
+                                    isinstance(fallback, ast.Constant)
+                                    and fallback.value
+                                ):
                                     raise AssertionError(
                                         f"JWT_SECRET 有硬编码回退值: {fallback.value!r}. "
                                         "生产代码不能包含硬编码的 JWT secret。"
@@ -43,7 +46,10 @@ class TestJWTSecretSecurityContract:
                             # 检查关键字参数 default=
                             for kw in node.value.keywords:
                                 if kw.arg == "default":
-                                    if isinstance(kw.value, ast.Constant) and kw.value.value:
+                                    if (
+                                        isinstance(kw.value, ast.Constant)
+                                        and kw.value.value
+                                    ):
                                         raise AssertionError(
                                             f"JWT_SECRET 有硬编码回退值: {kw.value.value!r}. "
                                             "生产代码不能包含硬编码的 JWT secret。"
@@ -63,9 +69,7 @@ class TestJWTSecretSecurityContract:
             "mysecret",
         ]
         for secret in forbidden_secrets:
-            assert secret not in source, (
-                f"发现硬编码的 JWT 回退密钥: {secret!r}"
-            )
+            assert secret not in source, f"发现硬编码的 JWT 回退密钥: {secret!r}"
 
     def test_decode_token_rejects_invalid_secret(self, monkeypatch):
         """decode_token 必须拒绝用错误密钥签名的 token"""
@@ -73,16 +77,21 @@ class TestJWTSecretSecurityContract:
 
         # ★ 重新导入以确保使用当前环境变量
         import importlib
+
         from src.api import deps as deps_module
+
         importlib.reload(deps_module)
         decode_token = deps_module.decode_token
 
         from datetime import datetime, timedelta
+
         from jose import jwt
 
         # 用正确的密钥签名
         payload = {"sub": "123", "exp": datetime.utcnow() + timedelta(hours=1)}
-        valid_token = jwt.encode(payload, "test-secret-for-contract-tests", algorithm="HS256")
+        valid_token = jwt.encode(
+            payload, "test-secret-for-contract-tests", algorithm="HS256"
+        )
 
         # 用错误的密钥签名
         invalid_token = jwt.encode(payload, "wrong-secret", algorithm="HS256")

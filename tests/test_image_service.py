@@ -3,8 +3,7 @@
 使用 Mock 隔离外部依赖（AI客户端、存储服务）
 """
 
-import io
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -282,7 +281,7 @@ class TestKeepOldActive:
 
         assert "keep_old_active" in params
         # 验证默认值为 False
-        assert sig.parameters["keep_old_active"].default == False
+        assert sig.parameters["keep_old_active"].default is False
 
     def test_regenerate_image_uses_keep_old_active(self, service):
         """测试 regenerate_image 使用 keep_old_active=True"""

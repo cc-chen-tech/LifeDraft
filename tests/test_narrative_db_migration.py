@@ -5,11 +5,9 @@ TDD先行：验证 character_presets 和 games 表支持 narrative_style_id 字�
 """
 
 import pytest
-from sqlalchemy import create_engine, inspect, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import inspect
 
-from src.database.models import Base, Game, GameState, User
-
+from src.database.models import Game, GameState, User
 
 # ==================== Schema 迁移测试 ====================
 
@@ -22,9 +20,9 @@ class TestNarrativeStyleIdMigration:
         """games 表应包含 narrative_style_id 列。"""
         inspector = inspect(db_engine)
         columns = {col["name"] for col in inspector.get_columns("games")}
-        assert "narrative_style_id" in columns, (
-            f"games 表缺少 narrative_style_id 列，当前列: {columns}"
-        )
+        assert (
+            "narrative_style_id" in columns
+        ), f"games 表缺少 narrative_style_id 列，当前列: {columns}"
 
     def test_games_narrative_style_id_default(self, db_session):
         """games.narrative_style_id 默认值应为 'chinese_classic_saga'。"""
@@ -47,9 +45,9 @@ class TestNarrativeStyleIdMigration:
         # narrative_style_id 应有默认值
         style_id = getattr(game, "narrative_style_id", None)
         # 列定义为 nullable=True，无 server_default 时默认为 None
-        assert style_id is None or style_id == "chinese_classic_saga", (
-            f"默认 narrative_style_id 应为 None 或 'chinese_classic_saga'，实际为 {style_id!r}"
-        )
+        assert (
+            style_id is None or style_id == "chinese_classic_saga"
+        ), f"默认 narrative_style_id 应为 None 或 'chinese_classic_saga'，实际为 {style_id!r}"
 
     def test_games_narrative_style_id_custom_value(self, db_session):
         """games 表可以存储自定义 narrative_style_id。"""
@@ -79,9 +77,9 @@ class TestNarrativeStyleIdMigration:
         if "character_presets" not in tables:
             pytest.skip("character_presets 表尚不存在")
         columns = {col["name"] for col in inspector.get_columns("character_presets")}
-        assert "narrative_style_id" in columns, (
-            f"character_presets 表缺少 narrative_style_id 列，当前列: {columns}"
-        )
+        assert (
+            "narrative_style_id" in columns
+        ), f"character_presets 表缺少 narrative_style_id 列，当前列: {columns}"
 
 
 # ==================== 向后兼容测试 ====================
@@ -142,6 +140,8 @@ class TestNarrativeStyleIdBackwardCompat:
         db_session.add(gs)
         db_session.commit()
 
-        loaded_states = db_session.query(GameState).filter_by(game_id=game.game_id).all()
+        loaded_states = (
+            db_session.query(GameState).filter_by(game_id=game.game_id).all()
+        )
         assert len(loaded_states) == 1
         assert loaded_states[0].state_json["energy"] == 100

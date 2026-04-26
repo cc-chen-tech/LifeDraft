@@ -109,7 +109,9 @@ class OptionGenerator:
                         )
 
                 last_error = "Invalid options format or fewer than 2 options"
-                logger.warning(f"Attempt {attempt + 1}: Invalid options format, retrying...")
+                logger.warning(
+                    f"Attempt {attempt + 1}: Invalid options format, retrying..."
+                )
 
             except Exception as e:
                 last_error = str(e)
@@ -119,12 +121,20 @@ class OptionGenerator:
         logger.error("All attempts failed, using fallback options")
         default_options = [
             EventOption(
-                text=("积极面对新的一天" if language == "zh" else "Face the new day positively"),
+                text=(
+                    "积极面对新的一天"
+                    if language == "zh"
+                    else "Face the new day positively"
+                ),
                 effects={"energy": -5, "mood": 10, "knowledge": 0, "wealth": 0},
                 likely_choice=True,
             ),
             EventOption(
-                text=("保持平常心继续前进" if language == "zh" else "Keep calm and move forward"),
+                text=(
+                    "保持平常心继续前进"
+                    if language == "zh"
+                    else "Keep calm and move forward"
+                ),
                 effects={"energy": 0, "mood": 0, "knowledge": 5, "wealth": 0},
                 likely_choice=False,
             ),
@@ -201,7 +211,9 @@ class OptionGenerator:
                             if not found_match:
                                 for person in key_people:
                                     role = person.get("role", "").lower()
-                                    if role and (name.lower() in role or role in name.lower()):
+                                    if role and (
+                                        name.lower() in role or role in name.lower()
+                                    ):
                                         person_name = person.get("name", "")
                                         if person_name in valid_names:
                                             fixed_relationships[person_name] = value
@@ -216,7 +228,9 @@ class OptionGenerator:
                             # Non-key_people characters can still have relationship changes
                             if not found_match:
                                 fixed_relationships[name] = value
-                                logger.info(f"Keeping non-key_people relationship: '{name}'")
+                                logger.info(
+                                    f"Keeping non-key_people relationship: '{name}'"
+                                )
 
                     # Update relationships in effects
                     option.effects["relationships"] = fixed_relationships
@@ -302,16 +316,22 @@ class OptionGenerator:
             # 检查选项文本长度
             if len(option.text) > 50:
                 if language == "zh":
-                    issues.append(f"选项{i+1}文本过长({len(option.text)}字)，建议控制在15字内")
+                    issues.append(
+                        f"选项{i+1}文本过长({len(option.text)}字)，建议控制在15字内"
+                    )
                 else:
                     issues.append(
                         f"Option {i+1} text too long ({len(option.text)} chars), suggest max 15 words"
                     )
 
             # 检查是否是通用选项（与故事无关）
-            if option.text.lower() in [g.lower() for g in generic_options.get(language, [])]:
+            if option.text.lower() in [
+                g.lower() for g in generic_options.get(language, [])
+            ]:
                 if language == "zh":
-                    issues.append(f"选项{i+1}「{option.text}」过于通用，应与故事情境相关")
+                    issues.append(
+                        f"选项{i+1}「{option.text}」过于通用，应与故事情境相关"
+                    )
                 else:
                     issues.append(
                         f"Option {i+1} '{option.text}' is too generic, should relate to story"
@@ -329,12 +349,17 @@ class OptionGenerator:
                         if name in GENERIC_CHARACTER_NAMES:
                             continue
                         # 允许故事中已经出现过的人物（AI 可能在之前的轮次中引入了该人物）
-                        if name.lower() in story_text_lower or name in story_description:
+                        if (
+                            name.lower() in story_text_lower
+                            or name in story_description
+                        ):
                             logger.info(f"允许非列表人物「{name}」：已在故事文本中出现")
                             continue
                         # 其他情况记录警告，但不阻止生成
                         if language == "zh":
-                            issues.append(f"选项{i+1}中人物「{name}」不在可用人物列表中")
+                            issues.append(
+                                f"选项{i+1}中人物「{name}」不在可用人物列表中"
+                            )
                         else:
                             issues.append(
                                 f"Option {i+1} character '{name}' not in available people list"
@@ -349,7 +374,9 @@ class OptionGenerator:
                 value = effects.get(key, 0)
                 if abs(value) > 30:
                     if language == "zh":
-                        issues.append(f"选项{i+1}的{key}变化过大({value})，建议在-20到20之间")
+                        issues.append(
+                            f"选项{i+1}的{key}变化过大({value})，建议在-20到20之间"
+                        )
                     else:
                         issues.append(
                             f"Option {i+1} {key} change too large ({value}), suggest -20 to 20"

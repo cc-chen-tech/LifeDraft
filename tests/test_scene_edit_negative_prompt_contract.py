@@ -17,18 +17,18 @@ class TestSceneEditNegativePrompt:
 
         scene_negative = SceneImageService.SCENE_EDIT_NEGATIVE_PROMPT
 
-        assert DEFAULT_EDIT_NEGATIVE_PROMPT in scene_negative, (
-            "场景 negative_prompt 应基于默认 negative_prompt"
-        )
+        assert (
+            DEFAULT_EDIT_NEGATIVE_PROMPT in scene_negative
+        ), "场景 negative_prompt 应基于默认 negative_prompt"
         assert "半身像" in scene_negative, "应包含场景约束：半身像"
         assert "特写" in scene_negative, "应包含场景约束：特写"
         assert "裁剪" in scene_negative, "应包含场景约束：裁剪"
         assert "多人重叠" in scene_negative, "应包含场景约束：多人重叠"
         assert "人物缺失" in scene_negative, "应包含场景约束：人物缺失"
         assert "遗漏人物" in scene_negative, "应包含场景约束：遗漏人物"
-        assert len(scene_negative) > len(DEFAULT_EDIT_NEGATIVE_PROMPT), (
-            "场景 negative_prompt 应比默认更长"
-        )
+        assert len(scene_negative) > len(
+            DEFAULT_EDIT_NEGATIVE_PROMPT
+        ), "场景 negative_prompt 应比默认更长"
 
     def test_generate_round_scene_image_passes_scene_negative_prompt(self):
         """generate_round_scene_image 调用 edit_image 时应传入场景专用 negative_prompt"""
@@ -44,14 +44,18 @@ class TestSceneEditNegativePrompt:
 
         captured_calls = []
 
-        def capture_edit_image(reference_image, prompt, size, num_images, extra_params=None):
-            captured_calls.append({
-                "reference_image": reference_image,
-                "prompt": prompt,
-                "size": size,
-                "num_images": num_images,
-                "extra_params": extra_params,
-            })
+        def capture_edit_image(
+            reference_image, prompt, size, num_images, extra_params=None
+        ):
+            captured_calls.append(
+                {
+                    "reference_image": reference_image,
+                    "prompt": prompt,
+                    "size": size,
+                    "num_images": num_images,
+                    "extra_params": extra_params,
+                }
+            )
             return [(b"fake_image", "fake_prompt")]
 
         service.image_client.edit_image = capture_edit_image
@@ -65,10 +69,14 @@ class TestSceneEditNegativePrompt:
         # Mock _get_appearance_anchor to return None
         service._get_appearance_anchor = MagicMock(return_value=None)
 
-        with patch.object(service, "_build_char_info", return_value={
-            "era": "现代",
-            "character_desc": "测试角色",
-        }):
+        with patch.object(
+            service,
+            "_build_char_info",
+            return_value={
+                "era": "现代",
+                "character_desc": "测试角色",
+            },
+        ):
             service.generate_round_scene_image(
                 game_id=1,
                 round_number=1,
@@ -84,9 +92,9 @@ class TestSceneEditNegativePrompt:
         actual_extra = captured_calls[0]["extra_params"]
         assert actual_extra is not None, "应传入 extra_params"
         assert "negative_prompt" in actual_extra, "extra_params 应包含 negative_prompt"
-        assert "赛博朋克" in actual_extra["negative_prompt"], (
-            "negative_prompt 应包含反 sci-fi 约束"
-        )
-        assert "多人重叠" in actual_extra["negative_prompt"], (
-            "negative_prompt 应包含场景特定约束"
-        )
+        assert (
+            "赛博朋克" in actual_extra["negative_prompt"]
+        ), "negative_prompt 应包含反 sci-fi 约束"
+        assert (
+            "多人重叠" in actual_extra["negative_prompt"]
+        ), "negative_prompt 应包含场景特定约束"

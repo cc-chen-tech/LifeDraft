@@ -90,9 +90,9 @@ class TestImageCompressionDB:
         image_data = service.get_image_data(storage_path)
         img = Image.open(io.BytesIO(image_data))
 
-        assert max(img.size) <= 1024, (
-            f"Image should be resized to max 1024px: {img.size}"
-        )
+        assert (
+            max(img.size) <= 1024
+        ), f"Image should be resized to max 1024px: {img.size}"
 
     def test_save_small_image_untouched(self, tmp_path):
         """Small images should not be resized."""
@@ -118,9 +118,10 @@ class TestImageCompressionDB:
         image_data = service.get_image_data(storage_path)
         saved_img = Image.open(io.BytesIO(image_data))
 
-        assert saved_img.size == (500, 500), (
-            f"Small image should not be resized: {saved_img.size}"
-        )
+        assert saved_img.size == (
+            500,
+            500,
+        ), f"Small image should not be resized: {saved_img.size}"
 
     def test_image_url_after_compression(self, tmp_path):
         """Compressed image should have a valid URL."""
@@ -141,9 +142,7 @@ class TestImageCompressionDB:
 
         url = service.get_image_url(storage_path, storage_type)
 
-        assert url.startswith("/api/images/file/"), (
-            f"URL format incorrect: {url}"
-        )
-        assert "TestHero" in url or "1/character" in url, (
-            f"URL should contain path info: {url}"
-        )
+        assert url.startswith("/api/images/file/"), f"URL format incorrect: {url}"
+        assert (
+            "TestHero" in url or "1/character" in url
+        ), f"URL should contain path info: {url}"

@@ -15,10 +15,14 @@ class LifeReviewGenerator:
     def __init__(self, language: str = "zh"):
         self.language = language
 
-    def generate(self, player: PlayerState, achievements: List[Achievement]) -> Dict[str, Any]:
+    def generate(
+        self, player: PlayerState, achievements: List[Achievement]
+    ) -> Dict[str, Any]:
         """Generate complete life review data."""
         return {
-            "personality_labels": self._generate_personality_labels(player, achievements),
+            "personality_labels": self._generate_personality_labels(
+                player, achievements
+            ),
             "key_turning_points": self._extract_turning_points(player),
             "resource_curves": self._build_resource_curves(player),
             "achievement_badge_wall": self._build_badge_wall(achievements),
@@ -86,9 +90,9 @@ class LifeReviewGenerator:
                 turning_points.append(
                     {
                         "week": r.get("week", i),
-                        "description": r.get("summary", r.get("event_description", "重要时刻"))[
-                            :50
-                        ],
+                        "description": r.get(
+                            "summary", r.get("event_description", "重要时刻")
+                        )[:50],
                         "impact_score": min(impact / 50, 1.0),
                     }
                 )
@@ -109,12 +113,18 @@ class LifeReviewGenerator:
 
         for r in player.round_history:
             effects = r.get("effects", {})
-            energy_curve.append(max(0, min(100, energy_curve[-1] + int(effects.get("energy", 0)))))
-            mood_curve.append(max(0, min(100, mood_curve[-1] + int(effects.get("mood", 0)))))
+            energy_curve.append(
+                max(0, min(100, energy_curve[-1] + int(effects.get("energy", 0))))
+            )
+            mood_curve.append(
+                max(0, min(100, mood_curve[-1] + int(effects.get("mood", 0))))
+            )
             knowledge_curve.append(
                 max(0, min(100, knowledge_curve[-1] + int(effects.get("knowledge", 0))))
             )
-            wealth_curve.append(max(0, wealth_curve[-1] + int(effects.get("wealth", 0))))
+            wealth_curve.append(
+                max(0, wealth_curve[-1] + int(effects.get("wealth", 0)))
+            )
 
         # Pad to match week count
         while len(energy_curve) < weeks:
@@ -130,10 +140,14 @@ class LifeReviewGenerator:
             "wealth": wealth_curve,
         }
 
-    def _build_badge_wall(self, achievements: List[Achievement]) -> List[Dict[str, Any]]:
+    def _build_badge_wall(
+        self, achievements: List[Achievement]
+    ) -> List[Dict[str, Any]]:
         """Build achievement badge wall data."""
         rarity_order = {"legendary": 0, "epic": 1, "rare": 2, "common": 3}
-        sorted_achievements = sorted(achievements, key=lambda a: rarity_order.get(a.rarity, 99))
+        sorted_achievements = sorted(
+            achievements, key=lambda a: rarity_order.get(a.rarity, 99)
+        )
         return [
             {
                 "id": a.id,
@@ -147,7 +161,8 @@ class LifeReviewGenerator:
     def _build_relationship_network(self, player: PlayerState) -> Dict[str, Any]:
         """Build relationship network data."""
         nodes: List[Dict[str, Any]] = [
-            {"name": name, "affinity": affinity} for name, affinity in player.relationships.items()
+            {"name": name, "affinity": affinity}
+            for name, affinity in player.relationships.items()
         ]
         # Simple edges: connect everyone to everyone with moderate strength
         edges = []
@@ -162,7 +177,9 @@ class LifeReviewGenerator:
                 )
         return {"nodes": nodes, "edges": edges}
 
-    def _generate_motto(self, player: PlayerState, achievements: List[Achievement]) -> str:
+    def _generate_motto(
+        self, player: PlayerState, achievements: List[Achievement]
+    ) -> str:
         """Generate a life motto based on player's journey."""
         zh = self.language == "zh"
         mottos_zh = [
@@ -182,7 +199,9 @@ class LifeReviewGenerator:
 
         # 根据最高稀有度成就选择
         rarity_scores = {"common": 1, "rare": 2, "epic": 3, "legendary": 4}
-        max_rarity = max((rarity_scores.get(a.rarity, 0) for a in achievements), default=0)
+        max_rarity = max(
+            (rarity_scores.get(a.rarity, 0) for a in achievements), default=0
+        )
 
         idx = min(max_rarity, len(mottos_zh) - 1)
         return mottos_zh[idx] if zh else mottos_en[idx]

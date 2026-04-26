@@ -4,10 +4,9 @@
 """
 
 from unittest.mock import MagicMock, patch
-import pytest
 
-from src.ai.story_generator import StoryGenerator
 from src.ai.harness.quality_level import QualityLevel
+from src.ai.story_generator import StoryGenerator
 
 
 def _make_generator(level: QualityLevel):

@@ -8,7 +8,6 @@ import pytest
 
 from src.ai.narrative.character_arc import CharacterArcEngine
 
-
 # --------------- 测试数据 ---------------
 
 SAMPLE_CHARACTER = {

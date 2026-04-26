@@ -6,25 +6,17 @@ TDD先行：测试 StyleAwareValidator 的4维度评分（结构完整性、节�
 
 import pytest
 
-from src.ai.narrative.style_manifest import (
-    GlobalParameters,
-    LanguageConfig,
-    PhilosophyConfig,
-    StructureConfig,
-    StyleManifest,
-    TechniqueConfig,
-)
-
 # TDD: 模块尚不存在，导入失败时标记整个模块为 skip
 try:
     from src.ai.narrative.style_validator import StyleAwareValidator
 except ImportError:
-    pytestmark = pytest.mark.skip(reason="src.ai.narrative.style_validator 尚未实现（TDD红色阶段）")
+    pytestmark = pytest.mark.skip(
+        reason="src.ai.narrative.style_validator 尚未实现（TDD红色阶段）"
+    )
     StyleAwareValidator = None  # type: ignore
 
 # ConstraintType 可能尚无新成员，但模块已存在
 from src.ai.harness.constraint_registry import ConstraintType
-
 
 # ==================== 基本功能测试 ====================
 
@@ -42,7 +34,11 @@ class TestStyleAwareValidatorBasic:
         """validate 返回包含 passed, score, details 的结果。"""
         validator = StyleAwareValidator(sample_style_manifest)
         result = validator.validate(mock_story_text)
-        assert hasattr(result, "passed") or isinstance(result, dict) or isinstance(result, tuple)
+        assert (
+            hasattr(result, "passed")
+            or isinstance(result, dict)
+            or isinstance(result, tuple)
+        )
         # 如果返回 tuple: (passed, score, details)
         if isinstance(result, tuple):
             assert len(result) == 3
@@ -139,11 +135,21 @@ class TestWeightConfiguration:
         """不同权重导致不同综合分数。"""
         v1 = StyleAwareValidator(
             sample_style_manifest,
-            weights={"structure": 1.0, "pacing": 0.0, "language": 0.0, "technique": 0.0},
+            weights={
+                "structure": 1.0,
+                "pacing": 0.0,
+                "language": 0.0,
+                "technique": 0.0,
+            },
         )
         v2 = StyleAwareValidator(
             sample_style_manifest,
-            weights={"structure": 0.0, "pacing": 0.0, "language": 1.0, "technique": 0.0},
+            weights={
+                "structure": 0.0,
+                "pacing": 0.0,
+                "language": 1.0,
+                "technique": 0.0,
+            },
         )
         s1 = v1.get_overall_score(mock_story_text)
         s2 = v2.get_overall_score(mock_story_text)
@@ -161,27 +167,27 @@ class TestConstraintTypeIntegration:
 
     def test_style_structure_constraint_type(self):
         """STYLE_STRUCTURE ConstraintType 已注册。"""
-        assert hasattr(ConstraintType, "STYLE_STRUCTURE"), (
-            "ConstraintType 缺少 STYLE_STRUCTURE"
-        )
+        assert hasattr(
+            ConstraintType, "STYLE_STRUCTURE"
+        ), "ConstraintType 缺少 STYLE_STRUCTURE"
 
     def test_style_pacing_constraint_type(self):
         """STYLE_PACING ConstraintType 已注册。"""
-        assert hasattr(ConstraintType, "STYLE_PACING"), (
-            "ConstraintType 缺少 STYLE_PACING"
-        )
+        assert hasattr(
+            ConstraintType, "STYLE_PACING"
+        ), "ConstraintType 缺少 STYLE_PACING"
 
     def test_style_language_constraint_type(self):
         """STYLE_LANGUAGE ConstraintType 已注册。"""
-        assert hasattr(ConstraintType, "STYLE_LANGUAGE"), (
-            "ConstraintType 缺少 STYLE_LANGUAGE"
-        )
+        assert hasattr(
+            ConstraintType, "STYLE_LANGUAGE"
+        ), "ConstraintType 缺少 STYLE_LANGUAGE"
 
     def test_style_technique_constraint_type(self):
         """STYLE_TECHNIQUE ConstraintType 已注册。"""
-        assert hasattr(ConstraintType, "STYLE_TECHNIQUE"), (
-            "ConstraintType 缺少 STYLE_TECHNIQUE"
-        )
+        assert hasattr(
+            ConstraintType, "STYLE_TECHNIQUE"
+        ), "ConstraintType 缺少 STYLE_TECHNIQUE"
 
 
 # ==================== Harness 集成接口测试 ====================

@@ -8,7 +8,6 @@ import pytest
 
 from src.ai.narrative.world_breathing import WorldBreathingEngine
 
-
 # --------------- 测试数据 ---------------
 
 SAMPLE_EVENTS = [

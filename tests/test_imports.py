@@ -107,7 +107,8 @@ class TestSSEHelpersLazyImports:
         from src.database.models import Game
         from src.database.models import Image as ImageModel
         from src.database.models import SceneImage, SessionLocal
-        from src.game.round.illustration_service import RoundIllustrationService
+        from src.game.round.illustration_service import \
+            RoundIllustrationService
         from src.services.image_storage import ImageStorageService
 
         assert ImageClient is not None
@@ -216,14 +217,16 @@ class TestNarrativeSystemImports:
     """验证叙事风格引擎模块导入可达"""
 
     def test_import_style_manifest(self):
-        from src.ai.narrative.style_manifest import StyleManifest, StyleLoader, get_style
+        from src.ai.narrative.style_manifest import (StyleLoader,
+                                                     StyleManifest, get_style)
 
         assert StyleManifest is not None
         assert StyleLoader is not None
         assert callable(get_style)
 
     def test_import_style_prompt_builder(self):
-        from src.ai.narrative.style_prompt_builder import StyleAwarePromptBuilder
+        from src.ai.narrative.style_prompt_builder import \
+            StyleAwarePromptBuilder
 
         assert StyleAwarePromptBuilder is not None
 
@@ -273,9 +276,7 @@ class TestCreativeSystemImports:
 
     def test_import_foreshadowing(self):
         from src.ai.creative.foreshadowing_tech import (
-            ForeshadowingTechniqueLibrary,
-            HookInjector,
-        )
+            ForeshadowingTechniqueLibrary, HookInjector)
 
         assert ForeshadowingTechniqueLibrary is not None
         assert HookInjector is not None
@@ -295,22 +296,26 @@ class TestHarnessValidatorImports:
     """验证8个硬性逻辑验证器导入可达"""
 
     def test_import_temporal_validator(self):
-        from src.ai.harness.temporal_validator import validate_temporal_consistency
+        from src.ai.harness.temporal_validator import \
+            validate_temporal_consistency
 
         assert callable(validate_temporal_consistency)
 
     def test_import_commitment_validator(self):
-        from src.ai.harness.commitment_validator import validate_commitment_fulfillment
+        from src.ai.harness.commitment_validator import \
+            validate_commitment_fulfillment
 
         assert callable(validate_commitment_fulfillment)
 
     def test_import_character_state_validator(self):
-        from src.ai.harness.character_state_validator import validate_character_state_continuity
+        from src.ai.harness.character_state_validator import \
+            validate_character_state_continuity
 
         assert callable(validate_character_state_continuity)
 
     def test_import_item_continuity_validator(self):
-        from src.ai.harness.item_continuity_validator import validate_item_continuity
+        from src.ai.harness.item_continuity_validator import \
+            validate_item_continuity
 
         assert callable(validate_item_continuity)
 
@@ -320,17 +325,20 @@ class TestHarnessValidatorImports:
         assert callable(validate_spatial_movement)
 
     def test_import_npc_attribute_validator(self):
-        from src.ai.harness.npc_attribute_validator import validate_npc_attribute_stability
+        from src.ai.harness.npc_attribute_validator import \
+            validate_npc_attribute_stability
 
         assert callable(validate_npc_attribute_stability)
 
     def test_import_info_barrier_validator(self):
-        from src.ai.harness.info_barrier_validator import validate_information_barrier
+        from src.ai.harness.info_barrier_validator import \
+            validate_information_barrier
 
         assert callable(validate_information_barrier)
 
     def test_import_cause_effect_validator(self):
-        from src.ai.harness.cause_effect_validator import validate_cause_effect_consistency
+        from src.ai.harness.cause_effect_validator import \
+            validate_cause_effect_consistency
 
         assert callable(validate_cause_effect_consistency)
 

@@ -3,10 +3,8 @@
 验证 HarnessProfile、PROFILES 以及后端模型/API 的字段一致性.
 """
 
-import pytest
-
-from src.ai.harness.quality_level import QualityLevel, HarnessProfile, PROFILES
-from src.database.models import Game, CharacterPreset
+from src.ai.harness.quality_level import PROFILES, QualityLevel
+from src.database.models import CharacterPreset, Game
 
 
 def test_fast_profile_contract():

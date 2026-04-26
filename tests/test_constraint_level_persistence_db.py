@@ -1,8 +1,8 @@
 """真实 DB 集成测试：constraint_level 保存→读取链路完整。"""
 
-import pytest
-from fastapi.testclient import TestClient
 from unittest.mock import patch
+
+from fastapi.testclient import TestClient
 
 
 class TestConstraintLevelPersistence:

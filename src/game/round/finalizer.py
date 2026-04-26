@@ -111,12 +111,18 @@ class RoundFinalizer:
                 )
             )
             # Extract items from this week's stories
-            parallel_tasks.append(executor.submit(self._extract_items_from_week, new_week))
+            parallel_tasks.append(
+                executor.submit(self._extract_items_from_week, new_week)
+            )
             # Extract landmarks from this week's stories
-            parallel_tasks.append(executor.submit(self._extract_landmarks_from_week, new_week))
+            parallel_tasks.append(
+                executor.submit(self._extract_landmarks_from_week, new_week)
+            )
             # 4-week summary (every 4 weeks)
             if new_week > 0 and new_week % 4 == 0:
-                parallel_tasks.append(executor.submit(self._generate_four_week_summary, new_week))
+                parallel_tasks.append(
+                    executor.submit(self._generate_four_week_summary, new_week)
+                )
             # Wait for all parallel tasks
             for future in as_completed(parallel_tasks):
                 try:
@@ -143,7 +149,9 @@ class RoundFinalizer:
         if not week_rounds:
             return {
                 "summary": (
-                    "本周平静地度过了。" if self.language == "zh" else "This week passed quietly."
+                    "本周平静地度过了。"
+                    if self.language == "zh"
+                    else "This week passed quietly."
                 ),
                 "bonus_effects": {},
             }
@@ -159,7 +167,9 @@ class RoundFinalizer:
             logger.error(f"Failed to generate weekly summary: {e}")
             return {
                 "summary": (
-                    "本周充实而忙碌。" if self.language == "zh" else "This week was full and busy."
+                    "本周充实而忙碌。"
+                    if self.language == "zh"
+                    else "This week was full and busy."
                 ),
                 "bonus_effects": {},
             }
@@ -185,7 +195,8 @@ class RoundFinalizer:
             "current_round": player_state.current_round,
             "rounds_per_week": player_state.rounds_per_week,
             "round_name": player_state.get_round_name(self.language),
-            "is_last_round": player_state.current_round == player_state.rounds_per_week - 1,
+            "is_last_round": player_state.current_round
+            == player_state.rounds_per_week - 1,
             "week_rounds_completed": len(player_state.get_current_week_rounds()),
         }
 
@@ -251,7 +262,9 @@ class RoundFinalizer:
 
         try:
             # Get all 4-week summaries for the year
-            four_week_summaries = player_state.four_week_summaries[-12:]  # 48 weeks = 12 periods
+            four_week_summaries = player_state.four_week_summaries[
+                -12:
+            ]  # 48 weeks = 12 periods
             if len(four_week_summaries) < 12:
                 return
 
@@ -395,7 +408,9 @@ class RoundFinalizer:
                     if name and name in player_state.landmarks:
                         # 更新出现次数和最近出现周数
                         current_data = player_state.landmarks[name]
-                        current_data["appear_count"] = current_data.get("appear_count", 1) + 1
+                        current_data["appear_count"] = (
+                            current_data.get("appear_count", 1) + 1
+                        )
                         current_data["last_appear_week"] = week
                         player_state.landmarks[name] = current_data
                         logger.debug(

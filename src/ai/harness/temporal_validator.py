@@ -59,10 +59,42 @@ SEASON_RANGES = {
 
 # 季节与其矛盾描写
 SEASON_CONFLICT_KEYWORDS: Dict[str, List[str]] = {
-    "春": ["大雪纷飞", "冰天雪地", "寒冬腊月", "酷暑难耐", "烈日炎炎", "骄阳似火", "蝉鸣阵阵"],
-    "夏": ["大雪纷飞", "冰天雪地", "寒风刺骨", "春暖花开", "万物复苏", "桃花盛开", "柳芽初绽"],
-    "秋": ["大雪纷飞", "冰天雪地", "春暖花开", "酷暑难耐", "烈日炎炎", "万物复苏", "骄阳似火"],
-    "冬": ["春暖花开", "万物复苏", "酷暑难耐", "烈日炎炎", "绿树成荫", "蝉鸣阵阵", "骄阳似火"],
+    "春": [
+        "大雪纷飞",
+        "冰天雪地",
+        "寒冬腊月",
+        "酷暑难耐",
+        "烈日炎炎",
+        "骄阳似火",
+        "蝉鸣阵阵",
+    ],
+    "夏": [
+        "大雪纷飞",
+        "冰天雪地",
+        "寒风刺骨",
+        "春暖花开",
+        "万物复苏",
+        "桃花盛开",
+        "柳芽初绽",
+    ],
+    "秋": [
+        "大雪纷飞",
+        "冰天雪地",
+        "春暖花开",
+        "酷暑难耐",
+        "烈日炎炎",
+        "万物复苏",
+        "骄阳似火",
+    ],
+    "冬": [
+        "春暖花开",
+        "万物复苏",
+        "酷暑难耐",
+        "烈日炎炎",
+        "绿树成荫",
+        "蝉鸣阵阵",
+        "骄阳似火",
+    ],
 }
 
 # 中文时间表达正则
@@ -148,10 +180,14 @@ class TemporalConsistencyValidator:
             details["time_references"] = time_refs
 
             # 2. 季节一致性检查
-            season_ok, season_info = self.check_season_consistency(story_text, current_week)
+            season_ok, season_info = self.check_season_consistency(
+                story_text, current_week
+            )
             details["season_check"] = season_info
             if not season_ok:
-                violations.append(season_info.get("violation", "季节描写与当前周数矛盾"))
+                violations.append(
+                    season_info.get("violation", "季节描写与当前周数矛盾")
+                )
 
             # 3. 角色年龄检查
             age = None
@@ -196,7 +232,9 @@ class TemporalConsistencyValidator:
                 )
         return refs
 
-    def check_season_consistency(self, text: str, current_week: int) -> Tuple[bool, dict]:
+    def check_season_consistency(
+        self, text: str, current_week: int
+    ) -> Tuple[bool, dict]:
         """验证季节描写与游戏周数匹配。"""
         current_season = self._get_season(current_week)
         conflicts = SEASON_CONFLICT_KEYWORDS.get(current_season, [])
@@ -269,6 +307,8 @@ class TemporalConsistencyValidator:
         return "春"
 
 
-def validate_temporal_consistency(story_text: str, context: dict) -> Tuple[bool, str, dict]:
+def validate_temporal_consistency(
+    story_text: str, context: dict
+) -> Tuple[bool, str, dict]:
     """模块级验证函数。"""
     return TemporalConsistencyValidator().validate(story_text, context)

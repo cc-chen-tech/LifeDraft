@@ -110,8 +110,7 @@ class TestCurrentEventDataPersistence:
         saved_event = state_dict["current_event_data"]
         assert saved_event is not None, "current_event_data 不应为 None"
         assert (
-            saved_event.get("event_description")
-            == current_event["event_description"]
+            saved_event.get("event_description") == current_event["event_description"]
         )
         assert len(saved_event.get("options", [])) == 3
 
@@ -247,8 +246,7 @@ class TestCurrentEventDataPersistence:
             "否则刷新后会重新生成章节 (Bug #29)"
         )
         assert (
-            loaded_event.get("event_description")
-            == current_event["event_description"]
+            loaded_event.get("event_description") == current_event["event_description"]
         )
         assert len(loaded_event.get("options", [])) == 2
         assert loaded_event.get("story_text") == current_event["story_text"]
@@ -256,9 +254,7 @@ class TestCurrentEventDataPersistence:
         patcher1.stop()
         patcher2.stop()
 
-    def test_save_preserves_current_event_data_across_multiple_saves(
-        self, db_session
-    ):
+    def test_save_preserves_current_event_data_across_multiple_saves(self, db_session):
         """多次保存不应累积清除 current_event_data。"""
         repo, patcher1, patcher2 = _make_state_repo(db_session)
 

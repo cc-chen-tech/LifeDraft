@@ -4,12 +4,12 @@
 使用真实 asyncio 事件循环和 Queue 模拟 SSE 流。
 """
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from src.api.routers.gameplay.sse_helpers import make_sse_event, stream_round_event
+from src.api.routers.gameplay.sse_helpers import (make_sse_event,
+                                                  stream_round_event)
 
 
 class TestSSEStreamTimeout:
@@ -25,6 +25,7 @@ class TestSSEStreamTimeout:
         game_loop = MagicMock()
         # 模拟一个永远不会完成的生成（同步阻塞，在线程池中执行）
         import threading
+
         stop_event = threading.Event()
 
         def blocking_generation(**kwargs):
@@ -65,6 +66,7 @@ class TestSSEStreamTimeout:
                     stream_cb(f"chunk {i}")
                 # 在线程中不能使用 asyncio.sleep，用 time.sleep
                 import time
+
                 time.sleep(0.05)
             # 返回一个 mock event，model_dump 必须返回可 JSON 序列化的数据
             mock_event = MagicMock()
@@ -128,7 +130,9 @@ class TestSSEErrorEventFormat:
 
     def test_sse_error_event_contains_error_field(self):
         """SSE error 事件必须包含 'error' 字段。"""
-        event = make_sse_event("error", {"error": "Timeout waiting for event generation"})
+        event = make_sse_event(
+            "error", {"error": "Timeout waiting for event generation"}
+        )
         assert "error" in event
         assert "Timeout waiting for event generation" in event
 
@@ -182,9 +186,9 @@ class TestGenerationCompletesBeforePollingTimeout:
         TYPICAL_GENERATION_TIME = 60  # 秒，基于日志观察
         POLLING_TIMEOUT = 300  # 秒
 
-        assert TYPICAL_GENERATION_TIME < POLLING_TIMEOUT, (
-            f"典型生成时间 ({TYPICAL_GENERATION_TIME}s) 应小于 polling 超时 ({POLLING_TIMEOUT}s)"
-        )
+        assert (
+            TYPICAL_GENERATION_TIME < POLLING_TIMEOUT
+        ), f"典型生成时间 ({TYPICAL_GENERATION_TIME}s) 应小于 polling 超时 ({POLLING_TIMEOUT}s)"
 
     def test_polling_interval_allows_multiple_checks(self):
         """polling 间隔应允许在超时前进行多次状态检查。"""

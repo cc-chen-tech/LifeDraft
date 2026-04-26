@@ -13,11 +13,15 @@ def test_story_prompts_no_hardcoded_carbon_credits():
     lines = content.split("\n")
     for i, line in enumerate(lines, 1):
         stripped = line.strip()
-        if stripped.startswith("#") or stripped.startswith('"""') or stripped.startswith("'''"):
+        if (
+            stripped.startswith("#")
+            or stripped.startswith('"""')
+            or stripped.startswith("'''")
+        ):
             continue
-        assert "碳信用" not in line, (
-            f"story_prompts.py 第{i}行仍包含硬编码的'碳信用': {line.strip()}"
-        )
+        assert (
+            "碳信用" not in line
+        ), f"story_prompts.py 第{i}行仍包含硬编码的'碳信用': {line.strip()}"
 
 
 def test_character_wealth_prompt_requires_currency_field():
@@ -44,6 +48,7 @@ def test_frontend_choice_impact_no_hardcoded_carbon_credits():
 def test_story_prompts_importable():
     """story_prompts模块可以正常导入。"""
     from config.prompts import story_prompts
+
     assert hasattr(story_prompts, "get_story_only_prompt")
     assert hasattr(story_prompts, "get_round_event_prompt")
 
@@ -81,7 +86,7 @@ def test_currency_name_used_in_prompt_output():
     )
 
     assert "碳信用" not in prompt, "prompt 中不应包含硬编码的'碳信用'"
-    assert "10,000贯" in prompt, f"prompt 中应包含动态货币单位'贯'，实际输出中未找到"
+    assert "10,000贯" in prompt, "prompt 中应包含动态货币单位'贯'，实际输出中未找到"
 
 
 def test_story_only_prompt_uses_dynamic_currency():

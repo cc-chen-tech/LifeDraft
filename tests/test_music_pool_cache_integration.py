@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from src.services.music_service import CachedSong, CachedMusicPool, MusicService, Song
+from src.services.music_service import (CachedMusicPool, CachedSong,
+                                        MusicService, Song)
 
 
 class TestRandomSelectSongs:
@@ -43,9 +44,7 @@ class TestRandomSelectSongs:
 
         for _ in range(20):
             result = service._random_select_songs(pool)
-            assert 5 <= len(result) <= 8, (
-                f"返回数量 {len(result)} 不在 5-8 范围内"
-            )
+            assert 5 <= len(result) <= 8, f"返回数量 {len(result)} 不在 5-8 范围内"
 
     def test_returns_unique_songs(self):
         """返回的歌曲不重复。"""
@@ -98,17 +97,21 @@ class TestGetOrBuildPool:
         service = MusicService()
 
         # Mock AI analysis
-        service._analyze_story_mood = AsyncMock(return_value={
-            "mood": "悲伤",
-            "keywords": ["伤感", "抒情"],
-            "scene_type": "叙事",
-        })
+        service._analyze_story_mood = AsyncMock(
+            return_value={
+                "mood": "悲伤",
+                "keywords": ["伤感", "抒情"],
+                "scene_type": "叙事",
+            }
+        )
 
         # Mock search to return songs
-        service.music_client.search = AsyncMock(return_value=[
-            Song(id=1001, name="歌曲1", artists=["A"], album="X", duration=200000),
-            Song(id=1002, name="歌曲2", artists=["B"], album="Y", duration=210000),
-        ])
+        service.music_client.search = AsyncMock(
+            return_value=[
+                Song(id=1001, name="歌曲1", artists=["A"], album="X", duration=200000),
+                Song(id=1002, name="歌曲2", artists=["B"], album="Y", duration=210000),
+            ]
+        )
 
         # Mock get_song_url to return URLs
         service.music_client.get_song_url = AsyncMock(
@@ -133,9 +136,14 @@ class TestGetOrBuildPool:
             analysis={"mood": "欢快"},
             verified_songs=[
                 CachedSong(
-                    id=2001, name="缓存歌曲", artists=["C"], album="Z",
-                    duration=180000, url="https://cdn.example.com/2001.mp3",
-                    url_expires_at=time.time() + 480, verified_at=time.time(),
+                    id=2001,
+                    name="缓存歌曲",
+                    artists=["C"],
+                    album="Z",
+                    duration=180000,
+                    url="https://cdn.example.com/2001.mp3",
+                    url_expires_at=time.time() + 480,
+                    verified_at=time.time(),
                 )
             ],
             created_at=time.time(),
@@ -167,16 +175,20 @@ class TestGetOrBuildPool:
         MusicService._pool_cache[story_hash] = (old_pool, time.time() - 7200)
 
         # Mock new analysis
-        service._analyze_story_mood = AsyncMock(return_value={
-            "mood": "新情绪",
-            "keywords": ["新关键词"],
-            "scene_type": "叙事",
-        })
+        service._analyze_story_mood = AsyncMock(
+            return_value={
+                "mood": "新情绪",
+                "keywords": ["新关键词"],
+                "scene_type": "叙事",
+            }
+        )
 
         # Mock search
-        service.music_client.search = AsyncMock(return_value=[
-            Song(id=3001, name="新歌曲", artists=["D"], album="W", duration=190000),
-        ])
+        service.music_client.search = AsyncMock(
+            return_value=[
+                Song(id=3001, name="新歌曲", artists=["D"], album="W", duration=190000),
+            ]
+        )
 
         service.music_client.get_song_url = AsyncMock(
             return_value="https://cdn.example.com/3001.mp3"
@@ -212,9 +224,13 @@ class TestGetOrBuildPool:
         )
 
         # Mock search
-        service.music_client.search = AsyncMock(return_value=[
-            Song(id=4001, name="刷新歌曲", artists=["E"], album="V", duration=220000),
-        ])
+        service.music_client.search = AsyncMock(
+            return_value=[
+                Song(
+                    id=4001, name="刷新歌曲", artists=["E"], album="V", duration=220000
+                ),
+            ]
+        )
 
         service.music_client.get_song_url = AsyncMock(
             return_value="https://cdn.example.com/4001.mp3"
@@ -245,8 +261,12 @@ class TestRefreshPoolUrls:
             analysis={"mood": "悲伤"},
             verified_songs=[
                 CachedSong(
-                    id=5001, name="过期歌曲", artists=["F"], album="U",
-                    duration=200000, url="https://old.example.com/5001.mp3",
+                    id=5001,
+                    name="过期歌曲",
+                    artists=["F"],
+                    album="U",
+                    duration=200000,
+                    url="https://old.example.com/5001.mp3",
                     url_expires_at=now - 10,  # 已过期
                     verified_at=now - 600,
                 ),
@@ -273,8 +293,12 @@ class TestRefreshPoolUrls:
             analysis={"mood": "悲伤"},
             verified_songs=[
                 CachedSong(
-                    id=6001, name="失败歌曲", artists=["G"], album="T",
-                    duration=200000, url="https://old.example.com/6001.mp3",
+                    id=6001,
+                    name="失败歌曲",
+                    artists=["G"],
+                    album="T",
+                    duration=200000,
+                    url="https://old.example.com/6001.mp3",
                     url_expires_at=now - 10,  # 已过期
                     verified_at=now - 600,
                 ),
@@ -298,8 +322,12 @@ class TestRefreshPoolUrls:
             analysis={"mood": "悲伤"},
             verified_songs=[
                 CachedSong(
-                    id=7001, name="新鲜歌曲", artists=["H"], album="S",
-                    duration=200000, url="https://fresh.example.com/7001.mp3",
+                    id=7001,
+                    name="新鲜歌曲",
+                    artists=["H"],
+                    album="S",
+                    duration=200000,
+                    url="https://fresh.example.com/7001.mp3",
                     url_expires_at=now + 400,  # 未过期
                     verified_at=now,
                 ),
@@ -326,8 +354,12 @@ class TestRefreshPoolUrls:
             analysis={"mood": "悲伤"},
             verified_songs=[
                 CachedSong(
-                    id=8001, name="唯一歌曲", artists=["I"], album="R",
-                    duration=200000, url="https://cdn.example.com/8001.mp3",
+                    id=8001,
+                    name="唯一歌曲",
+                    artists=["I"],
+                    album="R",
+                    duration=200000,
+                    url="https://cdn.example.com/8001.mp3",
                     url_expires_at=now + 400,
                     verified_at=now,
                 ),
@@ -336,9 +368,13 @@ class TestRefreshPoolUrls:
         )
 
         # Mock search for supplemental
-        service.music_client.search = AsyncMock(return_value=[
-            Song(id=8002, name="补充歌曲", artists=["J"], album="Q", duration=210000),
-        ])
+        service.music_client.search = AsyncMock(
+            return_value=[
+                Song(
+                    id=8002, name="补充歌曲", artists=["J"], album="Q", duration=210000
+                ),
+            ]
+        )
         service.music_client.get_song_url = AsyncMock(
             return_value="https://cdn.example.com/8002.mp3"
         )
@@ -361,15 +397,19 @@ class TestAnalyzeStoryForMusicWithPool:
         """返回 MusicRecommendation 类型。"""
         service = MusicService()
 
-        service._analyze_story_mood = AsyncMock(return_value={
-            "mood": "悲伤",
-            "keywords": ["伤感"],
-            "scene_type": "叙事",
-        })
-        service.music_client.search = AsyncMock(return_value=[
-            Song(id=9001, name="歌曲1", artists=["A"], album="X", duration=200000),
-            Song(id=9002, name="歌曲2", artists=["B"], album="Y", duration=210000),
-        ])
+        service._analyze_story_mood = AsyncMock(
+            return_value={
+                "mood": "悲伤",
+                "keywords": ["伤感"],
+                "scene_type": "叙事",
+            }
+        )
+        service.music_client.search = AsyncMock(
+            return_value=[
+                Song(id=9001, name="歌曲1", artists=["A"], album="X", duration=200000),
+                Song(id=9002, name="歌曲2", artists=["B"], album="Y", duration=210000),
+            ]
+        )
         service.music_client.get_song_url = AsyncMock(
             side_effect=lambda song_id: f"https://cdn.example.com/{song_id}.mp3"
         )
@@ -377,6 +417,7 @@ class TestAnalyzeStoryForMusicWithPool:
         result = await service.analyze_story_for_music("一个悲伤的故事")
 
         from src.services.music_service import MusicRecommendation
+
         assert isinstance(result, MusicRecommendation)
         assert result.mood == "悲伤"
 
@@ -384,18 +425,25 @@ class TestAnalyzeStoryForMusicWithPool:
         """返回 5-8 首歌曲。"""
         service = MusicService()
 
-        service._analyze_story_mood = AsyncMock(return_value={
-            "mood": "悲伤",
-            "keywords": ["伤感"],
-            "scene_type": "叙事",
-        })
+        service._analyze_story_mood = AsyncMock(
+            return_value={
+                "mood": "悲伤",
+                "keywords": ["伤感"],
+                "scene_type": "叙事",
+            }
+        )
 
         # 生成足够多的歌曲
         songs = []
         for i in range(30):
             songs.append(
-                Song(id=10000 + i, name=f"歌曲{i}", artists=[f"歌手{i}"],
-                     album=f"专辑{i}", duration=200000 + i * 1000)
+                Song(
+                    id=10000 + i,
+                    name=f"歌曲{i}",
+                    artists=[f"歌手{i}"],
+                    album=f"专辑{i}",
+                    duration=200000 + i * 1000,
+                )
             )
         service.music_client.search = AsyncMock(return_value=songs)
         service.music_client.get_song_url = AsyncMock(
@@ -404,25 +452,32 @@ class TestAnalyzeStoryForMusicWithPool:
 
         result = await service.analyze_story_for_music("一个悲伤的故事")
 
-        assert 5 <= len(result.songs) <= 8, (
-            f"返回 {len(result.songs)} 首，不在 5-8 范围内"
-        )
+        assert (
+            5 <= len(result.songs) <= 8
+        ), f"返回 {len(result.songs)} 首，不在 5-8 范围内"
 
     async def test_all_returned_songs_have_url(self):
         """返回的歌曲全部有 URL。"""
         service = MusicService()
 
-        service._analyze_story_mood = AsyncMock(return_value={
-            "mood": "悲伤",
-            "keywords": ["伤感"],
-            "scene_type": "叙事",
-        })
+        service._analyze_story_mood = AsyncMock(
+            return_value={
+                "mood": "悲伤",
+                "keywords": ["伤感"],
+                "scene_type": "叙事",
+            }
+        )
 
         songs = []
         for i in range(30):
             songs.append(
-                Song(id=11000 + i, name=f"歌曲{i}", artists=[f"歌手{i}"],
-                     album=f"专辑{i}", duration=200000 + i * 1000)
+                Song(
+                    id=11000 + i,
+                    name=f"歌曲{i}",
+                    artists=[f"歌手{i}"],
+                    album=f"专辑{i}",
+                    duration=200000 + i * 1000,
+                )
             )
         service.music_client.search = AsyncMock(return_value=songs)
         service.music_client.get_song_url = AsyncMock(
@@ -445,9 +500,14 @@ class TestAnalyzeStoryForMusicWithPool:
             analysis={"mood": "欢快"},
             verified_songs=[
                 CachedSong(
-                    id=12001, name="缓存歌曲", artists=["C"], album="Z",
-                    duration=180000, url="https://cdn.example.com/12001.mp3",
-                    url_expires_at=time.time() + 480, verified_at=time.time(),
+                    id=12001,
+                    name="缓存歌曲",
+                    artists=["C"],
+                    album="Z",
+                    duration=180000,
+                    url="https://cdn.example.com/12001.mp3",
+                    url_expires_at=time.time() + 480,
+                    verified_at=time.time(),
                 )
                 for _ in range(10)
             ],

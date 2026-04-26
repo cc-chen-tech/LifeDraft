@@ -30,7 +30,9 @@ def get_image_thread_pool() -> ThreadPoolExecutor:
     """获取共享的图片生成线程池"""
     global _image_thread_pool
     if _image_thread_pool is None:
-        _image_thread_pool = ThreadPoolExecutor(max_workers=10, thread_name_prefix="image-gen")
+        _image_thread_pool = ThreadPoolExecutor(
+            max_workers=10, thread_name_prefix="image-gen"
+        )
     return _image_thread_pool
 
 
@@ -235,17 +237,23 @@ class ImageService:
         logger.debug(f"User prompt: {user_prompt[:100]}...")
 
         # 从数据库获取 character_settings
-        db_character_settings, db_player_name = self._get_character_settings_from_db(game_id)
+        db_character_settings, db_player_name = self._get_character_settings_from_db(
+            game_id
+        )
         effective_character_settings = db_character_settings or character_settings
         effective_player_name = db_player_name or player_name
 
-        char_info = self._build_char_info(effective_character_settings, effective_player_name)
+        char_info = self._build_char_info(
+            effective_character_settings, effective_player_name
+        )
 
         try:
             # 分析故事选择场景
-            scene_desc, illustration_prompt = self.image_client.analyze_story_for_illustration(
-                story_text=story_text[:2000],
-                character_info=char_info,
+            scene_desc, illustration_prompt = (
+                self.image_client.analyze_story_for_illustration(
+                    story_text=story_text[:2000],
+                    character_info=char_info,
+                )
             )
 
             combined_prompt = f"""{user_prompt}
@@ -261,7 +269,9 @@ class ImageService:
 
             # 获取当前场景插画作为参考
             current_scene = (
-                self.db.query(SceneImage).filter(SceneImage.scene_id == current_scene_id).first()
+                self.db.query(SceneImage)
+                .filter(SceneImage.scene_id == current_scene_id)
+                .first()
             )
 
             if current_scene:
@@ -288,7 +298,9 @@ class ImageService:
 
             # 获取玩家形象图片
             if player_image_id:
-                ref_url, img_id = self._get_player_image_base64(game_id, player_image_id)
+                ref_url, img_id = self._get_player_image_base64(
+                    game_id, player_image_id
+                )
                 if ref_url:
                     reference_urls.append(ref_url)
                     if img_id:
@@ -311,7 +323,9 @@ class ImageService:
                 if results:
                     image_data, _ = results[0]
                 else:
-                    raise ImageGenerationError("Failed to generate scene image with reference")
+                    raise ImageGenerationError(
+                        "Failed to generate scene image with reference"
+                    )
             else:
                 image_data, _ = self.image_client.generate_image(
                     prompt=combined_prompt,
@@ -322,7 +336,9 @@ class ImageService:
             # 保存图片 - ★ 传递 week 和 stage 参数，确保文件名格式一致
             # ★ 使用当前场景的 week 和 stage，保持一致性
             current_week = (
-                current_scene.week if current_scene else self._get_current_week_from_db(game_id)
+                current_scene.week
+                if current_scene
+                else self._get_current_week_from_db(game_id)
             )
             current_stage = current_scene.stage if current_scene else "result"
 
@@ -352,7 +368,9 @@ class ImageService:
                     except (OSError, IOError) as e:
                         logger.warning(f"IO error deleting old scene image: {e}")
                     except Exception as e:
-                        logger.exception(f"Unexpected error deleting old scene image: {e}")
+                        logger.exception(
+                            f"Unexpected error deleting old scene image: {e}"
+                        )
 
                 current_scene.scene_description = scene_desc  # type: ignore[assignment]
                 current_scene.final_prompt = combined_prompt  # type: ignore[assignment]
@@ -613,7 +631,9 @@ class ImageService:
 
         return "，".join(parts) if parts else "一个普通人"
 
-    def _extract_era_from_settings(self, char_settings: Dict[str, Any]) -> Optional[str]:
+    def _extract_era_from_settings(
+        self, char_settings: Dict[str, Any]
+    ) -> Optional[str]:
         """从角色设定中提取时代名称"""
         era = char_settings.get("era")
         if era:
@@ -665,7 +685,9 @@ class ImageService:
         except (ValueError, TypeError, KeyError) as e:
             logger.warning(f"Invalid data getting current week from database: {e}")
         except Exception as e:
-            logger.exception(f"Unexpected error getting current week from database: {e}")
+            logger.exception(
+                f"Unexpected error getting current week from database: {e}"
+            )
 
         return 0
 
@@ -694,7 +716,9 @@ class ImageService:
 
         return char_info
 
-    def _get_player_image_base64(self, game_id: int, player_image_id: Optional[int]) -> tuple:
+    def _get_player_image_base64(
+        self, game_id: int, player_image_id: Optional[int]
+    ) -> tuple:
         """获取玩家形象的 Base64 编码"""
         import base64
 
@@ -725,7 +749,9 @@ class ImageService:
                 .first()
             )
             if player_image:
-                logger.info(f"Auto-selected primary player image: {player_image.image_id}")
+                logger.info(
+                    f"Auto-selected primary player image: {player_image.image_id}"
+                )
 
         if player_image:
             try:
@@ -779,7 +805,9 @@ class ImageService:
 
             original_kb = len(image_data) / 1024
             compressed_kb = len(compressed) / 1024
-            reduction = (1 - len(compressed) / len(image_data)) * 100 if image_data else 0
+            reduction = (
+                (1 - len(compressed) / len(image_data)) * 100 if image_data else 0
+            )
             logger.info(
                 f"[ImageService] Compressed reference image: "
                 f"{original_kb:.1f}KB → {compressed_kb:.1f}KB ({reduction:.0f}% reduction)"
@@ -788,7 +816,9 @@ class ImageService:
             return compressed
 
         except Exception as e:
-            logger.warning(f"[ImageService] Image compression failed, using original: {e}")
+            logger.warning(
+                f"[ImageService] Image compression failed, using original: {e}"
+            )
             return image_data
 
     def _get_character_settings_from_db(self, game_id: int) -> tuple:
@@ -822,8 +852,12 @@ class ImageService:
                         f"Loaded character_settings from Game.initial_state (game_id={game_id})"
                     )
         except (ValueError, TypeError, KeyError) as e:
-            logger.warning(f"Invalid data loading character_settings from database: {e}")
+            logger.warning(
+                f"Invalid data loading character_settings from database: {e}"
+            )
         except Exception as e:
-            logger.exception(f"Unexpected error loading character_settings from database: {e}")
+            logger.exception(
+                f"Unexpected error loading character_settings from database: {e}"
+            )
 
         return db_character_settings, db_player_name

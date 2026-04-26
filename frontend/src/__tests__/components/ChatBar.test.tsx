@@ -107,8 +107,6 @@ describe('ChatBar', () => {
       await user.click(screen.getByLabelText('打开聊天'));
 
       await waitFor(() => {
-        expect(screen.getByText('保存')).toBeInTheDocument();
-        expect(screen.getByText('改写')).toBeInTheDocument();
         expect(screen.getByText('重新生成')).toBeInTheDocument();
         expect(screen.getByText('总结')).toBeInTheDocument();
       });
@@ -156,20 +154,8 @@ describe('ChatBar', () => {
       // Expand the chat bar
       await user.click(screen.getByLabelText('打开聊天'));
       await waitFor(() => {
-        expect(screen.getByText('保存')).toBeInTheDocument();
+        expect(screen.getByText('重新生成')).toBeInTheDocument();
       });
-    });
-
-    it('calls onSave when clicking save button', async () => {
-      const user = userEvent.setup();
-      await user.click(screen.getByText('保存'));
-      expect(mockOnSave).toHaveBeenCalled();
-    });
-
-    it('calls onAdjustStory when clicking adjust button', async () => {
-      const user = userEvent.setup();
-      await user.click(screen.getByText('改写'));
-      expect(mockOnAdjustStory).toHaveBeenCalled();
     });
 
     it('calls onRegenerate when clicking regenerate button', async () => {
@@ -348,7 +334,7 @@ describe('ChatBar', () => {
   });
 
   describe('Loading states', () => {
-    it('disables save button when isSaving is true', async () => {
+    it('renders regenerate button in enabled state', async () => {
       const user = userEvent.setup();
       render(
         <ChatBar
@@ -356,18 +342,17 @@ describe('ChatBar', () => {
           onSave={mockOnSave}
           onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
-          isSaving={true}
         />
       );
 
       await user.click(screen.getByLabelText('打开聊天'));
-      
+
       await waitFor(() => {
-        expect(screen.getByText('保存')).toBeInTheDocument();
+        expect(screen.getByText('重新生成')).toBeInTheDocument();
       });
 
-      const saveButton = screen.getByText('保存').closest('button');
-      expect(saveButton).toBeDisabled();
+      const regenButton = screen.getByText('重新生成').closest('button');
+      expect(regenButton).not.toBeDisabled();
     });
   });
 

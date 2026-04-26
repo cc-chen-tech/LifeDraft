@@ -204,7 +204,11 @@ def validate_era_consistency(story_text: str, context: dict) -> Tuple[bool, str,
     is_ancient = era_type == "ancient" or any(kw in era for kw in ancient_keywords)
 
     if not is_ancient:
-        return True, "", {"skipped": True, "reason": f"era '{era}' not recognized as ancient"}
+        return (
+            True,
+            "",
+            {"skipped": True, "reason": f"era '{era}' not recognized as ancient"},
+        )
 
     # 检测故事中是否包含现代元素
     found_modern: List[str] = []

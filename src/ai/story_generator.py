@@ -22,67 +22,6 @@ from src.ai.vector_store import get_vector_store, is_vector_search_enabled
 logger = logging.getLogger(__name__)
 
 
-def _normalize_punctuation(text: str, language: str = "zh") -> str:
-    """将英文标点统一替换为中文标点，并进行繁简转换（仅中文模式）。"""
-    if not text or language != "zh":
-        return text
-
-    # ★ 繁简转换：AI 模型偶尔输出繁体字，统一转为简体
-    try:
-        from opencc import OpenCC
-
-        converter = OpenCC("t2s")
-        text = converter.convert(text)
-        # 补充 opencc 未覆盖的异体字映射
-        _VARIANT_MAP = {
-            "擡": "抬",
-            "裏": "里",
-        }
-        for variant, standard in _VARIANT_MAP.items():
-            text = text.replace(variant, standard)
-    except Exception:
-        pass  # opencc 不可用时静默跳过
-
-    # 成对引号需要交替处理
-    result = []
-    dquote_open = False
-    squote_open = False
-    for ch in text:
-        if ch in ('"', '"'):
-            ch = "“" if not dquote_open else "”"
-            dquote_open = not dquote_open
-        elif ch in ("'", "'"):
-            ch = "‘" if not squote_open else "’"
-            squote_open = not squote_open
-        result.append(ch)
-    text = "".join(result)
-
-    # 直接映射替换
-    replacements = {
-        ",": "，",
-        ".": "。",
-        "!": "！",
-        "?": "？",
-        ":": "：",
-        ";": "；",
-        "(": "（",
-        ")": "）",
-    }
-    for en, zh in replacements.items():
-        text = text.replace(en, zh)
-
-    # 省略号规范化（含中文句号省略号）
-    text = text.replace("...", "……").replace("..", "……")
-    text = text.replace("。。。", "……")
-
-    # 清理中文标点后多余的空格
-    import re
-
-    text = re.sub(r"""([，。！？：；、……""''（）])\s+""", r"\1", text)
-
-    return text
-
-
 class StoryGenerator:
     """Generates story text for events and rounds."""
 
@@ -100,7 +39,9 @@ class StoryGenerator:
         self.harness_profile = PROFILES[self.quality_level]
 
         # Harness 约束监控系统（通过环境变量控制）
-        self._harness_enabled = os.environ.get("ENABLE_CONSTRAINT_HARNESS", "").lower() in (
+        self._harness_enabled = os.environ.get(
+            "ENABLE_CONSTRAINT_HARNESS", ""
+        ).lower() in (
             "true",
             "1",
             "yes",
@@ -152,7 +93,9 @@ class StoryGenerator:
         self._creative_enabled = (
             os.environ.get("ENABLE_CREATIVE_ENHANCEMENT", "false").lower() == "true"
         )
-        self._epic_enabled = os.environ.get("ENABLE_EPIC_NARRATIVE", "false").lower() == "true"
+        self._epic_enabled = (
+            os.environ.get("ENABLE_EPIC_NARRATIVE", "false").lower() == "true"
+        )
 
         # 延迟初始化（在有 style_id 时初始化）
         self._style_manifest: Any = None
@@ -171,7 +114,9 @@ class StoryGenerator:
 
     # -------------------- Narrative Systems --------------------
 
-    def _init_narrative_systems(self, style_id: str, player_state: Dict[str, Any]) -> None:
+    def _init_narrative_systems(
+        self, style_id: str, player_state: Dict[str, Any]
+    ) -> None:
         """根据 style_id 初始化三大叙事系统（延迟初始化，首次调用时执行）。
 
         非侵入式：任何子系统初始化失败只 logger.warning()，不影响核心流程。
@@ -192,15 +137,19 @@ class StoryGenerator:
 
                 self._style_manifest = get_style(style_id)
                 if not self._style_manifest and not style_id:
-                    # ★ Bug #12 修复：默认风格与前端显示一致（魔幻现实主义），避免未指定风格时默认使用章回体
-                    self._style_manifest = get_style("magical_realism")
-                    logger.info("Using default style: magical_realism")
+                    # Use default style when no style_id is matched
+                    self._style_manifest = get_style("chinese_classic_saga")
+                    logger.info("Using default style: chinese_classic_saga")
                 if self._style_manifest:
                     self._prompt_builder = StyleAwarePromptBuilder(self._style_manifest)
                     self._style_validator = StyleAwareValidator(self._style_manifest)
-                    logger.info(f"Style engine initialized: {self._style_manifest.style_id}")
+                    logger.info(
+                        f"Style engine initialized: {self._style_manifest.style_id}"
+                    )
                 else:
-                    logger.warning(f"Style '{style_id}' not found, style engine disabled")
+                    logger.warning(
+                        f"Style '{style_id}' not found, style engine disabled"
+                    )
             except Exception as e:
                 logger.warning(f"Failed to initialize style engine: {e}")
 
@@ -209,7 +158,9 @@ class StoryGenerator:
             try:
                 from src.ai.narrative.character_arc import CharacterArcEngine
 
-                self._character_arc_engine = CharacterArcEngine(style=self._style_manifest)
+                self._character_arc_engine = CharacterArcEngine(
+                    style=self._style_manifest
+                )
                 arc_state = player_state.get("character_arc_state")
                 if arc_state and hasattr(self._character_arc_engine, "from_state_dict"):
                     self._character_arc_engine.from_state_dict(arc_state)
@@ -228,7 +179,9 @@ class StoryGenerator:
                     style=self._style_manifest, era=era
                 )
                 wb_state = player_state.get("world_breathing_events")
-                if wb_state and hasattr(self._world_breathing_engine, "from_state_list"):
+                if wb_state and hasattr(
+                    self._world_breathing_engine, "from_state_list"
+                ):
                     self._world_breathing_engine.from_state_list(wb_state)
             except Exception as e:
                 logger.warning(f"Failed to init WorldBreathingEngine: {e}")
@@ -315,7 +268,9 @@ class StoryGenerator:
                     dh = player_state.get("decision_history", [])
                     if dh and isinstance(dh[-1], dict):
                         previous_summary = dh[-1].get("event", "")[:200]
-                    chapter_opening = self._prompt_builder.build_chapter_opening(previous_summary)
+                    chapter_opening = self._prompt_builder.build_chapter_opening(
+                        previous_summary
+                    )
                     if chapter_opening:
                         hints["chapter_opening"] = chapter_opening
 
@@ -337,13 +292,17 @@ class StoryGenerator:
                     from config.prompts._helpers import _build_arc_context
 
                     player_name = self._extract_player_name(player_state)
-                    hints["arc_hint"] = _build_arc_context(self._character_arc_engine, player_name)
+                    hints["arc_hint"] = _build_arc_context(
+                        self._character_arc_engine, player_name
+                    )
                 except Exception as e:
                     logger.warning(f"Arc hint build failed: {e}")
 
             if self._conflict_tower:
                 try:
-                    hints["conflict_directive"] = self._conflict_tower.get_conflict_directive()
+                    hints["conflict_directive"] = (
+                        self._conflict_tower.get_conflict_directive()
+                    )
                 except Exception as e:
                     logger.warning(f"Conflict directive failed: {e}")
 
@@ -356,7 +315,9 @@ class StoryGenerator:
                     for ev in active[:3]:
                         eid = ev.get("id", "")
                         if eid:
-                            s = self._world_breathing_engine.generate_permeation_snippet(eid)
+                            s = self._world_breathing_engine.generate_permeation_snippet(
+                                eid
+                            )
                             if s:
                                 snippets.append(s)
                     if snippets:
@@ -370,9 +331,15 @@ class StoryGenerator:
                     pending = self._fate_echo_db.get_pending_echoes(week)
                     if pending:
                         prop_id = pending[0].get("id", "")
-                        style_key = self._style_manifest.style_id if self._style_manifest else None
+                        style_key = (
+                            self._style_manifest.style_id
+                            if self._style_manifest
+                            else None
+                        )
                         if prop_id:
-                            hint = self._fate_echo_db.generate_echo_hint(prop_id, style=style_key)
+                            hint = self._fate_echo_db.generate_echo_hint(
+                                prop_id, style=style_key
+                            )
                             if hint:
                                 hints["fate_echo_hint"] = hint
                 except Exception as e:
@@ -383,16 +350,22 @@ class StoryGenerator:
                 try:
                     decision_history = player_state.get("decision_history", [])
                     prefs = self._preference_learner.learn(decision_history)
-                    style_key = self._style_manifest.style_id if self._style_manifest else None
-                    hints["preference_hint"] = self._preference_learner.build_preference_hint(
-                        prefs, style=style_key
+                    style_key = (
+                        self._style_manifest.style_id if self._style_manifest else None
+                    )
+                    hints["preference_hint"] = (
+                        self._preference_learner.build_preference_hint(
+                            prefs, style=style_key
+                        )
                     )
                 except Exception as e:
                     logger.warning(f"Preference hint failed: {e}")
 
             if self._foreshadowing_lib and activated_foreshadowing:
                 try:
-                    style_key = self._style_manifest.style_id if self._style_manifest else ""
+                    style_key = (
+                        self._style_manifest.style_id if self._style_manifest else ""
+                    )
                     hints["foreshadowing_technique_hint"] = (
                         self._foreshadowing_lib.build_recovery_hint(
                             activated_foreshadowing, style=style_key
@@ -410,21 +383,33 @@ class StoryGenerator:
                         if isinstance(d, dict) and d.get("event")
                     ]
                     if len(recent_texts) >= 3:
-                        style_key = self._style_manifest.style_id if self._style_manifest else None
-                        is_flat = self._emotional_arc.detect_flatline(recent_texts, style=style_key)
+                        style_key = (
+                            self._style_manifest.style_id
+                            if self._style_manifest
+                            else None
+                        )
+                        is_flat = self._emotional_arc.detect_flatline(
+                            recent_texts, style=style_key
+                        )
                         if is_flat:
                             intervention = self._emotional_arc.suggest_intervention(
                                 history=recent_texts, style=style_key
                             )
                             if intervention:
-                                hints["pacing_intervention"] = f"[MUST] 节奏干预: {intervention}"
-                                logger.info("Pacing flatline detected, intervention injected")
+                                hints["pacing_intervention"] = (
+                                    f"[MUST] 节奏干预: {intervention}"
+                                )
+                                logger.info(
+                                    "Pacing flatline detected, intervention injected"
+                                )
                 except Exception as e:
                     logger.warning(f"Pacing intervention check failed: {e}")
 
         return hints
 
-    def _post_generation_analysis(self, story_text: str, player_state: Dict[str, Any]) -> None:
+    def _post_generation_analysis(
+        self, story_text: str, player_state: Dict[str, Any]
+    ) -> None:
         """生成后分析：情感弧线、新颖度、弧光更新（非阻塞）。"""
         if self._creative_enabled:
             if self._emotional_arc and story_text:
@@ -449,7 +434,9 @@ class StoryGenerator:
                 if player_name:
                     arc = self._character_arc_engine.arcs.get(player_name)
                     if arc:
-                        self._character_arc_engine.process_event(arc, {"story_text": story_text})
+                        self._character_arc_engine.process_event(
+                            arc, {"story_text": story_text}
+                        )
             except Exception as e:
                 logger.warning(f"Character arc update failed: {e}")
 
@@ -476,7 +463,9 @@ class StoryGenerator:
                 if style_temp and style_temp != 0.85:
                     if scene_type and self._prompt_builder:
                         try:
-                            sched = self._prompt_builder.get_scene_temperature(scene_type)
+                            sched = self._prompt_builder.get_scene_temperature(
+                                scene_type
+                            )
                             if sched != style_temp:
                                 return float(sched)
                         except Exception:
@@ -497,9 +486,7 @@ class StoryGenerator:
 
     @staticmethod
     def _extract_player_name(player_state: Dict[str, Any]) -> str:
-        """从 player_state 中提取并消毒主角名称。"""
-        from src.ai.prompt_sanitizer import sanitize_player_name
-
+        """从 player_state 中提取主角名称。"""
         name = player_state.get("player_name", "")
         if not name:
             cs = player_state.get("character_settings") or {}
@@ -507,7 +494,7 @@ class StoryGenerator:
                 identity = cs.get("identity", {})
                 if isinstance(identity, dict):
                     name = identity.get("name", "")
-        return sanitize_player_name(str(name))
+        return str(name)
 
     # -------------------- Public API --------------------
 
@@ -582,8 +569,12 @@ class StoryGenerator:
                 # 使用当前情境作为查询
                 query_context = last_event_description or ""
                 if pending_storylines:
-                    query_context += " " + " ".join(str(s) for s in pending_storylines[:3])
-                vector_context = vector_store.get_relevant_context(query_context, max_chars=1500)
+                    query_context += " " + " ".join(
+                        str(s) for s in pending_storylines[:3]
+                    )
+                vector_context = vector_store.get_relevant_context(
+                    query_context, max_chars=1500
+                )
                 if vector_context:
                     logger.info(
                         f"[VectorStore] Injected {len(vector_context)} chars of vector context"
@@ -598,13 +589,15 @@ class StoryGenerator:
         decision_history = player_state.get("decision_history", [])
         overused_phrases = extract_overused_phrases(decision_history, language=language)
         if overused_phrases:
-            logger.info(f"[AntiRepeat] Injected dynamic ban list ({len(overused_phrases)} chars)")
+            logger.info(
+                f"[AntiRepeat] Injected dynamic ban list ({len(overused_phrases)} chars)"
+            )
 
         # ★ 叙事系统初始化 + hint 收集
         narrative_hints: Dict[str, str] = {}
-        style_id = player_state.get("narrative_style_id") or (character_settings or {}).get(
-            "narrative_style_id", ""
-        )
+        style_id = player_state.get("narrative_style_id") or (
+            character_settings or {}
+        ).get("narrative_style_id", "")
         self._init_narrative_systems(style_id, player_state)
         narrative_hints = self._gather_narrative_hints(
             player_state, activated_foreshadowing=activated_foreshadowing
@@ -737,7 +730,7 @@ class StoryGenerator:
                 )
 
                 story_text = story_text.strip()
-                story_text = _normalize_punctuation(story_text, language)
+                story_text = self._normalize_punctuation(story_text, language)
                 logger.info(f"Generated story with {len(story_text)} characters")
                 logger.debug(f"Story preview (first 200 chars): {story_text[:200]}...")
                 logger.debug(f"Story preview (last 200 chars): ...{story_text[-200:]}")
@@ -757,8 +750,12 @@ class StoryGenerator:
                             diagnostic_report = self._diagnostics.generate_report(
                                 story_text, harness_validation
                             )
-                            should_retry, correction_hint = self._retry_controller.should_retry(
-                                harness_validation, diagnostic_report, attempt=attempt
+                            should_retry, correction_hint = (
+                                self._retry_controller.should_retry(
+                                    harness_validation,
+                                    diagnostic_report,
+                                    attempt=attempt,
+                                )
                             )
 
                             if should_retry and correction_hint:
@@ -801,7 +798,10 @@ class StoryGenerator:
                         )
 
                         # 如果 harness 建议重试且有修正指令，跳过本次直接进入下一轮
-                        if not harness_validation.passed and last_error == correction_hint:
+                        if (
+                            not harness_validation.passed
+                            and last_error == correction_hint
+                        ):
                             if attempt < retry_count - 1:
                                 # ★ StateTracker: 记录 harness 重试
                                 if state_tracker:
@@ -811,7 +811,9 @@ class StoryGenerator:
 
                                         state_tracker.transition(
                                             TransitionReason.HARNESS_RETRY,
-                                            metrics={"harness_score": harness_validation.score},
+                                            metrics={
+                                                "harness_score": harness_validation.score
+                                            },
                                         )
                                     except Exception:
                                         pass
@@ -819,16 +821,28 @@ class StoryGenerator:
                                 # ★ ReactiveCompressor: harness 重试时压缩上下文
                                 if reactive_compressor:
                                     try:
-                                        prompt_tokens = reactive_compressor.estimate_tokens(prompt)
-                                        if reactive_compressor.should_compact(prompt_tokens, 8192):
+                                        prompt_tokens = (
+                                            reactive_compressor.estimate_tokens(prompt)
+                                        )
+                                        if reactive_compressor.should_compact(
+                                            prompt_tokens, 8192
+                                        ):
                                             compact_texts = {
-                                                k: v for k, v in narrative_hints.items() if v
+                                                k: v
+                                                for k, v in narrative_hints.items()
+                                                if v
                                             }
                                             if vector_context:
-                                                compact_texts["vector_context"] = vector_context
+                                                compact_texts["vector_context"] = (
+                                                    vector_context
+                                                )
                                             if overused_phrases:
-                                                compact_texts["overused_phrases"] = overused_phrases
-                                            result = reactive_compressor.compact(compact_texts)
+                                                compact_texts["overused_phrases"] = (
+                                                    overused_phrases
+                                                )
+                                            result = reactive_compressor.compact(
+                                                compact_texts
+                                            )
                                             logger.info(
                                                 f"ReactiveCompressor: {result.original_token_count} -> "
                                                 f"{result.compressed_token_count} tokens, "
@@ -850,10 +864,14 @@ class StoryGenerator:
                                             f"ReactiveCompressor failed (non-blocking): {e}"
                                         )
 
-                                logger.info(f"Harness triggered retry (attempt {attempt + 1})")
+                                logger.info(
+                                    f"Harness triggered retry (attempt {attempt + 1})"
+                                )
                                 continue
                     except Exception as e:
-                        logger.warning(f"Harness post-validation failed (non-blocking): {e}")
+                        logger.warning(
+                            f"Harness post-validation failed (non-blocking): {e}"
+                        )
 
                 # ★ 叙事系统后处理（非阻塞）
                 self._post_generation_analysis(story_text, player_state)
@@ -878,7 +896,9 @@ class StoryGenerator:
                     logger.info(f"Option {i+1}: {opt.text}")
 
                 # Validate and fix relationship names
-                option_generator.validate_and_fix_relationships(event, character_settings)
+                option_generator.validate_and_fix_relationships(
+                    event, character_settings
+                )
 
                 # Validate event quality
                 option_generator.validate_event_quality(event)
@@ -887,7 +907,9 @@ class StoryGenerator:
                 if cache:
                     cache.set(player_state, language, event)
 
-                logger.info(f"Successfully generated event with {len(event.options)} options")
+                logger.info(
+                    f"Successfully generated event with {len(event.options)} options"
+                )
 
                 # ★ StateTracker: 将状态机 metrics 附加到 event
                 if state_tracker:
@@ -985,8 +1007,12 @@ class StoryGenerator:
                 # 使用当前情境作为查询
                 query_context = round_context or ""
                 if pending_storylines:
-                    query_context += " " + " ".join(str(s) for s in pending_storylines[:3])
-                vector_context = vector_store.get_relevant_context(query_context, max_chars=1500)
+                    query_context += " " + " ".join(
+                        str(s) for s in pending_storylines[:3]
+                    )
+                vector_context = vector_store.get_relevant_context(
+                    query_context, max_chars=1500
+                )
                 if vector_context:
                     logger.info(
                         f"[VectorStore] Injected {len(vector_context)} chars of vector context"
@@ -1004,9 +1030,9 @@ class StoryGenerator:
 
         # ★ 叙事系统初始化 + hint 收集（round）
         narrative_hints_round: Dict[str, str] = {}
-        style_id = player_state.get("narrative_style_id") or (character_settings or {}).get(
-            "narrative_style_id", ""
-        )
+        style_id = player_state.get("narrative_style_id") or (
+            character_settings or {}
+        ).get("narrative_style_id", "")
         self._init_narrative_systems(style_id, player_state)
         narrative_hints_round = self._gather_narrative_hints(
             player_state, activated_foreshadowing=activated_foreshadowing
@@ -1102,7 +1128,9 @@ class StoryGenerator:
         retry_count = self.harness_profile.max_retries + 1
         last_error = None
         story_text = None
-        best_story_text = ""  # 记录所有尝试中生成的最佳故事，避免全部失败后直接 fallback
+        best_story_text = (
+            ""  # 记录所有尝试中生成的最佳故事，避免全部失败后直接 fallback
+        )
 
         # 提前提取可用人物，供后续 option 校验使用
         from config.prompts._helpers import _collect_available_people
@@ -1123,9 +1151,7 @@ class StoryGenerator:
                 current_prompt = prompt
                 if attempt > 0 and last_error:
                     if language == "zh":
-                        current_prompt += (
-                            f"\n\n【上次生成失败，原因：{last_error}。请避免同样的问题。】"
-                        )
+                        current_prompt += f"\n\n【上次生成失败，原因：{last_error}。请避免同样的问题。】"
                     else:
                         current_prompt += f"\n\n[Previous attempt failed: {last_error}. Please avoid the same issue.]"
 
@@ -1146,7 +1172,7 @@ class StoryGenerator:
                     presence_penalty=0.4,
                 )
                 logger.info(f"Generated round story with {len(story_text)} characters")
-                story_text = _normalize_punctuation(story_text, language)
+                story_text = self._normalize_punctuation(story_text, language)
 
                 # 记录最佳故事（即使后续校验失败，也保留作为最终 fallback）
                 if len(story_text) > len(best_story_text):
@@ -1182,8 +1208,12 @@ class StoryGenerator:
                             diagnostic_report = self._diagnostics.generate_report(
                                 story_text, harness_validation
                             )
-                            should_retry, correction_hint = self._retry_controller.should_retry(
-                                harness_validation, diagnostic_report, attempt=attempt
+                            should_retry, correction_hint = (
+                                self._retry_controller.should_retry(
+                                    harness_validation,
+                                    diagnostic_report,
+                                    attempt=attempt,
+                                )
                             )
                             if should_retry and correction_hint:
                                 logger.warning(
@@ -1200,7 +1230,9 @@ class StoryGenerator:
 
                                         state_tracker_round.transition(
                                             TransitionReason.HARNESS_RETRY,
-                                            metrics={"harness_score": harness_validation.score},
+                                            metrics={
+                                                "harness_score": harness_validation.score
+                                            },
                                         )
                                     except Exception:
                                         pass
@@ -1208,19 +1240,27 @@ class StoryGenerator:
                                 # ★ ReactiveCompressor: round 级 harness 重试时压缩上下文
                                 if reactive_compressor_round:
                                     try:
-                                        prompt_tokens = reactive_compressor_round.estimate_tokens(
-                                            current_prompt
+                                        prompt_tokens = (
+                                            reactive_compressor_round.estimate_tokens(
+                                                current_prompt
+                                            )
                                         )
                                         if reactive_compressor_round.should_compact(
                                             prompt_tokens, 8192
                                         ):
                                             compact_texts = {
-                                                k: v for k, v in narrative_hints_round.items() if v
+                                                k: v
+                                                for k, v in narrative_hints_round.items()
+                                                if v
                                             }
                                             if vector_context:
-                                                compact_texts["vector_context"] = vector_context
+                                                compact_texts["vector_context"] = (
+                                                    vector_context
+                                                )
                                             if overused_phrases:
-                                                compact_texts["overused_phrases"] = overused_phrases
+                                                compact_texts["overused_phrases"] = (
+                                                    overused_phrases
+                                                )
                                             result = reactive_compressor_round.compact(
                                                 compact_texts
                                             )
@@ -1273,9 +1313,15 @@ class StoryGenerator:
                             latency_ms=_harness_latency,
                         )
                     except Exception as e:
-                        logger.warning(f"Harness post-validation failed (round, non-blocking): {e}")
+                        logger.warning(
+                            f"Harness post-validation failed (round, non-blocking): {e}"
+                        )
 
-                if harness_should_retry and harness_correction and attempt < retry_count - 1:
+                if (
+                    harness_should_retry
+                    and harness_correction
+                    and attempt < retry_count - 1
+                ):
                     last_error = harness_correction
                     continue
 
@@ -1379,7 +1425,9 @@ class StoryGenerator:
                 fallback_desc = effective_story
             else:
                 fallback_desc = (
-                    "这一天平静地度过了。" if language == "zh" else "This day passed quietly."
+                    "这一天平静地度过了。"
+                    if language == "zh"
+                    else "This day passed quietly."
                 )
             return GameEvent(
                 event_description=fallback_desc,
@@ -1428,7 +1476,9 @@ class StoryGenerator:
         if self.harness_profile.skip_ai_consistency_check:
             return story_text
 
-        retry_key = f"{player_state.get('week', 0)}-{player_state.get('current_round', 0)}"
+        retry_key = (
+            f"{player_state.get('week', 0)}-{player_state.get('current_round', 0)}"
+        )
 
         # 防循环守卫：按级别差异化控制
         if self.quality_level.value == "master":
@@ -1482,7 +1532,9 @@ class StoryGenerator:
                 f"触发局部修正（非全文重新生成）"
             )
             for issue in validation.critical_issues:
-                logger.warning(f"  CRITICAL [{issue.dimension}]: {issue.description[:80]}")
+                logger.warning(
+                    f"  CRITICAL [{issue.dimension}]: {issue.description[:80]}"
+                )
 
             # 构建局部修正 prompt
             if language == "en":
@@ -1569,8 +1621,10 @@ Please **only modify the problematic paragraphs** and keep the rest of the conte
             )
 
             if fixed_story:
-                logger.info(f"局部修正完成，故事长度: {len(fixed_story)} (原: {len(story_text)})")
-                fixed_story = _normalize_punctuation(fixed_story, language)
+                logger.info(
+                    f"局部修正完成，故事长度: {len(fixed_story)} (原: {len(story_text)})"
+                )
+                fixed_story = self._normalize_punctuation(fixed_story, language)
                 return fixed_story
 
             logger.warning("局部修正返回空结果，回退到原始故事")
@@ -1653,59 +1707,13 @@ Please **only modify the problematic paragraphs** and keep the rest of the conte
         # 提取 last_location
         last_location = ""
         if isinstance(player_state, dict):
-            last_location = player_state.get("current_location", "") or player_state.get(
-                "location", ""
-            )
+            last_location = player_state.get(
+                "current_location", ""
+            ) or player_state.get("location", "")
         else:
             last_location = getattr(player_state, "current_location", "") or getattr(
                 player_state, "location", ""
             )
-
-        # 提取 era 和 era_type
-        era = ""
-        era_type = ""
-        if isinstance(character_settings, dict):
-            era_info = character_settings.get("era", {})
-            if isinstance(era_info, dict):
-                era = era_info.get("era_description", "")
-            elif isinstance(era_info, str):
-                era = era_info
-
-        era_str = str(era).lower()
-        if (
-            "现代" in era_str
-            or "当代" in era_str
-            or "未来" in era_str
-            or "202" in era_str
-            or "201" in era_str
-            or "200" in era_str
-        ):
-            era_type = "modern"
-        elif any(
-            kw in era_str
-            for kw in [
-                "唐",
-                "宋",
-                "元",
-                "明",
-                "清",
-                "汉",
-                "秦",
-                "周",
-                "春秋",
-                "战国",
-                "三国",
-                "晋",
-                "隋",
-                "古代",
-                " medieval",
-                "ancient",
-                "historic",
-            ]
-        ):
-            era_type = "ancient"
-        elif any(kw in era_str for kw in [" medieval", "ancient", " historic"]):
-            era_type = "ancient"
 
         return {
             "available_people": available_people,
@@ -1716,9 +1724,51 @@ Please **only modify the problematic paragraphs** and keep the rest of the conte
             "medium_storylines": medium_storylines,
             "last_location": last_location,
             "character_habits": kwargs.get("character_habits", []),
-            "era": era,
-            "era_type": era_type,
         }
+
+    @staticmethod
+    def _normalize_punctuation(text: str, language: str = "zh") -> str:
+        """将英文标点统一替换为中文标点（仅中文模式）。"""
+        if not text or language != "zh":
+            return text
+
+        # 成对引号需要交替处理
+        result = []
+        dquote_open = False
+        squote_open = False
+        for ch in text:
+            if ch in ('"', '"'):
+                ch = "“" if not dquote_open else "”"
+                dquote_open = not dquote_open
+            elif ch in ("'", "'"):
+                ch = "‘" if not squote_open else "’"
+                squote_open = not squote_open
+            result.append(ch)
+        text = "".join(result)
+
+        # 直接映射替换
+        replacements = {
+            ",": "，",
+            ".": "。",
+            "!": "！",
+            "?": "？",
+            ":": "：",
+            ";": "；",
+            "(": "（",
+            ")": "）",
+        }
+        for en, zh in replacements.items():
+            text = text.replace(en, zh)
+
+        # 省略号规范化
+        text = text.replace("...", "……").replace("..", "……")
+
+        # 清理中文标点后多余的空格
+        import re
+
+        text = re.sub(r"([，。！？：；、……“”‘’（）])\s+", r"\1", text)
+
+        return text
 
     @staticmethod
     def _get_phase_from_state(player_state: Dict[str, Any]) -> str:

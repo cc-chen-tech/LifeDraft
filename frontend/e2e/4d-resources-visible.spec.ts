@@ -39,11 +39,11 @@ test.describe("4D 资源可见性", () => {
 
     await page.goto(`/play?gameId=${gameId}`);
     await page.waitForLoadState("domcontentloaded");
-    await page.waitForTimeout(2000);
 
-    // 状态栏应可见
-    const statusBar = page.locator("[data-testid='status-bar'], header").first();
-    await expect(statusBar).toBeVisible({ timeout: 20000 });
+    // 等待状态栏加载（playerState 需要时间从 API 获取）
+    await page.waitForSelector("[data-testid='status-bar']", { timeout: 20000 });
+    const statusBar = page.locator("[data-testid='status-bar']").first();
+    await expect(statusBar).toBeVisible();
 
     // 4D 资源中至少有一个应可见（精力、情绪、学识、财富）
     const resourceLabels = page.locator("text=/精力|情绪|学识|财富|energy|mood|knowledge|wealth/i");
@@ -63,14 +63,15 @@ test.describe("4D 资源可见性", () => {
 
     await page.goto(`/play?gameId=${gameId}`);
     await page.waitForLoadState("domcontentloaded");
-    await page.waitForTimeout(2000);
 
-    // 页面应显示 player_state 中的资源值
-    // 至少检查一个资源值是否出现在页面上
+    // 等待状态栏加载完成
+    await page.waitForSelector("[data-testid='status-bar']", { timeout: 15000 });
+
+    // 页面应显示 player_state 中的资源值（StatusBar 格式: "精力: 70"）
     const energyValue = String(playerState.energy ?? "");
     if (energyValue) {
-      const energyLocator = page.locator(`text=${energyValue}`).first();
-      await expect(energyLocator).toBeVisible({ timeout: 10000 });
+      // StatusBar 以 "精力: 70" 格式渲染，text= 做子串匹配能找到
+      await expect(page.locator(`text=精力: ${energyValue}`).first()).toBeVisible({ timeout: 10000 });
     }
   });
 });

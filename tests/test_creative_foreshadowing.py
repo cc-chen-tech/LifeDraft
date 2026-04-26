@@ -6,12 +6,9 @@ L3 创意增强层 - 伏笔技法库与钩子注入
 
 import pytest
 
-from src.ai.creative.foreshadowing_tech import (
-    ForeshadowingTechniqueLibrary,
-    HookInjector,
-    RecoveryTechnique,
-)
-
+from src.ai.creative.foreshadowing_tech import (ForeshadowingTechniqueLibrary,
+                                                HookInjector,
+                                                RecoveryTechnique)
 
 # --------------- 测试数据 ---------------
 
@@ -85,14 +82,22 @@ class TestForeshadowingTechniqueLibrary:
         technique = self.library.match_technique(FORESHADOWING_CHARACTER)
 
         assert isinstance(technique, RecoveryTechnique)
-        assert "映照" in technique.name or "成长" in technique.name or "人物" in technique.name
+        assert (
+            "映照" in technique.name
+            or "成长" in technique.name
+            or "人物" in technique.name
+        )
 
     def test_match_technique_event(self):
         """事件类伏笔→因果延迟技巧"""
         technique = self.library.match_technique(FORESHADOWING_EVENT)
 
         assert isinstance(technique, RecoveryTechnique)
-        assert "因果" in technique.name or "延迟" in technique.name or "事件" in technique.name
+        assert (
+            "因果" in technique.name
+            or "延迟" in technique.name
+            or "事件" in technique.name
+        )
 
     def test_style_aware_recovery_chinese_classic(self):
         """中国古典风格=草蛇灰线式回收"""
@@ -161,8 +166,7 @@ class TestHookInjector:
         assert len(enhanced_options) >= len(SAMPLE_OPTIONS)
         # 至少有一个选项被增强或新增了钩子
         has_hook = any(
-            opt.get("hook") or opt.get("curiosity_gap")
-            for opt in enhanced_options
+            opt.get("hook") or opt.get("curiosity_gap") for opt in enhanced_options
         )
         assert has_hook
 
@@ -179,7 +183,5 @@ class TestHookInjector:
         assert isinstance(result, list)
 
         # 畸形选项不崩溃
-        result2 = self.injector.inject_hooks(
-            options=[{"bad_key": 123}], context=""
-        )
+        result2 = self.injector.inject_hooks(options=[{"bad_key": 123}], context="")
         assert isinstance(result2, list)

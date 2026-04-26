@@ -5,8 +5,8 @@
 
 import pytest
 
-from src.ai.narrative.style_matcher import StyleMatcher, StyleMatchResult, auto_match_style
-
+from src.ai.narrative.style_matcher import (StyleMatcher, StyleMatchResult,
+                                            auto_match_style)
 
 # ==================== Fixtures ====================
 
@@ -26,7 +26,10 @@ class TestStyleMatcherBasic:
     def test_ancient_china_matches_chinese_style(self, matcher):
         """古代中国设定应匹配到中国古典类风格"""
         settings = {
-            "era": {"year": 690, "era_description": "唐朝武则天称帝，改国号为周，史称武周，帝制王朝"},
+            "era": {
+                "year": 690,
+                "era_description": "唐朝武则天称帝，改国号为周，史称武周，帝制王朝",
+            },
             "world": {
                 "world_description": "古代帝制社会，朝廷权谋斗争激烈，家国天命，忠义为先",
                 "technology_level": "冷兵器时代，农业手工",
@@ -141,9 +144,9 @@ class TestStyleMatcherScoring:
         ]
         for settings in various_settings:
             result = matcher.match(settings)
-            assert 0.0 <= result.confidence <= 1.0, (
-                f"confidence {result.confidence} out of range for {settings}"
-            )
+            assert (
+                0.0 <= result.confidence <= 1.0
+            ), f"confidence {result.confidence} out of range for {settings}"
 
 
 # ==================== 测试类 3: 边界情况 ====================

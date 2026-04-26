@@ -62,11 +62,13 @@ class TestMusicPlaylistContract:
         """PUT with new songs must preserve existing current_song."""
         game_id = self._create_game()
         db = SessionLocal()
-        db.add(GamePlaylist(
-            game_id=game_id,
-            current_song_json={"id": 10, "name": "Current"},
-            queue_json=[{"id": 11, "name": "OldNext"}],
-        ))
+        db.add(
+            GamePlaylist(
+                game_id=game_id,
+                current_song_json={"id": 10, "name": "Current"},
+                queue_json=[{"id": 11, "name": "OldNext"}],
+            )
+        )
         db.commit()
         db.close()
 
@@ -74,8 +76,20 @@ class TestMusicPlaylistContract:
             f"/api/music/playlist/{game_id}",
             json={
                 "songs": [
-                    {"id": 10, "name": "Current", "artists": ["A"], "album": "X", "duration": 200},
-                    {"id": 20, "name": "NewNext", "artists": ["B"], "album": "Y", "duration": 180},
+                    {
+                        "id": 10,
+                        "name": "Current",
+                        "artists": ["A"],
+                        "album": "X",
+                        "duration": 200,
+                    },
+                    {
+                        "id": 20,
+                        "name": "NewNext",
+                        "artists": ["B"],
+                        "album": "Y",
+                        "duration": 180,
+                    },
                 ],
                 "mood": "激昂",
                 "keywords": ["战斗"],
@@ -100,8 +114,20 @@ class TestMusicPlaylistContract:
             f"/api/music/playlist/{game_id}",
             json={
                 "songs": [
-                    {"id": 1, "name": "First", "artists": ["A"], "album": "X", "duration": 200},
-                    {"id": 2, "name": "Second", "artists": ["B"], "album": "Y", "duration": 180},
+                    {
+                        "id": 1,
+                        "name": "First",
+                        "artists": ["A"],
+                        "album": "X",
+                        "duration": 200,
+                    },
+                    {
+                        "id": 2,
+                        "name": "Second",
+                        "artists": ["B"],
+                        "album": "Y",
+                        "duration": 180,
+                    },
                 ],
             },
         )
@@ -141,11 +167,13 @@ class TestMusicPlaylistContract:
         """POST /advance must move current to played_songs and pop queue head."""
         game_id = self._create_game()
         db = SessionLocal()
-        db.add(GamePlaylist(
-            game_id=game_id,
-            current_song_json={"id": 1, "name": "A"},
-            queue_json=[{"id": 2, "name": "B"}, {"id": 3, "name": "C"}],
-        ))
+        db.add(
+            GamePlaylist(
+                game_id=game_id,
+                current_song_json={"id": 1, "name": "A"},
+                queue_json=[{"id": 2, "name": "B"}, {"id": 3, "name": "C"}],
+            )
+        )
         db.commit()
         db.close()
 
@@ -162,12 +190,14 @@ class TestMusicPlaylistContract:
         """When queue is empty, advance should rotate played_songs back into queue."""
         game_id = self._create_game()
         db = SessionLocal()
-        db.add(GamePlaylist(
-            game_id=game_id,
-            current_song_json={"id": 1, "name": "A"},
-            queue_json=[],
-            played_songs_json=[{"id": 0, "name": "Z"}],
-        ))
+        db.add(
+            GamePlaylist(
+                game_id=game_id,
+                current_song_json={"id": 1, "name": "A"},
+                queue_json=[],
+                played_songs_json=[{"id": 0, "name": "Z"}],
+            )
+        )
         db.commit()
         db.close()
 

@@ -26,7 +26,9 @@ class TestPlayerNameInPrompts:
             language="zh",
             player_name="赵敏",
         )
-        assert "赵敏" in prompt, f"prompt 必须包含主角名称 '赵敏'，实际未找到。prompt 前500字: {prompt[:500]}"
+        assert (
+            "赵敏" in prompt
+        ), f"prompt 必须包含主角名称 '赵敏'，实际未找到。prompt 前500字: {prompt[:500]}"
 
     def test_story_only_prompt_has_name_usage_instruction(self):
         """get_story_only_prompt 必须包含使用主角名称的明确指令"""
@@ -45,13 +47,12 @@ class TestPlayerNameInPrompts:
             player_name="赵敏",
         )
         # 指令中应包含要求 AI 始终使用指定名称的表述
-        has_instruction = (
-            "主角" in prompt
-            and ("始终" in prompt or "一直" in prompt or "禁止" in prompt or "不要" in prompt)
+        has_instruction = "主角" in prompt and (
+            "始终" in prompt or "一直" in prompt or "禁止" in prompt or "不要" in prompt
         )
-        assert has_instruction, (
-            f"prompt 必须包含主角名称使用指令。prompt 前800字: {prompt[:800]}"
-        )
+        assert (
+            has_instruction
+        ), f"prompt 必须包含主角名称使用指令。prompt 前800字: {prompt[:800]}"
 
     def test_story_only_prompt_english_includes_player_name(self):
         """英文版 get_story_only_prompt 也必须包含 player_name"""
@@ -89,7 +90,9 @@ class TestPlayerNameInPrompts:
             round_context="",
             player_name="赵敏",
         )
-        assert "赵敏" in prompt, f"round prompt 必须包含主角名称 '赵敏'，实际未找到。prompt 前500字: {prompt[:500]}"
+        assert (
+            "赵敏" in prompt
+        ), f"round prompt 必须包含主角名称 '赵敏'，实际未找到。prompt 前500字: {prompt[:500]}"
 
     def test_round_event_prompt_has_name_usage_instruction(self):
         """get_round_event_prompt 必须包含使用主角名称的明确指令"""
@@ -109,13 +112,12 @@ class TestPlayerNameInPrompts:
             round_context="",
             player_name="赵敏",
         )
-        has_instruction = (
-            "主角" in prompt
-            and ("始终" in prompt or "一直" in prompt or "禁止" in prompt or "不要" in prompt)
+        has_instruction = "主角" in prompt and (
+            "始终" in prompt or "一直" in prompt or "禁止" in prompt or "不要" in prompt
         )
-        assert has_instruction, (
-            f"round prompt 必须包含主角名称使用指令。prompt 前800字: {prompt[:800]}"
-        )
+        assert (
+            has_instruction
+        ), f"round prompt 必须包含主角名称使用指令。prompt 前800字: {prompt[:800]}"
 
     def test_player_name_empty_does_not_break(self):
         """player_name 为空字符串时不应导致错误"""

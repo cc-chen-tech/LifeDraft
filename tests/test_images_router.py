@@ -9,11 +9,11 @@ from fastapi.testclient import TestClient
 # API tests - image endpoints
 pytestmark = pytest.mark.api
 
-from src.api.deps import get_current_user
-from src.api.routers.images import (router, verify_game_ownership,
+from src.api.deps import get_current_user  # noqa: E402
+from src.api.routers.images import (router, verify_game_ownership,  # noqa: E402
                                     verify_image_ownership)
-from src.services.image_service import ImageContentError, ImageServiceError
-from src.services.image_storage import ImageStorageError
+from src.services.image_service import ImageContentError  # noqa: E402
+from src.services.image_storage import ImageStorageError  # noqa: E402
 
 
 @pytest.fixture
@@ -90,7 +90,7 @@ class TestVerifyImageOwnership:
         mock_db.query.return_value.filter.return_value.first.return_value = mock_image
 
         with patch("src.api.routers.images.verify_game_ownership") as mock_verify:
-            result = verify_image_ownership(mock_db, 1, 1)
+            verify_image_ownership(mock_db, 1, 1)
             mock_verify.assert_called_once()
 
     def test_verify_image_ownership_not_found(self):
@@ -274,7 +274,6 @@ class TestGenerateImageEndpoint:
     @patch("src.api.routers.images.ImageService")
     def test_generate_image_unauthorized(self, mock_service_class, app, client):
         """Test that unauthenticated requests return 401."""
-        from src.api.deps import get_current_user_optional
 
         # Don't override auth - should be None
         with patch("src.api.routers.images.get_session") as mock_session_gen:
@@ -455,6 +454,7 @@ class TestInvalidParameters:
 
 
 # ==================== Round Scene Image Tests ====================
+
 
 class TestRoundSceneImage:
     """Test round scene image endpoint with week parameter."""
