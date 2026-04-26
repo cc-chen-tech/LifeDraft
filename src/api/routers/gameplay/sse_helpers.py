@@ -569,16 +569,13 @@ async def stream_round_event(
         # Auto-save game state after event generation
         # This ensures user can resume from this point even if they close the page
         try:
-            from src.database.models import SessionLocal
+            from src.api.deps import get_db
 
-            db = SessionLocal()
-            try:
-                state = game_loop.get_state()
-                if state:
-                    db.save_game_progress(game_id, state)
-                    logger.info(f"Auto-saved game state after event generation: game_id={game_id}")
-            finally:
-                db.close()
+            db = get_db()
+            state = game_loop.get_state()
+            if state:
+                db.save_game_progress(game_id, state)
+                logger.info(f"Auto-saved game state after event generation: game_id={game_id}")
         except (OSError, IOError) as e:
             logger.warning(f"Auto-save IO error after event generation: {e}")
         except Exception as e:
@@ -745,16 +742,13 @@ async def stream_choice(
 
         # Auto-save after choice to persist current_event_data=None
         try:
-            from src.database.models import SessionLocal
+            from src.api.deps import get_db
 
-            db = SessionLocal()
-            try:
-                state = game_loop.get_state()
-                if state:
-                    db.save_game_progress(game_id, state)
-                    logger.info(f"Auto-saved game state after choice: game_id={game_id}")
-            finally:
-                db.close()
+            db = get_db()
+            state = game_loop.get_state()
+            if state:
+                db.save_game_progress(game_id, state)
+                logger.info(f"Auto-saved game state after choice: game_id={game_id}")
         except (OSError, IOError) as e:
             logger.warning(f"Auto-save IO error after choice: {e}")
         except Exception as e:
@@ -1064,16 +1058,13 @@ async def stream_regenerate(
 
         # Auto-save game state
         try:
-            from src.database.models import SessionLocal
+            from src.api.deps import get_db
 
-            db = SessionLocal()
-            try:
-                state = game_loop.get_state()
-                if state:
-                    db.save_game_progress(game_id, state)
-                    logger.info(f"Auto-saved game state after regeneration: game_id={game_id}")
-            finally:
-                db.close()
+            db = get_db()
+            state = game_loop.get_state()
+            if state:
+                db.save_game_progress(game_id, state)
+                logger.info(f"Auto-saved game state after regeneration: game_id={game_id}")
         except (OSError, IOError) as e:
             logger.warning(f"Auto-save IO error after regeneration: {e}")
         except Exception as e:
