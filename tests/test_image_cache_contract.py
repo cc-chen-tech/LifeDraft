@@ -1,11 +1,14 @@
 """Contract tests for image file cache headers."""
 
+import os
 from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-from src.api.deps import create_token
-from src.api.main import app
+os.environ.setdefault("JWT_SECRET", "test-secret-for-image-cache-contract")
+
+from src.api.deps import create_token  # noqa: E402
+from src.api.main import app  # noqa: E402
 
 client = TestClient(app)
 
