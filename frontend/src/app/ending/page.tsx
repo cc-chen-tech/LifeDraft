@@ -188,7 +188,7 @@ export default function EndingPage() {
 
                 {showReview && (
                   <div className="space-y-4 animate-page-enter">
-                    <LifeReviewCard data={lifeReview as any} />
+                    <LifeReviewCard data={lifeReview as LifeReviewData} />
                     <ShareCard
                       playerName={playerName}
                       endingName={endingName}

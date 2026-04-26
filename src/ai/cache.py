@@ -104,7 +104,7 @@ class EventCache:
 
         # Create hash
         key_str = json.dumps(signature, sort_keys=True)
-        return hashlib.md5(key_str.encode()).hexdigest()
+        return hashlib.md5(key_str.encode(), usedforsecurity=False).hexdigest()
 
     def get(self, player_state: Dict[str, Any], language: str) -> Optional[GameEvent]:
         """

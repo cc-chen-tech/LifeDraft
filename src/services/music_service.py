@@ -270,7 +270,7 @@ class MusicService:
 
         # 取前 500 字作为 hash 输入（足够区分不同场景，同时避免大文本）
         preview = story_text[:500] if len(story_text) > 500 else story_text
-        return hashlib.md5(preview.encode("utf-8")).hexdigest()
+        return hashlib.md5(preview.encode("utf-8"), usedforsecurity=False).hexdigest()
 
     async def _get_or_build_pool(
         self,

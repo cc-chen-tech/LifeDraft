@@ -1,5 +1,12 @@
 "use client";
 
+// Augment window for E2E test data injection
+declare global {
+  interface Window {
+    __TEST_DATA__?: unknown;
+  }
+}
+
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -54,7 +61,7 @@ export default function OpeningStoryPage() {
     initializedRef.current = true;
 
     // ★ 支持测试数据注入（E2E 测试用）
-    const testData = (typeof window !== "undefined" && (window as any).__TEST_DATA__) || null;
+    const testData = (typeof window !== "undefined" && window.__TEST_DATA__) || null;
     if (testData) {
       console.log("[OpeningStory] Using test data injection");
     }

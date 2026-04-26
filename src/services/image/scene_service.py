@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from config.prompts._helpers import _build_image_era_constraints
 from src.ai.image_client import ImageClient
+from src.ai.image_config import DEFAULT_EDIT_NEGATIVE_PROMPT
 from src.ai.image_exceptions import (ContentInspectionError,
                                      ImageGenerationError)
 from src.database.models import Image as ImageModel
@@ -23,6 +24,13 @@ logger = logging.getLogger(__name__)
 
 class SceneImageService:
     """场景插画生成服务"""
+
+    # 场景编辑专用反向提示词（比默认更强，包含场景特定约束）
+    SCENE_EDIT_NEGATIVE_PROMPT = (
+        DEFAULT_EDIT_NEGATIVE_PROMPT
+        + "，半身像，特写，裁剪，多人重叠，人物缺失，遗漏人物"
+        + "，禁止科幻元素，禁止赛博朋克，禁止全息投影，禁止发光效果，禁止未来科技"
+    )
 
     # 场景插画提示词模板 - 优化版本（更细致的描述）
     SCENE_PROMPT_TEMPLATE = """电影感故事场景插画，高质量，细节丰富。
@@ -329,6 +337,7 @@ class SceneImageService:
                         prompt=edit_prompt,
                         size="1664*928",
                         num_images=1,
+                        extra_params={"negative_prompt": self.SCENE_EDIT_NEGATIVE_PROMPT},
                     )
 
                     if results:
@@ -640,6 +649,7 @@ class SceneImageService:
                     prompt=combined_prompt,
                     size="1664*928",
                     num_images=1,
+                    extra_params={"negative_prompt": self.SCENE_EDIT_NEGATIVE_PROMPT},
                 )
 
                 if results:

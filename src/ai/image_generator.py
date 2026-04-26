@@ -30,7 +30,7 @@ _image_cache: TTLCache = TTLCache(maxsize=100, ttl=3600)
 def _get_prompt_hash(prompt: str, size: str, extra_params: Optional[Dict] = None) -> str:
     """生成 prompt 的哈希值作为缓存 key"""
     cache_key = f"{prompt}|{size}|{extra_params}"
-    return hashlib.md5(cache_key.encode()).hexdigest()
+    return hashlib.md5(cache_key.encode(), usedforsecurity=False).hexdigest()
 
 
 class ImageGenerator:

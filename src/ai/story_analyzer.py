@@ -155,7 +155,7 @@ class StoryAnalyzer:
             from config.prompts import get_story_analysis_prompt
 
             # ★ 计算故事文本的哈希，用于事实溯源
-            story_hash = hashlib.md5(story_text.encode("utf-8")).hexdigest()[:16]
+            story_hash = hashlib.md5(story_text.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
 
             # Build existing facts context for the AI
             existing_context = self._build_existing_facts_context(existing_facts, language)
