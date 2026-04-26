@@ -61,6 +61,14 @@ async def lifespan(app: FastAPI):
     drain_task.cancel()
     logger.info("FastAPI server shutting down...")
 
+    # B-01/B-02: 关闭全局线程池，防止资源泄漏
+    from src.api.routers.gameplay.sse_helpers import shutdown_sse_thread_pool
+    from src.services.image_service import shutdown_image_thread_pool
+
+    shutdown_sse_thread_pool(wait=False)
+    shutdown_image_thread_pool(wait=False)
+    logger.info("Global thread pools shut down")
+
 
 app = FastAPI(
     title="人生草稿本 API",
