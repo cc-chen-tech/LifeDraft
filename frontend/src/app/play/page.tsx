@@ -32,7 +32,6 @@ import { RoundHistoryDrawer } from "@/components/game/RoundHistoryDrawer";
 import { RoundSceneImageDisplay } from "@/components/game/RoundSceneImage";
 import { HistorySceneImage } from "@/components/game/HistorySceneImage";
 import { CollectionPanel } from "@/components/game/CollectionPanel";
-import { MusicPlayer } from "@/components/game/MusicPlayer";
 import { ChoiceImpactDisplay } from "@/components/game/ChoiceImpactDisplay";
 import { usePlayGame, STATUS_MESSAGES } from "@/hooks/usePlayGame";
 import { useGameIdFromUrl } from "@/hooks/useGameIdFromUrl";
@@ -373,15 +372,6 @@ export default function PlayPage() {
             message={phase === "loading" ? "故事生成中..." : getLoadingMessage()}
             elapsedSeconds={elapsedSeconds}
             phase={phase === "generating" || phase === "choosing" ? getLoadingMessage() : undefined}
-          />
-        )}
-
-        {/* ★ 音乐播放器 - 放在故事文本上方 */}
-        {!isViewingHistory && storyText && (
-          <MusicPlayer
-            storyText={storyText}
-            gameId={gameId || undefined}
-            className="mb-6"
           />
         )}
 
