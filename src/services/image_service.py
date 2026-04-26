@@ -21,7 +21,9 @@ from src.services.image_storage import ImageStorageService
 logger = logging.getLogger(__name__)
 
 # C-05: 模块级线程池，替代裸线程使用
-_image_thread_pool = ThreadPoolExecutor(max_workers=10, thread_name_prefix="image-gen")
+_image_thread_pool: Optional[ThreadPoolExecutor] = ThreadPoolExecutor(
+    max_workers=10, thread_name_prefix="image-gen"
+)
 
 
 def get_image_thread_pool() -> ThreadPoolExecutor:
