@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -24,6 +24,7 @@ import {
   Eye,
   RefreshCw,
   RotateCcw,
+  User,
 } from "lucide-react";
 
 const STEP_LABELS: Record<string, string> = {
@@ -97,6 +98,11 @@ export function CompletionScreen({
   const [isGoingBack, setIsGoingBack] = useState(false);
   const [isRegeneratingFresh, setIsRegeneratingFresh] = useState(false);
   const [isRegeneratingImage, setIsRegeneratingImage] = useState(false);
+  const [imageError, setImageError] = useState(false);
+
+  const handleImageError = useCallback(() => {
+    setImageError(true);
+  }, []);
 
   const handleBack = async () => {
     setIsGoingBack(true);
@@ -169,12 +175,18 @@ export function CompletionScreen({
               <div className="w-32 h-48 bg-secondary rounded-lg flex items-center justify-center">
                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
               </div>
-            ) : (
+            ) : !imageError ? (
               <img
                 src={playerImages[selectedImageIndex]?.image_url || playerImages[0]?.image_url}
                 alt={playerName || "主角"}
                 className="w-32 h-48 object-cover rounded-lg border-2 border-primary/30 shadow-lg"
+                onError={handleImageError}
               />
+            ) : (
+              <div className="w-32 h-48 bg-secondary rounded-lg flex flex-col items-center justify-center border-2 border-primary/30 shadow-lg">
+                <User className="w-8 h-8 text-muted-foreground mb-2" />
+                <span className="text-xs text-muted-foreground">图片加载失败</span>
+              </div>
             )}
             <span className="text-sm font-medium text-foreground mt-2">{playerName}</span>
 

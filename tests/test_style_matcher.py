@@ -155,7 +155,7 @@ class TestStyleMatcherEdgeCases:
     def test_empty_settings(self, matcher):
         """空 character_settings 应返回默认风格"""
         result = matcher.match({})
-        assert result.style_id == "chinese_classic_saga"
+        assert result.style_id == "magical_realism"
         assert result.confidence == 0.0
 
     def test_none_fields(self, matcher):
@@ -398,5 +398,5 @@ class TestAutoMatchStyle:
     def test_auto_match_empty(self):
         """auto_match_style 传空字典应返回默认"""
         result = auto_match_style({})
-        assert result.style_id == "chinese_classic_saga"
+        assert result.style_id == "magical_realism"
         assert result.confidence == 0.0

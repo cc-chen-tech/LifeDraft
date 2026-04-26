@@ -1,9 +1,10 @@
 "use client";
 
+import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { Loader2, RefreshCw, RotateCcw } from "lucide-react";
+import { Loader2, RefreshCw, RotateCcw, User } from "lucide-react";
 
 interface StepPortraitProps {
   playerImages: Array<{ image_id: number; image_url: string }>;
@@ -35,6 +36,16 @@ export function StepPortrait({
   showToast,
 }: StepPortraitProps) {
   const playerImage = playerImages[selectedImageIndex] || playerImages[0] || null;
+  const [mainImageError, setMainImageError] = useState(false);
+  const [thumbErrors, setThumbErrors] = useState<Set<number>>(new Set());
+
+  const handleMainImageError = useCallback(() => {
+    setMainImageError(true);
+  }, []);
+
+  const handleThumbError = useCallback((imageId: number) => {
+    setThumbErrors((prev) => new Set(prev).add(imageId));
+  }, []);
 
   return (
     <div className="space-y-4">
@@ -51,12 +62,20 @@ export function StepPortrait({
         ) : playerImages.length > 0 ? (
           <div className="space-y-3">
             {/* 主图展示 */}
-            <div className="w-full aspect-[9/17] max-w-sm mx-auto bg-secondary rounded-lg overflow-hidden">
-              <img 
-                src={playerImage?.image_url} 
-                alt={playerName}
-                className="w-full h-full object-contain"
-              />
+            <div className="w-full aspect-[9/17] max-w-sm mx-auto bg-secondary rounded-lg overflow-hidden flex items-center justify-center">
+              {!mainImageError ? (
+                <img
+                  src={playerImage?.image_url}
+                  alt={playerName}
+                  className="w-full h-full object-contain"
+                  onError={handleMainImageError}
+                />
+              ) : (
+                <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                  <User className="w-12 h-12" />
+                  <span className="text-sm">图片加载失败</span>
+                </div>
+              )}
             </div>
             
             {/* 缩略图选择 */}
@@ -73,11 +92,18 @@ export function StepPortrait({
                     )}
                     onClick={() => onSelectImage(idx)}
                   >
-                    <img 
-                      src={img.image_url} 
-                      alt={`${playerName} - ${idx + 1}`}
-                      className="w-full h-full object-contain"
-                    />
+                    {!thumbErrors.has(img.image_id) ? (
+                      <img
+                        src={img.image_url}
+                        alt={`${playerName} - ${idx + 1}`}
+                        className="w-full h-full object-contain"
+                        onError={() => handleThumbError(img.image_id)}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-muted">
+                        <User className="w-6 h-6 text-muted-foreground" />
+                      </div>
+                    )}
                   </button>
                 ))}
               </div>

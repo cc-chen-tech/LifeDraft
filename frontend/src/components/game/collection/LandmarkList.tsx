@@ -1,6 +1,6 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useState, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import { MapPin, Sparkles, Loader2 } from "lucide-react";
 import { LANDMARK_CATEGORY_LABELS } from "./types";
@@ -14,6 +14,11 @@ export const LandmarkList = memo(function LandmarkList({
   isLoading,
   onLandmarkClick,
 }: LandmarkListProps) {
+  const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
+
+  const handleImageError = useCallback((name: string) => {
+    setImageErrors((prev) => new Set(prev).add(name));
+  }, []);
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -40,10 +45,12 @@ export const LandmarkList = memo(function LandmarkList({
         >
           {/* 图片区域 */}
           <div className="aspect-video rounded-md bg-muted mb-2 overflow-hidden flex items-center justify-center">
-            {landmark.image_url ? (
+            {landmark.image_url && !imageErrors.has(landmark.name) ? (
               <img
                 src={landmark.image_url}
                 alt={landmark.name}
+                loading="lazy"
+                onError={() => handleImageError(landmark.name)}
                 className="w-full h-full object-cover"
               />
             ) : (

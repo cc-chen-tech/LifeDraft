@@ -1,6 +1,6 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useState, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import { User, Image as ImageIcon, Loader2 } from "lucide-react";
 import type { CharacterListProps } from "./types";
@@ -13,6 +13,11 @@ export const CharacterList = memo(function CharacterList({
   isLoading,
   onCharacterClick,
 }: CharacterListProps) {
+  const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
+
+  const handleImageError = useCallback((name: string) => {
+    setImageErrors((prev) => new Set(prev).add(name));
+  }, []);
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -39,11 +44,13 @@ export const CharacterList = memo(function CharacterList({
         >
           {/* 图片区域 - 使用 object-contain 显示完整人物 */}
           <div className="aspect-square rounded-md bg-muted mb-2 overflow-hidden flex items-center justify-center">
-            {character.image_url ? (
+            {character.image_url && !imageErrors.has(character.name) ? (
               <img
                 src={character.image_url}
                 alt={character.name}
                 className="w-full h-full object-contain"
+                loading="lazy"
+                onError={() => handleImageError(character.name)}
               />
             ) : (
               <div className="flex flex-col items-center gap-1 text-muted-foreground">

@@ -498,6 +498,19 @@ describe('eventUtils', () => {
       expect(result.remainingText).toBeUndefined();
     });
 
+    it('preserves frontend story when substantial content exists (>100 chars) despite divergence', () => {
+      // Bug #27 regression: frontend accumulated significant SSE content
+      // Backend fallback/divergence should NOT overwrite it
+      const backendStory = 'Backend fallback story that diverged from frontend';
+      const frontendStory = 'A'.repeat(150); // 150 chars > 100 threshold
+
+      const result = selectFinalStory(backendStory, frontendStory);
+
+      // Substantial frontend story should be preserved even on divergence
+      expect(result.useBackend).toBe(false);
+      expect(result.finalStory).toBe(frontendStory);
+    });
+
     it('uses frontend when it is longer than backend', () => {
       const backendStory = 'Short';
       const frontendStory = 'This is a longer frontend story'; // > 10 chars
