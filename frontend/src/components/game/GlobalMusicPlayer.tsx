@@ -5,6 +5,10 @@
  *
  * Mounted in RootLayout so it survives page navigation.
  * Shows a slim bottom bar by default; expands to full MusicPlayer on click.
+ *
+ * IMPORTANT: MusicPlayer must always stay mounted to keep the Audio element alive.
+ * We use opacity-0 + h-0 + overflow-hidden (NOT display:none / hidden) so the
+ * browser never pauses the audio.
  */
 import { useEffect, useRef, useState } from "react";
 import { MusicPlayer } from "./MusicPlayer";
@@ -26,6 +30,7 @@ export function GlobalMusicPlayer() {
   const togglePlay = useMusicStore((state) => state.togglePlay);
   const currentTime = useMusicStore((state) => state.currentTime);
   const duration = useMusicStore((state) => state.duration);
+  const audioElement = useMusicStore((state) => state.audioElement);
 
   // On mount, try to restore the active game playlist from localStorage
   useEffect(() => {
@@ -54,13 +59,30 @@ export function GlobalMusicPlayer() {
   const artistName = currentSong?.artists?.join(", ") || "";
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
+  // Handle play/pause from the mini bar.
+  // If audioElement exists, use store.togglePlay (direct control).
+  // If no audioElement but we have a recommendation, the MusicPlayer handles auto-play internally.
+  const handleMiniPlayPause = () => {
+    if (audioElement) {
+      togglePlay();
+    } else {
+      // No audio element — expand the player so user can pick a song
+      setIsExpanded(true);
+    }
+  };
+
   return (
     <div className="fixed z-50 bottom-0 left-0 right-0 md:bottom-4 md:left-auto md:right-4 md:w-80">
-      {/* MusicPlayer always mounted to keep audio alive; hidden when collapsed */}
+      {/* MusicPlayer always mounted to keep audio alive.
+          Use opacity-0 + h-0 + overflow-hidden instead of display:none
+          so the browser never pauses audio playback. */}
       <div
-        className={`bg-card border rounded-t-lg md:rounded-lg shadow-lg max-h-[60vh] overflow-y-auto ${
-          isExpanded ? '' : 'hidden'
-        }`}
+        className={
+          isExpanded
+            ? "bg-card border rounded-t-lg md:rounded-lg shadow-lg max-h-[60vh] overflow-y-auto"
+            : "opacity-0 h-0 overflow-hidden pointer-events-none absolute"
+        }
+        aria-hidden={!isExpanded}
       >
         <MusicPlayer
           storyText={storyText}
@@ -86,7 +108,7 @@ export function GlobalMusicPlayer() {
         <button
           onClick={(e) => {
             e.stopPropagation();
-            togglePlay();
+            handleMiniPlayPause();
           }}
           className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-primary text-primary-foreground"
         >
