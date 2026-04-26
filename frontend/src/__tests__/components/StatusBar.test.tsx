@@ -61,7 +61,7 @@ describe("StatusBar", () => {
     it("formats wealth with currency symbol", () => {
       render(<StatusBar playerState={mockPlayerState} progress={null} />);
 
-      expect(screen.getByText(/¥5,000/)).toBeInTheDocument();
+      expect(screen.getByText(/5,000碳信用/)).toBeInTheDocument();
     });
   });
 

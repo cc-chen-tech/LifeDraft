@@ -192,9 +192,9 @@ class StoryGenerator:
 
                 self._style_manifest = get_style(style_id)
                 if not self._style_manifest and not style_id:
-                    # Use default style when no style_id is matched
-                    self._style_manifest = get_style("chinese_classic_saga")
-                    logger.info("Using default style: chinese_classic_saga")
+                    # ★ Bug #12 修复：默认风格与前端显示一致（魔幻现实主义），避免未指定风格时默认使用章回体
+                    self._style_manifest = get_style("magical_realism")
+                    logger.info("Using default style: magical_realism")
                 if self._style_manifest:
                     self._prompt_builder = StyleAwarePromptBuilder(self._style_manifest)
                     self._style_validator = StyleAwareValidator(self._style_manifest)

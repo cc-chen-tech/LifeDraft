@@ -92,6 +92,12 @@ export function selectFinalStory(
     return { useBackend: false, finalStory: backendStory };
   }
 
+  // ★ 保护：前端已有大量流式内容时，避免被后端 fallback/divergence 覆盖
+  if (frontendStory.length > 100) {
+    console.warn("[selectFinalStory] Divergence detected with substantial frontend story, preserving frontend");
+    return { useBackend: false, finalStory: frontendStory };
+  }
+
   // ★ 前端不是后端的前缀 —— 检测到 divergence
   // 这意味着后端重写/修改了故事，不应尝试切片追加
   // 直接使用更长的那个版本

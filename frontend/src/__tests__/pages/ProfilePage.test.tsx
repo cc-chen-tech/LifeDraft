@@ -43,9 +43,11 @@ jest.mock('@/hooks/useHydration', () => ({
 }));
 
 const mockPush = jest.fn();
+const mockBack = jest.fn();
 jest.mock('next/navigation', () => ({
   useRouter: () => ({
     push: mockPush,
+    back: mockBack,
     replace: jest.fn(),
   }),
 }));
@@ -253,7 +255,7 @@ describe('ProfilePage', () => {
       render(<ProfilePage />);
       const backButton = screen.getByText('返回');
       fireEvent.click(backButton);
-      expect(mockPush).toHaveBeenCalledWith('/');
+      expect(mockBack).toHaveBeenCalled();
     });
   });
 

@@ -18,7 +18,8 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _STYLES_DIR = _PROJECT_ROOT / "config" / "styles"
 
 # 默认回退风格
-_DEFAULT_STYLE_ID = "chinese_classic_saga"
+# ★ Bug #12 修复：默认风格与前端显示一致（魔幻现实主义），避免未指定风格时默认使用章回体
+_DEFAULT_STYLE_ID = "magical_realism"
 
 
 # ==================== 匹配结果 ====================

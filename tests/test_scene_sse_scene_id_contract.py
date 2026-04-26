@@ -19,8 +19,6 @@ class TestSceneSSESceneIdPropagation:
         """SSE 事件 payload 应有 scene_id key"""
         import datetime
 
-        from src.database.models import SceneImage
-
         # 模拟事件 payload
         payload = {
             "type": "scene_image_ready",

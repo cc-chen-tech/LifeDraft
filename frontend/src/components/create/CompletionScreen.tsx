@@ -193,6 +193,7 @@ export function CompletionScreen({
                     size="sm"
                     className="flex-1 h-8 text-xs"
                     disabled={!imageFeedback.trim() || isRegeneratingImage}
+                    title={!imageFeedback.trim() ? "请先输入修改意见" : undefined}
                     onClick={handleRegenerateImage}
                   >
                     {isRegeneratingImage ? (

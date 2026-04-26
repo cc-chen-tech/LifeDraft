@@ -63,7 +63,7 @@ export const ChoiceImpactDisplay = memo(function ChoiceImpactDisplay({
               )}
               <span>
                 {res.key === "wealth"
-                  ? `¥${Math.abs(value).toLocaleString()}`
+                  ? `${Math.abs(value).toLocaleString()}碳信用`
                   : Math.abs(value)}
               </span>
             </div>

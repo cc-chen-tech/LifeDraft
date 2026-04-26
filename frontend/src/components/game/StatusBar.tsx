@@ -73,7 +73,7 @@ export const StatusBar = memo(function StatusBar({
         {RESOURCES.map((res) => {
           const value = getResourceValue(playerState, res.key);
           if (value === null) return null;
-          const displayValue = res.key === "wealth" ? `¥${value.toLocaleString()}` : value;
+          const displayValue = res.key === "wealth" ? `${value.toLocaleString()}碳信用` : value;
           return (
             <Badge
               key={res.key}
@@ -144,7 +144,7 @@ export const StatusBar = memo(function StatusBar({
                   getAttributeColor(value, res.max)
                 )}
               >
-                {res.key === "wealth" ? `¥${value.toLocaleString()}` : value}
+                {res.key === "wealth" ? `${value.toLocaleString()}碳信用` : value}
               </span>
             </div>
           );

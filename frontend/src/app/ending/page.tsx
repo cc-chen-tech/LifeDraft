@@ -120,7 +120,7 @@ export default function EndingPage() {
                   <div className="text-center">
                     <p className="text-xs text-muted-foreground mb-1">财富</p>
                     <span className="text-2xl font-bold text-amber-400">
-                      ¥{wealth?.toLocaleString() ?? "--"}
+                      {wealth?.toLocaleString() ?? "--"}碳信用
                     </span>
                   </div>
                 </div>

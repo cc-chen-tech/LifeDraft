@@ -462,6 +462,16 @@ def _get_chinese_prompt(
     knowledge = player_state.get("knowledge", 50)
     wealth = player_state.get("wealth", 10000)
     week = player_state.get("week", 0)
+    current_round = player_state.get("current_round", 0)
+    rounds_per_week = player_state.get("rounds_per_week", 3)
+    # ★ 计算总章节号（从1开始），强制LLM使用正确的章节号
+    total_chapter = week * rounds_per_week + current_round + 1
+    chapter_number_zh = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十",
+                         "十一", "十二", "十三", "十四", "十五", "十六", "十七", "十八", "十九", "二十"]
+    if total_chapter <= len(chapter_number_zh):
+        chapter_label = f"第{chapter_number_zh[total_chapter - 1]}回"
+    else:
+        chapter_label = f"第{total_chapter}回"
     relationships = player_state.get("relationships", {})
 
     rel_str = "，".join([f"{name}({affinity})" for name, affinity in relationships.items()])
@@ -557,19 +567,30 @@ def _get_chinese_prompt(
             "\n\n【更早的历史事件摘要 - 禁止与这些情节雷同】\n" + recent_topics_str
         )
 
-    prompt = f"""你是一个人生模拟游戏的“命运引擎”。请根据以下玩家状态和角色设定，以故事续写的方式生成一个需要拉择的生活事件。
+    # ★ 章节号约束：明确告知LLM当前是第几章，防止从错误数字开始
+    is_first_chapter = total_chapter == 1
+    chapter_constraint = f"""
+【章节号约束 - 必须严格遵守】
+- 本段故事是整体叙事的{chapter_label}（第{total_chapter}章）
+- {'这是故事的开篇第一回，之前没有任何情节，绝对禁止提及"上回""上次""之前"等暗示前情的内容' if is_first_chapter else '可以自然承接前文，但严禁编造不在上文提供的历史中的过往事件'}
+- 故事开头必须使用"{chapter_label}"作为章节标识，然后接一句7字对仗标题（如"{chapter_label} 寒冬初遇知音少"）
+- 章节标题后空一行，再开始正文
+"""
+
+    prompt = f"""你是一个人生模拟游戏的"命运引擎"。请根据以下玩家状态和角色设定，以故事续写的方式生成一个需要拉择的生活事件。
 
 最重要的要求：
 1. **必须使用第三人称叙事**（"他/她"而非"我/你"），保持全文人称统一
 2. 故事应该控制在800-1200字，包含丰富的人物对话、场景描写、内心活动。要生动有深度，聚焦核心决策时刻。{story_context}{summary_context}
+{chapter_constraint}
 
 【角色完整设定 - 必须严格遵守】
 {character_context if character_context else "标准现代青年"}{available_people_str}{time_context}
 
 **人物约束（严格禁止创造新人物）**：
-- 所有出现在事件中的人物名字必须且只能来自上方“可用人物列表”
+- 所有出现在事件中的人物名字必须且只能来自上方"可用人物列表"
 - 绝对禁止凭空创造任何新人物
-- 如果需要其他人物，请使用模糊称谓（如“一位同事”“一个朋友”）
+- 如果需要其他人物，请使用模糊称谓（如"一位同事""一个朋友"）
 
 【近期历史 - 禁止重复相似情节】
 {history_str}{older_history_section}
@@ -588,7 +609,7 @@ def _get_chinese_prompt(
 精力：{energy}/100
 情绪：{mood}/100
 学识：{knowledge}/100
-财富：{wealth:,}元
+财富：{wealth:,}碳信用
 关键关系：{rel_str}{storylines_context}{facts_context}{world_model_context}
 
 【生成要求 - 必须严格遵守】
@@ -705,20 +726,34 @@ def get_result_generation_prompt(
     custom_constraint_en = ""
     if is_custom:
         custom_constraint_zh = (
-            "\n10. **[MUST] 严格遵循自定义选择**："
+            "\n10. **[MUST] 严格遵循自定义选择（最高优先级约束）**："
             "这是玩家自由输入的自定义行动，不是预设选项。"
             "你必须严格按照这个选择的字面意思生成后续剧情，"
             "绝对不允许偏离、忽略、替换为其他行为，"
             "也不允许将其解释为预设选项中的某一个。"
             "续写的内容必须直接体现玩家输入的这个具体行动。"
+            "\n10a. 续写开头必须用一句话明确描述玩家执行了这个自定义行动的具体场景，"
+            "例如：\"主角决定[自定义行动内容]，于是...\""
+            "\n10b. 如果玩家的选择与当前情境存在冲突，"
+            "你应该在故事中展现这个冲突的后果（如失败、意外、他人反对等），"
+            "而不是忽略玩家的选择回到原有剧情。"
+            "\n10c. 禁止生成与玩家选择方向相反的剧情。"
+            "如果玩家选择'离开'，故事必须写离开后的发展，不能写'最终决定留下'。"
         )
         custom_constraint_en = (
-            "\n10. **[MUST] STRICTLY FOLLOW CUSTOM CHOICE**: "
+            "\n10. **[MUST] STRICTLY FOLLOW CUSTOM CHOICE (HIGHEST PRIORITY)**: "
             "This is a free-form custom action entered by the player, NOT a preset option. "
             "You MUST generate the continuation strictly according to the literal meaning of this choice. "
             "You are absolutely FORBIDDEN from deviating, ignoring, substituting with another action, "
             "or interpreting it as one of the preset options. "
-            "The continuation MUST directly reflect the specific action the player entered."
+            "The continuation MUST directly reflect the specific action the player entered. "
+            "\n10a. The continuation MUST begin with a sentence explicitly describing the player performing this custom action, "
+            "e.g., 'The protagonist decides to [custom action], and so...'"
+            "\n10b. If the player's choice conflicts with the current situation, "
+            "show the CONSEQUENCES of that conflict (failure, surprise, opposition, etc.) "
+            "instead of ignoring the choice and returning to the original plot."
+            "\n10c. NEVER generate a continuation that goes in the OPPOSITE direction of the player's choice. "
+            "If the player chooses to 'leave', the story MUST show what happens after leaving, NOT 'ultimately decides to stay'."
         )
 
     if language == "zh":
@@ -1189,7 +1224,7 @@ def get_story_only_prompt(
 【玩家当前状态】
 年龄：{age}岁 | 第{week}周
 精力：{energy}/100 | 情绪：{mood}/100 | 学识：{knowledge}/100
-财富：{wealth:,}元 | 关系：{rel_str}
+财富：{wealth:,}碳信用 | 关系：{rel_str}
 
 [MUST] 强制约束（违反即重新生成）：{storylines_context}{facts_context}{world_model_context}{continuation_mandate}
 
@@ -1526,7 +1561,7 @@ def get_round_event_prompt(
 【当前状态】
 年龄：{age}岁 | 第{week}周 - {round_name}
 精力：{energy}/100 | 情绪：{mood}/100 | 学识：{knowledge}/100
-财富：{wealth:,}元 | 关系：{rel_str}{context_section}{rel_events_context}{memory_context}
+财富：{wealth:,}碳信用 | 关系：{rel_str}{context_section}{rel_events_context}{memory_context}
 
 [MUST] 强制约束（违反即重新生成）：{world_model_context}{storylines_context}{facts_context}{continuation_mandate}{new_char_context}
 

@@ -51,6 +51,7 @@ import {
   Settings,
   BookOpen,
   Users,
+  ArrowRight,
 } from "lucide-react";
 
 /**
@@ -317,7 +318,7 @@ export default function PlayPage() {
                   <DropdownMenuSubTrigger>
                     {isLoadingStyles ? "叙事风格..." : "叙事风格"}
                   </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent>
+                  <DropdownMenuSubContent className="max-h-[60vh] overflow-y-auto">
                     <DropdownMenuRadioGroup
                       value={narrativeStyleId}
                       onValueChange={(value) => handleUpdateNarrativeStyle(value)}
@@ -515,19 +516,26 @@ export default function PlayPage() {
               const roundsPerWeek = (roundInfo?.rounds_per_week as number) || 3;
               const roundNames = ["周一", "周中", "周末"];
               
-              let buttonText = "✅ 确认并继续";
-              if (currentRound < roundsPerWeek) {
-                const nextName = roundNames[currentRound] || `第${currentRound + 1}轮`;
-                buttonText = `➡️ 进入${nextName}`;
-              }
-              
+              const isLastRound = currentRound >= roundsPerWeek;
+              const nextName = roundNames[currentRound] || `第${currentRound + 1}轮`;
+
               return (
                 <>
                   <Button
                     className="w-full touch-target"
                     onClick={handleContinueToNextRound}
                   >
-                    {buttonText}
+                    {isLastRound ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4 mr-2" />
+                        确认并继续
+                      </>
+                    ) : (
+                      <>
+                        <ArrowRight className="w-4 h-4 mr-2" />
+                        进入{nextName}
+                      </>
+                    )}
                   </Button>
                   {/* ★ 预生成状态指示器 */}
                   {isPrefetching && (
