@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -52,6 +52,7 @@ import {
   BookOpen,
   Users,
   ArrowRight,
+  Palette,
 } from "lucide-react";
 
 /**
@@ -72,6 +73,11 @@ function GameIdSync() {
 export default function PlayPage() {
   // ★ 收集面板状态
   const [showCollection, setShowCollection] = useState(false);
+
+  // ★ 故事风格状态
+  const [narrativeStyleId, setNarrativeStyleId] = useState<string>("");
+  const [narrativeStyleOptions, setNarrativeStyleOptions] = useState<Array<{ style_id: string; style_name: string; description: string }>>([]);
+  const [styleLoading, setStyleLoading] = useState(false);
 
   const {
     // State
@@ -178,6 +184,35 @@ export default function PlayPage() {
   const setConstraintLevel = useGameStore((state) => state.setConstraintLevel);
   const enableSceneImage = useGameStore((state) => state.enableSceneImage);
   const setEnableSceneImage = useGameStore((state) => state.setEnableSceneImage);
+
+  // ★ 加载故事风格
+  const loadNarrativeStyles = useCallback(async () => {
+    if (!gameId || narrativeStyleOptions.length > 0) return;
+    setStyleLoading(true);
+    try {
+      const gid = Number(gameId);
+      const [options, current] = await Promise.all([
+        api.games.listNarrativeStyles(gid),
+        api.games.getNarrativeStyle(gid),
+      ]);
+      setNarrativeStyleOptions(options);
+      setNarrativeStyleId(current.style_id);
+    } catch (err) {
+      console.error("[loadNarrativeStyles]", err);
+    } finally {
+      setStyleLoading(false);
+    }
+  }, [gameId, narrativeStyleOptions.length]);
+
+  const handleStyleChange = useCallback(async (styleId: string) => {
+    if (!gameId) return;
+    setNarrativeStyleId(styleId);
+    try {
+      await api.games.updateNarrativeStyle(Number(gameId), styleId);
+    } catch (err) {
+      console.error("[handleStyleChange]", err);
+    }
+  }, [gameId]);
 
   // Don't render until hydrated
   if (!hydrated) {
@@ -288,8 +323,27 @@ export default function PlayPage() {
                 
                 <DropdownMenuSeparator />
                 
-
-
+                {/* 故事风格 */}
+                <DropdownMenuSub onOpenChange={(open: boolean) => { if (open) loadNarrativeStyles(); }}>
+                  <DropdownMenuSubTrigger>
+                    <Palette className="w-3.5 h-3.5 mr-1.5" />故事风格
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="max-h-64 overflow-y-auto">
+                    {styleLoading ? (
+                      <DropdownMenuItem disabled>
+                        <Loader2 className="w-3 h-3 animate-spin mr-1.5" />加载中...
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuRadioGroup value={narrativeStyleId} onValueChange={handleStyleChange}>
+                        {narrativeStyleOptions.map((s) => (
+                          <DropdownMenuRadioItem key={s.style_id} value={s.style_id} title={s.description}>
+                            {s.style_name}
+                          </DropdownMenuRadioItem>
+                        ))}
+                      </DropdownMenuRadioGroup>
+                    )}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
 
                 <DropdownMenuSeparator />
 

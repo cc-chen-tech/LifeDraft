@@ -290,6 +290,8 @@ class UserManager:
         """
         获取用户的好友列表
 
+        Uses in_() batch loading to avoid N+1 query problem.
+
         Args:
             user_id: 用户ID
 
@@ -306,12 +308,20 @@ class UserManager:
             .all()
         )
 
-        friends = []
+        # 收集所有好友 ID，用 in_() 批量查询，避免 N+1
+        friend_ids = []
         for f in friendships:
-            friend_id = f.friend_id if f.user_id == user_id else f.user_id
-            friend = self.get_user_by_id(int(friend_id))  # type: ignore[arg-type]
-            if friend:
-                friends.append(friend)
+            fid = f.friend_id if f.user_id == user_id else f.user_id
+            friend_ids.append(int(fid))  # type: ignore[arg-type]
+
+        if not friend_ids:
+            return []
+
+        friends = (
+            self.db.query(User)
+            .filter(User.user_id.in_(friend_ids))
+            .all()
+        )
 
         return friends
 

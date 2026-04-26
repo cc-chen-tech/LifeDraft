@@ -1,24 +1,32 @@
-"""Games router — CRUD for game sessions (create, list, load, save, delete)."""
+"""Games router — CRUD for game sessions (create, list, load, save, delete).
+
+Includes narrative-style endpoints for style browsing and per-game style updates.
+"""
 
 import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from src.ai.narrative.style_manifest import StyleLoader, get_style
-from src.ai.narrative.style_matcher import auto_match_style
 from src.api.deps import get_current_user, get_current_user_optional, get_db
 from src.api.schemas import CreateGameRequest  # 时间回溯存档系统
-from src.api.schemas import (CreateSavePointRequest, GameListItem,
-                             GameStateResponse, MessageResponse,
-                             SaveGameResponse, SavePointItem,
-                             SavePointListResponse, StateSnapshotItem,
-                             StateTimelineResponse,
-                             UpdateCharacterSettingsRequest,
-                             UpdateGameSettingsRequest,
-                             UpdateNarrativeStyleRequest)
+from src.api.schemas import (
+    CreateSavePointRequest,
+    GameListItem,
+    GameStateResponse,
+    MessageResponse,
+    SaveGameResponse,
+    SavePointItem,
+    SavePointListResponse,
+    StateSnapshotItem,
+    StateTimelineResponse,
+    UpdateGameSettingsRequest,
+)
 from src.api.services.session_service import session_service
 from src.api.session_store import session_store
+from pydantic import BaseModel
+
+from src.ai.narrative.style_manifest import get_default_loader, get_style
 from src.database.models import Game, SessionLocal
 from src.game.game_initializer import GameInitializer
 from src.game.game_loop import GameLoop
@@ -147,15 +155,6 @@ async def get_active_game(
         logger.exception(f"[get_active_game] Failed to convert state to dict: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to serialize game state: {str(e)}")
 
-    # Get narrative style info
-    _raw_style_id = getattr(game_loop, "narrative_style_id", None)
-    narrative_style_id = _raw_style_id if isinstance(_raw_style_id, str) else None
-    narrative_style_name = None
-    if narrative_style_id:
-        style = get_style(narrative_style_id)
-        if style:
-            narrative_style_name = style.style_name
-
     return GameStateResponse(
         game_id=active_game_id,
         player_state=player_state_dict,
@@ -163,8 +162,6 @@ async def get_active_game(
         round_info=game_loop.get_round_info(),
         current_event=(game_loop.current_event.model_dump() if game_loop.current_event else None),
         constraint_level=constraint_level,
-        narrative_style_id=narrative_style_id,
-        narrative_style_name=narrative_style_name,
     )
 
 
@@ -194,15 +191,6 @@ async def load_game(
     db.set_active_game(user_id, game_id)
 
     state = game_loop.get_state()
-    # Get narrative style info
-    _raw_style_id = getattr(game_loop, "narrative_style_id", None)
-    narrative_style_id = _raw_style_id if isinstance(_raw_style_id, str) else None
-    narrative_style_name = None
-    if narrative_style_id:
-        style = get_style(narrative_style_id)
-        if style:
-            narrative_style_name = style.style_name
-
     return GameStateResponse(
         game_id=game_id,
         player_state=state.to_dict() if state else {},
@@ -210,8 +198,6 @@ async def load_game(
         round_info=game_loop.get_round_info(),
         current_event=(game_loop.current_event.model_dump() if game_loop.current_event else None),
         constraint_level=constraint_level,
-        narrative_style_id=narrative_style_id,
-        narrative_style_name=narrative_style_name,
     )
 
 
@@ -447,11 +433,7 @@ async def update_game_settings(
         # 持久化到 Game 表
         db_session = SessionLocal()
         try:
-            game = (
-                db_session.query(Game)
-                .filter(Game.game_id == game_id, Game.user_id == user_id)
-                .first()
-            )
+            game = db_session.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
             if game:
                 setattr(game, "constraint_level", req.constraint_level)
                 db_session.commit()
@@ -463,6 +445,7 @@ async def update_game_settings(
         if game_session and game_session.game_loop:
             game_session.game_loop.quality_level = req.constraint_level
             from src.ai.generator import EventGenerator
+
             from src.game.character_creator import CharacterCreator
             from src.game.story_service import StoryService
             from src.game.yearly_summary import YearlySummaryGenerator
@@ -473,8 +456,7 @@ async def update_game_settings(
                 game_session.game_loop.ai_generator, game_session.game_loop.language
             )
             game_session.game_loop.character_creator = CharacterCreator(
-                ai_generator=game_session.game_loop.ai_generator,
-                language=game_session.game_loop.language,
+                ai_generator=game_session.game_loop.ai_generator, language=game_session.game_loop.language
             )
             game_session.game_loop.story_service = StoryService(
                 game_session.game_loop.ai_generator, game_session.game_loop.language
@@ -483,64 +465,106 @@ async def update_game_settings(
     return MessageResponse(success=True, message="Settings updated")
 
 
-@router.patch("/{game_id}/character-settings", response_model=MessageResponse)
-async def update_character_settings(
+# ==================== 叙事风格设置 ====================
+
+
+class NarrativeStyleOption(BaseModel):
+    style_id: str
+    style_name: str
+    description: str = ""
+
+
+class NarrativeStyleResponse(BaseModel):
+    style_id: str
+    style_name: str
+
+
+class UpdateNarrativeStyleRequest(BaseModel):
+    style_id: str
+
+
+@router.get("/{game_id}/narrative-style-options")
+async def list_narrative_style_options(
     game_id: int,
-    req: UpdateCharacterSettingsRequest,
     user_id: int = Depends(get_current_user),
 ):
-    """
-    Update character_settings for an existing game.
-    Used when auto-generated background settings need to be persisted
-    after initial game creation with partial settings.
-    """
-    db = get_db()
-    state_data = db.load_saved_game(game_id, user_id)
-    if state_data is None:
-        raise HTTPException(status_code=404, detail="Game not found or not owned by user")
+    """返回所有可用的叙事风格列表。"""
+    loader = get_default_loader()
+    style_ids = loader.get_all_style_ids()
+    options = []
+    for sid in sorted(style_ids):
+        manifest = loader.get_style(sid)
+        if manifest:
+            options.append(
+                NarrativeStyleOption(
+                    style_id=manifest.style_id,
+                    style_name=manifest.style_name,
+                    description=manifest.description,
+                )
+            )
+    return options
+
+
+@router.get("/{game_id}/narrative-style", response_model=NarrativeStyleResponse)
+async def get_narrative_style(
+    game_id: int,
+    user_id: int = Depends(get_current_user),
+):
+    """获取当前游戏的叙事风格。"""
+    db_session = SessionLocal()
+    try:
+        game = (
+            db_session.query(Game)
+            .filter(Game.game_id == game_id, Game.user_id == user_id)
+            .first()
+        )
+        if not game:
+            raise HTTPException(status_code=404, detail="Game not found")
+
+        style_id = game.narrative_style_id or "chinese_classic_saga"
+        style_name = style_id
+        manifest = get_style(style_id)
+        if manifest:
+            style_name = manifest.style_name
+
+        return NarrativeStyleResponse(style_id=style_id, style_name=style_name)
+    finally:
+        db_session.close()
+
+
+@router.put("/{game_id}/narrative-style", response_model=MessageResponse)
+async def update_narrative_style(
+    game_id: int,
+    req: UpdateNarrativeStyleRequest,
+    user_id: int = Depends(get_current_user),
+):
+    """更新游戏的叙事风格。"""
+    # 验证 style_id 有效
+    manifest = get_style(req.style_id)
+    if not manifest:
+        raise HTTPException(status_code=400, detail=f"Unknown style_id: {req.style_id}")
 
     db_session = SessionLocal()
     try:
         game = (
-            db_session.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
+            db_session.query(Game)
+            .filter(Game.game_id == game_id, Game.user_id == user_id)
+            .first()
         )
         if not game:
-            raise HTTPException(status_code=404, detail="Game not found or not owned by user")
+            raise HTTPException(status_code=404, detail="Game not found")
 
-        # Merge new character_settings into existing initial_state
-        initial_state = dict(game.initial_state or {})
-        existing_settings = initial_state.get("character_settings", {})
-        merged_settings = {**existing_settings, **req.character_settings}
-        initial_state["character_settings"] = merged_settings
-        game.initial_state = initial_state  # type: ignore[assignment]
+        game.narrative_style_id = req.style_id  # type: ignore[assignment]
         db_session.commit()
-
-        # Also update active session if it exists
-        game_session = session_store.get(game_id)
-        if game_session and game_session.game_loop and game_session.game_loop.player_state:
-            game_session.game_loop.player_state.character_settings = merged_settings
-
-        # Auto-match narrative style if settings are complete
-        if merged_settings.get("family_members"):
-            try:
-                match_result = auto_match_style(merged_settings)
-                if match_result.confidence >= 0.3:
-                    game.narrative_style_id = match_result.style_id  # type: ignore[assignment]
-                    merged_settings["narrative_style_id"] = match_result.style_id
-                    initial_state["character_settings"] = merged_settings
-                    initial_state["narrative_style_id"] = match_result.style_id
-                    game.initial_state = initial_state  # type: ignore[assignment]
-                    db_session.commit()
-                    logger.info(
-                        f"Auto-matched narrative style for game {game_id}: "
-                        f"{match_result.style_id} (confidence={match_result.confidence:.2f})"
-                    )
-            except Exception as e:
-                logger.warning(f"Style auto-match failed for game {game_id}: {e}")
-
-        return MessageResponse(success=True, message="Character settings updated")
     finally:
         db_session.close()
+
+    # 同步更新会话中的 style
+    game_session = session_store.get(game_id)
+    if game_session and game_session.game_loop:
+        game_session.game_loop.narrative_style_id = req.style_id  # type: ignore[attr-defined]
+
+    return MessageResponse(success=True, message="Narrative style updated")
 
 
 @router.delete("/save-point/{state_id}", response_model=MessageResponse)
@@ -558,104 +582,3 @@ async def delete_save_point(
         raise HTTPException(status_code=404, detail="Save point not found or not owned by user")
 
     return MessageResponse(message="Save point deleted")
-
-
-# ==================== 叙事风格选择 ====================
-
-
-@router.get("/{game_id}/narrative-style-options")
-async def list_narrative_styles(
-    game_id: int,
-    user_id: int = Depends(get_current_user),
-):
-    """
-    列出所有可用的叙事风格，供用户选择。
-    """
-    loader = StyleLoader()
-    loader.load_all()
-
-    styles = []
-    for style_id in loader.get_all_style_ids():
-        style = loader.get_style(style_id)
-        if style:
-            styles.append(
-                {
-                    "style_id": style.style_id,
-                    "style_name": style.style_name,
-                    "description": style.description,
-                }
-            )
-
-    return styles
-
-
-@router.get("/{game_id}/narrative-style")
-async def get_game_narrative_style(
-    game_id: int,
-    user_id: int = Depends(get_current_user),
-):
-    """
-    获取游戏当前的叙事风格。
-    """
-    db_session = SessionLocal()
-    try:
-        game = (
-            db_session.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
-        )
-        if not game:
-            raise HTTPException(status_code=404, detail="Game not found or not owned by user")
-
-        style_id = getattr(game, "narrative_style_id", None) or "chinese_classic_saga"
-        style = get_style(style_id)
-
-        return {
-            "style_id": style_id,
-            "style_name": style.style_name if style else style_id,
-            "description": style.description if style else "",
-        }
-    finally:
-        db_session.close()
-
-
-@router.put("/{game_id}/narrative-style", response_model=MessageResponse)
-async def update_game_narrative_style(
-    game_id: int,
-    req: UpdateNarrativeStyleRequest,
-    user_id: int = Depends(get_current_user),
-):
-    """
-    更新游戏的叙事风格。
-    """
-    # Validate style exists
-    style = get_style(req.style_id)
-    if not style:
-        raise HTTPException(status_code=400, detail=f"Invalid style_id: {req.style_id}")
-
-    db_session = SessionLocal()
-    try:
-        game = (
-            db_session.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
-        )
-        if not game:
-            raise HTTPException(status_code=404, detail="Game not found or not owned by user")
-
-        game.narrative_style_id = req.style_id  # type: ignore[assignment]
-
-        # Also update initial_state
-        initial_state = dict(game.initial_state or {})
-        initial_state["narrative_style_id"] = req.style_id
-        game.initial_state = initial_state  # type: ignore[assignment]
-
-        db_session.commit()
-
-        # Update active session if exists
-        game_session = session_store.get(game_id)
-        if game_session and game_session.game_loop:
-            game_session.game_loop.narrative_style_id = req.style_id
-
-        return MessageResponse(
-            success=True,
-            message=f"叙事风格已更新为: {style.style_name}",
-        )
-    finally:
-        db_session.close()

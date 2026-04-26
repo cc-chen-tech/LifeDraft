@@ -104,19 +104,7 @@ async function fetchWithRetry(
 }
 
 async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: number }): Promise<T> {
-  const startTime = performance.now();
   const response = await fetchWithRetry(url, options || {});
-  const duration = Math.round(performance.now() - startTime);
-
-  // ★ 性能日志：记录慢请求（>200ms）用于排查加载问题
-  if (duration > 200) {
-    console.warn(`[API Perf] Slow request: ${url} took ${duration}ms`);
-  }
-
-  // ★ 204 No Content - 正常空响应，不解析 JSON
-  if (response.status === 204) {
-    return undefined as unknown as T;
-  }
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: response.statusText }));
@@ -207,20 +195,15 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify(data),
       }),
-    updateCharacterSettings: (gameId: number, data: { character_settings: CharacterSettings }) =>
-      fetchJson<{ success: boolean; message: string }>(`/games/${gameId}/character-settings`, {
-        method: 'PATCH',
-        body: JSON.stringify(data),
-      }),
     // Narrative style
     listNarrativeStyles: (gameId: number) =>
       fetchJson<Array<{ style_id: string; style_name: string; description: string }>>(`/games/${gameId}/narrative-style-options`),
     getNarrativeStyle: (gameId: number) =>
-      fetchJson<{ style_id: string; style_name: string; description: string }>(`/games/${gameId}/narrative-style`),
-    updateNarrativeStyle: (gameId: number, data: { style_id: string }) =>
+      fetchJson<{ style_id: string; style_name: string }>(`/games/${gameId}/narrative-style`),
+    updateNarrativeStyle: (gameId: number, styleId: string) =>
       fetchJson<{ success: boolean; message: string }>(`/games/${gameId}/narrative-style`, {
         method: 'PUT',
-        body: JSON.stringify(data),
+        body: JSON.stringify({ style_id: styleId }),
       }),
     getEnding: (gameId: number) =>
       fetchJson<{
@@ -253,9 +236,6 @@ export const api = {
 
   // Gameplay
   gameplay: {
-    // ★ CRITICAL FIX: Use /games/{id}/state (get_game_state) instead of /games/{id} (load_game)
-    // load_game reads from DB (stale), get_game_state reads from live session (fresh).
-    // Without this fix, week/progress never updates after game progression.
     getState: (gameId: number) =>
       fetchJson<{
         player_state: PlayerState;
@@ -263,7 +243,7 @@ export const api = {
         round_info: RoundInfo;
         current_event: CurrentEventData | null;
         constraint_level: "fast" | "expert" | "master";
-      }>(`/games/${gameId}/state`),
+      }>(`/games/${gameId}`),
     generateEvent: (gameId: number, data?: { custom_choices?: string[] }) =>
       fetchJson<{
         story: string;
@@ -778,56 +758,6 @@ export const api = {
       fetchJson<{ message: string; success: boolean }>(`/collection/${gameId}/landmarks/${encodeURIComponent(landmarkName)}`, {
         method: 'DELETE',
       }),
-  },
-  // Music (playlist)
-  music: {
-    playlist: {
-      get: (gameId: number) =>
-        fetchJson<{
-          game_id: number;
-          current_song: { id: number; name: string; artists: string[]; album: string; duration: number; url?: string } | null;
-          queue: Array<{ id: number; name: string; artists: string[]; album: string; duration: number }>;
-          played_songs: Array<{ id: number; name: string; artists: string[]; album: string; duration: number }>;
-          is_playing: boolean;
-          volume: number;
-          current_position_ms: number;
-          recommendation_mood: string | null;
-          updated_at: string | null;
-        }>(`/music/playlist/${gameId}`),
-      update: (gameId: number, data: {
-        songs: Array<{ id: number; name: string; artists: string[]; album: string; duration: number }>;
-        mood?: string;
-        keywords?: string[];
-      }) =>
-        fetchJson<{
-          game_id: number;
-          current_song: { id: number; name: string; artists: string[]; album: string; duration: number; url?: string } | null;
-          queue: Array<{ id: number; name: string; artists: string[]; album: string; duration: number }>;
-          played_songs: Array<{ id: number; name: string; artists: string[]; album: string; duration: number }>;
-          is_playing: boolean;
-          volume: number;
-          current_position_ms: number;
-          recommendation_mood: string | null;
-          updated_at: string | null;
-        }>(`/music/playlist/${gameId}`, { method: 'PUT', body: JSON.stringify(data) }),
-      sync: (gameId: number, data: { current_position_ms: number; is_playing: boolean; volume: number }) =>
-        fetchJson<{ success: boolean; updated_at: string | null }>(`/music/playlist/${gameId}/sync`, {
-          method: 'POST',
-          body: JSON.stringify(data),
-        }),
-      advance: (gameId: number) =>
-        fetchJson<{
-          game_id: number;
-          current_song: { id: number; name: string; artists: string[]; album: string; duration: number; url?: string } | null;
-          queue: Array<{ id: number; name: string; artists: string[]; album: string; duration: number }>;
-          played_songs: Array<{ id: number; name: string; artists: string[]; album: string; duration: number }>;
-          is_playing: boolean;
-          volume: number;
-          current_position_ms: number;
-          recommendation_mood: string | null;
-          updated_at: string | null;
-        }>(`/music/playlist/${gameId}/advance`, { method: 'POST' }),
-    },
   },
 };
 
