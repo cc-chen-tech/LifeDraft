@@ -154,3 +154,52 @@ class TestEditImageExtraParamsPropagation:
         assert "negative_prompt" in params
         assert "prompt_extend" in params
         assert "watermark" in params
+
+    def test_edit_image_extra_params_override_negative_prompt(self):
+        """extra_params 应能覆盖默认 negative_prompt"""
+        from src.ai.image_generator import ImageGenerator
+        from src.ai.image_config import DEFAULT_EDIT_NEGATIVE_PROMPT
+
+        gen = ImageGenerator.__new__(ImageGenerator)
+        gen.image_edit_models = ["qwen-image-edit"]
+        gen.api_key = "test-key"
+        gen.base_url = "https://test"
+        gen.timeout = 30
+        gen.max_retries = 1
+        gen.session = MagicMock()
+
+        captured_payloads = []
+
+        def mock_post(url, json=None, headers=None, timeout=None):
+            captured_payloads.append(json)
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.json.return_value = {
+                "output": {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": [{"image": "http://test/image.png"}]
+                            }
+                        }
+                    ]
+                }
+            }
+            return resp
+
+        gen.session.post = mock_post
+        gen._download_image = lambda url: b"fake_image"
+
+        custom_negative = DEFAULT_EDIT_NEGATIVE_PROMPT + "，额外限制"
+        gen.edit_image(
+            reference_image="http://ref.png",
+            prompt="test prompt",
+            extra_params={"negative_prompt": custom_negative},
+        )
+
+        assert len(captured_payloads) == 1
+        actual_negative = captured_payloads[0]["parameters"]["negative_prompt"]
+        assert custom_negative == actual_negative, (
+            f"extra_params 应覆盖默认 negative_prompt。"
+            f"期望: {custom_negative}，实际: {actual_negative}"
+        )

@@ -244,9 +244,10 @@ class ImageClient:  # noqa: E303
         prompt: str,
         size: str = "928*1664",
         num_images: int = 1,
+        extra_params: Optional[Dict[str, Any]] = None,
     ) -> List[Tuple[bytes, str]]:
         """图生图：基于参考图片生成新图片"""
-        return self._generator.edit_image(reference_image, prompt, size, num_images)
+        return self._generator.edit_image(reference_image, prompt, size, num_images, extra_params)
 
     def _call_edit_api(
         self,
@@ -255,9 +256,10 @@ class ImageClient:  # noqa: E303
         size: str = "928*1664",
         num_images: int = 1,
         model: Optional[str] = None,
+        extra_params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """调用图生图API"""
-        return self._generator._call_edit_api(reference_image, prompt, size, num_images, model)
+        return self._generator._call_edit_api(reference_image, prompt, size, num_images, model, extra_params)
 
     def generate_character_images(
         self,

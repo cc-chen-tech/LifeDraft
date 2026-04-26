@@ -355,6 +355,7 @@ class ImageGenerator:
         prompt: str,
         size: str = "928*1664",
         num_images: int = 1,
+        extra_params: Optional[Dict[str, Any]] = None,
     ) -> List[Tuple[bytes, str]]:
         """
         图生图：基于参考图片生成新图片
@@ -396,6 +397,7 @@ class ImageGenerator:
                         size=size,
                         num_images=num_images,
                         model=fallback_model,
+                        extra_params=extra_params,
                     )
 
                     # 解析响应
@@ -478,6 +480,7 @@ class ImageGenerator:
         size: str = "928*1664",
         num_images: int = 1,
         model: Optional[str] = None,
+        extra_params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         调用图生图API
@@ -488,6 +491,7 @@ class ImageGenerator:
             size: 图片尺寸
             num_images: 生成数量
             model: 可选模型名称
+            extra_params: 额外参数（如 negative_prompt）
 
         Returns:
             API响应
@@ -522,6 +526,11 @@ class ImageGenerator:
                 "watermark": False,
             },
         }
+
+        # 合并 extra_params（允许覆盖默认参数如 negative_prompt）
+        params: Dict[str, Any] = payload["parameters"]  # type: ignore[assignment]
+        if extra_params:
+            params.update(extra_params)
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
