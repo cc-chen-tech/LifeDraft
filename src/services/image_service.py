@@ -26,14 +26,18 @@ _image_thread_pool = ThreadPoolExecutor(max_workers=10, thread_name_prefix="imag
 
 def get_image_thread_pool() -> ThreadPoolExecutor:
     """获取共享的图片生成线程池"""
+    global _image_thread_pool
+    if _image_thread_pool is None:
+        _image_thread_pool = ThreadPoolExecutor(max_workers=10, thread_name_prefix="image-gen")
     return _image_thread_pool
 
 
 def shutdown_image_thread_pool(wait: bool = True) -> None:
-    """关闭线程池（用于应用退出时清理）"""
+    """关闭线程池（用于应用退出时清理）。"""
     global _image_thread_pool
-    _image_thread_pool.shutdown(wait=wait)
-    _image_thread_pool = ThreadPoolExecutor(max_workers=10, thread_name_prefix="image-gen")
+    if _image_thread_pool is not None:
+        _image_thread_pool.shutdown(wait=wait)
+        _image_thread_pool = None
 
 
 class ImageServiceError(Exception):
