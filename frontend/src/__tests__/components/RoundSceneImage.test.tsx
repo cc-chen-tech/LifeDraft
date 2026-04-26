@@ -155,5 +155,39 @@ describe('RoundSceneImageDisplay', () => {
 
       expect(screen.getByText('事件场景')).toBeInTheDocument();
     });
+
+    /**
+     * ★ 关键测试：cache-busting 时间戳必须基于 created_at，而不是 Date.now()
+     * 使用 Date.now() 会导致每次渲染都重新加载图片
+     */
+    it('should append cache-busting timestamp based on created_at', () => {
+      render(
+        <RoundSceneImageDisplay {...defaultProps} sceneImage={mockSceneImage as any} />
+      );
+
+      const img = screen.getByRole('img');
+      const src = img.getAttribute('src');
+      // 必须包含基于 created_at 的时间戳
+      expect(src).toContain('?t=');
+      expect(src).toContain('1704067200000'); // new Date('2024-01-01').getTime()
+    });
+
+    it('should not append random Date.now() timestamp when created_at is missing', () => {
+      const sceneWithoutCreatedAt = {
+        ...mockSceneImage,
+        created_at: undefined,
+      };
+
+      render(
+        <RoundSceneImageDisplay {...defaultProps} sceneImage={sceneWithoutCreatedAt as any} />
+      );
+
+      const img = screen.getByRole('img');
+      const src = img.getAttribute('src');
+      // 不应该包含任何时间戳参数
+      expect(src).not.toContain('?t=');
+      expect(src).not.toContain('&t=');
+      expect(src).toBe('http://example.com/scene.png');
+    });
   });
 });
