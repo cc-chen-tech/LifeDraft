@@ -204,6 +204,18 @@ export function ChatBar({
           size="sm"
           variant="outline"
           className="text-xs touch-target"
+          onClick={() => onAdjustStory?.()}
+          disabled={isViewingHistory}
+          title={isViewingHistory ? "历史回顾模式下不可用" : undefined}
+        >
+          <Pencil className="w-3 h-3 mr-1" />
+          改写
+        </Button>
+
+        <Button
+          size="sm"
+          variant="outline"
+          className="text-xs touch-target"
           onClick={handleGenerateSummary}
           disabled={isGeneratingSummary || isSending}
         >
