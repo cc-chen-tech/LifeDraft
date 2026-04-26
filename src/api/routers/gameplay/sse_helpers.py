@@ -18,6 +18,25 @@ logger = logging.getLogger(__name__)
 _sse_thread_pool = ThreadPoolExecutor(max_workers=20, thread_name_prefix="sse-worker")
 
 
+def get_sse_thread_pool() -> ThreadPoolExecutor:
+    """获取共享的 SSE 后台任务线程池。"""
+    return _sse_thread_pool
+
+
+def shutdown_sse_thread_pool(wait: bool = True) -> None:
+    """关闭 SSE 线程池（用于应用退出时清理）。
+
+    多次调用是安全的：已关闭的池会被静默忽略并重新创建新池。
+    """
+    global _sse_thread_pool
+    try:
+        _sse_thread_pool.shutdown(wait=wait)
+    except RuntimeError:
+        # 已关闭的线程池再次 shutdown 会抛出 RuntimeError，忽略即可
+        pass
+    _sse_thread_pool = ThreadPoolExecutor(max_workers=20, thread_name_prefix="sse-worker")
+
+
 def _trigger_round_illustration_generation(
     game_loop, game_id: int, event, stage: str = "event"
 ) -> None:
@@ -179,7 +198,7 @@ def _trigger_round_illustration_generation(
             logger.exception(f"[RoundIllustration] Unexpected error in generate_illustration: {e}")
 
     # 在线程池中执行
-    _sse_thread_pool.submit(generate_illustration)
+    get_sse_thread_pool().submit(generate_illustration)
 
 
 def _ensure_entity_images_exist(
@@ -304,7 +323,7 @@ def _ensure_entity_images_exist(
             logger.exception(f"[EntityImages] Unexpected error in ensure_images: {e}")
 
     # 在线程池中执行
-    _sse_thread_pool.submit(ensure_images)
+    get_sse_thread_pool().submit(ensure_images)
 
 
 def _prefetch_options(game_loop, game_id: int, session, event) -> None:
@@ -381,7 +400,7 @@ def _prefetch_options(game_loop, game_id: int, session, event) -> None:
                 session.finish_prefetching_options()
 
     # 在线程池中执行
-    _sse_thread_pool.submit(prefetch)
+    get_sse_thread_pool().submit(prefetch)
 
 
 def make_sse_event(event_type: str, data, event_id: Optional[int] = None) -> str:
@@ -484,7 +503,7 @@ async def stream_round_event(
     # Immediately tell the client we're alive and processing
     yield make_sse_event("status", {"phase": "preparing"})
 
-    _sse_thread_pool.submit(run)
+    get_sse_thread_pool().submit(run)
 
     # Heartbeat: send keep-alive every 5 seconds to prevent connection timeout
     heartbeat_interval = 5
@@ -674,7 +693,7 @@ async def stream_choice(
     # Immediately tell the client we're alive and processing
     yield make_sse_event("status", {"phase": "preparing"})
 
-    _sse_thread_pool.submit(run)
+    get_sse_thread_pool().submit(run)
 
     # Heartbeat: send keep-alive every 5 seconds to prevent connection timeout
     heartbeat_interval = 5
@@ -986,7 +1005,7 @@ async def stream_regenerate(
     # Tell client we're starting
     yield make_sse_event("status", {"phase": "regenerating"})
 
-    _sse_thread_pool.submit(run)
+    get_sse_thread_pool().submit(run)
 
     # Heartbeat mechanism
     heartbeat_interval = 5
@@ -1158,7 +1177,7 @@ async def stream_rewrite(
     # Tell client we're starting
     yield make_sse_event("status", {"phase": "rewriting"})
 
-    _sse_thread_pool.submit(run)
+    get_sse_thread_pool().submit(run)
 
     # Heartbeat mechanism
     heartbeat_interval = 5
