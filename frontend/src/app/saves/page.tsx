@@ -163,7 +163,6 @@ export default function SavesPage() {
         ) : (
           <div className="space-y-3">
             {savedGames
-              .filter((game) => game.player_name?.trim())
               .sort((a, b) => {
                 const timeA = a.updated_at ? new Date(a.updated_at).getTime() : 0;
                 const timeB = b.updated_at ? new Date(b.updated_at).getTime() : 0;
@@ -179,7 +178,7 @@ export default function SavesPage() {
                     <div className="text-left">
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-foreground">
-                          {save.player_name}
+                          {save.player_name?.trim() || "未知角色"}
                         </span>
                         <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
                           {save.age}岁 第{(save.week ?? 0) + 1}周

@@ -293,6 +293,10 @@ export function usePlayGame() {
             console.log("[play] No active game on server, redirecting to home");
           } else {
             console.error("[play] Failed to recover session:", err);
+            // ★ Bug #27 修复：非404错误时不跳首页，显示错误状态让玩家重试
+            recoveryInProgressRef.current = false;
+            setPhase("error");
+            return;
           }
         }
 

@@ -219,7 +219,7 @@ describe('SavesPage - Data Filtering and Sorting', () => {
     mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
   });
 
-  it('filters out games with empty player_name', async () => {
+  it('shows all games including empty player_name as fallback', async () => {
     mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
     mockGameStoreState.savedGames = [
       { game_id: 1, player_name: 'ValidPlayer', age: 20, week: 1, updated_at: '2024-01-15T10:30:00Z' },
@@ -233,9 +233,10 @@ describe('SavesPage - Data Filtering and Sorting', () => {
       expect(screen.getByText('ValidPlayer')).toBeInTheDocument();
     });
 
-    // Only one save card should be rendered (the one with valid player_name)
+    // All 3 saves should be rendered; empty names show as "未知角色"
     const saveCards = screen.getAllByText(/岁.*第.*周/);
-    expect(saveCards).toHaveLength(1);
+    expect(saveCards).toHaveLength(3);
+    expect(screen.getAllByText('未知角色')).toHaveLength(2);
   });
 
   it('sorts games by updated_at descending (newest first)', async () => {

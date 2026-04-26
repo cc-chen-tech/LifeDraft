@@ -305,13 +305,13 @@ describe('usePlayGame', () => {
     it('handles server error during recovery', async () => {
       const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
       mockGetActive.mockRejectedValue({ status: 500, message: 'Server error' });
-      
+
       renderHook(() => usePlayGame());
-      
+
       await waitFor(() => {
-        expect(mockReplace).toHaveBeenCalledWith('/');
+        expect(mockPhaseManager.setPhase).toHaveBeenCalledWith('error');
       });
-      
+
       consoleSpy.mockRestore();
     });
   });

@@ -69,9 +69,10 @@ export default function OpeningStoryPage() {
     const state = useGameStore.getState();
 
     // 使用测试数据或 store 状态
-    const characterSettings = testData?.characterSettings || state.characterSettings;
-    const playerName = testData?.playerName || state.playerName;
-    const lifeVision = testData?.lifeVision || state.lifeVision;
+    const injected = testData as Record<string, unknown> | null;
+    const characterSettings = (injected?.characterSettings as typeof state.characterSettings) || state.characterSettings;
+    const playerName = (injected?.playerName as string) || state.playerName;
+    const lifeVision = (injected?.lifeVision as string) || state.lifeVision;
 
     console.log("[OpeningStory] Initializing:", {
       gameId: state.gameId,

@@ -134,9 +134,10 @@ class GameRepository:
                     Game.initial_state,
                     # 使用 json_extract 在数据库层提取 player_name/week/age
                     # COALESCE 链：最新 state > initial_state > 默认值
+                    # ★ Bug #28 修复：使用 nullif 处理空字符串，确保 player_name 为空时回退到 initial_state
                     func.coalesce(
-                        func.json_extract(latest_state_json, "$.player_name"),
-                        func.json_extract(initial_state_json, "$.player_name"),
+                        func.nullif(func.json_extract(latest_state_json, "$.player_name"), ""),
+                        func.nullif(func.json_extract(initial_state_json, "$.player_name"), ""),
                         "",
                     ).label("player_name"),
                     func.coalesce(
