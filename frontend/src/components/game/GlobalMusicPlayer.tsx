@@ -56,16 +56,18 @@ export function GlobalMusicPlayer() {
 
   return (
     <div className="fixed z-50 bottom-0 left-0 right-0 md:bottom-4 md:left-auto md:right-4 md:w-80">
-      {/* Expanded: full MusicPlayer panel */}
-      {isExpanded && (
-        <div className="bg-card border rounded-t-lg md:rounded-lg shadow-lg max-h-[60vh] overflow-y-auto">
-          <MusicPlayer
-            storyText={storyText}
-            gameId={effectiveGameId}
-            className="rounded-none border-0 shadow-none"
-          />
-        </div>
-      )}
+      {/* MusicPlayer always mounted to keep audio alive; hidden when collapsed */}
+      <div
+        className={`bg-card border rounded-t-lg md:rounded-lg shadow-lg max-h-[60vh] overflow-y-auto ${
+          isExpanded ? '' : 'hidden'
+        }`}
+      >
+        <MusicPlayer
+          storyText={storyText}
+          gameId={effectiveGameId}
+          className="rounded-none border-0 shadow-none"
+        />
+      </div>
 
       {/* Mini player bar — always visible */}
       <div
