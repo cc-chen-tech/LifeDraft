@@ -7,12 +7,10 @@
  * Reads the active gameId from localStorage and loads the persisted playlist.
  */
 import { useEffect, useRef } from "react";
-import { usePathname } from "next/navigation";
 import { MusicPlayer } from "./MusicPlayer";
 import { useMusicStore } from "@/stores/useMusicStore";
 
 export function GlobalMusicPlayer() {
-  const pathname = usePathname();
   const hasInitRef = useRef(false);
 
   const loadPlaylist = useMusicStore((state) => state.loadPlaylist);
@@ -46,21 +44,15 @@ export function GlobalMusicPlayer() {
   // Only render if we have any music state (prevents empty player on non-game pages)
   if (!syntheticStoryText) return null;
 
-  // Collapse into a compact bottom bar when not on /play
-  const isCompact = pathname !== "/play";
-
+  // Always render as a fixed compact bottom bar on all pages
   return (
     <div
-      className={`fixed z-50 transition-all duration-300 ${
-        isCompact
-          ? "bottom-0 left-0 right-0 md:bottom-4 md:left-auto md:right-4 md:w-80"
-          : "bottom-0 left-0 right-0 md:static md:w-full"
-      }`}
+      className="fixed z-50 transition-all duration-300 bottom-0 left-0 right-0 md:bottom-4 md:left-auto md:right-4 md:w-80"
     >
       <MusicPlayer
         storyText={syntheticStoryText}
         gameId={playlistGameId ?? undefined}
-        className={isCompact ? "rounded-none md:rounded-lg" : ""}
+        className="rounded-none md:rounded-lg"
       />
     </div>
   );
