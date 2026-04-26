@@ -24,6 +24,7 @@ interface SceneImageSSEEvent {
   stage: string;
   image_url?: string;
   scene_description?: string;
+  scene_id?: number;
   error?: string;
   timestamp: string;
 }
@@ -540,7 +541,7 @@ export const useSceneImageStore = create<SceneImageState>()(
 
           if (data.type === "scene_image_ready") {
             const newScene: RoundSceneImage = {
-              scene_id: 0, // SSE 事件不包含 scene_id，后续 fetch 会补充
+              scene_id: data.scene_id ?? 0,
               week: data.week,
               round_number: data.round_number,
               stage: data.stage,

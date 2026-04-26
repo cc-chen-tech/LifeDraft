@@ -1408,6 +1408,7 @@ def _trigger_scene_generation_in_background(
                                 "stage": stage,
                                 "image_url": image_url,
                                 "scene_description": scene.scene_description or "",
+                                "scene_id": scene.scene_id,
                                 "timestamp": datetime.datetime.now().isoformat(),
                             }
                         )
