@@ -29,7 +29,7 @@ class TestEraValidatorIntegration:
         # 查找或创建一个测试用户
         user = db_session.query(User).first()
         if not user:
-            user = User(username="test_era_user", email="era@test.com")
+            user = User(private_id="test-era-user-001", public_id="ERA001")
             db_session.add(user)
             db_session.commit()
             db_session.refresh(user)
@@ -82,7 +82,7 @@ class TestEraValidatorIntegration:
         """现代 era 保存→读取后，_extract_validation_context 返回 modern era_type"""
         user = db_session.query(User).first()
         if not user:
-            user = User(username="test_era_user2", email="era2@test.com")
+            user = User(private_id="test-era-user-002", public_id="ERA002")
             db_session.add(user)
             db_session.commit()
             db_session.refresh(user)
@@ -129,7 +129,7 @@ class TestEraValidatorIntegration:
 
         user = db_session.query(User).first()
         if not user:
-            user = User(username="test_era_user3", email="era3@test.com")
+            user = User(private_id="test-era-user-003", public_id="ERA003")
             db_session.add(user)
             db_session.commit()
             db_session.refresh(user)
