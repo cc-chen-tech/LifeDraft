@@ -195,6 +195,11 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify(data),
       }),
+    patchCharacterSettings: (gameId: number, characterSettings: CharacterSettings) =>
+      fetchJson<{ success: boolean; message: string }>(`/games/${gameId}/character-settings`, {
+        method: 'PATCH',
+        body: JSON.stringify({ character_settings: characterSettings }),
+      }),
     // Narrative style
     listNarrativeStyles: (gameId: number) =>
       fetchJson<Array<{ style_id: string; style_name: string; description: string }>>(`/games/${gameId}/narrative-style-options`),

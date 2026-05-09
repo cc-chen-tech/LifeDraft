@@ -326,7 +326,7 @@ export default function PlayPage() {
                 {/* 故事风格 */}
                 <DropdownMenuSub onOpenChange={(open: boolean) => { if (open) loadNarrativeStyles(); }}>
                   <DropdownMenuSubTrigger>
-                    <Palette className="w-3.5 h-3.5 mr-1.5" />故事风格
+                    <Palette className="w-3.5 h-3.5 mr-1.5" />叙事风格
                   </DropdownMenuSubTrigger>
                   <DropdownMenuSubContent className="max-h-64 overflow-y-auto">
                     {styleLoading ? (

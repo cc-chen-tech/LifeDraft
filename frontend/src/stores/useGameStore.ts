@@ -614,3 +614,6 @@ useGameListStore.subscribe(() => {
 useSceneImageStore.subscribe(() => {
   useGameStore.getState()._syncFromSubStores();
 });
+
+// ★ 立即同步一次，确保初始持久化状态被反映到 useGameStore
+useGameStore.getState()._syncFromSubStores();

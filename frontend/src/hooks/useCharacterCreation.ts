@@ -603,6 +603,13 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
 
       if (gameId) {
         console.log("[create] Game already exists:", gameId);
+        // Persist auto-generated character settings back to the server
+        try {
+          await api.games.patchCharacterSettings(gameId, characterSettings);
+          console.log("[create] Character settings patched successfully");
+        } catch (patchErr) {
+          console.warn("[create] Failed to patch character settings (non-blocking):", patchErr);
+        }
         console.log("[create] Navigating to opening story...");
         router.push("/story/opening");
         return;

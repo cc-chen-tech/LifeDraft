@@ -13,6 +13,11 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+# Compute the project root based on this file's location
+# style_manifest.py is at src/ai/narrative/style_manifest.py
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+_DEFAULT_STYLES_DIR = str(_PROJECT_ROOT / "config" / "styles")
+
 # ==================== Style Manifest Data Models ====================
 
 
@@ -100,7 +105,7 @@ _REQUIRED_FIELDS = {"style_id", "style_name"}
 class StyleLoader:
     """扫描 styles 目录，加载并缓存 .style.json 文件。"""
 
-    def __init__(self, styles_dir: str = "config/styles"):
+    def __init__(self, styles_dir: str = _DEFAULT_STYLES_DIR):
         self._styles_dir = Path(styles_dir)
         self._cache: Dict[str, StyleManifest] = {}
         self._loaded = False
@@ -110,9 +115,7 @@ class StyleLoader:
         self._cache.clear()
 
         if not self._styles_dir.exists():
-            logger.warning(
-                "Styles directory not found: %s, creating it.", self._styles_dir
-            )
+            logger.warning("Styles directory not found: %s, creating it.", self._styles_dir)
             try:
                 self._styles_dir.mkdir(parents=True, exist_ok=True)
             except OSError as e:
@@ -154,9 +157,7 @@ class StyleLoader:
             return None
 
         if not isinstance(raw, dict):
-            logger.warning(
-                "Style file %s does not contain a JSON object, skipping.", file_path
-            )
+            logger.warning("Style file %s does not contain a JSON object, skipping.", file_path)
             return None
 
         # 验证必填字段

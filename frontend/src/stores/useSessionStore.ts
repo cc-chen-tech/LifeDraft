@@ -3,8 +3,9 @@
  *
  * 管理游戏会话的核心状态：gameId, sessionId, playerState, progress, roundInfo
  *
- * ★ 注意：此 store 不再持久化到 localStorage
- * - 游戏状态通过 Cookie 认证从服务器获取
+ * ★ 同步持久化 gameId / playerState 到 localStorage（key: "game-store"）
+ * - 初始化时同步读取，避免异步 hydration 竞态
+ * - 状态变化时自动写回 localStorage
  */
 import { create } from "zustand";
 import type {
@@ -17,6 +18,34 @@ import type {
   CurrentEventData,
 } from "@/lib/types";
 import api from "@/lib/api";
+
+// ★ 同步读取 localStorage 中的持久化数据
+const PERSIST_KEY = "game-store";
+
+function _readPersistedState(): { gameId: number | null; playerState: PlayerState | null } {
+  if (typeof window === "undefined") return { gameId: null, playerState: null };
+  try {
+    const raw = window.localStorage.getItem(PERSIST_KEY);
+    if (!raw) return { gameId: null, playerState: null };
+    const data = JSON.parse(raw);
+    return {
+      gameId: data?.state?.gameId ?? null,
+      playerState: data?.state?.playerState ?? null,
+    };
+  } catch {
+    return { gameId: null, playerState: null };
+  }
+}
+
+function _writePersistedState(gameId: number | null, playerState: PlayerState | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    const data = { state: { gameId, playerState }, version: 0 };
+    window.localStorage.setItem(PERSIST_KEY, JSON.stringify(data));
+  } catch { /* ignore quota errors */ }
+}
+
+const _persisted = _readPersistedState();
 
 // 浅比较辅助函数
 const KEY_FIELDS = ["energy", "mood", "knowledge", "wealth", "age", "week", "current_round"];
@@ -69,10 +98,10 @@ export interface SessionState {
 
 export const useSessionStore = create<SessionState>()(
   (set, get) => ({
-    // Initial State
-    gameId: null,
+    // Initial State — 同步从 localStorage 恢复
+    gameId: _persisted.gameId,
     sessionId: null,
-    playerState: null,
+    playerState: _persisted.playerState,
     progress: null,
     roundInfo: null,
     isGameOver: false,
@@ -300,3 +329,10 @@ export const useSessionStore = create<SessionState>()(
     },
   })
 );
+
+// ★ 自动持久化：当 gameId 或 playerState 变化时写回 localStorage
+useSessionStore.subscribe((state, prevState) => {
+  if (state.gameId !== prevState.gameId || state.playerState !== prevState.playerState) {
+    _writePersistedState(state.gameId, state.playerState);
+  }
+});

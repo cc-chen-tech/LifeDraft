@@ -163,6 +163,17 @@ export function ChatBar({
         )}
       >
         <Button
+          size="sm"
+          variant="outline"
+          className="h-10 rounded-full shadow-lg bg-card"
+          onClick={() => onAdjustStory?.()}
+          disabled={isViewingHistory}
+          data-testid="rewrite-button"
+        >
+          <Pencil className="w-4 h-4 mr-1" />
+          改写
+        </Button>
+        <Button
           size="icon"
           className="h-12 w-12 rounded-full shadow-lg bg-primary hover:bg-primary/90"
           onClick={() => setIsExpanded(true)}
@@ -207,6 +218,7 @@ export function ChatBar({
           onClick={() => onAdjustStory?.()}
           disabled={isViewingHistory}
           title={isViewingHistory ? "历史回顾模式下不可用" : undefined}
+          data-testid="rewrite-button"
         >
           <Pencil className="w-3 h-3 mr-1" />
           改写
