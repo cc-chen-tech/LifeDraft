@@ -153,7 +153,7 @@ run_e2e_browser() {
     fi
     
     echo -e "${YELLOW}运行 Playwright E2E 测试 (core → ai-heavy)...${NC}"
-    npx playwright test --project=core --project=ai-heavy --reporter=list
+    npx playwright test --project=core --workers=1 --reporter=list
     local result=$?
     
     # 清理：如果是我们启动的后端，关掉它

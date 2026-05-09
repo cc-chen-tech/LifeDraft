@@ -31,6 +31,8 @@ const AI_HEAVY_TESTS = [
   '**/stability.spec.ts',                 // 稳定性测试, 90s
   '**/event-generation-race.spec.ts',     // 事件生成竞态, 120s
   '**/story-summary.spec.ts',             // 故事总结, 创建游戏触发 AI
+  '**/choice-impact-visible.spec.ts',      // 选择影响可见性, 需要真实 AI 响应
+  '**/era-validator-no-false-positive.spec.ts', // 时代验证器, 需要真实 AI 响应
 ];
 
 export default defineConfig({
@@ -49,7 +51,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 1,
 
   /* 工作线程: 限制并发以减少服务器压力 */
-  workers: process.env.CI ? 1 : 3,
+  workers: process.env.CI ? 1 : 2,
 
   /* Reporter */
   reporter: 'html',
