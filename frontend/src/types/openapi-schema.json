@@ -5627,6 +5627,18 @@
             "type": "boolean",
             "title": "Refresh",
             "default": false
+          },
+          "character_settings": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Character Settings"
           }
         },
         "type": "object",

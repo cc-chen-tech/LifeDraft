@@ -2427,6 +2427,10 @@ export interface components {
              * @default false
              */
             refresh: boolean;
+            /** Character Settings */
+            character_settings?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * MusicRecommendationResponse
