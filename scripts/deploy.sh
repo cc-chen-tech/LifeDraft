@@ -21,7 +21,7 @@ mkdir -p nginx/ssl data/images data/cache data/vector_store logs/nginx data/cert
 # 检查 .env 文件
 if [ ! -f ".env" ]; then
     echo "Warning: .env file not found!"
-    echo "Please copy .env.ecs.example to .env and configure your API keys."
+    echo "Please copy .env.example to .env and configure your API keys."
     exit 1
 fi
 

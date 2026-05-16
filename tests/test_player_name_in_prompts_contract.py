@@ -4,7 +4,6 @@
 Layer 3: 契约测试 — prompt 输出必须包含 player_name。
 """
 
-import pytest
 from config.prompts import get_round_event_prompt, get_story_only_prompt
 
 
@@ -231,9 +230,6 @@ class TestPlayerNameInPrompts:
             or "禁止提及" in prompt
         ), f"第一章prompt必须禁止提及前情内容。prompt前800字: {prompt[:800]}"
 
-    @pytest.mark.xfail(
-        reason="get_round_event_prompt 也缺少章节号约束，需要单独修复"
-    )
     def test_round_event_prompt_chapter_label_consistent(self):
         """get_round_event_prompt week=0,round=0→第一回，验证公式一致性"""
         player_state = {
@@ -257,3 +253,50 @@ class TestPlayerNameInPrompts:
         assert (
             "第一回" in prompt
         ), f"round_event_prompt 必须包含章节标识 '第一回'。prompt前800字: {prompt[:800]}"
+
+    def test_round_event_prompt_chapter_week2_round0(self):
+        """get_round_event_prompt week=2,round=0→第七回，验证跨周章节号"""
+        player_state = {
+            "age": 35,
+            "week": 2,
+            "current_round": 0,
+            "rounds_per_week": 3,
+            "energy": 70,
+            "mood": 60,
+            "knowledge": 50,
+            "wealth": 10000,
+            "relationships": {},
+        }
+        prompt = get_round_event_prompt(
+            player_state=player_state,
+            language="zh",
+            round_number=0,
+            round_context="",
+            player_name="狄仁杰",
+        )
+        assert (
+            "第七回" in prompt
+        ), f"week=2,round=0→total_chapter=7，必须包含'第七回'。prompt前800字: {prompt[:800]}"
+
+    def test_round_event_prompt_has_chapter_constraint_block(self):
+        """get_round_event_prompt 必须包含章节号约束区块"""
+        player_state = {
+            "age": 35,
+            "week": 0,
+            "current_round": 0,
+            "rounds_per_week": 3,
+            "energy": 70,
+            "mood": 60,
+            "knowledge": 50,
+            "wealth": 10000,
+            "relationships": {},
+        }
+        prompt = get_round_event_prompt(
+            player_state=player_state,
+            language="zh",
+            round_number=0,
+            round_context="",
+            player_name="狄仁杰",
+        )
+        assert "章节号约束" in prompt, f"round_event_prompt 必须包含章节号约束区块。prompt前800字: {prompt[:800]}"
+        assert "本段故事是整体叙事的" in prompt, "必须包含章节定位说明"
