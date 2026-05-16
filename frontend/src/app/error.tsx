@@ -1,4 +1,5 @@
 'use client';
+import * as Sentry from '@sentry/nextjs';
 import { useEffect } from 'react';
 
 export default function Error({
@@ -10,6 +11,8 @@ export default function Error({
 }) {
   useEffect(() => {
     console.error(error);
+    // 上报错误到 Sentry（仅在 DSN 配置时生效）
+    Sentry.captureException(error);
   }, [error]);
 
   return (

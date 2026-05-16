@@ -46,6 +46,9 @@ jobs:
           cp .env.example .env
           echo "OPENAI_API_KEY=dummy-key-for-testing" >> .env
           echo "DEFAULT_LANGUAGE=zh" >> .env
+          echo "JWT_SECRET=test-secret-for-ci" >> .env
+          echo "IMAGE_API_KEY=sk-test-dummy-key-for-ci" >> .env
+          echo "IMAGE_API_BASE_URL=https://api.openai.com/v1" >> .env
 
       - name: Start backend server
         run: |

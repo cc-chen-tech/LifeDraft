@@ -1,48 +1,10 @@
 /**
  * Store Migration Compatibility Tests
- * 
+ *
  * Tests to ensure backward compatibility when migrating/splitting stores.
  * Validates that old selectors and state shapes still work after refactoring.
  */
 import { act } from '@testing-library/react';
-
-// Mock the API before importing stores
-jest.mock('@/lib/api', () => ({
-  __esModule: true,
-  default: {
-    games: {
-      list: jest.fn().mockResolvedValue([]),
-      create: jest.fn().mockResolvedValue({ game_id: 1 }),
-      load: jest.fn().mockResolvedValue({
-        game_id: 1,
-        player_state: { player_name: 'Test', energy: 100 },
-        progress: { week: 1 },
-        round_info: { current_round: 1 },
-        current_event: null,
-      }),
-      save: jest.fn().mockResolvedValue({ success: true }),
-      delete: jest.fn().mockResolvedValue({ success: true }),
-    },
-    presets: {
-      list: jest.fn().mockResolvedValue([]),
-      create: jest.fn().mockResolvedValue({ preset_id: 1 }),
-      delete: jest.fn().mockResolvedValue({ success: true }),
-    },
-    gameplay: {
-      getState: jest.fn().mockResolvedValue({
-        player_state: { player_name: 'Test' },
-        progress: { week: 1 },
-        round_info: { current_round: 1 },
-        current_event: null,
-      }),
-    },
-    images: {
-      listByGame: jest.fn().mockResolvedValue({ images: [], total: 0 }),
-      getRoundSceneImage: jest.fn().mockResolvedValue(null),
-      getAllRoundSceneImages: jest.fn().mockResolvedValue({ scenes: [] }),
-    },
-  },
-}));
 
 import { useGameStore, CREATION_STEPS, MANUAL_STEPS, AUTO_ADVANCE_STEPS } from '@/stores/useGameStore';
 import { useImageStore } from '@/stores/useImageStore';
@@ -57,6 +19,7 @@ describe('Store Migration Compatibility', () => {
       useGameStore.getState().resetCreation();
     });
     jest.clearAllMocks();
+    global.fetch = jest.fn();
   });
 
   describe('Old useGameStore selectors still work', () => {

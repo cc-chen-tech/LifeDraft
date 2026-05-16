@@ -12,6 +12,11 @@ load_dotenv()
 # Project root directory
 PROJECT_ROOT = Path(__file__).parent.parent
 
+# Sentry 错误监控配置
+SENTRY_DSN = os.getenv("SENTRY_DSN", "")
+SENTRY_ENVIRONMENT = os.getenv("SENTRY_ENVIRONMENT", "development")
+SENTRY_TRACES_SAMPLE_RATE = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1"))
+
 # Data directories
 DATA_DIR = PROJECT_ROOT / "data"
 PRESETS_DIR = DATA_DIR / "presets"
@@ -38,12 +43,12 @@ class Settings:
     # 图像生成API（OpenAI兼容接口）
     IMAGE_API_KEY: Optional[str] = os.getenv("IMAGE_API_KEY")
     IMAGE_API_BASE_URL: Optional[str] = os.getenv("IMAGE_API_BASE_URL")
-    IMAGE_MODEL: str = os.getenv("IMAGE_MODEL", "wanx-v1")
+    IMAGE_MODEL: str = os.getenv("IMAGE_MODEL", "qwen-image-max")
 
     # 场景分析服务（复用现有DeepSeek配置或独立配置）
     SCENE_ANALYZER_API_KEY: Optional[str] = os.getenv("SCENE_ANALYZER_API_KEY")
     SCENE_ANALYZER_BASE_URL: Optional[str] = os.getenv("SCENE_ANALYZER_BASE_URL")
-    SCENE_ANALYZER_MODEL: str = os.getenv("SCENE_ANALYZER_MODEL", "deepseek-chat")
+    SCENE_ANALYZER_MODEL: str = os.getenv("SCENE_ANALYZER_MODEL", "deepseek-v4-flash")
 
     # 图片存储配置
     IMAGE_STORAGE_TYPE: str = os.getenv("IMAGE_STORAGE_TYPE", "local")  # local | oss
@@ -61,9 +66,9 @@ class Settings:
     )  # ★ 默认120秒，图生图需要更长时间
     IMAGE_MAX_RETRIES: int = int(os.getenv("IMAGE_MAX_RETRIES", "3"))
 
-    # ★ 模型降级配置（逗号分隔，必须在.env中显式配置）
-    TEXT_TO_IMAGE_MODELS: str = os.getenv("TEXT_TO_IMAGE_MODELS", "")
-    IMAGE_EDIT_MODELS: str = os.getenv("IMAGE_EDIT_MODELS", "")
+    # ★ 模型降级配置（逗号分隔，可在.env中覆盖）
+    TEXT_TO_IMAGE_MODELS: str = os.getenv("TEXT_TO_IMAGE_MODELS", "qwen-image-max,wanx2.1-v2,qwen-image-plus")
+    IMAGE_EDIT_MODELS: str = os.getenv("IMAGE_EDIT_MODELS", "qwen-image-edit-max,qwen-image-edit-plus")
 
     # Game Configuration
     DEFAULT_LANGUAGE: str = os.getenv("DEFAULT_LANGUAGE", "zh")  # en or zh
@@ -160,6 +165,27 @@ class Settings:
         """Get the current language setting."""
         return cls.DEFAULT_LANGUAGE
 
+
+# ---------------------------------------------------------------------------
+# Feature Flags integration
+# ---------------------------------------------------------------------------
+# 通过 feature_flags 模块统一管理实验性功能开关。
+# 每个 flag 可通过对应环境变量控制（默认均为 False）：
+#   ENABLE_CONSTRAINT_HARNESS       — 约束评估引擎
+#   ENABLE_NARRATIVE_STYLE_ENGINE   — 叙事风格引擎
+#   ENABLE_CREATIVE_ENHANCEMENT     — 创意增强
+#   ENABLE_EPIC_NARRATIVE           — 史诗叙事
+#   ENABLE_VECTOR_SEARCH            — 向量搜索
+#   ENABLE_MODEL_FALLBACK           — 模型降级
+#   ENABLE_TRUNCATION_RECOVERY      — 截断恢复
+#   ENABLE_REACTIVE_COMPRESSION     — 响应式压缩
+#   ENABLE_PARALLEL_POSTPROCESSING  — 并行后处理
+#
+# 使用方式:
+#   from config.settings import get_feature, get_all_features
+#   if get_feature("model_fallback"): ...
+# ---------------------------------------------------------------------------
+from config.feature_flags import get_all_features, get_feature  # noqa: E402,F401
 
 # Create a singleton instance
 settings = Settings()

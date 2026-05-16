@@ -138,6 +138,11 @@
   text-indent: 2em;
 }
 
+.prose-story strong {
+  font-weight: 700;
+  color: var(--primary);
+}
+
 /* ===== 打字机动画 ===== */
 @keyframes typewriter-cursor {
   0%, 100% { opacity: 1; }
@@ -228,6 +233,14 @@
 .touch-target {
   min-height: 44px;
   min-width: 44px;
+}
+
+.safe-area-pt {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-area-pb {
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 /* ===== 减少动效偏好 ===== */

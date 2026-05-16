@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
+ 
 
 /**
  * E2E Test: Security Validation
@@ -92,17 +92,22 @@ test.describe('Security E2E', () => {
     const meResponse1 = await context.request.get(`${API_URL}/api/auth/me`);
     expect(meResponse1.status()).toBe(200);
 
-    // 登出
-    const logoutResponse = await context.request.post(`${API_URL}/api/auth/logout`);
-    expect([200, 204]).toContain(logoutResponse.status());
+    const logoutStatus = await page.evaluate(async (apiUrl) => {
+      const response = await fetch(`${apiUrl}/api/auth/logout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      return response.status;
+    }, API_URL);
+    expect([200, 204]).toContain(logoutStatus);
 
-    // 刷新页面确保 cookie 被清除
-    await page.reload();
-    await page.waitForLoadState('domcontentloaded');
-
-    // 用旧的 context 请求应该被拒绝
-    const meResponse2 = await context.request.get(`${API_URL}/api/auth/me`);
-    expect([401, 403]).toContain(meResponse2.status());
+    const meStatusAfterLogout = await page.evaluate(async (apiUrl) => {
+      const response = await fetch(`${apiUrl}/api/auth/me`, {
+        credentials: 'include',
+      });
+      return response.status;
+    }, API_URL);
+    expect([401, 403]).toContain(meStatusAfterLogout);
   });
 
   test('XSS in story content is escaped', async ({ page, context }) => {
@@ -147,10 +152,11 @@ test.describe('Security E2E', () => {
       "UNION SELECT * FROM users",
     ];
 
-    // 在可能的搜索/查询端点测试
+    // 在可能的搜索/查询端点测试，每个请求加独立超时防止服务端挂起
     for (const payload of sqlPayloads) {
       const response = await context.request.get(
-        `${API_URL}/api/games?search=${encodeURIComponent(payload)}`
+        `${API_URL}/api/games?search=${encodeURIComponent(payload)}`,
+        { timeout: 10000 }
       );
 
       // 应该返回正常的空结果或错误，而不是注入成功

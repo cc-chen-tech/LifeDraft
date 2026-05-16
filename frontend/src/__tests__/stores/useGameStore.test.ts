@@ -3,68 +3,7 @@
  * Tests for the game store state management
  */
 import { act, renderHook } from '@testing-library/react';
-
-// Mock the API before importing the store
-jest.mock('@/lib/api', () => ({
-  __esModule: true,
-  default: {
-    games: {
-      list: jest.fn().mockResolvedValue([]),
-      create: jest.fn().mockResolvedValue({ game_id: 1 }),
-      load: jest.fn().mockResolvedValue({
-        game_id: 1,
-        player_state: { player_name: 'Test' },
-        progress: { week: 1 },
-        round_info: { current_round: 1 },
-        current_event: null,
-      }),
-      save: jest.fn().mockResolvedValue({ success: true }),
-      delete: jest.fn().mockResolvedValue({ success: true }),
-    },
-    presets: {
-      list: jest.fn().mockResolvedValue([]),
-      create: jest.fn().mockResolvedValue({ preset_id: 1 }),
-      delete: jest.fn().mockResolvedValue({ success: true }),
-    },
-    gameplay: {
-      getState: jest.fn().mockResolvedValue({
-        player_state: { player_name: 'Test' },
-        progress: { week: 1 },
-        round_info: { current_round: 1 },
-        current_event: null,
-      }),
-      generateSummary: jest.fn().mockResolvedValue({
-        summary_text: 'Test summary',
-        start_week: 1,
-        end_week: 4,
-      }),
-    },
-    images: {
-      listByGame: jest.fn().mockResolvedValue({ images: [], total: 0 }),
-      generate: jest.fn().mockResolvedValue({ images: [], total: 0 }),
-      regenerate: jest.fn().mockResolvedValue({ images: [], total: 0 }),
-      regenerateFresh: jest.fn().mockResolvedValue({ images: [], total: 0 }),
-      get: jest.fn().mockResolvedValue({ image_id: 1, image_url: 'test.png' }),
-      delete: jest.fn().mockResolvedValue({ success: true }),
-      generateRoundSceneImage: jest.fn().mockResolvedValue({
-        scene_id: 1,
-        image_url: 'test-scene.png',
-      }),
-      getRoundSceneImage: jest.fn().mockResolvedValue(null),
-      getRoundSceneImageByStage: jest.fn().mockResolvedValue(null),
-      getAllRoundSceneImages: jest.fn().mockResolvedValue({ scenes: [], total: 0 }),
-      regenerateRoundSceneImage: jest.fn().mockResolvedValue({
-        scene_id: 1,
-        image_url: 'test-scene.png',
-      }),
-      generateOpeningIllustration: jest.fn().mockResolvedValue({
-        illustration_id: 1,
-        image_url: 'test-illustration.png',
-      }),
-    },
-  },
-}));
-
+import { jsonResponse, errorResponse } from '@/__tests__/helpers/fetch';
 import { useGameStore, CREATION_STEPS, MANUAL_STEPS, AUTO_ADVANCE_STEPS } from '@/stores/useGameStore';
 import { useImageStore } from '@/stores/useImageStore';
 import { useGameListStore } from '@/stores/useGameListStore';
@@ -72,7 +11,6 @@ import { useEventStore } from '@/stores/useEventStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useCharacterStore } from '@/stores/useCharacterStore';
 import { useSceneImageStore } from '@/stores/useSceneImageStore';
-import api from '@/lib/api';
 
 describe('useGameStore', () => {
   beforeEach(() => {
@@ -123,6 +61,7 @@ describe('useGameStore', () => {
       useGameStore.getState()._syncFromSubStores();
     });
     jest.clearAllMocks();
+    global.fetch = jest.fn().mockResolvedValue(jsonResponse({ images: [], total: 0 }));
   });
 
   describe('Initial state', () => {
@@ -422,24 +361,24 @@ describe('useGameStore', () => {
 
   describe('loadGameState', () => {
     it('loads game state successfully', async () => {
-      (api.games.load as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         game_id: 42,
         player_state: { player_name: 'TestPlayer', age: 25 },
         progress: { week: 10 },
         round_info: { current_round: 5 },
         current_event: null,
-      });
+      }));
 
       await act(async () => {
         await useGameStore.getState().loadGameState(42);
       });
 
-      expect(api.games.load).toHaveBeenCalledWith(42);
+      expect(global.fetch).toHaveBeenCalledWith('/api/games/42', expect.objectContaining({ credentials: 'include' }));
       expect(useGameStore.getState().playerState).toEqual({ player_name: 'TestPlayer', age: 25 });
     });
 
     it('loads game state with current event', async () => {
-      (api.games.load as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         game_id: 42,
         player_state: { player_name: 'TestPlayer' },
         progress: { week: 10 },
@@ -448,7 +387,7 @@ describe('useGameStore', () => {
           event_description: 'Test event',
           options: [{ text: 'Option 1' }, { text: 'Option 2' }],
         },
-      });
+      }));
 
       await act(async () => {
         await useGameStore.getState().loadGameState(42);
@@ -461,7 +400,7 @@ describe('useGameStore', () => {
     });
 
     it('restores story from last_round_full_story when no current event', async () => {
-      (api.games.load as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         game_id: 42,
         player_state: {
           player_name: 'TestPlayer',
@@ -470,7 +409,7 @@ describe('useGameStore', () => {
         progress: { week: 10 },
         round_info: { current_round: 5 },
         current_event: null,
-      });
+      }));
 
       await act(async () => {
         await useGameStore.getState().loadGameState(42);
@@ -480,7 +419,7 @@ describe('useGameStore', () => {
     });
 
     it('restores story from round_history when no last_round_full_story', async () => {
-      (api.games.load as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         game_id: 42,
         player_state: {
           player_name: 'TestPlayer',
@@ -491,7 +430,7 @@ describe('useGameStore', () => {
         progress: { week: 10 },
         round_info: { current_round: 5 },
         current_event: null,
-      });
+      }));
 
       await act(async () => {
         await useGameStore.getState().loadGameState(42);
@@ -507,12 +446,12 @@ describe('useGameStore', () => {
         useGameStore.getState().setGameSession(42, 'session-42');
       });
 
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: { player_name: 'SyncedPlayer' },
         progress: { week: 20 },
         round_info: { current_round: 10 },
         current_event: null,
-      });
+      }));
 
       await act(async () => {
         await useGameStore.getState().syncState();
@@ -534,14 +473,14 @@ describe('useGameStore', () => {
         round_info: { current_round: 2 },
         current_event: null,
       };
-      (api.gameplay.getState as jest.Mock).mockResolvedValue(mockResponse);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockResponse));
 
       await act(async () => {
         await useGameStore.getState().syncPlayerState();
       });
 
       // syncPlayerState now returns void, state is updated directly in store
-      expect(api.gameplay.getState).toHaveBeenCalledWith(42);
+      expect(global.fetch).toHaveBeenCalledWith('/api/games/42', expect.objectContaining({ credentials: 'include' }));
     });
   });
 
@@ -555,12 +494,12 @@ describe('useGameStore', () => {
         });
       });
 
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: { energy: 60, mood: 80 }, // energy changed
         progress: { week: 5 },
         round_info: { current_round: 2 },
         current_event: null,
-      });
+      }));
 
       // Should update because energy changed
       expect(useGameStore.getState().playerState).toEqual({ player_name: 'Test', life_vision: '', energy: 50, mood: 80, knowledge: 0, wealth: 0, age: 18, week: 1, current_round: 1, rounds_per_week: 3, character_settings: {} });
@@ -572,13 +511,13 @@ describe('useGameStore', () => {
       const mockGames = [
         { game_id: 1, player_name: 'Test', age: 25, week: 10, updated_at: '' },
       ];
-      (api.games.list as jest.Mock).mockResolvedValue(mockGames);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockGames));
 
       await act(async () => {
         await useGameStore.getState().fetchSavedGames();
       });
 
-      expect(api.games.list).toHaveBeenCalled();
+      expect(global.fetch).toHaveBeenCalledWith('/api/games', expect.objectContaining({ credentials: 'include' }));
       expect(useGameStore.getState().savedGames).toEqual(mockGames);
     });
 
@@ -586,13 +525,13 @@ describe('useGameStore', () => {
       const mockPresets = [
         { preset_id: 1, preset_name: 'Test', player_name: 'Player', character_settings: {} },
       ];
-      (api.presets.list as jest.Mock).mockResolvedValue(mockPresets);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockPresets));
 
       await act(async () => {
         await useGameStore.getState().fetchPresets();
       });
 
-      expect(api.presets.list).toHaveBeenCalled();
+      expect(global.fetch).toHaveBeenCalledWith('/api/presets', expect.objectContaining({ credentials: 'include' }));
       expect(useGameStore.getState().presets).toEqual(mockPresets);
     });
 
@@ -612,7 +551,7 @@ describe('useGameStore', () => {
         await useGameStore.getState().deleteGame(1);
       });
 
-      expect(api.games.delete).toHaveBeenCalledWith(1);
+      expect(global.fetch).toHaveBeenCalledWith('/api/games/1', expect.objectContaining({ method: 'DELETE' }));
       expect(useGameStore.getState().savedGames).toHaveLength(1);
       expect(useGameStore.getState().savedGames[0].game_id).toBe(2);
     });
@@ -633,7 +572,7 @@ describe('useGameStore', () => {
         await useGameStore.getState().deletePreset(1);
       });
 
-      expect(api.presets.delete).toHaveBeenCalledWith(1);
+      expect(global.fetch).toHaveBeenCalledWith('/api/presets/1', expect.objectContaining({ method: 'DELETE' }));
       expect(useGameStore.getState().presets).toHaveLength(1);
       expect(useGameStore.getState().presets[0].preset_id).toBe(2);
     });
@@ -647,7 +586,7 @@ describe('useGameStore', () => {
         await useGameStore.getState().saveGame();
       });
 
-      expect(api.games.save).toHaveBeenCalledWith(123);
+      expect(global.fetch).toHaveBeenCalledWith('/api/games/123/save', expect.objectContaining({ method: 'POST' }));
     });
 
     it('does not save game without gameId', async () => {
@@ -655,7 +594,7 @@ describe('useGameStore', () => {
         await useGameStore.getState().saveGame();
       });
 
-      expect(api.games.save).not.toHaveBeenCalled();
+      expect(global.fetch).not.toHaveBeenCalledWith('/api/games/123/save', expect.anything());
     });
   });
 
@@ -683,7 +622,7 @@ describe('useGameStore', () => {
           options: [{ text: 'Option 1' }, { text: 'Option 2' }],
         },
       };
-      (api.games.load as jest.Mock).mockResolvedValue(mockState);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockState));
 
       await act(async () => {
         await useGameStore.getState().loadGameState(42);
@@ -708,7 +647,7 @@ describe('useGameStore', () => {
         round_info: { current_round: 10 },
         current_event: null,
       };
-      (api.games.load as jest.Mock).mockResolvedValue(mockState);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockState));
 
       await act(async () => {
         await useGameStore.getState().loadGameState(42);
@@ -731,7 +670,7 @@ describe('useGameStore', () => {
         round_info: { current_round: 10 },
         current_event: null,
       };
-      (api.games.load as jest.Mock).mockResolvedValue(mockState);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockState));
 
       await act(async () => {
         await useGameStore.getState().loadGameState(42);
@@ -753,13 +692,13 @@ describe('useGameStore', () => {
         round_info: { current_round: 11, week: 6 },
         current_event: null,
       };
-      (api.gameplay.getState as jest.Mock).mockResolvedValue(mockState);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockState));
 
       await act(async () => {
         await useGameStore.getState().syncState();
       });
 
-      expect(api.gameplay.getState).toHaveBeenCalledWith(42);
+      expect(global.fetch).toHaveBeenCalledWith('/api/games/42', expect.objectContaining({ credentials: 'include' }));
     });
 
     it('recovers from session 404 by reloading game', async () => {
@@ -768,7 +707,7 @@ describe('useGameStore', () => {
       });
 
       const error404 = { status: 404, message: 'Session not found' };
-      (api.gameplay.getState as jest.Mock).mockRejectedValueOnce(error404);
+      (global.fetch as jest.Mock).mockResolvedValueOnce(errorResponse(404));
 
       const mockReloadedState = {
         game_id: 42,
@@ -777,13 +716,13 @@ describe('useGameStore', () => {
         round_info: { current_round: 1 },
         current_event: null,
       };
-      (api.games.load as jest.Mock).mockResolvedValue(mockReloadedState);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockReloadedState));
 
       await act(async () => {
         await useGameStore.getState().syncState();
       });
 
-      expect(api.games.load).toHaveBeenCalledWith(42);
+      expect(global.fetch).toHaveBeenCalledWith('/api/games/42', expect.objectContaining({ credentials: 'include' }));
     });
 
     it('clears state when game no longer exists', async () => {
@@ -793,10 +732,10 @@ describe('useGameStore', () => {
       });
 
       const error404 = { status: 404, message: 'Session not found' };
-      (api.gameplay.getState as jest.Mock).mockRejectedValueOnce(error404);
+      (global.fetch as jest.Mock).mockResolvedValueOnce(errorResponse(404));
 
       const error404Reload = { status: 404, message: 'Game not found' };
-      (api.games.load as jest.Mock).mockRejectedValue(error404Reload);
+      (global.fetch as jest.Mock).mockResolvedValue(errorResponse(404));
 
       await act(async () => {
         try {
@@ -817,7 +756,7 @@ describe('useGameStore', () => {
         await useGameStore.getState().syncState();
       });
 
-      expect(api.gameplay.getState).not.toHaveBeenCalled();
+      expect(global.fetch).not.toHaveBeenCalledWith('/api/games/42', expect.anything());
     });
   });
 
@@ -833,14 +772,14 @@ describe('useGameStore', () => {
         round_info: { current_round: 12 },
         current_event: null,
       };
-      (api.gameplay.getState as jest.Mock).mockResolvedValue(mockState);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockState));
 
       await act(async () => {
         await useGameStore.getState().syncPlayerState();
       });
 
       // Verify the API was called - syncPlayerState now returns void
-      expect(api.gameplay.getState).toHaveBeenCalledWith(42);
+      expect(global.fetch).toHaveBeenCalledWith('/api/games/42', expect.objectContaining({ credentials: 'include' }));
     });
 
     it('reloads game on session 404', async () => {
@@ -850,7 +789,7 @@ describe('useGameStore', () => {
       });
 
       const error404 = { status: 404, message: 'Session expired' };
-      (api.gameplay.getState as jest.Mock).mockRejectedValueOnce(error404);
+      (global.fetch as jest.Mock).mockResolvedValueOnce(errorResponse(404));
 
       const mockReloadedState = {
         game_id: 42,
@@ -859,7 +798,7 @@ describe('useGameStore', () => {
         round_info: { current_round: 1 },
         current_event: null,
       };
-      (api.games.load as jest.Mock).mockResolvedValue(mockReloadedState);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockReloadedState));
 
       await act(async () => {
         await useGameStore.getState().syncPlayerState();
@@ -877,7 +816,7 @@ describe('useGameStore', () => {
       });
 
       expect(result).toBeUndefined();
-      expect(api.gameplay.getState).not.toHaveBeenCalled();
+      expect(global.fetch).not.toHaveBeenCalledWith('/api/games/42', expect.anything());
     });
   });
 
@@ -890,16 +829,13 @@ describe('useGameStore', () => {
         useGameStore.setState({ roundSceneImages: [] });
       });
 
-      (api.images as unknown as Record<string, unknown>) = {
-        ...api.images,
-        getRoundSceneImage: jest.fn().mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
           scene_id: 1,
           round_number: 5,
           image_url: 'url',
           scene_description: 'Scene',
           created_at: '2024-01-01T00:00:00Z',
-        }),
-      };
+        }));
 
       await act(async () => {
         await useGameStore.getState().fetchRoundSceneImage(5);
@@ -919,15 +855,12 @@ describe('useGameStore', () => {
         useGameStore.getState()._syncFromSubStores();
       });
 
-      (api.images as unknown as Record<string, unknown>) = {
-        ...api.images,
-        getAllRoundSceneImages: jest.fn().mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
           scenes: [
             { scene_id: 1, week: 2, round_number: 4, stage: 'result', image_url: 'url1' },
             { scene_id: 2, week: 2, round_number: 5, stage: 'result', image_url: 'url2' },
           ],
-        }),
-      };
+        }));
 
       await act(async () => {
         await useGameStore.getState().fetchAllRoundSceneImages();
@@ -975,15 +908,12 @@ describe('useGameStore', () => {
         });
       });
 
-      (api.images as unknown as Record<string, unknown>) = {
-        ...api.images,
-        regenerateRoundSceneImage: jest.fn().mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
           image_id: 2,
           image_url: 'new-url',
           scene_description: 'New scene',
           created_at: '2024-01-02T00:00:00Z',
-        }),
-      };
+        }));
 
       await act(async () => {
         await useGameStore.getState().regenerateRoundSceneImage(5, 'make it darker');
@@ -1011,10 +941,7 @@ describe('useGameStore', () => {
         useGameStore.getState()._syncFromSubStores();
       });
 
-      (api.images as unknown as Record<string, unknown>) = {
-        ...api.images,
-        regenerateRoundSceneImage: jest.fn().mockRejectedValue(new Error('Regen failed')),
-      };
+      (global.fetch as jest.Mock).mockRejectedValue(new Error('Regen failed'));
 
       await act(async () => {
         await useGameStore.getState().regenerateRoundSceneImage(5, 'prompt');
@@ -1032,7 +959,7 @@ describe('useGameStore', () => {
         });
 
         const error500 = { status: 500, message: 'Server error' };
-        (api.gameplay.getState as jest.Mock).mockRejectedValueOnce(error500);
+        (global.fetch as jest.Mock).mockResolvedValueOnce(errorResponse(400));
 
         await expect(
           useGameStore.getState().syncState()
@@ -1045,7 +972,7 @@ describe('useGameStore', () => {
         });
 
         const errorWith404Message = { message: 'Error 404: Not found' };
-        (api.gameplay.getState as jest.Mock).mockRejectedValueOnce(errorWith404Message);
+        (global.fetch as jest.Mock).mockResolvedValueOnce(errorResponse(404));
 
         const mockReloadedState = {
           game_id: 42,
@@ -1054,13 +981,13 @@ describe('useGameStore', () => {
           round_info: { current_round: 1 },
           current_event: null,
         };
-        (api.games.load as jest.Mock).mockResolvedValue(mockReloadedState);
+        (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockReloadedState));
 
         await act(async () => {
           await useGameStore.getState().syncState();
         });
 
-        expect(api.games.load).toHaveBeenCalledWith(42);
+        expect(global.fetch).toHaveBeenCalledWith('/api/games/42', expect.objectContaining({ credentials: 'include' }));
       });
 
       it('updates state when shallowChanged returns true', async () => {
@@ -1075,7 +1002,7 @@ describe('useGameStore', () => {
           round_info: { current_round: 10 },
           current_event: null,
         };
-        (api.gameplay.getState as jest.Mock).mockResolvedValue(mockState);
+        (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockState));
 
         await act(async () => {
           await useGameStore.getState().syncState();
@@ -1100,7 +1027,7 @@ describe('useGameStore', () => {
             options: [{ text: 'Option 1' }, { text: 'Option 2' }],
           },
         };
-        (api.gameplay.getState as jest.Mock).mockResolvedValue(mockState);
+        (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockState));
 
         await act(async () => {
           await useGameStore.getState().syncState();
@@ -1125,7 +1052,7 @@ describe('useGameStore', () => {
           });
         });
 
-        (api.gameplay.getState as jest.Mock).mockResolvedValue(existingState);
+        (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(existingState));
 
         await act(async () => {
           await useGameStore.getState().syncState();
@@ -1144,7 +1071,7 @@ describe('useGameStore', () => {
         });
 
         const error500 = { status: 500, message: 'Server error' };
-        (api.gameplay.getState as jest.Mock).mockRejectedValueOnce(error500);
+        (global.fetch as jest.Mock).mockResolvedValueOnce(errorResponse(400));
 
         await expect(
           useGameStore.getState().syncPlayerState()
@@ -1157,7 +1084,7 @@ describe('useGameStore', () => {
         });
 
         const errorWith404Message = { message: 'Request failed with 404' };
-        (api.gameplay.getState as jest.Mock).mockRejectedValueOnce(errorWith404Message);
+        (global.fetch as jest.Mock).mockResolvedValueOnce(errorResponse(404));
 
         const mockReloadedState = {
           game_id: 42,
@@ -1166,7 +1093,7 @@ describe('useGameStore', () => {
           round_info: { current_round: 1 },
           current_event: null,
         };
-        (api.games.load as jest.Mock).mockResolvedValue(mockReloadedState);
+        (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockReloadedState));
 
         await act(async () => {
           await useGameStore.getState().syncPlayerState();
@@ -1182,9 +1109,9 @@ describe('useGameStore', () => {
         });
 
         const error404 = { status: 404 };
-        (api.gameplay.getState as jest.Mock).mockRejectedValueOnce(error404);
+        (global.fetch as jest.Mock).mockResolvedValueOnce(errorResponse(404));
         const error500 = { status: 500 };
-        (api.games.load as jest.Mock).mockRejectedValue(error500);
+        (global.fetch as jest.Mock).mockResolvedValue(errorResponse(400));
 
         await expect(
           useGameStore.getState().syncPlayerState()
@@ -1201,14 +1128,14 @@ describe('useGameStore', () => {
           progress: { week: 5 },
           round_info: { current_round: 10 },
         };
-        (api.gameplay.getState as jest.Mock).mockResolvedValue(mockState);
+        (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockState));
 
         await act(async () => {
           await useGameStore.getState().syncPlayerState();
         });
 
         // Verify API was called - syncPlayerState now returns void
-        expect(api.gameplay.getState).toHaveBeenCalledWith(42);
+        expect(global.fetch).toHaveBeenCalledWith('/api/games/42', expect.objectContaining({ credentials: 'include' }));
       });
     });
 
@@ -1225,7 +1152,7 @@ describe('useGameStore', () => {
           round_info: { current_round: 1 },
           current_event: null,
         };
-        (api.games.load as jest.Mock).mockResolvedValue(mockLoadedGame);
+        (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockLoadedGame));
 
         await act(async () => {
           await useGameStore.getState().loadGameState(42);
@@ -1251,7 +1178,7 @@ describe('useGameStore', () => {
             options: [{ text: 'Option 1' }],
           },
         };
-        (api.games.load as jest.Mock).mockResolvedValue(mockLoadedGame);
+        (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockLoadedGame));
 
         await act(async () => {
           await useGameStore.getState().loadGameState(42);
@@ -1274,7 +1201,7 @@ describe('useGameStore', () => {
           round_info: { current_round: 1 },
           current_event: null,
         };
-        (api.games.load as jest.Mock).mockResolvedValue(mockLoadedGame);
+        (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockLoadedGame));
 
         await act(async () => {
           await useGameStore.getState().loadGameState(42);
@@ -1299,7 +1226,7 @@ describe('useGameStore', () => {
           round_info: { current_round: 1 },
           current_event: null,
         };
-        (api.games.load as jest.Mock).mockResolvedValue(mockLoadedGame);
+        (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockLoadedGame));
 
         await act(async () => {
           await useGameStore.getState().loadGameState(42);
@@ -1324,7 +1251,7 @@ describe('useGameStore', () => {
           round_info: { current_round: 1 },
           current_event: null,
         };
-        (api.games.load as jest.Mock).mockResolvedValue(mockLoadedGame);
+        (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockLoadedGame));
 
         await act(async () => {
           await useGameStore.getState().loadGameState(42);
@@ -1333,6 +1260,38 @@ describe('useGameStore', () => {
         const state = useGameStore.getState();
         expect(state.storyText).toContain('Event happened');
         expect(state.storyText).toContain('Story continued');
+      });
+
+      it('restores current event story when backend returns options with empty event text', async () => {
+        act(() => {
+          useGameStore.getState().setGameSession(42, 'session-42');
+        });
+
+        (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+          game_id: 42,
+          player_state: {
+            player_name: 'Test',
+            last_round_full_story: 'Recovered visible story body.',
+          },
+          progress: { week: 2 },
+          round_info: { current_round: 1 },
+          current_event: {
+            event_description: '',
+            story_text: '',
+            options: [{ text: 'Continue from recovered story', effects: {} }],
+          },
+        }));
+
+        await act(async () => {
+          await useGameStore.getState().loadGameState(42);
+        });
+
+        const state = useGameStore.getState();
+        expect(state.storyText).toBe('Recovered visible story body.');
+        expect(state.currentEvent).toEqual({
+          story: 'Recovered visible story body.',
+          options: [{ text: 'Continue from recovered story', effects: {} }],
+        });
       });
     });
   });

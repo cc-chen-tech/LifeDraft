@@ -104,6 +104,7 @@ export interface UseCharacterCreationReturn {
   // Handlers
   handleGenerate: (fb?: string) => Promise<void>;
   handleRegenerate: () => void;
+  regenerateSetting: (stepKey: string, feedback: string) => Promise<void>;
   handleAcceptAndNext: () => Promise<void>;
   handleSavePreset: () => Promise<void>;
   handleStartGame: () => Promise<void>;
@@ -236,6 +237,17 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     [currentStepKey, playerName, lifeVision, characterSettings, language, hasBasicInfo, showToast]
   );
 
+  // Reset autoGenTriggeredRef when navigating back to allow re-generation
+  useEffect(() => {
+    // When user navigates to a different step, reset the trigger for subsequent steps
+    // This allows re-generation when user goes back, modifies, and then forward again
+    CREATION_STEPS.forEach((step, index) => {
+      if (index > creationStep) {
+        autoGenTriggeredRef.current[step] = false;
+      }
+    });
+  }, [creationStep]);
+
   // Auto-generate on step enter
   useEffect(() => {
     const shouldAutoGenerate = 
@@ -257,8 +269,9 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
   
   useEffect(() => {
     hasGeneratedImage.current = false;
-    backgroundGenStartedRef.current = false;
-    setIsBackgroundGenerating(false);
+    // ★ 不再重置 backgroundGenStartedRef，因为后台生成可能在 world 步骤已提前启动
+    // backgroundGenStartedRef.current = false;
+    // setIsBackgroundGenerating(false);
   }, [gameId]);
   
   useEffect(() => {
@@ -354,13 +367,32 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
 
   // Start background generation on portrait step
   useEffect(() => {
-    if (isPortraitStep && gameId && !backgroundGenStartedRef.current) {
+    if (isPortraitStep && gameId) {
       const allDone = AUTO_ADVANCE_STEPS.every((step) => characterSettings[step] != null);
+
+      if (allDone) {
+        console.log("[portrait] All auto steps already done");
+        setAutoGenPhase("done");
+        backgroundGenStartedRef.current = true;
+        return;
+      }
+
+      // ★ 如果后台已提前从 world 步骤启动，不自动切换 UI，保持 portrait 页面显示
+      // 让用户在 portrait 步骤查看图片，点击"下一步"时再处理状态切换
+      if (backgroundGenStartedRef.current) {
+        console.log("[portrait] Background generation already started from world step");
+        // 只在后台已完成时自动切换到 done
+        if (!isBackgroundGenerating) {
+          setAutoGenPhase("done");
+        }
+        return;
+      }
+
+      // 后台未开始，启动它（例如从 preset 加载时）
       if (!allDone) {
-        console.log("[portrait] Starting background generation for family/relationships/traits/wealth...");
+        console.log("[portrait] Starting background generation...");
         backgroundGenStartedRef.current = true;
         setIsBackgroundGenerating(true);
-        
         runAutoGeneration().then(() => {
           console.log("[portrait] Background generation completed");
           setIsBackgroundGenerating(false);
@@ -368,12 +400,9 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
           console.error("[portrait] Background generation failed:", err);
           setIsBackgroundGenerating(false);
         });
-      } else {
-        console.log("[portrait] All auto steps already done (from preset)");
-        backgroundGenStartedRef.current = true;
       }
     }
-  }, [isPortraitStep, gameId, characterSettings, runAutoGeneration]);
+  }, [isPortraitStep, gameId, characterSettings, isBackgroundGenerating, runAutoGeneration]);
 
   const handleAcceptAndNext = useCallback(async () => {
     if (!isPortraitStep && generatedContent) {
@@ -393,6 +422,22 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
         });
         console.log("[create] Game created for portrait step:", result.game_id);
         setGameSession(result.game_id, result.game_id.toString());
+
+        // ★ 提前启动后台生成，与图片生成并行
+        const allDone = AUTO_ADVANCE_STEPS.every((step) => characterSettings[step] != null);
+        if (!allDone && !backgroundGenStartedRef.current) {
+          console.log("[world] Starting background generation early...");
+          backgroundGenStartedRef.current = true;
+          setIsBackgroundGenerating(true);
+          runAutoGeneration().then(() => {
+            console.log("[world] Background generation completed");
+            setIsBackgroundGenerating(false);
+          }).catch((err) => {
+            console.error("[world] Background generation failed:", err);
+            setIsBackgroundGenerating(false);
+          });
+        }
+
         nextCreationStep();
       } catch (err) {
         console.error("[create] Failed to create game for portrait:", err);
@@ -460,6 +505,52 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     setFeedback("");
   }, [handleGenerate, feedback]);
 
+  // Wrapper for prevCreationStep that clears subsequent settings
+  const handlePrevStep = useCallback(() => {
+    // Clear settings for steps AFTER the current one (not including current).
+    // When user goes back from step N to step N-1, only steps N+1, N+2... are cleared.
+    // The current step N is preserved so returning forward does not force re-generation.
+    CREATION_STEPS.forEach((step, index) => {
+      if (index > creationStep && characterSettings[step] != null) {
+        updateCharacterSetting(step, null);
+      }
+    });
+    // Clear generatedContent to prevent displaying stale content with wrong stepKey
+    setGeneratedContent(null);
+    setFeedback("");
+    prevCreationStep();
+  }, [creationStep, characterSettings, updateCharacterSetting, prevCreationStep]);
+
+  const regenerateSetting = useCallback(async (stepKey: string, feedback: string) => {
+    if (!gameId) {
+      console.error("[regenerateSetting] No gameId available");
+      throw new Error("游戏未创建");
+    }
+
+    setIsGenerating(true);
+    try {
+      console.log(`[regenerateSetting] Regenerating ${stepKey} with feedback:`, feedback);
+
+      const result = await api.character.generateSetting({
+        setting_type: stepKey,
+        player_name: playerName,
+        life_vision: lifeVision,
+        previous_settings: characterSettings,
+        language,
+        feedback: feedback || null,
+      });
+
+      // Update characterSettings with the regenerated content
+      updateCharacterSetting(stepKey, result);
+      console.log(`[regenerateSetting] ${stepKey} regenerated successfully`);
+    } catch (err) {
+      console.error(`[regenerateSetting] Failed to regenerate ${stepKey}:`, err);
+      throw err;
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [gameId, playerName, lifeVision, characterSettings, language, updateCharacterSetting]);
+
   const handleSavePreset = useCallback(async () => {
     if (!presetName.trim()) return;
     setIsSavingPreset(true);
@@ -512,6 +603,13 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
 
       if (gameId) {
         console.log("[create] Game already exists:", gameId);
+        // Persist auto-generated character settings back to the server
+        try {
+          await api.games.patchCharacterSettings(gameId, characterSettings);
+          console.log("[create] Character settings patched successfully");
+        } catch (patchErr) {
+          console.warn("[create] Failed to patch character settings (non-blocking):", patchErr);
+        }
         console.log("[create] Navigating to opening story...");
         router.push("/story/opening");
         return;
@@ -554,7 +652,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     // Game store actions
     setCreationStep,
     nextCreationStep,
-    prevCreationStep,
+    prevCreationStep: handlePrevStep,
     updateCharacterSetting,
     setPlayerName,
     setLifeVision,
@@ -610,6 +708,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     // Handlers
     handleGenerate,
     handleRegenerate,
+    regenerateSetting,
     handleAcceptAndNext,
     handleSavePreset,
     handleStartGame,

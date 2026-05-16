@@ -4,18 +4,33 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
+from typing import Optional
 
+import sentry_sdk
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
-from starlette.responses import Response
 
+from config.settings import (SENTRY_DSN, SENTRY_ENVIRONMENT,
+                             SENTRY_TRACES_SAMPLE_RATE)
+from src.api.routers import (auth, character, collection, friends, gameplay,
+                             games, images, music, presets, story)
 from src.database.models import init_db
 
 load_dotenv()
+
+# Initialize Sentry (before app creation)
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=SENTRY_ENVIRONMENT,
+        traces_sample_rate=SENTRY_TRACES_SAMPLE_RATE,
+        send_default_pii=False,  # 不发送用户隐私数据
+    )
 
 # Setup logging
 logging.basicConfig(
@@ -33,8 +48,30 @@ async def lifespan(app: FastAPI):
     logger.info("FastAPI server starting...")
     init_db()
     logger.info("Database initialized")
+
+    import asyncio
+
+    drain_task: Optional[asyncio.Task[None]] = None
+    try:
+        from src.api.routers.images import _drain_pending_events
+
+        drain_task = asyncio.create_task(_drain_pending_events())
+    except ImportError:
+        logger.info("Scene image SSE drain task is not configured")
+
     yield
+
+    if drain_task:
+        drain_task.cancel()
     logger.info("FastAPI server shutting down...")
+
+    # B-01/B-02: 关闭全局线程池，防止资源泄漏
+    from src.api.routers.gameplay.sse_helpers import shutdown_sse_thread_pool
+    from src.services.image_service import shutdown_image_thread_pool
+
+    shutdown_sse_thread_pool(wait=False)
+    shutdown_image_thread_pool(wait=False)
+    logger.info("Global thread pools shut down")
 
 
 app = FastAPI(
@@ -139,9 +176,6 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # ---- Register routers ----
-from src.api.routers import (auth, character, collection, friends, gameplay,
-                             games, images, music, presets, story)
-
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(friends.router, prefix="/api/friends", tags=["Friends"])
 app.include_router(games.router, prefix="/api/games", tags=["Games"])
@@ -164,11 +198,6 @@ async def health_check():
         "active_sessions": session_store.active_count,
     }
 
-
-from typing import Optional
-
-# ---- Client-side log collector ----
-from pydantic import BaseModel
 
 client_logger = logging.getLogger("client")
 

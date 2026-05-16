@@ -89,6 +89,18 @@ class TestCreateGame:
 
             assert response.status_code == 201
             data = response.json()
+            # Schema validation: GameStateResponse
+            assert "game_id" in data
+            assert isinstance(data["game_id"], int)
+            assert "player_state" in data
+            assert isinstance(data["player_state"], dict)
+            assert "progress" in data
+            assert isinstance(data["progress"], dict)
+            assert "round_info" in data
+            assert isinstance(data["round_info"], dict)
+            # current_event is optional (can be None)
+            assert "current_event" in data
+            # Value check
             assert data["game_id"] == 1
 
     def test_create_game_without_auth(self, client, mock_db, mock_session_store):
@@ -119,6 +131,15 @@ class TestCreateGame:
 
             # Should work without auth (anonymous)
             assert response.status_code == 201
+            data = response.json()
+            # Schema validation: GameStateResponse
+            assert "game_id" in data
+            assert isinstance(data["game_id"], int)
+            assert "player_state" in data
+            assert isinstance(data["player_state"], dict)
+            assert "progress" in data
+            assert "round_info" in data
+            assert "current_event" in data
 
     def test_create_game_invalid_settings(self, client, mock_auth, auth_headers):
         """Test creating game with invalid settings."""
@@ -175,7 +196,25 @@ class TestListGames:
 
         assert response.status_code == 200
         data = response.json()
+        # Schema validation: List[GameListItem]
+        assert isinstance(data, list)
         assert len(data) == 2
+        # Validate each item has required GameListItem fields
+        for item in data:
+            assert "game_id" in item
+            assert isinstance(item["game_id"], int)
+            assert "player_name" in item
+            assert isinstance(item["player_name"], str)
+            assert "week" in item
+            assert isinstance(item["week"], int)
+            assert "age" in item
+            assert isinstance(item["age"], int)
+            assert "has_progress" in item
+            assert isinstance(item["has_progress"], bool)
+            # Optional fields should exist (may be None)
+            assert "created_at" in item
+            assert "updated_at" in item
+        # Value checks
         assert data[0]["game_id"] == 1
         assert data[0]["player_name"] == "Hero"
         assert data[0]["has_progress"] is True
@@ -230,6 +269,17 @@ class TestLoadGame:
 
             assert response.status_code == 200
             data = response.json()
+            # Schema validation: GameStateResponse
+            assert "game_id" in data
+            assert isinstance(data["game_id"], int)
+            assert "player_state" in data
+            assert isinstance(data["player_state"], dict)
+            assert "progress" in data
+            assert isinstance(data["progress"], dict)
+            assert "round_info" in data
+            assert isinstance(data["round_info"], dict)
+            assert "current_event" in data
+            # Value check
             assert data["game_id"] == 1
 
     def test_load_game_not_found(self, client, mock_db, mock_auth, auth_headers):
@@ -269,6 +319,11 @@ class TestSaveGame:
 
         assert response.status_code == 200
         data = response.json()
+        # Schema validation: SaveGameResponse
+        assert "success" in data
+        assert isinstance(data["success"], bool)
+        assert "message" in data
+        assert isinstance(data["message"], str)
         assert data["success"] is True
 
     def test_save_game_no_session(
@@ -308,7 +363,11 @@ class TestDeleteGame:
         response = client.delete("/api/games/1", headers=auth_headers)
 
         assert response.status_code == 200
-        assert "deleted" in response.json()["message"].lower()
+        data = response.json()
+        # Schema validation: MessageResponse
+        assert "message" in data
+        assert isinstance(data["message"], str)
+        assert "deleted" in data["message"].lower()
 
     def test_delete_game_not_found(self, client, mock_db, mock_auth, auth_headers):
         """Test deleting non-existent game."""
@@ -352,6 +411,17 @@ class TestGetActiveGame:
 
             assert response.status_code == 200
             data = response.json()
+            # Schema validation: GameStateResponse
+            assert "game_id" in data
+            assert isinstance(data["game_id"], int)
+            assert "player_state" in data
+            assert isinstance(data["player_state"], dict)
+            assert "progress" in data
+            assert isinstance(data["progress"], dict)
+            assert "round_info" in data
+            assert isinstance(data["round_info"], dict)
+            assert "current_event" in data
+            # Value check
             assert data["game_id"] == 1
             # 验证调用了正确的方法
             mock_db.get_active_game.assert_called_once_with(1)

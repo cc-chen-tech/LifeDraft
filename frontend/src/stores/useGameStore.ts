@@ -72,6 +72,7 @@ interface GameState {
 
   // ★ 游戏设置
   enableSceneImage: boolean;
+  constraintLevel: "fast" | "expert" | "master";
 
   // ★ 场景插画
   roundSceneImages: RoundSceneImage[];
@@ -125,6 +126,7 @@ interface GameState {
 
   // Actions — Game Settings
   setEnableSceneImage: (enabled: boolean) => void;
+  setConstraintLevel: (level: "fast" | "expert" | "master") => void;
   generateRoundSceneImage: (roundNumber: number, storyText: string, stage?: string) => Promise<void>;
 
   // Actions — Scene Images
@@ -158,6 +160,7 @@ export const useGameStore = create<GameState>()(
     roundInfo: null,
     isGameOver: false,
     enableSceneImage: true,
+    constraintLevel: "expert",
 
     // Event
     currentEvent: null,
@@ -208,6 +211,7 @@ export const useGameStore = create<GameState>()(
         roundInfo: sessionState.roundInfo,
         isGameOver: sessionState.isGameOver,
         enableSceneImage: sessionState.enableSceneImage,
+        constraintLevel: sessionState.constraintLevel,
         // Event
         currentEvent: eventState.currentEvent,
         storyText: eventState.storyText,
@@ -253,10 +257,19 @@ export const useGameStore = create<GameState>()(
 
       // Update event store
       if (result.event) {
-        useEventStore.getState().setCurrentEvent(result.event);
+        useEventStore.getState().setCurrentEvent({
+          ...result.event,
+          story: result.event.story || result.storyText,
+        });
       }
       if (result.storyText) {
         useEventStore.getState().setStoryText(result.storyText);
+        if (result.event?.options?.length && !result.event.story) {
+          useEventStore.getState().setCurrentEvent({
+            ...result.event,
+            story: result.storyText,
+          });
+        }
       }
 
       // Update character store
@@ -288,17 +301,26 @@ export const useGameStore = create<GameState>()(
           const currentOptions = useEventStore.getState().currentEvent?.options || [];
           const newOptions = result.event.options || [];
           const hasNewOptions = newOptions.length > 0 && currentOptions.length === 0;
+          const currentStoryText = useEventStore.getState().storyText;
+          const restoredStory = currentStoryText || result.event.story;
 
           if (hasNewOptions) {
-            const currentStoryText = useEventStore.getState().storyText;
             useEventStore.getState().setCurrentEvent({
               ...result.event,
-              story: currentStoryText || result.event.story,
+              story: restoredStory,
             });
           }
 
           if (!useEventStore.getState().storyText && result.eventStory) {
             useEventStore.getState().setStoryText(result.eventStory);
+          }
+
+          const currentEvent = useEventStore.getState().currentEvent;
+          if (newOptions.length > 0 && restoredStory && currentEvent?.story !== restoredStory) {
+            useEventStore.getState().setCurrentEvent({
+              ...result.event,
+              story: restoredStory,
+            });
           }
         }
         get()._syncFromSubStores();
@@ -450,6 +472,11 @@ export const useGameStore = create<GameState>()(
     setEnableSceneImage: (enabled) => {
       useSessionStore.getState().setEnableSceneImage(enabled);
       set({ enableSceneImage: enabled });
+    },
+
+    setConstraintLevel: (level) => {
+      useSessionStore.getState().setConstraintLevel(level);
+      set({ constraintLevel: level });
     },
 
     generateRoundSceneImage: async (roundNumber, storyText, stage = 'result') => {
@@ -605,3 +632,6 @@ useGameListStore.subscribe(() => {
 useSceneImageStore.subscribe(() => {
   useGameStore.getState()._syncFromSubStores();
 });
+
+// ★ 立即同步一次，确保初始持久化状态被反映到 useGameStore
+useGameStore.getState()._syncFromSubStores();

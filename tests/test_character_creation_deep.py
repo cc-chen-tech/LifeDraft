@@ -1,9 +1,7 @@
 """Deep coverage tests for character_creation.py."""
 
 import json
-from unittest.mock import MagicMock, Mock, patch
-
-import pytest
+from unittest.mock import Mock
 
 # ==================== assign_sexual_orientation Tests ====================
 

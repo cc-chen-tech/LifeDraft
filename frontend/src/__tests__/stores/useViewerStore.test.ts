@@ -5,55 +5,8 @@
  * Covers: scene images, viewing modes, UI toggles, display preferences.
  */
 import { act } from '@testing-library/react';
-
-// Mock the API before importing the store
-jest.mock('@/lib/api', () => ({
-  __esModule: true,
-  default: {
-    games: {
-      list: jest.fn().mockResolvedValue([]),
-      create: jest.fn().mockResolvedValue({ game_id: 1 }),
-      load: jest.fn().mockResolvedValue({
-        game_id: 1,
-        player_state: { player_name: 'Test' },
-        progress: { week: 1 },
-        round_info: { current_round: 1 },
-        current_event: null,
-      }),
-      save: jest.fn().mockResolvedValue({ success: true }),
-      delete: jest.fn().mockResolvedValue({ success: true }),
-    },
-    presets: {
-      list: jest.fn().mockResolvedValue([]),
-      create: jest.fn().mockResolvedValue({ preset_id: 1 }),
-      delete: jest.fn().mockResolvedValue({ success: true }),
-    },
-    gameplay: {
-      getState: jest.fn().mockResolvedValue({
-        player_state: { player_name: 'Test' },
-        progress: { week: 1 },
-        round_info: { current_round: 1 },
-        current_event: null,
-      }),
-    },
-    images: {
-      listByGame: jest.fn().mockResolvedValue({ images: [], total: 0 }),
-      getRoundSceneImage: jest.fn().mockResolvedValue(null),
-      getRoundSceneImageByStage: jest.fn().mockResolvedValue(null),
-      getAllRoundSceneImages: jest.fn().mockResolvedValue({ scenes: [] }),
-      generateRoundSceneImage: jest.fn().mockResolvedValue({
-        scene_id: 1,
-        round_number: 1,
-        image_url: 'test.png',
-        scene_description: 'Test scene',
-        created_at: new Date().toISOString(),
-      }),
-    },
-  },
-}));
-
 import { useGameStore } from '@/stores/useGameStore';
-import api from '@/lib/api';
+import { jsonResponse, errorResponse } from '@/__tests__/helpers/fetch';
 
 describe('useViewerStore (UI/Viewing State)', () => {
   beforeEach(() => {
@@ -63,6 +16,7 @@ describe('useViewerStore (UI/Viewing State)', () => {
       useGameStore.getState().clearImageCache();
     });
     jest.clearAllMocks();
+    global.fetch = jest.fn();
   });
 
   // ==================== Scene Image Enable State ====================
@@ -289,7 +243,7 @@ describe('useViewerStore (UI/Viewing State)', () => {
       await act(async () => {
         await useGameStore.getState().fetchRoundSceneImage(1);
       });
-      expect(api.images.getRoundSceneImage).not.toHaveBeenCalled();
+      expect(global.fetch).not.toHaveBeenCalled();
     });
 
     it('should fetch scene image when gameId is set', async () => {
@@ -297,19 +251,19 @@ describe('useViewerStore (UI/Viewing State)', () => {
         useGameStore.getState().setGameSession(42, 'session-42');
       });
 
-      (api.images.getRoundSceneImage as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         scene_id: 1,
         round_number: 1,
         image_url: 'scene.png',
         scene_description: 'Scene',
         created_at: new Date().toISOString(),
-      });
+      }));
 
       await act(async () => {
         await useGameStore.getState().fetchRoundSceneImage(1);
       });
 
-      expect(api.images.getRoundSceneImage).toHaveBeenCalled();
+      expect(global.fetch).toHaveBeenCalledWith('/api/images/scene/42/1?week=0', expect.objectContaining({ credentials: 'include' }));
     });
 
     it('should fetch scene image by stage', async () => {
@@ -317,20 +271,20 @@ describe('useViewerStore (UI/Viewing State)', () => {
         useGameStore.getState().setGameSession(42, 'session-42');
       });
 
-      (api.images.getRoundSceneImageByStage as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         scene_id: 1,
         round_number: 1,
         stage: 'event',
         image_url: 'scene.png',
         scene_description: 'Scene',
         created_at: new Date().toISOString(),
-      });
+      }));
 
       await act(async () => {
         await useGameStore.getState().fetchRoundSceneImage(1, 'event');
       });
 
-      expect(api.images.getRoundSceneImageByStage).toHaveBeenCalled();
+      expect(global.fetch).toHaveBeenCalledWith('/api/images/scene/42/1?stage=event&week=0', expect.objectContaining({ credentials: 'include' }));
     });
   });
 
@@ -340,7 +294,7 @@ describe('useViewerStore (UI/Viewing State)', () => {
       await act(async () => {
         await useGameStore.getState().generateRoundSceneImage(1, 'Test story');
       });
-      expect(api.images.generateRoundSceneImage).not.toHaveBeenCalled();
+      expect(global.fetch).not.toHaveBeenCalled();
     });
 
     it('should not generate without storyText', async () => {
@@ -352,7 +306,7 @@ describe('useViewerStore (UI/Viewing State)', () => {
         await useGameStore.getState().generateRoundSceneImage(1, '');
       });
 
-      expect(api.images.generateRoundSceneImage).not.toHaveBeenCalled();
+      expect(global.fetch).not.toHaveBeenCalled();
     });
 
     it('should not generate when enableSceneImage is false', async () => {
@@ -365,7 +319,7 @@ describe('useViewerStore (UI/Viewing State)', () => {
         await useGameStore.getState().generateRoundSceneImage(1, 'Test story');
       });
 
-      expect(api.images.generateRoundSceneImage).not.toHaveBeenCalled();
+      expect(global.fetch).not.toHaveBeenCalled();
     });
   });
 });

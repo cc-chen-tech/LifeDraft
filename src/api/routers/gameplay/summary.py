@@ -12,6 +12,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from src.ai.narrative.style_manifest import get_style
 from src.api.deps import get_current_user_optional, get_db
 from src.api.schemas import GameStateResponse, GenerateSummaryRequest
 from src.api.services.session_service import session_service
@@ -35,7 +36,7 @@ async def clear_session_for_debug(
 ):
     """Debug: Clear session for specified game, simulating session expiry."""
     session_store.remove(game_id, user_id)
-    logger.info(f"[DEBUG] Cleared session for game_id={game_id}, user_id={user_id}")
+    logger.debug(f"Cleared session for game_id={game_id}, user_id={user_id}")
     return {"message": f"Session cleared for game {game_id}"}
 
 
@@ -58,8 +59,9 @@ async def get_game_state(
     }
 
     # Build round info
+    # current_round lives on player_state, not game_loop directly
     round_info = {
-        "current_round": (game_loop.current_round if hasattr(game_loop, "current_round") else 0),
+        "current_round": player_state.get("current_round", 0),
         "game_over": game_loop.is_game_over(),
     }
 
@@ -83,12 +85,31 @@ async def get_game_state(
     else:
         logger.info("[GetGameState] No current_event, returning None")
 
+    _raw_quality_level = getattr(game_loop, "quality_level", None)
+    constraint_level = _raw_quality_level if isinstance(_raw_quality_level, str) else "expert"
+
+    # Include narrative style in player_state for frontend access
+    _raw_style_id = getattr(game_loop, "narrative_style_id", None)
+    narrative_style_id = _raw_style_id if isinstance(_raw_style_id, str) else None
+    if narrative_style_id:
+        player_state["narrative_style_id"] = narrative_style_id
+
+    # Get narrative style name
+    narrative_style_name = None
+    if narrative_style_id:
+        style = get_style(narrative_style_id)
+        if style:
+            narrative_style_name = style.style_name
+
     return GameStateResponse(
         game_id=game_id,
         player_state=player_state,
         progress=progress,
         round_info=round_info,
         current_event=current_event,
+        constraint_level=constraint_level,
+        narrative_style_id=narrative_style_id,
+        narrative_style_name=narrative_style_name,
     )
 
 
@@ -150,9 +171,19 @@ async def generate_summary(
         if not story_history:
             return {
                 "start_week": 1,
-                "end_week": player.week if player else 1,
+                "end_week": (player.week + 1) if player else 1,
                 "summary_text": "你的人生故事刚刚开始，还没有足够的经历可以总结。",
             }
+
+        # ★ 如果前端传了 weeks 参数，只取最近 N 周的数据
+        if req.weeks:
+            all_weeks = sorted(set(item.get("week", 0) for item in story_history))
+            if len(all_weeks) > req.weeks:
+                # 只保留最近 N 周的数据
+                recent_weeks = set(all_weeks[-req.weeks :])
+                story_history = [
+                    item for item in story_history if item.get("week", 0) in recent_weeks
+                ]
 
         # Build story text
         story_parts = []
@@ -163,6 +194,8 @@ async def generate_summary(
             choice_text = item.get("choice_text", "")
 
             if story_text:
+                # week 是 0-based，显示时 +1
+                display_week = week + 1
                 # 包含轮次信息（如果有）
                 if round_num is not None:
                     round_names = ["周一", "周中", "周末"]
@@ -171,9 +204,9 @@ async def generate_summary(
                         if round_num < len(round_names)
                         else f"第{round_num+1}轮"
                     )
-                    story_parts.append(f"【第{week}周·{round_name}】{story_text}")
+                    story_parts.append(f"【第{display_week}周·{round_name}】{story_text}")
                 else:
-                    story_parts.append(f"【第{week}周】{story_text}")
+                    story_parts.append(f"【第{display_week}周】{story_text}")
                 if choice_text:
                     story_parts.append(f"→ 选择：{choice_text}")
 
@@ -222,9 +255,15 @@ async def generate_summary(
             # Fallback: generate simple summary based on story
             summary_text = _generate_fallback_summary(story_history, player)
 
+        # ★ 遍历所有记录找 min/max week，而非依赖首尾元素（数据可能未排序）
+        # week 在内部是 0-based，显示给用户时 +1 变成 1-based
+        all_week_values = [item.get("week", 0) for item in story_history]
+        min_week = min(all_week_values)
+        max_week = max(all_week_values)
+
         return {
-            "start_week": story_history[0].get("week", 1) if story_history else 1,
-            "end_week": story_history[-1].get("week", 1) if story_history else 1,
+            "start_week": min_week + 1,
+            "end_week": max_week + 1,
             "summary_text": summary_text,
             "story_count": len(story_history),
         }
@@ -281,9 +320,13 @@ async def get_ending(
     # Save ending to database
     db = get_db()
     try:
+        # Merge life_review and achievements into final_state for persistence
+        final_state = dict(ending_data["final_stats"])
+        final_state["life_review"] = ending_data.get("life_review")
+        final_state["achievements"] = ending_data.get("achievements")
         db.save_ending(
             game_id,
-            ending_data["final_stats"],
+            final_state,
             ending_data["ending_type"],
             ending_data["summary"],
             ending_data.get("achievements"),

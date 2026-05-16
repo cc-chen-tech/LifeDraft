@@ -1,5 +1,8 @@
 # Session 恢复机制测试方案
 
+> 最后更新：2026-04-26  
+> 状态：历史修复记录（已落地）。当前实现以 `docs/wiki/03-api-and-session.md` 和代码为准。
+
 ## 修复背景
 
 当用户点击"确认并继续"后，如果后端 session 过期或重启，前端会恢复 session。此前的实现可能会恢复旧的 `currentEvent`，导致：
@@ -20,13 +23,13 @@
 | **选择成功后清空 currentEvent** | `frontend/src/hooks/usePlayGame.ts` | 避免刷新页面时从 localStorage 恢复旧选项 |
 | **不再持久化 currentEvent** | `frontend/src/stores/useGameStore.ts` | 从 partialize 中移除 currentEvent |
 | **选择失败时自动重新生成** | `frontend/src/hooks/usePlayGame.ts` | 遇到 "No current event" 错误时重新生成事件 |
-| 新增调试端点 | `src/api/routers/gameplay.py` | `DELETE /api/gameplay/{game_id}/session-debug` |
+| 新增调试端点 | `src/api/routers/gameplay/summary.py` | `DELETE /api/games/{game_id}/session-debug` |
 
 ### 后端修复
 
 | 修复点 | 文件 | 说明 |
 |--------|------|------|
-| **自动从数据库恢复 session** | `src/api/routers/gameplay.py` | `_require_session` 内存没有时自动从数据库加载 |
+| **自动从数据库恢复 session** | `src/api/services/session_service.py` + gameplay 路由 | `get_or_restore()` 在内存缺失时从数据库恢复 |
 
 ### 核心改进：Session 自动恢复
 
@@ -57,7 +60,7 @@
 
 ```bash
 # 启动服务
-cd /Users/luicy/story2
+cd /Users/luicy/AI/story2
 ./start.sh
 
 # 打开浏览器访问
@@ -76,7 +79,7 @@ JSON.parse(localStorage.getItem('game-storage')).state.gameId
 
 ```bash
 # 替换 {game_id} 为实际值
-curl -X DELETE "http://localhost:8000/api/gameplay/{game_id}/session-debug"
+curl -X DELETE "http://localhost:8000/api/games/{game_id}/session-debug"
 ```
 
 ## 详细测试步骤
@@ -96,7 +99,7 @@ curl -X DELETE "http://localhost:8000/api/gameplay/{game_id}/session-debug"
 3. 选择一个选项，看到结果
 4. **在点击"确认并继续"前**，执行：
    ```bash
-   curl -X DELETE "http://localhost:8000/api/gameplay/{game_id}/session-debug"
+   curl -X DELETE "http://localhost:8000/api/games/{game_id}/session-debug"
    ```
 5. 点击"确认并继续"
 6. **验证**：
@@ -109,7 +112,7 @@ curl -X DELETE "http://localhost:8000/api/gameplay/{game_id}/session-debug"
 1. 开始游戏，选择选项后点击"确认并继续"
 2. **在事件生成过程中**（loading 状态），快速执行：
    ```bash
-   curl -X DELETE "http://localhost:8000/api/gameplay/{game_id}/session-debug"
+   curl -X DELETE "http://localhost:8000/api/games/{game_id}/session-debug"
    ```
 3. **验证**：
    - 前端 Console 有 `[generateEvent] Session expired, restoring and regenerating` 日志
@@ -120,7 +123,7 @@ curl -X DELETE "http://localhost:8000/api/gameplay/{game_id}/session-debug"
 1. 开始游戏，等待事件生成完成
 2. **在显示选项后、点击选项前**，执行：
    ```bash
-   curl -X DELETE "http://localhost:8000/api/gameplay/{game_id}/session-debug"
+   curl -X DELETE "http://localhost:8000/api/games/{game_id}/session-debug"
    ```
 3. 点击选择一个选项
 4. **验证**：
@@ -153,5 +156,5 @@ curl -X DELETE "http://localhost:8000/api/gameplay/{game_id}/session-debug"
 ## 清理调试端点
 
 测试完成后，可以考虑移除调试端点：
-- 文件：`src/api/routers/gameplay.py`
+- 文件：`src/api/routers/gameplay/summary.py`
 - 搜索：`session-debug`

@@ -11,8 +11,12 @@ uvicorn>=0.30.0
 # 缓存库 (M-01 图片生成缓存)
 cachetools>=5.0.0
 
+# 图片处理 (图片压缩)
+Pillow>=10.0.0
+
 python-jose[cryptography]>=3.3.0
 python-multipart>=0.0.9
+PyJWT>=2.0.0
 
 # 向量检索（可选，启用 ENABLE_VECTOR_SEARCH 时需要）
 chromadb>=0.4.0
@@ -29,6 +33,7 @@ flake8>=6.0.0
 
 # 类型检查
 mypy>=1.0.0
+typing_extensions>=4.0.0
 
 # 安全扫描
 bandit>=1.7.0
@@ -41,3 +46,6 @@ pytest-cov>=4.0.0
 
 # 异步测试支持
 pytest-asyncio>=0.23.0
+
+# Sentry 错误监控
+sentry-sdk[fastapi]>=2.0.0

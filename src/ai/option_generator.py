@@ -5,6 +5,7 @@ relationship name validation/fixing, and event quality checks.
 """
 
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
 from src.ai.client import AIClient
@@ -14,6 +15,11 @@ from src.ai.utils import extract_json
 from src.game.constants import GENERIC_CHARACTER_NAMES, GENERIC_OPTION_TEXTS
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_option_text(text: str) -> str:
+    """Normalize option text for generic-option matching."""
+    return re.sub(r"[\s，。！？、,.!?]+", "", text).lower()
 
 
 class OptionGenerator:
@@ -295,10 +301,6 @@ class OptionGenerator:
             issues.append("Less than 2 options generated")
             return issues
 
-        # 1. 检查选项是否与故事结尾相关
-        # 简单启发式：检查选项文本是否与故事最后200字符有词汇重叠
-        story_end = story_description[-500:] if len(story_description) > 500 else story_description
-
         for i, option in enumerate(event.options):
             # 检查选项文本长度
             if len(option.text) > 50:
@@ -310,7 +312,13 @@ class OptionGenerator:
                     )
 
             # 检查是否是通用选项（与故事无关）
-            if option.text.lower() in [g.lower() for g in generic_options.get(language, [])]:
+            normalized_option_text = _normalize_option_text(option.text)
+            normalized_generic_options = [
+                _normalize_option_text(g) for g in generic_options.get(language, [])
+            ]
+            if normalized_option_text in normalized_generic_options or any(
+                generic in normalized_option_text for generic in normalized_generic_options
+            ):
                 if language == "zh":
                     issues.append(f"选项{i+1}「{option.text}」过于通用，应与故事情境相关")
                 else:
@@ -372,3 +380,27 @@ class OptionGenerator:
             logger.warning(f"Options consistency issues: {issues}")
 
         return issues
+
+    @staticmethod
+    def ensure_options_consistency(
+        event: GameEvent,
+        story_description: str,
+        available_people: Optional[List[str]] = None,
+        language: str = "zh",
+    ) -> None:
+        """Raise when options are too generic or detached from the story."""
+        validator = object.__new__(OptionGenerator)
+        issues = OptionGenerator.validate_options_consistency(
+            validator,
+            event=event,
+            story_description=story_description,
+            available_people=available_people,
+            language=language,
+        )
+        if issues:
+            issue_text = "; ".join(issues)
+            generic_markers = ("通用", "generic", "不在可用人物列表", "not in available")
+            if any(marker in issue_text for marker in generic_markers):
+                raise ValueError(f"generic or inconsistent options: {issue_text}")
+
+            raise ValueError(f"inconsistent options: {issue_text}")

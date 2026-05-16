@@ -10,36 +10,40 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from config.settings import settings
-from src.ai.image_client import (ContentInspectionError, ImageClient,
-                                 ImageGenerationError)
+from src.ai.image_client import ImageClient
+from src.ai.image_exceptions import (ContentInspectionError,
+                                     ImageGenerationError)
 from src.database.models import Image as ImageModel
 from src.services.image.character_service import CharacterImageService
 from src.services.image.scene_service import SceneImageService
-from src.services.image_storage import ImageStorageError, ImageStorageService
+from src.services.image_storage import ImageStorageService
 
 logger = logging.getLogger(__name__)
 
 # C-05: 模块级线程池，替代裸线程使用
-_image_thread_pool = ThreadPoolExecutor(max_workers=10, thread_name_prefix="image-gen")
+_image_thread_pool: Optional[ThreadPoolExecutor] = ThreadPoolExecutor(
+    max_workers=10, thread_name_prefix="image-gen"
+)
 
 
 def get_image_thread_pool() -> ThreadPoolExecutor:
     """获取共享的图片生成线程池"""
+    global _image_thread_pool
+    if _image_thread_pool is None:
+        _image_thread_pool = ThreadPoolExecutor(max_workers=10, thread_name_prefix="image-gen")
     return _image_thread_pool
 
 
 def shutdown_image_thread_pool(wait: bool = True) -> None:
-    """关闭线程池（用于应用退出时清理）"""
+    """关闭线程池（用于应用退出时清理）。"""
     global _image_thread_pool
-    _image_thread_pool.shutdown(wait=wait)
-    _image_thread_pool = ThreadPoolExecutor(max_workers=10, thread_name_prefix="image-gen")
+    if _image_thread_pool is not None:
+        _image_thread_pool.shutdown(wait=wait)
+        _image_thread_pool = None
 
 
 class ImageServiceError(Exception):
     """图像服务错误"""
-
-    pass
 
 
 class ImageContentError(ImageServiceError):
@@ -422,7 +426,7 @@ class ImageService:
                 ImageModel.game_id == game_id,
                 ImageModel.image_type == image_type,
                 ImageModel.entity_name == entity_name,
-                ImageModel.is_active == True,
+                ImageModel.is_active == True,  # noqa: E712
             )
             .order_by(ImageModel.version.desc())
             .first()
@@ -436,7 +440,7 @@ class ImageService:
         """获取游戏的所有图片"""
         query = self.db.query(ImageModel).filter(
             ImageModel.game_id == game_id,
-            ImageModel.is_active == True,
+            ImageModel.is_active == True,  # noqa: E712
         )
 
         if image_type:
@@ -715,7 +719,7 @@ class ImageService:
                 .filter(
                     ImageModel.game_id == game_id,
                     ImageModel.image_type == "character",
-                    ImageModel.is_primary == True,
+                    ImageModel.is_primary == True,  # noqa: E712
                 )
                 .order_by(ImageModel.image_id.desc())
                 .first()
@@ -726,16 +730,66 @@ class ImageService:
         if player_image:
             try:
                 image_data = self.get_image_data(player_image)
-                ext = player_image.storage_path.rsplit(".", 1)[-1].lower()
-                mime_type = "image/png" if ext == "png" else "image/jpeg"
+                # ★ 压缩参考图片：图生图 API 不需要高分辨率，
+                # 过大的 base64 会导致上传超时（如 2.3MB PNG → ~3MB base64）
+                image_data = self._compress_reference_image(image_data)
                 base64_data = base64.b64encode(image_data).decode("utf-8")
-                return f"data:{mime_type};base64,{base64_data}", player_image.image_id
+                return f"data:image/jpeg;base64,{base64_data}", player_image.image_id
             except (OSError, IOError) as e:
                 logger.warning(f"IO error getting player image: {e}")
             except Exception as e:
                 logger.exception(f"Unexpected error getting player image: {e}")
 
         return None, None
+
+    def _compress_reference_image(
+        self, image_data: bytes, max_dimension: int = 512, quality: int = 85
+    ) -> bytes:
+        """压缩参考图片，减小图生图 API 的 base64 payload 大小。
+
+        Args:
+            image_data: 原始图片二进制数据
+            max_dimension: 最长边限制（默认 512px，图生图 API 足够）
+            quality: JPEG 质量
+
+        Returns:
+            压缩后的 JPEG 二进制数据
+        """
+        try:
+            import io
+
+            from PIL import Image
+
+            img: Image.Image = Image.open(io.BytesIO(image_data))
+
+            # 如果图片尺寸超过限制，等比缩放
+            width, height = img.size
+            if max(width, height) > max_dimension:
+                ratio = max_dimension / max(width, height)
+                new_size = (int(width * ratio), int(height * ratio))
+                img = img.resize(new_size, Image.Resampling.LANCZOS)
+
+            # 转为 RGB（去除透明通道）并保存为 JPEG
+            if img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
+
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=quality, optimize=True)
+            compressed = buf.getvalue()
+
+            original_kb = len(image_data) / 1024
+            compressed_kb = len(compressed) / 1024
+            reduction = (1 - len(compressed) / len(image_data)) * 100 if image_data else 0
+            logger.info(
+                f"[ImageService] Compressed reference image: "
+                f"{original_kb:.1f}KB → {compressed_kb:.1f}KB ({reduction:.0f}% reduction)"
+            )
+
+            return compressed
+
+        except Exception as e:
+            logger.warning(f"[ImageService] Image compression failed, using original: {e}")
+            return image_data
 
     def _get_character_settings_from_db(self, game_id: int) -> tuple:
         """从数据库获取角色设定"""

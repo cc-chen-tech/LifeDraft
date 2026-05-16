@@ -6,8 +6,10 @@ from typing import Any, Callable, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
-from src.ai.image_client import (ContentInspectionError, ImageClient,
-                                 ImageGenerationError)
+from config.prompts._helpers import _build_image_era_constraints
+from src.ai.image_client import ImageClient
+from src.ai.image_exceptions import (ContentInspectionError,
+                                     ImageGenerationError)
 from src.database.models import Image as ImageModel
 from src.services.image import ImageContentError, ImageServiceError
 from src.services.image_storage import ImageStorageService
@@ -87,14 +89,36 @@ class CharacterImageService:
             )
             logger.info(f"Appearance anchor generated for {name}")
 
+            # ★ 构建并注入图像时代约束（防止科幻/赛博朋克入侵写实风格）
+            era_constraints = _build_image_era_constraints(character_settings, "zh")
+            combined_style_hint = style_hint or ""
+            if era_constraints:
+                combined_style_hint = f"{combined_style_hint}\n{era_constraints}".strip()
+
+            # ★ 现代背景传递强反科幻 negative_prompt
+            extra_params = None
+            era_lower = era.lower()
+            if any(kw in era_lower for kw in ("现代", "2024", "2025", "当代", "今天", "modern")):
+                extra_params = {
+                    "negative_prompt": (
+                        "低分辨率，低画质，肢体畸形，手指畸形，画面过饱和，蜡像感，人脸无细节，过度光滑，"
+                        "画面具有AI感。构图混乱。文字模糊，扭曲。半身像，裁剪，截断，无脚。"
+                        "赛博朋克，科幻，未来科技，金属质感，电路纹理，全息投影，发光效果，霓虹灯，"
+                        "发光眼睛，红眼，蓝光眼睛，发光物体，飞行汽车，悬浮载具，科幻飞行器，"
+                        "机械义肢，电子眼，科幻城市，未来都市，奇幻元素，超现实，"
+                        "品牌Logo，星巴克，麦当劳，苹果，耐克，阿迪达斯，可口可乐。"
+                    )
+                }
+
             images_data, primary_image_url = self.image_client.generate_character_images(
                 name=name,
                 description=description,
                 era=era,
-                style_hint=style_hint,
+                style_hint=combined_style_hint,
                 num_images=num_images,
                 reference_image_url=reference_image_url,
                 feedback=feedback,
+                extra_params=extra_params,
             )
 
             if not images_data:

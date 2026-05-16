@@ -241,7 +241,10 @@ def parse_time_reference(
                 except ValueError:
                     months = None
             if months:
-                return {"scheduled_week": current_week + months * 4, "scheduled_round": 0}
+                return {
+                    "scheduled_week": current_week + months * 4,
+                    "scheduled_round": 0,
+                }
 
         # X天后
         days_match = re.search(r"(\d+)天[后以]", time_ref)

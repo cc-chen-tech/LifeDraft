@@ -8,6 +8,7 @@ from src.ai.generator import EventGenerator
 from src.ai.prompt_sanitizer import (sanitize_custom_action,
                                      sanitize_user_choice)
 from src.ai.system_prompts import get_system_prompt
+from src.ai.text_quality import normalize_generated_story
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ class StoryService:
         player_state: Optional[Dict[str, Any]] = None,
         stream_callback: Optional[Callable[[str], None]] = None,
         status_callback: Optional[Callable[[str], None]] = None,
+        is_custom: bool = False,
     ) -> str:
         """
         Generate a detailed story continuation after the player's choice.
@@ -63,6 +65,7 @@ class StoryService:
                 effects=effects,
                 language=self.language,
                 character_settings=character_settings or {},  # type: ignore[arg-type]
+                is_custom=is_custom,
             )
 
             sys_prompt = get_system_prompt("story_continuation", self.language)
@@ -89,7 +92,7 @@ class StoryService:
                     status_callback=status_callback,
                 )
 
-            return continuation
+            return normalize_generated_story(continuation, language=self.language)
 
         except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
             logger.warning(f"Failed to generate story continuation: {e}")
@@ -190,7 +193,7 @@ class StoryService:
 
                 if ps_obj:
                     world_model = WorldModel.from_player_state(ps_obj)
-                    logger.debug(f"[StoryContinuation] Built WorldModel for validation")
+                    logger.debug("[StoryContinuation] Built WorldModel for validation")
             except (ImportError, ValueError, TypeError, KeyError) as e:
                 logger.warning(f"[StoryContinuation] Failed to build WorldModel: {e}")
                 return continuation
@@ -382,7 +385,7 @@ class StoryService:
                 last_error = str(e)
                 logger.warning(f"Attempt {attempt + 1}/2 failed (unexpected): {e}")
 
-        logger.error(f"Failed to generate custom choice effects after 2 attempts, using fallback")
+        logger.error("Failed to generate custom choice effects after 2 attempts, using fallback")
         return {"energy": -5, "mood": 5, "knowledge": 0, "wealth": 0}
 
     def generate_custom_choice_result(
@@ -447,7 +450,7 @@ class StoryService:
                 last_error = str(e)
                 logger.warning(f"Attempt {attempt + 1}/2 failed (unexpected): {e}")
 
-        logger.error(f"Failed to generate custom choice result after 2 attempts, using fallback")
+        logger.error("Failed to generate custom choice result after 2 attempts, using fallback")
         return {
             "story_continuation": f"你决定{custom_text}。这是一个有趣的选择，让我们看看接下来会发生什么...",
             "effects": {"energy": -5, "mood": 5},

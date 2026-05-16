@@ -1,7 +1,6 @@
 """Deep coverage tests for game_loop.py and historical_summary_selector.py."""
 
-import json
-from unittest.mock import MagicMock, Mock, PropertyMock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -94,7 +93,7 @@ class TestGameLoopLifecycle:
         event_data = _make_test_event().model_dump()
         state_dict = PlayerState().to_dict()
         state_dict["current_event_data"] = event_data
-        state = loop.load_game(state_dict)
+        loop.load_game(state_dict)
         assert loop.current_event is not None
 
     def test_load_game_with_yearly_summaries(self):
@@ -102,7 +101,7 @@ class TestGameLoopLifecycle:
         loop = _make_game_loop()
         state_dict = PlayerState().to_dict()
         state_dict["yearly_summaries"] = [{"end_week": 47, "summary": "Year 1"}]
-        state = loop.load_game(state_dict)
+        loop.load_game(state_dict)
         assert loop.last_year_start_week == 48
 
     def test_load_game_with_week_decisions(self):
@@ -111,7 +110,7 @@ class TestGameLoopLifecycle:
         state_dict = PlayerState().to_dict()
         state_dict["week"] = 5
         state_dict["decision_history"] = [{"week": 5, "event": "test"}]
-        state = loop.load_game(state_dict)
+        loop.load_game(state_dict)
         assert loop.last_event_week == 5
 
 

@@ -13,7 +13,6 @@ Run with: pytest tests/security/ -v
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 from fastapi.testclient import TestClient
 
 from src.api.main import app
@@ -116,7 +115,7 @@ class TestAuthentication:
         ]
 
         for token in invalid_tokens:
-            response = client.get("/api/games", headers={"Authorization": token})
+            client.get("/api/games", headers={"Authorization": token})
             # Should reject invalid tokens
             # 200 is acceptable for public endpoints
             if "invalid" not in token:
@@ -268,7 +267,7 @@ class TestSecurityHeaders:
         response = client.get("/health")
 
         # Should have X-Content-Type-Options: nosniff
-        content_type_options = response.headers.get("X-Content-Type-Options")
+        response.headers.get("X-Content-Type-Options")
         # This is a best practice check, not mandatory
 
     def test_frame_options(self):
@@ -276,7 +275,7 @@ class TestSecurityHeaders:
         response = client.get("/health")
 
         # Should have X-Frame-Options to prevent clickjacking
-        frame_options = response.headers.get("X-Frame-Options")
+        response.headers.get("X-Frame-Options")
         # This is a best practice check, not mandatory
 
 

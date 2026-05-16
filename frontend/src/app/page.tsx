@@ -33,14 +33,19 @@ export default function WelcomePage() {
   const { isAuthenticated, user, register, login, logout, fetchMe } = useUserStore();
   const { gameId, fetchSavedGames, fetchPresets, resetCreation } = useGameStore();
   const hydrated = useHydration();
+  const [authChecked, setAuthChecked] = useState(false);
 
   // 页面加载时检查 session（从 Cookie 恢复登录状态）
   useEffect(() => {
-    if (hydrated && !isAuthenticated) {
-      // 使用 Promise.resolve 包装以兼容测试环境
-      Promise.resolve(fetchMe?.()).catch(() => {});
+    if (!hydrated) return;
+    if (isAuthenticated) {
+      // 已经登录（可能是 store hydration 恢复），调用 fetchMe 验证 session 有效性
+      Promise.resolve(fetchMe?.()).finally(() => setAuthChecked(true));
+    } else {
+      // 未登录，尝试从 cookie 恢复
+      Promise.resolve(fetchMe?.()).catch(() => {}).finally(() => setAuthChecked(true));
     }
-  }, [hydrated, isAuthenticated, fetchMe]);
+  }, [hydrated, fetchMe]);
 
   // Whether there's an active game to continue
   const hasActiveGame = hydrated && !!gameId;
@@ -53,13 +58,13 @@ export default function WelcomePage() {
   const [showPrivateId, setShowPrivateId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  // Prefetch data if authenticated
+  // Prefetch data if authenticated (only after auth check completes)
   useEffect(() => {
-    if (isAuthenticated) {
+    if (authChecked && isAuthenticated) {
       fetchSavedGames().catch(() => {});
       fetchPresets().catch(() => {});
     }
-  }, [isAuthenticated, fetchSavedGames, fetchPresets]);
+  }, [authChecked, isAuthenticated, fetchSavedGames, fetchPresets]);
 
   const handleRegister = async () => {
     if (!displayName.trim()) return;
@@ -252,6 +257,8 @@ export default function WelcomePage() {
               />
             ) : (
               <Input
+                id="private-id-input"
+                name="privateId"
                 value={privateId}
                 onChange={(e) => setPrivateId(e.target.value)}
                 placeholder="私有密钥 (如: XXXX-XXXX-XXXX-...)"
@@ -261,6 +268,8 @@ export default function WelcomePage() {
                   if (e.key === "Enter") handleLogin();
                 }}
                 autoFocus
+                aria-label="私有密钥"
+                data-testid="private-id-input"
               />
             )}
 

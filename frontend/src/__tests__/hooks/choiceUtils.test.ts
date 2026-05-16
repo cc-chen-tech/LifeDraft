@@ -2,31 +2,6 @@
  * hooks/game/choiceUtils.ts Tests
  * Tests for choice handling utilities
  */
-
-// Mock dependencies
-jest.mock('@/stores/useGameStore', () => ({
-  useGameStore: {
-    getState: jest.fn(() => ({
-      syncPlayerState: jest.fn().mockResolvedValue(undefined),
-      syncState: jest.fn(),
-      storyText: 'Existing story',
-      currentEvent: {
-        story: 'Event story',
-        options: [{ text: 'Option 1' }, { text: 'Option 2' }],
-      },
-      roundInfo: { current_round: 1 },
-      generateRoundSceneImage: jest.fn().mockResolvedValue(undefined),
-    })),
-  },
-}));
-
-jest.mock('@/lib/api', () => ({
-  gameplay: {
-    makeChoiceSync: jest.fn(),
-    makeCustomChoiceSync: jest.fn(),
-  },
-}));
-
 import {
   parseSSEError,
   handleChoiceComplete,
@@ -39,25 +14,30 @@ import {
   ChoiceErrorContext,
 } from '@/hooks/game/choiceUtils';
 import { useGameStore } from '@/stores/useGameStore';
-import { gameplay } from '@/lib/api';
+import { jsonResponse } from '@/__tests__/helpers/fetch';
+import { spyOnStoreMethods } from '@/__tests__/helpers/store-spy';
 
-// ★ 辅助函数：重置 mock 状态
-const resetMockStore = (overrides = {}) => {
-  (useGameStore.getState as jest.Mock).mockReturnValue({
-    syncPlayerState: jest.fn().mockResolvedValue(undefined),
-    syncState: jest.fn(),
+const STORE_METHODS = ['syncPlayerState', 'syncState', 'generateRoundSceneImage', 'setLastChoiceEffects'] as const;
+
+type StoreSpy = ReturnType<typeof spyOnStoreMethods<typeof useGameStore, (typeof STORE_METHODS)[number]>>;
+
+function setupDefaultState() {
+  useGameStore.setState({
     storyText: 'Existing story',
     currentEvent: {
       story: 'Event story',
       options: [{ text: 'Option 1' }, { text: 'Option 2' }],
-    },
+    } as Record<string, unknown>,
     roundInfo: { current_round: 1 },
-    generateRoundSceneImage: jest.fn().mockResolvedValue(undefined),
-    ...overrides,
   });
-};
+}
+
+function setStoreState(overrides: Record<string, unknown>) {
+  useGameStore.setState(overrides as never);
+}
 
 describe('choiceUtils', () => {
+  let storeSpy: StoreSpy;
   const mockHandlers: ChoiceHandlers = {
     setProcessing: jest.fn(),
     setConnectionStatus: jest.fn(),
@@ -74,22 +54,26 @@ describe('choiceUtils', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({}));
+    setupDefaultState();
+    storeSpy = spyOnStoreMethods(useGameStore, STORE_METHODS);
+  });
+
+  afterEach(() => {
+    storeSpy.restore();
   });
 
   describe('parseSSEError', () => {
     it('extracts message from error object', () => {
-      const error = { message: 'Test error message' };
-      expect(parseSSEError(error)).toBe('Test error message');
+      expect(parseSSEError({ message: 'Test error message' })).toBe('Test error message');
     });
 
     it('extracts error property', () => {
-      const error = { error: 'Error from error property' };
-      expect(parseSSEError(error)).toBe('Error from error property');
+      expect(parseSSEError({ error: 'Error from error property' })).toBe('Error from error property');
     });
 
     it('prefers message over error', () => {
-      const error = { message: 'Message', error: 'Error' };
-      expect(parseSSEError(error)).toBe('Message');
+      expect(parseSSEError({ message: 'Message', error: 'Error' })).toBe('Message');
     });
 
     it('handles empty object', () => {
@@ -115,64 +99,43 @@ describe('choiceUtils', () => {
 
   describe('handleChoiceComplete', () => {
     it('sets summary when present', () => {
-      const result = { summary: 'Round summary text' };
-
-      handleChoiceComplete(result, mockHandlers);
-
+      handleChoiceComplete({ summary: 'Round summary text' }, mockHandlers);
       expect(mockHandlers.setRoundSummary).toHaveBeenCalledWith('Round summary text');
     });
 
     it('clears summary when not present', () => {
-      const result = {};
-
-      handleChoiceComplete(result, mockHandlers);
-
+      handleChoiceComplete({}, mockHandlers);
       expect(mockHandlers.setRoundSummary).toHaveBeenCalledWith(null);
     });
 
     it('enters summary phase on weekly summary', () => {
-      const result = {
+      handleChoiceComplete({
         need_weekly_summary: true,
         weekly_summary: 'Weekly summary text',
-      };
-
-      handleChoiceComplete(result, mockHandlers);
-
+      }, mockHandlers);
       expect(mockHandlers.setSummaryText).toHaveBeenCalledWith('Weekly summary text');
       expect(mockHandlers.setPhase).toHaveBeenCalledWith('summary');
     });
 
     it('enters ending phase on game over', () => {
-      const result = { game_over: true };
-
-      handleChoiceComplete(result, mockHandlers);
-
+      handleChoiceComplete({ game_over: true }, mockHandlers);
       expect(mockHandlers.setPhase).toHaveBeenCalledWith('ending');
       expect(mockHandlers.setGameOver).toHaveBeenCalledWith(true);
     });
 
     it('enters result phase by default', () => {
-      const result = {};
-
-      handleChoiceComplete(result, mockHandlers);
-
+      handleChoiceComplete({}, mockHandlers);
       expect(mockHandlers.setOptions).toHaveBeenCalledWith([]);
       expect(mockHandlers.setPhase).toHaveBeenCalledWith('result');
     });
 
     it('clears current event', () => {
-      const result = {};
-
-      handleChoiceComplete(result, mockHandlers);
-
+      handleChoiceComplete({}, mockHandlers);
       expect(mockHandlers.setCurrentEvent).toHaveBeenCalledWith(null);
     });
 
     it('clears processing state', () => {
-      const result = {};
-
-      handleChoiceComplete(result, mockHandlers);
-
+      handleChoiceComplete({}, mockHandlers);
       expect(mockHandlers.setProcessing).toHaveBeenCalledWith(false);
       expect(mockHandlers.setConnectionStatus).toHaveBeenCalledWith(null);
     });
@@ -181,7 +144,6 @@ describe('choiceUtils', () => {
   describe('enterResultPhase', () => {
     it('enters result phase correctly', () => {
       enterResultPhase(mockHandlers);
-
       expect(mockHandlers.setProcessing).toHaveBeenCalledWith(false);
       expect(mockHandlers.generatingRef.current).toBe(false);
       expect(mockHandlers.setOptions).toHaveBeenCalledWith([]);
@@ -192,106 +154,63 @@ describe('choiceUtils', () => {
 
   describe('handleChoiceAlreadyProcessed', () => {
     it('handles choice already processed error', async () => {
-      const mockSyncPlayerState = jest.fn().mockResolvedValue({
-        player_state: {
-          round_history: [
-            { story_continuation: 'The story continues...' },
-          ],
-        },
-      });
-      (useGameStore.getState as jest.Mock).mockReturnValue({
-        syncPlayerState: mockSyncPlayerState,
-        storyText: 'Current story',
+      storeSpy.spies.syncPlayerState.mockResolvedValue({
+        player_state: { round_history: [{ story_continuation: 'The story continues...' }] },
       });
 
       await handleChoiceAlreadyProcessed('Option text', mockHandlers, 'test');
-
       expect(mockHandlers.setPhase).toHaveBeenCalledWith('result');
     });
   });
 
   describe('handleNoCurrentEvent', () => {
     it('handles no current event error', async () => {
-      const mockSyncPlayerState = jest.fn().mockResolvedValue({
-        player_state: {
-          round_history: [],
-        },
-      });
-      (useGameStore.getState as jest.Mock).mockReturnValue({
-        syncPlayerState: mockSyncPlayerState,
-        storyText: 'Current story',
+      storeSpy.spies.syncPlayerState.mockResolvedValue({
+        player_state: { round_history: [] },
       });
 
       await handleNoCurrentEvent('Choice text', mockHandlers, 'test');
-
       expect(mockHandlers.setPhase).toHaveBeenCalledWith('result');
     });
   });
 
   describe('handleFallbackChoice', () => {
     it('uses option index for fallback', async () => {
-      const mockResult = {
-        summary: 'Fallback result',
-        need_weekly_summary: false,
-        game_over: false,
-      };
-      (gameplay.makeChoiceSync as jest.Mock).mockResolvedValue(mockResult);
+      const mockResult = { summary: 'Fallback result', need_weekly_summary: false, game_over: false };
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockResult));
 
-      const context: ChoiceErrorContext = {
-        optionIndex: 0,
-        isRetry: false,
-        sseSucceeded: false,
-      };
-
+      const context: ChoiceErrorContext = { optionIndex: 0, isRetry: false, sseSucceeded: false };
       const result = await handleFallbackChoice(123, context, mockHandlers, 'test');
 
-      expect(gameplay.makeChoiceSync).toHaveBeenCalledWith(123, { option_index: 0 });
-      // Verify that the fallback was attempted
-      expect(gameplay.makeChoiceSync).toHaveBeenCalled();
+      expect(result).toBeTruthy();
+      const calls = (global.fetch as jest.Mock).mock.calls;
+      expect(calls[0][0]).toBe('/api/games/123/choice-sync');
+      expect(JSON.parse(calls[0][1].body)).toEqual({ option_index: 0 });
     });
 
     it('uses custom text for fallback', async () => {
-      const mockResult = {
-        summary: 'Custom result',
-        need_weekly_summary: false,
-        game_over: false,
-      };
-      (gameplay.makeCustomChoiceSync as jest.Mock).mockResolvedValue(mockResult);
+      const mockResult = { summary: 'Custom result', need_weekly_summary: false, game_over: false };
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockResult));
 
-      const context: ChoiceErrorContext = {
-        customText: 'Custom action',
-        isRetry: false,
-        sseSucceeded: false,
-      };
-
+      const context: ChoiceErrorContext = { customText: 'Custom action', isRetry: false, sseSucceeded: false };
       const result = await handleFallbackChoice(123, context, mockHandlers, 'test');
 
-      expect(gameplay.makeCustomChoiceSync).toHaveBeenCalledWith(123, { custom_text: 'Custom action' });
-      // Verify that the fallback was attempted
-      expect(gameplay.makeCustomChoiceSync).toHaveBeenCalled();
+      expect(result).toBeTruthy();
+      const calls = (global.fetch as jest.Mock).mock.calls;
+      expect(calls[0][0]).toBe('/api/games/123/custom-choice-sync');
+      expect(JSON.parse(calls[0][1].body)).toEqual({ custom_text: 'Custom action' });
     });
 
     it('returns false without option or custom text', async () => {
-      const context: ChoiceErrorContext = {
-        isRetry: false,
-        sseSucceeded: false,
-      };
-
+      const context: ChoiceErrorContext = { isRetry: false, sseSucceeded: false };
       const result = await handleFallbackChoice(123, context, mockHandlers, 'test');
-
       expect(result).toBe(false);
     });
 
     it('handles fallback failure with no current event', async () => {
-      // Mock the error as an object with message property to ensure parseSSEError works correctly
-      (gameplay.makeChoiceSync as jest.Mock).mockRejectedValue({ message: 'No current event' });
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ message: 'No current event' }, 400));
 
-      const context: ChoiceErrorContext = {
-        optionIndex: 0,
-        isRetry: false,
-        sseSucceeded: false,
-      };
-
+      const context: ChoiceErrorContext = { optionIndex: 0, isRetry: false, sseSucceeded: false };
       const result = await handleFallbackChoice(123, context, mockHandlers, 'test');
 
       expect(result).toBe(true);
@@ -299,14 +218,9 @@ describe('choiceUtils', () => {
     });
 
     it('handles fallback failure with other error', async () => {
-      (gameplay.makeChoiceSync as jest.Mock).mockRejectedValue(new Error('Network error'));
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ message: 'Network error' }, 400));
 
-      const context: ChoiceErrorContext = {
-        optionIndex: 0,
-        isRetry: false,
-        sseSucceeded: false,
-      };
-
+      const context: ChoiceErrorContext = { optionIndex: 0, isRetry: false, sseSucceeded: false };
       const result = await handleFallbackChoice(123, context, mockHandlers, 'test');
 
       expect(result).toBe(false);
@@ -315,123 +229,81 @@ describe('choiceUtils', () => {
 
   describe('handleChoiceError', () => {
     it('handles choice_already_processed error', async () => {
-      const mockSyncPlayerState = jest.fn().mockResolvedValue({
+      storeSpy.spies.syncPlayerState.mockResolvedValue({
         player_state: { round_history: [] },
       });
-      (useGameStore.getState as jest.Mock).mockReturnValue({
-        syncPlayerState: mockSyncPlayerState,
-        storyText: 'Story',
-        currentEvent: { options: [{ text: 'Option 1' }] },
+      useGameStore.setState({
+        currentEvent: { options: [{ text: 'Option 1' }] } as Record<string, unknown>,
       });
 
-      const context: ChoiceErrorContext = {
-        optionIndex: 0,
-        isRetry: false,
-        sseSucceeded: false,
-      };
+      const context: ChoiceErrorContext = { optionIndex: 0, isRetry: false, sseSucceeded: false };
 
       await handleChoiceError(
         { message: 'choice_already_processed' },
-        123,
-        mockHandlers,
-        context,
-        'test'
+        123, mockHandlers, context, 'test'
       );
 
       expect(mockHandlers.setPhase).toHaveBeenCalledWith('result');
     });
 
     it('handles No current event error', async () => {
-      const mockSyncPlayerState = jest.fn().mockResolvedValue({
+      storeSpy.spies.syncPlayerState.mockResolvedValue({
         player_state: { round_history: [] },
       });
-      (useGameStore.getState as jest.Mock).mockReturnValue({
-        syncPlayerState: mockSyncPlayerState,
-        storyText: 'Story',
-        currentEvent: { options: [{ text: 'Option 1' }] },
+      useGameStore.setState({
+        currentEvent: { options: [{ text: 'Option 1' }] } as Record<string, unknown>,
       });
 
-      const context: ChoiceErrorContext = {
-        optionIndex: 0,
-        isRetry: false,
-        sseSucceeded: false,
-      };
+      const context: ChoiceErrorContext = { optionIndex: 0, isRetry: false, sseSucceeded: false };
 
       await handleChoiceError(
         { message: 'No current event found' },
-        123,
-        mockHandlers,
-        context,
-        'test'
+        123, mockHandlers, context, 'test'
       );
 
       expect(mockHandlers.setPhase).toHaveBeenCalledWith('result');
     });
 
     it('handles session expired (404)', async () => {
-      const mockSyncState = jest.fn().mockResolvedValue(undefined);
-      (useGameStore.getState as jest.Mock).mockReturnValue({
-        syncState: mockSyncState,
-        syncPlayerState: jest.fn(),
-        currentEvent: null,
-        storyText: 'Story',
-      });
+      storeSpy.spies.syncState.mockResolvedValue(undefined);
 
       const context: ChoiceErrorContext = {
-        optionIndex: 0,
-        isRetry: false,
-        sseSucceeded: false,
+        optionIndex: 0, isRetry: false, sseSucceeded: false,
         retryChoice: jest.fn(),
       };
 
       await handleChoiceError(
         { message: '404 Not Found' },
-        123,
-        mockHandlers,
-        context,
-        'test'
+        123, mockHandlers, context, 'test'
       );
 
       expect(mockHandlers.setProcessing).toHaveBeenCalledWith(true, '恢复游戏状态...');
     });
 
     it('handles fallback when SSE not succeeded', async () => {
-      (gameplay.makeChoiceSync as jest.Mock).mockResolvedValue({
-        summary: 'Result',
-        need_weekly_summary: false,
-        game_over: false,
-      });
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        summary: 'Result', need_weekly_summary: false, game_over: false,
+      }));
 
-      const context: ChoiceErrorContext = {
-        optionIndex: 0,
-        isRetry: false,
-        sseSucceeded: false,
-      };
+      const context: ChoiceErrorContext = { optionIndex: 0, isRetry: false, sseSucceeded: false };
 
       await handleChoiceError(
         { message: 'Some error' },
-        123,
-        mockHandlers,
-        context,
-        'test'
+        123, mockHandlers, context, 'test'
       );
 
-      expect(gameplay.makeChoiceSync).toHaveBeenCalled();
+      const choiceCalls = (global.fetch as jest.Mock).mock.calls.filter(
+        (c: unknown[]) => (c[0] as string).includes('choice-sync')
+      );
+      expect(choiceCalls.length).toBeGreaterThan(0);
     });
 
     it('sets error phase for unhandled errors', async () => {
-      const context: ChoiceErrorContext = {
-        optionIndex: 0,
-        isRetry: true,
-        sseSucceeded: true,
-      };
+      const context: ChoiceErrorContext = { optionIndex: 0, isRetry: true, sseSucceeded: true };
 
       await handleChoiceError(
         { message: 'Unknown error' },
-        123,
-        mockHandlers,
-        context,
-        'test'
+        123, mockHandlers, context, 'test'
       );
 
       expect(mockHandlers.setProcessing).toHaveBeenCalledWith(false);

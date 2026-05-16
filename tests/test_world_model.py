@@ -2,8 +2,6 @@
 
 from unittest.mock import MagicMock
 
-import pytest
-
 from src.game.world_model import (CAREER_LEVEL_INDEX, CAREER_LEVELS,
                                   MAX_CAREER_JUMP, MIN_WEEKS_BEFORE_PROMOTION,
                                   CareerInfo, CausalChain, CharacterProfile,

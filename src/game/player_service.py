@@ -1,7 +1,7 @@
 """Player business logic service — extracted from PlayerState to separate data from behavior."""
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from src.game.state import CharacterState, PlayerState
 

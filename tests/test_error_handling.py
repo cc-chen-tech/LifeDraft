@@ -4,8 +4,6 @@ import ast
 import os
 import re
 
-import pytest
-
 
 class TestExceptionHandlingStandards:
     """静态分析：验证异常处理规范"""

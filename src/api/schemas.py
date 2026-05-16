@@ -15,6 +15,11 @@ class LoginRequest(BaseModel):
     private_id: str = Field(..., min_length=1)
 
 
+class PhoneLoginRequest(BaseModel):
+    phone_number: str = Field(..., min_length=1)
+    verification_code: Optional[str] = None
+
+
 class AuthResponse(BaseModel):
     token: str
     user: "UserInfo"
@@ -59,6 +64,7 @@ class CreateGameRequest(BaseModel):
     player_name: str
     life_vision: str
     language: str = "zh"
+    constraint_level: str = "expert"
 
 
 class GameListItem(BaseModel):
@@ -77,6 +83,75 @@ class GameStateResponse(BaseModel):
     progress: Dict[str, Any]
     round_info: Dict[str, Any]
     current_event: Optional[Dict[str, Any]] = None
+    constraint_level: str = "expert"
+    narrative_style_id: Optional[str] = None
+    narrative_style_name: Optional[str] = None
+
+
+# ==================== Achievements & Life Review ====================
+
+
+class AchievementItem(BaseModel):
+    id: str
+    name: str
+    description: str
+    rarity: str  # common, rare, epic, legendary
+    dimension: str
+    unlocked_at_week: int = 0
+    icon: str = ""
+
+
+class AchievementList(BaseModel):
+    list: List[AchievementItem]
+    count: int
+
+
+class TurningPointItem(BaseModel):
+    week: int
+    description: str
+    impact_score: float
+
+
+class ResourceCurves(BaseModel):
+    energy: List[int]
+    mood: List[int]
+    knowledge: List[int]
+    wealth: List[int]
+
+
+class RelationshipNode(BaseModel):
+    name: str
+    affinity: int
+
+
+class RelationshipEdge(BaseModel):
+    source: str
+    target: str
+    strength: float
+
+
+class RelationshipNetwork(BaseModel):
+    nodes: List[RelationshipNode]
+    edges: List[RelationshipEdge]
+
+
+class BadgeWallItem(BaseModel):
+    id: str
+    name: str
+    rarity: str
+    unlocked_at_week: int
+
+
+class LifeReviewData(BaseModel):
+    personality_labels: List[str]
+    key_turning_points: List[TurningPointItem]
+    resource_curves: ResourceCurves
+    achievement_badge_wall: List[BadgeWallItem]
+    relationship_network: RelationshipNetwork
+    life_motto: str
+    play_duration_minutes: int
+    total_decisions: int
+    favorite_choice_type: str
 
 
 class SaveGameResponse(BaseModel):
@@ -112,6 +187,18 @@ class GenerateRelationshipRequest(BaseModel):
 class GenerateAttributesRequest(BaseModel):
     character_settings: Dict[str, Any]
     language: str = "zh"
+
+
+class UpdateGameSettingsRequest(BaseModel):
+    constraint_level: Optional[str] = None
+
+
+class UpdateCharacterSettingsRequest(BaseModel):
+    character_settings: Dict[str, Any]
+
+
+class UpdateNarrativeStyleRequest(BaseModel):
+    style_id: str
 
 
 class OpeningStoryRequest(BaseModel):
@@ -171,6 +258,25 @@ class ChoiceResultResponse(BaseModel):
     weekly_summary: Optional[str] = None
     bonus_effects: Optional[Dict[str, Any]] = None
     game_over: bool = False
+
+
+class VoiceReadingSettingsResponse(BaseModel):
+    member_required: bool = True
+    enabled: bool = False
+    available_voice_colors: List[str] = Field(default_factory=list)
+    selected_voice_color: Optional[str] = None
+    uploaded_voice_available: bool = False
+    auto_read_enabled: bool = False
+
+
+class VoiceReadingSettingsUpdateRequest(BaseModel):
+    selected_voice_color: Optional[str] = None
+    auto_read_enabled: Optional[bool] = None
+
+
+class VoiceUploadConsentRequest(BaseModel):
+    consent_confirmed: bool = False
+    sample_name: Optional[str] = None
 
 
 # ==================== Story Adjustment ====================

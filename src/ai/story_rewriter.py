@@ -115,6 +115,8 @@ Please rewrite the specified segment according to the user's request:
                 temperature=0.8,
                 max_tokens=4096,
                 stream_callback=stream_callback,
+                frequency_penalty=0.3,
+                presence_penalty=0.3,
             )
 
             # ★ 一致性校验（如果有 world_model）- 复用 StoryGenerator 的方法
@@ -227,6 +229,8 @@ Please generate a brand new story based on the above context, ensuring logical c
                 temperature=0.75,  # 从 1.0 降至 0.75，减少幻觉
                 max_tokens=4096,
                 stream_callback=stream_callback,
+                frequency_penalty=0.3,
+                presence_penalty=0.3,
             )
 
             # ★ 一致性校验（如果有 world_model）- 复用 StoryGenerator 的方法

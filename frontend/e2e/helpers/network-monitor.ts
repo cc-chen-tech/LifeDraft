@@ -35,7 +35,12 @@ export function startNetworkMonitoring(page: Page): NetworkMonitor {
     responses: [],
 
     get4xxErrors: () => monitor.errors.filter(e => e.status >= 400 && e.status < 500),
-    get5xxErrors: () => monitor.errors.filter(e => e.status >= 500),
+    get5xxErrors: () => monitor.errors.filter(e => {
+      if (e.status < 500) return false;
+      // 排除场景图片的 502 错误（新游戏无场景图时后端返回 204，代理层转为 502，非关键错误）
+      if (e.status === 502 && e.url.includes('/api/images/scene/')) return false;
+      return true;
+    }),
     get404Errors: () => monitor.errors.filter(e => e.status === 404),
 
     clear: () => {

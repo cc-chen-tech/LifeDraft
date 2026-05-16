@@ -7,11 +7,6 @@ import React from 'react';
 import { render } from '@testing-library/react';
 import ErrorReporter from '@/components/ErrorReporter';
 
-// Mock remote-log
-jest.mock('@/lib/remote-log', () => ({
-  installGlobalErrorReporter: jest.fn(),
-}));
-
 describe('ErrorReporter', () => {
   it('renders null', () => {
     const { container } = render(<ErrorReporter />);
@@ -19,8 +14,10 @@ describe('ErrorReporter', () => {
   });
 
   it('installs global error reporter on mount', () => {
-    const { installGlobalErrorReporter } = require('@/lib/remote-log');
+    const spy = jest.spyOn(window, 'addEventListener');
     render(<ErrorReporter />);
-    expect(installGlobalErrorReporter).toHaveBeenCalled();
+    expect(spy).toHaveBeenCalledWith('error', expect.any(Function));
+    expect(spy).toHaveBeenCalledWith('unhandledrejection', expect.any(Function));
+    spy.mockRestore();
   });
 });

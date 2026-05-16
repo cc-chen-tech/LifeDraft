@@ -1,9 +1,7 @@
 """Tests for AI layer: cache, client, consistency_validator, utils, system_prompts, profile_synthesizer."""
 
 import json
-import tempfile
-from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -89,7 +87,7 @@ class TestGameEventModel:
     def test_game_event_single_option(self):
         """Test GameEvent rejects single option (min 2 required)."""
         with pytest.raises(Exception):
-            event = GameEvent(
+            GameEvent(
                 event_description="Simple event",
                 options=[EventOption(text="Only choice", effects={"energy": -5})],
             )
@@ -358,7 +356,7 @@ class TestEventCache:
         """Test cache initialization creates directory."""
         from src.ai.cache import EventCache
 
-        cache = EventCache(cache_dir=tmp_path / "test_cache")
+        EventCache(cache_dir=tmp_path / "test_cache")
         assert (tmp_path / "test_cache").exists()
 
     def test_cache_set_and_size(self, tmp_path):

@@ -1,7 +1,5 @@
 """提示词注入防护测试 - 对应优化 H-03"""
 
-import pytest
-
 
 class TestPromptInjectionPrevention:
     """测试用户输入清洗，防止提示词注入"""

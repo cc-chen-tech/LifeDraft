@@ -40,11 +40,33 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
 
-      - name: Run pytest
-        run: pytest tests/ -v --tb=short
+      - name: Run maintained backend gates
+        run: |
+          python -m mypy \
+            src/ai/text_quality.py \
+            src/services/music_service.py \
+            src/services/music_playlist_service.py \
+            src/database/models.py \
+            --strict
+          python -m pytest \
+            tests/test_gate_preflight_no_mock.py \
+            tests/test_gate_gameplay_behavior_no_mock.py \
+            tests/test_gate_static_no_mock.py \
+            tests/test_imports.py \
+            tests/test_gate_imports_no_mock.py \
+            tests/test_api_contract.py \
+            tests/test_gate_contracts_no_mock.py \
+            tests/test_story_music_recommendation_contract.py \
+            tests/test_integration_real_db.py \
+            tests/test_database.py \
+            tests/test_gate_real_db_no_mock.py \
+            tests/test_story_music_recommendation_db.py \
+            tests/test_music_degradation_no_mock.py \
+            -v --tb=short
         env:
           PYTHONPATH: ${{ github.workspace }}
           TESTING: 'true'
+          JWT_SECRET: 'test-secret-for-ci'
           OPENAI_API_KEY: 'sk-test-dummy-key-for-ci'
           IMAGE_API_KEY: 'sk-test-dummy-key-for-ci'
           IMAGE_API_BASE_URL: 'https://api.openai.com/v1'

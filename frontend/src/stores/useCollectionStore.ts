@@ -7,6 +7,30 @@ import { create } from "zustand";
 import type { CharacterCollectionItem, ItemCollectionItem, LandmarkCollectionItem, CollectionResponse, RecognizedEntity, EntityRecognitionResponse } from "@/lib/types";
 import api from "@/lib/api";
 
+type CollectionEntity = CharacterCollectionItem | ItemCollectionItem | LandmarkCollectionItem;
+
+function mergeVisibleEntityData<T extends CollectionEntity>(nextItems: T[], currentItems: T[]): T[] {
+  return nextItems.map((next) => {
+    const current = currentItems.find((item) => item.name === next.name);
+    if (!current) return next;
+
+    return {
+      ...next,
+      image_url: next.image_url || current.image_url,
+      image_generated: next.image_generated || current.image_generated,
+      description: next.description || current.description,
+      ...("description_generated" in next && "description_generated" in current
+        ? { description_generated: next.description_generated || current.description_generated }
+        : {}),
+    };
+  });
+}
+
+// Request de-dupe and short-lived cache keep the collection panel responsive.
+let _fetchInFlight: { gameId: number; promise: Promise<void> } | null = null;
+let _collectionCache: { gameId: number; timestamp: number } | null = null;
+const CACHE_TTL_MS = 30000;
+
 interface CollectionState {
   // 数据
   characters: CharacterCollectionItem[];
@@ -46,6 +70,7 @@ interface CollectionState {
   generateCharacterImage: (gameId: number, name: string) => Promise<void>;
   generateItemImage: (gameId: number, itemName: string) => Promise<void>;
   generateLandmarkImage: (gameId: number, landmarkName: string) => Promise<void>;
+  batchGenerateLandmarkImages: (gameId: number) => Promise<void>;
   generateCharacterDescription: (gameId: number, name: string) => Promise<void>;
   generateItemDescription: (gameId: number, itemName: string) => Promise<void>;
   generateLandmarkDescription: (gameId: number, landmarkName: string) => Promise<void>;
@@ -106,6 +131,25 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
       return;
     }
 
+    if (!isRefresh && _fetchInFlight?.gameId === gameId) {
+      console.log("[fetchCollection] 复用已有请求 gameId=", gameId);
+      return _fetchInFlight.promise;
+    }
+
+    if (!isRefresh) {
+      const now = Date.now();
+      const state = get();
+      const hasData = state.characters.length > 0 || state.items.length > 0 || state.landmarks.length > 0;
+      if (
+        _collectionCache?.gameId === gameId &&
+        now - _collectionCache.timestamp < CACHE_TTL_MS &&
+        hasData
+      ) {
+        console.log("[fetchCollection] 命中缓存，跳过请求 gameId=", gameId);
+        return;
+      }
+    }
+
     // 保存当前选中的人物/物品/标志物名称，以便刷新后恢复选中状态
     const currentSelected = get();
     const selectedCharacterName = currentSelected.selectedCharacter?.name;
@@ -117,6 +161,7 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
     if (isRefresh) {
       // 刷新模式：不改变 isLoading，不隐藏已有内容
       console.log("[fetchCollection] 刷新模式 - 保持列表可见");
+      set({ isRefreshing: true, error: null });
     } else {
       // 初始加载模式：显示加载状态
       console.log("[fetchCollection] 初始加载模式 - 显示加载中");
@@ -124,21 +169,47 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
     }
 
     try {
-      const result: CollectionResponse = await api.collection.get(gameId);
+      const fetchPromise = api.collection.get(gameId);
+      if (!isRefresh) {
+        const wrappedPromise = fetchPromise
+          .then(() => undefined)
+          .catch(() => undefined)
+          .finally(() => {
+            if (_fetchInFlight?.gameId === gameId) {
+              _fetchInFlight = null;
+            }
+          });
+        _fetchInFlight = { gameId, promise: wrappedPromise };
+      }
+
+      const result: CollectionResponse = await fetchPromise;
+      if (_fetchInFlight?.gameId === gameId) {
+        _fetchInFlight = null;
+      }
 
       const newCharacters = result.characters || [];
       const newItems = result.items || [];
       const newLandmarks = result.landmarks || [];
 
+      const mergedCharacters = isRefresh
+        ? mergeVisibleEntityData(newCharacters, get().characters)
+        : newCharacters;
+      const mergedItems = isRefresh
+        ? mergeVisibleEntityData(newItems, get().items)
+        : newItems;
+      const mergedLandmarks = isRefresh
+        ? mergeVisibleEntityData(newLandmarks, get().landmarks)
+        : newLandmarks;
+
       // 恢复选中状态（从新数据中找到对应的人物/物品/标志物）
       const newSelectedCharacter = selectedCharacterName
-        ? newCharacters.find(c => c.name === selectedCharacterName) || null
+        ? mergedCharacters.find(c => c.name === selectedCharacterName) || null
         : null;
       const newSelectedItem = selectedItemName
-        ? newItems.find(i => i.name === selectedItemName) || null
+        ? mergedItems.find(i => i.name === selectedItemName) || null
         : null;
       const newSelectedLandmark = selectedLandmarkName
-        ? newLandmarks.find(l => l.name === selectedLandmarkName) || null
+        ? mergedLandmarks.find(l => l.name === selectedLandmarkName) || null
         : null;
 
       console.log("[fetchCollection] 数据更新完成:", {
@@ -148,40 +219,18 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
         isRefresh,
       });
 
-      // ★ 修复：刷新模式下合并数据，保留已有图片URL，避免闪烁
-      if (isRefresh) {
-        const currentCharacters = get().characters;
-        const mergedCharacters = newCharacters.map(newChar => {
-          const oldChar = currentCharacters.find(c => c.name === newChar.name);
-          // 如果新数据没有图片URL但旧数据有，保留旧URL（避免生成过程中的闪烁）
-          if (!newChar.image_url && oldChar?.image_url) {
-            return { ...newChar, image_url: oldChar.image_url, image_generated: oldChar.image_generated };
-          }
-          return newChar;
-        });
+      _collectionCache = { gameId, timestamp: Date.now() };
 
-        set({
-          characters: mergedCharacters,
-          items: newItems,
-          landmarks: newLandmarks,
-          selectedCharacter: newSelectedCharacter,
-          selectedItem: newSelectedItem,
-          selectedLandmark: newSelectedLandmark,
-          isLoading: false,
-          isRefreshing: false,
-        });
-      } else {
-        set({
-          characters: newCharacters,
-          items: newItems,
-          landmarks: newLandmarks,
-          selectedCharacter: newSelectedCharacter,
-          selectedItem: newSelectedItem,
-          selectedLandmark: newSelectedLandmark,
-          isLoading: false,
-          isRefreshing: false,
-        });
-      }
+      set({
+        characters: mergedCharacters,
+        items: mergedItems,
+        landmarks: mergedLandmarks,
+        selectedCharacter: newSelectedCharacter,
+        selectedItem: newSelectedItem,
+        selectedLandmark: newSelectedLandmark,
+        isLoading: false,
+        isRefreshing: false,
+      });
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "获取收集数据失败";
       console.error("[fetchCollection] 错误:", errorMsg);
@@ -332,6 +381,30 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
       const errorMsg = err instanceof Error ? err.message : "生成标志物图片失败";
       set({ error: errorMsg, generatingImageFor: null });
     }
+  },
+
+  // 批量生成所有待生成标志物图片
+  batchGenerateLandmarkImages: async (gameId: number) => {
+    if (!gameId) return;
+
+    const pendingLandmarks = get().landmarks.filter((landmark) => !landmark.image_generated);
+    if (pendingLandmarks.length === 0) return;
+
+    set({ error: null });
+
+    for (const landmark of pendingLandmarks) {
+      set({ generatingImageFor: landmark.name });
+      try {
+        await api.collection.generateLandmarkImage(gameId, landmark.name);
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : "批量生成标志物图片失败";
+        set({ error: errorMsg, generatingImageFor: null });
+        break;
+      }
+    }
+
+    await get().fetchCollection(gameId, true);
+    set({ generatingImageFor: null });
   },
 
   // 生成标志物描述

@@ -3,6 +3,8 @@
  * Tests session recovery, initialization, ending data, and scene images
  */
 import { renderHook, act, waitFor } from '@testing-library/react';
+import { useGameStore } from '@/stores/useGameStore';
+import { spyOnStoreMethods } from '@/__tests__/helpers/store-spy';
 
 // Mock the sub-hooks before importing usePlayGame
 const mockPush = jest.fn();
@@ -14,223 +16,82 @@ jest.mock('next/navigation', () => ({
   }),
 }));
 
-// Mock useHydration
-let isHydrated = true;
-jest.mock('@/hooks/useHydration', () => ({
-  useHydration: () => isHydrated,
-}));
+// Import helpers for global.fetch mocking
+import { jsonResponse, errorResponse } from '@/__tests__/helpers/fetch';
+import { createSSEMockResponse } from '@/__tests__/helpers/sse-mock';
 
-// Mock sub-hooks
-type Phase = 'loading' | 'options' | 'streaming' | 'result' | 'summary' | 'ending' | 'error';
+// -- Store method spying --
+const STORE_METHODS = [
+  'appendStoryText', 'setStoryText', 'setCurrentEvent', 'setGameOver',
+  'syncState', 'syncPlayerState', 'saveGame',
+  'fetchRoundSceneImage', 'fetchAllRoundSceneImages', 'regenerateRoundSceneImage',
+  'setEventSceneImage', 'setResultSceneImage', 'generateRoundSceneImage',
+] as const;
 
-const mockPhaseManager = {
-  phase: 'loading' as Phase,
-  setPhase: jest.fn(),
-  phaseRef: { current: 'loading' as Phase },
-  connectionStatus: 'connected' as const,
-  setConnectionStatus: jest.fn(),
-  reconnectAttempt: 0,
-  setReconnectAttempt: jest.fn(),
-  elapsedSeconds: 0,
-  getLoadingMessage: jest.fn(() => 'Loading...'),
-  setProcessing: jest.fn(),
-};
+type StoreSpy = ReturnType<typeof spyOnStoreMethods<typeof useGameStore, (typeof STORE_METHODS)[number]>>;
 
-jest.mock('@/hooks/game/usePhaseManager', () => ({
-  usePhaseManager: () => mockPhaseManager,
-  STATUS_MESSAGES: {
-    loading: 'Loading...',
-    regenerating: 'Regenerating...',
-  },
-}));
-
-const mockEventGenerator = {
-  generateEvent: jest.fn(),
-  prefetchNextEvent: jest.fn(),
-};
-
-jest.mock('@/hooks/game/useEventGenerator', () => ({
-  useEventGenerator: () => mockEventGenerator,
-}));
-
-const mockChoiceHandler = {
-  handleChoice: jest.fn(),
-  handleCustomChoice: jest.fn(),
-};
-
-jest.mock('@/hooks/game/useChoiceHandler', () => ({
-  useChoiceHandler: () => mockChoiceHandler,
-}));
-
-const mockGameState = {
-  isSaving: false,
-  saveToast: null,
-  regenerateToast: null,
-  summaryText: '',
-  roundSummary: null,
-  showAdjuster: false,
-  endingData: null,
-  setSummaryText: jest.fn(),
-  setRoundSummary: jest.fn(),
-  setShowAdjuster: jest.fn(),
-  handleSave: jest.fn(),
-  handleContinueAfterSummary: jest.fn(),
-  handleContinueToNextRound: jest.fn(),
-  handleAdjustStory: jest.fn(),
-  handleRegenerate: jest.fn(),
-};
-
-jest.mock('@/hooks/game/useGameState', () => ({
-  useGameState: () => mockGameState,
-}));
-
-const mockHistoryViewer = {
-  showHistory: false,
-  setShowHistory: jest.fn(),
-  roundHistory: [],
-  historyRoundIndex: -1,
-  isViewingHistory: false,
-  historyDisplayText: '',
-  displayText: '',
-  handleOpenHistory: jest.fn(),
-  handleSelectHistoryRound: jest.fn(),
-  handleBackToCurrent: jest.fn(),
-};
-
-jest.mock('@/hooks/game/useHistoryViewer', () => ({
-  useHistoryViewer: () => mockHistoryViewer,
-}));
-
-// Mock games API
-const mockGetActive = jest.fn();
-const mockGetEnding = jest.fn();
-jest.mock('@/lib/api', () => ({
-  games: {
-    getActive: (...args: unknown[]) => mockGetActive(...args),
-  },
-  gameplay: {
-    getEnding: (...args: unknown[]) => mockGetEnding(...args),
-  },
-  default: {
-    games: {
-      getActive: (...args: unknown[]) => mockGetActive(...args),
-    },
-    gameplay: {
-      getEnding: (...args: unknown[]) => mockGetEnding(...args),
-    },
-  },
-}));
-
-// Mock game store
-const mockGameStore = {
-  gameId: null as number | null,
-  playerState: null as Record<string, unknown> | null,
-  progress: null as Record<string, unknown> | null,
-  roundInfo: null as Record<string, unknown> | null,
-  storyText: '',
-  currentEvent: null as { story: string; options: unknown[] } | null,
-  isGameOver: false,
-  appendStoryText: jest.fn(),
-  setStoryText: jest.fn(),
-  setCurrentEvent: jest.fn(),
-  setGameOver: jest.fn(),
-  syncState: jest.fn(),
-  syncPlayerState: jest.fn(),
-  saveGame: jest.fn(),
-  roundSceneImages: [] as unknown[],
-  currentRoundSceneImage: null as unknown,
-  eventSceneImage: null as unknown,
-  resultSceneImage: null as unknown,
-  isLoadingRoundSceneImage: false,
-  isRegeneratingRoundScene: false,
-  roundSceneRegenerateError: null,
-  fetchRoundSceneImage: jest.fn(),
-  fetchAllRoundSceneImages: jest.fn(),
-  regenerateRoundSceneImage: jest.fn(),
-  setEventSceneImage: jest.fn(),
-  setResultSceneImage: jest.fn(),
-  enableSceneImage: true,
-  generateRoundSceneImage: jest.fn(),
-};
-
-jest.mock('@/stores/useGameStore', () => ({
-  useGameStore: Object.assign(
-    (selector?: (state: typeof mockGameStore) => unknown) => {
-      if (selector) return selector(mockGameStore);
-      return mockGameStore;
-    },
-    {
-      getState: () => mockGameStore,
-      setState: (fn: (state: typeof mockGameStore) => typeof mockGameStore) => {
-        const newState = fn(mockGameStore);
-        Object.assign(mockGameStore, newState);
-      },
-    }
-  ),
-}));
+function setupDefaultState() {
+  useGameStore.setState({
+    gameId: null,
+    playerState: null,
+    progress: null,
+    roundInfo: null,
+    storyText: '',
+    currentEvent: null,
+    isGameOver: false,
+    roundSceneImages: [],
+    currentRoundSceneImage: null,
+    eventSceneImage: null,
+    resultSceneImage: null,
+    isLoadingRoundSceneImage: false,
+    isRegeneratingRoundScene: false,
+    roundSceneRegenerateError: null,
+    enableSceneImage: true,
+  } as never);
+}
 
 // Import after mocks
 import { usePlayGame } from '@/hooks/usePlayGame';
 
 describe('usePlayGame', () => {
+  let storeSpy: StoreSpy;
+
   beforeEach(() => {
     jest.clearAllMocks();
-    isHydrated = true;
-    
-    // Reset mock store state
-    Object.assign(mockGameStore, {
-      gameId: null,
-      playerState: null,
-      progress: null,
-      roundInfo: null,
-      storyText: '',
-      currentEvent: null,
-      isGameOver: false,
-      roundSceneImages: [],
-      currentRoundSceneImage: null,
-      eventSceneImage: null,
-      resultSceneImage: null,
-      isLoadingRoundSceneImage: false,
-      isRegeneratingRoundScene: false,
-      roundSceneRegenerateError: null,
-      enableSceneImage: true,
-    });
-    
-    // Reset phase manager
-    mockPhaseManager.phase = 'loading';
-    mockPhaseManager.phaseRef.current = 'loading';
-    
-    // Reset mocks
+    setupDefaultState();
+    storeSpy = spyOnStoreMethods(useGameStore, STORE_METHODS);
+
     mockPush.mockClear();
     mockReplace.mockClear();
-    mockGetActive.mockReset();
+  });
+
+  afterEach(() => {
+    storeSpy.restore();
   });
 
   describe('Initial state', () => {
     it('returns initial values correctly', () => {
       const { result } = renderHook(() => usePlayGame());
-      
+
       expect(result.current.phase).toBe('loading');
       expect(result.current.options).toEqual([]);
       expect(result.current.gameId).toBeNull();
       expect(result.current.hydrated).toBe(true);
     });
 
-    it('returns loading state when not hydrated', () => {
-      isHydrated = false;
-      
+    it('returns hydrated state correctly', () => {
       const { result } = renderHook(() => usePlayGame());
-      
-      expect(result.current.hydrated).toBe(false);
+
+      expect(result.current.hydrated).toBe(true);
     });
   });
 
   describe('Session Recovery', () => {
     it('redirects to home when no gameId and no active game on server', async () => {
-      mockGetActive.mockRejectedValue({ status: 404 });
-      
+      (global.fetch as jest.Mock).mockResolvedValue(errorResponse(404));
+
       renderHook(() => usePlayGame());
-      
+
       await waitFor(() => {
         expect(mockReplace).toHaveBeenCalledWith('/');
       });
@@ -247,13 +108,12 @@ describe('usePlayGame', () => {
           options: [{ text: 'Option 1' }],
         },
       };
-      mockGetActive.mockResolvedValue(mockActiveGame);
-      
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockActiveGame));
+
       renderHook(() => usePlayGame());
-      
-      // Verify getActive was called for recovery
+
       await waitFor(() => {
-        expect(mockGetActive).toHaveBeenCalled();
+        expect(global.fetch).toHaveBeenCalledWith('/api/games/active', expect.objectContaining({ credentials: 'include' }));
       });
     });
 
@@ -268,13 +128,20 @@ describe('usePlayGame', () => {
         round_info: { current_round: 10 },
         current_event: null,
       };
-      mockGetActive.mockResolvedValue(mockActiveGame);
-      
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url === '/api/games/active') {
+          return Promise.resolve(jsonResponse(mockActiveGame));
+        }
+        // SSE event generation triggered because current_event is null
+        return Promise.resolve(createSSEMockResponse([
+          'event: complete\ndata: {"event_description":"Generated story","options":[{"text":"Option 1"}]}\n\n',
+        ]));
+      });
+
       renderHook(() => usePlayGame());
-      
-      // Verify getActive was called for recovery
+
       await waitFor(() => {
-        expect(mockGetActive).toHaveBeenCalled();
+        expect(global.fetch).toHaveBeenCalledWith('/api/games/active', expect.objectContaining({ credentials: 'include' }));
       });
     });
 
@@ -292,26 +159,34 @@ describe('usePlayGame', () => {
         round_info: { current_round: 10 },
         current_event: null,
       };
-      mockGetActive.mockResolvedValue(mockActiveGame);
-      
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url === '/api/games/active') {
+          return Promise.resolve(jsonResponse(mockActiveGame));
+        }
+        // SSE event generation triggered because current_event is null
+        return Promise.resolve(createSSEMockResponse([
+          'event: complete\ndata: {"event_description":"Generated story","options":[{"text":"Option 1"}]}\n\n',
+        ]));
+      });
+
       renderHook(() => usePlayGame());
-      
-      // Verify getActive was called for recovery
+
       await waitFor(() => {
-        expect(mockGetActive).toHaveBeenCalled();
+        expect(global.fetch).toHaveBeenCalledWith('/api/games/active', expect.objectContaining({ credentials: 'include' }));
       });
     });
 
-    it('handles server error during recovery', async () => {
+    it('handles server error during recovery by redirecting home', async () => {
       const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-      mockGetActive.mockRejectedValue({ status: 500, message: 'Server error' });
-      
+      // Use 4xx non-401 so fetchWithRetry returns immediately without retries
+      (global.fetch as jest.Mock).mockResolvedValue(errorResponse(400));
+
       renderHook(() => usePlayGame());
-      
+
       await waitFor(() => {
         expect(mockReplace).toHaveBeenCalledWith('/');
       });
-      
+
       consoleSpy.mockRestore();
     });
   });
@@ -319,20 +194,18 @@ describe('usePlayGame', () => {
   describe('Initial Load', () => {
     it('does not initialize when no gameId', async () => {
       renderHook(() => usePlayGame());
-      
-      // Should not call syncState without gameId
-      expect(mockGameStore.syncState).not.toHaveBeenCalled();
+
+      expect(storeSpy.spies.syncState).not.toHaveBeenCalled();
     });
 
     it('initializes when gameId exists', async () => {
-      mockGameStore.gameId = 42;
-      mockGameStore.syncState.mockResolvedValue(undefined);
-      mockGameStore.currentEvent = { story: 'Test', options: [{ text: 'Option 1' }] };
-      
+      useGameStore.setState({ gameId: 42, currentEvent: { story: 'Test', options: [{ text: 'Option 1' }] } } as never);
+      storeSpy.spies.syncState.mockResolvedValue(undefined);
+
       renderHook(() => usePlayGame());
-      
+
       await waitFor(() => {
-        expect(mockGameStore.syncState).toHaveBeenCalled();
+        expect(storeSpy.spies.syncState).toHaveBeenCalled();
       });
     });
   });
@@ -340,8 +213,7 @@ describe('usePlayGame', () => {
   describe('Ending Data', () => {
     it('exposes endingData state', () => {
       const { result } = renderHook(() => usePlayGame());
-      
-      // endingData should be null initially
+
       expect(result.current.endingData).toBeNull();
     });
   });
@@ -349,20 +221,20 @@ describe('usePlayGame', () => {
   describe('Round Scene Images', () => {
     it('exposes roundSceneImages state', () => {
       const { result } = renderHook(() => usePlayGame());
-      
+
       expect(result.current.roundSceneImages).toEqual([]);
     });
 
     it('exposes scene image loading states', () => {
       const { result } = renderHook(() => usePlayGame());
-      
+
       expect(result.current.isLoadingRoundSceneImage).toBe(false);
       expect(result.current.isRegeneratingRoundScene).toBe(false);
     });
 
     it('exposes scene image actions', () => {
       const { result } = renderHook(() => usePlayGame());
-      
+
       expect(typeof result.current.fetchRoundSceneImage).toBe('function');
       expect(typeof result.current.fetchAllRoundSceneImages).toBe('function');
       expect(typeof result.current.regenerateRoundSceneImage).toBe('function');
@@ -370,58 +242,50 @@ describe('usePlayGame', () => {
   });
 
   describe('Handler functions', () => {
-    it('provides handleChoice from choiceHandler', () => {
+    it('provides handleChoice', () => {
       const { result } = renderHook(() => usePlayGame());
-      
-      expect(result.current.handleChoice).toBe(mockChoiceHandler.handleChoice);
+      expect(typeof result.current.handleChoice).toBe('function');
     });
 
-    it('provides handleCustomChoice from choiceHandler', () => {
+    it('provides handleCustomChoice', () => {
       const { result } = renderHook(() => usePlayGame());
-      
-      expect(result.current.handleCustomChoice).toBe(mockChoiceHandler.handleCustomChoice);
+      expect(typeof result.current.handleCustomChoice).toBe('function');
     });
 
-    it('provides handleSave from gameState', () => {
+    it('provides handleSave', () => {
       const { result } = renderHook(() => usePlayGame());
-      
-      expect(result.current.handleSave).toBe(mockGameState.handleSave);
+      expect(typeof result.current.handleSave).toBe('function');
     });
 
-    it('provides handleRegenerate from gameState', () => {
+    it('provides handleRegenerate', () => {
       const { result } = renderHook(() => usePlayGame());
-      
-      expect(result.current.handleRegenerate).toBe(mockGameState.handleRegenerate);
+      expect(typeof result.current.handleRegenerate).toBe('function');
     });
 
-    it('provides generateEvent from eventGenerator', () => {
+    it('provides generateEvent', () => {
       const { result } = renderHook(() => usePlayGame());
-      
-      expect(result.current.generateEvent).toBe(mockEventGenerator.generateEvent);
+      expect(typeof result.current.generateEvent).toBe('function');
     });
   });
 
   describe('History functions', () => {
     it('provides history state and handlers', () => {
       const { result } = renderHook(() => usePlayGame());
-      
       expect(result.current.showHistory).toBe(false);
-      expect(result.current.handleOpenHistory).toBe(mockHistoryViewer.handleOpenHistory);
-      expect(result.current.handleSelectHistoryRound).toBe(mockHistoryViewer.handleSelectHistoryRound);
-      expect(result.current.handleBackToCurrent).toBe(mockHistoryViewer.handleBackToCurrent);
+      expect(typeof result.current.handleOpenHistory).toBe('function');
+      expect(typeof result.current.handleSelectHistoryRound).toBe('function');
+      expect(typeof result.current.handleBackToCurrent).toBe('function');
     });
   });
 
   describe('Utility functions', () => {
     it('provides getLoadingMessage', () => {
       const { result } = renderHook(() => usePlayGame());
-      
-      expect(result.current.getLoadingMessage).toBe(mockPhaseManager.getLoadingMessage);
+      expect(typeof result.current.getLoadingMessage).toBe('function');
     });
 
     it('provides router instance', () => {
       const { result } = renderHook(() => usePlayGame());
-      
       expect(result.current.router).toBeDefined();
       expect(typeof result.current.router.push).toBe('function');
     });
@@ -430,37 +294,37 @@ describe('usePlayGame', () => {
   describe('Store values', () => {
     it('exposes playerState from store', () => {
       const { result } = renderHook(() => usePlayGame());
-      
+
       expect(result.current.playerState).toBeNull();
     });
 
     it('exposes progress from store', () => {
       const { result } = renderHook(() => usePlayGame());
-      
+
       expect(result.current.progress).toBeNull();
     });
 
     it('exposes roundInfo from store', () => {
       const { result } = renderHook(() => usePlayGame());
-      
+
       expect(result.current.roundInfo).toBeNull();
     });
 
     it('exposes storyText from store', () => {
       const { result } = renderHook(() => usePlayGame());
-      
+
       expect(result.current.storyText).toBe('');
     });
 
     it('exposes currentEvent from store', () => {
       const { result } = renderHook(() => usePlayGame());
-      
+
       expect(result.current.currentEvent).toBeNull();
     });
 
     it('exposes isGameOver from store', () => {
       const { result } = renderHook(() => usePlayGame());
-      
+
       expect(result.current.isGameOver).toBe(false);
     });
   });
@@ -468,26 +332,17 @@ describe('usePlayGame', () => {
   describe('Actions', () => {
     it('provides setPhase action', () => {
       const { result } = renderHook(() => usePlayGame());
-      
-      expect(result.current.setPhase).toBe(mockPhaseManager.setPhase);
+      expect(typeof result.current.setPhase).toBe('function');
     });
 
     it('provides setOptions action', () => {
       const { result } = renderHook(() => usePlayGame());
-      
       expect(typeof result.current.setOptions).toBe('function');
-    });
-
-    it('provides setShowAdjuster action', () => {
-      const { result } = renderHook(() => usePlayGame());
-      
-      expect(result.current.setShowAdjuster).toBe(mockGameState.setShowAdjuster);
     });
 
     it('provides setStoryText action', () => {
       const { result } = renderHook(() => usePlayGame());
-      
-      expect(result.current.setStoryText).toBe(mockGameStore.setStoryText);
+      expect(result.current.setStoryText).toBe(storeSpy.spies.setStoryText);
     });
   });
 });

@@ -11,8 +11,7 @@ from typing import Any, Dict, List, Optional
 from src.database.character_preset_repository import CharacterPresetRepository
 from src.database.decision_repository import DecisionRepository
 from src.database.game_repository import GameRepository
-from src.database.models import (CharacterPreset, Decision, Game, SessionLocal,
-                                 get_db, init_db)
+from src.database.models import CharacterPreset, Decision, Game, init_db
 from src.database.save_point_repository import SavePointRepository
 from src.database.session_repository import SessionRepository
 from src.database.state_repository import StateRepository
@@ -53,9 +52,17 @@ class GameDatabase:
         language: str = "en",
         initial_state: Optional[Dict[str, Any]] = None,
         user_id: Optional[int] = None,
+        narrative_style_id: Optional[str] = None,
+        constraint_level: Optional[str] = None,
     ) -> int:
         """Create a new game record."""
-        return self._game_repo.create_game(language, initial_state, user_id)  # type: ignore[no-any-return]
+        return self._game_repo.create_game(  # type: ignore[no-any-return]
+            language=language,
+            initial_state=initial_state,
+            user_id=user_id,
+            narrative_style_id=narrative_style_id,
+            constraint_level=constraint_level,
+        )
 
     def get_game(self, game_id: int, user_id: Optional[int] = None) -> Optional[Game]:
         """Get game record."""

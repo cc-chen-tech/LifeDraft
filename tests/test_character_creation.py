@@ -3,8 +3,6 @@
 import random
 from collections import Counter
 
-import pytest
-
 from src.game.character_creation import assign_sexual_orientation
 
 

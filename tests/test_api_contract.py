@@ -3,9 +3,6 @@
 轻量级测试，用于发现 API 变更、格式错误等问题。
 """
 
-from unittest.mock import MagicMock, patch
-
-import pytest
 from fastapi.testclient import TestClient
 
 from src.api.main import app

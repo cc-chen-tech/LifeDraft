@@ -10,6 +10,30 @@ export interface UserInfo {
   private_id: string;
 }
 
+export interface PhoneLoginRequest {
+  phone_number: string;
+  verification_code?: string | null;
+}
+
+export interface VoiceReadingSettingsResponse {
+  member_required: boolean;
+  enabled: boolean;
+  available_voice_colors: string[];
+  selected_voice_color: string | null;
+  uploaded_voice_available: boolean;
+  auto_read_enabled: boolean;
+}
+
+export interface VoiceReadingSettingsUpdateRequest {
+  selected_voice_color?: string | null;
+  auto_read_enabled?: boolean | null;
+}
+
+export interface VoiceUploadConsentRequest {
+  consent_confirmed: boolean;
+  sample_name?: string | null;
+}
+
 export interface FriendInfo {
   user_id: number;
   public_id: string;
@@ -29,8 +53,10 @@ export interface FriendRequestInfo {
  */
 export interface EraSetting {
   era: string;
+  year?: number;
   era_name?: string;
   era_description?: string;
+  world_context?: string;
 }
 
 /**
@@ -236,6 +262,9 @@ export interface GameStateResponse {
   progress: GameProgress;
   round_info: RoundInfo;
   current_event: CurrentEventData | null;
+  constraint_level: "fast" | "expert" | "master";
+  narrative_style_id?: string | null;
+  narrative_style_name?: string | null;
 }
 
 // ==================== Test Utility Types ====================

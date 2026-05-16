@@ -1,7 +1,6 @@
 """Tests for ImageClient - 图像生成客户端测试"""
 
-import base64
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import patch
 
 import pytest
 

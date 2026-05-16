@@ -58,16 +58,15 @@ export function handleChoiceComplete(
   result: Record<string, unknown>,
   handlers: ChoiceHandlers
 ): void {
-  const { setRoundSummary, setSummaryText, setCurrentEvent, setGameOver, setOptions, setPhase, setProcessing, setConnectionStatus, setStoryText } = handlers;
+  const { setRoundSummary, setSummaryText, setCurrentEvent, setGameOver, setOptions, setPhase, setProcessing, setConnectionStatus } = handlers;
 
   setProcessing(false);
   setConnectionStatus(null);
 
   // ★ 检查是否发生了重试，如果重试后强制使用后端故事
   const wasRetry = checkAndClearRetry();
-  if (wasRetry && result.story_continuation) {
-    console.log(`[handleChoiceComplete] Retry detected, using backend story (${(result.story_continuation as string).length} chars)`);
-    setStoryText(result.story_continuation as string);
+  if (wasRetry) {
+    console.log("[handleChoiceComplete] Retry detected, keeping replacement stream text");
   }
 
   if (result.summary && typeof result.summary === "string") {

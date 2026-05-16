@@ -7,9 +7,10 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import and_, or_
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from src.database.models import Friendship, Game, SessionLocal, User
+from src.database.models import Friendship, Game, SessionLocal, User, init_db
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,24 @@ class UserManager:
 
     # ==================== 用户创建与登录 ====================
 
+    def _recover_missing_schema(self, exc: OperationalError) -> bool:
+        """Recreate SQLite tables once if a prior test removed the schema."""
+        if "no such table" not in str(exc).lower():
+            return False
+
+        logger.warning("Database schema missing during user operation; reinitializing")
+        try:
+            if self._db is not None:
+                self._db.rollback()
+                if self._owns_session:
+                    self._db.close()
+                    self._db = None
+            init_db()
+            return True
+        except Exception:
+            logger.exception("Failed to reinitialize database schema")
+            return False
+
     def create_user(self, display_name: Optional[str] = None) -> Tuple[User, str]:
         """
         创建新用户
@@ -78,17 +97,22 @@ class UserManager:
             Tuple[User, str]: (用户对象, 私有ID明文)
             注意：私有ID只在创建时返回一次，用户需要保存好！
         """
-        # 生成唯一ID
+        try:
+            return self._create_user_once(display_name)
+        except OperationalError as exc:
+            if not self._recover_missing_schema(exc):
+                raise
+            return self._create_user_once(display_name)
+
+    def _create_user_once(self, display_name: Optional[str] = None) -> Tuple[User, str]:
         private_id = generate_private_id()
         public_id = generate_public_id()
 
-        # 确保ID唯一
         while self.db.query(User).filter(User.private_id == private_id).first():
             private_id = generate_private_id()
         while self.db.query(User).filter(User.public_id == public_id).first():
             public_id = generate_public_id()
 
-        # 创建用户
         user = User(
             private_id=private_id,
             public_id=public_id,
@@ -123,7 +147,7 @@ class UserManager:
             self.db.commit()
             logger.info(f"User logged in: public_id={user.public_id}")
         else:
-            logger.warning(f"Login failed: private_id not found")
+            logger.warning("Login failed: private_id not found")
 
         return user
 
@@ -290,6 +314,8 @@ class UserManager:
         """
         获取用户的好友列表
 
+        Uses in_() batch loading to avoid N+1 query problem.
+
         Args:
             user_id: 用户ID
 
@@ -306,12 +332,16 @@ class UserManager:
             .all()
         )
 
-        friends = []
+        # 收集所有好友 ID，用 in_() 批量查询，避免 N+1
+        friend_ids = []
         for f in friendships:
-            friend_id = f.friend_id if f.user_id == user_id else f.user_id
-            friend = self.get_user_by_id(int(friend_id))  # type: ignore[arg-type]
-            if friend:
-                friends.append(friend)
+            fid = f.friend_id if f.user_id == user_id else f.user_id
+            friend_ids.append(int(fid))  # type: ignore[arg-type]
+
+        if not friend_ids:
+            return []
+
+        friends = self.db.query(User).filter(User.user_id.in_(friend_ids)).all()
 
         return friends
 
@@ -337,9 +367,10 @@ class UserManager:
             if sender:
                 result.append(
                     {
-                        "friendship_id": req.id,
-                        "sender_public_id": sender.public_id,
-                        "sender_display_name": sender.display_name or sender.public_id,
+                        "request_id": req.id,
+                        "from_user_id": req.user_id,
+                        "from_public_id": sender.public_id,
+                        "from_display_name": sender.display_name or sender.public_id,
                         "created_at": req.created_at,
                     }
                 )
@@ -436,7 +467,10 @@ class UserManager:
 
         return (
             self.db.query(Game)
-            .filter(Game.user_id == friend_user_id, Game.is_public == True)
+            .filter(
+                Game.user_id == friend_user_id,
+                Game.is_public.is_(True),
+            )
             .order_by(Game.created_at.desc())
             .all()
         )

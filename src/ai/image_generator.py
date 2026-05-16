@@ -30,7 +30,7 @@ _image_cache: TTLCache = TTLCache(maxsize=100, ttl=3600)
 def _get_prompt_hash(prompt: str, size: str, extra_params: Optional[Dict] = None) -> str:
     """生成 prompt 的哈希值作为缓存 key"""
     cache_key = f"{prompt}|{size}|{extra_params}"
-    return hashlib.md5(cache_key.encode()).hexdigest()
+    return hashlib.md5(cache_key.encode(), usedforsecurity=False).hexdigest()
 
 
 class ImageGenerator:
@@ -355,6 +355,7 @@ class ImageGenerator:
         prompt: str,
         size: str = "928*1664",
         num_images: int = 1,
+        extra_params: Optional[Dict[str, Any]] = None,
     ) -> List[Tuple[bytes, str]]:
         """
         图生图：基于参考图片生成新图片
@@ -396,6 +397,7 @@ class ImageGenerator:
                         size=size,
                         num_images=num_images,
                         model=fallback_model,
+                        extra_params=extra_params,
                     )
 
                     # 解析响应
@@ -478,6 +480,7 @@ class ImageGenerator:
         size: str = "928*1664",
         num_images: int = 1,
         model: Optional[str] = None,
+        extra_params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         调用图生图API
@@ -488,6 +491,7 @@ class ImageGenerator:
             size: 图片尺寸
             num_images: 生成数量
             model: 可选模型名称
+            extra_params: 额外参数（如 negative_prompt）
 
         Returns:
             API响应
@@ -522,6 +526,11 @@ class ImageGenerator:
                 "watermark": False,
             },
         }
+
+        # 合并 extra_params（允许覆盖默认参数如 negative_prompt）
+        params: Dict[str, Any] = payload["parameters"]  # type: ignore[assignment]
+        if extra_params:
+            params.update(extra_params)
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -578,6 +587,7 @@ class ImageGenerator:
         reference_image_url: Optional[str] = None,
         feedback: Optional[str] = None,
         prompt_builder=None,  # 注入 prompt builder
+        extra_params: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[Tuple[bytes, str]], Optional[str]]:
         """
         生成人物全身像（保证人物一致性）
@@ -596,6 +606,7 @@ class ImageGenerator:
             reference_image_url: 已有的参考图片URL（用于重新生成）
             feedback: 用户修改意见（会被特别强调）
             prompt_builder: Prompt 构建器实例
+            extra_params: 额外参数（如 negative_prompt, seed）
 
         Returns:
             Tuple[List of (图片数据, prompt), 主图URL]
@@ -665,6 +676,7 @@ class ImageGenerator:
                     self.generate_image_with_url(
                         prompt=main_prompt,
                         size=size,
+                        extra_params=extra_params,
                     )
                 )
                 results.append((main_image_bytes, main_prompt_used))

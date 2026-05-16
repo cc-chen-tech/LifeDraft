@@ -11,7 +11,7 @@ Usage:
 
 import logging
 import threading
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from fastapi import HTTPException
 
@@ -67,7 +67,8 @@ class SessionService:
             return session
 
         # 内存中没有 session，尝试从数据库恢复
-        logger.info(
+        # 改为 DEBUG 级别，避免正常情况下的日志噪音
+        logger.debug(
             f"Session not in memory for game_id={game_id}, attempting auto-restore from database..."
         )
         return self._restore_from_database(game_id, user_id)
@@ -108,8 +109,14 @@ class SessionService:
                 f"Auto-restored session from database: game_id={game_id}, has_current_event={game_loop.current_event is not None}"
             )
 
-            # ★ 检查并补充缺失的场景插画
-            self._check_and_generate_missing_illustrations(game_id, game_loop, state_data)
+            # ★ 检查并补充缺失的场景插画（改为异步延迟执行，避免阻塞 API 响应）
+            timer = threading.Timer(
+                0,
+                self._check_and_generate_missing_illustrations,
+                args=[game_id, game_loop, state_data],
+            )
+            timer.daemon = True
+            timer.start()
 
             return session
 
@@ -172,8 +179,6 @@ class SessionService:
             state_data: 游戏状态数据
         """
         try:
-            from src.database.models import Image as ImageModel
-            from src.database.models import SceneImage
             from src.services.image_storage import ImageStorageService
 
             db = SessionLocal()  # ★ 使用 SessionLocal 获取真正的 SQLAlchemy session
@@ -258,7 +263,7 @@ class SessionService:
             .filter(
                 ImageModel.game_id == game_id,
                 ImageModel.image_type == "character",
-                ImageModel.is_active == True,
+                ImageModel.is_active is True,
             )
             .all()
         )

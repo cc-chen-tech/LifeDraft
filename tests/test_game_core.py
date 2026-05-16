@@ -1,6 +1,6 @@
 """Tests for game core logic: decisions, narrative_manager, world_model, world_model_updater."""
 
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
@@ -11,8 +11,7 @@ from src.game.decisions import (_generate_fallback_result,
                                 process_decision)
 from src.game.narrative_manager import NarrativeManager
 from src.game.state import CharacterState, PlayerState
-from src.game.world_model import (CAREER_LEVEL_INDEX, CAREER_LEVELS,
-                                  MAX_CAREER_JUMP, CareerInfo, CausalChain,
+from src.game.world_model import (CAREER_LEVELS, CareerInfo, CausalChain,
                                   CharacterProfile, Commitment, LocationInfo,
                                   PhysicalState, WorldModel)
 from src.game.world_model_updater import WorldModelUpdater

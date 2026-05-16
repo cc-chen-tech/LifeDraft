@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -32,6 +33,9 @@ export function LandmarkDetail({
   generatingDescriptionFor,
   isDeleting,
 }: LandmarkDetailProps) {
+  const [imageError, setImageError] = useState(false);
+  const handleImageError = useCallback(() => setImageError(true), []);
+
   if (!landmark) return null;
 
   return (
@@ -69,11 +73,13 @@ export function LandmarkDetail({
           <div className="space-y-4">
             {/* 图片 */}
             <div className="aspect-video rounded-lg bg-muted overflow-hidden">
-              {landmark.image_url ? (
+              {landmark.image_url && !imageError ? (
                 <img
                   src={landmark.image_url}
                   alt={landmark.name}
                   className="w-full h-full object-cover"
+                  loading="lazy"
+                  onError={handleImageError}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">

@@ -52,6 +52,7 @@ export interface EventHandlers {
   setConnectionStatus: (status: string | null) => void;
   appendStoryText: (text: string) => void;
   generatingRef: React.MutableRefObject<boolean>;
+  isRetryingRef?: React.MutableRefObject<boolean>;
 }
 
 // ==================== Story Helpers ====================
@@ -71,13 +72,18 @@ export function selectFinalStory(
     return { useBackend: true, finalStory: backendStory };
   }
   
-  // 如果后端故事比前端长，需要流式补充剩余部分
-  if (backendStory.length > frontendStory.length) {
+  // 如果后端故事比前端长，且前端文本是后端文本前缀，则流式补充剩余部分。
+  // 若两者已经分叉，继续 slice 会把无关后端片段拼到前端故事后面。
+  if (backendStory.length > frontendStory.length && backendStory.startsWith(frontendStory)) {
     return {
       useBackend: false,
       finalStory: frontendStory,
       remainingText: backendStory.slice(frontendStory.length),
     };
+  }
+
+  if (backendStory.length > frontendStory.length && frontendStory.length <= 100) {
+    return { useBackend: true, finalStory: backendStory };
   }
   
   // 使用前端故事
@@ -154,6 +160,10 @@ export function handleEventComplete(
 
   const backendStory = eventData.event_description || eventData.story || "";
   const frontendStory = useGameStore.getState().storyText;
+  if (!backendStory.trim() && !frontendStory.trim()) {
+    console.error("[onComplete] No story text in complete event");
+    return;
+  }
   
   // ★ 检查是否发生了重试，如果重试后强制使用后端故事
   // 但如果后端返回的是 fallback 故事（很短），且前端有更长的流式故事，仍优先用前端的
@@ -171,6 +181,16 @@ export function handleEventComplete(
       return;
     }
     console.log(`[onComplete] Retry detected, forcing backend story (${backendStory.length} chars)`);
+    setStoryText(backendStory);
+    setOptions(receivedOptions);
+    setCurrentEvent({ story: backendStory, options: receivedOptions });
+    setPhase("options");
+    setRoundSummary(null);
+    return;
+  }
+
+  if (backendStory.trim()) {
+    console.log(`[onComplete] Replacing streamed story with backend complete story (${backendStory.length} chars)`);
     setStoryText(backendStory);
     setOptions(receivedOptions);
     setCurrentEvent({ story: backendStory, options: receivedOptions });
@@ -232,10 +252,12 @@ export function handleEventComplete(
  */
 export function handleStatusUpdate(
   status: { phase: string },
-  setProcessing: (processing: boolean, message?: string) => void
+  setProcessing: (processing: boolean, message?: string) => void,
+  isRetryingRef?: React.MutableRefObject<boolean>
 ): void {
   if (status.phase === "retrying") {
     console.log("[onStatus] Retrying detected, story will be regenerated");
+    if (isRetryingRef) isRetryingRef.current = true;
     setProcessing(true, "retrying");
     return;
   }
@@ -243,7 +265,9 @@ export function handleStatusUpdate(
     console.log("[onStatus] Retry event received, clearing story for new content");
     // ★ 标记发生了重试，complete 时会强制使用后端故事
     markRetry();
-    useGameStore.setState({ storyText: "" });
+    if (isRetryingRef) isRetryingRef.current = true;
+    useGameStore.getState().setStoryText?.("");
+    useGameStore.setState?.({ storyText: "" });
     setProcessing(true, "retrying");
     return;
   }

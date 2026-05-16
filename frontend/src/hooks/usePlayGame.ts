@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useGameStore } from "@/stores/useGameStore";
+import { useEventStore } from "@/stores/useEventStore";
+import { useSessionStore } from "@/stores/useSessionStore";
 import { useHydration } from "@/hooks/useHydration";
 import { games } from "@/lib/api";
 import type { EventOption } from "@/lib/types";
@@ -61,6 +63,7 @@ export function usePlayGame() {
     fetchHistorySceneImage,
     generateHistorySceneImage,
     regenerateHistorySceneImage,
+    setHistorySceneImage,
   } = useGameStore();
 
   const hydrated = useHydration();
@@ -75,6 +78,7 @@ export function usePlayGame() {
   // Refs defined once and passed to sub-hooks
   const abortRef = useRef<AbortController | null>(null);
   const generatingRef = useRef(false);
+  const isRetryingRef = useRef(false);
   const pollingRef = useRef(false);
   const prefetchAbortRef = useRef<AbortController | null>(null);
   const prefetchResultRef = useRef<{
@@ -106,15 +110,12 @@ export function usePlayGame() {
     regenerateToast,
     summaryText,
     roundSummary,
-    showAdjuster,
     endingData,
     setSummaryText,
     setRoundSummary,
-    setShowAdjuster,
     handleSave,
     handleContinueAfterSummary,
     handleContinueToNextRound,
-    handleAdjustStory,
     handleRegenerate,
   } = useGameState({
     gameId,
@@ -155,6 +156,7 @@ export function usePlayGame() {
     setIsPrefetching,
     abortRef,
     generatingRef,
+    isRetryingRef,
     pollingRef,
     prefetchAbortRef,
     prefetchResultRef,
@@ -210,6 +212,7 @@ export function usePlayGame() {
     fetchHistorySceneImage,
     generateHistorySceneImage,
     regenerateHistorySceneImage,
+    setHistorySceneImage,
   });
 
   // ===== Session Recovery (remains in main hook) =====
@@ -254,12 +257,20 @@ export function usePlayGame() {
               }
             }
 
-            useGameStore.setState({
+            useSessionStore.setState({
               gameId: state.game_id,
               playerState: state.player_state,
               progress: state.progress,
               roundInfo: state.round_info,
-              currentEvent: event,
+              constraintLevel: ((state as { constraint_level?: string }).constraint_level || "expert") as "fast" | "expert" | "master",
+            });
+            useEventStore.setState({
+              currentEvent: event
+                ? {
+                    ...event,
+                    story: event.story || recoveredStoryText,
+                  }
+                : null,
               storyText: recoveredStoryText,
             });
 
@@ -401,7 +412,6 @@ export function usePlayGame() {
   };
 
   const ui = {
-    showAdjuster,
     showHistory,
     isViewingHistory,
     saveToast,
@@ -417,7 +427,6 @@ export function usePlayGame() {
     setPhase,
     setOptions,
     setStoryText,
-    setShowAdjuster,
     setShowHistory,
     // Game flow
     handleChoice,
@@ -425,7 +434,6 @@ export function usePlayGame() {
     handleContinueAfterSummary,
     handleContinueToNextRound,
     handleSave,
-    handleAdjustStory,
     handleRegenerate,
     generateEvent,
   };
@@ -493,7 +501,6 @@ export function usePlayGame() {
     isSaving,
     saveToast,
     regenerateToast,
-    showAdjuster,
     endingData: finalEndingData,
     connectionStatus,
     reconnectAttempt,
@@ -515,7 +522,6 @@ export function usePlayGame() {
     // Actions
     setPhase,
     setOptions,
-    setShowAdjuster,
     setStoryText,
 
     // Handlers
@@ -524,7 +530,6 @@ export function usePlayGame() {
     handleContinueAfterSummary,
     handleContinueToNextRound,
     handleSave,
-    handleAdjustStory,
     handleRegenerate,
     generateEvent,
 

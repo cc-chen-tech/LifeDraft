@@ -10,6 +10,9 @@ import { create } from "zustand";
 import type { UserInfo, FriendInfo, FriendRequestInfo } from "@/lib/types";
 import api from "@/lib/api";
 
+/** 好友列表缓存有效期：60 秒 */
+const FRIENDS_CACHE_TTL = 60 * 1000;
+
 interface UserState {
   // Auth
   user: UserInfo | null;
@@ -18,13 +21,14 @@ interface UserState {
   // Friends
   friends: FriendInfo[];
   pendingRequests: FriendRequestInfo[];
+  lastFriendsRefresh: number;
 
   // Actions
   register: (displayName: string) => Promise<UserInfo>;
   login: (privateId: string) => Promise<UserInfo>;
   logout: () => void;
   fetchMe: () => Promise<void>;
-  fetchFriends: () => Promise<void>;
+  fetchFriends: (force?: boolean) => Promise<void>;
   fetchPendingRequests: () => Promise<void>;
   sendFriendRequest: (publicId: string) => Promise<void>;
   respondToRequest: (requestId: number, accept: boolean) => Promise<void>;
@@ -38,6 +42,7 @@ export const useUserStore = create<UserState>((set, get) => ({
   isAuthenticated: false,
   friends: [],
   pendingRequests: [],
+  lastFriendsRefresh: 0,
 
   register: async (displayName) => {
     const res = await api.auth.register({ display_name: displayName });
@@ -64,6 +69,7 @@ export const useUserStore = create<UserState>((set, get) => ({
       isAuthenticated: false,
       friends: [],
       pendingRequests: [],
+      lastFriendsRefresh: 0,
     });
   },
 
@@ -71,14 +77,26 @@ export const useUserStore = create<UserState>((set, get) => ({
     try {
       const user = await api.auth.me();
       set({ user, isAuthenticated: true });
-    } catch {
-      set({ user: null, isAuthenticated: false });
+    } catch (err: unknown) {
+      // 仅在 401（token 无效/过期）时清除认证状态
+      // 网络错误等其他异常不应清除已有的登录状态
+      const status = (err as { status?: number })?.status;
+      if (status === 401) {
+        set({ user: null, isAuthenticated: false });
+      }
+      // 其他错误（网络异常等）保持当前状态不变
     }
   },
 
-  fetchFriends: async () => {
-    const friends = await api.friends.list();
-    set({ friends });
+  fetchFriends: async (force?: boolean) => {
+    const now = Date.now();
+    const { lastFriendsRefresh, friends } = get();
+    // 缓存未过期且有数据时跳过请求
+    if (!force && friends.length > 0 && now - lastFriendsRefresh < FRIENDS_CACHE_TTL) {
+      return;
+    }
+    const freshFriends = await api.friends.list();
+    set({ friends: freshFriends, lastFriendsRefresh: now });
   },
 
   fetchPendingRequests: async () => {
@@ -116,6 +134,7 @@ export const useUserStore = create<UserState>((set, get) => ({
       isAuthenticated: false,
       friends: [],
       pendingRequests: [],
+      lastFriendsRefresh: 0,
     });
   },
 }));

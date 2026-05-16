@@ -22,7 +22,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
       - name: Cache pip dependencies
         uses: actions/cache@v4
@@ -48,3 +48,9 @@ jobs:
       - name: Install Node.js dependencies
         working-directory: frontend
         run: npm ci
+
+      - name: Check API types are up to date
+        run: |
+          python scripts/export_openapi.py
+          cd frontend && npx openapi-typescript src/types/openapi-schema.json -o src/types/api-generated.d.ts && cd ..
+          git diff --exit-code frontend/src/types/api-generated.d.ts || (echo "::error::API types are out of date. Run 'cd frontend && npm run sync:api-types' to update." && exit 1)

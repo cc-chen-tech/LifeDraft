@@ -66,9 +66,6 @@ export function useGameState({
   const [summaryText, setSummaryText] = useState("");
   const [roundSummary, setRoundSummary] = useState<string | null>(null);
 
-  // Adjuster state
-  const [showAdjuster, setShowAdjuster] = useState(false);
-
   // Ending data
   const [endingData, setEndingData] = useState<Record<string, unknown> | null>(null);
 
@@ -143,11 +140,6 @@ export function useGameState({
     syncPlayerState().then(() => generateEventRef.current());
   }, [setRoundSummary, prefetchResultRef, setStoryText, setOptions, setCurrentEvent, setPhase, generatingRef, prefetchingRef, prefetchAbortRef, syncPlayerState, generateEventRef]);
 
-  // Handle story adjust
-  const handleAdjustStory = useCallback(() => {
-    setShowAdjuster(true);
-  }, []);
-
   // Regenerate - now uses SSE streaming
   const handleRegenerate = useCallback(async () => {
     console.log("[handleRegenerate] Starting SSE regeneration...");
@@ -214,10 +206,18 @@ export function useGameState({
                 const backendStory = eventData.event_description || eventData.story || "";
                 const frontendStory = useGameStore.getState().storyText;
                 
-                // 如果后端返回了有效故事，使用后端的故事；否则回退到前端累积的文本
-                const finalStory = backendStory.length > 50 ? backendStory : frontendStory;
+                // 如果后端返回了清洗后的完整故事，直接覆盖前端流式累积文本；否则回退到前端累积文本
+                const finalStory = backendStory.trim() ? backendStory : frontendStory;
                 
                 console.log(`[handleRegenerate] Using story: backend=${backendStory.length} chars, frontend=${frontendStory.length} chars, final=${finalStory.length} chars`);
+
+                if (!finalStory.trim()) {
+                  console.error("[handleRegenerate] Complete event contained options but no story text");
+                  setPhase("error");
+                  setRegenerateToast({ type: "error", message: "生成失败，请重试" });
+                  reject(new Error("No story text in complete event"));
+                  return;
+                }
 
                 setStoryText(finalStory);
                 setOptions(receivedOptions);
@@ -314,18 +314,15 @@ export function useGameState({
     regenerateToast,
     summaryText,
     roundSummary,
-    showAdjuster,
     endingData,
     // Setters
     setSummaryText,
     setRoundSummary,
-    setShowAdjuster,
     setRegenerateToast,
     // Handlers
     handleSave,
     handleContinueAfterSummary,
     handleContinueToNextRound,
-    handleAdjustStory,
     handleRegenerate,
   };
 }

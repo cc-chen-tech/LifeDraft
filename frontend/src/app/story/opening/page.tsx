@@ -1,5 +1,12 @@
 "use client";
 
+// Augment window for E2E test data injection
+declare global {
+  interface Window {
+    __TEST_DATA__?: unknown;
+  }
+}
+
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -42,7 +49,7 @@ export default function OpeningStoryPage() {
   
   // ★ 添加渲染计数器来诊断问题
   const renderCountRef = useRef(0);
-  renderCountRef.current++;
+  // Note: ref access moved to useEffect to avoid React warning
   
   useEffect(() => {
     console.log(`[OpeningStory] Render #${renderCountRef.current}, hydrated=${hydrated}, initialized=${initializedRef.current}`);
@@ -52,16 +59,28 @@ export default function OpeningStoryPage() {
   useEffect(() => {
     if (!hydrated || initializedRef.current) return;
     initializedRef.current = true;
-    
+
+    // ★ 支持测试数据注入（E2E 测试用）
+    const testData = (typeof window !== "undefined" && window.__TEST_DATA__) || null;
+    if (testData) {
+      console.log("[OpeningStory] Using test data injection");
+    }
+
     const state = useGameStore.getState();
-    
+
+    // 使用测试数据或 store 状态
+    const injected = testData as Record<string, unknown> | null;
+    const characterSettings = (injected?.characterSettings as typeof state.characterSettings) || state.characterSettings;
+    const playerName = (injected?.playerName as string) || state.playerName;
+    const lifeVision = (injected?.lifeVision as string) || state.lifeVision;
+
     console.log("[OpeningStory] Initializing:", {
       gameId: state.gameId,
       hasStory: !!state.openingStory,
-      playerName: state.playerName,
-      settingsCount: Object.keys(state.characterSettings).length,
+      playerName,
+      settingsCount: Object.keys(characterSettings).length,
     });
-    
+
     // 如果已有故事，直接显示
     if (state.openingStory) {
       console.log("[OpeningStory] Using existing story");
@@ -69,11 +88,11 @@ export default function OpeningStoryPage() {
       setIsComplete(true);
       return;
     }
-    
+
     // 检查是否有足够的数据生成故事
-    const hasSettings = Object.keys(state.characterSettings).length > 0;
-    const hasPlayerName = !!state.playerName;
-    
+    const hasSettings = Object.keys(characterSettings).length > 0;
+    const hasPlayerName = !!playerName;
+
     if (!hasSettings || !hasPlayerName) {
       console.error("[OpeningStory] Missing data:", { hasSettings, hasPlayerName });
       setError("缺少角色数据，无法生成开场故事");
@@ -220,7 +239,8 @@ export default function OpeningStoryPage() {
     <div className="min-h-screen flex flex-col bg-background animate-page-enter">
       <div className="flex-1 flex items-center justify-center p-6 md:p-12">
         <div className="w-full max-w-[65ch] space-y-8">
-          {!storyText && !isStreaming && (
+          {/* ★ 修复：streaming 初始状态也显示 loading，避免空白 */}
+          {(!storyText || isStreaming) && (
             <SkeletonStory message="正在编写你的人生开篇..." />
           )}
 
@@ -229,7 +249,6 @@ export default function OpeningStoryPage() {
               text={storyText}
               isStreaming={isStreaming}
               narrative
-              className="max-h-[70vh]"
             />
           )}
           

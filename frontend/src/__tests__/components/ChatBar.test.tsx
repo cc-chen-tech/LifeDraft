@@ -6,41 +6,35 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChatBar } from '@/components/game/ChatBar';
+import { useGameStore } from '@/stores/useGameStore';
+import { jsonResponse } from '@/__tests__/helpers/fetch';
+import { spyOnStoreMethods } from '@/__tests__/helpers/store-spy';
 
-// Mock the API
-jest.mock('@/lib/api', () => ({
-  api: {
-    story: {
-      chat: jest.fn().mockResolvedValue({ reply: 'Test AI response' }),
-    },
-    gameplay: {
-      generateSummary: jest.fn().mockResolvedValue({
-        summary_text: 'Test summary content',
-        start_week: 1,
-        end_week: 10,
-      }),
-    },
-  },
-}));
+const STORE_METHODS = ['syncState'] as const;
 
-// Mock useGameStore
-jest.mock('@/stores/useGameStore', () => ({
-  useGameStore: {
-    getState: () => ({
-      syncState: jest.fn().mockResolvedValue(undefined),
-    }),
-  },
-}));
+type StoreSpy = ReturnType<typeof spyOnStoreMethods<typeof useGameStore, (typeof STORE_METHODS)[number]>>;
 
-import { api } from '@/lib/api';
+function setupDefaultState() {
+  useGameStore.setState({
+    roundInfo: { current_round: 1 },
+    storyText: 'Test story',
+  });
+}
 
 describe('ChatBar', () => {
+  let storeSpy: StoreSpy;
   const mockOnSave = jest.fn();
-  const mockOnAdjustStory = jest.fn();
   const mockOnRegenerate = jest.fn();
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({}));
+    setupDefaultState();
+    storeSpy = spyOnStoreMethods(useGameStore, STORE_METHODS);
+  });
+
+  afterEach(() => {
+    storeSpy.restore();
   });
 
   describe('Collapsed state', () => {
@@ -49,13 +43,10 @@ describe('ChatBar', () => {
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
-
-      // Should show the expand button (MessageCircle icon)
-      const expandButton = screen.getByRole('button');
+      const expandButton = screen.getByLabelText('打开聊天');
       expect(expandButton).toBeInTheDocument();
     });
 
@@ -64,11 +55,9 @@ describe('ChatBar', () => {
         <ChatBar
           gameId={null}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
-
       expect(container.firstChild).toBeNull();
     });
   });
@@ -80,14 +69,10 @@ describe('ChatBar', () => {
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
-
-      const expandButton = screen.getByRole('button');
-      await user.click(expandButton);
-
+      await user.click(screen.getByLabelText('打开聊天'));
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/向剧情助手提问/i)).toBeInTheDocument();
       });
@@ -99,16 +84,11 @@ describe('ChatBar', () => {
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
-
-      await user.click(screen.getByRole('button'));
-
+      await user.click(screen.getByLabelText('打开聊天'));
       await waitFor(() => {
-        expect(screen.getByText('保存')).toBeInTheDocument();
-        expect(screen.getByText('改写')).toBeInTheDocument();
         expect(screen.getByText('重新生成')).toBeInTheDocument();
         expect(screen.getByText('总结')).toBeInTheDocument();
       });
@@ -120,24 +100,40 @@ describe('ChatBar', () => {
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
-
-      // Expand first
-      await user.click(screen.getByRole('button'));
-      
+      await user.click(screen.getByLabelText('打开聊天'));
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/向剧情助手提问/i)).toBeInTheDocument();
       });
-
-      // Find and click close button (X icon)
       const buttons = screen.getAllByRole('button');
       const closeButton = buttons.find(btn => btn.querySelector('svg.lucide-x'));
       if (closeButton) {
         await user.click(closeButton);
       }
+
+      await waitFor(() => {
+        expect(screen.queryByPlaceholderText(/向剧情助手提问/i)).not.toBeInTheDocument();
+      });
+    });
+
+    it('uses a bounded expanded panel so it does not cover the custom choice area', async () => {
+      const user = userEvent.setup();
+      render(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+        />
+      );
+
+      await user.click(screen.getByLabelText('打开聊天'));
+
+      const panel = await screen.findByTestId('chat-bar-panel');
+      expect(panel).toHaveClass('right-4');
+      expect(panel).toHaveClass('max-w-md');
+      expect(panel).not.toHaveClass('left-0');
     });
   });
 
@@ -148,28 +144,13 @@ describe('ChatBar', () => {
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
-      
-      // Expand the chat bar
-      await user.click(screen.getByRole('button'));
+      await user.click(screen.getByLabelText('打开聊天'));
       await waitFor(() => {
-        expect(screen.getByText('保存')).toBeInTheDocument();
+        expect(screen.getByText('重新生成')).toBeInTheDocument();
       });
-    });
-
-    it('calls onSave when clicking save button', async () => {
-      const user = userEvent.setup();
-      await user.click(screen.getByText('保存'));
-      expect(mockOnSave).toHaveBeenCalled();
-    });
-
-    it('calls onAdjustStory when clicking adjust button', async () => {
-      const user = userEvent.setup();
-      await user.click(screen.getByText('改写'));
-      expect(mockOnAdjustStory).toHaveBeenCalled();
     });
 
     it('calls onRegenerate when clicking regenerate button', async () => {
@@ -179,11 +160,20 @@ describe('ChatBar', () => {
     });
 
     it('calls API when clicking summary button', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        summary_text: 'Test summary content',
+        start_week: 1,
+        end_week: 10,
+      }));
+
       const user = userEvent.setup();
       await user.click(screen.getByText('总结'));
-      
       await waitFor(() => {
-        expect(api.gameplay.generateSummary).toHaveBeenCalledWith(1, { weeks: 52 });
+        const calls = (global.fetch as jest.Mock).mock.calls;
+        const summaryCall = calls.find((c: unknown[]) => (c[0] as string).includes('/summary'));
+        expect(summaryCall).toBeDefined();
+        expect(summaryCall[0]).toBe('/api/games/1/summary');
+        expect(JSON.parse(summaryCall[1].body)).toEqual({ weeks: 52 });
       });
     });
   });
@@ -195,152 +185,136 @@ describe('ChatBar', () => {
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
-
-      await user.click(screen.getByRole('button'));
-      
+      await user.click(screen.getByLabelText('打开聊天'));
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/向剧情助手提问/i)).toBeInTheDocument();
       });
-
       const input = screen.getByPlaceholderText(/向剧情助手提问/i);
       await user.type(input, 'Hello AI');
-
       expect(input).toHaveValue('Hello AI');
     });
 
     it('sends message when clicking send button', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ reply: 'Test AI response' }));
+
       const user = userEvent.setup();
       render(
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
-
-      await user.click(screen.getByRole('button'));
-      
+      await user.click(screen.getByLabelText('打开聊天'));
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/向剧情助手提问/i)).toBeInTheDocument();
       });
-
       const input = screen.getByPlaceholderText(/向剧情助手提问/i);
       await user.type(input, 'Hello AI');
-
-      // Find send button (last button in the expanded view)
       const buttons = screen.getAllByRole('button');
       const sendButton = buttons[buttons.length - 1];
       await user.click(sendButton);
-
       await waitFor(() => {
-        expect(api.story.chat).toHaveBeenCalledWith(1, { message: 'Hello AI' });
+        const calls = (global.fetch as jest.Mock).mock.calls;
+        const chatCall = calls.find((c: unknown[]) => (c[0] as string).includes('/chat'));
+        expect(chatCall).toBeDefined();
+        expect(chatCall[0]).toBe('/api/games/1/chat');
+        expect(JSON.parse(chatCall[1].body)).toEqual({ message: 'Hello AI' });
       });
     });
 
     it('sends message on Enter key', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ reply: 'Test AI response' }));
+
       const user = userEvent.setup();
       render(
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
-
-      await user.click(screen.getByRole('button'));
-      
+      await user.click(screen.getByLabelText('打开聊天'));
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/向剧情助手提问/i)).toBeInTheDocument();
       });
-
       const input = screen.getByPlaceholderText(/向剧情助手提问/i);
       await user.type(input, 'Hello AI');
       fireEvent.keyDown(input, { key: 'Enter' });
-
       await waitFor(() => {
-        expect(api.story.chat).toHaveBeenCalled();
+        const calls = (global.fetch as jest.Mock).mock.calls;
+        const chatCall = calls.find((c: unknown[]) => (c[0] as string).includes('/chat'));
+        expect(chatCall).toBeDefined();
       });
     });
 
     it('displays user message in chat history', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ reply: 'Test AI response' }));
+
       const user = userEvent.setup();
       render(
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
-
-      await user.click(screen.getByRole('button'));
-      
+      await user.click(screen.getByLabelText('打开聊天'));
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/向剧情助手提问/i)).toBeInTheDocument();
       });
-
       const input = screen.getByPlaceholderText(/向剧情助手提问/i);
       await user.type(input, 'Test message');
       fireEvent.keyDown(input, { key: 'Enter' });
-
       await waitFor(() => {
         expect(screen.getByText('Test message')).toBeInTheDocument();
       });
     });
 
     it('displays AI response in chat history', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ reply: 'Test AI response' }));
+
       const user = userEvent.setup();
       render(
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
-
-      await user.click(screen.getByRole('button'));
-      
+      await user.click(screen.getByLabelText('打开聊天'));
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/向剧情助手提问/i)).toBeInTheDocument();
       });
-
       const input = screen.getByPlaceholderText(/向剧情助手提问/i);
       await user.type(input, 'Test');
       fireEvent.keyDown(input, { key: 'Enter' });
-
       await waitFor(() => {
         expect(screen.getByText('Test AI response')).toBeInTheDocument();
       });
     });
 
     it('clears input after sending message', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ reply: 'Test AI response' }));
+
       const user = userEvent.setup();
       render(
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
-
-      await user.click(screen.getByRole('button'));
-      
+      await user.click(screen.getByLabelText('打开聊天'));
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/向剧情助手提问/i)).toBeInTheDocument();
       });
-
       const input = screen.getByPlaceholderText(/向剧情助手提问/i);
       await user.type(input, 'Test');
       fireEvent.keyDown(input, { key: 'Enter' });
-
       await waitFor(() => {
         expect(input).toHaveValue('');
       });
@@ -348,57 +322,46 @@ describe('ChatBar', () => {
   });
 
   describe('Loading states', () => {
-    it('disables save button when isSaving is true', async () => {
+    it('renders regenerate button in enabled state', async () => {
       const user = userEvent.setup();
       render(
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
-          isSaving={true}
         />
       );
-
-      await user.click(screen.getByRole('button'));
-      
+      await user.click(screen.getByLabelText('打开聊天'));
       await waitFor(() => {
-        expect(screen.getByText('保存')).toBeInTheDocument();
+        expect(screen.getByText('重新生成')).toBeInTheDocument();
       });
-
-      const saveButton = screen.getByText('保存').closest('button');
-      expect(saveButton).toBeDisabled();
+      const regenButton = screen.getByText('重新生成').closest('button');
+      expect(regenButton).not.toBeDisabled();
     });
   });
 
   describe('Clear chat history', () => {
     it('shows clear button when there are messages', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ reply: 'Test AI response' }));
+
       const user = userEvent.setup();
       render(
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
-
-      await user.click(screen.getByRole('button'));
-      
+      await user.click(screen.getByLabelText('打开聊天'));
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/向剧情助手提问/i)).toBeInTheDocument();
       });
-
-      // Send a message first
       const input = screen.getByPlaceholderText(/向剧情助手提问/i);
       await user.type(input, 'Test');
       fireEvent.keyDown(input, { key: 'Enter' });
-
       await waitFor(() => {
         expect(screen.getByText('Test')).toBeInTheDocument();
       });
-
-      // Look for trash button (clear history)
       const trashButton = screen.getByTitle('清空对话');
       expect(trashButton).toBeInTheDocument();
     });
@@ -406,30 +369,28 @@ describe('ChatBar', () => {
 
   describe('Summary functionality', () => {
     it('displays summary in chat history when clicking summary button', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        summary_text: 'Test summary content',
+        start_week: 1,
+        end_week: 10,
+      }));
+
       const user = userEvent.setup();
       render(
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
-
-      await user.click(screen.getByRole('button'));
-      
+      await user.click(screen.getByLabelText('打开聊天'));
       await waitFor(() => {
         expect(screen.getByText('总结')).toBeInTheDocument();
       });
-
       await user.click(screen.getByText('总结'));
-
-      // Check user request message appears
       await waitFor(() => {
         expect(screen.getByText('请总结我的人生故事')).toBeInTheDocument();
       });
-
-      // Check summary response appears
       await waitFor(() => {
         expect(screen.getByText(/人生总结/)).toBeInTheDocument();
         expect(screen.getByText(/Test summary content/)).toBeInTheDocument();

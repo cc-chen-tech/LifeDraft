@@ -1,10 +1,7 @@
 """Tests for game loop."""
 
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
-import pytest
-
-from src.ai.models import EventOption, GameEvent
 from src.game.game_loop import GameLoop
 from src.game.state import PlayerState
 

@@ -5,26 +5,7 @@
 import { act } from '@testing-library/react';
 import { useGameListStore } from '@/stores/useGameListStore';
 import type { GameListItem, PresetInfo } from '@/lib/types';
-
-// Mock API
-jest.mock('@/lib/api', () => ({
-  games: {
-    list: jest.fn().mockResolvedValue([
-      { game_id: 1, created_at: '2024-01-01' },
-      { game_id: 2, created_at: '2024-01-02' },
-    ]),
-    delete: jest.fn().mockResolvedValue({ success: true }),
-  },
-  presets: {
-    list: jest.fn().mockResolvedValue([
-      { preset_id: 1, player_name: 'Character 1' },
-      { preset_id: 2, player_name: 'Character 2' },
-    ]),
-    delete: jest.fn().mockResolvedValue({ success: true }),
-  },
-}));
-
-import api from '@/lib/api';
+import { jsonResponse } from '@/__tests__/helpers/fetch';
 
 describe('useGameListStore', () => {
   beforeEach(() => {
@@ -32,6 +13,7 @@ describe('useGameListStore', () => {
       useGameListStore.setState({ savedGames: [], presets: [] });
     });
     jest.clearAllMocks();
+    global.fetch = jest.fn();
   });
 
   describe('Initial state', () => {
@@ -44,6 +26,12 @@ describe('useGameListStore', () => {
 
   describe('fetchSavedGames', () => {
     it('fetches saved games from API', async () => {
+      const mockGames = [
+        { game_id: 1, created_at: '2024-01-01' },
+        { game_id: 2, created_at: '2024-01-02' },
+      ];
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockGames));
+
       await act(async () => {
         await useGameListStore.getState().fetchSavedGames();
       });
@@ -51,12 +39,18 @@ describe('useGameListStore', () => {
       const state = useGameListStore.getState();
       expect(state.savedGames).toHaveLength(2);
       expect(state.savedGames[0].game_id).toBe(1);
-      expect(api.games.list).toHaveBeenCalled();
+      expect(global.fetch).toHaveBeenCalledWith('/api/games', expect.objectContaining({ credentials: 'include' }));
     });
   });
 
   describe('fetchPresets', () => {
     it('fetches presets from API', async () => {
+      const mockPresets = [
+        { preset_id: 1, player_name: 'Character 1' },
+        { preset_id: 2, player_name: 'Character 2' },
+      ];
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockPresets));
+
       await act(async () => {
         await useGameListStore.getState().fetchPresets();
       });
@@ -64,7 +58,7 @@ describe('useGameListStore', () => {
       const state = useGameListStore.getState();
       expect(state.presets).toHaveLength(2);
       expect(state.presets[0].preset_id).toBe(1);
-      expect(api.presets.list).toHaveBeenCalled();
+      expect(global.fetch).toHaveBeenCalledWith('/api/presets', expect.objectContaining({ credentials: 'include' }));
     });
   });
 
@@ -80,6 +74,8 @@ describe('useGameListStore', () => {
         });
       });
 
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ success: true }));
+
       await act(async () => {
         await useGameListStore.getState().deleteGame(1);
       });
@@ -87,7 +83,7 @@ describe('useGameListStore', () => {
       const state = useGameListStore.getState();
       expect(state.savedGames).toHaveLength(1);
       expect(state.savedGames[0].game_id).toBe(2);
-      expect(api.games.delete).toHaveBeenCalledWith(1);
+      expect(global.fetch).toHaveBeenCalledWith('/api/games/1', expect.objectContaining({ method: 'DELETE' }));
     });
   });
 
@@ -103,6 +99,8 @@ describe('useGameListStore', () => {
         });
       });
 
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ success: true }));
+
       await act(async () => {
         await useGameListStore.getState().deletePreset(1);
       });
@@ -110,7 +108,7 @@ describe('useGameListStore', () => {
       const state = useGameListStore.getState();
       expect(state.presets).toHaveLength(1);
       expect(state.presets[0].preset_id).toBe(2);
-      expect(api.presets.delete).toHaveBeenCalledWith(1);
+      expect(global.fetch).toHaveBeenCalledWith('/api/presets/1', expect.objectContaining({ method: 'DELETE' }));
     });
   });
 

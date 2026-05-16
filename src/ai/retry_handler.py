@@ -7,7 +7,7 @@ Provides a unified retry mechanism for AI calls with:
 """
 
 import logging
-from typing import Any, Callable, Generic, Optional, TypeVar
+from typing import Callable, Optional, TypeVar
 
 from src.ai.client import AIClient
 

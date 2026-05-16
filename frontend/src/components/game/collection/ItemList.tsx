@@ -1,6 +1,6 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useState, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Package, Sparkles, Loader2 } from "lucide-react";
 import { CATEGORY_LABELS } from "./types";
@@ -14,6 +14,11 @@ export const ItemList = memo(function ItemList({
   isLoading,
   onItemClick,
 }: ItemListProps) {
+  const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
+
+  const handleImageError = useCallback((name: string) => {
+    setImageErrors((prev) => new Set(prev).add(name));
+  }, []);
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -40,10 +45,12 @@ export const ItemList = memo(function ItemList({
         >
           {/* 图片区域 */}
           <div className="aspect-square rounded-md bg-muted mb-2 overflow-hidden flex items-center justify-center">
-            {item.image_url ? (
+            {item.image_url && !imageErrors.has(item.name) ? (
               <img
                 src={item.image_url}
                 alt={item.name}
+                loading="lazy"
+                onError={() => handleImageError(item.name)}
                 className="w-full h-full object-cover"
               />
             ) : (

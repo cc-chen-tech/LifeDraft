@@ -1,8 +1,6 @@
 """Tests for landmark collection system."""
 
-from unittest.mock import MagicMock, Mock, patch
-
-import pytest
+from unittest.mock import Mock
 
 from src.game.state.landmark_state import (LANDMARK_CATEGORY_LABELS,
                                            LANDMARK_IMPORTANCE_LABELS,
@@ -420,7 +418,7 @@ class TestPlayerStateLandmarkMethods:
         result = player.get_all_landmarks()
 
         assert len(result) == 2
-        names = [l.name for l in result]
+        names = [lm.name for lm in result]
         assert "地点1" in names
         assert "地点2" in names
 

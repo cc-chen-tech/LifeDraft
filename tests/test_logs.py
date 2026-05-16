@@ -3,10 +3,8 @@
 轻量级测试，用于发现日志格式错误、关键信息缺失等问题。
 """
 
-import pytest
 import logging
 from io import StringIO
-from unittest.mock import patch
 
 
 class TestEntityRecognitionLogs:
@@ -14,8 +12,9 @@ class TestEntityRecognitionLogs:
 
     def test_task_cleanup_logs_with_details(self):
         """测试任务清理日志包含详细信息"""
-        from src.services.entity_recognition_task import TaskManager, TaskStatus
         import datetime
+
+        from src.services.entity_recognition_task import TaskManager
 
         manager = TaskManager()
 
@@ -41,7 +40,10 @@ class TestEntityRecognitionLogs:
 
             log_output = log_capture.getvalue()
             # 验证日志包含关键信息
-            assert "Removing expired task" in log_output or "No expired tasks" in log_output
+            assert (
+                "Removing expired task" in log_output
+                or "No expired tasks" in log_output
+            )
         finally:
             logger.removeHandler(handler)
 

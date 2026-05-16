@@ -3,8 +3,9 @@
  *
  * 管理游戏会话的核心状态：gameId, sessionId, playerState, progress, roundInfo
  *
- * ★ 注意：此 store 不再持久化到 localStorage
- * - 游戏状态通过 Cookie 认证从服务器获取
+ * ★ 同步持久化 gameId / playerState 到 localStorage（key: "game-store"）
+ * - 初始化时同步读取，避免异步 hydration 竞态
+ * - 状态变化时自动写回 localStorage
  */
 import { create } from "zustand";
 import type {
@@ -17,6 +18,34 @@ import type {
   CurrentEventData,
 } from "@/lib/types";
 import api from "@/lib/api";
+
+// ★ 同步读取 localStorage 中的持久化数据
+const PERSIST_KEY = "game-store";
+
+function _readPersistedState(): { gameId: number | null; playerState: PlayerState | null } {
+  if (typeof window === "undefined") return { gameId: null, playerState: null };
+  try {
+    const raw = window.localStorage.getItem(PERSIST_KEY);
+    if (!raw) return { gameId: null, playerState: null };
+    const data = JSON.parse(raw);
+    return {
+      gameId: data?.state?.gameId ?? null,
+      playerState: data?.state?.playerState ?? null,
+    };
+  } catch {
+    return { gameId: null, playerState: null };
+  }
+}
+
+function _writePersistedState(gameId: number | null, playerState: PlayerState | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    const data = { state: { gameId, playerState }, version: 0 };
+    window.localStorage.setItem(PERSIST_KEY, JSON.stringify(data));
+  } catch { /* ignore quota errors */ }
+}
+
+const _persisted = _readPersistedState();
 
 // 浅比较辅助函数
 const KEY_FIELDS = ["energy", "mood", "knowledge", "wealth", "age", "week", "current_round"];
@@ -42,6 +71,7 @@ export interface SessionState {
 
   // ★ 游戏设置
   enableSceneImage: boolean;
+  constraintLevel: "fast" | "expert" | "master";
 
   // Actions
   setGameId: (gameId: number) => void;
@@ -51,6 +81,7 @@ export interface SessionState {
     storyText: string;
     characterSettings?: CharacterSettings;
     playerName?: string;
+    constraintLevel?: "fast" | "expert" | "master";
   }>;
   syncState: () => Promise<{
     event: { story: string; options: EventOption[] } | null;
@@ -62,18 +93,20 @@ export interface SessionState {
   resetSession: () => void;
   setGameOver: (over: boolean) => void;
   setEnableSceneImage: (enabled: boolean) => void;
+  setConstraintLevel: (level: "fast" | "expert" | "master") => void;
 }
 
 export const useSessionStore = create<SessionState>()(
   (set, get) => ({
-    // Initial State
-    gameId: null,
+    // Initial State — 同步从 localStorage 恢复
+    gameId: _persisted.gameId,
     sessionId: null,
-    playerState: null,
+    playerState: _persisted.playerState,
     progress: null,
     roundInfo: null,
     isGameOver: false,
     enableSceneImage: true,
+    constraintLevel: "expert",
 
     // Actions
     setGameId: (gameId) => set({ gameId }),
@@ -123,6 +156,7 @@ export const useSessionStore = create<SessionState>()(
         progress: state.progress,
         roundInfo: state.round_info,
         isGameOver: false,
+        constraintLevel: state.constraint_level || "expert",
       });
       console.log(`[loadGameState] Loaded game ${gameId}`);
 
@@ -132,6 +166,7 @@ export const useSessionStore = create<SessionState>()(
         storyText,
         characterSettings: loadedCharacterSettings,
         playerName: loadedPlayerName,
+        constraintLevel: state.constraint_level || "expert",
       };
     },
 
@@ -148,9 +183,13 @@ export const useSessionStore = create<SessionState>()(
         if (error.status === 404 || String(error.message || "").includes("404")) {
           console.warn("[syncState] Session expired (404), reloading game to restore session...");
           try {
-            await get().loadGameState(gameId);
+            const loaded = await get().loadGameState(gameId);
             console.log("[syncState] Game reloaded successfully");
-            return;
+            return {
+              event: loaded.event,
+              hasNewOptions: (loaded.event?.options?.length ?? 0) > 0,
+              eventStory: loaded.storyText,
+            };
           } catch (reloadErr) {
             const reloadError = reloadErr as { status?: number; message?: string };
             console.error("[syncState] Failed to reload game:", reloadError);
@@ -189,6 +228,9 @@ export const useSessionStore = create<SessionState>()(
       }
       if (shallowChanged(state.round_info, currentState.roundInfo, ["current_round", "week"])) {
         updates.roundInfo = state.round_info;
+      }
+      if (state.constraint_level && state.constraint_level !== currentState.constraintLevel) {
+        updates.constraintLevel = state.constraint_level;
       }
 
       if (Object.keys(updates).length > 0) {
@@ -242,6 +284,9 @@ export const useSessionStore = create<SessionState>()(
       if (shallowChanged(state.round_info, currentState.roundInfo, ["current_round", "week"])) {
         updates.roundInfo = state.round_info;
       }
+      if (state.constraint_level && state.constraint_level !== currentState.constraintLevel) {
+        updates.constraintLevel = state.constraint_level;
+      }
 
       if (Object.keys(updates).length > 0) {
         console.log(`[syncPlayerState] Updating fields: ${Object.keys(updates).join(', ')}`);
@@ -271,5 +316,23 @@ export const useSessionStore = create<SessionState>()(
 
     setGameOver: (over) => set({ isGameOver: over }),
     setEnableSceneImage: (enabled) => set({ enableSceneImage: enabled }),
+    setConstraintLevel: async (level) => {
+      const { gameId } = get();
+      if (gameId) {
+        try {
+          await api.games.updateSettings(gameId, { constraint_level: level });
+        } catch (err) {
+          console.error("[setConstraintLevel] Failed to update settings:", err);
+        }
+      }
+      set({ constraintLevel: level });
+    },
   })
 );
+
+// ★ 自动持久化：当 gameId 或 playerState 变化时写回 localStorage
+useSessionStore.subscribe((state, prevState) => {
+  if (state.gameId !== prevState.gameId || state.playerState !== prevState.playerState) {
+    _writePersistedState(state.gameId, state.playerState);
+  }
+});

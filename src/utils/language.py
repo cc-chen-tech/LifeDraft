@@ -21,7 +21,8 @@ def detect_language_from_state(state_data: Dict[str, Any]) -> str:
     if not character_settings:
         return "zh"
 
-    era_desc = character_settings.get("era", {}).get("era_description", "")
+    era_obj = character_settings.get("era", {})
+    era_desc = era_obj.get("era_description", "") if isinstance(era_obj, dict) else ""
     if era_desc and all(ord(c) < 128 for c in era_desc.replace(" ", "")):
         return "en"
 

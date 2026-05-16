@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -10,6 +11,7 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { SettingDisplay } from "@/components/game/SettingDisplay";
+import { SettingFeedbackCard } from "./SettingFeedbackCard";
 import { CREATION_STEPS } from "@/stores/useGameStore";
 import {
   ArrowLeft,
@@ -20,6 +22,9 @@ import {
   ChevronDown,
   ChevronUp,
   Eye,
+  RefreshCw,
+  RotateCcw,
+  User,
 } from "lucide-react";
 
 const STEP_LABELS: Record<string, string> = {
@@ -48,12 +53,20 @@ interface CompletionScreenProps {
   showPresetSheet: boolean;
   presetName: string;
   isSavingPreset: boolean;
+  // Image regeneration
+  isGeneratingImage: boolean;
+  imageFeedback: string;
+  onImageFeedbackChange: (feedback: string) => void;
+  onRegenerateImage: () => Promise<void>;
+  onRegenerateFreshImage: () => Promise<void>;
+  showToast: (type: "success" | "error", message: string) => void;
   onSetShowDetails: (show: boolean) => void;
   onSetShowPresetSheet: (show: boolean) => void;
   onSetPresetName: (name: string) => void;
   onBack: () => void;
   onStartGame: () => Promise<void>;
   onSavePreset: () => Promise<void>;
+  onRegenerateSetting: (stepKey: string, feedback: string) => Promise<void>;
 }
 
 export function CompletionScreen({
@@ -68,13 +81,61 @@ export function CompletionScreen({
   showPresetSheet,
   presetName,
   isSavingPreset,
+  isGeneratingImage,
+  imageFeedback,
+  onImageFeedbackChange,
+  onRegenerateImage,
+  onRegenerateFreshImage,
+  showToast,
   onSetShowDetails,
   onSetShowPresetSheet,
   onSetPresetName,
   onBack,
   onStartGame,
   onSavePreset,
+  onRegenerateSetting,
 }: CompletionScreenProps) {
+  const [isGoingBack, setIsGoingBack] = useState(false);
+  const [isRegeneratingFresh, setIsRegeneratingFresh] = useState(false);
+  const [isRegeneratingImage, setIsRegeneratingImage] = useState(false);
+  const [imageError, setImageError] = useState(false);
+
+  const handleImageError = useCallback(() => {
+    setImageError(true);
+  }, []);
+
+  const handleBack = async () => {
+    setIsGoingBack(true);
+    try {
+      await onBack();
+    } finally {
+      setIsGoingBack(false);
+    }
+  };
+
+  const handleRegenerateFresh = async () => {
+    setIsRegeneratingFresh(true);
+    try {
+      await onRegenerateFreshImage();
+    } catch (err) {
+      showToast("error", String(err) || "重新生成失败");
+    } finally {
+      setIsRegeneratingFresh(false);
+    }
+  };
+
+  const handleRegenerateImage = async () => {
+    setIsRegeneratingImage(true);
+    try {
+      await onRegenerateImage();
+      onImageFeedbackChange("");
+    } catch (err) {
+      showToast("error", String(err) || "重新生成失败");
+    } finally {
+      setIsRegeneratingImage(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background animate-page-enter flex flex-col">
       <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-sm border-b border-border">
@@ -82,9 +143,15 @@ export function CompletionScreen({
           <Button
             variant="ghost"
             size="sm"
-            onClick={onBack}
+            onClick={handleBack}
+            disabled={isGoingBack}
+            data-testid="back-button"
           >
-            <ArrowLeft className="w-4 h-4 mr-1" />
+            {isGoingBack ? (
+              <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+            ) : (
+              <ArrowLeft className="w-4 h-4 mr-1" />
+            )}
             返回修改
           </Button>
           <span className="text-sm text-muted-foreground">角色创建完成</span>
@@ -101,15 +168,70 @@ export function CompletionScreen({
 
       {/* Centered completion message */}
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-8">
-        {/* 主角图片展示 */}
+        {/* 主角图片展示 + 重新生成 */}
         {playerImages.length > 0 && (
-          <div className="mb-6 flex flex-col items-center">
-            <img
-              src={playerImages[selectedImageIndex]?.image_url || playerImages[0]?.image_url}
-              alt={playerName || "主角"}
-              className="w-32 h-48 object-cover rounded-lg border-2 border-primary/30 shadow-lg"
-            />
+          <div className="mb-6 flex flex-col items-center w-full max-w-xs">
+            {isGeneratingImage ? (
+              <div className="w-32 h-48 bg-secondary rounded-lg flex items-center justify-center">
+                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : !imageError ? (
+              <img
+                src={playerImages[selectedImageIndex]?.image_url || playerImages[0]?.image_url}
+                alt={playerName || "主角"}
+                className="w-32 h-48 object-cover rounded-lg border-2 border-primary/30 shadow-lg"
+                onError={handleImageError}
+              />
+            ) : (
+              <div className="w-32 h-48 bg-secondary rounded-lg flex flex-col items-center justify-center border-2 border-primary/30 shadow-lg">
+                <User className="w-8 h-8 text-muted-foreground mb-2" />
+                <span className="text-xs text-muted-foreground">图片加载失败</span>
+              </div>
+            )}
             <span className="text-sm font-medium text-foreground mt-2">{playerName}</span>
+
+            {/* 图片反馈重新生成 */}
+            {!isGeneratingImage && (
+              <div className="w-full mt-3 space-y-2">
+                <Input
+                  value={imageFeedback}
+                  onChange={(e) => onImageFeedbackChange(e.target.value)}
+                  placeholder="不满意？描述你想要的修改..."
+                  className="bg-secondary border-border text-sm h-9"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 h-8 text-xs"
+                    disabled={!imageFeedback.trim() || isRegeneratingImage}
+                    title={!imageFeedback.trim() ? "请先输入修改意见" : undefined}
+                    onClick={handleRegenerateImage}
+                  >
+                    {isRegeneratingImage ? (
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-3 h-3 mr-1" />
+                    )}
+                    根据意见修改
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 text-xs text-muted-foreground"
+                    disabled={isRegeneratingFresh}
+                    onClick={handleRegenerateFresh}
+                  >
+                    {isRegeneratingFresh ? (
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    ) : (
+                      <RotateCcw className="w-3 h-3 mr-1" />
+                    )}
+                    完全重生成
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
         
@@ -142,15 +264,13 @@ export function CompletionScreen({
               const data = characterSettings[step];
               if (!data) return null;
               return (
-                <div key={step} className="space-y-1">
-                  <h3 className="text-xs font-medium text-primary">
-                    {STEP_LABELS[step]}
-                  </h3>
-                  <SettingDisplay
-                    stepKey={step}
-                    data={data as Record<string, unknown>}
-                  />
-                </div>
+                <SettingFeedbackCard
+                  key={step}
+                  stepKey={step}
+                  stepLabel={STEP_LABELS[step]}
+                  data={data as Record<string, unknown>}
+                  onRegenerate={(feedback) => onRegenerateSetting(step, feedback)}
+                />
               );
             })}
           </div>

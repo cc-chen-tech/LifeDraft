@@ -1,9 +1,7 @@
 """Tests for config layer: settings.py, logging_config.py."""
 
 import logging
-import os
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -131,7 +129,7 @@ class TestLoggingConfig:
 
     def test_setup_logging_with_file(self, tmp_path):
         """Test setup_logging with file handler."""
-        from config.logging_config import LOG_DIR, setup_logging
+        from config.logging_config import setup_logging
 
         logger = setup_logging(
             log_level="WARNING", log_to_file=True, log_file="test.log"

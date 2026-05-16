@@ -1,7 +1,6 @@
 """路径遍历防护测试 - 对应优化 C-01"""
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -83,7 +82,6 @@ class TestPathTraversalPrevention:
 
     def test_reject_symlink_escape(self, safe_image_dir, tmp_path):
         """符号链接逃逸应被检测"""
-        import os
 
         # 创建指向 tmp_path 外部的符号链接
         external_dir = tmp_path / "external"
@@ -101,7 +99,7 @@ class TestPathTraversalPrevention:
 
     def test_empty_filename(self, safe_image_dir):
         """空文件名应被拒绝"""
-        empty_path = safe_image_dir / ""
+        safe_image_dir / ""
         # 空路径应等于目录本身，但不是有效文件
         assert not (safe_image_dir / "").is_file()
 

@@ -1,11 +1,18 @@
-FROM node:lts-alpine
+FROM node:18-alpine
 
 WORKDIR /app
-COPY . /app
 
-RUN npm config set registry "https://registry.npm.taobao.org/" \
-    && npm install -g npm husky \
-    && npm install --production
+# 安装 pnpm
+RUN npm install -g pnpm
 
-EXPOSE 3000
+# 复制所有文件
+COPY . .
+
+# 安装依赖（忽略 prepare 脚本）
+RUN pnpm install --ignore-scripts
+
+ENV PORT=3001
+
+EXPOSE 3001
+
 CMD ["node", "app.js"]

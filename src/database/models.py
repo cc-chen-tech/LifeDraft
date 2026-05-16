@@ -1,16 +1,21 @@
 """SQLite database models."""
 
+from contextlib import contextmanager
 from datetime import datetime
-from typing import Any
+from typing import Any, Callable, Generator, TypeVar, cast
 
-from sqlalchemy import (JSON, Boolean, Column, DateTime, ForeignKey, Index,
-                        Integer, String, Text, create_engine)
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker
+from sqlalchemy import (JSON, Boolean, Column, DateTime, Float, ForeignKey,
+                        Index, Integer, String, Text, create_engine, text)
+from sqlalchemy.orm import DeclarativeBase, Session, relationship, sessionmaker
 
 from config.settings import settings
 
-Base: Any = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
+
+
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 class User(Base):
@@ -91,6 +96,8 @@ class Game(Base):
     ending_type = Column(String(50), nullable=True)
     ending_summary = Column(Text, nullable=True)
     is_public = Column(Boolean, default=False)  # 是否公开给好友查看
+    narrative_style_id = Column(String, nullable=True)  # 叙事风格ID
+    constraint_level = Column(String, default="expert")  # 叙事质量级别: fast/expert/master
 
     # Relationships
     user = relationship("User", back_populates="games", foreign_keys=[user_id])
@@ -101,6 +108,17 @@ class Game(Base):
     )
     images = relationship("Image", back_populates="game", cascade="all, delete-orphan")
     scene_images = relationship("SceneImage", back_populates="game", cascade="all, delete-orphan")
+    playlist = relationship(
+        "GamePlaylist",
+        back_populates="game",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+    # ★ 复合索引：加速 list_saved_games 查询 (user_id + ending_type IS NULL + ORDER BY updated_at)
+    __table_args__ = (
+        Index("ix_games_user_ending_updated", "user_id", "ending_type", "updated_at"),
+    )
 
 
 class GameState(Base):
@@ -123,7 +141,11 @@ class GameState(Base):
     game = relationship("Game", back_populates="states")
 
     # H-08: 复合索引优化查询性能
-    __table_args__ = (Index("ix_game_state_game_week", "game_id", "week"),)
+    __table_args__ = (
+        Index("ix_game_state_game_week", "game_id", "week"),
+        # ★ 加速 load_saved_game 的 ORDER BY created_at DESC 查询
+        Index("ix_game_state_game_created", "game_id", "created_at"),
+    )
 
 
 class Decision(Base):
@@ -176,6 +198,8 @@ class CharacterPreset(Base):
     player_name = Column(String(100), nullable=False)
     life_vision = Column(Text, nullable=True)
     character_settings = Column(JSON, nullable=False)
+    narrative_style_id = Column(String, default="chinese_classic_saga")  # 叙事风格ID
+    constraint_level = Column(String, default="expert")  # 叙事质量级别: fast/expert/master
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -220,7 +244,10 @@ class Image(Base):
     game = relationship("Game", back_populates="images")
 
     # 索引
-    __table_args__ = (Index("ix_images_game_type_entity", "game_id", "image_type", "entity_name"),)
+    __table_args__ = (
+        Index("ix_images_game_type_entity", "game_id", "image_type", "entity_name"),
+        Index("idx_image_lookup", "game_id", "image_type", "entity_name", "is_active"),
+    )
 
 
 class SceneImage(Base):
@@ -253,7 +280,7 @@ class SceneImage(Base):
     # 关联
     game = relationship("Game", back_populates="scene_images")
 
-    # 索引 - 包含 week 的复合索引，支持按游戏、周、轮次、阶段查询
+    # 索引 - 包含 week 的唯一复合索引，防止并发时重复写入同一场景
     __table_args__ = (
         Index(
             "ix_scene_images_game_week_round_stage",
@@ -261,6 +288,70 @@ class SceneImage(Base):
             "week",
             "round_number",
             "stage",
+            unique=True,
+        ),
+    )
+
+
+class GamePlaylist(Base):
+    """Per-game persistent music playlist.
+
+    Stores the current song, upcoming queue, and playback state
+    so music survives page navigation and game progression.
+    """
+
+    __tablename__ = "game_playlists"
+
+    playlist_id = Column(Integer, primary_key=True, autoincrement=True)
+    game_id = Column(Integer, ForeignKey("games.game_id"), nullable=False, unique=True, index=True)
+
+    # Playback state
+    current_song_json = Column(JSON, nullable=True)
+    queue_json = Column(JSON, default=list)
+    played_songs_json = Column(JSON, default=list)
+    is_playing = Column(Boolean, default=False)
+    volume = Column(Float, default=0.5)
+    current_position_ms = Column(Integer, default=0)
+
+    # Recommendation metadata
+    recommendation_mood = Column(String(50), nullable=True)
+    recommendation_keywords = Column(JSON, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    game = relationship("Game", back_populates="playlist")
+
+
+class GeneratedMusicAsset(Base):
+    """Persisted metadata for reusable AI-generated background music."""
+
+    __tablename__ = "generated_music_assets"
+
+    asset_id = Column(Integer, primary_key=True, autoincrement=True)
+    game_id = Column(Integer, ForeignKey("games.game_id"), nullable=False, index=True)
+    source = Column(String(30), default="ai_generated", nullable=False)
+    provider = Column(String(80), nullable=False, index=True)
+    model = Column(String(120), nullable=False)
+    status = Column(String(30), nullable=False, index=True)
+    music_brief_json = Column(JSON, nullable=False)
+    prompt_text = Column(Text, nullable=False)
+    brief_hash = Column(String(128), nullable=False, index=True)
+    storage_path = Column(String(500), nullable=False)
+    duration_ms = Column(Integer, nullable=False)
+    loopable = Column(Boolean, default=True, nullable=False)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    game = relationship("Game")
+
+    __table_args__ = (
+        Index(
+            "ix_generated_music_asset_brief_provider",
+            "brief_hash",
+            "provider",
         ),
     )
 
@@ -287,15 +378,56 @@ else:
         connect_args={"check_same_thread": False, "timeout": 30},
     )
 
-SessionLocal = sessionmaker(bind=engine)
+SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 
-def init_db():
-    """Initialize database tables."""
+def init_db() -> None:
+    """Initialize database tables and performance indexes."""
     Base.metadata.create_all(engine, checkfirst=True)
+    _ensure_legacy_columns()
+    # ★ 自动创建性能优化索引（向后兼容：已存在则跳过）
+    try:
+        from src.database.add_performance_indexes import \
+            create_performance_indexes
+
+        create_performance_indexes()  # type: ignore[no-untyped-call]
+    except Exception:
+        # 索引创建失败不应阻塞应用启动
+        import logging
+
+        logging.getLogger(__name__).warning("Failed to create performance indexes", exc_info=True)
 
 
-def get_db():
+def _ensure_legacy_columns() -> None:
+    """Add columns introduced after older local SQLite DBs were created."""
+    sqlite_columns = {
+        "games": {
+            "narrative_style_id": "VARCHAR",
+            "constraint_level": "VARCHAR DEFAULT 'expert'",
+        },
+        "character_presets": {
+            "narrative_style_id": "VARCHAR DEFAULT 'chinese_classic_saga'",
+            "constraint_level": "VARCHAR DEFAULT 'expert'",
+        },
+    }
+
+    if engine.dialect.name != "sqlite":
+        return
+
+    with engine.begin() as connection:
+        for table_name, columns in sqlite_columns.items():
+            existing = {
+                row[1] for row in connection.execute(text(f"PRAGMA table_info({table_name})"))
+            }
+            for column_name, column_type in columns.items():
+                if column_name not in existing:
+                    connection.execute(
+                        text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+                    )
+
+
+@contextmanager
+def get_db() -> Generator[Session, None, None]:
     """Get database session as context manager."""
     db = SessionLocal()
     try:
@@ -304,7 +436,7 @@ def get_db():
         db.close()
 
 
-def with_db_session(func):
+def with_db_session(func: F) -> F:
     """
     Decorator that injects a database session as the first argument.
 
@@ -321,7 +453,7 @@ def with_db_session(func):
     from functools import wraps
 
     @wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
         # If db is explicitly passed, use it directly (testing support)
         if "db" in kwargs:
             return func(*args, **kwargs)
@@ -333,4 +465,4 @@ def with_db_session(func):
         finally:
             db.close()
 
-    return wrapper
+    return cast(F, wrapper)

@@ -16,7 +16,6 @@ const mockUsePlayGame = {
   roundSummary: null,
   isSaving: false,
   saveToast: null,
-  showAdjuster: false,
   endingData: null,
   elapsedSeconds: 0,
   gameId: 123,
@@ -28,7 +27,6 @@ const mockUsePlayGame = {
   isGameOver: false,
   storyContainerRef: { current: null },
   setPhase: jest.fn(),
-  setShowAdjuster: jest.fn(),
   setStoryText: jest.fn(),
   setOptions: jest.fn(),
   handleChoice: jest.fn(),
@@ -36,7 +34,6 @@ const mockUsePlayGame = {
   handleContinueAfterSummary: jest.fn(),
   handleContinueToNextRound: jest.fn(),
   handleSave: jest.fn(),
-  handleAdjustStory: jest.fn(),
   handleRegenerate: jest.fn(),
   generateEvent: jest.fn(),
   getLoadingMessage: jest.fn(() => 'Loading...'),
@@ -59,15 +56,6 @@ jest.mock('@/hooks/usePlayGame', () => ({
     preparing: '正在准备...',
     generating_story: '正在生成故事...',
   },
-}));
-
-jest.mock('@/hooks/useHydration', () => ({
-  useHydration: () => true,
-}));
-
-// Mock StreamingText to render text immediately
-jest.mock('@/components/game/StreamingText', () => ({
-  StreamingText: ({ text }: { text: string }) => <div data-testid="streaming-text">{text}</div>,
 }));
 
 describe('PlayPage', () => {
@@ -262,6 +250,23 @@ describe('PlayPage', () => {
     });
   });
 
+  describe('Navigation buttons', () => {
+    it('shows friends button that navigates to profile', () => {
+      const mockRouter = { push: jest.fn() };
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        router: mockRouter,
+      });
+
+      render(<PlayPage />);
+      const friendsButton = screen.getByRole('button', { name: /好友|社交|friends/i });
+      expect(friendsButton).toBeInTheDocument();
+      fireEvent.click(friendsButton);
+      expect(mockRouter.push).toHaveBeenCalledWith('/profile');
+    });
+  });
+
   describe('History functionality', () => {
     it('shows history button', () => {
       render(<PlayPage />);
@@ -293,8 +298,7 @@ describe('PlayPage', () => {
       });
       
       render(<PlayPage />);
-      // StreamingText mock renders text
-      expect(screen.getByTestId('streaming-text')).toHaveTextContent('Historical story text');
+      expect(screen.getByText('Historical story text')).toBeInTheDocument();
     });
   });
 
@@ -315,7 +319,7 @@ describe('PlayPage', () => {
       expect(buttons.length).toBeGreaterThan(0);
     });
 
-    it('shows generating state with message', () => {
+    it('shows generating state with message', async () => {
       const originalHook = jest.requireMock('@/hooks/usePlayGame');
       originalHook.usePlayGame = () => ({
         ...mockUsePlayGame,
@@ -328,12 +332,15 @@ describe('PlayPage', () => {
       });
       
       render(<PlayPage />);
-      expect(screen.getByTestId('streaming-text')).toHaveTextContent('Some story');
+      // isStreaming=true during generating — wait for animation
+      await waitFor(() => {
+        expect(screen.getByText('Some story')).toBeInTheDocument();
+      });
     });
   });
 
   describe('Choosing phase', () => {
-    it('shows choosing state', () => {
+    it('shows choosing state', async () => {
       const originalHook = jest.requireMock('@/hooks/usePlayGame');
       originalHook.usePlayGame = () => ({
         ...mockUsePlayGame,
@@ -344,8 +351,10 @@ describe('PlayPage', () => {
       });
       
       render(<PlayPage />);
-      // StreamingText mock renders text
-      expect(screen.getByTestId('streaming-text')).toHaveTextContent('Choosing story');
+      // isStreaming=true during choosing — wait for animation
+      await waitFor(() => {
+        expect(screen.getByText('Choosing story')).toBeInTheDocument();
+      });
     });
   });
 
@@ -703,27 +712,14 @@ describe('PlayPage', () => {
       });
       
       render(<PlayPage />);
-      // StreamingText should show historical content
-      expect(screen.getByTestId('streaming-text')).toHaveTextContent('Historical story text');
+      expect(screen.getByText('Historical story text')).toBeInTheDocument();
     });
   });
 
   describe('Settings button', () => {
     it('toggles scene image setting', () => {
-      const mockSetEnableSceneImage = jest.fn();
-      
-      jest.doMock('@/stores/useGameStore', () => ({
-        useGameStore: {
-          getState: () => ({
-            enableSceneImage: true,
-            setEnableSceneImage: mockSetEnableSceneImage,
-          }),
-        },
-      }));
-      
       render(<PlayPage />);
-      
-      // Settings button should be present
+
       const buttons = screen.getAllByRole('button');
       expect(buttons.length).toBeGreaterThan(0);
     });
@@ -785,19 +781,6 @@ describe('PlayPage', () => {
       // ChatBar should be rendered
       const buttons = screen.getAllByRole('button');
       expect(buttons.length).toBeGreaterThan(0);
-    });
-  });
-
-  describe('StoryAdjuster interactions', () => {
-    it('renders story adjuster when open', () => {
-      const originalHook = jest.requireMock('@/hooks/usePlayGame');
-      originalHook.usePlayGame = () => ({
-        ...mockUsePlayGame,
-        showAdjuster: true,
-      });
-      
-      render(<PlayPage />);
-      // StoryAdjuster should be rendered when showAdjuster is true
     });
   });
 

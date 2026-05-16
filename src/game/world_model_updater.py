@@ -8,7 +8,7 @@ an AIClient and language parameter.
 
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from src.game.constants import (DEFAULT_CAREER_LEVEL, GENERIC_CHARACTER_NAMES,
                                 IMPORTANCE_ORDER, ROLE_KEYWORDS,
@@ -432,9 +432,7 @@ class WorldModelUpdater:
             return
 
         try:
-            from config.prompts import get_character_profile_synthesis_prompt
             from src.ai.profile_synthesizer import ProfileSynthesizer
-            from src.game.world_model import CharacterProfile
 
             current_week = player_state.week
             wm_data = player_state.world_model_data
@@ -605,8 +603,8 @@ class WorldModelUpdater:
         if not player_state or not scheduled_commitments:
             return
 
-        from src.game.scheduled_events import (
-            ScheduledEvent, create_scheduled_event_from_commitment)
+        from src.game.scheduled_events import \
+            create_scheduled_event_from_commitment
 
         current_week = player_state.week
 

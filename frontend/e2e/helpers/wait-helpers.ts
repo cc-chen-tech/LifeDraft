@@ -107,3 +107,23 @@ export async function waitForPageReady(
   await page.waitForLoadState('domcontentloaded', { timeout });
   await page.waitForLoadState('domcontentloaded', { timeout });
 }
+
+/**
+ * 移除 Next.js Dev Overlay，防止在 E2E 测试中拦截点击事件
+ * 使用 addInitScript 在每次页面加载时自动移除
+ */
+export async function dismissNextJSDevOverlay(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const removeOverlay = () => {
+      const portals = document.querySelectorAll('nextjs-portal');
+      portals.forEach((p) => p.remove());
+      const devToolButtons = document.querySelectorAll('[data-nextjs-dev-tools-button]');
+      devToolButtons.forEach((b) => b.remove());
+    };
+    removeOverlay();
+    const observer = new MutationObserver(removeOverlay);
+    if (document.documentElement) {
+      observer.observe(document.documentElement, { childList: true, subtree: true });
+    }
+  });
+}

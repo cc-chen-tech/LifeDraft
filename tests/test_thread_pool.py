@@ -2,7 +2,7 @@
 
 import threading
 import time
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -96,7 +96,6 @@ class TestThreadPoolManagement:
 
     def test_no_bare_thread_creation(self):
         """验证不应使用裸 threading.Thread"""
-        import ast
         import os
 
         src_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "src")

@@ -4,6 +4,7 @@ import logging
 import random
 from typing import Any, Callable, Dict, Optional
 
+from config.feature_flags import get_feature
 from config.settings import settings
 from src.ai.generator import EventGenerator
 from src.ai.models import EventOption, GameEvent
@@ -11,6 +12,7 @@ from src.game.character_creation import CharacterCreator
 from src.game.decisions import process_decision
 from src.game.historical_summary_selector import HistoricalSummarySelector
 from src.game.narrative_manager import NarrativeManager
+from src.game.parallel_postprocessor import ParallelPostProcessor
 from src.game.round.system_mixin import RoundSystemMixin
 from src.game.state import PlayerState
 from src.game.story_service import StoryService
@@ -33,6 +35,7 @@ class GameLoop(RoundSystemMixin):
         ai_generator: Optional[EventGenerator] = None,
         event_callback: Optional[Callable] = None,
         result_callback: Optional[Callable] = None,
+        quality_level=None,
     ):
         """
         Initialize the game loop.
@@ -42,9 +45,11 @@ class GameLoop(RoundSystemMixin):
             ai_generator: Optional EventGenerator instance
             event_callback: Optional callback for when events are generated
             result_callback: Optional callback for when decisions are processed
+            quality_level: Story generation quality level (fast/expert/master)
         """
         self.language = language
-        self.ai_generator = ai_generator or EventGenerator()
+        self.ai_generator = ai_generator or EventGenerator(quality_level=quality_level)
+        self.quality_level = quality_level
         self.event_callback = event_callback
         self.result_callback = result_callback
         self.player_state: Optional[PlayerState] = None  # type: ignore[assignment]
@@ -64,6 +69,8 @@ class GameLoop(RoundSystemMixin):
         self.last_year_start_week = 0  # Track year boundaries
         self.last_year_start_state: Optional[dict[str, Any]] = None  # Track state at year start
         self.last_event_week = -1  # Track when last event was generated
+        # Parallel post-processor (lazy init, managed by feature flag)
+        self._parallel_postprocessor: Optional[ParallelPostProcessor] = None
 
     def start_new_game(self, initial_state: Optional[Dict[str, Any]] = None) -> PlayerState:
         """
@@ -124,16 +131,35 @@ class GameLoop(RoundSystemMixin):
             f"[LoadGame] current_event_data exists: {self.player_state.current_event_data is not None}"
         )
         if self.player_state.current_event_data:
-            try:
-                from src.ai.models import GameEvent
+            # 检查 round_history 是否已有当前轮次条目
+            current_week = self.player_state.week
+            current_round = self.player_state.current_round
+            round_history = self.player_state.round_history or []
 
-                self.current_event = GameEvent(**self.player_state.current_event_data)
+            already_processed = any(
+                entry.get("week") == current_week and entry.get("round") == current_round
+                for entry in round_history
+            )
+
+            if already_processed:
                 logger.info(
-                    f"[LoadGame] Restored current event from saved state: {self.current_event.event_description[:50]}..."
+                    f"[LoadGame] current_event_data is stale "
+                    f"(round {current_week}-{current_round} already in history), clearing"
                 )
-            except Exception as e:
-                logger.warning(f"[LoadGame] Failed to restore current event: {e}")
+                self.player_state.current_event_data = None
                 self.current_event = None
+            else:
+                try:
+                    from src.ai.models import GameEvent
+
+                    self.current_event = GameEvent(**self.player_state.current_event_data)
+                    logger.info(
+                        f"[LoadGame] Restored current event from saved state: "
+                        f"{self.current_event.event_description[:50]}..."
+                    )
+                except Exception as e:
+                    logger.warning(f"[LoadGame] Failed to restore current event: {e}")
+                    self.current_event = None
         else:
             logger.info("[LoadGame] No current_event_data, setting current_event to None")
             self.current_event = None
@@ -165,6 +191,12 @@ class GameLoop(RoundSystemMixin):
             else:
                 # No event saved, allow generation
                 self.last_event_week = current_week - 1
+
+        # Restore narrative_style_id from saved state
+        style_id = state_dict.get("narrative_style_id")
+        if style_id:
+            self.narrative_style_id = style_id
+            logger.info(f"[LoadGame] Restored narrative_style_id={style_id}")
 
         logger.info(f"Loaded game at age {self.player_state.age}, 第{self.player_state.week + 1}周")
         return self.player_state
@@ -350,6 +382,10 @@ class GameLoop(RoundSystemMixin):
                 "date_info": date_info,
             }
             self.player_state.story_history.append(story_entry)
+
+            # Parallel post-processing (feature-gated)
+            if get_feature("parallel_postprocessing"):
+                self._run_parallel_postprocessing(self.current_event.event_description)
 
         # Apply weekly decay if applicable
         self._apply_weekly_decay()
@@ -629,6 +665,49 @@ class GameLoop(RoundSystemMixin):
                     ),
                 ],
             )
+
+    def _run_parallel_postprocessing(self, story_text: str) -> None:
+        """Run parallel post-processing for the current story turn.
+
+        Only called when feature flag 'parallel_postprocessing' is enabled.
+        """
+        if not self.player_state:
+            return
+
+        # Lazy-init the processor
+        if self._parallel_postprocessor is None:
+            self._parallel_postprocessor = ParallelPostProcessor()
+
+        # Determine the last choice text (from most recent decision)
+        choice = ""
+        if self.player_state.decision_history:
+            last_decision = self.player_state.decision_history[-1]
+            choice = last_decision.get("choice_text", "")
+
+        try:
+            pp_result = self._parallel_postprocessor.process(
+                player_state=self.player_state,
+                story_text=story_text,
+                choice=choice,
+                language=self.language,
+                summary_generator=self.ai_generator,
+                world_model_updater=self.world_updater,
+            )
+            if pp_result.errors:
+                logger.warning(
+                    "Parallel post-processing completed with errors: %s",
+                    pp_result.errors,
+                )
+            else:
+                logger.debug("Parallel post-processing completed successfully")
+        except Exception as e:
+            logger.error("Parallel post-processing failed: %s", e, exc_info=True)
+
+    def shutdown(self) -> None:
+        """Shutdown managed resources (e.g. thread pool)."""
+        if self._parallel_postprocessor is not None:
+            self._parallel_postprocessor.shutdown()
+            self._parallel_postprocessor = None
 
     def get_state(self) -> Optional[PlayerState]:
         """Get current player state."""

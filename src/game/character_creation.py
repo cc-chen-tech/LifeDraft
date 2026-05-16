@@ -612,11 +612,11 @@ class CharacterCreator:
         if character_settings:
             family = character_settings.get("family", {})
             family_economy = family.get("family_economy", "").lower()
-            family_description = family.get("family_description", "").lower()
+            family.get("family_description", "").lower()
 
             era = character_settings.get("era", {})
             era_description = era.get("era_description", "").lower()
-            world_context = era.get("world_context", "").lower()
+            era.get("world_context", "").lower()
 
             age_info = character_settings.get("age", {})
             age = age_info.get("age", 22)

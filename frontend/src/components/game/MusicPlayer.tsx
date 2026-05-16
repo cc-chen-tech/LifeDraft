@@ -23,6 +23,7 @@ import {
   useMusicStore,
   fetchMusicRecommendation,
   fetchSongUrl,
+  getMusicSourceLabel,
   Song,
 } from "@/stores/useMusicStore";
 
@@ -102,9 +103,7 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       console.log(`[MusicPlayer] Received ${urlMap.size}/${result.songs.length} song URLs from backend`);
     } catch (error) {
       console.error("[MusicPlayer] Failed to fetch recommendation:", error);
-      setRecommendationError(
-        error instanceof Error ? error.message : "获取推荐失败"
-      );
+      setRecommendationError("音乐服务暂不可用");
     } finally {
       setIsLoadingRecommendation(false);
     }
@@ -459,6 +458,9 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
     // 注意：store 中的 setVolume 会自动同步 audioElement.volume
   };
 
+  const displaySong = currentSong || recommendation?.songs[0] || null;
+  const sourceLabel = getMusicSourceLabel(displaySong?.source);
+
   // 格式化时间
   const formatTime = (seconds: number) => {
     if (!seconds || isNaN(seconds)) return "0:00";
@@ -530,6 +532,8 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
           size="sm"
           onClick={fetchRecommendation}
           disabled={isLoadingRecommendation}
+          title="换一批"
+          aria-label="换一批"
         >
           {isLoadingRecommendation ? (
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -558,7 +562,7 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       {/* 错误状态 */}
       {recommendationError && (
         <div className="text-sm text-destructive text-center py-2">
-          {recommendationError}
+          音乐服务暂不可用
         </div>
       )}
 
@@ -587,16 +591,20 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
         <div className="space-y-3">
           {/* 当前歌曲信息 */}
           <div className="text-sm">
-            <div className="font-medium truncate">
-              {currentSong?.name || recommendation.songs[0]?.name || "未知歌曲"}
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="font-medium truncate">
+                {displaySong?.name || "未知歌曲"}
+              </span>
+              {sourceLabel && (
+                <span className="shrink-0 rounded border border-primary/30 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                  {sourceLabel}
+                </span>
+              )}
             </div>
             <div className="text-muted-foreground text-xs truncate">
-              {currentSong 
-                ? `${currentSong.artists.join(" / ")} · ${currentSong.album}`
-                : recommendation.songs[0] 
-                  ? `${recommendation.songs[0].artists.join(" / ")} · ${recommendation.songs[0].album}`
-                  : ""
-              }
+              {displaySong
+                ? `${displaySong.artists.join(" / ")} · ${displaySong.album}`
+                : ""}
             </div>
           </div>
 
@@ -626,6 +634,8 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
                 className="h-8 w-8"
                 onClick={playPrev}
                 disabled={!recommendation.songs.length}
+                title="上一首"
+                aria-label="上一首"
               >
                 <SkipBack className="w-4 h-4" />
               </Button>
@@ -635,6 +645,8 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
                 className="h-10 w-10"
                 onClick={togglePlay}
                 disabled={!recommendation.songs.length}
+                title={isPlaying ? "暂停" : "播放"}
+                aria-label={isPlaying ? "暂停" : "播放"}
               >
                 {isPlaying ? (
                   <Pause className="w-5 h-5" />
@@ -648,6 +660,8 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
                 className="h-8 w-8"
                 onClick={playNext}
                 disabled={!recommendation.songs.length}
+                title="下一首"
+                aria-label="下一首"
               >
                 <SkipForward className="w-4 h-4" />
               </Button>
@@ -660,6 +674,8 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
                 size="icon"
                 className="h-6 w-6"
                 onClick={() => handleVolumeChange([volume === 0 ? 0.5 : 0])}
+                title={volume === 0 ? "取消静音" : "静音"}
+                aria-label={volume === 0 ? "取消静音" : "静音"}
               >
                 {volume === 0 ? (
                   <VolumeX className="w-3 h-3" />

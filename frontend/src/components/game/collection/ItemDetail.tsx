@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -43,6 +44,9 @@ export function ItemDetail({
   onRegenerateFeedbackChange,
   isDeleting,
 }: ItemDetailProps) {
+  const [imageError, setImageError] = useState(false);
+  const handleImageError = useCallback(() => setImageError(true), []);
+
   if (!item) return null;
 
   return (
@@ -80,11 +84,13 @@ export function ItemDetail({
           <div className="space-y-4">
             {/* 图片 */}
             <div className="aspect-square rounded-lg bg-muted overflow-hidden">
-              {item.image_url ? (
+              {item.image_url && !imageError ? (
                 <img
                   src={item.image_url}
                   alt={item.name}
                   className="w-full h-full object-cover"
+                  loading="lazy"
+                  onError={handleImageError}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">

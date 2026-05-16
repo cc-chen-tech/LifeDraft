@@ -6,6 +6,7 @@ consistency validation with retry, and life-phase determination.
 
 import json
 import logging
+from types import SimpleNamespace
 from typing import Any, Callable, Dict, Optional
 
 from pydantic import ValidationError
@@ -13,8 +14,10 @@ from pydantic import ValidationError
 from config.prompts import get_round_event_prompt, get_story_only_prompt
 from config.prompts._helpers import extract_overused_phrases
 from src.ai.client import AIClient
+from src.ai.harness.quality_level import PROFILES, QualityLevel
 from src.ai.models import EventOption, GameEvent
 from src.ai.system_prompts import get_system_prompt
+from src.ai.text_quality import normalize_generated_story
 from src.ai.vector_store import get_vector_store, is_vector_search_enabled
 
 logger = logging.getLogger(__name__)
@@ -23,8 +26,11 @@ logger = logging.getLogger(__name__)
 class StoryGenerator:
     """Generates story text for events and rounds."""
 
-    def __init__(self, client: AIClient):
+    def __init__(self, client: AIClient, quality_level: QualityLevel | str | None = None):
         self.client = client
+        self.quality_level = QualityLevel(quality_level or QualityLevel.EXPERT)
+        self._quality_profile = PROFILES[self.quality_level]
+        self._validated_round_keys: set[tuple[Any, Any, Any]] = set()
 
     # -------------------- Public API --------------------
 
@@ -114,6 +120,8 @@ class StoryGenerator:
         if overused_phrases:
             logger.info(f"[AntiRepeat] Injected dynamic ban list ({len(overused_phrases)} chars)")
 
+        world_model = self._build_world_model_from_state_dict(player_state)
+
         story_prompt = get_story_only_prompt(
             player_state,
             language,
@@ -130,6 +138,7 @@ class StoryGenerator:
             last_round_full_story,
             activated_foreshadowing,
             character_habits,
+            world_model=world_model,
             vector_context=vector_context,  # ★ 注入向量检索上下文
             overused_phrases=overused_phrases,  # ★ 注入动态禁用列表
         )
@@ -172,7 +181,7 @@ class StoryGenerator:
                     presence_penalty=0.3,  # ★ 鼓励使用新词汇/新主题
                 )
 
-                story_text = story_text.strip()
+                story_text = normalize_generated_story(story_text, language=language)
                 logger.info(f"Generated story with {len(story_text)} characters")
                 logger.debug(f"Story preview (first 200 chars): {story_text[:200]}...")
                 logger.debug(f"Story preview (last 200 chars): ...{story_text[-200:]}")
@@ -201,6 +210,12 @@ class StoryGenerator:
 
                 # Validate event quality
                 option_generator.validate_event_quality(event)
+                option_generator.ensure_options_consistency(
+                    event=event,
+                    story_description=story_text,
+                    available_people=None,
+                    language=language,
+                )
 
                 # Cache the event
                 if cache:
@@ -361,6 +376,7 @@ class StoryGenerator:
                 frequency_penalty=0.4,  # ★ 轮次级别更强的反重复，因为同周多轮更容易重复
                 presence_penalty=0.4,  # ★ 鼓励每轮使用不同的表达方式
             )
+            story_text = normalize_generated_story(story_text, language=language)
             logger.info(f"Generated round story with {len(story_text)} characters")
 
             # Step 1.4: Quick rule-based validation (before AI validation)
@@ -426,6 +442,12 @@ class StoryGenerator:
             )
             if option_issues:
                 logger.warning(f"Options consistency issues found: {option_issues}")
+                option_generator.ensure_options_consistency(
+                    event=event,
+                    story_description=story_text,
+                    available_people=available_people_names,
+                    language=language,
+                )
 
             return event  # type: ignore[no-any-return]
 
@@ -445,11 +467,13 @@ class StoryGenerator:
                 event_description=fallback_desc,
                 options=[
                     EventOption(
-                        text="继续前进" if language == "zh" else "Move forward",
+                        text=(
+                            "回应眼前的请求" if language == "zh" else "Answer the immediate request"
+                        ),
                         effects={"energy": 0, "mood": 0, "knowledge": 0, "wealth": 0},
                     ),
                     EventOption(
-                        text="思考一下" if language == "zh" else "Think it over",
+                        text="先核对现场线索" if language == "zh" else "Check the immediate clues",
                         effects={"energy": -5, "mood": 5, "knowledge": 5, "wealth": 0},
                     ),
                 ],
@@ -483,6 +507,19 @@ class StoryGenerator:
         logger.info(
             f"[_validate_and_retry_story] Entered with stream_callback={stream_callback is not None}"
         )
+
+        if self._quality_profile.skip_ai_consistency_check:
+            return story_text
+
+        round_key = (
+            player_state.get("game_id"),
+            player_state.get("week", player_state.get("current_week")),
+            player_state.get("current_round"),
+        )
+        if round_key in self._validated_round_keys:
+            logger.info(f"Skipping duplicate story consistency validation for round={round_key}")
+            return story_text
+        self._validated_round_keys.add(round_key)
 
         try:
             from src.ai.consistency_validator import ConsistencyValidator
@@ -573,3 +610,32 @@ class StoryGenerator:
             return "growth"
         else:
             return "consolidation"
+
+    @staticmethod
+    def _build_world_model_from_state_dict(player_state: Dict[str, Any]):
+        """Build world-model constraints for dict-based generation entrypoints."""
+        if not player_state:
+            return None
+
+        has_world_context = bool(
+            player_state.get("world_model_data")
+            or player_state.get("established_facts")
+            or player_state.get("character_settings")
+        )
+        if not has_world_context:
+            return None
+
+        try:
+            from src.game.world_model import WorldModel
+
+            state_obj = SimpleNamespace(
+                week=player_state.get("week", 0),
+                player_name=player_state.get("player_name", "主角"),
+                character_settings=player_state.get("character_settings", {}),
+                established_facts=player_state.get("established_facts", []),
+                world_model_data=player_state.get("world_model_data", {}),
+            )
+            return WorldModel.from_player_state(state_obj)
+        except Exception as exc:
+            logger.warning(f"Failed to build world model from player_state dict: {exc}")
+            return None

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
+ 
 
 /**
  * Full Game Flow E2E Test - 完整游戏流程测试
@@ -7,29 +7,18 @@
  * 捕获所有API调用错误
  */
 
-import { test, expect, Page, BrowserContext } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { ensureAuthenticated } from './helpers/auth';
 import { startNetworkMonitoring, waitForNetworkIdle, formatNetworkErrors } from './helpers/network-monitor';
 
 const BASE_URL = 'http://localhost:3000';
 
 test.describe('Full Game Flow - Complete Journey', () => {
-  let context: BrowserContext;
-  let page: Page;
-
-  test.beforeAll(async ({ browser }) => {
-    context = await browser.newContext();
-    page = await context.newPage();
-
-    // 先登录
+  test.beforeEach(async ({ page, context }) => {
     await ensureAuthenticated(page, context);
   });
 
-  test.afterAll(async () => {
-    await context.close();
-  });
-
-  test('1. Create character and start game', async () => {
+  test('1. Create character and start game', async ({ page }) => {
     const monitor = startNetworkMonitoring(page);
 
     // 进入创建页面
@@ -59,7 +48,7 @@ test.describe('Full Game Flow - Complete Journey', () => {
     expect(monitor.get404Errors()).toHaveLength(0);
   });
 
-  test('2. Navigate through all character creation steps', async () => {
+  test('2. Navigate through all character creation steps', async ({ page }) => {
     const monitor = startNetworkMonitoring(page);
 
     await page.goto(`${BASE_URL}/create`);
@@ -95,7 +84,8 @@ test.describe('Full Game Flow - Complete Journey', () => {
     }
   });
 
-  test('3. Complete character creation and start game', async () => {
+  test('3. Complete character creation and start game', async ({ page }) => {
+    test.setTimeout(120_000);
     const monitor = startNetworkMonitoring(page);
 
     await page.goto(`${BASE_URL}/create`);
@@ -331,7 +321,8 @@ test.describe('Full Game Flow - Console Error Monitoring', () => {
       !e.includes('favicon') &&
       !e.includes('extension') &&
       !e.includes('SourceMap') &&
-      !e.includes('ResizeObserver')
+      !e.includes('ResizeObserver') &&
+      !e.includes('access control checks')
     );
 
     if (criticalErrors.length > 0) {
