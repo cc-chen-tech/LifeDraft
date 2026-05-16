@@ -229,7 +229,7 @@ def test_music_recommendation_keeps_legacy_fields_and_exposes_music_brief():
     assert response.songs[0].source == "netease"
 
 
-def test_playlist_queue_policy_preserves_current_and_first_upcoming_on_merge():
+def test_playlist_queue_policy_preserves_current_and_replaces_upcoming_on_merge():
     policy = PlaylistQueuePolicy()
     current = {"id": 1, "name": "Current", "source": "netease"}
     near_term = {"id": 2, "name": "NearTerm", "source": "netease"}
@@ -242,8 +242,8 @@ def test_playlist_queue_policy_preserves_current_and_first_upcoming_on_merge():
     merged = policy.merge_recommendations(current, [near_term], incoming)
 
     assert merged.current_song == current
-    assert [item["id"] for item in merged.queue] == [2, 3, "asset-9"]
-    assert merged.queue[2]["source"] == "ai_generated"
+    assert [item["id"] for item in merged.queue] == [3, "asset-9"]
+    assert merged.queue[1]["source"] == "ai_generated"
 
 
 def test_generation_job_interface_defaults_to_pending_background_ai_music():

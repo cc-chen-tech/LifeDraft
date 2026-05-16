@@ -164,6 +164,7 @@ run_contract() {
     python -m pytest \
         tests/test_api_contract.py \
         tests/test_gate_contracts_no_mock.py \
+        tests/test_music_playlist_contract.py \
         tests/test_story_music_recommendation_contract.py \
         -v
     local result=$?
