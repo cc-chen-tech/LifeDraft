@@ -15,6 +15,29 @@ import type {
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 /**
+ * 401 重定向防抖：防止并发请求竞态导致多次重定向
+ * 一旦触发登出，后续 401 不再重复处理
+ */
+let isRedirectingTo401 = false;
+
+function handle401Redirect() {
+  if (isRedirectingTo401) return; // 已在处理中，跳过
+  isRedirectingTo401 = true;
+  
+  console.warn('[API] Session expired or invalid, redirecting to home...');
+  // 清除 localStorage 中的游戏状态
+  localStorage.removeItem('gameId');
+  localStorage.removeItem('gameState');
+  // 跳转到首页（如果不是已经在首页）
+  if (typeof window !== 'undefined' && window.location.pathname !== '/') {
+    window.location.href = '/';
+  }
+  
+  // 3 秒后重置标志，允许后续重新触发（以防跳转失败）
+  setTimeout(() => { isRedirectingTo401 = false; }, 3000);
+}
+
+/**
  * L-03: Fetch with retry mechanism for transient failures
  * Implements exponential backoff for server errors (5xx)
  */
@@ -43,8 +66,13 @@ async function fetchWithRetry(
       
       if (timeoutId) clearTimeout(timeoutId);
       
-      // Only retry on server errors (5xx), not client errors (4xx)
-      if (response.ok || response.status < 500) {
+      // Only retry on server errors (5xx) or transient 401 (cookie forwarding race)
+      if (response.ok || (response.status < 500 && response.status !== 401)) {
+        return response;
+      }
+      
+      // 401 只重试一次（第一次可能是 cookie 转发竞态）
+      if (response.status === 401 && i > 0) {
         return response;
       }
       
@@ -87,6 +115,12 @@ async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: num
       throw Object.assign(new Error(error.message || 'Request failed'), { status: response.status });
     }
 
+    // ★ 401 未授权 - 收集面板请求静默处理，不触发重定向
+    if (response.status === 401 && url.includes('/collection/')) {
+      console.warn(`[API] Collection API 401 — cookie may not have been forwarded: ${url}`);
+      throw Object.assign(new Error(error.message || 'Authentication required'), { status: response.status });
+    }
+
     // ★ 404 未找到 - 对于场景图片查询，这是正常的未生成状态，不显示错误日志
     if (response.status === 404 && url.includes('/images/scene/')) {
       // 静默处理，前端会轮询直到图片生成完成
@@ -95,16 +129,9 @@ async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: num
 
     console.error(`[API Error] ${url} failed with ${response.status}:`, error.message || response.statusText);
     
-    // ★ 401 未授权 - 清除本地认证状态并跳转到首页（登录页）
+    // ★ 401 未授权 - 使用防竞态的重定向处理
     if (response.status === 401) {
-      console.warn('[API] Session expired or invalid, redirecting to home...');
-      // 清除 localStorage 中的游戏状态
-      localStorage.removeItem('gameId');
-      localStorage.removeItem('gameState');
-      // 跳转到首页（如果不是已经在首页）
-      if (typeof window !== 'undefined' && window.location.pathname !== '/') {
-        window.location.href = '/';
-      }
+      handle401Redirect();
     }
     
     throw Object.assign(new Error(error.message || 'Request failed'), { status: response.status });
@@ -136,7 +163,7 @@ export const api = {
   games: {
     list: () =>
       fetchJson<Array<{ game_id: number; player_name: string; age: number; week: number; updated_at: string }>>('/games'),
-    create: (data: { player_name: string; life_vision?: string; character_settings?: CharacterSettings; language?: string }) =>
+    create: (data: { player_name: string; life_vision?: string; character_settings?: CharacterSettings; language?: string; constraint_level?: string }) =>
       fetchJson<{ game_id: number }>('/games', {
         method: 'POST',
         body: JSON.stringify(data),
@@ -148,6 +175,7 @@ export const api = {
         progress: GameProgress;
         round_info: RoundInfo;
         current_event: CurrentEventData | null;
+        constraint_level: "fast" | "expert" | "master";
       }>(`/games/${gameId}`),
     save: (gameId: number) =>
       fetchJson<{ success: boolean }>(`/games/${gameId}/save`, { method: 'POST' }),
@@ -160,7 +188,28 @@ export const api = {
         progress: GameProgress;
         round_info: RoundInfo;
         current_event: CurrentEventData | null;
+        constraint_level: "fast" | "expert" | "master";
       }>('/games/active'),
+    updateSettings: (gameId: number, data: { constraint_level?: string }) =>
+      fetchJson<{ success: boolean; message: string }>(`/games/${gameId}/settings`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+    patchCharacterSettings: (gameId: number, characterSettings: CharacterSettings) =>
+      fetchJson<{ success: boolean; message: string }>(`/games/${gameId}/character-settings`, {
+        method: 'PATCH',
+        body: JSON.stringify({ character_settings: characterSettings }),
+      }),
+    // Narrative style
+    listNarrativeStyles: (gameId: number) =>
+      fetchJson<Array<{ style_id: string; style_name: string; description: string }>>(`/games/${gameId}/narrative-style-options`),
+    getNarrativeStyle: (gameId: number) =>
+      fetchJson<{ style_id: string; style_name: string }>(`/games/${gameId}/narrative-style`),
+    updateNarrativeStyle: (gameId: number, styleId: string) =>
+      fetchJson<{ success: boolean; message: string }>(`/games/${gameId}/narrative-style`, {
+        method: 'PUT',
+        body: JSON.stringify({ style_id: styleId }),
+      }),
     getEnding: (gameId: number) =>
       fetchJson<{
         ending_name: string;
@@ -198,12 +247,15 @@ export const api = {
         progress: GameProgress;
         round_info: RoundInfo;
         current_event: CurrentEventData | null;
-      }>(`/games/${gameId}/state`),
+        constraint_level: "fast" | "expert" | "master";
+        narrative_style_id?: string | null;
+        narrative_style_name?: string | null;
+      }>(`/games/${gameId}`),
     generateEvent: (gameId: number, data?: { custom_choices?: string[] }) =>
       fetchJson<{
         story: string;
         options: Array<{ text: string; effects?: EffectValues }>;
-      }>(`/games/${gameId}/events`, {
+      }>(`/games/${gameId}/event-sync`, {
         method: 'POST',
         body: JSON.stringify(data || {}),
       }),
@@ -234,13 +286,10 @@ export const api = {
     // Synchronous choice methods (non-streaming)
     makeChoiceSync: (gameId: number, data: { option_index: number }) =>
       fetchJson<{
-        result: string;
-        story: string;
-        current_round: number;
-        current_week: number;
-        player_state: PlayerState;
-        summary?: string;
-        need_weekly_summary?: boolean;
+        story_continuation: string;
+        summary: string;
+        effects_applied: Record<string, number>;
+        need_weekly_summary: boolean;
         weekly_summary?: string;
         game_over?: boolean;
       }>(`/games/${gameId}/choice-sync`, {
@@ -249,13 +298,10 @@ export const api = {
       }),
     makeCustomChoiceSync: (gameId: number, data: { custom_text: string }) =>
       fetchJson<{
-        result: string;
-        story: string;
-        current_round: number;
-        current_week: number;
-        player_state: PlayerState;
-        summary?: string;
-        need_weekly_summary?: boolean;
+        story_continuation: string;
+        summary: string;
+        effects_applied: Record<string, number>;
+        need_weekly_summary: boolean;
         weekly_summary?: string;
         game_over?: boolean;
       }>(`/games/${gameId}/custom-choice-sync`, {
@@ -275,7 +321,7 @@ export const api = {
       language?: string;
       character_settings?: CharacterSettings
     }) =>
-      fetchJson<{ era: string; era_description: string }>('/character/setting', {
+      fetchJson<Record<string, unknown>>('/character/setting', {
         method: 'POST',
         body: JSON.stringify(data),
       }),

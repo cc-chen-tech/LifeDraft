@@ -9,7 +9,34 @@ import pytest
 from fastapi import HTTPException
 
 from src.api.routers.images import get_round_scene_image
-from src.database.models import Game, GameState, SceneImage, SessionLocal, User, init_db
+from src.database.models import (
+    Base,
+    Game,
+    GameState,
+    SceneImage,
+    SessionLocal,
+    User,
+    engine,
+    init_db,
+)
+from src.database.user_manager import UserManager
+
+
+def test_user_registration_recovers_when_previous_test_removed_schema() -> None:
+    """E2E auth should recover if a destructive DB test dropped SQLite tables."""
+    init_db()
+    Base.metadata.drop_all(engine)
+
+    manager = UserManager()
+    try:
+        user, private_id = manager.create_user("Recovered User")
+
+        assert user.user_id is not None
+        assert user.display_name == "Recovered User"
+        assert private_id
+    finally:
+        manager.close()
+        init_db()
 
 
 def test_round_history_save_read_chain_uses_real_database() -> None:

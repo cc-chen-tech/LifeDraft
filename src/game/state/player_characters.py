@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
     from src.game.state.character_state import CharacterState
-    from src.game.state.player_state import PlayerState
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +34,9 @@ class PlayerCharactersMixin:
         self.characters[character.name] = character.model_dump()
         # 同步到relationships字典
         self.relationships[character.name] = character.affinity
-        logger.debug(f"Added character: {character.name} with affinity {character.affinity}")
+        logger.debug(
+            f"Added character: {character.name} with affinity {character.affinity}"
+        )
 
     def get_character(self, name: str) -> Optional["CharacterState"]:
         """

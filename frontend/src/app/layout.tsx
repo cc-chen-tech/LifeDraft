@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Noto_Sans_SC, Noto_Serif_SC } from "next/font/google";
 import ErrorReporter from "@/components/ErrorReporter";
+import GlobalMusicPlayerWrapper from "@/components/game/GlobalMusicPlayerWrapper";
 import "./globals.css";
 
 const notoSansSC = Noto_Sans_SC({
@@ -41,6 +42,7 @@ export default function RootLayout({
       >
         <ErrorReporter />
         {children}
+        <GlobalMusicPlayerWrapper />
       </body>
     </html>
   );

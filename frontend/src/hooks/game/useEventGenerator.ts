@@ -34,6 +34,7 @@ interface UseEventGeneratorParams {
     event: { story: string; options: EventOption[] } | null;
   } | null>;
   prefetchingRef: React.MutableRefObject<boolean>;
+  isRetryingRef: React.MutableRefObject<boolean>;
 }
 
 /**
@@ -61,6 +62,7 @@ export function useEventGenerator({
   prefetchAbortRef,
   prefetchResultRef,
   prefetchingRef,
+  isRetryingRef,
 }: UseEventGeneratorParams) {
   // Event handlers object for utility functions
   const eventHandlers: EventHandlers = {
@@ -74,6 +76,7 @@ export function useEventGenerator({
     setConnectionStatus: setConnectionStatus as (status: string | null) => void,
     appendStoryText,
     generatingRef,
+    isRetryingRef,
   };
 
   // Generate event function
@@ -90,6 +93,10 @@ export function useEventGenerator({
     }
     if (generatingRef.current) {
       console.warn("[generateEvent] Blocked: already generating");
+      return;
+    }
+    if (isRetryingRef.current) {
+      console.warn("[generateEvent] Blocked: retry in progress within existing SSE stream");
       return;
     }
 
@@ -120,7 +127,7 @@ export function useEventGenerator({
       gameId,
       {
         onStory: appendStoryText,
-        onStatus: (status) => handleStatusUpdate(status, setProcessing),
+        onStatus: (status) => handleStatusUpdate(status, setProcessing, isRetryingRef),
         onConnectionStatus: (status) => {
           setConnectionStatus(status);
           if (status !== "reconnecting") {
@@ -158,10 +165,13 @@ export function useEventGenerator({
             }
           }
 
-          if (!errorMsg.includes("404") && errorMsg !== "undefined" && errorMsg !== "Unknown error") {
+          const isTimeout = errorMsg.includes("Timeout waiting for event generation");
+          const isRecoverable = errorMsg === "Unknown error" || errorMsg === "undefined" || isTimeout;
+
+          if (!errorMsg.includes("404") && !isRecoverable) {
             console.error("SSE final error:", err);
-          } else if (errorMsg === "Unknown error" || errorMsg === "undefined") {
-            console.warn("[generateEvent] SSE connection interrupted, will start polling...");
+          } else if (isRecoverable) {
+            console.warn("[generateEvent] SSE connection interrupted or timed out, will start polling...");
           }
 
           if (pollingRef.current) {
@@ -174,8 +184,8 @@ export function useEventGenerator({
           setProcessing(true, "generating_story");
           setConnectionStatus(null);
 
-          const maxPollingTime = 120000;
-          const pollInterval = 3000;
+          const maxPollingTime = 180000;  // 3分钟，改善用户体验
+          const pollInterval = 5000;      // 5秒，更快检测完成状态
           const startTime = Date.now();
 
           const pollForCompletion = async (): Promise<boolean> => {
@@ -211,11 +221,12 @@ export function useEventGenerator({
             console.log(`Polling... (${Math.round((Date.now() - startTime) / 1000)}s elapsed)`);
           }
 
-          console.error("Polling timeout");
+          console.warn("Polling timeout after 5 minutes, entering error state");
           setProcessing(false);
           setConnectionStatus("error");
           generatingRef.current = false;
           pollingRef.current = false;
+          isRetryingRef.current = false;
           setPhase("error");
         },
       },
@@ -311,6 +322,7 @@ export function useEventGenerator({
       generatingRef.current = false;
       pollingRef.current = false;
       prefetchingRef.current = false;
+      isRetryingRef.current = false;
     };
   }, []);
 

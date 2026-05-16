@@ -12,18 +12,16 @@ All existing public method signatures are preserved for backward compatibility.
 
 import json
 import logging
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from config.settings import PRESETS_DIR, settings
 from src.ai.cache import EventCache
 from src.ai.client import AIClient
-from src.ai.models import EventOption, GameEvent
+from src.ai.models import GameEvent
 from src.ai.option_generator import OptionGenerator
 from src.ai.story_generator import StoryGenerator
 from src.ai.story_rewriter import StoryRewriter
 from src.ai.summary_generator import SummaryGenerator
-from src.ai.utils import extract_json
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +38,7 @@ class EventGenerator:
         api_key: Optional[str] = None,
         model: Optional[str] = None,
         use_cache: bool = True,
+        quality_level=None,
     ):
         """
         Initialize the event generator.
@@ -48,6 +47,7 @@ class EventGenerator:
             api_key: OpenAI API key (defaults to settings)
             model: OpenAI model name (defaults to settings)
             use_cache: Whether to use event cache
+            quality_level: Story generation quality level (fast/expert/master)
         """
         # Core AI client (new abstraction)
         self.ai_client = AIClient(api_key, model)
@@ -60,7 +60,7 @@ class EventGenerator:
         self.preset_events = self._load_preset_events()
 
         # Sub-services
-        self.story_gen = StoryGenerator(self.ai_client)
+        self.story_gen = StoryGenerator(self.ai_client, quality_level=quality_level)
         self.option_gen = OptionGenerator(self.ai_client)
         self.summary_gen = SummaryGenerator(self.ai_client)
         self.rewriter = StoryRewriter(self.ai_client)
@@ -187,7 +187,9 @@ class EventGenerator:
                 logger.warning(f"Failed to load preset events: {e}")
         return {}
 
-    def _get_preset_milestone_event(self, week: int, language: str) -> Optional[GameEvent]:
+    def _get_preset_milestone_event(
+        self, week: int, language: str
+    ) -> Optional[GameEvent]:
         """Get preset milestone event if available."""
         if not self.preset_events:
             return None
@@ -494,6 +496,10 @@ class EventGenerator:
         return SummaryGenerator._clean_summary_text(summary)
 
     @staticmethod
-    def _extract_summary_from_raw(content: str, original_story: str, language: str) -> str:
+    def _extract_summary_from_raw(
+        content: str, original_story: str, language: str
+    ) -> str:
         """Extract summary from raw response (delegates to SummaryGenerator)."""
-        return SummaryGenerator._extract_summary_from_raw(content, original_story, language)
+        return SummaryGenerator._extract_summary_from_raw(
+            content, original_story, language
+        )

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import type { EventOption } from "@/lib/types";
 import type { Phase } from "./usePhaseManager";
 import type { SceneImageInfo } from "@/components/game/RoundHistoryDrawer";
@@ -73,9 +73,36 @@ export function useHistoryViewer({
 
   // Whether viewing history (not current round)
   const isViewingHistory = historyRoundIndex !== null;
-  
+
   // ★ 实际显示的文本：历史模式下显示历史文本，否则显示当前文本
   const displayText = isViewingHistory ? (historyDisplayText || '') : storyText;
+
+  // ★ 当历史抽屉被关闭（点击外部或按 Escape）时，自动返回当前轮次
+  // 避免 isViewingHistory 一直为 true，导致底部操作栏按钮被禁用
+  const prevShowHistoryRef = useRef(showHistory);
+  useEffect(() => {
+    const wasOpen = prevShowHistoryRef.current;
+    prevShowHistoryRef.current = showHistory;
+    if (wasOpen && !showHistory && historyRoundIndex !== null) {
+      // 恢复备份的 phase
+      if (historyPhaseBackup) {
+        setPhase(historyPhaseBackup);
+      }
+      // 清除历史状态
+      setHistoryRoundIndex(null);
+      setHistoryDisplayText(null);
+      setHistoryPhaseBackup(null);
+      // 清除历史图片状态
+      setHistorySceneImage(null);
+      setIsLoadingHistoryImage(false);
+      setIsGeneratingHistoryImage(false);
+      setIsRegeneratingHistoryImage(false);
+      // 恢复当前事件的选项
+      if (currentEvent?.options?.length) {
+        setOptions(currentEvent.options);
+      }
+    }
+  }, [showHistory, historyRoundIndex, historyPhaseBackup, setPhase, currentEvent, setOptions]);
 
   // Open history drawer
   const handleOpenHistory = useCallback(() => {

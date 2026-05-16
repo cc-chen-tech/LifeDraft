@@ -12,8 +12,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
-from src.ai.image_client import (ContentInspectionError, ImageClient,
-                                 ImageGenerationError)
+from src.ai.image_client import ImageClient
+from src.ai.image_exceptions import (ContentInspectionError,
+                                     ImageGenerationError)
 from src.database.models import Image as ImageModel
 from src.database.models import SceneImage
 from src.services.image_service import get_image_thread_pool  # C-05: 使用共享线程池
@@ -119,9 +120,11 @@ class RoundIllustrationService:
                 "era": self._extract_era_from_settings(character_settings),
             }
 
-            scene_desc, illustration_prompt = self.image_client.analyze_story_for_illustration(
-                story_text=story_text[:2000],  # 限制长度避免token超限
-                character_info=char_info,
+            scene_desc, illustration_prompt = (
+                self.image_client.analyze_story_for_illustration(
+                    story_text=story_text[:2000],  # 限制长度避免token超限
+                    character_info=char_info,
+                )
             )
 
             logger.info(f"[RoundIllustration] Selected scene: {scene_desc[:50]}...")
@@ -152,7 +155,9 @@ class RoundIllustrationService:
                 entity_type = entity.get("type", "character")
                 entity_desc = entity.get("description", "")
 
-                entity_image = self._find_entity_image(existing_images, entity_name or "")
+                entity_image = self._find_entity_image(
+                    existing_images, entity_name or ""
+                )
                 if entity_image:
                     ref_url = self._get_image_url_as_base64(
                         entity_image, game_id=game_id
@@ -239,11 +244,14 @@ class RoundIllustrationService:
 
         except ContentInspectionError as e:
             logger.warning(f"[RoundIllustration] Content inspection failed: {e}")
+            raise  # ★ 重新抛出，让调用方知悉失败
         except ImageGenerationError as e:
             logger.error(f"[RoundIllustration] Image generation failed: {e}")
+            raise  # ★ 重新抛出，避免外层打印虚假的 "success" 日志
         except Exception as e:
             logger.error(f"[RoundIllustration] Unexpected error: {e}")
             self.db.rollback()
+            raise  # ★ 重新抛出未知异常
 
     def _generate_scene_image(
         self,
@@ -272,18 +280,34 @@ class RoundIllustrationService:
 {illustration_prompt}
 保持人物的外貌特征和服装不变，融入新的场景环境中。"""
 
-            results = self.image_client.edit_image(
-                reference_image=reference_urls[0],  # 使用主参考图
-                prompt=edit_prompt,
-                size="1664*928",  # 16:9 宽屏
-                num_images=1,
-            )
+            try:
+                results = self.image_client.edit_image(
+                    reference_image=reference_urls[0],  # 使用主参考图
+                    prompt=edit_prompt,
+                    size="1664*928",  # 16:9 宽屏
+                    num_images=1,
+                )
 
-            if results:
-                image_data, _ = results[0]
-                return image_data, final_prompt
-            else:
-                raise ImageGenerationError("Failed to generate scene image with reference")
+                if results:
+                    image_data, _ = results[0]
+                    return image_data, final_prompt
+            except ContentInspectionError:
+                # 内容审核错误不重试，直接抛出（降级也无意义，prompt 本身有问题）
+                raise
+            except ImageGenerationError as e:
+                logger.warning(
+                    f"[RoundIllustration] Edit image failed: {e}, "
+                    f"falling back to text-to-image (reference_urls={len(reference_urls)})"
+                )
+
+            # ★ 降级到文生图：edit 失败时仍要保证用户能看到场景插画
+            logger.info("[RoundIllustration] Falling back to text-to-image generation")
+            image_data, _ = self.image_client.generate_image(
+                prompt=final_prompt,
+                size="1664*928",
+                extra_params={"prompt_extend": True},
+            )
+            return image_data, final_prompt
         else:
             # 没有参考图片，使用文生图
             image_data, _ = self.image_client.generate_image(
@@ -293,10 +317,15 @@ class RoundIllustrationService:
             )
             return image_data, final_prompt
 
-    def _get_player_image(self, existing_images: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    def _get_player_image(
+        self, existing_images: List[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
         """获取玩家主形象图片"""
         for img in existing_images:
-            if img.get("image_type") == "character" and img.get("entity_key") == "player_main":
+            if (
+                img.get("image_type") == "character"
+                and img.get("entity_key") == "player_main"
+            ):
                 return img
         # 如果没有标记为player_main的，返回第一个character图片
         for img in existing_images:
@@ -343,7 +372,9 @@ class RoundIllustrationService:
             else:
                 # 向后兼容：如果没有提供 game_id，只按 image_id 查询（不推荐）
                 image_model = (
-                    self.db.query(ImageModel).filter(ImageModel.image_id == image_id).first()
+                    self.db.query(ImageModel)
+                    .filter(ImageModel.image_id == image_id)
+                    .first()
                 )
 
             if not image_model:
@@ -356,11 +387,15 @@ class RoundIllustrationService:
             if not image_data:
                 return None
 
+            # ★ 压缩参考图片：图生图 API 不需要高分辨率参考图，
+            # 过大的 base64 payload 会导致上传超时（如 2.3MB PNG → ~3MB base64）
+            image_data = self._compress_reference_image(image_data)
+
             # 转换为base64
             import base64
 
-            ext = image_model.storage_path.rsplit(".", 1)[-1].lower()
-            mime_type = "image/png" if ext == "png" else "image/jpeg"
+            # 压缩后统一用 JPEG（更小），即使是原 PNG
+            mime_type = "image/jpeg"
             base64_data = base64.b64encode(image_data).decode("utf-8")
 
             return f"data:{mime_type};base64,{base64_data}"
@@ -368,6 +403,62 @@ class RoundIllustrationService:
         except Exception as e:
             logger.warning(f"[RoundIllustration] Failed to get image as base64: {e}")
             return None
+
+    def _compress_reference_image(
+        self, image_data: bytes, max_dimension: int = 512, quality: int = 85
+    ) -> bytes:
+        """压缩参考图片，减小图生图 API 的 base64 payload 大小。
+
+        Args:
+            image_data: 原始图片二进制数据
+            max_dimension: 最长边限制（默认 512px，图生图 API 足够）
+            quality: JPEG 质量
+
+        Returns:
+            压缩后的 JPEG 二进制数据
+        """
+        try:
+            import io
+
+            from PIL import Image
+
+            img: Image.Image = Image.open(io.BytesIO(image_data))
+
+            # 如果图片尺寸超过限制，等比缩放
+            width, height = img.size
+            if max(width, height) > max_dimension:
+                ratio = max_dimension / max(width, height)
+                new_size = (int(width * ratio), int(height * ratio))
+                img = img.resize(new_size, Image.Resampling.LANCZOS)
+                logger.info(
+                    f"[RoundIllustration] Resized reference image: {width}x{height} → {new_size[0]}x{new_size[1]}"
+                )
+
+            # 转为 RGB（去除透明通道）并保存为 JPEG
+            if img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
+
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=quality, optimize=True)
+            compressed = buf.getvalue()
+
+            original_kb = len(image_data) / 1024
+            compressed_kb = len(compressed) / 1024
+            reduction = (
+                (1 - len(compressed) / len(image_data)) * 100 if image_data else 0
+            )
+            logger.info(
+                f"[RoundIllustration] Compressed reference image: "
+                f"{original_kb:.1f}KB → {compressed_kb:.1f}KB ({reduction:.0f}% reduction)"
+            )
+
+            return compressed
+
+        except Exception as e:
+            logger.warning(
+                f"[RoundIllustration] Image compression failed, using original: {e}"
+            )
+            return image_data
 
     def _extract_involved_entities(
         self,
@@ -496,7 +587,9 @@ class RoundIllustrationService:
                             {
                                 "name": item_name,
                                 "type": "item",
-                                "description": fact.get("fact", f"重要物品：{item_name}"),
+                                "description": fact.get(
+                                    "fact", f"重要物品：{item_name}"
+                                ),
                             }
                         )
 
@@ -531,7 +624,11 @@ class RoundIllustrationService:
             # 在 established_facts 中出现的次数
             if established_facts:
                 for fact in established_facts:
-                    text = (fact.get("subject", "") or "") + " " + (fact.get("fact", "") or "")
+                    text = (
+                        (fact.get("subject", "") or "")
+                        + " "
+                        + (fact.get("fact", "") or "")
+                    )
                     if name and name in text:
                         count += 1
             # 在 world_model_data.dynamic_facts 中出现的次数（possession 类型）
@@ -591,7 +688,9 @@ class RoundIllustrationService:
                                 {
                                     "name": landmark_name,
                                     "type": "location",
-                                    "description": fact.get("fact", f"重要地标：{landmark_name}"),
+                                    "description": fact.get(
+                                        "fact", f"重要地标：{landmark_name}"
+                                    ),
                                 }
                             )
 
@@ -713,7 +812,9 @@ class RoundIllustrationService:
                 if week is not None:
                     return week  # type: ignore[no-any-return]
         except Exception as e:
-            logger.warning(f"[RoundIllustration] Failed to get current week from database: {e}")
+            logger.warning(
+                f"[RoundIllustration] Failed to get current week from database: {e}"
+            )
 
         return 0  # 默认返回 0
 

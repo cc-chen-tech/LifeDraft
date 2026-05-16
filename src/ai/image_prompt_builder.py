@@ -16,6 +16,109 @@ logger = logging.getLogger(__name__)
 class ImagePromptBuilder:
     """图像 Prompt 构建器"""
 
+    # Sci-fi triggering words that should be removed from era descriptions
+    # for image generation, as they cause the model to generate cyberpunk/
+    # futuristic visuals even when negative prompts are used.
+    _SCI_FI_ERA_KEYWORDS = [
+        "人工智能",
+        "AI",
+        "数字化",
+        "虚拟现实",
+        "VR",
+        "全息投影",
+        "全息",
+        "科技飞速进步",
+        "科技革命",
+        "赛博朋克",
+        "机械义肢",
+        "电子眼",
+        "飞行汽车",
+        "悬浮载具",
+        "发光",
+        "霓虹",
+        "量子",
+        "纳米",
+        "基因编辑",
+        "脑机接口",
+        "元宇宙",
+        "区块链",
+        "数字孪生",
+        "虚拟与现实交织",
+        "抽象光影",
+    ]
+
+    def _sanitize_era_for_image(self, era: str) -> str:
+        """清洗 era 描述中的科幻暗示词，防止图像模型生成 sci-fi 视觉。
+
+        故事生成的 era 描述通常包含叙事性词汇（如"人工智能时代"），
+        这些词汇对图像模型是强 sci-fi 暗示。本函数将其替换为中性视觉描述。
+
+        Args:
+            era: 原始 era 描述
+
+        Returns:
+            清洗后的 era 描述，保留时间/地点信息，移除科幻暗示
+        """
+        if not era:
+            return "现代"
+
+        era_clean = era
+        # 直接移除/替换科幻触发词
+        replacements = {
+            "人工智能": "",
+            "AI": "",
+            "数字化与实体交融": "现代生活",
+            "数字化": "",
+            "虚拟现实": "",
+            "VR": "",
+            "全息投影": "",
+            "全息": "",
+            "科技飞速进步": "",
+            "科技革命": "",
+            "赛博朋克": "",
+            "机械义肢": "",
+            "电子眼": "",
+            "飞行汽车": "",
+            "悬浮载具": "",
+            "发光": "",
+            "霓虹": "",
+            "量子": "",
+            "纳米": "",
+            "基因编辑": "",
+            "脑机接口": "",
+            "元宇宙": "",
+            "区块链": "",
+            "数字孪生": "",
+            "虚拟与现实交织": "现实",
+            "抽象光影": "自然光线",
+        }
+
+        for old, new in replacements.items():
+            era_clean = era_clean.replace(old, new)
+
+        # 清理多余的标点、空格和空片段
+        import re
+
+        era_clean = re.sub(r"[，,、]\s*[，,、]", "，", era_clean)
+        era_clean = re.sub(r"[。.]\s*[。.]", "。", era_clean)
+        era_clean = era_clean.strip("，,。.")
+
+        # 如果清洗后内容过短或为空，使用默认安全描述
+        if len(era_clean) < 5 or era_clean in ("现代", "当代", ""):
+            # 尝试提取年份
+            year_match = re.search(r"20\d{2}", era)
+            year = year_match.group(0) if year_match else "2024"
+            return f"{year}年中国，现代都市生活，写实主义风格"
+
+        # 如果清洗后仍包含太多科幻残余，强制 fallback
+        for kw in self._SCI_FI_ERA_KEYWORDS:
+            if kw in era_clean:
+                year_match = re.search(r"20\d{2}", era)
+                year = year_match.group(0) if year_match else "2024"
+                return f"{year}年中国，现代都市生活，写实主义风格"
+
+        return era_clean
+
     def build_character_prompt(
         self,
         name: str,
@@ -39,17 +142,42 @@ class ImagePromptBuilder:
         Returns:
             构建好的prompt
         """
+        # ★ 清洗 era 描述中的科幻暗示词，防止污染图像生成
+        safe_era = self._sanitize_era_for_image(era)
+
+        # ★ 消毒人物名称，防止 prompt 注入
+        from src.ai.prompt_sanitizer import sanitize_player_name
+
+        safe_name = sanitize_player_name(name)
+
         parts = []
 
         # 最重要：用户的修改意见放在最前面
         if feedback:
-            parts.append(f"【必须执行的修改】{feedback}。这是最重要的要求，必须严格体现在图片中。")
+            parts.append(
+                f"【必须执行的修改】{feedback}。这是最重要的要求，必须严格体现在图片中。"
+            )
+
+        # ★ 写实主义红线约束放在最前面，确保模型优先关注
+        parts.extend(
+            [
+                "【写实主义约束 - 最高优先级，违反即失败】",
+                "- 必须是真实世界的自然摄影呈现，绝对禁止科幻、奇幻、超现实元素",
+                "- 禁止赛博朋克：不得穿金属质感夹克、电路纹理服装、发光线条装饰、机械元素",
+                "- 禁止全息投影：背景不得出现全息屏幕、悬浮信息面板、全息建筑线框",
+                "- 禁止发光效果：眼睛不得发红光/蓝光，禁止任何发光物体或霓虹光效",
+                "- 禁止未来科技：不得出现科幻城市、飞行汽车、高科技机械背景",
+                "- 禁止品牌Logo：不得出现星巴克、苹果等任何真实商业品牌标识",
+                "- 日常服装：穿着普通日常服装（棉质衬衫、T恤、针织外套、牛仔裤、休闲裤、运动鞋等）",
+                "- 真实背景：日常生活场景（街道、公园、室内、办公室、咖啡厅等），自然光线",
+            ]
+        )
 
         # 基础信息
         parts.extend(
             [
-                f"【人物】{name}",
-                f"【时代背景】{era}",
+                f"【人物】{safe_name}",
+                f"【时代背景】{safe_era}",
             ]
         )
 
@@ -89,7 +217,7 @@ class ImagePromptBuilder:
         else:
             parts.extend(
                 [
-                    "【风格】写实风格，电影质感",
+                    "【风格】写实摄影风格，电影质感",
                     "- 细节丰富：面部特征、服装纹理、头发丝都清晰可见",
                     "- 光影自然：柔和过渡，避免过度平滑的AI感",
                     "- 色彩适中：饱和度适中，肤色自然真实",
@@ -103,7 +231,8 @@ class ImagePromptBuilder:
                 "【质量要求】",
                 "- 全身完整展示：头部、躯干、四肢、脚部全部可见",
                 "- 面部清晰：五官比例协调，特征鲜明可辨",
-                "- 服装细节：款式、颜色、褶皱、材质都清晰呈现",
+                "- 人物一致性：如果此前已有该人物的图片，必须保持相同的脸型、五官比例和发型",
+                "- 服装细节：款式、颜色、褶皱、材质都清晰呈现，符合2024年日常穿着",
                 "- 光影立体：有明显的主光源方向，阴影柔和有层次",
                 "- 避免畸形：手指、五官比例正确，没有明显的AI畸变",
             ]
@@ -130,7 +259,9 @@ class ImagePromptBuilder:
         else:
             parts.append("风格：写实风格，细节丰富，氛围感强。")
 
-        parts.append("要求：场景清晰、构图美观、有代入感。画面中不要出现任何人物，仅展示场景本身。")
+        parts.append(
+            "要求：场景清晰、构图美观、有代入感。画面中不要出现任何人物，仅展示场景本身。"
+        )
 
         return "".join(parts)
 
@@ -240,12 +371,15 @@ class DeepSeekPromptEnhancer:
 
 要求：
 1. 描述人物的外貌特征（面部、发型、体型、肤色等）
-2. 描述人物的服装和穿着风格
+2. 描述人物的服装和穿着风格（必须是日常写实服装，禁止科幻/赛博朋克风格）
 3. 描述人物的气质和神态
 4. 确保描述适合 AI 绘画模型理解
 5. 输出格式为纯文本描述，不要包含任何 JSON 或其他格式
 6. 描述应该足够详细，让 AI 能够生成高质量的图片
 7. 强调全身像、脚部可见
+8. 写实摄影风格：人物必须是真实世界的自然呈现，禁止任何科幻、奇幻、超现实元素
+9. 日常服装：根据时代背景穿着普通日常服装（衬衫、T恤、外套、牛仔裤、休闲裤等），禁止金属质感、电路纹理、发光装饰
+10. 真实背景：日常生活场景，自然光线，禁止科幻城市、全息投影、霓虹光效
 
 输出应该是一段连贯的中文描述，约100-200字。"""
 
@@ -316,6 +450,14 @@ class DeepSeekPromptEnhancer:
 2. 场景应该能够展现主角的性格或处境
 3. 避免选择过于抽象或内心独白的片段
 4. 优先选择有明确动作和环境描述的场景
+
+重要约束（严格遵守）：
+- 写实主义：画面必须是真实世界的自然呈现，禁止任何科幻、奇幻、超现实元素
+- 禁止全息投影、悬浮信息面板、发光特效等科幻视觉元素
+- 禁止赛博朋克风格：金属质感服装、电路纹理、发光线条
+- 禁止品牌Logo：不得出现星巴克、苹果等真实商业品牌
+- 人物服装必须是日常便装（衬衫、T恤、外套、牛仔裤等）
+- 背景必须是真实环境（街道、室内、公园等），自然光线
 
 输出格式（严格遵守）：
 【场景描述】简短描述你选择的场景（50字以内）
@@ -432,7 +574,9 @@ class DeepSeekPromptEnhancer:
         api_key, base_url, model = get_scene_analyzer_config()
 
         if not api_key:
-            logger.warning("No DeepSeek API key for prompt rewrite, using simplified prompt")
+            logger.warning(
+                "No DeepSeek API key for prompt rewrite, using simplified prompt"
+            )
             return ImagePromptBuilder().simplify_prompt(original_prompt, scene_desc)
 
         player_name = character_info.get("name", "主角")
@@ -566,7 +710,9 @@ class DeepSeekPromptEnhancer:
 
         if not api_key:
             logger.warning("No API key for anchor generation, using fallback")
-            return self._fallback_appearance_anchor(name, description, era, character_settings)
+            return self._fallback_appearance_anchor(
+                name, description, era, character_settings
+            )
 
         # 提取额外的角色信息
         age = ""
@@ -603,6 +749,7 @@ class DeepSeekPromptEnhancer:
 {
     "face_shape": "脸型描述，如：标准的鹅蛋脸",
     "facial_features": "五官详细描述，如：单眼皮但眼睛有神，鼻梁挺直，嘴唇薄而线条分明",
+    "facial_signature": "面部比例签名，用于精确识别该人物。必须包含可测量的面部比例描述，如：两眼间距约等于一眼宽度，鼻梁中等高度从眉心自然延伸，嘴唇厚度适中上唇略薄于下唇，下巴微尖与颧骨形成柔和过渡，面部整体呈上宽下窄的倒三角比例",
     "expression": "常设表情，如：温和中带着一丝坚毅",
     "skin_tone": "肤色，如：健康的小麦色",
     "hair_style": "发型，如：黑色中长发，自然垂落至肩部",
@@ -676,7 +823,9 @@ class DeepSeekPromptEnhancer:
 
         except Exception as e:
             logger.error(f"Failed to generate appearance anchor: {e}")
-            return self._fallback_appearance_anchor(name, description, era, character_settings)
+            return self._fallback_appearance_anchor(
+                name, description, era, character_settings
+            )
 
     def _fallback_appearance_anchor(
         self,
@@ -738,5 +887,14 @@ class DeepSeekPromptEnhancer:
             anchor["hair_color"] = "金色"
         elif "棕发" in desc_lower or "棕色头发" in desc_lower:
             anchor["hair_color"] = "棕色"
+
+        # 生成基础面部签名（fallback情况下）
+        if anchor["face_shape"] or anchor["facial_features"]:
+            sig_parts = []
+            if anchor["face_shape"]:
+                sig_parts.append(f"{anchor['face_shape']}，面部轮廓清晰可辨")
+            if anchor["facial_features"]:
+                sig_parts.append(str(anchor["facial_features"]))
+            anchor["facial_signature"] = "。".join(sig_parts) if sig_parts else ""
 
         return anchor

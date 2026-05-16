@@ -72,6 +72,7 @@ interface GameState {
 
   // ★ 游戏设置
   enableSceneImage: boolean;
+  constraintLevel: "fast" | "expert" | "master";
 
   // ★ 场景插画
   roundSceneImages: RoundSceneImage[];
@@ -125,6 +126,7 @@ interface GameState {
 
   // Actions — Game Settings
   setEnableSceneImage: (enabled: boolean) => void;
+  setConstraintLevel: (level: "fast" | "expert" | "master") => void;
   generateRoundSceneImage: (roundNumber: number, storyText: string, stage?: string) => Promise<void>;
 
   // Actions — Scene Images
@@ -158,6 +160,7 @@ export const useGameStore = create<GameState>()(
     roundInfo: null,
     isGameOver: false,
     enableSceneImage: true,
+    constraintLevel: "expert",
 
     // Event
     currentEvent: null,
@@ -208,6 +211,7 @@ export const useGameStore = create<GameState>()(
         roundInfo: sessionState.roundInfo,
         isGameOver: sessionState.isGameOver,
         enableSceneImage: sessionState.enableSceneImage,
+        constraintLevel: sessionState.constraintLevel,
         // Event
         currentEvent: eventState.currentEvent,
         storyText: eventState.storyText,
@@ -470,6 +474,11 @@ export const useGameStore = create<GameState>()(
       set({ enableSceneImage: enabled });
     },
 
+    setConstraintLevel: (level) => {
+      useSessionStore.getState().setConstraintLevel(level);
+      set({ constraintLevel: level });
+    },
+
     generateRoundSceneImage: async (roundNumber, storyText, stage = 'result') => {
       const { gameId, progress, enableSceneImage } = useSessionStore.getState();
       const { characterSettings, playerName } = useCharacterStore.getState();
@@ -623,3 +632,6 @@ useGameListStore.subscribe(() => {
 useSceneImageStore.subscribe(() => {
   useGameStore.getState()._syncFromSubStores();
 });
+
+// ★ 立即同步一次，确保初始持久化状态被反映到 useGameStore
+useGameStore.getState()._syncFromSubStores();

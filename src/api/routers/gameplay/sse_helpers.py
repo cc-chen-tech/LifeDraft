@@ -14,8 +14,32 @@ from src.api.deps import get_db
 
 logger = logging.getLogger(__name__)
 
+# SSE 流超时配置（必须小于 Nginx proxy_read_timeout）
+SSE_STREAM_TIMEOUT = 330
+# 心跳间隔（秒），防止 Nginx 空闲超时断连
+HEARTBEAT_INTERVAL = 5
+
 # 线程池用于 SSE 后台任务
-_sse_thread_pool = ThreadPoolExecutor(max_workers=20, thread_name_prefix="sse-worker")
+_sse_thread_pool: Optional[ThreadPoolExecutor] = None
+
+
+def _get_sse_thread_pool() -> ThreadPoolExecutor:
+    global _sse_thread_pool
+    if _sse_thread_pool is None:
+        _sse_thread_pool = ThreadPoolExecutor(max_workers=20, thread_name_prefix="sse-worker")
+    return _sse_thread_pool
+
+
+# Public alias for contract tests
+get_sse_thread_pool = _get_sse_thread_pool
+
+
+def shutdown_sse_thread_pool(wait: bool = True) -> None:
+    """关闭 SSE 线程池（用于应用退出时清理）。"""
+    global _sse_thread_pool
+    if _sse_thread_pool is not None:
+        _sse_thread_pool.shutdown(wait=wait)
+        _sse_thread_pool = None
 
 
 def _trigger_round_illustration_generation(
@@ -179,7 +203,7 @@ def _trigger_round_illustration_generation(
             logger.exception(f"[RoundIllustration] Unexpected error in generate_illustration: {e}")
 
     # 在线程池中执行
-    _sse_thread_pool.submit(generate_illustration)
+    _get_sse_thread_pool().submit(generate_illustration)
 
 
 def _ensure_entity_images_exist(
@@ -304,7 +328,7 @@ def _ensure_entity_images_exist(
             logger.exception(f"[EntityImages] Unexpected error in ensure_images: {e}")
 
     # 在线程池中执行
-    _sse_thread_pool.submit(ensure_images)
+    _get_sse_thread_pool().submit(ensure_images)
 
 
 def _prefetch_options(game_loop, game_id: int, session, event) -> None:
@@ -334,7 +358,8 @@ def _prefetch_options(game_loop, game_id: int, session, event) -> None:
             current_round = player_state.current_round
 
             # Check if already cached
-            cached = session.get_cached_options(current_week, current_round)
+            story_description = event.event_description if event else ""
+            cached = session.get_cached_options(current_week, current_round, story_description)
             if cached:
                 logger.info(
                     f"[Options Prefetch] Already cached for week={current_week}, round={current_round}"
@@ -364,6 +389,7 @@ def _prefetch_options(game_loop, game_id: int, session, event) -> None:
                     current_week,
                     current_round,
                     [opt.model_dump() for opt in options_event.options],
+                    story_description,
                 )
                 logger.info(
                     f"[Options Prefetch] Completed: cached {len(options_event.options)} options "
@@ -381,7 +407,7 @@ def _prefetch_options(game_loop, game_id: int, session, event) -> None:
                 session.finish_prefetching_options()
 
     # 在线程池中执行
-    _sse_thread_pool.submit(prefetch)
+    _get_sse_thread_pool().submit(prefetch)
 
 
 def make_sse_event(event_type: str, data, event_id: Optional[int] = None) -> str:
@@ -484,22 +510,21 @@ async def stream_round_event(
     # Immediately tell the client we're alive and processing
     yield make_sse_event("status", {"phase": "preparing"})
 
-    _sse_thread_pool.submit(run)
+    _get_sse_thread_pool().submit(run)
 
-    # Heartbeat: send keep-alive every 5 seconds to prevent connection timeout
-    heartbeat_interval = 5
+    # Heartbeat + timeout: use module-level constants
     last_event_time = asyncio.get_event_loop().time()
 
     # Yield SSE events as they arrive — fully async, no thread pool overhead
     while True:
         try:
             # Use shorter timeout for heartbeat check
-            event_type, data = await asyncio.wait_for(q.get(), timeout=heartbeat_interval)
+            event_type, data = await asyncio.wait_for(q.get(), timeout=HEARTBEAT_INTERVAL)
             last_event_time = asyncio.get_event_loop().time()
         except asyncio.TimeoutError:
-            # Check if overall timeout exceeded (120 seconds)
+            # Check if overall timeout exceeded
             elapsed = asyncio.get_event_loop().time() - last_event_time
-            if elapsed > 120:
+            if elapsed > SSE_STREAM_TIMEOUT:
                 yield make_sse_event("error", {"error": "Timeout waiting for event generation"})
                 break
             # Send heartbeat to keep connection alive
@@ -670,20 +695,19 @@ async def stream_choice(
     # Immediately tell the client we're alive and processing
     yield make_sse_event("status", {"phase": "preparing"})
 
-    _sse_thread_pool.submit(run)
+    _get_sse_thread_pool().submit(run)
 
-    # Heartbeat: send keep-alive every 5 seconds to prevent connection timeout
-    heartbeat_interval = 5
+    # Heartbeat + timeout: use module-level constants
     last_event_time = asyncio.get_event_loop().time()
 
     while True:
         try:
-            event_type, data = await asyncio.wait_for(q.get(), timeout=heartbeat_interval)
+            event_type, data = await asyncio.wait_for(q.get(), timeout=HEARTBEAT_INTERVAL)
             last_event_time = asyncio.get_event_loop().time()
         except asyncio.TimeoutError:
-            # Check if overall timeout exceeded (120 seconds)
+            # Check if overall timeout exceeded
             elapsed = asyncio.get_event_loop().time() - last_event_time
-            if elapsed > 120:
+            if elapsed > SSE_STREAM_TIMEOUT:
                 yield make_sse_event("error", {"error": "Timeout processing choice"})
                 break
             # Send heartbeat to keep connection alive
@@ -980,19 +1004,18 @@ async def stream_regenerate(
     # Tell client we're starting
     yield make_sse_event("status", {"phase": "regenerating"})
 
-    _sse_thread_pool.submit(run)
+    _get_sse_thread_pool().submit(run)
 
-    # Heartbeat mechanism
-    heartbeat_interval = 5
+    # Heartbeat + timeout: use module-level constants
     last_event_time = asyncio.get_event_loop().time()
 
     while True:
         try:
-            event_type, data = await asyncio.wait_for(q.get(), timeout=heartbeat_interval)
+            event_type, data = await asyncio.wait_for(q.get(), timeout=HEARTBEAT_INTERVAL)
             last_event_time = asyncio.get_event_loop().time()
         except asyncio.TimeoutError:
             elapsed = asyncio.get_event_loop().time() - last_event_time
-            if elapsed > 120:
+            if elapsed > SSE_STREAM_TIMEOUT:
                 yield make_sse_event("error", {"error": "Timeout during regeneration"})
                 break
             yield make_sse_event("status", {"phase": "processing", "heartbeat": True})
@@ -1150,19 +1173,18 @@ async def stream_rewrite(
     # Tell client we're starting
     yield make_sse_event("status", {"phase": "rewriting"})
 
-    _sse_thread_pool.submit(run)
+    _get_sse_thread_pool().submit(run)
 
-    # Heartbeat mechanism
-    heartbeat_interval = 5
+    # Heartbeat + timeout: use module-level constants
     last_event_time = asyncio.get_event_loop().time()
 
     while True:
         try:
-            event_type, data = await asyncio.wait_for(q.get(), timeout=heartbeat_interval)
+            event_type, data = await asyncio.wait_for(q.get(), timeout=HEARTBEAT_INTERVAL)
             last_event_time = asyncio.get_event_loop().time()
         except asyncio.TimeoutError:
             elapsed = asyncio.get_event_loop().time() - last_event_time
-            if elapsed > 120:
+            if elapsed > SSE_STREAM_TIMEOUT:
                 yield make_sse_event("error", {"error": "Timeout during rewrite"})
                 break
             yield make_sse_event("status", {"phase": "processing", "heartbeat": True})

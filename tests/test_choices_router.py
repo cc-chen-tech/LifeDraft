@@ -1,6 +1,6 @@
 """Tests for choices router - 选择处理路由测试"""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI, HTTPException
@@ -86,8 +86,8 @@ class TestRestoreCurrentEventIfNeeded:
 
         mock_db = MagicMock()
         mock_db.load_saved_game.return_value = {
-            "round_history": [{"round": 1}]  # 有历史记录
-        }
+            "round_history": [{"round": 1}]
+        }  # 有历史记录
         mock_get_db.return_value = mock_db
 
         with pytest.raises(HTTPException) as exc_info:

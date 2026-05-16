@@ -26,6 +26,11 @@ function mergeVisibleEntityData<T extends CollectionEntity>(nextItems: T[], curr
   });
 }
 
+// Request de-dupe and short-lived cache keep the collection panel responsive.
+let _fetchInFlight: { gameId: number; promise: Promise<void> } | null = null;
+let _collectionCache: { gameId: number; timestamp: number } | null = null;
+const CACHE_TTL_MS = 30000;
+
 interface CollectionState {
   // 数据
   characters: CharacterCollectionItem[];
@@ -65,6 +70,7 @@ interface CollectionState {
   generateCharacterImage: (gameId: number, name: string) => Promise<void>;
   generateItemImage: (gameId: number, itemName: string) => Promise<void>;
   generateLandmarkImage: (gameId: number, landmarkName: string) => Promise<void>;
+  batchGenerateLandmarkImages: (gameId: number) => Promise<void>;
   generateCharacterDescription: (gameId: number, name: string) => Promise<void>;
   generateItemDescription: (gameId: number, itemName: string) => Promise<void>;
   generateLandmarkDescription: (gameId: number, landmarkName: string) => Promise<void>;
@@ -125,6 +131,25 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
       return;
     }
 
+    if (!isRefresh && _fetchInFlight?.gameId === gameId) {
+      console.log("[fetchCollection] 复用已有请求 gameId=", gameId);
+      return _fetchInFlight.promise;
+    }
+
+    if (!isRefresh) {
+      const now = Date.now();
+      const state = get();
+      const hasData = state.characters.length > 0 || state.items.length > 0 || state.landmarks.length > 0;
+      if (
+        _collectionCache?.gameId === gameId &&
+        now - _collectionCache.timestamp < CACHE_TTL_MS &&
+        hasData
+      ) {
+        console.log("[fetchCollection] 命中缓存，跳过请求 gameId=", gameId);
+        return;
+      }
+    }
+
     // 保存当前选中的人物/物品/标志物名称，以便刷新后恢复选中状态
     const currentSelected = get();
     const selectedCharacterName = currentSelected.selectedCharacter?.name;
@@ -144,7 +169,23 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
     }
 
     try {
-      const result: CollectionResponse = await api.collection.get(gameId);
+      const fetchPromise = api.collection.get(gameId);
+      if (!isRefresh) {
+        const wrappedPromise = fetchPromise
+          .then(() => undefined)
+          .catch(() => undefined)
+          .finally(() => {
+            if (_fetchInFlight?.gameId === gameId) {
+              _fetchInFlight = null;
+            }
+          });
+        _fetchInFlight = { gameId, promise: wrappedPromise };
+      }
+
+      const result: CollectionResponse = await fetchPromise;
+      if (_fetchInFlight?.gameId === gameId) {
+        _fetchInFlight = null;
+      }
 
       const newCharacters = result.characters || [];
       const newItems = result.items || [];
@@ -177,6 +218,8 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
         landmarksCount: newLandmarks.length,
         isRefresh,
       });
+
+      _collectionCache = { gameId, timestamp: Date.now() };
 
       set({
         characters: mergedCharacters,
@@ -338,6 +381,30 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
       const errorMsg = err instanceof Error ? err.message : "生成标志物图片失败";
       set({ error: errorMsg, generatingImageFor: null });
     }
+  },
+
+  // 批量生成所有待生成标志物图片
+  batchGenerateLandmarkImages: async (gameId: number) => {
+    if (!gameId) return;
+
+    const pendingLandmarks = get().landmarks.filter((landmark) => !landmark.image_generated);
+    if (pendingLandmarks.length === 0) return;
+
+    set({ error: null });
+
+    for (const landmark of pendingLandmarks) {
+      set({ generatingImageFor: landmark.name });
+      try {
+        await api.collection.generateLandmarkImage(gameId, landmark.name);
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : "批量生成标志物图片失败";
+        set({ error: errorMsg, generatingImageFor: null });
+        break;
+      }
+    }
+
+    await get().fetchCollection(gameId, true);
+    set({ generatingImageFor: null });
   },
 
   // 生成标志物描述

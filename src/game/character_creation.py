@@ -36,7 +36,9 @@ def assign_sexual_orientation() -> str:
 class CharacterCreator:
     """Handles character and world creation using AI."""
 
-    def __init__(self, ai_generator: Optional[EventGenerator] = None, language: str = "zh"):
+    def __init__(
+        self, ai_generator: Optional[EventGenerator] = None, language: str = "zh"
+    ):
         """
         Initialize character creator.
 
@@ -92,7 +94,9 @@ class CharacterCreator:
                 # Unified JSON extraction (handles code blocks, regex fallback, etc.)
                 result = extract_json(content)
                 if result is None:
-                    raise ValueError(f"Failed to extract JSON from response: {content[:200]}")
+                    raise ValueError(
+                        f"Failed to extract JSON from response: {content[:200]}"
+                    )
 
                 # Validate wealth if it's the wealth setting
                 if setting_type == "wealth":
@@ -135,7 +139,10 @@ class CharacterCreator:
                     generated_birth_year = result.get("birth_year")
 
                     # If birth_year is missing or incorrect, fix it
-                    if generated_birth_year is None or generated_birth_year != correct_birth_year:
+                    if (
+                        generated_birth_year is None
+                        or generated_birth_year != correct_birth_year
+                    ):
                         if generated_birth_year is not None:
                             logger.warning(
                                 f"Birth year mismatch: AI generated {generated_birth_year}, should be {correct_birth_year}. Correcting..."
@@ -157,7 +164,9 @@ class CharacterCreator:
                     logger.error(
                         f"Failed to generate {setting_type} after {max_retries} attempts: {e}"
                     )
-                    logger.error(f"Error type: {type(e).__name__}, Error details: {str(e)}")
+                    logger.error(
+                        f"Error type: {type(e).__name__}, Error details: {str(e)}"
+                    )
                     fallback = self._get_fallback_setting(setting_type)
                     # Ensure wealth fallback is not 0
                     if setting_type == "wealth" and fallback.get("wealth", 0) == 0:
@@ -178,7 +187,9 @@ class CharacterCreator:
                     logger.exception(
                         f"Unexpected error generating {setting_type} after {max_retries} attempts: {e}"
                     )
-                    logger.error(f"Error type: {type(e).__name__}, Error details: {str(e)}")
+                    logger.error(
+                        f"Error type: {type(e).__name__}, Error details: {str(e)}"
+                    )
                     fallback = self._get_fallback_setting(setting_type)
                     # Ensure wealth fallback is not 0
                     if setting_type == "wealth" and fallback.get("wealth", 0) == 0:
@@ -322,7 +333,9 @@ class CharacterCreator:
                     # Return a fallback with rich attributes
                     return {
                         "name": (
-                            f"人物{person_index + 1}" if is_zh else f"Person{person_index + 1}"
+                            f"人物{person_index + 1}"
+                            if is_zh
+                            else f"Person{person_index + 1}"
                         ),
                         "role": "朋友" if is_zh else "Friend",
                         "relationship": (
@@ -373,7 +386,9 @@ class CharacterCreator:
                     # Return a fallback with rich attributes
                     return {
                         "name": (
-                            f"人物{person_index + 1}" if is_zh else f"Person{person_index + 1}"
+                            f"人物{person_index + 1}"
+                            if is_zh
+                            else f"Person{person_index + 1}"
                         ),
                         "role": "朋友" if is_zh else "Friend",
                         "relationship": (
@@ -489,8 +504,12 @@ class CharacterCreator:
 
         try:
             age = character_settings.get("age", {}).get("age", 22)
-            family_economy = character_settings.get("family", {}).get("family_economy", "")
-            logger.debug(f"开始生成初始属性: age={age}, family_economy={family_economy}")
+            family_economy = character_settings.get("family", {}).get(
+                "family_economy", ""
+            )
+            logger.debug(
+                f"开始生成初始属性: age={age}, family_economy={family_economy}"
+            )
             result = self.ai_generator.generate_completion_json(
                 prompt=prompt,
                 system_prompt=get_system_prompt("attribute_generator", "en"),
@@ -569,7 +588,9 @@ class CharacterCreator:
 
         # Rule-based adjustments
         # Energy: based on age and physical traits
-        if any(word in personality for word in ["活力", "精力充沛", "active", "energetic"]):
+        if any(
+            word in personality for word in ["活力", "精力充沛", "active", "energetic"]
+        ):
             energy += 10
         if any(word in personality for word in ["体弱", "虚弱", "weak", "frail"]):
             energy -= 15
@@ -604,7 +625,8 @@ class CharacterCreator:
         if any(word in abilities for word in ["天才", "天赋", "genius", "talented"]):
             knowledge += 15
         if any(
-            word in weaknesses for word in ["缺乏经验", "无知", "lack of experience", "ignorant"]
+            word in weaknesses
+            for word in ["缺乏经验", "无知", "lack of experience", "ignorant"]
         ):
             knowledge -= 20
 
@@ -612,29 +634,40 @@ class CharacterCreator:
         if character_settings:
             family = character_settings.get("family", {})
             family_economy = family.get("family_economy", "").lower()
-            family_description = family.get("family_description", "").lower()
+            family.get("family_description", "").lower()
 
             era = character_settings.get("era", {})
             era_description = era.get("era_description", "").lower()
-            world_context = era.get("world_context", "").lower()
+            era.get("world_context", "").lower()
 
             age_info = character_settings.get("age", {})
             age = age_info.get("age", 22)
 
             # Family economy adjustments
             if any(
-                word in family_economy for word in ["富裕", "富有", "wealthy", "rich", "affluent"]
+                word in family_economy
+                for word in ["富裕", "富有", "wealthy", "rich", "affluent"]
             ):
                 wealth += 50000
-            elif any(word in family_economy for word in ["中产", "中等", "middle", "moderate"]):
+            elif any(
+                word in family_economy
+                for word in ["中产", "中等", "middle", "moderate"]
+            ):
                 wealth += 20000
-            elif any(word in family_economy for word in ["贫困", "贫穷", "poor", "poverty"]):
+            elif any(
+                word in family_economy for word in ["贫困", "贫穷", "poor", "poverty"]
+            ):
                 wealth -= 5000
 
             # Era adjustments
-            if any(word in era_description for word in ["现代", "当代", "modern", "contemporary"]):
+            if any(
+                word in era_description
+                for word in ["现代", "当代", "modern", "contemporary"]
+            ):
                 wealth += 10000
-            elif any(word in era_description for word in ["古代", "ancient", "medieval"]):
+            elif any(
+                word in era_description for word in ["古代", "ancient", "medieval"]
+            ):
                 wealth -= 5000
 
             # Age adjustments (older characters may have more savings)
@@ -952,7 +985,9 @@ class CharacterCreator:
                 birth_year = era_year - age
                 age_info["birth_year"] = birth_year
                 fixed_any = True
-                logger.debug(f"修复缺失的 birth_year: {birth_year} (时代: {era_year}, 年龄: {age})")
+                logger.debug(
+                    f"修复缺失的 birth_year: {birth_year} (时代: {era_year}, 年龄: {age})"
+                )
 
         # 2. 检查并修复 family_members 格式
         if "family" in character_settings:

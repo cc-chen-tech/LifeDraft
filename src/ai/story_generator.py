@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from config.prompts import get_round_event_prompt, get_story_only_prompt
 from config.prompts._helpers import extract_overused_phrases
 from src.ai.client import AIClient
+from src.ai.harness.quality_level import PROFILES, QualityLevel
 from src.ai.models import EventOption, GameEvent
 from src.ai.system_prompts import get_system_prompt
 from src.ai.text_quality import normalize_generated_story
@@ -25,8 +26,11 @@ logger = logging.getLogger(__name__)
 class StoryGenerator:
     """Generates story text for events and rounds."""
 
-    def __init__(self, client: AIClient):
+    def __init__(self, client: AIClient, quality_level: QualityLevel | str | None = None):
         self.client = client
+        self.quality_level = QualityLevel(quality_level or QualityLevel.EXPERT)
+        self._quality_profile = PROFILES[self.quality_level]
+        self._validated_round_keys: set[tuple[Any, Any, Any]] = set()
 
     # -------------------- Public API --------------------
 
@@ -501,6 +505,19 @@ class StoryGenerator:
         logger.info(
             f"[_validate_and_retry_story] Entered with stream_callback={stream_callback is not None}"
         )
+
+        if self._quality_profile.skip_ai_consistency_check:
+            return story_text
+
+        round_key = (
+            player_state.get("game_id"),
+            player_state.get("week", player_state.get("current_week")),
+            player_state.get("current_round"),
+        )
+        if round_key in self._validated_round_keys:
+            logger.info(f"Skipping duplicate story consistency validation for round={round_key}")
+            return story_text
+        self._validated_round_keys.add(round_key)
 
         try:
             from src.ai.consistency_validator import ConsistencyValidator

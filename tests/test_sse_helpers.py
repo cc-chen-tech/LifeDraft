@@ -176,7 +176,7 @@ class TestSSEAsyncFunctions:
     async def test_stream_round_event_with_mock(self):
         """测试流式事件生成"""
         game_loop = MagicMock()
-        game_loop.generate_round_event = AsyncMock()
+        game_loop.generate_round_event = MagicMock()
         game_loop.player_state = MagicMock()
         game_loop.player_state.current_round = 1
 
@@ -524,6 +524,7 @@ class TestSSEConnectionLimits:
 
 # ==================== Regression Tests ====================
 
+
 class TestStreamRegenerateSceneImageCleanup:
     """验证 stream_regenerate 正确删除旧场景图片记录
 
@@ -603,14 +604,11 @@ class TestStreamRegenerateSceneImageCleanup:
             )
             assert deleted == 1, f"应删除 1 条记录，实际删除 {deleted} 条"
             assert count_after == 0, (
-                f"stream_regenerate 清理后应无记录，"
-                f"但仍有 {count_after} 条"
+                f"stream_regenerate 清理后应无记录，" f"但仍有 {count_after} 条"
             )
 
         finally:
-            db.query(SceneImage).filter(
-                SceneImage.game_id == test_game_id
-            ).delete()
+            db.query(SceneImage).filter(SceneImage.game_id == test_game_id).delete()
             db.commit()
             db.close()
 
@@ -672,13 +670,13 @@ class TestStreamRegenerateSceneImageCleanup:
                 )
                 .count()
             )
-            assert current_count == 0, f"当前轮次记录应被删除，但还有 {current_count} 条"
+            assert (
+                current_count == 0
+            ), f"当前轮次记录应被删除，但还有 {current_count} 条"
             assert other_count == 1, f"其他轮次记录应保留，但有 {other_count} 条"
 
         finally:
-            db.query(SceneImage).filter(
-                SceneImage.game_id == test_game_id
-            ).delete()
+            db.query(SceneImage).filter(SceneImage.game_id == test_game_id).delete()
             db.commit()
             db.close()
 
@@ -735,10 +733,12 @@ class TestStreamRegenerateRegression:
             pass
 
         # Verify the fix: last_round_full_story should be "" (empty string), not None
-        assert player_state.last_round_full_story == "", \
-            f"last_round_full_story should be empty string, got {player_state.last_round_full_story!r}"
-        assert isinstance(player_state.last_round_full_story, str), \
-            f"last_round_full_story should be string type, got {type(player_state.last_round_full_story)}"
+        assert (
+            player_state.last_round_full_story == ""
+        ), f"last_round_full_story should be empty string, got {player_state.last_round_full_story!r}"
+        assert isinstance(
+            player_state.last_round_full_story, str
+        ), f"last_round_full_story should be string type, got {type(player_state.last_round_full_story)}"
 
     @pytest.mark.asyncio
     async def test_session_can_restore_after_regenerate(self):
@@ -764,13 +764,15 @@ class TestStreamRegenerateRegression:
 
         # Verify the state is valid (can be serialized and deserialized)
         state_dict = player_state.to_dict()
-        assert state_dict["last_round_full_story"] == "", \
-            "last_round_full_story should be empty string in dict"
+        assert (
+            state_dict["last_round_full_story"] == ""
+        ), "last_round_full_story should be empty string in dict"
 
         # Verify we can create a new PlayerState from this dict (simulating restore)
         restored_state = PlayerState(**state_dict)
-        assert restored_state.last_round_full_story == "", \
-            "Restored state should have empty string for last_round_full_story"
+        assert (
+            restored_state.last_round_full_story == ""
+        ), "Restored state should have empty string for last_round_full_story"
 
     def test_player_state_rejects_none_for_last_round_full_story(self):
         """
@@ -780,6 +782,7 @@ class TestStreamRegenerateRegression:
         to allow None and our fix might not be needed anymore.
         """
         from pydantic import ValidationError
+
         from src.game.state.player_state import PlayerState
 
         # Attempting to create PlayerState with None should fail
@@ -791,5 +794,6 @@ class TestStreamRegenerateRegression:
 
         # Verify the error is about last_round_full_story
         error_msg = str(exc_info.value)
-        assert "last_round_full_story" in error_msg or "string" in error_msg.lower(), \
-            f"Expected validation error for last_round_full_story, got: {error_msg}"
+        assert (
+            "last_round_full_story" in error_msg or "string" in error_msg.lower()
+        ), f"Expected validation error for last_round_full_story, got: {error_msg}"

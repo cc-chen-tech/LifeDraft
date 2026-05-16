@@ -13,14 +13,13 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from config.settings import settings
+from src.utils.image_compressor import compress_image
 
 logger = logging.getLogger(__name__)
 
 
 class ImageStorageError(Exception):
     """图片存储错误"""
-
-    pass
 
 
 class ImageStorageService:
@@ -160,7 +159,7 @@ class ImageStorageService:
 
     def _save_local(self, image_data: bytes, filename: str) -> Tuple[str, str]:
         """
-        保存到本地
+        保存到本地（自动压缩）
 
         Args:
             image_data: 图片数据
@@ -169,8 +168,24 @@ class ImageStorageService:
         Returns:
             Tuple[str, str]: (存储路径, 存储类型)
         """
-        # 构建完整路径
+        # 压缩图片以减少文件大小
+        try:
+            compressed_data = compress_image(
+                image_data,
+                max_dimension=1024,
+                quality=85,
+                output_format="JPEG",
+            )
+        except ValueError as e:
+            logger.warning(f"Image compression failed, saving original: {e}")
+            compressed_data = image_data
+
+        # 构建完整路径（压缩后使用 .jpg 扩展名）
         full_path = self.local_path / filename
+        # 如果压缩成功且原文件是 png，改为 jpg 扩展名
+        if compressed_data != image_data and filename.lower().endswith(".png"):
+            filename = filename[:-4] + ".jpg"
+            full_path = self.local_path / filename
 
         # 确保目录存在
         full_path.parent.mkdir(parents=True, exist_ok=True)
@@ -178,10 +193,11 @@ class ImageStorageService:
         # 写入文件
         try:
             with open(full_path, "wb") as f:
-                f.write(image_data)
+                f.write(compressed_data)
 
             logger.info(f"Image saved to: {full_path}")
-            return str(full_path), "local"
+            # ★ 返回相对路径（相对于 self.local_path），而非绝对路径
+            return filename, "local"
 
         except PermissionError as e:
             logger.error(f"Permission denied saving image locally: {e}")
@@ -262,7 +278,28 @@ class ImageStorageService:
 
         return self._oss_client
 
-    def get_image_url(self, storage_path: str, storage_type: Optional[str] = None) -> str:
+    def get_full_path(self, storage_path: str) -> Path:
+        """
+        将存储路径转为完整文件系统路径
+
+        支持：
+        - 相对路径（新格式）: 296/character/xxx.png -> self.local_path / 296/character/xxx.png
+        - 绝对路径（旧格式，向后兼容）: /Users/.../data/images/296/character/xxx.png -> 原样返回
+
+        Args:
+            storage_path: 存储路径（相对或绝对）
+
+        Returns:
+            完整的文件系统路径
+        """
+        if os.path.isabs(storage_path):
+            # 向后兼容：旧的绝对路径直接返回
+            return Path(storage_path)
+        return self.local_path / storage_path
+
+    def get_image_url(
+        self, storage_path: str, storage_type: Optional[str] = None
+    ) -> str:
         """
         获取图片访问URL
 
@@ -277,10 +314,22 @@ class ImageStorageService:
 
         if storage_type == "local":
             # 本地存储返回API路径
-            # 从完整路径中提取相对路径
-            if storage_path.startswith(str(self.local_path)):
-                relative_path = os.path.relpath(storage_path, self.local_path)
+            # 判断是相对路径（新格式）还是绝对路径（旧格式，向后兼容）
+            if os.path.isabs(storage_path):
+                # 向后兼容：旧的绝对路径，需要提取相对路径
+                if storage_path.startswith(str(self.local_path)):
+                    relative_path = os.path.relpath(storage_path, self.local_path)
+                else:
+                    # 通过查找 "data/images/" 模式提取相对路径
+                    # 处理项目目录迁移（如从 /Users/luicy/story2 到 /Users/luicy/AI/story2）
+                    marker = "data/images/"
+                    marker_idx = storage_path.find(marker)
+                    if marker_idx != -1:
+                        relative_path = storage_path[marker_idx + len(marker) :]
+                    else:
+                        relative_path = storage_path
             else:
+                # ★ 新格式：已经是相对路径，直接使用
                 relative_path = storage_path
 
             # ★ URL 编码路径中的非ASCII字符（如中文）
@@ -324,7 +373,9 @@ class ImageStorageService:
             logger.exception(f"Unexpected error generating OSS URL: {e}")
             raise ImageStorageError(f"获取OSS URL失败: {e}")
 
-    def get_image_data(self, storage_path: str, storage_type: Optional[str] = None) -> bytes:
+    def get_image_data(
+        self, storage_path: str, storage_type: Optional[str] = None
+    ) -> bytes:
         """
         获取图片二进制数据
 
@@ -346,17 +397,18 @@ class ImageStorageService:
 
     def _get_local_image_data(self, storage_path: str) -> bytes:
         """读取本地图片"""
+        full_path = self.get_full_path(storage_path)
         try:
-            with open(storage_path, "rb") as f:
+            with open(full_path, "rb") as f:
                 return f.read()
         except FileNotFoundError as e:
-            logger.error(f"Local image not found: {e}")
+            logger.error(f"Local image not found: {full_path}")
             raise ImageStorageError(f"读取本地图片失败（文件不存在）: {e}")
         except PermissionError as e:
-            logger.error(f"Permission denied reading local image: {e}")
+            logger.error(f"Permission denied reading local image: {full_path}")
             raise ImageStorageError(f"读取本地图片失败（权限不足）: {e}")
         except OSError as e:
-            logger.error(f"OS error reading local image: {e}")
+            logger.error(f"OS error reading local image: {full_path}")
             raise ImageStorageError(f"读取本地图片失败: {e}")
 
     def _get_oss_image_data(self, storage_path: str) -> bytes:
@@ -384,7 +436,9 @@ class ImageStorageService:
             logger.exception(f"Unexpected error reading OSS image: {e}")
             raise ImageStorageError(f"读取OSS图片失败: {e}")
 
-    def delete_image(self, storage_path: str, storage_type: Optional[str] = None) -> bool:
+    def delete_image(
+        self, storage_path: str, storage_type: Optional[str] = None
+    ) -> bool:
         """
         删除图片
 
@@ -399,8 +453,9 @@ class ImageStorageService:
 
         try:
             if storage_type == "local":
-                os.remove(storage_path)
-                logger.info(f"Deleted local image: {storage_path}")
+                full_path = str(self.get_full_path(storage_path))
+                os.remove(full_path)
+                logger.info(f"Deleted local image: {full_path}")
                 return True
             elif storage_type == "oss":
                 client = self._get_oss_client()
@@ -429,7 +484,9 @@ class ImageStorageService:
             logger.exception(f"Unexpected error deleting image: {e}")
             return False
 
-    def image_exists(self, storage_path: str, storage_type: Optional[str] = None) -> bool:
+    def image_exists(
+        self, storage_path: str, storage_type: Optional[str] = None
+    ) -> bool:
         """
         检查图片是否存在
 
@@ -444,7 +501,8 @@ class ImageStorageService:
 
         try:
             if storage_type == "local":
-                return os.path.exists(storage_path)
+                full_path = str(self.get_full_path(storage_path))
+                return os.path.exists(full_path)
             elif storage_type == "oss":
                 client = self._get_oss_client()
                 if storage_path.startswith("oss://"):

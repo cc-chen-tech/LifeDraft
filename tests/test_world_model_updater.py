@@ -1,8 +1,6 @@
 """Tests for WorldModelUpdater - 世界模型更新器测试"""
 
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 from src.game.world_model_updater import WorldModelUpdater
 
@@ -365,7 +363,7 @@ class TestCharacterProfileSynthesis:
                 player_state, "张三", new_info
             )
             # 检查是否更新了角色档案
-            profiles = player_state.world_model_data.get("character_profiles", {})
+            player_state.world_model_data.get("character_profiles", {})
             # 根据实际实现验证
         else:
             pass

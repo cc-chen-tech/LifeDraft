@@ -7,11 +7,6 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { RoundHistoryDrawer, RoundHistoryItem } from '@/components/game/RoundHistoryDrawer';
 
-// Mock cn utility
-jest.mock('@/lib/utils', () => ({
-  cn: (...args: unknown[]) => args.filter(Boolean).join(' '),
-}));
-
 describe('RoundHistoryDrawer', () => {
   const mockOnOpenChange = jest.fn();
   const mockOnSelect = jest.fn();

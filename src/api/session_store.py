@@ -1,16 +1,18 @@
 """GameLoop session store — manages in-memory GameLoop instances per user session."""
 
+import hashlib
 import logging
 import threading
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from src.game.game_loop import GameLoop
 
 logger = logging.getLogger(__name__)
 
-# Session timeout in seconds (2 hours)
-SESSION_TIMEOUT = 2 * 60 * 60
+# Session timeout in seconds (4 hours)
+# Extended to reduce database restore frequency
+SESSION_TIMEOUT = 4 * 60 * 60
 
 
 class GameLoopSession:
@@ -120,20 +122,40 @@ class GameLoopSession:
         """Generate cache key for current week/round."""
         return f"{week}_{round_num}"
 
-    def get_cached_options(self, week: int, round_num: int) -> Optional[List[Dict[str, Any]]]:
-        """Get cached options if available for current week/round."""
-        cache_key = self.get_cache_key(week, round_num)
+    def get_cached_options(
+        self, week: int, round_num: int, story_content: str = ""
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Get cached options only if story content matches."""
+        if story_content:
+            story_hash = hashlib.md5(story_content.encode()).hexdigest()[:16]
+            cache_key = f"{self.get_cache_key(week, round_num)}_{story_hash}"
+        else:
+            cache_key = self.get_cache_key(week, round_num)
         logger.info(
             f"[Options Cache] Checking: requested={cache_key}, cached={self._cached_options_key}, has_data={self._cached_options is not None}"
         )
         if self._cached_options_key == cache_key and self._cached_options:
             logger.info(f"[Options Cache] Hit for week={week}, round={round_num}")
             return self._cached_options
+        if self._cached_options_key and self._cached_options:
+            logger.info(
+                f"[Options Cache] Story content changed, invalidating cache for week={week}, round={round_num}"
+            )
         return None
 
-    def set_cached_options(self, week: int, round_num: int, options: List[Dict[str, Any]]) -> None:
-        """Cache options for current week/round."""
-        cache_key = self.get_cache_key(week, round_num)
+    def set_cached_options(
+        self,
+        week: int,
+        round_num: int,
+        options: List[Dict[str, Any]],
+        story_content: str = "",
+    ) -> None:
+        """Cache options for current week/round with story content hash."""
+        if story_content:
+            story_hash = hashlib.md5(story_content.encode()).hexdigest()[:16]
+            cache_key = f"{self.get_cache_key(week, round_num)}_{story_hash}"
+        else:
+            cache_key = self.get_cache_key(week, round_num)
         self._cached_options_key = cache_key
         self._cached_options = options
         logger.info(
@@ -185,7 +207,9 @@ class SessionStore:
 
     # ---- public API ----
 
-    def get(self, game_id: int, user_id: Optional[int] = None) -> Optional[GameLoopSession]:
+    def get(
+        self, game_id: int, user_id: Optional[int] = None
+    ) -> Optional[GameLoopSession]:
         """Get a session if it exists and is not expired."""
         self._maybe_cleanup()
         key = self.make_key(game_id, user_id)
@@ -252,7 +276,9 @@ class SessionStore:
         prefix = f"user_{user_id}_game_"
         with self._lock:
             return [
-                s for k, s in self._sessions.items() if k.startswith(prefix) and not s.is_expired
+                s
+                for k, s in self._sessions.items()
+                if k.startswith(prefix) and not s.is_expired
             ]
 
     @property

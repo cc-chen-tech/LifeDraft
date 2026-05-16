@@ -25,7 +25,6 @@ import os
 import random
 
 from locust import HttpUser, between, events, task
-from locust.runners import MasterRunner, WorkerRunner
 
 # Configuration
 API_HOST = os.getenv("API_HOST", "http://localhost:8000")

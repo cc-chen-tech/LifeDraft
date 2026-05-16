@@ -48,6 +48,20 @@ class EntityRecognitionService(BaseExtractionService):
             # 使用基类的截断逻辑
             story_text = self._truncate_story(story_text)
 
+            # 统计有效事件数量
+            valid_events = sum(
+                1
+                for entry in round_history
+                if entry.get("event_description")
+                or entry.get("story_continuation")
+                or entry.get("summary")
+            )
+            logger.info(
+                f"Entity recognition: {len(round_history)} rounds, "
+                f"{valid_events} valid events, story text {len(story_text)} chars, "
+                f"min_appearances={min_appearances}"
+            )
+
             from config.prompts.entity_recognition_prompt import \
                 get_entity_recognition_prompt
 
@@ -62,8 +76,6 @@ class EntityRecognitionService(BaseExtractionService):
 
             sys_prompt = self._get_system_prompt("story_analyzer", language)
 
-            logger.info(f"Starting entity recognition with story length {len(story_text)} chars")
-
             response = self._call_ai(
                 system_prompt=sys_prompt,
                 user_prompt=prompt,
@@ -71,7 +83,15 @@ class EntityRecognitionService(BaseExtractionService):
                 max_tokens=2048,
             )
 
-            return self._parse_recognition_response(response)
+            logger.info(f"AI raw response (first 500 chars): {response[:500]}")
+
+            result = self._parse_recognition_response(response)
+            logger.info(
+                f"Parsed entities: {len(result.get('items', []))} items, "
+                f"{len(result.get('characters', []))} characters, "
+                f"{len(result.get('landmarks', []))} landmarks"
+            )
+            return result
 
         except Exception as e:
             logger.error(f"Entity recognition failed: {e}", exc_info=True)
@@ -152,6 +172,9 @@ class EntityRecognitionService(BaseExtractionService):
     def _build_story_text(self, round_history: List[Dict[str, Any]]) -> str:
         """将round_history构建成完整的故事文本。
 
+        即使 event_description 缺失，也会从 story_continuation、summary、
+        choice 等字段中尽可能构建完整的上下文。
+
         Args:
             round_history: 回合历史记录
 
@@ -161,7 +184,9 @@ class EntityRecognitionService(BaseExtractionService):
         story_parts = []
 
         # 按周和回合排序
-        sorted_history = sorted(round_history, key=lambda x: (x.get("week", 0), x.get("round", 0)))
+        sorted_history = sorted(
+            round_history, key=lambda x: (x.get("week", 0), x.get("round", 0))
+        )
 
         for entry in sorted_history:
             week = entry.get("week", 0) + 1
@@ -169,23 +194,31 @@ class EntityRecognitionService(BaseExtractionService):
             round_names = ["周一", "周中", "周末"]
             round_name = round_names[round_num] if round_num < 3 else f"回合{round_num}"
 
-            story_parts.append(f"\n=== 第{week}周 {round_name} ===\n")
+            # 收集本回合所有文本片段
+            parts = []
 
             if entry.get("event_description"):
-                story_parts.append(f"事件：{entry['event_description']}\n")
+                parts.append(f"事件：{entry['event_description']}")
 
             if entry.get("choice"):
-                story_parts.append(f"选择：{entry['choice']}\n")
+                parts.append(f"选择：{entry['choice']}")
 
             if entry.get("story_continuation"):
-                story_parts.append(f"结果：{entry['story_continuation']}\n")
+                parts.append(f"结果：{entry['story_continuation']}")
 
             if entry.get("summary"):
-                story_parts.append(f"总结：{entry['summary']}\n")
+                parts.append(f"总结：{entry['summary']}")
+
+            # 仅当有实际内容时才添加该回合
+            if parts:
+                story_parts.append(f"\n=== 第{week}周 {round_name} ===\n")
+                story_parts.extend(parts)
 
         return "\n".join(story_parts)
 
-    def _parse_recognition_response(self, response: str) -> Dict[str, List[Dict[str, Any]]]:
+    def _parse_recognition_response(
+        self, response: str
+    ) -> Dict[str, List[Dict[str, Any]]]:
         """解析AI识别响应。
 
         Args:
@@ -241,7 +274,9 @@ class EntityRecognitionService(BaseExtractionService):
             return False
 
         # 使用基类的验证方法
-        entity["importance"] = self._validate_importance(entity.get("importance", "normal"))
+        entity["importance"] = self._validate_importance(
+            entity.get("importance", "normal")
+        )
 
         # 验证出现次数
         appear_count = entity.get("appear_count", 0)
@@ -249,7 +284,9 @@ class EntityRecognitionService(BaseExtractionService):
             entity["appear_count"] = 1
 
         # 确保appear_contexts是列表
-        if "appear_contexts" not in entity or not isinstance(entity["appear_contexts"], list):
+        if "appear_contexts" not in entity or not isinstance(
+            entity["appear_contexts"], list
+        ):
             entity["appear_contexts"] = []
 
         return True

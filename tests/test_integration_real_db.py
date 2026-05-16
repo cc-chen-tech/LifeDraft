@@ -9,9 +9,8 @@
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.orm import Session
 
-from src.database.models import Game, SessionLocal, User
+from src.database.models import Base, Game, SessionLocal, User
 
 
 class TestRealDatabaseIntegration:
@@ -20,6 +19,7 @@ class TestRealDatabaseIntegration:
     @pytest.fixture(scope="function")
     def db_session(self):
         """提供数据库会话，测试后回滚"""
+        Base.metadata.create_all(SessionLocal().bind)
         session = SessionLocal()
         try:
             yield session

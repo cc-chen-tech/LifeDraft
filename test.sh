@@ -79,6 +79,7 @@ run_preflight() {
 
     echo -e "${YELLOW}运行前端 strict typecheck...${NC}"
     cd "$PROJECT_DIR/frontend"
+    export PYTHON="$(command -v python)"
     npx tsc --noEmit --strict
     local tsc_code=$?
     cd "$PROJECT_DIR"
@@ -114,6 +115,9 @@ run_mypy() {
     echo -e "${YELLOW}运行 mypy 严格静态类型检查...${NC}"
     MYPY_STRICT_TARGETS=(
         src/ai/text_quality.py
+        src/services/music_service.py
+        src/services/music_playlist_service.py
+        src/database/models.py
     )
     python -m mypy "${MYPY_STRICT_TARGETS[@]}" --strict
     local mypy_code=$?
@@ -154,7 +158,11 @@ run_contract() {
     activate_python_env
     
     echo -e "${YELLOW}运行 API 契约测试...${NC}"
-    python -m pytest tests/test_api_contract.py tests/test_gate_contracts_no_mock.py -v
+    python -m pytest \
+        tests/test_api_contract.py \
+        tests/test_gate_contracts_no_mock.py \
+        tests/test_story_music_recommendation_contract.py \
+        -v
     local result=$?
     
     print_layer_result "contract" $result
@@ -178,7 +186,12 @@ run_db() {
     fi
 
     echo -e "${YELLOW}运行真实数据库集成测试...${NC}"
-    python -m pytest tests/test_integration_real_db.py tests/test_database.py tests/test_gate_real_db_no_mock.py -v
+    python -m pytest \
+        tests/test_integration_real_db.py \
+        tests/test_database.py \
+        tests/test_gate_real_db_no_mock.py \
+        tests/test_story_music_recommendation_db.py \
+        -v
     local result=$?
     
     print_layer_result "db" $result
@@ -189,14 +202,26 @@ run_db() {
 # Layer 5: E2E 浏览器测试 (Playwright)
 run_e2e_browser() {
     print_layer_header "5" "E2E 浏览器测试" "前端页面渲染、用户交互、前后端联调"
+    cd "$PROJECT_DIR"
+    activate_python_env
+    echo -e "${YELLOW}初始化 E2E 数据库表结构...${NC}"
+    python -c "from src.database.models import init_db; init_db()"
+    local init_result=$?
+    if [ $init_result -ne 0 ]; then
+        print_layer_result "e2e" $init_result
+        E2E_RESULT=$init_result
+        return $init_result
+    fi
+
     cd "$PROJECT_DIR/frontend"
+    export PYTHON="$(command -v python)"
     
     # 检查后端是否运行
     if ! lsof -ti:8000 > /dev/null 2>&1; then
         echo -e "${YELLOW}后端未运行，正在启动...${NC}"
         cd "$PROJECT_DIR"
         activate_python_env
-        python run_api.py > /tmp/backend_e2e.log 2>&1 &
+        API_RELOAD=false python run_api.py > /tmp/backend_e2e.log 2>&1 &
         BACKEND_PID=$!
         sleep 3
         if ! lsof -ti:8000 > /dev/null 2>&1; then
@@ -212,8 +237,22 @@ run_e2e_browser() {
     fi
     
     echo -e "${YELLOW}运行完整 Playwright E2E 测试 (chromium)...${NC}"
-    npx playwright test --project=chromium --reporter=list --workers=1
-    local result=$?
+    npx playwright test --project=core --reporter=list --workers=1
+    local core_result=$?
+
+    echo -e "${YELLOW}运行会员 AI 音乐队列补充 E2E 测试...${NC}"
+    npx playwright test e2e/music-player.spec.ts \
+        --project=ai-heavy \
+        --grep "会员 AI 曲目生成后只进入后续队列且不切换当前歌曲" \
+        --reporter=list \
+        --workers=1 \
+        --no-deps
+    local music_ai_result=$?
+
+    local result=0
+    if [ $core_result -ne 0 ] || [ $music_ai_result -ne 0 ]; then
+        result=1
+    fi
     
     # 清理：如果是我们启动的后端，关掉它
     if [ -n "$BACKEND_PID" ]; then

@@ -158,4 +158,15 @@ test.describe('MusicPlayer 音乐播放器', () => {
     // 截图记录
     await page.screenshot({ path: 'test-results/music-player-persisted.png' });
   });
+
+  test('会员 AI 曲目生成后只进入后续队列且不切换当前歌曲', async ({ page }) => {
+    await openMusicFixture(page);
+
+    await page.getByRole('button', { name: '加载会员音乐队列夹具' }).click();
+    await expect(page.getByTestId('current-music-source')).toHaveText('netease');
+    await expect(page.getByTestId('current-music-title')).toHaveText('网易云 当前曲');
+    await expect(page.getByTestId('music-queue-order')).toHaveText('网易云 下一曲 | AI 雨夜码头 | 网易云 后续曲');
+
+    await page.screenshot({ path: 'test-results/music-player-ai-queue-supplement.png' });
+  });
 });

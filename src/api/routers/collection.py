@@ -2,6 +2,7 @@
 
 import logging
 from typing import Generator, Optional
+from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -12,6 +13,8 @@ from src.api.schemas import (CollectionResponse, MessageResponse,
                              RegenerateItemImageRequest)
 from src.api.services.session_service import session_service
 from src.database.models import SessionLocal
+from src.database.singletons import get_game_db
+from src.game.state import PlayerState
 from src.services.collection_service import (CollectionService,
                                              EntityNotFoundError,
                                              ImageGenerationError,
@@ -49,6 +52,15 @@ def _get_player_state(game_id: int, user_id: int) -> tuple:  # type: ignore
     return session, player_state
 
 
+def _save_player_state(game_id: int, player_state: PlayerState) -> None:
+    """将玩家状态持久化到数据库。"""
+    try:
+        db = get_game_db()
+        db.save_game_progress(game_id, player_state)
+    except Exception as e:
+        logger.warning(f"保存游戏状态失败 (非阻塞): {e}")
+
+
 # ==================== 获取收集数据 ====================
 
 
@@ -81,7 +93,9 @@ async def get_collection_details(  # type: ignore
 # ==================== 生成图片 ====================
 
 
-@router.post("/{game_id}/characters/{name}/generate-image", response_model=MessageResponse)
+@router.post(
+    "/{game_id}/characters/{name}/generate-image", response_model=MessageResponse
+)
 async def generate_character_image(  # type: ignore
     game_id: int,
     name: str,
@@ -105,14 +119,18 @@ async def generate_character_image(  # type: ignore
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ImageContentError:
-        raise HTTPException(status_code=400, detail="生成图片时触发了内容安全审核，请稍后重试")
+        raise HTTPException(
+            status_code=400, detail="生成图片时触发了内容安全审核，请稍后重试"
+        )
     except ImageServiceError as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         db.close()
 
 
-@router.post("/{game_id}/characters/{name}/generate-description", response_model=MessageResponse)
+@router.post(
+    "/{game_id}/characters/{name}/generate-description", response_model=MessageResponse
+)
 async def generate_character_description(  # type: ignore
     game_id: int,
     name: str,
@@ -123,7 +141,9 @@ async def generate_character_description(  # type: ignore
     return MessageResponse(message=f"人物 {name} 描述已存在", success=True)
 
 
-@router.post("/{game_id}/items/{item_name}/generate-image", response_model=MessageResponse)
+@router.post(
+    "/{game_id}/items/{item_name}/generate-image", response_model=MessageResponse
+)
 async def generate_item_image(  # type: ignore
     game_id: int,
     item_name: str,
@@ -132,12 +152,16 @@ async def generate_item_image(  # type: ignore
     """生成物品图片"""
     user_id = _require_user(user_id)
     _, player_state = _get_player_state(game_id, user_id)
+    item_name = unquote(item_name)
 
     db = SessionLocal()
     try:
         service = CollectionService(db)
         service.verify_game_ownership(game_id, user_id)
         image_id = service.generate_item_image(game_id, item_name, player_state)
+
+        # 持久化状态变更
+        _save_player_state(game_id, player_state)
 
         return MessageResponse(
             message=f"物品 {item_name} 图片生成成功",
@@ -147,14 +171,18 @@ async def generate_item_image(  # type: ignore
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ImageContentError:
-        raise HTTPException(status_code=400, detail="生成图片时触发了内容安全审核，请稍后重试")
+        raise HTTPException(
+            status_code=400, detail="生成图片时触发了内容安全审核，请稍后重试"
+        )
     except ImageServiceError as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         db.close()
 
 
-@router.post("/{game_id}/items/{item_name}/generate-description", response_model=MessageResponse)
+@router.post(
+    "/{game_id}/items/{item_name}/generate-description", response_model=MessageResponse
+)
 async def generate_item_description(  # type: ignore
     game_id: int,
     item_name: str,
@@ -163,6 +191,7 @@ async def generate_item_description(  # type: ignore
     """生成物品描述"""
     user_id = _require_user(user_id)
     session, player_state = _get_player_state(game_id, user_id)
+    item_name = unquote(item_name)
 
     item_data = player_state.items.get(item_name)
     if not item_data:
@@ -185,6 +214,8 @@ async def generate_item_description(  # type: ignore
             player_state.update_item(
                 item_name, description=new_description, description_generated=True
             )
+            # 持久化状态变更
+            _save_player_state(game_id, player_state)
             return MessageResponse(
                 message=f"物品 {item_name} 描述生成成功",
                 success=True,
@@ -214,12 +245,16 @@ async def generate_landmark_image(  # type: ignore
     """生成标志物图片"""
     user_id = _require_user(user_id)
     _, player_state = _get_player_state(game_id, user_id)
+    landmark_name = unquote(landmark_name)
 
     db = SessionLocal()
     try:
         service = CollectionService(db)
         service.verify_game_ownership(game_id, user_id)
         image_id = service.generate_landmark_image(game_id, landmark_name, player_state)
+
+        # 持久化状态变更
+        _save_player_state(game_id, player_state)
 
         return MessageResponse(
             message=f"标志物 {landmark_name} 图片生成成功",
@@ -229,7 +264,9 @@ async def generate_landmark_image(  # type: ignore
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ImageContentError:
-        raise HTTPException(status_code=400, detail="生成图片时触发了内容安全审核，请稍后重试")
+        raise HTTPException(
+            status_code=400, detail="生成图片时触发了内容安全审核，请稍后重试"
+        )
     except ImageServiceError as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
@@ -248,16 +285,24 @@ async def generate_landmark_description(  # type: ignore
     """生成标志物描述"""
     user_id = _require_user(user_id)
     session, player_state = _get_player_state(game_id, user_id)
+    landmark_name = unquote(landmark_name)
 
     landmark_data = player_state.landmarks.get(landmark_name)
     if not landmark_data:
         raise HTTPException(status_code=404, detail=f"标志物 {landmark_name} 不存在")
 
-    if landmark_data.get("description") and len(landmark_data.get("description", "")) > 50:
-        return MessageResponse(message=f"标志物 {landmark_name} 描述已存在", success=True)
+    if (
+        landmark_data.get("description")
+        and len(landmark_data.get("description", "")) > 50
+    ):
+        return MessageResponse(
+            message=f"标志物 {landmark_name} 描述已存在", success=True
+        )
 
     try:
-        landmark_service = LandmarkExtractionService(session.game_loop.ai_generator.ai_client)
+        landmark_service = LandmarkExtractionService(
+            session.game_loop.ai_generator.ai_client
+        )
         new_description = landmark_service.generate_landmark_description(
             landmark_name=landmark_name,
             landmark_category=landmark_data.get("category", "other"),
@@ -268,6 +313,8 @@ async def generate_landmark_description(  # type: ignore
 
         if new_description:
             player_state.update_landmark(landmark_name, description=new_description)
+            # 持久化状态变更
+            _save_player_state(game_id, player_state)
             return MessageResponse(
                 message=f"标志物 {landmark_name} 描述生成成功",
                 success=True,
@@ -285,7 +332,9 @@ async def generate_landmark_description(  # type: ignore
 # ==================== 重新生成图片 ====================
 
 
-@router.post("/{game_id}/characters/{name}/regenerate-image", response_model=MessageResponse)
+@router.post(
+    "/{game_id}/characters/{name}/regenerate-image", response_model=MessageResponse
+)
 async def regenerate_character_image(  # type: ignore
     game_id: int,
     name: str,
@@ -316,14 +365,18 @@ async def regenerate_character_image(  # type: ignore
     except PermissionDeniedError as e:
         raise HTTPException(status_code=403, detail=str(e))
     except ImageContentError:
-        raise HTTPException(status_code=400, detail="生成图片时触发了内容安全审核，请稍后重试")
+        raise HTTPException(
+            status_code=400, detail="生成图片时触发了内容安全审核，请稍后重试"
+        )
     except ImageServiceError as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         db.close()
 
 
-@router.post("/{game_id}/items/{item_name}/regenerate-image", response_model=MessageResponse)
+@router.post(
+    "/{game_id}/items/{item_name}/regenerate-image", response_model=MessageResponse
+)
 async def regenerate_item_image(  # type: ignore
     game_id: int,
     item_name: str,
@@ -333,12 +386,15 @@ async def regenerate_item_image(  # type: ignore
     """基于用户文字描述重新生成物品图片"""
     user_id = _require_user(user_id)
     _, player_state = _get_player_state(game_id, user_id)
+    item_name = unquote(item_name)
 
     db = SessionLocal()
     try:
         service = CollectionService(db)
         service.verify_game_ownership(game_id, user_id)
-        image_id = service.regenerate_item_image(game_id, item_name, request.feedback, player_state)
+        image_id = service.regenerate_item_image(
+            game_id, item_name, request.feedback, player_state
+        )
 
         return MessageResponse(
             message=f"物品 {item_name} 图片修改成功",
@@ -350,7 +406,9 @@ async def regenerate_item_image(  # type: ignore
     except ImageGenerationError as e:
         raise HTTPException(status_code=500, detail=str(e))
     except ImageContentError:
-        raise HTTPException(status_code=400, detail="生成图片时触发了内容安全审核，请稍后重试")
+        raise HTTPException(
+            status_code=400, detail="生成图片时触发了内容安全审核，请稍后重试"
+        )
     except ImageServiceError as e:
         raise HTTPException(status_code=500, detail=str(e))
     except (ValueError, TypeError, KeyError) as e:
@@ -390,13 +448,22 @@ async def recognize_entities(  # type: ignore
         from src.services.entity_recognition_service import \
             EntityRecognitionService
 
-        recognition_service = EntityRecognitionService(session.game_loop.ai_generator.ai_client)
+        # 根据游戏进度动态计算阈值
+        total_rounds = (
+            len(player_state.round_history) if player_state.round_history else 0
+        )
+        default_min = max(1, total_rounds // 15)  # 每15回合+1，最低1
+        min_appearances = request.get("min_appearances") or default_min
+
+        recognition_service = EntityRecognitionService(
+            session.game_loop.ai_generator.ai_client
+        )
         return recognition_service.recognize_from_history(
             round_history=player_state.round_history,
             existing_items=existing_items,
             existing_characters=existing_characters,
             existing_landmarks=existing_landmarks,
-            min_appearances=request.get("min_appearances", 3),
+            min_appearances=min_appearances,
             language=session.language,
         )
     except (ValueError, TypeError, KeyError) as e:
@@ -424,6 +491,10 @@ async def add_entities(  # type: ignore
             request.get("items", []),
             request.get("landmarks", []),
         )
+
+        # 持久化状态变更
+        _save_player_state(game_id, player_state)
+
         return {
             "message": f"成功添加 {len(result['added_items'])} 个物品, {len(result['added_landmarks'])} 个地点",
             "success": True,
@@ -463,6 +534,10 @@ async def create_item(  # type: ignore
             language=session.language,
             generate_description=request.get("generate_description", False),
         )
+
+        # 持久化状态变更
+        _save_player_state(game_id, player_state)
+
         return {
             "message": f"物品 '{item_info['name']}' 创建成功",
             "success": True,
@@ -495,6 +570,10 @@ async def delete_item(  # type: ignore
         success = service.delete_item(game_id, item_name, player_state)
         if not success:
             raise HTTPException(status_code=500, detail="删除失败")
+
+        # 持久化状态变更
+        _save_player_state(game_id, player_state)
+
         return {"message": f"物品 '{item_name}' 已删除", "success": True}
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -523,6 +602,10 @@ async def delete_character(  # type: ignore
         success = service.delete_character(game_id, character_name, player_state)
         if not success:
             raise HTTPException(status_code=500, detail="删除失败")
+
+        # 持久化状态变更
+        _save_player_state(game_id, player_state)
+
         return {"message": f"人物 '{character_name}' 已删除", "success": True}
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -553,6 +636,10 @@ async def delete_landmark(  # type: ignore
         success = service.delete_landmark(game_id, landmark_name, player_state)
         if not success:
             raise HTTPException(status_code=500, detail="删除失败")
+
+        # 持久化状态变更
+        _save_player_state(game_id, player_state)
+
         return {"message": f"地点 '{landmark_name}' 已删除", "success": True}
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))

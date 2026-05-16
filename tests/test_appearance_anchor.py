@@ -203,6 +203,7 @@ class TestCharacterAppearanceAnchor:
             name="测试角色",
             face_shape="瓜子脸",
             facial_features="大眼睛",
+            facial_signature="两眼间距约为一眼宽度，鼻梁中等高度",
             hair_style="长发",
             body_type="匀称",
         )
@@ -217,15 +218,17 @@ class TestCharacterAppearanceAnchor:
             name="测试角色",
             face_shape="",
             facial_features="",
+            facial_signature="",
             hair_style="",
             body_type="",
         )
 
         missing = anchor.validate()
 
-        assert len(missing) == 4
+        assert len(missing) == 5
         assert "脸型" in missing
         assert "五官特征" in missing
+        assert "面部比例签名" in missing
         assert "发型" in missing
         assert "体型" in missing
 
@@ -235,14 +238,16 @@ class TestCharacterAppearanceAnchor:
             name="测试角色",
             face_shape="瓜子脸",
             facial_features="",
+            facial_signature="",
             hair_style="长发",
             body_type="",
         )
 
         missing = anchor.validate()
 
-        assert len(missing) == 2
+        assert len(missing) == 3
         assert "五官特征" in missing
+        assert "面部比例签名" in missing
         assert "体型" in missing
 
 

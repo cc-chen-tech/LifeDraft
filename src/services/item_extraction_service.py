@@ -51,7 +51,9 @@ class ItemExtractionService(BaseExtractionService):
                 get_item_extraction_prompt
 
             # 构建已存在物品列表
-            existing_items_list = list(existing_items.values()) if existing_items else []
+            existing_items_list = (
+                list(existing_items.values()) if existing_items else []
+            )
 
             prompt = get_item_extraction_prompt(
                 story_text=story_text,

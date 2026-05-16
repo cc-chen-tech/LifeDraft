@@ -2,8 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
 
@@ -65,7 +64,6 @@ class TestConnectionPoolConfig:
             mock_create.return_value = mock_engine
 
             # 模拟 PostgreSQL 引擎创建
-            from sqlalchemy import create_engine as real_create
 
             # 验证 PostgreSQL 配置应包含这些参数
             expected_pg_params = {

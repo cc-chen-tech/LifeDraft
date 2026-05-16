@@ -142,7 +142,7 @@ export function HistorySceneImage({
         )}
         <img
           key={`${sceneImage.image_url}-${sceneImage.created_at}-${retryCount}`}
-          src={`${sceneImage.image_url}${sceneImage.image_url.includes('?') ? '&' : '?'}t=${sceneImage.created_at ? new Date(sceneImage.created_at).getTime() : Date.now()}`}
+          src={sceneImage.created_at ? `${sceneImage.image_url}${sceneImage.image_url.includes('?') ? '&' : '?'}t=${new Date(sceneImage.created_at).getTime()}` : sceneImage.image_url}
           alt={sceneImage.scene_description}
           className={cn(
             "w-full h-full object-cover transition-opacity duration-300",

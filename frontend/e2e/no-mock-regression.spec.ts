@@ -71,7 +71,7 @@ test.describe('no-mock regression coverage', () => {
 
     const launcher = page.locator('[data-testid="chat-bar-launcher"]');
     await expect(launcher).toHaveClass(/pointer-events-none/);
-    await expect(page.getByRole('button', { name: '打开剧情助手' })).toHaveClass(/pointer-events-auto/);
+    await expect(page.getByRole('button', { name: '打开聊天' })).toHaveClass(/pointer-events-auto/);
   });
 
   test('history review stays pinned to selected round with matching scene image state', async ({ page }) => {

@@ -6,7 +6,6 @@ from typing import Any, Dict, Optional, Tuple
 from config.settings import settings
 from src.database.db import GameDatabase
 from src.game.game_loop import GameLoop
-from src.game.state import PlayerState
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +51,13 @@ class GameInitializer:
         if not player_name:
             raise ValueError("player_name is required")
 
+        # 提取 constraint_level（从 character_settings 或默认 expert）
+        constraint_level = (
+            character_settings.get("constraint_level", "expert")
+            if character_settings
+            else "expert"
+        )
+
         # Create initial player state
         initial_state = {
             "player_name": player_name,
@@ -77,18 +83,49 @@ class GameInitializer:
             "foreshadowing_seeds": [],
             "character_habits": [],
             "pending_character_introductions": [],
+            "constraint_level": constraint_level,
         }
 
         # Initialize relationships from character settings
         self._initialize_relationships(initial_state, character_settings)
 
+        # 提取 narrative_style_id（从 character_settings 中获取，默认 None）
+        style_id = (
+            character_settings.get("narrative_style_id") if character_settings else None
+        )
+
+        # 当无 narrative_style_id 时自动匹配风格
+        if not style_id and character_settings:
+            try:
+                from src.ai.narrative.style_matcher import auto_match_style
+
+                result = auto_match_style(character_settings)
+                if result.confidence >= 0.15:  # 最低置信度阈值
+                    style_id = result.style_id
+                    logger.info(
+                        f"Auto-matched narrative style: {result.style_id} "
+                        f"(confidence={result.confidence:.2f})"
+                    )
+                else:
+                    logger.info(
+                        f"Style auto-match confidence too low: {result.confidence:.2f}, "
+                        f"skipping style assignment"
+                    )
+            except Exception as e:
+                logger.warning(f"Style auto-match failed: {e}")
+
         # Save the initial game state to database
         if self.game_db:
             game_id = self.game_db.create_game(
-                language=self.language, initial_state=initial_state, user_id=user_id
+                language=self.language,
+                initial_state=initial_state,
+                user_id=user_id,
+                narrative_style_id=style_id,
+                constraint_level=constraint_level,
             )
             logger.info(
-                f"Created new game: game_id={game_id}, player={player_name}, user_id={user_id}"
+                f"Created new game: game_id={game_id}, player={player_name}, user_id={user_id}, "
+                f"constraint_level={constraint_level}"
             )
         else:
             # If no database, generate a fake ID
@@ -98,7 +135,7 @@ class GameInitializer:
             logger.warning(f"No database provided, using temporary game_id={game_id}")
 
         # Create GameLoop and load the state
-        game_loop = GameLoop(language=self.language)
+        game_loop = GameLoop(language=self.language, quality_level=constraint_level)
         game_loop.load_game(initial_state)
 
         return game_loop, game_id

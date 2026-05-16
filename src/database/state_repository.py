@@ -74,15 +74,24 @@ class StateRepository:
             是否成功
         """
         if not player_state:
-            logger.error(f"save_game_progress: player_state is None for game_id={game_id}")
+            logger.error(
+                f"save_game_progress: player_state is None for game_id={game_id}"
+            )
             return False
 
         # ★ 显示用周数（人类可读，从1开始）
-        week_display = f"第{player_state.week + 1}周" if player_state.week is not None else "未知周"
+        week_display = (
+            f"第{player_state.week + 1}周"
+            if player_state.week is not None
+            else "未知周"
+        )
         logger.info(
             f"save_game_progress: Saving game_id={game_id}, {week_display}, age={player_state.age}"
         )
 
+        # ★ Bug #29/#16 修复：不再清除 current_event_data。
+        # current_event_data 保存玩家当前看到的事件，即使该轮已在 round_history 中，
+        # 它也是正常状态（下一事件可能尚未生成）。清除它会导致刷新后章节重新生成。
         db = SessionLocal()
         try:
             # 保存新的状态快照
@@ -100,13 +109,17 @@ class StateRepository:
                 game.updated_at = datetime.utcnow()  # type: ignore[assignment]
                 logger.info(f"save_game_progress: Updated game {game_id} updated_at")
             else:
-                logger.warning(f"save_game_progress: Game {game_id} not found in database")
+                logger.warning(
+                    f"save_game_progress: Game {game_id} not found in database"
+                )
 
             db.commit()
             logger.info(f"save_game_progress: Successfully saved game_id={game_id}")
             return True
         except Exception as e:
-            logger.error(f"save_game_progress: Failed to save game_id={game_id}, error={e}")
+            logger.error(
+                f"save_game_progress: Failed to save game_id={game_id}, error={e}"
+            )
             db.rollback()
             return False
         finally:
@@ -126,7 +139,11 @@ class StateRepository:
         db = SessionLocal()
         try:
             # 验证游戏属于该用户
-            game = db.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
+            game = (
+                db.query(Game)
+                .filter(Game.game_id == game_id, Game.user_id == user_id)
+                .first()
+            )
 
             if not game:
                 return None
@@ -144,11 +161,28 @@ class StateRepository:
 
             if state_data:
                 state_data["_game_id"] = game_id  # 添加 game_id 以便后续保存
+                # 注入 constraint_level，优先从 game 记录获取
+                state_data["constraint_level"] = (
+                    getattr(game, "constraint_level", "expert") or "expert"
+                )
+
+                # 注入 narrative_style_id，优先从 game 记录获取
+                style_id = getattr(game, "narrative_style_id", None)
+                if style_id:
+                    state_data["narrative_style_id"] = style_id
+                elif initial_data.get("narrative_style_id"):
+                    state_data["narrative_style_id"] = initial_data[
+                        "narrative_style_id"
+                    ]
 
                 # 从 initial_state 补充 player_name 和 life_vision（旧存档可能没有这些字段）
-                if not state_data.get("player_name") and initial_data.get("player_name"):
+                if not state_data.get("player_name") and initial_data.get(
+                    "player_name"
+                ):
                     state_data["player_name"] = initial_data["player_name"]
-                if not state_data.get("life_vision") and initial_data.get("life_vision"):
+                if not state_data.get("life_vision") and initial_data.get(
+                    "life_vision"
+                ):
                     state_data["life_vision"] = initial_data["life_vision"]
 
             return state_data  # type: ignore[return-value]

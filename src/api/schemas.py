@@ -64,6 +64,7 @@ class CreateGameRequest(BaseModel):
     player_name: str
     life_vision: str
     language: str = "zh"
+    constraint_level: str = "expert"
 
 
 class GameListItem(BaseModel):
@@ -82,6 +83,75 @@ class GameStateResponse(BaseModel):
     progress: Dict[str, Any]
     round_info: Dict[str, Any]
     current_event: Optional[Dict[str, Any]] = None
+    constraint_level: str = "expert"
+    narrative_style_id: Optional[str] = None
+    narrative_style_name: Optional[str] = None
+
+
+# ==================== Achievements & Life Review ====================
+
+
+class AchievementItem(BaseModel):
+    id: str
+    name: str
+    description: str
+    rarity: str  # common, rare, epic, legendary
+    dimension: str
+    unlocked_at_week: int = 0
+    icon: str = ""
+
+
+class AchievementList(BaseModel):
+    list: List[AchievementItem]
+    count: int
+
+
+class TurningPointItem(BaseModel):
+    week: int
+    description: str
+    impact_score: float
+
+
+class ResourceCurves(BaseModel):
+    energy: List[int]
+    mood: List[int]
+    knowledge: List[int]
+    wealth: List[int]
+
+
+class RelationshipNode(BaseModel):
+    name: str
+    affinity: int
+
+
+class RelationshipEdge(BaseModel):
+    source: str
+    target: str
+    strength: float
+
+
+class RelationshipNetwork(BaseModel):
+    nodes: List[RelationshipNode]
+    edges: List[RelationshipEdge]
+
+
+class BadgeWallItem(BaseModel):
+    id: str
+    name: str
+    rarity: str
+    unlocked_at_week: int
+
+
+class LifeReviewData(BaseModel):
+    personality_labels: List[str]
+    key_turning_points: List[TurningPointItem]
+    resource_curves: ResourceCurves
+    achievement_badge_wall: List[BadgeWallItem]
+    relationship_network: RelationshipNetwork
+    life_motto: str
+    play_duration_minutes: int
+    total_decisions: int
+    favorite_choice_type: str
 
 
 class SaveGameResponse(BaseModel):
@@ -117,6 +187,18 @@ class GenerateRelationshipRequest(BaseModel):
 class GenerateAttributesRequest(BaseModel):
     character_settings: Dict[str, Any]
     language: str = "zh"
+
+
+class UpdateGameSettingsRequest(BaseModel):
+    constraint_level: Optional[str] = None
+
+
+class UpdateCharacterSettingsRequest(BaseModel):
+    character_settings: Dict[str, Any]
+
+
+class UpdateNarrativeStyleRequest(BaseModel):
+    style_id: str
 
 
 class OpeningStoryRequest(BaseModel):
@@ -257,7 +339,9 @@ class RegenerateFreshImageRequest(BaseModel):
     """完全重新生成图片请求（抛弃历史修改）"""
 
     image_id: int
-    use_deepseek_prompt: bool = Field(True, description="是否使用DeepSeek生成优化prompt")
+    use_deepseek_prompt: bool = Field(
+        True, description="是否使用DeepSeek生成优化prompt"
+    )
 
 
 class BatchGenerateCharactersRequest(BaseModel):
@@ -352,7 +436,9 @@ class GenerateOpeningIllustrationRequest(BaseModel):
 
     game_id: int
     story_text: str = Field(..., description="开场故事文本")
-    character_settings: Dict[str, Any] = Field(default_factory=dict, description="角色设定")
+    character_settings: Dict[str, Any] = Field(
+        default_factory=dict, description="角色设定"
+    )
     player_image_id: Optional[int] = Field(None, description="可选：已有的人物图片ID")
     player_name: str = Field(..., description="角色姓名")
 
@@ -373,7 +459,9 @@ class RegenerateOpeningIllustrationRequest(BaseModel):
 
     game_id: int
     story_text: str = Field(..., description="开场故事文本")
-    character_settings: Dict[str, Any] = Field(default_factory=dict, description="角色设定")
+    character_settings: Dict[str, Any] = Field(
+        default_factory=dict, description="角色设定"
+    )
     player_image_id: Optional[int] = Field(None, description="可选：已有的人物图片ID")
     player_name: str = Field(..., description="角色姓名")
     user_prompt: str = Field(..., description="用户自定义提示词/修改意见")
@@ -386,7 +474,9 @@ class RegenerateRoundSceneRequest(BaseModel):
     game_id: int
     round_number: int = Field(..., description="轮次")
     story_text: str = Field(..., description="该轮的故事文本")
-    character_settings: Dict[str, Any] = Field(default_factory=dict, description="角色设定")
+    character_settings: Dict[str, Any] = Field(
+        default_factory=dict, description="角色设定"
+    )
     player_name: str = Field(..., description="角色姓名")
     user_prompt: str = Field(..., description="用户自定义提示词/修改意见")
     current_scene_id: int = Field(..., description="当前场景插画ID，作为参考")
@@ -397,13 +487,19 @@ class GenerateRoundSceneRequest(BaseModel):
     """自动生成每轮场景插画请求"""
 
     game_id: int
-    week: Optional[int] = Field(None, description="周数（可选，不传则自动从数据库获取）")
+    week: Optional[int] = Field(
+        None, description="周数（可选，不传则自动从数据库获取）"
+    )
     round_number: int = Field(..., description="轮次")
     story_text: str = Field(..., description="该轮的故事文本")
-    character_settings: Dict[str, Any] = Field(default_factory=dict, description="角色设定")
+    character_settings: Dict[str, Any] = Field(
+        default_factory=dict, description="角色设定"
+    )
     player_name: str = Field(..., description="角色姓名")
     player_image_id: Optional[int] = Field(None, description="可选：已有的人物图片ID")
-    stage: str = Field("result", description="场景阶段: event(事件故事) 或 result(结果故事)")
+    stage: str = Field(
+        "result", description="场景阶段: event(事件故事) 或 result(结果故事)"
+    )
 
 
 class RoundSceneResponse(BaseModel):
@@ -486,7 +582,9 @@ class CollectionResponse(BaseModel):
 class RegenerateCharacterImageRequest(BaseModel):
     """重新生成人物画像请求"""
 
-    feedback: str = Field(..., description="用户修改意见，例如：头发变长一点、换一件蓝色衣服")
+    feedback: str = Field(
+        ..., description="用户修改意见，例如：头发变长一点、换一件蓝色衣服"
+    )
     image_id: Optional[int] = Field(
         None, description="可选：指定要修改的图片ID，不传则使用当前活跃图片"
     )
@@ -519,7 +617,9 @@ class RecognizedEntity(BaseModel):
     category: str = Field(default="other", description="类别")
     importance: str = Field(default="normal", description="重要程度")
     appear_count: int = Field(default=1, description="出现次数")
-    appear_contexts: List[str] = Field(default_factory=list, description="出现的上下文片段")
+    appear_contexts: List[str] = Field(
+        default_factory=list, description="出现的上下文片段"
+    )
 
 
 class EntityRecognitionResponse(BaseModel):

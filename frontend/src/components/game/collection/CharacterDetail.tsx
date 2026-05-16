@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -39,6 +40,9 @@ export function CharacterDetail({
   onRegenerateFeedbackChange,
   isDeleting,
 }: CharacterDetailProps) {
+  const [imageError, setImageError] = useState(false);
+  const handleImageError = useCallback(() => setImageError(true), []);
+
   if (!character) return null;
 
   return (
@@ -74,11 +78,13 @@ export function CharacterDetail({
           <div className="space-y-4">
             {/* 图片 - 使用 object-top 确保显示头部 */}
             <div className="aspect-[3/4] rounded-lg bg-muted overflow-hidden">
-              {character.image_url ? (
+              {character.image_url && !imageError ? (
                 <img
                   src={character.image_url}
                   alt={character.name}
                   className="w-full h-full object-cover object-top"
+                  loading="lazy"
+                  onError={handleImageError}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">

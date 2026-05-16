@@ -29,7 +29,6 @@ class PlayerInventoryMixin:
         Args:
             item: ItemState实例
         """
-        from src.game.state.item_state import ItemState
 
         self.items[item.name] = item.model_dump()
         logger.debug(f"Added item: {item.name} (importance: {item.importance})")
@@ -70,7 +69,11 @@ class PlayerInventoryMixin:
         """
         from src.game.state.item_state import ItemState
 
-        return [ItemState(**data) for data in self.items.values() if data.get("is_key_item", False)]
+        return [
+            ItemState(**data)
+            for data in self.items.values()
+            if data.get("is_key_item", False)
+        ]
 
     def update_item(self, name: str, **kwargs) -> bool:
         """

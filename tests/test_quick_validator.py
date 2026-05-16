@@ -1,6 +1,6 @@
 """Tests for quick_validator module."""
 
-import pytest
+import pytest  # noqa: F401
 
 from src.ai.quick_validator import (QuickValidationResult, QuickValidator,
                                     quick_validate_story)
@@ -57,22 +57,28 @@ class TestQuickValidator:
         assert result.passed is True
 
     def test_validate_first_person_zh(self):
-        """Test detection of first-person perspective in Chinese."""
+        """Test detection of first-person perspective in Chinese.
+
+        第一人称「我」应该被检测并导致验证失败。
+        """
         validator = QuickValidator()
-        # Use a longer text without quotes to test first-person detection
         story = "我走在街上。阳光很好。"
         result = validator.validate(story, language="zh")
-        # Verify the validator runs without error
-        assert result is not None
+        # First-person should cause validation to fail
+        assert result.passed is False
+        assert any("第一人称" in issue or "我" in issue for issue in result.issues)
 
     def test_validate_second_person_zh(self):
-        """Test detection of second-person perspective in Chinese."""
+        """Test that second-person perspective is allowed in Chinese narrative.
+
+        The game uses second-person perspective ("你") for immersive storytelling,
+        so it should NOT be flagged as an error.
+        """
         validator = QuickValidator()
-        # Use a longer text without quotes to test second-person detection
         story = "你走在街上。阳光很好。"
         result = validator.validate(story, language="zh")
-        # Verify the validator runs without error
-        assert result is not None
+        assert result.passed is True
+        assert not any("第二人称" in issue for issue in result.issues)
 
     def test_validate_dialogue_first_person_allowed_zh(self):
         """Test that first-person in dialogue is allowed."""
@@ -119,12 +125,16 @@ class TestQuickValidator:
         assert any("first-person" in issue.lower() for issue in result.issues)
 
     def test_validate_second_person_en(self):
-        """Test detection of second-person perspective in English."""
+        """Test that second-person perspective is allowed in English narrative.
+
+        The game uses second-person perspective ("you") for immersive storytelling,
+        so it should NOT be flagged as an error.
+        """
         validator = QuickValidator()
         story = "You walk down the street, looking at the scenery."
         result = validator.validate(story, language="en")
-        assert result.passed is False
-        assert any("second-person" in issue.lower() for issue in result.issues)
+        assert result.passed is True
+        assert not any("second-person" in issue.lower() for issue in result.issues)
 
 
 class TestQuickValidationResult:

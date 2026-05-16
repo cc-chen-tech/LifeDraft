@@ -1,4 +1,6 @@
 ## 环境
+> Last reviewed in this repo context: 2026-04-19 (upstream template kept as-is)
+
 - 系统/平台: <你的系统和平台>
 
 - nodejs 版本: <你的 NodeJS 版本号>

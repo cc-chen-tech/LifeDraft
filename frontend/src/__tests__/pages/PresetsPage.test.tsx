@@ -6,7 +6,7 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import PresetsPage from '@/app/presets/page';
-import { mockGameStoreState, resetStoreMocks } from '../mocks/stores';
+import { useGameStore } from '@/stores/useGameStore';
 
 // Mock useRouter
 const mockPush = jest.fn();
@@ -16,28 +16,52 @@ jest.mock('next/navigation', () => ({
   }),
 }));
 
-// Mock stores
-let mockGameState = { ...mockGameStoreState };
-
-jest.mock('@/stores/useGameStore', () => ({
-  useGameStore: (selector?: (state: typeof mockGameState) => unknown) =>
-    selector ? selector(mockGameState) : mockGameState,
-}));
+function setupDefaultState() {
+  useGameStore.setState({
+    gameId: null,
+    sessionId: null,
+    playerState: null,
+    progress: null,
+    roundInfo: null,
+    currentEvent: null,
+    storyText: '',
+    isGameOver: false,
+    savedGames: [],
+    presets: [],
+    creationStep: 0,
+    characterSettings: {},
+    playerName: '',
+    lifeVision: '',
+    openingStory: '',
+    isPresetLoaded: false,
+    lastSummary: null,
+  });
+}
 
 describe('PresetsPage', () => {
+  let fetchPresetsSpy: jest.SpyInstance;
+  let deletePresetSpy: jest.SpyInstance;
+  let loadPresetSpy: jest.SpyInstance;
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockPush.mockClear();
-    resetStoreMocks();
-    mockGameState = { ...mockGameStoreState };
+    setupDefaultState();
+    const store = useGameStore.getState();
+    fetchPresetsSpy = jest.spyOn(store, 'fetchPresets').mockResolvedValue(undefined);
+    deletePresetSpy = jest.spyOn(store, 'deletePreset').mockResolvedValue(undefined);
+    loadPresetSpy = jest.spyOn(store, 'loadPreset');
+  });
+
+  afterEach(() => {
+    fetchPresetsSpy.mockRestore();
+    deletePresetSpy.mockRestore();
+    loadPresetSpy.mockRestore();
   });
 
   describe('Loading state', () => {
     it('shows loading indicator initially', () => {
-      mockGameState = {
-        ...mockGameStoreState,
-        fetchPresets: jest.fn().mockReturnValue(new Promise(() => {})),
-      };
+      fetchPresetsSpy.mockImplementation(() => new Promise(() => {}));
 
       render(<PresetsPage />);
       expect(screen.getByText('加载中...')).toBeInTheDocument();
@@ -46,12 +70,6 @@ describe('PresetsPage', () => {
 
   describe('Empty state', () => {
     it('shows empty message when no presets', async () => {
-      mockGameState = {
-        ...mockGameStoreState,
-        presets: [],
-        fetchPresets: jest.fn().mockResolvedValue(undefined),
-      };
-
       render(<PresetsPage />);
 
       await waitFor(() => {
@@ -60,12 +78,6 @@ describe('PresetsPage', () => {
     });
 
     it('shows create character button when empty', async () => {
-      mockGameState = {
-        ...mockGameStoreState,
-        presets: [],
-        fetchPresets: jest.fn().mockResolvedValue(undefined),
-      };
-
       render(<PresetsPage />);
 
       await waitFor(() => {
@@ -74,12 +86,6 @@ describe('PresetsPage', () => {
     });
 
     it('navigates to create when clicking create character', async () => {
-      mockGameState = {
-        ...mockGameStoreState,
-        presets: [],
-        fetchPresets: jest.fn().mockResolvedValue(undefined),
-      };
-
       const user = userEvent.setup();
       render(<PresetsPage />);
 
@@ -88,37 +94,32 @@ describe('PresetsPage', () => {
       });
 
       await user.click(screen.getByRole('button', { name: '创建角色' }));
-      
       expect(mockPush).toHaveBeenCalledWith('/create');
     });
   });
 
   describe('With presets', () => {
+    const testPresets = [
+      {
+        preset_id: 1,
+        preset_name: 'Warrior Preset',
+        player_name: 'Warrior',
+        life_vision: 'Become the strongest',
+        character_settings: { strength: 10 },
+        created_at: '2024-01-15T10:00:00Z',
+      },
+      {
+        preset_id: 2,
+        preset_name: 'Mage Preset',
+        player_name: 'Mage',
+        life_vision: 'Master all magic',
+        character_settings: { magic: 10 },
+        created_at: '2024-01-14T10:00:00Z',
+      },
+    ];
+
     beforeEach(() => {
-      mockGameState = {
-        ...mockGameStoreState,
-        presets: [
-          {
-            preset_id: 1,
-            preset_name: 'Warrior Preset',
-            player_name: 'Warrior',
-            life_vision: 'Become the strongest',
-            character_settings: { strength: 10 },
-            created_at: '2024-01-15T10:00:00Z',
-          },
-          {
-            preset_id: 2,
-            preset_name: 'Mage Preset',
-            player_name: 'Mage',
-            life_vision: 'Master all magic',
-            character_settings: { magic: 10 },
-            created_at: '2024-01-14T10:00:00Z',
-          },
-        ],
-        fetchPresets: jest.fn().mockResolvedValue(undefined),
-        loadPreset: jest.fn(),
-        deletePreset: jest.fn().mockResolvedValue(undefined),
-      };
+      useGameStore.setState({ presets: testPresets });
     });
 
     it('displays presets list', async () => {
@@ -149,12 +150,6 @@ describe('PresetsPage', () => {
     });
 
     it('loads preset when clicking load button', async () => {
-      const loadPresetMock = jest.fn();
-      mockGameState = {
-        ...mockGameState,
-        loadPreset: loadPresetMock,
-      };
-
       const user = userEvent.setup();
       render(<PresetsPage />);
 
@@ -162,13 +157,12 @@ describe('PresetsPage', () => {
         expect(screen.getByText('Warrior Preset')).toBeInTheDocument();
       });
 
-      // Find and click the first load button (Play icon)
       const loadButtons = screen.getAllByRole('button').filter(
         btn => btn.querySelector('svg.lucide-play')
       );
       await user.click(loadButtons[0]);
 
-      expect(loadPresetMock).toHaveBeenCalledWith(mockGameState.presets[0]);
+      expect(loadPresetSpy).toHaveBeenCalledWith(testPresets[0]);
       expect(mockPush).toHaveBeenCalledWith('/create');
     });
 
@@ -180,7 +174,6 @@ describe('PresetsPage', () => {
         expect(screen.getByText('Warrior Preset')).toBeInTheDocument();
       });
 
-      // Find and click the first delete button (Trash icon)
       const deleteButtons = screen.getAllByRole('button').filter(
         btn => btn.querySelector('svg.lucide-trash-2')
       );
@@ -193,12 +186,6 @@ describe('PresetsPage', () => {
     });
 
     it('deletes preset when confirming delete', async () => {
-      const deletePresetMock = jest.fn().mockResolvedValue(undefined);
-      mockGameState = {
-        ...mockGameState,
-        deletePreset: deletePresetMock,
-      };
-
       const user = userEvent.setup();
       render(<PresetsPage />);
 
@@ -206,7 +193,6 @@ describe('PresetsPage', () => {
         expect(screen.getByText('Warrior Preset')).toBeInTheDocument();
       });
 
-      // Click delete button
       const deleteButtons = screen.getAllByRole('button').filter(
         btn => btn.querySelector('svg.lucide-trash-2')
       );
@@ -216,21 +202,14 @@ describe('PresetsPage', () => {
         expect(screen.getByText('确认删除')).toBeInTheDocument();
       });
 
-      // Confirm delete
       await user.click(screen.getByRole('button', { name: '删除' }));
 
       await waitFor(() => {
-        expect(deletePresetMock).toHaveBeenCalledWith(1);
+        expect(deletePresetSpy).toHaveBeenCalledWith(1);
       });
     });
 
     it('cancels delete when clicking cancel', async () => {
-      const deletePresetMock = jest.fn();
-      mockGameState = {
-        ...mockGameState,
-        deletePreset: deletePresetMock,
-      };
-
       const user = userEvent.setup();
       render(<PresetsPage />);
 
@@ -238,7 +217,6 @@ describe('PresetsPage', () => {
         expect(screen.getByText('Warrior Preset')).toBeInTheDocument();
       });
 
-      // Click delete button
       const deleteButtons = screen.getAllByRole('button').filter(
         btn => btn.querySelector('svg.lucide-trash-2')
       );
@@ -248,43 +226,28 @@ describe('PresetsPage', () => {
         expect(screen.getByText('确认删除')).toBeInTheDocument();
       });
 
-      // Cancel delete
       await user.click(screen.getByRole('button', { name: '取消' }));
 
       await waitFor(() => {
         expect(screen.queryByText('确认删除')).not.toBeInTheDocument();
       });
-      expect(deletePresetMock).not.toHaveBeenCalled();
+      expect(deletePresetSpy).not.toHaveBeenCalled();
     });
   });
 
   describe('Navigation', () => {
     it('navigates back when clicking back button', async () => {
-      mockGameState = {
-        ...mockGameStoreState,
-        presets: [],
-        fetchPresets: jest.fn().mockResolvedValue(undefined),
-      };
-
       const user = userEvent.setup();
       render(<PresetsPage />);
 
       await user.click(screen.getByRole('button', { name: /返回/i }));
-      
       expect(mockPush).toHaveBeenCalledWith('/');
     });
   });
 
   describe('Page title', () => {
     it('displays correct page title', async () => {
-      mockGameState = {
-        ...mockGameStoreState,
-        presets: [],
-        fetchPresets: jest.fn().mockResolvedValue(undefined),
-      };
-
       render(<PresetsPage />);
-      
       expect(screen.getByText('角色预设')).toBeInTheDocument();
     });
   });

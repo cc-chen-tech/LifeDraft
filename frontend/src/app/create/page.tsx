@@ -58,7 +58,8 @@ export default function CreatePage() {
     setImageFeedback,
     regeneratePlayerImage,
     regenerateFreshPlayerImage,
-    
+    regenerateSetting,
+
     // Local state
     isGenerating,
     feedback,
@@ -119,6 +120,12 @@ export default function CreatePage() {
         showPresetSheet={showPresetSheet}
         presetName={presetName}
         isSavingPreset={isSavingPreset}
+        isGeneratingImage={isGeneratingImage}
+        imageFeedback={imageFeedback}
+        onImageFeedbackChange={setImageFeedback}
+        onRegenerateImage={() => regeneratePlayerImage(imageFeedback)}
+        onRegenerateFreshImage={regenerateFreshPlayerImage}
+        showToast={showToast}
         onSetShowDetails={setShowDetails}
         onSetShowPresetSheet={setShowPresetSheet}
         onSetPresetName={setPresetName}
@@ -128,6 +135,7 @@ export default function CreatePage() {
         }}
         onStartGame={handleStartGame}
         onSavePreset={handleSavePreset}
+        onRegenerateSetting={regenerateSetting}
       />
     );
   }

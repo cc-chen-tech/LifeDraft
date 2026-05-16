@@ -1,7 +1,7 @@
 """Tests for ImageStorageService."""
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -109,7 +109,8 @@ class TestSaveImage:
 
         with patch.object(ImageStorageService, "_ensure_local_dir"):
             with patch.object(ImageStorageService, "_save_local") as mock_save:
-                mock_save.return_value = ("/tmp/images/test.png", "local")
+                # ★ 现在返回相对路径
+                mock_save.return_value = ("1/character/test.png", "local")
                 service = ImageStorageService()
 
                 result = service.save_image(
@@ -119,7 +120,7 @@ class TestSaveImage:
                     entity_name="Test",
                 )
 
-        assert result == ("/tmp/images/test.png", "local")
+        assert result == ("1/character/test.png", "local")
 
     @patch("src.services.image_storage.settings")
     def test_save_image_unsupported_type(self, mock_settings):
@@ -146,7 +147,7 @@ class TestSaveLocal:
 
     @patch("src.services.image_storage.settings")
     def test_save_local_success(self, mock_settings, tmp_path):
-        """Test successful local save."""
+        """Test successful local save returns relative path."""
         mock_settings.IMAGE_STORAGE_TYPE = "local"
         mock_settings.IMAGE_LOCAL_PATH = tmp_path
 
@@ -156,8 +157,11 @@ class TestSaveLocal:
             image_data=b"test_image_data", filename="1/character/test.png"
         )
 
+        # ★ 现在返回相对路径而非绝对路径
+        assert result[0] == "1/character/test.png"
         assert result[1] == "local"
-        assert "1/character/test.png" in result[0]
+        # 验证文件确实写入到了正确位置
+        assert (tmp_path / "1" / "character" / "test.png").exists()
 
     @patch("src.services.image_storage.settings")
     def test_save_local_creates_directory(self, mock_settings, tmp_path):
@@ -172,6 +176,7 @@ class TestSaveLocal:
             image_data=b"test_image_data", filename="999/character/nested/test.png"
         )
 
+        assert result[0] == "999/character/nested/test.png"
         assert result[1] == "local"
         assert (tmp_path / "999" / "character" / "nested").exists()
 
@@ -180,8 +185,34 @@ class TestImageExists:
     """Test image_exists method."""
 
     @patch("src.services.image_storage.settings")
-    def test_image_exists_true(self, mock_settings, tmp_path):
-        """Test image exists check - true."""
+    def test_image_exists_true_relative(self, mock_settings, tmp_path):
+        """Test image exists check with relative path - true."""
+        mock_settings.IMAGE_STORAGE_TYPE = "local"
+        mock_settings.IMAGE_LOCAL_PATH = tmp_path
+
+        service = ImageStorageService()
+
+        # Create a test file
+        (tmp_path / "1" / "character").mkdir(parents=True)
+        test_file = tmp_path / "1" / "character" / "test.png"
+        test_file.write_bytes(b"test")
+
+        # ★ 使用相对路径检查
+        assert service.image_exists("1/character/test.png", "local") is True
+
+    @patch("src.services.image_storage.settings")
+    def test_image_exists_false_relative(self, mock_settings, tmp_path):
+        """Test image exists check with relative path - false."""
+        mock_settings.IMAGE_STORAGE_TYPE = "local"
+        mock_settings.IMAGE_LOCAL_PATH = tmp_path
+
+        service = ImageStorageService()
+
+        assert service.image_exists("1/character/nonexistent.png", "local") is False
+
+    @patch("src.services.image_storage.settings")
+    def test_image_exists_true_absolute_compat(self, mock_settings, tmp_path):
+        """Test image exists check with absolute path (backward compat) - true."""
         mock_settings.IMAGE_STORAGE_TYPE = "local"
         mock_settings.IMAGE_LOCAL_PATH = tmp_path
 
@@ -191,25 +222,33 @@ class TestImageExists:
         test_file = tmp_path / "test.png"
         test_file.write_bytes(b"test")
 
+        # ★ 向后兼容：绝对路径仍然可用
         assert service.image_exists(str(test_file), "local") is True
-
-    @patch("src.services.image_storage.settings")
-    def test_image_exists_false(self, mock_settings, tmp_path):
-        """Test image exists check - false."""
-        mock_settings.IMAGE_STORAGE_TYPE = "local"
-        mock_settings.IMAGE_LOCAL_PATH = tmp_path
-
-        service = ImageStorageService()
-
-        assert service.image_exists(str(tmp_path / "nonexistent.png"), "local") is False
 
 
 class TestGetImageData:
     """Test get_image_data method."""
 
     @patch("src.services.image_storage.settings")
-    def test_get_image_data_success(self, mock_settings, tmp_path):
-        """Test getting image data successfully."""
+    def test_get_image_data_relative_path(self, mock_settings, tmp_path):
+        """Test getting image data with relative path."""
+        mock_settings.IMAGE_STORAGE_TYPE = "local"
+        mock_settings.IMAGE_LOCAL_PATH = tmp_path
+
+        service = ImageStorageService()
+
+        # Create a test file
+        (tmp_path / "1" / "character").mkdir(parents=True)
+        test_file = tmp_path / "1" / "character" / "test.png"
+        test_file.write_bytes(b"test_image_data")
+
+        # ★ 使用相对路径读取
+        result = service.get_image_data("1/character/test.png", "local")
+        assert result == b"test_image_data"
+
+    @patch("src.services.image_storage.settings")
+    def test_get_image_data_absolute_compat(self, mock_settings, tmp_path):
+        """Test getting image data with absolute path (backward compat)."""
         mock_settings.IMAGE_STORAGE_TYPE = "local"
         mock_settings.IMAGE_LOCAL_PATH = tmp_path
 
@@ -219,8 +258,8 @@ class TestGetImageData:
         test_file = tmp_path / "test.png"
         test_file.write_bytes(b"test_image_data")
 
+        # ★ 向后兼容：绝对路径仍然可用
         result = service.get_image_data(str(test_file), "local")
-
         assert result == b"test_image_data"
 
     @patch("src.services.image_storage.settings")
@@ -233,11 +272,24 @@ class TestGetImageData:
 
         # Should raise ImageStorageError for non-existent file
         with pytest.raises(ImageStorageError):
-            service.get_image_data(str(tmp_path / "nonexistent.png"), "local")
+            service.get_image_data("1/character/nonexistent.png", "local")
 
 
 class TestGetImageUrl:
     """Test get_image_url method."""
+
+    @patch("src.services.image_storage.settings")
+    def test_get_image_url_relative_path(self, mock_settings):
+        """Test getting URL from relative path (new format)."""
+        mock_settings.IMAGE_STORAGE_TYPE = "local"
+        mock_settings.IMAGE_LOCAL_PATH = Path("/data/images")
+
+        with patch.object(ImageStorageService, "_ensure_local_dir"):
+            service = ImageStorageService()
+
+        # ★ 新格式：相对路径直接拼接URL
+        url = service.get_image_url("1/character/test.png", "local")
+        assert url == "/api/images/file/1/character/test.png"
 
     @patch("src.services.image_storage.settings")
     def test_get_image_url_local(self, mock_settings):
@@ -252,13 +304,113 @@ class TestGetImageUrl:
 
         assert "/images/file/" in url or "/api/images/file/" in url
 
+    @patch("src.services.image_storage.settings")
+    def test_get_image_url_prefix_match(self, mock_settings):
+        """Test URL extraction when storage_path starts with current local_path."""
+        mock_settings.IMAGE_STORAGE_TYPE = "local"
+        mock_settings.IMAGE_LOCAL_PATH = Path("/Users/luicy/AI/story2/data/images")
+
+        with patch.object(ImageStorageService, "_ensure_local_dir"):
+            service = ImageStorageService()
+
+        url = service.get_image_url(
+            "/Users/luicy/AI/story2/data/images/296/character/test.png", "local"
+        )
+
+        assert url == "/api/images/file/296/character/test.png"
+
+    @patch("src.services.image_storage.settings")
+    def test_get_image_url_project_migration(self, mock_settings):
+        """Test URL extraction after project directory migration via data/images/ marker."""
+        mock_settings.IMAGE_STORAGE_TYPE = "local"
+        # Current path is the new location
+        mock_settings.IMAGE_LOCAL_PATH = Path("/Users/luicy/AI/story2/data/images")
+
+        with patch.object(ImageStorageService, "_ensure_local_dir"):
+            service = ImageStorageService()
+
+        # storage_path is from the OLD location (before migration)
+        url = service.get_image_url(
+            "/Users/luicy/story2/data/images/296/character/xxx.png", "local"
+        )
+
+        assert url == "/api/images/file/296/character/xxx.png"
+
+    @patch("src.services.image_storage.settings")
+    def test_get_image_url_no_marker(self, mock_settings):
+        """Test fallback when path has no data/images/ marker."""
+        mock_settings.IMAGE_STORAGE_TYPE = "local"
+        mock_settings.IMAGE_LOCAL_PATH = Path("/some/other/path")
+
+        with patch.object(ImageStorageService, "_ensure_local_dir"):
+            service = ImageStorageService()
+
+        # Path without data/images/ and not starting with local_path
+        url = service.get_image_url("/random/path/to/image.png", "local")
+
+        # Falls back to using the full storage_path as relative_path (/ preserved by quote safe="/")
+        assert url == "/api/images/file//random/path/to/image.png"
+
+    @patch("src.services.image_storage.settings")
+    def test_get_image_url_chinese_filename(self, mock_settings):
+        """Test URL encoding for Chinese characters in filename."""
+        mock_settings.IMAGE_STORAGE_TYPE = "local"
+        mock_settings.IMAGE_LOCAL_PATH = Path("/data/images")
+
+        with patch.object(ImageStorageService, "_ensure_local_dir"):
+            service = ImageStorageService()
+
+        # ★ 新格式：使用相对路径
+        url = service.get_image_url("1/character/李逍遥_1.png", "local")
+
+        # Chinese characters should be percent-encoded, slashes preserved
+        assert "/api/images/file/1/character/" in url
+        assert "%E6%9D%8E%E9%80%8D%E9%81%A5" in url  # 李逍遥 encoded
+        assert url.endswith("_1.png")
+
+    @patch("src.services.image_storage.settings")
+    def test_get_image_url_multiple_markers(self, mock_settings):
+        """Test extraction uses first data/images/ marker when multiple exist."""
+        mock_settings.IMAGE_STORAGE_TYPE = "local"
+        mock_settings.IMAGE_LOCAL_PATH = Path("/some/other/path")
+
+        with patch.object(ImageStorageService, "_ensure_local_dir"):
+            service = ImageStorageService()
+
+        # Path with two data/images/ segments
+        url = service.get_image_url(
+            "/old/data/images/nested/data/images/1/character/test.png", "local"
+        )
+
+        # find() returns the first occurrence, so relative_path starts after the first marker
+        assert url == "/api/images/file/nested/data/images/1/character/test.png"
+
 
 class TestDeleteImage:
     """Test delete_image method."""
 
     @patch("src.services.image_storage.settings")
-    def test_delete_image_local(self, mock_settings, tmp_path):
-        """Test deleting local image."""
+    def test_delete_image_relative_path(self, mock_settings, tmp_path):
+        """Test deleting local image with relative path."""
+        mock_settings.IMAGE_STORAGE_TYPE = "local"
+        mock_settings.IMAGE_LOCAL_PATH = tmp_path
+
+        service = ImageStorageService()
+
+        # Create a test file
+        (tmp_path / "1" / "character").mkdir(parents=True)
+        test_file = tmp_path / "1" / "character" / "test.png"
+        test_file.write_bytes(b"test")
+
+        # ★ 使用相对路径删除
+        result = service.delete_image("1/character/test.png", "local")
+
+        assert result is True
+        assert not test_file.exists()
+
+    @patch("src.services.image_storage.settings")
+    def test_delete_image_absolute_compat(self, mock_settings, tmp_path):
+        """Test deleting local image with absolute path (backward compat)."""
         mock_settings.IMAGE_STORAGE_TYPE = "local"
         mock_settings.IMAGE_LOCAL_PATH = tmp_path
 
@@ -281,6 +433,33 @@ class TestDeleteImage:
 
         service = ImageStorageService()
 
-        result = service.delete_image(str(tmp_path / "nonexistent.png"), "local")
+        result = service.delete_image("1/character/nonexistent.png", "local")
 
         assert result is False
+
+
+class TestGetFullPath:
+    """Test get_full_path method."""
+
+    @patch("src.services.image_storage.settings")
+    def test_get_full_path_relative(self, mock_settings, tmp_path):
+        """Test get_full_path with relative path."""
+        mock_settings.IMAGE_STORAGE_TYPE = "local"
+        mock_settings.IMAGE_LOCAL_PATH = tmp_path
+
+        service = ImageStorageService()
+
+        result = service.get_full_path("1/character/test.png")
+        assert result == tmp_path / "1" / "character" / "test.png"
+
+    @patch("src.services.image_storage.settings")
+    def test_get_full_path_absolute(self, mock_settings, tmp_path):
+        """Test get_full_path with absolute path (backward compat)."""
+        mock_settings.IMAGE_STORAGE_TYPE = "local"
+        mock_settings.IMAGE_LOCAL_PATH = tmp_path
+
+        service = ImageStorageService()
+
+        abs_path = "/Users/luicy/AI/story2/data/images/1/character/test.png"
+        result = service.get_full_path(abs_path)
+        assert result == Path(abs_path)

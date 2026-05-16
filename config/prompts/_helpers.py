@@ -1,6 +1,199 @@
 """AI prompt helper functions for context building."""
 
+import logging
 from typing import Any, Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
+
+# 约束优先级标记
+CONSTRAINT_MUST = "[MUST]"      # 违反即失败
+CONSTRAINT_SHOULD = "[SHOULD]"  # 应尽力遵守
+CONSTRAINT_REF = "[REF]"        # 仅供参考
+
+# 约束 Token 预算配置
+CONSTRAINT_BUDGET = {
+    "critical_summary": 100,      # 不可削减
+    "established_facts": 800,     # 不可削减
+    "storylines": 600,            # 可压缩
+    "world_model": 500,           # 不可削减
+    "foreshadowing": 400,         # 可削减
+    "habits": 300,                # 可削减
+    "vector_context": 400,        # 可削减
+    "overused_phrases": 300,      # 可削减
+    "style_constraints": 400,     # 可削减（风格引擎）
+    "arc_hint": 200,              # 可削减（人物弧光）
+    "conflict_directive": 150,    # 可削减（冲突指令）
+    "world_event_context": 200,   # 可削减（世界呼吸）
+    "fate_echo_hint": 150,        # 可削减（宿命回响）
+    "preference_hint": 100,       # 可削减（偏好适配）
+    "foreshadowing_technique_hint": 150,  # 可削减（伏笔技法）
+}
+
+# 削减优先级：数字越大越先被削减
+_BUDGET_TRIM_ORDER = [
+    "preference_hint",
+    "foreshadowing_technique_hint",
+    "fate_echo_hint",
+    "arc_hint",
+    "conflict_directive",
+    "world_event_context",
+    "style_constraints",
+    "overused_phrases",
+    "vector_context",
+    "habits",
+    "foreshadowing",
+]
+
+# 不可削减项
+_BUDGET_PROTECTED = {"critical_summary", "established_facts", "world_model"}
+
+
+def _compress_fact(fact: dict, language: str) -> str:
+    """
+    将单条事实压缩为高信息密度格式。
+
+    根据 fact 的 type/category 字段选择不同的压缩模板：
+    - commitment/promise: "★ {人物}→{对象}: {动作}(W{周},{状态})"
+    - decision: "{人物}: {决策内容}(W{周})"
+    - location: "{人物}@{地点}"
+    - 其他: 截断前40字符 + "..."
+
+    Args:
+        fact: 事实字典，可能包含 category, subject, fact, source_week, status 等字段
+        language: 语言代码 "zh" 或 "en"
+
+    Returns:
+        压缩后的事实文本
+    """
+    category = (fact.get("category") or fact.get("type") or "").lower()
+    subject = fact.get("subject", "")
+    fact_text = fact.get("fact", "") or fact.get("description", "")
+    source_week = fact.get("source_week", "")
+    status = fact.get("status", "")
+
+    # 周次显示（week 从 0 开始，显示时+1）
+    week_str = ""
+    if source_week != "" and source_week is not None:
+        try:
+            week_str = f"W{int(source_week) + 1}"
+        except (ValueError, TypeError):
+            week_str = ""
+
+    zh = language == "zh"
+
+    # commitment / promise 类
+    if category in ("commitment", "promise"):
+        status_part = f",{status}" if status else ""
+        week_part = f",{week_str}" if week_str else ""
+        meta = f"({week_part}{status_part})".replace("(,", "(")
+        if not meta or meta == "()":
+            meta = ""
+        if zh:
+            return f"★ {subject}→{fact_text}{meta}"
+        else:
+            return f"★ {subject}→{fact_text}{meta}"
+
+    # decision 类
+    if category == "decision":
+        week_part = f"({week_str})" if week_str else ""
+        return f"{subject}: {fact_text}{week_part}"
+
+    # location 类
+    if category == "location":
+        return f"{subject}@{fact_text}"
+
+    # 其他类型：截断
+    full = f"{subject}: {fact_text}" if subject else fact_text
+    if len(full) > 40:
+        return full[:40] + "..."
+    return full
+
+
+def _estimate_tokens(text: str) -> int:
+    """估计文本的 token 数。中文按 len*0.75，英文按 len/4。"""
+    if not text:
+        return 0
+    # 简单判断：如果包含大量中文字符则用 0.75 比率
+    chinese_chars = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
+    if chinese_chars > len(text) * 0.3:
+        return int(len(text) * 0.75)
+    return max(1, len(text) // 4)
+
+
+def _allocate_constraint_budget(
+    constraint_texts: Dict[str, str],
+    budget: Optional[Dict[str, int]] = None,
+) -> Dict[str, str]:
+    """
+    根据 Token 预算分配约束文本。
+    当总约束超过预算时，按优先级从低到高削减。
+
+    Args:
+        constraint_texts: 约束名称 -> 约束文本 的映射
+        budget: 预算配置，默认使用 CONSTRAINT_BUDGET
+
+    Returns:
+        调整后的约束文本映射（可能被截断）
+    """
+    if budget is None:
+        budget = CONSTRAINT_BUDGET
+
+    total_budget = sum(budget.values())
+
+    # 计算当前总 token
+    current_tokens: Dict[str, int] = {}
+    total_tokens = 0
+    for key, text in constraint_texts.items():
+        tokens = _estimate_tokens(text)
+        current_tokens[key] = tokens
+        total_tokens += tokens
+
+    # 未超预算，原样返回
+    if total_tokens <= total_budget:
+        return dict(constraint_texts)
+
+    # 需要削减的 token 数
+    excess = total_tokens - total_budget
+    result = dict(constraint_texts)
+
+    for key in _BUDGET_TRIM_ORDER:
+        if excess <= 0:
+            break
+        if key not in result or key in _BUDGET_PROTECTED:
+            continue
+
+        text = result[key]
+        current = current_tokens.get(key, 0)
+        allowed = budget.get(key, 0)
+
+        if current <= allowed:
+            continue
+
+        # 计算允许的字符数：根据 token/char 比率反推
+        chinese_chars = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
+        if chinese_chars > len(text) * 0.3:
+            # 中文：1 char ≈ 0.75 token
+            allowed_chars = int(allowed / 0.75)
+        else:
+            # 英文：1 char ≈ 0.25 token
+            allowed_chars = allowed * 4
+
+        if len(text) > allowed_chars and allowed_chars > 0:
+            # 中文用中文后缀，英文用英文后缀
+            if chinese_chars > len(text) * 0.3:
+                result[key] = text[:allowed_chars] + "...（已精简）"
+            else:
+                result[key] = text[:allowed_chars] + "... (trimmed)"
+            new_tokens = _estimate_tokens(result[key])
+            excess -= (current - new_tokens)
+            current_tokens[key] = new_tokens
+        elif allowed_chars <= 0:
+            # 预算为 0，整个删除
+            result[key] = ""
+            excess -= current
+            current_tokens[key] = 0
+
+    return result
 
 
 def _collect_available_people(
@@ -153,9 +346,9 @@ def _build_available_people_constraint(available_people: list, language: str) ->
 
     names_str = ", ".join(names)
     if language == "zh":
-        return f"\n**可用人物列表（事件中的人物必须且只能来自此列表）**：{names_str}"
+        return f"\n{CONSTRAINT_MUST} **可用人物列表（事件中的人物必须且只能来自此列表，严禁使用名单外的人物）**：{names_str}"
     else:
-        return f"\n**Available People List (all people in events MUST and ONLY come from this list)**: {names_str}"
+        return f"\n{CONSTRAINT_MUST} **Available People List (all people in events MUST and ONLY come from this list, STRICTLY FORBIDDEN to use people outside this list)**: {names_str}"
 
 
 def _build_time_context(game_date_info: Optional[Dict[str, Any]], language: str) -> str:
@@ -236,12 +429,35 @@ def _build_pending_storylines_context(
             char_str = f", involving: {', '.join(characters)}" if characters else ""
             return f"Since week {created_week}: {desc}{char_str}"
 
+    def _fmt_storyline_compressed_high(sl: dict, lang: str) -> str:
+        """压缩高重要性剧情线为单行摘要"""
+        desc = sl.get("description", "")
+        characters = sl.get("related_characters", [])
+        if lang == "zh":
+            short_desc = desc[:30] + "..." if len(desc) > 30 else desc
+            char_str = f"（涉及: {'、'.join(characters)}）" if characters else ""
+            return f"• {short_desc}{char_str}"
+        else:
+            short_desc = desc[:50] + "..." if len(desc) > 50 else desc
+            char_str = f" (involves: {', '.join(characters)})" if characters else ""
+            return f"• {short_desc}{char_str}"
+
+    def _fmt_storyline_compressed_medium(sl: dict, lang: str) -> str:
+        """压缩中重要性剧情线为仅名称"""
+        desc = sl.get("description", "")
+        if lang == "zh":
+            short_desc = desc[:15] + "..." if len(desc) > 15 else desc
+            return f"• {short_desc}"
+        else:
+            short_desc = desc[:30] + "..." if len(desc) > 30 else desc
+            return f"• {short_desc}"
+
     if language == "zh":
         lines = ["\n【未完结的重要剧情线】"]
 
         # ★ 最高优先级：overdue 剧情线 — 独立强制约束
         if overdue_storylines:
-            lines.append("\n🚨 **以下剧情线已严重滞后，本轮故事必须推进或解决其中至少一条：**")
+            lines.append(f"\n{CONSTRAINT_MUST} 🚨 **以下剧情线已严重滞后，本轮故事必须推进或解决其中至少一条：**")
             for sl in overdue_storylines:
                 lines.append(f"- 🚨【逾期】{_fmt_storyline(sl, 'zh')}")
             lines.append(
@@ -250,13 +466,13 @@ def _build_pending_storylines_context(
             )
 
         if high_storylines:
-            lines.append("\n**必须在故事中涉及以下高重要性剧情线（至少一条）：**")
+            lines.append(f"\n{CONSTRAINT_SHOULD} **必须在故事中涉及以下高重要性剧情线（至少一条）：**")
             for sl in high_storylines:
-                lines.append(f"- 【高】{_fmt_storyline(sl, 'zh')}")
+                lines.append(f"- 【高】{_fmt_storyline_compressed_high(sl, 'zh')}")
         if medium_storylines:
-            lines.append("\n可选择性延续的剧情线：")
+            lines.append(f"\n{CONSTRAINT_REF} 可选择性延续的剧情线：")
             for sl in medium_storylines:
-                lines.append(f"- 【中】{_fmt_storyline(sl, 'zh')}")
+                lines.append(f"- 【中】{_fmt_storyline_compressed_medium(sl, 'zh')}")
         if high_storylines and not overdue_storylines:
             lines.append(
                 "\n强制要求：故事必须自然地涉及至少一条高重要性剧情线，可以是续写发展、回应或解决。不能完全忽略这些未完结的重要事件。"
@@ -272,7 +488,7 @@ def _build_pending_storylines_context(
         # ★ Overdue storylines — separate MUST constraint
         if overdue_storylines:
             lines.append(
-                "\n🚨 **OVERDUE: The following storylines have been stalled too long. "
+                f"\n{CONSTRAINT_MUST} 🚨 **OVERDUE: The following storylines have been stalled too long. "
                 "MUST advance or resolve at least one in THIS round:**"
             )
             for sl in overdue_storylines:
@@ -286,14 +502,14 @@ def _build_pending_storylines_context(
 
         if high_storylines:
             lines.append(
-                "\n**MUST address at least one of these HIGH-importance storylines in the story:**"
+                f"\n{CONSTRAINT_SHOULD} **MUST address at least one of these HIGH-importance storylines in the story:**"
             )
             for sl in high_storylines:
-                lines.append(f"- [HIGH] {_fmt_storyline(sl, 'en')}")
+                lines.append(f"- [HIGH] {_fmt_storyline_compressed_high(sl, 'en')}")
         if medium_storylines:
-            lines.append("\nOptional storylines to continue:")
+            lines.append(f"\n{CONSTRAINT_REF} Optional storylines to continue:")
             for sl in medium_storylines:
-                lines.append(f"- [MEDIUM] {_fmt_storyline(sl, 'en')}")
+                lines.append(f"- [MEDIUM] {_fmt_storyline_compressed_medium(sl, 'en')}")
         if high_storylines and not overdue_storylines:
             lines.append(
                 "\nMANDATORY: Story MUST naturally involve at least one high-importance storyline - continue, address, or resolve it. Cannot completely ignore these unresolved important events."
@@ -341,7 +557,7 @@ def _build_continuation_mandate(
         story_text = event_part + choice_continuation_part
 
         if language == "zh":
-            return f"""\n【必须续写上一轮未完结的故事】
+            return f"""\n{CONSTRAINT_MUST} 【必须续写上一轮未完结的故事】
 上一轮的故事尚未完结，你必须延续上一轮的故事线。
 
 【上一轮完整故事（含选择后的发展）】
@@ -355,7 +571,7 @@ def _build_continuation_mandate(
 - 可以解决上一轮的悬念，也可以让事情继续发展
 """
         else:
-            return f"""\n[MUST CONTINUE THE UNFINISHED STORY FROM LAST ROUND]
+            return f"""\n{CONSTRAINT_MUST} [MUST CONTINUE THE UNFINISHED STORY FROM LAST ROUND]
 The previous round's story has NOT concluded. You MUST continue the previous storyline.
 
 [Previous Round's Full Story (including post-choice development)]
@@ -376,7 +592,7 @@ The previous round's story has NOT concluded. You MUST continue the previous sto
         story_text = event_part + choice_continuation_part
 
         if language == "zh":
-            return f"""\n【上一轮故事背景 - 必须保持叙事连贯】
+            return f"""\n{CONSTRAINT_REF} 【上一轮故事背景 - 必须保持叙事连贯】
 上一轮的故事已自然完结，但本轮故事必须在此基础上继续发展，不能出现"失忆式"断裂。
 
 【上一轮故事（含选择后的发展）】
@@ -390,7 +606,7 @@ The previous round's story has NOT concluded. You MUST continue the previous sto
 - 故事中的人物不应该表现得好像上一轮的事没发生过
 """
         else:
-            return f"""\n[PREVIOUS ROUND STORY CONTEXT - MUST MAINTAIN NARRATIVE CONTINUITY]
+            return f"""\n{CONSTRAINT_REF} [PREVIOUS ROUND STORY CONTEXT - MUST MAINTAIN NARRATIVE CONTINUITY]
 The previous round's story concluded naturally, but this round MUST continue from that context. No "amnesia-style" disconnection.
 
 [Previous Round's Story (including post-choice development)]
@@ -430,7 +646,7 @@ def _build_character_habits_context(
         habits_by_char[char_name].append(h)
 
     if language == "zh":
-        lines = ["\n【人物习惯记录 - 必须在故事中体现，保持角色行为一致性】"]
+        lines = [f"\n{CONSTRAINT_SHOULD} 【人物习惯记录 - 必须在故事中体现，保持角色行为一致性】"]
         strength_label = {"strong": "根深蒂固", "moderate": "明显", "emerging": "初现"}
         cat_label = {
             "behavioral": "行为",
@@ -456,7 +672,7 @@ def _build_character_habits_context(
         return "\n".join(lines)
     else:
         lines = [
-            "\n[Character Habits - MUST be reflected in story, maintain behavioral consistency]"
+            f"\n{CONSTRAINT_SHOULD} [Character Habits - MUST be reflected in story, maintain behavioral consistency]"
         ]
         strength_label = {
             "strong": "deep-rooted",
@@ -592,7 +808,7 @@ def _build_foreshadowing_context(
         weight_hint = weight_hints_zh.get(weight, weight_hints_zh["supporting"])
 
         lines = [
-            f"\n【伏笔回响 — 草蛇灰线，伏脉千里】",
+            f"\n{CONSTRAINT_SHOULD} 【伏笔回响 — 草蛇灰线，伏脉千里】",
             f"在第{planted_week}周，故事中埋下了一个伏笔：",
             f"「{desc}」",
         ]
@@ -600,22 +816,22 @@ def _build_foreshadowing_context(
             lines.append(f"当时的场景：{context}")
         if chars_str:
             lines.append(f"涉及人物：{chars_str}")
-        lines.append(f"")
+        lines.append("")
         lines.append(f"请{intensity_zh}将这个伏笔的回响编织进本轮故事：{type_hint}。")
-        lines.append(f"")
+        lines.append("")
         lines.append(f"【隐蔽度指导】{intensity_detail_zh}")
         lines.append(f"【回收方式】{recycle_hint}")
         lines.append(f"【叙事角色】{weight_hint}")
-        lines.append(f"")
-        lines.append(f"克制与延迟满足的艺术：")
-        lines.append(f"- 不要一次揭示全部——留白是力量。只展现伏笔回响的一个切面")
-        lines.append(f"- 回响可以引发新的疑问，而非回答所有问题")
-        lines.append(f"- 让读者自己'发现'关联，而非由叙述者指出")
+        lines.append("")
+        lines.append("克制与延迟满足的艺术：")
+        lines.append("- 不要一次揭示全部——留白是力量。只展现伏笔回响的一个切面")
+        lines.append("- 回响可以引发新的疑问，而非回答所有问题")
+        lines.append("- 让读者自己'发现'关联，而非由叙述者指出")
         lines.append(
-            f"- 引入方式：人物对话、巧合重逢、意外发现、消息传来、梦境、相似情境"
+            "- 引入方式：人物对话、巧合重逢、意外发现、消息传来、梦境、相似情境"
         )
         lines.append(
-            f"- 禁止直接提及'伏笔''回响''草蛇灰线''呼应''命运''前因后果'等元叙述词汇"
+            "- 禁止直接提及'伏笔''回响''草蛇灰线''呼应''命运''前因后果'等元叙述词汇"
         )
         return "\n".join(lines)
     else:
@@ -624,7 +840,7 @@ def _build_foreshadowing_context(
         weight_hint = weight_hints_en.get(weight, weight_hints_en["supporting"])
 
         lines = [
-            f"\n[FORESHADOWING ECHO — Subtle Threads, Distant Echoes]",
+            f"\n{CONSTRAINT_SHOULD} [FORESHADOWING ECHO — Subtle Threads, Distant Echoes]",
             f"In Week {planted_week}, a seed was planted in the story:",
             f'"{desc}"',
         ]
@@ -632,32 +848,235 @@ def _build_foreshadowing_context(
             lines.append(f"Original scene: {context}")
         if chars_str:
             lines.append(f"Characters involved: {', '.join(characters)}")
-        lines.append(f"")
+        lines.append("")
         lines.append(
             f"Weave this echo {intensity_en} into the current story: {type_hint}."
         )
-        lines.append(f"")
+        lines.append("")
         lines.append(f"[Concealment Guidance] {intensity_detail_en}")
         lines.append(f"[Recovery Method] {recycle_hint}")
         lines.append(f"[Narrative Role] {weight_hint}")
-        lines.append(f"")
-        lines.append(f"The Art of Restraint & Delayed Gratification:")
+        lines.append("")
+        lines.append("The Art of Restraint & Delayed Gratification:")
         lines.append(
-            f"- Don't reveal everything at once — show only ONE facet of the echo"
+            "- Don't reveal everything at once — show only ONE facet of the echo"
         )
         lines.append(
-            f"- The echo can raise new questions rather than answering all of them"
+            "- The echo can raise new questions rather than answering all of them"
         )
         lines.append(
-            f"- Let readers 'discover' the connection themselves, don't spell it out"
+            "- Let readers 'discover' the connection themselves, don't spell it out"
         )
         lines.append(
-            f"- Introduction methods: dialogue, coincidental meeting, unexpected discovery, news arriving, dreams, parallel situations"
+            "- Introduction methods: dialogue, coincidental meeting, unexpected discovery, news arriving, dreams, parallel situations"
         )
         lines.append(
-            f"- NEVER mention 'foreshadowing', 'echo', 'callback', 'destiny', 'fate', 'cause and effect', or any meta-narrative terms"
+            "- NEVER mention 'foreshadowing', 'echo', 'callback', 'destiny', 'fate', 'cause and effect', or any meta-narrative terms"
         )
         return "\n".join(lines)
+
+
+def _build_era_anachronism_constraints(
+    character_settings: Optional[Dict[str, Any]], language: str
+) -> str:
+    """
+    构建时代错位预防约束，明确列出各时代禁止出现的事物。
+    用于注入事件生成提示词，防止AI生成时代不符的内容。
+    """
+    if not character_settings:
+        return ""
+
+    era = character_settings.get("era", {})
+    era_desc = (era.get("era_description", "") + " " + era.get("world_context", "")).lower()
+    world = character_settings.get("world", {})
+    tech_level = (world.get("technology_level", "") + " " + world.get("world_description", "")).lower()
+
+    # 判断是否为古代/前现代背景
+    is_historical = any(
+        word in era_desc or word in tech_level
+        for word in ["古代", "ancient", "medieval", "中世纪", "宋朝", "唐朝", "明朝", "清朝", "southern song", "tang", "ming", "qing", "dynasty", "pre-modern"]
+    )
+
+    # 判断是否为现代/当代背景
+    is_modern = any(
+        word in era_desc or word in tech_level
+        for word in ["现代", "当代", "modern", "contemporary", "future", "科幻", "sci-fi", "赛博"]
+    )
+
+    if not is_historical and not is_modern:
+        # 无法判断时代，返回通用约束
+        if language == "zh":
+            return "\n【时代一致性约束】请确保故事中的科技、社会制度、生活方式与角色设定的时代背景严格一致。"
+        else:
+            return "\n[Era Consistency] Ensure technology, social systems, and lifestyle match the character's era setting."
+
+    if is_historical:
+        if language == "zh":
+            return """\n【★ 时代错位红线（违反即失败）★】
+角色设定为古代/前现代背景，故事中绝对禁止出现以下现代概念：
+- 电子设备：手机、电脑、电话、电视、收音机、相机、录音笔
+- 交通工具：汽车、飞机、火车、地铁、高铁、摩托车、自行车（古代可用马匹、轿子、马车、船只）
+- 现代场所：公司、办公室、星巴克、咖啡厅、商场、超市、电影院、健身房、医院（古代可用客栈、茶楼、集市、药铺、医馆）
+- 现代制度：客户提案、导师制度、周五下班、KPI、PPT、会议、合同、签证、护照
+- 互联网与通讯：互联网、微信、QQ、邮件、短信、社交媒体、APP、网站
+- 现代娱乐：电子游戏、网络小说、电视剧、电影、流行音乐、演唱会
+- 现代科技：电灯泡、电梯、空调、冰箱、洗衣机、微波炉、塑料、橡胶
+- 现代货币与金融：股票、基金、比特币、信用卡、支付宝、微信支付、银行转账
+- 现代教育：高考、大学专业、考研、论文答辩、实验室、科研项目
+- 如果出现"咖啡"，必须是古代茶饮或酒；如果出现"医院"，必须是古代医馆或药铺
+- 古代人物穿古装、用古代器具、遵循古代礼仪，绝对禁止穿西装、打领带、用现代物品"""
+        else:
+            return """\n[★ ERA ANACHRONISM RED LINE (violation = failure) ★]
+The character is set in a historical/pre-modern era. The following modern concepts are ABSOLUTELY FORBIDDEN:
+- Electronics: phones, computers, telephones, TVs, radios, cameras, recorders
+- Transportation: cars, airplanes, trains, subways, high-speed rail, motorcycles, bicycles (use horses, sedan chairs, carriages, boats)
+- Modern venues: companies, offices, Starbucks, coffee shops, malls, supermarkets, cinemas, gyms, hospitals (use inns, tea houses, markets, apothecaries)
+- Modern systems: client proposals, mentorship programs, "Friday off", KPIs, PowerPoint, meetings, contracts, visas, passports
+- Internet & communication: internet, WeChat, email, social media, apps, websites
+- Modern entertainment: video games, web novels, TV shows, movies, pop music, concerts
+- Modern technology: light bulbs, elevators, air conditioning, refrigerators, washing machines, plastic, rubber
+- Modern finance: stocks, funds, Bitcoin, credit cards, mobile payments, bank transfers
+- Modern education: college entrance exams, university majors, graduate school, thesis defense, laboratories
+- If "coffee" appears, it must be ancient tea or wine; if "hospital" appears, it must be an ancient apothecary
+- Characters must wear ancient clothing, use ancient tools, follow ancient etiquette. NO suits, ties, or modern items"""
+
+    # Modern era — lighter constraints
+    if language == "zh":
+        return "\n【时代一致性约束】角色设定为现代/当代背景，故事中可以使用现代科技、交通工具和生活方式，但应符合角色的具体时代（如2020年代不应出现过于超前的科技）。"
+    else:
+        return "\n[Era Consistency] Character is set in a modern/contemporary era. Modern technology, transportation, and lifestyle are appropriate, but should match the specific time period."
+
+
+def _build_image_era_constraints(
+    character_settings: Optional[Dict[str, Any]], language: str
+) -> str:
+    """
+    构建图像生成时代约束，防止场景插画中出现时代不符的元素。
+    用于注入图像生成提示词，确保古代背景不会出现星巴克、汽车等现代视觉元素。
+    """
+    if not character_settings:
+        return ""
+
+    era = character_settings.get("era", {})
+    era_desc = (era.get("era_description", "") + " " + era.get("world_context", "")).lower()
+    world = character_settings.get("world", {})
+    tech_level = (world.get("technology_level", "") + " " + world.get("world_description", "")).lower()
+
+    # 判断是否为古代/前现代背景
+    is_historical = any(
+        word in era_desc or word in tech_level
+        for word in ["古代", "ancient", "medieval", "中世纪", "宋朝", "唐朝", "明朝", "清朝", "southern song", "tang", "ming", "qing", "dynasty", "pre-modern"]
+    )
+
+    # 判断是否为现代/当代背景
+    is_modern = any(
+        word in era_desc or word in tech_level
+        for word in ["现代", "当代", "modern", "contemporary", "future", "科幻", "sci-fi", "赛博"]
+    )
+
+    if not is_historical and not is_modern:
+        if language == "zh":
+            return "\n【画面时代一致性】确保画面中的建筑、服饰、道具与时代背景严格一致。"
+        else:
+            return "\n[Visual Era Consistency] Ensure architecture, clothing, and props match the era."
+
+    if is_historical:
+        if language == "zh":
+            return """\n【★ 画面时代红线（违反即失败）★】
+角色设定为古代/前现代背景，画面绝对禁止出现以下现代视觉元素：
+- 现代建筑：摩天大楼、玻璃幕墙、霓虹灯、现代桥梁、电线杆
+- 现代交通工具：汽车、飞机、火车、摩托车、自行车（古代可用马匹、轿子、马车、木船）
+- 现代商业标识：星巴克、麦当劳、肯德基、必胜客、汉堡王、苹果、华为、小米、耐克、阿迪达斯、优衣库、ZARA、H&M、可口可乐、百事、广告牌、LED屏幕、二维码
+- 现代物品：手机、电脑、电视、相机、路灯、红绿灯、空调外机、冰箱、洗衣机、电梯
+- 现代服饰：西装、领带、牛仔裤、运动鞋、眼镜、T恤、卫衣、风衣、羽绒服（古代可用传统服饰、布鞋、长袍、襦裙、汉服、盔甲）
+- 现代场景：咖啡厅、商场、超市、地铁站、机场、医院（古代可用茶馆、集市、药铺、驿站、书院、衙门）
+- 画面中的建筑必须是古代风格：木质结构、瓦片屋顶、砖石城墙、飞檐斗拱
+- 画面中的服饰必须是古代服装：长袍、襦裙、汉服、盔甲、布衣、绸缎
+- 画面中的器具必须是古代器物：陶瓷、青铜、木质家具、油纸伞、竹简、毛笔
+- 人物一致性：同一人物的多张图片必须是同一个人，相同脸型、相同五官比例、相同发型，仅允许服装和姿势变化"""
+        else:
+            return """\n[★ VISUAL ERA RED LINE (violation = failure) ★]
+Character is set in a historical/pre-modern era. The image MUST NOT contain these modern visual elements:
+- Modern buildings: skyscrapers, glass facades, neon lights, modern bridges, power lines
+- Modern vehicles: cars, airplanes, trains, motorcycles, bicycles (use horses, sedan chairs, carriages, wooden boats)
+- Modern commercial signs: Starbucks, McDonald's, KFC, Pizza Hut, Burger King, Apple, Huawei, Xiaomi, Nike, Adidas, Uniqlo, ZARA, H&M, Coca-Cola, Pepsi, billboards, LED screens, QR codes
+- Modern objects: phones, computers, TVs, cameras, street lamps, traffic lights, AC units, refrigerators, washing machines, elevators
+- Modern clothing: suits, ties, jeans, sneakers, glasses, T-shirts, hoodies, windbreakers, down jackets (use traditional robes, cloth shoes, long robes, ruqun, hanfu, armor)
+- Modern venues: coffee shops, malls, supermarkets, subway stations, airports, hospitals (use tea houses, markets, apothecaries, post stations, academies, government offices)
+- Buildings must be ancient style: wooden structures, tile roofs, brick/stone walls, flying eaves
+- Clothing must be ancient/traditional: robes, ruqun, hanfu, armor, cloth garments, silk
+- Objects must be ancient: ceramics, bronze, wooden furniture, oil-paper umbrellas, bamboo slips, writing brushes
+- Character consistency: multiple images of the same person MUST be the same individual: same face shape, same facial proportions, same hairstyle. Only clothing and pose may vary"""
+
+    # Modern era — anti-sci-fi/fantasy + anti-brand constraints (QA found cyberpunk and brand logos invading realistic modern stories)
+    if language == "zh":
+        return """\n【★ 画面写实主义红线（违反即失败）★】
+角色设定为现代/当代背景，画面必须严格遵守写实主义原则，绝对禁止科幻、奇幻、超现实元素入侵：
+
+【绝对禁止的科幻/未来/奇幻元素】
+- 禁止赛博朋克风格：金属质感夹克、电路纹理服装、发光线条装饰、机械义肢、电子眼
+- 禁止全息投影：全息屏幕、全息城市、全息古建筑线框、悬浮信息面板、AR投影
+- 禁止发光效果：红色/蓝色/紫色发光眼睛、发光物体、霓虹光效人物轮廓、身体发光
+- 禁止未来交通工具：科幻飞车、悬浮载具、未来飞行器、喷气背包
+- 禁止科幻场景：科幻城市、未来都市天际线、高科技实验室、太空背景、末日废墟
+- 禁止奇幻元素：精灵耳朵、魔法光环、异色瞳（非自然色）、翅膀、角、鳞片
+- 禁止超现实元素：多重曝光、 surrealist 变形、非自然比例、抽象几何入侵
+
+【绝对禁止的真实商业品牌标识】
+- 禁止出现任何真实品牌的Logo、商标、标志性配色或包装
+- 包括但不限于：星巴克、麦当劳、苹果、耐克、阿迪达斯、可口可乐、肯德基、华为、小米等
+- 如有咖啡厅场景，不得出现星巴克标志性绿色；如有快餐场景，不得出现麦当劳金色拱门
+- 人物穿着的衣服不得带有任何真实品牌的Logo或标志性图案
+
+【服装要求（现代日常写实）】
+- 男性：衬衫、T恤、 Polo衫、休闲外套、牛仔裤/休闲裤、运动鞋/皮鞋/帆布鞋
+- 女性：连衣裙、衬衫、针织衫、牛仔裤、风衣、简约配饰、平底鞋/低跟鞋
+- 禁止：金属质感服装、未来感盔甲、电路纹理、发光装饰、夸张科幻造型、透明材质服装、机甲风格
+
+【背景要求】
+- 真实城市/自然环境：现代建筑街道、公园、咖啡厅内部、办公室、住宅、校园、自然风景
+- 自然光线：日光、室内灯光、街灯、黄昏光，禁止彩色霓虹光效、禁止非自然色光源
+- 禁止科幻城市天际线、禁止全息投影叠加、禁止悬浮建筑
+
+【人物一致性要求（严格遵守）】
+- 同一人物的多张图片必须是同一个人：相同脸型、相同五官比例、相同发型、相同肤色
+- 仅允许服装和姿势变化，面部特征必须绝对保持一致
+- 写实摄影风格，禁止动漫风、油画风、科幻风、插画风、水彩风
+- 人物比例必须符合真实人类，禁止九头身、过大眼睛等非自然比例"""
+    else:
+        return """\n[★ VISUAL REALISM RED LINE (violation = failure) ★]
+Character is set in a modern/contemporary era. The image MUST strictly follow realism principles and ABSOLUTELY FORBID sci-fi, fantasy, or surreal elements from invading:
+
+[ABSOLUTELY FORBIDDEN sci-fi/future/fantasy elements]
+- NO cyberpunk style: metallic jackets, circuit-textured clothing, glowing line decorations, mechanical prosthetics, electronic eyes
+- NO holographic projections: holographic screens, holographic cities, holographic building wireframes, floating info panels, AR projections
+- NO glowing effects: red/blue/purple glowing eyes, glowing objects, neon light effects on people, body glow
+- NO future vehicles: flying cars, hover vehicles, sci-fi aircraft, jetpacks
+- NO sci-fi scenes: sci-fi cities, future city skylines, high-tech labs, space backgrounds, post-apocalyptic ruins
+- NO fantasy elements: elf ears, magic auras, unnatural eye colors (purple, red, glowing), wings, horns, scales
+- NO surreal elements: double exposure, surrealist deformations, unnatural proportions, abstract geometric intrusions
+
+[ABSOLUTELY FORBIDDEN real commercial brand logos]
+- NO real brand logos, trademarks, iconic color schemes, or packaging
+- Including but not limited to: Starbucks, McDonald's, Apple, Nike, Adidas, Coca-Cola, KFC, Huawei, Xiaomi
+- If cafe scene: NO Starbucks iconic green. If fast food scene: NO McDonald's golden arches
+- Clothing MUST NOT display any real brand logos or iconic patterns
+
+[Clothing requirements (modern everyday realism)]
+- Men: shirts, T-shirts, polo shirts, casual jackets, jeans/casual pants, sneakers/leather shoes/canvas shoes
+- Women: dresses, blouses, knitwear, jeans, windbreakers, simple accessories, flats/low heels
+- FORBIDDEN: metallic clothing, futuristic armor, circuit textures, glowing decorations, exaggerated sci-fi styling, transparent material clothing, mecha style
+
+[Background requirements]
+- Real urban/natural environments: modern building streets, parks, cafe interiors, offices, homes, campuses, natural scenery
+- Natural lighting: daylight, indoor lighting, street lamps, dusk light. NO colored neon light effects, NO unnatural colored light sources
+- NO sci-fi city skylines, NO holographic projection overlays, NO floating buildings
+
+[Character consistency requirements (strictly follow)]
+- Multiple images of the same person MUST be the same individual: same face shape, same facial proportions, same hairstyle, same skin tone
+- Only clothing and pose may vary; facial features MUST remain absolutely consistent
+- Realistic photography style. NO anime style, oil painting style, sci-fi style, illustration style, watercolor style
+- Human proportions MUST match real humans. NO nine-head-body-ratio, oversized eyes, or other unnatural proportions"""
 
 
 def _build_logic_constraints(
@@ -673,7 +1092,7 @@ def _build_logic_constraints(
     season = game_date_info.get("season", "")
 
     if language == "zh":
-        return f"""\n11. **时间与逻辑一致性（必须严格遵守）**：
+        return f"""\n{CONSTRAINT_SHOULD} 11. **时间与逻辑一致性（必须严格遵守）**：
     - 严格遵守时间线：当前是{date_str}，{season}季，故事中的时间、季节、天气等应与此一致
     - 人物动机一致性：人物行为应符合其性格设定和当前处境
     - 因果逻辑一致性：事件的发展应符合因果关系，不能出现前后矛盾
@@ -686,7 +1105,7 @@ def _build_logic_constraints(
             "秋": "Autumn",
             "冬": "Winter",
         }.get(season, season)
-        return f"""\n11. **Time & Logic Consistency (MUST STRICTLY FOLLOW)**:
+        return f"""\n{CONSTRAINT_SHOULD} 11. **Time & Logic Consistency (MUST STRICTLY FOLLOW)**:
     - Strict timeline: Current is {date_str_en}, {season_en}, story time/season/weather must match
     - Character motivation consistency: Characters must act according to their personality and current situation
     - Causal logic consistency: Events must follow cause-and-effect, no contradictions
@@ -697,7 +1116,7 @@ def _build_established_facts_context(
     established_facts: Optional[list],
     language: str,
     max_facts: int = 30,
-    max_total_chars: int = 2000,
+    max_total_chars: int = 2500,
 ) -> str:
     """
     构建已建立的世界事实上下文段落，用于维护人物/地点/事务的一致性。
@@ -784,10 +1203,10 @@ def _build_established_facts_context(
     # 构建事实列表，限制数量和总长度
     lines = []
     if language == "zh":
-        lines.append("\n【已建立的世界事实 - 必须严格遵守，不得矛盾】")
+        lines.append(f"\n{CONSTRAINT_MUST} 【已建立的世界事实 - 必须严格遵守，不得矛盾】")
     else:
         lines.append(
-            "\n[Established World Facts - MUST STRICTLY FOLLOW, NO CONTRADICTIONS]"
+            f"\n{CONSTRAINT_MUST} [Established World Facts - MUST STRICTLY FOLLOW, NO CONTRADICTIONS]"
         )
 
     total_chars = 0
@@ -799,19 +1218,13 @@ def _build_established_facts_context(
 
         category = fact.get("category", "fact")
         cat_label = labels.get(category, labels.get("fact", "Fact"))
-        subject = fact.get("subject", "")
-        fact_text = fact.get("fact", "")
-        source_week = fact.get("source_week", "")
 
-        # 构建单条事实
+        # 构建单条事实（使用压缩模式）
+        compressed = _compress_fact(fact, language)
         if language == "zh":
-            line = f"- 【{cat_label}】{subject}：{fact_text}"
-            if source_week:
-                line += f"（第{int(source_week) + 1}周）"  # ★ week 从0开始，显示时+1
+            line = f"- 【{cat_label}】{compressed}"
         else:
-            line = f"- [{cat_label}] {subject}: {fact_text}"
-            if source_week:
-                line += f" (Week {int(source_week) + 1})"  # ★ week 从0开始，显示时+1
+            line = f"- [{cat_label}] {compressed}"
 
         # 检查长度限制
         if total_chars + len(line) > max_total_chars and fact_count > 0:
@@ -839,7 +1252,58 @@ def _build_established_facts_context(
     return "\n".join(lines)
 
 
-def _build_world_model_constraints(world_model: Optional[Any], language: str) -> str:
+def _build_fallback_constraints(
+    established_facts: Optional[list], language: str
+) -> str:
+    """
+    当世界模型不可用时，从已建立事实中提取关键约束作为降级方案。
+
+    Args:
+        established_facts: 已建立的世界事实列表
+        language: 语言代码
+
+    Returns:
+        降级约束文本
+    """
+    if not established_facts:
+        return ""
+
+    commitments = []
+    locations = []
+
+    for fact in established_facts:
+        fact_type = fact.get("category", "").lower()
+        fact_text = fact.get("fact", "")
+        subject = fact.get("subject", "")
+        desc = f"{subject}：{fact_text}" if language == "zh" else f"{subject}: {fact_text}"
+
+        if fact_type in ("commitment", "promise"):
+            commitments.append(desc)
+        elif fact_type == "location":
+            locations.append(desc)
+
+    if not commitments and not locations:
+        return ""
+
+    if language == "zh":
+        parts = ["[降级约束] 以下约束从已建立事实中提取（世界模型不可用）："]
+        for c in commitments:
+            parts.append(f"- 承诺: {c}")
+        for loc in locations:
+            parts.append(f"- 位置: {loc}")
+    else:
+        parts = ["[Fallback Constraints] Extracted from established facts (world model unavailable):"]
+        for c in commitments:
+            parts.append(f"- Commitment: {c}")
+        for loc in locations:
+            parts.append(f"- Location: {loc}")
+
+    return "\n".join(parts)
+
+
+def _build_world_model_constraints(
+    world_model: Optional[Any], language: str, established_facts: Optional[list] = None
+) -> str:
     """
     构建世界模型约束文本段落，用于增强故事一致性。
     调用 WorldModel.build_constraints_text() 生成包含地理位置、职业、承诺、
@@ -848,17 +1312,19 @@ def _build_world_model_constraints(world_model: Optional[Any], language: str) ->
     Args:
         world_model: WorldModel 实例（可为 None）
         language: 语言代码
+        established_facts: 已建立的世界事实列表（用于降级）
 
     Returns:
         世界模型约束字符串
     """
     if world_model is None:
-        return ""
+        return _build_fallback_constraints(established_facts, language)
     try:
         result: str = world_model.build_constraints_text(language)
-        return result
-    except Exception:
-        return ""
+        return f"{CONSTRAINT_MUST} {result}" if result else ""
+    except Exception as e:
+        logger.error(f"World model constraint build failed: {e}")
+        return _build_fallback_constraints(established_facts, language)
 
 
 def _build_full_character_context(
@@ -1042,7 +1508,7 @@ def _format_effects(effects: Dict[str, Any], language: str) -> str:
 # ==================== Common Constraints ====================
 
 
-def _build_common_story_constraints(language: str) -> str:
+def _build_common_story_constraints(language: str, quality_level: str = "expert") -> str:
     """
     构建故事生成的公共约束，所有故事生成提示词都应包含。
 
@@ -1054,41 +1520,132 @@ def _build_common_story_constraints(language: str) -> str:
 
     Args:
         language: 语言代码
+        quality_level: 质量级别 (fast/expert/master)
 
     Returns:
         公共约束字符串
     """
+    level = quality_level.lower() if quality_level else "expert"
+
     if language == "zh":
-        return """
-【核心叙事约束 - 必须严格遵守】
-1. **人称要求**：必须使用第三人称叙事（"他/她"而非"我/你"），保持全文人称统一
-2. **禁止跳脱叙事**：故事中绝对不能出现任何打破第四面墙的内容，包括但不限于：
+        if level == "fast":
+            return f"""
+【核心叙事约束 - 快速模式】
+1. {CONSTRAINT_MUST} **人称要求**：必须使用第三人称叙事（"他/她"而非"我/你"）
+2. {CONSTRAINT_MUST} **禁止跳脱叙事**：禁止提及"游戏""系统""属性值"等元信息
+3. {CONSTRAINT_MUST} **故事结尾要求**：故事结尾必须停在一个具体决策点
+4. {CONSTRAINT_MUST} **正确使用标点**：对话必须用""包裹，句末使用句号/问号/感叹号，句内用逗号/顿号合理断句。禁止出现没有标点的大段连续文字
+"""
+        if level == "master":
+            return f"""
+【核心叙事约束 - 大师级严格标准】
+1. {CONSTRAINT_MUST} **人称要求**：必须使用第三人称叙事（"他/她"而非"我/你"），保持全文人称绝对统一，严禁任何视角滑移
+2. {CONSTRAINT_MUST} **禁止跳脱叙事**：故事中绝对不能出现任何打破第四面墙的内容，包括但不限于：
    - 提及"游戏""模拟""系统""属性值""精力值""情绪值"等元信息
    - 出现作者旁白、对读者说话、解释创作意图
    - 出现对故事本身的评论或总结性元叙述
-   故事应完全沉浸在角色的世界中
-3. **禁止编造过往事件**：故事中提到的任何过去发生的事情，必须来自提供的上下文（上周故事、近期总结、年度回顾、剧情线等）。绝对禁止凭空捏造从未发生过的回忆、对话、事件或经历。不确定的过往不要提及
-4. **故事结尾要求**：故事结尾必须停在一个具体、明确的决策点！
+   故事应完全沉浸在角色的世界中，杜绝一切元叙事
+3. {CONSTRAINT_MUST} **禁止编造过往事件**：故事中提到的任何过去发生的事情，必须来自提供的上下文（上周故事、近期总结、年度回顾、剧情线等）。绝对禁止凭空捏造从未发生过的回忆、对话、事件或经历。不确定的过往不要提及
+4. {CONSTRAINT_MUST} **故事结尾要求**：故事结尾必须停在一个具体、明确的决策点！
    - 正确示例：「她说："明天一早跟我走，怎么样？"」「他递来一把钥匙："这是你自己的选择了。"」「父亲沉声道："你自己拿主意吧。"」
    - 错误示例：「他们相视而笑。」（无决策点）、「一切都已经不一样了。」（纯情感结尾）
    - 故事结尾必须是：某人说出一句话需要主角回应、面临两个选择、需要做出承诺、需要表态等
    - **绝对禁止**以纯情感描写或感慨收尾，必须有具体的"下一步怎么办"的悬念
+5. {CONSTRAINT_MUST} **文学编辑标准**：
+   - 每个场景必须有清晰的环境描写和感官细节
+   - 对话必须自然推动情节，避免功能性说明
+   - 人物行为必须符合其性格和背景设定
+   - 情绪变化必须有充分的情节铺垫
+6. {CONSTRAINT_MUST} **标点符号规范（违反即失败）**：
+   - 对话必须用中文引号 "" 包裹，如：她说："你今天怎么来了？"
+   - 每句话末尾必须使用句号、问号或感叹号
+   - 句内必须使用逗号、顿号合理断句，禁止出现超过30字无标点的情况
+   - 禁止出现没有标点的大段连续文字
+   - 标点禁止中英混用
+7. {CONSTRAINT_SHOULD} **大师级写作建议**：注意故事节奏的张弛有度，避免平铺直叙；在关键决策点前营造适当的紧张感或期待感
+"""
+        # expert (default)
+        return f"""
+【核心叙事约束 - 必须严格遵守】
+1. {CONSTRAINT_MUST} **人称要求**：必须使用第三人称叙事（"他/她"而非"我/你"），保持全文人称统一
+2. {CONSTRAINT_MUST} **禁止跳脱叙事**：故事中绝对不能出现任何打破第四面墙的内容，包括但不限于：
+   - 提及"游戏""模拟""系统""属性值""精力值""情绪值"等元信息
+   - 出现作者旁白、对读者说话、解释创作意图
+   - 出现对故事本身的评论或总结性元叙述
+   故事应完全沉浸在角色的世界中
+3. {CONSTRAINT_MUST} **禁止编造过往事件**：故事中提到的任何过去发生的事情，必须来自提供的上下文（上周故事、近期总结、年度回顾、剧情线等）。绝对禁止凭空捏造从未发生过的回忆、对话、事件或经历。不确定的过往不要提及
+4. {CONSTRAINT_MUST} **故事结尾要求**：故事结尾必须停在一个具体、明确的决策点！
+   - 正确示例：「她说："明天一早跟我走，怎么样？"」「他递来一把钥匙："这是你自己的选择了。"」「父亲沉声道："你自己拿主意吧。"」
+   - 错误示例：「他们相视而笑。」（无决策点）、「一切都已经不一样了。」（纯情感结尾）
+   - 故事结尾必须是：某人说出一句话需要主角回应、面临两个选择、需要做出承诺、需要表态等
+   - **绝对禁止**以纯情感描写或感慨收尾，必须有具体的"下一步怎么办"的悬念
+5. {CONSTRAINT_MUST} **正确使用标点符号**：
+   - 对话必须用中文引号 "" 包裹
+   - 每句话末尾必须使用句号、问号或感叹号
+   - 句内必须使用逗号、顿号合理断句，禁止出现超过30字无标点的情况
+   - 禁止出现没有标点的大段连续文字
+   - 标点禁止中英混用
+6. {CONSTRAINT_SHOULD} **写作建议**：注意故事节奏的张弛有度，避免平铺直叙
 """
     else:
-        return """
-[Core Narrative Constraints - MUST STRICTLY FOLLOW]
-1. **Perspective**: MUST use third-person narration ("he/she" not "I/you"), maintain consistent perspective throughout
-2. **NO FOURTH-WALL BREAKING**: The story must NEVER contain:
+        if level == "fast":
+            return f"""
+[Core Narrative Constraints - Fast Mode]
+1. {CONSTRAINT_MUST} **Perspective**: MUST use third-person narration ("he/she" not "I/you")
+2. {CONSTRAINT_MUST} **NO FOURTH-WALL BREAKING**: Never mention 'game', 'system', 'stats', etc.
+3. {CONSTRAINT_MUST} **STORY ENDING REQUIREMENT**: Story MUST end at a concrete decision point
+4. {CONSTRAINT_MUST} **Proper Punctuation**: Dialogue MUST be in quotation marks. Every sentence MUST end with a period, question mark, or exclamation. Use commas and semicolons for clause breaks. No run-on paragraphs without punctuation
+"""
+        if level == "master":
+            return f"""
+[Core Narrative Constraints - Master Strict Standard]
+1. {CONSTRAINT_MUST} **Perspective**: MUST use third-person narration ("he/she" not "I/you"), maintain absolutely consistent perspective throughout, no perspective drift allowed
+2. {CONSTRAINT_MUST} **NO FOURTH-WALL BREAKING**: The story must NEVER contain:
    - References to 'game', 'simulation', 'system', 'stats', 'energy points', 'mood value', or any meta-information
    - Author asides, addressing the reader, explaining creative intent
    - Commentary or meta-narrative about the story itself
-   The story must remain fully immersed in the character's world
-3. **DO NOT FABRICATE PAST EVENTS**: Any past events mentioned in the story MUST come from the provided context (previous story, recent summary, annual review, storylines, etc.). ABSOLUTELY FORBIDDEN to invent memories, conversations, events or experiences that never happened. Do not mention uncertain past events
-4. **STORY ENDING REQUIREMENT**: Story MUST end at a concrete, specific decision point!
+   The story must remain fully immersed in the character's world; eliminate all meta-narrative
+3. {CONSTRAINT_MUST} **DO NOT FABRICATE PAST EVENTS**: Any past events mentioned in the story MUST come from the provided context (previous story, recent summary, annual review, storylines, etc.). ABSOLUTELY FORBIDDEN to invent memories, conversations, events or experiences that never happened. Do not mention uncertain past events
+4. {CONSTRAINT_MUST} **STORY ENDING REQUIREMENT**: Story MUST end at a concrete, specific decision point!
    - Good: 'She said, "Come with me tomorrow morning, what do you say?"' 'He handed over a key: "This is your choice now."' 'Father said gravely: "Make your own decision."'
    - Bad: 'They looked at each other and smiled.' (no decision point) 'Everything has changed.' (pure emotional ending)
    - Ending MUST be: someone asks a question requiring response, facing two paths, needing to make a promise, needing to take a stance, etc.
    - **ABSOLUTELY FORBIDDEN** to end with pure emotional reflection or sentiment - there must be a concrete "what happens next" tension
+5. {CONSTRAINT_MUST} **Literary Editor Standard**:
+   - Every scene must have clear environmental description and sensory details
+   - Dialogue must naturally advance the plot, avoid functional exposition
+   - Character actions MUST align with their personality and background
+   - Emotional changes MUST have sufficient plot buildup
+6. {CONSTRAINT_MUST} **Proper Punctuation (violation = failure)**:
+   - Dialogue MUST be wrapped in quotation marks, e.g.: She said, "Why are you here today?"
+   - Every sentence MUST end with a period, question mark, or exclamation mark
+   - Use commas and semicolons for clause breaks; no run-on sentences over 30 words without punctuation
+   - No paragraphs without any punctuation
+   - Do not mix Chinese and English punctuation
+7. {CONSTRAINT_SHOULD} **Master-Level Writing Advice**: Pay attention to story pacing; create appropriate tension or anticipation before key decision points
+"""
+        # expert (default)
+        return f"""
+[Core Narrative Constraints - MUST STRICTLY FOLLOW]
+1. {CONSTRAINT_MUST} **Perspective**: MUST use third-person narration ("he/she" not "I/you"), maintain consistent perspective throughout
+2. {CONSTRAINT_MUST} **NO FOURTH-WALL BREAKING**: The story must NEVER contain:
+   - References to 'game', 'simulation', 'system', 'stats', 'energy points', 'mood value', or any meta-information
+   - Author asides, addressing the reader, explaining creative intent
+   - Commentary or meta-narrative about the story itself
+   The story must remain fully immersed in the character's world
+3. {CONSTRAINT_MUST} **DO NOT FABRICATE PAST EVENTS**: Any past events mentioned in the story MUST come from the provided context (previous story, recent summary, annual review, storylines, etc.). ABSOLUTELY FORBIDDEN to invent memories, conversations, events or experiences that never happened. Do not mention uncertain past events
+4. {CONSTRAINT_MUST} **STORY ENDING REQUIREMENT**: Story MUST end at a concrete, specific decision point!
+   - Good: 'She said, "Come with me tomorrow morning, what do you say?"' 'He handed over a key: "This is your choice now."' 'Father said gravely: "Make your own decision."'
+   - Bad: 'They looked at each other and smiled.' (no decision point) 'Everything has changed.' (pure emotional ending)
+   - Ending MUST be: someone asks a question requiring response, facing two paths, needing to make a promise, needing to take a stance, etc.
+   - **ABSOLUTELY FORBIDDEN** to end with pure emotional reflection or sentiment - there must be a concrete "what happens next" tension
+5. {CONSTRAINT_MUST} **Proper Punctuation**:
+   - Dialogue MUST be wrapped in quotation marks
+   - Every sentence MUST end with a period, question mark, or exclamation mark
+   - Use commas and semicolons for clause breaks; no run-on sentences over 30 words without punctuation
+   - No paragraphs without any punctuation
+   - Do not mix Chinese and English punctuation
+6. {CONSTRAINT_SHOULD} **Writing Advice**: Pay attention to story pacing, avoid flat narration
 """
 
 
@@ -1269,3 +1826,131 @@ def extract_overused_phrases(
             + "\n".join(lines)
             + "\n! It's not about avoiding the topics, but about using fresh descriptions."
         )
+
+
+def _build_critical_summary(
+    pending_storylines: Optional[list] = None,
+    established_facts: Optional[list] = None,
+    world_model: Optional[Any] = None,
+    language: str = "zh",
+) -> str:
+    """
+    构建红线约束摘要（约50-100 tokens），用于在 prompt 开头和结尾强化关键约束。
+    只提取最关键的约束信息，格式极度精简。
+    """
+    parts: List[str] = []
+
+    # 1. 从 pending_storylines 中提取 overdue 剧情线（最多3条）
+    if pending_storylines:
+        overdue = [
+            sl.get("description", "")[:20]
+            for sl in pending_storylines
+            if sl.get("importance") == "high" and sl.get("overdue", False)
+        ][:3]
+        if overdue:
+            joined = "; ".join(overdue) if language == "zh" else "; ".join(overdue)
+            if language == "zh":
+                parts.append(f"• 过期剧情: {joined}")
+            else:
+                parts.append(f"• Overdue storylines: {joined}")
+
+    # 2. 从 established_facts 中提取 priority <= 1（承诺/决策）的事实（最多5条）
+    if established_facts:
+        critical_facts: List[str] = []
+        for fact in established_facts:
+            if len(critical_facts) >= 5:
+                break
+            category = fact.get("category", "").lower()
+            fact_text = fact.get("fact", "")
+            subject = fact.get("subject", "")
+            # 承诺或决策类
+            is_commitment = category in ("commitment", "promise") or any(
+                kw in fact_text.lower()
+                for kw in ("承诺", "答应", "promise", "决定", "选择", "decision", "chose")
+            )
+            if is_commitment:
+                short = f"{subject}: {fact_text}"[:30]
+                critical_facts.append(short)
+        if critical_facts:
+            joined = "; ".join(critical_facts)
+            if language == "zh":
+                parts.append(f"• 关键承诺: {joined}")
+            else:
+                parts.append(f"• Key commitments: {joined}")
+
+    # 3. 从 world_model 中提取 CRITICAL 位置约束
+    if world_model is not None:
+        try:
+            loc_text = world_model.get_protagonist_location(language) if hasattr(world_model, "get_protagonist_location") else None
+            if loc_text:
+                if language == "zh":
+                    parts.append(f"• 位置约束: {loc_text}")
+                else:
+                    parts.append(f"• Location: {loc_text}")
+        except Exception:
+            pass
+
+    if not parts:
+        return ""
+
+    items = "\n".join(parts)
+    if language == "zh":
+        return f"""[MUST] 本轮红线约束速览：
+{items}
+违反以上任何一条将导致生成失败。"""
+    else:
+        return f"""[MUST] Critical constraints summary for this round:
+{items}
+Violating ANY of the above will cause generation failure."""
+
+
+# ==================== Style / Narrative Integration Helpers ====================
+
+
+def _build_style_constraints_text(style_prompt_builder, language: str) -> str:
+    """构建风格约束文本（硬约束 + 软建议 + 结尾hook）。
+
+    Args:
+        style_prompt_builder: StyleAwarePromptBuilder 实例
+        language: 语言代码
+
+    Returns:
+        合并后的风格约束文本，无风格时返回空字符串
+    """
+    if style_prompt_builder is None:
+        return ""
+    try:
+        parts: list = []
+        hard = style_prompt_builder.build_style_hard_constraints()
+        if hard:
+            parts.append(hard)
+        soft = style_prompt_builder.build_style_soft_suggestions()
+        if soft:
+            parts.append(soft)
+        ending = style_prompt_builder.build_chapter_ending_hint()
+        if ending:
+            parts.append(ending)
+        return "\n".join(parts)
+    except Exception as e:
+        logger.warning("_build_style_constraints_text failed: %s", e)
+        return ""
+
+
+def _build_arc_context(character_arc_engine, player_name: str) -> str:
+    """构建人物弧光上下文。
+
+    Args:
+        character_arc_engine: CharacterArcEngine 实例
+        player_name: 主角名称
+
+    Returns:
+        弧光约束文本，不可用时返回空字符串
+    """
+    if character_arc_engine is None or not player_name:
+        return ""
+    try:
+        arc = character_arc_engine.arcs.get(player_name)
+        return character_arc_engine.generate_constraint(arc)  # type: ignore[no-any-return]
+    except Exception as e:
+        logger.warning("_build_arc_context failed: %s", e)
+        return ""

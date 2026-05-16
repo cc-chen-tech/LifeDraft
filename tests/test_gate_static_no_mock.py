@@ -19,6 +19,9 @@ def test_test_script_runs_mypy_in_strict_mode() -> None:
 
     assert "MYPY_STRICT_TARGETS=(" in script
     assert "src/ai/text_quality.py" in script
+    assert "src/services/music_service.py" in script
+    assert "src/services/music_playlist_service.py" in script
+    assert "src/database/models.py" in script
     assert 'python -m mypy "${MYPY_STRICT_TARGETS[@]}" --strict' in script
 
 

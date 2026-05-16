@@ -27,10 +27,12 @@ logger = logging.getLogger(__name__)
 _image_cache: TTLCache = TTLCache(maxsize=100, ttl=3600)
 
 
-def _get_prompt_hash(prompt: str, size: str, extra_params: Optional[Dict] = None) -> str:
+def _get_prompt_hash(
+    prompt: str, size: str, extra_params: Optional[Dict] = None
+) -> str:
     """生成 prompt 的哈希值作为缓存 key"""
     cache_key = f"{prompt}|{size}|{extra_params}"
-    return hashlib.md5(cache_key.encode()).hexdigest()
+    return hashlib.md5(cache_key.encode(), usedforsecurity=False).hexdigest()
 
 
 class ImageGenerator:
@@ -119,7 +121,9 @@ class ImageGenerator:
             is_last_model = model_idx == len(self.text_to_image_models) - 1
 
             if model_idx > 0:
-                logger.warning(f"[Model Fallback] Switching to fallback model: {fallback_model}")
+                logger.warning(
+                    f"[Model Fallback] Switching to fallback model: {fallback_model}"
+                )
 
             for attempt in range(self.max_retries):
                 try:
@@ -154,12 +158,16 @@ class ImageGenerator:
                         f"Got image URL from DashScope (model={fallback_model}), downloading..."
                     )
                     image_bytes = self._download_image(image_url)
-                    logger.info(f"Successfully downloaded image: {len(image_bytes)} bytes")
+                    logger.info(
+                        f"Successfully downloaded image: {len(image_bytes)} bytes"
+                    )
 
                     # M-09: 存入缓存
                     cached_result = (image_bytes, prompt)
                     _image_cache[cache_key] = cached_result
-                    logger.debug(f"[ImageCache] Cached image with key: {cache_key[:8]}...")
+                    logger.debug(
+                        f"[ImageCache] Cached image with key: {cache_key[:8]}..."
+                    )
 
                     return cached_result
 
@@ -346,7 +354,9 @@ class ImageGenerator:
         """下载图片"""
         response = self.session.get(url, timeout=self.timeout)
         if response.status_code != 200:
-            raise ImageGenerationError(f"Failed to download image: {response.status_code}")
+            raise ImageGenerationError(
+                f"Failed to download image: {response.status_code}"
+            )
         return response.content  # type: ignore[no-any-return]
 
     def edit_image(
@@ -355,6 +365,7 @@ class ImageGenerator:
         prompt: str,
         size: str = "928*1664",
         num_images: int = 1,
+        extra_params: Optional[Dict[str, Any]] = None,
     ) -> List[Tuple[bytes, str]]:
         """
         图生图：基于参考图片生成新图片
@@ -396,6 +407,7 @@ class ImageGenerator:
                         size=size,
                         num_images=num_images,
                         model=fallback_model,
+                        extra_params=extra_params,
                     )
 
                     # 解析响应
@@ -469,7 +481,9 @@ class ImageGenerator:
                     else:
                         break
 
-        raise ImageGenerationError(f"Failed to edit image after trying all models: {last_error}")
+        raise ImageGenerationError(
+            f"Failed to edit image after trying all models: {last_error}"
+        )
 
     def _call_edit_api(
         self,
@@ -478,6 +492,7 @@ class ImageGenerator:
         size: str = "928*1664",
         num_images: int = 1,
         model: Optional[str] = None,
+        extra_params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         调用图生图API
@@ -488,6 +503,7 @@ class ImageGenerator:
             size: 图片尺寸
             num_images: 生成数量
             model: 可选模型名称
+            extra_params: 额外参数（如 negative_prompt）
 
         Returns:
             API响应
@@ -523,12 +539,19 @@ class ImageGenerator:
             },
         }
 
+        # 合并 extra_params（允许覆盖默认参数如 negative_prompt）
+        params: Dict[str, Any] = payload["parameters"]  # type: ignore[assignment]
+        if extra_params:
+            params.update(extra_params)
+
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
 
-        logger.debug(f"Calling image edit API: model={use_model}, size={dashscope_size}")
+        logger.debug(
+            f"Calling image edit API: model={use_model}, size={dashscope_size}"
+        )
 
         response = self.session.post(
             url,
@@ -559,9 +582,13 @@ class ImageGenerator:
                 except ContentInspectionError:
                     raise
                 except (KeyError, TypeError) as e:
-                    logger.warning(f"Failed to parse content inspection error response: {e}")
+                    logger.warning(
+                        f"Failed to parse content inspection error response: {e}"
+                    )
                 except Exception as e:
-                    logger.exception(f"Unexpected error parsing API error response: {e}")
+                    logger.exception(
+                        f"Unexpected error parsing API error response: {e}"
+                    )
 
             raise ImageGenerationError(error_msg)
 
@@ -578,6 +605,7 @@ class ImageGenerator:
         reference_image_url: Optional[str] = None,
         feedback: Optional[str] = None,
         prompt_builder=None,  # 注入 prompt builder
+        extra_params: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[Tuple[bytes, str]], Optional[str]]:
         """
         生成人物全身像（保证人物一致性）
@@ -596,6 +624,7 @@ class ImageGenerator:
             reference_image_url: 已有的参考图片URL（用于重新生成）
             feedback: 用户修改意见（会被特别强调）
             prompt_builder: Prompt 构建器实例
+            extra_params: 额外参数（如 negative_prompt, seed）
 
         Returns:
             Tuple[List of (图片数据, prompt), 主图URL]
@@ -646,7 +675,9 @@ class ImageGenerator:
                 ) as e:
                     logger.warning(f"Failed to generate variant {i + 1}: {e}")
                 except Exception as e:
-                    logger.exception(f"Unexpected error generating variant {i + 1}: {e}")
+                    logger.exception(
+                        f"Unexpected error generating variant {i + 1}: {e}"
+                    )
         else:
             # 没有参考图片，先生成主图
             logger.info(f"Generating primary image for {name}, feedback: {feedback}")
@@ -665,6 +696,7 @@ class ImageGenerator:
                     self.generate_image_with_url(
                         prompt=main_prompt,
                         size=size,
+                        extra_params=extra_params,
                     )
                 )
                 results.append((main_image_bytes, main_prompt_used))
@@ -673,7 +705,9 @@ class ImageGenerator:
                 # 基于主图生成变体
                 num_variants = num_images - 1
                 if num_variants > 0:
-                    logger.info(f"Generating {num_variants} variants from primary image")
+                    logger.info(
+                        f"Generating {num_variants} variants from primary image"
+                    )
 
                     for i in range(num_variants):
                         variant = CHARACTER_VARIANTS[i % len(CHARACTER_VARIANTS)]
@@ -696,7 +730,9 @@ class ImageGenerator:
                         ) as e:
                             logger.warning(f"Failed to generate variant {i + 1}: {e}")
                         except Exception as e:
-                            logger.exception(f"Unexpected error generating variant {i + 1}: {e}")
+                            logger.exception(
+                                f"Unexpected error generating variant {i + 1}: {e}"
+                            )
 
             except (requests.exceptions.RequestException, ImageGenerationError) as e:
                 logger.error(f"Failed to generate primary image: {e}")

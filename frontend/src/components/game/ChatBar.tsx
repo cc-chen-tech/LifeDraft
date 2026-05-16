@@ -159,13 +159,26 @@ export function ChatBar({
       <div
         data-testid="chat-bar-launcher"
         className={cn(
-          "fixed bottom-4 right-4 z-50 pointer-events-none",
+          "fixed bottom-4 right-4 z-50 flex items-center gap-2 pointer-events-none",
           className
         )}
       >
         <Button
+          size="sm"
+          variant="outline"
+          data-testid="rewrite-button"
+          aria-label="改写故事"
+          className="h-10 rounded-full shadow-lg bg-card/95 backdrop-blur-sm pointer-events-auto"
+          onClick={onAdjustStory}
+          disabled={isViewingHistory}
+          title={isViewingHistory ? "历史回顾模式下不可用" : "改写故事"}
+        >
+          <Pencil className="w-4 h-4 mr-1" />
+          改写
+        </Button>
+        <Button
           size="icon"
-          aria-label="打开剧情助手"
+          aria-label="打开聊天"
           className="h-12 w-12 rounded-full shadow-lg bg-primary hover:bg-primary/90 pointer-events-auto"
           onClick={() => setIsExpanded(true)}
         >
@@ -205,6 +218,7 @@ export function ChatBar({
         <Button
           size="sm"
           variant="outline"
+          data-testid="rewrite-button"
           className="text-xs touch-target"
           onClick={onAdjustStory}
           disabled={isViewingHistory}

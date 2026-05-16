@@ -1,7 +1,7 @@
 """Tests for remaining AI modules: option_generator, story_analyzer, story_generator, story_rewriter, summary_generator, generator facade."""
 
 import json
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 

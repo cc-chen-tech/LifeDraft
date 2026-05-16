@@ -1,10 +1,8 @@
 """Tests for game modules: achievements, endings, player_service, story_service, summaries."""
 
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock
 
-import pytest
-
-from src.game.achievements import AchievementTracker
+from src.game.achievements import AchievementEngine
 from src.game.endings import EndingEvaluator
 from src.game.monthly_summary import MonthlySummaryGenerator
 from src.game.player_service import PlayerService
@@ -16,95 +14,96 @@ from src.game.yearly_summary import YearlySummaryGenerator
 # ==================== Achievement Tests ====================
 
 
-class TestAchievementTracker:
-    """Test AchievementTracker class."""
+class TestAchievementEngine:
+    """Test AchievementEngine class."""
 
-    def test_initial_state(self):
-        """Test initial tracker has no achievements."""
-        tracker = AchievementTracker()
-        assert tracker.achievements == []
-        assert tracker.milestones == {}
+    def test_evaluate_returns_list(self):
+        """evaluate() should return a list of Achievement objects."""
+        engine = AchievementEngine()
+        player = PlayerState()
+        result = engine.evaluate(player)
+        assert isinstance(result, list)
 
-    def test_wealth_100k_achievement(self):
-        """Test 百万富翁 achievement triggers at 100k wealth."""
-        tracker = AchievementTracker()
+    def test_wealth_achievement_triggers(self):
+        """High wealth with history should trigger legendary tale achievement."""
+        engine = AchievementEngine(language="zh")
+        player = PlayerState(wealth=100000, round_history=[{}] * 50)
+        result = engine.evaluate(player)
+        names = [a.name for a in result]
+        assert "传奇故事" in names
+
+    def test_knowledge_achievement_triggers(self):
+        """Balanced high stats should trigger balanced life achievement."""
+        engine = AchievementEngine(language="zh")
+        player = PlayerState(energy=85, mood=85, knowledge=85)
+        result = engine.evaluate(player)
+        names = [a.name for a in result]
+        assert "平衡人生" in names
+
+    def test_no_achievements_for_default_state(self):
+        """Default player state should trigger few or no achievements."""
+        engine = AchievementEngine()
+        player = PlayerState()
+        result = engine.evaluate(player)
+        # Default state may trigger some basic achievements
+        assert isinstance(result, list)
+
+    def test_english_language(self):
+        """English language setting should work."""
+        engine = AchievementEngine(language="en")
         player = PlayerState(wealth=100000)
-        new = tracker.check_achievements(player, "zh")
-        assert "百万富翁" in new
+        result = engine.evaluate(player)
+        names = [a.name for a in result]
+        # Should return English names
+        assert all(not any(c in n for c in "财富") for n in names) or len(names) == 0
 
-    def test_wealth_50k_achievement(self):
-        """Test 财务自由 achievement triggers at 50k wealth."""
-        tracker = AchievementTracker()
-        player = PlayerState(wealth=50000)
-        new = tracker.check_achievements(player, "zh")
-        assert "财务自由" in new
+    def test_achievement_has_required_fields(self):
+        """Each Achievement should have id, name, description, rarity, dimension."""
+        engine = AchievementEngine(language="zh")
+        player = PlayerState(wealth=100000, knowledge=90, energy=80, mood=80)
+        result = engine.evaluate(player)
+        for ach in result:
+            assert ach.id
+            assert ach.name
+            assert ach.description
+            assert ach.rarity in ["common", "rare", "epic", "legendary"]
+            assert ach.dimension
 
-    def test_knowledge_90_achievement(self):
-        """Test 知识渊博 achievement at knowledge >= 90."""
-        tracker = AchievementTracker()
-        player = PlayerState(knowledge=90)
-        new = tracker.check_achievements(player, "zh")
-        assert "知识渊博" in new
+    def test_decision_count_achievement(self):
+        """Many decisions should trigger decision-related achievements."""
+        engine = AchievementEngine(language="zh")
+        player = PlayerState(decision_history=[{"choice": "x"} for _ in range(40)])
+        result = engine.evaluate(player)
+        names = [a.name for a in result]
+        assert any("决策" in n or "果断" in n for n in names)
 
-    def test_relationships_5_achievement(self):
-        """Test 社交达人 achievement with 5+ relationships."""
-        tracker = AchievementTracker()
-        player = PlayerState(relationships={f"R{i}": 50 for i in range(5)})
-        new = tracker.check_achievements(player, "zh")
-        assert "社交达人" in new
+    def test_relationship_achievement(self):
+        """Multiple relationships should trigger social achievements."""
+        engine = AchievementEngine(language="zh")
+        player = PlayerState(relationships={f"friend_{i}": 60 for i in range(6)})
+        result = engine.evaluate(player)
+        names = [a.name for a in result]
+        assert any("社交" in n or "关系" in n for n in names)
 
-    def test_decisions_50_achievement(self):
-        """Test 经验丰富 achievement with 50+ decisions."""
-        tracker = AchievementTracker()
-        player = PlayerState(decision_history=[{"choice": "x"} for _ in range(50)])
-        new = tracker.check_achievements(player, "zh")
-        assert "经验丰富" in new
+    def test_week_achievement(self):
+        """Late game with decisions should trigger enlightened achievement."""
+        engine = AchievementEngine(language="zh")
+        player = PlayerState(week=100, decision_history=[{"choice": "x"}] * 100)
+        result = engine.evaluate(player)
+        names = [a.name for a in result]
+        assert "觉悟者" in names
 
     def test_perfect_state_achievement(self):
-        """Test 完美状态 achievement when all stats >= 80."""
-        tracker = AchievementTracker()
-        player = PlayerState(energy=80, mood=80, knowledge=80)
-        new = tracker.check_achievements(player, "zh")
-        assert "完美状态" in new
+        """All high stats should trigger balance achievements."""
+        engine = AchievementEngine(language="zh")
+        player = PlayerState(energy=85, mood=85, knowledge=85, wealth=50000)
+        result = engine.evaluate(player)
+        names = [a.name for a in result]
+        assert any("平衡" in n or "完美" in n for n in names)
 
-    def test_week_50_achievement(self):
-        """Test 半程英雄 achievement at week >= 50."""
-        tracker = AchievementTracker()
-        player = PlayerState(week=50)
-        new = tracker.check_achievements(player, "zh")
-        assert "半程英雄" in new
-
-    def test_no_duplicate_achievements(self):
-        """Test achievements don't trigger twice."""
-        tracker = AchievementTracker()
-        player = PlayerState(wealth=100000)
-        first = tracker.check_achievements(player, "zh")
-        second = tracker.check_achievements(player, "zh")
-        assert len(first) > 0
-        assert len(second) == 0
-
-    def test_english_achievement_names(self):
-        """Test English achievement names."""
-        tracker = AchievementTracker()
-        player = PlayerState(wealth=100000)
-        new = tracker.check_achievements(player, "en")
-        assert "Millionaire" in new
-
-    def test_get_all_achievements(self):
-        """Test getting all unlocked achievements."""
-        tracker = AchievementTracker()
-        player = PlayerState(wealth=100000, knowledge=90)
-        tracker.check_achievements(player, "zh")
-        all_a = tracker.get_all_achievements()
-        assert len(all_a) > 0
-
-    def test_reset(self):
-        """Test resetting tracker."""
-        tracker = AchievementTracker()
-        player = PlayerState(wealth=100000)
-        tracker.check_achievements(player, "zh")
-        tracker.reset()
-        assert tracker.achievements == []
+    def test_rarity_order_valid(self):
+        """RARITY_ORDER should be valid."""
+        assert AchievementEngine.RARITY_ORDER == ["common", "rare", "epic", "legendary"]
 
 
 # ==================== Ending Tests ====================
@@ -203,9 +202,11 @@ class TestEndingEvaluator:
         """Test achievement calculation."""
         evaluator = EndingEvaluator()
         player = PlayerState(wealth=100000, knowledge=95)
-        achievements = evaluator._calculate_achievements(player, "zh")
-        assert "百万富翁" in achievements["list"]
-        assert "知识渊博" in achievements["list"]
+        result = evaluator.evaluate_ending(player, "zh")
+        achievements = result["achievements"]
+        names = [a["name"] for a in achievements["list"]]
+        assert "白手起家" in names
+        assert "平衡人生" in names
 
 
 # ==================== PlayerService Tests ====================

@@ -18,7 +18,7 @@ export interface SceneImageInfo {
   scene_id: number;
   image_url: string;
   scene_description: string;
-  stage: string;
+  stage?: string;
   created_at?: string;
 }
 

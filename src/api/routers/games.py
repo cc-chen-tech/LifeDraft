@@ -1,19 +1,25 @@
-"""Games router — CRUD for game sessions (create, list, load, save, delete)."""
+"""Games router — CRUD for game sessions (create, list, load, save, delete).
+
+Includes narrative-style endpoints for style browsing and per-game style updates.
+"""
 
 import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
 
+from src.ai.narrative.style_manifest import get_default_loader, get_style
 from src.api.deps import get_current_user, get_current_user_optional, get_db
 from src.api.schemas import CreateGameRequest  # 时间回溯存档系统
 from src.api.schemas import (CreateSavePointRequest, GameListItem,
                              GameStateResponse, MessageResponse,
                              SaveGameResponse, SavePointItem,
                              SavePointListResponse, StateSnapshotItem,
-                             StateTimelineResponse)
+                             StateTimelineResponse, UpdateGameSettingsRequest)
 from src.api.services.session_service import session_service
 from src.api.session_store import session_store
+from src.database.models import Game, SessionLocal
 from src.game.game_initializer import GameInitializer
 from src.game.game_loop import GameLoop
 from src.utils.language import detect_language_from_state
@@ -30,9 +36,13 @@ async def create_game(
     """Create a new game from character settings."""
     db = get_db()
     try:
+        # 将 constraint_level 注入 character_settings
+        character_settings = dict(req.character_settings)
+        character_settings["constraint_level"] = req.constraint_level
+
         initializer = GameInitializer(game_db=db, language=req.language)
         game_loop, game_id = initializer.initialize_game_from_settings(
-            character_settings=req.character_settings,
+            character_settings=character_settings,
             player_name=req.player_name,
             life_vision=req.life_vision,
             user_id=user_id,
@@ -54,6 +64,7 @@ async def create_game(
         progress=game_loop.get_progress(),
         round_info=game_loop.get_round_info(),
         current_event=(game_loop.current_event.model_dump() if game_loop.current_event else None),
+        constraint_level=req.constraint_level,
     )
 
 
@@ -117,9 +128,10 @@ async def get_active_game(
 
     # 创建 GameLoop 并加载状态
     try:
-        game_loop = GameLoop(language=language)
+        constraint_level = state_data.get("constraint_level", "expert") if state_data else "expert"
+        game_loop = GameLoop(language=language, quality_level=constraint_level)
         game_loop.load_game(state_data)
-        logger.info(f"[get_active_game] GameLoop loaded successfully")
+        logger.info("[get_active_game] GameLoop loaded successfully")
     except Exception as e:
         logger.exception(f"[get_active_game] Failed to load game: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to load game state: {str(e)}")
@@ -130,7 +142,7 @@ async def get_active_game(
     try:
         state = game_loop.get_state()
         player_state_dict = state.to_dict() if state else {}
-        logger.info(f"[get_active_game] State converted to dict successfully")
+        logger.info("[get_active_game] State converted to dict successfully")
     except Exception as e:
         logger.exception(f"[get_active_game] Failed to convert state to dict: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to serialize game state: {str(e)}")
@@ -141,6 +153,7 @@ async def get_active_game(
         progress=game_loop.get_progress(),
         round_info=game_loop.get_round_info(),
         current_event=(game_loop.current_event.model_dump() if game_loop.current_event else None),
+        constraint_level=constraint_level,
     )
 
 
@@ -159,7 +172,8 @@ async def load_game(
     language = detect_language_from_state(state_data)
 
     # Create GameLoop and load state
-    game_loop = GameLoop(language=language)
+    constraint_level = state_data.get("constraint_level", "expert") if state_data else "expert"
+    game_loop = GameLoop(language=language, quality_level=constraint_level)
     game_loop.load_game(state_data)
 
     # Store in session
@@ -175,6 +189,7 @@ async def load_game(
         progress=game_loop.get_progress(),
         round_info=game_loop.get_round_info(),
         current_event=(game_loop.current_event.model_dump() if game_loop.current_event else None),
+        constraint_level=constraint_level,
     )
 
 
@@ -371,7 +386,8 @@ async def load_save_point(
     language = detect_language_from_state(state_data)
 
     # 创建 GameLoop 并加载状态
-    game_loop = GameLoop(language=language)
+    constraint_level = state_data.get("constraint_level", "expert") if state_data else "expert"
+    game_loop = GameLoop(language=language, quality_level=constraint_level)
     game_loop.load_game(state_data)
 
     # 存储到会话
@@ -387,7 +403,160 @@ async def load_save_point(
         progress=game_loop.get_progress(),
         round_info=game_loop.get_round_info(),
         current_event=(game_loop.current_event.model_dump() if game_loop.current_event else None),
+        constraint_level=constraint_level,
     )
+
+
+@router.patch("/{game_id}/settings", response_model=MessageResponse)
+async def update_game_settings(
+    game_id: int,
+    req: UpdateGameSettingsRequest,
+    user_id: int = Depends(get_current_user),
+):
+    """
+    ★ 更新游戏设置（如 constraint_level）。
+    """
+    db = get_db()
+    state_data = db.load_saved_game(game_id, user_id)
+    if state_data is None:
+        raise HTTPException(status_code=404, detail="Game not found or not owned by user")
+
+    if req.constraint_level is not None:
+        # 持久化到 Game 表
+        db_session = SessionLocal()
+        try:
+            game = (
+                db_session.query(Game)
+                .filter(Game.game_id == game_id, Game.user_id == user_id)
+                .first()
+            )
+            if game:
+                setattr(game, "constraint_level", req.constraint_level)
+                db_session.commit()
+        finally:
+            db_session.close()
+
+        # 同步更新会话中的 GameLoop
+        game_session = session_store.get(game_id)
+        if game_session and game_session.game_loop:
+            game_session.game_loop.quality_level = req.constraint_level
+            from src.ai.generator import EventGenerator
+            from src.game.character_creator import CharacterCreator
+            from src.game.story_service import StoryService
+            from src.game.yearly_summary import YearlySummaryGenerator
+
+            game_session.game_loop.ai_generator = EventGenerator(quality_level=req.constraint_level)
+            # 重新创建依赖 ai_generator 的服务
+            game_session.game_loop.yearly_summary_gen = YearlySummaryGenerator(
+                game_session.game_loop.ai_generator, game_session.game_loop.language
+            )
+            game_session.game_loop.character_creator = CharacterCreator(
+                ai_generator=game_session.game_loop.ai_generator,
+                language=game_session.game_loop.language,
+            )
+            game_session.game_loop.story_service = StoryService(
+                game_session.game_loop.ai_generator, game_session.game_loop.language
+            )
+
+    return MessageResponse(success=True, message="Settings updated")
+
+
+# ==================== 叙事风格设置 ====================
+
+
+class NarrativeStyleOption(BaseModel):
+    style_id: str
+    style_name: str
+    description: str = ""
+
+
+class NarrativeStyleResponse(BaseModel):
+    style_id: str
+    style_name: str
+
+
+class UpdateNarrativeStyleRequest(BaseModel):
+    style_id: str
+
+
+@router.get("/{game_id}/narrative-style-options")
+async def list_narrative_style_options(
+    game_id: int,
+    user_id: int = Depends(get_current_user),
+):
+    """返回所有可用的叙事风格列表。"""
+    loader = get_default_loader()
+    style_ids = loader.get_all_style_ids()
+    options = []
+    for sid in sorted(style_ids):
+        manifest = loader.get_style(sid)
+        if manifest:
+            options.append(
+                NarrativeStyleOption(
+                    style_id=manifest.style_id,
+                    style_name=manifest.style_name,
+                    description=manifest.description,
+                )
+            )
+    return options
+
+
+@router.get("/{game_id}/narrative-style", response_model=NarrativeStyleResponse)
+async def get_narrative_style(
+    game_id: int,
+    user_id: int = Depends(get_current_user),
+):
+    """获取当前游戏的叙事风格。"""
+    db_session = SessionLocal()
+    try:
+        game = (
+            db_session.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
+        )
+        if not game:
+            raise HTTPException(status_code=404, detail="Game not found")
+
+        style_id = str(game.narrative_style_id or "chinese_classic_saga")
+        style_name = style_id
+        manifest = get_style(style_id)
+        if manifest:
+            style_name = manifest.style_name
+
+        return NarrativeStyleResponse(style_id=style_id, style_name=style_name)
+    finally:
+        db_session.close()
+
+
+@router.put("/{game_id}/narrative-style", response_model=MessageResponse)
+async def update_narrative_style(
+    game_id: int,
+    req: UpdateNarrativeStyleRequest,
+    user_id: int = Depends(get_current_user),
+):
+    """更新游戏的叙事风格。"""
+    # 验证 style_id 有效
+    manifest = get_style(req.style_id)
+    if not manifest:
+        raise HTTPException(status_code=400, detail=f"Unknown style_id: {req.style_id}")
+
+    db_session = SessionLocal()
+    try:
+        game = (
+            db_session.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
+        )
+        if not game:
+            raise HTTPException(status_code=404, detail="Game not found")
+
+        game.narrative_style_id = req.style_id  # type: ignore[assignment]
+        db_session.commit()
+    finally:
+        db_session.close()
+
+    # 同步更新会话中的 style
+    game_session = session_store.get(game_id)
+    if game_session and game_session.game_loop:
+        game_session.game_loop.narrative_style_id = req.style_id  # type: ignore[attr-defined]
+
+    return MessageResponse(success=True, message="Narrative style updated")
 
 
 @router.delete("/save-point/{state_id}", response_model=MessageResponse)

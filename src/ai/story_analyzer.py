@@ -19,7 +19,7 @@ Design Principles:
 import hashlib
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from src.ai.system_prompts import get_system_prompt
 from src.ai.utils import extract_json
@@ -155,10 +155,14 @@ class StoryAnalyzer:
             from config.prompts import get_story_analysis_prompt
 
             # ★ 计算故事文本的哈希，用于事实溯源
-            story_hash = hashlib.md5(story_text.encode("utf-8")).hexdigest()[:16]
+            story_hash = hashlib.md5(
+                story_text.encode("utf-8"), usedforsecurity=False
+            ).hexdigest()[:16]
 
             # Build existing facts context for the AI
-            existing_context = self._build_existing_facts_context(existing_facts, language)
+            existing_context = self._build_existing_facts_context(
+                existing_facts, language
+            )
 
             prompt = get_story_analysis_prompt(
                 story_text=story_text,
@@ -179,7 +183,9 @@ class StoryAnalyzer:
             )
 
             # ★ 传递 story_hash 用于溯源
-            return self._parse_analysis_response(response, current_week, existing_facts, story_hash)
+            return self._parse_analysis_response(
+                response, current_week, existing_facts, story_hash
+            )
 
         except Exception as e:
             logger.error(f"Story analysis failed: {e}")
@@ -305,7 +311,11 @@ class StoryAnalyzer:
                     if not target_id:
                         # Try matching by subject + type
                         for ef in existing_facts:
-                            if ef.active and ef.subject == subject and ef.fact_type == fact_type:
+                            if (
+                                ef.active
+                                and ef.subject == subject
+                                and ef.fact_type == fact_type
+                            ):
                                 target_id = ef.fact_id
                                 break
 
@@ -448,7 +458,9 @@ class StoryAnalyzer:
 
                 # 验证轮次范围
                 if scheduled_round not in (0, 1, 2):
-                    logger.warning(f"Invalid scheduled_round: {scheduled_round}, skipping")
+                    logger.warning(
+                        f"Invalid scheduled_round: {scheduled_round}, skipping"
+                    )
                     continue
 
                 # 验证重要程度

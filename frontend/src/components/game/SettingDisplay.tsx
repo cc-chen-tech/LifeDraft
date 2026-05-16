@@ -371,7 +371,7 @@ function TraitsDisplay({ data }: { data: Record<string, unknown> }) {
 // ===== Wealth =====
 function WealthDisplay({ data }: { data: Record<string, unknown> }) {
   const wealth = data.wealth as number | undefined;
-  const currency = str(data.currency) || "¥";
+  const currency = str(data.currency) || "碳信用";
 
   return (
     <div className="space-y-3">

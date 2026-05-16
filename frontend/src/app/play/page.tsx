@@ -1,8 +1,21 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+} from "@/components/ui/dropdown-menu";
 import {
   Sheet,
   SheetContent,
@@ -19,11 +32,15 @@ import { RoundHistoryDrawer } from "@/components/game/RoundHistoryDrawer";
 import { RoundSceneImageDisplay } from "@/components/game/RoundSceneImage";
 import { HistorySceneImage } from "@/components/game/HistorySceneImage";
 import { CollectionPanel } from "@/components/game/CollectionPanel";
-import { MusicPlayer } from "@/components/game/MusicPlayer";
+
 import { usePlayGame, STATUS_MESSAGES } from "@/hooks/usePlayGame";
 import { useGameIdFromUrl } from "@/hooks/useGameIdFromUrl";
 import { useGameStore } from "@/stores/useGameStore";
+import { useMusicStore } from "@/stores/useMusicStore";
+import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   Save,
   Loader2,
@@ -33,6 +50,9 @@ import {
   History,
   Settings,
   BookOpen,
+  Users,
+  ArrowRight,
+  Palette,
 } from "lucide-react";
 
 /**
@@ -53,6 +73,11 @@ function GameIdSync() {
 export default function PlayPage() {
   // ★ 收集面板状态
   const [showCollection, setShowCollection] = useState(false);
+
+  // ★ 故事风格状态
+  const [narrativeStyleId, setNarrativeStyleId] = useState<string>("");
+  const [narrativeStyleOptions, setNarrativeStyleOptions] = useState<Array<{ style_id: string; style_name: string; description: string }>>([]);
+  const [styleLoading, setStyleLoading] = useState(false);
 
   const {
     // State
@@ -134,6 +159,61 @@ export default function PlayPage() {
     currentRound,
   } = usePlayGame();
 
+  // ★ 音乐 store：将当前故事文本和 gameId 传递给 GlobalMusicPlayer
+  const setActiveStoryText = useMusicStore((state) => state.setActiveStoryText);
+  const setActiveGameId = useMusicStore((state) => state.setActiveGameId);
+
+  useEffect(() => {
+    if (storyText && !isViewingHistory) {
+      setActiveStoryText(storyText);
+    }
+  }, [storyText, isViewingHistory, setActiveStoryText]);
+
+  useEffect(() => {
+    if (gameId) {
+      setActiveGameId(Number(gameId));
+    }
+    return () => {
+      setActiveStoryText(null);
+      setActiveGameId(null);
+    };
+  }, [gameId, setActiveStoryText, setActiveGameId]);
+
+  // ★ 游戏设置
+  const constraintLevel = useGameStore((state) => state.constraintLevel);
+  const setConstraintLevel = useGameStore((state) => state.setConstraintLevel);
+  const enableSceneImage = useGameStore((state) => state.enableSceneImage);
+  const setEnableSceneImage = useGameStore((state) => state.setEnableSceneImage);
+
+  // ★ 加载故事风格
+  const loadNarrativeStyles = useCallback(async () => {
+    if (!gameId || narrativeStyleOptions.length > 0) return;
+    setStyleLoading(true);
+    try {
+      const gid = Number(gameId);
+      const [options, current] = await Promise.all([
+        api.games.listNarrativeStyles(gid),
+        api.games.getNarrativeStyle(gid),
+      ]);
+      setNarrativeStyleOptions(options);
+      setNarrativeStyleId(current.style_id);
+    } catch (err) {
+      console.error("[loadNarrativeStyles]", err);
+    } finally {
+      setStyleLoading(false);
+    }
+  }, [gameId, narrativeStyleOptions.length]);
+
+  const handleStyleChange = useCallback(async (styleId: string) => {
+    if (!gameId) return;
+    setNarrativeStyleId(styleId);
+    try {
+      await api.games.updateNarrativeStyle(Number(gameId), styleId);
+    } catch (err) {
+      console.error("[handleStyleChange]", err);
+    }
+  }, [gameId]);
+
   // Don't render until hydrated
   if (!hydrated) {
     return (
@@ -173,56 +253,106 @@ export default function PlayPage() {
             {/* ★ 收集按钮 */}
             <Button
               variant="ghost"
-              size="icon"
-              className="h-8 w-8"
+              size="sm"
+              className="h-8 px-2"
               onClick={() => setShowCollection(true)}
               title="收集"
+              aria-label="收集"
             >
-              <BookOpen className="w-4 h-4" />
+              <BookOpen className="w-4 h-4 md:mr-1.5" />
+              <span className="hidden md:inline text-xs">收集</span>
+            </Button>
+            {/* ★ 好友按钮 */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2"
+              onClick={() => router.push("/profile")}
+              title="好友"
+              aria-label="好友"
+            >
+              <Users className="w-4 h-4 md:mr-1.5" />
+              <span className="hidden md:inline text-xs">好友</span>
             </Button>
             {/* ★ 历史回顾按钮 */}
             <Button
               variant="ghost"
-              size="icon"
-              className={cn("h-8 w-8", isViewingHistory && "text-primary")}
+              size="sm"
+              className={cn("h-8 px-2", isViewingHistory && "text-primary")}
               onClick={handleOpenHistory}
               title="历史回顾"
+              aria-label="历史回顾"
             >
-              <History className="w-4 h-4" />
+              <History className="w-4 h-4 md:mr-1.5" />
+              <span className="hidden md:inline text-xs">历史</span>
             </Button>
             <Button
               variant="ghost"
-              size="icon"
-              className="h-8 w-8"
+              size="sm"
+              className="h-8 px-2"
               onClick={() => router.push("/")}
+              title="返回首页"
+              aria-label="返回首页"
             >
-              <Home className="w-4 h-4" />
+              <Home className="w-4 h-4 md:mr-1.5" />
+              <span className="hidden md:inline text-xs">首页</span>
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn("h-8 w-8", isSaving && "animate-pulse")}
-              onClick={handleSave}
-              disabled={isSaving}
-            >
-              {isSaving ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Save className="w-4 h-4" />
-              )}
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="h-8 w-8"
-              onClick={() => {
-                const current = useGameStore.getState().enableSceneImage;
-                useGameStore.getState().setEnableSceneImage(!current);
-              }}
-              title="场景插画设置"
-            >
-              <Settings className="w-4 h-4" />
-            </Button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 px-2" title="设置" aria-label="设置">
+                  <Settings className="w-4 h-4 md:mr-1.5" />
+                  <span className="hidden md:inline text-xs">设置</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>设置</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                
+                {/* 叙事质量 */}
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>叙事质量</DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuRadioGroup value={constraintLevel} onValueChange={(value) => setConstraintLevel(value as "fast" | "expert" | "master")}>
+                      <DropdownMenuRadioItem value="fast">快速</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="expert">专家</DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="master">大师</DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+                
+                <DropdownMenuSeparator />
+                
+                {/* 故事风格 */}
+                <DropdownMenuSub onOpenChange={(open: boolean) => { if (open) loadNarrativeStyles(); }}>
+                  <DropdownMenuSubTrigger>
+                    <Palette className="w-3.5 h-3.5 mr-1.5" />叙事风格
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="max-h-64 overflow-y-auto">
+                    {styleLoading ? (
+                      <DropdownMenuItem disabled>
+                        <Loader2 className="w-3 h-3 animate-spin mr-1.5" />加载中...
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuRadioGroup value={narrativeStyleId} onValueChange={handleStyleChange}>
+                        {narrativeStyleOptions.map((s) => (
+                          <DropdownMenuRadioItem key={s.style_id} value={s.style_id} title={s.description}>
+                            {s.style_name}
+                          </DropdownMenuRadioItem>
+                        ))}
+                      </DropdownMenuRadioGroup>
+                    )}
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+
+                <DropdownMenuSeparator />
+
+                {/* 场景插画开关 */}
+                <DropdownMenuItem onClick={() => setEnableSceneImage(!enableSceneImage)}>
+                  {enableSceneImage ? "关闭场景插画" : "开启场景插画"}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>
@@ -230,7 +360,7 @@ export default function PlayPage() {
       {/* Main content area */}
       <main
         ref={storyContainerRef}
-        className="flex-1 max-w-3xl mx-auto w-full px-4 py-6 pb-20"
+        className="flex-1 max-w-3xl mx-auto w-full px-4 py-6 pb-28"
       >
         {/* ★ 历史模式提示 */}
         {isViewingHistory && (
@@ -255,15 +385,7 @@ export default function PlayPage() {
           <SkeletonStory
             message={phase === "loading" ? "故事生成中..." : getLoadingMessage()}
             elapsedSeconds={elapsedSeconds}
-          />
-        )}
-
-        {/* ★ 音乐播放器 - 放在故事文本上方 */}
-        {!isViewingHistory && storyText && (
-          <MusicPlayer
-            storyText={storyText}
-            gameId={gameId || undefined}
-            className="mb-6"
+            phase={phase === "generating" || phase === "choosing" ? getLoadingMessage() : undefined}
           />
         )}
 
@@ -306,8 +428,8 @@ export default function PlayPage() {
           // ★ 当前模式下显示当前轮次的场景插画
           storyText && (
             <>
-              {/* ★ 事件插画：options 阶段和 result 阶段都显示 */}
-              {(phase === "options" || phase === "result") && eventSceneImage && (
+              {/* ★ 事件插画：只在 options 阶段显示 */}
+              {phase === "options" && eventSceneImage && (
                 <RoundSceneImageDisplay
                   sceneImage={eventSceneImage}
                   isLoading={isLoadingRoundSceneImage && phase === "options"}
@@ -332,6 +454,19 @@ export default function PlayPage() {
                 />
               )}
 
+              {/* ★ result 阶段兜底：没有 result 插画时回退显示事件插画 */}
+              {phase === "result" && !resultSceneImage && eventSceneImage && (
+                <RoundSceneImageDisplay
+                  sceneImage={eventSceneImage}
+                  isLoading={isLoadingRoundSceneImage}
+                  isRegenerating={isRegeneratingRoundScene}
+                  currentRound={currentRound}
+                  label="事件场景"
+                  onRefresh={() => fetchRoundSceneImage(currentRound, "event")}
+                  onRegenerate={regenerateRoundSceneImage}
+                />
+              )}
+
               {/* ★ 兜底：其他阶段显示当前轮次插画 */}
               {!eventSceneImage && !resultSceneImage && currentRoundSceneImage && (
                 <RoundSceneImageDisplay
@@ -349,14 +484,18 @@ export default function PlayPage() {
 
         {/* Round summary - only in result phase */}
         {roundSummary && phase === "result" && (
-          <div 
-            className="mb-4 rounded-lg px-4 py-3 animate-fade-in-word" 
+          <div
+            className="mb-4 rounded-lg px-4 py-3 animate-fade-in-word"
             style={{ background: 'rgba(99, 102, 241, 0.2)' }}
           >
             <span className="text-[#818cf8] text-sm font-medium">📝 轮次小结：</span>
-            <span className="text-[#e2e8f0] text-sm ml-2">{roundSummary}</span>
+            <span className="text-[#e2e8f0] text-sm ml-2 prose-story-inline">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{roundSummary}</ReactMarkdown>
+            </span>
           </div>
         )}
+
+        {/* Choice impact display removed — effect tracking no longer stored */}
 
         {/* Options */}
         {phase === "options" && options.length > 0 && (
@@ -378,19 +517,26 @@ export default function PlayPage() {
               const roundsPerWeek = (roundInfo?.rounds_per_week as number) || 3;
               const roundNames = ["周一", "周中", "周末"];
               
-              let buttonText = "✅ 确认并继续";
-              if (currentRound < roundsPerWeek) {
-                const nextName = roundNames[currentRound] || `第${currentRound + 1}轮`;
-                buttonText = `➡️ 进入${nextName}`;
-              }
-              
+              const isLastRound = currentRound >= roundsPerWeek;
+              const nextName = roundNames[currentRound] || `第${currentRound + 1}轮`;
+
               return (
                 <>
                   <Button
                     className="w-full touch-target"
                     onClick={handleContinueToNextRound}
                   >
-                    {buttonText}
+                    {isLastRound ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4 mr-2" />
+                        确认并继续
+                      </>
+                    ) : (
+                      <>
+                        <ArrowRight className="w-4 h-4 mr-2" />
+                        进入{nextName}
+                      </>
+                    )}
                   </Button>
                   {/* ★ 预生成状态指示器 */}
                   {isPrefetching && (
@@ -413,9 +559,7 @@ export default function PlayPage() {
                 周总结
               </h3>
               <div className="prose-story text-sm">
-                {summaryText.split("\n").map((line, i) => (
-                  <p key={i}>{line}</p>
-                ))}
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{summaryText}</ReactMarkdown>
               </div>
             </Card>
             <Button

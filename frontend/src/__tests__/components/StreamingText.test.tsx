@@ -100,7 +100,7 @@ describe('StreamingText', () => {
       });
     });
 
-    it('stops streaming when isStreaming becomes false', async () => {
+    it('continues typing when isStreaming becomes false (no flash)', async () => {
       const { rerender, container } = render(
         <StreamingText
           text="Hello World"
@@ -110,7 +110,13 @@ describe('StreamingText', () => {
         />
       );
 
-      // Switch to non-streaming
+      // Let it type a bit: "Hello" (5 chars)
+      act(() => {
+        jest.advanceTimersByTime(50);
+      });
+      expect(container.textContent).toContain('Hello');
+
+      // Switch to non-streaming — should NOT instantly show all text
       rerender(
         <StreamingText
           text="Hello World"
@@ -120,8 +126,17 @@ describe('StreamingText', () => {
         />
       );
 
-      // Should display full text immediately
-      expect(screen.getByText('Hello World')).toBeInTheDocument();
+      // Immediately after rerender, should still only show "Hello"
+      expect(container.textContent).toContain('Hello');
+
+      // Advance timers to finish typing
+      act(() => {
+        jest.advanceTimersByTime(100);
+      });
+
+      await waitFor(() => {
+        expect(container.textContent).toContain('Hello World');
+      });
     });
   });
 

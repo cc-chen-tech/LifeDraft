@@ -1,17 +1,28 @@
 """Music API router for story-based music recommendation."""
 
+import asyncio
 import logging
-from typing import List, Optional
+import re
+from collections import OrderedDict
+from typing import List, Optional, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 
 from src.api.deps import get_current_user_optional
+from src.database.models import SessionLocal
+from src.services.music_playlist_service import get_music_playlist_service
 from src.services.music_service import get_music_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# LRU 内存缓存：最多缓存 10 首歌的完整音频，避免重复下载
+_audio_cache: OrderedDict[int, Tuple[bytes, str]] = OrderedDict()
+_AUDIO_CACHE_MAX = 10
+_audio_cache_lock = asyncio.Lock()
 
 
 class MusicRecommendationRequest(BaseModel):
@@ -19,6 +30,8 @@ class MusicRecommendationRequest(BaseModel):
 
     story_text: str
     game_id: Optional[int] = None
+    refresh: bool = False  # 刷新模式：复用缓存的 AI 分析，重新搜索歌曲
+    character_settings: Optional[dict] = None  # 角色设定（含时代信息）
 
 
 class SongResponse(BaseModel):
@@ -48,6 +61,22 @@ class MusicRecommendationResponse(BaseModel):
     songs: List[SongResponse]
 
 
+class PlaylistUpdateRequest(BaseModel):
+    """Request body for updating a game playlist with new recommendation songs."""
+
+    songs: List[SongResponse]
+    mood: Optional[str] = None
+    keywords: Optional[List[str]] = None
+
+
+class PlaylistSyncRequest(BaseModel):
+    """Request body for syncing playback state."""
+
+    current_position_ms: int = 0
+    is_playing: bool = False
+    volume: float = 0.5
+
+
 @router.post("/music/recommend", response_model=MusicRecommendationResponse)
 async def recommend_music(
     request: MusicRecommendationRequest,
@@ -64,6 +93,8 @@ async def recommend_music(
         # 分析故事并获取推荐
         recommendation = await music_service.analyze_story_for_music(
             story_text=request.story_text,
+            character_settings=request.character_settings,
+            refresh=request.refresh,
         )
 
         # 批量获取所有歌曲的播放 URL（并行）
@@ -90,9 +121,31 @@ async def recommend_music(
                 if url:
                     url_map[song_id] = url
 
-        logger.info(f"[MusicAPI] Fetched {len(url_map)}/{len(recommendation.songs)} song URLs")
+        total_songs = len(recommendation.songs)
+        available_songs = len(url_map)
+        logger.info(f"[MusicAPI] Fetched {available_songs}/{total_songs} song URLs")
 
-        # 转换为响应格式（包含 URL）
+        # 过滤掉没有有效 URL 的歌曲
+        filtered_out = [song for song in recommendation.songs if song.id not in url_map]
+        if filtered_out:
+            filtered_ids = [s.id for s in filtered_out]
+            logger.info(
+                f"[MusicAPI] Filtered out {len(filtered_out)} songs without URL: {filtered_ids}"
+            )
+
+        # ★ 如果可用歌曲过少，记录警告（帮助排查版权问题）
+        if available_songs == 0 and total_songs > 0:
+            logger.warning(
+                f"[MusicAPI] All {total_songs} songs have no playable URL (copyright restrictions). "
+                f"Keywords: {recommendation.keywords}"
+            )
+        elif available_songs < 3 and total_songs > 0:
+            logger.warning(
+                f"[MusicAPI] Only {available_songs}/{total_songs} songs available. "
+                f"Consider adding more generic keywords. Keywords: {recommendation.keywords}"
+            )
+
+        # 转换为响应格式（只包含有 URL 的歌曲）
         songs = [
             SongResponse(
                 id=song.id,
@@ -100,9 +153,10 @@ async def recommend_music(
                 artists=song.artists,
                 album=song.album,
                 duration=song.duration,
-                url=url_map.get(song.id),  # 直接包含 URL
+                url=url_map[song.id],
             )
             for song in recommendation.songs
+            if song.id in url_map
         ]
 
         return MusicRecommendationResponse(
@@ -176,3 +230,178 @@ async def search_music(
     except Exception as e:
         logger.exception(f"Failed to search music: {e}")
         raise HTTPException(status_code=500, detail=f"搜索失败: {str(e)}")
+
+
+async def _get_or_download_audio(song_id: int, url: str) -> Tuple[bytes, str]:
+    """下载完整音频到内存，带 LRU 缓存。MP3 通常 3-5MB，内存可接受。"""
+    # 先检查缓存（短锁）
+    async with _audio_cache_lock:
+        if song_id in _audio_cache:
+            _audio_cache.move_to_end(song_id)
+            logger.info(f"[MusicStream] 缓存命中: song_id={song_id}")
+            return _audio_cache[song_id]
+
+    # 下载完整文件（不持锁）
+    music_service = get_music_service()
+    async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+        cdn_headers = {"Referer": ""}
+        response = await client.get(url, headers=cdn_headers)
+
+        # URL 过期 → 刷新重试
+        if response.status_code in (403, 401):
+            logger.warning(
+                f"[MusicStream] CDN 返回 {response.status_code} (URL可能过期): song_id={song_id}"
+            )
+            from src.services.music_service import NeteaseMusicClient
+
+            if song_id in NeteaseMusicClient._url_cache:
+                del NeteaseMusicClient._url_cache[song_id]
+                logger.info(f"[MusicStream] URL刷新: 已清除 song_id={song_id} 的缓存")
+
+            fresh_url = await music_service.get_song_play_url(song_id)
+            if not fresh_url:
+                raise HTTPException(status_code=404, detail="Song URL not available after refresh")
+            logger.info(f"[MusicStream] URL刷新成功: song_id={song_id}")
+            response = await client.get(fresh_url, headers={"Referer": ""})
+
+        if response.status_code not in (200, 206):
+            raise HTTPException(status_code=response.status_code, detail="CDN request failed")
+
+        audio_data = response.content
+        content_type = response.headers.get("content-type", "audio/mpeg")
+
+    logger.info(f"[MusicStream] 下载完成: song_id={song_id}, size={len(audio_data)} bytes")
+
+    # 存入缓存
+    async with _audio_cache_lock:
+        _audio_cache[song_id] = (audio_data, content_type)
+        if len(_audio_cache) > _AUDIO_CACHE_MAX:
+            evicted_id, _ = _audio_cache.popitem(last=False)
+            logger.info(f"[MusicStream] 缓存淘汰: song_id={evicted_id}")
+
+    return audio_data, content_type
+
+
+@router.get("/music/stream/{song_id}")
+async def stream_song(song_id: int, request: Request):
+    """代理音乐流，绕过 CDN 的 Referer 限制。
+
+    完整下载 CDN 音频后一次性返回（带 content-length），
+    避免流式代理链延迟导致浏览器 waiting/stalled。
+    支持 Range 请求（用于拖拽跳转），以及 403/401 时自动刷新 URL 重试。
+    内存 LRU 缓存最多 10 首歌，避免重复下载。
+    """
+    music_service = get_music_service()
+    url = await music_service.get_song_play_url(song_id)
+    if not url:
+        raise HTTPException(status_code=404, detail="Song URL not available")
+
+    try:
+        audio_data, content_type = await _get_or_download_audio(song_id, url)
+    except httpx.HTTPError as exc:
+        logger.warning(f"[MusicStream] Failed to fetch audio for song {song_id}: {exc}")
+        raise HTTPException(status_code=502, detail="Failed to fetch audio from CDN")
+
+    # 处理 Range 请求（浏览器拖拽进度条）
+    range_header = request.headers.get("range")
+    if range_header:
+        range_match = re.match(r"bytes=(\d+)-(\d*)", range_header)
+        if range_match:
+            start = int(range_match.group(1))
+            end = int(range_match.group(2)) if range_match.group(2) else len(audio_data) - 1
+            end = min(end, len(audio_data) - 1)
+            if start > end or start >= len(audio_data):
+                raise HTTPException(status_code=416, detail="Range not satisfiable")
+            chunk = audio_data[start : end + 1]
+            return Response(
+                content=chunk,
+                status_code=206,
+                media_type=content_type,
+                headers={
+                    "content-range": f"bytes {start}-{end}/{len(audio_data)}",
+                    "content-length": str(len(chunk)),
+                    "accept-ranges": "bytes",
+                    "cache-control": "public, max-age=300",
+                },
+            )
+
+    # 完整响应
+    return Response(
+        content=audio_data,
+        status_code=200,
+        media_type=content_type,
+        headers={
+            "content-length": str(len(audio_data)),
+            "accept-ranges": "bytes",
+            "cache-control": "public, max-age=300",
+        },
+    )
+
+
+@router.get("/music/playlist/{game_id}")
+async def get_playlist(game_id: int):
+    """Get the current playlist state for a game."""
+    db = SessionLocal()
+    try:
+        from src.database.models import Game
+
+        game = db.query(Game).filter_by(game_id=game_id).first()
+        if game is None:
+            raise HTTPException(status_code=404, detail="Game not found")
+
+        service = get_music_playlist_service()
+        state = service.get_state(db, game_id)
+        return state.to_dict()
+    finally:
+        db.close()
+
+
+@router.put("/music/playlist/{game_id}")
+async def update_playlist(game_id: int, request: PlaylistUpdateRequest):
+    """Merge new recommendation songs into the playlist.
+
+    Preserves the currently playing song; only the upcoming queue is replaced.
+    """
+    db = SessionLocal()
+    try:
+        service = get_music_playlist_service()
+        state = service.merge_songs(
+            db=db,
+            game_id=game_id,
+            songs=[s.model_dump() for s in request.songs],
+            mood=request.mood,
+            keywords=request.keywords,
+        )
+        return state.to_dict()
+    finally:
+        db.close()
+
+
+@router.post("/music/playlist/{game_id}/sync")
+async def sync_playlist_state(game_id: int, request: PlaylistSyncRequest):
+    """Sync current playback position and state."""
+    db = SessionLocal()
+    try:
+        service = get_music_playlist_service()
+        result = service.sync_state(
+            db=db,
+            game_id=game_id,
+            current_position_ms=request.current_position_ms,
+            is_playing=request.is_playing,
+            volume=request.volume,
+        )
+        return result
+    finally:
+        db.close()
+
+
+@router.post("/music/playlist/{game_id}/advance")
+async def advance_playlist(game_id: int):
+    """Advance to the next song in the queue."""
+    db = SessionLocal()
+    try:
+        service = get_music_playlist_service()
+        state = service.advance(db, game_id)
+        return state.to_dict()
+    finally:
+        db.close()

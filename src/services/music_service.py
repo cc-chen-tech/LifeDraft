@@ -5,7 +5,7 @@
 
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -25,6 +25,7 @@ class Song:
     album: str
     duration: int  # 毫秒
     url: Optional[str] = None
+    source: str = "netease"
 
 
 @dataclass
@@ -44,10 +45,150 @@ class MusicRecommendation:
     description: Optional[str] = None  # 音乐氛围描述
 
 
+@dataclass(frozen=True)
+class MusicBrief:
+    """Structured story-to-music intent shared by search and generation."""
+
+    mood: str
+    scene_type: str
+    era_or_environment: str
+    pacing: str
+    energy: str
+    instruments: List[str]
+    search_queries: List[str]
+    negative_cues: List[str] = field(default_factory=list)
+    generation_prompt: str = ""
+
+    @classmethod
+    def default(cls) -> "MusicBrief":
+        return cls(
+            mood="平静",
+            scene_type="叙事",
+            era_or_environment="通用",
+            pacing="舒缓",
+            energy="中低",
+            instruments=["钢琴", "弦乐"],
+            search_queries=["轻音乐", "背景音乐", "纯音乐"],
+            negative_cues=["人声", "歌词", "强节拍流行"],
+            generation_prompt=(
+                "Create a seamless instrumental ambience loop for narrative gameplay, "
+                "45-90 seconds, no vocals, no lyrics, gentle background presence."
+            ),
+        )
+
+    @classmethod
+    def from_analysis(cls, analysis: Dict[str, Any]) -> "MusicBrief":
+        if not isinstance(analysis, dict):
+            return cls.default()
+
+        instruments = analysis.get("instruments")
+        if not isinstance(instruments, list):
+            instruments = cls.default().instruments
+        normalized_instruments = [str(item) for item in instruments if item]
+
+        search_queries = analysis.get("search_queries") or analysis.get("keywords")
+        if not isinstance(search_queries, list):
+            search_queries = cls.default().search_queries
+        normalized_queries = [str(item) for item in search_queries if item]
+
+        negative_cues = analysis.get("negative_cues")
+        if not isinstance(negative_cues, list):
+            negative_cues = cls.default().negative_cues
+        normalized_negative = [str(item) for item in negative_cues if item]
+
+        mood = str(analysis.get("mood") or cls.default().mood)
+        scene_type = str(analysis.get("scene_type") or cls.default().scene_type)
+        era_or_environment = str(
+            analysis.get("era_or_environment")
+            or analysis.get("environment")
+            or cls.default().era_or_environment
+        )
+        pacing = str(analysis.get("pacing") or cls.default().pacing)
+        energy = str(analysis.get("energy") or cls.default().energy)
+        prompt = str(analysis.get("generation_prompt") or "").strip()
+        if not prompt:
+            prompt = (
+                "Create a seamless instrumental ambience loop for narrative gameplay. "
+                f"Mood: {mood}. Scene: {scene_type}. Setting: {era_or_environment}. "
+                f"Pacing: {pacing}. Energy: {energy}. "
+                f"Instruments: {', '.join(normalized_instruments)}. "
+                "No vocals, no lyrics."
+            )
+
+        return cls(
+            mood=mood,
+            scene_type=scene_type,
+            era_or_environment=era_or_environment,
+            pacing=pacing,
+            energy=energy,
+            instruments=normalized_instruments or cls.default().instruments,
+            search_queries=normalized_queries or cls.default().search_queries,
+            negative_cues=normalized_negative,
+            generation_prompt=prompt,
+        )
+
+    def to_analysis(self) -> Dict[str, Any]:
+        return {
+            "mood": self.mood,
+            "scene_type": self.scene_type,
+            "environment": self.era_or_environment,
+            "pacing": self.pacing,
+            "energy": self.energy,
+            "instruments": self.instruments,
+            "keywords": self.search_queries,
+            "negative_cues": self.negative_cues,
+            "generation_prompt": self.generation_prompt,
+        }
+
+
+@dataclass(frozen=True)
+class MusicProviderPolicy:
+    """Provider decision for immediate search and optional premium generation."""
+
+    use_netease: bool
+    enqueue_ai_generation: bool
+
+    @classmethod
+    def select(cls, is_member: bool, ai_music_enabled: bool) -> "MusicProviderPolicy":
+        return cls(
+            use_netease=True,
+            enqueue_ai_generation=bool(is_member and ai_music_enabled),
+        )
+
+
+@dataclass
+class MusicGenerationResult:
+    songs: List[Song]
+    generation_error: Optional[str]
+    used_fallback: bool
+
+
+class MusicGenerationCoordinator:
+    """Coordinates generated-track fallback without owning a provider."""
+
+    def handle_generation_result(
+        self,
+        generated_track: Optional[Song],
+        netease_songs: List[Song],
+        error_message: Optional[str] = None,
+    ) -> MusicGenerationResult:
+        if generated_track is not None:
+            return MusicGenerationResult(
+                songs=[generated_track],
+                generation_error=None,
+                used_fallback=False,
+            )
+        return MusicGenerationResult(
+            songs=netease_songs,
+            generation_error=error_message,
+            used_fallback=True,
+        )
+
+
 class NeteaseMusicClient:
     """网易云音乐 API 客户端"""
 
-    def __init__(self, base_url: Optional[str] = None):
+    def __init__(self, base_url: Optional[str] = None) -> None:
         base_url = base_url or os.getenv("NETEASE_MUSIC_API_URL", "http://localhost:3000")
         # 将 localhost 替换为 127.0.0.1 避免 IPv6 问题
         self.base_url = base_url.replace("localhost", "127.0.0.1")  # type: ignore
@@ -71,9 +212,9 @@ class NeteaseMusicClient:
         """
         try:
             url = f"{self.base_url}/search"
-            params = {"keywords": keywords, "limit": limit}
+            params: Dict[str, str | int] = {"keywords": keywords, "limit": limit}
 
-            response = await self.client.get(url, params=params)  # type: ignore
+            response = await self.client.get(url, params=params)
             response.raise_for_status()
             data = response.json()
 
@@ -151,31 +292,36 @@ class NeteaseMusicClient:
             logger.exception(f"[NeteaseMusic] Failed to get song URL: {e}")
             return None
 
-    async def close(self):
+    async def close(self) -> None:
         await self.client.aclose()
 
 
 class MusicService:
     """音乐服务：基于故事内容推荐音乐"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.ai_client = AIClient()
         self.music_client = NeteaseMusicClient()
 
     async def analyze_story_for_music(
         self,
         story_text: str,
-        character_settings: Optional[Dict] = None,
+        character_settings: Optional[Dict[str, Any]] = None,
+        refresh: bool = False,
     ) -> MusicRecommendation:
         """分析故事内容，提取音乐搜索关键词
 
         Args:
             story_text: 故事文本
             character_settings: 角色设定
+            refresh: 刷新推荐时保留接口兼容；当前实现重新分析并重新搜索
 
         Returns:
             音乐推荐结果
         """
+        if refresh:
+            logger.info("[MusicService] Refresh requested; rebuilding recommendation")
+
         # 使用 AI 分析故事情绪和场景
         analysis = await self._analyze_story_mood(story_text, character_settings)
 
@@ -191,7 +337,7 @@ class MusicService:
 
         # 去重并限制数量 - 确保至少15首，最多20首
         seen_ids = set()
-        unique_songs: List[Song] = []  # type: ignore[var-annotated]
+        unique_songs: List[Song] = []
         for song in all_songs:
             if song.id not in seen_ids and len(unique_songs) < 20:
                 seen_ids.add(song.id)
@@ -229,7 +375,7 @@ class MusicService:
     async def _analyze_story_mood(
         self,
         story_text: str,
-        character_settings: Optional[Dict] = None,
+        character_settings: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """使用 AI 分析故事情绪、场景、背景和风格"""
 
@@ -301,7 +447,9 @@ class MusicService:
                 text = text.split("```")[1].split("```")[0].strip()
 
             result = json.loads(text)
-            return result  # type: ignore[no-any-return]
+            if not isinstance(result, dict):
+                raise ValueError("Music analysis response is not a JSON object")
+            return result
 
         except Exception as e:
             logger.warning(f"Failed to analyze story mood: {e}")
@@ -438,9 +586,9 @@ class MusicService:
 
     async def get_song_play_url(self, song_id: int) -> Optional[str]:
         """获取歌曲播放 URL"""
-        return await self.music_client.get_song_url(song_id)  # type: ignore[no-any-return]
+        return await self.music_client.get_song_url(song_id)
 
-    async def close(self):
+    async def close(self) -> None:
         await self.music_client.close()
 
 

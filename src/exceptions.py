@@ -14,46 +14,30 @@ class GameException(Exception):
 class AIGenerationError(GameException):
     """AI生成失败"""
 
-    pass
-
 
 class AIClientError(GameException):
     """AI客户端调用错误"""
-
-    pass
 
 
 class DataExtractionError(GameException):
     """数据提取/解析失败"""
 
-    pass
-
 
 class DatabaseError(GameException):
     """数据库操作错误"""
-
-    pass
 
 
 class ValidationError(GameException):
     """输入验证错误"""
 
-    pass
-
 
 class ImageProcessingError(GameException):
     """图片处理错误"""
-
-    pass
 
 
 class SSEStreamError(GameException):
     """SSE流式传输错误"""
 
-    pass
-
 
 class AuthenticationError(GameException):
     """认证错误"""
-
-    pass

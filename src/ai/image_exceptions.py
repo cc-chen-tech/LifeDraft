@@ -9,8 +9,6 @@ from typing import Optional
 class ImageGenerationError(Exception):
     """图像生成基础错误"""
 
-    pass
-
 
 class ContentInspectionError(ImageGenerationError):
     """内容审核错误 - 触发了平台的内容安全检测"""

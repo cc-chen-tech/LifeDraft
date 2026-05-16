@@ -2,8 +2,6 @@
 
 from unittest.mock import Mock, patch
 
-import pytest
-
 from config.settings import settings
 from src.game.game_loop import GameLoop
 from src.game.historical_summary_selector import HistoricalSummarySelector

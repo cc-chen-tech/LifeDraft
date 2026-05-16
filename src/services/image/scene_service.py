@@ -2,12 +2,16 @@
 
 import base64
 import logging
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from src.ai.image_client import (ContentInspectionError, ImageClient,
-                                 ImageGenerationError)
+from config.prompts._helpers import _build_image_era_constraints
+from src.ai.image_client import ImageClient
+from src.ai.image_config import DEFAULT_EDIT_NEGATIVE_PROMPT
+from src.ai.image_exceptions import (ContentInspectionError,
+                                     ImageGenerationError)
 from src.database.models import Image as ImageModel
 from src.database.models import SceneImage
 from src.services.image import ImageContentError, ImageServiceError
@@ -21,19 +25,33 @@ logger = logging.getLogger(__name__)
 class SceneImageService:
     """场景插画生成服务"""
 
+    # 场景编辑专用反向提示词（比默认更强，包含场景特定约束）
+    SCENE_EDIT_NEGATIVE_PROMPT = (
+        DEFAULT_EDIT_NEGATIVE_PROMPT
+        + "，半身像，特写，裁剪，多人重叠，人物缺失，遗漏人物"
+        + "，禁止科幻元素，禁止赛博朋克，禁止全息投影，禁止发光效果，禁止未来科技"
+    )
+
     # 场景插画提示词模板 - 优化版本（更细致的描述）
     SCENE_PROMPT_TEMPLATE = """电影感故事场景插画，高质量，细节丰富。
 
 【时代背景】
 {era}
+{era_constraints}
 
 【场景描述】
 {scene_desc}
+
+【人物清单 - 以下所有人物必须在场景中同时出现】
+{character_manifest}
+- 要求：以上列出的每一个人物都必须在画面中清晰可见，不得遗漏任何一人
+- 位置安排：如果有多个人物，必须在画面中分配不同的空间位置（左侧、右侧、中间、前景、背景等），避免重叠遮挡
 
 【画面构图】
 - 构图：电影级构图，视觉焦点明确，景深自然
 - 人物位置：黄金分割点或画面中心偏左/右，避免呆板居中
 - 镜头角度：略高于人物视线的俯视角度，增强代入感
+- 多人物安排：如果有多个人物，必须在画面中分配不同位置，确保每个人物都完整可见
 
 【光线与氛围】
 {lighting_desc}
@@ -46,11 +64,35 @@ class SceneImageService:
 【色彩调性】
 {color_palette}
 
+【风格约束 - 写实主义（严格遵守）】
+- 写实摄影风格：画面必须是真实世界的自然呈现，禁止任何科幻、奇幻、超现实元素
+- 禁止赛博朋克：人物不得穿金属质感服装、电路纹理衣物、发光装饰、机械义肢、电子眼
+- 禁止全息投影：画面中不得出现全息屏幕、悬浮信息面板、全息建筑线框、AR投影
+- 禁止发光效果：人物眼睛不得发红光/蓝光/紫光，禁止任何发光物体、霓虹光效人物轮廓、身体发光
+- 禁止未来科技：不得出现飞行汽车、科幻飞行器、高科技机械、喷气背包、悬浮载具
+- 禁止奇幻元素：精灵耳朵、魔法光环、异色瞳（非自然色）、翅膀、角、鳞片
+- 禁止超现实：多重曝光、surrealist变形、非自然比例、抽象几何入侵
+- 禁止品牌Logo：不得出现星巴克（绿色美人鱼）、麦当劳（金色M）、苹果（被咬苹果）、耐克（对勾）、阿迪达斯（三道杠）、可口可乐（红色波浪）、肯德基（KFC）、华为、小米等任何真实商业品牌标识或标志性配色
+- 人物服装：日常便装（衬衫、T恤、外套、牛仔裤/休闲裤、运动鞋/皮鞋），符合角色设定的时代背景
+- 背景环境：真实城市/街道/室内/自然场景，自然光线，禁止科幻城市天际线、禁止全息投影叠加、禁止悬浮建筑
+- 人物比例：必须符合真实人类比例，禁止九头身、过大眼睛等非自然比例
+
+【人物面部一致性 - 最高优先级，绝对不可违反】
+- 这是同一个人物（IDENTICAL PERSON），面部特征必须100%保持一致
+- 必须保持：完全相同的脸型轮廓、完全相同的五官比例和位置、完全相同的眼型/鼻型/嘴型、完全相同的发型（包括发际线、刘海方向、发梢形态）、完全相同的肤色和肤质
+- 仅允许改变：姿势、角度、表情、服装、所处环境
+- 绝对禁止：改变任何面部结构、改变任何五官形状、换脸成另一个人、与其他人物面部混淆
+- 如果场景中有多个不同人物，每个人物必须有明显不同的面部特征（不同脸型、不同五官、不同发型、不同肤色、不同身高体型），严禁所有人物看起来像同一张脸
+- 多人物区分要求：同性别同年龄段的人物必须有至少3处明显不同的外貌特征（如不同发型、不同脸型、不同肤色、不同身高、不同配饰等）
+
 【质量要求】
-- 写实风格，细节清晰，纹理丰富
-- 光影自然，过渡柔和，避免过度后期感
+- 写实摄影风格，细节清晰，纹理丰富，禁止动漫风、油画风、插画风、水彩风
+- 光影自然，过渡柔和，避免过度后期感，禁止彩色霓虹光效
 - 色彩饱和度适中，整体色调统一协调
-- 电影质感，故事感强，氛围渲染到位"""
+- 电影质感，故事感强，氛围渲染到位
+- 人物面部特征必须与参考形象绝对保持一致：相同脸型、相同五官比例、相同发型、相同肤色，仅姿势和环境可变
+- 同一人物在多张图片中必须是同一个人，禁止换脸或改变面部特征
+- 多人物场景：确保所有人物都完整出现在画面中，不得遗漏或部分裁剪任何人物"""
 
     def __init__(
         self,
@@ -154,15 +196,21 @@ class SceneImageService:
         if week is not None:
             # 假设总共52周（一年）
             total_weeks = 52
-            temporal_palette = style_manager.apply_temporal_progression(game_id, week, total_weeks)
+            temporal_palette = style_manager.apply_temporal_progression(
+                game_id, week, total_weeks
+            )
             temporal_hint = temporal_palette.atmosphere
-            logger.info(f"Applied temporal progression: week {week}, hint: {temporal_hint[:50]}...")
+            logger.info(
+                f"Applied temporal progression: week {week}, hint: {temporal_hint[:50]}..."
+            )
 
         try:
             # Step 1: 分析故事选择场景
-            scene_desc, illustration_prompt = self.image_client.analyze_story_for_illustration(
-                story_text=story_text[:2000],
-                character_info=char_info,
+            scene_desc, illustration_prompt = (
+                self.image_client.analyze_story_for_illustration(
+                    story_text=story_text[:2000],
+                    character_info=char_info,
+                )
             )
 
             logger.info(f"Selected scene: {scene_desc[:50]}...")
@@ -189,23 +237,49 @@ class SceneImageService:
             if appearance_anchor:
                 # 使用锚点数据构建详细的角色外貌描述
                 anchor_desc = appearance_anchor.build_prompt_segment()
-                logger.info(f"Using appearance anchor for scene generation: {anchor_desc[:100]}...")
+                logger.info(
+                    f"Using appearance anchor for scene generation: {anchor_desc[:100]}..."
+                )
 
-                # 将锚点描述融入场景提示词
+                # 将锚点描述融入场景提示词 - 使用强一致性语言
                 enhanced_illustration = f"""{illustration_prompt}
 
-人物外貌特征（必须严格保持一致）：
+【人物外貌特征 - 绝对不可改变】
 {anchor_desc}
 
-重要：人物的面部特征、发型、体型必须与上述描述完全一致，仅姿势和场景环境可以改变。"""
+【面部一致性 - 最高优先级】
+- 这是同一个IDENTICAL PERSON，面部必须100%一致
+- 必须保持：完全相同的脸型轮廓、完全相同的五官比例和位置、完全相同的眼型/鼻型/嘴型、完全相同的发型（包括发际线、刘海方向、发梢形态）、完全相同的肤色和肤质
+- 仅允许改变：姿势、角度、表情、服装、所处环境
+- 绝对禁止：改变任何面部结构、改变任何五官形状、换脸成另一个人
+- 如果场景中有其他人物，该人物必须有独特且与其他人明显不同的面部特征"""
             else:
                 enhanced_illustration = illustration_prompt
                 logger.warning("No appearance anchor found, using basic character info")
 
+            # ★ 构建时代约束
+            era_constraints = _build_image_era_constraints(character_settings, "zh")
+
+            # ★ 提取故事中的角色并构建人物清单
+            story_characters = self._extract_story_characters(
+                story_text, character_settings, player_name
+            )
+            character_manifest = self._build_character_manifest(
+                story_characters,
+                appearance_anchor=appearance_anchor,
+                player_name=player_name,
+            )
+            logger.info(
+                f"Scene characters detected: {[c['name'] for c in story_characters]}, "
+                f"manifest length={len(character_manifest)}"
+            )
+
             # ★ 使用优化后的模板生成最终提示词
             final_prompt = self.SCENE_PROMPT_TEMPLATE.format(
                 era=char_info["era"],
+                era_constraints=era_constraints,
                 scene_desc=scene_desc,
+                character_manifest=character_manifest,
                 lighting_desc=lighting_desc,
                 illustration_prompt=enhanced_illustration,
                 color_palette=palette.build_prompt_segment(),
@@ -216,41 +290,72 @@ class SceneImageService:
                     # ★ 使用锚点构建更精确的编辑提示词
                     if appearance_anchor:
                         anchor_desc = appearance_anchor.build_prompt_segment()
-                        edit_prompt = f"""将人物融入以下场景：{scene_desc}。
+                        facial_sig = appearance_anchor.facial_signature or ""
+                        edit_prompt = f"""将参考图片中的同一个人物（IDENTICAL PERSON）融入以下新场景：{scene_desc}。
 
-人物必须具有以下外貌特征（严格保持一致）：
+{era_constraints}
+
+【人物清单 - 以下所有人物必须在场景中同时出现】
+{character_manifest}
+- 要求：以上列出的每一个人物都必须在画面中清晰可见，不得遗漏任何一人
+
+【人物外貌特征 - 绝对不可改变】
 {anchor_desc}
 
+【面部比例签名 - 这是识别该人物的关键】
+{facial_sig}
+
 场景动作和氛围：{illustration_prompt}
 
 光线要求：{lighting_desc}
 色彩调性：{palette.build_prompt_segment()}
 
-重要：
-- 保持人物的面部特征、发型、体型完全一致
+【面部一致性 - 最高优先级，绝对不可违反】
+- 这是同一个人物（IDENTICAL PERSON），面部特征必须100%保持一致
+- 必须保持：完全相同的脸型轮廓、完全相同的五官比例和位置、完全相同的眼型/鼻型/嘴型、完全相同的发型（包括发际线、刘海方向、发梢形态）、完全相同的肤色和肤质
+- 仅允许改变：姿势、角度、表情、服装、所处环境
+- 绝对禁止：改变任何面部结构、改变任何五官形状、换脸成另一个人
+- 如果场景中有其他人物，每个人物必须有明显不同的面部特征（不同脸型、不同五官、不同发型），严禁所有人物看起来像同一张脸
+- 多人物区分要求：同性别同年龄段的人物必须有至少3处明显不同的外貌特征
 - 人物与新场景的光影要自然融合，投影方向一致
-- 色调要与场景整体调性协调
-- 只改变姿势和融入新场景，不改变外貌特征"""
+- 色调要与场景整体调性协调"""
                     else:
-                        edit_prompt = f"""将人物融入以下场景：{scene_desc}。
+                        edit_prompt = f"""将参考图片中的同一个人物（IDENTICAL PERSON）融入以下新场景：{scene_desc}。
+
+{era_constraints}
+
+【人物清单 - 以下所有人物必须在场景中同时出现】
+{character_manifest}
+- 要求：以上列出的每一个人物都必须在画面中清晰可见，不得遗漏任何一人
 
 场景动作和氛围：{illustration_prompt}
 光线要求：{lighting_desc}
 色彩调性：{palette.build_prompt_segment()}
 
-保持人物的外貌特征和服装不变，确保光影融合自然。"""
+【面部一致性 - 最高优先级】
+- 这是同一个人物，面部特征必须100%保持一致
+- 仅允许改变：姿势、角度、表情、服装、所处环境
+- 绝对禁止：改变任何面部结构、换脸成另一个人
+- 如果场景中有其他人物，每个人物必须有明显不同的面部特征，严禁所有人物看起来像同一张脸
+- 人物与新场景的光影要自然融合，投影方向一致
+- 色调要与场景整体调性协调"""
 
                     results = self.image_client.edit_image(
                         reference_image=reference_url,
                         prompt=edit_prompt,
                         size="1664*928",
                         num_images=1,
+                        extra_params={
+                            "negative_prompt": self.SCENE_EDIT_NEGATIVE_PROMPT
+                        },
                     )
 
                     if results:
                         return results[0][0], edit_prompt
                     else:
-                        raise ImageGenerationError("Failed to generate scene image with reference")
+                        raise ImageGenerationError(
+                            "Failed to generate scene image with reference"
+                        )
                 else:
                     image_data, _ = self.image_client.generate_image(
                         prompt=final_prompt,
@@ -260,18 +365,37 @@ class SceneImageService:
                     return image_data, final_prompt
 
             # 尝试生成，如果触发内容审核则改写后重试
+            # ★ 如果edit_image无法保持面部一致性，回退到generate_image使用详细面部描述
             try:
                 image_data, used_prompt = generate_image()
+            except ImageGenerationError as e:
+                # edit_image可能无法保持面部特征，回退到generate_image
+                if reference_url and appearance_anchor:
+                    logger.warning(
+                        f"edit_image failed or may not preserve face well, "
+                        f"falling back to generate_image with explicit facial description: {e}"
+                    )
+                    image_data, used_prompt = self.image_client.generate_image(
+                        prompt=final_prompt,
+                        size="1664*928",
+                        extra_params={"prompt_extend": True},
+                    )
+                else:
+                    raise
             except ContentInspectionError as e:
-                logger.warning("Content inspection failed, attempting prompt rewrite and retry...")
+                logger.warning(
+                    "Content inspection failed, attempting prompt rewrite and retry..."
+                )
                 api_error = e.api_error_message or str(e)
                 logger.info(f"API error message: {api_error}")
 
-                new_scene_desc, new_prompt = self.image_client.rewrite_prompt_for_content_safety(
-                    original_prompt=final_prompt,
-                    scene_desc=scene_desc,
-                    character_info=char_info,
-                    api_error_message=api_error,
+                new_scene_desc, new_prompt = (
+                    self.image_client.rewrite_prompt_for_content_safety(
+                        original_prompt=final_prompt,
+                        scene_desc=scene_desc,
+                        character_info=char_info,
+                        api_error_message=api_error,
+                    )
                 )
 
                 scene_desc = new_scene_desc
@@ -284,7 +408,9 @@ class SceneImageService:
                     image_data, used_prompt = generate_image()
                 except ContentInspectionError as e2:
                     logger.error(f"Content inspection still failed after rewrite: {e2}")
-                    raise ImageContentError("内容审核未通过，请尝试使用其他描述方式", new_prompt)
+                    raise ImageContentError(
+                        "内容审核未通过，请尝试使用其他描述方式", new_prompt
+                    )
 
             # Step 4: 保存图片
             # ★ week 从0开始，entity_name 显示时 +1，与前端一致
@@ -300,6 +426,7 @@ class SceneImageService:
             )
 
             # Step 5: 创建 SceneImage 记录
+            # ★ 使用 try/except 处理 IntegrityError，防止并发请求重复写入
             new_scene = SceneImage(
                 game_id=game_id,
                 week=week,
@@ -313,12 +440,41 @@ class SceneImageService:
                 importance_score="medium",
             )
             self.db.add(new_scene)
-            self.db.commit()
-            self.db.refresh(new_scene)
-            week_display = f"第{week + 1}周" if week is not None else "未知周"
-            logger.info(f"场景插画创建完成: scene_id={new_scene.scene_id}, {week_display}")
-
-            return new_scene
+            try:
+                self.db.commit()
+                self.db.refresh(new_scene)
+                week_display = f"第{week + 1}周" if week is not None else "未知周"
+                logger.info(
+                    f"场景插画创建完成: scene_id={new_scene.scene_id}, {week_display}"
+                )
+                return new_scene
+            except IntegrityError as exc:
+                self.db.rollback()
+                # ★ 只处理唯一约束冲突，其他 IntegrityError（外键、NOT NULL等）应重新抛出
+                error_msg = str(exc.orig) if exc.orig else str(exc)
+                is_unique_violation = (
+                    "unique" in error_msg.lower() or "duplicate" in error_msg.lower()
+                )
+                if not is_unique_violation:
+                    logger.error(f"数据库完整性错误（非唯一约束）: {error_msg}")
+                    raise ImageServiceError(f"数据库完整性错误: {error_msg}") from exc
+                logger.warning(
+                    f"场景插画唯一约束冲突: game={game_id}, week={week}, "
+                    f"round={round_number}, stage={stage}，返回已有记录"
+                )
+                existing = (
+                    self.db.query(SceneImage)
+                    .filter(
+                        SceneImage.game_id == game_id,
+                        SceneImage.week == week,
+                        SceneImage.round_number == round_number,
+                        SceneImage.stage == stage,
+                    )
+                    .first()
+                )
+                if existing:
+                    return existing
+                raise ImageServiceError("场景插画创建失败：无法获取或创建记录")
 
         except ContentInspectionError as e:
             logger.warning(f"Content inspection failed for round scene: {e}")
@@ -365,17 +521,23 @@ class SceneImageService:
 
         char_info = self._build_char_info(character_settings, player_name)
 
+        # ★ 构建时代约束（防止画面出现时代错位元素）
+        era_constraints = _build_image_era_constraints(character_settings, "zh")
+
         # 获取参考图片URL
         reference_url = None
         if player_image_id and get_player_image_func:
             reference_url, _ = get_player_image_func(game_id, player_image_id)
 
         try:
-            image_data, prompt_used, scene_desc = self.image_client.generate_opening_illustration(
-                story_text=story_text,
-                character_info=char_info,
-                reference_image_url=reference_url,
-                size="1664*928",
+            image_data, prompt_used, scene_desc = (
+                self.image_client.generate_opening_illustration(
+                    story_text=story_text,
+                    character_info=char_info,
+                    reference_image_url=reference_url,
+                    size="1664*928",
+                    era_constraints=era_constraints,
+                )
             )
 
             storage_path, storage_type = self.storage_service.save_image(
@@ -462,9 +624,14 @@ class SceneImageService:
 
         char_info = self._build_char_info(character_settings, player_name)
 
+        # ★ 构建时代约束（防止画面出现时代错位元素）
+        era_constraints = _build_image_era_constraints(character_settings, "zh")
+
         # 获取当前插画作为参考
         current_illustration = (
-            self.db.query(ImageModel).filter(ImageModel.image_id == current_illustration_id).first()
+            self.db.query(ImageModel)
+            .filter(ImageModel.image_id == current_illustration_id)
+            .first()
         )
 
         reference_url = None
@@ -486,15 +653,19 @@ class SceneImageService:
             reference_url, _ = get_player_image_func(game_id, player_image_id)
 
         try:
-            scene_desc, illustration_prompt = self.image_client.analyze_story_for_illustration(
-                story_text,
-                char_info,
+            scene_desc, illustration_prompt = (
+                self.image_client.analyze_story_for_illustration(
+                    story_text,
+                    char_info,
+                )
             )
 
             combined_prompt = f"""{user_prompt}
 
 场景：{scene_desc}
-{illustration_prompt}"""
+{illustration_prompt}
+
+{era_constraints}"""
 
             logger.debug(f"Combined prompt: {combined_prompt[:100]}...")
 
@@ -504,6 +675,7 @@ class SceneImageService:
                     prompt=combined_prompt,
                     size="1664*928",
                     num_images=1,
+                    extra_params={"negative_prompt": self.SCENE_EDIT_NEGATIVE_PROMPT},
                 )
 
                 if results:
@@ -550,7 +722,9 @@ class SceneImageService:
             self.db.commit()
             self.db.refresh(image_model)
 
-            logger.info(f"Opening illustration regenerated: image_id={image_model.image_id}")
+            logger.info(
+                f"Opening illustration regenerated: image_id={image_model.image_id}"
+            )
             return image_model
 
         except ContentInspectionError as e:
@@ -563,6 +737,178 @@ class SceneImageService:
             logger.error(f"Unexpected error in regenerate_opening_illustration: {e}")
             self.db.rollback()
             raise ImageServiceError(f"重新生成开场插画失败: {e}")
+
+    def _extract_story_characters(
+        self,
+        story_text: str,
+        character_settings: Dict[str, Any],
+        player_name: str,
+    ) -> List[Dict[str, str]]:
+        """从故事文本中提取出现的所有角色（包括玩家和NPC）。
+
+        从 character_settings 的 relationships.key_people 和 family.family_members
+        中提取角色，并检查哪些在 story_text 中被提及。
+
+        Returns:
+            角色列表，每个角色包含 name 和 description
+        """
+        characters: List[Dict[str, str]] = []
+
+        # 1. 添加玩家角色
+        player_desc = self._build_character_desc_from_settings(
+            character_settings, player_name
+        )
+        characters.append({"name": player_name, "description": player_desc})
+
+        # 2. 从 relationships.key_people 提取
+        relationships = character_settings.get("relationships", {})
+        key_people = (
+            relationships.get("key_people", [])
+            if isinstance(relationships, dict)
+            else []
+        )
+        for person in key_people:
+            name = person.get("name", "")
+            if name and name != player_name and name in story_text:
+                desc = self._build_character_desc(person)
+                characters.append({"name": name, "description": desc})
+
+        # 3. 从 family.family_members 提取
+        family = character_settings.get("family", {})
+        family_members = (
+            family.get("family_members", []) if isinstance(family, dict) else []
+        )
+        for member in family_members:
+            name = member.get("name", "")
+            if (
+                name
+                and name != player_name
+                and name not in [c["name"] for c in characters]
+                and name in story_text
+            ):
+                desc = self._build_character_desc(member)
+                characters.append({"name": name, "description": desc})
+
+        return characters
+
+    @staticmethod
+    def _build_character_desc(person: Dict[str, Any]) -> str:
+        """从人物数据构建简短描述."""
+        parts = []
+        if person.get("relationship"):
+            parts.append(str(person["relationship"]))
+        if person.get("age"):
+            parts.append(f"{person['age']}岁")
+        if person.get("gender"):
+            parts.append(str(person["gender"]))
+        if person.get("occupation"):
+            parts.append(str(person["occupation"]))
+        if person.get("appearance"):
+            parts.append(str(person["appearance"]))
+        if person.get("personality"):
+            parts.append(str(person["personality"]))
+        return "，".join(parts) if parts else "一个普通人"
+
+    @staticmethod
+    def _build_character_desc_from_settings(
+        character_settings: Dict[str, Any], name: str
+    ) -> str:
+        """从 character_settings 构建玩家角色描述."""
+        parts = []
+        age = character_settings.get("age")
+        if age:
+            if isinstance(age, dict):
+                age_val = age.get("age", "")
+                if age_val:
+                    parts.append(f"{age_val}岁")
+            elif isinstance(age, (int, float)):
+                parts.append(f"{age}岁")
+        gender = character_settings.get("gender")
+        if gender:
+            if isinstance(gender, dict):
+                parts.append(str(gender.get("gender", "")))
+            elif isinstance(gender, str):
+                parts.append(gender)
+        appearance = character_settings.get("appearance")
+        if appearance:
+            if isinstance(appearance, dict):
+                app_parts = []
+                for k in ["face", "hair", "eyes", "height", "build", "style"]:
+                    v = appearance.get(k)
+                    if v:
+                        app_parts.append(str(v))
+                if app_parts:
+                    parts.append("，".join(app_parts))
+            elif isinstance(appearance, str):
+                parts.append(appearance)
+        return "，".join(parts) if parts else name
+
+    def _build_character_manifest(
+        self,
+        characters: List[Dict[str, str]],
+        appearance_anchor: Optional[CharacterAppearanceAnchor] = None,
+        player_name: str = "",
+    ) -> str:
+        """构建人物清单段落，用于注入场景提示词。
+
+        Args:
+            characters: 角色列表（来自 _extract_story_characters）
+            appearance_anchor: 玩家角色的外貌锚点（如果有）
+            player_name: 玩家角色名称
+
+        Returns:
+            格式化的人物清单文本
+        """
+        if not characters:
+            return "- 主角在场景中"
+
+        lines = []
+        for idx, char in enumerate(characters):
+            name = char["name"]
+            desc = char["description"]
+            position = self._get_character_position_hint(idx, len(characters))
+
+            # 如果是玩家角色且有外貌锚点，使用锚点描述
+            if name == player_name and appearance_anchor:
+                anchor_desc = appearance_anchor.build_prompt_segment()
+                lines.append(
+                    f"- {name}（{position}）：{desc}。"
+                    f"【外貌锚点 - 绝对不可改变】{anchor_desc}"
+                )
+            else:
+                lines.append(f"- {name}（{position}）：{desc}")
+
+        # 添加多人物区分要求
+        if len(characters) > 1:
+            lines.append(
+                "- 【人物区分要求】以上每个人物必须有明显不同的面部特征和外貌，"
+                "禁止任何两个人物看起来像同一张脸"
+            )
+
+        return "\n".join(lines)
+
+    @staticmethod
+    def _get_character_position_hint(index: int, total: int) -> str:
+        """根据人物数量和索引返回画面位置提示."""
+        if total == 1:
+            return "画面中央"
+        if total == 2:
+            positions = ["画面左侧", "画面右侧"]
+            return positions[index % 2]
+        if total == 3:
+            positions = ["画面左侧", "画面中央", "画面右侧"]
+            return positions[index % 3]
+        # 4+ 人物
+        positions = [
+            "画面左侧前景",
+            "画面右侧前景",
+            "画面左侧背景",
+            "画面右侧背景",
+            "画面中央",
+            "画面中央偏左",
+            "画面中央偏右",
+        ]
+        return positions[index % len(positions)]
 
     def _build_char_info(
         self, character_settings: Dict[str, Any], player_name: str
@@ -599,7 +945,9 @@ class SceneImageService:
 
         return char_info
 
-    def _get_appearance_anchor(self, image_id: int) -> Optional[CharacterAppearanceAnchor]:
+    def _get_appearance_anchor(
+        self, image_id: int
+    ) -> Optional[CharacterAppearanceAnchor]:
         """从人物图片记录中获取外貌锚点.
 
         Args:
@@ -609,7 +957,11 @@ class SceneImageService:
             CharacterAppearanceAnchor 实例，如果不存在则返回 None
         """
         try:
-            image = self.db.query(ImageModel).filter(ImageModel.image_id == image_id).first()
+            image = (
+                self.db.query(ImageModel)
+                .filter(ImageModel.image_id == image_id)
+                .first()
+            )
             if not image or not image.metadata_json:
                 return None
 

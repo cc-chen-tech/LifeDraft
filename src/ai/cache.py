@@ -92,7 +92,8 @@ class EventCache:
         # Round values to reduce cache misses from minor variations
         signature = {
             "age": player_state.get("age", 22),
-            "energy": round(player_state.get("energy", 70) / 10) * 10,  # Round to nearest 10
+            "energy": round(player_state.get("energy", 70) / 10)
+            * 10,  # Round to nearest 10
             "mood": round(player_state.get("mood", 60) / 10) * 10,
             "knowledge": round(player_state.get("knowledge", 50) / 10) * 10,
             "wealth": round(player_state.get("wealth", 10000) / 10000)
@@ -104,7 +105,7 @@ class EventCache:
 
         # Create hash
         key_str = json.dumps(signature, sort_keys=True)
-        return hashlib.md5(key_str.encode()).hexdigest()
+        return hashlib.md5(key_str.encode(), usedforsecurity=False).hexdigest()
 
     def get(self, player_state: Dict[str, Any], language: str) -> Optional[GameEvent]:
         """
@@ -141,7 +142,9 @@ class EventCache:
 
         return None
 
-    def set(self, player_state: Dict[str, Any], language: str, event: GameEvent) -> None:
+    def set(
+        self, player_state: Dict[str, Any], language: str, event: GameEvent
+    ) -> None:
         """
         Cache an event.
 
@@ -155,7 +158,9 @@ class EventCache:
         # Convert event to dict
         event_dict = {
             "event_description": event.event_description,
-            "options": [{"text": opt.text, "effects": opt.effects} for opt in event.options],
+            "options": [
+                {"text": opt.text, "effects": opt.effects} for opt in event.options
+            ],
         }
 
         # H-07: 如果 key 已存在，移到末尾

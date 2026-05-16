@@ -5,29 +5,22 @@
 import { renderHook, act } from '@testing-library/react';
 import { useGameState } from '@/hooks/game/useGameState';
 import { useGameStore } from '@/stores/useGameStore';
-import { streamRegenerate } from '@/lib/sse';
-import type { Phase } from '@/hooks/game/usePhaseManager';
+import { createSSEMockResponse } from '@/__tests__/helpers/sse-mock';
+import { spyOnStoreMethods } from '@/__tests__/helpers/store-spy';
 
-// Mock dependencies
-const mockSaveGame = jest.fn().mockResolvedValue(undefined);
-const mockSyncPlayerState = jest.fn().mockResolvedValue(undefined);
-const mockGenerateSummary = jest.fn().mockResolvedValue({ summary_text: 'Test summary' });
+const STORE_METHODS = ['saveGame', 'syncPlayerState', 'generateSummary'] as const;
 
-jest.mock('@/stores/useGameStore', () => ({
-  useGameStore: {
-    getState: jest.fn(() => ({
-      saveGame: mockSaveGame,
-      syncPlayerState: mockSyncPlayerState,
-      generateSummary: mockGenerateSummary,
-    })),
-  },
-}));
+type StoreSpy = ReturnType<typeof spyOnStoreMethods<typeof useGameStore, (typeof STORE_METHODS)[number]>>;
 
-jest.mock('@/lib/sse', () => ({
-  streamRegenerate: jest.fn(),
-}));
+function setupDefaultState() {
+  useGameStore.setState({
+    storyText: 'Frontend story',
+    gameId: 1,
+  } as never);
+}
 
 describe('useGameState', () => {
+  let storeSpy: StoreSpy;
   const mockGeneratingRef = { current: false };
   const mockPrefetchAbortRef = { current: null as AbortController | null };
   const mockPrefetchResultRef = { current: null as { story: string; options: any[]; event: any } | null };
@@ -67,42 +60,36 @@ describe('useGameState', () => {
     jest.clearAllMocks();
     mockGeneratingRef.current = false;
     mockPrefetchingRef.current = false;
+    setupDefaultState();
+    storeSpy = spyOnStoreMethods(useGameStore, STORE_METHODS);
+  });
+
+  afterEach(() => {
+    storeSpy.restore();
   });
 
   describe('handleSave', () => {
     it('saves game successfully', async () => {
-      mockSaveGame.mockClear();
-      
       const { result } = renderHook(() => useGameState(defaultParams));
-
       await act(async () => {
         await result.current.handleSave();
       });
-
-      expect(mockSaveGame).toHaveBeenCalled();
+      expect(storeSpy.spies.saveGame).toHaveBeenCalled();
     });
 
     it('handles save failure', async () => {
-      mockSaveGame.mockRejectedValueOnce(new Error('Save failed'));
-      
+      storeSpy.spies.saveGame.mockRejectedValueOnce(new Error('Save failed'));
       const { result } = renderHook(() => useGameState(defaultParams));
-
       await act(async () => {
         await result.current.handleSave();
       });
-
-      // Should not throw, just handle error gracefully
     });
   });
 
   describe('handleContinueAfterSummary', () => {
     it('clears summary and sets phase to loading when not game over', async () => {
       const { result } = renderHook(() => useGameState(defaultParams));
-
-      act(() => {
-        result.current.handleContinueAfterSummary();
-      });
-
+      act(() => { result.current.handleContinueAfterSummary(); });
       expect(mockSetters.setCurrentEvent).toHaveBeenCalledWith(null);
     });
 
@@ -110,11 +97,7 @@ describe('useGameState', () => {
       const { result } = renderHook(() =>
         useGameState({ ...defaultParams, isGameOver: true })
       );
-
-      act(() => {
-        result.current.handleContinueAfterSummary();
-      });
-
+      act(() => { result.current.handleContinueAfterSummary(); });
       expect(mockSetters.setPhase).toHaveBeenCalledWith('ending');
     });
   });
@@ -122,11 +105,7 @@ describe('useGameState', () => {
   describe('handleAdjustStory', () => {
     it('shows adjuster', async () => {
       const { result } = renderHook(() => useGameState(defaultParams));
-
-      act(() => {
-        result.current.setShowAdjuster(true);
-      });
-
+      act(() => { result.current.setShowAdjuster(true); });
       expect(result.current.showAdjuster).toBe(true);
     });
   });
@@ -134,28 +113,18 @@ describe('useGameState', () => {
   describe('state management', () => {
     it('manages summary text', async () => {
       const { result } = renderHook(() => useGameState(defaultParams));
-
-      act(() => {
-        result.current.setSummaryText('Test summary');
-      });
-
+      act(() => { result.current.setSummaryText('Test summary'); });
       expect(result.current.summaryText).toBe('Test summary');
     });
 
     it('manages round summary', async () => {
       const { result } = renderHook(() => useGameState(defaultParams));
-
-      act(() => {
-        result.current.setRoundSummary('Round summary');
-      });
-
+      act(() => { result.current.setRoundSummary('Round summary'); });
       expect(result.current.roundSummary).toBe('Round summary');
     });
 
     it('manages ending data', async () => {
       const { result } = renderHook(() => useGameState(defaultParams));
-
-      // endingData is internal state, just verify it exists in the result
       expect(result.current.endingData).toBeDefined();
     });
   });
@@ -167,13 +136,8 @@ describe('useGameState', () => {
         options: [{ text: 'Option 1' }, { text: 'Option 2' }],
         event: { story: 'Prefetched story', options: [{ text: 'Option 1' }] },
       };
-
       const { result } = renderHook(() => useGameState(defaultParams));
-
-      act(() => {
-        result.current.handleContinueToNextRound();
-      });
-
+      act(() => { result.current.handleContinueToNextRound(); });
       expect(mockSetters.setStoryText).toHaveBeenCalledWith('Prefetched story');
       expect(mockSetters.setOptions).toHaveBeenCalled();
       expect(mockSetters.setPhase).toHaveBeenCalledWith('options');
@@ -182,13 +146,8 @@ describe('useGameState', () => {
 
     it('generates normally when no prefetch result', async () => {
       mockPrefetchResultRef.current = null;
-
       const { result } = renderHook(() => useGameState(defaultParams));
-
-      act(() => {
-        result.current.handleContinueToNextRound();
-      });
-
+      act(() => { result.current.handleContinueToNextRound(); });
       expect(mockSetters.setCurrentEvent).toHaveBeenCalledWith(null);
       expect(mockSetters.setStoryText).toHaveBeenCalledWith('');
       expect(mockSetters.setPhase).toHaveBeenCalledWith('loading');
@@ -198,43 +157,21 @@ describe('useGameState', () => {
       mockPrefetchingRef.current = true;
       mockPrefetchAbortRef.current = { abort: jest.fn() } as any;
       mockPrefetchResultRef.current = null;
-
       const { result } = renderHook(() => useGameState(defaultParams));
-
-      act(() => {
-        result.current.handleContinueToNextRound();
-      });
-
+      act(() => { result.current.handleContinueToNextRound(); });
       expect(mockPrefetchAbortRef.current?.abort).toHaveBeenCalled();
     });
   });
 
   describe('handleRegenerate', () => {
     it('starts SSE regeneration', async () => {
-      const mockStreamRegenerate = streamRegenerate as jest.Mock;
-      mockStreamRegenerate.mockImplementation(async (gameId: number, callbacks: any) => {
-        // Simulate successful regeneration
-        callbacks.onStory('New story text');
-        callbacks.onComplete({
-          event_description: 'Complete story',
-          options: [{ text: 'Option 1' }, { text: 'Option 2' }],
-        });
-      });
-
-      // Mock useGameStore.getState for storyText comparison
-      (useGameStore.getState as jest.Mock).mockReturnValue({
-        saveGame: mockSaveGame,
-        syncPlayerState: mockSyncPlayerState,
-        generateSummary: mockGenerateSummary,
-        storyText: 'Frontend story',
-      });
+      (global.fetch as jest.Mock).mockResolvedValue(createSSEMockResponse([
+        'event: story\ndata: New story text\n\n',
+        'event: complete\ndata: {"event_description":"Complete story","options":[{"text":"Option 1"},{"text":"Option 2"}]}\n\n',
+      ]));
 
       const { result } = renderHook(() => useGameState(defaultParams));
-
-      await act(async () => {
-        await result.current.handleRegenerate();
-      });
-
+      await act(async () => { await result.current.handleRegenerate(); });
       expect(mockSetters.appendStoryText).toHaveBeenCalledWith('New story text');
       expect(mockSetters.setPhase).toHaveBeenCalledWith('generating');
     });
@@ -270,21 +207,13 @@ describe('useGameState', () => {
     });
 
     it('handles regeneration error', async () => {
-      const mockStreamRegenerate = streamRegenerate as jest.Mock;
-      mockStreamRegenerate.mockImplementation(async (gameId: number, callbacks: any) => {
-        callbacks.onError({ message: 'Regeneration failed' });
-      });
-
+      (global.fetch as jest.Mock).mockResolvedValue(createSSEMockResponse([
+        'event: error\ndata: {"error":"Regeneration failed"}\n\n',
+      ]));
       const { result } = renderHook(() => useGameState(defaultParams));
-
       await act(async () => {
-        try {
-          await result.current.handleRegenerate();
-        } catch (e) {
-          // Expected to fail
-        }
+        try { await result.current.handleRegenerate(); } catch (e) { /* expected */ }
       });
-
       expect(mockSetters.setPhase).toHaveBeenCalledWith('error');
       expect(mockSetters.setProcessing).toHaveBeenCalledWith(false);
     });
@@ -292,46 +221,19 @@ describe('useGameState', () => {
     it('cancels ongoing prefetch before regeneration', async () => {
       mockPrefetchingRef.current = true;
       mockPrefetchAbortRef.current = { abort: jest.fn() } as any;
-
-      const mockStreamRegenerate = streamRegenerate as jest.Mock;
-      mockStreamRegenerate.mockImplementation(async (gameId: number, callbacks: any) => {
-        callbacks.onComplete({ options: [{ text: 'Option 1' }] });
-      });
-
-      (useGameStore.getState as jest.Mock).mockReturnValue({
-        saveGame: mockSaveGame,
-        syncPlayerState: mockSyncPlayerState,
-        generateSummary: mockGenerateSummary,
-        storyText: 'Frontend story',
-      });
-
+      (global.fetch as jest.Mock).mockResolvedValue(createSSEMockResponse([
+        'event: complete\ndata: {"options":[{"text":"Option 1"}]}\n\n',
+      ]));
       const { result } = renderHook(() => useGameState(defaultParams));
-
-      await act(async () => {
-        await result.current.handleRegenerate();
-      });
-
+      await act(async () => { await result.current.handleRegenerate(); });
       expect(mockPrefetchAbortRef.current?.abort).toHaveBeenCalled();
     });
 
     it('shows loading toast during regeneration', async () => {
-      let resolveRegenerate: () => void;
-      const mockStreamRegenerate = streamRegenerate as jest.Mock;
-      mockStreamRegenerate.mockImplementation(async () => {
-        return new Promise<void>((resolve) => {
-          resolveRegenerate = resolve;
-        });
-      });
-
+      // Never-resolving fetch so streamRegenerate hangs
+      (global.fetch as jest.Mock).mockReturnValue(new Promise(() => {}));
       const { result } = renderHook(() => useGameState(defaultParams));
-
-      // Start regeneration but don't await
-      let regeneratePromise: Promise<void>;
-      act(() => {
-        regeneratePromise = result.current.handleRegenerate();
-      });
-
-      // Check toast immediately after starting
+      act(() => { result.current.handleRegenerate(); });
       expect(result.current.regenerateToast?.type).toBe('loading');
     });
   });
@@ -339,119 +241,55 @@ describe('useGameState', () => {
   describe('regenerateToast', () => {
     it('can be set directly', async () => {
       const { result } = renderHook(() => useGameState(defaultParams));
-
-      await act(async () => {
-        result.current.setRegenerateToast({ type: 'success', message: 'Success!' });
-      });
-
+      await act(async () => { result.current.setRegenerateToast({ type: 'success', message: 'Success!' }); });
       expect(result.current.regenerateToast).toEqual({ type: 'success', message: 'Success!' });
     });
 
     it('can be cleared', async () => {
       const { result } = renderHook(() => useGameState(defaultParams));
-
-      await act(async () => {
-        result.current.setRegenerateToast({ type: 'error', message: 'Error!' });
-      });
-
-      await act(async () => {
-        result.current.setRegenerateToast(null);
-      });
-
+      await act(async () => { result.current.setRegenerateToast({ type: 'error', message: 'Error!' }); });
+      await act(async () => { result.current.setRegenerateToast(null); });
       expect(result.current.regenerateToast).toBeNull();
     });
   });
 
   describe('handleSave edge cases', () => {
     it('sets success toast on save', async () => {
-      mockSaveGame.mockClear();
-      mockSaveGame.mockResolvedValue(undefined);
-      
+      storeSpy.spies.saveGame.mockResolvedValue(undefined);
       const { result } = renderHook(() => useGameState(defaultParams));
-
-      await act(async () => {
-        await result.current.handleSave();
-      });
-
-      // saveToast is internal state, verify saveGame was called
-      expect(mockSaveGame).toHaveBeenCalled();
+      await act(async () => { await result.current.handleSave(); });
+      expect(storeSpy.spies.saveGame).toHaveBeenCalled();
     });
 
     it('sets error toast on save failure', async () => {
-      mockSaveGame.mockClear();
-      mockSaveGame.mockRejectedValueOnce(new Error('Save failed'));
-      
+      storeSpy.spies.saveGame.mockRejectedValueOnce(new Error('Save failed'));
       const { result } = renderHook(() => useGameState(defaultParams));
-
-      await act(async () => {
-        await result.current.handleSave();
-      });
-
-      // Should handle error gracefully
-      expect(mockSaveGame).toHaveBeenCalled();
+      await act(async () => { await result.current.handleSave(); });
+      expect(storeSpy.spies.saveGame).toHaveBeenCalled();
     });
   });
 
   describe('handleRegenerate status callback', () => {
     it('calls setProcessing with status phase', async () => {
-      const mockStreamRegenerate = streamRegenerate as jest.Mock;
-      mockStreamRegenerate.mockImplementation(async (gameId: number, callbacks: any) => {
-        callbacks.onStatus({ phase: 'generating' });
-        callbacks.onComplete({
-          event_description: 'Story',
-          options: [{ text: 'Option 1' }],
-        });
-      });
-
-      (useGameStore.getState as jest.Mock).mockReturnValue({
-        saveGame: mockSaveGame,
-        syncPlayerState: mockSyncPlayerState,
-        generateSummary: mockGenerateSummary,
-        storyText: 'Frontend story',
-      });
-
+      (global.fetch as jest.Mock).mockResolvedValue(createSSEMockResponse([
+        'event: status\ndata: {"phase":"generating"}\n\n',
+        'event: complete\ndata: {"event_description":"Story","options":[{"text":"Option 1"}]}\n\n',
+      ]));
       const { result } = renderHook(() => useGameState(defaultParams));
-
-      await act(async () => {
-        await result.current.handleRegenerate();
-      });
-
+      await act(async () => { await result.current.handleRegenerate(); });
       expect(mockSetters.setProcessing).toHaveBeenCalledWith(true, 'generating');
     });
 
     it('sets success toast and clears it after timeout', async () => {
       jest.useFakeTimers();
-      
-      const mockStreamRegenerate = streamRegenerate as jest.Mock;
-      mockStreamRegenerate.mockImplementation(async (gameId: number, callbacks: any) => {
-        callbacks.onComplete({
-          event_description: 'Story',
-          options: [{ text: 'Option 1' }],
-        });
-      });
-
-      (useGameStore.getState as jest.Mock).mockReturnValue({
-        saveGame: mockSaveGame,
-        syncPlayerState: mockSyncPlayerState,
-        generateSummary: mockGenerateSummary,
-        storyText: 'Frontend story',
-      });
-
+      (global.fetch as jest.Mock).mockResolvedValue(createSSEMockResponse([
+        'event: complete\ndata: {"event_description":"Story","options":[{"text":"Option 1"}]}\n\n',
+      ]));
       const { result } = renderHook(() => useGameState(defaultParams));
-
-      await act(async () => {
-        await result.current.handleRegenerate();
-      });
-
+      await act(async () => { await result.current.handleRegenerate(); });
       expect(result.current.regenerateToast?.type).toBe('success');
-      
-      // Fast-forward timers
-      act(() => {
-        jest.advanceTimersByTime(2000);
-      });
-
+      act(() => { jest.advanceTimersByTime(2000); });
       expect(result.current.regenerateToast).toBeNull();
-      
       jest.useRealTimers();
     });
   });

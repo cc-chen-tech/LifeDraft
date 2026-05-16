@@ -4,6 +4,7 @@
  * 管理故事音乐推荐和播放状态
  */
 import { create } from "zustand";
+import type { CharacterSettings } from "@/lib/types";
 
 export interface Song {
   id: number;
@@ -12,6 +13,8 @@ export interface Song {
   album: string;
   duration: number;
   url?: string;
+  source?: "netease" | "ai_generated";
+  asset_id?: number;
 }
 
 export interface MusicRecommendation {
@@ -44,6 +47,19 @@ interface MusicState {
   // 播放器实例（HTMLAudioElement）
   audioElement: HTMLAudioElement | null;
 
+  // fadeVolume interval 引用，防止多个渐变冲突
+  fadeInterval: ReturnType<typeof setInterval> | null;
+
+  // Playlist queue state
+  queue: Song[];
+  playedSongs: Song[];
+  playlistGameId: number | null;
+  isLoadingPlaylist: boolean;
+
+  // Active story context (set by play page)
+  activeStoryText: string | null;
+  activeGameId: number | null;
+
   // Actions
   setRecommendation: (recommendation: MusicRecommendation | null) => void;
   setIsLoadingRecommendation: (loading: boolean) => void;
@@ -55,6 +71,7 @@ interface MusicState {
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
   setAudioElement: (audio: HTMLAudioElement | null) => void;
+  setFadeInterval: (interval: ReturnType<typeof setInterval> | null) => void;
 
   // 播放控制
   play: () => void;
@@ -64,12 +81,27 @@ interface MusicState {
   changeVolume: (volume: number) => void;
   fadeVolume: (targetVolume: number, duration?: number) => void;  // 音量渐变
 
+  // Playlist actions
+  setQueue: (queue: Song[]) => void;
+  setPlayedSongs: (songs: Song[]) => void;
+  setPlaylistGameId: (gameId: number | null) => void;
+  loadPlaylist: (gameId: number) => Promise<void>;
+  mergePlaylist: (gameId: number, songs: Song[], mood?: string, keywords?: string[]) => Promise<void>;
+  syncPlaylistState: (gameId: number, positionMs: number, isPlaying: boolean, volume: number) => Promise<void>;
+  advanceQueue: () => Promise<void>;
+
+  // Active story context setters
+  setActiveStoryText: (text: string | null) => void;
+  setActiveGameId: (gameId: number | null) => void;
+
   // 清理
   reset: () => void;
   cleanup: () => void;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// ★ Use the same relative /api path as api.ts to ensure consistency.
+// Absolute URLs bypass the Next.js proxy and can cause CORS/timeout issues.
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api";
 
 export const useMusicStore = create<MusicState>((set, get) => ({
   // 初始状态
@@ -83,6 +115,13 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   currentTime: 0,
   duration: 0,
   audioElement: null,
+  fadeInterval: null,
+  queue: [],
+  playedSongs: [],
+  playlistGameId: null,
+  isLoadingPlaylist: false,
+  activeStoryText: null,
+  activeGameId: null,
 
   // Setters
   setRecommendation: (recommendation) => set({ recommendation }),
@@ -105,6 +144,13 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   setCurrentTime: (currentTime) => set({ currentTime }),
   setDuration: (duration) => set({ duration }),
   setAudioElement: (audioElement) => set({ audioElement }),
+  setFadeInterval: (fadeInterval) => set({ fadeInterval }),
+
+  setQueue: (queue) => set({ queue }),
+  setPlayedSongs: (playedSongs) => set({ playedSongs }),
+  setPlaylistGameId: (playlistGameId) => set({ playlistGameId }),
+  setActiveStoryText: (activeStoryText) => set({ activeStoryText }),
+  setActiveGameId: (activeGameId) => set({ activeGameId }),
 
   // 播放控制
   play: () => {
@@ -152,30 +198,80 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   },
 
   fadeVolume: (targetVolume: number, duration: number = 1000) => {
-    const { audioElement, volume } = get();
+    const { audioElement, fadeInterval } = get();
     if (!audioElement) return;
 
-    const startVolume = volume;
+    // 清除已有的 fade interval，防止多个渐变同时运行
+    if (fadeInterval) {
+      clearInterval(fadeInterval);
+    }
+
+    // 直接从 audioElement 读取当前音量，避免 store 中的 volume 滞后
+    const startVolume = audioElement.volume;
     const startTime = Date.now();
     const volumeDiff = targetVolume - startVolume;
 
-    const fadeInterval = setInterval(() => {
+    const newFadeInterval = setInterval(() => {
       const elapsed = Date.now() - startTime;
       const progress = Math.min(elapsed / duration, 1);
       const newVolume = startVolume + volumeDiff * progress;
 
+      // 仅更新 DOM audio 音量，不更新 store
+      // 避免 50ms/次 的 set() 调用导致 20 次重渲染/秒
       audioElement.volume = newVolume;
-      set({ volume: newVolume });
 
       if (progress >= 1) {
-        clearInterval(fadeInterval);
+        clearInterval(newFadeInterval);
+        // 渐变结束后一次性同步回 store
+        set({ volume: targetVolume, fadeInterval: null });
       }
     }, 50);
+
+    set({ fadeInterval: newFadeInterval });
+  },
+
+  // Playlist actions (local-only; server playlist endpoints have been removed)
+  loadPlaylist: async (gameId: number) => {
+    set({ isLoadingPlaylist: true });
+    try {
+      set({ playlistGameId: gameId });
+    } catch (error) {
+      console.error('[MusicStore] Failed to load playlist:', error);
+    } finally {
+      set({ isLoadingPlaylist: false });
+    }
+  },
+
+  mergePlaylist: async (_gameId: number, songs: Song[], _mood?: string, _keywords?: string[]) => {
+    set({
+      currentSong: songs[0] ?? null,
+      queue: songs.slice(1),
+      playedSongs: [],
+    });
+  },
+
+  syncPlaylistState: async (_gameId: number, _positionMs: number, _isPlaying: boolean, _volume: number) => {
+    // Local-only: state is managed client-side
+  },
+
+  advanceQueue: async () => {
+    const { queue, currentSong, playedSongs } = get();
+    if (queue.length === 0) return;
+    const nextSong = queue[0];
+    const newQueue = queue.slice(1);
+    set({
+      currentSong: nextSong,
+      queue: newQueue,
+      playedSongs: currentSong ? [...playedSongs, { ...currentSong }] : playedSongs,
+    });
   },
 
   // 清理
   reset: () => {
-    const { audioElement } = get();
+    const { audioElement, fadeInterval } = get();
+    if (fadeInterval) {
+      clearInterval(fadeInterval);
+    }
     if (audioElement) {
       audioElement.pause();
       audioElement.src = "";
@@ -189,11 +285,19 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       currentTime: 0,
       duration: 0,
       audioElement: null,
+      fadeInterval: null,
+      queue: [],
+      playedSongs: [],
+      playlistGameId: null,
+      isLoadingPlaylist: false,
     });
   },
 
   cleanup: () => {
-    const { audioElement } = get();
+    const { audioElement, fadeInterval } = get();
+    if (fadeInterval) {
+      clearInterval(fadeInterval);
+    }
     if (audioElement) {
       audioElement.pause();
       audioElement.src = "";
@@ -205,22 +309,29 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       audioElement.onloadedmetadata = null;
       audioElement.onerror = null;
     }
-    set({ audioElement: null, isPlaying: false });
+    set({ audioElement: null, isPlaying: false, fadeInterval: null });
   },
 }));
 
 // API 函数
 export async function fetchMusicRecommendation(
   storyText: string,
-  gameId?: number
+  gameId?: number,
+  refresh: boolean = false,
+  characterSettings?: CharacterSettings
 ): Promise<MusicRecommendation> {
-  const response = await fetch(`${API_BASE_URL}/api/music/recommend`, {
+  const response = await fetch(`${API_BASE}/music/recommend`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
     credentials: "include",
-    body: JSON.stringify({ story_text: storyText, game_id: gameId }),
+    body: JSON.stringify({
+      story_text: storyText,
+      game_id: gameId,
+      refresh,
+      character_settings: characterSettings,
+    }),
   });
 
   if (!response.ok) {
@@ -233,7 +344,7 @@ export async function fetchMusicRecommendation(
 
 export async function fetchSongUrl(songId: number): Promise<string> {
   const response = await fetch(
-    `${API_BASE_URL}/api/music/song-url?song_id=${songId}`,
+    `${API_BASE}/music/song-url?song_id=${songId}`,
     {
       credentials: "include",
     }
@@ -296,7 +407,7 @@ export async function searchMusic(
   limit: number = 10
 ): Promise<{ songs: Song[] }> {
   const response = await fetch(
-    `${API_BASE_URL}/api/music/search?keyword=${encodeURIComponent(
+    `${API_BASE}/music/search?keyword=${encodeURIComponent(
       keyword
     )}&limit=${limit}`,
     {

@@ -3,9 +3,10 @@
 import logging
 from typing import Any, Dict, Optional
 
-from config.prompts import get_ending_prompt
 from src.ai.generator import EventGenerator
 from src.ai.system_prompts import get_system_prompt
+from src.game.achievements import AchievementEngine
+from src.game.life_review import LifeReviewGenerator
 from src.game.state import PlayerState
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,9 @@ class EndingEvaluator:
         """
         self.ai_generator = ai_generator
 
-    def evaluate_ending(self, player_state: PlayerState, language: str = "en") -> Dict[str, Any]:
+    def evaluate_ending(
+        self, player_state: PlayerState, language: str = "en"
+    ) -> Dict[str, Any]:
         """
         Evaluate final state and determine ending type.
 
@@ -42,13 +45,17 @@ class EndingEvaluator:
         Returns:
             Dictionary with ending information
         """
-        state_dict = player_state.to_dict()
+        player_state.to_dict()
 
         # Calculate scores
-        avg_attribute = (player_state.energy + player_state.mood + player_state.knowledge) / 3
+        avg_attribute = (
+            player_state.energy + player_state.mood + player_state.knowledge
+        ) / 3
         wealth_score = min(player_state.wealth / 10000, 10)  # Normalize wealth
         relationship_score = (
-            sum(player_state.relationships.values()) / max(len(player_state.relationships), 1) / 100
+            sum(player_state.relationships.values())
+            / max(len(player_state.relationships), 1)
+            / 100
         )
 
         # Determine ending type
@@ -59,14 +66,23 @@ class EndingEvaluator:
         # Generate summary
         summary = self._generate_summary(player_state, ending_type, language)
 
-        # Calculate achievements
-        achievements = self._calculate_achievements(player_state, language)
+        # Calculate achievements with new engine
+        engine = AchievementEngine(language=language)
+        achievement_objects = engine.evaluate(player_state)
+
+        # Generate life review
+        review_generator = LifeReviewGenerator(language=language)
+        life_review = review_generator.generate(player_state, achievement_objects)
 
         return {
             "ending_type": ending_type,
             "ending_name": self.ENDING_TYPES[ending_type][language],
             "summary": summary,
-            "achievements": achievements,
+            "achievements": {
+                "list": [a.__dict__ for a in achievement_objects],
+                "count": len(achievement_objects),
+            },
+            "life_review": life_review,
             "final_stats": {
                 "energy": player_state.energy,
                 "mood": player_state.mood,
@@ -103,7 +119,9 @@ class EndingEvaluator:
         # Default to balanced
         return "balanced"
 
-    def _generate_summary(self, player_state: PlayerState, ending_type: str, language: str) -> str:
+    def _generate_summary(
+        self, player_state: PlayerState, ending_type: str, language: str
+    ) -> str:
         """Generate ending summary text."""
         if self.ai_generator:
             try:
@@ -132,7 +150,9 @@ class EndingEvaluator:
                     else:
                         char_parts = []
                         if "era" in character_settings:
-                            char_parts.append(f"Era: {character_settings['era'].get('year', '')}")
+                            char_parts.append(
+                                f"Era: {character_settings['era'].get('year', '')}"
+                            )
                         if "age" in character_settings:
                             char_parts.append(
                                 f"Starting age: {character_settings['age'].get('age', '')}"
@@ -143,7 +163,9 @@ class EndingEvaluator:
                             )
                         if "traits" in character_settings:
                             traits = character_settings["traits"]
-                            char_parts.append(f"Personality: {traits.get('personality', '')}")
+                            char_parts.append(
+                                f"Personality: {traits.get('personality', '')}"
+                            )
                         character_context = ", ".join(char_parts)
 
                 # Get four-week summaries (pure weekly system, no monthly summaries)
@@ -237,38 +259,3 @@ Be vivid and specific, reflecting the character's uniqueness."""
             }
 
         return summaries.get(ending_type, summaries["balanced"])
-
-    def _calculate_achievements(self, player_state: PlayerState, language: str) -> Dict[str, Any]:
-        """Calculate achievements."""
-        achievements = []
-
-        # Wealth milestones
-        if player_state.wealth >= 100000:
-            achievements.append("百万富翁" if language == "zh" else "Millionaire")
-        elif player_state.wealth >= 50000:
-            achievements.append("财务自由" if language == "zh" else "Financial Freedom")
-
-        # Knowledge milestones
-        if player_state.knowledge >= 90:
-            achievements.append("知识渊博" if language == "zh" else "Knowledgeable")
-
-        # Relationship milestones
-        if len(player_state.relationships) >= 5:
-            achievements.append("社交达人" if language == "zh" else "Social Butterfly")
-
-        # Decision milestones
-        if len(player_state.decision_history) >= 50:
-            achievements.append("经验丰富" if language == "zh" else "Experienced")
-
-        # Perfect weeks (all attributes > 70)
-        perfect_weeks = sum(
-            1
-            for _ in range(len(player_state.decision_history))
-            if player_state.energy > 70 and player_state.mood > 70 and player_state.knowledge > 70
-        )
-        if perfect_weeks > 0:
-            achievements.append(
-                f"{perfect_weeks}个完美周" if language == "zh" else f"{perfect_weeks} Perfect Weeks"
-            )
-
-        return {"list": achievements, "count": len(achievements)}

@@ -1,7 +1,7 @@
 """Player business logic service — extracted from PlayerState to separate data from behavior."""
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from src.game.state import CharacterState, PlayerState
 
@@ -41,7 +41,9 @@ class PlayerService:
                 try:
                     character = CharacterState(**person)
                 except Exception as e:
-                    logger.warning(f"Failed to create CharacterState from rich data: {e}")
+                    logger.warning(
+                        f"Failed to create CharacterState from rich data: {e}"
+                    )
                     character = CharacterState.from_simple_dict(person)
             else:
                 character = CharacterState.from_simple_dict(person)
@@ -52,7 +54,9 @@ class PlayerService:
 
             player_state.add_character(character)
 
-        logger.info(f"Initialized {len(player_state.characters)} characters from settings")
+        logger.info(
+            f"Initialized {len(player_state.characters)} characters from settings"
+        )
 
     @staticmethod
     def update_character_relationship(

@@ -6,45 +6,8 @@
  * after any future store refactoring.
  */
 import { act, renderHook } from '@testing-library/react';
-
-// Mock the API before importing the store
-jest.mock('@/lib/api', () => ({
-  __esModule: true,
-  default: {
-    games: {
-      list: jest.fn().mockResolvedValue([]),
-      create: jest.fn().mockResolvedValue({ game_id: 1 }),
-      load: jest.fn().mockResolvedValue({
-        game_id: 1,
-        player_state: { player_name: 'Test' },
-        progress: { week: 1 },
-        round_info: { current_round: 1 },
-        current_event: null,
-      }),
-      save: jest.fn().mockResolvedValue({ success: true }),
-      delete: jest.fn().mockResolvedValue({ success: true }),
-    },
-    presets: {
-      list: jest.fn().mockResolvedValue([]),
-      create: jest.fn().mockResolvedValue({ preset_id: 1 }),
-      delete: jest.fn().mockResolvedValue({ success: true }),
-    },
-    gameplay: {
-      getState: jest.fn().mockResolvedValue({
-        player_state: { player_name: 'Test' },
-        progress: { week: 1 },
-        round_info: { current_round: 1 },
-        current_event: null,
-      }),
-    },
-    images: {
-      listByGame: jest.fn().mockResolvedValue({ images: [], total: 0 }),
-    },
-  },
-}));
-
 import { useGameStore } from '@/stores/useGameStore';
-import api from '@/lib/api';
+import { jsonResponse, errorResponse } from '@/__tests__/helpers/fetch';
 
 describe('useSessionStore (Session Management)', () => {
   beforeEach(() => {
@@ -53,6 +16,7 @@ describe('useSessionStore (Session Management)', () => {
       useGameStore.getState().resetCreation();
     });
     jest.clearAllMocks();
+    global.fetch = jest.fn().mockResolvedValue(jsonResponse({ images: [] }));
   });
 
   // ==================== Initial State Tests ====================
@@ -142,7 +106,7 @@ describe('useSessionStore (Session Management)', () => {
         round_info: { current_round: 3 },
         current_event: null,
       };
-      (api.games.load as jest.Mock).mockResolvedValue(mockResponse);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockResponse));
 
       await act(async () => {
         await useGameStore.getState().loadGameState(42);
@@ -160,13 +124,13 @@ describe('useSessionStore (Session Management)', () => {
         useGameStore.setState({ isGameOver: true });
       });
 
-      (api.games.load as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         game_id: 1,
         player_state: {},
         progress: {},
         round_info: {},
         current_event: null,
-      });
+      }));
 
       await act(async () => {
         await useGameStore.getState().loadGameState(1);
@@ -176,7 +140,7 @@ describe('useSessionStore (Session Management)', () => {
     });
 
     it('should handle current_event with event_description', async () => {
-      (api.games.load as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         game_id: 1,
         player_state: {},
         progress: {},
@@ -185,7 +149,7 @@ describe('useSessionStore (Session Management)', () => {
           event_description: 'Test event description',
           options: [{ text: 'Option 1' }],
         },
-      });
+      }));
 
       await act(async () => {
         await useGameStore.getState().loadGameState(1);
@@ -197,13 +161,13 @@ describe('useSessionStore (Session Management)', () => {
     });
 
     it('should restore storyText from last_round_full_story when no event', async () => {
-      (api.games.load as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         game_id: 1,
         player_state: { last_round_full_story: 'Previous story text' },
         progress: {},
         round_info: {},
         current_event: null,
-      });
+      }));
 
       await act(async () => {
         await useGameStore.getState().loadGameState(1);
@@ -213,7 +177,7 @@ describe('useSessionStore (Session Management)', () => {
     });
 
     it('should restore storyText from round_history when no last_round_full_story', async () => {
-      (api.games.load as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         game_id: 1,
         player_state: {
           round_history: [
@@ -223,7 +187,7 @@ describe('useSessionStore (Session Management)', () => {
         progress: {},
         round_info: {},
         current_event: null,
-      });
+      }));
 
       await act(async () => {
         await useGameStore.getState().loadGameState(1);
@@ -237,10 +201,14 @@ describe('useSessionStore (Session Management)', () => {
   // ==================== syncState Tests ====================
   describe('syncState', () => {
     it('should not sync when gameId is null', async () => {
+      // Let any stale setTimeout callbacks (like loadPlayerImages) complete first
+      await new Promise(r => setTimeout(r, 0));
+      (global.fetch as jest.Mock).mockClear();
+
       await act(async () => {
         await useGameStore.getState().syncState();
       });
-      expect(api.gameplay.getState).not.toHaveBeenCalled();
+      expect(global.fetch).not.toHaveBeenCalled();
     });
 
     it('should call API with correct gameId', async () => {
@@ -248,18 +216,18 @@ describe('useSessionStore (Session Management)', () => {
         useGameStore.getState().setGameSession(42, 'session-42');
       });
 
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: {},
         progress: {},
         round_info: {},
         current_event: null,
-      });
+      }));
 
       await act(async () => {
         await useGameStore.getState().syncState();
       });
 
-      expect(api.gameplay.getState).toHaveBeenCalledWith(42);
+      expect(global.fetch).toHaveBeenCalledWith('/api/games/42', expect.objectContaining({ credentials: 'include' }));
     });
 
     it('should update playerState when changed', async () => {
@@ -268,12 +236,12 @@ describe('useSessionStore (Session Management)', () => {
         useGameStore.setState({ playerState: { player_name: 'Test', life_vision: '', energy: 50, mood: 100, knowledge: 0, wealth: 0, age: 18, week: 1, current_round: 1, rounds_per_week: 3, character_settings: {} } });
       });
 
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: { energy: 100 },
         progress: {},
         round_info: {},
         current_event: null,
-      });
+      }));
 
       await act(async () => {
         await useGameStore.getState().syncState();
@@ -287,20 +255,20 @@ describe('useSessionStore (Session Management)', () => {
         useGameStore.getState().setGameSession(42, 'session-42');
       });
 
-      (api.gameplay.getState as jest.Mock).mockRejectedValueOnce({ status: 404 });
-      (api.games.load as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValueOnce(errorResponse(404));
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         game_id: 42,
         player_state: { player_name: 'Recovered' },
         progress: {},
         round_info: {},
         current_event: null,
-      });
+      }));
 
       await act(async () => {
         await useGameStore.getState().syncState();
       });
 
-      expect(api.games.load).toHaveBeenCalledWith(42);
+      expect(global.fetch).toHaveBeenCalledWith('/api/games/42', expect.objectContaining({ credentials: 'include' }));
     });
 
     it('should clear state when game no longer exists', async () => {
@@ -309,8 +277,10 @@ describe('useSessionStore (Session Management)', () => {
         useGameStore.setState({ storyText: 'Some text' });
       });
 
-      (api.gameplay.getState as jest.Mock).mockRejectedValueOnce({ status: 404 });
-      (api.games.load as jest.Mock).mockRejectedValue({ status: 404 });
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(errorResponse(404))
+        .mockResolvedValueOnce(errorResponse(404));
+      // This causes getState to fail (404) and the reload via load to also fail (404)
 
       await act(async () => {
         try {
@@ -332,7 +302,7 @@ describe('useSessionStore (Session Management)', () => {
       });
 
       expect(result).toBeUndefined();
-      expect(api.gameplay.getState).not.toHaveBeenCalled();
+      expect(global.fetch).not.toHaveBeenCalled();
     });
 
     it('should sync player state correctly', async () => {
@@ -346,13 +316,13 @@ describe('useSessionStore (Session Management)', () => {
         round_info: { current_round: 5 },
         current_event: null,
       };
-      (api.gameplay.getState as jest.Mock).mockResolvedValue(mockState);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockState));
 
       await act(async () => {
         await useGameStore.getState().syncPlayerState();
       });
 
-      expect(api.gameplay.getState).toHaveBeenCalledWith(42);
+      expect(global.fetch).toHaveBeenCalledWith('/api/games/42', expect.objectContaining({ credentials: 'include' }));
     });
   });
 
@@ -362,7 +332,7 @@ describe('useSessionStore (Session Management)', () => {
       await act(async () => {
         await useGameStore.getState().saveGame();
       });
-      expect(api.games.save).not.toHaveBeenCalled();
+      expect(global.fetch).not.toHaveBeenCalled();
     });
 
     it('should call API with gameId', async () => {
@@ -370,11 +340,13 @@ describe('useSessionStore (Session Management)', () => {
         useGameStore.getState().setGameSession(42, 'session-42');
       });
 
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ success: true }));
+
       await act(async () => {
         await useGameStore.getState().saveGame();
       });
 
-      expect(api.games.save).toHaveBeenCalledWith(42);
+      expect(global.fetch).toHaveBeenCalledWith('/api/games/42/save', expect.objectContaining({ credentials: 'include' }));
     });
   });
 
@@ -431,13 +403,13 @@ describe('useSessionStore (Session Management)', () => {
 
       expect(useGameStore.getState().gameId).toBe(100);
 
-      (api.games.load as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         game_id: 100,
         player_state: { player_name: 'Loaded' },
         progress: { week: 1 },
         round_info: { current_round: 1 },
         current_event: null,
-      });
+      }));
 
       await act(async () => {
         await useGameStore.getState().loadGameState(100);

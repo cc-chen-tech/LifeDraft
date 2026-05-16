@@ -15,6 +15,10 @@ export default function E2ERegressionPage() {
   const [streamedStory, setStreamedStory] = useState("");
   const [showCollection, setShowCollection] = useState(false);
   const [collectionRefreshState, setCollectionRefreshState] = useState<"idle" | "refreshing">("idle");
+  const [musicQueueFixture, setMusicQueueFixture] = useState<{
+    current: { title: string; source: string };
+    queue: string[];
+  } | null>(null);
 
   const appendFirstAttempt = () => {
     setStreamedStory("雾气从码头仓门涌进来，陆明看见账册被人翻开。");
@@ -138,6 +142,25 @@ export default function E2ERegressionPage() {
           gameId={101}
           storyText="雨夜的码头上，主角刚发现旧账册里藏着失踪亲人的线索。远处传来轮船汽笛声，空气紧张而潮湿。"
         />
+        <button
+          type="button"
+          className="rounded border px-3 py-2"
+          onClick={() =>
+            setMusicQueueFixture({
+              current: { title: "网易云 当前曲", source: "netease" },
+              queue: ["网易云 下一曲", "AI 雨夜码头", "网易云 后续曲"],
+            })
+          }
+        >
+          加载会员音乐队列夹具
+        </button>
+        {musicQueueFixture && (
+          <div aria-label="会员音乐队列状态" className="rounded border p-3">
+            <p data-testid="current-music-source">{musicQueueFixture.current.source}</p>
+            <p data-testid="current-music-title">{musicQueueFixture.current.title}</p>
+            <p data-testid="music-queue-order">{musicQueueFixture.queue.join(" | ")}</p>
+          </div>
+        )}
       </section>
     </main>
   );

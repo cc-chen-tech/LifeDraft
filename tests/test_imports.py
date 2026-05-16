@@ -107,7 +107,8 @@ class TestSSEHelpersLazyImports:
         from src.database.models import Game
         from src.database.models import Image as ImageModel
         from src.database.models import SceneImage, SessionLocal
-        from src.game.round.illustration_service import RoundIllustrationService
+        from src.game.round.illustration_service import \
+            RoundIllustrationService
         from src.services.image_storage import ImageStorageService
 
         assert ImageClient is not None
@@ -210,3 +211,139 @@ class TestNoCyclicDependencies:
             except ImportError as e:
                 if "circular" in str(e).lower():
                     pytest.fail(f"Circular import detected in {mod_name}: {e}")
+
+
+class TestNarrativeSystemImports:
+    """验证叙事风格引擎模块导入可达"""
+
+    def test_import_style_manifest(self):
+        from src.ai.narrative.style_manifest import (StyleLoader,
+                                                     StyleManifest, get_style)
+
+        assert StyleManifest is not None
+        assert StyleLoader is not None
+        assert callable(get_style)
+
+    def test_import_style_prompt_builder(self):
+        from src.ai.narrative.style_prompt_builder import \
+            StyleAwarePromptBuilder
+
+        assert StyleAwarePromptBuilder is not None
+
+    def test_import_style_validator(self):
+        from src.ai.narrative.style_validator import StyleAwareValidator
+
+        assert StyleAwareValidator is not None
+
+    def test_import_character_arc(self):
+        from src.ai.narrative.character_arc import CharacterArcEngine
+
+        assert CharacterArcEngine is not None
+
+    def test_import_world_breathing(self):
+        from src.ai.narrative.world_breathing import WorldBreathingEngine
+
+        assert WorldBreathingEngine is not None
+
+    def test_import_conflict_tower(self):
+        from src.ai.narrative.conflict_tower import ConflictTower
+
+        assert ConflictTower is not None
+
+    def test_import_fate_echo(self):
+        from src.ai.narrative.fate_echo import FateEchoDatabase
+
+        assert FateEchoDatabase is not None
+
+    def test_import_narrative_init(self):
+        import src.ai.narrative
+
+        assert src.ai.narrative is not None
+
+
+class TestCreativeSystemImports:
+    """验证创意增强模块导入可达"""
+
+    def test_import_emotional_arc(self):
+        from src.ai.creative.emotional_arc import EmotionalArcAnalyzer
+
+        assert EmotionalArcAnalyzer is not None
+
+    def test_import_novelty_scorer(self):
+        from src.ai.creative.novelty_scorer import NoveltyScorer
+
+        assert NoveltyScorer is not None
+
+    def test_import_foreshadowing(self):
+        from src.ai.creative.foreshadowing_tech import (
+            ForeshadowingTechniqueLibrary, HookInjector)
+
+        assert ForeshadowingTechniqueLibrary is not None
+        assert HookInjector is not None
+
+    def test_import_preference_learner(self):
+        from src.ai.creative.preference_learner import PreferenceLearner
+
+        assert PreferenceLearner is not None
+
+    def test_import_creative_init(self):
+        import src.ai.creative
+
+        assert src.ai.creative is not None
+
+
+class TestHarnessValidatorImports:
+    """验证8个硬性逻辑验证器导入可达"""
+
+    def test_import_temporal_validator(self):
+        from src.ai.harness.temporal_validator import \
+            validate_temporal_consistency
+
+        assert callable(validate_temporal_consistency)
+
+    def test_import_commitment_validator(self):
+        from src.ai.harness.commitment_validator import \
+            validate_commitment_fulfillment
+
+        assert callable(validate_commitment_fulfillment)
+
+    def test_import_character_state_validator(self):
+        from src.ai.harness.character_state_validator import \
+            validate_character_state_continuity
+
+        assert callable(validate_character_state_continuity)
+
+    def test_import_item_continuity_validator(self):
+        from src.ai.harness.item_continuity_validator import \
+            validate_item_continuity
+
+        assert callable(validate_item_continuity)
+
+    def test_import_spatial_validator(self):
+        from src.ai.harness.spatial_validator import validate_spatial_movement
+
+        assert callable(validate_spatial_movement)
+
+    def test_import_npc_attribute_validator(self):
+        from src.ai.harness.npc_attribute_validator import \
+            validate_npc_attribute_stability
+
+        assert callable(validate_npc_attribute_stability)
+
+    def test_import_info_barrier_validator(self):
+        from src.ai.harness.info_barrier_validator import \
+            validate_information_barrier
+
+        assert callable(validate_information_barrier)
+
+    def test_import_cause_effect_validator(self):
+        from src.ai.harness.cause_effect_validator import \
+            validate_cause_effect_consistency
+
+        assert callable(validate_cause_effect_consistency)
+
+    def test_import_constraint_registry_new_types(self):
+        from src.ai.harness.constraint_registry import ConstraintType
+
+        # 验证所有30+个类型都在枚举中
+        assert len(ConstraintType) >= 30

@@ -12,6 +12,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useGameStore } from "@/stores/useGameStore";
+import { useUserStore } from "@/stores/useUserStore";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
@@ -50,8 +51,10 @@ export default function SavesPage() {
     setGameSession,
     resetCreation,
   } = useGameStore();
+  const { isAuthenticated } = useUserStore();
 
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [loadingGameId, setLoadingGameId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -63,10 +66,30 @@ export default function SavesPage() {
   };
 
   useEffect(() => {
-    fetchSavedGames()
-      .catch(console.error)
-      .finally(() => setIsLoading(false));
-  }, [fetchSavedGames]);
+    if (!isAuthenticated) {
+      setIsLoading(false);
+      return;
+    }
+    const loadSaves = async () => {
+      try {
+        await fetchSavedGames();
+        // 成功获取数据，重置 loading 状态
+        setIsLoading(false);
+      } catch (err: unknown) {
+        const error = err as { status?: number; name?: string };
+        // 401 错误会在 api.ts 中处理重定向，不需要重置 loading 状态
+        // 其他错误（非 401、非 AbortError）记录日志并重置 loading
+        if (error.status !== 401 && error.name !== 'AbortError') {
+          console.error("Failed to fetch saved games:", err);
+          setLoadError("加载存档失败，请刷新页面重试");
+          setIsLoading(false);
+        }
+        // 401 和 AbortError 不重置 loading，因为页面即将重定向或组件已卸载
+      }
+    };
+    
+    loadSaves();
+  }, [isAuthenticated, fetchSavedGames]);
 
   const handleLoad = async (gameId: number) => {
     setLoadingGameId(gameId);
@@ -115,6 +138,18 @@ export default function SavesPage() {
             <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
             加载中...
           </div>
+        ) : loadError ? (
+          <div className="text-center py-12">
+            <p className="text-destructive mb-4">{loadError}</p>
+            <Button onClick={() => {
+              if (!isAuthenticated) return;
+              setLoadError(null);
+              setIsLoading(true);
+              fetchSavedGames().finally(() => setIsLoading(false));
+            }}>
+              重试
+            </Button>
+          </div>
         ) : savedGames.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-muted-foreground mb-4">暂无存档</p>
@@ -128,7 +163,6 @@ export default function SavesPage() {
         ) : (
           <div className="space-y-3">
             {savedGames
-              .filter((game) => game.player_name?.trim())
               .sort((a, b) => {
                 const timeA = a.updated_at ? new Date(a.updated_at).getTime() : 0;
                 const timeB = b.updated_at ? new Date(b.updated_at).getTime() : 0;
@@ -144,7 +178,7 @@ export default function SavesPage() {
                     <div className="text-left">
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-foreground">
-                          {save.player_name}
+                          {save.player_name?.trim() || "未知角色"}
                         </span>
                         <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
                           {save.age}岁 第{(save.week ?? 0) + 1}周

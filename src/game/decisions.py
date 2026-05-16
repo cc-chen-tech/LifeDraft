@@ -1,12 +1,12 @@
 """Decision processing and result generation."""
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from config.prompts import get_result_generation_prompt
 from src.ai.generator import EventGenerator
 from src.ai.system_prompts import get_system_prompt
-from src.game.state import CharacterState, PlayerState
+from src.game.state import PlayerState
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +46,16 @@ def calculate_character_effects(
             # 正面互动带来信任和尊重的轻微提升
             character_effects[name]["trust"] = max(1, change // 3)
             character_effects[name]["respect"] = max(1, change // 4)
-            character_effects[name]["mood"] = max(1, change // 2)  # 角色也会因正面互动而开心
+            character_effects[name]["mood"] = max(
+                1, change // 2
+            )  # 角色也会因正面互动而开心
         elif change < 0:
             # 负面互动带来信任和尊重的下降
             character_effects[name]["trust"] = min(-1, change // 2)
             character_effects[name]["respect"] = min(-1, change // 3)
-            character_effects[name]["mood"] = min(-1, change)  # 角色也会因负面互动而情绪低落
+            character_effects[name]["mood"] = min(
+                -1, change
+            )  # 角色也会因负面互动而情绪低落
 
     # 处理更详细的 character_effects（覆盖或补充）
     for name, char_effect in detailed_effects.items():
@@ -117,7 +121,9 @@ def apply_character_effects(
     return triggered_events
 
 
-def get_character_interaction_context(player_state: PlayerState, involved_names: List[str]) -> str:
+def get_character_interaction_context(
+    player_state: PlayerState, involved_names: List[str]
+) -> str:
     """
     获取涉及角色的上下文信息。
 
@@ -197,7 +203,9 @@ def process_decision(
     # 计算并应用角色属性变化
     character_effects = calculate_character_effects(effects, player_state)
     interaction_summary = f"选择了: {chosen_option.get('text', '')[:20]}"
-    triggered_events = apply_character_effects(player_state, character_effects, interaction_summary)
+    triggered_events = apply_character_effects(
+        player_state, character_effects, interaction_summary
+    )
 
     # Validate state after update
     try:
