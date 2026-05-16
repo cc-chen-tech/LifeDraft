@@ -66,9 +66,6 @@ export function useGameState({
   const [summaryText, setSummaryText] = useState("");
   const [roundSummary, setRoundSummary] = useState<string | null>(null);
 
-  // Adjuster state
-  const [showAdjuster, setShowAdjuster] = useState(false);
-
   // Ending data
   const [endingData, setEndingData] = useState<Record<string, unknown> | null>(null);
 
@@ -142,11 +139,6 @@ export function useGameState({
     setPhase("loading");
     syncPlayerState().then(() => generateEventRef.current());
   }, [setRoundSummary, prefetchResultRef, setStoryText, setOptions, setCurrentEvent, setPhase, generatingRef, prefetchingRef, prefetchAbortRef, syncPlayerState, generateEventRef]);
-
-  // Handle story adjust
-  const handleAdjustStory = useCallback(() => {
-    setShowAdjuster(true);
-  }, []);
 
   // Regenerate - now uses SSE streaming
   const handleRegenerate = useCallback(async () => {
@@ -322,18 +314,15 @@ export function useGameState({
     regenerateToast,
     summaryText,
     roundSummary,
-    showAdjuster,
     endingData,
     // Setters
     setSummaryText,
     setRoundSummary,
-    setShowAdjuster,
     setRegenerateToast,
     // Handlers
     handleSave,
     handleContinueAfterSummary,
     handleContinueToNextRound,
-    handleAdjustStory,
     handleRegenerate,
   };
 }

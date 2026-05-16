@@ -72,15 +72,18 @@ export function GlobalMusicPlayer() {
   };
 
   return (
-    <div className="fixed z-50 bottom-0 left-0 right-0 md:bottom-4 md:left-auto md:right-4 md:w-80">
+    <div
+      data-testid="global-music-player"
+      className="fixed z-50 top-0 left-0 right-0 safe-area-pt mt-2 md:top-auto md:mt-0 md:bottom-4 md:left-auto md:right-4 md:w-80"
+    >
       {/* MusicPlayer always mounted to keep audio alive.
           Use opacity-0 + h-0 + overflow-hidden instead of display:none
           so the browser never pauses audio playback. */}
       <div
         className={
           isExpanded
-            ? "bg-card border rounded-t-lg md:rounded-lg shadow-lg max-h-[60vh] overflow-y-auto"
-            : "opacity-0 h-0 overflow-hidden pointer-events-none absolute"
+            ? "bg-card border rounded-b-lg md:rounded-lg shadow-lg max-h-[60vh] overflow-y-auto"
+            : "opacity-0 h-0 overflow-hidden pointer-events-none absolute top-full left-0 right-0"
         }
         aria-hidden={!isExpanded}
       >
@@ -93,7 +96,8 @@ export function GlobalMusicPlayer() {
 
       {/* Mini player bar — always visible */}
       <div
-        className="relative bg-card/95 backdrop-blur-sm border-t md:border md:rounded-b-lg flex items-center gap-2 px-3 py-2 cursor-pointer"
+        data-testid="global-music-mini-bar"
+        className="relative bg-card/95 backdrop-blur-sm border-b md:border md:rounded-lg flex items-center gap-2 px-3 py-2 cursor-pointer"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         {/* Progress bar - thin line at top */}
@@ -140,9 +144,9 @@ export function GlobalMusicPlayer() {
           className="flex-shrink-0 w-6 h-6 flex items-center justify-center text-muted-foreground"
         >
           {isExpanded ? (
-            <ChevronDown className="w-4 h-4" />
-          ) : (
             <ChevronUp className="w-4 h-4" />
+          ) : (
+            <ChevronDown className="w-4 h-4" />
           )}
         </button>
       </div>

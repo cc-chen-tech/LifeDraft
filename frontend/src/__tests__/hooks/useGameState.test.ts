@@ -102,14 +102,6 @@ describe('useGameState', () => {
     });
   });
 
-  describe('handleAdjustStory', () => {
-    it('shows adjuster', async () => {
-      const { result } = renderHook(() => useGameState(defaultParams));
-      act(() => { result.current.setShowAdjuster(true); });
-      expect(result.current.showAdjuster).toBe(true);
-    });
-  });
-
   describe('state management', () => {
     it('manages summary text', async () => {
       const { result } = renderHook(() => useGameState(defaultParams));

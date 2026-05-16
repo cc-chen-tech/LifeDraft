@@ -340,11 +340,6 @@ describe('usePlayGame', () => {
       expect(typeof result.current.setOptions).toBe('function');
     });
 
-    it('provides setShowAdjuster action', () => {
-      const { result } = renderHook(() => usePlayGame());
-      expect(typeof result.current.setShowAdjuster).toBe('function');
-    });
-
     it('provides setStoryText action', () => {
       const { result } = renderHook(() => usePlayGame());
       expect(result.current.setStoryText).toBe(storeSpy.spies.setStoryText);

@@ -235,6 +235,14 @@
   min-width: 44px;
 }
 
+.safe-area-pt {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-area-pb {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
 /* ===== 减少动效偏好 ===== */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

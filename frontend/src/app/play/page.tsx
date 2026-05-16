@@ -27,7 +27,6 @@ import { OptionCards } from "@/components/game/OptionCards";
 import { StatusBar } from "@/components/game/StatusBar";
 import { SkeletonStory } from "@/components/game/SkeletonStory";
 import { ChatBar } from "@/components/game/ChatBar";
-import { StoryAdjuster } from "@/components/game/StoryAdjuster";
 import { RoundHistoryDrawer } from "@/components/game/RoundHistoryDrawer";
 import { RoundSceneImageDisplay } from "@/components/game/RoundSceneImage";
 import { HistorySceneImage } from "@/components/game/HistorySceneImage";
@@ -88,7 +87,6 @@ export default function PlayPage() {
     isSaving,
     saveToast,
     regenerateToast,
-    showAdjuster,
     endingData,
     elapsedSeconds,
     isPrefetching,  // ★ 预生成状态
@@ -106,7 +104,6 @@ export default function PlayPage() {
 
     // Actions
     setPhase,
-    setShowAdjuster,
     setStoryText,
     setOptions,
 
@@ -116,7 +113,6 @@ export default function PlayPage() {
     handleContinueAfterSummary,
     handleContinueToNextRound,
     handleSave,
-    handleAdjustStory,
     handleRegenerate,
     generateEvent,
 
@@ -617,22 +613,13 @@ export default function PlayPage() {
       <ChatBar
         gameId={gameId}
         onSave={handleSave}
-        onAdjustStory={handleAdjustStory}
         onRegenerate={handleRegenerate}
-        isSaving={isSaving}
-        isViewingHistory={isViewingHistory}
-      />
-
-      {/* Story adjuster */}
-      <StoryAdjuster
-        open={showAdjuster}
-        onOpenChange={setShowAdjuster}
-        gameId={gameId || 0}
-        fullStory={storyText}
+        storyText={storyText}
         onRewriteComplete={(newStory) => {
           setStoryText(newStory);
         }}
-        onRegenerateComplete={handleRegenerate}
+        isSaving={isSaving}
+        isViewingHistory={isViewingHistory}
       />
 
       {/* ★ 历史回顾抽屉 */}

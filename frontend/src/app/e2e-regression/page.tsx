@@ -133,8 +133,9 @@ export default function E2ERegressionPage() {
       <ChatBar
         gameId={101}
         onSave={() => undefined}
-        onAdjustStory={() => undefined}
         onRegenerate={() => undefined}
+        storyText="雨夜码头的旧账册被风吹开。"
+        onRewriteComplete={() => undefined}
       />
 
       <section aria-label="音乐回归夹具" className="space-y-3">

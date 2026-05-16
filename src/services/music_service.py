@@ -204,7 +204,12 @@ class MusicContextBuilder:
         blocked = set(brief.negative_cues)
         candidates = [
             *brief.search_queries,
+            f"{brief.mood} {brief.scene_type}",
             f"{brief.era_or_environment} {brief.scene_type}",
+            *[
+                f"{brief.era_or_environment} {instrument}"
+                for instrument in brief.instruments[:2]
+            ],
             f"{brief.mood} {brief.pacing}",
             f"{brief.energy} {' '.join(brief.instruments[:2])}",
             f"{brief.scene_type} {' '.join(brief.instruments[:2])}",
@@ -238,9 +243,11 @@ class MusicResultRanker:
             brief.scene_type,
             brief.era_or_environment,
             brief.pacing,
-            brief.energy,
             *brief.instruments,
             *brief.search_queries,
+        ]
+        positive_terms = [
+            term.strip() for term in positive_terms if len(term.strip()) >= 2
         ]
 
         def score(song: MusicTrack) -> int:
@@ -254,7 +261,10 @@ class MusicResultRanker:
                     value -= 100
             return value
 
-        return sorted(songs, key=score, reverse=True)
+        scored = [(score(song), index, song) for index, song in enumerate(songs)]
+        if not any(value > 0 for value, _, _ in scored):
+            return list(songs)
+        return [song for _, _, song in sorted(scored, key=lambda item: item[0], reverse=True)]
 
 
 @dataclass(frozen=True)
@@ -599,9 +609,6 @@ class MusicService:
     ) -> Dict[str, Any]:
         """使用 AI 分析故事情绪、场景、背景和风格"""
 
-        # 截取故事前800字用于更全面的分析
-        story_preview = story_text[:800] if len(story_text) > 800 else story_text
-
         # 构建角色设定信息
         setting_info = []
         if character_settings:
@@ -617,10 +624,10 @@ class MusicService:
 
         era_info = "\n".join(setting_info) if setting_info else ""
 
-        prompt = f"""请深入分析以下故事片段，为音乐推荐提供精准的关键词。
+        prompt = f"""请深入分析以下故事全文，为音乐推荐提供精准的关键词。
 
-故事片段：
-{story_preview}
+故事全文：
+{story_text}
 
 {era_info}
 

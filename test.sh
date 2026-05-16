@@ -69,6 +69,8 @@ run_preflight() {
     local openspec_code=$?
     openspec validate improve-story-music-recommendation-and-premium-ai-queue --strict
     local music_openspec_code=$?
+    openspec validate redesign-bottom-bar-and-improve-music-matching --strict
+    local redesign_openspec_code=$?
 
     echo -e "${YELLOW}运行前置 gate 测试...${NC}"
     python -m pytest \
@@ -100,7 +102,7 @@ run_preflight() {
     cd "$PROJECT_DIR"
 
     local result=0
-    if [ $openspec_code -ne 0 ] || [ $music_openspec_code -ne 0 ] || [ $gate_code -ne 0 ] || [ $tsc_code -ne 0 ] || [ $jest_code -ne 0 ]; then
+    if [ $openspec_code -ne 0 ] || [ $music_openspec_code -ne 0 ] || [ $redesign_openspec_code -ne 0 ] || [ $gate_code -ne 0 ] || [ $tsc_code -ne 0 ] || [ $jest_code -ne 0 ]; then
         result=1
     fi
 
@@ -165,6 +167,7 @@ run_contract() {
         tests/test_api_contract.py \
         tests/test_gate_contracts_no_mock.py \
         tests/test_story_music_recommendation_contract.py \
+        tests/test_ui_bottom_layout_contract_no_mock.py \
         -v
     local result=$?
     

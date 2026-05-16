@@ -3,8 +3,17 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
+import { streamRewrite } from "@/lib/sse";
 import { useGameStore } from "@/stores/useGameStore";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -18,6 +27,7 @@ import {
   Save,
   Trash2,
   FileText,
+  Check,
 } from "lucide-react";
 
 interface ChatMessage {
@@ -28,8 +38,9 @@ interface ChatMessage {
 interface ChatBarProps {
   gameId: number | null;
   onSave?: () => void;
-  onAdjustStory?: () => void;
   onRegenerate?: () => void;
+  storyText?: string;
+  onRewriteComplete?: (newStory: string) => void;
   isSaving?: boolean;
   isViewingHistory?: boolean;  // ★ 是否在历史回顾模式
   className?: string;
@@ -44,19 +55,29 @@ interface ChatBarProps {
 export function ChatBar({
   gameId,
   onSave,
-  onAdjustStory,
   onRegenerate,
+  storyText = "",
+  onRewriteComplete,
   isSaving = false,
   isViewingHistory = false,
   className,
 }: ChatBarProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isRewriteOpen, setIsRewriteOpen] = useState(false);
+  const [rewriteInstruction, setRewriteInstruction] = useState("");
   const [message, setMessage] = useState("");
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [isRewriting, setIsRewriting] = useState(false);
+  const [rewriteToast, setRewriteToast] = useState<{
+    type: "success" | "error" | "loading";
+    message: string;
+  } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const rewriteAbortRef = useRef<AbortController | null>(null);
+  const accumulatedStoryRef = useRef("");
 
   useEffect(() => {
     if (isExpanded && inputRef.current) {
@@ -152,6 +173,106 @@ export function ChatBar({
     setTimeout(() => inputRef.current?.focus(), 100);
   }, [message, gameId, isSending]);
 
+  const showRewriteToast = useCallback((type: "success" | "error" | "loading", message: string) => {
+    setRewriteToast({ type, message });
+    if (type !== "loading") {
+      setTimeout(() => setRewriteToast(null), 3000);
+    }
+  }, []);
+
+  const handleRewrite = useCallback(async (): Promise<void> => {
+    const instruction = rewriteInstruction.trim();
+    const fullStory = storyText.trim();
+    if (!instruction || !gameId || !fullStory || isRewriting) return;
+
+    setIsRewriting(true);
+    accumulatedStoryRef.current = "";
+    rewriteAbortRef.current = new AbortController();
+    showRewriteToast("loading", "正在改写中...");
+
+    const submitRewrite = () => streamRewrite(
+        gameId,
+        fullStory,
+        instruction,
+        fullStory,
+        "zh",
+        {
+          onStory: (text) => {
+            accumulatedStoryRef.current += text;
+            queueMicrotask(() => {
+              onRewriteComplete?.(accumulatedStoryRef.current);
+            });
+          },
+          onStatus: (status) => {
+            if (status.phase === "rewriting") {
+              showRewriteToast("loading", "正在改写中...");
+            }
+          },
+          onComplete: (data) => {
+            const newStory =
+              (data as { new_story?: string; rewritten_story?: string }).new_story ||
+              (data as { new_story?: string; rewritten_story?: string }).rewritten_story;
+            if (newStory) {
+              setTimeout(() => onRewriteComplete?.(newStory), 0);
+            }
+            setRewriteInstruction("");
+            setIsRewriting(false);
+            showRewriteToast("success", "故事已改写");
+            setTimeout(() => setIsRewriteOpen(false), 500);
+          },
+          onError: (error) => {
+            showRewriteToast("error", error.message || "改写失败，请重试");
+          },
+        },
+        { signal: rewriteAbortRef.current?.signal }
+      );
+
+    try {
+      const result = await submitRewrite();
+      if (!result.completed && !result.error) {
+        showRewriteToast("error", "改写未完成，请重试");
+      }
+    } catch (err) {
+      const error = err as { status?: number; message?: string };
+      const errorMsg = String(error.message || "");
+
+      if (errorMsg.includes("abort") || errorMsg.includes("cancel")) {
+        return;
+      }
+
+      const isSessionExpired =
+        error.status === 404 ||
+        errorMsg.includes("404") ||
+        errorMsg.includes("No active game session");
+
+      if (isSessionExpired) {
+        showRewriteToast("loading", "恢复会话中...");
+        try {
+          await useGameStore.getState().syncState();
+          const result = await submitRewrite();
+          if (!result.completed && !result.error) {
+            showRewriteToast("error", "改写未完成，请重试");
+          }
+          return;
+        } catch (restoreErr) {
+          console.error("[ChatBar] Failed to restore session:", restoreErr);
+        }
+      }
+
+      showRewriteToast("error", "改写失败，请重试");
+    } finally {
+      setIsRewriting(false);
+      rewriteAbortRef.current = null;
+    }
+  }, [
+    gameId,
+    isRewriting,
+    onRewriteComplete,
+    rewriteInstruction,
+    showRewriteToast,
+    storyText,
+  ]);
+
   if (!gameId) return null;
 
   if (!isExpanded) {
@@ -163,19 +284,6 @@ export function ChatBar({
           className
         )}
       >
-        <Button
-          size="sm"
-          variant="outline"
-          data-testid="rewrite-button"
-          aria-label="改写故事"
-          className="h-10 rounded-full shadow-lg bg-card/95 backdrop-blur-sm pointer-events-auto"
-          onClick={onAdjustStory}
-          disabled={isViewingHistory}
-          title={isViewingHistory ? "历史回顾模式下不可用" : "改写故事"}
-        >
-          <Pencil className="w-4 h-4 mr-1" />
-          改写
-        </Button>
         <Button
           size="icon"
           aria-label="打开聊天"
@@ -220,9 +328,15 @@ export function ChatBar({
           variant="outline"
           data-testid="rewrite-button"
           className="text-xs touch-target"
-          onClick={onAdjustStory}
-          disabled={isViewingHistory}
-          title={isViewingHistory ? "历史回顾模式下不可用" : undefined}
+          onClick={() => setIsRewriteOpen(true)}
+          disabled={isViewingHistory || !storyText.trim()}
+          title={
+            isViewingHistory
+              ? "历史回顾模式下不可用"
+              : !storyText.trim()
+              ? "暂无可改写的故事"
+              : undefined
+          }
         >
           <Pencil className="w-3 h-3 mr-1" />
           改写
@@ -346,6 +460,64 @@ export function ChatBar({
           )}
         </Button>
       </div>
+      <Sheet open={isRewriteOpen} onOpenChange={setIsRewriteOpen}>
+        <SheetContent
+          side="bottom"
+          data-testid="inline-rewrite-sheet"
+          className="bg-card border-t border-border"
+        >
+          <SheetHeader>
+            <SheetTitle className="text-foreground">故事调整</SheetTitle>
+            <SheetDescription className="text-muted-foreground">
+              告诉我你希望如何修改这段故事
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="space-y-4 mt-4">
+            <Textarea
+              value={rewriteInstruction}
+              onChange={(e) => setRewriteInstruction(e.target.value)}
+              placeholder="描述你想要的修改，例如：让场景更加温馨、增加一些对话、改变结局..."
+              className="min-h-[120px] bg-secondary border-border text-sm"
+              disabled={isRewriting}
+            />
+            <Button
+              onClick={() => handleRewrite()}
+              disabled={!rewriteInstruction.trim() || isRewriting || !storyText.trim()}
+              className="w-full touch-target"
+            >
+              {isRewriting ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Pencil className="w-4 h-4 mr-2" />
+              )}
+              改写故事
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {rewriteToast && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className={cn(
+            "flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg text-white",
+            rewriteToast.type === "success"
+              ? "bg-green-600"
+              : rewriteToast.type === "loading"
+              ? "bg-blue-600"
+              : "bg-red-600"
+          )}>
+            {rewriteToast.type === "success" ? (
+              <Check className="w-5 h-5" />
+            ) : rewriteToast.type === "loading" ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <X className="w-5 h-5" />
+            )}
+            <span className="text-sm font-medium">{rewriteToast.message}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

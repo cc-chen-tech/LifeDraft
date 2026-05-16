@@ -24,7 +24,6 @@ function setupDefaultState() {
 describe('ChatBar', () => {
   let storeSpy: StoreSpy;
   const mockOnSave = jest.fn();
-  const mockOnAdjustStory = jest.fn();
   const mockOnRegenerate = jest.fn();
 
   beforeEach(() => {
@@ -44,7 +43,6 @@ describe('ChatBar', () => {
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
@@ -57,7 +55,6 @@ describe('ChatBar', () => {
         <ChatBar
           gameId={null}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
@@ -72,7 +69,6 @@ describe('ChatBar', () => {
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
@@ -88,7 +84,6 @@ describe('ChatBar', () => {
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
@@ -105,7 +100,6 @@ describe('ChatBar', () => {
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
@@ -130,7 +124,6 @@ describe('ChatBar', () => {
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
@@ -151,7 +144,6 @@ describe('ChatBar', () => {
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
@@ -193,7 +185,6 @@ describe('ChatBar', () => {
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
@@ -214,7 +205,6 @@ describe('ChatBar', () => {
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
@@ -244,7 +234,6 @@ describe('ChatBar', () => {
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
@@ -270,7 +259,6 @@ describe('ChatBar', () => {
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
@@ -294,7 +282,6 @@ describe('ChatBar', () => {
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
@@ -318,7 +305,6 @@ describe('ChatBar', () => {
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
@@ -342,7 +328,6 @@ describe('ChatBar', () => {
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
@@ -364,7 +349,6 @@ describe('ChatBar', () => {
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );
@@ -396,7 +380,6 @@ describe('ChatBar', () => {
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
-          onAdjustStory={mockOnAdjustStory}
           onRegenerate={mockOnRegenerate}
         />
       );

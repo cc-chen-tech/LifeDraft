@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from datetime import datetime
 
 from src.database.models import Base, Game, GeneratedMusicAsset
@@ -15,6 +16,7 @@ from src.services.music_service import (
     MusicProviderPolicy,
     MusicResultRanker,
     MusicRecommendation,
+    MusicService,
     Song,
 )
 
@@ -175,6 +177,37 @@ def test_context_builder_maps_analysis_to_brief_and_search_queries():
     assert "人声" not in joined_queries
 
 
+def test_analyze_story_mood_uses_full_story_text_without_service_truncation():
+    source = inspect.getsource(MusicService._analyze_story_mood)
+
+    assert "story_text[:" not in source
+    assert "story_preview" not in source
+    assert "{story_text}" in source
+
+
+def test_context_builder_creates_tight_multidimensional_search_pairs():
+    builder = MusicContextBuilder()
+    brief = builder.build_brief(
+        {
+            "mood": "紧张",
+            "scene_type": "夜袭",
+            "environment": "古风",
+            "pacing": "急促",
+            "energy": "高",
+            "instruments": ["鼓", "笛子"],
+            "search_queries": ["夜袭战场"],
+            "negative_cues": ["流行人声"],
+        }
+    )
+
+    queries = builder.build_search_queries(brief)
+
+    assert "紧张 夜袭" in queries
+    assert "古风 鼓" in queries
+    assert all("流行人声" not in query for query in queries)
+    assert queries != ["紧张"]
+
+
 def test_music_result_ranker_prefers_brief_matches_and_penalizes_negative_cues():
     brief = MusicBrief(
         mood="紧张",
@@ -196,6 +229,29 @@ def test_music_result_ranker_prefers_brief_matches_and_penalizes_negative_cues()
     ranked = MusicResultRanker().rank(songs, brief)
 
     assert [song.id for song in ranked] == [2, 3, 1]
+
+
+def test_music_result_ranker_preserves_order_when_only_weak_terms_match():
+    brief = MusicBrief(
+        mood="紧张",
+        scene_type="夜袭",
+        era_or_environment="古风",
+        pacing="急促",
+        energy="高",
+        instruments=["鼓"],
+        search_queries=["紧张 夜袭", "古风 鼓"],
+        negative_cues=["流行人声"],
+        generation_prompt="instrumental ambience loop, no vocals",
+    )
+    songs = [
+        Song(id=1, name="海风入梦", artists=["Piano"], album="背景音乐", duration=1000),
+        Song(id=2, name="高楼夜色", artists=["Piano"], album="背景音乐", duration=1000),
+        Song(id=3, name="远山回声", artists=["Piano"], album="背景音乐", duration=1000),
+    ]
+
+    ranked = MusicResultRanker().rank(songs, brief)
+
+    assert [song.id for song in ranked] == [1, 2, 3]
 
 
 def test_music_recommendation_keeps_legacy_fields_and_exposes_music_brief():

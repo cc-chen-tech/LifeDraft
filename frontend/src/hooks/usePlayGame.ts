@@ -110,15 +110,12 @@ export function usePlayGame() {
     regenerateToast,
     summaryText,
     roundSummary,
-    showAdjuster,
     endingData,
     setSummaryText,
     setRoundSummary,
-    setShowAdjuster,
     handleSave,
     handleContinueAfterSummary,
     handleContinueToNextRound,
-    handleAdjustStory,
     handleRegenerate,
   } = useGameState({
     gameId,
@@ -415,7 +412,6 @@ export function usePlayGame() {
   };
 
   const ui = {
-    showAdjuster,
     showHistory,
     isViewingHistory,
     saveToast,
@@ -431,7 +427,6 @@ export function usePlayGame() {
     setPhase,
     setOptions,
     setStoryText,
-    setShowAdjuster,
     setShowHistory,
     // Game flow
     handleChoice,
@@ -439,7 +434,6 @@ export function usePlayGame() {
     handleContinueAfterSummary,
     handleContinueToNextRound,
     handleSave,
-    handleAdjustStory,
     handleRegenerate,
     generateEvent,
   };
@@ -507,7 +501,6 @@ export function usePlayGame() {
     isSaving,
     saveToast,
     regenerateToast,
-    showAdjuster,
     endingData: finalEndingData,
     connectionStatus,
     reconnectAttempt,
@@ -529,7 +522,6 @@ export function usePlayGame() {
     // Actions
     setPhase,
     setOptions,
-    setShowAdjuster,
     setStoryText,
 
     // Handlers
@@ -538,7 +530,6 @@ export function usePlayGame() {
     handleContinueAfterSummary,
     handleContinueToNextRound,
     handleSave,
-    handleAdjustStory,
     handleRegenerate,
     generateEvent,
 

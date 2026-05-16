@@ -6,7 +6,6 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { StoryAdjuster } from '@/components/game/StoryAdjuster';
 import { ChatBar } from '@/components/game/ChatBar';
 import { useGameStore } from '@/stores/useGameStore';
 import { spyOnStoreMethods } from '@/__tests__/helpers/store-spy';
@@ -23,7 +22,7 @@ function setupDefaultState() {
   });
 }
 
-describe('StoryAdjuster 重新生成测试', () => {
+describe('ChatBar 内联改写测试', () => {
   let storeSpy: StoreSpy;
 
   beforeEach(() => {
@@ -36,46 +35,25 @@ describe('StoryAdjuster 重新生成测试', () => {
     storeSpy.restore();
   });
 
-  it('点击重新生成按钮应该调用回调函数', async () => {
-    const mockOnRegenerateComplete = jest.fn();
-    const mockOnOpenChange = jest.fn();
-
-    render(
-      <StoryAdjuster
-        open={true}
-        onOpenChange={mockOnOpenChange}
-        gameId={1}
-        fullStory="Original story content"
-        onRewriteComplete={jest.fn()}
-        onRegenerateComplete={mockOnRegenerateComplete}
-      />
-    );
-
-    const regenerateButton = screen.getByText('重新生成');
-    fireEvent.click(regenerateButton);
-
-    await waitFor(() => {
-      expect(mockOnOpenChange).toHaveBeenCalledWith(false);
-      expect(mockOnRegenerateComplete).toHaveBeenCalled();
-    });
-  });
-
   it('点击改写按钮应该触发 SSE 流式改写', async () => {
+    const user = userEvent.setup();
     const mockOnRewriteComplete = jest.fn();
     (global.fetch as jest.Mock).mockResolvedValue(createSSEMockResponse([
       'data: [DONE]\n\n',
     ]));
 
     render(
-      <StoryAdjuster
-        open={true}
-        onOpenChange={jest.fn()}
+      <ChatBar
         gameId={1}
-        fullStory="Original story"
+        onSave={jest.fn()}
+        onRegenerate={jest.fn()}
+        storyText="Original story"
         onRewriteComplete={mockOnRewriteComplete}
-        onRegenerateComplete={jest.fn()}
       />
     );
+
+    await user.click(screen.getByLabelText('打开聊天'));
+    await user.click(await screen.findByTestId('rewrite-button'));
 
     const textarea = screen.getByPlaceholderText(/描述你想要的修改/);
     fireEvent.change(textarea, { target: { value: '让它更温馨' } });
@@ -113,7 +91,6 @@ describe('ChatBar 重新生成测试', () => {
       <ChatBar
         gameId={1}
         onSave={jest.fn()}
-        onAdjustStory={jest.fn()}
         onRegenerate={mockOnRegenerate}
         isSaving={false}
       />

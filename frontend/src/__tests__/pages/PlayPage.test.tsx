@@ -16,7 +16,6 @@ const mockUsePlayGame = {
   roundSummary: null,
   isSaving: false,
   saveToast: null,
-  showAdjuster: false,
   endingData: null,
   elapsedSeconds: 0,
   gameId: 123,
@@ -28,7 +27,6 @@ const mockUsePlayGame = {
   isGameOver: false,
   storyContainerRef: { current: null },
   setPhase: jest.fn(),
-  setShowAdjuster: jest.fn(),
   setStoryText: jest.fn(),
   setOptions: jest.fn(),
   handleChoice: jest.fn(),
@@ -36,7 +34,6 @@ const mockUsePlayGame = {
   handleContinueAfterSummary: jest.fn(),
   handleContinueToNextRound: jest.fn(),
   handleSave: jest.fn(),
-  handleAdjustStory: jest.fn(),
   handleRegenerate: jest.fn(),
   generateEvent: jest.fn(),
   getLoadingMessage: jest.fn(() => 'Loading...'),
@@ -784,19 +781,6 @@ describe('PlayPage', () => {
       // ChatBar should be rendered
       const buttons = screen.getAllByRole('button');
       expect(buttons.length).toBeGreaterThan(0);
-    });
-  });
-
-  describe('StoryAdjuster interactions', () => {
-    it('renders story adjuster when open', () => {
-      const originalHook = jest.requireMock('@/hooks/usePlayGame');
-      originalHook.usePlayGame = () => ({
-        ...mockUsePlayGame,
-        showAdjuster: true,
-      });
-      
-      render(<PlayPage />);
-      // StoryAdjuster should be rendered when showAdjuster is true
     });
   });
 

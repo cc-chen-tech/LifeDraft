@@ -65,8 +65,10 @@ test.describe('Music Playlist Persistence', () => {
     await page.waitForLoadState('domcontentloaded');
 
     // Wait for mini player bar and expand it
-    const miniBar = page.locator('.fixed.z-50.bottom-0 .gap-2.px-3.py-2.cursor-pointer').first();
+    const miniBar = page.locator('[data-testid="global-music-mini-bar"]').first();
     await miniBar.waitFor({ state: 'visible', timeout: 30000 });
+    await expect(page.locator('[data-testid="global-music-player"]')).toHaveClass(/top-0/);
+    await expect(page.locator('[data-testid="global-music-player"]')).not.toHaveClass(/bottom-0/);
     await miniBar.click();
 
     // Wait for the expanded music player content (either "场景音乐" or "播放列表")
@@ -89,7 +91,7 @@ test.describe('Music Playlist Persistence', () => {
     await page.waitForLoadState('domcontentloaded');
 
     // Expand mini bar again
-    const miniBar2 = page.locator('.fixed.z-50.bottom-0 .gap-2.px-3.py-2.cursor-pointer').first();
+    const miniBar2 = page.locator('[data-testid="global-music-mini-bar"]').first();
     await miniBar2.waitFor({ state: 'visible', timeout: 30000 });
     await miniBar2.click();
 
