@@ -350,7 +350,9 @@ class MusicService:
             self._analysis_cache[story_hash] = (analysis, now)
 
         # 构建搜索关键词
-        search_keywords = self._build_search_keywords(analysis)
+        search_keywords = self._build_search_keywords(
+            analysis, character_settings=character_settings
+        )
 
         # ★ 快速连通性检查：如果 music-api 不可达，跳过所有搜索
         if not await self.music_client.check_availability():
@@ -570,7 +572,9 @@ class MusicService:
 
         # 转换为 MusicRecommendation 格式
         return MusicRecommendation(
-            keywords=self._build_search_keywords(pool.analysis),
+            keywords=self._build_search_keywords(
+                pool.analysis, character_settings=character_settings
+            ),
             mood=pool.analysis.get("mood", "未知"),
             scene_type=pool.analysis.get("scene_type", "未知"),
             songs=[
@@ -703,9 +707,47 @@ class MusicService:
         "专注": ["轻音乐", "学习", "阅读"],
     }
 
-    def _build_search_keywords(self, analysis: Dict[str, Any]) -> List[str]:
+    def _build_search_keywords(
+        self, analysis: Dict[str, Any], character_settings: Optional[Dict] = None
+    ) -> List[str]:
         """构建搜索关键词列表 - 综合考虑情绪、场景、时代、风格"""
         keywords = []
+
+        # 时代感知关键词（最高优先级）
+        if character_settings and "era" in character_settings:
+            era = character_settings["era"]
+            era_name = era.get("era_name", "")
+            era_desc = era.get("era_description", "")
+
+            # 判断是否为古代设定
+            ancient_indicators = [
+                "古代",
+                "古风",
+                "明朝",
+                "唐朝",
+                "宋朝",
+                "清朝",
+                "汉朝",
+                "三国",
+                "战国",
+                "秦",
+                "隋",
+                "元",
+                "魏晋",
+                "南北朝",
+                "春秋",
+                "武侠",
+                "仙侠",
+                "古",
+            ]
+            is_ancient = any(ind in era_name or ind in era_desc for ind in ancient_indicators)
+
+            if is_ancient:
+                # 古代设定：前置古风关键词
+                keywords.extend(["古风", "中国风", "民乐", "古典"])
+            elif any(x in era_name or x in era_desc for x in ["未来", "科幻", "赛博"]):
+                keywords.extend(["电子", "科幻", "未来感"])
+            # 现代设定不需要额外前置
 
         # 获取各维度分析结果
         mood = analysis.get("mood", "")

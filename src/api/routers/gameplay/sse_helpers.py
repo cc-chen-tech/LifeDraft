@@ -14,6 +14,11 @@ from src.api.deps import get_db
 
 logger = logging.getLogger(__name__)
 
+# SSE 流超时配置（必须小于 Nginx proxy_read_timeout）
+SSE_STREAM_TIMEOUT = 330
+# 心跳间隔（秒），防止 Nginx 空闲超时断连
+HEARTBEAT_INTERVAL = 5
+
 # 线程池用于 SSE 后台任务
 _sse_thread_pool: Optional[ThreadPoolExecutor] = None
 
@@ -507,19 +512,14 @@ async def stream_round_event(
 
     _get_sse_thread_pool().submit(run)
 
-    # Heartbeat: send keep-alive every 5 seconds to prevent connection timeout
-    heartbeat_interval = 5
-    # ★ 统一超时：SSE 超时必须 >= 前端 polling 超时 (300s) + 余量
-    # 前端 polling 在 SSE 断开后开始，超时 300s
-    # SSE 超时设为 330s，确保前端 polling 先超时，用户不会看到"生成失败"
-    SSE_STREAM_TIMEOUT = 330
+    # Heartbeat + timeout: use module-level constants
     last_event_time = asyncio.get_event_loop().time()
 
     # Yield SSE events as they arrive — fully async, no thread pool overhead
     while True:
         try:
             # Use shorter timeout for heartbeat check
-            event_type, data = await asyncio.wait_for(q.get(), timeout=heartbeat_interval)
+            event_type, data = await asyncio.wait_for(q.get(), timeout=HEARTBEAT_INTERVAL)
             last_event_time = asyncio.get_event_loop().time()
         except asyncio.TimeoutError:
             # Check if overall timeout exceeded
@@ -697,15 +697,12 @@ async def stream_choice(
 
     _get_sse_thread_pool().submit(run)
 
-    # Heartbeat: send keep-alive every 5 seconds to prevent connection timeout
-    heartbeat_interval = 5
-    # 统一超时：choice 处理也使用 330s，与 event generation 一致
-    SSE_STREAM_TIMEOUT = 330
+    # Heartbeat + timeout: use module-level constants
     last_event_time = asyncio.get_event_loop().time()
 
     while True:
         try:
-            event_type, data = await asyncio.wait_for(q.get(), timeout=heartbeat_interval)
+            event_type, data = await asyncio.wait_for(q.get(), timeout=HEARTBEAT_INTERVAL)
             last_event_time = asyncio.get_event_loop().time()
         except asyncio.TimeoutError:
             # Check if overall timeout exceeded
@@ -1009,15 +1006,12 @@ async def stream_regenerate(
 
     _get_sse_thread_pool().submit(run)
 
-    # Heartbeat mechanism
-    heartbeat_interval = 5
-    # 统一超时：regenerate 也使用 330s
-    SSE_STREAM_TIMEOUT = 330
+    # Heartbeat + timeout: use module-level constants
     last_event_time = asyncio.get_event_loop().time()
 
     while True:
         try:
-            event_type, data = await asyncio.wait_for(q.get(), timeout=heartbeat_interval)
+            event_type, data = await asyncio.wait_for(q.get(), timeout=HEARTBEAT_INTERVAL)
             last_event_time = asyncio.get_event_loop().time()
         except asyncio.TimeoutError:
             elapsed = asyncio.get_event_loop().time() - last_event_time
@@ -1181,15 +1175,12 @@ async def stream_rewrite(
 
     _get_sse_thread_pool().submit(run)
 
-    # Heartbeat mechanism
-    heartbeat_interval = 5
-    # 统一超时：rewrite 也使用 330s
-    SSE_STREAM_TIMEOUT = 330
+    # Heartbeat + timeout: use module-level constants
     last_event_time = asyncio.get_event_loop().time()
 
     while True:
         try:
-            event_type, data = await asyncio.wait_for(q.get(), timeout=heartbeat_interval)
+            event_type, data = await asyncio.wait_for(q.get(), timeout=HEARTBEAT_INTERVAL)
             last_event_time = asyncio.get_event_loop().time()
         except asyncio.TimeoutError:
             elapsed = asyncio.get_event_loop().time() - last_event_time

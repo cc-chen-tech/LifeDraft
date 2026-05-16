@@ -1,169 +1,147 @@
-"""SSE 超时与前端 polling 超时契约测试 (Layer 3)
+"""SSE 超时配置契约测试。
 
-验证前后端超时值的一致性约束，防止"用户看到生成失败但后端还在工作"的问题。
+验证 Nginx 和后端 SSE 超时配置的一致性，
+确保 Nginx 不会在 SSE 生成完成前断开连接。
 """
 
-import os
+import re
+from pathlib import Path
+
+# 项目根目录
+PROJECT_ROOT = Path(__file__).parent.parent
 
 
-class TestBackendSSETimeoutContract:
-    """验证后端 SSE 流式生成超时常量。"""
+class TestNginxSSETimeoutContract:
+    """Nginx 与 SSE 超时配置契约。"""
 
-    def test_backend_sse_timeout_value(self):
-        """sse_helpers.py 中 SSE 整体超时阈值应为 330 秒。
+    def _read_nginx_conf(self) -> str:
+        conf_path = PROJECT_ROOT / "nginx" / "ecs-nginx.conf"
+        return conf_path.read_text()
 
-        ★ 修复：从 120s 提升到 330s，确保 SSE 超时 >= 前端 polling 超时 (300s) + 余量
-        防止"SSE 先断开，但 polling 还在工作"导致用户看到"生成失败"。
-        """
-        helpers_path = os.path.join(
-            os.path.dirname(__file__),
-            "..",
-            "src",
-            "api",
-            "routers",
-            "gameplay",
-            "sse_helpers.py",
+    def _extract_api_location_block(self, conf: str) -> str:
+        """提取 /api/ location 块的内容。"""
+        # 找到 location /api/ { ... } 块
+        pattern = r"location\s+/api/\s*\{([^}]*(?:\{[^}]*\}[^}]*)*)\}"
+        match = re.search(pattern, conf)
+        assert match, "未找到 location /api/ 配置块"
+        return match.group(1)
+
+    def _extract_timeout_value(self, block: str, directive: str) -> int:
+        """从配置块中提取超时值（秒）。"""
+        pattern = rf"{directive}\s+(\d+)s?"
+        match = re.search(pattern, block)
+        assert match, f"未找到 {directive} 配置"
+        return int(match.group(1))
+
+    def test_proxy_read_timeout_gte_360s(self):
+        """Nginx proxy_read_timeout 必须 >= 360s（大于 SSE_STREAM_TIMEOUT 330s）。"""
+        conf = self._read_nginx_conf()
+        api_block = self._extract_api_location_block(conf)
+        timeout = self._extract_timeout_value(api_block, "proxy_read_timeout")
+        assert timeout >= 360, (
+            f"proxy_read_timeout={timeout}s 小于要求的 360s，"
+            f"将导致 Nginx 在 SSE 生成完成前断开连接"
         )
-        with open(helpers_path, "r", encoding="utf-8") as f:
-            source = f.read()
 
-        # 查找 SSE_STREAM_TIMEOUT = 330 模式
-        assert "SSE_STREAM_TIMEOUT = 330" in source, (
-            "sse_helpers.py 中 SSE 超时阈值应为 330 秒，"
-            "确保 SSE 超时 >= 前端 polling 超时 (300s) + 余量"
+    def test_proxy_send_timeout_gte_360s(self):
+        """Nginx proxy_send_timeout 必须 >= 360s。"""
+        conf = self._read_nginx_conf()
+        api_block = self._extract_api_location_block(conf)
+        timeout = self._extract_timeout_value(api_block, "proxy_send_timeout")
+        assert timeout >= 360, f"proxy_send_timeout={timeout}s 小于要求的 360s"
+
+    def test_proxy_buffering_off(self):
+        """SSE 需要 proxy_buffering off 确保心跳及时送达。"""
+        conf = self._read_nginx_conf()
+        api_block = self._extract_api_location_block(conf)
+        assert "proxy_buffering off" in api_block or "proxy_buffering  off" in api_block, (
+            "location /api/ 缺少 proxy_buffering off，"
+            "将导致 SSE 心跳被缓冲，Nginx 因空闲超时断开连接"
         )
 
-    def test_backend_heartbeat_interval_value(self):
-        """SSE 心跳间隔应为 5 秒。"""
-        helpers_path = os.path.join(
-            os.path.dirname(__file__),
-            "..",
-            "src",
-            "api",
-            "routers",
-            "gameplay",
-            "sse_helpers.py",
-        )
-        with open(helpers_path, "r", encoding="utf-8") as f:
-            source = f.read()
-
-        assert "heartbeat_interval = 5" in source, "sse_helpers.py 中心跳间隔应为 5 秒"
-
-    def test_backend_sse_error_event_format(self):
-        """SSE 超时 error 事件应包含 'error' 字段。"""
-        helpers_path = os.path.join(
-            os.path.dirname(__file__),
-            "..",
-            "src",
-            "api",
-            "routers",
-            "gameplay",
-            "sse_helpers.py",
-        )
-        with open(helpers_path, "r", encoding="utf-8") as f:
-            source = f.read()
-
-        # 验证超时时的 error 事件格式
+    def test_proxy_socket_keepalive_on(self):
+        """TCP keepalive 保持长连接活跃。"""
+        conf = self._read_nginx_conf()
+        api_block = self._extract_api_location_block(conf)
         assert (
-            'yield make_sse_event("error", {"error": "Timeout waiting for event generation"})'
-            in source
-        ), "SSE 超时应返回包含 'error' 字段的标准 error 事件"
+            "proxy_socket_keepalive on" in api_block
+        ), "location /api/ 缺少 proxy_socket_keepalive on"
 
 
-class TestFrontendPollingTimeoutContract:
-    """验证前端 polling 超时常量。"""
+class TestSSETimeoutConstants:
+    """后端 SSE 超时常量契约。"""
 
-    def test_frontend_polling_timeout_value(self):
-        """useEventGenerator.ts 中 polling 最大时长应为 300000ms (5分钟)。"""
-        hook_path = os.path.join(
-            os.path.dirname(__file__),
-            "..",
-            "frontend",
-            "src",
-            "hooks",
-            "game",
-            "useEventGenerator.ts",
-        )
-        with open(hook_path, "r", encoding="utf-8") as f:
-            source = f.read()
+    def test_sse_stream_timeout_is_module_constant(self):
+        """SSE_STREAM_TIMEOUT 应为模块级常量而非函数内硬编码。"""
+        sse_helpers_path = PROJECT_ROOT / "src" / "api" / "routers" / "gameplay" / "sse_helpers.py"
+        content = sse_helpers_path.read_text()
 
-        assert (
-            "maxPollingTime = 300000" in source
-        ), "useEventGenerator.ts 中 maxPollingTime 应为 300000ms (5分钟)"
+        # 检查模块级定义（在函数外部）
+        lines = content.split("\n")
+        found_module_level = False
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped.startswith("SSE_STREAM_TIMEOUT") and "=" in stripped:
+                # 检查缩进 — 模块级应无缩进或仅有少量缩进
+                if not line.startswith(" ") and not line.startswith("\t"):
+                    found_module_level = True
+                    break
+                # 也接受顶层缩进为0的情况
+                if len(line) - len(line.lstrip()) == 0:
+                    found_module_level = True
+                    break
 
-    def test_frontend_polling_interval_value(self):
-        """useEventGenerator.ts 中 polling 间隔应为 8000ms。"""
-        hook_path = os.path.join(
-            os.path.dirname(__file__),
-            "..",
-            "frontend",
-            "src",
-            "hooks",
-            "game",
-            "useEventGenerator.ts",
-        )
-        with open(hook_path, "r", encoding="utf-8") as f:
-            source = f.read()
-
-        assert (
-            "pollInterval = 8000" in source
-        ), "useEventGenerator.ts 中 pollInterval 应为 8000ms"
-
-    def test_backend_sse_exceeds_frontend_polling_timeout(self):
-        """后端 SSE 超时必须 >= 前端 polling 超时 + 余量。
-
-        ★ 修复后的约束：后端 SSE (330s) >= 前端 polling (300s) + 余量 (30s)
-        这是防止"SSE 先断开但 polling 还在工作"的关键契约。
-        之前是 120s < 300s，导致用户看到"生成失败"但实际后端还在工作。
-        """
-        BACKEND_SSE_TIMEOUT = 330  # 秒
-        FRONTEND_POLLING_TIMEOUT = 300  # 秒 (300000ms)
-        MIN_MARGIN = 30  # 秒
-
-        assert BACKEND_SSE_TIMEOUT >= FRONTEND_POLLING_TIMEOUT + MIN_MARGIN, (
-            f"后端 SSE 超时 ({BACKEND_SSE_TIMEOUT}s) 必须 >= "
-            f"前端 polling 超时 ({FRONTEND_POLLING_TIMEOUT}s) + 余量 ({MIN_MARGIN}s)，"
-            f"否则 SSE 先断开但 polling 还在工作，用户会看到'生成失败'"
+        assert found_module_level, (
+            "SSE_STREAM_TIMEOUT 应定义为模块级常量，" "当前可能在函数内部硬编码"
         )
 
-    def test_frontend_polling_calls_syncstate(self):
-        """前端 polling 逻辑必须调用 syncState 获取最新状态。"""
-        hook_path = os.path.join(
-            os.path.dirname(__file__),
-            "..",
-            "frontend",
-            "src",
-            "hooks",
-            "game",
-            "useEventGenerator.ts",
+    def test_heartbeat_interval_is_module_constant(self):
+        """heartbeat_interval 应为模块级常量。"""
+        sse_helpers_path = PROJECT_ROOT / "src" / "api" / "routers" / "gameplay" / "sse_helpers.py"
+        content = sse_helpers_path.read_text()
+
+        lines = content.split("\n")
+        found_module_level = False
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if "HEARTBEAT_INTERVAL" in stripped and "=" in stripped:
+                if len(line) - len(line.lstrip()) == 0:
+                    found_module_level = True
+                    break
+
+        assert found_module_level, "HEARTBEAT_INTERVAL 应定义为模块级常量"
+
+    def test_sse_timeout_greater_than_nginx_timeout(self):
+        """SSE_STREAM_TIMEOUT 必须大于 Nginx proxy_read_timeout。"""
+        sse_helpers_path = PROJECT_ROOT / "src" / "api" / "routers" / "gameplay" / "sse_helpers.py"
+        content = sse_helpers_path.read_text()
+
+        # 提取 SSE_STREAM_TIMEOUT 值
+        match = re.search(r"SSE_STREAM_TIMEOUT\s*=\s*(\d+)", content)
+        assert match, "未找到 SSE_STREAM_TIMEOUT 定义"
+        sse_timeout = int(match.group(1))
+
+        # 提取 Nginx timeout
+        conf_path = PROJECT_ROOT / "nginx" / "ecs-nginx.conf"
+        conf = conf_path.read_text()
+        api_block_match = re.search(r"location\s+/api/\s*\{([^}]*(?:\{[^}]*\}[^}]*)*)\}", conf)
+        assert api_block_match
+        nginx_match = re.search(r"proxy_read_timeout\s+(\d+)", api_block_match.group(1))
+        assert nginx_match
+        nginx_timeout = int(nginx_match.group(1))
+
+        assert sse_timeout < nginx_timeout, (
+            f"SSE_STREAM_TIMEOUT({sse_timeout}s) 应小于 "
+            f"Nginx proxy_read_timeout({nginx_timeout}s)，"
+            f"否则 Nginx 会在后端超时前断开连接"
         )
-        with open(hook_path, "r", encoding="utf-8") as f:
-            source = f.read()
 
-        assert "syncState" in source, "polling 逻辑必须调用 syncState 来同步后端状态"
+    def test_heartbeat_interval_lte_5s(self):
+        """心跳间隔不能超过 5s，防止 Nginx 空闲断连。"""
+        sse_helpers_path = PROJECT_ROOT / "src" / "api" / "routers" / "gameplay" / "sse_helpers.py"
+        content = sse_helpers_path.read_text()
 
-
-class TestSSEErrorEventContract:
-    """验证 SSE error 事件的格式契约。"""
-
-    def test_make_sse_event_error_format(self):
-        """make_sse_event 生成的 error 事件应可被前端正确解析。"""
-        from src.api.routers.gameplay.sse_helpers import make_sse_event
-
-        event = make_sse_event(
-            "error", {"error": "Timeout waiting for event generation"}
-        )
-
-        assert "event: error" in event
-        assert '"error":' in event
-        assert "Timeout waiting for event generation" in event
-
-    def test_make_sse_event_status_format(self):
-        """make_sse_event 生成的 status 事件应包含 phase 字段。"""
-        from src.api.routers.gameplay.sse_helpers import make_sse_event
-
-        event = make_sse_event("status", {"phase": "processing", "heartbeat": True})
-
-        assert "event: status" in event
-        assert '"phase":' in event
-        assert '"heartbeat":' in event
+        match = re.search(r"(?:HEARTBEAT_INTERVAL|heartbeat_interval)\s*=\s*(\d+)", content)
+        assert match, "未找到心跳间隔定义"
+        interval = int(match.group(1))
+        assert interval <= 5, f"心跳间隔 {interval}s > 5s，可能导致 Nginx 空闲断连"

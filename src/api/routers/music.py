@@ -31,6 +31,7 @@ class MusicRecommendationRequest(BaseModel):
     story_text: str
     game_id: Optional[int] = None
     refresh: bool = False  # 刷新模式：复用缓存的 AI 分析，重新搜索歌曲
+    character_settings: Optional[dict] = None  # 角色设定（含时代信息）
 
 
 class SongResponse(BaseModel):
@@ -92,6 +93,7 @@ async def recommend_music(
         # 分析故事并获取推荐
         recommendation = await music_service.analyze_story_for_music(
             story_text=request.story_text,
+            character_settings=request.character_settings,
             refresh=request.refresh,
         )
 
@@ -258,23 +260,17 @@ async def _get_or_download_audio(song_id: int, url: str) -> Tuple[bytes, str]:
 
             fresh_url = await music_service.get_song_play_url(song_id)
             if not fresh_url:
-                raise HTTPException(
-                    status_code=404, detail="Song URL not available after refresh"
-                )
+                raise HTTPException(status_code=404, detail="Song URL not available after refresh")
             logger.info(f"[MusicStream] URL刷新成功: song_id={song_id}")
             response = await client.get(fresh_url, headers={"Referer": ""})
 
         if response.status_code not in (200, 206):
-            raise HTTPException(
-                status_code=response.status_code, detail="CDN request failed"
-            )
+            raise HTTPException(status_code=response.status_code, detail="CDN request failed")
 
         audio_data = response.content
         content_type = response.headers.get("content-type", "audio/mpeg")
 
-    logger.info(
-        f"[MusicStream] 下载完成: song_id={song_id}, size={len(audio_data)} bytes"
-    )
+    logger.info(f"[MusicStream] 下载完成: song_id={song_id}, size={len(audio_data)} bytes")
 
     # 存入缓存
     async with _audio_cache_lock:
@@ -312,11 +308,7 @@ async def stream_song(song_id: int, request: Request):
         range_match = re.match(r"bytes=(\d+)-(\d*)", range_header)
         if range_match:
             start = int(range_match.group(1))
-            end = (
-                int(range_match.group(2))
-                if range_match.group(2)
-                else len(audio_data) - 1
-            )
+            end = int(range_match.group(2)) if range_match.group(2) else len(audio_data) - 1
             end = min(end, len(audio_data) - 1)
             if start > end or start >= len(audio_data):
                 raise HTTPException(status_code=416, detail="Range not satisfiable")
