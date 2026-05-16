@@ -407,26 +407,48 @@ export interface paths {
         patch: operations["update_game_settings_api_games__game_id__settings_patch"];
         trace?: never;
     };
-    "/api/games/{game_id}/character-settings": {
+    "/api/games/{game_id}/narrative-style-options": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Narrative Style Options
+         * @description 返回所有可用的叙事风格列表。
+         */
+        get: operations["list_narrative_style_options_api_games__game_id__narrative_style_options_get"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/games/{game_id}/narrative-style": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
         /**
-         * Update Character Settings
-         * @description Update character_settings for an existing game.
-         *     Used when auto-generated background settings need to be persisted
-         *     after initial game creation with partial settings.
+         * Get Narrative Style
+         * @description 获取当前游戏的叙事风格。
          */
-        patch: operations["update_character_settings_api_games__game_id__character_settings_patch"];
+        get: operations["get_narrative_style_api_games__game_id__narrative_style_get"];
+        /**
+         * Update Narrative Style
+         * @description 更新游戏的叙事风格。
+         */
+        put: operations["update_narrative_style_api_games__game_id__narrative_style_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/games/save-point/{state_id}": {
@@ -444,50 +466,6 @@ export interface paths {
          * @description ★ 删除存档点。
          */
         delete: operations["delete_save_point_api_games_save_point__state_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/games/{game_id}/narrative-style-options": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Narrative Styles
-         * @description 列出所有可用的叙事风格，供用户选择。
-         */
-        get: operations["list_narrative_styles_api_games__game_id__narrative_style_options_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/games/{game_id}/narrative-style": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Game Narrative Style
-         * @description 获取游戏当前的叙事风格。
-         */
-        get: operations["get_game_narrative_style_api_games__game_id__narrative_style_get"];
-        /**
-         * Update Game Narrative Style
-         * @description 更新游戏的叙事风格。
-         */
-        put: operations["update_game_narrative_style_api_games__game_id__narrative_style_put"];
-        post?: never;
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1694,13 +1672,80 @@ export interface paths {
          * Stream Song
          * @description 代理音乐流，绕过 CDN 的 Referer 限制。
          *
-         *     浏览器直接请求网易云 CDN 会被 403/ORB 拦截（因为 Referer 是 localhost），
-         *     通过后端代理请求并流式返回音频数据即可绕过。
-         *     支持 Range 请求转发（用于拖拽跳转），以及 403/401 时自动刷新 URL 重试。
+         *     完整下载 CDN 音频后一次性返回（带 content-length），
+         *     避免流式代理链延迟导致浏览器 waiting/stalled。
+         *     支持 Range 请求（用于拖拽跳转），以及 403/401 时自动刷新 URL 重试。
+         *     内存 LRU 缓存最多 10 首歌，避免重复下载。
          */
         get: operations["stream_song_api_music_stream__song_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/music/playlist/{game_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Playlist
+         * @description Get the current playlist state for a game.
+         */
+        get: operations["get_playlist_api_music_playlist__game_id__get"];
+        /**
+         * Update Playlist
+         * @description Merge new recommendation songs into the playlist.
+         *
+         *     Preserves the currently playing song; only the upcoming queue is replaced.
+         */
+        put: operations["update_playlist_api_music_playlist__game_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/music/playlist/{game_id}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Playlist State
+         * @description Sync current playback position and state.
+         */
+        post: operations["sync_playlist_state_api_music_playlist__game_id__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/music/playlist/{game_id}/advance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Advance Playlist
+         * @description Advance to the next song in the queue.
+         */
+        post: operations["advance_playlist_api_music_playlist__game_id__advance_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2411,6 +2456,13 @@ export interface components {
             /** Songs */
             songs: components["schemas"]["SongResponse"][];
         };
+        /** NarrativeStyleResponse */
+        NarrativeStyleResponse: {
+            /** Style Id */
+            style_id: string;
+            /** Style Name */
+            style_name: string;
+        };
         /**
          * OpeningIllustrationResponse
          * @description 开场插画响应
@@ -2450,6 +2502,39 @@ export interface components {
              * @default zh
              */
             language: string;
+        };
+        /**
+         * PlaylistSyncRequest
+         * @description Request body for syncing playback state.
+         */
+        PlaylistSyncRequest: {
+            /**
+             * Current Position Ms
+             * @default 0
+             */
+            current_position_ms: number;
+            /**
+             * Is Playing
+             * @default false
+             */
+            is_playing: boolean;
+            /**
+             * Volume
+             * @default 0.5
+             */
+            volume: number;
+        };
+        /**
+         * PlaylistUpdateRequest
+         * @description Request body for updating a game playlist with new recommendation songs.
+         */
+        PlaylistUpdateRequest: {
+            /** Songs */
+            songs: components["schemas"]["SongResponse"][];
+            /** Mood */
+            mood?: string | null;
+            /** Keywords */
+            keywords?: string[] | null;
         };
         /** PresetInfo */
         PresetInfo: {
@@ -2810,13 +2895,6 @@ export interface components {
         StoryChatResponse: {
             /** Reply */
             reply: string;
-        };
-        /** UpdateCharacterSettingsRequest */
-        UpdateCharacterSettingsRequest: {
-            /** Character Settings */
-            character_settings: {
-                [key: string]: unknown;
-            };
         };
         /** UpdateGameSettingsRequest */
         UpdateGameSettingsRequest: {
@@ -3477,7 +3555,69 @@ export interface operations {
             };
         };
     };
-    update_character_settings_api_games__game_id__character_settings_patch: {
+    list_narrative_style_options_api_games__game_id__narrative_style_options_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_narrative_style_api_games__game_id__narrative_style_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NarrativeStyleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_narrative_style_api_games__game_id__narrative_style_put: {
         parameters: {
             query?: never;
             header?: never;
@@ -3488,7 +3628,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["UpdateCharacterSettingsRequest"];
+                "application/json": components["schemas"]["UpdateNarrativeStyleRequest"];
             };
         };
         responses: {
@@ -3522,103 +3662,6 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MessageResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_narrative_styles_api_games__game_id__narrative_style_options_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                game_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_game_narrative_style_api_games__game_id__narrative_style_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                game_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_game_narrative_style_api_games__game_id__narrative_style_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                game_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateNarrativeStyleRequest"];
-            };
-        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -5559,6 +5602,138 @@ export interface operations {
             header?: never;
             path: {
                 song_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_playlist_api_music_playlist__game_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_playlist_api_music_playlist__game_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaylistUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_playlist_state_api_music_playlist__game_id__sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaylistSyncRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    advance_playlist_api_music_playlist__game_id__advance_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: number;
             };
             cookie?: never;
         };

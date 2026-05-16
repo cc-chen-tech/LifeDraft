@@ -940,14 +940,106 @@
         }
       }
     },
-    "/api/games/{game_id}/character-settings": {
-      "patch": {
+    "/api/games/{game_id}/narrative-style-options": {
+      "get": {
         "tags": [
           "Games"
         ],
-        "summary": "Update Character Settings",
-        "description": "Update character_settings for an existing game.\nUsed when auto-generated background settings need to be persisted\nafter initial game creation with partial settings.",
-        "operationId": "update_character_settings_api_games__game_id__character_settings_patch",
+        "summary": "List Narrative Style Options",
+        "description": "返回所有可用的叙事风格列表。",
+        "operationId": "list_narrative_style_options_api_games__game_id__narrative_style_options_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/games/{game_id}/narrative-style": {
+      "get": {
+        "tags": [
+          "Games"
+        ],
+        "summary": "Get Narrative Style",
+        "description": "获取当前游戏的叙事风格。",
+        "operationId": "get_narrative_style_api_games__game_id__narrative_style_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NarrativeStyleResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Games"
+        ],
+        "summary": "Update Narrative Style",
+        "description": "更新游戏的叙事风格。",
+        "operationId": "update_narrative_style_api_games__game_id__narrative_style_put",
         "security": [
           {
             "HTTPBearer": []
@@ -969,7 +1061,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/UpdateCharacterSettingsRequest"
+                "$ref": "#/components/schemas/UpdateNarrativeStyleRequest"
               }
             }
           }
@@ -1022,154 +1114,6 @@
             }
           }
         ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MessageResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/games/{game_id}/narrative-style-options": {
-      "get": {
-        "tags": [
-          "Games"
-        ],
-        "summary": "List Narrative Styles",
-        "description": "列出所有可用的叙事风格，供用户选择。",
-        "operationId": "list_narrative_styles_api_games__game_id__narrative_style_options_get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "game_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "title": "Game Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/games/{game_id}/narrative-style": {
-      "get": {
-        "tags": [
-          "Games"
-        ],
-        "summary": "Get Game Narrative Style",
-        "description": "获取游戏当前的叙事风格。",
-        "operationId": "get_game_narrative_style_api_games__game_id__narrative_style_get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "game_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "title": "Game Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "Games"
-        ],
-        "summary": "Update Game Narrative Style",
-        "description": "更新游戏的叙事风格。",
-        "operationId": "update_game_narrative_style_api_games__game_id__narrative_style_put",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "game_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "title": "Game Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateNarrativeStyleRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -4216,7 +4160,7 @@
           "Music"
         ],
         "summary": "Stream Song",
-        "description": "代理音乐流，绕过 CDN 的 Referer 限制。\n\n浏览器直接请求网易云 CDN 会被 403/ORB 拦截（因为 Referer 是 localhost），\n通过后端代理请求并流式返回音频数据即可绕过。\n支持 Range 请求转发（用于拖拽跳转），以及 403/401 时自动刷新 URL 重试。",
+        "description": "代理音乐流，绕过 CDN 的 Referer 限制。\n\n完整下载 CDN 音频后一次性返回（带 content-length），\n避免流式代理链延迟导致浏览器 waiting/stalled。\n支持 Range 请求（用于拖拽跳转），以及 403/401 时自动刷新 URL 重试。\n内存 LRU 缓存最多 10 首歌，避免重复下载。",
         "operationId": "stream_song_api_music_stream__song_id__get",
         "parameters": [
           {
@@ -4226,6 +4170,188 @@
             "schema": {
               "type": "integer",
               "title": "Song Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/music/playlist/{game_id}": {
+      "get": {
+        "tags": [
+          "Music"
+        ],
+        "summary": "Get Playlist",
+        "description": "Get the current playlist state for a game.",
+        "operationId": "get_playlist_api_music_playlist__game_id__get",
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Music"
+        ],
+        "summary": "Update Playlist",
+        "description": "Merge new recommendation songs into the playlist.\n\nPreserves the currently playing song; only the upcoming queue is replaced.",
+        "operationId": "update_playlist_api_music_playlist__game_id__put",
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaylistUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/music/playlist/{game_id}/sync": {
+      "post": {
+        "tags": [
+          "Music"
+        ],
+        "summary": "Sync Playlist State",
+        "description": "Sync current playback position and state.",
+        "operationId": "sync_playlist_state_api_music_playlist__game_id__sync_post",
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaylistSyncRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/music/playlist/{game_id}/advance": {
+      "post": {
+        "tags": [
+          "Music"
+        ],
+        "summary": "Advance Playlist",
+        "description": "Advance to the next song in the queue.",
+        "operationId": "advance_playlist_api_music_playlist__game_id__advance_post",
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
             }
           }
         ],
@@ -5625,6 +5751,24 @@
         "title": "MusicRecommendationResponse",
         "description": "音乐推荐响应"
       },
+      "NarrativeStyleResponse": {
+        "properties": {
+          "style_id": {
+            "type": "string",
+            "title": "Style Id"
+          },
+          "style_name": {
+            "type": "string",
+            "title": "Style Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "style_id",
+          "style_name"
+        ],
+        "title": "NarrativeStyleResponse"
+      },
       "OpeningIllustrationResponse": {
         "properties": {
           "image_id": {
@@ -5700,6 +5844,70 @@
           "life_vision"
         ],
         "title": "OpeningStoryRequest"
+      },
+      "PlaylistSyncRequest": {
+        "properties": {
+          "current_position_ms": {
+            "type": "integer",
+            "title": "Current Position Ms",
+            "default": 0
+          },
+          "is_playing": {
+            "type": "boolean",
+            "title": "Is Playing",
+            "default": false
+          },
+          "volume": {
+            "type": "number",
+            "title": "Volume",
+            "default": 0.5
+          }
+        },
+        "type": "object",
+        "title": "PlaylistSyncRequest",
+        "description": "Request body for syncing playback state."
+      },
+      "PlaylistUpdateRequest": {
+        "properties": {
+          "songs": {
+            "items": {
+              "$ref": "#/components/schemas/SongResponse"
+            },
+            "type": "array",
+            "title": "Songs"
+          },
+          "mood": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mood"
+          },
+          "keywords": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keywords"
+          }
+        },
+        "type": "object",
+        "required": [
+          "songs"
+        ],
+        "title": "PlaylistUpdateRequest",
+        "description": "Request body for updating a game playlist with new recommendation songs."
       },
       "PresetInfo": {
         "properties": {
@@ -6403,20 +6611,6 @@
           "reply"
         ],
         "title": "StoryChatResponse"
-      },
-      "UpdateCharacterSettingsRequest": {
-        "properties": {
-          "character_settings": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Character Settings"
-          }
-        },
-        "type": "object",
-        "required": [
-          "character_settings"
-        ],
-        "title": "UpdateCharacterSettingsRequest"
       },
       "UpdateGameSettingsRequest": {
         "properties": {

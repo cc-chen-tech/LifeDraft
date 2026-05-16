@@ -30,52 +30,22 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run integration tests with coverage
-        run: npm run test:integration -- --coverage
+      - name: Run integration tests
+        run: npm run test:integration
         env:
           CI: true
 
-      - name: Upload integration test coverage
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: integration-coverage-report
-          path: frontend/coverage/
-          retention-days: 30
-
-      - name: Comment PR with coverage summary
+      - name: Comment PR with test result
         if: github.event_name == 'pull_request' && always()
         uses: actions/github-script@v7
         with:
           script: |
-            const fs = require('fs');
-            const path = 'frontend/coverage/lcov-report/index.html';
-
-            let coverageMessage = '## Integration Test Coverage\n\n';
-
-            // Try to read coverage summary if available
-            const coveragePath = 'frontend/coverage/coverage-summary.json';
-            if (fs.existsSync(coveragePath)) {
-              const coverage = JSON.parse(fs.readFileSync(coveragePath, 'utf8'));
-              const total = coverage.total || {};
-
-              coverageMessage += '| Metric | Coverage |\n';
-              coverageMessage += '|--------|----------|\n';
-              coverageMessage += `| Statements | ${total.statements?.pct || 'N/A'}% |\n`;
-              coverageMessage += `| Branches | ${total.branches?.pct || 'N/A'}% |\n`;
-              coverageMessage += `| Functions | ${total.functions?.pct || 'N/A'}% |\n`;
-              coverageMessage += `| Lines | ${total.lines?.pct || 'N/A'}% |\n`;
-            } else {
-              coverageMessage += 'Coverage report generated. Download artifacts to view detailed report.\n';
-            }
-
-            coverageMessage += `\n**Test Result:** ${process.env.TEST_RESULT === 'success' ? '✅ Passed' : '❌ Failed'}\n`;
-
+            const testResult = process.env.TEST_RESULT === 'success' ? '✅ Passed' : '❌ Failed';
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: coverageMessage
+              body: `## Integration Tests\n\n**Test Result:** ${testResult}\n`
             });
         env:
           TEST_RESULT: ${{ job.status }}
