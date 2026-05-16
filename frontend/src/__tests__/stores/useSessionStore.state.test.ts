@@ -7,35 +7,9 @@
 import { act } from '@testing-library/react';
 import type { PlayerState, GameProgress, RoundInfo } from '@/lib/types';
 
-// Mock the API before importing the store
-jest.mock('@/lib/api', () => ({
-  __esModule: true,
-  default: {
-    games: {
-      load: jest.fn().mockResolvedValue({
-        game_id: 1,
-        player_state: { player_name: 'Test' },
-        progress: { week: 1 },
-        round_info: { current_round: 1 },
-        current_event: null,
-      }),
-      save: jest.fn().mockResolvedValue({ success: true }),
-      updateSettings: jest.fn().mockResolvedValue({ success: true }),
-    },
-    gameplay: {
-      getState: jest.fn().mockResolvedValue({
-        player_state: { player_name: 'Test' },
-        progress: { week: 1 },
-        round_info: { current_round: 1 },
-        current_event: null,
-      }),
-    },
-  },
-}));
-
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useGameStore } from '@/stores/useGameStore';
-import api from '@/lib/api';
+import { jsonResponse } from '@/__tests__/helpers/fetch';
 
 // Helper to create a base player state
 const createBasePlayerState = (): PlayerState => ({
@@ -67,6 +41,7 @@ describe('useSessionStore State Comparison Logic', () => {
       });
     });
     jest.clearAllMocks();
+    global.fetch = jest.fn();
   });
 
   // ==================== shallowChanged Function Tests ====================
@@ -85,12 +60,12 @@ describe('useSessionStore State Comparison Logic', () => {
       });
 
       // Mock API to return the same object reference
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: sameObject,
         progress: { week: 1, current_round: 1, rounds_per_week: 3 },
         round_info: { current_round: 1, week: 1 },
         current_event: null,
-      });
+      }));
 
       const listener = jest.fn();
       const unsubscribe = useSessionStore.subscribe(listener);
@@ -118,12 +93,12 @@ describe('useSessionStore State Comparison Logic', () => {
         });
       });
 
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: null,
         progress: { week: 1, current_round: 1, rounds_per_week: 3 },
         round_info: { current_round: 1, week: 1 },
         current_event: null,
-      });
+      }));
 
       const listener = jest.fn();
       const unsubscribe = useSessionStore.subscribe(listener);
@@ -148,12 +123,12 @@ describe('useSessionStore State Comparison Logic', () => {
         });
       });
 
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: createBasePlayerState(),
         progress: { week: 1, current_round: 1, rounds_per_week: 3 },
         round_info: { current_round: 1, week: 1 },
         current_event: null,
-      });
+      }));
 
       const listener = jest.fn();
       const unsubscribe = useSessionStore.subscribe(listener);
@@ -178,12 +153,12 @@ describe('useSessionStore State Comparison Logic', () => {
         });
       });
 
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: null,
         progress: { week: 1, current_round: 1, rounds_per_week: 3 },
         round_info: { current_round: 1, week: 1 },
         current_event: null,
-      });
+      }));
 
       const listener = jest.fn();
       const unsubscribe = useSessionStore.subscribe(listener);
@@ -219,12 +194,12 @@ describe('useSessionStore State Comparison Logic', () => {
         player_name: 'Changed',
       };
 
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: newState,
         progress: { week: 1, current_round: 1, rounds_per_week: 3 },
         round_info: { current_round: 1, week: 1 },
         current_event: null,
-      });
+      }));
 
       const listener = jest.fn();
       const unsubscribe = useSessionStore.subscribe(listener);
@@ -260,12 +235,12 @@ describe('useSessionStore State Comparison Logic', () => {
         energy: 80,
       };
 
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: newState,
         progress: { week: 1, current_round: 1, rounds_per_week: 3 },
         round_info: { current_round: 1, week: 1 },
         current_event: null,
-      });
+      }));
 
       const listener = jest.fn();
       const unsubscribe = useSessionStore.subscribe(listener);
@@ -300,12 +275,12 @@ describe('useSessionStore State Comparison Logic', () => {
         week: 2,
       };
 
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: newState,
         progress: { week: 2, current_round: 1, rounds_per_week: 3 },
         round_info: { current_round: 1, week: 2 },
         current_event: null,
-      });
+      }));
 
       const listener = jest.fn();
       const unsubscribe = useSessionStore.subscribe(listener);
@@ -345,12 +320,12 @@ describe('useSessionStore State Comparison Logic', () => {
         nested: { some: 'value' }, // Different reference, same content
       };
 
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: newState,
         progress: { week: 1, current_round: 1, rounds_per_week: 3 },
         round_info: { current_round: 1, week: 1 },
         current_event: null,
-      });
+      }));
 
       const listener = jest.fn();
       const unsubscribe = useSessionStore.subscribe(listener);
@@ -390,7 +365,7 @@ describe('useSessionStore State Comparison Logic', () => {
       listener.mockClear();
 
       // Simulate API returning state with only non-key field changes
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: {
           ...baseState,
           player_name: 'Changed',
@@ -399,7 +374,7 @@ describe('useSessionStore State Comparison Logic', () => {
         progress: { week: 1, current_round: 1, rounds_per_week: 3 },
         round_info: { current_round: 1, week: 1 },
         current_event: null,
-      });
+      }));
 
       await act(async () => {
         await useSessionStore.getState().syncState();
@@ -430,7 +405,7 @@ describe('useSessionStore State Comparison Logic', () => {
       listener.mockClear();
 
       // Simulate API returning state with key field changed
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: {
           ...baseState,
           week: 2,
@@ -438,7 +413,7 @@ describe('useSessionStore State Comparison Logic', () => {
         progress: { week: 2, current_round: 1, rounds_per_week: 3 },
         round_info: { current_round: 1, week: 2 },
         current_event: null,
-      });
+      }));
 
       await act(async () => {
         await useSessionStore.getState().syncState();
@@ -469,7 +444,7 @@ describe('useSessionStore State Comparison Logic', () => {
       listener.mockClear();
 
       // Simulate API returning state with multiple key fields changed
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: {
           ...baseState,
           energy: 80,
@@ -479,7 +454,7 @@ describe('useSessionStore State Comparison Logic', () => {
         progress: { week: 2, current_round: 2, rounds_per_week: 3 },
         round_info: { current_round: 2, week: 2 },
         current_event: null,
-      });
+      }));
 
       await act(async () => {
         await useSessionStore.getState().syncState();
@@ -510,7 +485,7 @@ describe('useSessionStore State Comparison Logic', () => {
       listener.mockClear();
 
       // Simulate API returning same progress but player_state with only non-key fields changed
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: {
           ...basePlayerState,
           player_name: 'Changed',
@@ -518,7 +493,7 @@ describe('useSessionStore State Comparison Logic', () => {
         progress: { week: 1, current_round: 1, rounds_per_week: 3 },
         round_info: { current_round: 1, week: 1 },
         current_event: null,
-      });
+      }));
 
       await act(async () => {
         await useSessionStore.getState().syncState();
@@ -547,12 +522,12 @@ describe('useSessionStore State Comparison Logic', () => {
       // Clear any initial calls
       listener.mockClear();
 
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: createBasePlayerState(),
         progress: { week: 2, current_round: 1, rounds_per_week: 3 },
         round_info: { current_round: 1, week: 2 },
         current_event: null,
-      });
+      }));
 
       await act(async () => {
         await useSessionStore.getState().syncState();
@@ -631,12 +606,12 @@ describe('useSessionStore State Comparison Logic', () => {
         });
       });
 
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: mockPlayerState,
         progress: mockProgress,
         round_info: mockRoundInfo,
         current_event: null,
-      });
+      }));
 
       await act(async () => {
         await useSessionStore.getState().syncState();
@@ -673,12 +648,12 @@ describe('useSessionStore State Comparison Logic', () => {
         week: 2,
       };
 
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: updatedState,
         progress: { week: 2, current_round: 1, rounds_per_week: 3 },
         round_info: { current_round: 1, week: 2 },
         current_event: null,
-      });
+      }));
 
       await act(async () => {
         await useSessionStore.getState().syncState();
@@ -707,7 +682,7 @@ describe('useSessionStore State Comparison Logic', () => {
       const originalPlayerState = useGameStore.getState().playerState;
 
       // Trigger sync with only non-key field changes
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: {
           ...initialState,
           player_name: 'ChangedName', // Non-key field
@@ -715,7 +690,7 @@ describe('useSessionStore State Comparison Logic', () => {
         progress: { week: 1, current_round: 1, rounds_per_week: 3 },
         round_info: { current_round: 1, week: 1 },
         current_event: null,
-      });
+      }));
 
       await act(async () => {
         await useSessionStore.getState().syncState();
@@ -746,12 +721,12 @@ describe('useSessionStore State Comparison Logic', () => {
       const newState = createBasePlayerState();
       newState.energy = 100; // Changed from undefined
 
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: newState,
         progress: { week: 1, current_round: 1, rounds_per_week: 3 },
         round_info: { current_round: 1, week: 1 },
         current_event: null,
-      });
+      }));
 
       const listener = jest.fn();
       const unsubscribe = useSessionStore.subscribe(listener);
@@ -783,12 +758,12 @@ describe('useSessionStore State Comparison Logic', () => {
       });
 
       // Same state with same zero values
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: { ...oldState },
         progress: { week: 1, current_round: 1, rounds_per_week: 3 },
         round_info: { current_round: 1, week: 1 },
         current_event: null,
-      });
+      }));
 
       const listener = jest.fn();
       const unsubscribe = useSessionStore.subscribe(listener);
@@ -816,12 +791,12 @@ describe('useSessionStore State Comparison Logic', () => {
         });
       });
 
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: createBasePlayerState(),
         progress: { week: 2, current_round: 1, rounds_per_week: 3 },
         round_info: { current_round: 2, week: 2 }, // current_round changed
         current_event: null,
-      });
+      }));
 
       const listener = jest.fn();
       const unsubscribe = useSessionStore.subscribe(listener);

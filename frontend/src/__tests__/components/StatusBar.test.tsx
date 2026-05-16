@@ -7,11 +7,6 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 import { StatusBar } from "@/components/game/StatusBar";
 
-// Mock cn utility
-jest.mock("@/lib/utils", () => ({
-  cn: (...args: unknown[]) => args.filter(Boolean).join(" "),
-}));
-
 describe("StatusBar", () => {
   const mockPlayerState = {
     age: 25,

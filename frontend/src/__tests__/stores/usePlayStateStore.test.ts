@@ -1,52 +1,13 @@
 /**
  * usePlayStateStore Tests
- * 
+ *
  * Tests for gameplay state management that may be extracted from useGameStore.
  * Covers: currentWeek, round, choices, event state, story text, game over state.
  */
 import { act, renderHook } from '@testing-library/react';
 
-// Mock the API before importing the store
-jest.mock('@/lib/api', () => ({
-  __esModule: true,
-  default: {
-    games: {
-      list: jest.fn().mockResolvedValue([]),
-      create: jest.fn().mockResolvedValue({ game_id: 1 }),
-      load: jest.fn().mockResolvedValue({
-        game_id: 1,
-        player_state: { player_name: 'Test' },
-        progress: { week: 1 },
-        round_info: { current_round: 1 },
-        current_event: null,
-      }),
-      save: jest.fn().mockResolvedValue({ success: true }),
-      delete: jest.fn().mockResolvedValue({ success: true }),
-    },
-    presets: {
-      list: jest.fn().mockResolvedValue([]),
-      create: jest.fn().mockResolvedValue({ preset_id: 1 }),
-      delete: jest.fn().mockResolvedValue({ success: true }),
-    },
-    gameplay: {
-      getState: jest.fn().mockResolvedValue({
-        player_state: { player_name: 'Test' },
-        progress: { week: 1 },
-        round_info: { current_round: 1 },
-        current_event: null,
-      }),
-      generateSummary: jest.fn().mockResolvedValue({
-        summary_text: 'Test summary',
-      }),
-    },
-    images: {
-      listByGame: jest.fn().mockResolvedValue({ images: [], total: 0 }),
-    },
-  },
-}));
-
 import { useGameStore } from '@/stores/useGameStore';
-import api from '@/lib/api';
+import { jsonResponse } from '@/__tests__/helpers/fetch';
 
 describe('usePlayStateStore (Gameplay State)', () => {
   beforeEach(() => {
@@ -55,6 +16,7 @@ describe('usePlayStateStore (Gameplay State)', () => {
       useGameStore.getState().resetCreation();
     });
     jest.clearAllMocks();
+    global.fetch = jest.fn();
   });
 
   // ==================== Story Text Tests ====================
@@ -239,12 +201,12 @@ describe('usePlayStateStore (Gameplay State)', () => {
         useGameStore.getState().setGameSession(42, 'session-42');
       });
 
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: {},
         progress: { week: 10, current_round: 5 },
         round_info: { current_round: 5 },
         current_event: null,
-      });
+      }));
 
       await act(async () => {
         await useGameStore.getState().syncState();
@@ -259,24 +221,24 @@ describe('usePlayStateStore (Gameplay State)', () => {
       });
 
       // Week 1
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: {},
         progress: { week: 1 },
         round_info: {},
         current_event: null,
-      });
+      }));
       await act(async () => {
         await useGameStore.getState().syncState();
       });
       expect(useGameStore.getState().progress?.week).toBe(1);
 
       // Week 2
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: {},
         progress: { week: 2 },
         round_info: {},
         current_event: null,
-      });
+      }));
       await act(async () => {
         await useGameStore.getState().syncState();
       });
@@ -291,12 +253,12 @@ describe('usePlayStateStore (Gameplay State)', () => {
         useGameStore.getState().setGameSession(42, 'session-42');
       });
 
-      (api.gameplay.getState as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         player_state: {},
         progress: {},
         round_info: { current_round: 7, week: 3 },
         current_event: null,
-      });
+      }));
 
       await act(async () => {
         await useGameStore.getState().syncState();
@@ -325,24 +287,24 @@ describe('usePlayStateStore (Gameplay State)', () => {
         useGameStore.getState().setGameSession(42, 'session-42');
       });
 
-      (api.gameplay.generateSummary as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         summary_text: 'Generated summary',
         start_week: 1,
         end_week: 10,
-      });
+      }));
 
       await act(async () => {
         await useGameStore.getState().generateSummary(10);
       });
 
-      expect(api.gameplay.generateSummary).toHaveBeenCalledWith(42, { weeks: 10 });
+      expect(global.fetch).toHaveBeenCalledWith('/api/games/42/summary', expect.objectContaining({ method: 'POST' }));
     });
 
     it('should not generate summary without gameId', async () => {
       await act(async () => {
         await useGameStore.getState().generateSummary();
       });
-      expect(api.gameplay.generateSummary).not.toHaveBeenCalled();
+      expect(global.fetch).not.toHaveBeenCalled();
     });
   });
 

@@ -7,15 +7,6 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SettingFeedbackCard } from "@/components/create/SettingFeedbackCard";
 
-// Mock SettingDisplay child component
-jest.mock("@/components/game/SettingDisplay", () => ({
-  SettingDisplay: ({ stepKey, data }: { stepKey: string; data: Record<string, unknown> }) => (
-    <div data-testid="setting-display" data-step-key={stepKey}>
-      {JSON.stringify(data)}
-    </div>
-  ),
-}));
-
 describe("SettingFeedbackCard", () => {
   const baseProps = {
     stepKey: "background",
@@ -41,14 +32,15 @@ describe("SettingFeedbackCard", () => {
 
     it("renders the SettingDisplay content", () => {
       render(<SettingFeedbackCard {...baseProps} />);
-      expect(screen.getByTestId("setting-display")).toBeInTheDocument();
       expect(screen.getByTestId("background-content")).toBeInTheDocument();
+      // Real SettingDisplay renders JSON for unknown stepKey
+      expect(screen.getByText(/"family"/)).toBeInTheDocument();
     });
 
     it("passes data to SettingDisplay", () => {
       render(<SettingFeedbackCard {...baseProps} />);
-      const display = screen.getByTestId("setting-display");
-      expect(display.textContent).toContain("商人世家");
+      // Real SettingDisplay renders JSON for "background" stepKey (fallback case)
+      expect(screen.getByText(/"hometown"/)).toBeInTheDocument();
     });
   });
 

@@ -4,25 +4,12 @@
 import { render, screen } from "@testing-library/react";
 import { StreamingText } from "@/components/game/StreamingText";
 
-// Mock react-markdown
-jest.mock("react-markdown", () => {
-  return jest.fn(({ children }) => (
-    <div data-testid="react-markdown">{children}</div>
-  ));
-});
-
-jest.mock("remark-gfm", () => "remark-gfm");
-
-// JSDOM does not support scrollTo
-Object.defineProperty(Element.prototype, "scrollTo", {
-  writable: true,
-  value: jest.fn(),
-});
+// react-markdown and remark-gfm are globally mocked in jest.setup.js
 
 describe("StreamingText markdown rendering", () => {
   it("uses ReactMarkdown for narrative text", () => {
     render(<StreamingText text="**Bold text**" isStreaming={false} narrative />);
-    expect(screen.getByTestId("react-markdown")).toBeInTheDocument();
+    expect(document.querySelector(".markdown-mock")).toBeInTheDocument();
   });
 
   it("preserves streaming cursor while using ReactMarkdown", () => {
@@ -34,7 +21,7 @@ describe("StreamingText markdown rendering", () => {
 
   it("does not use ReactMarkdown when narrative is false", () => {
     render(<StreamingText text="Plain text" isStreaming={false} narrative={false} />);
-    expect(screen.queryByTestId("react-markdown")).not.toBeInTheDocument();
+    expect(document.querySelector(".markdown-mock")).not.toBeInTheDocument();
     expect(screen.getByText("Plain text")).toBeInTheDocument();
   });
 });

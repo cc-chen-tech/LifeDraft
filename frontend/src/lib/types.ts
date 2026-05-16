@@ -29,8 +29,10 @@ export interface FriendRequestInfo {
  */
 export interface EraSetting {
   era: string;
+  year?: number;
   era_name?: string;
   era_description?: string;
+  world_context?: string;
 }
 
 /**
@@ -237,6 +239,8 @@ export interface GameStateResponse {
   round_info: RoundInfo;
   current_event: CurrentEventData | null;
   constraint_level: "fast" | "expert" | "master";
+  narrative_style_id?: string | null;
+  narrative_style_name?: string | null;
 }
 
 // ==================== Test Utility Types ====================

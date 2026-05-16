@@ -7,6 +7,8 @@
 import React from 'react';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import type { GameListItem } from '@/lib/types';
+import { useGameStore } from '@/stores/useGameStore';
+import { useUserStore } from '@/stores/useUserStore';
 
 // Mock next/navigation
 const mockPush = jest.fn();
@@ -23,54 +25,58 @@ jest.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-// Create mutable mock state that can be updated
-const mockGameStoreState = {
-  savedGames: [] as GameListItem[],
-  fetchSavedGames: jest.fn(),
-  deleteGame: jest.fn(),
-  loadGameState: jest.fn(),
-  setGameSession: jest.fn(),
-  resetCreation: jest.fn(),
-};
-
-const mockUserStoreState = {
-  isAuthenticated: true,
-};
-
-// Mock stores with mutable state
-jest.mock('@/stores/useGameStore', () => ({
-  useGameStore: (selector?: (state: unknown) => unknown) => {
-    const state = mockGameStoreState;
-    return selector ? selector(state) : state;
-  },
-}));
-
-jest.mock('@/stores/useUserStore', () => ({
-  useUserStore: (selector?: (state: unknown) => unknown) => {
-    const state = mockUserStoreState;
-    return selector ? selector(state) : state;
-  },
-}));
-
 // Import component after mocks
 import SavesPage from '@/app/saves/page';
+
+function setupStore(overrides: { savedGames?: GameListItem[]; isAuthenticated?: boolean } = {}) {
+  useGameStore.setState({
+    savedGames: overrides.savedGames ?? [],
+  });
+  useUserStore.setState({
+    isAuthenticated: overrides.isAuthenticated ?? true,
+  });
+}
+
+// Spies at module level for all describe blocks to share
+let fetchSavedGamesSpy: jest.SpyInstance;
+let deleteGameSpy: jest.SpyInstance;
+let loadGameStateSpy: jest.SpyInstance;
+let resetCreationSpy: jest.SpyInstance;
+let setGameSessionSpy: jest.SpyInstance;
+
+function setupSpies() {
+  const store = useGameStore.getState();
+  fetchSavedGamesSpy = jest.spyOn(store, 'fetchSavedGames').mockResolvedValue(undefined);
+  deleteGameSpy = jest.spyOn(store, 'deleteGame').mockResolvedValue(undefined);
+  loadGameStateSpy = jest.spyOn(store, 'loadGameState').mockResolvedValue(undefined);
+  resetCreationSpy = jest.spyOn(store, 'resetCreation').mockReturnValue(undefined);
+  setGameSessionSpy = jest.spyOn(store, 'setGameSession').mockReturnValue(undefined);
+}
+
+function restoreSpies() {
+  fetchSavedGamesSpy?.mockRestore();
+  deleteGameSpy?.mockRestore();
+  loadGameStateSpy?.mockRestore();
+  resetCreationSpy?.mockRestore();
+  setGameSessionSpy?.mockRestore();
+}
 
 describe('SavesPage - 4 State Rendering', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockPush.mockClear();
-    // Reset store state
-    mockGameStoreState.savedGames = [];
-    mockUserStoreState.isAuthenticated = true;
-    // Reset mock implementations - clear any mockImplementationOnce chains
-    mockGameStoreState.fetchSavedGames.mockReset();
-    mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
+    setupStore();
+    setupSpies();
+  });
+
+  afterEach(() => {
+    restoreSpies();
   });
 
   describe('Loading State', () => {
     it('shows spinner when loading', () => {
       // Simulate loading by never resolving fetch
-      mockGameStoreState.fetchSavedGames.mockImplementation(() => new Promise(() => {}));
+      fetchSavedGamesSpy.mockImplementation(() => new Promise(() => {}));
 
       render(<SavesPage />);
 
@@ -81,7 +87,7 @@ describe('SavesPage - 4 State Rendering', () => {
 
   describe('Error State', () => {
     it('shows error message when fetch fails', async () => {
-      mockGameStoreState.fetchSavedGames.mockRejectedValue(new Error('Network error'));
+      fetchSavedGamesSpy.mockRejectedValue(new Error('Network error'));
 
       render(<SavesPage />);
 
@@ -91,8 +97,8 @@ describe('SavesPage - 4 State Rendering', () => {
     });
 
     it('shows retry button when error occurs', async () => {
-      mockGameStoreState.fetchSavedGames.mockRejectedValueOnce(new Error('Network error'));
-      mockGameStoreState.fetchSavedGames.mockResolvedValueOnce(undefined);
+      fetchSavedGamesSpy.mockRejectedValueOnce(new Error('Network error'));
+      fetchSavedGamesSpy.mockResolvedValueOnce(undefined);
 
       render(<SavesPage />);
 
@@ -103,7 +109,7 @@ describe('SavesPage - 4 State Rendering', () => {
 
     it('calls fetchSavedGames when clicking retry button', async () => {
       // First fetch fails, subsequent calls hang (to stay in loading state)
-      mockGameStoreState.fetchSavedGames
+      fetchSavedGamesSpy
         .mockRejectedValueOnce(new Error('Network error'))
         .mockImplementationOnce(() => new Promise(() => {}));
 
@@ -118,7 +124,7 @@ describe('SavesPage - 4 State Rendering', () => {
       fireEvent.click(retryButton);
 
       // Verify that fetchSavedGames was called again (retry)
-      expect(mockGameStoreState.fetchSavedGames).toHaveBeenCalledTimes(2);
+      expect(fetchSavedGamesSpy).toHaveBeenCalledTimes(2);
 
       // After clicking retry, should show loading state again
       expect(screen.getByText('加载中...')).toBeInTheDocument();
@@ -128,8 +134,8 @@ describe('SavesPage - 4 State Rendering', () => {
   describe('Empty State', () => {
     it('renders empty state when savedGames is empty', async () => {
       // Mock fetch to resolve immediately
-      mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
-      mockGameStoreState.savedGames = [];
+      fetchSavedGamesSpy.mockResolvedValue(undefined);
+      useGameStore.setState({ savedGames: [] });
 
       render(<SavesPage />);
 
@@ -140,8 +146,8 @@ describe('SavesPage - 4 State Rendering', () => {
     });
 
     it('shows create new game button when empty', async () => {
-      mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
-      mockGameStoreState.savedGames = [];
+      fetchSavedGamesSpy.mockResolvedValue(undefined);
+      useGameStore.setState({ savedGames: [] });
 
       render(<SavesPage />);
 
@@ -150,8 +156,8 @@ describe('SavesPage - 4 State Rendering', () => {
     });
 
     it('navigates to create page when clicking new game button', async () => {
-      mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
-      mockGameStoreState.savedGames = [];
+      fetchSavedGamesSpy.mockResolvedValue(undefined);
+      useGameStore.setState({ savedGames: [] });
 
       render(<SavesPage />);
 
@@ -162,17 +168,17 @@ describe('SavesPage - 4 State Rendering', () => {
       const newGameButton = screen.getByRole('button', { name: '开始新游戏' });
       fireEvent.click(newGameButton);
 
-      expect(mockGameStoreState.resetCreation).toHaveBeenCalled();
+      expect(resetCreationSpy).toHaveBeenCalled();
       expect(mockPush).toHaveBeenCalledWith('/create');
     });
   });
 
   describe('Data State', () => {
     it('shows save list when games exist', async () => {
-      mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
-      mockGameStoreState.savedGames = [
+      fetchSavedGamesSpy.mockResolvedValue(undefined);
+      useGameStore.setState({ savedGames: [
         { game_id: 1, player_name: 'TestPlayer', age: 20, week: 5, updated_at: '2024-01-15T10:30:00Z' },
-      ];
+      ] });
 
       render(<SavesPage />);
 
@@ -182,10 +188,10 @@ describe('SavesPage - 4 State Rendering', () => {
     });
 
     it('displays player age and week info', async () => {
-      mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
-      mockGameStoreState.savedGames = [
+      fetchSavedGamesSpy.mockResolvedValue(undefined);
+      useGameStore.setState({ savedGames: [
         { game_id: 1, player_name: 'TestPlayer', age: 25, week: 10, updated_at: '2024-01-15T10:30:00Z' },
-      ];
+      ] });
 
       render(<SavesPage />);
 
@@ -196,10 +202,10 @@ describe('SavesPage - 4 State Rendering', () => {
     });
 
     it('shows new character badge for week 0 saves', async () => {
-      mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
-      mockGameStoreState.savedGames = [
+      fetchSavedGamesSpy.mockResolvedValue(undefined);
+      useGameStore.setState({ savedGames: [
         { game_id: 1, player_name: 'NewPlayer', age: 18, week: 0, updated_at: '2024-01-15T10:30:00Z' },
-      ];
+      ] });
 
       render(<SavesPage />);
 
@@ -213,19 +219,17 @@ describe('SavesPage - 4 State Rendering', () => {
 describe('SavesPage - Data Filtering and Sorting', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUserStoreState.isAuthenticated = true;
-    mockGameStoreState.savedGames = [];
-    mockGameStoreState.fetchSavedGames.mockReset();
-    mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
+    setupStore();
+    setupSpies();
   });
 
   it('shows all games including empty player_name as fallback', async () => {
-    mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
-    mockGameStoreState.savedGames = [
+    fetchSavedGamesSpy.mockResolvedValue(undefined);
+    useGameStore.setState({ savedGames: [
       { game_id: 1, player_name: 'ValidPlayer', age: 20, week: 1, updated_at: '2024-01-15T10:30:00Z' },
       { game_id: 2, player_name: '   ', age: 20, week: 1, updated_at: '2024-01-15T10:30:00Z' },
       { game_id: 3, player_name: '', age: 20, week: 1, updated_at: '2024-01-15T10:30:00Z' },
-    ];
+    ] });
 
     render(<SavesPage />);
 
@@ -240,12 +244,12 @@ describe('SavesPage - Data Filtering and Sorting', () => {
   });
 
   it('sorts games by updated_at descending (newest first)', async () => {
-    mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
-    mockGameStoreState.savedGames = [
+    fetchSavedGamesSpy.mockResolvedValue(undefined);
+    useGameStore.setState({ savedGames: [
       { game_id: 1, player_name: 'OldSave', age: 20, week: 1, updated_at: '2024-01-10T10:00:00Z' },
       { game_id: 2, player_name: 'NewSave', age: 21, week: 5, updated_at: '2024-01-15T14:30:00Z' },
       { game_id: 3, player_name: 'MiddleSave', age: 20, week: 3, updated_at: '2024-01-12T08:00:00Z' },
-    ];
+    ] });
 
     render(<SavesPage />);
 
@@ -261,11 +265,11 @@ describe('SavesPage - Data Filtering and Sorting', () => {
   });
 
   it('handles null updated_at gracefully', async () => {
-    mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
-    mockGameStoreState.savedGames = [
+    fetchSavedGamesSpy.mockResolvedValue(undefined);
+    useGameStore.setState({ savedGames: [
       { game_id: 1, player_name: 'NoDate', age: 20, week: 1 },
       { game_id: 2, player_name: 'WithDate', age: 21, week: 5, updated_at: '2024-01-15T14:30:00Z' },
-    ];
+    ] });
 
     render(<SavesPage />);
 
@@ -279,18 +283,16 @@ describe('SavesPage - Data Filtering and Sorting', () => {
 describe('SavesPage - Interaction Handling', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUserStoreState.isAuthenticated = true;
-    mockGameStoreState.savedGames = [];
-    mockGameStoreState.fetchSavedGames.mockReset();
-    mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
+    setupStore();
+    setupSpies();
   });
 
   it('loads game when clicking continue button', async () => {
-    mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
-    mockGameStoreState.loadGameState.mockResolvedValue(undefined);
-    mockGameStoreState.savedGames = [
+    fetchSavedGamesSpy.mockResolvedValue(undefined);
+    loadGameStateSpy.mockResolvedValue(undefined);
+    useGameStore.setState({ savedGames: [
       { game_id: 1, player_name: 'TestPlayer', age: 20, week: 5, updated_at: '2024-01-15T10:30:00Z' },
-    ];
+    ] });
 
     render(<SavesPage />);
 
@@ -304,8 +306,8 @@ describe('SavesPage - Interaction Handling', () => {
     }
 
     await waitFor(() => {
-      expect(mockGameStoreState.loadGameState).toHaveBeenCalledWith(1);
-      expect(mockGameStoreState.setGameSession).toHaveBeenCalledWith(1, 'session_1');
+      expect(loadGameStateSpy).toHaveBeenCalledWith(1);
+      expect(setGameSessionSpy).toHaveBeenCalledWith(1, 'session_1');
       expect(mockPush).toHaveBeenCalledWith('/play');
     });
   });
@@ -317,11 +319,11 @@ describe('SavesPage - Interaction Handling', () => {
       resolveLoad = resolve;
     });
 
-    mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
-    mockGameStoreState.loadGameState.mockReturnValue(loadPromise);
-    mockGameStoreState.savedGames = [
+    fetchSavedGamesSpy.mockResolvedValue(undefined);
+    loadGameStateSpy.mockReturnValue(loadPromise);
+    useGameStore.setState({ savedGames: [
       { game_id: 1, player_name: 'TestPlayer', age: 20, week: 5, updated_at: '2024-01-15T10:30:00Z' },
-    ];
+    ] });
 
     render(<SavesPage />);
 
@@ -351,10 +353,10 @@ describe('SavesPage - Interaction Handling', () => {
   });
 
   it('opens delete confirmation dialog when clicking delete button', async () => {
-    mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
-    mockGameStoreState.savedGames = [
+    fetchSavedGamesSpy.mockResolvedValue(undefined);
+    useGameStore.setState({ savedGames: [
       { game_id: 1, player_name: 'TestPlayer', age: 20, week: 5, updated_at: '2024-01-15T10:30:00Z' },
-    ];
+    ] });
 
     render(<SavesPage />);
 
@@ -388,10 +390,10 @@ describe('SavesPage - Interaction Handling', () => {
   });
 
   it('closes delete dialog when clicking cancel', async () => {
-    mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
-    mockGameStoreState.savedGames = [
+    fetchSavedGamesSpy.mockResolvedValue(undefined);
+    useGameStore.setState({ savedGames: [
       { game_id: 1, player_name: 'TestPlayer', age: 20, week: 5, updated_at: '2024-01-15T10:30:00Z' },
-    ];
+    ] });
 
     render(<SavesPage />);
 
@@ -423,15 +425,15 @@ describe('SavesPage - Interaction Handling', () => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     });
 
-    expect(mockGameStoreState.deleteGame).not.toHaveBeenCalled();
+    expect(deleteGameSpy).not.toHaveBeenCalled();
   });
 
   it('deletes game when confirming delete', async () => {
-    mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
-    mockGameStoreState.deleteGame.mockResolvedValue(undefined);
-    mockGameStoreState.savedGames = [
+    fetchSavedGamesSpy.mockResolvedValue(undefined);
+    deleteGameSpy.mockResolvedValue(undefined);
+    useGameStore.setState({ savedGames: [
       { game_id: 1, player_name: 'TestPlayer', age: 20, week: 5, updated_at: '2024-01-15T10:30:00Z' },
-    ];
+    ] });
 
     render(<SavesPage />);
 
@@ -460,7 +462,7 @@ describe('SavesPage - Interaction Handling', () => {
     fireEvent.click(confirmDeleteButton);
 
     await waitFor(() => {
-      expect(mockGameStoreState.deleteGame).toHaveBeenCalledWith(1);
+      expect(deleteGameSpy).toHaveBeenCalledWith(1);
     });
   });
 
@@ -470,11 +472,11 @@ describe('SavesPage - Interaction Handling', () => {
       resolveDelete = resolve;
     });
 
-    mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
-    mockGameStoreState.deleteGame.mockReturnValue(deletePromise);
-    mockGameStoreState.savedGames = [
+    fetchSavedGamesSpy.mockResolvedValue(undefined);
+    deleteGameSpy.mockReturnValue(deletePromise);
+    useGameStore.setState({ savedGames: [
       { game_id: 1, player_name: 'TestPlayer', age: 20, week: 5, updated_at: '2024-01-15T10:30:00Z' },
-    ];
+    ] });
 
     render(<SavesPage />);
 
@@ -515,14 +517,12 @@ describe('SavesPage - Interaction Handling', () => {
 describe('SavesPage - Unauthenticated State', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUserStoreState.isAuthenticated = false;
-    mockGameStoreState.savedGames = [];
-    mockGameStoreState.fetchSavedGames.mockReset();
-    mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
+    setupStore({ isAuthenticated: false });
+    setupSpies();
   });
 
   it('shows empty state when not authenticated', async () => {
-    mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
+    fetchSavedGamesSpy.mockResolvedValue(undefined);
 
     render(<SavesPage />);
 
@@ -531,21 +531,19 @@ describe('SavesPage - Unauthenticated State', () => {
     });
 
     // Should not call fetchSavedGames when not authenticated
-    expect(mockGameStoreState.fetchSavedGames).not.toHaveBeenCalled();
+    expect(fetchSavedGamesSpy).not.toHaveBeenCalled();
   });
 });
 
 describe('SavesPage - Navigation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUserStoreState.isAuthenticated = true;
-    mockGameStoreState.savedGames = [];
-    mockGameStoreState.fetchSavedGames.mockReset();
-    mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
+    setupStore();
+    setupSpies();
   });
 
   it('navigates to home when clicking return button', async () => {
-    mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
+    fetchSavedGamesSpy.mockResolvedValue(undefined);
 
     render(<SavesPage />);
 
@@ -565,18 +563,16 @@ describe('SavesPage - Navigation', () => {
 describe('SavesPage - Error Handling', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUserStoreState.isAuthenticated = true;
-    mockGameStoreState.savedGames = [];
-    mockGameStoreState.fetchSavedGames.mockReset();
-    mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
+    setupStore();
+    setupSpies();
   });
 
   it('shows error toast when load game fails', async () => {
-    mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
-    mockGameStoreState.loadGameState.mockRejectedValue(new Error('Load failed'));
-    mockGameStoreState.savedGames = [
+    fetchSavedGamesSpy.mockResolvedValue(undefined);
+    loadGameStateSpy.mockRejectedValue(new Error('Load failed'));
+    useGameStore.setState({ savedGames: [
       { game_id: 1, player_name: 'TestPlayer', age: 20, week: 5, updated_at: '2024-01-15T10:30:00Z' },
-    ];
+    ] });
 
     render(<SavesPage />);
 
@@ -595,11 +591,11 @@ describe('SavesPage - Error Handling', () => {
   });
 
   it('shows error toast when delete game fails', async () => {
-    mockGameStoreState.fetchSavedGames.mockResolvedValue(undefined);
-    mockGameStoreState.deleteGame.mockRejectedValue(new Error('Delete failed'));
-    mockGameStoreState.savedGames = [
+    fetchSavedGamesSpy.mockResolvedValue(undefined);
+    deleteGameSpy.mockRejectedValue(new Error('Delete failed'));
+    useGameStore.setState({ savedGames: [
       { game_id: 1, player_name: 'TestPlayer', age: 20, week: 5, updated_at: '2024-01-15T10:30:00Z' },
-    ];
+    ] });
 
     render(<SavesPage />);
 

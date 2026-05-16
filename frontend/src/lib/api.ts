@@ -248,12 +248,14 @@ export const api = {
         round_info: RoundInfo;
         current_event: CurrentEventData | null;
         constraint_level: "fast" | "expert" | "master";
+        narrative_style_id?: string | null;
+        narrative_style_name?: string | null;
       }>(`/games/${gameId}`),
     generateEvent: (gameId: number, data?: { custom_choices?: string[] }) =>
       fetchJson<{
         story: string;
         options: Array<{ text: string; effects?: EffectValues }>;
-      }>(`/games/${gameId}/events`, {
+      }>(`/games/${gameId}/event-sync`, {
         method: 'POST',
         body: JSON.stringify(data || {}),
       }),
@@ -284,13 +286,10 @@ export const api = {
     // Synchronous choice methods (non-streaming)
     makeChoiceSync: (gameId: number, data: { option_index: number }) =>
       fetchJson<{
-        result: string;
-        story: string;
-        current_round: number;
-        current_week: number;
-        player_state: PlayerState;
-        summary?: string;
-        need_weekly_summary?: boolean;
+        story_continuation: string;
+        summary: string;
+        effects_applied: Record<string, number>;
+        need_weekly_summary: boolean;
         weekly_summary?: string;
         game_over?: boolean;
       }>(`/games/${gameId}/choice-sync`, {
@@ -299,13 +298,10 @@ export const api = {
       }),
     makeCustomChoiceSync: (gameId: number, data: { custom_text: string }) =>
       fetchJson<{
-        result: string;
-        story: string;
-        current_round: number;
-        current_week: number;
-        player_state: PlayerState;
-        summary?: string;
-        need_weekly_summary?: boolean;
+        story_continuation: string;
+        summary: string;
+        effects_applied: Record<string, number>;
+        need_weekly_summary: boolean;
         weekly_summary?: string;
         game_over?: boolean;
       }>(`/games/${gameId}/custom-choice-sync`, {
@@ -325,7 +321,7 @@ export const api = {
       language?: string;
       character_settings?: CharacterSettings
     }) =>
-      fetchJson<{ era: string; era_description: string }>('/character/setting', {
+      fetchJson<Record<string, unknown>>('/character/setting', {
         method: 'POST',
         body: JSON.stringify(data),
       }),

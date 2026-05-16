@@ -6,13 +6,9 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import WelcomePage from '@/app/page';
-import {
-  mockUserStoreState,
-  mockGameStoreState,
-  createAuthenticatedUserState,
-  createGameInProgressState,
-  resetStoreMocks,
-} from '../mocks/stores';
+import { useUserStore } from '@/stores/useUserStore';
+import { useGameStore } from '@/stores/useGameStore';
+import { spyOnStoreMethods } from '@/__tests__/helpers/store-spy';
 
 // Mock useRouter
 const mockPush = jest.fn();
@@ -24,32 +20,56 @@ jest.mock('next/navigation', () => ({
   }),
 }));
 
-// Mock hydration hook
-jest.mock('@/hooks/useHydration', () => ({
-  useHydration: () => true,
-}));
+const USER_METHODS = ['register', 'login', 'logout', 'fetchMe', 'fetchFriends', 'fetchPendingRequests', 'sendFriendRequest', 'respondToRequest', 'removeFriend'] as const;
+const GAME_METHODS = ['resetCreation', 'fetchSavedGames', 'fetchPresets', 'setGameSession', 'setCreationStep', 'nextCreationStep', 'prevCreationStep', 'updateCharacterSetting', 'setPlayerName', 'setLifeVision', 'loadGameState', 'setOpeningStory'] as const;
 
-// Mock stores
-let mockUserState = { ...mockUserStoreState };
-let mockGameState = { ...mockGameStoreState };
+type UserStoreSpy = ReturnType<typeof spyOnStoreMethods<typeof useUserStore, (typeof USER_METHODS)[number]>>;
+type GameStoreSpy = ReturnType<typeof spyOnStoreMethods<typeof useGameStore, (typeof GAME_METHODS)[number]>>;
 
-jest.mock('@/stores/useUserStore', () => ({
-  useUserStore: (selector?: (state: typeof mockUserState) => unknown) =>
-    selector ? selector(mockUserState) : mockUserState,
-}));
-
-jest.mock('@/stores/useGameStore', () => ({
-  useGameStore: (selector?: (state: typeof mockGameState) => unknown) =>
-    selector ? selector(mockGameState) : mockGameState,
-}));
+function setupDefaultState() {
+  useUserStore.setState({
+    user: null,
+    token: null,
+    isAuthenticated: false,
+    friends: [],
+    pendingRequests: [],
+  });
+  useGameStore.setState({
+    gameId: null,
+    sessionId: null,
+    playerState: null,
+    progress: null,
+    roundInfo: null,
+    currentEvent: null,
+    storyText: '',
+    isGameOver: false,
+    savedGames: [],
+    presets: [],
+    creationStep: 0,
+    characterSettings: {},
+    playerName: '',
+    lifeVision: '',
+    openingStory: '',
+    isPresetLoaded: false,
+    lastSummary: null,
+  });
+}
 
 describe('WelcomePage', () => {
+  let userSpy: UserStoreSpy;
+  let gameSpy: GameStoreSpy;
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockPush.mockClear();
-    resetStoreMocks();
-    mockUserState = { ...mockUserStoreState };
-    mockGameState = { ...mockGameStoreState };
+    setupDefaultState();
+    userSpy = spyOnStoreMethods(useUserStore, USER_METHODS);
+    gameSpy = spyOnStoreMethods(useGameStore, GAME_METHODS);
+  });
+
+  afterEach(() => {
+    userSpy.restore();
+    gameSpy.restore();
   });
 
   describe('Page rendering', () => {
@@ -77,24 +97,20 @@ describe('WelcomePage', () => {
     it('opens register sheet when clicking "新游戏" while not authenticated', async () => {
       const user = userEvent.setup();
       render(<WelcomePage />);
-      
+
       const newGameButton = screen.getByRole('button', { name: /新游戏/i });
       expect(newGameButton).toBeInTheDocument();
-      
-      // Click should not navigate (user not authenticated)
+
       await user.click(newGameButton);
-      
-      // After clicking, the page should still be the welcome page
-      // (either showing sheet or same buttons)
       expect(screen.getByText('Story Life')).toBeInTheDocument();
     });
 
     it('opens login sheet when clicking "加载存档" while not authenticated', async () => {
       const user = userEvent.setup();
       render(<WelcomePage />);
-      
+
       await user.click(screen.getByRole('button', { name: /加载存档/i }));
-      
+
       await waitFor(() => {
         expect(screen.getByText('使用你的私有密钥登录')).toBeInTheDocument();
       });
@@ -103,9 +119,9 @@ describe('WelcomePage', () => {
     it('opens login sheet when clicking "角色预设" while not authenticated', async () => {
       const user = userEvent.setup();
       render(<WelcomePage />);
-      
+
       await user.click(screen.getByRole('button', { name: /角色预设/i }));
-      
+
       await waitFor(() => {
         expect(screen.getByText('使用你的私有密钥登录')).toBeInTheDocument();
       });
@@ -114,9 +130,9 @@ describe('WelcomePage', () => {
     it('opens login sheet when clicking "登录" link', async () => {
       const user = userEvent.setup();
       render(<WelcomePage />);
-      
+
       await user.click(screen.getByText('登录'));
-      
+
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/私有密钥/i)).toBeInTheDocument();
       });
@@ -125,9 +141,9 @@ describe('WelcomePage', () => {
     it('opens register sheet when clicking "注册" link', async () => {
       const user = userEvent.setup();
       render(<WelcomePage />);
-      
+
       await user.click(screen.getByText('注册'));
-      
+
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/你的名字/i)).toBeInTheDocument();
       });
@@ -138,59 +154,57 @@ describe('WelcomePage', () => {
     it('allows user to input display name', async () => {
       const user = userEvent.setup();
       render(<WelcomePage />);
-      
+
       await user.click(screen.getByText('注册'));
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/你的名字/i)).toBeInTheDocument();
       });
-      
+
       const input = screen.getByPlaceholderText(/你的名字/i);
       await user.type(input, 'TestUser');
-      
+
       expect(input).toHaveValue('TestUser');
     });
 
     it('calls register when clicking register button', async () => {
-      const registerMock = jest.fn().mockResolvedValue({
+      userSpy.spies.register.mockResolvedValue({
         user_id: 1,
         display_name: 'TestUser',
         public_id: 'pub-123',
         private_id: 'priv-456',
       });
-      mockUserState = { ...mockUserStoreState, register: registerMock };
-      
+
       const user = userEvent.setup();
       render(<WelcomePage />);
-      
+
       await user.click(screen.getByText('注册'));
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/你的名字/i)).toBeInTheDocument();
       });
-      
+
       await user.type(screen.getByPlaceholderText(/你的名字/i), 'TestUser');
       await user.click(screen.getByRole('button', { name: '创建账户' }));
-      
+
       await waitFor(() => {
-        expect(registerMock).toHaveBeenCalledWith('TestUser');
+        expect(userSpy.spies.register).toHaveBeenCalledWith('TestUser');
       });
     });
 
     it('shows private ID after successful registration', async () => {
-      const registerMock = jest.fn().mockResolvedValue({
+      userSpy.spies.register.mockResolvedValue({
         user_id: 1,
         display_name: 'TestUser',
         public_id: 'pub-123',
         private_id: 'priv-456-789',
       });
-      mockUserState = { ...mockUserStoreState, register: registerMock };
-      
+
       const user = userEvent.setup();
       render(<WelcomePage />);
-      
+
       await user.click(screen.getByText('注册'));
       await user.type(screen.getByPlaceholderText(/你的名字/i), 'TestUser');
       await user.click(screen.getByRole('button', { name: '创建账户' }));
-      
+
       await waitFor(() => {
         expect(screen.getByText('账户创建成功！')).toBeInTheDocument();
         expect(screen.getByText('priv-456-789')).toBeInTheDocument();
@@ -198,22 +212,21 @@ describe('WelcomePage', () => {
     });
 
     it('handles Enter key in register input', async () => {
-      const registerMock = jest.fn().mockResolvedValue({
+      userSpy.spies.register.mockResolvedValue({
         user_id: 1,
         display_name: 'TestUser',
         private_id: 'priv-123',
       });
-      mockUserState = { ...mockUserStoreState, register: registerMock };
-      
+
       const user = userEvent.setup();
       render(<WelcomePage />);
-      
+
       await user.click(screen.getByText('注册'));
       const input = screen.getByPlaceholderText(/你的名字/i);
       await user.type(input, 'TestUser{Enter}');
-      
+
       await waitFor(() => {
-        expect(registerMock).toHaveBeenCalled();
+        expect(userSpy.spies.register).toHaveBeenCalled();
       });
     });
   });
@@ -222,60 +235,57 @@ describe('WelcomePage', () => {
     it('allows user to input private ID', async () => {
       const user = userEvent.setup();
       render(<WelcomePage />);
-      
+
       await user.click(screen.getByText('登录'));
       const input = screen.getByPlaceholderText(/私有密钥/i);
       await user.type(input, 'test-private-id');
-      
+
       expect(input).toHaveValue('test-private-id');
     });
 
     it('calls login when clicking login button', async () => {
-      const loginMock = jest.fn().mockResolvedValue({
+      userSpy.spies.login.mockResolvedValue({
         user_id: 1,
         display_name: 'TestUser',
       });
-      mockUserState = { ...mockUserStoreState, login: loginMock };
-      
+
       const user = userEvent.setup();
       render(<WelcomePage />);
-      
+
       await user.click(screen.getByText('登录'));
       await user.type(screen.getByPlaceholderText(/私有密钥/i), 'test-key');
       await user.click(screen.getByRole('button', { name: '登录' }));
-      
+
       await waitFor(() => {
-        expect(loginMock).toHaveBeenCalledWith('test-key');
+        expect(userSpy.spies.login).toHaveBeenCalledWith('test-key');
       });
     });
 
     it('handles Enter key in login input', async () => {
-      const loginMock = jest.fn().mockResolvedValue({});
-      mockUserState = { ...mockUserStoreState, login: loginMock };
-      
+      userSpy.spies.login.mockResolvedValue({});
+
       const user = userEvent.setup();
       render(<WelcomePage />);
-      
+
       await user.click(screen.getByText('登录'));
       const input = screen.getByPlaceholderText(/私有密钥/i);
       await user.type(input, 'test-key{Enter}');
-      
+
       await waitFor(() => {
-        expect(loginMock).toHaveBeenCalled();
+        expect(userSpy.spies.login).toHaveBeenCalled();
       });
     });
 
     it('shows error message on login failure', async () => {
-      const loginMock = jest.fn().mockRejectedValue(new Error('Invalid key'));
-      mockUserState = { ...mockUserStoreState, login: loginMock };
-      
+      userSpy.spies.login.mockRejectedValue(new Error('Invalid key'));
+
       const user = userEvent.setup();
       render(<WelcomePage />);
-      
+
       await user.click(screen.getByText('登录'));
       await user.type(screen.getByPlaceholderText(/私有密钥/i), 'bad-key');
       await user.click(screen.getByRole('button', { name: '登录' }));
-      
+
       await waitFor(() => {
         expect(screen.getByText('Invalid key')).toBeInTheDocument();
       });
@@ -284,7 +294,15 @@ describe('WelcomePage', () => {
 
   describe('Authenticated user interactions', () => {
     beforeEach(() => {
-      mockUserState = createAuthenticatedUserState();
+      useUserStore.setState({
+        isAuthenticated: true,
+        user: {
+          user_id: 1,
+          display_name: 'Test User',
+          public_id: 'pub-123',
+        },
+        token: 'test-token',
+      });
     });
 
     it('shows user greeting when authenticated', () => {
@@ -298,74 +316,94 @@ describe('WelcomePage', () => {
     });
 
     it('calls logout when clicking logout button', async () => {
-      const logoutMock = jest.fn();
-      mockUserState = createAuthenticatedUserState({ logout: logoutMock });
-      
       const user = userEvent.setup();
       render(<WelcomePage />);
-      
+
       await user.click(screen.getByText('登出'));
-      expect(logoutMock).toHaveBeenCalled();
+      expect(userSpy.spies.logout).toHaveBeenCalled();
     });
 
     it('navigates to /create when clicking "新游戏"', async () => {
-      const resetCreationMock = jest.fn();
-      mockGameState = { ...mockGameStoreState, resetCreation: resetCreationMock };
-      
       const user = userEvent.setup();
       render(<WelcomePage />);
-      
+
       await user.click(screen.getByRole('button', { name: /新游戏/i }));
-      
-      expect(resetCreationMock).toHaveBeenCalled();
+
+      expect(gameSpy.spies.resetCreation).toHaveBeenCalled();
       expect(mockPush).toHaveBeenCalledWith('/create');
     });
 
     it('navigates to /saves when clicking "加载存档"', async () => {
       const user = userEvent.setup();
       render(<WelcomePage />);
-      
+
       await user.click(screen.getByRole('button', { name: /加载存档/i }));
-      
+
       expect(mockPush).toHaveBeenCalledWith('/saves');
     });
 
     it('navigates to /presets when clicking "角色预设"', async () => {
       const user = userEvent.setup();
       render(<WelcomePage />);
-      
+
       await user.click(screen.getByRole('button', { name: /角色预设/i }));
-      
+
       expect(mockPush).toHaveBeenCalledWith('/presets');
     });
   });
 
   describe('Continue game feature', () => {
+    beforeEach(() => {
+      useUserStore.setState({
+        isAuthenticated: true,
+        user: {
+          user_id: 1,
+          display_name: 'Test User',
+          public_id: 'pub-123',
+        },
+        token: 'test-token',
+      });
+    });
+
     it('shows continue button when there is an active game', () => {
-      mockUserState = createAuthenticatedUserState();
-      mockGameState = createGameInProgressState();
-      
+      useGameStore.setState({
+        gameId: 1,
+        sessionId: 'session-1',
+        playerState: {
+          player_name: 'Test Player',
+          energy: 100,
+          mood: 80,
+        },
+        progress: { week: 5 },
+        roundInfo: { current_round: 1, rounds_per_week: 3 },
+      });
+
       render(<WelcomePage />);
       expect(screen.getByRole('button', { name: /继续游戏/i })).toBeInTheDocument();
     });
 
     it('does not show continue button when there is no active game', () => {
-      mockUserState = createAuthenticatedUserState();
-      mockGameState = { ...mockGameStoreState, gameId: null };
-      
       render(<WelcomePage />);
       expect(screen.queryByRole('button', { name: /继续游戏/i })).not.toBeInTheDocument();
     });
 
     it('navigates to /play when clicking continue game', async () => {
-      mockUserState = createAuthenticatedUserState();
-      mockGameState = createGameInProgressState();
-      
+      useGameStore.setState({
+        gameId: 1,
+        sessionId: 'session-1',
+        playerState: {
+          player_name: 'Test Player',
+          energy: 100,
+          mood: 80,
+        },
+        progress: { week: 5 },
+        roundInfo: { current_round: 1, rounds_per_week: 3 },
+      });
+
       const user = userEvent.setup();
       render(<WelcomePage />);
-      
+
       await user.click(screen.getByRole('button', { name: /继续游戏/i }));
-      
       expect(mockPush).toHaveBeenCalledWith('/play');
     });
   });
@@ -374,14 +412,14 @@ describe('WelcomePage', () => {
     it('switches from login to register mode', async () => {
       const user = userEvent.setup();
       render(<WelcomePage />);
-      
+
       await user.click(screen.getByText('登录'));
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/私有密钥/i)).toBeInTheDocument();
       });
-      
+
       await user.click(screen.getByText('没有账户？注册'));
-      
+
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/你的名字/i)).toBeInTheDocument();
       });
@@ -390,14 +428,14 @@ describe('WelcomePage', () => {
     it('switches from register to login mode', async () => {
       const user = userEvent.setup();
       render(<WelcomePage />);
-      
+
       await user.click(screen.getByText('注册'));
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/你的名字/i)).toBeInTheDocument();
       });
-      
+
       await user.click(screen.getByText('已有账户？登录'));
-      
+
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/私有密钥/i)).toBeInTheDocument();
       });
@@ -406,26 +444,23 @@ describe('WelcomePage', () => {
 
   describe('Copy private ID feature', () => {
     it('has copy button in private ID display', async () => {
-      const registerMock = jest.fn().mockResolvedValue({
+      userSpy.spies.register.mockResolvedValue({
         user_id: 1,
         display_name: 'TestUser',
         private_id: 'priv-copy-test-123',
       });
-      mockUserState = { ...mockUserStoreState, register: registerMock };
-      
+
       const user = userEvent.setup();
       render(<WelcomePage />);
-      
-      // Complete registration first
+
       await user.click(screen.getByText('注册'));
       await user.type(screen.getByPlaceholderText(/你的名字/i), 'TestUser');
       await user.click(screen.getByRole('button', { name: '创建账户' }));
-      
+
       await waitFor(() => {
         expect(screen.getByText('priv-copy-test-123')).toBeInTheDocument();
       });
-      
-      // Verify copy button exists
+
       const buttons = screen.getAllByRole('button');
       expect(buttons.length).toBeGreaterThan(0);
     });
@@ -433,26 +468,25 @@ describe('WelcomePage', () => {
 
   describe('Dismiss private ID sheet', () => {
     it('closes private ID sheet when clicking confirm button', async () => {
-      const registerMock = jest.fn().mockResolvedValue({
+      userSpy.spies.register.mockResolvedValue({
         user_id: 1,
         display_name: 'TestUser',
         private_id: 'priv-123',
       });
-      mockUserState = { ...mockUserStoreState, register: registerMock };
-      
+
       const user = userEvent.setup();
       render(<WelcomePage />);
-      
+
       await user.click(screen.getByText('注册'));
       await user.type(screen.getByPlaceholderText(/你的名字/i), 'TestUser');
       await user.click(screen.getByRole('button', { name: '创建账户' }));
-      
+
       await waitFor(() => {
         expect(screen.getByText('我已保存密钥，开始体验')).toBeInTheDocument();
       });
-      
+
       await user.click(screen.getByText('我已保存密钥，开始体验'));
-      
+
       await waitFor(() => {
         expect(screen.queryByText('priv-123')).not.toBeInTheDocument();
       });

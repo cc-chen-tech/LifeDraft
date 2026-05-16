@@ -4,26 +4,9 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import EndingPage from '@/app/ending/page';
-
-// Mock stores
-const mockGameStore = {
-  gameId: 123,
-  playerState: {
-    player_name: 'TestHero',
-  },
-  resetGame: jest.fn(),
-};
-
-jest.mock('@/stores/useGameStore', () => ({
-  useGameStore: (selector?: (state: typeof mockGameStore) => unknown) => {
-    if (selector) return selector(mockGameStore);
-    return mockGameStore;
-  },
-}));
-
-jest.mock('@/hooks/useHydration', () => ({
-  useHydration: () => true,
-}));
+import { useGameStore } from '@/stores/useGameStore';
+import { jsonResponse } from '@/__tests__/helpers/fetch';
+import { spyOnStoreMethods } from '@/__tests__/helpers/store-spy';
 
 const mockPush = jest.fn();
 jest.mock('next/navigation', () => ({
@@ -33,21 +16,25 @@ jest.mock('next/navigation', () => ({
   }),
 }));
 
-// Mock API
-const mockGetEnding = jest.fn();
-jest.mock('@/lib/api', () => ({
-  __esModule: true,
-  default: {
-    gameplay: {
-      getEnding: (...args: unknown[]) => mockGetEnding(...args),
-    },
-  },
-}));
+const STORE_METHODS = ['resetGame', 'loadGameState', 'fetchSavedGames'] as const;
+
+type StoreSpy = ReturnType<typeof spyOnStoreMethods<typeof useGameStore, (typeof STORE_METHODS)[number]>>;
+
+function setupDefaultState() {
+  useGameStore.setState({
+    gameId: 123,
+    playerState: { player_name: 'TestHero' },
+  });
+}
 
 describe('EndingPage', () => {
+  let storeSpy: StoreSpy;
+
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGetEnding.mockResolvedValue({
+    setupDefaultState();
+    storeSpy = spyOnStoreMethods(useGameStore, STORE_METHODS);
+    (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
       ending_name: '圆满人生',
       summary: 'You lived a great life.',
       ending_type: 'happy',
@@ -59,7 +46,11 @@ describe('EndingPage', () => {
         wealth: 100000,
         relationships: { '李明': 85, '王华': 70 },
       },
-    });
+    }));
+  });
+
+  afterEach(() => {
+    storeSpy.restore();
   });
 
   describe('Loading state', () => {
@@ -95,8 +86,8 @@ describe('EndingPage', () => {
       render(<EndingPage />);
       await waitFor(() => {
         expect(screen.getByText('最终状态')).toBeInTheDocument();
-        expect(screen.getByText('80')).toBeInTheDocument(); // energy
-        expect(screen.getByText('90')).toBeInTheDocument(); // mood
+        expect(screen.getByText('80')).toBeInTheDocument();
+        expect(screen.getByText('90')).toBeInTheDocument();
       });
     });
 
@@ -148,35 +139,24 @@ describe('EndingPage', () => {
       await waitFor(() => {
         const newGameButton = screen.getByText('开始新人生');
         fireEvent.click(newGameButton);
-        expect(mockGameStore.resetGame).toHaveBeenCalled();
+        expect(storeSpy.spies.resetGame).toHaveBeenCalled();
         expect(mockPush).toHaveBeenCalledWith('/create');
       });
     });
   });
 
   describe('No gameId', () => {
-    beforeEach(() => {
-      Object.assign(mockGameStore, { gameId: null });
-    });
-
-    afterEach(() => {
-      Object.assign(mockGameStore, { gameId: 123 });
-    });
-
     it('returns null when no gameId', () => {
+      useGameStore.setState({ gameId: null });
       const { container } = render(<EndingPage />);
       expect(container.firstChild).toBeNull();
     });
   });
 
   describe('API error', () => {
-    beforeEach(() => {
-      mockGetEnding.mockRejectedValue(new Error('API Error'));
-    });
-
     it('handles API error gracefully', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ message: 'API Error' }, 400));
       render(<EndingPage />);
-      // Should still render basic structure
       await waitFor(() => {
         expect(screen.getByText(/TestHero的人生旅程到此结束/)).toBeInTheDocument();
       });
@@ -185,12 +165,12 @@ describe('EndingPage', () => {
 
   describe('Partial ending data', () => {
     beforeEach(() => {
-      mockGetEnding.mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         ending_name: 'Simple Ending',
         summary: '',
         final_stats: null,
         achievements: null,
-      });
+      }));
     });
 
     it('renders without final stats', async () => {

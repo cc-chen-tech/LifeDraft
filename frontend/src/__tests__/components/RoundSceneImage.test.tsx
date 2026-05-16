@@ -6,21 +6,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { RoundSceneImageDisplay } from '@/components/game/RoundSceneImage';
-
-// Mock cn utility
-jest.mock('@/lib/utils', () => ({
-  cn: (...args: unknown[]) => args.filter(Boolean).join(' '),
-}));
-
-// Create a mutable state for the mock
-const mockStoreState = {
-  enableSceneImage: true,
-};
-
-// Mock useGameStore
-jest.mock('@/stores/useGameStore', () => ({
-  useGameStore: jest.fn((selector: any) => selector(mockStoreState)),
-}));
+import { useGameStore } from '@/stores/useGameStore';
 
 describe('RoundSceneImageDisplay', () => {
   const mockOnRefresh = jest.fn();
@@ -37,13 +23,12 @@ describe('RoundSceneImageDisplay', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    // Reset to default state
-    mockStoreState.enableSceneImage = true;
+    useGameStore.setState({ enableSceneImage: true });
   });
 
   describe('when scene image is disabled', () => {
     it('returns null when enableSceneImage is false', () => {
-      mockStoreState.enableSceneImage = false;
+      useGameStore.setState({ enableSceneImage: false });
 
       const { container } = render(<RoundSceneImageDisplay {...defaultProps} />);
       expect(container.firstChild).toBeNull();

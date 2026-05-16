@@ -4,6 +4,11 @@
  * loading states, error handling, and edge cases.
  */
 import { renderHook, act, waitFor } from '@testing-library/react';
+import { useCharacterCreation } from '@/hooks/useCharacterCreation';
+import { useGameStore } from '@/stores/useGameStore';
+import { useImageStore } from '@/stores/useImageStore';
+import { useUIStore } from '@/stores/useUIStore';
+import { spyOnStoreMethods } from '@/__tests__/helpers/store-spy';
 
 // -- Mock next/navigation --
 const mockPush = jest.fn();
@@ -15,161 +20,65 @@ jest.mock('next/navigation', () => ({
   }),
 }));
 
-// -- Mock stores --
-const mockGameStoreState = {
-  creationStep: 0,
-  characterSettings: {} as Record<string, unknown>,
-  playerName: '',
-  lifeVision: '',
-  isPresetLoaded: false,
-  gameId: null as number | null,
-  sessionId: null as string | null,
-};
+import { jsonResponse, errorResponse } from '@/__tests__/helpers/fetch';
 
-const mockGameStoreFunctions = {
-  setCreationStep: jest.fn(),
-  nextCreationStep: jest.fn(),
-  prevCreationStep: jest.fn(),
-  updateCharacterSetting: jest.fn(),
-  setPlayerName: jest.fn(),
-  setLifeVision: jest.fn(),
-  resetCreation: jest.fn(),
-  setGameSession: jest.fn(),
-};
+/** Extract parsed body from a fetch call to the given URL */
+function fetchBody(url: string): Record<string, unknown> | null {
+  const calls = (global.fetch as jest.Mock).mock.calls.filter((c: unknown[]) => c[0] === url);
+  const call = calls[calls.length - 1];
+  if (!call) return null;
+  return JSON.parse((call[1] as Record<string, string>).body);
+}
 
-jest.mock('@/stores/useGameStore', () => {
-  const CREATION_STEPS = ['era', 'age', 'gender', 'world', 'portrait'];
-  const MANUAL_STEPS = ['era', 'age', 'gender', 'world', 'portrait'];
-  const AUTO_ADVANCE_STEPS = ['family', 'relationships', 'traits', 'wealth'];
+/** Check if fetch was called for a given URL */
+function fetchCalled(url: string): boolean {
+  return (global.fetch as jest.Mock).mock.calls.some((c: unknown[]) => c[0] === url);
+}
 
-  return {
-    useGameStore: Object.assign(
-      (selector?: (state: typeof mockGameStoreState & typeof mockGameStoreFunctions) => unknown) => {
-        const fullState = { ...mockGameStoreState, ...mockGameStoreFunctions };
-        if (selector) return selector(fullState);
-        return fullState;
-      },
-      {
-        getState: () => ({ ...mockGameStoreState, ...mockGameStoreFunctions }),
-      }
-    ),
-    CREATION_STEPS,
-    MANUAL_STEPS,
-    AUTO_ADVANCE_STEPS,
-  };
-});
+// -- Store method spying --
+const GAME_METHODS = ['nextCreationStep', 'prevCreationStep', 'updateCharacterSetting', 'resetCreation', 'setGameSession'] as const;
+const IMAGE_METHODS = ['generatePlayerImage', 'regeneratePlayerImage', 'regenerateFreshPlayerImage'] as const;
 
-const mockImageStoreState = {
-  playerImages: [] as Array<{ image_id: number; image_url: string }>,
-  selectedImageIndex: 0,
-  isGeneratingImage: false,
-  imageFeedback: '',
-  playerImage: null as { image_id: number; image_url: string } | null,
-};
+type GameStoreSpy = ReturnType<typeof spyOnStoreMethods<typeof useGameStore, (typeof GAME_METHODS)[number]>>;
+type ImageStoreSpy = ReturnType<typeof spyOnStoreMethods<typeof useImageStore, (typeof IMAGE_METHODS)[number]>>;
 
-const mockImageStoreFunctions = {
-  setSelectedImageIndex: jest.fn(),
-  setImageFeedback: jest.fn(),
-  generatePlayerImage: jest.fn(),
-  regeneratePlayerImage: jest.fn(),
-  regenerateFreshPlayerImage: jest.fn(),
-};
-
-jest.mock('@/stores/useImageStore', () => ({
-  useImageStore: Object.assign(
-    (selector?: (state: typeof mockImageStoreState & typeof mockImageStoreFunctions) => unknown) => {
-      const fullState = { ...mockImageStoreState, ...mockImageStoreFunctions };
-      if (selector) return selector(fullState);
-      return fullState;
-    },
-    {
-      getState: () => ({ ...mockImageStoreState, ...mockImageStoreFunctions }),
-    }
-  ),
-}));
-
-const mockUIStoreState = {
-  language: 'zh' as string,
-};
-
-jest.mock('@/stores/useUIStore', () => ({
-  useUIStore: Object.assign(
-    (selector?: (state: typeof mockUIStoreState) => unknown) => {
-      if (selector) return selector(mockUIStoreState);
-      return mockUIStoreState;
-    },
-    {
-      getState: () => ({ ...mockUIStoreState }),
-    }
-  ),
-}));
-
-// -- Mock API --
-const mockGenerateSetting = jest.fn();
-const mockGenerateRelationship = jest.fn();
-const mockGenerateRelationshipsSummary = jest.fn();
-const mockGameCreate = jest.fn();
-const mockPresetCreate = jest.fn();
-
-jest.mock('@/lib/api', () => ({
-  character: {
-    generateSetting: (...args: unknown[]) => mockGenerateSetting(...args),
-    generateRelationship: (...args: unknown[]) => mockGenerateRelationship(...args),
-    generateRelationshipsSummary: (...args: unknown[]) => mockGenerateRelationshipsSummary(...args),
-  },
-  games: {
-    create: (...args: unknown[]) => mockGameCreate(...args),
-  },
-  presets: {
-    create: (...args: unknown[]) => mockPresetCreate(...args),
-  },
-  default: {
-    character: {
-      generateSetting: (...args: unknown[]) => mockGenerateSetting(...args),
-      generateRelationship: (...args: unknown[]) => mockGenerateRelationship(...args),
-      generateRelationshipsSummary: (...args: unknown[]) => mockGenerateRelationshipsSummary(...args),
-    },
-    games: {
-      create: (...args: unknown[]) => mockGameCreate(...args),
-    },
-    presets: {
-      create: (...args: unknown[]) => mockPresetCreate(...args),
-    },
-  },
-}));
-
-// Import after mocks
-import { useCharacterCreation } from '@/hooks/useCharacterCreation';
+function setupDefaultState() {
+  useGameStore.setState({
+    creationStep: 0,
+    characterSettings: {},
+    playerName: '',
+    lifeVision: '',
+    isPresetLoaded: false,
+    gameId: null,
+    sessionId: null,
+  } as never);
+  useImageStore.setState({
+    playerImages: [],
+    selectedImageIndex: 0,
+    isGeneratingImage: false,
+    imageFeedback: '',
+    playerImage: null,
+  } as never);
+  useUIStore.setState({ language: 'zh' } as never);
+}
 
 describe('useCharacterCreation', () => {
+  let gameSpy: GameStoreSpy;
+  let imageSpy: ImageStoreSpy;
+
   beforeEach(() => {
     jest.clearAllMocks();
-
-    // Reset mock store state
-    Object.assign(mockGameStoreState, {
-      creationStep: 0,
-      characterSettings: {},
-      playerName: '',
-      lifeVision: '',
-      isPresetLoaded: false,
-      gameId: null,
-      sessionId: null,
-    });
-
-    Object.assign(mockImageStoreState, {
-      playerImages: [],
-      selectedImageIndex: 0,
-      isGeneratingImage: false,
-      imageFeedback: '',
-      playerImage: null,
-    });
-
-    Object.assign(mockUIStoreState, {
-      language: 'zh',
-    });
-
+    global.fetch = jest.fn();
+    setupDefaultState();
+    gameSpy = spyOnStoreMethods(useGameStore, GAME_METHODS);
+    imageSpy = spyOnStoreMethods(useImageStore, IMAGE_METHODS);
     mockPush.mockClear();
     mockReplace.mockClear();
+  });
+
+  afterEach(() => {
+    gameSpy.restore();
+    imageSpy.restore();
   });
 
   // ===================== Initial State =====================
@@ -275,7 +184,7 @@ describe('useCharacterCreation', () => {
     });
 
     it('computes currentStepKey when creationStep is 2', () => {
-      mockGameStoreState.creationStep = 2;
+      useGameStore.setState({ creationStep: 2 } as never);
       const { result } = renderHook(() => useCharacterCreation());
       expect(result.current.currentStepKey).toBe('gender');
     });
@@ -287,14 +196,14 @@ describe('useCharacterCreation', () => {
     });
 
     it('computes isLastStep as true when on last step', () => {
-      mockGameStoreState.creationStep = 4;
+      useGameStore.setState({ creationStep: 4 } as never);
       const { result } = renderHook(() => useCharacterCreation());
       expect(result.current.isLastStep).toBe(true);
       expect(result.current.isFirstStep).toBe(false);
     });
 
     it('computes isPortraitStep as true on portrait step', () => {
-      mockGameStoreState.creationStep = 4;
+      useGameStore.setState({ creationStep: 4 } as never);
       const { result } = renderHook(() => useCharacterCreation());
       expect(result.current.isPortraitStep).toBe(true);
     });
@@ -310,7 +219,7 @@ describe('useCharacterCreation', () => {
     });
 
     it('computes hasBasicInfo as true when playerName is filled', () => {
-      mockGameStoreState.playerName = 'TestPlayer';
+      useGameStore.setState({ playerName: 'TestPlayer' } as never);
       const { result } = renderHook(() => useCharacterCreation());
       expect(result.current.hasBasicInfo).toBe(true);
     });
@@ -324,20 +233,20 @@ describe('useCharacterCreation', () => {
   // ===================== Form Field State Management =====================
 
   describe('Form field state management', () => {
-    it('provides setPlayerName from store', () => {
+    it('setPlayerName updates playerName in store', () => {
       const { result } = renderHook(() => useCharacterCreation());
       act(() => {
         result.current.setPlayerName('NewName');
       });
-      expect(mockGameStoreFunctions.setPlayerName).toHaveBeenCalledWith('NewName');
+      expect(useGameStore.getState().playerName).toBe('NewName');
     });
 
-    it('provides setLifeVision from store', () => {
+    it('setLifeVision updates lifeVision in store', () => {
       const { result } = renderHook(() => useCharacterCreation());
       act(() => {
         result.current.setLifeVision('A great vision');
       });
-      expect(mockGameStoreFunctions.setLifeVision).toHaveBeenCalledWith('A great vision');
+      expect(useGameStore.getState().lifeVision).toBe('A great vision');
     });
 
     it('provides updateCharacterSetting from store', () => {
@@ -345,18 +254,18 @@ describe('useCharacterCreation', () => {
       act(() => {
         result.current.updateCharacterSetting('era', { era_name: '古代' });
       });
-      expect(mockGameStoreFunctions.updateCharacterSetting).toHaveBeenCalledWith(
+      expect(gameSpy.spies.updateCharacterSetting).toHaveBeenCalledWith(
         'era',
         { era_name: '古代' }
       );
     });
 
-    it('provides setCreationStep from store', () => {
+    it('setCreationStep updates creationStep in store', () => {
       const { result } = renderHook(() => useCharacterCreation());
       act(() => {
         result.current.setCreationStep(1);
       });
-      expect(mockGameStoreFunctions.setCreationStep).toHaveBeenCalledWith(1);
+      expect(useGameStore.getState().creationStep).toBe(1);
     });
 
     it('provides setFeedback for local feedback state', () => {
@@ -388,7 +297,7 @@ describe('useCharacterCreation', () => {
       act(() => {
         result.current.resetCreation();
       });
-      expect(mockGameStoreFunctions.resetCreation).toHaveBeenCalled();
+      expect(gameSpy.spies.resetCreation).toHaveBeenCalled();
     });
 
     it('provides nextCreationStep from store', () => {
@@ -396,7 +305,7 @@ describe('useCharacterCreation', () => {
       act(() => {
         result.current.nextCreationStep();
       });
-      expect(mockGameStoreFunctions.nextCreationStep).toHaveBeenCalled();
+      expect(gameSpy.spies.nextCreationStep).toHaveBeenCalled();
     });
   });
 
@@ -408,14 +317,16 @@ describe('useCharacterCreation', () => {
       await act(async () => {
         await result.current.handleGenerate();
       });
-      expect(mockGenerateSetting).not.toHaveBeenCalled();
+      expect(fetchCalled('/api/character/setting')).toBe(false);
     });
 
     it('calls api.character.generateSetting with correct params', async () => {
-      mockGameStoreState.playerName = 'TestPlayer';
-      mockGameStoreState.lifeVision = 'Become a hero';
-      mockGameStoreState.characterSettings = { era: { era_name: '古代' } };
-      mockGenerateSetting.mockResolvedValue({ era_name: '古代', era_description: 'Ancient times' });
+      useGameStore.setState({
+        playerName: 'TestPlayer',
+        lifeVision: 'Become a hero',
+        characterSettings: { era: { era_name: '古代' } },
+      } as never);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ era_name: '古代', era_description: 'Ancient times' }));
 
       const { result } = renderHook(() => useCharacterCreation());
 
@@ -423,7 +334,7 @@ describe('useCharacterCreation', () => {
         await result.current.handleGenerate();
       });
 
-      expect(mockGenerateSetting).toHaveBeenCalledWith({
+      expect(fetchBody('/api/character/setting')).toMatchObject({
         setting_type: 'era',
         player_name: 'TestPlayer',
         life_vision: 'Become a hero',
@@ -434,10 +345,10 @@ describe('useCharacterCreation', () => {
     });
 
     it('sets isGenerating to true during generation', async () => {
-      mockGameStoreState.playerName = 'TestPlayer';
-      let resolvePromise: (value: unknown) => void;
-      const promise = new Promise((resolve) => { resolvePromise = resolve; });
-      mockGenerateSetting.mockReturnValue(promise);
+      useGameStore.setState({ playerName: 'TestPlayer' } as never);
+      let resolvePromise: (value: Response) => void;
+      const promise = new Promise<Response>((resolve) => { resolvePromise = resolve; });
+      (global.fetch as jest.Mock).mockReturnValue(promise);
 
       const { result } = renderHook(() => useCharacterCreation());
 
@@ -450,7 +361,7 @@ describe('useCharacterCreation', () => {
       expect(result.current.generatedContent).toBeNull();
 
       await act(async () => {
-        resolvePromise!({ era_name: '古代', era_description: 'Ancient times' });
+        resolvePromise!(jsonResponse({ era_name: '古代', era_description: 'Ancient times' }));
         await generationPromise!;
       });
 
@@ -458,9 +369,9 @@ describe('useCharacterCreation', () => {
     });
 
     it('sets generatedContent after successful generation', async () => {
-      mockGameStoreState.playerName = 'TestPlayer';
+      useGameStore.setState({ playerName: 'TestPlayer' } as never);
       const expectedContent = { era_name: '古代', era_description: 'Ancient times' };
-      mockGenerateSetting.mockResolvedValue(expectedContent);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(expectedContent));
 
       const { result } = renderHook(() => useCharacterCreation());
 
@@ -472,8 +383,8 @@ describe('useCharacterCreation', () => {
     });
 
     it('handles generation with feedback string', async () => {
-      mockGameStoreState.playerName = 'TestPlayer';
-      mockGenerateSetting.mockResolvedValue({ era_name: '现代' });
+      useGameStore.setState({ playerName: 'TestPlayer' } as never);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ era_name: '现代' }));
 
       const { result } = renderHook(() => useCharacterCreation());
 
@@ -481,9 +392,7 @@ describe('useCharacterCreation', () => {
         await result.current.handleGenerate('More specific');
       });
 
-      expect(mockGenerateSetting).toHaveBeenCalledWith(
-        expect.objectContaining({ feedback: 'More specific' })
-      );
+      expect(fetchBody('/api/character/setting')).toMatchObject({ feedback: 'More specific' });
     });
   });
 
@@ -491,8 +400,8 @@ describe('useCharacterCreation', () => {
 
   describe('Loading states', () => {
     it('sets isGenerating to false after generation completes', async () => {
-      mockGameStoreState.playerName = 'TestPlayer';
-      mockGenerateSetting.mockResolvedValue({ era_name: '古代' });
+      useGameStore.setState({ playerName: 'TestPlayer' } as never);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ era_name: '古代' }));
 
       const { result } = renderHook(() => useCharacterCreation());
 
@@ -504,8 +413,8 @@ describe('useCharacterCreation', () => {
     });
 
     it('sets isGenerating to false after generation fails', async () => {
-      mockGameStoreState.playerName = 'TestPlayer';
-      mockGenerateSetting.mockRejectedValue(new Error('Network error'));
+      useGameStore.setState({ playerName: 'TestPlayer' } as never);
+      (global.fetch as jest.Mock).mockResolvedValue(errorResponse(400, 'Network error'));
       jest.spyOn(console, 'error').mockImplementation(() => {});
 
       const { result } = renderHook(() => useCharacterCreation());
@@ -518,10 +427,10 @@ describe('useCharacterCreation', () => {
     });
 
     it('sets isSavingPreset to true during preset save', async () => {
-      mockGameStoreState.playerName = 'TestPlayer';
-      let resolvePromise: (value: unknown) => void;
-      const promise = new Promise((resolve) => { resolvePromise = resolve; });
-      mockPresetCreate.mockReturnValue(promise);
+      useGameStore.setState({ playerName: 'TestPlayer' } as never);
+      let resolvePromise: (value: Response) => void;
+      const promise = new Promise<Response>((resolve) => { resolvePromise = resolve; });
+      (global.fetch as jest.Mock).mockReturnValue(promise);
 
       const { result } = renderHook(() => useCharacterCreation());
 
@@ -537,7 +446,7 @@ describe('useCharacterCreation', () => {
       expect(result.current.isSavingPreset).toBe(true);
 
       await act(async () => {
-        resolvePromise!({ preset_id: 1 });
+        resolvePromise!(jsonResponse({ preset_id: 1 }));
         await savePromise!;
       });
 
@@ -549,8 +458,8 @@ describe('useCharacterCreation', () => {
 
   describe('Error handling', () => {
     it('shows error toast when generation fails after retries', async () => {
-      mockGameStoreState.playerName = 'TestPlayer';
-      mockGenerateSetting.mockRejectedValue(new Error('API failure'));
+      useGameStore.setState({ playerName: 'TestPlayer' } as never);
+      (global.fetch as jest.Mock).mockResolvedValue(errorResponse(400, 'API failure'));
       jest.spyOn(console, 'error').mockImplementation(() => {});
       jest.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -569,7 +478,7 @@ describe('useCharacterCreation', () => {
     });
 
     it('shows error toast when saving preset fails', async () => {
-      mockPresetCreate.mockRejectedValue(new Error('Save error'));
+      (global.fetch as jest.Mock).mockResolvedValue(errorResponse(400, 'Save error'));
       jest.spyOn(console, 'error').mockImplementation(() => {});
 
       const { result } = renderHook(() => useCharacterCreation());
@@ -597,7 +506,7 @@ describe('useCharacterCreation', () => {
         await result.current.handleSavePreset();
       });
 
-      expect(mockPresetCreate).not.toHaveBeenCalled();
+      expect(fetchCalled('/api/presets')).toBe(false);
     });
   });
 
@@ -605,8 +514,8 @@ describe('useCharacterCreation', () => {
 
   describe('handleRegenerate', () => {
     it('calls handleGenerate with current feedback and clears feedback', async () => {
-      mockGameStoreState.playerName = 'TestPlayer';
-      mockGenerateSetting.mockResolvedValue({ era_name: '古代' });
+      useGameStore.setState({ playerName: 'TestPlayer' } as never);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ era_name: '古代' }));
 
       const { result } = renderHook(() => useCharacterCreation());
 
@@ -619,9 +528,7 @@ describe('useCharacterCreation', () => {
       });
 
       expect(result.current.feedback).toBe('');
-      expect(mockGenerateSetting).toHaveBeenCalledWith(
-        expect.objectContaining({ feedback: 'Please change era' })
-      );
+      expect(fetchBody('/api/character/setting')).toMatchObject({ feedback: 'Please change era' });
     });
   });
 
@@ -660,38 +567,42 @@ describe('useCharacterCreation', () => {
     });
 
     it('returns playerImage from selected image', () => {
-      mockImageStoreState.playerImages = [
-        { image_id: 1, image_url: '/img/1.png' },
-        { image_id: 2, image_url: '/img/2.png' },
-      ];
-      mockImageStoreState.selectedImageIndex = 1;
+      useImageStore.setState({
+        playerImages: [
+          { image_id: 1, image_url: '/img/1.png' },
+          { image_id: 2, image_url: '/img/2.png' },
+        ],
+        selectedImageIndex: 1,
+      } as never);
       const { result } = renderHook(() => useCharacterCreation());
       expect(result.current.playerImage).toEqual({ image_id: 2, image_url: '/img/2.png' });
     });
 
     it('falls back to first image when selectedIndex is out of bounds', () => {
-      mockImageStoreState.playerImages = [
-        { image_id: 1, image_url: '/img/1.png' },
-      ];
-      mockImageStoreState.selectedImageIndex = 5;
+      useImageStore.setState({
+        playerImages: [
+          { image_id: 1, image_url: '/img/1.png' },
+        ],
+        selectedImageIndex: 5,
+      } as never);
       const { result } = renderHook(() => useCharacterCreation());
       expect(result.current.playerImage).toEqual({ image_id: 1, image_url: '/img/1.png' });
     });
 
-    it('provides setSelectedImageIndex from image store', () => {
+    it('setSelectedImageIndex updates selectedImageIndex in image store', () => {
       const { result } = renderHook(() => useCharacterCreation());
       act(() => {
         result.current.setSelectedImageIndex(2);
       });
-      expect(mockImageStoreFunctions.setSelectedImageIndex).toHaveBeenCalledWith(2);
+      expect(useImageStore.getState().selectedImageIndex).toBe(2);
     });
 
-    it('provides setImageFeedback from image store', () => {
+    it('setImageFeedback updates imageFeedback in image store', () => {
       const { result } = renderHook(() => useCharacterCreation());
       act(() => {
         result.current.setImageFeedback('Change style');
       });
-      expect(mockImageStoreFunctions.setImageFeedback).toHaveBeenCalledWith('Change style');
+      expect(useImageStore.getState().imageFeedback).toBe('Change style');
     });
   });
 
@@ -751,12 +662,14 @@ describe('useCharacterCreation', () => {
     });
 
     it('starts with autoGenPhase as done when all auto settings present', () => {
-      mockGameStoreState.characterSettings = {
-        family: { family_name: 'Test' },
-        relationships: { relationships_description: 'Test' },
-        traits: { personality: 'brave' },
-        wealth: { wealth_level: 'middle' },
-      };
+      useGameStore.setState({
+        characterSettings: {
+          family: { family_name: 'Test' },
+          relationships: { relationships_description: 'Test' },
+          traits: { personality: 'brave' },
+          wealth: { wealth_level: 'middle' },
+        },
+      } as never);
       const { result } = renderHook(() => useCharacterCreation());
       expect(result.current.autoGenPhase).toBe('done');
     });
@@ -770,7 +683,7 @@ describe('useCharacterCreation', () => {
       act(() => {
         result.current.prevCreationStep();
       });
-      expect(mockGameStoreFunctions.prevCreationStep).toHaveBeenCalled();
+      expect(gameSpy.spies.prevCreationStep).toHaveBeenCalled();
     });
 
     it('clears generatedContent when going back', () => {
@@ -797,10 +710,12 @@ describe('useCharacterCreation', () => {
 
   describe('handleSavePreset', () => {
     it('calls api.presets.create with correct params', async () => {
-      mockGameStoreState.playerName = 'TestPlayer';
-      mockGameStoreState.lifeVision = 'My Vision';
-      mockGameStoreState.characterSettings = { era: { era_name: '古代' } };
-      mockPresetCreate.mockResolvedValue({ preset_id: 1 });
+      useGameStore.setState({
+        playerName: 'TestPlayer',
+        lifeVision: 'My Vision',
+        characterSettings: { era: { era_name: '古代' } },
+      } as never);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ preset_id: 1 }));
 
       const { result } = renderHook(() => useCharacterCreation());
 
@@ -812,7 +727,7 @@ describe('useCharacterCreation', () => {
         await result.current.handleSavePreset();
       });
 
-      expect(mockPresetCreate).toHaveBeenCalledWith({
+      expect(fetchBody('/api/presets')).toMatchObject({
         preset_name: 'My Cool Preset',
         player_name: 'TestPlayer',
         life_vision: 'My Vision',
@@ -821,8 +736,8 @@ describe('useCharacterCreation', () => {
     });
 
     it('shows success toast and closes sheet after save', async () => {
-      mockGameStoreState.playerName = 'TestPlayer';
-      mockPresetCreate.mockResolvedValue({ preset_id: 1 });
+      useGameStore.setState({ playerName: 'TestPlayer' } as never);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ preset_id: 1 }));
 
       const { result } = renderHook(() => useCharacterCreation());
 
@@ -859,22 +774,22 @@ describe('useCharacterCreation', () => {
         type: 'error',
         message: '请先输入角色姓名',
       });
-      expect(mockGameCreate).not.toHaveBeenCalled();
+      expect(fetchCalled('/api/games')).toBe(false);
     });
 
     it('does not start game when isGenerating is true', async () => {
-      mockGameStoreState.playerName = 'TestPlayer';
-      // Prevent auto-generation from firing by setting current step key
-      mockGameStoreState.characterSettings = { era: { era_name: '古代' } };
+      useGameStore.setState({
+        playerName: 'TestPlayer',
+        characterSettings: { era: { era_name: '古代' } },
+      } as never);
       jest.spyOn(console, 'warn').mockImplementation(() => {});
 
       const { result } = renderHook(() => useCharacterCreation());
 
       // Call handleGenerate first to set isGenerating = true
-      let genPromise: Promise<void>;
-      mockGenerateSetting.mockImplementation(() => new Promise(() => {})); // never resolves
+      (global.fetch as jest.Mock).mockImplementation(() => new Promise<Response>(() => {})); // never resolves
       await act(async () => {
-        genPromise = result.current.handleGenerate();
+        void result.current.handleGenerate();
       });
 
       expect(result.current.isGenerating).toBe(true);
@@ -884,16 +799,16 @@ describe('useCharacterCreation', () => {
         await result.current.handleStartGame();
       });
 
-      // Should have warned and not called game create
-      expect(mockGameCreate).not.toHaveBeenCalled();
+      expect(fetchCalled('/api/games')).toBe(false);
     });
 
     it('navigates to /story/opening when gameId already exists', async () => {
-      mockGameStoreState.playerName = 'TestPlayer';
-      mockGameStoreState.gameId = 42;
-      // Prevent auto-generation from interfering
-      mockGameStoreState.characterSettings = { era: { era_name: '古代' } };
-      mockPresetCreate.mockResolvedValue({ preset_id: 1 });
+      useGameStore.setState({
+        playerName: 'TestPlayer',
+        gameId: 42,
+        characterSettings: { era: { era_name: '古代' } },
+      } as never);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ preset_id: 1 }));
 
       const { result } = renderHook(() => useCharacterCreation());
 
@@ -905,10 +820,12 @@ describe('useCharacterCreation', () => {
     });
 
     it('creates a new game and navigates when no gameId', async () => {
-      mockGameStoreState.playerName = 'TestPlayer';
-      mockGameStoreState.characterSettings = { era: { era_name: '古代' } };
-      mockPresetCreate.mockResolvedValue({ preset_id: 1 });
-      mockGameCreate.mockResolvedValue({ game_id: 99 });
+      useGameStore.setState({
+        playerName: 'TestPlayer',
+        characterSettings: { era: { era_name: '古代' } },
+      } as never);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ preset_id: 1 }));
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ game_id: 99 }));
 
       const { result } = renderHook(() => useCharacterCreation());
 
@@ -916,14 +833,14 @@ describe('useCharacterCreation', () => {
         await result.current.handleStartGame();
       });
 
-      expect(mockGameCreate).toHaveBeenCalledWith({
+      expect(fetchBody('/api/games')).toMatchObject({
         character_settings: { era: { era_name: '古代' } },
         player_name: 'TestPlayer',
         life_vision: '',
         language: 'zh',
       });
 
-      expect(mockGameStoreFunctions.setGameSession).toHaveBeenCalledWith(99, '99');
+      expect(gameSpy.spies.setGameSession).toHaveBeenCalledWith(99, '99');
 
       // Navigation fires asynchronously (setTimeout 100ms)
       await waitFor(() => {
@@ -932,10 +849,12 @@ describe('useCharacterCreation', () => {
     });
 
     it('saves auto-preset before creating game', async () => {
-      mockGameStoreState.playerName = 'TestPlayer';
-      mockGameStoreState.characterSettings = { era: { era_name: '古代' } };
-      mockPresetCreate.mockResolvedValue({ preset_id: 1 });
-      mockGameCreate.mockResolvedValue({ game_id: 100 });
+      useGameStore.setState({
+        playerName: 'TestPlayer',
+        characterSettings: { era: { era_name: '古代' } },
+      } as never);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ preset_id: 1 }));
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ game_id: 100 }));
 
       const { result } = renderHook(() => useCharacterCreation());
 
@@ -943,19 +862,21 @@ describe('useCharacterCreation', () => {
         await result.current.handleStartGame();
       });
 
-      // Verify preset was saved (auto-preset)
-      expect(mockPresetCreate).toHaveBeenCalled();
-      const presetCall = mockPresetCreate.mock.calls[0][0];
+      expect(fetchCalled('/api/presets')).toBe(true);
+      const presetCall = fetchBody('/api/presets');
       expect(presetCall.preset_name).toContain('TestPlayer');
       expect(presetCall.player_name).toBe('TestPlayer');
     });
 
     it('handles preset save failure gracefully (non-blocking)', async () => {
-      mockGameStoreState.playerName = 'TestPlayer';
-      // Prevent auto-generation from interfering
-      mockGameStoreState.characterSettings = { era: { era_name: '古代' } };
-      mockPresetCreate.mockRejectedValue(new Error('Preset save error'));
-      mockGameCreate.mockResolvedValue({ game_id: 200 });
+      useGameStore.setState({
+        playerName: 'TestPlayer',
+        characterSettings: { era: { era_name: '古代' } },
+      } as never);
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url === '/api/presets') return Promise.resolve(errorResponse(400, 'Preset save error'));
+        return Promise.resolve(jsonResponse({ game_id: 200 }));
+      });
 
       jest.spyOn(console, 'warn').mockImplementation(() => {});
 
@@ -965,8 +886,7 @@ describe('useCharacterCreation', () => {
         await result.current.handleStartGame();
       });
 
-      // Should still create the game
-      expect(mockGameCreate).toHaveBeenCalled();
+      expect(fetchCalled('/api/games')).toBe(true);
 
       await waitFor(() => {
         expect(mockPush).toHaveBeenCalledWith('/story/opening');
@@ -974,11 +894,15 @@ describe('useCharacterCreation', () => {
     });
 
     it('shows error toast when game creation fails', async () => {
-      mockGameStoreState.playerName = 'TestPlayer';
-      // Prevent auto-generation from interfering
-      mockGameStoreState.characterSettings = { era: { era_name: '古代' } };
-      mockPresetCreate.mockRejectedValue(new Error('Preset save error'));
-      mockGameCreate.mockRejectedValue(new Error('Game creation error'));
+      useGameStore.setState({
+        playerName: 'TestPlayer',
+        characterSettings: { era: { era_name: '古代' } },
+      } as never);
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url === '/api/presets') return Promise.resolve(errorResponse(400, 'Preset save error'));
+        if (url === '/api/games') return Promise.resolve(errorResponse(400, 'Game creation error'));
+        return Promise.resolve(jsonResponse({}));
+      });
 
       jest.spyOn(console, 'error').mockImplementation(() => {});
       jest.spyOn(console, 'warn').mockImplementation(() => {});
@@ -1002,10 +926,12 @@ describe('useCharacterCreation', () => {
 
   describe('handleAcceptAndNext', () => {
     it('updates characterSetting with generatedContent for non-portrait steps', async () => {
-      mockGameStoreState.playerName = 'TestPlayer';
-      mockGameStoreState.creationStep = 0;
+      useGameStore.setState({
+        playerName: 'TestPlayer',
+        creationStep: 0,
+      } as never);
       const content = { era_name: '古代', era_description: 'Ancient era' };
-      mockGenerateSetting.mockResolvedValue(content);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(content));
 
       const { result } = renderHook(() => useCharacterCreation());
 
@@ -1021,19 +947,21 @@ describe('useCharacterCreation', () => {
         await result.current.handleAcceptAndNext();
       });
 
-      expect(mockGameStoreFunctions.updateCharacterSetting).toHaveBeenCalledWith('era', content);
+      expect(gameSpy.spies.updateCharacterSetting).toHaveBeenCalledWith('era', content);
       expect(result.current.generatedContent).toBeNull();
     });
 
     it('creates game on world step when no gameId exists', async () => {
-      mockGameStoreState.playerName = 'TestPlayer';
-      mockGameStoreState.creationStep = 3; // world step
-      mockGameStoreState.characterSettings = {
-        era: { era_name: '古代' },
-        age: { age: 25 },
-        gender: { gender: '男' },
-      };
-      mockGameCreate.mockResolvedValue({ game_id: 50 });
+      useGameStore.setState({
+        playerName: 'TestPlayer',
+        creationStep: 3,
+        characterSettings: {
+          era: { era_name: '古代' },
+          age: { age: 25 },
+          gender: { gender: '男' },
+        },
+      } as never);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ game_id: 50 }));
 
       const { result } = renderHook(() => useCharacterCreation());
 
@@ -1041,7 +969,7 @@ describe('useCharacterCreation', () => {
         await result.current.handleAcceptAndNext();
       });
 
-      expect(mockGameCreate).toHaveBeenCalledWith({
+      expect(fetchBody('/api/games')).toMatchObject({
         character_settings: {
           era: { era_name: '古代' },
           age: { age: 25 },
@@ -1052,15 +980,17 @@ describe('useCharacterCreation', () => {
         language: 'zh',
       });
 
-      expect(mockGameStoreFunctions.setGameSession).toHaveBeenCalledWith(50, '50');
-      expect(mockGameStoreFunctions.nextCreationStep).toHaveBeenCalled();
+      expect(gameSpy.spies.setGameSession).toHaveBeenCalledWith(50, '50');
+      expect(gameSpy.spies.nextCreationStep).toHaveBeenCalled();
     });
 
     it('advances to next step on normal non-portrait step', async () => {
-      mockGameStoreState.playerName = 'TestPlayer';
-      mockGameStoreState.creationStep = 0;
-      mockGameStoreState.gameId = 10; // Game already exists
-      mockGenerateSetting.mockResolvedValue({ era_name: '古代' });
+      useGameStore.setState({
+        playerName: 'TestPlayer',
+        creationStep: 0,
+        gameId: 10,
+      } as never);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ era_name: '古代' }));
 
       const { result } = renderHook(() => useCharacterCreation());
 
@@ -1071,15 +1001,16 @@ describe('useCharacterCreation', () => {
         await result.current.handleAcceptAndNext();
       });
 
-      // On non-world, existing game: just update setting and advance
-      expect(mockGameStoreFunctions.updateCharacterSetting).toHaveBeenCalled();
-      expect(mockGameStoreFunctions.nextCreationStep).toHaveBeenCalled();
+      expect(gameSpy.spies.updateCharacterSetting).toHaveBeenCalled();
+      expect(gameSpy.spies.nextCreationStep).toHaveBeenCalled();
     });
 
     it('shows error toast when game creation fails on world step', async () => {
-      mockGameStoreState.playerName = 'TestPlayer';
-      mockGameStoreState.creationStep = 3; // world step
-      mockGameCreate.mockRejectedValue(new Error('Creation failed'));
+      useGameStore.setState({
+        playerName: 'TestPlayer',
+        creationStep: 3,
+      } as never);
+      (global.fetch as jest.Mock).mockResolvedValue(errorResponse(400, 'Creation failed'));
 
       jest.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -1114,11 +1045,13 @@ describe('useCharacterCreation', () => {
     });
 
     it('calls api.character.generateSetting and updates store', async () => {
-      mockGameStoreState.gameId = 10;
-      mockGameStoreState.playerName = 'TestPlayer';
-      mockGameStoreState.characterSettings = { era: { era_name: '古代' } };
+      useGameStore.setState({
+        gameId: 10,
+        playerName: 'TestPlayer',
+        characterSettings: { era: { era_name: '古代' } },
+      } as never);
       const newContent = { era_name: '现代', era_description: 'Modern era' };
-      mockGenerateSetting.mockResolvedValue(newContent);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(newContent));
 
       const { result } = renderHook(() => useCharacterCreation());
 
@@ -1126,7 +1059,7 @@ describe('useCharacterCreation', () => {
         await result.current.regenerateSetting('era', 'Change era to modern');
       });
 
-      expect(mockGenerateSetting).toHaveBeenCalledWith({
+      expect(fetchBody('/api/character/setting')).toMatchObject({
         setting_type: 'era',
         player_name: 'TestPlayer',
         life_vision: '',
@@ -1135,7 +1068,7 @@ describe('useCharacterCreation', () => {
         feedback: 'Change era to modern',
       });
 
-      expect(mockGameStoreFunctions.updateCharacterSetting).toHaveBeenCalledWith('era', newContent);
+      expect(gameSpy.spies.updateCharacterSetting).toHaveBeenCalledWith('era', newContent);
     });
   });
 
@@ -1143,25 +1076,23 @@ describe('useCharacterCreation', () => {
 
   describe('Image store actions', () => {
     it('provides regeneratePlayerImage', async () => {
-      mockImageStoreFunctions.regeneratePlayerImage.mockResolvedValue(undefined);
       const { result } = renderHook(() => useCharacterCreation());
 
       await act(async () => {
         await result.current.regeneratePlayerImage('Fix face');
       });
 
-      expect(mockImageStoreFunctions.regeneratePlayerImage).toHaveBeenCalledWith('Fix face');
+      expect(imageSpy.spies.regeneratePlayerImage).toHaveBeenCalledWith('Fix face');
     });
 
     it('provides regenerateFreshPlayerImage', async () => {
-      mockImageStoreFunctions.regenerateFreshPlayerImage.mockResolvedValue(undefined);
       const { result } = renderHook(() => useCharacterCreation());
 
       await act(async () => {
         await result.current.regenerateFreshPlayerImage();
       });
 
-      expect(mockImageStoreFunctions.regenerateFreshPlayerImage).toHaveBeenCalled();
+      expect(imageSpy.spies.regenerateFreshPlayerImage).toHaveBeenCalled();
     });
   });
 
@@ -1174,7 +1105,7 @@ describe('useCharacterCreation', () => {
     });
 
     it('reflects language change in UI store', () => {
-      mockUIStoreState.language = 'en';
+      useUIStore.setState({ language: 'en' } as never);
       const { result } = renderHook(() => useCharacterCreation());
       expect(result.current.language).toBe('en');
     });
@@ -1184,22 +1115,23 @@ describe('useCharacterCreation', () => {
 
   describe('Edge cases', () => {
     it('handleGenerate does nothing when playerName is whitespace only', async () => {
-      mockGameStoreState.playerName = '   ';
+      useGameStore.setState({ playerName: '   ' } as never);
       const { result } = renderHook(() => useCharacterCreation());
 
       await act(async () => {
         await result.current.handleGenerate();
       });
 
-      expect(mockGenerateSetting).not.toHaveBeenCalled();
-      // hasBasicInfo checks trimmed length > 0
+      expect(fetchCalled('/api/character/setting')).toBe(false);
       expect(result.current.hasBasicInfo).toBe(false);
     });
 
     it('handleAcceptAndNext without generatedContent skips update', async () => {
-      mockGameStoreState.playerName = 'TestPlayer';
-      mockGameStoreState.gameId = 10;
-      mockGameStoreState.creationStep = 0;
+      useGameStore.setState({
+        playerName: 'TestPlayer',
+        gameId: 10,
+        creationStep: 0,
+      } as never);
 
       const { result } = renderHook(() => useCharacterCreation());
 
@@ -1207,16 +1139,16 @@ describe('useCharacterCreation', () => {
         await result.current.handleAcceptAndNext();
       });
 
-      // Should advance step without updating character setting
-      expect(mockGameStoreFunctions.nextCreationStep).toHaveBeenCalled();
+      expect(gameSpy.spies.nextCreationStep).toHaveBeenCalled();
     });
 
     it('handles rapid successive handleGenerate calls', async () => {
-      mockGameStoreState.playerName = 'TestPlayer';
-      mockGameStoreState.creationStep = 0;
-      // Prevent auto-generation by pre-populating the current step
-      mockGameStoreState.characterSettings = { era: { era_name: '古代' } };
-      mockGenerateSetting.mockResolvedValue({ era_name: '古代' });
+      useGameStore.setState({
+        playerName: 'TestPlayer',
+        creationStep: 0,
+        characterSettings: { era: { era_name: '古代' } },
+      } as never);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ era_name: '古代' }));
 
       const { result } = renderHook(() => useCharacterCreation());
 
@@ -1225,13 +1157,14 @@ describe('useCharacterCreation', () => {
         await result.current.handleGenerate('Second call');
       });
 
-      // Both calls should have been made (auto-generation is suppressed by pre-populated setting)
-      expect(mockGenerateSetting).toHaveBeenCalledTimes(2);
+      expect((global.fetch as jest.Mock).mock.calls.filter((c: unknown[]) => c[0] === '/api/character/setting').length).toBe(2);
     });
 
     it('playerImage uses first image as fallback when index is 0 and images exist', () => {
-      mockImageStoreState.playerImages = [{ image_id: 10, image_url: '/img/10.png' }];
-      mockImageStoreState.selectedImageIndex = 0;
+      useImageStore.setState({
+        playerImages: [{ image_id: 10, image_url: '/img/10.png' }],
+        selectedImageIndex: 0,
+      } as never);
       const { result } = renderHook(() => useCharacterCreation());
       expect(result.current.playerImage).toEqual({ image_id: 10, image_url: '/img/10.png' });
     });

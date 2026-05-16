@@ -3,28 +3,20 @@
  * Tests for game phase management
  */
 import { renderHook, act } from '@testing-library/react';
-
-// Mock useUIStore
-jest.mock('@/stores/useUIStore', () => ({
-  useUIStore: jest.fn(() => ({
-    setProcessing: jest.fn(),
-    processingMessage: '',
-  })),
-}));
-
 import { useUIStore } from '@/stores/useUIStore';
 import { usePhaseManager, STATUS_MESSAGES, Phase } from '@/hooks/game/usePhaseManager';
 
-describe('usePhaseManager', () => {
-  const mockSetProcessing = jest.fn();
+function setupDefaultState() {
+  useUIStore.setState({
+    processingMessage: '',
+  });
+}
 
+describe('usePhaseManager', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
-    (useUIStore as unknown as jest.Mock).mockReturnValue({
-      setProcessing: mockSetProcessing,
-      processingMessage: '',
-    });
+    setupDefaultState();
   });
 
   afterEach(() => {
@@ -34,26 +26,22 @@ describe('usePhaseManager', () => {
   describe('Initial state', () => {
     it('starts with loading phase', () => {
       const { result } = renderHook(() => usePhaseManager());
-
       expect(result.current.phase).toBe('loading');
       expect(result.current.phaseRef.current).toBe('loading');
     });
 
     it('starts with null connection status', () => {
       const { result } = renderHook(() => usePhaseManager());
-
       expect(result.current.connectionStatus).toBeNull();
     });
 
     it('starts with no reconnect attempt', () => {
       const { result } = renderHook(() => usePhaseManager());
-
       expect(result.current.reconnectAttempt).toBeNull();
     });
 
     it('starts with zero elapsed seconds', () => {
       const { result } = renderHook(() => usePhaseManager());
-
       expect(result.current.elapsedSeconds).toBe(0);
     });
   });
@@ -61,37 +49,23 @@ describe('usePhaseManager', () => {
   describe('setPhase', () => {
     it('updates phase state', () => {
       const { result } = renderHook(() => usePhaseManager());
-
-      act(() => {
-        result.current.setPhase('generating');
-      });
-
+      act(() => { result.current.setPhase('generating'); });
       expect(result.current.phase).toBe('generating');
       expect(result.current.phaseRef.current).toBe('generating');
     });
 
     it('supports functional updates', () => {
       const { result } = renderHook(() => usePhaseManager());
-
-      act(() => {
-        result.current.setPhase('generating');
-      });
-
-      act(() => {
-        result.current.setPhase((prev) => prev === 'generating' ? 'options' : prev);
-      });
-
+      act(() => { result.current.setPhase('generating'); });
+      act(() => { result.current.setPhase((prev) => prev === 'generating' ? 'options' : prev); });
       expect(result.current.phase).toBe('options');
     });
 
     it('handles all phase types', () => {
       const { result } = renderHook(() => usePhaseManager());
       const phases: Phase[] = ['loading', 'generating', 'options', 'choosing', 'result', 'summary', 'ending', 'error'];
-
       for (const phase of phases) {
-        act(() => {
-          result.current.setPhase(phase);
-        });
+        act(() => { result.current.setPhase(phase); });
         expect(result.current.phase).toBe(phase);
       }
     });
@@ -100,22 +74,15 @@ describe('usePhaseManager', () => {
   describe('Connection status', () => {
     it('updates connection status', () => {
       const { result } = renderHook(() => usePhaseManager());
-
-      act(() => {
-        result.current.setConnectionStatus('connecting');
-      });
-
+      act(() => { result.current.setConnectionStatus('connecting'); });
       expect(result.current.connectionStatus).toBe('connecting');
     });
 
     it('handles all connection status types', () => {
       const { result } = renderHook(() => usePhaseManager());
       const statuses = ['connecting', 'connected', 'reconnecting', 'error', null] as const;
-
       for (const status of statuses) {
-        act(() => {
-          result.current.setConnectionStatus(status);
-        });
+        act(() => { result.current.setConnectionStatus(status); });
         expect(result.current.connectionStatus).toBe(status);
       }
     });
@@ -124,25 +91,14 @@ describe('usePhaseManager', () => {
   describe('Reconnect attempt tracking', () => {
     it('sets reconnect attempt info', () => {
       const { result } = renderHook(() => usePhaseManager());
-
-      act(() => {
-        result.current.setReconnectAttempt({ current: 2, max: 5 });
-      });
-
+      act(() => { result.current.setReconnectAttempt({ current: 2, max: 5 }); });
       expect(result.current.reconnectAttempt).toEqual({ current: 2, max: 5 });
     });
 
     it('clears reconnect attempt', () => {
       const { result } = renderHook(() => usePhaseManager());
-
-      act(() => {
-        result.current.setReconnectAttempt({ current: 1, max: 3 });
-      });
-
-      act(() => {
-        result.current.setReconnectAttempt(null);
-      });
-
+      act(() => { result.current.setReconnectAttempt({ current: 1, max: 3 }); });
+      act(() => { result.current.setReconnectAttempt(null); });
       expect(result.current.reconnectAttempt).toBeNull();
     });
   });
@@ -150,179 +106,91 @@ describe('usePhaseManager', () => {
   describe('Elapsed time timer', () => {
     it('starts timer in generating phase', () => {
       const { result } = renderHook(() => usePhaseManager());
-
-      act(() => {
-        result.current.setPhase('generating');
-      });
-
-      act(() => {
-        jest.advanceTimersByTime(3000);
-      });
-
+      act(() => { result.current.setPhase('generating'); });
+      act(() => { jest.advanceTimersByTime(3000); });
       expect(result.current.elapsedSeconds).toBe(3);
     });
 
     it('starts timer in choosing phase', () => {
       const { result } = renderHook(() => usePhaseManager());
-
-      act(() => {
-        result.current.setPhase('choosing');
-      });
-
-      act(() => {
-        jest.advanceTimersByTime(5000);
-      });
-
+      act(() => { result.current.setPhase('choosing'); });
+      act(() => { jest.advanceTimersByTime(5000); });
       expect(result.current.elapsedSeconds).toBe(5);
     });
 
     it('stops timer in other phases', () => {
       const { result } = renderHook(() => usePhaseManager());
-
-      act(() => {
-        result.current.setPhase('generating');
-      });
-
-      act(() => {
-        jest.advanceTimersByTime(2000);
-      });
-
-      act(() => {
-        result.current.setPhase('options');
-      });
-
-      act(() => {
-        jest.advanceTimersByTime(2000);
-      });
-
-      // Timer should have stopped
+      act(() => { result.current.setPhase('generating'); });
+      act(() => { jest.advanceTimersByTime(2000); });
+      act(() => { result.current.setPhase('options'); });
+      act(() => { jest.advanceTimersByTime(2000); });
       expect(result.current.elapsedSeconds).toBe(0);
     });
 
     it('resets elapsed time on phase change', () => {
       const { result } = renderHook(() => usePhaseManager());
-
-      act(() => {
-        result.current.setPhase('generating');
-      });
-
-      act(() => {
-        jest.advanceTimersByTime(3000);
-      });
-
-      act(() => {
-        result.current.setPhase('options');
-      });
-
+      act(() => { result.current.setPhase('generating'); });
+      act(() => { jest.advanceTimersByTime(3000); });
+      act(() => { result.current.setPhase('options'); });
       expect(result.current.elapsedSeconds).toBe(0);
     });
 
     it('cleans up timer on unmount', () => {
       const { result, unmount } = renderHook(() => usePhaseManager());
-
-      act(() => {
-        result.current.setPhase('generating');
-      });
-
-      act(() => {
-        jest.advanceTimersByTime(1000);
-      });
-
+      act(() => { result.current.setPhase('generating'); });
+      act(() => { jest.advanceTimersByTime(1000); });
       unmount();
-
-      // Timer should be cleared without error
-      act(() => {
-        jest.advanceTimersByTime(1000);
-      });
+      act(() => { jest.advanceTimersByTime(1000); });
     });
   });
 
   describe('getLoadingMessage', () => {
     it('returns reconnecting message for generating phase', () => {
       const { result } = renderHook(() => usePhaseManager());
-
-      act(() => {
-        result.current.setPhase('generating');
-        result.current.setConnectionStatus('reconnecting');
-      });
-
+      act(() => { result.current.setPhase('generating'); result.current.setConnectionStatus('reconnecting'); });
       expect(result.current.getLoadingMessage()).toBe('故事正在生成，请稍候...');
     });
 
     it('returns reconnecting message for choosing phase', () => {
       const { result } = renderHook(() => usePhaseManager());
-
-      act(() => {
-        result.current.setPhase('choosing');
-        result.current.setConnectionStatus('reconnecting');
-      });
-
+      act(() => { result.current.setPhase('choosing'); result.current.setConnectionStatus('reconnecting'); });
       expect(result.current.getLoadingMessage()).toBe('结果正在生成，请稍候...');
     });
 
     it('returns default reconnecting message for other phases', () => {
       const { result } = renderHook(() => usePhaseManager());
-
-      act(() => {
-        result.current.setPhase('loading');
-        result.current.setConnectionStatus('reconnecting');
-      });
-
+      act(() => { result.current.setPhase('loading'); result.current.setConnectionStatus('reconnecting'); });
       expect(result.current.getLoadingMessage()).toBe('正在连接服务器...');
     });
 
     it('returns connecting message', () => {
       const { result } = renderHook(() => usePhaseManager());
-
-      act(() => {
-        result.current.setConnectionStatus('connecting');
-      });
-
+      act(() => { result.current.setConnectionStatus('connecting'); });
       expect(result.current.getLoadingMessage()).toBe(STATUS_MESSAGES.connecting);
     });
 
     it('returns generating message', () => {
       const { result } = renderHook(() => usePhaseManager());
-
-      act(() => {
-        result.current.setPhase('generating');
-      });
-
+      act(() => { result.current.setPhase('generating'); });
       expect(result.current.getLoadingMessage()).toBe('正在构思剧情...');
     });
 
     it('returns choosing message', () => {
       const { result } = renderHook(() => usePhaseManager());
-
-      act(() => {
-        result.current.setPhase('choosing');
-      });
-
+      act(() => { result.current.setPhase('choosing'); });
       expect(result.current.getLoadingMessage()).toBe('正在推演结果...');
     });
 
     it('uses processingMessage when available', () => {
-      (useUIStore as unknown as jest.Mock).mockReturnValue({
-        setProcessing: mockSetProcessing,
-        processingMessage: 'generating_story',
-      });
-
+      useUIStore.setState({ processingMessage: 'generating_story' });
       const { result } = renderHook(() => usePhaseManager());
-
-      act(() => {
-        result.current.setPhase('generating');
-      });
-
+      act(() => { result.current.setPhase('generating'); });
       expect(result.current.getLoadingMessage()).toBe(STATUS_MESSAGES.generating_story);
     });
 
     it('returns default message for other phases', () => {
       const { result } = renderHook(() => usePhaseManager());
-
-      act(() => {
-        result.current.setPhase('options');
-      });
-
+      act(() => { result.current.setPhase('options'); });
       expect(result.current.getLoadingMessage()).toBe('正在加载...');
     });
   });

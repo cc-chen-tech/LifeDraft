@@ -51,17 +51,64 @@ describe('gameplay', () => {
     expect(options.method).toBeUndefined();
   });
 
-  it('generateEvent calls POST /games/{id}/events', async () => {
+  it('getState returns contract-compliant response with constraint_level and narrative_style fields', async () => {
+    // Backend contract: GameStateResponse must include constraint_level,
+    // narrative_style_id, and narrative_style_name
+    const backendShape = {
+      player_state: { player_name: 'Test', age: 25 },
+      progress: { current_round: 1, current_week: 0 },
+      round_info: { week_display: 'Week 1', season: 'Spring' },
+      current_event: null,
+      constraint_level: 'expert',
+      narrative_style_id: 'chinese_classic_saga',
+      narrative_style_name: 'Chinese Classic Saga',
+    };
+    global.fetch = jest.fn(() => mockFetchResponse(backendShape));
+
+    const result = await api.gameplay.getState(42);
+
+    expect(result.constraint_level).toBe('expert');
+    expect(result.narrative_style_id).toBe('chinese_classic_saga');
+    expect(result.narrative_style_name).toBe('Chinese Classic Saga');
+    expect(result.player_state).toEqual({ player_name: 'Test', age: 25 });
+  });
+
+  it('generateEvent calls POST /games/{id}/event-sync', async () => {
     global.fetch = jest.fn(() =>
-      mockFetchResponse({ story: 'event', options: [] })
+      mockFetchResponse({ event_description: 'event', options: [] })
     );
 
     await api.gameplay.generateEvent(42, { custom_choices: ['a'] });
 
     const [url, options] = (global.fetch as jest.Mock).mock.calls[0];
-    expect(url).toBe('/api/games/42/events');
+    expect(url).toBe('/api/games/42/event-sync');
     expect(options.method).toBe('POST');
     expect(JSON.parse(options.body)).toEqual({ custom_choices: ['a'] });
+  });
+
+  it('makeChoiceSync calls POST /games/{id}/choice-sync and returns backend-shaped response', async () => {
+    const backendResponse = {
+      story_continuation: 'The story continues...',
+      summary: 'Round summary',
+      effects_applied: { energy: 2, mood: -1 },
+      need_weekly_summary: false,
+      game_over: false,
+    };
+    global.fetch = jest.fn(() => mockFetchResponse(backendResponse));
+
+    const result = await api.gameplay.makeChoiceSync(7, { option_index: 1 });
+
+    const [url, options] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(url).toBe('/api/games/7/choice-sync');
+    expect(options.method).toBe('POST');
+    expect(JSON.parse(options.body)).toEqual({ option_index: 1 });
+
+    // Verify the response shape matches backend contract
+    expect(result.story_continuation).toBe('The story continues...');
+    expect(result.summary).toBe('Round summary');
+    expect(result.effects_applied).toEqual({ energy: 2, mood: -1 });
+    expect(result.need_weekly_summary).toBe(false);
+    expect(result.game_over).toBe(false);
   });
 
   it('submitChoice calls POST /games/{id}/choices', async () => {
@@ -75,6 +122,32 @@ describe('gameplay', () => {
     expect(url).toBe('/api/games/7/choices');
     expect(options.method).toBe('POST');
     expect(JSON.parse(options.body)).toEqual({ choice_index: 1 });
+  });
+});
+
+// ─── character API contract verification ────────────────────────
+describe('character', () => {
+  it('generateSetting era returns backend-contract fields: year, era_description, world_context', async () => {
+    // Backend contract: era setting returns { year, era_description, world_context }
+    // NOT era_name — that's a frontend-only display fallback
+    const backendEraResponse = {
+      year: 2024,
+      era_description: '信息时代',
+      world_context: '科技高速发展的现代社会',
+    };
+    global.fetch = jest.fn(() => mockFetchResponse(backendEraResponse));
+
+    const result = await api.character.generateSetting({
+      setting_type: 'era',
+      player_name: 'TestPlayer',
+      language: 'zh',
+    });
+
+    expect(result.year).toBe(2024);
+    expect(result.era_description).toBe('信息时代');
+    expect(result.world_context).toBe('科技高速发展的现代社会');
+    // era_name should NOT be in backend response
+    expect(result.era_name).toBeUndefined();
   });
 });
 

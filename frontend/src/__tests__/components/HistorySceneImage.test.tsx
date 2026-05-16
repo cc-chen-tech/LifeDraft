@@ -6,18 +6,7 @@ import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HistorySceneImage } from "@/components/game/HistorySceneImage";
-
-// Mock useGameStore
-const mockClearImageCache = jest.fn();
-jest.mock("@/stores/useGameStore", () => ({
-  useGameStore: jest.fn((selector: (s: Record<string, unknown>) => unknown) => {
-    const state = {
-      enableSceneImage: true,
-      clearImageCache: mockClearImageCache,
-    };
-    return selector(state);
-  }),
-}));
+import { useGameStore } from "@/stores/useGameStore";
 
 describe("HistorySceneImage", () => {
   const baseProps = {
@@ -39,16 +28,12 @@ describe("HistorySceneImage", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    useGameStore.setState({ enableSceneImage: true });
   });
 
   describe("Disabled state", () => {
     it("returns null when enableSceneImage is false", () => {
-      jest.mocked(
-        require("@/stores/useGameStore").useGameStore
-      ).mockImplementationOnce((selector: (s: Record<string, unknown>) => unknown) => {
-        const state = { enableSceneImage: false, clearImageCache: mockClearImageCache };
-        return selector(state);
-      });
+      useGameStore.setState({ enableSceneImage: false });
 
       const { container } = render(<HistorySceneImage {...baseProps} />);
       expect(container.firstChild).toBeNull();
@@ -160,12 +145,14 @@ describe("HistorySceneImage", () => {
     });
 
     it("clears image cache on first error", () => {
+      const spy = jest.spyOn(useGameStore.getState(), 'clearImageCache');
       render(<HistorySceneImage {...baseProps} sceneImage={sceneImage} />);
 
       const img = document.querySelector("img");
       fireEvent.error(img!);
 
-      expect(mockClearImageCache).toHaveBeenCalled();
+      expect(spy).toHaveBeenCalled();
+      spy.mockRestore();
     });
   });
 

@@ -7,11 +7,6 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { SkeletonStory } from '@/components/game/SkeletonStory';
 
-// Mock cn utility
-jest.mock('@/lib/utils', () => ({
-  cn: (...args: unknown[]) => args.filter(Boolean).join(' '),
-}));
-
 describe('SkeletonStory', () => {
   describe('default rendering', () => {
     it('renders with default message', () => {

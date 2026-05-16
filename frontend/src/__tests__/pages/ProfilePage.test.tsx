@@ -5,42 +5,8 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ProfilePage from '@/app/profile/page';
-
-// Mock stores
-const mockUserStore = {
-  user: {
-    user_id: 1,
-    public_id: 'ABC123',
-    display_name: 'TestUser',
-  },
-  isAuthenticated: true,
-  friends: [
-    { user_id: 2, public_id: 'DEF456', display_name: 'Friend1' },
-    { user_id: 3, public_id: 'GHI789', display_name: 'Friend2' },
-  ],
-  pendingRequests: [
-    {
-      request_id: 1,
-      from_user: { user_id: 4, public_id: 'JKL012', display_name: 'Requester' },
-    },
-  ],
-  fetchFriends: jest.fn().mockResolvedValue(undefined),
-  fetchPendingRequests: jest.fn().mockResolvedValue(undefined),
-  sendFriendRequest: jest.fn().mockResolvedValue(undefined),
-  respondToRequest: jest.fn().mockResolvedValue(undefined),
-  removeFriend: jest.fn().mockResolvedValue(undefined),
-};
-
-jest.mock('@/stores/useUserStore', () => ({
-  useUserStore: (selector?: (state: typeof mockUserStore) => unknown) => {
-    if (selector) return selector(mockUserStore);
-    return mockUserStore;
-  },
-}));
-
-jest.mock('@/hooks/useHydration', () => ({
-  useHydration: () => true,
-}));
+import { useUserStore } from '@/stores/useUserStore';
+import { spyOnStoreMethods } from '@/__tests__/helpers/store-spy';
 
 const mockPush = jest.fn();
 const mockBack = jest.fn();
@@ -60,22 +26,42 @@ Object.assign(navigator, {
   },
 });
 
+const STORE_METHODS = ['sendFriendRequest', 'respondToRequest', 'removeFriend', 'fetchFriends', 'fetchPendingRequests'] as const;
+
+type StoreSpy = ReturnType<typeof spyOnStoreMethods<typeof useUserStore, (typeof STORE_METHODS)[number]>>;
+
+function setupDefaultState() {
+  useUserStore.setState({
+    user: {
+      user_id: 1,
+      public_id: 'ABC123',
+      display_name: 'TestUser',
+    },
+    isAuthenticated: true,
+    friends: [
+      { user_id: 2, public_id: 'DEF456', display_name: 'Friend1' },
+      { user_id: 3, public_id: 'GHI789', display_name: 'Friend2' },
+    ],
+    pendingRequests: [
+      {
+        request_id: 1,
+        from_user: { user_id: 4, public_id: 'JKL012', display_name: 'Requester' },
+      },
+    ],
+  });
+}
+
 describe('ProfilePage', () => {
+  let storeSpy: StoreSpy;
+
   beforeEach(() => {
     jest.clearAllMocks();
-    Object.assign(mockUserStore, {
-      isAuthenticated: true,
-      friends: [
-        { user_id: 2, public_id: 'DEF456', display_name: 'Friend1' },
-        { user_id: 3, public_id: 'GHI789', display_name: 'Friend2' },
-      ],
-      pendingRequests: [
-        {
-          request_id: 1,
-          from_user: { user_id: 4, public_id: 'JKL012', display_name: 'Requester' },
-        },
-      ],
-    });
+    setupDefaultState();
+    storeSpy = spyOnStoreMethods(useUserStore, STORE_METHODS);
+  });
+
+  afterEach(() => {
+    storeSpy.restore();
   });
 
   describe('User info section', () => {
@@ -125,29 +111,29 @@ describe('ProfilePage', () => {
     it('calls sendFriendRequest on submit', async () => {
       const user = userEvent.setup();
       render(<ProfilePage />);
-      
+
       const input = screen.getByPlaceholderText('输入好友的公开ID');
       await user.type(input, 'FRIEND123');
-      
+
       const sendButton = screen.getByText('发送');
       fireEvent.click(sendButton);
-      
+
       await waitFor(() => {
-        expect(mockUserStore.sendFriendRequest).toHaveBeenCalledWith('FRIEND123');
+        expect(storeSpy.spies.sendFriendRequest).toHaveBeenCalledWith('FRIEND123');
       });
     });
 
     it('shows error message on failed request', async () => {
-      mockUserStore.sendFriendRequest.mockRejectedValueOnce(new Error('User not found'));
+      storeSpy.spies.sendFriendRequest.mockRejectedValueOnce(new Error('User not found'));
       const user = userEvent.setup();
       render(<ProfilePage />);
-      
+
       const input = screen.getByPlaceholderText('输入好友的公开ID');
       await user.type(input, 'INVALID');
-      
+
       const sendButton = screen.getByText('发送');
       fireEvent.click(sendButton);
-      
+
       await waitFor(() => {
         expect(screen.getByText('User not found')).toBeInTheDocument();
       });
@@ -179,14 +165,14 @@ describe('ProfilePage', () => {
       render(<ProfilePage />);
       const acceptButton = screen.getByText('接受');
       fireEvent.click(acceptButton);
-      expect(mockUserStore.respondToRequest).toHaveBeenCalledWith(1, true);
+      expect(storeSpy.spies.respondToRequest).toHaveBeenCalledWith(1, true);
     });
 
     it('calls respondToRequest with false on reject', () => {
       render(<ProfilePage />);
       const rejectButton = screen.getByText('拒绝');
       fireEvent.click(rejectButton);
-      expect(mockUserStore.respondToRequest).toHaveBeenCalledWith(1, false);
+      expect(storeSpy.spies.respondToRequest).toHaveBeenCalledWith(1, false);
     });
   });
 
@@ -207,44 +193,25 @@ describe('ProfilePage', () => {
       expect(screen.getByText('DEF456')).toBeInTheDocument();
       expect(screen.getByText('GHI789')).toBeInTheDocument();
     });
-
-    it('calls removeFriend on remove button click', () => {
-      render(<ProfilePage />);
-      const removeButtons = screen.getAllByRole('button').filter(
-        btn => btn.querySelector('svg')
-      );
-      // Click the X button for first friend
-      const xButtons = screen.getAllByRole('button');
-      // Find the X buttons (they have X icon)
-      fireEvent.click(xButtons[xButtons.length - 2]); // Second to last button
-      // This is approximate, might need adjustment
-    });
   });
 
   describe('Empty states', () => {
     it('shows empty message when no friends', () => {
-      Object.assign(mockUserStore, { friends: [] });
+      useUserStore.setState({ friends: [] });
       render(<ProfilePage />);
       expect(screen.getByText('暂无好友')).toBeInTheDocument();
     });
 
     it('hides pending requests section when empty', () => {
-      Object.assign(mockUserStore, { pendingRequests: [] });
+      useUserStore.setState({ pendingRequests: [] });
       render(<ProfilePage />);
       expect(screen.queryByText('待处理请求')).not.toBeInTheDocument();
     });
   });
 
   describe('Not authenticated', () => {
-    beforeEach(() => {
-      Object.assign(mockUserStore, { isAuthenticated: false });
-    });
-
-    afterEach(() => {
-      Object.assign(mockUserStore, { isAuthenticated: true });
-    });
-
     it('returns null when not authenticated', () => {
+      useUserStore.setState({ isAuthenticated: false });
       const { container } = render(<ProfilePage />);
       expect(container.firstChild).toBeNull();
     });
@@ -262,12 +229,12 @@ describe('ProfilePage', () => {
   describe('Data fetching', () => {
     it('fetches friends on mount', () => {
       render(<ProfilePage />);
-      expect(mockUserStore.fetchFriends).toHaveBeenCalled();
+      expect(storeSpy.spies.fetchFriends).toHaveBeenCalled();
     });
 
     it('fetches pending requests on mount', () => {
       render(<ProfilePage />);
-      expect(mockUserStore.fetchPendingRequests).toHaveBeenCalled();
+      expect(storeSpy.spies.fetchPendingRequests).toHaveBeenCalled();
     });
   });
 });

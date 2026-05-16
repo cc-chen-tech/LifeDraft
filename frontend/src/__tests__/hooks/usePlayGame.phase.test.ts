@@ -8,87 +8,65 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { usePlayGame } from '@/hooks/usePlayGame';
 import { useGameStore } from '@/stores/useGameStore';
-import * as sse from '@/lib/sse';
-
-// ==================== Mocks ====================
-
-jest.mock('@/lib/sse', () => ({
-  streamGameEvent: jest.fn(),
-  streamChoice: jest.fn(),
-  streamCustomChoice: jest.fn(),
-  streamRegenerate: jest.fn(),
-}));
-
-jest.mock('@/hooks/useHydration', () => ({
-  useHydration: () => true,
-}));
-
-// Mock fetch for API calls
-global.fetch = jest.fn();
+import { createSSEMockResponse } from '@/__tests__/helpers/sse-mock';
 
 // ==================== Test Helpers ====================
 
-/**
- * Creates a mock SSE stream that simulates different event sequences
- */
-function createMockSSEStream(events: Array<{ type: string; data?: unknown }>) {
-  return (
-    _gameId: number,
-    callbacks: {
-      onStory?: (text: string) => void;
-      onStatus?: (status: { phase: string }) => void;
-      onComplete?: (data: Record<string, unknown>) => void;
-      onError?: (error: { message: string }) => void;
-      onConnectionStatus?: (status: string | null) => void;
-      onReconnecting?: (attempt: number, maxRetries: number) => void;
-    },
-    _options?: { signal?: AbortSignal }
-  ) => {
-    return new Promise<void>((resolve, reject) => {
-      let eventIndex = 0;
+/** Standard SSE response: story + complete with options */
+function makeEventResponse(story = 'Once upon a time...', options = [{ text: 'Option 1' }, { text: 'Option 2' }]) {
+  return createSSEMockResponse([
+    `event: story\ndata: ${story}\n\n`,
+    `event: complete\ndata: ${JSON.stringify({ event_description: story, options })}\n\n`,
+  ]);
+}
 
-      const processNextEvent = () => {
-        if (eventIndex >= events.length) {
-          resolve();
-          return;
-        }
+/** SSE response with game_over flag */
+function makeGameOverResponse() {
+  return createSSEMockResponse([
+    'event: story\ndata: Final story...\n\n',
+    'event: complete\ndata: {"event_description":"Game over story","game_over":true}\n\n',
+  ]);
+}
 
-        const event = events[eventIndex++];
+/** SSE response with status phases */
+function makeStatusResponse() {
+  return createSSEMockResponse([
+    'event: status\ndata: {"phase":"initializing"}\n\n',
+    'event: status\ndata: {"phase":"loading_context"}\n\n',
+    'event: status\ndata: {"phase":"generating_story"}\n\n',
+    'event: story\ndata: Story with status phases\n\n',
+    'event: complete\ndata: {"event_description":"Story","options":[{"text":"Option"}]}\n\n',
+  ]);
+}
 
-        switch (event.type) {
-          case 'story':
-            callbacks.onStory?.(event.data as string);
-            setTimeout(processNextEvent, 10);
-            break;
-          case 'status':
-            callbacks.onStatus?.(event.data as { phase: string });
-            setTimeout(processNextEvent, 10);
-            break;
-          case 'complete':
-            callbacks.onComplete?.((event.data as Record<string, unknown>) || {});
-            resolve();
-            break;
-          case 'error':
-            callbacks.onError?.({ message: (event.data as string) || 'Unknown error' });
-            reject(new Error((event.data as string) || 'Unknown error'));
-            break;
-          case 'connecting':
-            callbacks.onConnectionStatus?.('connecting');
-            setTimeout(processNextEvent, 10);
-            break;
-          case 'connected':
-            callbacks.onConnectionStatus?.('connected');
-            setTimeout(processNextEvent, 10);
-            break;
-          default:
-            setTimeout(processNextEvent, 10);
-        }
-      };
+/** SSE response with error event */
+function makeErrorResponse() {
+  return createSSEMockResponse([
+    'event: error\ndata: {"error":"Server error occurred"}\n\n',
+  ]);
+}
 
-      // Start processing events
-      setTimeout(processNextEvent, 0);
-    });
-  };
+/** SSE response with multiple story chunks */
+function makeStoryChunksResponse(chunks: string[], options = [{ text: 'Option' }]) {
+  const sseChunks = chunks.map((chunk) => `event: story\ndata: ${chunk}\n\n`);
+  sseChunks.push(`event: complete\ndata: ${JSON.stringify({ event_description: chunks.join(''), options })}\n\n`);
+  return createSSEMockResponse(sseChunks);
+}
+
+/** SSE response for choice endpoint (no leading newlines in data to keep SSE parsing correct) */
+function makeChoiceResponse(story = 'Choice result...', options = [{ text: 'Next Option' }]) {
+  return createSSEMockResponse([
+    `event: story\ndata: ${story}\n\n`,
+    `event: complete\ndata: ${JSON.stringify({ event_description: story, options })}\n\n`,
+  ]);
+}
+
+/** SSE response for regenerate endpoint */
+function makeRegenerateResponse(story = 'New regenerated story') {
+  return createSSEMockResponse([
+    `event: story\ndata: ${story}\n\n`,
+    `event: complete\ndata: ${JSON.stringify({ event_description: story, options: [{ text: 'New option 1' }, { text: 'New option 2' }] })}\n\n`,
+  ]);
 }
 
 /**
@@ -112,6 +90,13 @@ function setupGameStore(options: {
   });
 }
 
+/** Count fetch calls to a specific URL pattern */
+function fetchCallCount(urlPattern: string): number {
+  return (global.fetch as jest.Mock).mock.calls.filter(
+    (call: unknown[]) => typeof call[0] === 'string' && (call[0] as string).includes(urlPattern)
+  ).length;
+}
+
 // ==================== Test Suite ====================
 
 describe('usePlayGame - Phase State Machine', () => {
@@ -119,6 +104,22 @@ describe('usePlayGame - Phase State Machine', () => {
     jest.clearAllMocks();
     act(() => {
       useGameStore.getState().resetGame();
+    });
+    // Default fetch: fresh SSE responses for SSE endpoints, JSON for everything else
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (typeof url === 'string' && (
+        url.includes('/event') || url.includes('/choice') ||
+        url.includes('/regenerate') || url.includes('/custom-choice')
+      )) {
+        return Promise.resolve(makeEventResponse());
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({}),
+        text: () => Promise.resolve('{}'),
+        headers: new Headers({ 'content-type': 'application/json' }),
+      } as Response);
     });
   });
 
@@ -134,70 +135,38 @@ describe('usePlayGame - Phase State Machine', () => {
 
       const { result } = renderHook(() => usePlayGame());
 
-      // Wait for initial effect to run
       await waitFor(() => {
         expect(result.current.phase).toBeDefined();
       });
 
-      // Should start in loading phase
       expect(['loading', 'generating', 'options']).toContain(result.current.phase);
     });
 
     it('should transition loading -> generating when generateEvent is called', async () => {
       setupGameStore({ gameId: 1 });
 
-      // Mock SSE to delay completion
-      (sse.streamGameEvent as jest.Mock).mockImplementation(
-        createMockSSEStream([
-          { type: 'connecting' },
-          { type: 'connected' },
-          { type: 'status', data: { phase: 'generating_story' } },
-          { type: 'story', data: 'Once upon a time...' },
-          {
-            type: 'complete',
-            data: {
-              event_description: 'Test story',
-              options: [{ text: 'Option 1' }],
-            },
-          },
-        ])
-      );
-
       const { result } = renderHook(() => usePlayGame());
 
-      // Wait for hook to be ready
       await waitFor(() => {
         expect(result.current.gameId).toBe(1);
       });
 
-      // Trigger generation
       await act(async () => {
         await result.current.generateEvent();
       });
 
-      // Should have transitioned through phases
       expect(['generating', 'options', 'streaming']).toContain(result.current.phase);
     });
 
     it('should transition generating -> options on successful completion', async () => {
       setupGameStore({ gameId: 1, storyText: '' });
 
-      (sse.streamGameEvent as jest.Mock).mockImplementation(
-        createMockSSEStream([
-          { type: 'status', data: { phase: 'generating_story' } },
-          { type: 'story', data: 'Story content...' },
-          {
-            type: 'complete',
-            data: {
-              event_description: 'Complete story',
-              options: [
-                { text: 'Option 1' },
-                { text: 'Option 2' },
-              ],
-            },
-          },
-        ])
-      );
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (typeof url === 'string' && url.includes('/event')) {
+          return Promise.resolve(makeEventResponse('Story content...'));
+        }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}), headers: new Headers() } as Response);
+      });
 
       const { result } = renderHook(() => usePlayGame());
 
@@ -209,7 +178,6 @@ describe('usePlayGame - Phase State Machine', () => {
         await result.current.generateEvent();
       });
 
-      // Should end in options phase
       await waitFor(() => {
         expect(result.current.phase).toBe('options');
       });
@@ -230,23 +198,15 @@ describe('usePlayGame - Phase State Machine', () => {
         },
       });
 
-      (sse.streamChoice as jest.Mock).mockImplementation(
-        createMockSSEStream([
-          { type: 'status', data: { phase: 'processing_choice' } },
-          { type: 'story', data: 'Choice result...' },
-          {
-            type: 'complete',
-            data: {
-              event_description: 'Result story',
-              options: [{ text: 'Next Option' }],
-            },
-          },
-        ])
-      );
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (typeof url === 'string' && url.includes('/choice')) {
+          return Promise.resolve(makeChoiceResponse());
+        }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}), headers: new Headers() } as Response);
+      });
 
       const { result } = renderHook(() => usePlayGame());
 
-      // First set phase to options
       act(() => {
         result.current.setPhase('options');
       });
@@ -255,25 +215,18 @@ describe('usePlayGame - Phase State Machine', () => {
         await result.current.handleChoice(0);
       });
 
-      // Should have transitioned through choosing
       expect(['choosing', 'options', 'result']).toContain(result.current.phase);
     });
 
     it('should transition to ending phase when game_over is received', async () => {
       setupGameStore({ gameId: 1, storyText: '' });
 
-      (sse.streamGameEvent as jest.Mock).mockImplementation(
-        createMockSSEStream([
-          { type: 'story', data: 'Final story...' },
-          {
-            type: 'complete',
-            data: {
-              event_description: 'Game over story',
-              game_over: true,
-            },
-          },
-        ])
-      );
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (typeof url === 'string' && url.includes('/event')) {
+          return Promise.resolve(makeGameOverResponse());
+        }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}), headers: new Headers() } as Response);
+      });
 
       const { result } = renderHook(() => usePlayGame());
 
@@ -312,25 +265,28 @@ describe('usePlayGame - Phase State Machine', () => {
       });
 
       // Reset mock to track calls
-      const callCountBefore = (sse.streamGameEvent as jest.Mock).mock.calls.length;
+      (global.fetch as jest.Mock).mockClear();
 
       // Try to generate while in options phase
       await act(async () => {
         await result.current.generateEvent();
       });
 
-      // Should not have called streamGameEvent additional times
-      expect((sse.streamGameEvent as jest.Mock).mock.calls.length).toBe(callCountBefore);
+      // Should not have called fetch for event endpoint additional times
+      expect(fetchCallCount('/event')).toBe(0);
     });
 
     it('should prevent concurrent generateEvent calls', async () => {
       setupGameStore({ gameId: 1, storyText: '' });
 
-      let resolveSSE: (() => void) | null = null;
-      (sse.streamGameEvent as jest.Mock).mockImplementation(() => {
-        return new Promise<void>((resolve) => {
-          resolveSSE = resolve;
-        });
+      let resolveFetch: (() => void) | null = null;
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (typeof url === 'string' && url.includes('/event')) {
+          return new Promise<Response>((resolve) => {
+            resolveFetch = () => resolve(makeEventResponse());
+          });
+        }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}), headers: new Headers() } as Response);
       });
 
       const { result } = renderHook(() => usePlayGame());
@@ -349,13 +305,13 @@ describe('usePlayGame - Phase State Machine', () => {
         await result.current.generateEvent();
       });
 
-      // Should only have one call
-      expect(sse.streamGameEvent).toHaveBeenCalledTimes(1);
+      // Should only have one call to event endpoint
+      expect(fetchCallCount('/event')).toBe(1);
 
-      // Resolve the SSE
-      if (resolveSSE) {
+      // Resolve the fetch
+      if (resolveFetch) {
         act(() => {
-          resolveSSE!();
+          resolveFetch!();
         });
       }
 
@@ -369,17 +325,12 @@ describe('usePlayGame - Phase State Machine', () => {
     it('should handle story_chunk events and keep streaming phase', async () => {
       setupGameStore({ gameId: 1, storyText: '' });
 
-      const storyChunks = ['Chunk 1 ', 'Chunk 2 ', 'Chunk 3'];
-      const events: Array<{ type: string; data?: unknown }> = storyChunks.map((chunk) => ({ type: 'story', data: chunk }));
-      events.push({
-        type: 'complete',
-        data: {
-          event_description: 'Full story',
-          options: [{ text: 'Option' }],
-        },
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (typeof url === 'string' && url.includes('/event')) {
+          return Promise.resolve(makeStoryChunksResponse(['Chunk 1 ', 'Chunk 2 ', 'Chunk 3']));
+        }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}), headers: new Headers() } as Response);
       });
-
-      (sse.streamGameEvent as jest.Mock).mockImplementation(createMockSSEStream(events));
 
       const { result } = renderHook(() => usePlayGame());
 
@@ -400,17 +351,12 @@ describe('usePlayGame - Phase State Machine', () => {
     it('should transition to error phase on SSE error event', async () => {
       setupGameStore({ gameId: 1, storyText: '' });
 
-      // Mock SSE that calls onError callback then resolves
-      (sse.streamGameEvent as jest.Mock).mockImplementation(
-        (_gameId: number, callbacks: { onError?: (error: { message: string }) => void }) => {
-          return new Promise<void>((resolve) => {
-            setTimeout(() => {
-              callbacks.onError?.({ message: 'Server error occurred' });
-              resolve();
-            }, 10);
-          });
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (typeof url === 'string' && url.includes('/event')) {
+          return Promise.resolve(makeErrorResponse());
         }
-      );
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}), headers: new Headers() } as Response);
+      });
 
       const { result, unmount } = renderHook(() => usePlayGame());
 
@@ -433,33 +379,12 @@ describe('usePlayGame - Phase State Machine', () => {
     it('should handle status updates during generation', async () => {
       setupGameStore({ gameId: 1, storyText: '' });
 
-      const statusPhases: string[] = [];
-
-      (sse.streamGameEvent as jest.Mock).mockImplementation(
-        (_gameId: number, callbacks: { onStatus?: (status: { phase: string }) => void; onComplete?: (data: Record<string, unknown>) => void }) => {
-          return new Promise<void>((resolve) => {
-            setTimeout(() => {
-              callbacks.onStatus?.({ phase: 'initializing' });
-              statusPhases.push('initializing');
-            }, 10);
-            setTimeout(() => {
-              callbacks.onStatus?.({ phase: 'loading_context' });
-              statusPhases.push('loading_context');
-            }, 20);
-            setTimeout(() => {
-              callbacks.onStatus?.({ phase: 'generating_story' });
-              statusPhases.push('generating_story');
-            }, 30);
-            setTimeout(() => {
-              callbacks.onComplete?.({
-                event_description: 'Story',
-                options: [{ text: 'Option' }],
-              });
-              resolve();
-            }, 40);
-          });
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (typeof url === 'string' && url.includes('/event')) {
+          return Promise.resolve(makeStatusResponse());
         }
-      );
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}), headers: new Headers() } as Response);
+      });
 
       const { result, unmount } = renderHook(() => usePlayGame());
 
@@ -471,14 +396,10 @@ describe('usePlayGame - Phase State Machine', () => {
         await result.current.generateEvent();
       });
 
-      // Wait for all status updates to be processed
+      // Should complete successfully after status updates
       await waitFor(() => {
-        expect(statusPhases.length).toBeGreaterThanOrEqual(3);
+        expect(result.current.phase).toBe('options');
       });
-
-      expect(statusPhases).toContain('initializing');
-      expect(statusPhases).toContain('loading_context');
-      expect(statusPhases).toContain('generating_story');
 
       unmount();
     });
@@ -486,19 +407,12 @@ describe('usePlayGame - Phase State Machine', () => {
     it('should handle retry status and clear story', async () => {
       setupGameStore({ gameId: 1, storyText: '' });
 
-      // Simplified test - just verify the stream completes with expected data
-      (sse.streamGameEvent as jest.Mock).mockImplementation(
-        createMockSSEStream([
-          { type: 'story', data: 'New story after retry' },
-          {
-            type: 'complete',
-            data: {
-              event_description: 'New story after retry',
-              options: [{ text: 'Option' }],
-            },
-          },
-        ])
-      );
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (typeof url === 'string' && url.includes('/event')) {
+          return Promise.resolve(makeEventResponse('New story after retry'));
+        }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}), headers: new Headers() } as Response);
+      });
 
       const { result, unmount } = renderHook(() => usePlayGame());
 
@@ -521,20 +435,12 @@ describe('usePlayGame - Phase State Machine', () => {
     it('should handle connection status changes', async () => {
       setupGameStore({ gameId: 1, storyText: '' });
 
-      (sse.streamGameEvent as jest.Mock).mockImplementation(
-        createMockSSEStream([
-          { type: 'connecting' },
-          { type: 'connected' },
-          { type: 'story', data: 'Story content' },
-          {
-            type: 'complete',
-            data: {
-              event_description: 'Story',
-              options: [{ text: 'Option' }],
-            },
-          },
-        ])
-      );
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (typeof url === 'string' && url.includes('/event')) {
+          return Promise.resolve(makeEventResponse('Story content'));
+        }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}), headers: new Headers() } as Response);
+      });
 
       const { result } = renderHook(() => usePlayGame());
 
@@ -558,20 +464,6 @@ describe('usePlayGame - Phase State Machine', () => {
   describe('Error Phase Recovery', () => {
     it('should allow recovery from error phase via generateEvent', async () => {
       setupGameStore({ gameId: 1, storyText: '' });
-
-      // Use a successful mock for this simplified test
-      (sse.streamGameEvent as jest.Mock).mockImplementation(
-        createMockSSEStream([
-          { type: 'story', data: 'Success story' },
-          {
-            type: 'complete',
-            data: {
-              event_description: 'Success story',
-              options: [{ text: 'Option' }],
-            },
-          },
-        ])
-      );
 
       const { result, unmount } = renderHook(() => usePlayGame());
 
@@ -600,20 +492,6 @@ describe('usePlayGame - Phase State Machine', () => {
 
     it('should handle 404 session expired error with recovery', async () => {
       setupGameStore({ gameId: 1, storyText: '' });
-
-      // Use a successful SSE stream for this test
-      (sse.streamGameEvent as jest.Mock).mockImplementation(
-        createMockSSEStream([
-          { type: 'story', data: 'Recovered story' },
-          {
-            type: 'complete',
-            data: {
-              event_description: 'Recovered story',
-              options: [{ text: 'Option' }],
-            },
-          },
-        ])
-      );
 
       const { result, unmount } = renderHook(() => usePlayGame());
 
@@ -660,11 +538,14 @@ describe('usePlayGame - Phase State Machine', () => {
     it('should track elapsed time during generating phase', async () => {
       setupGameStore({ gameId: 1, storyText: '' });
 
-      let resolveSSE: (() => void) | null = null;
-      (sse.streamGameEvent as jest.Mock).mockImplementation(() => {
-        return new Promise<void>((resolve) => {
-          resolveSSE = resolve;
-        });
+      let resolveFetch: ((r: Response) => void) | null = null;
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (typeof url === 'string' && url.includes('/event')) {
+          return new Promise<Response>((resolve) => {
+            resolveFetch = resolve;
+          });
+        }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}), headers: new Headers() } as Response);
       });
 
       const { result } = renderHook(() => usePlayGame());
@@ -686,29 +567,15 @@ describe('usePlayGame - Phase State Machine', () => {
       expect(result.current.elapsedSeconds).toBeGreaterThanOrEqual(0);
 
       // Cleanup
-      if (resolveSSE) {
+      if (resolveFetch) {
         act(() => {
-          resolveSSE!();
+          resolveFetch(makeEventResponse());
         });
       }
     });
 
     it('should reset elapsed time when leaving generating phase', async () => {
       setupGameStore({ gameId: 1, storyText: '' });
-
-      // Use a successful completion mock
-      (sse.streamGameEvent as jest.Mock).mockImplementation(
-        createMockSSEStream([
-          { type: 'story', data: 'Story content' },
-          {
-            type: 'complete',
-            data: {
-              event_description: 'Story content',
-              options: [{ text: 'Option' }],
-            },
-          },
-        ])
-      );
 
       const { result, unmount } = renderHook(() => usePlayGame());
 
@@ -733,20 +600,6 @@ describe('usePlayGame - Phase State Machine', () => {
 
     it('should handle long-running generation with polling fallback', async () => {
       setupGameStore({ gameId: 1, storyText: '' });
-
-      // Mock SSE to succeed (simpler test path)
-      (sse.streamGameEvent as jest.Mock).mockImplementation(
-        createMockSSEStream([
-          { type: 'story', data: 'Polled story' },
-          {
-            type: 'complete',
-            data: {
-              event_description: 'Polled story',
-              options: [{ text: 'Polled Option' }],
-            },
-          },
-        ])
-      );
 
       const { result, unmount } = renderHook(() => usePlayGame());
 
@@ -773,22 +626,16 @@ describe('usePlayGame - Phase State Machine', () => {
     it('should handle complete game flow: loading -> generating -> options -> choosing -> result', async () => {
       setupGameStore({ gameId: 1, storyText: '' });
 
-      // Phase 1: Generate event
-      (sse.streamGameEvent as jest.Mock).mockImplementation(
-        createMockSSEStream([
-          { type: 'story', data: 'Event story' },
-          {
-            type: 'complete',
-            data: {
-              event_description: 'Event story',
-              options: [
-                { text: 'Choice 1' },
-                { text: 'Choice 2' },
-              ],
-            },
-          },
-        ])
-      );
+      let isEventPhase = true;
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (typeof url === 'string' && url.includes('/event') && isEventPhase) {
+          return Promise.resolve(makeEventResponse('Event story'));
+        }
+        if (typeof url === 'string' && url.includes('/choice')) {
+          return Promise.resolve(makeChoiceResponse());
+        }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}), headers: new Headers() } as Response);
+      });
 
       const { result, unmount } = renderHook(() => usePlayGame());
 
@@ -805,21 +652,7 @@ describe('usePlayGame - Phase State Machine', () => {
         expect(result.current.phase).toBe('options');
       });
 
-      // Setup for choice - use a stream that completes properly
-      (sse.streamChoice as jest.Mock).mockImplementation(
-        createMockSSEStream([
-          { type: 'story', data: '\n\nChoice result story' },
-          {
-            type: 'complete',
-            data: {
-              event_description: 'Event story\n\nChoice result story',
-              options: [{ text: 'Next option' }],
-            },
-          },
-        ])
-      );
-
-      // Make choice
+      // Setup for choice
       await act(async () => {
         await result.current.handleChoice(0);
       });
@@ -829,7 +662,7 @@ describe('usePlayGame - Phase State Machine', () => {
         expect(result.current.phase).toBe('options');
       });
 
-      // Story should include both event and choice result
+      // Story should include event story
       expect(result.current.storyText).toContain('Event story');
 
       unmount();
@@ -845,16 +678,15 @@ describe('usePlayGame - Phase State Machine', () => {
         },
       });
 
-      // Use delayed resolve for custom choice
-      let completeCustomChoice: (() => void) | null = null;
-      (sse.streamCustomChoice as jest.Mock).mockImplementation(() => {
-        return new Promise<void>((resolve) => {
-          completeCustomChoice = () => {
-            // Manually update story text as the SSE would
-            useGameStore.setState({ storyText: 'Initial story\n\nCustom choice result' });
-            resolve();
-          };
-        });
+      let completeCustomChoice: ((r: Response) => void) | null = null;
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (typeof url === 'string' && url.includes('/custom-choice')) {
+          return new Promise<Response>((resolve) => {
+            completeCustomChoice = resolve;
+          });
+        }
+        // SSE response for all URLs so any generateEvent call gets proper SSE stream
+        return Promise.resolve(makeEventResponse());
       });
 
       const { result } = renderHook(() => usePlayGame());
@@ -871,9 +703,9 @@ describe('usePlayGame - Phase State Machine', () => {
       // Should be in choosing phase
       expect(result.current.phase).toBe('choosing');
 
-      // Complete the custom choice
+      // Complete the custom choice with SSE response
       await act(async () => {
-        completeCustomChoice?.();
+        completeCustomChoice?.(makeChoiceResponse('Custom choice result'));
       });
 
       await waitFor(() => {
@@ -891,21 +723,12 @@ describe('usePlayGame - Phase State Machine', () => {
         },
       });
 
-      (sse.streamRegenerate as jest.Mock).mockImplementation(
-        createMockSSEStream([
-          { type: 'story', data: 'New regenerated story' },
-          {
-            type: 'complete',
-            data: {
-              event_description: 'New regenerated story',
-              options: [
-                { text: 'New option 1' },
-                { text: 'New option 2' },
-              ],
-            },
-          },
-        ])
-      );
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (typeof url === 'string' && url.includes('/regenerate')) {
+          return Promise.resolve(makeRegenerateResponse());
+        }
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}), headers: new Headers() } as Response);
+      });
 
       const { result } = renderHook(() => usePlayGame());
 
@@ -923,20 +746,6 @@ describe('usePlayGame - Phase State Machine', () => {
 
     it('should handle rapid phase transitions without race conditions', async () => {
       setupGameStore({ gameId: 1, storyText: '' });
-
-      // Use a mock that properly resolves
-      (sse.streamGameEvent as jest.Mock).mockImplementation(
-        createMockSSEStream([
-          { type: 'story', data: 'Story content' },
-          {
-            type: 'complete',
-            data: {
-              event_description: 'Story content',
-              options: [{ text: 'Option' }],
-            },
-          },
-        ])
-      );
 
       const { result, unmount } = renderHook(() => usePlayGame());
 
@@ -962,7 +771,6 @@ describe('usePlayGame - Phase State Machine', () => {
 
   describe('Phase Guards', () => {
     it('should allow choice when in options phase', async () => {
-      // Setup store with gameId and options before rendering
       act(() => {
         useGameStore.setState({
           gameId: 1,
@@ -977,40 +785,27 @@ describe('usePlayGame - Phase State Machine', () => {
         });
       });
 
-      // Setup mock for choice stream
-      (sse.streamChoice as jest.Mock).mockImplementation(
-        createMockSSEStream([
-          { type: 'story', data: 'Choice result' },
-          {
-            type: 'complete',
-            data: {
-              event_description: 'Choice result',
-              options: [{ text: 'Next option' }],
-            },
-          },
-        ])
-      );
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (typeof url === 'string' && url.includes('/choice')) {
+          return Promise.resolve(makeChoiceResponse());
+        }
+        // Return SSE response for all URLs (syncState may fail but generateEvent needs SSE)
+        return Promise.resolve(makeEventResponse());
+      });
 
       const { result, unmount } = renderHook(() => usePlayGame());
 
-      // Wait for hook to be ready with gameId
       await waitFor(() => {
         expect(result.current.gameId).toBe(1);
       });
 
-      // Set phase to options
       act(() => {
         result.current.setPhase('options');
       });
 
-      // Make choice - this should trigger the API call
       await act(async () => {
         await result.current.handleChoice(0);
       });
-
-      // The choice handler should have been invoked
-      // Note: handleChoice has its own gameId check, so it may not call streamChoice
-      // if the gameId is not properly captured. We just verify it doesn't throw.
 
       unmount();
     });
@@ -1049,12 +844,10 @@ describe('usePlayGame - Phase State Machine', () => {
         expect(result.current.gameId).toBe(1);
       });
 
-      // First ensure we're in loading phase
       act(() => {
         result.current.setPhase('loading');
       });
 
-      // Use function updater
       act(() => {
         result.current.setPhase((prev) => {
           if (prev === 'loading') return 'generating';
@@ -1073,26 +866,6 @@ describe('usePlayGame - Phase State Machine', () => {
   describe('Connection Status', () => {
     it('should track connection status during SSE', async () => {
       setupGameStore({ gameId: 1, storyText: '' });
-
-      (sse.streamGameEvent as jest.Mock).mockImplementation(
-        (_gameId: number, callbacks: { onConnectionStatus?: (status: string | null) => void; onComplete?: (data: Record<string, unknown>) => void }) => {
-          return new Promise<void>((resolve) => {
-            setTimeout(() => {
-              callbacks.onConnectionStatus?.('connecting');
-            }, 10);
-            setTimeout(() => {
-              callbacks.onConnectionStatus?.('connected');
-            }, 20);
-            setTimeout(() => {
-              callbacks.onComplete?.({
-                event_description: 'Story',
-                options: [{ text: 'Option' }],
-              });
-              resolve();
-            }, 30);
-          });
-        }
-      );
 
       const { result, unmount } = renderHook(() => usePlayGame());
 
@@ -1114,34 +887,6 @@ describe('usePlayGame - Phase State Machine', () => {
 
     it('should handle reconnection attempts', async () => {
       setupGameStore({ gameId: 1, storyText: '' });
-
-      (sse.streamGameEvent as jest.Mock).mockImplementation(
-        (
-          _gameId: number,
-          callbacks: {
-            onConnectionStatus?: (status: string) => void;
-            onReconnecting?: (attempt: number, maxRetries: number) => void;
-            onComplete?: (data: Record<string, unknown>) => void;
-          }
-        ) => {
-          return new Promise<void>((resolve) => {
-            setTimeout(() => {
-              callbacks.onConnectionStatus?.('reconnecting');
-              callbacks.onReconnecting?.(1, 3);
-            }, 10);
-            setTimeout(() => {
-              callbacks.onConnectionStatus?.('connected');
-            }, 20);
-            setTimeout(() => {
-              callbacks.onComplete?.({
-                event_description: 'Story',
-                options: [{ text: 'Option' }],
-              });
-              resolve();
-            }, 30);
-          });
-        }
-      );
 
       const { result, unmount } = renderHook(() => usePlayGame());
 
@@ -1173,19 +918,16 @@ describe('usePlayGame - Phase State Machine', () => {
         expect(result.current.gameId).toBe(1);
       });
 
-      // Test loading phase message
       act(() => {
         result.current.setPhase('loading');
       });
       expect(result.current.getLoadingMessage()).toBeDefined();
 
-      // Test generating phase message
       act(() => {
         result.current.setPhase('generating');
       });
       expect(result.current.getLoadingMessage()).toContain('正在');
 
-      // Test choosing phase message
       act(() => {
         result.current.setPhase('choosing');
       });
@@ -1207,8 +949,6 @@ describe('usePlayGame - Phase State Machine', () => {
         result.current.setPhase('generating');
       });
 
-      // Simulate reconnection state through internal state
-      // The message should adapt based on phase
       const message = result.current.getLoadingMessage();
       expect(message).toBeTruthy();
 

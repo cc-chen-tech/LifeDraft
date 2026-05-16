@@ -11,32 +11,10 @@
  */
 
 import { useCollectionStore } from '@/stores/useCollectionStore';
-import api from '@/lib/api';
+import { jsonResponse, errorResponse } from '@/__tests__/helpers/fetch';
 
 // Mock timers for cache TTL tests
 jest.useFakeTimers();
-
-jest.mock('@/lib/api', () => ({
-  __esModule: true,
-  default: {
-    collection: {
-      get: jest.fn(),
-      generateCharacterImage: jest.fn(),
-      generateItemImage: jest.fn(),
-      generateLandmarkImage: jest.fn(),
-      generateCharacterDescription: jest.fn(),
-      generateItemDescription: jest.fn(),
-      generateLandmarkDescription: jest.fn(),
-      regenerateCharacterImage: jest.fn(),
-      regenerateItemImage: jest.fn(),
-      addEntities: jest.fn(),
-      createItem: jest.fn(),
-      deleteItem: jest.fn(),
-      deleteCharacter: jest.fn(),
-      deleteLandmark: jest.fn(),
-    },
-  },
-}));
 
 describe('useCollectionStore cache', () => {
   beforeEach(() => {
@@ -57,6 +35,7 @@ describe('useCollectionStore cache', () => {
     });
     jest.clearAllMocks();
     jest.clearAllTimers();
+    global.fetch = jest.fn();
   });
 
   describe('Request Deduplication', () => {
@@ -69,12 +48,12 @@ describe('useCollectionStore cache', () => {
       };
 
       // Create a delayed promise to simulate network latency
-      let resolvePromise: (value: typeof mockResponse) => void;
-      const delayedPromise = new Promise<typeof mockResponse>((resolve) => {
+      let resolvePromise: (value: unknown) => void;
+      const delayedPromise = new Promise<unknown>((resolve) => {
         resolvePromise = resolve;
       });
 
-      (api.collection.get as jest.Mock).mockReturnValue(delayedPromise);
+      (global.fetch as jest.Mock).mockReturnValue(delayedPromise);
 
       // Fire 3 concurrent requests for the same gameId
       const promise1 = useCollectionStore.getState().fetchCollection(1);
@@ -82,16 +61,16 @@ describe('useCollectionStore cache', () => {
       const promise3 = useCollectionStore.getState().fetchCollection(1);
 
       // API should only be called once
-      expect(api.collection.get).toHaveBeenCalledTimes(1);
+      expect(global.fetch).toHaveBeenCalledTimes(1);
 
       // Resolve the API call
-      resolvePromise!(mockResponse);
+      resolvePromise!(jsonResponse(mockResponse));
 
       // All promises should resolve
       await Promise.all([promise1, promise2, promise3]);
 
       // Still only 1 API call
-      expect(api.collection.get).toHaveBeenCalledTimes(1);
+      expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
     it('allows different gameId requests to proceed independently', async () => {
@@ -108,9 +87,9 @@ describe('useCollectionStore cache', () => {
         landmarks: [],
       };
 
-      (api.collection.get as jest.Mock)
-        .mockResolvedValueOnce(mockResponse1)
-        .mockResolvedValueOnce(mockResponse2);
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(jsonResponse(mockResponse1))
+        .mockResolvedValueOnce(jsonResponse(mockResponse2));
 
       // Fire requests for different gameIds
       const promise1 = useCollectionStore.getState().fetchCollection(1);
@@ -119,9 +98,9 @@ describe('useCollectionStore cache', () => {
       await Promise.all([promise1, promise2]);
 
       // API should be called twice (different gameIds)
-      expect(api.collection.get).toHaveBeenCalledTimes(2);
-      expect(api.collection.get).toHaveBeenNthCalledWith(1, 1);
-      expect(api.collection.get).toHaveBeenNthCalledWith(2, 2);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+      expect(global.fetch).toHaveBeenNthCalledWith(1, '/api/collection/1/details', expect.objectContaining({ credentials: 'include' }));
+      expect(global.fetch).toHaveBeenNthCalledWith(2, '/api/collection/2/details', expect.objectContaining({ credentials: 'include' }));
     });
 
     it('allows sequential requests after first completes', async () => {
@@ -132,18 +111,18 @@ describe('useCollectionStore cache', () => {
         landmarks: [],
       };
 
-      (api.collection.get as jest.Mock).mockResolvedValue(mockResponse);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockResponse));
 
       // First request
       await useCollectionStore.getState().fetchCollection(1);
-      expect(api.collection.get).toHaveBeenCalledTimes(1);
+      expect(global.fetch).toHaveBeenCalledTimes(1);
 
       // Advance time to clear cache
       jest.advanceTimersByTime(31000);
 
       // Second request (after first completes and cache expires)
       await useCollectionStore.getState().fetchCollection(1);
-      expect(api.collection.get).toHaveBeenCalledTimes(2);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -155,12 +134,12 @@ describe('useCollectionStore cache', () => {
         items: [],
         landmarks: [],
       };
-      (api.collection.get as jest.Mock).mockResolvedValue(mockResponse);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockResponse));
 
       await useCollectionStore.getState().fetchCollection(1);
 
-      expect(api.collection.get).toHaveBeenCalledTimes(1);
-      expect(api.collection.get).toHaveBeenCalledWith(1);
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(global.fetch).toHaveBeenCalledWith('/api/collection/1/details', expect.objectContaining({ credentials: 'include' }));
     });
 
     it('should use cache for repeated fetch within 30 seconds (cache hit)', async () => {
@@ -170,11 +149,11 @@ describe('useCollectionStore cache', () => {
         items: [],
         landmarks: [],
       };
-      (api.collection.get as jest.Mock).mockResolvedValue(mockResponse);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockResponse));
 
       // 第一次请求
       await useCollectionStore.getState().fetchCollection(1);
-      expect(api.collection.get).toHaveBeenCalledTimes(1);
+      expect(global.fetch).toHaveBeenCalledTimes(1);
 
       // 快进 5 秒（仍在缓存有效期内）
       jest.advanceTimersByTime(5000);
@@ -182,7 +161,7 @@ describe('useCollectionStore cache', () => {
       // 第二次请求（在缓存有效期内）
       await useCollectionStore.getState().fetchCollection(1);
       // 仍然只调用 1 次
-      expect(api.collection.get).toHaveBeenCalledTimes(1);
+      expect(global.fetch).toHaveBeenCalledTimes(1);
 
       // 数据应该保持一致
       expect(useCollectionStore.getState().characters).toHaveLength(1);
@@ -205,18 +184,18 @@ describe('useCollectionStore cache', () => {
         items: [],
         landmarks: [],
       };
-      (api.collection.get as jest.Mock)
-        .mockResolvedValueOnce(mockResponse1)
-        .mockResolvedValueOnce(mockResponse2);
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(jsonResponse(mockResponse1))
+        .mockResolvedValueOnce(jsonResponse(mockResponse2));
 
       // 第一次普通请求
       await useCollectionStore.getState().fetchCollection(1);
-      expect(api.collection.get).toHaveBeenCalledTimes(1);
+      expect(global.fetch).toHaveBeenCalledTimes(1);
       expect(useCollectionStore.getState().characters).toHaveLength(1);
 
       // 强制刷新
       await useCollectionStore.getState().fetchCollection(1, true);
-      expect(api.collection.get).toHaveBeenCalledTimes(2);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
       expect(useCollectionStore.getState().characters).toHaveLength(2);
     });
 
@@ -227,18 +206,18 @@ describe('useCollectionStore cache', () => {
         items: [],
         landmarks: [],
       };
-      (api.collection.get as jest.Mock).mockResolvedValue(mockResponse);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockResponse));
 
       // 第一次请求
       await useCollectionStore.getState().fetchCollection(1);
-      expect(api.collection.get).toHaveBeenCalledTimes(1);
+      expect(global.fetch).toHaveBeenCalledTimes(1);
 
       // 快进 31 秒，超过缓存有效期
       jest.advanceTimersByTime(31000);
 
       // 再次请求
       await useCollectionStore.getState().fetchCollection(1);
-      expect(api.collection.get).toHaveBeenCalledTimes(2);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
     });
 
     it('should not use cache when hasData is false (empty arrays)', async () => {
@@ -248,17 +227,17 @@ describe('useCollectionStore cache', () => {
         items: [],
         landmarks: [],
       };
-      (api.collection.get as jest.Mock).mockResolvedValue(mockResponse);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockResponse));
 
       // First request (store is empty, returns empty arrays)
       await useCollectionStore.getState().fetchCollection(1);
-      expect(api.collection.get).toHaveBeenCalledTimes(1);
+      expect(global.fetch).toHaveBeenCalledTimes(1);
 
       // Second request immediately - cache is NOT used because hasData is false
       // (all arrays are empty, so hasData = false)
       await useCollectionStore.getState().fetchCollection(1);
       // API should be called again because empty data doesn't count as cached data
-      expect(api.collection.get).toHaveBeenCalledTimes(2);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -282,7 +261,7 @@ describe('useCollectionStore cache', () => {
       });
 
       // Mock API returns new data without image_url (simulating generation in progress)
-      (api.collection.get as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         game_id: 1,
         characters: [{
           name: '赵灵儿',
@@ -299,7 +278,7 @@ describe('useCollectionStore cache', () => {
         }],
         items: [],
         landmarks: [],
-      });
+      }));
 
       // Call refresh mode
       await useCollectionStore.getState().fetchCollection(1, true);
@@ -329,7 +308,7 @@ describe('useCollectionStore cache', () => {
       });
 
       // Mock API returns new data with new image_url
-      (api.collection.get as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         game_id: 1,
         characters: [{
           name: '赵灵儿',
@@ -346,7 +325,7 @@ describe('useCollectionStore cache', () => {
         }],
         items: [],
         landmarks: [],
-      });
+      }));
 
       // Call refresh mode
       await useCollectionStore.getState().fetchCollection(1, true);
@@ -358,7 +337,7 @@ describe('useCollectionStore cache', () => {
 
     it('does not merge data in initial load mode (isRefresh=false)', async () => {
       // Mock API returns data
-      (api.collection.get as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         game_id: 1,
         characters: [{
           name: '赵灵儿',
@@ -375,7 +354,7 @@ describe('useCollectionStore cache', () => {
         }],
         items: [],
         landmarks: [],
-      });
+      }));
 
       // Call initial load mode (isRefresh=false)
       await useCollectionStore.getState().fetchCollection(1, false);
@@ -420,7 +399,7 @@ describe('useCollectionStore cache', () => {
       });
 
       // Mock API returns new data where only one character has new image
-      (api.collection.get as jest.Mock).mockResolvedValue({
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         game_id: 1,
         characters: [
           {
@@ -452,7 +431,7 @@ describe('useCollectionStore cache', () => {
         ],
         items: [],
         landmarks: [],
-      });
+      }));
 
       // Call refresh mode
       await useCollectionStore.getState().fetchCollection(1, true);
@@ -474,12 +453,12 @@ describe('useCollectionStore cache', () => {
       };
 
       // Create a delayed promise
-      let resolvePromise: (value: typeof mockResponse) => void;
-      const delayedPromise = new Promise<typeof mockResponse>((resolve) => {
+      let resolvePromise: (value: unknown) => void;
+      const delayedPromise = new Promise<unknown>((resolve) => {
         resolvePromise = resolve;
       });
 
-      (api.collection.get as jest.Mock).mockReturnValue(delayedPromise);
+      (global.fetch as jest.Mock).mockReturnValue(delayedPromise);
 
       // Fire multiple rapid requests
       const promise1 = useCollectionStore.getState().fetchCollection(1);
@@ -490,7 +469,7 @@ describe('useCollectionStore cache', () => {
       expect(useCollectionStore.getState().isLoading).toBe(true);
 
       // Resolve the API call
-      resolvePromise!(mockResponse);
+      resolvePromise!(jsonResponse(mockResponse));
 
       // Wait for all promises
       await Promise.all([promise1, promise2, promise3]);
@@ -499,7 +478,7 @@ describe('useCollectionStore cache', () => {
       expect(useCollectionStore.getState().isLoading).toBe(false);
       expect(useCollectionStore.getState().characters).toHaveLength(1);
       expect(useCollectionStore.getState().characters[0].name).toBe('主角');
-      expect(api.collection.get).toHaveBeenCalledTimes(1);
+      expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
     it('handles request returning out of order correctly', async () => {
@@ -513,7 +492,7 @@ describe('useCollectionStore cache', () => {
       };
 
       // First request
-      (api.collection.get as jest.Mock).mockResolvedValueOnce(mockResponse1);
+      (global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse(mockResponse1));
       await useCollectionStore.getState().fetchCollection(1);
 
       expect(useCollectionStore.getState().characters[0].name).toBe('First');
@@ -529,38 +508,40 @@ describe('useCollectionStore cache', () => {
       };
 
       // Second request (after cache expired)
-      (api.collection.get as jest.Mock).mockResolvedValueOnce(mockResponse2);
+      (global.fetch as jest.Mock).mockResolvedValueOnce(jsonResponse(mockResponse2));
       await useCollectionStore.getState().fetchCollection(1);
 
       // Should have the second response
       expect(useCollectionStore.getState().characters[0].name).toBe('Second');
-      expect(api.collection.get).toHaveBeenCalledTimes(2);
+      expect(global.fetch).toHaveBeenCalledTimes(2);
     });
 
     it('handles error followed by success correctly', async () => {
-      // First request fails
-      (api.collection.get as jest.Mock).mockRejectedValueOnce(new Error('Network error'));
+      jest.useRealTimers(); // fetchWithRetry retries with setTimeout; fake timers would hang
+
+      // First request fails with a network error
+      (global.fetch as jest.Mock).mockRejectedValue(new Error('Network error'));
 
       await useCollectionStore.getState().fetchCollection(1);
 
       expect(useCollectionStore.getState().error).toBe('Network error');
       expect(useCollectionStore.getState().isLoading).toBe(false);
 
-      // Verify API was called once
-      expect(api.collection.get).toHaveBeenCalledTimes(1);
+      // fetchWithRetry retries 3 times before giving up
+      expect(global.fetch).toHaveBeenCalledTimes(3);
 
-      // Wait for the _fetchInFlight finally block to clear (it's in a microtask)
+      // Wait for the _fetchInFlight finally block to clear
       await Promise.resolve();
       await Promise.resolve();
 
-      // Second request succeeds - setup mock again
+      // Second request succeeds
       const mockResponse = {
         game_id: 1,
         characters: [{ name: '主角', role: '主角', description: '', affinity: 100, age: 20, gender: '男', occupation: '', personality_traits: [], image_url: null, image_generated: false, description_generated: false }],
         items: [],
         landmarks: [],
       };
-      (api.collection.get as jest.Mock).mockResolvedValueOnce(mockResponse);
+      global.fetch = jest.fn().mockResolvedValue(jsonResponse(mockResponse));
 
       // Clear error before second fetch (as would happen in real usage)
       useCollectionStore.getState().clearError();
@@ -568,13 +549,15 @@ describe('useCollectionStore cache', () => {
       // Second request succeeds
       await useCollectionStore.getState().fetchCollection(1);
 
-      // Verify API was called twice
-      expect(api.collection.get).toHaveBeenCalledTimes(2);
+      // Verify the second request was made
+      expect(global.fetch).toHaveBeenCalledTimes(1);
 
       // Verify the second request succeeded
       expect(useCollectionStore.getState().characters).toHaveLength(1);
       expect(useCollectionStore.getState().characters[0].name).toBe('主角');
       expect(useCollectionStore.getState().error).toBeNull();
+
+      jest.useFakeTimers();
     });
 
     it('maintains selection state during concurrent refreshes', async () => {
@@ -617,7 +600,7 @@ describe('useCollectionStore cache', () => {
         landmarks: [],
       };
 
-      (api.collection.get as jest.Mock).mockResolvedValue(mockResponse);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockResponse));
 
       // Refresh multiple times concurrently
       const promise1 = useCollectionStore.getState().fetchCollection(1, true);
@@ -637,32 +620,35 @@ describe('useCollectionStore cache', () => {
 
   describe('write operations bypass cache', () => {
     it('generateCharacterImage should fetch fresh data after generation', async () => {
-      (api.collection.generateCharacterImage as jest.Mock).mockResolvedValue({ success: true });
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ success: true }));
       const mockResponse = {
         game_id: 1,
         characters: [{ name: '主角', role: '主角', description: '', affinity: 100, age: 20, gender: '男', occupation: '', personality_traits: [], image_url: 'http://example.com/image.png', image_generated: true, description_generated: false }],
         items: [],
         landmarks: [],
       };
-      (api.collection.get as jest.Mock).mockResolvedValue(mockResponse);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockResponse));
 
       await useCollectionStore.getState().generateCharacterImage(1, '主角');
 
       // 应该调用 generateCharacterImage 和 fetchCollection(isRefresh=true)
-      expect(api.collection.generateCharacterImage).toHaveBeenCalledWith(1, '主角');
-      expect(api.collection.get).toHaveBeenCalledWith(1);
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/collection/1/characters/%E4%B8%BB%E8%A7%92/generate-image',
+        expect.objectContaining({ method: 'POST' })
+      );
+      expect(global.fetch).toHaveBeenCalledWith('/api/collection/1/details', expect.objectContaining({ credentials: 'include' }));
       expect(useCollectionStore.getState().characters[0].image_url).toBe('http://example.com/image.png');
     });
 
     it('addRecognizedEntities should fetch fresh data after adding', async () => {
-      (api.collection.addEntities as jest.Mock).mockResolvedValue({ success: true });
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ success: true }));
       const mockResponse = {
         game_id: 1,
         characters: [],
         items: [{ name: '新物品', description: '', importance: 'normal', category: 'other', acquired_week: 0, acquired_context: '', is_key_item: false, image_url: null, image_generated: false, description_generated: false, metadata: {} }],
         landmarks: [],
       };
-      (api.collection.get as jest.Mock).mockResolvedValue(mockResponse);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockResponse));
 
       await useCollectionStore.getState().addRecognizedEntities(1, {
         items: [{ name: '新物品', description: '', category: 'other', importance: 'normal', appear_count: 1, appear_contexts: [] }],
@@ -670,42 +656,42 @@ describe('useCollectionStore cache', () => {
         landmarks: [],
       });
 
-      expect(api.collection.addEntities).toHaveBeenCalled();
-      expect(api.collection.get).toHaveBeenCalledWith(1);
+      expect(global.fetch).toHaveBeenCalled();
+      expect(global.fetch).toHaveBeenCalledWith('/api/collection/1/details', expect.objectContaining({ credentials: 'include' }));
       expect(useCollectionStore.getState().items).toHaveLength(1);
     });
 
     it('createItem should fetch fresh data after creation', async () => {
-      (api.collection.createItem as jest.Mock).mockResolvedValue({ success: true });
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ success: true }));
       const mockResponse = {
         game_id: 1,
         characters: [],
         items: [{ name: '手动物品', description: '', importance: 'normal', category: 'other', acquired_week: 0, acquired_context: '', is_key_item: false, image_url: null, image_generated: false, description_generated: false, metadata: {} }],
         landmarks: [],
       };
-      (api.collection.get as jest.Mock).mockResolvedValue(mockResponse);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockResponse));
 
       await useCollectionStore.getState().createItem(1, '手动物品');
 
-      expect(api.collection.createItem).toHaveBeenCalled();
-      expect(api.collection.get).toHaveBeenCalledWith(1);
+      expect(global.fetch).toHaveBeenCalled();
+      expect(global.fetch).toHaveBeenCalledWith('/api/collection/1/details', expect.objectContaining({ credentials: 'include' }));
       expect(useCollectionStore.getState().items).toHaveLength(1);
     });
 
     it('deleteItem should fetch fresh data after deletion', async () => {
-      (api.collection.deleteItem as jest.Mock).mockResolvedValue({ success: true });
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ success: true }));
       const mockResponse = {
         game_id: 1,
         characters: [],
         items: [],
         landmarks: [],
       };
-      (api.collection.get as jest.Mock).mockResolvedValue(mockResponse);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockResponse));
 
       await useCollectionStore.getState().deleteItem(1, '旧物品');
 
-      expect(api.collection.deleteItem).toHaveBeenCalled();
-      expect(api.collection.get).toHaveBeenCalledWith(1);
+      expect(global.fetch).toHaveBeenCalled();
+      expect(global.fetch).toHaveBeenCalledWith('/api/collection/1/details', expect.objectContaining({ credentials: 'include' }));
     });
   });
 });

@@ -6,57 +6,61 @@ import React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-// Mock useMusicStore
-const mockLoadPlaylist = jest.fn().mockResolvedValue(undefined);
-const mockTogglePlay = jest.fn();
-
-jest.mock("@/stores/useMusicStore", () => ({
-  useMusicStore: jest.fn(),
-}));
-
-// Mock MusicPlayer child component
-jest.mock("@/components/game/MusicPlayer", () => ({
-  MusicPlayer: ({ storyText, gameId, className }: {
-    storyText: string;
-    gameId?: number;
-    className?: string;
-  }) => (
-    <div data-testid="music-player" data-story-text={storyText} data-game-id={gameId}>
-      MusicPlayer Content
-    </div>
-  ),
-}));
+// Mock API-calling functions from music store to avoid real HTTP calls
+jest.mock('@/stores/useMusicStore', () => {
+  const actual = jest.requireActual('@/stores/useMusicStore');
+  return {
+    ...actual,
+    fetchMusicRecommendation: jest.fn().mockResolvedValue(undefined),
+    fetchSongUrl: jest.fn().mockResolvedValue(''),
+  };
+});
 
 import { useMusicStore } from "@/stores/useMusicStore";
 import { GlobalMusicPlayer } from "@/components/game/GlobalMusicPlayer";
 
-const mockUseMusicStore = useMusicStore as jest.MockedFunction<typeof useMusicStore>;
-
 function setStoreState(overrides: Record<string, unknown> = {}) {
-  mockUseMusicStore.mockImplementation((selector: (s: Record<string, unknown>) => unknown) => {
-    const state = {
-      loadPlaylist: mockLoadPlaylist,
-      playlistGameId: null,
-      currentSong: null,
-      queue: [],
-      recommendation: null,
-      activeStoryText: null,
-      activeGameId: null,
-      isPlaying: false,
-      togglePlay: mockTogglePlay,
-      currentTime: 0,
-      duration: 0,
-      audioElement: null,
-      ...overrides,
-    };
-    return selector(state);
-  });
+  useMusicStore.setState({
+    playlistGameId: null,
+    currentSong: null,
+    queue: [],
+    recommendation: null,
+    activeStoryText: null,
+    activeGameId: null,
+    isPlaying: false,
+    currentTime: 0,
+    duration: 0,
+    audioElement: null,
+    ...overrides,
+  } as never);
 }
 
 describe("GlobalMusicPlayer", () => {
+  let loadPlaylistSpy: jest.SpyInstance;
+  let togglePlaySpy: jest.SpyInstance;
+
   beforeEach(() => {
     jest.clearAllMocks();
     localStorage.clear();
+    useMusicStore.setState({
+      playlistGameId: null,
+      currentSong: null as never,
+      queue: [],
+      recommendation: null,
+      activeStoryText: null as never,
+      activeGameId: null as never,
+      isPlaying: false,
+      currentTime: 0,
+      duration: 0,
+      audioElement: null as never,
+    });
+    loadPlaylistSpy = jest.spyOn(useMusicStore.getState(), 'loadPlaylist').mockResolvedValue(undefined);
+    togglePlaySpy = jest.spyOn(useMusicStore.getState(), 'togglePlay');
+  });
+
+  afterEach(() => {
+    loadPlaylistSpy.mockRestore();
+    togglePlaySpy.mockRestore();
   });
 
   describe("Conditional rendering", () => {
@@ -93,8 +97,8 @@ describe("GlobalMusicPlayer", () => {
       });
 
       render(<GlobalMusicPlayer />);
-      // Recommendation provides song name fallback when no currentSong
-      expect(screen.getByText("Test Song")).toBeInTheDocument();
+      // Song name appears in both mini bar and MusicPlayer (always mounted)
+      expect(screen.getAllByText("Test Song")[0]).toBeInTheDocument();
     });
 
     it("renders when there is a currentSong from persisted state", () => {
@@ -106,7 +110,7 @@ describe("GlobalMusicPlayer", () => {
       });
 
       render(<GlobalMusicPlayer />);
-      expect(screen.getByText("Persisted Song")).toBeInTheDocument();
+      expect(screen.getAllByText("Persisted Song")[0]).toBeInTheDocument();
     });
 
     it("renders when queue has songs but no recommendation", () => {
@@ -130,7 +134,7 @@ describe("GlobalMusicPlayer", () => {
       });
 
       render(<GlobalMusicPlayer />);
-      expect(screen.getByText("My Song")).toBeInTheDocument();
+      expect(screen.getAllByText("My Song")[0]).toBeInTheDocument();
       expect(screen.getByText("Artist A, Artist B")).toBeInTheDocument();
     });
 
@@ -173,9 +177,10 @@ describe("GlobalMusicPlayer", () => {
   describe("Play/Pause interaction", () => {
     it("calls togglePlay when clicking play/pause button with audio element", async () => {
       const user = userEvent.setup();
+      const fakeAudio = { pause: jest.fn(), play: jest.fn(), ended: false, src: '', currentTime: 0, addEventListener: jest.fn(), removeEventListener: jest.fn() } as unknown as HTMLAudioElement;
       setStoreState({
         activeStoryText: "story text",
-        audioElement: {} as HTMLAudioElement,
+        audioElement: fakeAudio,
         isPlaying: false,
       });
 
@@ -184,7 +189,7 @@ describe("GlobalMusicPlayer", () => {
       const playPauseButton = screen.getAllByRole("button")[0];
       await user.click(playPauseButton);
 
-      expect(mockTogglePlay).toHaveBeenCalled();
+      expect(togglePlaySpy).toHaveBeenCalled();
     });
 
     it("expands player when clicking play/pause without audio element", async () => {
@@ -198,14 +203,15 @@ describe("GlobalMusicPlayer", () => {
 
       render(<GlobalMusicPlayer />);
 
-      // Initially hidden via opacity-0/h-0
-      expect(screen.getByTestId("music-player")).toBeInTheDocument();
+      // MusicPlayer always mounted, initially collapsed with opacity-0 h-0
+      const wrapper = document.querySelector('.fixed.z-50');
+      expect(wrapper).toBeInTheDocument();
 
       const playPauseButton = screen.getAllByRole("button")[0];
       await user.click(playPauseButton);
 
-      // Player should still be in the document (always mounted)
-      expect(screen.getByTestId("music-player")).toBeInTheDocument();
+      // After click, the expanded MusicPlayer container should be visible
+      expect(document.querySelector('.max-h-\\[60vh\\]')).toBeInTheDocument();
     });
   });
 
@@ -227,8 +233,8 @@ describe("GlobalMusicPlayer", () => {
       const miniBar = screen.getByText("等待音乐...").closest(".cursor-pointer");
       await user.click(miniBar!);
 
-      // MusicPlayer should still be present (always mounted)
-      expect(screen.getByTestId("music-player")).toBeInTheDocument();
+      // MusicPlayer always mounted, expanded after click
+      expect(document.querySelector('.max-h-\\[60vh\\]')).toBeInTheDocument();
     });
   });
 
@@ -267,7 +273,7 @@ describe("GlobalMusicPlayer", () => {
 
       render(<GlobalMusicPlayer />);
 
-      expect(mockLoadPlaylist).toHaveBeenCalledWith(42);
+      expect(loadPlaylistSpy).toHaveBeenCalledWith(42);
     });
 
     it("does not load playlist when no gameId in localStorage", () => {
@@ -277,7 +283,7 @@ describe("GlobalMusicPlayer", () => {
 
       render(<GlobalMusicPlayer />);
 
-      expect(mockLoadPlaylist).not.toHaveBeenCalled();
+      expect(loadPlaylistSpy).not.toHaveBeenCalled();
     });
 
     it("does not load playlist on re-render (ref guard)", () => {
@@ -290,7 +296,7 @@ describe("GlobalMusicPlayer", () => {
       rerender(<GlobalMusicPlayer />);
 
       // Should only be called once due to ref guard
-      expect(mockLoadPlaylist).toHaveBeenCalledTimes(1);
+      expect(loadPlaylistSpy).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -305,7 +311,7 @@ describe("GlobalMusicPlayer", () => {
       });
 
       render(<GlobalMusicPlayer />);
-      expect(screen.getByText("Rec Song")).toBeInTheDocument();
+      expect(screen.getAllByText("Rec Song")[0]).toBeInTheDocument();
     });
 
     it("prioritizes currentSong over recommendation", () => {
@@ -318,7 +324,7 @@ describe("GlobalMusicPlayer", () => {
       });
 
       render(<GlobalMusicPlayer />);
-      expect(screen.getByText("Playing Song")).toBeInTheDocument();
+      expect(screen.getAllByText("Playing Song")[0]).toBeInTheDocument();
       expect(screen.queryByText("Rec Song")).not.toBeInTheDocument();
     });
   });

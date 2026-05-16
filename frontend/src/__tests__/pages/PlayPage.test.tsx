@@ -61,15 +61,6 @@ jest.mock('@/hooks/usePlayGame', () => ({
   },
 }));
 
-jest.mock('@/hooks/useHydration', () => ({
-  useHydration: () => true,
-}));
-
-// Mock StreamingText to render text immediately
-jest.mock('@/components/game/StreamingText', () => ({
-  StreamingText: ({ text }: { text: string }) => <div data-testid="streaming-text">{text}</div>,
-}));
-
 describe('PlayPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -310,8 +301,7 @@ describe('PlayPage', () => {
       });
       
       render(<PlayPage />);
-      // StreamingText mock renders text
-      expect(screen.getByTestId('streaming-text')).toHaveTextContent('Historical story text');
+      expect(screen.getByText('Historical story text')).toBeInTheDocument();
     });
   });
 
@@ -332,7 +322,7 @@ describe('PlayPage', () => {
       expect(buttons.length).toBeGreaterThan(0);
     });
 
-    it('shows generating state with message', () => {
+    it('shows generating state with message', async () => {
       const originalHook = jest.requireMock('@/hooks/usePlayGame');
       originalHook.usePlayGame = () => ({
         ...mockUsePlayGame,
@@ -345,12 +335,15 @@ describe('PlayPage', () => {
       });
       
       render(<PlayPage />);
-      expect(screen.getByTestId('streaming-text')).toHaveTextContent('Some story');
+      // isStreaming=true during generating — wait for animation
+      await waitFor(() => {
+        expect(screen.getByText('Some story')).toBeInTheDocument();
+      });
     });
   });
 
   describe('Choosing phase', () => {
-    it('shows choosing state', () => {
+    it('shows choosing state', async () => {
       const originalHook = jest.requireMock('@/hooks/usePlayGame');
       originalHook.usePlayGame = () => ({
         ...mockUsePlayGame,
@@ -361,8 +354,10 @@ describe('PlayPage', () => {
       });
       
       render(<PlayPage />);
-      // StreamingText mock renders text
-      expect(screen.getByTestId('streaming-text')).toHaveTextContent('Choosing story');
+      // isStreaming=true during choosing — wait for animation
+      await waitFor(() => {
+        expect(screen.getByText('Choosing story')).toBeInTheDocument();
+      });
     });
   });
 
@@ -720,27 +715,14 @@ describe('PlayPage', () => {
       });
       
       render(<PlayPage />);
-      // StreamingText should show historical content
-      expect(screen.getByTestId('streaming-text')).toHaveTextContent('Historical story text');
+      expect(screen.getByText('Historical story text')).toBeInTheDocument();
     });
   });
 
   describe('Settings button', () => {
     it('toggles scene image setting', () => {
-      const mockSetEnableSceneImage = jest.fn();
-      
-      jest.doMock('@/stores/useGameStore', () => ({
-        useGameStore: {
-          getState: () => ({
-            enableSceneImage: true,
-            setEnableSceneImage: mockSetEnableSceneImage,
-          }),
-        },
-      }));
-      
       render(<PlayPage />);
-      
-      // Settings button should be present
+
       const buttons = screen.getAllByRole('button');
       expect(buttons.length).toBeGreaterThan(0);
     });

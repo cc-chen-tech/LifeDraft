@@ -1,35 +1,14 @@
 /**
  * stores/useUserStore.ts Tests
  * Tests for user authentication and friends state
+ * Uses real API module + global.fetch mocking
  */
-
-// Mock the API before importing the store
-jest.mock('@/lib/api', () => ({
-  __esModule: true,
-  default: {
-    auth: {
-      register: jest.fn(),
-      login: jest.fn(),
-      logout: jest.fn(),
-      me: jest.fn(),
-    },
-    friends: {
-      list: jest.fn(),
-      pendingRequests: jest.fn(),
-      sendRequest: jest.fn(),
-      respond: jest.fn(),
-      remove: jest.fn(),
-    },
-  },
-}));
-
 import { act } from '@testing-library/react';
 import { useUserStore } from '@/stores/useUserStore';
-import api from '@/lib/api';
+import { jsonResponse, errorResponse } from '@/__tests__/helpers/fetch';
 
 describe('useUserStore', () => {
   beforeEach(() => {
-    // Reset store to initial state
     act(() => {
       useUserStore.setState({
         user: null,
@@ -39,12 +18,12 @@ describe('useUserStore', () => {
       });
     });
     jest.clearAllMocks();
+    global.fetch = jest.fn();
   });
 
   describe('Initial state', () => {
     it('has correct initial values', () => {
       const state = useUserStore.getState();
-
       expect(state.user).toBeNull();
       expect(state.isAuthenticated).toBe(false);
       expect(state.friends).toEqual([]);
@@ -56,30 +35,26 @@ describe('useUserStore', () => {
     it('registers a new user', async () => {
       const mockResponse = {
         token: 'register-token',
-        user: {
-          user_id: 1,
-          public_id: 'pub123',
-          display_name: 'Test User',
-          private_id: 'priv123',
-        },
+        user: { user_id: 1, public_id: 'pub123', display_name: 'Test User', private_id: 'priv123' },
       };
-      (api.auth.register as jest.Mock).mockResolvedValue(mockResponse);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockResponse));
 
       let result;
       await act(async () => {
         result = await useUserStore.getState().register('Test User');
       });
 
-      expect(api.auth.register).toHaveBeenCalledWith({ display_name: 'Test User' });
+      expect(global.fetch).toHaveBeenCalledWith('/api/auth/register', expect.objectContaining({
+        method: 'POST',
+      }));
       expect(result).toEqual(mockResponse.user);
-
       const state = useUserStore.getState();
       expect(state.user).toEqual(mockResponse.user);
       expect(state.isAuthenticated).toBe(true);
     });
 
     it('handles registration error', async () => {
-      (api.auth.register as jest.Mock).mockRejectedValue(new Error('Registration failed'));
+      (global.fetch as jest.Mock).mockRejectedValue(new Error('Registration failed'));
 
       await expect(useUserStore.getState().register('Test User')).rejects.toThrow('Registration failed');
     });
@@ -89,30 +64,26 @@ describe('useUserStore', () => {
     it('logs in a user', async () => {
       const mockResponse = {
         token: 'login-token',
-        user: {
-          user_id: 1,
-          public_id: 'pub123',
-          display_name: 'Test User',
-          private_id: 'priv123',
-        },
+        user: { user_id: 1, public_id: 'pub123', display_name: 'Test User', private_id: 'priv123' },
       };
-      (api.auth.login as jest.Mock).mockResolvedValue(mockResponse);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockResponse));
 
       let result;
       await act(async () => {
         result = await useUserStore.getState().login('priv123');
       });
 
-      expect(api.auth.login).toHaveBeenCalledWith({ private_id: 'priv123' });
+      expect(global.fetch).toHaveBeenCalledWith('/api/auth/login', expect.objectContaining({
+        method: 'POST',
+      }));
       expect(result).toEqual(mockResponse.user);
-
       const state = useUserStore.getState();
       expect(state.user).toEqual(mockResponse.user);
       expect(state.isAuthenticated).toBe(true);
     });
 
     it('handles login error', async () => {
-      (api.auth.login as jest.Mock).mockRejectedValue(new Error('Invalid credentials'));
+      (global.fetch as jest.Mock).mockRejectedValue(new Error('Invalid credentials'));
 
       await expect(useUserStore.getState().login('wrong-id')).rejects.toThrow('Invalid credentials');
     });
@@ -120,7 +91,6 @@ describe('useUserStore', () => {
 
   describe('Logout', () => {
     it('logs out the user', async () => {
-      // First, log in
       act(() => {
         useUserStore.setState({
           user: { user_id: 1, public_id: 'pub', display_name: 'Test', private_id: 'priv' },
@@ -129,15 +99,13 @@ describe('useUserStore', () => {
           pendingRequests: [],
         });
       });
-
-      (api.auth.logout as jest.Mock).mockResolvedValue(undefined);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(null));
 
       await act(async () => {
         useUserStore.getState().logout();
       });
 
-      expect(api.auth.logout).toHaveBeenCalled();
-
+      expect(global.fetch).toHaveBeenCalledWith('/api/auth/logout', expect.objectContaining({ method: 'POST' }));
       const state = useUserStore.getState();
       expect(state.user).toBeNull();
       expect(state.isAuthenticated).toBe(false);
@@ -148,35 +116,27 @@ describe('useUserStore', () => {
 
   describe('Fetch current user', () => {
     it('fetches current user info', async () => {
-      const mockUser = {
-        user_id: 1,
-        public_id: 'pub123',
-        display_name: 'Test User',
-        private_id: 'priv123',
-      };
-      (api.auth.me as jest.Mock).mockResolvedValue(mockUser);
+      const mockUser = { user_id: 1, public_id: 'pub123', display_name: 'Test User', private_id: 'priv123' };
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockUser));
 
       await act(async () => {
         await useUserStore.getState().fetchMe();
       });
 
-      expect(api.auth.me).toHaveBeenCalled();
-
+      expect(global.fetch).toHaveBeenCalledWith('/api/auth/me', expect.objectContaining({ credentials: 'include' }));
       const state = useUserStore.getState();
       expect(state.user).toEqual(mockUser);
       expect(state.isAuthenticated).toBe(true);
     });
 
     it('clears auth state on fetch error', async () => {
-      // First set some auth state
       act(() => {
         useUserStore.setState({
           user: { user_id: 1, public_id: 'pub', display_name: 'Test', private_id: 'priv' },
           isAuthenticated: true,
         });
       });
-
-      (api.auth.me as jest.Mock).mockRejectedValue(Object.assign(new Error('Unauthorized'), { status: 401 }));
+      (global.fetch as jest.Mock).mockResolvedValue(errorResponse(401));
 
       await act(async () => {
         await useUserStore.getState().fetchMe();
@@ -195,18 +155,18 @@ describe('useUserStore', () => {
           { user_id: 2, public_id: 'pub2', display_name: 'Friend 1' },
           { user_id: 3, public_id: 'pub3', display_name: 'Friend 2' },
         ];
-        (api.friends.list as jest.Mock).mockResolvedValue(mockFriends);
+        (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockFriends));
 
         await act(async () => {
           await useUserStore.getState().fetchFriends();
         });
 
-        expect(api.friends.list).toHaveBeenCalled();
+        expect(global.fetch).toHaveBeenCalledWith('/api/friends', expect.objectContaining({ credentials: 'include' }));
         expect(useUserStore.getState().friends).toEqual(mockFriends);
       });
 
       it('handles fetch error', async () => {
-        (api.friends.list as jest.Mock).mockRejectedValue(new Error('Network error'));
+        (global.fetch as jest.Mock).mockRejectedValue(new Error('Network error'));
 
         await expect(useUserStore.getState().fetchFriends()).rejects.toThrow('Network error');
       });
@@ -215,67 +175,68 @@ describe('useUserStore', () => {
     describe('fetchPendingRequests', () => {
       it('fetches pending friend requests', async () => {
         const mockRequests = [
-          {
-            request_id: 1,
-            from_user: { user_id: 4, public_id: 'pub4', display_name: 'Requester' },
-            created_at: '2024-01-01',
-          },
+          { request_id: 1, from_user: { user_id: 4, public_id: 'pub4', display_name: 'Requester' }, created_at: '2024-01-01' },
         ];
-        (api.friends.pendingRequests as jest.Mock).mockResolvedValue(mockRequests);
+        (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockRequests));
 
         await act(async () => {
           await useUserStore.getState().fetchPendingRequests();
         });
 
-        expect(api.friends.pendingRequests).toHaveBeenCalled();
+        expect(global.fetch).toHaveBeenCalledWith('/api/friends/requests', expect.objectContaining({ credentials: 'include' }));
         expect(useUserStore.getState().pendingRequests).toEqual(mockRequests);
       });
     });
 
     describe('sendFriendRequest', () => {
       it('sends a friend request', async () => {
-        (api.friends.sendRequest as jest.Mock).mockResolvedValue({ message: 'Request sent' });
+        (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ message: 'Request sent' }));
 
         await act(async () => {
           await useUserStore.getState().sendFriendRequest('pub123');
         });
 
-        expect(api.friends.sendRequest).toHaveBeenCalledWith({ to_public_id: 'pub123' });
+        expect(global.fetch).toHaveBeenCalledWith('/api/friends/requests', expect.objectContaining({
+          method: 'POST',
+        }));
       });
     });
 
     describe('respondToRequest', () => {
       it('accepts a friend request', async () => {
-        (api.friends.respond as jest.Mock).mockResolvedValue({ message: 'Accepted' });
-        (api.friends.list as jest.Mock).mockResolvedValue([]);
-        (api.friends.pendingRequests as jest.Mock).mockResolvedValue([]);
+        let callCount = 0;
+        (global.fetch as jest.Mock).mockImplementation(() => {
+          callCount++;
+          return Promise.resolve(jsonResponse(callCount === 1 ? { message: 'Accepted' } : []));
+        });
 
         await act(async () => {
           await useUserStore.getState().respondToRequest(1, true);
         });
 
-        expect(api.friends.respond).toHaveBeenCalledWith({ request_id: 1, accept: true });
-        // Should refresh both lists
-        expect(api.friends.list).toHaveBeenCalled();
-        expect(api.friends.pendingRequests).toHaveBeenCalled();
+        expect(global.fetch).toHaveBeenCalledTimes(3);
+        expect(global.fetch).toHaveBeenCalledWith('/api/friends/requests/1', expect.objectContaining({
+          method: 'PUT',
+        }));
       });
 
       it('rejects a friend request', async () => {
-        (api.friends.respond as jest.Mock).mockResolvedValue({ message: 'Rejected' });
-        (api.friends.list as jest.Mock).mockResolvedValue([]);
-        (api.friends.pendingRequests as jest.Mock).mockResolvedValue([]);
+        (global.fetch as jest.Mock)
+          .mockResolvedValueOnce(jsonResponse({ message: 'Rejected' }))
+          .mockResolvedValue(jsonResponse([]));
 
         await act(async () => {
           await useUserStore.getState().respondToRequest(1, false);
         });
 
-        expect(api.friends.respond).toHaveBeenCalledWith({ request_id: 1, accept: false });
+        expect(global.fetch).toHaveBeenCalledWith('/api/friends/requests/1', expect.objectContaining({
+          method: 'PUT',
+        }));
       });
     });
 
     describe('removeFriend', () => {
       it('removes a friend', async () => {
-        // Set up initial friends list
         act(() => {
           useUserStore.setState({
             friends: [
@@ -284,14 +245,13 @@ describe('useUserStore', () => {
             ],
           });
         });
-
-        (api.friends.remove as jest.Mock).mockResolvedValue({ message: 'Removed' });
+        (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ message: 'Removed' }));
 
         await act(async () => {
           await useUserStore.getState().removeFriend(2);
         });
 
-        expect(api.friends.remove).toHaveBeenCalledWith(2);
+        expect(global.fetch).toHaveBeenCalledWith('/api/friends/2', expect.objectContaining({ method: 'DELETE' }));
         expect(useUserStore.getState().friends).toHaveLength(1);
         expect(useUserStore.getState().friends[0].user_id).toBe(3);
       });
@@ -300,17 +260,10 @@ describe('useUserStore', () => {
 
   describe('setUser', () => {
     it('sets user and token directly', () => {
-      const mockUser = {
-        user_id: 1,
-        public_id: 'pub',
-        display_name: 'Test',
-        private_id: 'priv',
-      };
-
+      const mockUser = { user_id: 1, public_id: 'pub', display_name: 'Test', private_id: 'priv' };
       act(() => {
         useUserStore.getState().setUser(mockUser);
       });
-
       const state = useUserStore.getState();
       expect(state.user).toEqual(mockUser);
       expect(state.isAuthenticated).toBe(true);
@@ -319,8 +272,6 @@ describe('useUserStore', () => {
 
   describe('Persistence', () => {
     it('persist config is correct', () => {
-      // The persist middleware should be configured
-      // Check that the store exists and has the expected shape
       expect(useUserStore.getState()).toHaveProperty('user');
       expect(useUserStore.getState()).toHaveProperty('isAuthenticated');
     });

@@ -5,22 +5,12 @@
 import { act } from '@testing-library/react';
 import { useEventStore } from '@/stores/useEventStore';
 
-// Mock API
-jest.mock('@/lib/api', () => ({
-  gameplay: {
-    generateSummary: jest.fn().mockResolvedValue({
-      summary_text: 'Test summary',
-      start_week: 1,
-      end_week: 4,
-    }),
-  },
-}));
-
 describe('useEventStore', () => {
   beforeEach(() => {
     act(() => {
       useEventStore.getState().clearCurrentEvent();
     });
+    global.fetch = jest.fn();
   });
 
   describe('Initial state', () => {

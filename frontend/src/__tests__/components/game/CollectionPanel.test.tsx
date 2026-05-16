@@ -1,11 +1,13 @@
 /**
- * CollectionPanel 组件测试 — useEffect fetchCollection 调用次数验证
- *
- * 直接 mock useCollectionStore，只关注 fetchCollection 被调用的时机和次数
+ * CollectionPanel component tests — useEffect fetchCollection call count verification
+ * Uses real useCollectionStore with setState, only mocks child components
  */
+import React from 'react';
 import { render } from '@testing-library/react';
+import { CollectionPanel } from '@/components/game/CollectionPanel';
+import { useCollectionStore } from '@/stores/useCollectionStore';
 
-// Mock 所有子组件，避免深层依赖
+// Mock child components to isolate fetchCollection behavior
 jest.mock('@/components/game/collection', () => ({
   CollectionTabs: () => <div data-testid="tabs" />,
   CharacterList: () => null,
@@ -19,25 +21,8 @@ jest.mock('@/components/game/collection', () => ({
   DeleteConfirmDialog: () => null,
 }));
 
-jest.mock('@/components/ui/button', () => ({
-  Button: (props: any) => <button {...props} />,
-}));
-
-jest.mock('@/components/ui/scroll-area', () => ({
-  ScrollArea: ({ children }: any) => <div>{children}</div>,
-}));
-
-jest.mock('lucide-react', () => ({
-  Package: () => <span />,
-  Wand2: () => <span />,
-  Loader2: () => <span />,
-  Plus: () => <span />,
-}));
-
-const mockFetchCollection = jest.fn();
-
-jest.mock('@/stores/useCollectionStore', () => ({
-  useCollectionStore: () => ({
+function setupDefaultState() {
+  useCollectionStore.setState({
     characters: [],
     items: [],
     landmarks: [],
@@ -53,61 +38,69 @@ jest.mock('@/stores/useCollectionStore', () => ({
     isRecognizing: false,
     recognizedEntities: null,
     isDeleting: false,
-    fetchCollection: mockFetchCollection,
-    setActiveTab: jest.fn(),
-    selectCharacter: jest.fn(),
-    selectItem: jest.fn(),
-    selectLandmark: jest.fn(),
-    generateCharacterImage: jest.fn(),
-    generateItemImage: jest.fn(),
-    generateLandmarkImage: jest.fn(),
-    generateItemDescription: jest.fn(),
-    generateLandmarkDescription: jest.fn(),
-    regenerateCharacterImage: jest.fn(),
-    regenerateItemImage: jest.fn(),
-    recognizeEntities: jest.fn(),
-    addRecognizedEntities: jest.fn(),
-    clearRecognizedEntities: jest.fn(),
-    createItem: jest.fn(),
-    deleteItem: jest.fn(),
-    deleteCharacter: jest.fn(),
-    deleteLandmark: jest.fn(),
-    clearError: jest.fn(),
-  }),
-}));
+    deletingEntity: null,
+  });
+}
 
-import { CollectionPanel } from '@/components/game/CollectionPanel';
+function replaceStoreMethods() {
+  const store = useCollectionStore.getState() as Record<string, unknown>;
+  const originals: Record<string, Function> = {};
+  const keys = ['fetchCollection'];
+  for (const key of keys) {
+    originals[key] = store[key] as Function;
+    store[key] = jest.fn().mockResolvedValue(undefined);
+  }
+  return originals;
+}
+
+function restoreStoreMethods(originals: Record<string, Function>) {
+  const store = useCollectionStore.getState() as Record<string, unknown>;
+  for (const [key, fn] of Object.entries(originals)) {
+    store[key] = fn;
+  }
+}
+
+function getFetchCollectionMock(): jest.Mock {
+  return useCollectionStore.getState().fetchCollection as unknown as jest.Mock;
+}
 
 describe('CollectionPanel', () => {
+  let originals: Record<string, Function>;
+
   beforeEach(() => {
-    mockFetchCollection.mockClear();
+    setupDefaultState();
+    originals = replaceStoreMethods();
   });
 
-  it('初始挂载时 fetchCollection 只调用 1 次', () => {
+  afterEach(() => {
+    restoreStoreMethods(originals);
+  });
+
+  it('initial mount calls fetchCollection exactly once', () => {
     render(<CollectionPanel gameId={1} />);
-    expect(mockFetchCollection).toHaveBeenCalledTimes(1);
-    expect(mockFetchCollection).toHaveBeenCalledWith(1);
+    expect(getFetchCollectionMock()).toHaveBeenCalledTimes(1);
+    expect(getFetchCollectionMock()).toHaveBeenCalledWith(1);
   });
 
-  it('相同 gameId 重新渲染不触发额外请求', () => {
+  it('same gameId re-render does not trigger extra request', () => {
     const { rerender } = render(<CollectionPanel gameId={1} />);
-    expect(mockFetchCollection).toHaveBeenCalledTimes(1);
+    expect(getFetchCollectionMock()).toHaveBeenCalledTimes(1);
 
     rerender(<CollectionPanel gameId={1} />);
-    expect(mockFetchCollection).toHaveBeenCalledTimes(1);
+    expect(getFetchCollectionMock()).toHaveBeenCalledTimes(1);
   });
 
-  it('gameId 变化时重新获取', () => {
+  it('gameId change triggers re-fetch', () => {
     const { rerender } = render(<CollectionPanel gameId={1} />);
-    expect(mockFetchCollection).toHaveBeenCalledTimes(1);
+    expect(getFetchCollectionMock()).toHaveBeenCalledTimes(1);
 
     rerender(<CollectionPanel gameId={2} />);
-    expect(mockFetchCollection).toHaveBeenCalledTimes(2);
-    expect(mockFetchCollection).toHaveBeenLastCalledWith(2);
+    expect(getFetchCollectionMock()).toHaveBeenCalledTimes(2);
+    expect(getFetchCollectionMock()).toHaveBeenLastCalledWith(2);
   });
 
-  it('gameId 为 0 时不调用 fetchCollection', () => {
+  it('gameId 0 does not call fetchCollection', () => {
     render(<CollectionPanel gameId={0} />);
-    expect(mockFetchCollection).not.toHaveBeenCalled();
+    expect(getFetchCollectionMock()).not.toHaveBeenCalled();
   });
 });

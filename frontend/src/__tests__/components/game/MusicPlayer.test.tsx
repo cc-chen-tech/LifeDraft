@@ -2,37 +2,81 @@
  * MusicPlayer 组件测试
  *
  * 包含：基础渲染 + 卡顿检测（stall detection）逻辑验证
+ * 使用真实 Zustand store + global.fetch mock，不 mock store 模块。
  */
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { MusicPlayer } from '@/components/game/MusicPlayer';
+import { useMusicStore } from '@/stores/useMusicStore';
+import { jsonResponse } from '@/__tests__/helpers/fetch';
 
-// Mock Audio API
-global.Audio = class MockAudio {
+// jsdom 不支持 Audio API，提供完整 mock
+class MockAudioClass {
   src = '';
   paused = true;
   currentTime = 0;
   duration = 180;
   volume = 1;
   preload = '';
-  error: MediaError | null = null;
+  readyState = 0;
+  error = null;
   play = jest.fn().mockResolvedValue(undefined);
   pause = jest.fn();
-  onplay: (() => void) | null = null;
-  onpause: (() => void) | null = null;
-  ontimeupdate: (() => void) | null = null;
-  onloadedmetadata: (() => void) | null = null;
-  onended: (() => void) | null = null;
-  onerror: ((e: any) => void) | null = null;
-  onstalled: (() => void) | null = null;
-  onwaiting: (() => void) | null = null;
-  oncanplay: (() => void) | null = null;
-  oncanplaythrough: (() => void) | null = null;
-  constructor(url?: string) {
-    this.src = url || '';
+  load = jest.fn();
+  private _listeners: Record<string, Array<() => void>> = {};
+
+  addEventListener(event: string, fn: () => void) {
+    if (!this._listeners[event]) this._listeners[event] = [];
+    this._listeners[event].push(fn);
   }
-} as any;
+  removeEventListener(event: string, fn: () => void) {
+    if (this._listeners[event]) {
+      this._listeners[event] = this._listeners[event].filter((f) => f !== fn);
+    }
+  }
+}
+
+beforeAll(() => {
+  (global as any).Audio = MockAudioClass;
+});
+
+afterAll(() => {
+  delete (global as any).Audio;
+});
 
 describe('MusicPlayer', () => {
+  beforeEach(() => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          mood: '宁静',
+          scene_type: '独处',
+          keywords: ['古风', '钢琴'],
+          songs: [
+            { id: 1, name: '测试歌曲', artists: ['测试艺术家'], album: '测试专辑', duration: 180000, url: 'https://example.com/test.mp3' },
+          ],
+          environment: '古风',
+          story_style: '武侠',
+        })
+      ) as jest.Mock;
+
+    useMusicStore.setState({
+      recommendation: null,
+      isLoadingRecommendation: false,
+      recommendationError: null,
+      currentSong: null,
+      isPlaying: false,
+      volume: 0.5,
+      currentTime: 0,
+      duration: 0,
+      audioElement: null,
+    });
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it('应该渲染音乐播放器', async () => {
     render(<MusicPlayer storyText="Test story" />);
 
@@ -59,14 +103,8 @@ describe('MusicPlayer 卡顿检测', () => {
     jest.useRealTimers();
   });
 
-  /**
-   * 模拟 MusicPlayer 内 stall-detection interval 的核心逻辑
-   * （从组件中提取的纯逻辑，方便单元测试）
-   */
   function simulateStallDetection(opts: {
-    /** 每次 interval 回调时 audio.currentTime 的值序列 */
     timeSequence: number[];
-    /** audio.paused 状态 */
     paused?: boolean;
   }) {
     const { timeSequence, paused = false } = opts;
@@ -81,7 +119,6 @@ describe('MusicPlayer 卡顿检测', () => {
     let switchTriggered = false;
     let recoveryAttempts: string[] = [];
 
-    // 从 index=1 开始，模拟每次 3 秒 interval
     for (let i = 1; i < timeSequence.length; i++) {
       audio.currentTime = timeSequence[i];
 
@@ -105,7 +142,6 @@ describe('MusicPlayer 卡顿检测', () => {
   }
 
   it('正常播放时不触发切歌', () => {
-    // currentTime 每 3 秒递增 3
     const timeSeq = [0, 3, 6, 9, 12, 15, 18, 21, 24, 27];
     const result = simulateStallDetection({ timeSequence: timeSeq });
 
@@ -115,7 +151,6 @@ describe('MusicPlayer 卡顿检测', () => {
   });
 
   it('短暂卡顿不立即切歌（需要多次连续卡顿）', () => {
-    // 卡 2 个周期后恢复
     const timeSeq = [10, 10, 10, 13, 16, 19];
     const result = simulateStallDetection({ timeSequence: timeSeq });
 
@@ -124,7 +159,6 @@ describe('MusicPlayer 卡顿检测', () => {
   });
 
   it('连续卡顿 4-5 次触发第一层恢复（play）', () => {
-    // 卡 5 个周期
     const timeSeq = [10, 10, 10, 10, 10, 10];
     const result = simulateStallDetection({ timeSequence: timeSeq });
 
@@ -134,7 +168,6 @@ describe('MusicPlayer 卡顿检测', () => {
   });
 
   it('连续卡顿 6-7 次触发第二层恢复（seek+play）', () => {
-    // 卡 7 个周期
     const timeSeq = [10, 10, 10, 10, 10, 10, 10, 10];
     const result = simulateStallDetection({ timeSequence: timeSeq });
 
@@ -143,7 +176,6 @@ describe('MusicPlayer 卡顿检测', () => {
   });
 
   it('连续卡顿达到 8 次才触发切歌', () => {
-    // 卡 8 个周期（24 秒）
     const timeSeq = [10, 10, 10, 10, 10, 10, 10, 10, 10];
     const result = simulateStallDetection({ timeSequence: timeSeq });
 
@@ -151,17 +183,14 @@ describe('MusicPlayer 卡顿检测', () => {
   });
 
   it('卡顿中途恢复则重置计数', () => {
-    // 卡 3 次 → 恢复 → 再卡 3 次
     const timeSeq = [10, 10, 10, 10, 13, 13, 13, 13];
     const result = simulateStallDetection({ timeSequence: timeSeq });
 
     expect(result.switchTriggered).toBe(false);
-    // stuckCount 应该是 3（第二轮卡顿），没到切歌阈值
     expect(result.stuckCount).toBe(3);
   });
 
   it('音频暂停时不计入卡顿', () => {
-    // currentTime 不变但 paused=true
     const timeSeq = [10, 10, 10, 10, 10, 10, 10, 10, 10];
     const result = simulateStallDetection({ timeSequence: timeSeq, paused: true });
 
@@ -173,7 +202,6 @@ describe('MusicPlayer 卡顿检测', () => {
 // ═══════════════════════════════════════════════════════════════
 // timeupdate 节流逻辑（纯单元测试 — 不依赖组件渲染）
 // ═══════════════════════════════════════════════════════════════
-
 describe('MusicPlayer timeupdate 节流', () => {
   beforeEach(() => {
     jest.useFakeTimers();
@@ -184,19 +212,9 @@ describe('MusicPlayer timeupdate 节流', () => {
     jest.useRealTimers();
   });
 
-  /**
-   * 模拟 MusicPlayer 中 timeupdate 的 500ms 节流逻辑。
-   *
-   * 组件中 timeUpdateThrottleRef.current 初始值为 0，Date.now() 初始值很大，
-   * 所以第一次触发一定通过。之后按 500ms 间隔节流。
-   */
   function simulateThrottledTimeupdate(opts: {
-    /** 每次 timeupdate 触发的时间点（相对于起始时间的毫秒数） */
     triggerTimes: number[];
   }) {
-    // 初始 ref 值为 0，但 Date.now() 是从系统时间开始，所以首次触发条件
-    // 实际上是 (firstTriggerTime + baseTime) - 0 >= 500，总是成立。
-    // 这里用负无穷表示"首次总是通过"。
     let lastUpdateTime = Number.NEGATIVE_INFINITY;
     const callLog: number[] = [];
 
@@ -211,7 +229,6 @@ describe('MusicPlayer timeupdate 节流', () => {
   }
 
   it('500ms 内多次 timeupdate 只执行一次 setCurrentTime', () => {
-    // 在 400ms 内触发 5 次（时间间隔都小于 500ms）
     const result = simulateThrottledTimeupdate({
       triggerTimes: [0, 100, 200, 300, 400],
     });
@@ -221,7 +238,6 @@ describe('MusicPlayer timeupdate 节流', () => {
   });
 
   it('间隔超过 500ms 后允许再次触发', () => {
-    // t=0, t=600（间隔 600ms > 500ms，允许）
     const result = simulateThrottledTimeupdate({
       triggerTimes: [0, 600],
     });
@@ -231,12 +247,11 @@ describe('MusicPlayer timeupdate 节流', () => {
   });
 
   it('密集触发后间隔够长再触发，应计数两次', () => {
-    // 快速触发 3 次 → 等待 600ms → 再触发 2 次
     const result = simulateThrottledTimeupdate({
       triggerTimes: [0, 100, 200, 800, 900],
     });
 
-    expect(result.totalCalls).toBe(2); // t=0 和 t=800 各一次
+    expect(result.totalCalls).toBe(2);
     expect(result.callLog).toEqual([0, 800]);
   });
 
@@ -250,7 +265,6 @@ describe('MusicPlayer timeupdate 节流', () => {
   });
 
   it('连续密集触发应被节流为一次', () => {
-    // 所有触发点都在 500ms 窗口内
     const result = simulateThrottledTimeupdate({
       triggerTimes: [0, 100, 200, 300, 400],
     });

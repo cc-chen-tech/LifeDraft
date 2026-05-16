@@ -22,11 +22,6 @@ Object.defineProperty(window, 'navigator', {
   writable: true,
 });
 
-// Mock remote-log
-jest.mock('@/lib/remote-log', () => ({
-  reportError: jest.fn(),
-}));
-
 import {
   streamGameEvent,
   streamChoice,
