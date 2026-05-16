@@ -82,22 +82,14 @@ class TestForeshadowingTechniqueLibrary:
         technique = self.library.match_technique(FORESHADOWING_CHARACTER)
 
         assert isinstance(technique, RecoveryTechnique)
-        assert (
-            "映照" in technique.name
-            or "成长" in technique.name
-            or "人物" in technique.name
-        )
+        assert "映照" in technique.name or "成长" in technique.name or "人物" in technique.name
 
     def test_match_technique_event(self):
         """事件类伏笔→因果延迟技巧"""
         technique = self.library.match_technique(FORESHADOWING_EVENT)
 
         assert isinstance(technique, RecoveryTechnique)
-        assert (
-            "因果" in technique.name
-            or "延迟" in technique.name
-            or "事件" in technique.name
-        )
+        assert "因果" in technique.name or "延迟" in technique.name or "事件" in technique.name
 
     def test_style_aware_recovery_chinese_classic(self):
         """中国古典风格=草蛇灰线式回收"""
@@ -144,9 +136,7 @@ class TestForeshadowingTechniqueLibrary:
         )
 
         assert len(reminders) > 0
-        assert "锈铁令牌" in reminders[0] or OVERDUE_FORESHADOWING["name"] in str(
-            reminders
-        )
+        assert "锈铁令牌" in reminders[0] or OVERDUE_FORESHADOWING["name"] in str(reminders)
 
 
 @pytest.mark.unit
@@ -165,9 +155,7 @@ class TestHookInjector:
 
         assert len(enhanced_options) >= len(SAMPLE_OPTIONS)
         # 至少有一个选项被增强或新增了钩子
-        has_hook = any(
-            opt.get("hook") or opt.get("curiosity_gap") for opt in enhanced_options
-        )
+        has_hook = any(opt.get("hook") or opt.get("curiosity_gap") for opt in enhanced_options)
         assert has_hook
 
     def test_inject_hooks_empty_options(self):

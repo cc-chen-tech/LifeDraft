@@ -114,9 +114,8 @@ class TestPreferenceLearner:
 
         assert isinstance(prefs, PlayerPreferences)
         # 默认偏好应是均衡的
-        assert (
-            prefs.primary_type == "balanced"
-            or prefs.adventure_tendency == pytest.approx(0.5, abs=0.2)
+        assert prefs.primary_type == "balanced" or prefs.adventure_tendency == pytest.approx(
+            0.5, abs=0.2
         )
 
     def test_preference_decay(self):
@@ -147,7 +146,5 @@ class TestPreferenceLearner:
         assert isinstance(prefs2, PlayerPreferences)
 
         # 温度调整异常输入不崩溃
-        adjusted = self.learner.adjust_temperature(
-            base_temperature=0.7, recent_scores=None
-        )
+        adjusted = self.learner.adjust_temperature(base_temperature=0.7, recent_scores=None)
         assert isinstance(adjusted, float)

@@ -253,9 +253,7 @@ class TestCommitmentUpdates:
             ]
         }
 
-        commitment_updates = [
-            {"action": "broken", "description": "重要约会", "parties": ["张三"]}
-        ]
+        commitment_updates = [{"action": "broken", "description": "重要约会", "parties": ["张三"]}]
 
         WorldModelUpdater.process_commitment_updates(player_state, commitment_updates)
 
@@ -272,9 +270,7 @@ class TestCommitmentUpdates:
             ]
         }
 
-        commitment_updates = [
-            {"action": "expired", "description": "过期任务", "parties": ["张三"]}
-        ]
+        commitment_updates = [{"action": "expired", "description": "过期任务", "parties": ["张三"]}]
 
         WorldModelUpdater.process_commitment_updates(player_state, commitment_updates)
 
@@ -314,9 +310,7 @@ class TestCausalChainUpdates:
         player_state = MagicMock()
         player_state.world_model_data = {"causal_chains": []}
 
-        causal_updates = [
-            {"cause": "选择了辞职", "effect": "失去收入来源", "probability": 0.9}
-        ]
+        causal_updates = [{"cause": "选择了辞职", "effect": "失去收入来源", "probability": 0.9}]
 
         # 检查方法是否存在
         if hasattr(WorldModelUpdater, "process_causal_chain_updates"):
@@ -359,9 +353,7 @@ class TestCharacterProfileSynthesis:
 
         # 检查方法是否存在
         if hasattr(WorldModelUpdater, "synthesize_character_profile"):
-            WorldModelUpdater.synthesize_character_profile(
-                player_state, "张三", new_info
-            )
+            WorldModelUpdater.synthesize_character_profile(player_state, "张三", new_info)
             # 检查是否更新了角色档案
             player_state.world_model_data.get("character_profiles", {})
             # 根据实际实现验证
@@ -376,9 +368,7 @@ class TestSyncStoryCharacters:
         """测试从故事文本同步新人物"""
         player_state = MagicMock()
         player_state.character_settings = {
-            "relationships": {
-                "key_people": [{"name": "张三", "role": "朋友", "affinity": 80}]
-            }
+            "relationships": {"key_people": [{"name": "张三", "role": "朋友", "affinity": 80}]}
         }
 
         story_text = "今天遇到了清虚真人，他教会了我很多道理。"
@@ -402,9 +392,7 @@ class TestSyncStoryCharacters:
         """测试人物名不在故事文本中时不同步"""
         player_state = MagicMock()
         player_state.character_settings = {
-            "relationships": {
-                "key_people": [{"name": "张三", "role": "朋友", "affinity": 80}]
-            }
+            "relationships": {"key_people": [{"name": "张三", "role": "朋友", "affinity": 80}]}
         }
 
         story_text = "今天天气很好，我在公园散步。"
@@ -442,9 +430,7 @@ class TestSyncStoryCharacters:
         """测试已存在的人物不会被重复添加"""
         player_state = MagicMock()
         player_state.character_settings = {
-            "relationships": {
-                "key_people": [{"name": "张三", "role": "朋友", "affinity": 80}]
-            }
+            "relationships": {"key_people": [{"name": "张三", "role": "朋友", "affinity": 80}]}
         }
 
         story_text = "张三今天来找我聊天。"

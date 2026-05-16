@@ -12,13 +12,13 @@ Object.defineProperty(Element.prototype, "scrollTo", {
 });
 
 describe("ChatBar accessibility", () => {
-  it("close button has aria-label when expanded", async () => {
+  it("expands chat panel when launcher is clicked", async () => {
     render(<ChatBar gameId={1} onSave={jest.fn()} />);
-    // ChatBar starts collapsed, click chat expand button
+    // ChatBar starts collapsed with launcher button
     const expandBtn = screen.getByLabelText("打开聊天");
     await userEvent.click(expandBtn);
     await waitFor(() => {
-      expect(screen.getByLabelText("关闭聊天")).toBeInTheDocument();
+      expect(screen.getByTestId("chat-bar-panel")).toBeInTheDocument();
     });
   });
 

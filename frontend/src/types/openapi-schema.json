@@ -2724,52 +2724,6 @@
         }
       }
     },
-    "/api/images/scene/events/{game_id}": {
-      "get": {
-        "tags": [
-          "Images"
-        ],
-        "summary": "Scene Image Sse Events",
-        "description": "SSE 端点：推送场景图片生成事件\n\n事件类型:\n- scene_image_ready: 场景图片生成完成\n- scene_image_failed: 场景图片生成失败\n- heartbeat: 心跳保持连接",
-        "operationId": "scene_image_sse_events_api_images_scene_events__game_id__get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "game_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "title": "Game Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/images/scene/{game_id}/{round_number}": {
       "get": {
         "tags": [
@@ -5745,6 +5699,18 @@
             ],
             "title": "Description"
           },
+          "music_brief": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Music Brief"
+          },
           "songs": {
             "items": {
               "$ref": "#/components/schemas/SongResponse"
@@ -6486,6 +6452,11 @@
               }
             ],
             "title": "Url"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "netease"
           }
         },
         "type": "object",

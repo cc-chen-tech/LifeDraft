@@ -373,9 +373,7 @@ class TestStyleManagerIntegration:
         assert "青蓝色" in prompt or "深紫色" in prompt
 
         # 5. 应用时序变化
-        temporal_palette = manager.apply_temporal_progression(
-            game_id=1, week=10, total_weeks=52
-        )
+        temporal_palette = manager.apply_temporal_progression(game_id=1, week=10, total_weeks=52)
         assert "第10周" in temporal_palette.name
 
 

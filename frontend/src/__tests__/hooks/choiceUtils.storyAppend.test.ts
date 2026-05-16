@@ -1,8 +1,9 @@
 /**
  * choiceUtils.ts 故事文本追加测试
  *
- * 验证 handleChoiceComplete 在 retry 场景下使用 appendStoryText 追加 continuation，
- * 而非 setStoryText 替换全部文本。
+ * 验证 handleChoiceComplete 在 retry 场景下正确处理 phase 转换。
+ * 注意：handleChoiceComplete 不再直接修改 storyText（由 handleEventComplete 处理），
+ * 仅负责 phase 转换和状态更新。
  */
 
 import { useEventStore } from "@/stores/useEventStore";
@@ -14,21 +15,21 @@ describe("handleChoiceComplete — story text append on retry", () => {
     useEventStore.setState({ storyText: "" });
   });
 
-  it("retry 时应将 story_continuation 追加到现有文本", () => {
+  it("retry 时 handleChoiceComplete 应正确检测并清除重试标记", () => {
     useEventStore.setState({ storyText: "第一章：开局。" });
     markRetry(); // 标记发生了重试
 
     const handlers = {
-      setProcessing: () => {},
-      setConnectionStatus: () => {},
-      setReconnectAttempt: () => {},
-      setRoundSummary: () => {},
-      setSummaryText: () => {},
-      setCurrentEvent: () => {},
-      setGameOver: () => {},
-      setOptions: () => {},
-      setStoryText: () => {},
-      setPhase: () => {},
+      setProcessing: jest.fn(),
+      setConnectionStatus: jest.fn(),
+      setReconnectAttempt: jest.fn(),
+      setRoundSummary: jest.fn(),
+      setSummaryText: jest.fn(),
+      setCurrentEvent: jest.fn(),
+      setGameOver: jest.fn(),
+      setOptions: jest.fn(),
+      setStoryText: jest.fn(),
+      setPhase: jest.fn(),
       generatingRef: { current: false },
     };
 
@@ -39,26 +40,28 @@ describe("handleChoiceComplete — story text append on retry", () => {
       handlers
     );
 
-    expect(useEventStore.getState().storyText).toBe(
-      "第一章：开局。你选择了继续前进。"
-    );
+    // handleChoiceComplete 在 retry 后不应通过 setStoryText 修改文本
+    expect(handlers.setStoryText).not.toHaveBeenCalled();
+    // 处理完成后 phase 应为 "result"
+    expect(handlers.setPhase).toHaveBeenCalledWith("result");
+    // 处理完成标志已清除
+    expect(handlers.setProcessing).toHaveBeenCalledWith(false);
   });
 
   it("非 retry 时不应修改 storyText（由 SSE onStory 负责追加）", () => {
     useEventStore.setState({ storyText: "第一章：开局。" });
-    // 不调用 markRetry()，模拟正常流程
 
     const handlers = {
-      setProcessing: () => {},
-      setConnectionStatus: () => {},
-      setReconnectAttempt: () => {},
-      setRoundSummary: () => {},
-      setSummaryText: () => {},
-      setCurrentEvent: () => {},
-      setGameOver: () => {},
-      setOptions: () => {},
-      setStoryText: () => {},
-      setPhase: () => {},
+      setProcessing: jest.fn(),
+      setConnectionStatus: jest.fn(),
+      setReconnectAttempt: jest.fn(),
+      setRoundSummary: jest.fn(),
+      setSummaryText: jest.fn(),
+      setCurrentEvent: jest.fn(),
+      setGameOver: jest.fn(),
+      setOptions: jest.fn(),
+      setStoryText: jest.fn(),
+      setPhase: jest.fn(),
       generatingRef: { current: false },
     };
 
@@ -70,7 +73,7 @@ describe("handleChoiceComplete — story text append on retry", () => {
     );
 
     // 正常流程下 handleChoiceComplete 不应修改 storyText
-    expect(useEventStore.getState().storyText).toBe("第一章：开局。");
+    expect(handlers.setStoryText).not.toHaveBeenCalled();
   });
 
   it("retry 但 continuation 为空时不应改变现有文本", () => {
@@ -78,16 +81,16 @@ describe("handleChoiceComplete — story text append on retry", () => {
     markRetry();
 
     const handlers = {
-      setProcessing: () => {},
-      setConnectionStatus: () => {},
-      setReconnectAttempt: () => {},
-      setRoundSummary: () => {},
-      setSummaryText: () => {},
-      setCurrentEvent: () => {},
-      setGameOver: () => {},
-      setOptions: () => {},
-      setStoryText: () => {},
-      setPhase: () => {},
+      setProcessing: jest.fn(),
+      setConnectionStatus: jest.fn(),
+      setReconnectAttempt: jest.fn(),
+      setRoundSummary: jest.fn(),
+      setSummaryText: jest.fn(),
+      setCurrentEvent: jest.fn(),
+      setGameOver: jest.fn(),
+      setOptions: jest.fn(),
+      setStoryText: jest.fn(),
+      setPhase: jest.fn(),
       generatingRef: { current: false },
     };
 
@@ -98,6 +101,7 @@ describe("handleChoiceComplete — story text append on retry", () => {
       handlers
     );
 
+    expect(handlers.setStoryText).not.toHaveBeenCalled();
     expect(useEventStore.getState().storyText).toBe("第一章：开局。");
   });
 });

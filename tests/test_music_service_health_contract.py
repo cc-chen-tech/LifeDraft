@@ -104,6 +104,4 @@ class TestHealthCheckContract:
         """check_availability 是异步方法"""
         from src.services.music_service import NeteaseMusicClient
 
-        assert asyncio.iscoroutinefunction(
-            NeteaseMusicClient.check_availability
-        ), "应为 async 方法"
+        assert asyncio.iscoroutinefunction(NeteaseMusicClient.check_availability), "应为 async 方法"

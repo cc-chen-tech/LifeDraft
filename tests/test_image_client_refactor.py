@@ -21,9 +21,7 @@ class TestImageClientAfterSplit:
         """ImageClient 应有 generate 方法"""
         from src.ai.image_client import ImageClient
 
-        assert hasattr(ImageClient, "generate_character_images") or hasattr(
-            ImageClient, "generate"
-        )
+        assert hasattr(ImageClient, "generate_character_images") or hasattr(ImageClient, "generate")
 
     def test_image_client_constructor(self):
         """ImageClient 应能实例化"""
@@ -131,9 +129,7 @@ class TestAIExtractionBase:
 
         # 验证所有模块都有 __init__ 方法（继承自基类）
         for mod in modules:
-            assert hasattr(
-                mod, "__init__"
-            ), f"{mod.__name__} should have __init__ method"
+            assert hasattr(mod, "__init__"), f"{mod.__name__} should have __init__ method"
 
     def test_extraction_error_handling_pattern(self):
         """提取模块应有一致的错误处理"""

@@ -305,22 +305,14 @@ class TestValidateHighStorylines:
     def test_mentioned_passes(self):
         passed, evidence, details = validate_high_storylines(
             "张三来到了市中心。",
-            {
-                "high_storylines": [
-                    {"description": "张三探索城市", "related_characters": ["张三"]}
-                ]
-            },
+            {"high_storylines": [{"description": "张三探索城市", "related_characters": ["张三"]}]},
         )
         assert passed is True
 
     def test_unmentioned_fails(self):
         passed, evidence, details = validate_high_storylines(
             "He went to the park on a sunny day.",
-            {
-                "high_storylines": [
-                    {"description": "张三探索城市", "related_characters": ["张三"]}
-                ]
-            },
+            {"high_storylines": [{"description": "张三探索城市", "related_characters": ["张三"]}]},
         )
         assert passed is False
 

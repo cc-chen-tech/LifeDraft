@@ -70,9 +70,7 @@ class TestScheduledEventContract:
         e1 = ScheduledEvent(
             scheduled_week=5, scheduled_round=1, parties=["Alice"], status="pending"
         )
-        e2 = ScheduledEvent(
-            scheduled_week=5, scheduled_round=1, parties=["Bob"], status="pending"
-        )
+        e2 = ScheduledEvent(scheduled_week=5, scheduled_round=1, parties=["Bob"], status="pending")
         assert e1.can_merge_with(e2) is False
 
     def test_can_merge_with_different_time(self):
@@ -126,65 +124,47 @@ class TestParseTimeReferenceContract:
 
     def test_zh_today(self):
         """今天 should map to current week/current round."""
-        result = parse_time_reference(
-            "今天见面", current_week=5, current_round=1, language="zh"
-        )
+        result = parse_time_reference("今天见面", current_week=5, current_round=1, language="zh")
         assert result == {"scheduled_week": 5, "scheduled_round": 0}
 
     def test_zh_this_weekend(self):
         """这周末 should map to current week round 2."""
-        result = parse_time_reference(
-            "这周末聚餐", current_week=5, current_round=0, language="zh"
-        )
+        result = parse_time_reference("这周末聚餐", current_week=5, current_round=0, language="zh")
         assert result == {"scheduled_week": 5, "scheduled_round": 2}
 
     def test_zh_next_monday(self):
         """下周一 should map to next week round 0."""
-        result = parse_time_reference(
-            "下周一开会", current_week=5, current_round=0, language="zh"
-        )
+        result = parse_time_reference("下周一开会", current_week=5, current_round=0, language="zh")
         assert result == {"scheduled_week": 6, "scheduled_round": 0}
 
     def test_zh_next_weekend(self):
         """下周末 should map to next week round 2."""
-        result = parse_time_reference(
-            "下周末旅行", current_week=5, current_round=0, language="zh"
-        )
+        result = parse_time_reference("下周末旅行", current_week=5, current_round=0, language="zh")
         assert result == {"scheduled_week": 6, "scheduled_round": 2}
 
     def test_zh_tomorrow(self):
         """明天 should advance by one round."""
-        result = parse_time_reference(
-            "明天见", current_week=5, current_round=0, language="zh"
-        )
+        result = parse_time_reference("明天见", current_week=5, current_round=0, language="zh")
         assert result == {"scheduled_week": 5, "scheduled_round": 1}
 
     def test_zh_tomorrow_cross_week(self):
         """明天 from round 2 should cross to next week."""
-        result = parse_time_reference(
-            "明天见", current_week=5, current_round=2, language="zh"
-        )
+        result = parse_time_reference("明天见", current_week=5, current_round=2, language="zh")
         assert result == {"scheduled_week": 6, "scheduled_round": 0}
 
     def test_zh_day_after_tomorrow(self):
         """后天 should advance by two rounds."""
-        result = parse_time_reference(
-            "后天见面", current_week=5, current_round=0, language="zh"
-        )
+        result = parse_time_reference("后天见面", current_week=5, current_round=0, language="zh")
         assert result == {"scheduled_week": 5, "scheduled_round": 2}
 
     def test_zh_next_month(self):
         """下月 should map to about 4 weeks later."""
-        result = parse_time_reference(
-            "下月见面", current_week=5, current_round=0, language="zh"
-        )
+        result = parse_time_reference("下月见面", current_week=5, current_round=0, language="zh")
         assert result == {"scheduled_week": 9, "scheduled_round": 0}
 
     def test_zh_x_days_later(self):
         """X天后 should calculate correctly."""
-        result = parse_time_reference(
-            "5天后交货", current_week=5, current_round=0, language="zh"
-        )
+        result = parse_time_reference("5天后交货", current_week=5, current_round=0, language="zh")
         assert result == {"scheduled_week": 6, "scheduled_round": 2}
 
     def test_zh_months_later(self):
@@ -203,16 +183,12 @@ class TestParseTimeReferenceContract:
 
     def test_en_next_week(self):
         """next week in English."""
-        result = parse_time_reference(
-            "next week", current_week=5, current_round=0, language="en"
-        )
+        result = parse_time_reference("next week", current_week=5, current_round=0, language="en")
         assert result == {"scheduled_week": 6, "scheduled_round": 1}
 
     def test_en_tomorrow(self):
         """tomorrow in English."""
-        result = parse_time_reference(
-            "tomorrow", current_week=5, current_round=0, language="en"
-        )
+        result = parse_time_reference("tomorrow", current_week=5, current_round=0, language="en")
         assert result == {"scheduled_week": 5, "scheduled_round": 1}
 
     def test_en_days_later(self):
@@ -224,9 +200,7 @@ class TestParseTimeReferenceContract:
 
     def test_unknown_returns_none(self):
         """Unknown time reference should return None."""
-        result = parse_time_reference(
-            "sometime", current_week=5, current_round=0, language="en"
-        )
+        result = parse_time_reference("sometime", current_week=5, current_round=0, language="en")
         assert result is None
 
 

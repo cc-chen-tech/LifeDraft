@@ -169,9 +169,7 @@ class TestDecisionRepositoryDB:
             effects={},
         )
 
-        results = repo.search_story_history(
-            sample_game.game_id, keywords=["unicorn", "dragon"]
-        )
+        results = repo.search_story_history(sample_game.game_id, keywords=["unicorn", "dragon"])
         assert len(results) == 1
 
     def test_search_story_history_max_results(self, sample_game):
@@ -186,9 +184,7 @@ class TestDecisionRepositoryDB:
                 effects={},
             )
 
-        results = repo.search_story_history(
-            sample_game.game_id, keywords=["dragon"], max_results=2
-        )
+        results = repo.search_story_history(sample_game.game_id, keywords=["dragon"], max_results=2)
         assert len(results) == 2
 
     def test_search_story_history_case_insensitive(self, sample_game):

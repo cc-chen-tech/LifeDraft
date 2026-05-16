@@ -53,9 +53,7 @@ class TestModelFallbackContract:
         client = FakeAIClient(responses={"gpt-4": "success"})
         chain = FallbackChain(config, client)
 
-        response, model = chain.call_with_fallback(
-            system_prompt="sys", user_prompt="user"
-        )
+        response, model = chain.call_with_fallback(system_prompt="sys", user_prompt="user")
 
         assert response == "success"
         assert model == "gpt-4"
@@ -73,9 +71,7 @@ class TestModelFallbackContract:
         )
         chain = FallbackChain(config, client)
 
-        response, model = chain.call_with_fallback(
-            system_prompt="sys", user_prompt="user"
-        )
+        response, model = chain.call_with_fallback(system_prompt="sys", user_prompt="user")
 
         assert response == "fallback-response"
         assert model == "gpt-3.5"
@@ -96,9 +92,7 @@ class TestModelFallbackContract:
         )
         chain = FallbackChain(config, client)
 
-        response, model = chain.call_with_fallback(
-            system_prompt="sys", user_prompt="user"
-        )
+        response, model = chain.call_with_fallback(system_prompt="sys", user_prompt="user")
 
         assert response == "local-response"
         assert model == "local"

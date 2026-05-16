@@ -36,9 +36,7 @@ class TestDistinctiveMarksProminence:
         )
         segment = anchor.build_prompt_segment()
 
-        assert (
-            "最高优先级" in segment
-        ), f"distinctive_marks 必须有'最高优先级'标签，实际: {segment}"
+        assert "最高优先级" in segment, f"distinctive_marks 必须有'最高优先级'标签，实际: {segment}"
         assert (
             "绝对不可丢失" in segment
         ), f"distinctive_marks 必须有'绝对不可丢失'标签，实际: {segment}"
@@ -72,15 +70,11 @@ class TestDistinctiveMarksProminence:
         )
         prompt = anchor.build_scene_prompt()
 
-        assert (
-            "标志性识别特征" in prompt
-        ), f"场景 prompt 必须包含'标志性识别特征'，实际: {prompt}"
+        assert "标志性识别特征" in prompt, f"场景 prompt 必须包含'标志性识别特征'，实际: {prompt}"
         assert (
             "场景中必须清晰可见" in prompt
         ), f"场景 prompt 必须要求'场景中必须清晰可见'，实际: {prompt}"
-        assert (
-            "右手腕佩戴红绳" in prompt
-        ), f"场景 prompt 必须包含具体特征，实际: {prompt}"
+        assert "右手腕佩戴红绳" in prompt, f"场景 prompt 必须包含具体特征，实际: {prompt}"
 
     def test_empty_distinctive_marks_omitted(self):
         """没有 distinctive_marks 时不应生成相关段落"""
@@ -108,6 +102,4 @@ class TestDistinctiveMarksProminence:
         )
         segment = anchor.build_prompt_segment()
 
-        assert (
-            "特征A、特征B、特征C" in segment
-        ), f"多个特征应使用顿号连接，实际: {segment}"
+        assert "特征A、特征B、特征C" in segment, f"多个特征应使用顿号连接，实际: {segment}"

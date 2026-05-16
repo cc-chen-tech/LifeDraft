@@ -25,9 +25,7 @@ class TestRegenerateIntegration:
         player_state = MagicMock()
         player_state.week = 10
         player_state.current_round = 0
-        player_state.round_history = [
-            {"week": 10, "round": 0, "event_description": "Old story"}
-        ]
+        player_state.round_history = [{"week": 10, "round": 0, "event_description": "Old story"}]
         player_state.last_round_full_story = "Old full story"
         player_state.current_event_data = {"story": "Old event"}
         player_state.character_settings = {}
@@ -141,11 +139,7 @@ class TestRegenerateIntegration:
             ):
                 existing_story = last_round_full_story
                 resume_source = "last_round_full_story"
-        elif (
-            last_round_full_story
-            and current_round == 0
-            and player_state.current_event_data
-        ):
+        elif last_round_full_story and current_round == 0 and player_state.current_event_data:
             existing_story = last_round_full_story
             resume_source = "last_round_full_story_only"
 
@@ -165,9 +159,7 @@ class TestFrontendRegenerateLogic:
         # Simulate different scenarios
 
         # Scenario 1: Backend returns valid new story
-        backend_story = (
-            "New regenerated story content from backend with sufficient length"
-        )
+        backend_story = "New regenerated story content from backend with sufficient length"
         frontend_story = "Old accumulated story from streaming"
 
         # Fixed logic from useGameState.ts
@@ -186,9 +178,7 @@ class TestFrontendRegenerateLogic:
 
         # Scenario 3: Backend returns empty string
         backend_story_empty = ""
-        final_story_empty = (
-            backend_story_empty if len(backend_story_empty) > 50 else frontend_story
-        )
+        final_story_empty = backend_story_empty if len(backend_story_empty) > 50 else frontend_story
 
         assert final_story_empty == frontend_story
 

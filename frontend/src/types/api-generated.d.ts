@@ -1126,31 +1126,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/images/scene/events/{game_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Scene Image Sse Events
-         * @description SSE 端点：推送场景图片生成事件
-         *
-         *     事件类型:
-         *     - scene_image_ready: 场景图片生成完成
-         *     - scene_image_failed: 场景图片生成失败
-         *     - heartbeat: 心跳保持连接
-         */
-        get: operations["scene_image_sse_events_api_images_scene_events__game_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/images/scene/{game_id}/{round_number}": {
         parameters: {
             query?: never;
@@ -2457,6 +2432,10 @@ export interface components {
             time_weather?: string | null;
             /** Description */
             description?: string | null;
+            /** Music Brief */
+            music_brief?: {
+                [key: string]: unknown;
+            } | null;
             /** Songs */
             songs: components["schemas"]["SongResponse"][];
         };
@@ -2845,6 +2824,11 @@ export interface components {
             duration: number;
             /** Url */
             url?: string | null;
+            /**
+             * Source
+             * @default netease
+             */
+            source: string;
         };
         /**
          * StateSnapshotItem
@@ -4718,37 +4702,6 @@ export interface operations {
                 game_id: number;
                 image_type: string;
                 filename: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    scene_image_sse_events_api_images_scene_events__game_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                game_id: number;
             };
             cookie?: never;
         };

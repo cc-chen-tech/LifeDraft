@@ -78,9 +78,7 @@ class TestRelationshipEventIntegration:
 
     def test_relationship_event_trigger_flow(self):
         """Test complete relationship event trigger flow."""
-        service = RelationshipMCPService(
-            player_gender="male", player_orientation="heterosexual"
-        )
+        service = RelationshipMCPService(player_gender="male", player_orientation="heterosexual")
 
         # Create player with compatible character
         player = PlayerState()
@@ -115,9 +113,7 @@ class TestRelationshipEventIntegration:
 
     def test_romance_event_requires_orientation_match(self):
         """Test that romance events require orientation compatibility."""
-        service = RelationshipMCPService(
-            player_gender="male", player_orientation="heterosexual"
-        )
+        service = RelationshipMCPService(player_gender="male", player_orientation="heterosexual")
 
         # Create incompatible character (same gender, both hetero)
         player = PlayerState()
@@ -195,10 +191,8 @@ class TestGameLoopIntegration:
         found_yearly = False
 
         for _ in range(2000):
-            weekly, yearly = (
-                HistoricalSummarySelector.select_random_historical_summary_fallback(
-                    game.player_state
-                )
+            weekly, yearly = HistoricalSummarySelector.select_random_historical_summary_fallback(
+                game.player_state
             )
             if weekly:
                 found_weekly = True

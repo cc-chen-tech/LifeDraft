@@ -9,16 +9,8 @@ import pytest
 from fastapi import HTTPException
 
 from src.api.routers.images import get_round_scene_image
-from src.database.models import (
-    Base,
-    Game,
-    GameState,
-    SceneImage,
-    SessionLocal,
-    User,
-    engine,
-    init_db,
-)
+from src.database.models import (Base, Game, GameState, SceneImage,
+                                 SessionLocal, User, engine, init_db)
 from src.database.user_manager import UserManager
 
 

@@ -132,7 +132,4 @@ class TestEndingEvaluatorContract:
         evaluator = EndingEvaluator()
         state = self._make_state(energy=60, mood=60, knowledge=60, wealth=20000)
         result = evaluator.evaluate_ending(state, language="en")
-        assert (
-            "balanced" in result["summary"].lower()
-            or "life" in result["summary"].lower()
-        )
+        assert "balanced" in result["summary"].lower() or "life" in result["summary"].lower()

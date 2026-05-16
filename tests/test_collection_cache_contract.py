@@ -6,8 +6,7 @@ def test_collection_store_has_cache_mechanism():
     with open("frontend/src/stores/useCollectionStore.ts", "r") as f:
         content = f.read()
     assert any(
-        kw in content
-        for kw in ["lastFetchTime", "cacheExpiry", "cacheTimestamp", "CACHE_TTL"]
+        kw in content for kw in ["lastFetchTime", "cacheExpiry", "cacheTimestamp", "CACHE_TTL"]
     ), "useCollectionStore 缺少缓存机制"
 
 

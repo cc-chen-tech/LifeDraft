@@ -97,6 +97,5 @@ class TestDeepSeekV4ModelConfiguration:
         )
         # deepseek-v4-pro 应作为备选存在
         assert "deepseek-v4-pro" in _DEFAULT_FALLBACK_MODELS, (
-            f"deepseek-v4-pro 应在降级链中作为备选, "
-            f"实际降级链为 {_DEFAULT_FALLBACK_MODELS}"
+            f"deepseek-v4-pro 应在降级链中作为备选, " f"实际降级链为 {_DEFAULT_FALLBACK_MODELS}"
         )

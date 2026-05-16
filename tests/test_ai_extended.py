@@ -56,9 +56,7 @@ class TestOptionGenerator:
         mock_client = Mock()
         mock_client.call.side_effect = Exception("API error")
         gen = self._make_generator(mock_client)
-        event = gen.generate_options_only(
-            "Story text", {}, language="zh", retry_count=2
-        )
+        event = gen.generate_options_only("Story text", {}, language="zh", retry_count=2)
         assert len(event.options) == 2
         assert "积极面对" in event.options[0].text
 
@@ -69,8 +67,7 @@ class TestOptionGenerator:
         gen = self._make_generator(mock_client)
         event = gen.generate_options_only("Story", {}, language="en", retry_count=1)
         assert (
-            "positively" in event.options[0].text.lower()
-            or "face" in event.options[0].text.lower()
+            "positively" in event.options[0].text.lower() or "face" in event.options[0].text.lower()
         )
 
     def test_generate_options_invalid_json_then_fallback(self):
@@ -149,9 +146,7 @@ class TestOptionGenerator:
                 EventOption(text="B", effects={"energy": -5}),
             ],
         )
-        settings = {
-            "relationships": {"key_people": [{"name": "张三"}, {"name": "李四"}]}
-        }
+        settings = {"relationships": {"key_people": [{"name": "张三"}, {"name": "李四"}]}}
         gen.validate_and_fix_relationships(event, settings)
         # Non-key_people name should be kept as-is, not dropped or mapped
         assert "韦待价" in event.options[0].effects["relationships"]
@@ -173,9 +168,7 @@ class TestOptionGenerator:
                 EventOption(text="B", effects={"energy": -5}),
             ],
         )
-        settings = {
-            "relationships": {"key_people": [{"name": "裴行俭"}, {"name": "李四"}]}
-        }
+        settings = {"relationships": {"key_people": [{"name": "裴行俭"}, {"name": "李四"}]}}
         gen.validate_and_fix_relationships(event, settings)
         # 武承嗣 should be kept as-is, NOT mapped to 裴行俭
         assert "武承嗣" in event.options[0].effects["relationships"]
@@ -247,9 +240,7 @@ class TestOptionGenerator:
         event = GameEvent(
             event_description="测试故事",
             options=[
-                EventOption(
-                    text="A", effects={"relationships": {"同事": 5, "朋友": -5}}
-                ),
+                EventOption(text="A", effects={"relationships": {"同事": 5, "朋友": -5}}),
                 EventOption(text="B", effects={"energy": -5}),
             ],
         )
@@ -611,9 +602,7 @@ class TestStoryRewriter:
         mock_client = Mock()
         mock_client.call.side_effect = Exception("fail")
         rewriter = StoryRewriter(mock_client)
-        result = rewriter.rewrite_story_segment(
-            "Original", "segment", "instruction", None, ""
-        )
+        result = rewriter.rewrite_story_segment("Original", "segment", "instruction", None, "")
         assert result == "Original"
 
     @patch("src.ai.story_rewriter.get_story_only_prompt", return_value="prompt")
@@ -653,9 +642,7 @@ class TestStoryRewriter:
         mock_client = Mock()
         mock_client.call.return_value = "Contextual story"
         rewriter = StoryRewriter(mock_client)
-        result = rewriter.regenerate_story(
-            {"week": 0}, None, "Previous context", language="zh"
-        )
+        result = rewriter.regenerate_story({"week": 0}, None, "Previous context", language="zh")
         assert result == "Contextual story"
 
     @patch("src.ai.story_rewriter.get_story_only_prompt", return_value="prompt")
@@ -746,10 +733,7 @@ class TestSummaryGenerator:
     def test_clean_summary_text_code_block(self):
         from src.ai.summary_generator import SummaryGenerator
 
-        assert (
-            SummaryGenerator._clean_summary_text("```json\nSummary text\n```")
-            == "Summary text"
-        )
+        assert SummaryGenerator._clean_summary_text("```json\nSummary text\n```") == "Summary text"
 
     def test_clean_summary_text_json_prefix(self):
         from src.ai.summary_generator import SummaryGenerator
@@ -791,9 +775,7 @@ class TestSummaryGenerator:
         from src.ai.summary_generator import SummaryGenerator
 
         content = "ab"  # Too short
-        result = SummaryGenerator._extract_summary_from_raw(
-            content, "original story text", "zh"
-        )
+        result = SummaryGenerator._extract_summary_from_raw(content, "original story text", "zh")
         assert result == "original story text"
 
     def test_generate_weekly_summary_success(self):

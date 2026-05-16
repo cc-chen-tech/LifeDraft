@@ -2,24 +2,15 @@
 
 from pathlib import Path
 
-from src.api.schemas import (
-    CharacterCollectionItem,
-    CollectionResponse,
-    GameStateResponse,
-    ItemCollectionItem,
-    LandmarkCollectionItem,
-    PhoneLoginRequest,
-    RoundSceneResponse,
-    VoiceReadingSettingsResponse,
-    VoiceReadingSettingsUpdateRequest,
-    VoiceUploadConsentRequest,
-)
-
+from src.api.schemas import (CharacterCollectionItem, CollectionResponse,
+                             GameStateResponse, ItemCollectionItem,
+                             LandmarkCollectionItem, PhoneLoginRequest,
+                             RoundSceneResponse, VoiceReadingSettingsResponse,
+                             VoiceReadingSettingsUpdateRequest,
+                             VoiceUploadConsentRequest)
 
 ROOT = Path(__file__).resolve().parents[1]
-FRONTEND_TYPES = (ROOT / "frontend" / "src" / "lib" / "types.ts").read_text(
-    encoding="utf-8"
-)
+FRONTEND_TYPES = (ROOT / "frontend" / "src" / "lib" / "types.ts").read_text(encoding="utf-8")
 
 
 def _fields(model: type) -> set[str]:
@@ -93,9 +84,7 @@ def test_member_voice_placeholders_match_frontend_contract() -> None:
 
 
 def test_frontend_image_api_paths_match_backend_routes() -> None:
-    api_source = (ROOT / "frontend" / "src" / "lib" / "api.ts").read_text(
-        encoding="utf-8"
-    )
+    api_source = (ROOT / "frontend" / "src" / "lib" / "api.ts").read_text(encoding="utf-8")
 
     assert "'/images/generate'" in api_source
     assert "'/images/opening-illustration'" in api_source

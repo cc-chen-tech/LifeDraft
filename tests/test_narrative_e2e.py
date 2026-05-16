@@ -196,9 +196,7 @@ class TestPerformanceBaseline:
         elapsed = (time.perf_counter() - start) / iterations
 
         # 单次验证应 <200ms
-        assert (
-            elapsed < 0.200
-        ), f"Validation took {elapsed*1000:.1f}ms, exceeds 200ms baseline"
+        assert elapsed < 0.200, f"Validation took {elapsed*1000:.1f}ms, exceeds 200ms baseline"
 
     def test_fifty_styles_load_memory(self, tmp_path):
         """同时加载50个风格文件，内存增量<10MB。"""
@@ -229,9 +227,7 @@ class TestPerformanceBaseline:
                 "global_parameters": {"temperature": 0.85, "top_p": 1.0},
             }
             path = tmp_path / f"style_{i:03d}.style.json"
-            path.write_text(
-                json.dumps(style_data, ensure_ascii=False), encoding="utf-8"
-            )
+            path.write_text(json.dumps(style_data, ensure_ascii=False), encoding="utf-8")
 
         tracemalloc.start()
         snapshot_before = tracemalloc.take_snapshot()
@@ -248,9 +244,7 @@ class TestPerformanceBaseline:
         increase_mb = total_increase / (1024 * 1024)
 
         assert loader.get_all_style_ids().__len__() == 50
-        assert (
-            increase_mb < 10
-        ), f"Memory increase {increase_mb:.2f}MB exceeds 10MB limit"
+        assert increase_mb < 10, f"Memory increase {increase_mb:.2f}MB exceeds 10MB limit"
 
 
 # ============================================================
@@ -395,9 +389,7 @@ class TestEdgeCases:
                 "style_name": f"并发测试{i}",
             }
             path = tmp_path / f"concurrent_{i}.style.json"
-            path.write_text(
-                json.dumps(style_data, ensure_ascii=False), encoding="utf-8"
-            )
+            path.write_text(json.dumps(style_data, ensure_ascii=False), encoding="utf-8")
 
         loader = StyleLoader(styles_dir=str(tmp_path))
         results = []
@@ -447,9 +439,7 @@ class TestEdgeCases:
         )
 
         # 损坏文件（非法 JSON）
-        (tmp_path / "corrupted.style.json").write_text(
-            "{ not valid json !!!", encoding="utf-8"
-        )
+        (tmp_path / "corrupted.style.json").write_text("{ not valid json !!!", encoding="utf-8")
 
         loader = StyleLoader(styles_dir=str(tmp_path))
         loader.load_all()

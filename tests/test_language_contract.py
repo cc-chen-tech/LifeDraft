@@ -44,7 +44,5 @@ class TestLanguageContract:
 
     def test_punctuation_in_english_still_ascii(self):
         """English with punctuation should still be detected as en."""
-        state = {
-            "character_settings": {"era": {"era_description": "Victorian-era London!"}}
-        }
+        state = {"character_settings": {"era": {"era_description": "Victorian-era London!"}}}
         assert detect_language_from_state(state) == "en"

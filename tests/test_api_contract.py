@@ -15,9 +15,7 @@ class TestEntityRecognitionAPIContract:
 
     def test_recognize_entities_unauthorized(self):
         """测试未授权访问返回 401"""
-        response = client.post(
-            "/api/collection/1/recognize-entities", json={"min_appearances": 3}
-        )
+        response = client.post("/api/collection/1/recognize-entities", json={"min_appearances": 3})
         assert response.status_code == 401
         data = response.json()
         assert "detail" in data
@@ -40,9 +38,7 @@ class TestAPIErrorResponses:
 
     def test_error_response_has_detail(self):
         """测试错误响应包含 detail 字段"""
-        response = client.post(
-            "/api/collection/1/recognize-entities", json={"min_appearances": 3}
-        )
+        response = client.post("/api/collection/1/recognize-entities", json={"min_appearances": 3})
 
         assert response.status_code == 401
         data = response.json()

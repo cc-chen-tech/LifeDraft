@@ -6,10 +6,10 @@ specialized round services and exposes the expected interface.
 
 from src.game.round.system_mixin import RoundSystemMixin
 
-
 # ---------------------------------------------------------------------------
 # Concrete class that mixes in RoundSystemMixin
 # ---------------------------------------------------------------------------
+
 
 class ConcreteGameLoop(RoundSystemMixin):
     """Minimal concrete class for testing the mixin in isolation.
@@ -46,19 +46,19 @@ class ConcreteGameLoop(RoundSystemMixin):
 
         # StoryService needs EventGenerator
         from src.game.story_service import StoryService
-        self.story_service = StoryService(
-            ai_generator=self.ai_generator, language=language
-        )
+
+        self.story_service = StoryService(ai_generator=self.ai_generator, language=language)
 
         # CharacterCreator takes ai_generator (EventGenerator) and language
-        self.character_creator = CharacterCreator(
-            ai_generator=self.ai_generator, language=language
-        )
+        self.character_creator = CharacterCreator(ai_generator=self.ai_generator, language=language)
 
-        from src.game.historical_summary_selector import HistoricalSummarySelector
+        from src.game.historical_summary_selector import \
+            HistoricalSummarySelector
+
         self.summary_selector = HistoricalSummarySelector()
 
         from src.mcp.relationship_service import RelationshipMCPService
+
         self.relationship_service = RelationshipMCPService()
 
         # Initialize round services
@@ -110,15 +110,17 @@ class TestRoundSystemMixinInitialization:
         Since our class initializes in __init__, we create a minimal
         subclass that does NOT initialize services.
         """
+
         class LazyGameLoop(RoundSystemMixin):
             language = "zh"
 
             def __init__(self):
                 from src.ai.generator import EventGenerator
+                from src.game.character_creation import CharacterCreator
+                from src.game.historical_summary_selector import \
+                    HistoricalSummarySelector
                 from src.game.state.player_state import PlayerState
                 from src.game.story_service import StoryService
-                from src.game.character_creation import CharacterCreator
-                from src.game.historical_summary_selector import HistoricalSummarySelector
                 from src.mcp.relationship_service import RelationshipMCPService
 
                 self.player_state = PlayerState(  # type: ignore[call-arg]
@@ -139,9 +141,7 @@ class TestRoundSystemMixinInitialization:
                 self._GENERATION_TIMEOUT = 60.0
                 self.event_callback = None
                 self.result_callback = None
-                self.story_service = StoryService(
-                    ai_generator=self.ai_generator, language="zh"
-                )
+                self.story_service = StoryService(ai_generator=self.ai_generator, language="zh")
                 self.character_creator = CharacterCreator(
                     ai_generator=self.ai_generator, language="zh"
                 )
@@ -154,9 +154,7 @@ class TestRoundSystemMixinInitialization:
         assert not hasattr(loop, "_char_intro_service")
 
         # Accessing a method should trigger lazy init
-        context = loop._determine_introduction_context(
-            {"name": "Test", "role": "朋友"}
-        )
+        context = loop._determine_introduction_context({"name": "Test", "role": "朋友"})
         assert isinstance(context, str)
         # After lazy init, services should exist
         assert hasattr(loop, "_char_intro_service")
@@ -204,12 +202,8 @@ class TestCurrentEventProperty:
         test_event = GameEvent(
             event_description="Fallback test.",
             options=[
-                EventOption(
-                    text="Opt", effects={"energy": 0}, likely_choice=True
-                ),
-                EventOption(
-                    text="Opt2", effects={"energy": 0}, likely_choice=False
-                ),
+                EventOption(text="Opt", effects={"energy": 0}, likely_choice=True),
+                EventOption(text="Opt2", effects={"energy": 0}, likely_choice=False),
             ],
         )
         loop.current_event = test_event
@@ -304,9 +298,7 @@ class TestCharacterIntroductionDelegation:
 
     def test_determine_introduction_context_returns_string(self):
         loop = ConcreteGameLoop()
-        result = loop._determine_introduction_context(
-            {"name": "Friend", "role": "同事"}
-        )
+        result = loop._determine_introduction_context({"name": "Friend", "role": "同事"})
         assert isinstance(result, str)
         assert result in ("work", "social", "education", "location_change", "random")
 
@@ -400,6 +392,6 @@ class TestRoundSystemMixinTypeHints:
             "relationship_service",
         ]
         for attr in expected:
-            assert attr in annotations, (
-                f"Type hint for '{attr}' missing from RoundSystemMixin.__annotations__"
-            )
+            assert (
+                attr in annotations
+            ), f"Type hint for '{attr}' missing from RoundSystemMixin.__annotations__"

@@ -195,9 +195,7 @@ class TestEnhancePrompt:
         # 应包含一致性相关的增强
         assert "增强要求" in enhanced
         # 包含 "严格要求" 头部或具体的一致性要求文本
-        assert (
-            "严格要求" in enhanced or "保持一致" in enhanced or "五官比例" in enhanced
-        )
+        assert "严格要求" in enhanced or "保持一致" in enhanced or "五官比例" in enhanced
 
     def test_enhance_multiple_negative_feedback(self):
         """测试多条负面反馈时的增强"""
@@ -411,9 +409,7 @@ class TestRuleMatching:
         enhancer = PromptEnhancer()
 
         # 包含多个关键词
-        matched = enhancer._match_rules(
-            "不像，模糊，光线太暗，表情不像，服装不对，姿势僵硬"
-        )
+        matched = enhancer._match_rules("不像，模糊，光线太暗，表情不像，服装不对，姿势僵硬")
 
         # 最多返回3条规则
         assert len(matched) <= 3

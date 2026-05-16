@@ -302,57 +302,41 @@ class TestParseTimeReference:
     def test_parse_this_week_zh(self):
         """测试中文'这周'表述"""
         # 这周一
-        result = parse_time_reference(
-            "这周一", current_week=5, current_round=1, language="zh"
-        )
+        result = parse_time_reference("这周一", current_week=5, current_round=1, language="zh")
         assert result == {"scheduled_week": 5, "scheduled_round": 0}
 
         # 这周末
-        result = parse_time_reference(
-            "这周末", current_week=5, current_round=1, language="zh"
-        )
+        result = parse_time_reference("这周末", current_week=5, current_round=1, language="zh")
         assert result == {"scheduled_week": 5, "scheduled_round": 2}
 
     def test_parse_next_week_zh(self):
         """测试中文'下周'表述"""
         # 下周一
-        result = parse_time_reference(
-            "下周一", current_week=5, current_round=1, language="zh"
-        )
+        result = parse_time_reference("下周一", current_week=5, current_round=1, language="zh")
         assert result == {"scheduled_week": 6, "scheduled_round": 0}
 
         # 下周末
-        result = parse_time_reference(
-            "下周末", current_week=5, current_round=1, language="zh"
-        )
+        result = parse_time_reference("下周末", current_week=5, current_round=1, language="zh")
         assert result == {"scheduled_week": 6, "scheduled_round": 2}
 
     def test_parse_days_later_zh(self):
         """测试中文'X天后'表述"""
         # 明天
-        result = parse_time_reference(
-            "明天", current_week=5, current_round=0, language="zh"
-        )
+        result = parse_time_reference("明天", current_week=5, current_round=0, language="zh")
         assert result == {"scheduled_week": 5, "scheduled_round": 1}
 
         # 后天
-        result = parse_time_reference(
-            "后天", current_week=5, current_round=0, language="zh"
-        )
+        result = parse_time_reference("后天", current_week=5, current_round=0, language="zh")
         assert result == {"scheduled_week": 5, "scheduled_round": 2}
 
         # 明天（从轮次2开始，会跨周）
-        result = parse_time_reference(
-            "明天", current_week=5, current_round=2, language="zh"
-        )
+        result = parse_time_reference("明天", current_week=5, current_round=2, language="zh")
         assert result == {"scheduled_week": 6, "scheduled_round": 0}
 
     def test_parse_english(self):
         """测试英文时间表述"""
         # next Monday
-        result = parse_time_reference(
-            "next Monday", current_week=5, current_round=1, language="en"
-        )
+        result = parse_time_reference("next Monday", current_week=5, current_round=1, language="en")
         assert result == {"scheduled_week": 6, "scheduled_round": 0}
 
         # this weekend
@@ -362,9 +346,7 @@ class TestParseTimeReference:
         assert result == {"scheduled_week": 5, "scheduled_round": 2}
 
         # tomorrow
-        result = parse_time_reference(
-            "tomorrow", current_week=5, current_round=0, language="en"
-        )
+        result = parse_time_reference("tomorrow", current_week=5, current_round=0, language="en")
         assert result == {"scheduled_week": 5, "scheduled_round": 1}
 
         # this midweek
@@ -376,14 +358,10 @@ class TestParseTimeReference:
     def test_parse_invalid(self):
         """测试无效时间表述"""
         # 模糊表述返回None
-        result = parse_time_reference(
-            "有机会", current_week=5, current_round=1, language="zh"
-        )
+        result = parse_time_reference("有机会", current_week=5, current_round=1, language="zh")
         assert result is None
 
-        result = parse_time_reference(
-            "sometime", current_week=5, current_round=1, language="en"
-        )
+        result = parse_time_reference("sometime", current_week=5, current_round=1, language="en")
         assert result is None
 
 

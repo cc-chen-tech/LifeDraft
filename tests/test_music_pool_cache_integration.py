@@ -226,9 +226,7 @@ class TestGetOrBuildPool:
         # Mock search
         service.music_client.search = AsyncMock(
             return_value=[
-                Song(
-                    id=4001, name="刷新歌曲", artists=["E"], album="V", duration=220000
-                ),
+                Song(id=4001, name="刷新歌曲", artists=["E"], album="V", duration=220000),
             ]
         )
 
@@ -370,9 +368,7 @@ class TestRefreshPoolUrls:
         # Mock search for supplemental
         service.music_client.search = AsyncMock(
             return_value=[
-                Song(
-                    id=8002, name="补充歌曲", artists=["J"], album="Q", duration=210000
-                ),
+                Song(id=8002, name="补充歌曲", artists=["J"], album="Q", duration=210000),
             ]
         )
         service.music_client.get_song_url = AsyncMock(
@@ -452,9 +448,7 @@ class TestAnalyzeStoryForMusicWithPool:
 
         result = await service.analyze_story_for_music("一个悲伤的故事")
 
-        assert (
-            5 <= len(result.songs) <= 8
-        ), f"返回 {len(result.songs)} 首，不在 5-8 范围内"
+        assert 5 <= len(result.songs) <= 8, f"返回 {len(result.songs)} 首，不在 5-8 范围内"
 
     async def test_all_returned_songs_have_url(self):
         """返回的歌曲全部有 URL。"""

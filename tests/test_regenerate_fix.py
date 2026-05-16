@@ -47,10 +47,7 @@ class TestStoryRegeneration:
         player_state.round_history = [
             entry
             for entry in player_state.round_history
-            if not (
-                entry.get("week") == current_week
-                and entry.get("round") == current_round
-            )
+            if not (entry.get("week") == current_week and entry.get("round") == current_round)
         ]
 
         # Clear current_event_data
@@ -99,11 +96,7 @@ class TestStoryRegeneration:
             ):
                 existing_story = last_round_full_story
                 resume_source = "last_round_full_story"
-        elif (
-            last_round_full_story
-            and current_round == 0
-            and player_state.current_event_data
-        ):
+        elif last_round_full_story and current_round == 0 and player_state.current_event_data:
             existing_story = last_round_full_story
             resume_source = "last_round_full_story_only"
 
@@ -121,9 +114,7 @@ class TestStoryRegeneration:
 
         # Old logic (buggy)
         old_final_story = (
-            backend_story
-            if len(backend_story) > len(frontend_story)
-            else frontend_story
+            backend_story if len(backend_story) > len(frontend_story) else frontend_story
         )
 
         # New logic (fixed)
@@ -131,9 +122,7 @@ class TestStoryRegeneration:
 
         # Test case 1: Backend returns valid story
         assert len(backend_story) > 50
-        assert (
-            new_final_story == backend_story
-        ), "Should use backend story when it's valid"
+        assert new_final_story == backend_story, "Should use backend story when it's valid"
 
         # Test case 2: Backend returns empty/short story
         short_backend_story = ""
@@ -148,13 +137,9 @@ class TestStoryRegeneration:
         # If frontend story is longer, old logic would use it (wrong!)
         long_frontend_story = "A" * 1000  # Very long accumulated text
         old_final = (
-            backend_story
-            if len(backend_story) > len(long_frontend_story)
-            else long_frontend_story
+            backend_story if len(backend_story) > len(long_frontend_story) else long_frontend_story
         )
-        assert (
-            old_final == long_frontend_story
-        ), "Old logic would incorrectly use frontend story"
+        assert old_final == long_frontend_story, "Old logic would incorrectly use frontend story"
 
         print("✓ Frontend story selection logic is correct")
 

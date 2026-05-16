@@ -144,6 +144,4 @@ class TestSessionServiceContract:
         from src.api.services.session_service import SessionService
 
         assert hasattr(SessionService, "_check_and_generate_missing_illustrations")
-        assert callable(
-            getattr(SessionService, "_check_and_generate_missing_illustrations")
-        )
+        assert callable(getattr(SessionService, "_check_and_generate_missing_illustrations"))

@@ -9,9 +9,7 @@ from src.ai.harness.retry_controller import RetryController
 class FakeValidationResult:
     """Stub validation result."""
 
-    def __init__(
-        self, score=100.0, high_warnings=None, medium_notes=None, low_notes=None
-    ):
+    def __init__(self, score=100.0, high_warnings=None, medium_notes=None, low_notes=None):
         self.score = score
         self.high_warnings = high_warnings or []
         self.medium_notes = medium_notes or []
@@ -153,9 +151,7 @@ class TestRetryControllerContract:
     def test_get_fix_for_type(self):
         """Should extract fix matching constraint type."""
         controller = RetryController()
-        report = FakeDiagnosticReport(
-            suggested_fixes=["[length] shorten", "[style] fix tone"]
-        )
+        report = FakeDiagnosticReport(suggested_fixes=["[length] shorten", "[style] fix tone"])
         fix = controller._get_fix_for_type("length", report)
         assert fix == "shorten"
 

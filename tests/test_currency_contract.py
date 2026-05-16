@@ -13,11 +13,7 @@ def test_story_prompts_no_hardcoded_carbon_credits():
     lines = content.split("\n")
     for i, line in enumerate(lines, 1):
         stripped = line.strip()
-        if (
-            stripped.startswith("#")
-            or stripped.startswith('"""')
-            or stripped.startswith("'''")
-        ):
+        if stripped.startswith("#") or stripped.startswith('"""') or stripped.startswith("'''"):
             continue
         assert (
             "碳信用" not in line

@@ -27,9 +27,7 @@ class TestCacheHitAvoidsNetworkRequest:
 
         # 创建一个会失败的 mock（如果调用就会失败）
         client.client = MagicMock()
-        client.client.get = MagicMock(
-            side_effect=Exception("Should not be called when cache hits")
-        )
+        client.client.get = MagicMock(side_effect=Exception("Should not be called when cache hits"))
 
         # 预填充有效缓存
         test_url = "https://cdn.example.com/cached.mp3"
@@ -135,9 +133,7 @@ class TestCacheExpiredDeletesEntry:
         result = asyncio.run(client.get_song_url(10004))
 
         # 验证过期缓存被替换为新值（不是旧值）
-        assert (
-            result == "https://cdn.example.com/new.mp3"
-        ), "过期缓存必须被新获取的 URL 替换"
+        assert result == "https://cdn.example.com/new.mp3", "过期缓存必须被新获取的 URL 替换"
         assert 10004 in NeteaseMusicClient._url_cache, "新获取的 URL 应被写入缓存"
         cached_url, cached_ts = NeteaseMusicClient._url_cache[10004]
         assert (

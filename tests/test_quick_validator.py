@@ -173,17 +173,11 @@ class TestQuickValidateStory:
         story = "I walked down the street. This is a game."
         result = quick_validate_story(story, language="en")
         # Should detect issues in English
-        assert (
-            result.passed is False
-            or len(result.issues) > 0
-            or len(result.warnings) >= 0
-        )
+        assert result.passed is False or len(result.issues) > 0 or len(result.warnings) >= 0
 
     def test_quick_validate_story_with_available_people(self):
         """Test quick_validate_story with available people list."""
         story = "小明和小红在街上相遇了。"
-        result = quick_validate_story(
-            story, available_people=["小明", "小红"], language="zh"
-        )
+        result = quick_validate_story(story, available_people=["小明", "小红"], language="zh")
         # Should pass with correct names
         assert result.passed is True

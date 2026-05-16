@@ -35,9 +35,7 @@ class TestStoryGeneratorBestStoryFallback:
         client.call.side_effect = [long_story, short_story]
 
         mock_option_gen = MagicMock()
-        mock_option_gen.generate_options_only.side_effect = Exception(
-            "option gen failed"
-        )
+        mock_option_gen.generate_options_only.side_effect = Exception("option gen failed")
 
         # 模拟 Harness：第一次要求重试，第二次通过
         gen._harness_enabled = True
@@ -89,9 +87,7 @@ class TestStoryGeneratorBestStoryFallback:
         client.call.return_value = "短"
 
         mock_option_gen = MagicMock()
-        mock_option_gen.generate_options_only.side_effect = Exception(
-            "option gen failed"
-        )
+        mock_option_gen.generate_options_only.side_effect = Exception("option gen failed")
 
         gen._harness_enabled = False
 
@@ -107,9 +103,7 @@ class TestStoryGeneratorBestStoryFallback:
             )
 
         # 当没有有效故事时，fallback 到 "平静的一天"
-        assert (
-            "平静" in event.event_description or "This day" in event.event_description
-        )
+        assert "平静" in event.event_description or "This day" in event.event_description
 
     def test_best_story_tracks_longest_across_attempts(self):
         """best_story_text 应记录所有尝试中最长的文本"""
@@ -123,19 +117,13 @@ class TestStoryGeneratorBestStoryFallback:
         client.call.side_effect = [medium_story, long_story, short_story]
 
         mock_option_gen = MagicMock()
-        mock_option_gen.generate_options_only.side_effect = Exception(
-            "option gen failed"
-        )
+        mock_option_gen.generate_options_only.side_effect = Exception("option gen failed")
 
         gen._harness_enabled = True
         gen._validation_pipeline = MagicMock()
         gen._validation_pipeline.validate.side_effect = [
-            MagicMock(
-                passed=False, score=50, critical_failures=["fail"], detailed_checks={}
-            ),
-            MagicMock(
-                passed=False, score=50, critical_failures=["fail"], detailed_checks={}
-            ),
+            MagicMock(passed=False, score=50, critical_failures=["fail"], detailed_checks={}),
+            MagicMock(passed=False, score=50, critical_failures=["fail"], detailed_checks={}),
             MagicMock(passed=True, score=95, critical_failures=[], detailed_checks={}),
         ]
         gen._retry_controller = MagicMock()

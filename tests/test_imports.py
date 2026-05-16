@@ -45,9 +45,7 @@ class TestNoCircularImports:
 
         # 清除缓存重新导入
         modules_to_remove = [
-            k
-            for k in sys.modules.keys()
-            if "entity_recognition" in k or "collection" in k
+            k for k in sys.modules.keys() if "entity_recognition" in k or "collection" in k
         ]
         for m in modules_to_remove:
             del sys.modules[m]

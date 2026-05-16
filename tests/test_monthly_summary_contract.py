@@ -14,9 +14,7 @@ class FakeAIClient:
         self.response = response
         self.calls = []
 
-    def generate_completion(
-        self, *, prompt, system_prompt, temperature=0.7, max_tokens=4096
-    ):
+    def generate_completion(self, *, prompt, system_prompt, temperature=0.7, max_tokens=4096):
         self.calls.append(
             {
                 "prompt": prompt,
@@ -51,9 +49,7 @@ class TestMonthlySummaryContract:
         gen = MonthlySummaryGenerator(ai_generator=fake, language="zh")
 
         previous = {"energy": 70, "mood": 60, "knowledge": 50, "wealth": 500, "age": 24}
-        current = self._make_state(
-            energy=80, mood=70, knowledge=60, wealth=1000, age=25
-        )
+        current = self._make_state(energy=80, mood=70, knowledge=60, wealth=1000, age=25)
         decisions = [{"choice": "Study hard"}]
 
         result = gen.generate_summary(
@@ -183,9 +179,7 @@ class TestMonthlySummaryContract:
         gen = MonthlySummaryGenerator(ai_generator=fake, language="zh")
 
         previous = {"age": 24}
-        current = self._make_state(
-            age=25, energy=80, mood=70, knowledge=60, wealth=1000
-        )
+        current = self._make_state(age=25, energy=80, mood=70, knowledge=60, wealth=1000)
         decisions = [{"choice": "Work hard"}]
 
         gen.generate_summary(

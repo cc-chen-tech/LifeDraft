@@ -92,9 +92,7 @@ class TestConflictTower:
 
         # 模拟连续多周T1冲突活跃
         for week in range(1, 6):
-            self.tower.record_weekly_activity(
-                week=week, active_conflicts=["t1_bandit", "t1_rival"]
-            )
+            self.tower.record_weekly_activity(week=week, active_conflicts=["t1_bandit", "t1_rival"])
 
         # 连续活跃后应触发T2解锁
         unlocked = self.tower.check_escalation()
@@ -144,9 +142,7 @@ class TestConflictTower:
         tier_config = tower.get_tier_config()
         assert tier_config is not None
         # 中国古典风格的命名或配置
-        assert tier_config.get("style") == "chinese_classic" or "劫难" in str(
-            tier_config
-        )
+        assert tier_config.get("style") == "chinese_classic" or "劫难" in str(tier_config)
 
     def test_style_western(self):
         """西方=学年大考/终极对决"""

@@ -35,10 +35,7 @@ class TestJWTSecretSecurityContract:
                             # 如果 os.getenv 有两个参数，第二个就是 fallback
                             if len(node.value.args) >= 2:
                                 fallback = node.value.args[1]
-                                if (
-                                    isinstance(fallback, ast.Constant)
-                                    and fallback.value
-                                ):
+                                if isinstance(fallback, ast.Constant) and fallback.value:
                                     raise AssertionError(
                                         f"JWT_SECRET 有硬编码回退值: {fallback.value!r}. "
                                         "生产代码不能包含硬编码的 JWT secret。"
@@ -46,10 +43,7 @@ class TestJWTSecretSecurityContract:
                             # 检查关键字参数 default=
                             for kw in node.value.keywords:
                                 if kw.arg == "default":
-                                    if (
-                                        isinstance(kw.value, ast.Constant)
-                                        and kw.value.value
-                                    ):
+                                    if isinstance(kw.value, ast.Constant) and kw.value.value:
                                         raise AssertionError(
                                             f"JWT_SECRET 有硬编码回退值: {kw.value.value!r}. "
                                             "生产代码不能包含硬编码的 JWT secret。"
@@ -89,9 +83,7 @@ class TestJWTSecretSecurityContract:
 
         # 用正确的密钥签名
         payload = {"sub": "123", "exp": datetime.utcnow() + timedelta(hours=1)}
-        valid_token = jwt.encode(
-            payload, "test-secret-for-contract-tests", algorithm="HS256"
-        )
+        valid_token = jwt.encode(payload, "test-secret-for-contract-tests", algorithm="HS256")
 
         # 用错误的密钥签名
         invalid_token = jwt.encode(payload, "wrong-secret", algorithm="HS256")

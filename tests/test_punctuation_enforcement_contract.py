@@ -49,9 +49,7 @@ class TestPunctuationEnforcementInPrompts:
         )
         # 必须要求对话使用中文引号 "" 或英文引号
         has_quote_req = '"' in prompt or '"' in prompt or "引号" in prompt
-        assert (
-            has_quote_req
-        ), f"prompt 必须要求对话使用引号。prompt 前1000字: {prompt[:1000]}"
+        assert has_quote_req, f"prompt 必须要求对话使用引号。prompt 前1000字: {prompt[:1000]}"
 
     def test_round_event_prompt_has_punctuation_requirement(self):
         """get_round_event_prompt 必须包含强制正确使用标点的指令"""

@@ -64,9 +64,7 @@ def sample_player_state():
 class TestSavePointRepositoryDB:
     """DB integration tests for SavePointRepository."""
 
-    def test_create_save_point_success(
-        self, sample_game, sample_user, sample_player_state
-    ):
+    def test_create_save_point_success(self, sample_game, sample_user, sample_player_state):
         """create_save_point should persist a save point."""
         repo = SavePointRepository()
         save_id = repo.create_save_point(
@@ -123,9 +121,7 @@ class TestSavePointRepositoryDB:
         assert state.get("player_name") == "TestPlayer"
         assert state.get("_game_id") == sample_game.game_id
 
-    def test_load_save_point_wrong_user(
-        self, sample_game, sample_user, sample_player_state
-    ):
+    def test_load_save_point_wrong_user(self, sample_game, sample_user, sample_player_state):
         """load_save_point with wrong user should return None."""
         repo = SavePointRepository()
         save_id = repo.create_save_point(
@@ -159,9 +155,7 @@ class TestSavePointRepositoryDB:
         state = repo.load_save_point(save_id, sample_user.user_id)
         assert state is None
 
-    def test_delete_save_point_wrong_user(
-        self, sample_game, sample_user, sample_player_state
-    ):
+    def test_delete_save_point_wrong_user(self, sample_game, sample_user, sample_player_state):
         """delete_save_point with wrong user should return False."""
         repo = SavePointRepository()
         save_id = repo.create_save_point(
@@ -179,9 +173,7 @@ class TestSavePointRepositoryDB:
         result = repo.delete_save_point(99999, sample_user.user_id)
         assert result is False
 
-    def test_get_all_states_for_game(
-        self, sample_game, sample_user, sample_player_state
-    ):
+    def test_get_all_states_for_game(self, sample_game, sample_user, sample_player_state):
         """get_all_states_for_game should return all states including snapshots."""
         repo = SavePointRepository()
         repo.create_save_point(

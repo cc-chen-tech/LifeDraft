@@ -103,9 +103,7 @@ class TestLogin:
         mock_user_manager.login_by_private_id.return_value = mock_user
 
         # Act
-        response = client.post(
-            "/api/auth/login", json={"private_id": "valid_private_id"}
-        )
+        response = client.post("/api/auth/login", json={"private_id": "valid_private_id"})
 
         # Assert
         assert response.status_code == 200
@@ -157,9 +155,7 @@ class TestGetMe:
             mock_decode.return_value = 1
 
             # Act
-            response = client.get(
-                "/api/auth/me", headers={"Authorization": "Bearer valid_token"}
-            )
+            response = client.get("/api/auth/me", headers={"Authorization": "Bearer valid_token"})
 
             # Assert
             assert response.status_code == 200
@@ -185,9 +181,7 @@ class TestGetMe:
         with patch("src.api.deps.decode_token") as mock_decode:
             mock_decode.return_value = None
 
-            response = client.get(
-                "/api/auth/me", headers={"Authorization": "Bearer invalid_token"}
-            )
+            response = client.get("/api/auth/me", headers={"Authorization": "Bearer invalid_token"})
 
             assert response.status_code == 401
 
@@ -198,9 +192,7 @@ class TestGetMe:
         with patch("src.api.deps.decode_token") as mock_decode:
             mock_decode.return_value = 999
 
-            response = client.get(
-                "/api/auth/me", headers={"Authorization": "Bearer valid_token"}
-            )
+            response = client.get("/api/auth/me", headers={"Authorization": "Bearer valid_token"})
 
             assert response.status_code == 404
 
@@ -251,9 +243,7 @@ class TestCookieAuth:
         mock_user.display_name = "TestUser"
         mock_user_manager.login_by_private_id.return_value = mock_user
 
-        response = client.post(
-            "/api/auth/login", json={"private_id": "valid_private_id"}
-        )
+        response = client.post("/api/auth/login", json={"private_id": "valid_private_id"})
 
         assert response.status_code == 200
         # 验证Cookie被设置（通过 set-cookie 头检查）

@@ -57,9 +57,7 @@ class TestGameLoopGeneratingFlagContract:
         from src.game.game_loop import GameLoop
 
         loop = GameLoop(language="zh")
-        assert hasattr(
-            loop, "_generating"
-        ), "GameLoop 必须有 _generating 标志位用于并发控制"
+        assert hasattr(loop, "_generating"), "GameLoop 必须有 _generating 标志位用于并发控制"
 
     def test_game_loop_has_generating_start_time(self):
         """game_loop 实例应有 _generating_start_time 属性。"""
@@ -75,9 +73,7 @@ class TestGameLoopGeneratingFlagContract:
         from src.game.game_loop import GameLoop
 
         loop = GameLoop(language="zh")
-        assert (
-            loop._generating is False
-        ), "_generating 初始值必须为 False，否则新游戏无法开始生成"
+        assert loop._generating is False, "_generating 初始值必须为 False，否则新游戏无法开始生成"
 
 
 class TestConcurrentRequestHandlingContract:
@@ -147,12 +143,8 @@ class TestConcurrentRequestHandlingContract:
             real_event = GameEvent(
                 event_description="Test story for timeout reset",
                 options=[
-                    EventOption(
-                        text="Option 1", effects={"energy": -5}, likely_choice=False
-                    ),
-                    EventOption(
-                        text="Option 2", effects={"energy": -3}, likely_choice=True
-                    ),
+                    EventOption(text="Option 1", effects={"energy": -5}, likely_choice=False),
+                    EventOption(text="Option 2", effects={"energy": -3}, likely_choice=True),
                 ],
             )
             mock_game_loop.generate_round_event.return_value = real_event
@@ -184,9 +176,7 @@ class TestLockReleaseContract:
 
         # 模拟 streaming 结束后的 finally 释放
         lock.release()
-        assert (
-            not lock.locked()
-        ), "lock 必须在 streaming 结束后释放，否则后续请求会永远阻塞"
+        assert not lock.locked(), "lock 必须在 streaming 结束后释放，否则后续请求会永远阻塞"
 
 
 class TestSSEErrorFormatContract:
@@ -198,9 +188,7 @@ class TestSSEErrorFormatContract:
         from src.api.routers.gameplay.sse_helpers import return_sse_error
 
         chunks = []
-        async for chunk in return_sse_error(
-            "Event generation in progress, please wait"
-        ):
+        async for chunk in return_sse_error("Event generation in progress, please wait"):
             chunks.append(chunk)
         assert len(chunks) == 1
         assert "event: error" in chunks[0]

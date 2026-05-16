@@ -99,16 +99,9 @@ class TestExceptionHandlingStandards:
                         if isinstance(node, ast.ClassDef):
                             for base in node.bases:
                                 if isinstance(base, ast.Name) and "Error" in base.id:
-                                    exception_definitions.append(
-                                        f"{filepath}: {node.name}"
-                                    )
-                                elif (
-                                    isinstance(base, ast.Name)
-                                    and "Exception" in base.id
-                                ):
-                                    exception_definitions.append(
-                                        f"{filepath}: {node.name}"
-                                    )
+                                    exception_definitions.append(f"{filepath}: {node.name}")
+                                elif isinstance(base, ast.Name) and "Exception" in base.id:
+                                    exception_definitions.append(f"{filepath}: {node.name}")
                 except Exception:
                     pass
 
@@ -128,9 +121,7 @@ class TestBusinessExceptions:
                 self.operation = operation
                 super().__init__(message)
 
-        err = ServiceError(
-            "AI call failed", service_name="AIClient", operation="generate"
-        )
+        err = ServiceError("AI call failed", service_name="AIClient", operation="generate")
         assert err.service_name == "AIClient"
         assert err.operation == "generate"
         assert "AI call failed" in str(err)

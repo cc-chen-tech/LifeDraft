@@ -1,0 +1,39 @@
+# OpenSpec Project Configuration
+# LifeDraft（人生草稿本）
+
+project:
+  name: "LifeDraft"
+  language: "Python 3.9+ / TypeScript 5"
+  framework: "FastAPI + Next.js 16"
+
+paths:
+  backend: "src/"
+  frontend: "frontend/src/"
+  tests: "tests/"
+  database: "src/database/"
+  ai: "src/ai/"
+  game: "src/game/"
+  services: "src/services/"
+  api: "src/api/"
+
+testing:
+  layers:
+    - name: "static-analysis"
+      command: "mypy src/ && tsc --noEmit"
+    - name: "import-verification"
+      command: "pytest tests/ -m import"
+    - name: "contract"
+      command: "pytest tests/ -m contract"
+    - name: "db-integration"
+      command: "pytest tests/ -m db"
+    - name: "e2e"
+      command: "npx playwright test"
+  all: "./test.sh"
+  no_mocks: true
+
+conventions:
+  commits: "type: description (English)"
+  branching: "git worktree per feature"
+  tdd: true
+  code_review: "required before merge"
+  api_type_sync: "npm run sync:api-types"

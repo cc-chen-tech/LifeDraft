@@ -31,9 +31,7 @@ def test_update_game_settings_request_schema():
 
 def test_patch_settings_route_exists(client: TestClient):
     """PATCH /api/games/1/settings 路由存在（401/404 都证明路由已注册，405 才表示不存在）。"""
-    response = client.patch(
-        "/api/games/1/settings", json={"constraint_level": "master"}
-    )
+    response = client.patch("/api/games/1/settings", json={"constraint_level": "master"})
     # 401(需要认证) 或 404(游戏不存在) 都表示路由已注册；405 表示路由不存在
     assert response.status_code in (
         401,
@@ -73,9 +71,7 @@ def test_frontend_api_types_include_constraint_level():
     """验证 frontend/src/lib/api.ts 中 games.load 类型声明包含 constraint_level。"""
     import os
 
-    api_path = os.path.join(
-        os.path.dirname(__file__), "..", "frontend", "src", "lib", "api.ts"
-    )
+    api_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "src", "lib", "api.ts")
     with open(api_path, "r", encoding="utf-8") as f:
         content = f.read()
     # 目前前端可能还没有加上，这个测试会在前端实现后变绿

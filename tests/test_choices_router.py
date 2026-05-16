@@ -85,9 +85,7 @@ class TestRestoreCurrentEventIfNeeded:
         mock_game_loop.current_event = None
 
         mock_db = MagicMock()
-        mock_db.load_saved_game.return_value = {
-            "round_history": [{"round": 1}]
-        }  # 有历史记录
+        mock_db.load_saved_game.return_value = {"round_history": [{"round": 1}]}  # 有历史记录
         mock_get_db.return_value = mock_db
 
         with pytest.raises(HTTPException) as exc_info:
@@ -123,9 +121,7 @@ class TestMakeChoiceEndpoint:
         mock_session.game_loop = mock_game_loop
         mock_require.return_value = mock_session
 
-        mock_restore.side_effect = HTTPException(
-            status_code=400, detail="No current event"
-        )
+        mock_restore.side_effect = HTTPException(status_code=400, detail="No current event")
 
         response = client.post("/games/1/choice", json={"option_index": 0})
 

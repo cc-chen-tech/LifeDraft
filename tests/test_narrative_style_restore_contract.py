@@ -34,14 +34,11 @@ class TestNarrativeStyleIdRestoration:
         from src.game.game_loop import GameLoop
 
         loop = GameLoop(ai_generator=EventGenerator(), language="zh")
-        state_dict = self._create_minimal_state_dict(
-            {"narrative_style_id": "dark_noir_mystery"}
-        )
+        state_dict = self._create_minimal_state_dict({"narrative_style_id": "dark_noir_mystery"})
         loop.load_game(state_dict)
 
         assert loop.narrative_style_id == "dark_noir_mystery", (
-            f"应恢复 narrative_style_id='dark_noir_mystery'，"
-            f"实际: {loop.narrative_style_id}"
+            f"应恢复 narrative_style_id='dark_noir_mystery'，" f"实际: {loop.narrative_style_id}"
         )
 
     def test_missing_narrative_style_id_is_acceptable(self):
@@ -85,9 +82,7 @@ class TestNarrativeStyleIdRestoration:
         from src.game.game_loop import GameLoop
 
         loop = GameLoop(ai_generator=EventGenerator(), language="zh")
-        state_dict = self._create_minimal_state_dict(
-            {"narrative_style_id": "chinese_classic_saga"}
-        )
+        state_dict = self._create_minimal_state_dict({"narrative_style_id": "chinese_classic_saga"})
         player_state = loop.load_game(state_dict)
 
         assert player_state.player_name == "TestHero"
@@ -116,7 +111,5 @@ class TestNarrativeStyleIdRoundTrip:
 
         repo = StateRepository()
         # 验证方法存在且可调用
-        assert hasattr(
-            repo, "load_game_state"
-        ), "StateRepository 应有 load_game_state 方法"
+        assert hasattr(repo, "load_game_state"), "StateRepository 应有 load_game_state 方法"
         assert callable(repo.load_game_state)

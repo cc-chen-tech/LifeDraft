@@ -5,7 +5,6 @@
 
 import logging
 import os
-import random
 import time
 from dataclasses import dataclass, field
 from hashlib import sha256
@@ -423,7 +422,8 @@ class NeteaseMusicClient:
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 503:
                 logger.warning(
-                    "[NeteaseMusic] Upstream unavailable for song %s; skipping URL", song_id
+                    "[NeteaseMusic] Upstream unavailable for song %s; skipping URL",
+                    song_id,
                 )
                 return None
             logger.exception(f"[NeteaseMusic] Failed to get song URL: {e}")

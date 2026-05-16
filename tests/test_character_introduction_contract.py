@@ -9,10 +9,10 @@ from typing import Any, Dict
 from src.game.round.character_introduction import CharacterIntroductionService
 from src.game.state import PlayerState
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_service(player_state=None):
     """Build a CharacterIntroductionService with a stub character_creator.
@@ -78,9 +78,7 @@ class TestDetermineIntroductionContext:
         for role in ["同学", "老师", "导师", "student", "classmate", "teacher", "mentor"]:
             person = _make_person(role=role)
             ctx = svc.determine_introduction_context(person)
-            assert (
-                ctx == "education"
-            ), f"Role '{role}' should return 'education', got '{ctx}'"
+            assert ctx == "education", f"Role '{role}' should return 'education', got '{ctx}'"
 
     def test_neighbor_role_returns_location_change(self):
         """Neighbor roles get 'location_change' context."""
@@ -237,12 +235,8 @@ class TestCollectExistingPeople:
     def test_collects_both_relationships_and_family(self):
         svc = _make_service(_make_state())
         settings = {
-            "relationships": {
-                "key_people": [{"name": "Alice", "role": "同事"}]
-            },
-            "family": {
-                "family_members": [{"name": "Mother"}]
-            },
+            "relationships": {"key_people": [{"name": "Alice", "role": "同事"}]},
+            "family": {"family_members": [{"name": "Mother"}]},
         }
         result = svc._collect_existing_people(settings, [])
         assert len(result) == 2
@@ -262,12 +256,8 @@ class TestCollectExistingPeople:
     def test_collects_all_sources_combined(self):
         svc = _make_service(_make_state())
         settings = {
-            "relationships": {
-                "key_people": [{"name": "Alice", "role": "同事"}]
-            },
-            "family": {
-                "family_members": [{"name": "Mother"}]
-            },
+            "relationships": {"key_people": [{"name": "Alice", "role": "同事"}]},
+            "family": {"family_members": [{"name": "Mother"}]},
         }
         pending = [
             {"character_data": {"name": "PendingCharlie", "role": "商人"}},
@@ -542,8 +532,7 @@ class TestMaybeGenerateNewCharacter:
         """When pending queue has 3 characters, should return None."""
         state = _make_state(week=5)
         state.pending_character_introductions = [
-            {"character_data": {"name": f"Pending{i}"}, "created_week": 5}
-            for i in range(3)
+            {"character_data": {"name": f"Pending{i}"}, "created_week": 5} for i in range(3)
         ]
         svc = _make_service(state)
         # probability=1.0 would normally trigger, but queue is full
@@ -586,9 +575,9 @@ class TestCharacterIntroductionTimingFields:
         svc = _make_service(state)
         result = svc.check_introduction_opportunity()
 
-        assert result is not None, (
-            "check_introduction_opportunity should return entry for 'random' context"
-        )
+        assert (
+            result is not None
+        ), "check_introduction_opportunity should return entry for 'random' context"
 
         # Verify the entry structure
         required_fields = [
@@ -622,9 +611,7 @@ class TestIntroducePendingCharacter:
         """When character_data has no name, returns None."""
         state = _make_state(week=5)
         svc = _make_service(state)
-        result = svc.introduce_pending_character(
-            {"character_data": {"role": "朋友"}}  # no name
-        )
+        result = svc.introduce_pending_character({"character_data": {"role": "朋友"}})  # no name
         assert result is None
 
     def test_successful_introduction_returns_character_data(self):
@@ -664,9 +651,7 @@ class TestIntroducePendingCharacter:
         svc.introduce_pending_character(entry)
 
         # Should now be in character_settings
-        key_people = state.character_settings.get("relationships", {}).get(
-            "key_people", []
-        )
+        key_people = state.character_settings.get("relationships", {}).get("key_people", [])
         names = [p["name"] for p in key_people]
         assert "NewFriend" in names
 

@@ -491,9 +491,7 @@ class TestHistoricalSummarySelector:
         from src.game.historical_summary_selector import \
             HistoricalSummarySelector
 
-        weekly, yearly = HistoricalSummarySelector.select_relevant_historical_summary(
-            None
-        )
+        weekly, yearly = HistoricalSummarySelector.select_relevant_historical_summary(None)
         assert weekly is None
         assert yearly is None
 
@@ -510,9 +508,7 @@ class TestHistoricalSummarySelector:
         state.foreshadowing_seeds = []
         state.weekly_summaries = []
         state.yearly_summaries = []
-        weekly, yearly = HistoricalSummarySelector.select_relevant_historical_summary(
-            state
-        )
+        weekly, yearly = HistoricalSummarySelector.select_relevant_historical_summary(state)
         # No summaries to select from
         assert weekly is None
 
@@ -522,9 +518,7 @@ class TestHistoricalSummarySelector:
 
         state = Mock()
         state.week = 20
-        state.pending_storylines = [
-            {"description": "找工作", "related_characters": ["张三"]}
-        ]
+        state.pending_storylines = [{"description": "找工作", "related_characters": ["张三"]}]
         state.world_model_data = {"active_commitments": []}
         state.last_round_full_story = ""
         state.character_settings = {}
@@ -534,9 +528,7 @@ class TestHistoricalSummarySelector:
             {"week": 5, "summary": "天气不错"},
         ]
         state.yearly_summaries = []
-        weekly, yearly = HistoricalSummarySelector.select_relevant_historical_summary(
-            state
-        )
+        weekly, yearly = HistoricalSummarySelector.select_relevant_historical_summary(state)
         assert weekly is not None
         assert "张三" in weekly
 
@@ -546,9 +538,7 @@ class TestHistoricalSummarySelector:
 
         state = Mock()
         state.week = 60
-        state.pending_storylines = [
-            {"description": "创业计划", "related_characters": []}
-        ]
+        state.pending_storylines = [{"description": "创业计划", "related_characters": []}]
         state.world_model_data = {"active_commitments": []}
         state.last_round_full_story = ""
         state.character_settings = {}
@@ -557,9 +547,7 @@ class TestHistoricalSummarySelector:
         state.yearly_summaries = [
             {"end_week": 47, "summary": "这一年主角开始了创业计划"},
         ]
-        weekly, yearly = HistoricalSummarySelector.select_relevant_historical_summary(
-            state
-        )
+        weekly, yearly = HistoricalSummarySelector.select_relevant_historical_summary(state)
         assert yearly is not None
         assert "创业" in yearly
 
@@ -567,9 +555,7 @@ class TestHistoricalSummarySelector:
         from src.game.historical_summary_selector import \
             HistoricalSummarySelector
 
-        weekly, yearly = (
-            HistoricalSummarySelector.select_random_historical_summary_fallback(None)
-        )
+        weekly, yearly = HistoricalSummarySelector.select_random_historical_summary_fallback(None)
         assert weekly is None
         assert yearly is None
 
@@ -583,16 +569,12 @@ class TestHistoricalSummarySelector:
         state.world_model_data = {"active_commitments": []}
         state.last_round_full_story = ""
         state.character_settings = {}
-        state.foreshadowing_seeds = [
-            {"status": "active", "related_characters": ["李华"]}
-        ]
+        state.foreshadowing_seeds = [{"status": "active", "related_characters": ["李华"]}]
         state.weekly_summaries = [
             {"week": 10, "summary": "李华表现出了异常的行为"},
         ]
         state.yearly_summaries = []
-        weekly, yearly = HistoricalSummarySelector.select_relevant_historical_summary(
-            state
-        )
+        weekly, yearly = HistoricalSummarySelector.select_relevant_historical_summary(state)
         assert weekly is not None
 
     def test_keywords_from_commitments(self):
@@ -614,9 +596,7 @@ class TestHistoricalSummarySelector:
             {"week": 10, "summary": "和导师讨论了论文进度"},
         ]
         state.yearly_summaries = []
-        weekly, yearly = HistoricalSummarySelector.select_relevant_historical_summary(
-            state
-        )
+        weekly, yearly = HistoricalSummarySelector.select_relevant_historical_summary(state)
         assert weekly is not None
 
 

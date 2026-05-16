@@ -76,9 +76,7 @@ def basic_validation_context(sample_player_state_with_creative):
         "character_habits": [
             {"character": "李逍遥", "habit": "每日清晨练剑"},
         ],
-        "world_model_state": (
-            state.world_model_data if hasattr(state, "world_model_data") else {}
-        ),
+        "world_model_state": (state.world_model_data if hasattr(state, "world_model_data") else {}),
         "player_state": state,
     }
 
@@ -224,9 +222,7 @@ class TestEpicNarrativeFullPipeline:
         from src.ai.narrative.world_breathing import WorldBreathingEngine
 
         wb = WorldBreathingEngine()
-        wb.register_event(
-            {"id": "test_event", "trigger_week": 10, "description": "测试事件"}
-        )
+        wb.register_event({"id": "test_event", "trigger_week": 10, "description": "测试事件"})
         events = wb.advance_to_week(week=12)
         assert isinstance(events, list)
 
@@ -251,9 +247,7 @@ class TestEpicNarrativeFullPipeline:
         from src.ai.narrative.character_arc import CharacterArcEngine
 
         engine = CharacterArcEngine()
-        arc = engine.create_arc(
-            {"name": "李逍遥", "initial_flaw": "冲动", "desire": "守护"}
-        )
+        arc = engine.create_arc({"name": "李逍遥", "initial_flaw": "冲动", "desire": "守护"})
         arc_state = engine.process_event(
             arc, {"description": "与王二重逢，决定一同冒险", "intensity": 0.6}
         )
@@ -399,9 +393,7 @@ class TestValidatorPipelineIntegration:
         }
         registered_types = {defn.type for defn in default_registry.get_all()}
         for ct in original_18:
-            assert (
-                ct in registered_types
-            ), f"{ct.value} not registered in default_registry"
+            assert ct in registered_types, f"{ct.value} not registered in default_registry"
 
     def test_all_new_constraint_types_registered(self):
         """全部8个新ConstraintType注册到ValidationPipeline。
@@ -431,14 +423,10 @@ class TestValidatorPipelineIntegration:
             if defn is None:
                 missing_from_registry.append(type_name)
 
-        assert (
-            not missing_from_enum
-        ), f"ConstraintType enum missing: {missing_from_enum}"
+        assert not missing_from_enum, f"ConstraintType enum missing: {missing_from_enum}"
         assert not missing_from_registry, f"Registry missing: {missing_from_registry}"
 
-    def test_critical_failure_triggers_retry(
-        self, mock_story_text, basic_validation_context
-    ):
+    def test_critical_failure_triggers_retry(self, mock_story_text, basic_validation_context):
         """CRITICAL失败触发重试。"""
         from src.ai.harness.diagnostics import ConstraintViolationDiagnostic
         from src.ai.harness.retry_controller import RetryController
@@ -452,16 +440,12 @@ class TestValidatorPipelineIntegration:
         controller = RetryController(max_retries=2)
 
         if result.critical_failures:
-            should_retry, correction = controller.should_retry(
-                result, report, attempt=0
-            )
+            should_retry, correction = controller.should_retry(result, report, attempt=0)
             assert should_retry is True
             assert correction is not None
             assert len(correction) > 0
 
-    def test_correction_hint_generation(
-        self, mock_story_text, basic_validation_context
-    ):
+    def test_correction_hint_generation(self, mock_story_text, basic_validation_context):
         """correction_hint正确生成。"""
         from src.ai.harness.diagnostics import ConstraintViolationDiagnostic
 
@@ -534,9 +518,7 @@ class TestFeatureToggle:
         monkeypatch.setenv("ENABLE_CREATIVE_ENHANCEMENT", "false")
         monkeypatch.setenv("ENABLE_CONSTRAINT_HARNESS", "true")
 
-        creative_enabled = os.environ.get(
-            "ENABLE_CREATIVE_ENHANCEMENT", ""
-        ).lower() in (
+        creative_enabled = os.environ.get("ENABLE_CREATIVE_ENHANCEMENT", "").lower() in (
             "true",
             "1",
             "yes",

@@ -62,11 +62,7 @@ class TestStyleDimensionConversion:
         builder = StyleAwarePromptBuilder(sample_style_manifest)
         result = builder.build()
         # 叙事哲学应体现在输出中
-        assert (
-            "全知视角" in result
-            or "narrative_voice" in result.lower()
-            or "叙事" in result
-        )
+        assert "全知视角" in result or "narrative_voice" in result.lower() or "叙事" in result
 
     def test_structure_to_macro_arc(self, sample_style_manifest):
         """structure → macro/arc 转化。"""

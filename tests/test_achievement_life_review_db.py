@@ -37,9 +37,7 @@ class TestAchievementPersistence:
             week=10,
             age=25,
             decision_history=[{"choice": "A"}] * 30,
-            round_history=[
-                {"week": i, "choice": "A", "summary": "test"} for i in range(10)
-            ],
+            round_history=[{"week": i, "choice": "A", "summary": "test"} for i in range(10)],
         )
         engine = AchievementEngine(language="zh")
         achievements = engine.evaluate(player)
@@ -70,9 +68,7 @@ class TestAchievementPersistence:
             week=50,
             age=30,
             decision_history=[{"choice": "A"}] * 50,
-            round_history=[
-                {"week": i, "choice": "A", "summary": "test"} for i in range(50)
-            ],
+            round_history=[{"week": i, "choice": "A", "summary": "test"} for i in range(50)],
             relationships={
                 "Alice": 90,
                 "Bob": 80,
@@ -100,9 +96,7 @@ class TestAchievementPersistence:
             week=20,
             age=27,
             decision_history=[{"choice": "A"}] * 20,
-            round_history=[
-                {"week": i, "choice": "A", "summary": "test"} for i in range(20)
-            ],
+            round_history=[{"week": i, "choice": "A", "summary": "test"} for i in range(20)],
             relationships={"Alice": 85},
         )
         achievements = [
@@ -139,9 +133,7 @@ class TestAchievementPersistence:
             week=10,
             age=25,
             decision_history=[{"choice": "A"}] * 10,
-            round_history=[
-                {"week": i, "choice": "A", "summary": "test"} for i in range(10)
-            ],
+            round_history=[{"week": i, "choice": "A", "summary": "test"} for i in range(10)],
         )
         generator = LifeReviewGenerator(language="zh")
         review = generator.generate(player, [])
@@ -164,9 +156,7 @@ class TestAchievementPersistence:
             week=20,
             age=27,
             decision_history=[{"choice": "A"}] * 20,
-            round_history=[
-                {"week": i, "choice": "A", "summary": "test"} for i in range(20)
-            ],
+            round_history=[{"week": i, "choice": "A", "summary": "test"} for i in range(20)],
         )
         generator = LifeReviewGenerator(language="zh")
         review = generator.generate(player, [])
@@ -189,9 +179,7 @@ class TestAchievementPersistence:
             week=10,
             age=25,
             decision_history=[{"choice": "A"}] * 10,
-            round_history=[
-                {"week": i, "choice": "A", "summary": "test"} for i in range(10)
-            ],
+            round_history=[{"week": i, "choice": "A", "summary": "test"} for i in range(10)],
             relationships={},
         )
         evaluator = EndingEvaluator(ai_generator=None)

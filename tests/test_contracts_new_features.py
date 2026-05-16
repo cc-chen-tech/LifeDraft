@@ -43,9 +43,7 @@ class TestModelFallbackContracts:
         from src.ai.client import AIClient
         from src.ai.model_fallback import FallbackChain
 
-        client_params = set(inspect.signature(AIClient.call).parameters.keys()) - {
-            "self"
-        }
+        client_params = set(inspect.signature(AIClient.call).parameters.keys()) - {"self"}
         fallback_params = set(
             inspect.signature(FallbackChain.call_with_fallback).parameters.keys()
         ) - {"self", "kwargs", "status_callback"}
@@ -173,9 +171,7 @@ class TestGenerationStateContracts:
             "transition_reasons",
         ]
         for key in expected_keys:
-            assert (
-                key in docstring
-            ), f"to_metrics() docstring 未提及 key '{key}'，契约可能不完整"
+            assert key in docstring, f"to_metrics() docstring 未提及 key '{key}'，契约可能不完整"
 
     def test_generation_state_maps_to_sse_status_format(self):
         """GenerationState 的 transition_reason 可映射为 SSE status 事件中的 phase 字段。
@@ -371,16 +367,10 @@ class TestParallelPostProcessorContracts:
 
         # WorldModelUpdater 接受的更新类型
         mock_world_updates = {
-            "location_updates": [
-                {"action": "move", "character": "test", "to": "somewhere"}
-            ],
-            "career_updates": [
-                {"action": "promote", "character": "test", "new_role": "manager"}
-            ],
+            "location_updates": [{"action": "move", "character": "test", "to": "somewhere"}],
+            "career_updates": [{"action": "promote", "character": "test", "new_role": "manager"}],
             "commitment_updates": [{"action": "new", "description": "test commitment"}],
-            "causal_updates": [
-                {"action": "new", "cause": "A", "expected_consequence": "B"}
-            ],
+            "causal_updates": [{"action": "new", "cause": "A", "expected_consequence": "B"}],
             "fact_updates": [],
             "foreshadowing_seeds": [],
             "habit_updates": [],

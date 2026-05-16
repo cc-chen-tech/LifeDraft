@@ -305,10 +305,8 @@ class TestHistoricalSummaryProbability:
         old_count = 0
 
         for _ in range(1000):
-            weekly, _ = (
-                HistoricalSummarySelector.select_random_historical_summary_fallback(
-                    game.player_state
-                )
+            weekly, _ = HistoricalSummarySelector.select_random_historical_summary_fallback(
+                game.player_state
             )
             if weekly == "Recent":
                 recent_count += 1
@@ -330,10 +328,8 @@ class TestHistoricalSummaryProbability:
         game.player_state.weekly_summaries = []
         game.player_state.yearly_summaries = []
 
-        weekly, yearly = (
-            HistoricalSummarySelector.select_random_historical_summary_fallback(
-                game.player_state
-            )
+        weekly, yearly = HistoricalSummarySelector.select_random_historical_summary_fallback(
+            game.player_state
         )
 
         assert weekly is None

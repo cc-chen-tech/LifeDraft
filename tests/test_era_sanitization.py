@@ -32,8 +32,7 @@ class TestEraSanitization:
 
         for kw in scifi_keywords:
             assert kw not in era_section, (
-                f"时代背景段落不应包含科幻暗示词 '{kw}'。"
-                f"实际 era 段落: {era_section[:100]}"
+                f"时代背景段落不应包含科幻暗示词 '{kw}'。" f"实际 era 段落: {era_section[:100]}"
             )
 
     def test_build_character_prompt_preserves_temporal_context(self):

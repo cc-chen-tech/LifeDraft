@@ -37,9 +37,7 @@ class TestImageEditFallbackDb:
         )
 
         # 生成前数据库应无记录
-        before_count = (
-            db_session.query(SceneImage).filter(SceneImage.game_id == 999).count()
-        )
+        before_count = db_session.query(SceneImage).filter(SceneImage.game_id == 999).count()
         assert before_count == 0
 
         # 调用生成（带 reference_urls 会尝试 edit，然后降级到 generate）
@@ -74,9 +72,7 @@ class TestImageEditFallbackDb:
             storage = ImageStorageService(local_path=Path(tmpdir))
             service = self._create_service(db_session, storage)
 
-            service.image_client.edit_image.side_effect = ImageGenerationError(
-                "timeout"
-            )
+            service.image_client.edit_image.side_effect = ImageGenerationError("timeout")
             service.image_client.generate_image.return_value = (
                 b"fake_image_bytes",
                 "prompt",
@@ -143,7 +139,5 @@ class TestImageEditFallbackDb:
             "测试场景描述",
             "测试插画提示词",
         )
-        service.image_storage = storage or ImageStorageService(
-            local_path=Path(tempfile.mkdtemp())
-        )
+        service.image_storage = storage or ImageStorageService(local_path=Path(tempfile.mkdtemp()))
         return service

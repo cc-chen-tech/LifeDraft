@@ -264,9 +264,7 @@ class TestGenerateRelationship:
 
     def test_generate_relationship_error(self, client, mock_character_creator):
         """Test relationship generation error."""
-        mock_character_creator.generate_single_relationship_person.side_effect = (
-            Exception("Error")
-        )
+        mock_character_creator.generate_single_relationship_person.side_effect = Exception("Error")
 
         response = client.post(
             "/api/character/relationship",
@@ -311,9 +309,7 @@ class TestGenerateAttributes:
 
     def test_generate_attributes_error(self, client, mock_character_creator):
         """Test attributes generation error."""
-        mock_character_creator.generate_initial_attributes.side_effect = Exception(
-            "Error"
-        )
+        mock_character_creator.generate_initial_attributes.side_effect = Exception("Error")
 
         response = client.post(
             "/api/character/attributes",
@@ -328,9 +324,7 @@ class TestRelationshipsSummary:
 
     def test_generate_summary_success(self, client, mock_character_creator):
         """Test generating relationships summary."""
-        mock_character_creator.generate_relationships_summary.return_value = (
-            "你有三个重要的人..."
-        )
+        mock_character_creator.generate_relationships_summary.return_value = "你有三个重要的人..."
 
         response = client.post(
             "/api/character/relationships-summary",
@@ -349,9 +343,7 @@ class TestRelationshipsSummary:
 
     def test_generate_summary_error(self, client, mock_character_creator):
         """Test summary generation error."""
-        mock_character_creator.generate_relationships_summary.side_effect = Exception(
-            "Error"
-        )
+        mock_character_creator.generate_relationships_summary.side_effect = Exception("Error")
 
         response = client.post(
             "/api/character/relationships-summary",

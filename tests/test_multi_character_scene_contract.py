@@ -85,9 +85,7 @@ class TestMultiCharacterSceneContract:
         chars = svc._extract_story_characters(story_text, character_settings, "李逍遥")
         names = [c["name"] for c in chars]
         assert "林小鹿" in names, f"故事中提到的关键人物必须在列表中，实际得到: {names}"
-        assert (
-            "赵敏敏" not in names
-        ), f"故事中未提到的关键人物不应在列表中，实际得到: {names}"
+        assert "赵敏敏" not in names, f"故事中未提到的关键人物不应在列表中，实际得到: {names}"
 
     def test_extract_story_characters_finds_family_members_in_story(self):
         """_extract_story_characters 必须找到故事中提到的家庭成员"""
@@ -158,9 +156,7 @@ class TestMultiCharacterSceneContract:
         ]
         manifest = svc._build_character_manifest(characters, player_name="李逍遥")
 
-        assert (
-            "明显不同的面部特征" in manifest
-        ), f"多人物清单必须包含面部区分要求，实际: {manifest}"
+        assert "明显不同的面部特征" in manifest, f"多人物清单必须包含面部区分要求，实际: {manifest}"
         assert (
             "禁止任何两个人物看起来像同一张脸" in manifest
         ), f"多人物清单必须禁止撞脸，实际: {manifest}"
@@ -216,6 +212,4 @@ class TestMultiCharacterSceneContract:
 
         assert "外貌锚点" in manifest, f"清单必须包含外貌锚点，实际: {manifest}"
         assert "瓜子脸" in manifest, f"清单必须包含锚点中的脸型，实际: {manifest}"
-        assert (
-            "左眉有一颗痣" in manifest
-        ), f"清单必须包含锚点中的标志性特征，实际: {manifest}"
+        assert "左眉有一颗痣" in manifest, f"清单必须包含锚点中的标志性特征，实际: {manifest}"
