@@ -25,6 +25,10 @@ def _get_sse_thread_pool() -> ThreadPoolExecutor:
     return _sse_thread_pool
 
 
+# Public alias for contract tests
+get_sse_thread_pool = _get_sse_thread_pool
+
+
 def shutdown_sse_thread_pool(wait: bool = True) -> None:
     """关闭 SSE 线程池（用于应用退出时清理）。"""
     global _sse_thread_pool

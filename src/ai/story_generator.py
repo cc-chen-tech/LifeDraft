@@ -486,7 +486,9 @@ class StoryGenerator:
 
     @staticmethod
     def _extract_player_name(player_state: Dict[str, Any]) -> str:
-        """从 player_state 中提取主角名称。"""
+        """从 player_state 中提取主角名称（已消毒）。"""
+        from src.ai.prompt_sanitizer import sanitize_player_name
+
         name = player_state.get("player_name", "")
         if not name:
             cs = player_state.get("character_settings") or {}
@@ -494,7 +496,7 @@ class StoryGenerator:
                 identity = cs.get("identity", {})
                 if isinstance(identity, dict):
                     name = identity.get("name", "")
-        return str(name)
+        return sanitize_player_name(str(name))
 
     # -------------------- Public API --------------------
 
@@ -1715,6 +1717,27 @@ Please **only modify the problematic paragraphs** and keep the rest of the conte
                 player_state, "location", ""
             )
 
+        # Extract era and era_type from character_settings
+        era = ""
+        era_type = ""
+        if character_settings:
+            era_data = character_settings.get("era", {})
+            if isinstance(era_data, dict):
+                era = era_data.get("era_description", "")
+                # Determine era_type from era description
+                ancient_keywords = [
+                    "唐", "宋", "元", "明", "清", "汉", "秦", "周",
+                    "春秋", "战国", "三国", "晋", "隋", "五代", "十国",
+                    "南北朝", "上古", "远古", "古代",
+                    "medieval", "ancient", "historic",
+                ]
+                is_ancient = any(kw in era for kw in ancient_keywords)
+                is_modern = "现代" in era or "当代" in era or "未来" in era or "202" in era
+                if is_ancient:
+                    era_type = "ancient"
+                elif is_modern:
+                    era_type = "modern"
+
         return {
             "available_people": available_people,
             "established_facts": established_facts or [],
@@ -1724,6 +1747,8 @@ Please **only modify the problematic paragraphs** and keep the rest of the conte
             "medium_storylines": medium_storylines,
             "last_location": last_location,
             "character_habits": kwargs.get("character_habits", []),
+            "era": era,
+            "era_type": era_type,
         }
 
     @staticmethod

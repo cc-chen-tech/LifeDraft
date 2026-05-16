@@ -124,7 +124,9 @@ class TestVectorStoreEnabled:
         assert store is not None
 
     def test_enabled_with_env(self, monkeypatch):
-        monkeypatch.setenv("ENABLE_VECTOR_SEARCH", "true")
+        monkeypatch.setattr(
+            "src.ai.vector_store.ENABLE_VECTOR_SEARCH", True
+        )
         store = VectorStore(enabled=True)
         assert store.enabled is True
         assert store._collection is not None

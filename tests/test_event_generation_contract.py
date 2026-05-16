@@ -192,20 +192,16 @@ class TestLockReleaseContract:
 class TestSSEErrorFormatContract:
     """验证 SSE error 格式契约。"""
 
-    def test_return_sse_error_format(self):
+    @pytest.mark.asyncio
+    async def test_return_sse_error_format(self):
         """return_sse_error 应生成标准 SSE error 事件。"""
         from src.api.routers.gameplay.sse_helpers import return_sse_error
 
-        # 由于 return_sse_error 是 async generator，需要迭代获取
-        async def _collect():
-            chunks = []
-            async for chunk in return_sse_error(
-                "Event generation in progress, please wait"
-            ):
-                chunks.append(chunk)
-            return chunks
-
-        chunks = asyncio.get_event_loop().run_until_complete(_collect())
+        chunks = []
+        async for chunk in return_sse_error(
+            "Event generation in progress, please wait"
+        ):
+            chunks.append(chunk)
         assert len(chunks) == 1
         assert "event: error" in chunks[0]
         assert "Event generation in progress, please wait" in chunks[0]
