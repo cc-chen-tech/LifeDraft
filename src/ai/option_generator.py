@@ -301,10 +301,6 @@ class OptionGenerator:
             issues.append("Less than 2 options generated")
             return issues
 
-        # 1. 检查选项是否与故事结尾相关
-        # 简单启发式：检查选项文本是否与故事最后200字符有词汇重叠
-        story_end = story_description[-500:] if len(story_description) > 500 else story_description
-
         for i, option in enumerate(event.options):
             # 检查选项文本长度
             if len(option.text) > 50:
@@ -320,9 +316,8 @@ class OptionGenerator:
             normalized_generic_options = [
                 _normalize_option_text(g) for g in generic_options.get(language, [])
             ]
-            if (
-                normalized_option_text in normalized_generic_options
-                or any(generic in normalized_option_text for generic in normalized_generic_options)
+            if normalized_option_text in normalized_generic_options or any(
+                generic in normalized_option_text for generic in normalized_generic_options
             ):
                 if language == "zh":
                     issues.append(f"选项{i+1}「{option.text}」过于通用，应与故事情境相关")

@@ -183,9 +183,7 @@ class ImageService:
 
         return "，".join(parts) if parts else "一个普通人"
 
-    def _extract_era_from_settings(
-        self, char_settings: Dict[str, Any]
-    ) -> Optional[str]:
+    def _extract_era_from_settings(self, char_settings: Dict[str, Any]) -> Optional[str]:
         """
         从角色设定中提取时代名称（用于图片生成）
 
@@ -292,9 +290,7 @@ class ImageService:
 
         return char_info
 
-    def _get_player_image_base64(
-        self, game_id: int, player_image_id: Optional[int]
-    ) -> tuple:
+    def _get_player_image_base64(self, game_id: int, player_image_id: Optional[int]) -> tuple:
         """
         获取玩家形象的 Base64 编码
 
@@ -334,9 +330,7 @@ class ImageService:
                 .first()
             )
             if player_image:
-                logger.info(
-                    f"Auto-selected primary player image: {player_image.image_id}"
-                )
+                logger.info(f"Auto-selected primary player image: {player_image.image_id}")
 
         if player_image:
             try:

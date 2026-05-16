@@ -31,6 +31,67 @@ export interface MusicRecommendation {
   songs: Song[];
 }
 
+export interface MusicQueueMergeResult {
+  currentSong: Song | null;
+  queue: Song[];
+}
+
+function songKey(song: Song): number {
+  return song.id;
+}
+
+export function mergeSongsPreservingCurrent(
+  currentSong: Song | null,
+  existingQueue: Song[],
+  incomingSongs: Song[]
+): MusicQueueMergeResult {
+  if (currentSong === null) {
+    if (incomingSongs.length === 0) {
+      return { currentSong: null, queue: [...existingQueue] };
+    }
+    return {
+      currentSong: incomingSongs[0],
+      queue: dedupeSongs(incomingSongs.slice(1), undefined),
+    };
+  }
+
+  const currentId = songKey(currentSong);
+  const queue: Song[] = [];
+  if (existingQueue.length > 0 && songKey(existingQueue[0]) !== currentId) {
+    queue.push(existingQueue[0]);
+  }
+
+  const seenIds = new Set(queue.map(songKey));
+  for (const song of incomingSongs) {
+    const id = songKey(song);
+    if (id === currentId || seenIds.has(id)) {
+      continue;
+    }
+    queue.push(song);
+    seenIds.add(id);
+  }
+
+  return { currentSong, queue };
+}
+
+export function getMusicSourceLabel(source: Song["source"] | undefined): string {
+  return source === "ai_generated" ? "AI" : "";
+}
+
+function dedupeSongs(songs: Song[], excludedId: number | undefined): Song[] {
+  const seenIds = new Set<number>();
+  const result: Song[] = [];
+  for (const song of songs) {
+    const id = songKey(song);
+    if (id === excludedId || seenIds.has(id)) {
+      continue;
+    }
+    result.push(song);
+    seenIds.add(id);
+  }
+  return result;
+}
+
 interface MusicState {
   // 推荐结果
   recommendation: MusicRecommendation | null;
@@ -243,9 +304,11 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   },
 
   mergePlaylist: async (_gameId: number, songs: Song[], _mood?: string, _keywords?: string[]) => {
+    const { currentSong, queue } = get();
+    const merged = mergeSongsPreservingCurrent(currentSong, queue, songs);
     set({
-      currentSong: songs[0] ?? null,
-      queue: songs.slice(1),
+      currentSong: merged.currentSong,
+      queue: merged.queue,
       playedSongs: [],
     });
   },

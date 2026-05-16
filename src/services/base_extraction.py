@@ -111,9 +111,7 @@ class BaseExtractionService:
         if len(story_text) <= max_length:
             return story_text
 
-        logger.warning(
-            f"Story text too long ({len(story_text)} chars), truncating to {max_length}"
-        )
+        logger.warning(f"Story text too long ({len(story_text)} chars), truncating to {max_length}")
         return story_text[:max_length] + truncation_message
 
     def _validate_importance(self, importance: str) -> str:

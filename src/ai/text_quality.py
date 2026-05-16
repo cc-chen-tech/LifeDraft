@@ -37,7 +37,9 @@ INTERNAL_STATE_PATTERNS = [
 ]
 
 
-def validate_narrative_quality(text: str, language: str = "zh", perspective: str = "second") -> list[str]:
+def validate_narrative_quality(
+    text: str, language: str = "zh", perspective: str = "second"
+) -> list[str]:
     """Return deterministic quality issues that should never leak into narrative."""
     issues: list[str] = []
     if any(pattern.search(text) for pattern in INTERNAL_STATE_PATTERNS):

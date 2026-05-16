@@ -120,11 +120,9 @@ class RoundIllustrationService:
                 "era": self._extract_era_from_settings(character_settings),
             }
 
-            scene_desc, illustration_prompt = (
-                self.image_client.analyze_story_for_illustration(
-                    story_text=story_text[:2000],  # 限制长度避免token超限
-                    character_info=char_info,
-                )
+            scene_desc, illustration_prompt = self.image_client.analyze_story_for_illustration(
+                story_text=story_text[:2000],  # 限制长度避免token超限
+                character_info=char_info,
             )
 
             logger.info(f"[RoundIllustration] Selected scene: {scene_desc[:50]}...")
@@ -155,9 +153,7 @@ class RoundIllustrationService:
                 entity_type = entity.get("type", "character")
                 entity_desc = entity.get("description", "")
 
-                entity_image = self._find_entity_image(
-                    existing_images, entity_name or ""
-                )
+                entity_image = self._find_entity_image(existing_images, entity_name or "")
                 if entity_image:
                     ref_url = self._get_image_url_as_base64(
                         entity_image, game_id=game_id
@@ -317,15 +313,10 @@ class RoundIllustrationService:
             )
             return image_data, final_prompt
 
-    def _get_player_image(
-        self, existing_images: List[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
+    def _get_player_image(self, existing_images: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """获取玩家主形象图片"""
         for img in existing_images:
-            if (
-                img.get("image_type") == "character"
-                and img.get("entity_key") == "player_main"
-            ):
+            if img.get("image_type") == "character" and img.get("entity_key") == "player_main":
                 return img
         # 如果没有标记为player_main的，返回第一个character图片
         for img in existing_images:
@@ -372,9 +363,7 @@ class RoundIllustrationService:
             else:
                 # 向后兼容：如果没有提供 game_id，只按 image_id 查询（不推荐）
                 image_model = (
-                    self.db.query(ImageModel)
-                    .filter(ImageModel.image_id == image_id)
-                    .first()
+                    self.db.query(ImageModel).filter(ImageModel.image_id == image_id).first()
                 )
 
             if not image_model:
@@ -444,9 +433,7 @@ class RoundIllustrationService:
 
             original_kb = len(image_data) / 1024
             compressed_kb = len(compressed) / 1024
-            reduction = (
-                (1 - len(compressed) / len(image_data)) * 100 if image_data else 0
-            )
+            reduction = (1 - len(compressed) / len(image_data)) * 100 if image_data else 0
             logger.info(
                 f"[RoundIllustration] Compressed reference image: "
                 f"{original_kb:.1f}KB → {compressed_kb:.1f}KB ({reduction:.0f}% reduction)"
@@ -455,9 +442,7 @@ class RoundIllustrationService:
             return compressed
 
         except Exception as e:
-            logger.warning(
-                f"[RoundIllustration] Image compression failed, using original: {e}"
-            )
+            logger.warning(f"[RoundIllustration] Image compression failed, using original: {e}")
             return image_data
 
     def _extract_involved_entities(
@@ -587,9 +572,7 @@ class RoundIllustrationService:
                             {
                                 "name": item_name,
                                 "type": "item",
-                                "description": fact.get(
-                                    "fact", f"重要物品：{item_name}"
-                                ),
+                                "description": fact.get("fact", f"重要物品：{item_name}"),
                             }
                         )
 
@@ -624,11 +607,7 @@ class RoundIllustrationService:
             # 在 established_facts 中出现的次数
             if established_facts:
                 for fact in established_facts:
-                    text = (
-                        (fact.get("subject", "") or "")
-                        + " "
-                        + (fact.get("fact", "") or "")
-                    )
+                    text = (fact.get("subject", "") or "") + " " + (fact.get("fact", "") or "")
                     if name and name in text:
                         count += 1
             # 在 world_model_data.dynamic_facts 中出现的次数（possession 类型）
@@ -688,9 +667,7 @@ class RoundIllustrationService:
                                 {
                                     "name": landmark_name,
                                     "type": "location",
-                                    "description": fact.get(
-                                        "fact", f"重要地标：{landmark_name}"
-                                    ),
+                                    "description": fact.get("fact", f"重要地标：{landmark_name}"),
                                 }
                             )
 
@@ -812,9 +789,7 @@ class RoundIllustrationService:
                 if week is not None:
                     return week  # type: ignore[no-any-return]
         except Exception as e:
-            logger.warning(
-                f"[RoundIllustration] Failed to get current week from database: {e}"
-            )
+            logger.warning(f"[RoundIllustration] Failed to get current week from database: {e}")
 
         return 0  # 默认返回 0
 

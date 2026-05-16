@@ -25,6 +25,13 @@ def test_test_script_runs_mypy_in_strict_mode() -> None:
     assert 'python -m mypy "${MYPY_STRICT_TARGETS[@]}" --strict' in script
 
 
+def test_test_script_runs_music_frontend_queue_policy_tests() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+
+    assert "useMusicStore.musicQueuePolicy.test.ts" in script
+    assert "improve-story-music-recommendation-and-premium-ai-queue" in script
+
+
 def test_gate_tests_do_not_use_skip_or_mocking_constructs() -> None:
     gate_files = sorted((ROOT / "tests").glob("test_gate_*.py"))
     assert gate_files, "Expected gate test files to exist"

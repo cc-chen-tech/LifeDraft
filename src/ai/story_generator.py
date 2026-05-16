@@ -467,7 +467,9 @@ class StoryGenerator:
                 event_description=fallback_desc,
                 options=[
                     EventOption(
-                        text="回应眼前的请求" if language == "zh" else "Answer the immediate request",
+                        text=(
+                            "回应眼前的请求" if language == "zh" else "Answer the immediate request"
+                        ),
                         effects={"energy": 0, "mood": 0, "knowledge": 0, "wealth": 0},
                     ),
                     EventOption(

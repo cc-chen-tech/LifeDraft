@@ -86,9 +86,7 @@ async def get_game_state(
         logger.info("[GetGameState] No current_event, returning None")
 
     _raw_quality_level = getattr(game_loop, "quality_level", None)
-    constraint_level = (
-        _raw_quality_level if isinstance(_raw_quality_level, str) else "expert"
-    )
+    constraint_level = _raw_quality_level if isinstance(_raw_quality_level, str) else "expert"
 
     # Include narrative style in player_state for frontend access
     _raw_style_id = getattr(game_loop, "narrative_style_id", None)
@@ -184,9 +182,7 @@ async def generate_summary(
                 # 只保留最近 N 周的数据
                 recent_weeks = set(all_weeks[-req.weeks :])
                 story_history = [
-                    item
-                    for item in story_history
-                    if item.get("week", 0) in recent_weeks
+                    item for item in story_history if item.get("week", 0) in recent_weeks
                 ]
 
         # Build story text
@@ -208,9 +204,7 @@ async def generate_summary(
                         if round_num < len(round_names)
                         else f"第{round_num+1}轮"
                     )
-                    story_parts.append(
-                        f"【第{display_week}周·{round_name}】{story_text}"
-                    )
+                    story_parts.append(f"【第{display_week}周·{round_name}】{story_text}")
                 else:
                     story_parts.append(f"【第{display_week}周】{story_text}")
                 if choice_text:
@@ -290,9 +284,7 @@ def _generate_fallback_summary(story_history: list, player) -> str:
         story = item.get("story_text", "")
         if story and len(story) > 50:
             # Take first sentence as summary
-            first_sentence = (
-                story.split("。")[0] + "。" if "。" in story else story[:100]
-            )
+            first_sentence = story.split("。")[0] + "。" if "。" in story else story[:100]
             events.append(first_sentence)
 
     summary_parts = []

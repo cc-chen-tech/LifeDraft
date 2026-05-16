@@ -88,18 +88,14 @@ class StyleMatcher:
                 continue
 
             if not isinstance(raw, dict):
-                logger.warning(
-                    "Style file %s is not a JSON object, skipping.", file_path.name
-                )
+                logger.warning("Style file %s is not a JSON object, skipping.", file_path.name)
                 continue
 
             style_id = raw.get("style_id")
             matching_keywords = raw.get("matching_keywords")
 
             if not style_id:
-                logger.warning(
-                    "Style file %s missing style_id, skipping.", file_path.name
-                )
+                logger.warning("Style file %s missing style_id, skipping.", file_path.name)
                 continue
 
             if not isinstance(matching_keywords, dict):
@@ -139,21 +135,16 @@ class StyleMatcher:
                 self._score_era(character_settings, keywords) * self.ERA_WEIGHT
                 + self._score_world(character_settings, keywords) * self.WORLD_WEIGHT
                 + self._score_traits(character_settings, keywords) * self.TRAITS_WEIGHT
-                + self._score_culture(character_settings, keywords)
-                * self.CULTURE_WEIGHT
+                + self._score_culture(character_settings, keywords) * self.CULTURE_WEIGHT
             )
 
         if not scores:
             return StyleMatchResult(style_id=_DEFAULT_STYLE_ID, confidence=0.0)
 
         best = max(scores, key=scores.get)  # type: ignore[arg-type]
-        return StyleMatchResult(
-            style_id=best, confidence=scores[best], all_scores=scores
-        )
+        return StyleMatchResult(style_id=best, confidence=scores[best], all_scores=scores)
 
-    def match_top_n(
-        self, character_settings: dict, n: int = 3
-    ) -> List[StyleMatchResult]:
+    def match_top_n(self, character_settings: dict, n: int = 3) -> List[StyleMatchResult]:
         """返回 Top N 候选风格。
 
         Args:
@@ -164,13 +155,9 @@ class StyleMatcher:
             按置信度降序排列的 StyleMatchResult 列表。
         """
         result = self.match(character_settings)
-        sorted_styles = sorted(
-            result.all_scores.items(), key=lambda x: x[1], reverse=True
-        )
+        sorted_styles = sorted(result.all_scores.items(), key=lambda x: x[1], reverse=True)
         return [
-            StyleMatchResult(
-                style_id=sid, confidence=score, all_scores=result.all_scores
-            )
+            StyleMatchResult(style_id=sid, confidence=score, all_scores=result.all_scores)
             for sid, score in sorted_styles[:n]
         ]
 

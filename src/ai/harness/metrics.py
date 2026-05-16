@@ -186,9 +186,7 @@ class HarnessMetrics:
                     )
 
             conn.commit()
-            logger.debug(
-                f"Recorded generation run #{run_id}: score={final_score}, passed={passed}"
-            )
+            logger.debug(f"Recorded generation run #{run_id}: score={final_score}, passed={passed}")
             return run_id
 
         except Exception as e:
@@ -372,9 +370,7 @@ class HarnessMetrics:
         lines.append("【高频失败模式】")
         if failures:
             for pattern in failures[:5]:
-                lines.append(
-                    f"  {pattern['constraint_type']}: {pattern['failure_count']}次失败"
-                )
+                lines.append(f"  {pattern['constraint_type']}: {pattern['failure_count']}次失败")
                 for ev in pattern["recent_evidence"][:1]:
                     lines.append(f"    证据: {ev[:80]}...")
         else:

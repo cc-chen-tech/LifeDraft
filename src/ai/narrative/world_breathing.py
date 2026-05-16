@@ -114,9 +114,7 @@ class WorldBreathingEngine:
             templates = _PERMEATION_TEMPLATES.get(
                 style or "default", _PERMEATION_TEMPLATES["default"]
             )
-            template = templates.get(
-                event_type, templates.get("default", "{description}")
-            )
+            template = templates.get(event_type, templates.get("default", "{description}"))
 
             snippet = template.format(description=description)
             return snippet
@@ -135,11 +133,7 @@ class WorldBreathingEngine:
     def get_active_events(self, current_week: int, recent_n: int = 5) -> List[dict]:
         """获取最近的活跃事件。"""
         try:
-            active = [
-                e
-                for e in self._events.values()
-                if e.get("trigger_week", 0) <= current_week
-            ]
+            active = [e for e in self._events.values() if e.get("trigger_week", 0) <= current_week]
             active.sort(key=lambda e: e.get("trigger_week", 0), reverse=True)
             return active[:recent_n]
         except Exception as e:

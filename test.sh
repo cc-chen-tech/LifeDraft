@@ -67,6 +67,8 @@ run_preflight() {
     echo -e "${YELLOW}运行 OpenSpec strict 校验...${NC}"
     openspec validate fix-story-continuity-history-media --strict
     local openspec_code=$?
+    openspec validate improve-story-music-recommendation-and-premium-ai-queue --strict
+    local music_openspec_code=$?
 
     echo -e "${YELLOW}运行前置 gate 测试...${NC}"
     python -m pytest \
@@ -92,12 +94,13 @@ run_preflight() {
         src/__tests__/stores/useGameStore.test.ts \
         src/__tests__/hooks/eventUtils.test.ts \
         src/__tests__/components/ChatBar.test.tsx \
+        src/__tests__/stores/useMusicStore.musicQueuePolicy.test.ts \
         --runInBand
     local jest_code=$?
     cd "$PROJECT_DIR"
 
     local result=0
-    if [ $openspec_code -ne 0 ] || [ $gate_code -ne 0 ] || [ $tsc_code -ne 0 ] || [ $jest_code -ne 0 ]; then
+    if [ $openspec_code -ne 0 ] || [ $music_openspec_code -ne 0 ] || [ $gate_code -ne 0 ] || [ $tsc_code -ne 0 ] || [ $jest_code -ne 0 ]; then
         result=1
     fi
 

@@ -35,17 +35,13 @@ def create_performance_indexes():
 
         # 构建 CREATE INDEX 语句
         cols_str = ", ".join(columns)
-        sql = (
-            f"CREATE INDEX IF NOT EXISTS {index_name} " f"ON {table_name} ({cols_str})"
-        )
+        sql = f"CREATE INDEX IF NOT EXISTS {index_name} " f"ON {table_name} ({cols_str})"
 
         try:
             with engine.begin() as conn:
                 conn.execute(text(sql))
             created.append(index_name)
-            logger.info(
-                f"[DB Index] Created: {index_name} on " f"{table_name}({cols_str})"
-            )
+            logger.info(f"[DB Index] Created: {index_name} on " f"{table_name}({cols_str})")
         except Exception as e:
             logger.warning(f"[DB Index] Failed to create {index_name}: {e}")
 

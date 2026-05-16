@@ -112,9 +112,7 @@ class FateEchoDatabase:
     def get_pending_echoes(self, current_week: int) -> List[dict]:
         """获取所有未解决的命题。"""
         try:
-            return [
-                dict(e) for e in self._entries.values() if not e.get("resolved", False)
-            ]
+            return [dict(e) for e in self._entries.values() if not e.get("resolved", False)]
         except Exception as e:
             logger.warning("Error getting pending echoes: %s", e)
             return []
@@ -146,16 +144,12 @@ class FateEchoDatabase:
         except Exception as e:
             logger.warning("Error resolving echo: %s", e)
 
-    def generate_echo_hint(
-        self, proposition_id: str, style: Optional[str] = None
-    ) -> str:
+    def generate_echo_hint(self, proposition_id: str, style: Optional[str] = None) -> str:
         """生成回响提示注入Prompt。"""
         try:
             entry = self._entries.get(proposition_id)
             if not entry:
-                logger.warning(
-                    "Proposition '%s' not found for hint generation.", proposition_id
-                )
+                logger.warning("Proposition '%s' not found for hint generation.", proposition_id)
                 return ""
 
             cause = entry.get("cause", "")

@@ -43,6 +43,7 @@ class SongResponse(BaseModel):
     album: str
     duration: int
     url: Optional[str] = None
+    source: str = "netease"
 
 
 class MusicRecommendationResponse(BaseModel):
@@ -58,6 +59,7 @@ class MusicRecommendationResponse(BaseModel):
     pacing: Optional[str] = None  # 叙事节奏
     time_weather: Optional[str] = None  # 时间天气
     description: Optional[str] = None  # 音乐氛围描述
+    music_brief: Optional[dict] = None
     songs: List[SongResponse]
 
 
@@ -154,6 +156,7 @@ async def recommend_music(
                 album=song.album,
                 duration=song.duration,
                 url=url_map[song.id],
+                source=song.source,
             )
             for song in recommendation.songs
             if song.id in url_map
@@ -170,6 +173,11 @@ async def recommend_music(
             pacing=recommendation.pacing,
             time_weather=recommendation.time_weather,
             description=recommendation.description,
+            music_brief=(
+                recommendation.music_brief.to_analysis()
+                if recommendation.music_brief is not None
+                else None
+            ),
             songs=songs,
         )
 
@@ -222,6 +230,8 @@ async def search_music(
                     artists=song.artists,
                     album=song.album,
                     duration=song.duration,
+                    url=song.url,
+                    source=song.source,
                 )
                 for song in songs
             ]

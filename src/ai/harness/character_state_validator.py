@@ -340,9 +340,7 @@ class CharacterStateContinuityValidator:
             elif any(kw in condition_lower for kw in IMPRISONED_CONDITIONS):
                 categories["imprisoned"][name] = condition
             # 判断重伤
-            elif severity == "severe" or any(
-                kw in condition_lower for kw in SEVERE_CONDITIONS
-            ):
+            elif severity == "severe" or any(kw in condition_lower for kw in SEVERE_CONDITIONS):
                 categories["severe_injury"][name] = condition
 
         return categories
@@ -367,8 +365,6 @@ class CharacterStateContinuityValidator:
         return True
 
 
-def validate_character_state_continuity(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_character_state_continuity(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """模块级验证函数。"""
     return CharacterStateContinuityValidator().validate(story_text, context)

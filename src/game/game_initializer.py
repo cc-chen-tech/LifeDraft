@@ -53,9 +53,7 @@ class GameInitializer:
 
         # 提取 constraint_level（从 character_settings 或默认 expert）
         constraint_level = (
-            character_settings.get("constraint_level", "expert")
-            if character_settings
-            else "expert"
+            character_settings.get("constraint_level", "expert") if character_settings else "expert"
         )
 
         # Create initial player state
@@ -90,9 +88,7 @@ class GameInitializer:
         self._initialize_relationships(initial_state, character_settings)
 
         # 提取 narrative_style_id（从 character_settings 中获取，默认 None）
-        style_id = (
-            character_settings.get("narrative_style_id") if character_settings else None
-        )
+        style_id = character_settings.get("narrative_style_id") if character_settings else None
 
         # 当无 narrative_style_id 时自动匹配风格
         if not style_id and character_settings:

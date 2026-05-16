@@ -126,9 +126,7 @@ class SpatialMovementValidator:
                         continue
 
                     # 计算距离
-                    distance = self.get_location_distance(
-                        prev_location, new_loc, location_graph
-                    )
+                    distance = self.get_location_distance(prev_location, new_loc, location_graph)
 
                     # 使用region信息增强距离计算
                     if prev_region and distance == DEFAULT_DISTANCE:

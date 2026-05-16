@@ -122,9 +122,7 @@ class AIRetryHandler:
                 last_error = str(e)
                 logger.warning(f"Attempt {attempt + 1} failed: {e}")
 
-        raise ValueError(
-            f"AI call failed after {retry_count} attempts. Last error: {last_error}"
-        )
+        raise ValueError(f"AI call failed after {retry_count} attempts. Last error: {last_error}")
 
     def call_with_json_retry(
         self,

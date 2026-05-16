@@ -90,12 +90,8 @@ class InformationBarrierValidator:
 
                 # 检查秘密信息泄露（使用知识声明+对话声明）
                 if secrets_unknown:
-                    char_all_claims = [
-                        c for c in all_claims if c.get("character") == char_name
-                    ]
-                    char_all_claims += [
-                        c for c in speech_claims if c.get("character") == char_name
-                    ]
+                    char_all_claims = [c for c in all_claims if c.get("character") == char_name]
+                    char_all_claims += [c for c in speech_claims if c.get("character") == char_name]
                     for claim_item in char_all_claims:
                         claim_context = claim_item.get("context", "")
                         claim_content = claim_item.get("content", "")
@@ -196,9 +192,7 @@ class InformationBarrierValidator:
                     )
         return claims
 
-    def check_knowledge_accessibility(
-        self, claim: dict, character_knowledge: set
-    ) -> bool:
+    def check_knowledge_accessibility(self, claim: dict, character_knowledge: set) -> bool:
         """验证角色是否有途径获知此信息。"""
         content = claim.get("content", "")
         context = claim.get("context", "")
@@ -236,8 +230,6 @@ class InformationBarrierValidator:
         return False
 
 
-def validate_information_barrier(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_information_barrier(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """模块级验证函数。"""
     return InformationBarrierValidator().validate(story_text, context)

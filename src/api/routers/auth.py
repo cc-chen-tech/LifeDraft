@@ -17,9 +17,7 @@ router = APIRouter()
 # Cookie配置
 COOKIE_NAME = "auth_token"
 COOKIE_MAX_AGE = JWT_EXPIRE_HOURS * 3600  # 转换为秒
-COOKIE_SECURE = (
-    os.getenv("COOKIE_SECURE", "false").lower() == "true"
-)  # 生产环境设为true
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"  # 生产环境设为true
 COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "lax")  # lax/strict/none
 
 

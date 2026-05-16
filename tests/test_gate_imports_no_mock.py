@@ -39,8 +39,12 @@ def test_scene_image_and_collection_lazy_import_paths_are_reachable() -> None:
 def test_story_music_recommendation_import_paths_are_reachable() -> None:
     imports = [
         ("src.services.music_service", "MusicBrief"),
+        ("src.services.music_service", "MusicContextBuilder"),
+        ("src.services.music_service", "MusicResultRanker"),
+        ("src.services.music_service", "MusicGenerationJob"),
         ("src.services.music_service", "MusicProviderPolicy"),
         ("src.services.music_service", "MusicGenerationCoordinator"),
+        ("src.services.music_playlist_service", "PlaylistQueuePolicy"),
         ("src.services.music_playlist_service", "MusicPlaylistService"),
         ("src.database.models", "GeneratedMusicAsset"),
     ]

@@ -79,9 +79,7 @@ class CharacterImageService:
 
         try:
             # ★ 生成外貌特征锚点（文本层面的一致性机制）
-            character_settings = (
-                metadata.get("characterSettings", {}) if metadata else {}
-            )
+            character_settings = metadata.get("characterSettings", {}) if metadata else {}
             logger.info(f"Generating appearance anchor for {name}...")
             anchor_data = self.image_client.generate_appearance_anchor(
                 name=name,
@@ -95,17 +93,12 @@ class CharacterImageService:
             era_constraints = _build_image_era_constraints(character_settings, "zh")
             combined_style_hint = style_hint or ""
             if era_constraints:
-                combined_style_hint = (
-                    f"{combined_style_hint}\n{era_constraints}".strip()
-                )
+                combined_style_hint = f"{combined_style_hint}\n{era_constraints}".strip()
 
             # ★ 现代背景传递强反科幻 negative_prompt
             extra_params = None
             era_lower = era.lower()
-            if any(
-                kw in era_lower
-                for kw in ("现代", "2024", "2025", "当代", "今天", "modern")
-            ):
+            if any(kw in era_lower for kw in ("现代", "2024", "2025", "当代", "今天", "modern")):
                 extra_params = {
                     "negative_prompt": (
                         "低分辨率，低画质，肢体畸形，手指畸形，画面过饱和，蜡像感，人脸无细节，过度光滑，"
@@ -117,17 +110,15 @@ class CharacterImageService:
                     )
                 }
 
-            images_data, primary_image_url = (
-                self.image_client.generate_character_images(
-                    name=name,
-                    description=description,
-                    era=era,
-                    style_hint=combined_style_hint,
-                    num_images=num_images,
-                    reference_image_url=reference_image_url,
-                    feedback=feedback,
-                    extra_params=extra_params,
-                )
+            images_data, primary_image_url = self.image_client.generate_character_images(
+                name=name,
+                description=description,
+                era=era,
+                style_hint=combined_style_hint,
+                num_images=num_images,
+                reference_image_url=reference_image_url,
+                feedback=feedback,
+                extra_params=extra_params,
             )
 
             if not images_data:
@@ -184,9 +175,7 @@ class CharacterImageService:
             for model in image_models:
                 self.db.refresh(model)
 
-            logger.info(
-                f"Character images saved: {len(image_models)} images for {name}"
-            )
+            logger.info(f"Character images saved: {len(image_models)} images for {name}")
             return image_models
 
         except ContentInspectionError as e:
@@ -223,9 +212,7 @@ class CharacterImageService:
         """
         logger.info(f"Regenerating image: {image_id}, feedback: {feedback}")
 
-        original = (
-            self.db.query(ImageModel).filter(ImageModel.image_id == image_id).first()
-        )
+        original = self.db.query(ImageModel).filter(ImageModel.image_id == image_id).first()
 
         if not original:
             raise ImageServiceError(f"图片不存在: {image_id}")
@@ -251,9 +238,7 @@ class CharacterImageService:
             mime_type = "image/png" if ext == "png" else "image/jpeg"
             base64_data = base64.b64encode(image_data).decode("utf-8")
             reference_url = f"data:{mime_type};base64,{base64_data}"
-            logger.info(
-                f"Using current image as reference (base64, {len(image_data)} bytes)"
-            )
+            logger.info(f"Using current image as reference (base64, {len(image_data)} bytes)")
         except Exception as e:
             logger.warning(
                 f"Failed to convert image to base64: {e}, will generate without reference"
@@ -291,9 +276,7 @@ class CharacterImageService:
                 ).update({"is_active": False})
             self.db.commit()
 
-            logger.info(
-                f"Images regenerated: {len(new_images)} new images, old images deactivated"
-            )
+            logger.info(f"Images regenerated: {len(new_images)} new images, old images deactivated")
             return new_images
 
         except ImageContentError:
@@ -322,13 +305,9 @@ class CharacterImageService:
         Returns:
             新的Image模型实例列表
         """
-        logger.info(
-            f"Fresh regenerating image: {image_id}, use_deepseek={use_deepseek_prompt}"
-        )
+        logger.info(f"Fresh regenerating image: {image_id}, use_deepseek={use_deepseek_prompt}")
 
-        original = (
-            self.db.query(ImageModel).filter(ImageModel.image_id == image_id).first()
-        )
+        original = self.db.query(ImageModel).filter(ImageModel.image_id == image_id).first()
 
         if not original:
             raise ImageServiceError(f"图片不存在: {image_id}")
@@ -370,14 +349,10 @@ class CharacterImageService:
 
         if use_deepseek_prompt:
             try:
-                prompt = self.image_client.generate_image_prompt_with_deepseek(
-                    character_info
-                )
+                prompt = self.image_client.generate_image_prompt_with_deepseek(character_info)
                 logger.debug(f"DeepSeek generated prompt: {prompt[:100]}...")
             except Exception as e:
-                logger.warning(
-                    f"DeepSeek prompt generation failed, using fallback: {e}"
-                )
+                logger.warning(f"DeepSeek prompt generation failed, using fallback: {e}")
                 prompt = (
                     build_description_func(char_settings)
                     if build_description_func
@@ -385,9 +360,7 @@ class CharacterImageService:
                 )
         else:
             prompt = (
-                build_description_func(char_settings)
-                if build_description_func
-                else "一个普通人"
+                build_description_func(char_settings) if build_description_func else "一个普通人"
             )
 
         era = character_info["era"]

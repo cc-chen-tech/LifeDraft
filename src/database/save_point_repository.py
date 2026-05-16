@@ -39,11 +39,7 @@ class SavePointRepository:
         db = SessionLocal()
         try:
             # 验证游戏属于该用户
-            game = (
-                db.query(Game)
-                .filter(Game.game_id == game_id, Game.user_id == user_id)
-                .first()
-            )
+            game = db.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
 
             if not game:
                 logger.warning(
@@ -93,11 +89,7 @@ class SavePointRepository:
         db = SessionLocal()
         try:
             # 验证游戏属于该用户
-            game = (
-                db.query(Game)
-                .filter(Game.game_id == game_id, Game.user_id == user_id)
-                .first()
-            )
+            game = db.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
 
             if not game:
                 return []
@@ -146,9 +138,7 @@ class SavePointRepository:
         db = SessionLocal()
         try:
             # 查询存档点并验证权限
-            save_point = (
-                db.query(GameState).filter(GameState.state_id == state_id).first()
-            )
+            save_point = db.query(GameState).filter(GameState.state_id == state_id).first()
 
             if not save_point:
                 return None
@@ -232,11 +222,7 @@ class SavePointRepository:
         db = SessionLocal()
         try:
             # 验证游戏属于该用户
-            game = (
-                db.query(Game)
-                .filter(Game.game_id == game_id, Game.user_id == user_id)
-                .first()
-            )
+            game = db.query(Game).filter(Game.game_id == game_id, Game.user_id == user_id).first()
 
             if not game:
                 return []

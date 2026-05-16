@@ -38,9 +38,7 @@ class RoundChoiceProcessor:
         story_service: "StoryService",
         current_event_getter: Callable[[], Optional[GameEvent]],
         current_event_setter: Callable[[Optional[GameEvent]], None],
-        result_callback: Optional[
-            Callable[[Dict[str, Any], "PlayerState"], None]
-        ] = None,
+        result_callback: Optional[Callable[[Dict[str, Any], "PlayerState"], None]] = None,
     ):
         """
         Args:
@@ -173,9 +171,7 @@ class RoundChoiceProcessor:
         logger.info(f"Processing custom choice: {custom_text[:50]}...")
 
         # 1. 调用 AI 生成自定义选择的属性变化（快速 JSON 调用）
-        effects = self._generate_custom_choice_effects(
-            current_event.event_description, custom_text
-        )
+        effects = self._generate_custom_choice_effects(current_event.event_description, custom_text)
 
         # 2. 应用属性变化
         player_state.update(
@@ -288,9 +284,7 @@ class RoundChoiceProcessor:
             )
             structured_full_story += choice_marker + story_continuation
         player_state.last_round_full_story = structured_full_story
-        logger.info(
-            f"Event concluded: {event_concluded}, full story length: {len(full_story)}"
-        )
+        logger.info(f"Event concluded: {event_concluded}, full story length: {len(full_story)}")
 
         # 4. Process narrative & world-model updates
         NarrativeManager.process_storyline_updates(
@@ -368,9 +362,7 @@ class RoundChoiceProcessor:
                 story_id = f"week{player_state.week}_round{player_state.current_round}"
                 full_story_text = event.event_description
                 if story_continuation:
-                    full_story_text += (
-                        f"\n\n[选择: {choice_text}]\n\n{story_continuation}"
-                    )
+                    full_story_text += f"\n\n[选择: {choice_text}]\n\n{story_continuation}"
                 vector_store.add_story(
                     story_id=story_id,
                     content=full_story_text,
@@ -397,11 +389,7 @@ class RoundChoiceProcessor:
         player_state.decision_history.append(decision_record)
 
         # ★ 显示用周数（人类可读，从1开始）
-        week_display = (
-            f"第{player_state.week + 1}周"
-            if player_state.week is not None
-            else "未知周"
-        )
+        week_display = f"第{player_state.week + 1}周" if player_state.week is not None else "未知周"
         logger.info(
             f"Saved {'custom ' if is_custom else ''}choice record: {week_display}, round={player_state.current_round}"
         )

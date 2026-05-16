@@ -5,11 +5,16 @@ from __future__ import annotations
 from datetime import datetime
 
 from src.database.models import Base, Game, GeneratedMusicAsset
+from src.services.music_playlist_service import PlaylistQueuePolicy
 from src.services.music_playlist_service import MusicPlaylistService
 from src.services.music_service import (
     MusicBrief,
+    MusicContextBuilder,
+    MusicGenerationJob,
     MusicGenerationCoordinator,
     MusicProviderPolicy,
+    MusicResultRanker,
+    MusicRecommendation,
     Song,
 )
 
@@ -138,3 +143,127 @@ def test_generated_music_asset_metadata_round_trips(db_session):
     assert fetched.storage_path == "/tmp/music/brief-123.mp3"
     assert fetched.music_brief_json["mood"] == "紧张"
     assert fetched.loopable is True
+
+
+def test_context_builder_maps_analysis_to_brief_and_search_queries():
+    builder = MusicContextBuilder()
+    brief = builder.build_brief(
+        {
+            "mood": "紧张",
+            "scene_type": "雨夜追逐",
+            "environment": "民国码头",
+            "pacing": "急促",
+            "energy": "高",
+            "instruments": ["鼓", "大提琴"],
+            "search_queries": ["民国 雨夜 追逐 鼓点"],
+            "negative_cues": ["甜蜜流行", "人声"],
+        }
+    )
+    queries = builder.build_search_queries(brief)
+    joined_queries = " | ".join(queries)
+
+    assert brief.scene_type == "雨夜追逐"
+    assert brief.era_or_environment == "民国码头"
+    assert "instrumental" in brief.generation_prompt.lower()
+    assert "no vocals" in brief.generation_prompt.lower()
+    assert queries[0] == "民国 雨夜 追逐 鼓点"
+    assert "民国码头" in joined_queries
+    assert "雨夜追逐" in joined_queries
+    assert "急促" in joined_queries or "高" in joined_queries
+    assert "鼓" in joined_queries or "大提琴" in joined_queries
+    assert "甜蜜流行" not in joined_queries
+    assert "人声" not in joined_queries
+
+
+def test_music_result_ranker_prefers_brief_matches_and_penalizes_negative_cues():
+    brief = MusicBrief(
+        mood="紧张",
+        scene_type="雨夜追逐",
+        era_or_environment="民国码头",
+        pacing="急促",
+        energy="高",
+        instruments=["鼓", "大提琴"],
+        search_queries=["民国 雨夜 追逐 鼓点"],
+        negative_cues=["甜蜜", "人声"],
+        generation_prompt="instrumental ambience loop, no vocals",
+    )
+    songs = [
+        Song(id=1, name="甜蜜人声情歌", artists=["Vocal"], album="流行", duration=1000),
+        Song(id=2, name="民国码头雨夜追逐", artists=["鼓点"], album="影视配乐", duration=1000),
+        Song(id=3, name="普通轻音乐", artists=["Piano"], album="背景音乐", duration=1000),
+    ]
+
+    ranked = MusicResultRanker().rank(songs, brief)
+
+    assert [song.id for song in ranked] == [2, 3, 1]
+
+
+def test_music_recommendation_keeps_legacy_fields_and_exposes_music_brief():
+    from src.api.routers.music import MusicRecommendationResponse, SongResponse
+
+    brief = MusicBrief.default()
+    recommendation = MusicRecommendation(
+        keywords=brief.search_queries,
+        mood=brief.mood,
+        scene_type=brief.scene_type,
+        songs=[Song(id=11, name="背景曲", artists=["A"], album="B", duration=1000)],
+        environment=brief.era_or_environment,
+        music_brief=brief,
+    )
+    response = MusicRecommendationResponse(
+        keywords=recommendation.keywords,
+        mood=recommendation.mood,
+        scene_type=recommendation.scene_type,
+        environment=recommendation.environment,
+        music_brief=recommendation.music_brief.to_analysis(),
+        songs=[
+            SongResponse(
+                id=11,
+                name="背景曲",
+                artists=["A"],
+                album="B",
+                duration=1000,
+                url="https://music.example/11.mp3",
+                source="netease",
+            )
+        ],
+    )
+
+    assert response.keywords == ["轻音乐", "背景音乐", "纯音乐"]
+    assert response.environment == "通用"
+    assert response.music_brief["energy"] == "中低"
+    assert response.songs[0].source == "netease"
+
+
+def test_playlist_queue_policy_preserves_current_and_first_upcoming_on_merge():
+    policy = PlaylistQueuePolicy()
+    current = {"id": 1, "name": "Current", "source": "netease"}
+    near_term = {"id": 2, "name": "NearTerm", "source": "netease"}
+    incoming = [
+        {"id": 1, "name": "Current from backend", "source": "netease"},
+        {"id": 3, "name": "Fresh", "source": "netease"},
+        {"id": "asset-9", "name": "AI 雨夜码头", "source": "ai_generated"},
+    ]
+
+    merged = policy.merge_recommendations(current, [near_term], incoming)
+
+    assert merged.current_song == current
+    assert [item["id"] for item in merged.queue] == [2, 3, "asset-9"]
+    assert merged.queue[2]["source"] == "ai_generated"
+
+
+def test_generation_job_interface_defaults_to_pending_background_ai_music():
+    brief = MusicBrief.default()
+    job = MusicGenerationJob.create(
+        game_id=42,
+        brief=brief,
+        provider="test-provider",
+        model="loop-v1",
+    )
+
+    assert job.game_id == 42
+    assert job.status == "pending"
+    assert job.source == "ai_generated"
+    assert job.prompt_text == brief.generation_prompt
+    assert job.brief_hash
+    assert job.model == "loop-v1"

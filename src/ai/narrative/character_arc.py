@@ -39,9 +39,7 @@ class CharacterArc:
     initial_flaw: str = ""
     desire: str = ""
     arc_type: str = "成长"
-    current_phase: ArcPhase = field(
-        default_factory=lambda: ArcPhase(name="稳态", index=0)
-    )
+    current_phase: ArcPhase = field(default_factory=lambda: ArcPhase(name="稳态", index=0))
     phases: List[ArcPhase] = field(default_factory=list)
     growth_score: float = 0.0
     phase_history: List[str] = field(default_factory=list)
@@ -118,9 +116,7 @@ class CharacterArcEngine:
             logger.warning("Error processing event: %s", e)
             return arc
 
-    def compute_personality_shift(
-        self, arc: CharacterArc, event: dict
-    ) -> Dict[str, float]:
+    def compute_personality_shift(self, arc: CharacterArc, event: dict) -> Dict[str, float]:
         """计算性格维度微小偏移。"""
         try:
             if arc is None or event is None:
@@ -161,9 +157,7 @@ class CharacterArcEngine:
             elif phase_name == "转折":
                 parts.append("角色即将迎来关键转折，请安排突破性场景。")
             elif phase_name == "新稳态":
-                parts.append(
-                    f"角色已完成成长弧，新的自我认知已建立，朝向「{desire}」迈进。"
-                )
+                parts.append(f"角色已完成成长弧，新的自我认知已建立，朝向「{desire}」迈进。")
 
             return " ".join(parts)
         except Exception as e:
@@ -205,9 +199,7 @@ class CharacterArcEngine:
             for name, arc_data in data.items():
                 if not isinstance(arc_data, dict):
                     continue
-                phases = [
-                    ArcPhase(name=p, index=i) for i, p in enumerate(DEFAULT_PHASES)
-                ]
+                phases = [ArcPhase(name=p, index=i) for i, p in enumerate(DEFAULT_PHASES)]
                 phase_idx = arc_data.get("current_phase_index", 0)
                 phase_idx = max(0, min(phase_idx, len(phases) - 1))
 

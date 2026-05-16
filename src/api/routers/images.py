@@ -4,10 +4,9 @@ import logging
 from typing import Generator, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import Response as FastAPIResponse
 from sqlalchemy.orm import Session
 
-from src.api.deps import get_current_user, get_current_user_optional, get_db
+from src.api.deps import get_current_user, get_current_user_optional
 from src.api.schemas import (BatchGenerateCharactersRequest,
                              GenerateImageRequest,
                              GenerateOpeningIllustrationRequest,
@@ -711,9 +710,6 @@ async def get_image_file(
     try:
         storage_service = ImageStorageService()
 
-        # 构建存储路径
-        from pathlib import Path
-
         # C-01: 路径遍历防护
         base_path = storage_service.local_path.resolve()
         requested_path = (
@@ -853,7 +849,9 @@ async def get_round_scene_image(
         .order_by(GameState.state_id.desc())
         .first()
     )
-    game_state = latest_state.state_json if latest_state and latest_state.state_json else game.initial_state
+    game_state = (
+        latest_state.state_json if latest_state and latest_state.state_json else game.initial_state
+    )
     if not isinstance(game_state, dict):
         logger.warning("[get_round_scene_image] Latest game state is not a dict")
         game_state = {}

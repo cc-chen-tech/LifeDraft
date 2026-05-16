@@ -207,9 +207,7 @@ class SessionStore:
 
     # ---- public API ----
 
-    def get(
-        self, game_id: int, user_id: Optional[int] = None
-    ) -> Optional[GameLoopSession]:
+    def get(self, game_id: int, user_id: Optional[int] = None) -> Optional[GameLoopSession]:
         """Get a session if it exists and is not expired."""
         self._maybe_cleanup()
         key = self.make_key(game_id, user_id)
@@ -276,9 +274,7 @@ class SessionStore:
         prefix = f"user_{user_id}_game_"
         with self._lock:
             return [
-                s
-                for k, s in self._sessions.items()
-                if k.startswith(prefix) and not s.is_expired
+                s for k, s in self._sessions.items() if k.startswith(prefix) and not s.is_expired
             ]
 
     @property

@@ -180,14 +180,10 @@ class TemporalConsistencyValidator:
             details["time_references"] = time_refs
 
             # 2. 季节一致性检查
-            season_ok, season_info = self.check_season_consistency(
-                story_text, current_week
-            )
+            season_ok, season_info = self.check_season_consistency(story_text, current_week)
             details["season_check"] = season_info
             if not season_ok:
-                violations.append(
-                    season_info.get("violation", "季节描写与当前周数矛盾")
-                )
+                violations.append(season_info.get("violation", "季节描写与当前周数矛盾"))
 
             # 3. 角色年龄检查
             age = None
@@ -232,9 +228,7 @@ class TemporalConsistencyValidator:
                 )
         return refs
 
-    def check_season_consistency(
-        self, text: str, current_week: int
-    ) -> Tuple[bool, dict]:
+    def check_season_consistency(self, text: str, current_week: int) -> Tuple[bool, dict]:
         """验证季节描写与游戏周数匹配。"""
         current_season = self._get_season(current_week)
         conflicts = SEASON_CONFLICT_KEYWORDS.get(current_season, [])
@@ -307,8 +301,6 @@ class TemporalConsistencyValidator:
         return "春"
 
 
-def validate_temporal_consistency(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_temporal_consistency(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """模块级验证函数。"""
     return TemporalConsistencyValidator().validate(story_text, context)

@@ -1,5 +1,6 @@
 """Music playlist service — persistent per-game queue management."""
 
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, cast
 
 from sqlalchemy.orm import Session
@@ -7,6 +8,88 @@ from sqlalchemy.orm import Session
 from src.database.models import GamePlaylist
 
 SongDict = Dict[str, Any]
+
+
+@dataclass(frozen=True)
+class PlaylistMergeResult:
+    """Resolved playlist state after applying the queue policy."""
+
+    current_song: Optional[SongDict]
+    queue: List[SongDict]
+
+
+class PlaylistQueuePolicy:
+    """Queue update rules shared by Netease refreshes and generated tracks."""
+
+    @staticmethod
+    def _song_key(song: SongDict) -> Any:
+        return song.get("id")
+
+    def merge_recommendations(
+        self,
+        current_song: Optional[SongDict],
+        existing_queue: List[SongDict],
+        incoming_songs: List[SongDict],
+    ) -> PlaylistMergeResult:
+        """Merge new recommendations without interrupting current playback."""
+        if current_song is None:
+            if incoming_songs:
+                return PlaylistMergeResult(
+                    current_song=incoming_songs[0],
+                    queue=self._dedupe(incoming_songs[1:], None),
+                )
+            return PlaylistMergeResult(current_song=None, queue=list(existing_queue))
+
+        current_id = self._song_key(current_song)
+        queue: List[SongDict] = []
+        if existing_queue:
+            first_upcoming = existing_queue[0]
+            if self._song_key(first_upcoming) != current_id:
+                queue.append(first_upcoming)
+
+        seen_ids = {self._song_key(item) for item in queue}
+        for song in incoming_songs:
+            song_id = self._song_key(song)
+            if song_id == current_id or song_id in seen_ids:
+                continue
+            queue.append(song)
+            seen_ids.add(song_id)
+
+        return PlaylistMergeResult(current_song=current_song, queue=queue)
+
+    def insert_generated_track(
+        self,
+        playlist: Dict[str, Any],
+        generated_track: SongDict,
+    ) -> Dict[str, Any]:
+        """Insert generated music after the first stable upcoming item."""
+        queue: List[SongDict] = list(playlist.get("queue") or [])
+        current_song = playlist.get("current_song")
+        generated_id = self._song_key(generated_track)
+
+        queue = [item for item in queue if self._song_key(item) != generated_id]
+        insert_at = 1 if queue else 0
+        queue.insert(insert_at, generated_track)
+
+        updated = dict(playlist)
+        updated["current_song"] = current_song
+        updated["queue"] = queue
+        return updated
+
+    def _dedupe(
+        self,
+        songs: List[SongDict],
+        excluded_id: Any,
+    ) -> List[SongDict]:
+        deduped: List[SongDict] = []
+        seen_ids: set[Any] = set()
+        for song in songs:
+            song_id = self._song_key(song)
+            if song_id == excluded_id or song_id in seen_ids:
+                continue
+            deduped.append(song)
+            seen_ids.add(song_id)
+        return deduped
 
 
 class PlaylistState:
@@ -89,18 +172,14 @@ class MusicPlaylistService:
         playlist_data = cast(Any, playlist)
         current: Optional[SongDict] = playlist_data.current_song_json
 
-        if current is None:
-            # No current song — start from the beginning of the new list
-            if songs:
-                playlist_data.current_song_json = songs[0]
-                playlist_data.queue_json = songs[1:]
-            else:
-                playlist_data.queue_json = []
-        else:
-            current_id = current.get("id")
-            # Filter out the current song from the new list
-            new_queue = [s for s in songs if s.get("id") != current_id]
-            playlist_data.queue_json = new_queue
+        policy = PlaylistQueuePolicy()
+        merged = policy.merge_recommendations(
+            current_song=current,
+            existing_queue=list(playlist_data.queue_json or []),
+            incoming_songs=songs,
+        )
+        playlist_data.current_song_json = merged.current_song
+        playlist_data.queue_json = merged.queue
 
         if mood is not None:
             playlist_data.recommendation_mood = mood
@@ -117,18 +196,7 @@ class MusicPlaylistService:
         generated_track: SongDict,
     ) -> Dict[str, Any]:
         """Insert a generated track into future queue without interrupting playback."""
-        queue: List[SongDict] = list(playlist.get("queue") or [])
-        current_song = playlist.get("current_song")
-        generated_id = generated_track.get("id")
-
-        queue = [item for item in queue if item.get("id") != generated_id]
-        insert_at = 1 if queue else 0
-        queue.insert(insert_at, generated_track)
-
-        updated = dict(playlist)
-        updated["current_song"] = current_song
-        updated["queue"] = queue
-        return updated
+        return PlaylistQueuePolicy().insert_generated_track(playlist, generated_track)
 
     @classmethod
     def sync_state(
@@ -148,7 +216,9 @@ class MusicPlaylistService:
         db.refresh(playlist)
         return {
             "success": True,
-            "updated_at": playlist_data.updated_at.isoformat() if playlist_data.updated_at else None,
+            "updated_at": (
+                playlist_data.updated_at.isoformat() if playlist_data.updated_at else None
+            ),
         }
 
     @classmethod

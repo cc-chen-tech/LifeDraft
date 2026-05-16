@@ -165,9 +165,7 @@ class GameDatabase:
         """List character presets."""
         return self._preset_repo.list_character_presets(limit, user_id)  # type: ignore[no-any-return]
 
-    def delete_character_preset(
-        self, preset_id: int, user_id: Optional[int] = None
-    ) -> bool:
+    def delete_character_preset(self, preset_id: int, user_id: Optional[int] = None) -> bool:
         """Delete a character preset."""
         return self._preset_repo.delete_character_preset(preset_id, user_id)  # type: ignore[no-any-return]
 

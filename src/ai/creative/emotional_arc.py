@@ -96,15 +96,11 @@ class EmotionalArcAnalyzer:
     SETUP_KEYWORDS = ["走进", "坐下", "看了看", "翻了翻", "没什么", "喝了口"]
     CLIMAX_KEYWORDS = ["终于", "再也", "紧紧", "夺眶而出", "烟消云散"]
 
-    def analyze(
-        self, story_text: str, history: Optional[List[Dict]] = None
-    ) -> EmotionalArcResult:
+    def analyze(self, story_text: str, history: Optional[List[Dict]] = None) -> EmotionalArcResult:
         """分析故事文本的情感状态。"""
         try:
             if not story_text or not isinstance(story_text, str):
-                logger.warning(
-                    "Invalid story_text input, returning default EmotionalArcResult."
-                )
+                logger.warning("Invalid story_text input, returning default EmotionalArcResult.")
                 return EmotionalArcResult()
 
             valence = self._compute_valence(story_text)
@@ -222,9 +218,7 @@ class EmotionalArcAnalyzer:
             if style == "gothic":
                 return "在阴暗基调中引入一丝微光或意外的温情，以打破持续低沉的节奏，同时保持哥特式的张力。"
             elif style == "comedy":
-                return (
-                    "加入一个出人意料的误会或巧合，通过反差制造笑点，避免节奏过于平淡。"
-                )
+                return "加入一个出人意料的误会或巧合，通过反差制造笑点，避免节奏过于平淡。"
             elif style == "chinese_classic":
                 return "以一个含蓄的伏笔或象征意象打破平铺直叙，营造'山重水复疑无路'的转折感。"
             else:

@@ -123,9 +123,7 @@ class LandmarkExtractionService(BaseExtractionService):
 
                 if action == "new":
                     # 使用基类的验证方法
-                    importance = self._validate_importance(
-                        raw.get("importance", "normal")
-                    )
+                    importance = self._validate_importance(raw.get("importance", "normal"))
                     category = self._validate_category(
                         raw.get("category", "other"),
                         LANDMARK_CATEGORIES,

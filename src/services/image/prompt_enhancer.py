@@ -374,10 +374,7 @@ class PromptEnhancer:
             "characters_tracked": len(self.character_feedback),
             "rules_count": len(self.rules),
             "top_rules": sorted(
-                [
-                    (r.trigger_keywords[0], r.apply_count, r.success_count)
-                    for r in self.rules
-                ],
+                [(r.trigger_keywords[0], r.apply_count, r.success_count) for r in self.rules],
                 key=lambda x: x[1],
                 reverse=True,
             )[:5],

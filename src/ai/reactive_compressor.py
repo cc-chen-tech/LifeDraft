@@ -54,9 +54,7 @@ class ReactiveCompressor:
     def __init__(self, budget_trim_order: Optional[List[str]] = None) -> None:
         self._trim_order = budget_trim_order or list(DEFAULT_BUDGET_TRIM_ORDER)
 
-    def should_compact(
-        self, prompt_tokens: int, max_tokens: int, threshold: float = 0.85
-    ) -> bool:
+    def should_compact(self, prompt_tokens: int, max_tokens: int, threshold: float = 0.85) -> bool:
         """Check if compaction is needed.
 
         Returns True when prompt_tokens > max_tokens * threshold.
@@ -77,9 +75,7 @@ class ReactiveCompressor:
         Returns:
             CompactionResult with compression details
         """
-        original_total = sum(
-            self.estimate_tokens(text) for text in constraint_texts.values()
-        )
+        original_total = sum(self.estimate_tokens(text) for text in constraint_texts.values())
         target_remove = int(original_total * target_reduction)
         removed_tokens = 0
         removed_sections: List[str] = []
@@ -112,9 +108,7 @@ class ReactiveCompressor:
                 removed_tokens += remaining_to_remove
                 removed_sections.append(f"{field_name}(truncated)")
 
-        compressed_total = sum(
-            self.estimate_tokens(text) for text in result_texts.values()
-        )
+        compressed_total = sum(self.estimate_tokens(text) for text in result_texts.values())
 
         return CompactionResult(
             original_token_count=original_total,
@@ -127,8 +121,6 @@ class ReactiveCompressor:
         """Estimate token count for text (rough: len/2 for CJK, len/4 for English)."""
         if not text:
             return 0
-        cjk_count = sum(
-            1 for c in text if "\u4e00" <= c <= "\u9fff" or "\u3000" <= c <= "\u303f"
-        )
+        cjk_count = sum(1 for c in text if "\u4e00" <= c <= "\u9fff" or "\u3000" <= c <= "\u303f")
         other_count = len(text) - cjk_count
         return cjk_count + max(1, other_count // 4)

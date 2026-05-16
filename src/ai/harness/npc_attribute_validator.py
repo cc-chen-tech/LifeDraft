@@ -72,25 +72,19 @@ class NPCAttributeStabilityValidator:
                 descriptions = self.extract_npc_descriptions(story_text, npc_name)
 
                 # 2. 检查属性一致性
-                attr_issues = self.check_attribute_consistency(
-                    npc_name, descriptions, profile
-                )
+                attr_issues = self.check_attribute_consistency(npc_name, descriptions, profile)
                 if attr_issues:
                     details["description_issues"].extend(attr_issues)
                     violations.extend(attr_issues)
 
                 # 3. 检查行为边界
-                boundary_issues = self._check_behavioral_boundaries(
-                    story_text, npc_name, profile
-                )
+                boundary_issues = self._check_behavioral_boundaries(story_text, npc_name, profile)
                 if boundary_issues:
                     details["boundary_violations"].extend(boundary_issues)
                     violations.extend(boundary_issues)
 
                 # 4. 检查身份矛盾
-                identity_issues = self._check_identity_contradiction(
-                    story_text, npc_name, profile
-                )
+                identity_issues = self._check_identity_contradiction(story_text, npc_name, profile)
                 violations.extend(identity_issues)
 
                 # 5. 检查性格矛盾
@@ -106,9 +100,7 @@ class NPCAttributeStabilityValidator:
                     {
                         **details,
                         "violations": violations,
-                        "correction_hint": "; ".join(
-                            v.get("hint", "") for v in violations[:3]
-                        ),
+                        "correction_hint": "; ".join(v.get("hint", "") for v in violations[:3]),
                     },
                 )
 
@@ -143,9 +135,7 @@ class NPCAttributeStabilityValidator:
 
         return descriptions
 
-    def check_attribute_consistency(
-        self, npc_name: str, descriptions: list, profile: Any
-    ) -> list:
+    def check_attribute_consistency(self, npc_name: str, descriptions: list, profile: Any) -> list:
         """对比描写与存储属性。"""
         issues = []
 
@@ -205,9 +195,7 @@ class NPCAttributeStabilityValidator:
 
         return issues
 
-    def _check_behavioral_boundaries(
-        self, text: str, npc_name: str, profile: Any
-    ) -> list:
+    def _check_behavioral_boundaries(self, text: str, npc_name: str, profile: Any) -> list:
         """检查NPC是否突破行为边界。"""
         issues = []
 
@@ -232,9 +220,7 @@ class NPCAttributeStabilityValidator:
 
                 if len(forbidden_action) >= 2:
                     # 检查该角色在文本中是否有这个行为
-                    pattern = (
-                        re.escape(npc_name) + r".{0,30}" + re.escape(forbidden_action)
-                    )
+                    pattern = re.escape(npc_name) + r".{0,30}" + re.escape(forbidden_action)
                     match = re.search(pattern, text)
                     if match:
                         ctx_start = max(0, match.start() - 10)
@@ -255,9 +241,7 @@ class NPCAttributeStabilityValidator:
 
         return issues
 
-    def _check_identity_contradiction(
-        self, text: str, npc_name: str, profile: Any
-    ) -> list:
+    def _check_identity_contradiction(self, text: str, npc_name: str, profile: Any) -> list:
         """检查NPC身份描写是否与存储身份矛盾。"""
         issues: list = []
         stored_identity = ""
@@ -299,9 +283,7 @@ class NPCAttributeStabilityValidator:
                 "祭司",
             ]
 
-            stored_id_keywords = [
-                kw for kw in identity_keywords if kw in stored_identity
-            ]
+            stored_id_keywords = [kw for kw in identity_keywords if kw in stored_identity]
             text_id_keywords = [kw for kw in identity_keywords if kw in local_context]
 
             for text_kw in text_id_keywords:
@@ -325,9 +307,7 @@ class NPCAttributeStabilityValidator:
 
         return issues
 
-    def _check_personality_contradiction(
-        self, text: str, npc_name: str, profile: Any
-    ) -> list:
+    def _check_personality_contradiction(self, text: str, npc_name: str, profile: Any) -> list:
         """检查NPC性格描写是否与存储性格矛盾。"""
         issues: list = []
         stored_personality = ""
@@ -371,9 +351,7 @@ class NPCAttributeStabilityValidator:
                             "type": "personality_contradiction",
                             "stored_personality": stored_personality,
                             "described_trait": (
-                                neg_trait
-                                if pos_trait in stored_personality
-                                else pos_trait
+                                neg_trait if pos_trait in stored_personality else pos_trait
                             ),
                             "context": local_context[:60],
                             "message": f"NPC'{npc_name}'的性格描写与存储性格'{stored_personality}'矛盾",
@@ -385,8 +363,6 @@ class NPCAttributeStabilityValidator:
         return issues
 
 
-def validate_npc_attribute_stability(
-    story_text: str, context: dict
-) -> Tuple[bool, str, dict]:
+def validate_npc_attribute_stability(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """模块级验证函数。"""
     return NPCAttributeStabilityValidator().validate(story_text, context)

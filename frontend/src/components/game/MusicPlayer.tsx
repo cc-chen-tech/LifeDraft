@@ -23,6 +23,7 @@ import {
   useMusicStore,
   fetchMusicRecommendation,
   fetchSongUrl,
+  getMusicSourceLabel,
   Song,
 } from "@/stores/useMusicStore";
 
@@ -457,6 +458,9 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
     // 注意：store 中的 setVolume 会自动同步 audioElement.volume
   };
 
+  const displaySong = currentSong || recommendation?.songs[0] || null;
+  const sourceLabel = getMusicSourceLabel(displaySong?.source);
+
   // 格式化时间
   const formatTime = (seconds: number) => {
     if (!seconds || isNaN(seconds)) return "0:00";
@@ -587,16 +591,20 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
         <div className="space-y-3">
           {/* 当前歌曲信息 */}
           <div className="text-sm">
-            <div className="font-medium truncate">
-              {currentSong?.name || recommendation.songs[0]?.name || "未知歌曲"}
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="font-medium truncate">
+                {displaySong?.name || "未知歌曲"}
+              </span>
+              {sourceLabel && (
+                <span className="shrink-0 rounded border border-primary/30 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                  {sourceLabel}
+                </span>
+              )}
             </div>
             <div className="text-muted-foreground text-xs truncate">
-              {currentSong 
-                ? `${currentSong.artists.join(" / ")} · ${currentSong.album}`
-                : recommendation.songs[0] 
-                  ? `${recommendation.songs[0].artists.join(" / ")} · ${recommendation.songs[0].album}`
-                  : ""
-              }
+              {displaySong
+                ? `${displaySong.artists.join(" / ")} · ${displaySong.album}`
+                : ""}
             </div>
           </div>
 

@@ -180,9 +180,7 @@ class WorldModelUpdater:
                     "importance": update.get("importance", "normal"),
                 }
                 commitments.append(commitment)
-                logger.info(
-                    f"🤝 新承诺: {desc[:40]}... (parties: {update.get('parties', [])})"
-                )
+                logger.info(f"🤝 新承诺: {desc[:40]}... (parties: {update.get('parties', [])})")
 
             elif action in ("fulfilled", "broken", "expired"):
                 desc = update.get("description", "")
@@ -209,9 +207,7 @@ class WorldModelUpdater:
                         update_parties = [p.lower() for p in update.get("parties", [])]
 
                         # 如果涉及相同的人物，且描述中有相似的关键词
-                        has_common_party = any(
-                            p in existing_parties for p in update_parties
-                        )
+                        has_common_party = any(p in existing_parties for p in update_parties)
 
                         # 提取关键动词进行匹配
                         key_verbs = [
@@ -238,9 +234,7 @@ class WorldModelUpdater:
                     if matched:
                         c["status"] = action
                         c["resolved_week"] = current_week
-                        logger.info(
-                            f"🤝 承诺{action}: {c.get('description', '')[:40]}..."
-                        )
+                        logger.info(f"🤝 承诺{action}: {c.get('description', '')[:40]}...")
                         break
 
                 if not matched:
@@ -311,8 +305,7 @@ class WorldModelUpdater:
         active = [
             c
             for c in chains
-            if not c.get("resolved")
-            or (current_week - c.get("resolved_week", current_week)) < 20
+            if not c.get("resolved") or (current_week - c.get("resolved_week", current_week)) < 20
         ]
         wm_data["causal_chains"] = active
 
@@ -413,9 +406,7 @@ class WorldModelUpdater:
         except (ImportError, ValueError, TypeError, KeyError) as e:
             logger.warning(f"Story Analyzer 执行失败（不影响主流程）: {e}")
         except Exception as e:
-            logger.exception(
-                f"Story Analyzer 执行失败（unexpected，不影响主流程）: {e}"
-            )
+            logger.exception(f"Story Analyzer 执行失败（unexpected，不影响主流程）: {e}")
 
     # ------------------------------------------------------------------
     # Character profile synthesis (requires AI)
@@ -449,15 +440,11 @@ class WorldModelUpdater:
 
             # 1. Collect behavioral evidence from this week's round history
             week_rounds = [
-                r
-                for r in player_state.round_history
-                if r.get("week") == current_week - 1
+                r for r in player_state.round_history if r.get("week") == current_week - 1
             ]
             if not week_rounds:
                 week_rounds = [
-                    r
-                    for r in player_state.round_history
-                    if r.get("week") == current_week
+                    r for r in player_state.round_history if r.get("week") == current_week
                 ]
 
             if len(week_rounds) < 2:
@@ -488,18 +475,14 @@ class WorldModelUpdater:
                     if char_name in full_text:
                         all_chars.add(char_name)
 
-                round_name = r.get("date_info", {}).get(
-                    "date_string", f"第{r.get('round', 0)+1}轮"
-                )
+                round_name = r.get("date_info", {}).get("date_string", f"第{r.get('round', 0)+1}轮")
 
                 for char in all_chars:
                     if char not in char_evidence:
                         char_evidence[char] = []
 
                     if char == protagonist_name and choice:
-                        char_evidence[char].append(
-                            f"[{round_name}] 面对事件时选择了：{choice}"
-                        )
+                        char_evidence[char].append(f"[{round_name}] 面对事件时选择了：{choice}")
 
                     for sentence in (
                         full_text.replace("。", "。\n")
@@ -509,14 +492,10 @@ class WorldModelUpdater:
                     ):
                         sentence = sentence.strip()
                         if char in sentence and len(sentence) > 10:
-                            char_evidence[char].append(
-                                f"[{round_name}] {sentence[:100]}"
-                            )
+                            char_evidence[char].append(f"[{round_name}] {sentence[:100]}")
 
             # 3. Filter: only characters with >= 2 evidence items, limit to top 3
-            eligible = {
-                name: evs for name, evs in char_evidence.items() if len(evs) >= 2
-            }
+            eligible = {name: evs for name, evs in char_evidence.items() if len(evs) >= 2}
             if not eligible:
                 return
 
@@ -590,9 +569,7 @@ class WorldModelUpdater:
             if len(profiles) > 8:
                 sorted_profiles = sorted(
                     profiles.items(),
-                    key=lambda x: -(
-                        x[1].get("evidence_count", 0) if isinstance(x[1], dict) else 0
-                    ),
+                    key=lambda x: -(x[1].get("evidence_count", 0) if isinstance(x[1], dict) else 0),
                 )
                 profiles = dict(sorted_profiles[:8])
 
@@ -749,9 +726,7 @@ class WorldModelUpdater:
 
         # 移除旧事件
         player_state.scheduled_events = [
-            e
-            for e in player_state.scheduled_events
-            if e.get("event_id") not in to_remove
+            e for e in player_state.scheduled_events if e.get("event_id") not in to_remove
         ]
 
         if to_remove:
@@ -836,9 +811,7 @@ class WorldModelUpdater:
             if name in story_text or name.lower() in story_text.lower():
                 # 创建基础人物条目
                 affinity = (
-                    relationships_in_effects.get(name, 50)
-                    if relationships_in_effects
-                    else 50
+                    relationships_in_effects.get(name, 50) if relationships_in_effects else 50
                 )
                 inferred_role = infer_role_from_story(name, story_text)
                 new_person = {

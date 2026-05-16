@@ -194,9 +194,7 @@ class ItemContinuityValidator:
         return False
 
     @staticmethod
-    def _check_item_acquired_in_text(
-        text: str, item_name: str, use_position: int
-    ) -> bool:
+    def _check_item_acquired_in_text(text: str, item_name: str, use_position: int) -> bool:
         """检查物品是否在使用前在文本中被获得。"""
         # 只检查使用位置之前的文本
         text_before = text[:use_position]

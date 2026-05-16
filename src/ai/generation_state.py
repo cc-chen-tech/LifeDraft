@@ -42,9 +42,7 @@ class GenerationState:
 class StateTracker:
     """Tracks generation state transitions for debugging and metrics."""
 
-    def __init__(
-        self, initial_model: str = "", initial_temperature: float = 0.85
-    ) -> None:
+    def __init__(self, initial_model: str = "", initial_temperature: float = 0.85) -> None:
         self._history: List[GenerationState] = []
         self._start_time = time.time()
         initial_state = GenerationState(
@@ -68,24 +66,18 @@ class StateTracker:
             The new GenerationState after transition
         """
         cur = self._history[-1]
-        new_attempt = (
-            cur.attempt + 1 if reason == TransitionReason.HARNESS_RETRY else cur.attempt
-        )
+        new_attempt = cur.attempt + 1 if reason == TransitionReason.HARNESS_RETRY else cur.attempt
         new_state = GenerationState(
             attempt=new_attempt,
             transition_reason=reason,
             temperature=updates.get("temperature", cur.temperature),
-            context_budget_factor=updates.get(
-                "context_budget_factor", cur.context_budget_factor
-            ),
+            context_budget_factor=updates.get("context_budget_factor", cur.context_budget_factor),
             model_used=updates.get("model_used", cur.model_used),
             started_at=time.time(),
             metrics=updates.get("metrics", {}),
         )
         self._history.append(new_state)
-        logger.debug(
-            "State transition: %s -> attempt=%d", reason.value, new_state.attempt
-        )
+        logger.debug("State transition: %s -> attempt=%d", reason.value, new_state.attempt)
         return new_state
 
     def current(self) -> GenerationState:

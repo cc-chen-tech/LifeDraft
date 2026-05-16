@@ -28,9 +28,9 @@ MAX_TOKENS_FALLBACK_LEVELS = [8000, 6000, 4000]  # 降级序列
 
 # ★ 模型降级链默认备选模型
 _DEFAULT_FALLBACK_MODELS: List[str] = [
-    "deepseek-v4-flash",      # 主模型
-    "deepseek-v4-pro",        # 备选模型（原 deepseek-chat）
-    "gpt-4o-mini",            # 最后备选
+    "deepseek-v4-flash",  # 主模型
+    "deepseek-v4-pro",  # 备选模型（原 deepseek-chat）
+    "gpt-4o-mini",  # 最后备选
 ]
 
 
@@ -330,9 +330,7 @@ class AIClient:
                         )
                         continue
                     else:
-                        logger.error(
-                            f"All max_tokens fallback levels failed: {error_msg}"
-                        )
+                        logger.error(f"All max_tokens fallback levels failed: {error_msg}")
                 else:
                     # 非 max_tokens 错误，直接抛出
                     raise
@@ -443,21 +441,15 @@ class AIClient:
 
             except openai.APIError as e:
                 last_error = str(e)
-                logger.warning(
-                    f"AI call attempt {attempt + 1}/{retry_count} failed: {e}"
-                )
+                logger.warning(f"AI call attempt {attempt + 1}/{retry_count} failed: {e}")
                 if attempt == retry_count - 1:
-                    raise ValueError(
-                        f"AI call failed after {retry_count} attempts: {e}"
-                    )
+                    raise ValueError(f"AI call failed after {retry_count} attempts: {e}")
             except Exception as e:
                 last_error = str(e)
                 logger.warning(
                     f"AI call attempt {attempt + 1}/{retry_count} failed (unexpected): {e}"
                 )
                 if attempt == retry_count - 1:
-                    raise ValueError(
-                        f"AI call failed after {retry_count} attempts: {e}"
-                    )
+                    raise ValueError(f"AI call failed after {retry_count} attempts: {e}")
 
         raise ValueError("AI call failed after all retries")

@@ -21,9 +21,7 @@ class PreflightResult:
     missing_constraints: List[str] = field(default_factory=list)  # 缺失的约束标记
     warnings: List[str] = field(default_factory=list)  # 警告信息
     prompt_token_estimate: int = 0  # 估计的 prompt token 数
-    context_completeness: Dict[str, bool] = field(
-        default_factory=dict
-    )  # 上下文数据完整性
+    context_completeness: Dict[str, bool] = field(default_factory=dict)  # 上下文数据完整性
 
 
 class PreflightChecker:
@@ -56,9 +54,7 @@ class PreflightChecker:
     def __init__(self, registry: ConstraintRegistry):
         self.registry = registry
 
-    def check_prompt_completeness(
-        self, final_prompt: str, context: dict
-    ) -> PreflightResult:
+    def check_prompt_completeness(self, final_prompt: str, context: dict) -> PreflightResult:
         """
         检查 prompt 中是否包含了所有期望的约束标识符，
         以及上下文数据是否完整。
@@ -106,9 +102,7 @@ class PreflightChecker:
 
         for field_name in self.OPTIONAL_CONTEXT_FIELDS:
             data = context.get(field_name)
-            is_present = data is not None and (
-                not isinstance(data, (list, str)) or len(data) > 0
-            )
+            is_present = data is not None and (not isinstance(data, (list, str)) or len(data) > 0)
             context_completeness[field_name] = is_present
 
         # 4. 检查 [MUST] 标记是否存在（至少应该有一个）

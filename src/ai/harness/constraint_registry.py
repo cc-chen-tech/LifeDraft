@@ -82,9 +82,7 @@ class ConstraintDefinition:
     prompt_marker: str = ""  # prompt 中的标记文本，用于 preflight 检查
     fallback_content: Optional[str] = None  # 当上下文缺失时的降级内容
     include_in_scoring: bool = True  # 是否参与评分
-    weight: float = (
-        1.0  # 评分权重（建议值：CRITICAL=3.0, HIGH=2.0, MEDIUM=1.0, LOW=0.5）
-    )
+    weight: float = 1.0  # 评分权重（建议值：CRITICAL=3.0, HIGH=2.0, MEDIUM=1.0, LOW=0.5）
 
 
 class ConstraintRegistry:
@@ -103,9 +101,7 @@ class ConstraintRegistry:
 
     def get_critical_constraints(self) -> List[ConstraintDefinition]:
         """获取所有 CRITICAL 级别约束。"""
-        return [
-            c for c in self._constraints.values() if c.priority == Priority.CRITICAL
-        ]
+        return [c for c in self._constraints.values() if c.priority == Priority.CRITICAL]
 
     def get_by_priority(self, priority: Priority) -> List[ConstraintDefinition]:
         """按优先级筛选约束。"""

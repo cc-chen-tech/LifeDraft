@@ -208,9 +208,7 @@ class PreferenceLearner:
             # 简单方法：比较前半段和后半段均值
             mid = n // 2
             first_half_avg = sum(recent_scores[:mid]) / mid if mid > 0 else 0
-            second_half_avg = (
-                sum(recent_scores[mid:]) / (n - mid) if (n - mid) > 0 else 0
-            )
+            second_half_avg = sum(recent_scores[mid:]) / (n - mid) if (n - mid) > 0 else 0
 
             decline = first_half_avg - second_half_avg
 
