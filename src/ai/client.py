@@ -28,9 +28,9 @@ MAX_TOKENS_FALLBACK_LEVELS = [8000, 6000, 4000]  # 降级序列
 
 # ★ 模型降级链默认备选模型
 _DEFAULT_FALLBACK_MODELS: List[str] = [
-    "deepseek-v4-flash",
-    "deepseek-chat",
-    "gpt-4o-mini",
+    "deepseek-v4-flash",      # 主模型
+    "deepseek-v4-pro",        # 备选模型（原 deepseek-chat）
+    "gpt-4o-mini",            # 最后备选
 ]
 
 
