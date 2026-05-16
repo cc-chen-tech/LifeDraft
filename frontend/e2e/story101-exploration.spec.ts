@@ -9,7 +9,7 @@ import * as path from 'path';
 // opening story, gameplay through 4+ weeks, all side features.
 // ============================================================
 
-const SITE_URL = 'https://story101.live';
+const SITE_URL = process.env.STORY101_E2E_BASE_URL || 'http://localhost:3000';
 const REPORT_DIR = path.resolve(__dirname, 'exploration-report');
 
 // ---- Issue tracker ----
@@ -47,6 +47,24 @@ async function shot(page: Page, name: string) {
 }
 
 // ---- Helpers ----
+async function suppressDevOverlay(page: Page) {
+  await page
+    .addStyleTag({
+      content: 'nextjs-portal { display: none !important; pointer-events: none !important; }',
+    })
+    .catch(() => {});
+  await page
+    .locator('nextjs-portal')
+    .evaluateAll((elements) => {
+      for (const element of elements) {
+        const htmlElement = element as HTMLElement;
+        htmlElement.style.display = 'none';
+        htmlElement.style.pointerEvents = 'none';
+      }
+    })
+    .catch(() => {});
+}
+
 async function waitForEnabled(page: Page, locator: any, timeoutMs = 120_000, label = 'button') {
   console.log(`  Waiting for enabled: ${label} (timeout: ${timeoutMs / 1000}s)`);
   const start = Date.now();
@@ -66,12 +84,13 @@ async function waitForEnabled(page: Page, locator: any, timeoutMs = 120_000, lab
 async function clickEnabled(page: Page, locator: any, label: string, waitAfter = 3000) {
   console.log(`  Clicking: ${label}`);
   try {
+    await suppressDevOverlay(page);
     await locator.scrollIntoViewIfNeeded().catch(() => {});
     if (!(await locator.isEnabled().catch(() => false))) {
       addIssue(page, 'major', 'bug', label, `"${label}" should be clickable`, `"${label}" is disabled`, `Disabled`);
       return false;
     }
-    await locator.click();
+    await locator.click({ timeout: 15_000 });
     await page.waitForTimeout(waitAfter);
     return true;
   } catch (e: any) {
@@ -81,6 +100,7 @@ async function clickEnabled(page: Page, locator: any, label: string, waitAfter =
 }
 
 async function scanAllButtons(page: Page, label: string) {
+  await suppressDevOverlay(page);
   console.log(`\n=== BUTTON SCAN: ${label} ===`);
   const buttons = await page.locator('button:visible, [role="button"]:visible').all();
   console.log(`  Total visible buttons: ${buttons.length}`);
@@ -234,7 +254,7 @@ test.describe('Story101.live Deep Exploration', () => {
       const privateKeyEl = page.locator('text=/[A-Za-z0-9_-]{20,}/').first();
       const privateKey = await privateKeyEl.textContent();
       if (privateKey && privateKey.length > 20) {
-        console.log(`  PRIVATE KEY: ${privateKey.trim()}`);
+        console.log('  PRIVATE KEY: [redacted]');
       }
     } catch { /* no key visible */ }
 
@@ -393,7 +413,7 @@ test.describe('Story101.live Deep Exploration', () => {
         if (await btn.isVisible({ timeout: 1000 }).catch(() => false) && await btn.isEnabled().catch(() => false)) {
           const text = (await btn.textContent())?.trim().slice(0, 120) || '';
           // Skip navigation/utility buttons - only click story choices
-          const isUtility = /返回|下一步|继续|设置|音乐|收藏|存档|分享|角色|登录|注册|新建|加载/.test(text);
+          const isUtility = /返回|下一步|继续|设置|音乐|收藏|存档|分享|角色|登录|注册|新建|加载|Issues|ignore-listed frame/i.test(text);
           if (!isUtility && text.length > 4) {
             console.log(`  Week ${week}: Choosing "${text}"`);
             await clickEnabled(page, btn, `Week ${week} choice`, 2000);
@@ -508,7 +528,7 @@ test.describe('Story101.live Deep Exploration', () => {
         const btn = btns.nth(c);
         if (await btn.isVisible({ timeout: 1000 }).catch(() => false) && await btn.isEnabled().catch(() => false)) {
           const text = (await btn.textContent())?.trim().slice(0, 120) || '';
-          const isUtility = /返回|下一步|继续|设置|音乐|收藏|存档|分享|角色|登录|注册|新建|加载/.test(text);
+          const isUtility = /返回|下一步|继续|设置|音乐|收藏|存档|分享|角色|登录|注册|新建|加载|Issues|ignore-listed frame/i.test(text);
           if (!isUtility && text.length > 4) {
             console.log(`  Round ${extra}: Choosing "${text}"`);
             await clickEnabled(page, btn, `Round ${extra} choice`, 2000);

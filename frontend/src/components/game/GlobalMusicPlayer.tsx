@@ -50,6 +50,19 @@ export function GlobalMusicPlayer() {
   const storyText =
     activeStoryText || (recommendation || currentSong || queue.length > 0 ? "persisted" : "");
 
+  useEffect(() => {
+    if (!isExpanded) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsExpanded(false);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isExpanded]);
+
   // Only render if we have storyText (either from play page or persisted state)
   if (!storyText) return null;
 
