@@ -26,6 +26,7 @@ import {
   fetchSongUrl,
   Song,
 } from "@/stores/useMusicStore";
+import { useGameStore } from "@/stores/useGameStore";
 
 interface MusicPlayerProps {
   storyText: string;
@@ -121,7 +122,8 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
         return;
       }
 
-      const result = await fetchMusicRecommendation(storyText, gameId, isRefresh);
+      const characterSettings = useGameStore.getState().characterSettings;
+      const result = await fetchMusicRecommendation(storyText, gameId, isRefresh, characterSettings);
       setRecommendation(result);
       
       // URL 已由后端批量返回，无需前端预加载

@@ -4,6 +4,7 @@
  * 管理故事音乐推荐和播放状态
  */
 import { create } from "zustand";
+import type { CharacterSettings } from "@/lib/types";
 
 export interface Song {
   id: number;
@@ -314,7 +315,8 @@ export const useMusicStore = create<MusicState>((set, get) => ({
 export async function fetchMusicRecommendation(
   storyText: string,
   gameId?: number,
-  refresh: boolean = false
+  refresh: boolean = false,
+  characterSettings?: CharacterSettings
 ): Promise<MusicRecommendation> {
   const response = await fetch(`${API_BASE}/music/recommend`, {
     method: "POST",
@@ -322,7 +324,12 @@ export async function fetchMusicRecommendation(
       "Content-Type": "application/json",
     },
     credentials: "include",
-    body: JSON.stringify({ story_text: storyText, game_id: gameId, refresh }),
+    body: JSON.stringify({
+      story_text: storyText,
+      game_id: gameId,
+      refresh,
+      character_settings: characterSettings,
+    }),
   });
 
   if (!response.ok) {
