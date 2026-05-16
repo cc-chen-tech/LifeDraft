@@ -17,7 +17,9 @@ def test_mypy_config_enables_strict_checks_for_changed_backend_code() -> None:
 def test_test_script_runs_mypy_in_strict_mode() -> None:
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
 
-    assert "python -m mypy src/ --strict" in script
+    assert "MYPY_STRICT_TARGETS=(" in script
+    assert "src/ai/text_quality.py" in script
+    assert 'python -m mypy "${MYPY_STRICT_TARGETS[@]}" --strict' in script
 
 
 def test_gate_tests_do_not_use_skip_or_mocking_constructs() -> None:

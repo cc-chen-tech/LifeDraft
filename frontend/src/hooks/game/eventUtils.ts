@@ -182,6 +182,16 @@ export function handleEventComplete(
     setRoundSummary(null);
     return;
   }
+
+  if (backendStory.trim()) {
+    console.log(`[onComplete] Replacing streamed story with backend complete story (${backendStory.length} chars)`);
+    setStoryText(backendStory);
+    setOptions(receivedOptions);
+    setCurrentEvent({ story: backendStory, options: receivedOptions });
+    setPhase("options");
+    setRoundSummary(null);
+    return;
+  }
   
   const result = selectFinalStory(backendStory, frontendStory);
 

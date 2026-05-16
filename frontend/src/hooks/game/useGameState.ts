@@ -214,8 +214,8 @@ export function useGameState({
                 const backendStory = eventData.event_description || eventData.story || "";
                 const frontendStory = useGameStore.getState().storyText;
                 
-                // 如果后端返回了有效故事，使用后端的故事；否则回退到前端累积的文本
-                const finalStory = backendStory.length > 50 ? backendStory : frontendStory;
+                // 如果后端返回了清洗后的完整故事，直接覆盖前端流式累积文本；否则回退到前端累积文本
+                const finalStory = backendStory.trim() ? backendStory : frontendStory;
                 
                 console.log(`[handleRegenerate] Using story: backend=${backendStory.length} chars, frontend=${frontendStory.length} chars, final=${finalStory.length} chars`);
 

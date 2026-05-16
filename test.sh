@@ -112,8 +112,10 @@ run_mypy() {
     activate_python_env
     
     echo -e "${YELLOW}运行 mypy 严格静态类型检查...${NC}"
-    # Full legacy target after backend typing migration: python -m mypy src/ --strict
-    python -m mypy src/ai/text_quality.py --strict
+    MYPY_STRICT_TARGETS=(
+        src/ai/text_quality.py
+    )
+    python -m mypy "${MYPY_STRICT_TARGETS[@]}" --strict
     local mypy_code=$?
 
     echo -e "${YELLOW}运行静态 gate 测试...${NC}"
@@ -209,8 +211,8 @@ run_e2e_browser() {
         echo -e "${GREEN}后端已在运行${NC}"
     fi
     
-    echo -e "${YELLOW}运行 Playwright no-mock 回归测试 (chromium)...${NC}"
-    npx playwright test e2e/no-mock-regression.spec.ts --project=chromium --reporter=list --workers=1
+    echo -e "${YELLOW}运行完整 Playwright E2E 测试 (chromium)...${NC}"
+    npx playwright test --project=chromium --reporter=list --workers=1
     local result=$?
     
     # 清理：如果是我们启动的后端，关掉它

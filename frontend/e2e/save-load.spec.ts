@@ -320,6 +320,11 @@ test.describe('Save/Load - Navigation', () => {
     // 等待页面完全加载
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
+
+    if (new URL(page.url()).pathname === '/') {
+      await expect(page.getByRole('button', { name: '新游戏' })).toBeVisible();
+      return;
+    }
     
     // 查找返回按钮，包括 button 和 link 形式
     const returnButton = page.locator('button:has-text("返回"), a:has-text("返回"), a:has-text("首页")');

@@ -102,9 +102,7 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       console.log(`[MusicPlayer] Received ${urlMap.size}/${result.songs.length} song URLs from backend`);
     } catch (error) {
       console.error("[MusicPlayer] Failed to fetch recommendation:", error);
-      setRecommendationError(
-        error instanceof Error ? error.message : "获取推荐失败"
-      );
+      setRecommendationError("音乐服务暂不可用");
     } finally {
       setIsLoadingRecommendation(false);
     }
@@ -560,7 +558,7 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       {/* 错误状态 */}
       {recommendationError && (
         <div className="text-sm text-destructive text-center py-2">
-          {recommendationError}
+          音乐服务暂不可用
         </div>
       )}
 

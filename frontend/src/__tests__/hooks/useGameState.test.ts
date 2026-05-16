@@ -239,6 +239,36 @@ describe('useGameState', () => {
       expect(mockSetters.setPhase).toHaveBeenCalledWith('generating');
     });
 
+    it('uses short normalized backend story over raw streamed text after regeneration', async () => {
+      const mockStreamRegenerate = streamRegenerate as jest.Mock;
+      mockStreamRegenerate.mockImplementation(async (gameId: number, callbacks: any) => {
+        callbacks.onStory('【内部状态】你推开门 . 雨停了');
+        callbacks.onComplete({
+          event_description: '你推开门。雨停了。',
+          options: [{ text: '继续追查' }],
+        });
+      });
+
+      (useGameStore.getState as jest.Mock).mockReturnValue({
+        saveGame: mockSaveGame,
+        syncPlayerState: mockSyncPlayerState,
+        generateSummary: mockGenerateSummary,
+        storyText: '【内部状态】你推开门 . 雨停了',
+      });
+
+      const { result } = renderHook(() => useGameState(defaultParams));
+
+      await act(async () => {
+        await result.current.handleRegenerate();
+      });
+
+      expect(mockSetters.setStoryText).toHaveBeenCalledWith('你推开门。雨停了。');
+      expect(mockSetters.setCurrentEvent).toHaveBeenCalledWith({
+        story: '你推开门。雨停了。',
+        options: [{ text: '继续追查' }],
+      });
+    });
+
     it('handles regeneration error', async () => {
       const mockStreamRegenerate = streamRegenerate as jest.Mock;
       mockStreamRegenerate.mockImplementation(async (gameId: number, callbacks: any) => {

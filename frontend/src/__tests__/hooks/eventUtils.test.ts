@@ -292,6 +292,26 @@ describe('eventUtils', () => {
 
       expect(mockHandlers.setStoryText).toHaveBeenCalledWith('Event description');
     });
+
+    it('replaces raw streamed frontend text with normalized backend complete story', () => {
+      const data: EventData = {
+        event_description: '你推开门。雨声停了。',
+        options: [{ text: '继续追查' }],
+      };
+
+      (useGameStore.getState as jest.Mock).mockReturnValue({
+        storyText: '【内部状态】energy -5\n你推开门 . 雨声停了',
+        currentEvent: null,
+      });
+
+      handleEventComplete(data as Record<string, unknown>, mockHandlers);
+
+      expect(mockHandlers.setStoryText).toHaveBeenCalledWith('你推开门。雨声停了。');
+      expect(mockHandlers.setCurrentEvent).toHaveBeenCalledWith({
+        story: '你推开门。雨声停了。',
+        options: [{ text: '继续追查' }],
+      });
+    });
   });
 
   describe('handleStatusUpdate', () => {
