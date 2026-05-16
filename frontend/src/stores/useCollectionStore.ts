@@ -7,6 +7,25 @@ import { create } from "zustand";
 import type { CharacterCollectionItem, ItemCollectionItem, LandmarkCollectionItem, CollectionResponse, RecognizedEntity, EntityRecognitionResponse } from "@/lib/types";
 import api from "@/lib/api";
 
+type CollectionEntity = CharacterCollectionItem | ItemCollectionItem | LandmarkCollectionItem;
+
+function mergeVisibleEntityData<T extends CollectionEntity>(nextItems: T[], currentItems: T[]): T[] {
+  return nextItems.map((next) => {
+    const current = currentItems.find((item) => item.name === next.name);
+    if (!current) return next;
+
+    return {
+      ...next,
+      image_url: next.image_url || current.image_url,
+      image_generated: next.image_generated || current.image_generated,
+      description: next.description || current.description,
+      ...("description_generated" in next && "description_generated" in current
+        ? { description_generated: next.description_generated || current.description_generated }
+        : {}),
+    };
+  });
+}
+
 interface CollectionState {
   // 数据
   characters: CharacterCollectionItem[];
@@ -117,6 +136,7 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
     if (isRefresh) {
       // 刷新模式：不改变 isLoading，不隐藏已有内容
       console.log("[fetchCollection] 刷新模式 - 保持列表可见");
+      set({ isRefreshing: true, error: null });
     } else {
       // 初始加载模式：显示加载状态
       console.log("[fetchCollection] 初始加载模式 - 显示加载中");
@@ -130,15 +150,25 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
       const newItems = result.items || [];
       const newLandmarks = result.landmarks || [];
 
+      const mergedCharacters = isRefresh
+        ? mergeVisibleEntityData(newCharacters, get().characters)
+        : newCharacters;
+      const mergedItems = isRefresh
+        ? mergeVisibleEntityData(newItems, get().items)
+        : newItems;
+      const mergedLandmarks = isRefresh
+        ? mergeVisibleEntityData(newLandmarks, get().landmarks)
+        : newLandmarks;
+
       // 恢复选中状态（从新数据中找到对应的人物/物品/标志物）
       const newSelectedCharacter = selectedCharacterName
-        ? newCharacters.find(c => c.name === selectedCharacterName) || null
+        ? mergedCharacters.find(c => c.name === selectedCharacterName) || null
         : null;
       const newSelectedItem = selectedItemName
-        ? newItems.find(i => i.name === selectedItemName) || null
+        ? mergedItems.find(i => i.name === selectedItemName) || null
         : null;
       const newSelectedLandmark = selectedLandmarkName
-        ? newLandmarks.find(l => l.name === selectedLandmarkName) || null
+        ? mergedLandmarks.find(l => l.name === selectedLandmarkName) || null
         : null;
 
       console.log("[fetchCollection] 数据更新完成:", {
@@ -148,40 +178,16 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
         isRefresh,
       });
 
-      // ★ 修复：刷新模式下合并数据，保留已有图片URL，避免闪烁
-      if (isRefresh) {
-        const currentCharacters = get().characters;
-        const mergedCharacters = newCharacters.map(newChar => {
-          const oldChar = currentCharacters.find(c => c.name === newChar.name);
-          // 如果新数据没有图片URL但旧数据有，保留旧URL（避免生成过程中的闪烁）
-          if (!newChar.image_url && oldChar?.image_url) {
-            return { ...newChar, image_url: oldChar.image_url, image_generated: oldChar.image_generated };
-          }
-          return newChar;
-        });
-
-        set({
-          characters: mergedCharacters,
-          items: newItems,
-          landmarks: newLandmarks,
-          selectedCharacter: newSelectedCharacter,
-          selectedItem: newSelectedItem,
-          selectedLandmark: newSelectedLandmark,
-          isLoading: false,
-          isRefreshing: false,
-        });
-      } else {
-        set({
-          characters: newCharacters,
-          items: newItems,
-          landmarks: newLandmarks,
-          selectedCharacter: newSelectedCharacter,
-          selectedItem: newSelectedItem,
-          selectedLandmark: newSelectedLandmark,
-          isLoading: false,
-          isRefreshing: false,
-        });
-      }
+      set({
+        characters: mergedCharacters,
+        items: mergedItems,
+        landmarks: mergedLandmarks,
+        selectedCharacter: newSelectedCharacter,
+        selectedItem: newSelectedItem,
+        selectedLandmark: newSelectedLandmark,
+        isLoading: false,
+        isRefreshing: false,
+      });
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "获取收集数据失败";
       console.error("[fetchCollection] 错误:", errorMsg);

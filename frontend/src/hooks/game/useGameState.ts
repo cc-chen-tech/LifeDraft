@@ -219,6 +219,14 @@ export function useGameState({
                 
                 console.log(`[handleRegenerate] Using story: backend=${backendStory.length} chars, frontend=${frontendStory.length} chars, final=${finalStory.length} chars`);
 
+                if (!finalStory.trim()) {
+                  console.error("[handleRegenerate] Complete event contained options but no story text");
+                  setPhase("error");
+                  setRegenerateToast({ type: "error", message: "生成失败，请重试" });
+                  reject(new Error("No story text in complete event"));
+                  return;
+                }
+
                 setStoryText(finalStory);
                 setOptions(receivedOptions);
                 setCurrentEvent({

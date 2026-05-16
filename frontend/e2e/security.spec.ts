@@ -92,17 +92,22 @@ test.describe('Security E2E', () => {
     const meResponse1 = await context.request.get(`${API_URL}/api/auth/me`);
     expect(meResponse1.status()).toBe(200);
 
-    // 登出
-    const logoutResponse = await context.request.post(`${API_URL}/api/auth/logout`);
-    expect([200, 204]).toContain(logoutResponse.status());
+    const logoutStatus = await page.evaluate(async (apiUrl) => {
+      const response = await fetch(`${apiUrl}/api/auth/logout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      return response.status;
+    }, API_URL);
+    expect([200, 204]).toContain(logoutStatus);
 
-    // 刷新页面确保 cookie 被清除
-    await page.reload();
-    await page.waitForLoadState('domcontentloaded');
-
-    // 用旧的 context 请求应该被拒绝
-    const meResponse2 = await context.request.get(`${API_URL}/api/auth/me`);
-    expect([401, 403]).toContain(meResponse2.status());
+    const meStatusAfterLogout = await page.evaluate(async (apiUrl) => {
+      const response = await fetch(`${apiUrl}/api/auth/me`, {
+        credentials: 'include',
+      });
+      return response.status;
+    }, API_URL);
+    expect([401, 403]).toContain(meStatusAfterLogout);
   });
 
   test('XSS in story content is escaped', async ({ page, context }) => {

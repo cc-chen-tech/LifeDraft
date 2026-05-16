@@ -173,17 +173,27 @@ test.describe('Character Creation - Auto Generation', () => {
   });
 
   test('should display generated content after loading', async ({ page }) => {
+    test.setTimeout(120000);
     await page.goto('/create');
     
     const nameInput = page.getByPlaceholder(/角色名|姓名/i);
     await nameInput.fill('测试角色');
-    
-    // Wait for generation to complete
-    await page.waitForResponse(resp => resp.url().includes('/api/') && resp.status() === 200).catch(() => {});
-    await page.waitForLoadState('domcontentloaded');
-    
-    // Generated setting should appear
-    const settingDisplay = page.locator('[class*="setting"], [class*="content"]');
+
+    await expect
+      .poll(
+        async () => {
+          const isGenerating = await page.getByText(/AI正在生成|生成中/).isVisible().catch(() => false);
+          const canAdvance = await page.getByRole('button', { name: /下一步|Next/i }).isEnabled().catch(() => false);
+          const hasFeedback = await page.getByPlaceholder(/不满意|你的想法/i).isVisible().catch(() => false);
+          const hasError = await page.getByText(/生成失败|请重试/i).isVisible().catch(() => false);
+          return !isGenerating && (canAdvance || hasFeedback || hasError);
+        },
+        {
+          message: 'character generation should finish with generated content or a visible retry state',
+          timeout: 90000,
+        },
+      )
+      .toBe(true);
   });
 
   test('should have regenerate button for generated content', async ({ page }) => {

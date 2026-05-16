@@ -15,6 +15,11 @@ class LoginRequest(BaseModel):
     private_id: str = Field(..., min_length=1)
 
 
+class PhoneLoginRequest(BaseModel):
+    phone_number: str = Field(..., min_length=1)
+    verification_code: Optional[str] = None
+
+
 class AuthResponse(BaseModel):
     token: str
     user: "UserInfo"
@@ -171,6 +176,25 @@ class ChoiceResultResponse(BaseModel):
     weekly_summary: Optional[str] = None
     bonus_effects: Optional[Dict[str, Any]] = None
     game_over: bool = False
+
+
+class VoiceReadingSettingsResponse(BaseModel):
+    member_required: bool = True
+    enabled: bool = False
+    available_voice_colors: List[str] = Field(default_factory=list)
+    selected_voice_color: Optional[str] = None
+    uploaded_voice_available: bool = False
+    auto_read_enabled: bool = False
+
+
+class VoiceReadingSettingsUpdateRequest(BaseModel):
+    selected_voice_color: Optional[str] = None
+    auto_read_enabled: Optional[bool] = None
+
+
+class VoiceUploadConsentRequest(BaseModel):
+    consent_confirmed: bool = False
+    sample_name: Optional[str] = None
 
 
 # ==================== Story Adjustment ====================

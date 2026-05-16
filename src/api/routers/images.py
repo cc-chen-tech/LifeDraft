@@ -788,7 +788,7 @@ async def get_round_scene_image(
 
     如果插画尚未生成，自动触发生成并返回 202 Accepted，前端可以轮询查询
     """
-    from src.database.models import Game, SceneImage
+    from src.database.models import Game, GameState, SceneImage
 
     # ★ 调试日志：检查认证信息
     cookie_token = request.cookies.get("auth_token") if request else None
@@ -847,19 +847,35 @@ async def get_round_scene_image(
     if not game:
         raise HTTPException(status_code=404, detail="游戏不存在")
 
-    # 从游戏状态获取故事文本和角色设定
-    import json
+    latest_state = (
+        db.query(GameState)
+        .filter(GameState.game_id == game_id)
+        .order_by(GameState.state_id.desc())
+        .first()
+    )
+    game_state = latest_state.state_json if latest_state and latest_state.state_json else game.initial_state
+    if not isinstance(game_state, dict):
+        logger.warning("[get_round_scene_image] Latest game state is not a dict")
+        game_state = {}
 
-    try:
-        game_state = json.loads(game.player_state) if game.player_state else {}
-        story_text = game_state.get("current_event_data", {}).get("event_description", "")
-        character_settings = game_state.get("character_settings", {})
-        player_name = character_settings.get("identity", {}).get("name", "主角")
-    except (json.JSONDecodeError, AttributeError) as e:
-        logger.warning(f"[get_round_scene_image] Failed to parse game state: {e}")
-        story_text = ""
+    current_event_data = game_state.get("current_event_data") or {}
+    if not isinstance(current_event_data, dict):
+        current_event_data = {}
+    story_text = (
+        current_event_data.get("event_description")
+        or current_event_data.get("story_text")
+        or game_state.get("last_round_full_story")
+        or ""
+    )
+    character_settings = game_state.get("character_settings") or {}
+    if not isinstance(character_settings, dict):
         character_settings = {}
-        player_name = "主角"
+    identity = character_settings.get("identity") if isinstance(character_settings, dict) else {}
+    player_name = (
+        game_state.get("player_name")
+        or (identity.get("name") if isinstance(identity, dict) else None)
+        or "主角"
+    )
 
     # 如果没有故事文本，无法生成插画，返回 404
     if not story_text:

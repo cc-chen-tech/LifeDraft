@@ -138,6 +138,29 @@ describe('ChatBar', () => {
       if (closeButton) {
         await user.click(closeButton);
       }
+
+      await waitFor(() => {
+        expect(screen.queryByPlaceholderText(/向剧情助手提问/i)).not.toBeInTheDocument();
+      });
+    });
+
+    it('uses a bounded expanded panel so it does not cover the custom choice area', async () => {
+      const user = userEvent.setup();
+      render(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onAdjustStory={mockOnAdjustStory}
+          onRegenerate={mockOnRegenerate}
+        />
+      );
+
+      await user.click(screen.getByLabelText('打开剧情助手'));
+
+      const panel = await screen.findByTestId('chat-bar-panel');
+      expect(panel).toHaveClass('right-4');
+      expect(panel).toHaveClass('max-w-md');
+      expect(panel).not.toHaveClass('left-0');
     });
   });
 

@@ -141,13 +141,13 @@ class NeteaseMusicClient:
             logger.warning(f"[NeteaseMusic] No data returned for song {song_id}")
             return None
 
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 503:
+                logger.warning("[NeteaseMusic] Upstream unavailable for song %s; skipping URL", song_id)
+                return None
+            logger.exception(f"[NeteaseMusic] Failed to get song URL: {e}")
+            return None
         except Exception as e:
-            if retry > 0 and "503" in str(e):
-                logger.warning(f"[NeteaseMusic] 503 error, retrying... ({retry} attempts left)")
-                import asyncio
-
-                await asyncio.sleep(0.5)  # 等待500ms后重试
-                return await self.get_song_url(song_id, retry - 1)
             logger.exception(f"[NeteaseMusic] Failed to get song URL: {e}")
             return None
 

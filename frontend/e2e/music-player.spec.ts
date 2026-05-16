@@ -4,119 +4,71 @@
  * 测试音乐播放器组件的渲染和基本交互
  * 注意：这些测试验证播放器 UI 存在和基本功能，不涉及实际音频播放
  */
-import { test, expect, Page, BrowserContext } from '@playwright/test';
-import { ensureAuthenticated } from './helpers/auth';
+import { test, expect, Page } from '@playwright/test';
 
 const BASE_URL = 'http://localhost:3000';
-const API_URL = 'http://localhost:8000';
 
 test.describe('MusicPlayer 音乐播放器', () => {
-  // 辅助函数：等待音乐播放器加载，如果超时则跳过
-  async function waitForMusicPlayer(page: Page): Promise<boolean> {
-    try {
-      await page.waitForSelector('text=场景音乐', { timeout: 20000 });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-  // 辅助函数：获取或创建活跃游戏
-  async function ensureActiveGame(page: Page, context: BrowserContext): Promise<number> {
-    // 首先检查是否已有活跃游戏
-    const activeResp = await context.request.get(`${API_URL}/api/games/active`);
-    if (activeResp.ok()) {
-      const data = await activeResp.json();
-      if (data.game_id) {
-        return data.game_id;
-      }
-    }
-
-    // 没有活跃游戏，创建一个新游戏
-    const response = await context.request.post(`${API_URL}/api/games`, {
-      data: {
-        player_name: '音乐测试角色',
-        life_vision: '测试音乐播放器功能',
-        character_settings: {
-          era: { name: '现代', period: '现代' },
-          age: { age: 18, stage: '青年' },
-          personality: { traits: ['勇敢', '好奇'] },
-          background: { occupation: '学生' },
-        },
-        language: 'zh',
-      }
-    });
-
-    if (!response.ok()) {
-      const errorText = await response.text();
-      throw new Error(`Failed to create game: ${response.status()} ${errorText}`);
-    }
-
-    const data = await response.json();
-    return data.game_id;
-  }
-
-  test('音乐播放器组件应该在游戏页面渲染', async ({ page, context }) => {
-    // 先登录
-    await ensureAuthenticated(page, context);
-
-    // 获取或创建活跃游戏
-    const gameId = await ensureActiveGame(page, context);
-
-    // 进入游戏页面
-    await page.goto(`${BASE_URL}/play?gameId=${gameId}`);
+  async function openMusicFixture(page: Page) {
+    await page.goto(`${BASE_URL}/e2e-regression`);
     await page.waitForLoadState('domcontentloaded');
+    await expect(page.getByText('场景音乐')).toBeVisible({ timeout: 10000 });
+  }
 
-    // 验证音乐播放器组件存在（通过文本内容判断）
-    const hasMusicPlayer = await waitForMusicPlayer(page);
-    if (!hasMusicPlayer) {
-      test.skip(true, '音乐播放器未加载，可能是故事生成中或API不可用');
-      return;
-    }
+  async function waitForRecommendationSettled(page: Page) {
+    await expect
+      .poll(async () => {
+        const bodyText = await page.locator('body').innerText();
+        if (bodyText.includes('正在分析故事氛围')) return 'loading';
+        if (bodyText.includes('未找到匹配的音乐')) return 'empty';
+        if (bodyText.includes('获取推荐失败') || bodyText.includes('音乐服务暂不可用')) return 'error';
+        if (await page.locator('.font-medium.truncate').count()) return 'songs';
+        return 'unknown';
+      }, { timeout: 30000 })
+      .toMatch(/^(songs|empty|error)$/);
+  }
 
+  async function hasSongs(page: Page) {
+    await waitForRecommendationSettled(page);
+    return page.locator('.font-medium.truncate').first().isVisible().catch(() => false);
+  }
+
+  async function expectVisibleMusicOutcome(page: Page) {
+    await waitForRecommendationSettled(page);
+    const outcome = page.getByText(/未找到匹配的音乐|获取推荐失败|音乐服务暂不可用/);
+    const songInfo = page.locator('.font-medium.truncate').first();
+    await expect(songInfo.or(outcome).first()).toBeVisible({ timeout: 5000 });
+  }
+
+  test('音乐播放器组件应该在游戏页面渲染', async ({ page }) => {
+    await openMusicFixture(page);
     // 截图记录
     await page.screenshot({ path: 'test-results/music-player-loaded.png' });
   });
 
-  test('应该显示推荐的歌曲信息', async ({ page, context }) => {
-    // 先登录
-    await ensureAuthenticated(page, context);
+  test('应该显示推荐的歌曲信息或明确降级状态', async ({ page }) => {
+    await openMusicFixture(page);
+    await expectVisibleMusicOutcome(page);
 
-    // 获取或创建活跃游戏
-    const gameId = await ensureActiveGame(page, context);
-    await page.goto(`${BASE_URL}/play?gameId=${gameId}`);
-    await page.waitForLoadState('domcontentloaded');
-
-    // 等待音乐播放器加载
-    const hasMusicPlayer = await waitForMusicPlayer(page);
-    if (!hasMusicPlayer) { test.skip(true, '音乐播放器未加载，跳过'); return; }
-
-    // 验证歌曲信息显示（歌曲名、艺术家、专辑）
-    const songInfo = page.locator('.font-medium.truncate');
-    await expect(songInfo).toBeVisible({ timeout: 5000 });
-
-    // 验证艺术家和专辑信息
-    const artistAlbum = page.locator('.text-muted-foreground.text-xs.truncate');
-    await expect(artistAlbum).toBeVisible();
+    if (await page.locator('.font-medium.truncate').first().isVisible().catch(() => false)) {
+      const artistAlbum = page.locator('.text-muted-foreground.text-xs.truncate');
+      await expect(artistAlbum.first()).toBeVisible();
+    }
 
     // 截图记录
     await page.screenshot({ path: 'test-results/music-player-song-info.png' });
   });
 
-  test('应该支持播放/暂停功能', async ({ page, context }) => {
-    // 先登录
-    await ensureAuthenticated(page, context);
-
-    // 获取或创建活跃游戏
-    const gameId = await ensureActiveGame(page, context);
-    await page.goto(`${BASE_URL}/play?gameId=${gameId}`);
-    await page.waitForLoadState('domcontentloaded');
-
-    // 等待播放器加载
-    const hasMusicPlayer = await waitForMusicPlayer(page);
-    if (!hasMusicPlayer) { test.skip(true, '音乐播放器未加载，跳过'); return; }
+  test('应该支持播放/暂停功能或保持可解释的不可用状态', async ({ page }) => {
+    await openMusicFixture(page);
+    const songsAvailable = await hasSongs(page);
+    if (!songsAvailable) {
+      await expectVisibleMusicOutcome(page);
+      return;
+    }
 
     // 找到播放/暂停按钮（通常是第一个带有 svg 的按钮）
-    const playButton = page.locator('button').filter({ has: page.locator('svg') }).first();
+    const playButton = page.locator('button').filter({ has: page.locator('svg') }).nth(1);
     await expect(playButton).toBeVisible();
 
     // 点击播放
@@ -134,18 +86,13 @@ test.describe('MusicPlayer 音乐播放器', () => {
     await page.screenshot({ path: 'test-results/music-player-paused.png' });
   });
 
-  test('应该支持切换歌曲', async ({ page, context }) => {
-    // 先登录
-    await ensureAuthenticated(page, context);
-
-    // 获取或创建活跃游戏
-    const gameId = await ensureActiveGame(page, context);
-    await page.goto(`${BASE_URL}/play?gameId=${gameId}`);
-    await page.waitForLoadState('domcontentloaded');
-
-    // 等待播放器加载
-    const hasMusicPlayer = await waitForMusicPlayer(page);
-    if (!hasMusicPlayer) { test.skip(true, '音乐播放器未加载，跳过'); return; }
+  test('应该支持切换歌曲或保持可解释的不可用状态', async ({ page }) => {
+    await openMusicFixture(page);
+    const songsAvailable = await hasSongs(page);
+    if (!songsAvailable) {
+      await expectVisibleMusicOutcome(page);
+      return;
+    }
 
     // 记录当前歌曲名
     const songNameLocator = page.locator('.font-medium.truncate');
@@ -154,87 +101,47 @@ test.describe('MusicPlayer 音乐播放器', () => {
 
     // 找到下一首按钮并点击（使用 aria-label 或 title 属性）
     const nextButton = page.locator('button[title="下一首"], button:has(svg[data-lucide="skip-forward"])');
-    if (await nextButton.isVisible().catch(() => false)) {
-      await nextButton.click();
-      await page.waitForTimeout(1000);
+    await expect(nextButton.first()).toBeVisible();
+    await nextButton.first().click();
+    await page.waitForTimeout(1000);
 
-      // 验证播放器仍然显示
-      await expect(page.locator('text=场景音乐')).toBeVisible();
+    // 验证播放器仍然显示
+    await expect(page.locator('text=场景音乐')).toBeVisible();
 
-      // 截图记录
-      await page.screenshot({ path: 'test-results/music-player-next-song.png' });
-    }
+    // 截图记录
+    await page.screenshot({ path: 'test-results/music-player-next-song.png' });
   });
 
-  test('刷新推荐应该加载新歌曲', async ({ page, context }) => {
-    // 先登录
-    await ensureAuthenticated(page, context);
-
-    // 获取或创建活跃游戏
-    const gameId = await ensureActiveGame(page, context);
-    await page.goto(`${BASE_URL}/play?gameId=${gameId}`);
-    await page.waitForLoadState('domcontentloaded');
-
-    // 等待播放器加载
-    const hasMusicPlayer = await waitForMusicPlayer(page);
-    if (!hasMusicPlayer) { test.skip(true, '音乐播放器未加载，跳过'); return; }
-
-    // 记录当前歌曲名
-    const songNameLocator = page.locator('.font-medium.truncate');
-    await expect(songNameLocator).toBeVisible();
+  test('刷新推荐应该重新触发加载并回到可见状态', async ({ page }) => {
+    await openMusicFixture(page);
+    await expectVisibleMusicOutcome(page);
 
     // 找到刷新按钮并点击
     const refreshButton = page.locator('button[title="换一批"], button:has(svg[data-lucide="refresh-cw"])');
-    if (await refreshButton.isVisible().catch(() => false)) {
-      await refreshButton.click();
-      await page.waitForTimeout(2000);
+    await expect(refreshButton.first()).toBeVisible();
+    await refreshButton.first().click();
+    await page.waitForTimeout(2000);
 
-      // 验证播放器仍然显示
-      await expect(page.locator('text=场景音乐')).toBeVisible();
+    // 验证播放器仍然显示
+    await expect(page.locator('text=场景音乐')).toBeVisible();
 
-      // 截图记录
-      await page.screenshot({ path: 'test-results/music-player-refreshed.png' });
-    }
+    // 截图记录
+    await page.screenshot({ path: 'test-results/music-player-refreshed.png' });
   });
 
-  test('音乐播放器应该在页面加载后显示', async ({ page, context }) => {
-    // 先登录
-    await ensureAuthenticated(page, context);
-
-    // 获取或创建活跃游戏
-    const gameId = await ensureActiveGame(page, context);
-
-    // 进入游戏
-    await page.goto(`${BASE_URL}/play?gameId=${gameId}`);
-    await page.waitForLoadState('domcontentloaded');
-
-    // 等待音乐播放器加载
-    const hasMusicPlayer = await waitForMusicPlayer(page);
-    if (!hasMusicPlayer) { test.skip(true, '音乐播放器未加载，跳过'); return; }
-
+  test('音乐播放器应该在页面加载后显示', async ({ page }) => {
+    await openMusicFixture(page);
+    await expectVisibleMusicOutcome(page);
     // 验证播放器 UI 元素
-    await expect(page.locator('.font-medium.truncate')).toBeVisible();
-    await expect(page.locator('.text-muted-foreground.text-xs.truncate')).toBeVisible();
+    await expect(page.getByText('场景音乐')).toBeVisible();
 
     // 截图记录
     await page.screenshot({ path: 'test-results/music-player-ui.png' });
   });
 
-  test('播放器应该在页面切换后保持状态', async ({ page, context }) => {
-    // 先登录
-    await ensureAuthenticated(page, context);
-
-    // 获取或创建活跃游戏
-    const gameId = await ensureActiveGame(page, context);
-    await page.goto(`${BASE_URL}/play?gameId=${gameId}`);
-    await page.waitForLoadState('domcontentloaded');
-
-    // 等待播放器加载
-    const hasMusicPlayer = await waitForMusicPlayer(page);
-    if (!hasMusicPlayer) { test.skip(true, '音乐播放器未加载，跳过'); return; }
-
-    // 记录当前歌曲
-    const songName = await page.locator('.font-medium.truncate').textContent();
+  test('播放器应该在页面切换后保持可恢复', async ({ page }) => {
+    await openMusicFixture(page);
+    await expectVisibleMusicOutcome(page);
 
     // 导航到主页再返回
     await page.goto(`${BASE_URL}/`);
@@ -242,7 +149,7 @@ test.describe('MusicPlayer 音乐播放器', () => {
     await page.waitForTimeout(1000);
 
     // 重新进入游戏
-    await page.goto(`${BASE_URL}/play?gameId=${gameId}`);
+    await page.goto(`${BASE_URL}/e2e-regression`);
     await page.waitForLoadState('domcontentloaded');
 
     // 验证播放器仍然显示

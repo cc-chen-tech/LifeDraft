@@ -194,6 +194,33 @@ describe('eventUtils', () => {
       consoleSpy.mockRestore();
     });
 
+    it('does not expose options when complete payload has no recoverable story body', () => {
+      const data: EventData = {
+        event_description: '',
+        story: '',
+        options: [{ text: 'Option without story' }],
+      };
+
+      (useGameStore.getState as jest.Mock).mockReturnValue({
+        storyText: '',
+        currentEvent: null,
+      });
+
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+
+      handleEventComplete(data as Record<string, unknown>, mockHandlers);
+
+      expect(consoleSpy).toHaveBeenCalledWith('[onComplete] No story text in complete event');
+      expect(mockHandlers.setOptions).not.toHaveBeenCalledWith([{ text: 'Option without story' }]);
+      expect(mockHandlers.setCurrentEvent).not.toHaveBeenCalledWith({
+        story: '',
+        options: [{ text: 'Option without story' }],
+      });
+      expect(mockHandlers.setPhase).not.toHaveBeenCalledWith('options');
+
+      consoleSpy.mockRestore();
+    });
+
     it('sets options phase with valid data', () => {
       const data: EventData = {
         event_description: 'A new story event',

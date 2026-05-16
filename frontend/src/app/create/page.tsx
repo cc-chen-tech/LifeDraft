@@ -155,6 +155,8 @@ export default function CreatePage() {
             {CREATION_STEPS.map((_, i) => (
               <button
                 key={i}
+                aria-label={`第 ${i + 1} 步：${STEP_LABELS[CREATION_STEPS[i]]}`}
+                aria-current={i === creationStep ? "step" : undefined}
                 className={cn(
                   "w-2 h-2 rounded-full transition-all",
                   i === creationStep
@@ -292,7 +294,17 @@ export default function CreatePage() {
               (isPortraitStep ? playerImages.length === 0 : (!generatedContent && characterSettings[currentStepKey] == null))
             }
           >
-            {isLastStep ? (
+            {isPortraitStep && (isGeneratingImage || playerImages.length === 0) ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                等待形象生成
+              </>
+            ) : isPortraitStep ? (
+              <>
+                下一步
+                <ArrowRight className="w-4 h-4 ml-1" />
+              </>
+            ) : isLastStep ? (
               <>
                 <Sparkles className="w-4 h-4 mr-1" />
                 生成角色

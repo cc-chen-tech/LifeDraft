@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import type { EventOption } from "@/lib/types";
 import type { Phase } from "./usePhaseManager";
 import type { SceneImageInfo } from "@/components/game/RoundHistoryDrawer";
+import type { RoundSceneImage } from "@/stores/useGameStore";
 
 interface RoundHistoryItem {
   week: number;
@@ -29,6 +30,7 @@ interface UseHistoryViewerParams {
   fetchHistorySceneImage?: (week: number, round: number) => Promise<void>;
   generateHistorySceneImage?: (week: number, round: number, storyText: string) => Promise<void>;
   regenerateHistorySceneImage?: (week: number, round: number, storyText: string, userPrompt: string, sceneId: number) => Promise<void>;
+  setHistorySceneImage?: (image: RoundSceneImage | null) => void;
 }
 
 /**
@@ -52,6 +54,7 @@ export function useHistoryViewer({
   fetchHistorySceneImage,
   generateHistorySceneImage,
   regenerateHistorySceneImage,
+  setHistorySceneImage: setStoreHistorySceneImage,
 }: UseHistoryViewerParams) {
   // History state
   const [showHistory, setShowHistory] = useState(false);
@@ -102,11 +105,23 @@ export function useHistoryViewer({
     // ★ 加载历史场景图片
     setIsLoadingHistoryImage(true);
     setHistorySceneImage(null);
+    setStoreHistorySceneImage?.(null);
     
     try {
       // 优先使用 round 中已有的 scene_image
       if (round.scene_image) {
+        const sceneImage: RoundSceneImage = {
+          scene_id: round.scene_image.scene_id,
+          week: round.week,
+          round_number: round.round,
+          stage: round.scene_image.stage || "result",
+          image_url: round.scene_image.image_url,
+          scene_description: round.scene_image.scene_description,
+          referenced_images: [],
+          created_at: round.scene_image.created_at || "",
+        };
         setHistorySceneImage(round.scene_image);
+        setStoreHistorySceneImage?.(sceneImage);
       } else if (fetchHistorySceneImage && gameId) {
         // 从 API 获取
         await fetchHistorySceneImage(round.week, round.round);
@@ -118,7 +133,7 @@ export function useHistoryViewer({
     }
 
     console.log(`[history] Viewing round ${index}: week=${round.week}, round=${round.round}`);
-  }, [roundHistory, historyRoundIndex, phaseRef, setOptions, fetchHistorySceneImage, gameId]);
+  }, [roundHistory, historyRoundIndex, phaseRef, setOptions, fetchHistorySceneImage, gameId, setStoreHistorySceneImage]);
 
   // Return to current round
   const handleBackToCurrent = useCallback(() => {
@@ -133,6 +148,7 @@ export function useHistoryViewer({
     setHistoryPhaseBackup(null);
     // ★ 清除历史图片状态
     setHistorySceneImage(null);
+    setStoreHistorySceneImage?.(null);
     setIsLoadingHistoryImage(false);
     setIsGeneratingHistoryImage(false);
     setIsRegeneratingHistoryImage(false);
@@ -143,7 +159,7 @@ export function useHistoryViewer({
     }
 
     console.log('[history] Returned to current round, current story length:', storyText.length);
-  }, [historyPhaseBackup, setPhase, currentEvent, setOptions, storyText.length]);
+  }, [historyPhaseBackup, setPhase, currentEvent, setOptions, storyText.length, setStoreHistorySceneImage]);
 
   // ★ 为历史轮次生成场景图片
   const handleGenerateHistoryImage = useCallback(async (week: number, round: number, text: string) => {

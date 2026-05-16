@@ -530,6 +530,8 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
           size="sm"
           onClick={fetchRecommendation}
           disabled={isLoadingRecommendation}
+          title="换一批"
+          aria-label="换一批"
         >
           {isLoadingRecommendation ? (
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -626,6 +628,8 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
                 className="h-8 w-8"
                 onClick={playPrev}
                 disabled={!recommendation.songs.length}
+                title="上一首"
+                aria-label="上一首"
               >
                 <SkipBack className="w-4 h-4" />
               </Button>
@@ -635,6 +639,8 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
                 className="h-10 w-10"
                 onClick={togglePlay}
                 disabled={!recommendation.songs.length}
+                title={isPlaying ? "暂停" : "播放"}
+                aria-label={isPlaying ? "暂停" : "播放"}
               >
                 {isPlaying ? (
                   <Pause className="w-5 h-5" />
@@ -648,6 +654,8 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
                 className="h-8 w-8"
                 onClick={playNext}
                 disabled={!recommendation.songs.length}
+                title="下一首"
+                aria-label="下一首"
               >
                 <SkipForward className="w-4 h-4" />
               </Button>
@@ -660,6 +668,8 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
                 size="icon"
                 className="h-6 w-6"
                 onClick={() => handleVolumeChange([volume === 0 ? 0.5 : 0])}
+                title={volume === 0 ? "取消静音" : "静音"}
+                aria-label={volume === 0 ? "取消静音" : "静音"}
               >
                 {volume === 0 ? (
                   <VolumeX className="w-3 h-3" />

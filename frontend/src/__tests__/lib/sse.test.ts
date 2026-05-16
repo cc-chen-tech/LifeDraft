@@ -239,6 +239,35 @@ describe('SSE Streaming', () => {
       expect(body.life_vision).toBe('My vision');
       expect(body.character_settings).toEqual({ era: 'modern', age: 25 });
     });
+
+    it('streams backend event: story chunks and preserves text when complete payload is empty', async () => {
+      const onStory = jest.fn();
+      const onComplete = jest.fn();
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: createMockStream([
+          'event: story\n',
+          'data: "雨停以后，林舟推开窗。"\n\n',
+          'event: story\n',
+          'data: {"content":"街口的灯还亮着。"}\n\n',
+          'event: complete\n',
+          'data: {}\n\n',
+        ]),
+      });
+
+      await streamOpeningStory(
+        { era: 'modern' },
+        '林舟',
+        '找到自己的路',
+        'zh',
+        { onStory, onComplete }
+      );
+
+      expect(onStory).toHaveBeenNthCalledWith(1, '雨停以后，林舟推开窗。');
+      expect(onStory).toHaveBeenNthCalledWith(2, '街口的灯还亮着。');
+      expect(onComplete).toHaveBeenCalledWith({});
+    });
   });
 
   describe('streamRegenerate', () => {

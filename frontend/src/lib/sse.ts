@@ -396,54 +396,9 @@ export async function streamOpeningStory(
     throw new Error('No response body');
   }
 
-  // Parse SSE stream
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  return new Promise((resolve, reject) => {
-    function pump(): Promise<void> {
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      return reader!.read().then(({ done, value }) => {
-        if (done) {
-          callbacks.onComplete?.({});
-          resolve();
-          return;
-        }
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (trimmed.startsWith('data: ')) {
-            const data = trimmed.slice(6);
-            if (data === '[DONE]') {
-              callbacks.onComplete?.({});
-              resolve();
-              return;
-            }
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed.type === 'story_chunk' && parsed.content) {
-                callbacks.onStory?.(parsed.content);
-              } else if (parsed.type === 'complete') {
-                callbacks.onComplete?.(parsed.data || parsed);
-              }
-            } catch {
-              // If not JSON, treat as story chunk
-              callbacks.onStory?.(data);
-            }
-          }
-        }
-
-        return pump();
-      }).catch((error) => {
-        callbacks.onError?.({ message: error.message || 'Stream error' });
-        reject(error);
-      });
-    }
-
-    pump();
+  return parseSSEStream(reader, {
+    onStory: callbacks.onStory,
+    onComplete: callbacks.onComplete as ((data: Record<string, unknown>) => void) | undefined,
+    onError: (error) => callbacks.onError?.({ message: error.message || 'Stream error' }),
   });
 }

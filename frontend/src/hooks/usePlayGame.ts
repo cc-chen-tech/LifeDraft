@@ -61,6 +61,7 @@ export function usePlayGame() {
     fetchHistorySceneImage,
     generateHistorySceneImage,
     regenerateHistorySceneImage,
+    setHistorySceneImage,
   } = useGameStore();
 
   const hydrated = useHydration();
@@ -210,6 +211,7 @@ export function usePlayGame() {
     fetchHistorySceneImage,
     generateHistorySceneImage,
     regenerateHistorySceneImage,
+    setHistorySceneImage,
   });
 
   // ===== Session Recovery (remains in main hook) =====
@@ -259,7 +261,12 @@ export function usePlayGame() {
               playerState: state.player_state,
               progress: state.progress,
               roundInfo: state.round_info,
-              currentEvent: event,
+              currentEvent: event
+                ? {
+                    ...event,
+                    story: event.story || recoveredStoryText,
+                  }
+                : null,
               storyText: recoveredStoryText,
             });
 

@@ -157,14 +157,16 @@ export function ChatBar({
   if (!isExpanded) {
     return (
       <div
+        data-testid="chat-bar-launcher"
         className={cn(
-          "fixed bottom-4 right-4 z-50",
+          "fixed bottom-4 right-4 z-50 pointer-events-none",
           className
         )}
       >
         <Button
           size="icon"
-          className="h-12 w-12 rounded-full shadow-lg bg-primary hover:bg-primary/90"
+          aria-label="打开剧情助手"
+          className="h-12 w-12 rounded-full shadow-lg bg-primary hover:bg-primary/90 pointer-events-auto"
           onClick={() => setIsExpanded(true)}
         >
           <MessageCircle className="w-5 h-5" />
@@ -175,9 +177,10 @@ export function ChatBar({
 
   return (
     <div
+      data-testid="chat-bar-panel"
       className={cn(
-        "fixed bottom-0 left-0 right-0 z-50",
-        "bg-card/95 backdrop-blur-sm border-t border-border",
+        "fixed bottom-4 left-4 right-4 sm:left-auto sm:w-[min(28rem,calc(100vw-2rem))] max-w-md z-50",
+        "bg-card/95 backdrop-blur-sm border border-border shadow-xl rounded-lg",
         "p-3 safe-area-pb",
         className
       )}
@@ -260,6 +263,8 @@ export function ChatBar({
           variant="ghost"
           className="h-8 w-8"
           onClick={() => setIsExpanded(false)}
+          aria-label="关闭剧情助手"
+          title="关闭剧情助手"
         >
           <X className="w-4 h-4" />
         </Button>
@@ -317,6 +322,8 @@ export function ChatBar({
           className="h-10 w-10"
           disabled={!message.trim() || isSending}
           onClick={handleSend}
+          aria-label="发送消息"
+          title="发送消息"
         >
           {isSending ? (
             <Loader2 className="w-4 h-4 animate-spin" />

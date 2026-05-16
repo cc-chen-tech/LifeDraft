@@ -154,6 +154,10 @@ export function handleEventComplete(
 
   const backendStory = eventData.event_description || eventData.story || "";
   const frontendStory = useGameStore.getState().storyText;
+  if (!backendStory.trim() && !frontendStory.trim()) {
+    console.error("[onComplete] No story text in complete event");
+    return;
+  }
   
   // ★ 检查是否发生了重试，如果重试后强制使用后端故事
   // 但如果后端返回的是 fallback 故事（很短），且前端有更长的流式故事，仍优先用前端的
@@ -243,7 +247,8 @@ export function handleStatusUpdate(
     console.log("[onStatus] Retry event received, clearing story for new content");
     // ★ 标记发生了重试，complete 时会强制使用后端故事
     markRetry();
-    useGameStore.setState({ storyText: "" });
+    useGameStore.getState().setStoryText?.("");
+    useGameStore.setState?.({ storyText: "" });
     setProcessing(true, "retrying");
     return;
   }
