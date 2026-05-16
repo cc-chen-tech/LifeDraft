@@ -4,6 +4,7 @@
 Layer 3: 契约测试 — prompt 输出必须包含 player_name。
 """
 
+import pytest
 from config.prompts import get_round_event_prompt, get_story_only_prompt
 
 
@@ -137,3 +138,122 @@ class TestPlayerNameInPrompts:
         )
         assert isinstance(prompt, str)
         assert len(prompt) > 0
+
+    # ── 章节号约束 contract tests ──
+
+    def test_story_only_prompt_has_chapter_label_first_round(self):
+        """get_story_only_prompt 新游戏(week=0,current_round=0)必须包含'第一回'章节标识"""
+        player_state = {
+            "age": 35,
+            "week": 0,
+            "current_round": 0,
+            "rounds_per_week": 3,
+            "energy": 70,
+            "mood": 60,
+            "knowledge": 50,
+            "wealth": 10000,
+            "relationships": {},
+        }
+        prompt = get_story_only_prompt(
+            player_state=player_state,
+            language="zh",
+            player_name="狄仁杰",
+        )
+        assert (
+            "第一回" in prompt
+        ), f"prompt 必须包含章节标识 '第一回'，未被找到。prompt 前800字: {prompt[:800]}"
+
+    def test_story_only_prompt_has_chapter_constraint_text(self):
+        """get_story_only_prompt 必须包含'章节号约束'或'本段故事'等章节定位文本"""
+        player_state = {
+            "age": 35,
+            "week": 0,
+            "current_round": 0,
+            "rounds_per_week": 3,
+            "energy": 70,
+            "mood": 60,
+            "knowledge": 50,
+            "wealth": 10000,
+            "relationships": {},
+        }
+        prompt = get_story_only_prompt(
+            player_state=player_state,
+            language="zh",
+            player_name="狄仁杰",
+        )
+        assert (
+            "本段故事是整体叙事的" in prompt
+        ), f"prompt 必须包含章节定位文本，实际未找到。prompt 前800字: {prompt[:800]}"
+
+    def test_story_only_prompt_chapter_label_week2_round0(self):
+        """get_story_only_prompt week=2,current_round=0→第7回 (2*3+0+1=7)"""
+        player_state = {
+            "age": 35,
+            "week": 2,
+            "current_round": 0,
+            "rounds_per_week": 3,
+            "energy": 70,
+            "mood": 60,
+            "knowledge": 50,
+            "wealth": 10000,
+            "relationships": {},
+        }
+        prompt = get_story_only_prompt(
+            player_state=player_state,
+            language="zh",
+            player_name="狄仁杰",
+        )
+        assert (
+            "第七回" in prompt
+        ), f"prompt 必须包含章节标识 '第七回'，未被找到。prompt 前800字: {prompt[:800]}"
+
+    def test_story_only_prompt_first_chapter_no_prior_reference(self):
+        """新游戏第一章prompt应包含禁止提及前情内容"""
+        player_state = {
+            "age": 35,
+            "week": 0,
+            "current_round": 0,
+            "rounds_per_week": 3,
+            "energy": 70,
+            "mood": 60,
+            "knowledge": 50,
+            "wealth": 10000,
+            "relationships": {},
+        }
+        prompt = get_story_only_prompt(
+            player_state=player_state,
+            language="zh",
+            player_name="狄仁杰",
+        )
+        assert (
+            "之前没有任何情节" in prompt
+            or "开篇第一回" in prompt
+            or "禁止提及" in prompt
+        ), f"第一章prompt必须禁止提及前情内容。prompt前800字: {prompt[:800]}"
+
+    @pytest.mark.xfail(
+        reason="get_round_event_prompt 也缺少章节号约束，需要单独修复"
+    )
+    def test_round_event_prompt_chapter_label_consistent(self):
+        """get_round_event_prompt week=0,round=0→第一回，验证公式一致性"""
+        player_state = {
+            "age": 35,
+            "week": 0,
+            "current_round": 0,
+            "rounds_per_week": 3,
+            "energy": 70,
+            "mood": 60,
+            "knowledge": 50,
+            "wealth": 10000,
+            "relationships": {},
+        }
+        prompt = get_round_event_prompt(
+            player_state=player_state,
+            language="zh",
+            round_number=0,
+            round_context="",
+            player_name="狄仁杰",
+        )
+        assert (
+            "第一回" in prompt
+        ), f"round_event_prompt 必须包含章节标识 '第一回'。prompt前800字: {prompt[:800]}"

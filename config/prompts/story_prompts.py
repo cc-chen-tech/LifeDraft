@@ -1050,6 +1050,25 @@ def get_story_only_prompt(
     mood = player_state.get("mood", 60)
     knowledge = player_state.get("knowledge", 50)
     wealth = player_state.get("wealth", 10000)
+    # ★ 章节号计算（week 已是显示值+1，此处用原始值计算章节号）
+    raw_week = player_state.get("week", 0)
+    current_round = player_state.get("current_round", 0)
+    rounds_per_week = player_state.get("rounds_per_week", 3)
+    total_chapter = raw_week * rounds_per_week + current_round + 1
+    chapter_number_zh = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十",
+                         "十一", "十二", "十三", "十四", "十五", "十六", "十七", "十八", "十九", "二十"]
+    if total_chapter <= len(chapter_number_zh):
+        chapter_label = f"第{chapter_number_zh[total_chapter - 1]}回"
+    else:
+        chapter_label = f"第{total_chapter}回"
+    is_first_chapter = total_chapter == 1
+    chapter_constraint = f"""
+【章节号约束 - 必须严格遵守】
+- 本段故事是整体叙事的{chapter_label}（第{total_chapter}章）
+- {'这是故事的开篇第一回，之前没有任何情节，绝对禁止提及"上回""上次""之前"等暗示前情的内容' if is_first_chapter else '可以自然承接前文，但严禁编造不在上文提供的历史中的过往事件'}
+- 故事开头必须使用"{chapter_label}"作为章节标识，然后接一句7字对仗标题（如"{chapter_label} 寒冬初遇知音少"）
+- 章节标题后空一行，再开始正文
+"""
     # ★ 从 character_settings 提取动态货币单位
     currency_name = "货币"
     if character_settings and isinstance(character_settings.get("wealth"), dict):
@@ -1225,6 +1244,7 @@ def get_story_only_prompt(
         prompt = f"""你是一位才华横溢的小说家。请根据以下角色设定和玩家状态，写一段生动的故事（描述这一周发生的事情）。
 {critical_open}
 {story_context}{summary_context}
+{chapter_constraint}
 
 【角色设定】
 {character_context if character_context else "标准现代青年"}{name_instruction}{available_people_str}{time_context}
