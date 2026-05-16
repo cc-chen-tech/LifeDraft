@@ -21,11 +21,13 @@ def test_preflight_script_runs_before_expensive_layers() -> None:
 
     assert "run_preflight" in script
     assert "openspec validate fix-story-continuity-history-media --strict" in script
+    assert "openspec validate shift-left-e2e-contract-gates --strict" in script
     assert "npx tsc --noEmit --strict" in script
     assert "tests/test_gate_preflight_no_mock.py" in script
     assert "tests/test_gate_gameplay_behavior_no_mock.py" in script
     assert "tests/test_gate_contracts_no_mock.py" in script
     assert "tests/test_music_degradation_no_mock.py" in script
+    assert "tests/test_shift_left_e2e_contract_no_mock.py" in script
     assert "storyContinuityPreflight.test.tsx" in script
     assert "src/__tests__/lib/sse.test.ts" in script
     assert script.index("run_preflight || ((failed++))") < script.index("run_mypy || ((failed++))")
