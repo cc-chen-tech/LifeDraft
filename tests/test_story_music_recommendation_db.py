@@ -4,7 +4,8 @@ from datetime import datetime
 
 import pytest
 
-from src.database.models import Base, Game, GeneratedMusicAsset, SessionLocal, engine
+from src.database.models import (Base, Game, GeneratedMusicAsset, SessionLocal,
+                                 engine)
 
 
 class TestGeneratedMusicAssetDB:

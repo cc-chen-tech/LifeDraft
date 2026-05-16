@@ -353,9 +353,7 @@ class TestSceneImageFileMissing:
         db.query.return_value = mock_query
 
         # 创建服务
-        service = SceneImageService(
-            db, image_client=image_client, storage_service=storage_service
-        )
+        service = SceneImageService(db, image_client=image_client, storage_service=storage_service)
 
         # 调用生成方法
         result = service.generate_round_scene_image(

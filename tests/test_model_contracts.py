@@ -18,8 +18,7 @@ class TestGameModelContract:
         但 Game 模型实际使用 initial_state / final_state 存储状态。
         """
         assert not hasattr(Game, "player_state"), (
-            "Game 模型不应有 player_state 属性，"
-            "应该使用 initial_state 或 final_state"
+            "Game 模型不应有 player_state 属性，" "应该使用 initial_state 或 final_state"
         )
 
     def test_game_has_initial_state(self):
@@ -71,9 +70,7 @@ class TestGameStateModelContract:
         这里检查 __table__.columns 中没有叫 'state' 的列。
         """
         column_names = [c.name for c in GameState.__table__.columns]
-        assert (
-            "state" not in column_names
-        ), "GameState 不应有 'state' 列，应使用 'state_json'"
+        assert "state" not in column_names, "GameState 不应有 'state' 列，应使用 'state_json'"
 
     def test_game_state_has_required_columns(self):
         """验证 GameState 模型包含所有必要字段。"""
@@ -162,9 +159,7 @@ class TestPlayerStateContract:
         assert hasattr(state, "characters"), "PlayerState 缺少 characters 属性"
         assert hasattr(state, "items"), "PlayerState 缺少 items 属性"
         assert hasattr(state, "landmarks"), "PlayerState 缺少 landmarks 属性"
-        assert hasattr(
-            state, "character_settings"
-        ), "PlayerState 缺少 character_settings 属性"
+        assert hasattr(state, "character_settings"), "PlayerState 缺少 character_settings 属性"
 
     def test_player_state_has_round_history(self):
         """验证 PlayerState 包含 round_history（供总结和识别使用）。"""
@@ -176,9 +171,7 @@ class TestPlayerStateContract:
         PlayerState()
         # player_state 是类名，不应作为字段名
         field_names = list(PlayerState.model_fields.keys())
-        assert (
-            "player_state" not in field_names
-        ), "PlayerState 不应有名为 'player_state' 的字段"
+        assert "player_state" not in field_names, "PlayerState 不应有名为 'player_state' 的字段"
 
 
 class TestApiSchemaContracts:

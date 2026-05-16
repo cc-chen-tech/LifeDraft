@@ -90,9 +90,7 @@ class TestFriendshipModel:
         db_session.add_all([user1, user2])
         db_session.commit()
 
-        friendship = Friendship(
-            user_id=user1.user_id, friend_id=user2.user_id, status="pending"
-        )
+        friendship = Friendship(user_id=user1.user_id, friend_id=user2.user_id, status="pending")
         db_session.add(friendship)
         db_session.commit()
 
@@ -106,9 +104,7 @@ class TestFriendshipModel:
         db_session.add_all([user1, user2])
         db_session.commit()
 
-        friendship = Friendship(
-            user_id=user1.user_id, friend_id=user2.user_id, status="pending"
-        )
+        friendship = Friendship(user_id=user1.user_id, friend_id=user2.user_id, status="pending")
         db_session.add(friendship)
         db_session.commit()
 
@@ -152,9 +148,7 @@ class TestGameModel:
         db_session.add(game)
         db_session.commit()
 
-        state = GameState(
-            game_id=game.game_id, week=1, age=22, state_json={"energy": 70}
-        )
+        state = GameState(game_id=game.game_id, week=1, age=22, state_json={"energy": 70})
         decision = Decision(
             game_id=game.game_id,
             week=1,
@@ -170,16 +164,8 @@ class TestGameModel:
         db_session.commit()
 
         # States and decisions should be gone
-        assert (
-            db_session.query(GameState)
-            .filter(GameState.game_id == game.game_id)
-            .count()
-            == 0
-        )
-        assert (
-            db_session.query(Decision).filter(Decision.game_id == game.game_id).count()
-            == 0
-        )
+        assert db_session.query(GameState).filter(GameState.game_id == game.game_id).count() == 0
+        assert db_session.query(Decision).filter(Decision.game_id == game.game_id).count() == 0
 
 
 class TestGameStateModel:
@@ -291,9 +277,7 @@ class TestGameDatabase:
         for module, attrs in self._MODULES_TO_PATCH.items():
             # Patch SessionLocal
             if "SessionLocal" in attrs:
-                session_patcher = patch(
-                    f"{module}.SessionLocal", return_value=db_session
-                )
+                session_patcher = patch(f"{module}.SessionLocal", return_value=db_session)
                 self._patchers.append(session_patcher)
                 session_patcher.start()
 
@@ -634,9 +618,7 @@ class TestUserManager:
         send_result = user_manager.send_friend_request(user1.user_id, user2.public_id)
         friendship = send_result["friendship"]
 
-        result = user_manager.respond_to_friend_request(
-            user2.user_id, friendship.id, accept=True
-        )
+        result = user_manager.respond_to_friend_request(user2.user_id, friendship.id, accept=True)
         assert result["success"] is True
         assert "接受" in result["message"]
 
@@ -648,9 +630,7 @@ class TestUserManager:
         send_result = user_manager.send_friend_request(user1.user_id, user2.public_id)
         friendship = send_result["friendship"]
 
-        result = user_manager.respond_to_friend_request(
-            user2.user_id, friendship.id, accept=False
-        )
+        result = user_manager.respond_to_friend_request(user2.user_id, friendship.id, accept=False)
         assert result["success"] is True
         assert "拒绝" in result["message"]
 
@@ -739,9 +719,7 @@ class TestActiveGameSession:
         db_session.add(user)
         db_session.commit()
 
-        game = Game(
-            user_id=user.user_id, language="zh", initial_state={"player_name": "Test"}
-        )
+        game = Game(user_id=user.user_id, language="zh", initial_state={"player_name": "Test"})
         db_session.add(game)
         db_session.commit()
 
@@ -824,16 +802,12 @@ class TestActiveGameSession:
         # 在实际使用中，get_active_game 会验证游戏是否存在
         assert user.last_active_game_id is not None  # 引用还在
         # 但查询游戏会返回 None
-        deleted_game = (
-            db_session.query(Game).filter_by(game_id=user.last_active_game_id).first()
-        )
+        deleted_game = db_session.query(Game).filter_by(game_id=user.last_active_game_id).first()
         assert deleted_game is None
 
     def test_user_model_has_last_active_game_field(self, db_session):
         """Test that User model has last_active_game_id field."""
-        user = User(
-            private_id="TEST-FIELD", public_id="FIELD01", display_name="FieldTest"
-        )
+        user = User(private_id="TEST-FIELD", public_id="FIELD01", display_name="FieldTest")
         db_session.add(user)
         db_session.commit()
 
@@ -958,9 +932,7 @@ class TestDatabaseIndexes:
 class TestListSavedGamesNullifFallback:
     """list_saved_games nullif COALESCE fallback 测试 - 对应 Bug #28"""
 
-    def test_fallback_to_initial_state_when_latest_has_empty_player_name(
-        self, db_session
-    ):
+    def test_fallback_to_initial_state_when_latest_has_empty_player_name(self, db_session):
         """当最新 state_json 中 player_name 为空字符串时，应回退到 initial_state"""
         from unittest.mock import patch
 
@@ -996,9 +968,7 @@ class TestListSavedGamesNullifFallback:
 
         repo = GameRepository()
         # Mock SessionLocal to use the test session
-        with patch(
-            "src.database.game_repository.SessionLocal", return_value=db_session
-        ):
+        with patch("src.database.game_repository.SessionLocal", return_value=db_session):
             games = repo.list_saved_games(user_id=user.user_id)
 
         assert len(games) == 1
@@ -1041,9 +1011,7 @@ class TestListSavedGamesNullifFallback:
         db_session.commit()
 
         repo = GameRepository()
-        with patch(
-            "src.database.game_repository.SessionLocal", return_value=db_session
-        ):
+        with patch("src.database.game_repository.SessionLocal", return_value=db_session):
             games = repo.list_saved_games(user_id=user.user_id)
 
         assert len(games) == 1
@@ -1085,9 +1053,7 @@ class TestListSavedGamesNullifFallback:
         db_session.commit()
 
         repo = GameRepository()
-        with patch(
-            "src.database.game_repository.SessionLocal", return_value=db_session
-        ):
+        with patch("src.database.game_repository.SessionLocal", return_value=db_session):
             games = repo.list_saved_games(user_id=user.user_id)
 
         assert len(games) == 1

@@ -281,9 +281,7 @@ class TestWorldModel:
             "active_commitments": [
                 {"description": "完成项目", "parties": ["老板"], "deadline_week": 20}
             ],
-            "causal_chains": [
-                {"cause": "加班", "expected_consequence": "升职", "resolved": False}
-            ],
+            "causal_chains": [{"cause": "加班", "expected_consequence": "升职", "resolved": False}],
             "physical_states": {"Hero": {"condition": "疲劳", "severity": "minor"}},
             "character_profiles": {
                 "李明": {
@@ -365,9 +363,7 @@ class TestWorldModel:
     def test_check_career_plausibility_valid_promotion(self):
         wm = WorldModel()
         wm.current_week = 100
-        wm.career_records["Hero"] = CareerInfo(
-            current_job="工程师", level="senior", since_week=0
-        )
+        wm.career_records["Hero"] = CareerInfo(current_job="工程师", level="senior", since_week=0)
 
         issues = wm.check_career_plausibility("Hero", "技术主管", "lead")
         assert len(issues) == 0  # Valid single-level jump
@@ -375,9 +371,7 @@ class TestWorldModel:
     def test_check_career_plausibility_too_fast_promotion(self):
         wm = WorldModel()
         wm.current_week = 10  # Only 10 weeks since start
-        wm.career_records["Hero"] = CareerInfo(
-            current_job="工程师", level="junior", since_week=5
-        )
+        wm.career_records["Hero"] = CareerInfo(current_job="工程师", level="junior", since_week=5)
 
         issues = wm.check_career_plausibility("Hero", "技术主管", "senior")
         # Should flag promotion as too fast (5 weeks in junior role)
@@ -386,9 +380,7 @@ class TestWorldModel:
     def test_check_career_plausibility_big_jump(self):
         wm = WorldModel()
         wm.current_week = 200
-        wm.career_records["Hero"] = CareerInfo(
-            current_job="实习生", level="intern", since_week=0
-        )
+        wm.career_records["Hero"] = CareerInfo(current_job="实习生", level="intern", since_week=0)
 
         issues = wm.check_career_plausibility("Hero", "CEO", "executive")
         assert len(issues) >= 1
@@ -400,9 +392,7 @@ class TestWorldModel:
             Commitment(description="Task 1", deadline_week=5, status="pending"),
             Commitment(description="Task 2", deadline_week=15, status="pending"),
             Commitment(description="Task 3", deadline_week=3, status="fulfilled"),
-            Commitment(
-                description="Task 4", deadline_week=-1, status="pending"
-            ),  # No deadline
+            Commitment(description="Task 4", deadline_week=-1, status="pending"),  # No deadline
         ]
 
         pending = wm.get_pending_commitments(10)
@@ -437,12 +427,8 @@ class TestWorldModel:
             "Established": CharacterProfile(
                 character="Established", evidence_count=5, constraint_text="Test"
             ),
-            "New": CharacterProfile(
-                character="New", evidence_count=2, constraint_text="Test"
-            ),
-            "Empty": CharacterProfile(
-                character="Empty", evidence_count=5, constraint_text=""
-            ),
+            "New": CharacterProfile(character="New", evidence_count=2, constraint_text="Test"),
+            "Empty": CharacterProfile(character="Empty", evidence_count=5, constraint_text=""),
         }
 
         names = wm.get_established_profile_names()
@@ -458,18 +444,14 @@ class TestWorldModel:
     def test_build_constraints_text_chinese(self):
         wm = WorldModel()
         wm.current_week = 10
-        wm.character_locations["Hero"] = LocationInfo(
-            location="北京市朝阳区", region="北京"
-        )
+        wm.character_locations["Hero"] = LocationInfo(location="北京市朝阳区", region="北京")
         wm.career_records["Hero"] = CareerInfo(
             current_job="工程师", employer="TechCorp", level="senior"
         )
         wm.active_commitments = [
             Commitment(description="完成项目", parties=["老板"], deadline_week=12)
         ]
-        wm.causal_chains = [
-            CausalChain(cause="加班", expected_consequence="疲劳", resolved=False)
-        ]
+        wm.causal_chains = [CausalChain(cause="加班", expected_consequence="疲劳", resolved=False)]
         wm.physical_states["Hero"] = PhysicalState(condition="疲劳", severity="minor")
 
         text = wm.build_constraints_text("zh")
@@ -481,9 +463,7 @@ class TestWorldModel:
 
     def test_build_constraints_text_english(self):
         wm = WorldModel()
-        wm.character_locations["Hero"] = LocationInfo(
-            location="Beijing", region="Beijing"
-        )
+        wm.character_locations["Hero"] = LocationInfo(location="Beijing", region="Beijing")
         wm.career_records["Hero"] = CareerInfo(current_job="Engineer", level="senior")
 
         text = wm.build_constraints_text("en")

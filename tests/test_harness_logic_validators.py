@@ -249,9 +249,7 @@ class TestCommitmentFulfillmentValidator:
     def test_commitment_addressed_in_story(self):
         """承诺在故事中被提及/处理 → 通过。"""
         v = CommitmentFulfillmentValidator()
-        text = (
-            "李逍遥想起答应师父三日内取回灵药的承诺，" "不敢再耽搁，立刻出城寻找灵药。"
-        )
+        text = "李逍遥想起答应师父三日内取回灵药的承诺，" "不敢再耽搁，立刻出城寻找灵药。"
         ctx = _base_context()
         ctx["world_model_data"]["active_commitments"][0]["deadline_week"] = 12
         _rebuild_world_model(ctx)
@@ -674,9 +672,7 @@ class TestAllValidatorsDegradation:
         """空 context 不崩溃。"""
         v = ValidatorClass()
         passed, evidence, details = v.validate("一段普通的故事文本。", {})
-        assert (
-            passed is True
-        ), f"{ValidatorClass.__name__} 空 context 应返回 passed=True"
+        assert passed is True, f"{ValidatorClass.__name__} 空 context 应返回 passed=True"
         assert isinstance(evidence, str)
         assert isinstance(details, dict)
 
@@ -726,8 +722,6 @@ class TestAllValidatorsDegradation:
             "current_week": None,
         }
         passed, evidence, details = v.validate("一段故事。", ctx)
-        assert (
-            passed is True
-        ), f"{ValidatorClass.__name__} None fields 应优雅降级为 passed=True"
+        assert passed is True, f"{ValidatorClass.__name__} None fields 应优雅降级为 passed=True"
         assert isinstance(evidence, str)
         assert isinstance(details, dict)

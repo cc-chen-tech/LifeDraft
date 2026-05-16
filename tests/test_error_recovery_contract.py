@@ -14,9 +14,7 @@ class TestHandle401RedirectContract:
     """验证 handle401Redirect 只在真正的 401 时触发。"""
 
     def _get_api_source(self):
-        api_path = os.path.join(
-            os.path.dirname(__file__), "..", "frontend", "src", "lib", "api.ts"
-        )
+        api_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "src", "lib", "api.ts")
         with open(api_path, "r", encoding="utf-8") as f:
             return f.read()
 
@@ -29,9 +27,7 @@ class TestHandle401RedirectContract:
         source = self._get_api_source()
 
         # 找到 handle401Redirect 的调用位置
-        redirect_calls = [
-            m.start() for m in re.finditer(r"handle401Redirect\(\)", source)
-        ]
+        redirect_calls = [m.start() for m in re.finditer(r"handle401Redirect\(\)", source)]
 
         # 检查每个调用前是否都有 401 判断
         for call_pos in redirect_calls:
@@ -147,9 +143,7 @@ class TestAttemptRecoveryContract:
 
         # 错误处理中不应该直接跳转首页（至少在第一次错误时不应该）
         # 应该提供恢复 UI 或重试机制
-        has_router_replace = (
-            "router.replace" in recovery_body or "router.push" in recovery_body
-        )
+        has_router_replace = "router.replace" in recovery_body or "router.push" in recovery_body
 
         if has_router_replace:
             # 如果存在跳转，必须也有恢复/重试机制
@@ -275,9 +269,7 @@ class TestChoiceErrorHandlerContract:
         source = self._get_choice_utils_source()
         func_body = self._extract_function_body(source, "handleChoiceError")
 
-        assert (
-            "error" in func_body.lower()
-        ), "handleChoiceError 必须在无法恢复时设置 error phase"
+        assert "error" in func_body.lower(), "handleChoiceError 必须在无法恢复时设置 error phase"
 
 
 class TestErrorRecoverySSEContract:
@@ -285,9 +277,7 @@ class TestErrorRecoverySSEContract:
 
     def test_sse_callbacks_include_on_error(self):
         """StreamCallbacks 必须包含 onError 回调。"""
-        sse_path = os.path.join(
-            os.path.dirname(__file__), "..", "frontend", "src", "lib", "sse.ts"
-        )
+        sse_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "src", "lib", "sse.ts")
         with open(sse_path, "r", encoding="utf-8") as f:
             source = f.read()
 
@@ -296,9 +286,7 @@ class TestErrorRecoverySSEContract:
 
     def test_sse_parser_emits_error_on_disconnect(self):
         """parseSSEStream 必须在流异常断开时触发 onError。"""
-        sse_path = os.path.join(
-            os.path.dirname(__file__), "..", "frontend", "src", "lib", "sse.ts"
-        )
+        sse_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "src", "lib", "sse.ts")
         with open(sse_path, "r", encoding="utf-8") as f:
             source = f.read()
 

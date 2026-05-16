@@ -882,7 +882,8 @@ async def get_round_scene_image(
             f"for game={game_id}, week={week}, round={round_number}"
         )
         raise HTTPException(
-            status_code=404, detail="该轮次场景插画尚未生成，且无法获取故事文本进行自动生成"
+            status_code=404,
+            detail="该轮次场景插画尚未生成，且无法获取故事文本进行自动生成",
         )
 
     # ★ 后台触发生成

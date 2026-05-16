@@ -267,9 +267,7 @@ class TestStreamRewrite:
 
         # Mock AI generator
         game_loop.ai_generator = MagicMock()
-        game_loop.ai_generator.rewrite_story_segment = MagicMock(
-            return_value="改写后的故事内容"
-        )
+        game_loop.ai_generator.rewrite_story_segment = MagicMock(return_value="改写后的故事内容")
 
         results = []
         async for event in stream_rewrite(
@@ -300,9 +298,7 @@ class TestStreamRewrite:
         game_loop.current_event = None
 
         game_loop.ai_generator = MagicMock()
-        game_loop.ai_generator.rewrite_story_segment = MagicMock(
-            return_value="改写后的故事"
-        )
+        game_loop.ai_generator.rewrite_story_segment = MagicMock(return_value="改写后的故事")
 
         # Mock session with cache
         session = MagicMock()
@@ -339,15 +335,11 @@ class TestStreamRewrite:
         # Mock current_event
         mock_event = MagicMock()
         mock_event.event_description = "原始事件描述"
-        mock_event.model_dump = MagicMock(
-            return_value={"event_description": "原始事件描述"}
-        )
+        mock_event.model_dump = MagicMock(return_value={"event_description": "原始事件描述"})
         game_loop.current_event = mock_event
 
         game_loop.ai_generator = MagicMock()
-        game_loop.ai_generator.rewrite_story_segment = MagicMock(
-            return_value="新的事件描述"
-        )
+        game_loop.ai_generator.rewrite_story_segment = MagicMock(return_value="新的事件描述")
 
         results = []
         async for event in stream_rewrite(
@@ -379,9 +371,7 @@ class TestStreamRewrite:
         game_loop.current_event = None
 
         game_loop.ai_generator = MagicMock()
-        game_loop.ai_generator.rewrite_story_segment = MagicMock(
-            return_value="改写后的故事"
-        )
+        game_loop.ai_generator.rewrite_story_segment = MagicMock(return_value="改写后的故事")
 
         results = []
         async for event in stream_rewrite(
@@ -670,9 +660,7 @@ class TestStreamRegenerateSceneImageCleanup:
                 )
                 .count()
             )
-            assert (
-                current_count == 0
-            ), f"当前轮次记录应被删除，但还有 {current_count} 条"
+            assert current_count == 0, f"当前轮次记录应被删除，但还有 {current_count} 条"
             assert other_count == 1, f"其他轮次记录应保留，但有 {other_count} 条"
 
         finally:

@@ -58,18 +58,14 @@ def _make_state_repo(db_session):
     proxy = _NonClosingSessionProxy(db_session)
 
     # Patch SessionLocal
-    session_patcher = patch(
-        "src.database.state_repository.SessionLocal", return_value=proxy
-    )
+    session_patcher = patch("src.database.state_repository.SessionLocal", return_value=proxy)
     session_patcher.start()
 
     # Patch get_db to return a context manager yielding the proxy
     mock_context = MagicMock()
     mock_context.__enter__ = MagicMock(return_value=proxy)
     mock_context.__exit__ = MagicMock(return_value=False)
-    db_patcher = patch(
-        "src.database.state_repository.get_db", return_value=mock_context
-    )
+    db_patcher = patch("src.database.state_repository.get_db", return_value=mock_context)
     db_patcher.start()
 
     repo = StateRepository()
@@ -109,9 +105,7 @@ class TestCurrentEventDataPersistence:
         ), "PlayerState.to_dict() 必须包含 current_event_data 字段"
         saved_event = state_dict["current_event_data"]
         assert saved_event is not None, "current_event_data 不应为 None"
-        assert (
-            saved_event.get("event_description") == current_event["event_description"]
-        )
+        assert saved_event.get("event_description") == current_event["event_description"]
         assert len(saved_event.get("options", [])) == 3
 
     def test_save_game_progress_preserves_current_event_data(self, db_session):
@@ -177,11 +171,7 @@ class TestCurrentEventDataPersistence:
         )
 
         # 验证数据库中保存的状态也包含 current_event_data
-        saved_state = (
-            db_session.query(GameState)
-            .filter(GameState.game_id == game.game_id)
-            .first()
-        )
+        saved_state = db_session.query(GameState).filter(GameState.game_id == game.game_id).first()
         assert saved_state is not None
         state_json = saved_state.state_json
         assert (
@@ -242,12 +232,9 @@ class TestCurrentEventDataPersistence:
         # ★ 核心断言：加载的状态必须包含 current_event_data
         loaded_event = loaded.get("current_event_data")
         assert loaded_event is not None, (
-            "load_saved_game 必须恢复 current_event_data，"
-            "否则刷新后会重新生成章节 (Bug #29)"
+            "load_saved_game 必须恢复 current_event_data，" "否则刷新后会重新生成章节 (Bug #29)"
         )
-        assert (
-            loaded_event.get("event_description") == current_event["event_description"]
-        )
+        assert loaded_event.get("event_description") == current_event["event_description"]
         assert len(loaded_event.get("options", [])) == 2
         assert loaded_event.get("story_text") == current_event["story_text"]
 

@@ -5,18 +5,14 @@ from __future__ import annotations
 from datetime import datetime
 
 from src.database.models import Base, Game, GeneratedMusicAsset
-from src.services.music_playlist_service import PlaylistQueuePolicy
-from src.services.music_playlist_service import MusicPlaylistService
-from src.services.music_service import (
-    MusicBrief,
-    MusicContextBuilder,
-    MusicGenerationJob,
-    MusicGenerationCoordinator,
-    MusicProviderPolicy,
-    MusicResultRanker,
-    MusicRecommendation,
-    Song,
-)
+from src.services.music_playlist_service import (MusicPlaylistService,
+                                                 PlaylistQueuePolicy)
+from src.services.music_service import (MusicBrief, MusicContextBuilder,
+                                        MusicGenerationCoordinator,
+                                        MusicGenerationJob,
+                                        MusicProviderPolicy,
+                                        MusicRecommendation, MusicResultRanker,
+                                        Song)
 
 
 def test_music_brief_from_analysis_contains_generation_and_search_intent():
@@ -96,9 +92,7 @@ def test_generated_track_insertion_preserves_current_and_first_upcoming_song():
 
 def test_ai_generation_failure_keeps_netease_songs_as_fallback():
     coordinator = MusicGenerationCoordinator()
-    netease_songs = [
-        Song(id=101, name="竹林", artists=["A"], album="X", duration=1000, url="u")
-    ]
+    netease_songs = [Song(id=101, name="竹林", artists=["A"], album="X", duration=1000, url="u")]
 
     result = coordinator.handle_generation_result(
         generated_track=None,

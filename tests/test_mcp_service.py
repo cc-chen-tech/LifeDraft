@@ -10,9 +10,7 @@ class TestRomanceCompatibility:
 
     def test_heterosexual_compatibility(self):
         """Test heterosexual compatibility (different genders)."""
-        service = RelationshipMCPService(
-            player_gender="male", player_orientation="heterosexual"
-        )
+        service = RelationshipMCPService(player_gender="male", player_orientation="heterosexual")
 
         # Male player (hetero) + Female NPC (hetero) = compatible
         assert service.is_romance_compatible("heterosexual", "female") is True
@@ -25,9 +23,7 @@ class TestRomanceCompatibility:
 
     def test_homosexual_compatibility(self):
         """Test homosexual compatibility (same gender)."""
-        service = RelationshipMCPService(
-            player_gender="male", player_orientation="homosexual"
-        )
+        service = RelationshipMCPService(player_gender="male", player_orientation="homosexual")
 
         # Male player (homo) + Male NPC (homo) = compatible
         assert service.is_romance_compatible("homosexual", "male") is True
@@ -37,9 +33,7 @@ class TestRomanceCompatibility:
 
     def test_bisexual_compatibility(self):
         """Test bisexual compatibility (flexible)."""
-        service = RelationshipMCPService(
-            player_gender="male", player_orientation="bisexual"
-        )
+        service = RelationshipMCPService(player_gender="male", player_orientation="bisexual")
 
         # Bisexual is compatible with multiple orientations
         assert service.is_romance_compatible("bisexual", "female") is True
@@ -49,18 +43,14 @@ class TestRomanceCompatibility:
 
     def test_asexual_never_compatible(self):
         """Test asexual is never romantically compatible."""
-        service = RelationshipMCPService(
-            player_gender="male", player_orientation="heterosexual"
-        )
+        service = RelationshipMCPService(player_gender="male", player_orientation="heterosexual")
 
         # Asexual NPC is not compatible
         assert service.is_romance_compatible("asexual", "female") is False
         assert service.is_romance_compatible("asexual", "male") is False
 
         # Asexual player is not compatible
-        service_asexual = RelationshipMCPService(
-            player_gender="male", player_orientation="asexual"
-        )
+        service_asexual = RelationshipMCPService(player_gender="male", player_orientation="asexual")
         assert service_asexual.is_romance_compatible("heterosexual", "female") is False
 
 
@@ -69,9 +59,7 @@ class TestEventConditionChecking:
 
     def test_check_romance_spark_conditions(self):
         """Test romance_spark event conditions."""
-        service = RelationshipMCPService(
-            player_gender="male", player_orientation="heterosexual"
-        )
+        service = RelationshipMCPService(player_gender="male", player_orientation="heterosexual")
 
         # Create compatible character
         char = CharacterState(
@@ -94,9 +82,7 @@ class TestEventConditionChecking:
 
     def test_check_romance_spark_fails_low_affinity(self):
         """Test romance_spark fails with low affinity."""
-        service = RelationshipMCPService(
-            player_gender="male", player_orientation="heterosexual"
-        )
+        service = RelationshipMCPService(player_gender="male", player_orientation="heterosexual")
 
         char = CharacterState(
             name="TestNPC",
@@ -117,9 +103,7 @@ class TestEventConditionChecking:
 
     def test_check_romance_spark_fails_wrong_orientation(self):
         """Test romance_spark fails with incompatible orientation."""
-        service = RelationshipMCPService(
-            player_gender="male", player_orientation="heterosexual"
-        )
+        service = RelationshipMCPService(player_gender="male", player_orientation="heterosexual")
 
         char = CharacterState(
             name="TestNPC",
@@ -200,9 +184,7 @@ class TestEventTriggering:
 
     def test_triggered_events_not_repeat(self):
         """Test that triggered events don't repeat."""
-        service = RelationshipMCPService(
-            player_gender="male", player_orientation="heterosexual"
-        )
+        service = RelationshipMCPService(player_gender="male", player_orientation="heterosexual")
 
         char = CharacterState(
             name="TestNPC",
@@ -227,9 +209,7 @@ class TestEventTriggering:
 
     def test_get_triggered_events_respects_max(self):
         """Test that get_triggered_events respects max_events."""
-        service = RelationshipMCPService(
-            player_gender="male", player_orientation="heterosexual"
-        )
+        service = RelationshipMCPService(player_gender="male", player_orientation="heterosexual")
 
         # Create multiple characters that could trigger events
         player = PlayerState()

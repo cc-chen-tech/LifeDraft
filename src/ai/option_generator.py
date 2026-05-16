@@ -399,7 +399,12 @@ class OptionGenerator:
         )
         if issues:
             issue_text = "; ".join(issues)
-            generic_markers = ("通用", "generic", "不在可用人物列表", "not in available")
+            generic_markers = (
+                "通用",
+                "generic",
+                "不在可用人物列表",
+                "not in available",
+            )
             if any(marker in issue_text for marker in generic_markers):
                 raise ValueError(f"generic or inconsistent options: {issue_text}")
 

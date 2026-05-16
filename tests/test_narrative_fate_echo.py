@@ -130,9 +130,7 @@ class TestFateEchoDatabase:
         self.db.register(PROPOSITION_KARMA)
         self.db.register(PROPOSITION_DESTINY)
 
-        hint = self.db.generate_echo_hint(
-            proposition_id="karma_betrayal", style="chinese_classic"
-        )
+        hint = self.db.generate_echo_hint(proposition_id="karma_betrayal", style="chinese_classic")
 
         assert isinstance(hint, str)
         assert len(hint) > 0
@@ -142,9 +140,7 @@ class TestFateEchoDatabase:
         self.db.register(PROPOSITION_PROPHECY)
         self.db.register(PROPOSITION_CHOICE)
 
-        hint = self.db.generate_echo_hint(
-            proposition_id="prophecy_fall", style="western"
-        )
+        hint = self.db.generate_echo_hint(proposition_id="prophecy_fall", style="western")
 
         assert isinstance(hint, str)
         assert len(hint) > 0
@@ -180,7 +176,5 @@ class TestFateEchoDatabase:
         self.db.cleanup_expired(current_week=100)
 
         # 不存在的命题生成hint不崩溃
-        hint = self.db.generate_echo_hint(
-            proposition_id="nonexistent", style="chinese_classic"
-        )
+        hint = self.db.generate_echo_hint(proposition_id="nonexistent", style="chinese_classic")
         assert isinstance(hint, str)

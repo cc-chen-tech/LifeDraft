@@ -16,9 +16,7 @@ from src.database.models import Base, User
 @pytest.fixture(scope="module")
 def db_session():
     """使用内存 SQLite 创建测试数据库会话."""
-    engine = create_engine(
-        "sqlite:///:memory:", connect_args={"check_same_thread": False}
-    )
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine, expire_on_commit=False)
     session = Session()
@@ -44,9 +42,7 @@ class TestSessionServiceRestore:
         state_repo = StateRepository()
 
         # Patch SessionLocal 让 StateRepository 使用测试数据库
-        with patch(
-            "src.database.state_repository.SessionLocal", return_value=db_session
-        ):
+        with patch("src.database.state_repository.SessionLocal", return_value=db_session):
             # 创建用户（外键约束）
             user = User(
                 private_id="TEST-USER-001",
@@ -67,9 +63,7 @@ class TestSessionServiceRestore:
             # 保存游戏进度
             from src.game.state import PlayerState
 
-            player_state = PlayerState.from_dict(
-                {"player_name": "测试主角", "week": 2, "age": 25}
-            )
+            player_state = PlayerState.from_dict({"player_name": "测试主角", "week": 2, "age": 25})
 
             saved = state_repo.save_game_progress(
                 game_id=game_id,
@@ -92,9 +86,7 @@ class TestSessionServiceRestore:
         game_repo = GameRepository()
         state_repo = StateRepository()
 
-        with patch(
-            "src.database.state_repository.SessionLocal", return_value=db_session
-        ):
+        with patch("src.database.state_repository.SessionLocal", return_value=db_session):
             # 创建用户
             user = User(
                 private_id="TEST-USER-002",

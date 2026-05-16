@@ -10,8 +10,8 @@ from fastapi.testclient import TestClient
 pytestmark = pytest.mark.api
 
 from src.api.deps import get_current_user  # noqa: E402
-from src.api.routers.images import (router, verify_game_ownership,  # noqa: E402
-                                    verify_image_ownership)
+from src.api.routers.images import verify_game_ownership  # noqa: E402
+from src.api.routers.images import router, verify_image_ownership
 from src.services.image_service import ImageContentError  # noqa: E402
 from src.services.image_storage import ImageStorageError  # noqa: E402
 
@@ -338,9 +338,7 @@ class TestGenerateImageEndpoint:
 
     @patch("src.api.routers.images.ImageService")
     @patch("src.api.routers.images.verify_game_ownership")
-    def test_generate_image_invalid_type(
-        self, mock_verify, mock_service_class, app, client
-    ):
+    def test_generate_image_invalid_type(self, mock_verify, mock_service_class, app, client):
         """Test generating image with invalid type."""
         from src.api.deps import get_current_user_optional
 
@@ -370,9 +368,7 @@ class TestGenerateImageEndpoint:
 
     @patch("src.api.routers.images.ImageService")
     @patch("src.api.routers.images.verify_game_ownership")
-    def test_generate_image_content_error(
-        self, mock_verify, mock_service_class, app, client
-    ):
+    def test_generate_image_content_error(self, mock_verify, mock_service_class, app, client):
         """Test handling content moderation error."""
         from src.api.deps import get_current_user_optional
 

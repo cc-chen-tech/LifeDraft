@@ -59,9 +59,7 @@ class TestEraValidatorIntegration:
         db_session.refresh(game)
 
         # 从 DB 重新加载
-        loaded_game = (
-            db_session.query(Game).filter(Game.game_id == game.game_id).first()
-        )
+        loaded_game = db_session.query(Game).filter(Game.game_id == game.game_id).first()
         assert loaded_game is not None
 
         loaded_state = loaded_game.initial_state or {}
@@ -109,9 +107,7 @@ class TestEraValidatorIntegration:
         db_session.commit()
         db_session.refresh(game)
 
-        loaded_game = (
-            db_session.query(Game).filter(Game.game_id == game.game_id).first()
-        )
+        loaded_game = db_session.query(Game).filter(Game.game_id == game.game_id).first()
         loaded_state = loaded_game.initial_state or {}
         loaded_character_settings = loaded_state.get("character_settings", {})
 
@@ -158,9 +154,7 @@ class TestEraValidatorIntegration:
         db_session.commit()
         db_session.refresh(game)
 
-        loaded_game = (
-            db_session.query(Game).filter(Game.game_id == game.game_id).first()
-        )
+        loaded_game = db_session.query(Game).filter(Game.game_id == game.game_id).first()
         loaded_state = loaded_game.initial_state or {}
         loaded_character_settings = loaded_state.get("character_settings", {})
 
@@ -176,6 +170,4 @@ class TestEraValidatorIntegration:
             ctx,
         )
         assert passed is False, f"应检测到现代元素: {evidence}"
-        assert "星巴克" in info.get("found_modern", []) or "拿铁" in info.get(
-            "found_modern", []
-        )
+        assert "星巴克" in info.get("found_modern", []) or "拿铁" in info.get("found_modern", [])

@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 CHANGE_DIR = ROOT / "openspec" / "changes" / "fix-story-continuity-history-media"
 
@@ -29,16 +28,16 @@ def test_preflight_script_runs_before_expensive_layers() -> None:
     assert "storyContinuityPreflight.test.tsx" in script
     assert "src/__tests__/lib/sse.test.ts" in script
     assert script.index("run_preflight || ((failed++))") < script.index("run_mypy || ((failed++))")
-    assert script.index("run_preflight || ((failed++))") < script.index("run_e2e_browser || ((failed++))")
+    assert script.index("run_preflight || ((failed++))") < script.index(
+        "run_e2e_browser || ((failed++))"
+    )
 
 
 def test_frontend_regression_fixture_exercises_changed_surfaces() -> None:
     fixture = (ROOT / "frontend" / "src" / "app" / "e2e-regression" / "page.tsx").read_text(
         encoding="utf-8"
     )
-    e2e = (ROOT / "frontend" / "e2e" / "no-mock-regression.spec.ts").read_text(
-        encoding="utf-8"
-    )
+    e2e = (ROOT / "frontend" / "e2e" / "no-mock-regression.spec.ts").read_text(encoding="utf-8")
 
     for token in (
         "streamed-story",
@@ -60,5 +59,8 @@ def test_frontend_regression_fixture_exercises_changed_surfaces() -> None:
 def test_frontend_image_generation_path_is_checked_before_e2e() -> None:
     api_source = (ROOT / "frontend" / "src" / "lib" / "api.ts").read_text(encoding="utf-8")
 
-    assert "fetchJson<{ images: Array<{ image_id: number; image_url: string }>; total: number }>('/images/generate'" in api_source
+    assert (
+        "fetchJson<{ images: Array<{ image_id: number; image_url: string }>; total: number }>('/images/generate'"
+        in api_source
+    )
     assert "fetchJson('/images'" not in api_source

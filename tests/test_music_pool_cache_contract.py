@@ -72,9 +72,7 @@ class TestMusicServicePoolCacheContract:
         """POOL_CACHE_TTL 应为 3600 秒（1 小时）。"""
         from src.services.music_service import MusicService
 
-        assert (
-            MusicService.POOL_CACHE_TTL == 3600
-        ), "POOL_CACHE_TTL 必须为 3600 秒（1 小时）"
+        assert MusicService.POOL_CACHE_TTL == 3600, "POOL_CACHE_TTL 必须为 3600 秒（1 小时）"
 
     def test_pool_cache_entry_structure(self):
         """缓存项应为 (CachedMusicPool, timestamp) 元组。"""
@@ -105,9 +103,7 @@ class TestMusicServicePoolCacheContract:
         assert cached is not None
         assert isinstance(cached, tuple), "缓存项必须是元组"
         assert len(cached) == 2, "缓存项必须是 (pool, timestamp) 二元组"
-        assert isinstance(
-            cached[0], CachedMusicPool
-        ), "第一个元素必须是 CachedMusicPool"
+        assert isinstance(cached[0], CachedMusicPool), "第一个元素必须是 CachedMusicPool"
         assert isinstance(cached[1], float), "第二个元素必须是时间戳（float）"
 
         # 清理

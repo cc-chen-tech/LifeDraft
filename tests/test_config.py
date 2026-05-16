@@ -131,9 +131,7 @@ class TestLoggingConfig:
         """Test setup_logging with file handler."""
         from config.logging_config import setup_logging
 
-        logger = setup_logging(
-            log_level="WARNING", log_to_file=True, log_file="test.log"
-        )
+        logger = setup_logging(log_level="WARNING", log_to_file=True, log_file="test.log")
         assert logger.level == logging.WARNING
         # Check file handler was added
         has_file_handler = any(
@@ -167,8 +165,7 @@ class TestLoggingConfig:
         console_handlers = [
             h
             for h in logger.handlers
-            if isinstance(h, logging.StreamHandler)
-            and not isinstance(h, logging.FileHandler)
+            if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler)
         ]
         assert len(console_handlers) >= 1
 

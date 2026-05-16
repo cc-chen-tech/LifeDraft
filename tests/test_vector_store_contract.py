@@ -9,13 +9,8 @@ import tempfile
 
 import pytest
 
-from src.ai.vector_store import (
-    SearchResult,
-    VectorStore,
-    get_vector_store,
-    is_vector_search_enabled,
-)
-
+from src.ai.vector_store import (SearchResult, VectorStore, get_vector_store,
+                                 is_vector_search_enabled)
 
 # ============================================================
 # SearchResult dataclass
@@ -124,9 +119,7 @@ class TestVectorStoreEnabled:
         assert store is not None
 
     def test_enabled_with_env(self, monkeypatch):
-        monkeypatch.setattr(
-            "src.ai.vector_store.ENABLE_VECTOR_SEARCH", True
-        )
+        monkeypatch.setattr("src.ai.vector_store.ENABLE_VECTOR_SEARCH", True)
         store = VectorStore(enabled=True)
         assert store.enabled is True
         assert store._collection is not None

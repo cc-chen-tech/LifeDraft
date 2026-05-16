@@ -108,10 +108,7 @@ class TestThreadPoolManagement:
                     try:
                         with open(filepath) as fh:
                             content = fh.read()
-                        if (
-                            "threading.Thread(" in content
-                            or "Thread(target=" in content
-                        ):
+                        if "threading.Thread(" in content or "Thread(target=" in content:
                             bare_thread_files.append(filepath)
                     except Exception:
                         pass

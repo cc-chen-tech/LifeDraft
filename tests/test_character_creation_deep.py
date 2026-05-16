@@ -56,9 +56,7 @@ class TestCharacterCreatorGenerateSetting:
         creator.ai_generator.generate_completion.return_value = json.dumps(
             {"age": 25, "birth_year": 1990, "age_description": "青年"}
         )
-        result = creator.generate_setting(
-            "age", "张三", "成功", {"era": {"year": 2024}}
-        )
+        result = creator.generate_setting("age", "张三", "成功", {"era": {"year": 2024}})
         assert result["birth_year"] == 1999  # 2024 - 25
 
     def test_generate_wealth_setting_zero_retry(self):
@@ -123,9 +121,7 @@ class TestCharacterCreatorRelationships:
             "age": 28,
             "gender": "男",
         }
-        result = creator.generate_single_relationship_person(
-            "张三", "成功", {}, [], 0, 3
-        )
+        result = creator.generate_single_relationship_person("张三", "成功", {}, [], 0, 3)
         assert result["name"] == "李四"
         assert result["role"] == "同事"
         assert "affinity" in result
@@ -138,9 +134,7 @@ class TestCharacterCreatorRelationships:
             "name": "Wang",
             "role": "friend",
         }
-        result = creator.generate_single_relationship_person(
-            "Player", "success", {}, [], 0, 1
-        )
+        result = creator.generate_single_relationship_person("Player", "success", {}, [], 0, 1)
         assert result["age"] == 25
         assert result["temperament"] == "balanced"
         assert result["trust"] == 50
@@ -172,9 +166,7 @@ class TestCharacterCreatorRelationships:
         """Test fallback on AI failure."""
         creator = self._make_creator()
         creator.ai_generator.generate_completion_json.side_effect = Exception("fail")
-        result = creator.generate_single_relationship_person(
-            "张三", "成功", {}, [], 2, 5
-        )
+        result = creator.generate_single_relationship_person("张三", "成功", {}, [], 2, 5)
         assert result["name"] == "人物3"
         assert result["role"] == "朋友"
 
@@ -182,9 +174,7 @@ class TestCharacterCreatorRelationships:
         """Test English fallback."""
         creator = self._make_creator("en")
         creator.ai_generator.generate_completion_json.side_effect = Exception("fail")
-        result = creator.generate_single_relationship_person(
-            "John", "success", {}, [], 0, 1
-        )
+        result = creator.generate_single_relationship_person("John", "success", {}, [], 0, 1)
         assert result["name"] == "Person1"
 
     def test_generate_relationships_summary_success(self):
@@ -273,18 +263,14 @@ class TestCharacterCreatorAttributes:
         """Test energy boost for active personality."""
         creator = self._make_creator()
         creator.ai_generator.generate_completion_json.side_effect = Exception("fail")
-        result = creator.generate_initial_attributes(
-            {"traits": {"personality": "活力充沛"}}
-        )
+        result = creator.generate_initial_attributes({"traits": {"personality": "活力充沛"}})
         assert result["energy"] >= 80
 
     def test_rules_energy_weak(self):
         """Test energy penalty for weak personality."""
         creator = self._make_creator()
         creator.ai_generator.generate_completion_json.side_effect = Exception("fail")
-        result = creator.generate_initial_attributes(
-            {"traits": {"personality": "体弱多病"}}
-        )
+        result = creator.generate_initial_attributes({"traits": {"personality": "体弱多病"}})
         assert result["energy"] <= 60
 
     def test_rules_wealthy_family(self):
@@ -319,9 +305,7 @@ class TestCharacterCreatorAttributes:
         """Test rules handle list-format traits."""
         creator = self._make_creator()
         creator.ai_generator.generate_completion_json.side_effect = Exception("fail")
-        result = creator.generate_initial_attributes(
-            {"traits": {"personality": ["乐观", "开朗"]}}
-        )
+        result = creator.generate_initial_attributes({"traits": {"personality": ["乐观", "开朗"]}})
         assert result["mood"] > 60
 
 
@@ -427,9 +411,7 @@ class TestCheckAndFixMissingAttributes:
         creator = self._make_creator()
         creator.ai_generator.generate_completion_json = Mock(
             return_value={
-                "members": [
-                    {"name": "张父", "role": "父亲", "relationship": "严厉的父亲"}
-                ]
+                "members": [{"name": "张父", "role": "父亲", "relationship": "严厉的父亲"}]
             }
         )
         state = Mock()

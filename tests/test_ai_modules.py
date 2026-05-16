@@ -198,9 +198,7 @@ class TestValidationResult:
         """Test failed result with issues."""
         issues = [
             ConsistencyIssue("geographic", "CRITICAL", "Location mismatch", "Fix it"),
-            ConsistencyIssue(
-                "temporal", "WARNING", "Time inconsistency", "Check dates"
-            ),
+            ConsistencyIssue("temporal", "WARNING", "Time inconsistency", "Check dates"),
         ]
         result = ValidationResult(passed=False, issues=issues)
         assert result.has_critical_issues is True
@@ -531,9 +529,7 @@ class TestAIClient:
 
         collected = []
         client = AIClient(api_key="test-key")
-        result = client.call(
-            "sys", "user", stream_callback=lambda t: collected.append(t)
-        )
+        result = client.call("sys", "user", stream_callback=lambda t: collected.append(t))
         assert result == "Hello World"
         assert collected == ["Hello", " World"]
 
@@ -618,9 +614,7 @@ class TestProfileSynthesizer:
         from src.ai.profile_synthesizer import ProfileSynthesizer
 
         mock_client_instance = Mock()
-        mock_client_instance.chat.completions.create.side_effect = Exception(
-            "API Error"
-        )
+        mock_client_instance.chat.completions.create.side_effect = Exception("API Error")
         mock_openai_cls.return_value = mock_client_instance
 
         client = AIClient(api_key="test-key")

@@ -31,9 +31,7 @@ class TestEditImageExtraParamsPropagation:
             resp.status_code = 200
             resp.json.return_value = {
                 "output": {
-                    "choices": [
-                        {"message": {"content": [{"image": "http://test/image.png"}]}}
-                    ]
+                    "choices": [{"message": {"content": [{"image": "http://test/image.png"}]}}]
                 }
             }
             return resp
@@ -75,9 +73,7 @@ class TestEditImageExtraParamsPropagation:
             resp.status_code = 200
             resp.json.return_value = {
                 "output": {
-                    "choices": [
-                        {"message": {"content": [{"image": "http://test/image.png"}]}}
-                    ]
+                    "choices": [{"message": {"content": [{"image": "http://test/image.png"}]}}]
                 }
             }
             return resp
@@ -95,8 +91,7 @@ class TestEditImageExtraParamsPropagation:
         assert len(captured_payloads) == 1
         actual_negative = captured_payloads[0]["parameters"]["negative_prompt"]
         assert DEFAULT_EDIT_NEGATIVE_PROMPT == actual_negative, (
-            f"不传 extra_params 时应使用 DEFAULT_EDIT_NEGATIVE_PROMPT。"
-            f"实际: {actual_negative}"
+            f"不传 extra_params 时应使用 DEFAULT_EDIT_NEGATIVE_PROMPT。" f"实际: {actual_negative}"
         )
 
     def test_edit_image_payload_structure(self):
@@ -119,9 +114,7 @@ class TestEditImageExtraParamsPropagation:
             resp.status_code = 200
             resp.json.return_value = {
                 "output": {
-                    "choices": [
-                        {"message": {"content": [{"image": "http://test/image.png"}]}}
-                    ]
+                    "choices": [{"message": {"content": [{"image": "http://test/image.png"}]}}]
                 }
             }
             return resp
@@ -163,9 +156,7 @@ class TestEditImageExtraParamsPropagation:
             resp.status_code = 200
             resp.json.return_value = {
                 "output": {
-                    "choices": [
-                        {"message": {"content": [{"image": "http://test/image.png"}]}}
-                    ]
+                    "choices": [{"message": {"content": [{"image": "http://test/image.png"}]}}]
                 }
             }
             return resp

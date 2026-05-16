@@ -53,9 +53,7 @@ class TestNarrativeSystemInitialization:
                                 return_value="sys",
                             ):
                                 with patch.object(gen, "_log_constraint_completeness"):
-                                    gen.generate_event(
-                                        player_state, option_generator=mock_opt_gen
-                                    )
+                                    gen.generate_event(player_state, option_generator=mock_opt_gen)
 
                 mock_init.assert_called_once()
                 call_args = mock_init.call_args
@@ -89,9 +87,7 @@ class TestNarrativeSystemInitialization:
                                 return_value="sys",
                             ):
                                 with patch.object(gen, "_log_constraint_completeness"):
-                                    gen.generate_event(
-                                        player_state, option_generator=mock_opt_gen
-                                    )
+                                    gen.generate_event(player_state, option_generator=mock_opt_gen)
 
                 mock_init.assert_called_once()
                 call_args = mock_init.call_args

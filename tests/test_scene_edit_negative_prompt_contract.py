@@ -44,9 +44,7 @@ class TestSceneEditNegativePrompt:
 
         captured_calls = []
 
-        def capture_edit_image(
-            reference_image, prompt, size, num_images, extra_params=None
-        ):
+        def capture_edit_image(reference_image, prompt, size, num_images, extra_params=None):
             captured_calls.append(
                 {
                     "reference_image": reference_image,
@@ -62,9 +60,7 @@ class TestSceneEditNegativePrompt:
         service.image_client.analyze_story_for_illustration = MagicMock(
             return_value=("scene desc", "illustration prompt")
         )
-        service.image_client.generate_image = MagicMock(
-            return_value=(b"fake_image", "fake_prompt")
-        )
+        service.image_client.generate_image = MagicMock(return_value=(b"fake_image", "fake_prompt"))
 
         # Mock _get_appearance_anchor to return None
         service._get_appearance_anchor = MagicMock(return_value=None)
@@ -92,9 +88,5 @@ class TestSceneEditNegativePrompt:
         actual_extra = captured_calls[0]["extra_params"]
         assert actual_extra is not None, "应传入 extra_params"
         assert "negative_prompt" in actual_extra, "extra_params 应包含 negative_prompt"
-        assert (
-            "赛博朋克" in actual_extra["negative_prompt"]
-        ), "negative_prompt 应包含反 sci-fi 约束"
-        assert (
-            "多人重叠" in actual_extra["negative_prompt"]
-        ), "negative_prompt 应包含场景特定约束"
+        assert "赛博朋克" in actual_extra["negative_prompt"], "negative_prompt 应包含反 sci-fi 约束"
+        assert "多人重叠" in actual_extra["negative_prompt"], "negative_prompt 应包含场景特定约束"

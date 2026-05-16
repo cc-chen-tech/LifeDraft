@@ -111,8 +111,7 @@ class TestChineseTextNormalizationContract:
         from config.prompts.story_prompts import get_event_generation_prompt
 
         decision_history = [
-            {"week": i, "choice": f"选择{i}", "event": f"事件{i}" * 10}
-            for i in range(31)
+            {"week": i, "choice": f"选择{i}", "event": f"事件{i}" * 10} for i in range(31)
         ]
         player_state = {
             "age": 25,

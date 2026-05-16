@@ -43,9 +43,7 @@ class TestSessionCache:
         session = store.put(game_id=1, game_loop=mock_game_loop, user_id=1)
 
         # 设置缓存选项
-        session.set_cached_options(
-            week=1, round_num=0, options=[{"id": 1, "text": "Test"}]
-        )
+        session.set_cached_options(week=1, round_num=0, options=[{"id": 1, "text": "Test"}])
 
         # 更新 session（模拟新的 game_loop）
         new_mock_game_loop = MagicMock(spec=GameLoop)

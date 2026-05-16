@@ -219,9 +219,7 @@ class TestStreamSong:
     def test_stream_normal(self, mock_get_svc, mock_get_audio, client):
         """正常返回完整音频数据。"""
         svc = MagicMock()
-        svc.get_song_play_url = AsyncMock(
-            return_value="https://cdn.example.com/song.mp3"
-        )
+        svc.get_song_play_url = AsyncMock(return_value="https://cdn.example.com/song.mp3")
         mock_get_svc.return_value = svc
         mock_get_audio.return_value = (b"audio-chunk-1audio-chunk-2", "audio/mpeg")
 
@@ -233,14 +231,10 @@ class TestStreamSong:
 
     @patch("src.api.routers.music._get_or_download_audio")
     @patch("src.api.routers.music.get_music_service")
-    def test_stream_no_content_length(
-        self, mock_get_svc, mock_get_audio, client
-    ):
+    def test_stream_no_content_length(self, mock_get_svc, mock_get_audio, client):
         """完整下载响应应包含 content-length 头（非流式）。"""
         svc = MagicMock()
-        svc.get_song_play_url = AsyncMock(
-            return_value="https://cdn.example.com/song.mp3"
-        )
+        svc.get_song_play_url = AsyncMock(return_value="https://cdn.example.com/song.mp3")
         mock_get_svc.return_value = svc
         mock_get_audio.return_value = (b"data", "audio/mpeg")
 
@@ -252,14 +246,10 @@ class TestStreamSong:
 
     @patch("src.api.routers.music._get_or_download_audio")
     @patch("src.api.routers.music.get_music_service")
-    def test_stream_correct_content_type(
-        self, mock_get_svc, mock_get_audio, client
-    ):
+    def test_stream_correct_content_type(self, mock_get_svc, mock_get_audio, client):
         """响应的 content-type 应为 audio 类型。"""
         svc = MagicMock()
-        svc.get_song_play_url = AsyncMock(
-            return_value="https://cdn.example.com/song.mp3"
-        )
+        svc.get_song_play_url = AsyncMock(return_value="https://cdn.example.com/song.mp3")
         mock_get_svc.return_value = svc
         mock_get_audio.return_value = (b"data", "audio/mpeg")
 
@@ -285,9 +275,7 @@ class TestStreamSong:
     def test_stream_cdn_non_200(self, mock_get_svc, mock_get_audio, client):
         """CDN 返回非 200/206 且非 403/401 时应返回 502。"""
         svc = MagicMock()
-        svc.get_song_play_url = AsyncMock(
-            return_value="https://cdn.example.com/song.mp3"
-        )
+        svc.get_song_play_url = AsyncMock(return_value="https://cdn.example.com/song.mp3")
         mock_get_svc.return_value = svc
         mock_get_audio.side_effect = httpx.HTTPError("CDN request failed")
 
@@ -298,14 +286,10 @@ class TestStreamSong:
 
     @patch("src.api.routers.music._get_or_download_audio")
     @patch("src.api.routers.music.get_music_service")
-    def test_stream_uses_small_chunk_size(
-        self, mock_get_svc, mock_get_audio, client
-    ):
+    def test_stream_uses_small_chunk_size(self, mock_get_svc, mock_get_audio, client):
         """完整下载模式：验证 LRU 缓存最多缓存 10 首歌曲。"""
         svc = MagicMock()
-        svc.get_song_play_url = AsyncMock(
-            return_value="https://cdn.example.com/song.mp3"
-        )
+        svc.get_song_play_url = AsyncMock(return_value="https://cdn.example.com/song.mp3")
         mock_get_svc.return_value = svc
         mock_get_audio.return_value = (b"chunk", "audio/mpeg")
 
@@ -317,14 +301,10 @@ class TestStreamSong:
 
     @patch("src.api.routers.music._get_or_download_audio")
     @patch("src.api.routers.music.get_music_service")
-    def test_stream_cdn_403_retry_success(
-        self, mock_get_svc, mock_get_audio, client
-    ):
+    def test_stream_cdn_403_retry_success(self, mock_get_svc, mock_get_audio, client):
         """CDN 返回 403 时 _get_or_download_audio 内部处理重试，最终返回音频。"""
         svc = MagicMock()
-        svc.get_song_play_url = AsyncMock(
-            return_value="https://cdn.example.com/song.mp3"
-        )
+        svc.get_song_play_url = AsyncMock(return_value="https://cdn.example.com/song.mp3")
         mock_get_svc.return_value = svc
         mock_get_audio.return_value = (b"fresh-audio", "audio/mpeg")
 
@@ -338,16 +318,12 @@ class TestStreamSong:
     def test_stream_range_request(self, mock_get_svc, mock_get_audio, client):
         """Range 请求应返回 206 + content-range。"""
         svc = MagicMock()
-        svc.get_song_play_url = AsyncMock(
-            return_value="https://cdn.example.com/song.mp3"
-        )
+        svc.get_song_play_url = AsyncMock(return_value="https://cdn.example.com/song.mp3")
         mock_get_svc.return_value = svc
         # 返回足够长的音频数据以支持 Range 请求
         mock_get_audio.return_value = (b"x" * 5000, "audio/mpeg")
 
-        resp = client.get(
-            "/api/music/stream/12345", headers={"range": "bytes=1000-2000"}
-        )
+        resp = client.get("/api/music/stream/12345", headers={"range": "bytes=1000-2000"})
 
         assert resp.status_code == 206
         assert "content-range" in resp.headers

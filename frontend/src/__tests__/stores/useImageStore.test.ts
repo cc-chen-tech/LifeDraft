@@ -240,7 +240,7 @@ describe('useImageStore', () => {
 
         await useImageStore.getState().generateOpeningIllustration(1, 'story', {}, 'name');
 
-        expect(global.fetch).toHaveBeenCalledWith('/api/images/opening', expect.objectContaining({ method: 'POST' }));
+        expect(global.fetch).toHaveBeenCalledWith('/api/images/opening-illustration', expect.objectContaining({ method: 'POST' }));
       });
 
       it('handles generation error', async () => {
@@ -274,7 +274,7 @@ describe('useImageStore', () => {
 
         await useImageStore.getState().regenerateOpeningIllustration(1, 'story', {}, 'name', 'make it brighter');
 
-        expect(global.fetch).toHaveBeenCalledWith('/api/images/opening/regenerate', expect.objectContaining({ method: 'POST' }));
+        expect(global.fetch).toHaveBeenCalledWith('/api/images/opening-illustration/regenerate', expect.objectContaining({ method: 'POST' }));
         expect(useImageStore.getState().openingIllustration).toEqual(newIllustration);
       });
 

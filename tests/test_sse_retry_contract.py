@@ -17,9 +17,7 @@ class TestSSERetryMechanismContract:
 
     def _get_sse_source(self):
         """读取前端 sse.ts 源码。"""
-        sse_path = os.path.join(
-            os.path.dirname(__file__), "..", "frontend", "src", "lib", "sse.ts"
-        )
+        sse_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "src", "lib", "sse.ts")
         with open(sse_path, "r", encoding="utf-8") as f:
             return f.read()
 
@@ -73,14 +71,10 @@ class TestSSERetryMechanismContract:
 
         # 必须有重试机制（循环或递归）
         has_retry_loop = (
-            "for" in choice_body
-            or "while" in choice_body
-            or "retry" in choice_body.lower()
+            "for" in choice_body or "while" in choice_body or "retry" in choice_body.lower()
         )
         # 或者调用了带重试的辅助函数
-        has_retry_helper = (
-            "fetchWithRetry" in choice_body or "retry" in choice_body.lower()
-        )
+        has_retry_helper = "fetchWithRetry" in choice_body or "retry" in choice_body.lower()
 
         assert has_retry_loop or has_retry_helper, (
             "streamChoice 必须包含重试循环或调用重试辅助函数，"
@@ -92,11 +86,7 @@ class TestSSERetryMechanismContract:
         source = self._get_sse_source()
         custom_body = self._extract_function_body(source, "streamCustomChoice")
 
-        has_retry = (
-            "for" in custom_body
-            or "while" in custom_body
-            or "retry" in custom_body.lower()
-        )
+        has_retry = "for" in custom_body or "while" in custom_body or "retry" in custom_body.lower()
         has_helper = "fetchWithRetry" in custom_body or "retry" in custom_body.lower()
 
         assert has_retry or has_helper, "streamCustomChoice 必须包含重试机制 (Bug #15)"
@@ -111,9 +101,7 @@ class TestSSERetryMechanismContract:
         opening_body = self._extract_function_body(source, "streamOpeningStory")
 
         has_retry = (
-            "for" in opening_body
-            or "while" in opening_body
-            or "retry" in opening_body.lower()
+            "for" in opening_body or "while" in opening_body or "retry" in opening_body.lower()
         )
         has_helper = "fetchWithRetry" in opening_body or "retry" in opening_body.lower()
 
@@ -140,8 +128,7 @@ class TestSSERetryMechanismContract:
         has_max_three = any(re.search(p, source) for p in retry_patterns)
 
         assert has_max_three, (
-            "SSE 重试次数应最多 3 次（原始请求 + 2 次重试），"
-            "避免过少无法恢复或过多加剧上游压力"
+            "SSE 重试次数应最多 3 次（原始请求 + 2 次重试），" "避免过少无法恢复或过多加剧上游压力"
         )
 
     def test_retry_exponential_backoff(self):
@@ -175,8 +162,7 @@ class TestSSERetryMechanismContract:
         has_delay = any(re.search(p, source, re.IGNORECASE) for p in delay_patterns)
 
         assert has_exponential or has_delay, (
-            "SSE 重试必须包含延迟机制（最好是指数退避），"
-            "避免在上游恢复瞬间造成请求洪峰"
+            "SSE 重试必须包含延迟机制（最好是指数退避），" "避免在上游恢复瞬间造成请求洪峰"
         )
 
     def test_retry_only_on_server_errors(self):
@@ -201,8 +187,7 @@ class TestSSERetryMechanismContract:
         )
 
         assert has_server_error_check, (
-            "重试逻辑必须区分服务器错误（502/504）和客户端错误，"
-            "避免对 4xx 错误进行无效重试"
+            "重试逻辑必须区分服务器错误（502/504）和客户端错误，" "避免对 4xx 错误进行无效重试"
         )
 
     def test_stream_functions_do_not_use_raw_fetch(self):
@@ -229,10 +214,7 @@ class TestSSERetryMechanismContract:
             has_retry_wrap = "retry" in body.lower() or "fetchWithRetry" in body
 
             if has_raw_fetch and not has_retry_wrap:
-                pytest.fail(
-                    f"{func_name} 直接使用原始 fetch 但没有重试保护，"
-                    f"502 时将永久卡死"
-                )
+                pytest.fail(f"{func_name} 直接使用原始 fetch 但没有重试保护，" f"502 时将永久卡死")
 
     def test_retry_preserves_abort_signal(self):
         """重试必须尊重 AbortSignal，用户取消时不应继续重试。
@@ -250,9 +232,7 @@ class TestSSERetryMechanismContract:
         ]
         has_abort_check = any(re.search(p, source) for p in abort_patterns)
 
-        assert has_abort_check, (
-            "SSE 重试机制必须检查 AbortSignal，" "确保用户取消操作后停止重试"
-        )
+        assert has_abort_check, "SSE 重试机制必须检查 AbortSignal，" "确保用户取消操作后停止重试"
 
     def test_opening_story_error_shows_retry_ui(self):
         """opening-story 重试失败后必须提供 UI 重试入口，不踢用户回首页。
@@ -276,9 +256,7 @@ class TestSSERetryMechanismContract:
             has_redirect_on_error = (
                 "router.push" in creation_source or "router.replace" in creation_source
             )
-            has_retry_ui = (
-                "retry" in creation_source.lower() or "重试" in creation_source
-            )
+            has_retry_ui = "retry" in creation_source.lower() or "重试" in creation_source
 
             # 如果存在错误跳转，必须同时存在重试机制
             if has_redirect_on_error:
@@ -293,9 +271,7 @@ class TestAPIFetchWithRetryContract:
 
     def test_fetch_with_retry_exists(self):
         """api.ts 中必须存在 fetchWithRetry 函数。"""
-        api_path = os.path.join(
-            os.path.dirname(__file__), "..", "frontend", "src", "lib", "api.ts"
-        )
+        api_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "src", "lib", "api.ts")
         with open(api_path, "r", encoding="utf-8") as f:
             source = f.read()
 
@@ -305,9 +281,7 @@ class TestAPIFetchWithRetryContract:
 
     def test_fetch_with_retry_has_exponential_backoff(self):
         """fetchWithRetry 必须实现指数退避。"""
-        api_path = os.path.join(
-            os.path.dirname(__file__), "..", "frontend", "src", "lib", "api.ts"
-        )
+        api_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "src", "lib", "api.ts")
         with open(api_path, "r", encoding="utf-8") as f:
             source = f.read()
 
@@ -317,9 +291,7 @@ class TestAPIFetchWithRetryContract:
 
     def test_fetch_with_retry_handles_502(self):
         """fetchWithRetry 必须在 502 时重试。"""
-        api_path = os.path.join(
-            os.path.dirname(__file__), "..", "frontend", "src", "lib", "api.ts"
-        )
+        api_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "src", "lib", "api.ts")
         with open(api_path, "r", encoding="utf-8") as f:
             source = f.read()
 

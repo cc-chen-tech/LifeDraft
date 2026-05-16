@@ -6,11 +6,9 @@ from config.prompts import get_story_only_prompt
 from src.ai.models import EventOption, GameEvent
 from src.ai.option_generator import OptionGenerator
 from src.ai.story_generator import StoryGenerator
-from src.ai.text_quality import (
-    normalize_chinese_punctuation,
-    normalize_generated_story,
-    validate_narrative_quality,
-)
+from src.ai.text_quality import (normalize_chinese_punctuation,
+                                 normalize_generated_story,
+                                 validate_narrative_quality)
 
 
 def test_option_generator_rejects_generic_options_for_specific_decision_point() -> None:
@@ -57,7 +55,9 @@ def test_option_generator_accepts_options_tied_to_story_decision_point() -> None
 def test_chinese_punctuation_normalizer_cleans_dialogue_artifacts() -> None:
     raw = '他说: "你真的要去吗?" 她停了一下, 说: "现在就走."'
 
-    assert normalize_chinese_punctuation(raw) == "他说：“你真的要去吗？” 她停了一下，说：“现在就走。”"
+    assert (
+        normalize_chinese_punctuation(raw) == "他说：“你真的要去吗？” 她停了一下，说：“现在就走。”"
+    )
 
 
 def test_generated_story_normalizer_removes_internal_state_leaks_and_over_fragmentation() -> None:

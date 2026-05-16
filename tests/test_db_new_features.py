@@ -42,9 +42,7 @@ def _create_game(db_session, user: User) -> Game:
     return game
 
 
-def _save_game_state(
-    db_session, game_id: int, week: int, age: int, state_json: dict
-) -> GameState:
+def _save_game_state(db_session, game_id: int, week: int, age: int, state_json: dict) -> GameState:
     """Save a GameState row and return it."""
     gs = GameState(
         game_id=game_id,
@@ -117,9 +115,7 @@ class TestGenerationStateMetricsPersistence:
                         "priority": "CRITICAL",
                         "passed": True,
                         "evidence": "names consistent",
-                        "details": {
-                            "transition_reasons": metrics_output["transition_reasons"]
-                        },
+                        "details": {"transition_reasons": metrics_output["transition_reasons"]},
                     }
                 },
             },
@@ -165,9 +161,7 @@ class TestGenerationStateMetricsPersistence:
         # Read back all
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT COUNT(*) FROM generation_runs WHERE game_id = ?", ("game_hist",)
-        )
+        cursor.execute("SELECT COUNT(*) FROM generation_runs WHERE game_id = ?", ("game_hist",))
         count = cursor.fetchone()[0]
         conn.close()
 
@@ -255,9 +249,7 @@ class TestParallelPostProcessingDataIntegrity:
             "world_model_data": world_model_data,
         }
 
-        gs = _save_game_state(
-            db_session, game.game_id, week=5, age=25, state_json=state_json
-        )
+        gs = _save_game_state(db_session, game.game_id, week=5, age=25, state_json=state_json)
 
         # Read back
         loaded = db_session.query(GameState).filter_by(state_id=gs.state_id).one()
@@ -302,9 +294,7 @@ class TestParallelPostProcessingDataIntegrity:
             "world_model_data": pp_result["world_model_updates"],
         }
 
-        gs = _save_game_state(
-            db_session, game.game_id, week=5, age=25, state_json=state_json
-        )
+        gs = _save_game_state(db_session, game.game_id, week=5, age=25, state_json=state_json)
 
         loaded = db_session.query(GameState).filter_by(state_id=gs.state_id).one()
         loaded_pp = loaded.state_json["post_processing"]
@@ -341,18 +331,12 @@ class TestParallelPostProcessingDataIntegrity:
             },
         }
 
-        gs = _save_game_state(
-            db_session, game.game_id, week=3, age=25, state_json=base_state
-        )
+        gs = _save_game_state(db_session, game.game_id, week=3, age=25, state_json=base_state)
 
         # Use a separate engine for thread-safety (SQLite in-memory DBs aren't shared across connections)
         # Instead, we simulate concurrent dict merging and a single write
-        updates_a = {
-            "character_locations": {"王维": {"location": "终南山", "since_week": 3}}
-        }
-        updates_b = {
-            "career_records": {"主角": {"current_job": "县令", "started_week": 2}}
-        }
+        updates_a = {"character_locations": {"王维": {"location": "终南山", "since_week": 3}}}
+        updates_b = {"career_records": {"主角": {"current_job": "县令", "started_week": 2}}}
 
         # Simulate merge (what the parallel postprocessor would do)
         merged = base_state["world_model_data"].copy()
@@ -415,9 +399,7 @@ class TestParallelPostProcessingDataIntegrity:
             "compression_result": compression_result,
         }
 
-        gs = _save_game_state(
-            db_session, game.game_id, week=3, age=25, state_json=state_json
-        )
+        gs = _save_game_state(db_session, game.game_id, week=3, age=25, state_json=state_json)
 
         loaded = db_session.query(GameState).filter_by(state_id=gs.state_id).one()
         cr = loaded.state_json["compression_result"]
@@ -457,9 +439,7 @@ class TestBackwardCompatibility:
             "story_history": ["第一周的故事..."],
         }
 
-        gs = _save_game_state(
-            db_session, game.game_id, week=2, age=25, state_json=old_state_json
-        )
+        gs = _save_game_state(db_session, game.game_id, week=2, age=25, state_json=old_state_json)
 
         loaded = db_session.query(GameState).filter_by(state_id=gs.state_id).one()
         sj = loaded.state_json
@@ -504,9 +484,7 @@ class TestBackwardCompatibility:
             "world_model_data": old_wm,
         }
 
-        gs = _save_game_state(
-            db_session, game.game_id, week=4, age=26, state_json=state_json
-        )
+        gs = _save_game_state(db_session, game.game_id, week=4, age=26, state_json=state_json)
 
         loaded = db_session.query(GameState).filter_by(state_id=gs.state_id).one()
         loaded_wm = loaded.state_json["world_model_data"]
@@ -548,18 +526,14 @@ class TestFeatureFlagNonPersistence:
             "age": 25,
         }
 
-        gs = _save_game_state(
-            db_session, game.game_id, week=1, age=25, state_json=state_json
-        )
+        gs = _save_game_state(db_session, game.game_id, week=1, age=25, state_json=state_json)
 
         loaded = db_session.query(GameState).filter_by(state_id=gs.state_id).one()
         sj = loaded.state_json
 
         # Verify no feature flag keys leaked into state_json
         for flag_name in FEATURE_DEFAULTS:
-            assert (
-                flag_name not in sj
-            ), f"Feature flag '{flag_name}' should not be in state_json"
+            assert flag_name not in sj, f"Feature flag '{flag_name}' should not be in state_json"
 
         assert "feature_flags" not in sj
         assert "constraint_harness" not in sj
@@ -584,18 +558,14 @@ class TestFeatureFlagNonPersistence:
             },
         }
 
-        gs = _save_game_state(
-            db_session, game.game_id, week=3, age=26, state_json=state_json
-        )
+        gs = _save_game_state(db_session, game.game_id, week=3, age=26, state_json=state_json)
 
         # Read the game state back - it should be identical regardless of feature flags
         loaded = db_session.query(GameState).filter_by(state_id=gs.state_id).one()
         assert loaded.state_json["player_name"] == "FlagChange测试"
         assert loaded.state_json["energy"] == 80
         assert (
-            loaded.state_json["world_model_data"]["character_locations"]["小红"][
-                "location"
-            ]
+            loaded.state_json["world_model_data"]["character_locations"]["小红"]["location"]
             == "上海"
         )
 
@@ -635,9 +605,7 @@ class TestModelFallbackTracking:
             },
         }
 
-        gs = _save_game_state(
-            db_session, game.game_id, week=7, age=27, state_json=state_json
-        )
+        gs = _save_game_state(db_session, game.game_id, week=7, age=27, state_json=state_json)
 
         loaded = db_session.query(GameState).filter_by(state_id=gs.state_id).one()
         event_data = loaded.state_json["current_event_data"]
@@ -666,9 +634,7 @@ class TestModelFallbackTracking:
             },
         }
 
-        gs = _save_game_state(
-            db_session, game.game_id, week=10, age=28, state_json=state_json
-        )
+        gs = _save_game_state(db_session, game.game_id, week=10, age=28, state_json=state_json)
 
         loaded = db_session.query(GameState).filter_by(state_id=gs.state_id).one()
         meta = loaded.state_json["generation_metadata"]
@@ -708,6 +674,4 @@ class TestModelFallbackTracking:
         # Verify each state has the correct model
         for sid, expected_model in zip(state_ids, models):
             loaded = db_session.query(GameState).filter_by(state_id=sid).one()
-            assert (
-                loaded.state_json["current_event_data"]["model_used"] == expected_model
-            )
+            assert loaded.state_json["current_event_data"]["model_used"] == expected_model

@@ -17,9 +17,7 @@ class TestConnectionPoolConfig:
 
     def test_sqlite_connect_args(self):
         """SQLite 引擎应配置 check_same_thread=False"""
-        engine = create_engine(
-            "sqlite:///:memory:", connect_args={"check_same_thread": False}
-        )
+        engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
         # 验证可以从不同上下文获取连接
         with engine.connect() as conn:
             assert conn is not None
@@ -126,9 +124,7 @@ class TestConnectionPoolBehavior:
         """错误时 session 应能回滚"""
         from src.database.models import User
 
-        user = User(
-            private_id="rollback_test", public_id="rb_pub_1", display_name="Rollback"
-        )
+        user = User(private_id="rollback_test", public_id="rb_pub_1", display_name="Rollback")
         db_session.add(user)
         db_session.commit()
 

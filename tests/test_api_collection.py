@@ -280,9 +280,7 @@ class TestGenerateItemImage:
 
         mock_service = MagicMock()
         mock_service.verify_game_ownership.return_value = MagicMock()
-        mock_service.generate_item_image.side_effect = EntityNotFoundError(
-            "物品 NotExist 不存在"
-        )
+        mock_service.generate_item_image.side_effect = EntityNotFoundError("物品 NotExist 不存在")
         mock_cs_class.return_value = mock_service
 
         app.dependency_overrides[get_current_user_optional] = lambda: mock_user
@@ -305,9 +303,7 @@ class TestGenerateCharacterDescription:
         assert response.status_code == 401
 
     @patch("src.api.routers.collection.session_service")
-    def test_generate_character_description_already_exists(
-        self, mock_session_service, app, client
-    ):
+    def test_generate_character_description_already_exists(self, mock_session_service, app, client):
         """Test that existing description returns success."""
         mock_user = MagicMock()
         mock_user.user_id = 1
@@ -322,9 +318,7 @@ class TestGenerateCharacterDescription:
 
         app.dependency_overrides[get_current_user_optional] = lambda: mock_user
         try:
-            response = client.post(
-                "/collection/1/characters/TestChar/generate-description"
-            )
+            response = client.post("/collection/1/characters/TestChar/generate-description")
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True
@@ -357,9 +351,7 @@ class TestCollectionErrorScenarios:
 
         mock_game_loop = MagicMock()
         mock_player_state = MagicMock()
-        mock_player_state.characters = {
-            "TestChar": {"name": "TestChar", "affinity": 30}
-        }
+        mock_player_state.characters = {"TestChar": {"name": "TestChar", "affinity": 30}}
         mock_player_state.player_name = "OtherPlayer"
         mock_player_state.character_settings = {}
         mock_game_loop.get_state.return_value = mock_player_state
@@ -373,8 +365,8 @@ class TestCollectionErrorScenarios:
 
         mock_service = MagicMock()
         mock_service.verify_game_ownership.return_value = MagicMock()
-        mock_service.validate_character_for_regenerate.side_effect = (
-            PermissionDeniedError("亲密度不足，无法修改画像")
+        mock_service.validate_character_for_regenerate.side_effect = PermissionDeniedError(
+            "亲密度不足，无法修改画像"
         )
         mock_cs_class.return_value = mock_service
 
@@ -453,9 +445,7 @@ class TestDeleteItem:
         mock_session_local.return_value = mock_db
 
         mock_service = MagicMock()
-        mock_service.delete_item.side_effect = EntityNotFoundError(
-            "物品 NotExist 不存在"
-        )
+        mock_service.delete_item.side_effect = EntityNotFoundError("物品 NotExist 不存在")
         mock_cs_class.return_value = mock_service
 
         app.dependency_overrides[get_current_user_optional] = lambda: mock_user

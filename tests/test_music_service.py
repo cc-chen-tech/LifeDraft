@@ -72,9 +72,7 @@ class TestNeteaseMusicClientSearch:
 
     async def test_search_normal(self):
         """正常返回搜索结果。"""
-        self.client.client.get = AsyncMock(
-            return_value=_make_response(200, SEARCH_OK_JSON)
-        )
+        self.client.client.get = AsyncMock(return_value=_make_response(200, SEARCH_OK_JSON))
 
         songs = await self.client.search("轻音乐", limit=5)
 
@@ -156,9 +154,7 @@ class TestNeteaseMusicClientGetSongUrl:
 
     async def test_get_song_url_normal(self):
         """正常返回 URL。"""
-        self.client.client.get = AsyncMock(
-            return_value=_make_response(200, SONG_URL_OK_JSON)
-        )
+        self.client.client.get = AsyncMock(return_value=_make_response(200, SONG_URL_OK_JSON))
 
         url = await self.client.get_song_url(1001)
 

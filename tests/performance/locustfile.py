@@ -50,9 +50,7 @@ class BaseAPIUser(HttpUser):
             kwargs["headers"] = {}
         kwargs["headers"].update(self.auth_headers)
 
-        with self.client.request(
-            method, path, catch_response=True, **kwargs
-        ) as response:
+        with self.client.request(method, path, catch_response=True, **kwargs) as response:
             if response.status_code >= 500:
                 response.failure(f"Server error: {response.status_code}")
             elif response.status_code >= 400:
@@ -147,18 +145,14 @@ class GamePlayUser(BaseAPIUser):
             "life_vision": "Live a happy life",
             "language": "zh",
         }
-        self.make_request(
-            "POST", "/api/games", json=game_data, name="/api/games [POST]"
-        )
+        self.make_request("POST", "/api/games", json=game_data, name="/api/games [POST]")
 
     @task(1)
     def get_game_state(self):
         """Get game state (requires active game)."""
         # This would need a valid game_id
         game_id = random.randint(1, 100)
-        self.make_request(
-            "GET", f"/api/games/{game_id}/state", name="/api/games/{id}/state"
-        )
+        self.make_request("GET", f"/api/games/{game_id}/state", name="/api/games/{id}/state")
 
 
 class APIStressUser(BaseAPIUser):

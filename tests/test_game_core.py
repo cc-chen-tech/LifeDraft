@@ -151,9 +151,7 @@ class TestProcessDecision:
         char = CharacterState(name="Friend", affinity=50)
         player.characters["Friend"] = char.model_dump()
 
-        options = [
-            {"text": "Help friend", "effects": {"relationships": {"Friend": 10}}}
-        ]
+        options = [{"text": "Help friend", "effects": {"relationships": {"Friend": 10}}}]
         result = process_decision(
             player, "Friend needs help", 0, options, generate_result_text=False
         )
@@ -214,9 +212,7 @@ class TestNarrativeManagerStorylines:
         updates = [{"action": "new", "description": "A mysterious letter arrives"}]
         NarrativeManager.process_storyline_updates(player, updates)
         assert len(player.pending_storylines) == 1
-        assert (
-            player.pending_storylines[0]["description"] == "A mysterious letter arrives"
-        )
+        assert player.pending_storylines[0]["description"] == "A mysterious letter arrives"
         assert player.pending_storylines[0]["created_week"] == 5
 
     def test_resolve_storyline(self):
@@ -293,9 +289,7 @@ class TestNarrativeManagerStorylines:
 
     def test_none_player_state(self):
         """Test with None player state does not crash."""
-        NarrativeManager.process_storyline_updates(
-            None, [{"action": "new", "description": "test"}]
-        )
+        NarrativeManager.process_storyline_updates(None, [{"action": "new", "description": "test"}])
 
     def test_empty_updates(self):
         """Test with empty updates list."""
@@ -468,9 +462,7 @@ class TestNarrativeManagerForeshadowing:
                 }
             )
         NarrativeManager.process_foreshadowing_seeds(player, [])
-        active = [
-            s for s in player.foreshadowing_seeds if not s.get("activated", False)
-        ]
+        active = [s for s in player.foreshadowing_seeds if not s.get("activated", False)]
         assert len(active) <= 20
 
 
@@ -504,9 +496,7 @@ class TestNarrativeManagerHabits:
                 "category": "behavioral",
             }
         ]
-        updates = [
-            {"action": "strengthen", "character": "Friend", "habit": "arrives late"}
-        ]
+        updates = [{"action": "strengthen", "character": "Friend", "habit": "arrives late"}]
         NarrativeManager.process_habit_updates(player, updates)
         assert player.character_habits[0]["strength"] == "moderate"
 
@@ -605,9 +595,7 @@ class TestNarrativeManagerHabits:
         NarrativeManager.process_habit_updates(
             player, [{"action": "remove", "character": "Nobody", "habit": "nothing"}]
         )
-        friend_habits = [
-            h for h in player.character_habits if h["character"] == "Friend"
-        ]
+        friend_habits = [h for h in player.character_habits if h["character"] == "Friend"]
         assert len(friend_habits) <= 10
 
 
@@ -755,9 +743,7 @@ class TestWorldModelUpdaterLocations:
         """Test confirming a location."""
         player = PlayerState(week=5)
         player.world_model_data = {"character_locations": {}}
-        updates = [
-            {"action": "confirm", "character": "player", "location": "北京市朝阳区"}
-        ]
+        updates = [{"action": "confirm", "character": "player", "location": "北京市朝阳区"}]
         WorldModelUpdater.process_location_updates(player, updates)
         locs = player.world_model_data["character_locations"]
         assert "player" in locs

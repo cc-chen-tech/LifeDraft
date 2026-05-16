@@ -29,9 +29,7 @@ class TestImageStorageServiceInit:
         mock_settings.IMAGE_STORAGE_TYPE = "local"
 
         with patch.object(ImageStorageService, "_ensure_local_dir"):
-            service = ImageStorageService(
-                storage_type="oss", local_path=Path("/custom/path")
-            )
+            service = ImageStorageService(storage_type="oss", local_path=Path("/custom/path"))
 
         assert service.storage_type == "oss"
         assert service.local_path == Path("/custom/path")
@@ -153,9 +151,7 @@ class TestSaveLocal:
 
         service = ImageStorageService()
 
-        result = service._save_local(
-            image_data=b"test_image_data", filename="1/character/test.png"
-        )
+        result = service._save_local(image_data=b"test_image_data", filename="1/character/test.png")
 
         # ★ 现在返回相对路径而非绝对路径
         assert result[0] == "1/character/test.png"

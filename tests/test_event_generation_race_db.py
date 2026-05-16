@@ -97,9 +97,7 @@ class TestGenerationFlagClearedOnException:
             eg._generating = False
             eg._generating_start_time = None
 
-        assert (
-            eg._generating is False
-        ), "异常后 _generating 必须被重置，否则后续请求会被错误拒绝"
+        assert eg._generating is False, "异常后 _generating 必须被重置，否则后续请求会被错误拒绝"
         assert eg._generating_start_time is None
 
     def test_generating_flag_timeout_auto_reset(self):
@@ -148,9 +146,7 @@ class TestReconnectionDuringGeneration:
                 break
 
         # 验证收到了 resuming status
-        assert any(
-            "resuming" in e for e in events
-        ), "重连时应发送 'resuming' status 事件"
+        assert any("resuming" in e for e in events), "重连时应发送 'resuming' status 事件"
 
     def test_session_has_sse_cache_attribute(self):
         """session 必须有 sse_cache 属性用于断点续传。"""
@@ -159,9 +155,7 @@ class TestReconnectionDuringGeneration:
 
         game_loop = GameLoop(language="zh")
         session = GameLoopSession(game_loop=game_loop, game_id=1)
-        assert hasattr(
-            session, "sse_cache"
-        ), "session 必须有 sse_cache 属性用于断点续传"
+        assert hasattr(session, "sse_cache"), "session 必须有 sse_cache 属性用于断点续传"
         assert isinstance(session.sse_cache, list), "sse_cache 必须是列表"
 
 
@@ -176,9 +170,7 @@ class TestLockCleanupOnError:
 
         lock = await _get_game_lock(2222)
         game_loop = MagicMock()
-        game_loop.generate_round_event = MagicMock(
-            side_effect=Exception("generation failed")
-        )
+        game_loop.generate_round_event = MagicMock(side_effect=Exception("generation failed"))
 
         # 获取 lock
         await lock.acquire()

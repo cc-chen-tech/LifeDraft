@@ -192,9 +192,7 @@ class TestCollectionQueryCount:
         game, player_state, _, _, _ = populated_game
         queried_types = []
 
-        def track_image_queries(
-            conn, cursor, statement, parameters, context, executemany
-        ):
+        def track_image_queries(conn, cursor, statement, parameters, context, executemany):
             stmt_lower = statement.lower()
             if "images" in stmt_lower and "image_type" in stmt_lower:
                 queried_types.append(statement)

@@ -50,9 +50,7 @@ def test_regenerate_clears_all_caches():
     # Simulate stream_regenerate clearing logic
     player_state.last_round_full_story = ""
     player_state.round_history = [
-        e
-        for e in player_state.round_history
-        if not (e.get("week") == 10 and e.get("round") == 0)
+        e for e in player_state.round_history if not (e.get("week") == 10 and e.get("round") == 0)
     ]
     player_state.current_event_data = None
 
@@ -79,10 +77,7 @@ def test_no_resume_when_caches_cleared():
     # Check round_history (empty, so skip)
     if round_history:
         last_entry = round_history[-1]
-        if (
-            last_entry.get("week") == current_week
-            and last_entry.get("round") == current_round
-        ):
+        if last_entry.get("week") == current_week and last_entry.get("round") == current_round:
             existing_story = last_entry.get("event_description")
     # Check last_round_full_story (empty, so skip)
     elif last_round_full_story and current_round == 0 and current_event_data:
@@ -101,9 +96,7 @@ def test_old_logic_was_buggy():
     frontend_story = "Old accumulated story that is longer than backend story"
 
     # OLD BUGGY LOGIC (length comparison)
-    old_final = (
-        backend_story if len(backend_story) > len(frontend_story) else frontend_story
-    )
+    old_final = backend_story if len(backend_story) > len(frontend_story) else frontend_story
 
     # This would incorrectly use frontend_story!
     assert old_final == frontend_story, "Old logic was buggy - would use frontend story"

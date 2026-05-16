@@ -11,10 +11,10 @@ from src.ai.creative.novelty_scorer import NoveltyResult, NoveltyScorer
 # --------------- 测试数据 ---------------
 
 STORY_SEGMENT_A = "少年拔出神剑，击败了恶龙，拯救了公主，全村人载歌载舞庆祝胜利。"
-STORY_SEGMENT_B = (
-    "少年拿起宝剑，打倒了恶龙，救出了公主，村民们欢天喜地庆贺凯旋。"  # 与A高度相似
+STORY_SEGMENT_B = "少年拿起宝剑，打倒了恶龙，救出了公主，村民们欢天喜地庆贺凯旋。"  # 与A高度相似
+STORY_SEGMENT_C = (
+    "深夜的实验室里，教授发现了量子纠缠的异常数据，她颤抖的手指停在键盘上方。"  # 与A完全不同
 )
-STORY_SEGMENT_C = "深夜的实验室里，教授发现了量子纠缠的异常数据，她颤抖的手指停在键盘上方。"  # 与A完全不同
 STORY_SEGMENT_D = "集市上，卖糖葫芦的老翁突然变了脸色，低声对身旁的乞丐耳语了几句。"
 
 HISTORY_CLICHE = [

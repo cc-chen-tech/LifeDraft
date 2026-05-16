@@ -140,8 +140,6 @@ class TestNarrativeStyleIdBackwardCompat:
         db_session.add(gs)
         db_session.commit()
 
-        loaded_states = (
-            db_session.query(GameState).filter_by(game_id=game.game_id).all()
-        )
+        loaded_states = db_session.query(GameState).filter_by(game_id=game.game_id).all()
         assert len(loaded_states) == 1
         assert loaded_states[0].state_json["energy"] == 100

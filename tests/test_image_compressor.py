@@ -33,8 +33,7 @@ class TestImageCompressor:
         compressed_size = len(compressed)
 
         assert compressed_size < original_size * 0.5, (
-            f"Compression did not reduce size enough: "
-            f"{original_size} -> {compressed_size}"
+            f"Compression did not reduce size enough: " f"{original_size} -> {compressed_size}"
         )
 
     def test_compress_jpeg_reduces_size(self):
@@ -48,8 +47,7 @@ class TestImageCompressor:
         compressed_size = len(compressed)
 
         assert compressed_size < original_size * 0.5, (
-            f"Compression did not reduce size enough: "
-            f"{original_size} -> {compressed_size}"
+            f"Compression did not reduce size enough: " f"{original_size} -> {compressed_size}"
         )
 
     def test_compress_max_dimension(self):
@@ -89,9 +87,7 @@ class TestImageCompressor:
         low_quality = compress_image(original_data, quality=30)
         high_quality = compress_image(original_data, quality=95)
 
-        assert len(low_quality) < len(
-            high_quality
-        ), "Lower quality should produce smaller file"
+        assert len(low_quality) < len(high_quality), "Lower quality should produce smaller file"
 
     def test_compress_returns_bytes(self):
         """compress_image should return bytes."""

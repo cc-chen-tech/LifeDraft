@@ -135,9 +135,7 @@ def basic_validation_context(sample_player_state_with_creative):
         "character_habits": [
             {"character": "李逍遥", "habit": "每日清晨练剑"},
         ],
-        "world_model_state": (
-            state.world_model_data if hasattr(state, "world_model_data") else {}
-        ),
+        "world_model_state": (state.world_model_data if hasattr(state, "world_model_data") else {}),
         "player_state": state,
     }
 
@@ -199,21 +197,13 @@ class TestRetryChainIntegrity:
         with patch("src.ai.story_generator.AIClient") as mock_client:
             gen = StoryGenerator(mock_client())
             if hasattr(gen, "_resolve_temperature"):
-                assert gen._resolve_temperature(0, 0.85, 0.15) == pytest.approx(
-                    0.85, abs=0.05
-                )
-                assert gen._resolve_temperature(1, 0.85, 0.15) == pytest.approx(
-                    0.70, abs=0.05
-                )
-                assert gen._resolve_temperature(2, 0.85, 0.15) == pytest.approx(
-                    0.70, abs=0.05
-                )
+                assert gen._resolve_temperature(0, 0.85, 0.15) == pytest.approx(0.85, abs=0.05)
+                assert gen._resolve_temperature(1, 0.85, 0.15) == pytest.approx(0.70, abs=0.05)
+                assert gen._resolve_temperature(2, 0.85, 0.15) == pytest.approx(0.70, abs=0.05)
             else:
                 pytest.fail("_resolve_temperature not found on StoryGenerator")
 
-    def test_max_retries_limit(
-        self, failed_validation_result, diagnostic_with_critical
-    ):
+    def test_max_retries_limit(self, failed_validation_result, diagnostic_with_critical):
         """超过max_retries后停止重试"""
         controller = RetryController(max_retries=2)
 
@@ -224,9 +214,7 @@ class TestRetryChainIntegrity:
         assert should_retry is False
         assert correction is None
 
-    def test_no_retry_when_passed(
-        self, passed_validation_result, diagnostic_no_critical
-    ):
+    def test_no_retry_when_passed(self, passed_validation_result, diagnostic_no_critical):
         """全部通过时不重试"""
         controller = RetryController(max_retries=2)
         should_retry, correction = controller.should_retry(
@@ -234,9 +222,7 @@ class TestRetryChainIntegrity:
         )
         assert should_retry is False
 
-    def test_gentle_hint_on_low_score(
-        self, low_score_validation_result, diagnostic_no_critical
-    ):
+    def test_gentle_hint_on_low_score(self, low_score_validation_result, diagnostic_no_critical):
         """无 CRITICAL 但分数低于阈值时，首次尝试触发温和重试。"""
         controller = RetryController(max_retries=2, score_threshold=70.0)
         should_retry, correction = controller.should_retry(
@@ -256,9 +242,7 @@ class TestRetryChainIntegrity:
 class TestCorrectionInjection:
     """修正指令注入验证"""
 
-    def test_correction_in_retry_prompt(
-        self, diagnostic_with_critical, failed_validation_result
-    ):
+    def test_correction_in_retry_prompt(self, diagnostic_with_critical, failed_validation_result):
         """第二次prompt中包含上次生成失败修正指令"""
         controller = RetryController(max_retries=2)
         _, correction = controller.should_retry(
@@ -370,9 +354,7 @@ class TestDiagnosticAccuracy:
     def test_violation_localization(self, mock_story_text, basic_validation_context):
         """输入已知违规文本→Diagnostics正确定位违规段落"""
         # 构造包含第一人称的文本
-        bad_text = (
-            "我走在洛阳城的街道上，看到了远方的山峦。我决定继续前进。" + mock_story_text
-        )
+        bad_text = "我走在洛阳城的街道上，看到了远方的山峦。我决定继续前进。" + mock_story_text
 
         pipeline = ValidationPipeline(default_registry)
         result = pipeline.validate(bad_text, basic_validation_context)
@@ -425,9 +407,7 @@ class TestDiagnosticAccuracy:
 class TestDegradationSafety:
     """降级安全"""
 
-    def test_validation_pipeline_exception(
-        self, mock_story_text, basic_validation_context
-    ):
+    def test_validation_pipeline_exception(self, mock_story_text, basic_validation_context):
         """ValidationPipeline抛异常→优雅降级返回原始故事"""
 
         # ValidationPipeline 的 _run_single_check 内部有异常保护

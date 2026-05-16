@@ -23,9 +23,7 @@ class TestNoPickleContract:
                 if stripped.startswith("#") or stripped.startswith('"""'):
                     continue
                 if "import pickle" in stripped or "import cPickle" in stripped:
-                    violations.append(
-                        f"{py_file.relative_to(src_dir.parent)}:{i}: {stripped}"
-                    )
+                    violations.append(f"{py_file.relative_to(src_dir.parent)}:{i}: {stripped}")
 
         assert (
             not violations
@@ -54,9 +52,7 @@ class TestNoPickleContract:
                         "pickle.dump(",
                     ]
                 ):
-                    violations.append(
-                        f"{py_file.relative_to(src_dir.parent)}:{i}: {stripped}"
-                    )
+                    violations.append(f"{py_file.relative_to(src_dir.parent)}:{i}: {stripped}")
 
         assert not violations, f"发现 {len(violations)} 处 pickle 调用:\n" + "\n".join(
             violations[:10]

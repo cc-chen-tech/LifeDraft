@@ -23,9 +23,7 @@ class TestImageEditFallbackContract:
         service.image_client = MagicMock()
 
         # edit_image 失败
-        service.image_client.edit_image.side_effect = ImageGenerationError(
-            "API timeout"
-        )
+        service.image_client.edit_image.side_effect = ImageGenerationError("API timeout")
         # generate_image 成功
         service.image_client.generate_image.return_value = (
             b"fake_image_data",
@@ -103,9 +101,7 @@ class TestImageEditFallbackContract:
         service = MagicMock(spec=RoundIllustrationService)
         service.image_client = MagicMock()
 
-        service.image_client.edit_image.return_value = [
-            (b"edited_image", "edit_prompt")
-        ]
+        service.image_client.edit_image.return_value = [(b"edited_image", "edit_prompt")]
 
         with patch.object(
             RoundIllustrationService,

@@ -59,9 +59,7 @@ def mock_session_store():
 @pytest.fixture
 def mock_session_service(mock_session):
     """Mock session service (used by endpoints to get sessions)."""
-    with patch(
-        "src.api.services.session_service.session_service.get_or_restore"
-    ) as mock:
+    with patch("src.api.services.session_service.session_service.get_or_restore") as mock:
         yield mock
 
 
@@ -102,15 +100,11 @@ class TestGetGameState:
         assert isinstance(data["player_state"], dict)
         assert data["game_id"] == 1
 
-    def test_get_state_no_session(
-        self, client, auth_headers, mock_auth, mock_session_service
-    ):
+    def test_get_state_no_session(self, client, auth_headers, mock_auth, mock_session_service):
         """Test getting state without active session."""
         from fastapi import HTTPException
 
-        mock_session_service.side_effect = HTTPException(
-            status_code=404, detail="Game not found"
-        )
+        mock_session_service.side_effect = HTTPException(status_code=404, detail="Game not found")
         response = client.get("/api/games/1/state", headers=auth_headers)
         assert response.status_code == 404
 
@@ -133,15 +127,11 @@ class TestMakeChoice:
 
         assert response.status_code == 400
 
-    def test_make_choice_no_session(
-        self, client, auth_headers, mock_auth, mock_session_service
-    ):
+    def test_make_choice_no_session(self, client, auth_headers, mock_auth, mock_session_service):
         """Test making choice without active session."""
         from fastapi import HTTPException
 
-        mock_session_service.side_effect = HTTPException(
-            status_code=404, detail="Game not found"
-        )
+        mock_session_service.side_effect = HTTPException(status_code=404, detail="Game not found")
         response = client.post(
             "/api/games/1/choice", json={"option_index": 0}, headers=auth_headers
         )
@@ -151,15 +141,11 @@ class TestMakeChoice:
 class TestCustomChoice:
     """Tests for POST /api/gameplay/{game_id}/custom-choice."""
 
-    def test_custom_choice_no_session(
-        self, client, auth_headers, mock_auth, mock_session_service
-    ):
+    def test_custom_choice_no_session(self, client, auth_headers, mock_auth, mock_session_service):
         """Test custom choice without active session."""
         from fastapi import HTTPException
 
-        mock_session_service.side_effect = HTTPException(
-            status_code=404, detail="Game not found"
-        )
+        mock_session_service.side_effect = HTTPException(status_code=404, detail="Game not found")
         response = client.post(
             "/api/games/1/custom-choice",
             json={"custom_text": "My custom action"},
@@ -192,9 +178,7 @@ class TestGenerateSummary:
         }
         mock_session_service.return_value = mock_session
 
-        response = client.post(
-            "/api/games/1/summary", json={"weeks": 10}, headers=auth_headers
-        )
+        response = client.post("/api/games/1/summary", json={"weeks": 10}, headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -209,12 +193,8 @@ class TestGenerateSummary:
         """Test generating summary without session."""
         from fastapi import HTTPException
 
-        mock_session_service.side_effect = HTTPException(
-            status_code=404, detail="Game not found"
-        )
-        response = client.post(
-            "/api/games/1/summary", json={"weeks": 10}, headers=auth_headers
-        )
+        mock_session_service.side_effect = HTTPException(status_code=404, detail="Game not found")
+        response = client.post("/api/games/1/summary", json={"weeks": 10}, headers=auth_headers)
         assert response.status_code == 404
 
     def test_generate_summary_error(
@@ -222,9 +202,7 @@ class TestGenerateSummary:
     ):
         """Test summary generation with AI error - should fallback gracefully."""
         # Mock AI generator to raise error, but endpoint has fallback
-        mock_session.game_loop.ai_generator.generate_completion.side_effect = Exception(
-            "AI error"
-        )
+        mock_session.game_loop.ai_generator.generate_completion.side_effect = Exception("AI error")
 
         # Set real values for player_state (needed for format strings in fallback)
         mock_player = MagicMock()
@@ -244,9 +222,7 @@ class TestGenerateSummary:
             ]
             mock_get_db.return_value = mock_db
 
-            response = client.post(
-                "/api/games/1/summary", json={"weeks": 10}, headers=auth_headers
-            )
+            response = client.post("/api/games/1/summary", json={"weeks": 10}, headers=auth_headers)
         # Should return 200 with fallback summary
         assert response.status_code == 200
         data = response.json()
@@ -310,15 +286,11 @@ class TestGetEnding:
         assert response.status_code == 400
         assert "not over" in response.json()["detail"].lower()
 
-    def test_get_ending_no_session(
-        self, client, auth_headers, mock_auth, mock_session_service
-    ):
+    def test_get_ending_no_session(self, client, auth_headers, mock_auth, mock_session_service):
         """Test getting ending without session."""
         from fastapi import HTTPException
 
-        mock_session_service.side_effect = HTTPException(
-            status_code=404, detail="Game not found"
-        )
+        mock_session_service.side_effect = HTTPException(status_code=404, detail="Game not found")
         response = client.get("/api/games/1/ending", headers=auth_headers)
         assert response.status_code == 404
 
@@ -454,9 +426,7 @@ class TestSummaryWeekRange:
         ]
         mock_player.decision_history = []
         mock_session.game_loop.player_state = mock_player
-        mock_session.game_loop.ai_generator.generate_completion.return_value = (
-            "这是一段总结。"
-        )
+        mock_session.game_loop.ai_generator.generate_completion.return_value = "这是一段总结。"
         mock_session_service.return_value = mock_session
 
         response = client.post("/api/games/1/summary", json={}, headers=auth_headers)

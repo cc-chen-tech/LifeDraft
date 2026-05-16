@@ -23,9 +23,7 @@ class FakeClient:
                 "kwargs": kwargs,
             }
         )
-        response = (
-            self.responses[self.index] if self.index < len(self.responses) else ""
-        )
+        response = self.responses[self.index] if self.index < len(self.responses) else ""
         self.index += 1
         return response
 

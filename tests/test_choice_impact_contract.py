@@ -38,10 +38,7 @@ class TestChoiceImpactContract:
 
         # 应包含段落长度控制要求
         assert (
-            "段" in prompt
-            or "paragraph" in prompt.lower()
-            or "换行" in prompt
-            or "换段" in prompt
+            "段" in prompt or "paragraph" in prompt.lower() or "换行" in prompt or "换段" in prompt
         ), f"结果生成提示词应包含分段要求。prompt前500字: {prompt[:500]}"
 
     def test_english_result_prompt_requires_unique_impact(self):

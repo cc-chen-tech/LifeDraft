@@ -43,9 +43,7 @@ def mock_auth():
 class TestSendFriendRequest:
     """Tests for POST /api/friends/request."""
 
-    def test_send_request_success(
-        self, client, mock_user_manager, mock_auth, auth_headers
-    ):
+    def test_send_request_success(self, client, mock_user_manager, mock_auth, auth_headers):
         """Test sending a friend request."""
         mock_user_manager.send_friend_request.return_value = "请求已发送"
 
@@ -59,9 +57,7 @@ class TestSendFriendRequest:
         data = response.json()
         assert "请求已发送" in data["message"]
 
-    def test_send_request_to_self(
-        self, client, mock_user_manager, mock_auth, auth_headers
-    ):
+    def test_send_request_to_self(self, client, mock_user_manager, mock_auth, auth_headers):
         """Test sending request to self."""
         mock_user_manager.send_friend_request.return_value = "不能添加自己为好友"
 
@@ -73,9 +69,7 @@ class TestSendFriendRequest:
 
         assert response.status_code == 400
 
-    def test_send_request_already_friends(
-        self, client, mock_user_manager, mock_auth, auth_headers
-    ):
+    def test_send_request_already_friends(self, client, mock_user_manager, mock_auth, auth_headers):
         """Test sending request to existing friend."""
         mock_user_manager.send_friend_request.return_value = "已经是好友了"
 
@@ -87,9 +81,7 @@ class TestSendFriendRequest:
 
         assert response.status_code == 400
 
-    def test_send_request_user_not_found(
-        self, client, mock_user_manager, mock_auth, auth_headers
-    ):
+    def test_send_request_user_not_found(self, client, mock_user_manager, mock_auth, auth_headers):
         """Test sending request to non-existent user."""
         mock_user_manager.send_friend_request.return_value = "Error: User not found"
 
@@ -119,9 +111,7 @@ class TestSendFriendRequest:
 class TestRespondToRequest:
     """Tests for POST /api/friends/respond."""
 
-    def test_accept_request_success(
-        self, client, mock_user_manager, mock_auth, auth_headers
-    ):
+    def test_accept_request_success(self, client, mock_user_manager, mock_auth, auth_headers):
         """Test accepting a friend request."""
         mock_user_manager.respond_to_friend_request.return_value = "已接受好友请求"
 
@@ -134,9 +124,7 @@ class TestRespondToRequest:
         assert response.status_code == 200
         assert "已接受" in response.json()["message"]
 
-    def test_reject_request_success(
-        self, client, mock_user_manager, mock_auth, auth_headers
-    ):
+    def test_reject_request_success(self, client, mock_user_manager, mock_auth, auth_headers):
         """Test rejecting a friend request."""
         mock_user_manager.respond_to_friend_request.return_value = "已拒绝好友请求"
 
@@ -148,9 +136,7 @@ class TestRespondToRequest:
 
         assert response.status_code == 200
 
-    def test_respond_unauthorized(
-        self, client, mock_user_manager, mock_auth, auth_headers
-    ):
+    def test_respond_unauthorized(self, client, mock_user_manager, mock_auth, auth_headers):
         """Test responding to request not owned by user."""
         mock_user_manager.respond_to_friend_request.return_value = "无权操作此请求"
 
@@ -164,9 +150,7 @@ class TestRespondToRequest:
 
     def test_respond_no_auth(self, client):
         """Test responding without authentication."""
-        response = client.post(
-            "/api/friends/respond", json={"request_id": 1, "accept": True}
-        )
+        response = client.post("/api/friends/respond", json={"request_id": 1, "accept": True})
 
         assert response.status_code == 401
 
@@ -174,9 +158,7 @@ class TestRespondToRequest:
 class TestGetFriends:
     """Tests for GET /api/friends."""
 
-    def test_get_friends_success(
-        self, client, mock_user_manager, mock_auth, auth_headers
-    ):
+    def test_get_friends_success(self, client, mock_user_manager, mock_auth, auth_headers):
         """Test getting friends list."""
         mock_user_manager.get_friends.return_value = [
             {"user_id": 2, "public_id": "ABC123", "display_name": "Friend1"},
@@ -190,9 +172,7 @@ class TestGetFriends:
         assert len(data) == 2
         assert data[0]["display_name"] == "Friend1"
 
-    def test_get_friends_empty(
-        self, client, mock_user_manager, mock_auth, auth_headers
-    ):
+    def test_get_friends_empty(self, client, mock_user_manager, mock_auth, auth_headers):
         """Test getting empty friends list."""
         mock_user_manager.get_friends.return_value = []
 
@@ -210,9 +190,7 @@ class TestGetFriends:
 class TestGetPendingRequests:
     """Tests for GET /api/friends/requests."""
 
-    def test_get_pending_requests_success(
-        self, client, mock_user_manager, mock_auth, auth_headers
-    ):
+    def test_get_pending_requests_success(self, client, mock_user_manager, mock_auth, auth_headers):
         """Test getting pending friend requests."""
         mock_user_manager.get_pending_friend_requests.return_value = [
             {
@@ -232,9 +210,7 @@ class TestGetPendingRequests:
         assert data[0]["request_id"] == 1
         assert data[0]["from_user"]["public_id"] == "ABC123"
 
-    def test_get_pending_requests_empty(
-        self, client, mock_user_manager, mock_auth, auth_headers
-    ):
+    def test_get_pending_requests_empty(self, client, mock_user_manager, mock_auth, auth_headers):
         """Test getting empty pending requests."""
         mock_user_manager.get_pending_friend_requests.return_value = []
 
@@ -252,9 +228,7 @@ class TestGetPendingRequests:
 class TestRemoveFriend:
     """Tests for DELETE /api/friends/{friend_user_id}."""
 
-    def test_remove_friend_success(
-        self, client, mock_user_manager, mock_auth, auth_headers
-    ):
+    def test_remove_friend_success(self, client, mock_user_manager, mock_auth, auth_headers):
         """Test removing a friend."""
         mock_user_manager.remove_friend.return_value = True
 
@@ -263,9 +237,7 @@ class TestRemoveFriend:
         assert response.status_code == 200
         assert "removed" in response.json()["message"].lower()
 
-    def test_remove_friend_not_found(
-        self, client, mock_user_manager, mock_auth, auth_headers
-    ):
+    def test_remove_friend_not_found(self, client, mock_user_manager, mock_auth, auth_headers):
         """Test removing non-existent friend."""
         mock_user_manager.remove_friend.return_value = False
 

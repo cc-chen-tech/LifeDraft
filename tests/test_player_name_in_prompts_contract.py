@@ -50,9 +50,7 @@ class TestPlayerNameInPrompts:
         has_instruction = "主角" in prompt and (
             "始终" in prompt or "一直" in prompt or "禁止" in prompt or "不要" in prompt
         )
-        assert (
-            has_instruction
-        ), f"prompt 必须包含主角名称使用指令。prompt 前800字: {prompt[:800]}"
+        assert has_instruction, f"prompt 必须包含主角名称使用指令。prompt 前800字: {prompt[:800]}"
 
     def test_story_only_prompt_english_includes_player_name(self):
         """英文版 get_story_only_prompt 也必须包含 player_name"""
@@ -225,9 +223,7 @@ class TestPlayerNameInPrompts:
             player_name="狄仁杰",
         )
         assert (
-            "之前没有任何情节" in prompt
-            or "开篇第一回" in prompt
-            or "禁止提及" in prompt
+            "之前没有任何情节" in prompt or "开篇第一回" in prompt or "禁止提及" in prompt
         ), f"第一章prompt必须禁止提及前情内容。prompt前800字: {prompt[:800]}"
 
     def test_round_event_prompt_chapter_label_consistent(self):
@@ -298,5 +294,7 @@ class TestPlayerNameInPrompts:
             round_context="",
             player_name="狄仁杰",
         )
-        assert "章节号约束" in prompt, f"round_event_prompt 必须包含章节号约束区块。prompt前800字: {prompt[:800]}"
+        assert (
+            "章节号约束" in prompt
+        ), f"round_event_prompt 必须包含章节号约束区块。prompt前800字: {prompt[:800]}"
         assert "本段故事是整体叙事的" in prompt, "必须包含章节定位说明"

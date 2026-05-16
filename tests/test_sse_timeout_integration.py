@@ -130,9 +130,7 @@ class TestSSEErrorEventFormat:
 
     def test_sse_error_event_contains_error_field(self):
         """SSE error 事件必须包含 'error' 字段。"""
-        event = make_sse_event(
-            "error", {"error": "Timeout waiting for event generation"}
-        )
+        event = make_sse_event("error", {"error": "Timeout waiting for event generation"})
         assert "error" in event
         assert "Timeout waiting for event generation" in event
 

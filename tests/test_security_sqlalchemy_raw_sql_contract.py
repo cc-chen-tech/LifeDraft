@@ -26,9 +26,7 @@ class TestSQLAlchemyRawSQLContract:
             for node in ast.walk(tree):
                 if isinstance(node, ast.JoinedStr):
                     for value in node.values:
-                        if isinstance(value, ast.Constant) and isinstance(
-                            value.value, str
-                        ):
+                        if isinstance(value, ast.Constant) and isinstance(value.value, str):
                             lowered = value.value.lower()
                             if any(
                                 kw in lowered
@@ -43,31 +41,20 @@ class TestSQLAlchemyRawSQLContract:
                                 ]
                             ):
                                 # 排除日志语句：检查整行是否包含 logger.
-                                line = (
-                                    lines[node.lineno - 1]
-                                    if node.lineno <= len(lines)
-                                    else ""
-                                )
+                                line = lines[node.lineno - 1] if node.lineno <= len(lines) else ""
                                 if "logger." in line or "log." in line:
                                     continue
                                 violations.append(
                                     f"{py_file.relative_to(db_dir.parent.parent)}:{node.lineno}: f-string SQL"
                                 )
 
-        assert (
-            not violations
-        ), f"发现 {len(violations)} 处 f-string 拼接 SQL:\n" + "\n".join(
+        assert not violations, f"发现 {len(violations)} 处 f-string 拼接 SQL:\n" + "\n".join(
             violations[:10]
         )
 
     def test_performance_indexes_use_constants(self):
         """add_performance_indexes.py 只能使用硬编码常量，不能拼接外部输入"""
-        file_path = (
-            Path(__file__).parent.parent
-            / "src"
-            / "database"
-            / "add_performance_indexes.py"
-        )
+        file_path = Path(__file__).parent.parent / "src" / "database" / "add_performance_indexes.py"
         content = file_path.read_text(encoding="utf-8")
         tree = ast.parse(content)
 
@@ -76,10 +63,7 @@ class TestSQLAlchemyRawSQLContract:
         for node in ast.walk(tree):
             if isinstance(node, ast.Assign):
                 for target in node.targets:
-                    if (
-                        isinstance(target, ast.Name)
-                        and target.id == "PERFORMANCE_INDEXES"
-                    ):
+                    if isinstance(target, ast.Name) and target.id == "PERFORMANCE_INDEXES":
                         found = True
                         # 必须是常量列表（元组列表）
                         if isinstance(node.value, ast.List):
@@ -89,9 +73,7 @@ class TestSQLAlchemyRawSQLContract:
                                         "PERFORMANCE_INDEXES 必须只包含硬编码的元组"
                                     )
                         else:
-                            raise AssertionError(
-                                "PERFORMANCE_INDEXES 必须是硬编码的列表"
-                            )
+                            raise AssertionError("PERFORMANCE_INDEXES 必须是硬编码的列表")
 
         assert found, "未找到 PERFORMANCE_INDEXES 常量定义"
 
@@ -105,19 +87,13 @@ class TestSQLAlchemyRawSQLContract:
             lines = content.split("\n")
             for i, line in enumerate(lines, 1):
                 # 检查是否有 .filter() 中使用字符串拼接
-                if ".filter(" in line and (
-                    "+" in line or "%" in line or ".format(" in line
-                ):
+                if ".filter(" in line and ("+" in line or "%" in line or ".format(" in line):
                     # 排除注释和日志
                     stripped = line.strip()
                     if stripped.startswith("#") or "logger" in stripped:
                         continue
-                    violations.append(
-                        f"{py_file.relative_to(src_dir.parent)}:{i}: {stripped}"
-                    )
+                    violations.append(f"{py_file.relative_to(src_dir.parent)}:{i}: {stripped}")
 
-        assert (
-            not violations
-        ), f"发现 {len(violations)} 处可疑的 filter 字符串拼接:\n" + "\n".join(
+        assert not violations, f"发现 {len(violations)} 处可疑的 filter 字符串拼接:\n" + "\n".join(
             violations[:10]
         )

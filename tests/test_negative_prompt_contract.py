@@ -81,9 +81,7 @@ class TestNegativePromptContract:
         # 拦截 generate_image 调用以检查参数
         captured = {}
 
-        def mock_generate_image(
-            prompt, size, style, quality, n, response_format, extra_params
-        ):
+        def mock_generate_image(prompt, size, style, quality, n, response_format, extra_params):
             captured["prompt"] = prompt
             captured["extra_params"] = extra_params
             return b"fake", prompt

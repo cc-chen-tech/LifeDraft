@@ -115,10 +115,7 @@ class TestSceneImageSSEIntegration:
         key = f"{game_id}:0:0:result"
         try:
             assert key in _scene_image_latest
-            assert (
-                _scene_image_latest[key]["error"]
-                == "Image generation timeout after 180s"
-            )
+            assert _scene_image_latest[key]["error"] == "Image generation timeout after 180s"
 
             with TestClient(app) as client:
                 with client.get(

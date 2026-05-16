@@ -65,9 +65,9 @@ class TestNoHardcodedSecretsContract:
                             continue
                         violations.append(f"{rel_path}:{i}: {line.strip()}")
 
-        assert (
-            not violations
-        ), f"发现 {len(violations)} 处可能的硬编码密钥:\n" + "\n".join(violations[:20])
+        assert not violations, f"发现 {len(violations)} 处可能的硬编码密钥:\n" + "\n".join(
+            violations[:20]
+        )
 
     def test_env_file_not_tracked(self):
         """.env 文件不应被 git 跟踪"""
@@ -81,8 +81,7 @@ class TestNoHardcodedSecretsContract:
         )
         tracked = result.stdout.strip()
         assert not tracked, (
-            ".env 文件不应被 git 跟踪（它包含敏感配置）。"
-            "请从 git 中移除: git rm --cached .env"
+            ".env 文件不应被 git 跟踪（它包含敏感配置）。" "请从 git 中移除: git rm --cached .env"
         )
 
     def test_getenv_used_for_secrets(self):

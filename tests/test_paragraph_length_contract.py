@@ -55,9 +55,7 @@ class TestParagraphLengthContract:
             language="en",
         )
 
-        has_paragraph_constraint = (
-            "paragraph" in prompt.lower() or "break" in prompt.lower()
-        )
+        has_paragraph_constraint = "paragraph" in prompt.lower() or "break" in prompt.lower()
         assert (
             has_paragraph_constraint
         ), f"英文事件生成提示词应包含段落控制要求。prompt前800字: {prompt[:800]}"

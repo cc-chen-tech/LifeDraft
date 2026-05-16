@@ -473,7 +473,9 @@ class StoryGenerator:
                         effects={"energy": 0, "mood": 0, "knowledge": 0, "wealth": 0},
                     ),
                     EventOption(
-                        text="先核对现场线索" if language == "zh" else "Check the immediate clues",
+                        text=(
+                            "先核对现场线索" if language == "zh" else "Check the immediate clues"
+                        ),
                         effects={"energy": -5, "mood": 5, "knowledge": 5, "wealth": 0},
                     ),
                 ],

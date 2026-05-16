@@ -91,9 +91,7 @@ class TestImageClientInit:
 
     @patch("src.ai.image_generator.settings")
     @patch("src.ai.image_config.settings")
-    def test_init_raises_without_base_url(
-        self, mock_config_settings, mock_gen_settings
-    ):
+    def test_init_raises_without_base_url(self, mock_config_settings, mock_gen_settings):
         """测试无Base URL时抛出异常"""
         for mock_settings in [mock_config_settings, mock_gen_settings]:
             mock_settings.get_image_api_key.return_value = "test-key"

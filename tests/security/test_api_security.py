@@ -85,9 +85,7 @@ class TestInputValidation:
         ]
 
         for char in special_chars:
-            response = client.post(
-                "/api/auth/register", json={"display_name": f"Test{char}User"}
-            )
+            response = client.post("/api/auth/register", json={"display_name": f"Test{char}User"})
             # Should handle gracefully
             assert response.status_code in [200, 400, 422]
 
@@ -145,9 +143,7 @@ class TestAuthentication:
         with patch("src.api.deps.decode_token") as mock:
             mock.return_value = None
 
-            response = client.get(
-                "/api/games", headers={"Authorization": "Bearer no_user_token"}
-            )
+            response = client.get("/api/games", headers={"Authorization": "Bearer no_user_token"})
             # Should reject tokens without user_id
             assert response.status_code in [401, 403]
 
@@ -211,9 +207,7 @@ class TestDataExposure:
 
     def test_password_not_in_error_messages(self):
         """Test that passwords/secrets are not in error messages."""
-        response = client.post(
-            "/api/auth/login", json={"private_id": "secret_value_123"}
-        )
+        response = client.post("/api/auth/login", json={"private_id": "secret_value_123"})
 
         # Error message should not contain the secret
         if response.status_code >= 400:
@@ -252,9 +246,7 @@ class TestSecurityHeaders:
 
     def test_cors_headers(self):
         """Test CORS configuration."""
-        response = client.options(
-            "/api/auth/login", headers={"Origin": "http://evil.com"}
-        )
+        response = client.options("/api/auth/login", headers={"Origin": "http://evil.com"})
 
         # Check CORS headers are properly configured
         # If CORS is configured, it should not allow arbitrary origins
@@ -378,9 +370,7 @@ class TestErrorInfoLeakage:
     def test_internal_error_hides_details(self, client, mock_auth):
         """500 错误不应暴露内部实现细节"""
         # 触发一个可能导致 500 的请求
-        response = client.get(
-            "/api/games/999999", headers={"Authorization": "Bearer test_token"}
-        )
+        response = client.get("/api/games/999999", headers={"Authorization": "Bearer test_token"})
         if response.status_code == 500:
             body = response.json()
             detail = str(body.get("detail", ""))

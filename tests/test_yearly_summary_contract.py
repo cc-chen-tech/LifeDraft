@@ -14,9 +14,7 @@ class FakeAIClient:
         self.response = response
         self.calls = []
 
-    def generate_completion(
-        self, *, prompt, system_prompt, temperature=0.8, max_tokens=4096
-    ):
+    def generate_completion(self, *, prompt, system_prompt, temperature=0.8, max_tokens=4096):
         self.calls.append(
             {
                 "prompt": prompt,

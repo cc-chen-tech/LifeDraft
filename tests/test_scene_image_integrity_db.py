@@ -127,9 +127,7 @@ class TestSceneImageIntegrityDb:
             # 验证服务代码中的异常处理逻辑：
             # 当 commit 抛出 IntegrityError 时，rollback 后重新查询
             # 这里通过直接调用服务并确保不崩溃来验证
-            with patch.object(
-                service.storage_service, "image_exists", return_value=True
-            ):
+            with patch.object(service.storage_service, "image_exists", return_value=True):
                 result = service.generate_round_scene_image(
                     game_id=2,
                     round_number=1,
@@ -162,9 +160,7 @@ class TestSceneImageIntegrityDb:
 
             # Mock commit to always raise IntegrityError
             original_commit = db_session.commit
-            db_session.commit = MagicMock(
-                side_effect=IntegrityError("duplicate", "", "")
-            )
+            db_session.commit = MagicMock(side_effect=IntegrityError("duplicate", "", ""))
 
             try:
                 from src.services.image import ImageServiceError

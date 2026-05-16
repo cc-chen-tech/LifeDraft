@@ -154,9 +154,7 @@ def _test_delete_item(token: str, game_id: int = 1, item_name: str = "测试物�
 
     headers = {"Authorization": f"Bearer {token}"}
 
-    resp = requests.delete(
-        f"{BASE_URL}/collection/{game_id}/items/{item_name}", headers=headers
-    )
+    resp = requests.delete(f"{BASE_URL}/collection/{game_id}/items/{item_name}", headers=headers)
 
     if resp.status_code == 200:
         result = resp.json()

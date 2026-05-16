@@ -11,22 +11,14 @@ from src.ai.creative.emotional_arc import (EmotionalArcAnalyzer,
 
 # --------------- 测试数据 ---------------
 
-JOYFUL_TEXT = (
-    "阳光洒满庭院，少女轻笑着追逐蝴蝶，花瓣在微风中翩翩起舞，一切都如梦般美好。"
-)
+JOYFUL_TEXT = "阳光洒满庭院，少女轻笑着追逐蝴蝶，花瓣在微风中翩翩起舞，一切都如梦般美好。"
 TENSE_TEXT = "黑暗中传来低沉的脚步声，他屏住呼吸，手心满是冷汗，门把手缓缓转动——"
-CATHARSIS_TEXT = (
-    "泪水终于夺眶而出，多年的恩怨在这一刻烟消云散，他紧紧握住对方的手，再也不愿松开。"
-)
+CATHARSIS_TEXT = "泪水终于夺眶而出，多年的恩怨在这一刻烟消云散，他紧紧握住对方的手，再也不愿松开。"
 FLAT_TEXT_1 = "他走进房间，坐下来，喝了口茶。"
 FLAT_TEXT_2 = "他看了看窗外，然后又坐了回去。"
 FLAT_TEXT_3 = "他翻了翻桌上的文件，没什么特别的。"
-GOTHIC_DARK_TEXT = (
-    "阴冷的雨滴打在墓碑上，乌鸦在枯树上嘶哑地叫着，死亡的气息弥漫在每一寸空气中。"
-)
-COMEDY_TEXT = (
-    "他一脚踩进水坑，溅了满身泥，路人哈哈大笑，他尴尬地挠了挠头，自己也笑了起来。"
-)
+GOTHIC_DARK_TEXT = "阴冷的雨滴打在墓碑上，乌鸦在枯树上嘶哑地叫着，死亡的气息弥漫在每一寸空气中。"
+COMEDY_TEXT = "他一脚踩进水坑，溅了满身泥，路人哈哈大笑，他尴尬地挠了挠头，自己也笑了起来。"
 
 
 @pytest.mark.unit
@@ -70,9 +62,7 @@ class TestEmotionalArcAnalyzer:
     def test_suggest_intervention_with_style(self):
         """基于风格配置生成节奏干预建议"""
         flat_history = [FLAT_TEXT_1, FLAT_TEXT_2, FLAT_TEXT_3]
-        suggestion = self.analyzer.suggest_intervention(
-            history=flat_history, style="gothic"
-        )
+        suggestion = self.analyzer.suggest_intervention(history=flat_history, style="gothic")
 
         assert suggestion is not None
         assert isinstance(suggestion, str)

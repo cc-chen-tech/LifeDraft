@@ -42,9 +42,7 @@ class TestRelationshipEventDef:
             "childbirth",
         ]
 
-        assert (
-            len(RELATIONSHIP_EVENTS) == 15
-        ), f"Expected 15 events, got {len(RELATIONSHIP_EVENTS)}"
+        assert len(RELATIONSHIP_EVENTS) == 15, f"Expected 15 events, got {len(RELATIONSHIP_EVENTS)}"
 
         for event_type in expected_events:
             assert event_type in RELATIONSHIP_EVENTS, f"Missing event: {event_type}"
@@ -60,11 +58,7 @@ class TestEraAdaptation:
 
         # Modern era should return modern name
         era_name = romance_event.get_era_name("modern", "zh")
-        assert (
-            "约会" in era_name
-            or "恋爱" in era_name
-            or era_name == romance_event.display_name
-        )
+        assert "约会" in era_name or "恋爱" in era_name or era_name == romance_event.display_name
 
     def test_era_name_ancient_china(self):
         """Test event names in ancient China era."""

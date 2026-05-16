@@ -4,9 +4,9 @@
 Layer 3: 契约测试 — 提示词中必须包含针对角色时代的明确禁止词列表。
 """
 
+import pytest
 from fastapi.testclient import TestClient
 
-import pytest
 from src.api.main import app
 
 client = TestClient(app)
@@ -210,9 +210,7 @@ class TestEraAnachronismContract:
         assert any(
             term in result for term in visual_forbidden
         ), f"古代背景图像约束应包含明确的现代视觉禁止词。实际未找到: {visual_forbidden}"
-        assert (
-            "画面" in result or "visual" in result.lower()
-        ), "图像约束应明确针对画面视觉元素"
+        assert "画面" in result or "visual" in result.lower(), "图像约束应明确针对画面视觉元素"
 
     def test_image_era_constraints_for_modern_settings(self):
         """图像生成时代约束对现代背景应较宽松"""
@@ -277,9 +275,7 @@ class TestEraAnachronismContract:
         assert "第7章" in prompt, "提示词应包含数字章节号'第7章'"
         assert "章节号约束" in prompt, "提示词应包含章节号约束区块"
 
-    @pytest.mark.xfail(
-        reason="currency_name 默认为'货币'，碳信用货币功能尚未实现"
-    )
+    @pytest.mark.xfail(reason="currency_name 默认为'货币'，碳信用货币功能尚未实现")
     def test_currency_is_carbon_credit_in_prompt(self):
         """提示词中的货币单位必须是'碳信用'而非'元'（Bug #24 回归测试）"""
         from config.prompts.story_prompts import get_event_generation_prompt
@@ -315,9 +311,7 @@ class TestEraAnachronismContract:
         wealth_lines = [line for line in prompt.split("\n") if "财富：" in line]
         for line in wealth_lines:
             assert "碳信用" in line, f"财富行应使用'碳信用': {line}"
-            assert not re.search(
-                r"\d元", line
-            ), f"财富行不应使用'元'作为货币单位: {line}"
+            assert not re.search(r"\d元", line), f"财富行不应使用'元'作为货币单位: {line}"
 
     def test_first_chapter_has_special_constraints(self):
         """第一章（total_chapter=1）应有特殊约束禁止提及'上回'"""

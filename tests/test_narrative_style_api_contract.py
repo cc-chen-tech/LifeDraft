@@ -32,8 +32,7 @@ def test_frontend_settings_has_story_style_option():
     with open("frontend/src/app/play/page.tsx", "r") as f:
         content = f.read()
     assert any(
-        kw in content
-        for kw in ["故事风格", "storyStyle", "narrativeStyle", "narrative-style"]
+        kw in content for kw in ["故事风格", "storyStyle", "narrativeStyle", "narrative-style"]
     ), "前端设置菜单缺少故事风格选项"
 
 

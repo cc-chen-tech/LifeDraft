@@ -10,11 +10,11 @@ from sqlalchemy.orm import sessionmaker
 
 from src.database.models import Base, Game, SessionLocal, User
 from src.database.state_repository import StateRepository
+from src.game.scheduled_events import ScheduledEvent
 from src.game.state import PlayerState
 from src.game.state.character_state import CharacterState
 from src.game.state.item_state import ItemState
 from src.game.state.landmark_state import LandmarkState
-from src.game.scheduled_events import ScheduledEvent
 
 
 @pytest.fixture(autouse=True)
@@ -112,8 +112,11 @@ class TestPlayerCharactersDB:
     def test_get_character_after_round_trip(self, repo, sample_game):
         """get_character should return correct CharacterState after load."""
         state = PlayerState()
-        state.add_character(CharacterState(name="王五", role="导师", affinity=60,
-                                           personality_traits=["严厉", "睿智"]))
+        state.add_character(
+            CharacterState(
+                name="王五", role="导师", affinity=60, personality_traits=["严厉", "睿智"]
+            )
+        )
 
         loaded = _save_and_load(repo, sample_game.game_id, state)
 
@@ -315,9 +318,7 @@ class TestPlayerDataDB:
 
     def test_relationships_validator_clamps_values(self):
         """The relationships field validator should clamp values to 0-100."""
-        state = PlayerState(
-            relationships={"A": -10, "B": 150, "C": 50}
-        )
+        state = PlayerState(relationships={"A": -10, "B": 150, "C": 50})
         assert state.relationships["A"] == 0
         assert state.relationships["B"] == 100
         assert state.relationships["C"] == 50
@@ -325,9 +326,7 @@ class TestPlayerDataDB:
     def test_weekly_summaries_and_story_history_serialize(self, repo, sample_game):
         """List fields like weekly_summaries and story_history should survive round-trip."""
         state = PlayerState(
-            weekly_summaries=[
-                {"week": 0, "summary": "一切开始的一周", "bonus_effects": {}}
-            ],
+            weekly_summaries=[{"week": 0, "summary": "一切开始的一周", "bonus_effects": {}}],
             story_history=["第一周故事文本"],
             four_week_summaries=[{"weeks": "0-3", "summary": "首月总结"}],
             yearly_summaries=[{"year": 1, "summary": "第一年总结"}],
@@ -345,7 +344,12 @@ class TestPlayerDataDB:
         """world_model_data dict should survive save/load."""
         wm_data = {
             "character_locations": {
-                "主角": {"location": "长安", "region": "长安", "since_week": 5, "travel_mode": "resident"}
+                "主角": {
+                    "location": "长安",
+                    "region": "长安",
+                    "since_week": 5,
+                    "travel_mode": "resident",
+                }
             },
             "career_records": {},
             "active_commitments": [],
@@ -411,19 +415,29 @@ class TestPlayerEventsDB:
         """get_pending_scheduled_events should only return events matching current week/round."""
         state = PlayerState(week=5, current_round=1)
         # Event at current time
-        state.add_scheduled_event(ScheduledEvent(
-            description="当前事件",
-            scheduled_week=5, scheduled_round=1, importance="critical",
-        ))
+        state.add_scheduled_event(
+            ScheduledEvent(
+                description="当前事件",
+                scheduled_week=5,
+                scheduled_round=1,
+                importance="critical",
+            )
+        )
         # Event in the future
-        state.add_scheduled_event(ScheduledEvent(
-            description="未来事件",
-            scheduled_week=6, scheduled_round=0, importance="normal",
-        ))
+        state.add_scheduled_event(
+            ScheduledEvent(
+                description="未来事件",
+                scheduled_week=6,
+                scheduled_round=0,
+                importance="normal",
+            )
+        )
         # Event in the past (already triggered)
         past = ScheduledEvent(
             description="过去事件",
-            scheduled_week=4, scheduled_round=0, importance="normal",
+            scheduled_week=4,
+            scheduled_round=0,
+            importance="normal",
         )
         past.status = "triggered"
         state.scheduled_events.append(past.to_dict())
@@ -437,10 +451,14 @@ class TestPlayerEventsDB:
     def test_get_pending_scheduled_events_uses_explicit_params(self, repo, sample_game):
         """get_pending_scheduled_events should use explicit week/round when provided."""
         state = PlayerState(week=5, current_round=1)
-        state.add_scheduled_event(ScheduledEvent(
-            description="未来事件",
-            scheduled_week=6, scheduled_round=2, importance="critical",
-        ))
+        state.add_scheduled_event(
+            ScheduledEvent(
+                description="未来事件",
+                scheduled_week=6,
+                scheduled_round=2,
+                importance="critical",
+            )
+        )
 
         loaded = _save_and_load(repo, sample_game.game_id, state)
 
@@ -452,11 +470,14 @@ class TestPlayerEventsDB:
     def test_mark_scheduled_event_triggered(self, repo, sample_game):
         """mark_scheduled_event_triggered should update status."""
         state = PlayerState(week=5, current_round=1)
-        state.add_scheduled_event(ScheduledEvent(
-            event_id="EVT-MARK",
-            description="标记事件",
-            scheduled_week=5, scheduled_round=1,
-        ))
+        state.add_scheduled_event(
+            ScheduledEvent(
+                event_id="EVT-MARK",
+                description="标记事件",
+                scheduled_week=5,
+                scheduled_round=1,
+            )
+        )
 
         state.mark_scheduled_event_triggered("EVT-MARK")
         loaded = _save_and_load(repo, sample_game.game_id, state)
@@ -478,20 +499,32 @@ class TestPlayerEventsDB:
         """get_overdue_scheduled_events returns pending events before current time."""
         state = PlayerState(week=5, current_round=2)
         # Past event (earlier week)
-        state.add_scheduled_event(ScheduledEvent(
-            description="上周事件",
-            scheduled_week=4, scheduled_round=0, importance="normal",
-        ))
+        state.add_scheduled_event(
+            ScheduledEvent(
+                description="上周事件",
+                scheduled_week=4,
+                scheduled_round=0,
+                importance="normal",
+            )
+        )
         # Past event (earlier round same week)
-        state.add_scheduled_event(ScheduledEvent(
-            description="本周早先事件",
-            scheduled_week=5, scheduled_round=0, importance="normal",
-        ))
+        state.add_scheduled_event(
+            ScheduledEvent(
+                description="本周早先事件",
+                scheduled_week=5,
+                scheduled_round=0,
+                importance="normal",
+            )
+        )
         # Current event (not overdue)
-        state.add_scheduled_event(ScheduledEvent(
-            description="当前事件",
-            scheduled_week=5, scheduled_round=2, importance="normal",
-        ))
+        state.add_scheduled_event(
+            ScheduledEvent(
+                description="当前事件",
+                scheduled_week=5,
+                scheduled_round=2,
+                importance="normal",
+            )
+        )
 
         loaded = _save_and_load(repo, sample_game.game_id, state)
 
@@ -504,16 +537,22 @@ class TestPlayerEventsDB:
     def test_scheduled_event_manager_round_trip(self, repo, sample_game):
         """get_scheduled_event_manager should reconstruct manager from saved state."""
         state = PlayerState(week=5, current_round=1)
-        state.add_scheduled_event(ScheduledEvent(
-            event_id="EVT-MGR-1",
-            description="事件一",
-            scheduled_week=5, scheduled_round=1,
-        ))
-        state.add_scheduled_event(ScheduledEvent(
-            event_id="EVT-MGR-2",
-            description="事件二",
-            scheduled_week=6, scheduled_round=0,
-        ))
+        state.add_scheduled_event(
+            ScheduledEvent(
+                event_id="EVT-MGR-1",
+                description="事件一",
+                scheduled_week=5,
+                scheduled_round=1,
+            )
+        )
+        state.add_scheduled_event(
+            ScheduledEvent(
+                event_id="EVT-MGR-2",
+                description="事件二",
+                scheduled_week=6,
+                scheduled_round=0,
+            )
+        )
 
         loaded = _save_and_load(repo, sample_game.game_id, state)
 
@@ -523,11 +562,14 @@ class TestPlayerEventsDB:
     def test_sync_scheduled_events_from_manager(self, repo, sample_game):
         """sync_scheduled_events_from_manager should update state from manager."""
         state = PlayerState(week=5, current_round=1)
-        state.add_scheduled_event(ScheduledEvent(
-            event_id="EVT-SYNC",
-            description="原始事件",
-            scheduled_week=5, scheduled_round=1,
-        ))
+        state.add_scheduled_event(
+            ScheduledEvent(
+                event_id="EVT-SYNC",
+                description="原始事件",
+                scheduled_week=5,
+                scheduled_round=1,
+            )
+        )
 
         loaded = _save_and_load(repo, sample_game.game_id, state)
 
@@ -556,8 +598,13 @@ class TestPlayerInventoryDB:
     def test_add_item_survives_round_trip(self, repo, sample_game):
         """Items added via add_item should survive save/load."""
         state = PlayerState()
-        item = ItemState(name="古剑", description="一把传世的古剑",
-                         category="weapon", importance="important", is_key_item=True)
+        item = ItemState(
+            name="古剑",
+            description="一把传世的古剑",
+            category="weapon",
+            importance="important",
+            is_key_item=True,
+        )
         state.add_item(item)
 
         loaded = _save_and_load(repo, sample_game.game_id, state)
@@ -570,8 +617,9 @@ class TestPlayerInventoryDB:
     def test_get_item_after_round_trip(self, repo, sample_game):
         """get_item should return correct ItemState after load."""
         state = PlayerState()
-        state.add_item(ItemState(name="藏宝图", category="document",
-                                 acquired_week=3, is_key_item=True))
+        state.add_item(
+            ItemState(name="藏宝图", category="document", acquired_week=3, is_key_item=True)
+        )
 
         loaded = _save_and_load(repo, sample_game.game_id, state)
 
@@ -653,9 +701,15 @@ class TestPlayerInventoryDB:
     def test_get_items_context_generates_string(self, repo, sample_game):
         """get_items_context should generate a non-empty context string."""
         state = PlayerState()
-        state.add_item(ItemState(name="传家宝", description="珍贵的传家宝物",
-                                 category="keepsake", is_key_item=True,
-                                 acquired_context="从祖宅中发现"))
+        state.add_item(
+            ItemState(
+                name="传家宝",
+                description="珍贵的传家宝物",
+                category="keepsake",
+                is_key_item=True,
+                acquired_context="从祖宅中发现",
+            )
+        )
 
         loaded = _save_and_load(repo, sample_game.game_id, state)
 
@@ -684,9 +738,13 @@ class TestPlayerLandmarksDB:
     def test_add_landmark_survives_round_trip(self, repo, sample_game):
         """Landmarks added via add_landmark should survive save/load."""
         state = PlayerState()
-        landmark = LandmarkState(name="洛阳城", description="繁华的古都",
-                                 category="area", importance="important",
-                                 is_key_location=True)
+        landmark = LandmarkState(
+            name="洛阳城",
+            description="繁华的古都",
+            category="area",
+            importance="important",
+            is_key_location=True,
+        )
         state.add_landmark(landmark)
 
         loaded = _save_and_load(repo, sample_game.game_id, state)
@@ -699,8 +757,9 @@ class TestPlayerLandmarksDB:
     def test_get_landmark_after_round_trip(self, repo, sample_game):
         """get_landmark should return correct LandmarkState after load."""
         state = PlayerState()
-        state.add_landmark(LandmarkState(name="白鹿书院", category="building",
-                                         first_appear_week=1, appear_count=3))
+        state.add_landmark(
+            LandmarkState(name="白鹿书院", category="building", first_appear_week=1, appear_count=3)
+        )
 
         loaded = _save_and_load(repo, sample_game.game_id, state)
 
@@ -749,7 +808,9 @@ class TestPlayerLandmarksDB:
     def test_update_landmark_survives_round_trip(self, repo, sample_game):
         """update_landmark changes should persist across save/load."""
         state = PlayerState()
-        state.add_landmark(LandmarkState(name="旧房", description="破旧的房子", category="building"))
+        state.add_landmark(
+            LandmarkState(name="旧房", description="破旧的房子", category="building")
+        )
 
         state.update_landmark("旧房", description="修缮后的新房", importance="critical")
         loaded = _save_and_load(repo, sample_game.game_id, state)
@@ -782,9 +843,16 @@ class TestPlayerLandmarksDB:
     def test_get_landmarks_context_generates_string(self, repo, sample_game):
         """get_landmarks_context should generate a non-empty context string."""
         state = PlayerState()
-        state.add_landmark(LandmarkState(name="长安城", description="大唐都城",
-                                         category="area", is_key_location=True,
-                                         context="繁华的古代都市", appear_count=5))
+        state.add_landmark(
+            LandmarkState(
+                name="长安城",
+                description="大唐都城",
+                category="area",
+                is_key_location=True,
+                context="繁华的古代都市",
+                appear_count=5,
+            )
+        )
 
         loaded = _save_and_load(repo, sample_game.game_id, state)
 
@@ -850,8 +918,9 @@ class TestPlayerLogicDB:
 
     def test_advance_week_survives_round_trip(self, repo, sample_game):
         """advance_week should increment week, reset round, update age."""
-        state = PlayerState(week=5, age=25, current_round=2,
-                            character_settings={"age": {"age": 22}})
+        state = PlayerState(
+            week=5, age=25, current_round=2, character_settings={"age": {"age": 22}}
+        )
 
         state.advance_week()
         loaded = _save_and_load(repo, sample_game.game_id, state)
@@ -915,8 +984,7 @@ class TestPlayerLogicDB:
 
     def test_get_game_date_info(self, repo, sample_game):
         """get_game_date_info should compute correct date from week."""
-        state = PlayerState(week=0, age=22,
-                            character_settings={"era": {"year": 2024}})
+        state = PlayerState(week=0, age=22, character_settings={"era": {"year": 2024}})
 
         loaded = _save_and_load(repo, sample_game.game_id, state)
 
@@ -929,8 +997,7 @@ class TestPlayerLogicDB:
 
     def test_get_game_date_info_later_week(self, repo, sample_game):
         """get_game_date_info should compute correctly for later weeks."""
-        state = PlayerState(week=26, age=22,
-                            character_settings={"era": {"year": 2024}})
+        state = PlayerState(week=26, age=22, character_settings={"era": {"year": 2024}})
 
         loaded = _save_and_load(repo, sample_game.game_id, state)
 
@@ -1005,14 +1072,16 @@ class TestPlayerLogicDB:
         state = PlayerState(week=5, current_round=2)
         state.round_history = [
             {
-                "week": 5, "round": 0,
+                "week": 5,
+                "round": 0,
                 "event_description": "清晨醒来发现窗外有奇异的光芒。",
                 "story_continuation": "你走近窗边，看到了一个悬浮的水晶球。",
                 "choice": "伸手触摸水晶球",
                 "event_concluded": True,
             },
             {
-                "week": 5, "round": 1,
+                "week": 5,
+                "round": 1,
                 "event_description": "水晶球中浮现出古老的文字。",
                 "story_continuation": "文字渐渐清晰，揭示了一段预言。",
                 "choice": "仔细阅读文字",

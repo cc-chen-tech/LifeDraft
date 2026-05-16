@@ -208,9 +208,7 @@ class TestStyleLoader:
 
     def test_style_loader_unicode_style_name(self, tmp_path):
         """Unicode 风格名正确处理。"""
-        _write_style_json(
-            tmp_path, "unicode_test", extra={"style_name": "中华古典叙事风格🎭"}
-        )
+        _write_style_json(tmp_path, "unicode_test", extra={"style_name": "中华古典叙事风格🎭"})
         loader = StyleLoader(styles_dir=str(tmp_path))
         loader.load_all()
         m = loader.get_style("unicode_test")

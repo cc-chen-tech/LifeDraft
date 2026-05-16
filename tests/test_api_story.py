@@ -99,9 +99,7 @@ class TestRewriteStory:
         ★ 新行为：改写不再强制依赖 current_event，使用前端传来的 full_story
         """
         mock_session.game_loop.current_event = None
-        mock_session.game_loop.ai_generator.rewrite_story_segment.return_value = (
-            "Rewritten story"
-        )
+        mock_session.game_loop.ai_generator.rewrite_story_segment.return_value = "Rewritten story"
         mock_session_service.get_or_restore.return_value = mock_session
 
         response = client.post(
@@ -119,9 +117,7 @@ class TestRewriteStory:
         assert response.status_code == 200
         assert response.json()["new_story"] == "Rewritten story"
 
-    def test_rewrite_story_no_session(
-        self, client, auth_headers, mock_auth, mock_session_service
-    ):
+    def test_rewrite_story_no_session(self, client, auth_headers, mock_auth, mock_session_service):
         """Test rewriting without active session."""
         from fastapi import HTTPException
 
@@ -145,8 +141,8 @@ class TestRewriteStory:
         self, client, auth_headers, mock_auth, mock_session_service, mock_session
     ):
         """Test rewrite error handling."""
-        mock_session.game_loop.ai_generator.rewrite_story_segment.side_effect = (
-            Exception("AI error")
+        mock_session.game_loop.ai_generator.rewrite_story_segment.side_effect = Exception(
+            "AI error"
         )
         mock_session_service.get_or_restore.return_value = mock_session
 
@@ -231,9 +227,7 @@ class TestRegenerateStory:
 
         # 验证 event 包含正确的字段
         event = data["event"]
-        assert (
-            "event_description" in event or "story" in event
-        ), "event must contain story content"
+        assert "event_description" in event or "story" in event, "event must contain story content"
         assert "options" in event, "event must contain options"
         assert isinstance(event["options"], list), "options must be a list"
         assert len(event["options"]) > 0, "options must not be empty"
@@ -368,9 +362,7 @@ class TestStoryChat:
         self, client, auth_headers, mock_auth, mock_session_service, mock_session
     ):
         """Test chatting in English."""
-        mock_session.game_loop.ai_generator.generate_completion.return_value = (
-            "The hero is brave."
-        )
+        mock_session.game_loop.ai_generator.generate_completion.return_value = "The hero is brave."
         mock_session_service.get_or_restore.return_value = mock_session
 
         response = client.post(
@@ -396,9 +388,7 @@ class TestStoryChat:
 
         assert response.status_code == 422
 
-    def test_story_chat_no_session(
-        self, client, auth_headers, mock_auth, mock_session_service
-    ):
+    def test_story_chat_no_session(self, client, auth_headers, mock_auth, mock_session_service):
         """Test chatting without session."""
         from fastapi import HTTPException
 
@@ -417,9 +407,7 @@ class TestStoryChat:
         self, client, auth_headers, mock_auth, mock_session_service, mock_session
     ):
         """Test chat error handling."""
-        mock_session.game_loop.ai_generator.generate_completion.side_effect = Exception(
-            "AI error"
-        )
+        mock_session.game_loop.ai_generator.generate_completion.side_effect = Exception("AI error")
         mock_session_service.get_or_restore.return_value = mock_session
 
         response = client.post(
@@ -439,9 +427,7 @@ class TestStoryChat:
             {"summary": "Met a stranger"},
             {"summary": "Found a treasure"},
         ]
-        mock_session.game_loop.ai_generator.generate_completion.return_value = (
-            "Based on history..."
-        )
+        mock_session.game_loop.ai_generator.generate_completion.return_value = "Based on history..."
         mock_session_service.get_or_restore.return_value = mock_session
 
         response = client.post(
@@ -517,9 +503,7 @@ class TestRegenerateStreamSSE:
     ):
         """Test handling when generate_round_event raises exception."""
         # ★ 模拟异常
-        mock_session.game_loop.generate_round_event.side_effect = Exception(
-            "Generation failed"
-        )
+        mock_session.game_loop.generate_round_event.side_effect = Exception("Generation failed")
         mock_session_service.get_or_restore.return_value = mock_session
 
         response = client.get("/api/games/1/regenerate-stream", headers=auth_headers)

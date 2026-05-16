@@ -40,10 +40,7 @@ class TestEntityRecognitionLogs:
 
             log_output = log_capture.getvalue()
             # 验证日志包含关键信息
-            assert (
-                "Removing expired task" in log_output
-                or "No expired tasks" in log_output
-            )
+            assert "Removing expired task" in log_output or "No expired tasks" in log_output
         finally:
             logger.removeHandler(handler)
 

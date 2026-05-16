@@ -212,9 +212,7 @@ class TestExtractInvolvedEntities:
             }
         }
 
-        result = service._extract_involved_entities(
-            "妈妈做了饭，爸爸在看电视", settings
-        )
+        result = service._extract_involved_entities("妈妈做了饭，爸爸在看电视", settings)
         names = [e["name"] for e in result]
         assert "妈妈" in names
         assert "爸爸" in names
@@ -248,9 +246,7 @@ class TestGenerateSceneImage:
     def test_generate_with_reference(self):
         """Test generating scene with reference image."""
         mock_client = MagicMock()
-        mock_client.edit_image = MagicMock(
-            return_value=[(b"fake_image_data", "prompt1")]
-        )
+        mock_client.edit_image = MagicMock(return_value=[(b"fake_image_data", "prompt1")])
 
         service = RoundIllustrationService(
             image_client=mock_client,
@@ -271,9 +267,7 @@ class TestGenerateSceneImage:
     def test_generate_without_reference(self):
         """Test generating scene without reference image."""
         mock_client = MagicMock()
-        mock_client.generate_image = MagicMock(
-            return_value=(b"fake_image_data", "prompt1")
-        )
+        mock_client.generate_image = MagicMock(return_value=(b"fake_image_data", "prompt1"))
 
         service = RoundIllustrationService(
             image_client=mock_client,
@@ -295,9 +289,7 @@ class TestGenerateSceneImage:
         """Test fallback to text-to-image when reference generation returns empty."""
         mock_client = MagicMock()
         mock_client.edit_image = MagicMock(return_value=[])
-        mock_client.generate_image = MagicMock(
-            return_value=(b"fallback_image_data", "prompt1")
-        )
+        mock_client.generate_image = MagicMock(return_value=(b"fallback_image_data", "prompt1"))
 
         service = RoundIllustrationService(
             image_client=mock_client,
