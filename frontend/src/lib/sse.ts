@@ -4,61 +4,6 @@
 
 export type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "error" | null;
 
-/**
- * SSE fetch with retry for transient server errors (502/504).
- * Implements exponential backoff to avoid thundering herd.
- *
- * ★ 修复 Bug #15, #32: SSE 流在 502/504 时自动重试，防止永久卡死。
- */
-async function fetchSSEWithRetry(
-  url: string,
-  init: RequestInit,
-  retries = 3
-): Promise<Response> {
-  let lastError: Error | null = null;
-
-  for (let attempt = 0; attempt < retries; attempt++) {
-    // Check abort signal before each attempt
-    if (init.signal?.aborted) {
-      throw new Error('Request aborted');
-    }
-
-    try {
-      const response = await fetch(url, init);
-
-      if (response.ok) {
-        return response;
-      }
-
-      // Only retry on server errors (502 Bad Gateway / 504 Gateway Timeout)
-      if (response.status === 502 || response.status === 504) {
-        lastError = new Error(`Server error: ${response.status}`);
-        console.warn(`[SSE] ${response.status} on attempt ${attempt + 1}/${retries}, will retry...`);
-      } else {
-        // Non-retryable error (4xx or other 5xx) - throw immediately
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-    } catch (error) {
-      // Don't retry on abort or non-network errors
-      if (error instanceof Error) {
-        if (error.name === 'AbortError' || error.message === 'Request aborted') {
-          throw error;
-        }
-        lastError = error;
-      }
-    }
-
-    // Exponential backoff: 1s, 2s, 4s, ... (skip delay on last attempt)
-    if (attempt < retries - 1) {
-      const delayMs = Math.pow(2, attempt) * 1000;
-      console.log(`[SSE] Retrying in ${delayMs}ms...`);
-      await new Promise(resolve => setTimeout(resolve, delayMs));
-    }
-  }
-
-  throw lastError || new Error('Max retries exceeded');
-}
-
 export interface StreamCallbacks {
   onStory?: (text: string) => void;
   onChunk?: (chunk: string) => void;
@@ -76,7 +21,6 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
   let completeData: Record<string, unknown> | null = null;
   let isCompleteReceived = false;
   let isResolved = false;
-  let hasError = false;
 
   return new Promise((resolve, reject) => {
     function safeResolve() {
@@ -87,24 +31,15 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
     }
 
     function pump(): Promise<void> {
-
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       return reader!.read().then(({ done, value }) => {
         if (done) {
           // Stream ended - use the last complete event data if received
-          console.log('[SSE] Stream ended, isCompleteReceived:', isCompleteReceived, 'hasError:', hasError, 'completeData keys:', Object.keys(completeData || {}));
-          if (!hasError) {
-            if (isCompleteReceived && completeData) {
-              callbacks.onComplete?.(completeData);
-              safeResolve();
-              return;
-            } else if (!isCompleteReceived) {
-              // ★ 修复：流在未收到 complete 事件的情况下结束（网络断开）
-              // 不应调用 onComplete({}) 伪装成功，而应触发错误以便上层重连
-              const error = new Error('Stream ended without complete event');
-              callbacks.onError?.(error);
-              reject(error);
-              return;
-            }
+          console.log('[SSE] Stream ended, isCompleteReceived:', isCompleteReceived, 'completeData keys:', Object.keys(completeData || {}));
+          if (isCompleteReceived && completeData) {
+            callbacks.onComplete?.(completeData);
+          } else if (!isCompleteReceived) {
+            callbacks.onComplete?.({});
           }
           safeResolve();
           return;
@@ -151,9 +86,8 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
 
               // ★ Handle error events from backend
               if (currentEventType === 'error' || parsed.type === 'error' || parsed.event === 'error') {
-                hasError = true;
                 const errorMsg = parsed.error || parsed.message || 'Unknown server error';
-                console.warn('[SSE] Error event received:', errorMsg);
+                console.error('[SSE] Error event received:', errorMsg);
                 callbacks.onError?.({ message: errorMsg });
                 currentEventType = null;
                 continue;
@@ -205,13 +139,17 @@ export async function streamChoice(
   callbacks: StreamCallbacks,
   options?: { signal?: AbortSignal }
 ): Promise<void> {
-  const response = await fetchSSEWithRetry(`/api/games/${gameId}/choice`, {
+  const response = await fetch(`/api/games/${gameId}/choice`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({ option_index: choiceIndex }),
     signal: options?.signal,
   });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
 
   const reader = response.body?.getReader();
   if (!reader) {
@@ -227,13 +165,17 @@ export async function streamCustomChoice(
   callbacks: StreamCallbacks,
   options?: { signal?: AbortSignal }
 ): Promise<void> {
-  const response = await fetchSSEWithRetry(`/api/games/${gameId}/custom-choice`, {
+  const response = await fetch(`/api/games/${gameId}/custom-choice`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({ custom_text: customChoice }),
     signal: options?.signal,
   });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
 
   const reader = response.body?.getReader();
   if (!reader) {
@@ -333,20 +275,14 @@ export async function streamRewrite(
   let currentEventType: string | null = null;
 
   let completed = false;
-  let hasError = false;
 
   return new Promise((resolve, reject) => {
     function pump(): Promise<void> {
-
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       return reader!.read().then(({ done, value }) => {
         if (done) {
-          // ★ 修复：流在未收到 complete 事件或 [DONE] 的情况下结束
-          if (!completed && !hasError) {
-            const error = new Error('Stream ended without complete event');
-            callbacks.onError?.(error);
-            reject(error);
-            return;
-          }
+          completed = true;
+          callbacks.onComplete?.({});
           resolve({ completed: true, error: undefined });
           return;
         }
@@ -414,9 +350,8 @@ export async function streamRewrite(
 
         return pump();
       }).catch((error) => {
-        hasError = true;
         callbacks.onError?.(error);
-        reject(error);
+        resolve({ completed, error });
       });
     }
 
@@ -439,7 +374,7 @@ export async function streamOpeningStory(
   },
   options?: { signal?: AbortSignal; enableReconnect?: boolean }
 ): Promise<void> {
-  const response = await fetchSSEWithRetry('/api/character/opening-story', {
+  const response = await fetch('/api/character/opening-story', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -452,89 +387,18 @@ export async function streamOpeningStory(
     signal: options?.signal,
   });
 
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
   const reader = response.body?.getReader();
   if (!reader) {
     throw new Error('No response body');
   }
 
-  // Parse SSE stream
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let currentEventType = '';
-  let isCompleteReceived = false;
-  let hasError = false;
-
-  return new Promise((resolve, reject) => {
-    function pump(): Promise<void> {
-
-      return reader!.read().then(({ done, value }) => {
-        if (done) {
-          // ★ 修复：流在未收到 complete 事件或 [DONE] 的情况下结束
-          if (!isCompleteReceived && !hasError) {
-            const error = new Error('Stream ended without complete event');
-            callbacks.onError?.(error);
-            reject(error);
-            return;
-          }
-          resolve();
-          return;
-        }
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (let i = 0; i < lines.length; i++) {
-          const trimmed = lines[i].trim();
-          if (trimmed === '') {
-            currentEventType = '';
-            continue;
-          }
-          if (trimmed.startsWith('event: ')) {
-            currentEventType = trimmed.slice(7);
-            continue;
-          }
-          if (trimmed.startsWith('data: ')) {
-            const data = trimmed.slice(6);
-            if (data === '[DONE]') {
-              isCompleteReceived = true;
-              callbacks.onComplete?.({});
-              resolve();
-              return;
-            }
-            try {
-              const parsed = JSON.parse(data);
-              if (currentEventType === 'story') {
-                // Backend sends raw string for story events
-                const text = typeof parsed === 'string' ? parsed : (parsed.content || '');
-                if (text) callbacks.onStory?.(text);
-              } else if (currentEventType === 'complete') {
-                isCompleteReceived = true;
-                callbacks.onComplete?.(parsed);
-              } else if (currentEventType === 'error') {
-                hasError = true;
-                const msg = typeof parsed === 'object' && parsed && 'error' in parsed
-                  ? String(parsed.error)
-                  : 'Unknown server error';
-                callbacks.onError?.({ message: msg });
-              }
-              // status events are ignored for opening story
-            } catch {
-              // If not JSON, treat as raw text for story events
-              if (currentEventType === 'story') {
-                callbacks.onStory?.(data);
-              }
-            }
-          }
-        }
-
-        return pump();
-      }).catch((error) => {
-        callbacks.onError?.({ message: error.message || 'Stream error' });
-        reject(error);
-      });
-    }
-
-    pump();
+  return parseSSEStream(reader, {
+    onStory: callbacks.onStory,
+    onComplete: callbacks.onComplete as ((data: Record<string, unknown>) => void) | undefined,
+    onError: (error) => callbacks.onError?.({ message: error.message || 'Stream error' }),
   });
 }

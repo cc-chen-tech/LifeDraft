@@ -10,6 +10,30 @@ export interface UserInfo {
   private_id: string;
 }
 
+export interface PhoneLoginRequest {
+  phone_number: string;
+  verification_code?: string | null;
+}
+
+export interface VoiceReadingSettingsResponse {
+  member_required: boolean;
+  enabled: boolean;
+  available_voice_colors: string[];
+  selected_voice_color: string | null;
+  uploaded_voice_available: boolean;
+  auto_read_enabled: boolean;
+}
+
+export interface VoiceReadingSettingsUpdateRequest {
+  selected_voice_color?: string | null;
+  auto_read_enabled?: boolean | null;
+}
+
+export interface VoiceUploadConsentRequest {
+  consent_confirmed: boolean;
+  sample_name?: string | null;
+}
+
 export interface FriendInfo {
   user_id: number;
   public_id: string;

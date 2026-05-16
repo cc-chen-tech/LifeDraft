@@ -13,6 +13,8 @@ export interface Song {
   album: string;
   duration: number;
   url?: string;
+  source?: "netease" | "ai_generated";
+  asset_id?: number;
 }
 
 export interface MusicRecommendation {

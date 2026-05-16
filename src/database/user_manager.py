@@ -7,9 +7,10 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import and_, or_
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from src.database.models import Friendship, Game, SessionLocal, User
+from src.database.models import Friendship, Game, SessionLocal, User, init_db
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,24 @@ class UserManager:
 
     # ==================== 用户创建与登录 ====================
 
+    def _recover_missing_schema(self, exc: OperationalError) -> bool:
+        """Recreate SQLite tables once if a prior test removed the schema."""
+        if "no such table" not in str(exc).lower():
+            return False
+
+        logger.warning("Database schema missing during user operation; reinitializing")
+        try:
+            if self._db is not None:
+                self._db.rollback()
+                if self._owns_session:
+                    self._db.close()
+                    self._db = None
+            init_db()
+            return True
+        except Exception:
+            logger.exception("Failed to reinitialize database schema")
+            return False
+
     def create_user(self, display_name: Optional[str] = None) -> Tuple[User, str]:
         """
         创建新用户
@@ -78,17 +97,22 @@ class UserManager:
             Tuple[User, str]: (用户对象, 私有ID明文)
             注意：私有ID只在创建时返回一次，用户需要保存好！
         """
-        # 生成唯一ID
+        try:
+            return self._create_user_once(display_name)
+        except OperationalError as exc:
+            if not self._recover_missing_schema(exc):
+                raise
+            return self._create_user_once(display_name)
+
+    def _create_user_once(self, display_name: Optional[str] = None) -> Tuple[User, str]:
         private_id = generate_private_id()
         public_id = generate_public_id()
 
-        # 确保ID唯一
         while self.db.query(User).filter(User.private_id == private_id).first():
             private_id = generate_private_id()
         while self.db.query(User).filter(User.public_id == public_id).first():
             public_id = generate_public_id()
 
-        # 创建用户
         user = User(
             private_id=private_id,
             public_id=public_id,

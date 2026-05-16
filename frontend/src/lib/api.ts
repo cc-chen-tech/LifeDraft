@@ -457,7 +457,7 @@ export const api = {
       story_text?: string;
       player_image_id?: number;
     }) =>
-      fetchJson<{ image_id: number; image_url: string; image_type: string; scene_description: string }>('/images/opening', {
+      fetchJson<{ image_id: number; image_url: string; image_type: string; scene_description: string }>('/images/opening-illustration', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
@@ -471,7 +471,7 @@ export const api = {
       user_prompt: string;
       player_image_id?: number;
     }) =>
-      fetchJson<{ image_id: number; image_url: string; image_type: string; scene_description: string }>('/images/opening/regenerate', {
+      fetchJson<{ image_id: number; image_url: string; image_type: string; scene_description: string }>('/images/opening-illustration/regenerate', {
         method: 'POST',
         body: JSON.stringify(data),
       }),

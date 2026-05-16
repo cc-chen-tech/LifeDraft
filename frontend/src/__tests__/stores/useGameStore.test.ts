@@ -1261,6 +1261,38 @@ describe('useGameStore', () => {
         expect(state.storyText).toContain('Event happened');
         expect(state.storyText).toContain('Story continued');
       });
+
+      it('restores current event story when backend returns options with empty event text', async () => {
+        act(() => {
+          useGameStore.getState().setGameSession(42, 'session-42');
+        });
+
+        (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+          game_id: 42,
+          player_state: {
+            player_name: 'Test',
+            last_round_full_story: 'Recovered visible story body.',
+          },
+          progress: { week: 2 },
+          round_info: { current_round: 1 },
+          current_event: {
+            event_description: '',
+            story_text: '',
+            options: [{ text: 'Continue from recovered story', effects: {} }],
+          },
+        }));
+
+        await act(async () => {
+          await useGameStore.getState().loadGameState(42);
+        });
+
+        const state = useGameStore.getState();
+        expect(state.storyText).toBe('Recovered visible story body.');
+        expect(state.currentEvent).toEqual({
+          story: 'Recovered visible story body.',
+          options: [{ text: 'Continue from recovered story', effects: {} }],
+        });
+      });
     });
   });
 });

@@ -52,7 +52,7 @@ export interface EventHandlers {
   setConnectionStatus: (status: string | null) => void;
   appendStoryText: (text: string) => void;
   generatingRef: React.MutableRefObject<boolean>;
-  isRetryingRef: React.MutableRefObject<boolean>;
+  isRetryingRef?: React.MutableRefObject<boolean>;
 }
 
 // ==================== Story Helpers ====================
@@ -67,44 +67,25 @@ export function selectFinalStory(
   // 如果前端故事为空或极短，才使用后端故事
   // 避免流式生成过程中被后端文本覆盖
   const useBackendStory = frontendStory.length < 10;
-
+  
   if (useBackendStory && backendStory.length > 0) {
     return { useBackend: true, finalStory: backendStory };
   }
-
-  // 如果后端故事明显短于前端（fallback 情况），优先前端
-  if (backendStory.length < frontendStory.length * 0.5) {
-    return { useBackend: false, finalStory: frontendStory };
+  
+  // 如果后端故事比前端长，且前端文本是后端文本前缀，则流式补充剩余部分。
+  // 若两者已经分叉，继续 slice 会把无关后端片段拼到前端故事后面。
+  if (backendStory.length > frontendStory.length && backendStory.startsWith(frontendStory)) {
+    return {
+      useBackend: false,
+      finalStory: frontendStory,
+      remainingText: backendStory.slice(frontendStory.length),
+    };
   }
 
-  // ★ 检查前端故事是否是后端故事的前缀
-  // 如果是，可以安全地追加剩余部分，避免重复
-  if (backendStory.startsWith(frontendStory)) {
-    const remaining = backendStory.slice(frontendStory.length);
-    if (remaining.length > 0) {
-      return {
-        useBackend: false,
-        finalStory: frontendStory,
-        remainingText: remaining,
-      };
-    }
-    // 完全一致
-    return { useBackend: false, finalStory: backendStory };
-  }
-
-  // ★ 保护：前端已有大量流式内容时，避免被后端 fallback/divergence 覆盖
-  if (frontendStory.length > 100) {
-    console.warn("[selectFinalStory] Divergence detected with substantial frontend story, preserving frontend");
-    return { useBackend: false, finalStory: frontendStory };
-  }
-
-  // ★ 前端不是后端的前缀 —— 检测到 divergence
-  // 这意味着后端重写/修改了故事，不应尝试切片追加
-  // 直接使用更长的那个版本
-  if (backendStory.length > frontendStory.length) {
+  if (backendStory.length > frontendStory.length && frontendStory.length <= 100) {
     return { useBackend: true, finalStory: backendStory };
   }
-
+  
   // 使用前端故事
   return { useBackend: false, finalStory: frontendStory };
 }
@@ -155,13 +136,11 @@ export function handleEventComplete(
     setConnectionStatus,
     appendStoryText,
     generatingRef,
-    isRetryingRef,
   } = handlers;
 
   setProcessing(false);
   setConnectionStatus(null);
   generatingRef.current = false;
-  isRetryingRef.current = false;
 
   const eventData = data as EventData;
   console.log("[onComplete] Options:", eventData.options?.length ?? "undefined");
@@ -181,6 +160,10 @@ export function handleEventComplete(
 
   const backendStory = eventData.event_description || eventData.story || "";
   const frontendStory = useGameStore.getState().storyText;
+  if (!backendStory.trim() && !frontendStory.trim()) {
+    console.error("[onComplete] No story text in complete event");
+    return;
+  }
   
   // ★ 检查是否发生了重试，如果重试后强制使用后端故事
   // 但如果后端返回的是 fallback 故事（很短），且前端有更长的流式故事，仍优先用前端的
@@ -198,6 +181,16 @@ export function handleEventComplete(
       return;
     }
     console.log(`[onComplete] Retry detected, forcing backend story (${backendStory.length} chars)`);
+    setStoryText(backendStory);
+    setOptions(receivedOptions);
+    setCurrentEvent({ story: backendStory, options: receivedOptions });
+    setPhase("options");
+    setRoundSummary(null);
+    return;
+  }
+
+  if (backendStory.trim()) {
+    console.log(`[onComplete] Replacing streamed story with backend complete story (${backendStory.length} chars)`);
     setStoryText(backendStory);
     setOptions(receivedOptions);
     setCurrentEvent({ story: backendStory, options: receivedOptions });
@@ -273,8 +266,8 @@ export function handleStatusUpdate(
     // ★ 标记发生了重试，complete 时会强制使用后端故事
     markRetry();
     if (isRetryingRef) isRetryingRef.current = true;
-    // ★ 直接通过 store setState 清空，不触发 setter 的 useEffect 依赖
-    useGameStore.setState({ storyText: "" });
+    useGameStore.getState().setStoryText?.("");
+    useGameStore.setState?.({ storyText: "" });
     setProcessing(true, "retrying");
     return;
   }

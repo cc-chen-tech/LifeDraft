@@ -257,10 +257,19 @@ export const useGameStore = create<GameState>()(
 
       // Update event store
       if (result.event) {
-        useEventStore.getState().setCurrentEvent(result.event);
+        useEventStore.getState().setCurrentEvent({
+          ...result.event,
+          story: result.event.story || result.storyText,
+        });
       }
       if (result.storyText) {
         useEventStore.getState().setStoryText(result.storyText);
+        if (result.event?.options?.length && !result.event.story) {
+          useEventStore.getState().setCurrentEvent({
+            ...result.event,
+            story: result.storyText,
+          });
+        }
       }
 
       // Update character store
@@ -292,17 +301,26 @@ export const useGameStore = create<GameState>()(
           const currentOptions = useEventStore.getState().currentEvent?.options || [];
           const newOptions = result.event.options || [];
           const hasNewOptions = newOptions.length > 0 && currentOptions.length === 0;
+          const currentStoryText = useEventStore.getState().storyText;
+          const restoredStory = currentStoryText || result.event.story;
 
           if (hasNewOptions) {
-            const currentStoryText = useEventStore.getState().storyText;
             useEventStore.getState().setCurrentEvent({
               ...result.event,
-              story: currentStoryText || result.event.story,
+              story: restoredStory,
             });
           }
 
           if (!useEventStore.getState().storyText && result.eventStory) {
             useEventStore.getState().setStoryText(result.eventStory);
+          }
+
+          const currentEvent = useEventStore.getState().currentEvent;
+          if (newOptions.length > 0 && restoredStory && currentEvent?.story !== restoredStory) {
+            useEventStore.getState().setCurrentEvent({
+              ...result.event,
+              story: restoredStory,
+            });
           }
         }
         get()._syncFromSubStores();

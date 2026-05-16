@@ -7,10 +7,27 @@ import { create } from "zustand";
 import type { CharacterCollectionItem, ItemCollectionItem, LandmarkCollectionItem, CollectionResponse, RecognizedEntity, EntityRecognitionResponse } from "@/lib/types";
 import api from "@/lib/api";
 
-// ★ 请求去重：防止同一 gameId 的 fetchCollection 被多次并发调用
-let _fetchInFlight: { gameId: number; promise: Promise<void> } | null = null;
+type CollectionEntity = CharacterCollectionItem | ItemCollectionItem | LandmarkCollectionItem;
 
-// ★ 短时缓存：30 秒内重复打开收集面板不重新请求
+function mergeVisibleEntityData<T extends CollectionEntity>(nextItems: T[], currentItems: T[]): T[] {
+  return nextItems.map((next) => {
+    const current = currentItems.find((item) => item.name === next.name);
+    if (!current) return next;
+
+    return {
+      ...next,
+      image_url: next.image_url || current.image_url,
+      image_generated: next.image_generated || current.image_generated,
+      description: next.description || current.description,
+      ...("description_generated" in next && "description_generated" in current
+        ? { description_generated: next.description_generated || current.description_generated }
+        : {}),
+    };
+  });
+}
+
+// Request de-dupe and short-lived cache keep the collection panel responsive.
+let _fetchInFlight: { gameId: number; promise: Promise<void> } | null = null;
 let _collectionCache: { gameId: number; timestamp: number } | null = null;
 const CACHE_TTL_MS = 30000;
 
@@ -114,20 +131,17 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
       return;
     }
 
-    // ★ 请求去重：如果已有相同 gameId 的请求在进行中，直接复用
-    if (!isRefresh && _fetchInFlight && _fetchInFlight.gameId === gameId) {
+    if (!isRefresh && _fetchInFlight?.gameId === gameId) {
       console.log("[fetchCollection] 复用已有请求 gameId=", gameId);
       return _fetchInFlight.promise;
     }
 
-    // ★ 短时缓存：30 秒内且已有数据时直接返回（强制刷新除外）
     if (!isRefresh) {
       const now = Date.now();
       const state = get();
       const hasData = state.characters.length > 0 || state.items.length > 0 || state.landmarks.length > 0;
       if (
-        _collectionCache &&
-        _collectionCache.gameId === gameId &&
+        _collectionCache?.gameId === gameId &&
         now - _collectionCache.timestamp < CACHE_TTL_MS &&
         hasData
       ) {
@@ -147,6 +161,7 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
     if (isRefresh) {
       // 刷新模式：不改变 isLoading，不隐藏已有内容
       console.log("[fetchCollection] 刷新模式 - 保持列表可见");
+      set({ isRefreshing: true, error: null });
     } else {
       // 初始加载模式：显示加载状态
       console.log("[fetchCollection] 初始加载模式 - 显示加载中");
@@ -155,19 +170,19 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
 
     try {
       const fetchPromise = api.collection.get(gameId);
-      // ★ 记录当前请求以供去重
       if (!isRefresh) {
-        const wrappedPromise = fetchPromise.then(() => {}).catch(() => {}).finally(() => {
-          if (_fetchInFlight?.gameId === gameId) {
-            _fetchInFlight = null;
-          }
-        });
+        const wrappedPromise = fetchPromise
+          .then(() => undefined)
+          .catch(() => undefined)
+          .finally(() => {
+            if (_fetchInFlight?.gameId === gameId) {
+              _fetchInFlight = null;
+            }
+          });
         _fetchInFlight = { gameId, promise: wrappedPromise };
       }
 
       const result: CollectionResponse = await fetchPromise;
-
-      // 请求完成后同步清空去重标记，避免 finally 的 microtask 延迟导致测试/快速重入时误判
       if (_fetchInFlight?.gameId === gameId) {
         _fetchInFlight = null;
       }
@@ -176,19 +191,26 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
       const newItems = result.items || [];
       const newLandmarks = result.landmarks || [];
 
+      const mergedCharacters = isRefresh
+        ? mergeVisibleEntityData(newCharacters, get().characters)
+        : newCharacters;
+      const mergedItems = isRefresh
+        ? mergeVisibleEntityData(newItems, get().items)
+        : newItems;
+      const mergedLandmarks = isRefresh
+        ? mergeVisibleEntityData(newLandmarks, get().landmarks)
+        : newLandmarks;
+
       // 恢复选中状态（从新数据中找到对应的人物/物品/标志物）
       const newSelectedCharacter = selectedCharacterName
-        ? newCharacters.find(c => c.name === selectedCharacterName) || null
+        ? mergedCharacters.find(c => c.name === selectedCharacterName) || null
         : null;
       const newSelectedItem = selectedItemName
-        ? newItems.find(i => i.name === selectedItemName) || null
+        ? mergedItems.find(i => i.name === selectedItemName) || null
         : null;
       const newSelectedLandmark = selectedLandmarkName
-        ? newLandmarks.find(l => l.name === selectedLandmarkName) || null
+        ? mergedLandmarks.find(l => l.name === selectedLandmarkName) || null
         : null;
-
-      // 更新缓存时间戳
-      _collectionCache = { gameId, timestamp: Date.now() };
 
       console.log("[fetchCollection] 数据更新完成:", {
         charactersCount: newCharacters.length,
@@ -197,40 +219,18 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
         isRefresh,
       });
 
-      // ★ 修复：刷新模式下合并数据，保留已有图片URL，避免闪烁
-      if (isRefresh) {
-        const currentCharacters = get().characters;
-        const mergedCharacters = newCharacters.map(newChar => {
-          const oldChar = currentCharacters.find(c => c.name === newChar.name);
-          // 如果新数据没有图片URL但旧数据有，保留旧URL（避免生成过程中的闪烁）
-          if (!newChar.image_url && oldChar?.image_url) {
-            return { ...newChar, image_url: oldChar.image_url, image_generated: oldChar.image_generated };
-          }
-          return newChar;
-        });
+      _collectionCache = { gameId, timestamp: Date.now() };
 
-        set({
-          characters: mergedCharacters,
-          items: newItems,
-          landmarks: newLandmarks,
-          selectedCharacter: newSelectedCharacter,
-          selectedItem: newSelectedItem,
-          selectedLandmark: newSelectedLandmark,
-          isLoading: false,
-          isRefreshing: false,
-        });
-      } else {
-        set({
-          characters: newCharacters,
-          items: newItems,
-          landmarks: newLandmarks,
-          selectedCharacter: newSelectedCharacter,
-          selectedItem: newSelectedItem,
-          selectedLandmark: newSelectedLandmark,
-          isLoading: false,
-          isRefreshing: false,
-        });
-      }
+      set({
+        characters: mergedCharacters,
+        items: mergedItems,
+        landmarks: mergedLandmarks,
+        selectedCharacter: newSelectedCharacter,
+        selectedItem: newSelectedItem,
+        selectedLandmark: newSelectedLandmark,
+        isLoading: false,
+        isRefreshing: false,
+      });
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "获取收集数据失败";
       console.error("[fetchCollection] 错误:", errorMsg);
@@ -387,8 +387,7 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
   batchGenerateLandmarkImages: async (gameId: number) => {
     if (!gameId) return;
 
-    const { landmarks } = get();
-    const pendingLandmarks = landmarks.filter((l) => !l.image_generated);
+    const pendingLandmarks = get().landmarks.filter((landmark) => !landmark.image_generated);
     if (pendingLandmarks.length === 0) return;
 
     set({ error: null });
@@ -404,7 +403,6 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
       }
     }
 
-    // Refresh collection data after batch generation
     await get().fetchCollection(gameId, true);
     set({ generatingImageFor: null });
   },
@@ -437,13 +435,13 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
   // ==================== 实体识别 Actions ====================
 
   // 识别实体
-  recognizeEntities: async (gameId: number, minAppearances?: number) => {
+  recognizeEntities: async (gameId: number, minAppearances: number = 3) => {
     set({ isRecognizing: true, error: null });
 
     try {
       const result = await api.collection.recognizeEntities(gameId, {
         entity_types: ["item", "character", "landmark"],
-        ...(minAppearances != null ? { min_appearances: minAppearances } : {}),
+        min_appearances: minAppearances,
       });
 
       set({ recognizedEntities: result, isRecognizing: false });

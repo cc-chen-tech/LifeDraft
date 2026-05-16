@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useGameStore, useSessionStore, useEventStore } from "@/stores/useGameStore";
+import { useGameStore } from "@/stores/useGameStore";
+import { useEventStore } from "@/stores/useEventStore";
+import { useSessionStore } from "@/stores/useSessionStore";
 import { useHydration } from "@/hooks/useHydration";
 import { games } from "@/lib/api";
 import type { EventOption } from "@/lib/types";
@@ -61,6 +63,7 @@ export function usePlayGame() {
     fetchHistorySceneImage,
     generateHistorySceneImage,
     regenerateHistorySceneImage,
+    setHistorySceneImage,
   } = useGameStore();
 
   const hydrated = useHydration();
@@ -75,6 +78,7 @@ export function usePlayGame() {
   // Refs defined once and passed to sub-hooks
   const abortRef = useRef<AbortController | null>(null);
   const generatingRef = useRef(false);
+  const isRetryingRef = useRef(false);
   const pollingRef = useRef(false);
   const prefetchAbortRef = useRef<AbortController | null>(null);
   const prefetchResultRef = useRef<{
@@ -83,7 +87,6 @@ export function usePlayGame() {
     event: { story: string; options: EventOption[] } | null;
   } | null>(null);
   const prefetchingRef = useRef(false);
-  const isRetryingRef = useRef(false);
   const generateEventRef = useRef<() => Promise<void>>(async () => {});
 
   // ===== Phase Manager =====
@@ -156,11 +159,11 @@ export function usePlayGame() {
     setIsPrefetching,
     abortRef,
     generatingRef,
+    isRetryingRef,
     pollingRef,
     prefetchAbortRef,
     prefetchResultRef,
     prefetchingRef,
-    isRetryingRef,
   });
   
   // Update generateEventRef for useGameState
@@ -212,24 +215,17 @@ export function usePlayGame() {
     fetchHistorySceneImage,
     generateHistorySceneImage,
     regenerateHistorySceneImage,
+    setHistorySceneImage,
   });
 
   // ===== Session Recovery (remains in main hook) =====
   const redirectCheckedRef = useRef(false);
-  const recoveryInProgressRef = useRef(false);
 
   useEffect(() => {
     if (!hydrated) return;
 
     const attemptRecovery = async () => {
       if (!gameId) {
-        // Prevent concurrent recovery attempts
-        if (recoveryInProgressRef.current) {
-          console.log("[play] Recovery already in progress, skipping");
-          return;
-        }
-        recoveryInProgressRef.current = true;
-
         console.warn("[play] No gameId in localStorage, attempting server-side recovery...");
 
         try {
@@ -264,10 +260,6 @@ export function usePlayGame() {
               }
             }
 
-            // ★ FIX: Update sub-stores directly instead of useGameStore.setState()
-            // Setting useGameStore directly causes _syncFromSubStores() to overwrite
-            // gameId back to null (from useSessionStore), creating an infinite loop
-            // of getActive() calls.
             useSessionStore.setState({
               gameId: state.game_id,
               playerState: state.player_state,
@@ -276,12 +268,16 @@ export function usePlayGame() {
               constraintLevel: ((state as { constraint_level?: string }).constraint_level || "expert") as "fast" | "expert" | "master",
             });
             useEventStore.setState({
-              currentEvent: event,
+              currentEvent: event
+                ? {
+                    ...event,
+                    story: event.story || recoveredStoryText,
+                  }
+                : null,
               storyText: recoveredStoryText,
             });
 
             console.log("[play] State restored, will continue game");
-            recoveryInProgressRef.current = false;
             return;
           }
         } catch (err) {
@@ -293,7 +289,6 @@ export function usePlayGame() {
           }
         }
 
-        recoveryInProgressRef.current = false;
         router.replace("/");
       } else {
         console.log("[play] gameId exists:", gameId);

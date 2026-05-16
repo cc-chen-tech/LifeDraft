@@ -5,6 +5,7 @@ relationship name validation/fixing, and event quality checks.
 """
 
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
 from src.ai.client import AIClient
@@ -14,6 +15,11 @@ from src.ai.utils import extract_json
 from src.game.constants import GENERIC_CHARACTER_NAMES, GENERIC_OPTION_TEXTS
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_option_text(text: str) -> str:
+    """Normalize option text for generic-option matching."""
+    return re.sub(r"[\s，。！？、,.!?]+", "", text).lower()
 
 
 class OptionGenerator:
@@ -109,9 +115,7 @@ class OptionGenerator:
                         )
 
                 last_error = "Invalid options format or fewer than 2 options"
-                logger.warning(
-                    f"Attempt {attempt + 1}: Invalid options format, retrying..."
-                )
+                logger.warning(f"Attempt {attempt + 1}: Invalid options format, retrying...")
 
             except Exception as e:
                 last_error = str(e)
@@ -121,20 +125,12 @@ class OptionGenerator:
         logger.error("All attempts failed, using fallback options")
         default_options = [
             EventOption(
-                text=(
-                    "积极面对新的一天"
-                    if language == "zh"
-                    else "Face the new day positively"
-                ),
+                text=("积极面对新的一天" if language == "zh" else "Face the new day positively"),
                 effects={"energy": -5, "mood": 10, "knowledge": 0, "wealth": 0},
                 likely_choice=True,
             ),
             EventOption(
-                text=(
-                    "保持平常心继续前进"
-                    if language == "zh"
-                    else "Keep calm and move forward"
-                ),
+                text=("保持平常心继续前进" if language == "zh" else "Keep calm and move forward"),
                 effects={"energy": 0, "mood": 0, "knowledge": 5, "wealth": 0},
                 likely_choice=False,
             ),
@@ -211,9 +207,7 @@ class OptionGenerator:
                             if not found_match:
                                 for person in key_people:
                                     role = person.get("role", "").lower()
-                                    if role and (
-                                        name.lower() in role or role in name.lower()
-                                    ):
+                                    if role and (name.lower() in role or role in name.lower()):
                                         person_name = person.get("name", "")
                                         if person_name in valid_names:
                                             fixed_relationships[person_name] = value
@@ -228,9 +222,7 @@ class OptionGenerator:
                             # Non-key_people characters can still have relationship changes
                             if not found_match:
                                 fixed_relationships[name] = value
-                                logger.info(
-                                    f"Keeping non-key_people relationship: '{name}'"
-                                )
+                                logger.info(f"Keeping non-key_people relationship: '{name}'")
 
                     # Update relationships in effects
                     option.effects["relationships"] = fixed_relationships
@@ -311,27 +303,29 @@ class OptionGenerator:
 
         # 1. 检查选项是否与故事结尾相关
         # 简单启发式：检查选项文本是否与故事最后200字符有词汇重叠
+        story_end = story_description[-500:] if len(story_description) > 500 else story_description
 
         for i, option in enumerate(event.options):
             # 检查选项文本长度
             if len(option.text) > 50:
                 if language == "zh":
-                    issues.append(
-                        f"选项{i+1}文本过长({len(option.text)}字)，建议控制在15字内"
-                    )
+                    issues.append(f"选项{i+1}文本过长({len(option.text)}字)，建议控制在15字内")
                 else:
                     issues.append(
                         f"Option {i+1} text too long ({len(option.text)} chars), suggest max 15 words"
                     )
 
             # 检查是否是通用选项（与故事无关）
-            if option.text.lower() in [
-                g.lower() for g in generic_options.get(language, [])
-            ]:
+            normalized_option_text = _normalize_option_text(option.text)
+            normalized_generic_options = [
+                _normalize_option_text(g) for g in generic_options.get(language, [])
+            ]
+            if (
+                normalized_option_text in normalized_generic_options
+                or any(generic in normalized_option_text for generic in normalized_generic_options)
+            ):
                 if language == "zh":
-                    issues.append(
-                        f"选项{i+1}「{option.text}」过于通用，应与故事情境相关"
-                    )
+                    issues.append(f"选项{i+1}「{option.text}」过于通用，应与故事情境相关")
                 else:
                     issues.append(
                         f"Option {i+1} '{option.text}' is too generic, should relate to story"
@@ -349,17 +343,12 @@ class OptionGenerator:
                         if name in GENERIC_CHARACTER_NAMES:
                             continue
                         # 允许故事中已经出现过的人物（AI 可能在之前的轮次中引入了该人物）
-                        if (
-                            name.lower() in story_text_lower
-                            or name in story_description
-                        ):
+                        if name.lower() in story_text_lower or name in story_description:
                             logger.info(f"允许非列表人物「{name}」：已在故事文本中出现")
                             continue
                         # 其他情况记录警告，但不阻止生成
                         if language == "zh":
-                            issues.append(
-                                f"选项{i+1}中人物「{name}」不在可用人物列表中"
-                            )
+                            issues.append(f"选项{i+1}中人物「{name}」不在可用人物列表中")
                         else:
                             issues.append(
                                 f"Option {i+1} character '{name}' not in available people list"
@@ -374,9 +363,7 @@ class OptionGenerator:
                 value = effects.get(key, 0)
                 if abs(value) > 30:
                     if language == "zh":
-                        issues.append(
-                            f"选项{i+1}的{key}变化过大({value})，建议在-20到20之间"
-                        )
+                        issues.append(f"选项{i+1}的{key}变化过大({value})，建议在-20到20之间")
                     else:
                         issues.append(
                             f"Option {i+1} {key} change too large ({value}), suggest -20 to 20"
@@ -398,3 +385,27 @@ class OptionGenerator:
             logger.warning(f"Options consistency issues: {issues}")
 
         return issues
+
+    @staticmethod
+    def ensure_options_consistency(
+        event: GameEvent,
+        story_description: str,
+        available_people: Optional[List[str]] = None,
+        language: str = "zh",
+    ) -> None:
+        """Raise when options are too generic or detached from the story."""
+        validator = object.__new__(OptionGenerator)
+        issues = OptionGenerator.validate_options_consistency(
+            validator,
+            event=event,
+            story_description=story_description,
+            available_people=available_people,
+            language=language,
+        )
+        if issues:
+            issue_text = "; ".join(issues)
+            generic_markers = ("通用", "generic", "不在可用人物列表", "not in available")
+            if any(marker in issue_text for marker in generic_markers):
+                raise ValueError(f"generic or inconsistent options: {issue_text}")
+
+            raise ValueError(f"inconsistent options: {issue_text}")

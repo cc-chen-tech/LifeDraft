@@ -53,6 +53,14 @@ class TestAnalyzeStorySignatureContract:
             "character_settings" in params
         ), "MusicService.analyze_story_for_music() 缺少 character_settings 参数"
 
+    def test_analyze_story_accepts_refresh_flag_from_router(self):
+        """音乐推荐刷新请求不得因 service 签名漂移返回 500。"""
+        from src.services.music_service import MusicService
+
+        sig = inspect.signature(MusicService.analyze_story_for_music)
+        params = list(sig.parameters.keys())
+        assert "refresh" in params, "MusicService.analyze_story_for_music() 缺少 refresh 参数"
+
 
 class TestBuildSearchKeywordsEraAwareness:
     """_build_search_keywords 时代感知契约。"""

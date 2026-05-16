@@ -19,14 +19,12 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { useShallow } from "zustand/react/shallow";
 import {
   useMusicStore,
   fetchMusicRecommendation,
   fetchSongUrl,
   Song,
 } from "@/stores/useMusicStore";
-import { useGameStore } from "@/stores/useGameStore";
 
 interface MusicPlayerProps {
   storyText: string;
@@ -35,58 +33,30 @@ interface MusicPlayerProps {
 }
 
 export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerProps) {
-  // ★ 使用 selector 分组订阅，避免全量重渲染
-  // 以前：useMusicStore() 订阅全部状态，任何变更都触发整组件重渲染
-  // 现在：按变更频率分组，currentTime(500ms) 的更新不会触发 recommendation 相关重渲染
-
-  const { recommendation, isLoadingRecommendation, recommendationError } = useMusicStore(
-    useShallow((state) => ({
-      recommendation: state.recommendation,
-      isLoadingRecommendation: state.isLoadingRecommendation,
-      recommendationError: state.recommendationError,
-    }))
-  );
-
-  const { currentSong, isPlaying, audioElement } = useMusicStore(
-    useShallow((state) => ({
-      currentSong: state.currentSong,
-      isPlaying: state.isPlaying,
-      audioElement: state.audioElement,
-    }))
-  );
-
-  const { currentTime, duration } = useMusicStore(
-    useShallow((state) => ({
-      currentTime: state.currentTime,
-      duration: state.duration,
-    }))
-  );
-
-  const volume = useMusicStore((state) => state.volume);
-
-  const { queue, playedSongs, playlistGameId } = useMusicStore(
-    useShallow((state) => ({
-      queue: state.queue,
-      playedSongs: state.playedSongs,
-      playlistGameId: state.playlistGameId,
-    }))
-  );
-
-  // Actions 是稳定引用，单独 selector 不会导致额外重渲染
-  const setRecommendation = useMusicStore((state) => state.setRecommendation);
-  const setIsLoadingRecommendation = useMusicStore((state) => state.setIsLoadingRecommendation);
-  const setRecommendationError = useMusicStore((state) => state.setRecommendationError);
-  const setCurrentSong = useMusicStore((state) => state.setCurrentSong);
-  const setIsPlaying = useMusicStore((state) => state.setIsPlaying);
-  const setVolume = useMusicStore((state) => state.setVolume);
-  const setCurrentTime = useMusicStore((state) => state.setCurrentTime);
-  const setDuration = useMusicStore((state) => state.setDuration);
-  const setAudioElement = useMusicStore((state) => state.setAudioElement);
-  const play = useMusicStore((state) => state.play);
-  const pause = useMusicStore((state) => state.pause);
-  const cleanup = useMusicStore((state) => state.cleanup);
-  const fadeVolume = useMusicStore((state) => state.fadeVolume);
-  const advanceQueue = useMusicStore((state) => state.advanceQueue);
+  const {
+    recommendation,
+    isLoadingRecommendation,
+    recommendationError,
+    currentSong,
+    isPlaying,
+    volume,
+    currentTime,
+    duration,
+    audioElement,
+    setRecommendation,
+    setIsLoadingRecommendation,
+    setRecommendationError,
+    setCurrentSong,
+    setIsPlaying,
+    setVolume,
+    setCurrentTime,
+    setDuration,
+    setAudioElement,
+    play,
+    pause,
+    cleanup,
+    fadeVolume,
+  } = useMusicStore();
 
   const hasFetchedRef = useRef(false);
   const isLoadingSongRef = useRef(false);
@@ -99,15 +69,9 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
   const [isSwitchingSong, setIsSwitchingSong] = useState(false); // 切换歌曲时的加载状态
   const [preloadProgress, setPreloadProgress] = useState(0); // 预加载进度
   const songUrlMapRef = useRef<Map<number, string>>(new Map()); // 预加载的歌曲 URL 映射
-  const retryCountRef = useRef<Map<number, number>>(new Map()); // 每首歌的重试计数
-  const timeUpdateThrottleRef = useRef<number>(0); // timeupdate 节流，减少 React re-render
-  const lastLoadedSongRef = useRef<number | null>(null); // 追踪已加载的歌曲，防止重复加载
-
-  // 播放列表模式：从 DB 恢复的持久化播放列表
-  const isPlaylistMode = storyText === "persisted" && playlistGameId !== null;
 
   // 获取音乐推荐
-  const fetchRecommendation = useCallback(async (isRefresh = false) => {
+  const fetchRecommendation = useCallback(async () => {
     if (!storyText || isLoadingRecommendation) return;
 
     setIsLoadingRecommendation(true);
@@ -122,8 +86,7 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
         return;
       }
 
-      const characterSettings = useGameStore.getState().characterSettings;
-      const result = await fetchMusicRecommendation(storyText, gameId, isRefresh, characterSettings);
+      const result = await fetchMusicRecommendation(storyText, gameId);
       setRecommendation(result);
       
       // URL 已由后端批量返回，无需前端预加载
@@ -139,9 +102,7 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       console.log(`[MusicPlayer] Received ${urlMap.size}/${result.songs.length} song URLs from backend`);
     } catch (error) {
       console.error("[MusicPlayer] Failed to fetch recommendation:", error);
-      setRecommendationError(
-        error instanceof Error ? error.message : "获取推荐失败"
-      );
+      setRecommendationError("音乐服务暂不可用");
     } finally {
       setIsLoadingRecommendation(false);
     }
@@ -162,13 +123,6 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       return;
     }
     if (!isPreload) {
-      // 如果同一首歌已经在播放且未结束，仅恢复播放
-      if (currentSong?.id === song.id && audioElement && !audioElement.ended && audioElement.src) {
-        if (audioElement.paused) {
-          try { await audioElement.play(); } catch { /* 播放被中断，忽略 */ }
-        }
-        return;
-      }
       isLoadingSongRef.current = true;
       setIsSwitchingSong(true); // 显示切换加载状态
     }
@@ -263,34 +217,21 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
         return;
       }
 
-      // 创建新的音频元素 — 使用后端流式代理绕过 CDN Referer 限制
-      const streamUrl = `/api/music/stream/${song.id}`;
-      const audio = new Audio(streamUrl);
-      audio.preload = "auto";
+      // 创建新的音频元素
+      const audio = new Audio(url);
       audio.volume = volume;
 
       // 绑定事件
       audio.onplay = () => setIsPlaying(true);
       audio.onpause = () => setIsPlaying(false);
-      audio.ontimeupdate = () => {
-        // 500ms 节流，减少 timeupdate 触发的 React re-render 频率
-        // 250ms → 500ms：进一步降低重渲染开销，改善播放卡顿
-        const now = Date.now();
-        if (now - timeUpdateThrottleRef.current >= 500) {
-          timeUpdateThrottleRef.current = now;
-          setCurrentTime(audio.currentTime);
-        }
-      };
+      audio.ontimeupdate = () => setCurrentTime(audio.currentTime);
       audio.onloadedmetadata = () => setDuration(audio.duration || 0);
       audio.onended = () => {
         setIsPlaying(false);
         setCurrentTime(0);
         activeAudioRef.current = null; // 清理活动音频引用
-        setAudioElement(null); // 清理 store 中的音频引用，让播放列表效果触发
         // 自动播放下一首 - 使用传入的 song 参数而不是 currentSong
-        if (isPlaylistMode && playlistGameId) {
-          advanceQueue();
-        } else if (recommendation?.songs.length) {
+        if (recommendation?.songs.length) {
           const currentIndex = recommendation.songs.findIndex(
             (s) => s.id === song.id
           );
@@ -299,32 +240,7 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
           loadAndPlaySong(recommendation.songs[nextIndex]);
         }
       };
-      // 缓冲事件处理（解决播放中突然停止）
-      audio.onstalled = () => {
-        console.log(`[MusicPlayer] Audio stalled for "${song.name}" — buffering...`);
-        setPlayError(`"${song.name}" 缓冲中...`);
-      };
-      audio.onwaiting = () => {
-        console.log(`[MusicPlayer] Audio waiting for data: "${song.name}"`);
-        setPlayError(`"${song.name}" 缓冲中...`);
-        // 5秒后如果还在 waiting 状态，尝试重新加载当前位置
-        setTimeout(() => {
-          if (audio.readyState < 3 && !audio.paused) {
-            const currentPos = audio.currentTime;
-            audio.load();
-            audio.currentTime = currentPos;
-            audio.play().catch(() => {});
-          }
-        }, 5000);
-      };
-      audio.oncanplay = () => {
-        // 清除缓冲相关的错误提示
-        setPlayError((prev) =>
-          prev && (prev.includes("缓冲中") || prev.includes("等待数据")) ? null : prev
-        );
-      };
-
-      audio.onerror = async (e) => {
+      audio.onerror = (e) => {
         const errorCode = audio.error?.code;
         const errorMessage = audio.error?.message;
         const errorTypes: { [key: number]: string } = {
@@ -338,42 +254,19 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
         console.error(`[MusicPlayer] Audio error for "${song.name}": ${errorType}`, {
           code: errorCode,
           message: errorMessage,
-          attempt: (retryCountRef.current.get(song.id) || 0) + 1,
-          maxRetries: 3,
-          networkOnline: navigator.onLine,
-          src: audio.src ? '(has src)' : '(no src)',
-          timestamp: new Date().toISOString(),
+          url: url?.substring(0, 50) + '...',
+          event: e
         });
         
         setIsPlaying(false);
-        
-        // 检查是否可以重试：每首歌最多重试 3 次
-        const currentRetries = retryCountRef.current.get(song.id) || 0;
-        if (currentRetries < 3) {
-          retryCountRef.current.set(song.id, currentRetries + 1);
-          const retryDelay = Math.min(1000 * Math.pow(2, currentRetries), 4000);
-          console.log(`[MusicPlayer] Retrying "${song.name}" via stream proxy (attempt ${currentRetries + 1}/3, delay ${retryDelay}ms)`);
-          setPlayError(`"${song.name}" 加载失败，正在重试 (${currentRetries + 1}/3)...`);
-          
-          // 清理当前失败的音频
-          audio.pause();
-          audio.src = "";
-          activeAudioRef.current = null;
-          
-          // 指数退避重试，流式代理会重新获取 CDN URL（给后端更多恢复时间）
-          setTimeout(() => loadAndPlaySong(song), retryDelay);
-          return;
-        }
-        
-        // 3 次重试全部失败，自动切换下一首
-        setPlayError(`"${song.name}" 暂时无法播放，正在切换下一首...`);
+        setPlayError(`"${song.name}" ${errorType}，尝试下一首...`);
         
         // 同步更新 ref 和 state
         skippedSongsRef.current.add(song.id);
         setSkippedSongs(new Set(skippedSongsRef.current));
         
         // 清理当前音频
-        activeAudioRef.current = null;
+        activeAudioRef.current = null; // 清理活动音频引用
         audio.pause();
         audio.src = "";
         
@@ -389,7 +282,7 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
             const nextSong = recommendation.songs[nextIndex];
             if (!skippedSongsRef.current.has(nextSong.id)) {
               console.log(`[MusicPlayer] Error occurred, trying next song: ${nextSong.name}`);
-              setTimeout(() => loadAndPlaySong(nextSong), 1500);
+              setTimeout(() => loadAndPlaySong(nextSong), 800);
               return;
             }
             nextIndex = (nextIndex + 1) % recommendation.songs.length;
@@ -400,7 +293,6 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
           console.log('[MusicPlayer] All songs skipped, resetting skip list');
           skippedSongsRef.current = new Set();
           setSkippedSongs(new Set());
-          retryCountRef.current = new Map(); // 重置重试计数
         }
       };
 
@@ -409,31 +301,13 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       setAudioElement(audio);
       activeAudioRef.current = audio; // 记录当前活动的音频
       
-      // 播放（等待缓冲后再播放，减少卡顿）
+      // 播放（使用 try-catch 捕获播放错误）
       try {
         audio.volume = volume;
-        const playWhenReady = () => {
-          audio.play().then(() => {
-            console.log(`[MusicPlayer] Playback started for "${song.name}"`);
-          }).catch((err) => {
-            console.warn(`[MusicPlayer] Play interrupted for "${song.name}":`, err);
-          });
-        };
-        // 如果已有足够缓冲（HAVE_FUTURE_DATA），直接播放；否则等待 canplay 事件
-        if (audio.readyState >= 3) {
-          playWhenReady();
-        } else {
-          audio.addEventListener('canplay', playWhenReady, { once: true });
-          // 安全超时：10秒后如果还没触发 canplay，强制尝试播放
-          setTimeout(() => {
-            if (audio.paused && activeAudioRef.current === audio) {
-              console.log(`[MusicPlayer] canplay timeout, forcing play for "${song.name}"`);
-              playWhenReady();
-            }
-          }, 10000);
-        }
+        await audio.play();
       } catch (playError) {
-        console.warn(`[MusicPlayer] Play setup error for "${song.name}":`, playError);
+        console.warn(`[MusicPlayer] Play interrupted for "${song.name}":`, playError);
+        // 播放被中断（可能是用户切换了歌曲），不显示错误
       }
     } catch (error) {
       console.error("[MusicPlayer] Failed to load song:", error);
@@ -458,40 +332,31 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
     if (preloadedSongRef.current?.id === nextSong.id) return;
     
     try {
-      // 使用后端流式代理 URL 进行预加载
-      const streamUrl = `/api/music/stream/${nextSong.id}`;
-      const audio = new Audio(streamUrl);
-      audio.preload = "auto";
-      audio.volume = 0; // 静音预加载
-      
-      // 等待音频足够加载
-      audio.oncanplaythrough = () => {
-        preloadedAudioRef.current = audio;
-        preloadedSongRef.current = { ...nextSong };
-        console.log(`[MusicPlayer] Preloaded next song: ${nextSong.name}`);
-      };
+      const url = await fetchSongUrl(nextSong.id);
+      if (url) {
+        // 创建并预加载音频
+        const audio = new Audio(url);
+        audio.preload = "auto";
+        audio.volume = 0; // 静音预加载
+        
+        // 等待音频足够加载
+        audio.oncanplaythrough = () => {
+          preloadedAudioRef.current = audio;
+          preloadedSongRef.current = { ...nextSong, url };
+          console.log(`[MusicPlayer] Preloaded next song: ${nextSong.name}`);
+        };
+      }
     } catch (error) {
       console.warn(`[MusicPlayer] Failed to preload next song: ${nextSong.name}`, error);
     }
   }, [recommendation, currentSong]);
 
   // 自动播放第一首歌（单独处理，避免循环依赖）
-  // 播放列表模式下 currentSong 已从 DB 恢复，无需自动播放
   useEffect(() => {
-    if (recommendation && recommendation.songs.length > 0 && !currentSong && !audioElement && !isPlaylistMode) {
+    if (recommendation && recommendation.songs.length > 0 && !currentSong && !audioElement) {
       loadAndPlaySong(recommendation.songs[0]);
     }
-  }, [recommendation, currentSong, audioElement, loadAndPlaySong, isPlaylistMode]);
-
-  // 播放列表模式：当 currentSong 变化且尚未加载时，自动加载播放
-  useEffect(() => {
-    if (isPlaylistMode && currentSong && currentSong.id !== lastLoadedSongRef.current) {
-      lastLoadedSongRef.current = currentSong.id;
-      if (!audioElement || audioElement.ended) {
-        loadAndPlaySong(currentSong);
-      }
-    }
-  }, [isPlaylistMode, currentSong, audioElement, loadAndPlaySong]);
+  }, [recommendation, currentSong, audioElement, loadAndPlaySong]);
 
   // 当前歌曲播放后预加载下一首
   useEffect(() => {
@@ -517,44 +382,21 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       // 如果音乐正在播放但时间没有前进，可能是卡住了
       if (audioElement.currentTime === lastTime && !audioElement.paused) {
         stuckCount++;
-        console.log(`[MusicPlayer] Audio may be stuck (${stuckCount}/8)`);
+        console.log(`[MusicPlayer] Audio may be stuck (${stuckCount}/3)`);
         
-        // 连续4次检测都卡住（共12秒），开始恢复策略
-        if (stuckCount >= 4 && stuckCount <= 5) {
-          // 第一层：仅尝试 play()
-          console.log('[MusicPlayer] Recovery layer 1: trying play()...');
-          audioElement.play().then(() => {
-            console.log('[MusicPlayer] Recovery: play() succeeded');
-            stuckCount = 0;
-          }).catch(() => {
-            console.log('[MusicPlayer] Recovery: play() failed, will retry next interval');
+        // 连续3次检测都卡住，尝试恢复播放
+        if (stuckCount >= 3) {
+          console.log('[MusicPlayer] Attempting to resume playback...');
+          audioElement.play().catch(() => {
+            // 如果恢复失败，跳到下一首
+            console.log('[MusicPlayer] Resume failed, switching to next song');
+            if (recommendation?.songs.length) {
+              const currentIndex = recommendation.songs.findIndex((s) => s.id === currentSong.id);
+              const nextIndex = (currentIndex + 1) % recommendation.songs.length;
+              loadAndPlaySong(recommendation.songs[nextIndex]);
+            }
           });
-        } else if (stuckCount >= 6 && stuckCount <= 7) {
-          // 第二层：尝试 seek + play()
-          console.log('[MusicPlayer] Recovery layer 2: trying seek + play()...');
-          try {
-            const seekTarget = Math.max(0, audioElement.currentTime - 0.5);
-            audioElement.currentTime = seekTarget;
-            audioElement.play().then(() => {
-              console.log('[MusicPlayer] Recovery: seek + play() succeeded');
-              stuckCount = 0;
-            }).catch(() => {
-              console.log('[MusicPlayer] Recovery: seek + play() failed, will retry next interval');
-            });
-          } catch {
-            console.log('[MusicPlayer] Recovery: seek threw error');
-          }
-        } else if (stuckCount >= 8) {
-          // 第三层：24秒完全无进度，切歌
-          console.log('[MusicPlayer] Recovery layer 3: switching to next song (stuck for 24s)');
           stuckCount = 0;
-          if (isPlaylistMode && playlistGameId) {
-            advanceQueue();
-          } else if (recommendation?.songs.length) {
-            const currentIndex = recommendation.songs.findIndex((s) => s.id === currentSong.id);
-            const nextIndex = (currentIndex + 1) % recommendation.songs.length;
-            loadAndPlaySong(recommendation.songs[nextIndex]);
-          }
         }
       } else {
         stuckCount = 0;
@@ -564,7 +406,7 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
     }, 3000); // 每3秒检查一次
 
     return () => clearInterval(checkInterval);
-  }, [audioElement, isPlaying, currentSong, recommendation, loadAndPlaySong, playlistGameId]);
+  }, [audioElement, isPlaying, currentSong, recommendation, loadAndPlaySong]);
 
   // 播放控制
   const togglePlay = () => {
@@ -574,32 +416,12 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       } else {
         play();
       }
-    } else if (isPlaylistMode && currentSong) {
-      loadAndPlaySong(currentSong);
     } else if (recommendation?.songs.length) {
       loadAndPlaySong(recommendation.songs[0]);
     }
   };
 
   const playNext = () => {
-    if (isPlaylistMode && playlistGameId) {
-      // 播放列表模式：通过后端推进队列
-      if (audioElement) {
-        audioElement.pause();
-        audioElement.src = "";
-        audioElement.onplay = null;
-        audioElement.onpause = null;
-        audioElement.ontimeupdate = null;
-        audioElement.onloadedmetadata = null;
-        audioElement.onended = null;
-        audioElement.onerror = null;
-        setAudioElement(null);
-      }
-      activeAudioRef.current = null;
-      advanceQueue();
-      return;
-    }
-
     if (!recommendation?.songs.length || !currentSong) return;
 
     const currentIndex = recommendation.songs.findIndex(
@@ -645,11 +467,11 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
 
   // 初始加载推荐
   useEffect(() => {
-    if (storyText && !hasFetchedRef.current && !recommendation && !isPlaylistMode) {
+    if (storyText && !hasFetchedRef.current && !recommendation) {
       hasFetchedRef.current = true;
       fetchRecommendation();
     }
-  }, [storyText, recommendation, fetchRecommendation, isPlaylistMode]);
+  }, [storyText, recommendation, fetchRecommendation]);
 
   // 清理
   useEffect(() => {
@@ -682,8 +504,8 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 flex-wrap">
           <Music className="w-4 h-4 text-primary" />
-          <span className="text-sm font-medium">{isPlaylistMode ? "播放列表" : "场景音乐"}</span>
-          {!isPlaylistMode && recommendation && (
+          <span className="text-sm font-medium">场景音乐</span>
+          {recommendation && (
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-xs px-1.5 py-0.5 bg-primary/10 text-primary rounded">
                 {recommendation.mood}
@@ -701,20 +523,20 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
             </div>
           )}
         </div>
-        {!isPlaylistMode && <Button
+        <Button
           variant="ghost"
           size="sm"
-          onClick={() => fetchRecommendation(true)}
+          onClick={fetchRecommendation}
           disabled={isLoadingRecommendation}
-          aria-label="刷新音乐推荐"
-          title="刷新音乐推荐"
+          title="换一批"
+          aria-label="换一批"
         >
           {isLoadingRecommendation ? (
             <Loader2 className="w-4 h-4 animate-spin" />
           ) : (
             <RefreshCw className="w-4 h-4" />
           )}
-        </Button>}
+        </Button>
       </div>
 
       {/* 加载状态 */}
@@ -736,7 +558,7 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       {/* 错误状态 */}
       {recommendationError && (
         <div className="text-sm text-destructive text-center py-2">
-          {recommendationError}
+          音乐服务暂不可用
         </div>
       )}
 
@@ -761,17 +583,17 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       )}
 
       {/* 播放器 */}
-      {((recommendation && recommendation.songs.length > 0) || (isPlaylistMode && currentSong)) && (
+      {recommendation && recommendation.songs.length > 0 && (
         <div className="space-y-3">
           {/* 当前歌曲信息 */}
           <div className="text-sm">
             <div className="font-medium truncate">
-              {currentSong?.name || recommendation?.songs[0]?.name || "未知歌曲"}
+              {currentSong?.name || recommendation.songs[0]?.name || "未知歌曲"}
             </div>
             <div className="text-muted-foreground text-xs truncate">
-              {currentSong
+              {currentSong 
                 ? `${currentSong.artists.join(" / ")} · ${currentSong.album}`
-                : recommendation?.songs[0]
+                : recommendation.songs[0] 
                   ? `${recommendation.songs[0].artists.join(" / ")} · ${recommendation.songs[0].album}`
                   : ""
               }
@@ -803,9 +625,9 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
                 size="icon"
                 className="h-8 w-8"
                 onClick={playPrev}
-                disabled={!(recommendation?.songs.length || isPlaylistMode)}
-                aria-label="上一首"
+                disabled={!recommendation.songs.length}
                 title="上一首"
+                aria-label="上一首"
               >
                 <SkipBack className="w-4 h-4" />
               </Button>
@@ -814,9 +636,9 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
                 size="icon"
                 className="h-10 w-10"
                 onClick={togglePlay}
-                disabled={!(recommendation?.songs.length || isPlaylistMode || currentSong)}
-                aria-label={isPlaying ? "暂停" : "播放"}
+                disabled={!recommendation.songs.length}
                 title={isPlaying ? "暂停" : "播放"}
+                aria-label={isPlaying ? "暂停" : "播放"}
               >
                 {isPlaying ? (
                   <Pause className="w-5 h-5" />
@@ -829,9 +651,9 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
                 size="icon"
                 className="h-8 w-8"
                 onClick={playNext}
-                disabled={!(recommendation?.songs.length || isPlaylistMode)}
-                aria-label="下一首"
+                disabled={!recommendation.songs.length}
                 title="下一首"
+                aria-label="下一首"
               >
                 <SkipForward className="w-4 h-4" />
               </Button>
@@ -844,8 +666,8 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
                 size="icon"
                 className="h-6 w-6"
                 onClick={() => handleVolumeChange([volume === 0 ? 0.5 : 0])}
-                aria-label={volume === 0 ? "取消静音" : "静音"}
                 title={volume === 0 ? "取消静音" : "静音"}
+                aria-label={volume === 0 ? "取消静音" : "静音"}
               >
                 {volume === 0 ? (
                   <VolumeX className="w-3 h-3" />
@@ -863,20 +685,16 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
           </div>
 
           {/* 歌曲列表 */}
-          {((recommendation?.songs?.length ?? 0) > 1 || (isPlaylistMode && queue.length > 0)) && (
+          {recommendation.songs.length > 1 && (
             <div className="mt-3 pt-3 border-t">
               <div className="text-xs text-muted-foreground mb-2 flex items-center justify-between">
-                <span>
-                  {isPlaylistMode
-                    ? `播放队列 (${queue.length}首)`
-                    : `推荐歌曲 (${recommendation!.songs.length}首)`}
-                </span>
-                {!isPlaylistMode && recommendation!.songs.length < 5 && (
+                <span>推荐歌曲 ({recommendation.songs.length}首)</span>
+                {recommendation.songs.length < 5 && (
                   <span className="text-amber-500">匹配歌曲较少</span>
                 )}
               </div>
               <div className="max-h-32 overflow-y-auto space-y-1">
-                {(isPlaylistMode ? queue : recommendation!.songs).map((song) => (
+                {recommendation.songs.map((song) => (
                   <button
                     key={song.id}
                     onClick={() => loadAndPlaySong(song)}

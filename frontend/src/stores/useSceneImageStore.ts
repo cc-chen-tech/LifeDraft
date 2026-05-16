@@ -387,7 +387,19 @@ export const useSceneImageStore = create<SceneImageState>()(
             created_at: scene.created_at,
           };
 
-          set({ historySceneImage: sceneWithStage, isLoadingHistoryImage: false });
+          set((state) => ({
+            historySceneImage: sceneWithStage,
+            roundSceneImages: state.roundSceneImages.some(
+              s => s.week === sceneWithStage.week && s.round_number === sceneWithStage.round_number && s.stage === sceneWithStage.stage
+            )
+              ? state.roundSceneImages.map(
+                  s => s.week === sceneWithStage.week && s.round_number === sceneWithStage.round_number && s.stage === sceneWithStage.stage
+                    ? sceneWithStage
+                    : s
+                )
+              : [...state.roundSceneImages, sceneWithStage],
+            isLoadingHistoryImage: false,
+          }));
         } else {
           set({ historySceneImage: null, isLoadingHistoryImage: false });
         }
@@ -441,7 +453,13 @@ export const useSceneImageStore = create<SceneImageState>()(
           created_at: result.created_at,
         };
 
-        set({ historySceneImage: newScene, isGeneratingHistoryImage: false });
+        set((state) => ({
+          historySceneImage: newScene,
+          roundSceneImages: state.roundSceneImages.some(s => s.week === newScene.week && s.round_number === newScene.round_number && s.stage === newScene.stage)
+            ? state.roundSceneImages.map(s => s.week === newScene.week && s.round_number === newScene.round_number && s.stage === newScene.stage ? newScene : s)
+            : [...state.roundSceneImages, newScene],
+          isGeneratingHistoryImage: false,
+        }));
         console.log(`[generateHistorySceneImage] Scene generated: scene_id=${result.scene_id}`);
       } catch (err) {
         console.error(`[generateHistorySceneImage] Failed:`, err);
@@ -485,7 +503,13 @@ export const useSceneImageStore = create<SceneImageState>()(
           created_at: result.created_at,
         };
 
-        set({ historySceneImage: updatedScene, isRegeneratingHistoryImage: false });
+        set((state) => ({
+          historySceneImage: updatedScene,
+          roundSceneImages: state.roundSceneImages.some(s => s.week === updatedScene.week && s.round_number === updatedScene.round_number && s.stage === updatedScene.stage)
+            ? state.roundSceneImages.map(s => s.week === updatedScene.week && s.round_number === updatedScene.round_number && s.stage === updatedScene.stage ? updatedScene : s)
+            : [...state.roundSceneImages, updatedScene],
+          isRegeneratingHistoryImage: false,
+        }));
         console.log(`[regenerateHistorySceneImage] Scene regenerated: scene_id=${result.scene_id}`);
       } catch (err) {
         console.error(`[regenerateHistorySceneImage] Failed:`, err);
@@ -493,7 +517,14 @@ export const useSceneImageStore = create<SceneImageState>()(
       }
     },
 
-    setHistorySceneImage: (image) => set({ historySceneImage: image }),
+    setHistorySceneImage: (image) => set((state) => ({
+      historySceneImage: image,
+      roundSceneImages: image
+        ? state.roundSceneImages.some(s => s.week === image.week && s.round_number === image.round_number && s.stage === image.stage)
+          ? state.roundSceneImages.map(s => s.week === image.week && s.round_number === image.round_number && s.stage === image.stage ? image : s)
+          : [...state.roundSceneImages, image]
+        : state.roundSceneImages,
+    })),
 
     // ==================== Cache Actions ====================
     clearImageCache: () => {

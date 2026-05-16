@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import { useGameStore } from "@/stores/useGameStore";
 import { streamChoice, streamCustomChoice } from "@/lib/sse";
 import type { EventOption } from "@/lib/types";
@@ -44,6 +45,7 @@ export function useChoiceHandler({
   setOptions,
   setStoryText,
 }: UseChoiceHandlerParams) {
+  const choiceBaseStoryRef = useRef("");
 
   // Shared handlers object
   const handlers: ChoiceHandlers = {
@@ -91,6 +93,7 @@ export function useChoiceHandler({
     }
     abortRef.current?.abort();
     generatingRef.current = false;
+    choiceBaseStoryRef.current = useGameStore.getState().storyText || "";
 
     setPhase("choosing");
     setConnectionStatus(null);
@@ -108,9 +111,9 @@ export function useChoiceHandler({
         sseSucceeded = true;
         // ★ 处理 retry 状态：清空旧故事，标记重试
         if (status.phase === "retry") {
-          console.log("[handleChoice] Retry event received, clearing story for new content");
+          console.log("[handleChoice] Retry event received, restoring base story for replacement content");
           markRetry();
-          useGameStore.setState({ storyText: "" });
+          setStoryText(choiceBaseStoryRef.current);
           setProcessing(true, "retrying");
           return;
         }
@@ -139,6 +142,7 @@ export function useChoiceHandler({
     if (!gameId) return;
     abortRef.current?.abort();
     generatingRef.current = false;
+    choiceBaseStoryRef.current = useGameStore.getState().storyText || "";
 
     setPhase("choosing");
     setConnectionStatus(null);
@@ -156,9 +160,9 @@ export function useChoiceHandler({
         sseSucceeded = true;
         // ★ 处理 retry 状态：清空旧故事，标记重试
         if (status.phase === "retry") {
-          console.log("[handleCustomChoice] Retry event received, clearing story for new content");
+          console.log("[handleCustomChoice] Retry event received, restoring base story for replacement content");
           markRetry();
-          useGameStore.setState({ storyText: "" });
+          setStoryText(choiceBaseStoryRef.current);
           setProcessing(true, "retrying");
           return;
         }

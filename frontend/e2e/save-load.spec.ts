@@ -315,18 +315,20 @@ test.describe('Save/Load - Navigation', () => {
     // 等待页面完全加载
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(2000);
+
+    if (new URL(page.url()).pathname === '/') {
+      await expect(page.getByRole('button', { name: '新游戏' })).toBeVisible();
+      return;
+    }
     
     // 查找返回按钮，包括 button 和 link 形式
     const returnButton = page.locator('button:has-text("返回"), a:has-text("返回"), a:has-text("首页")');
     
-    if (await returnButton.first().isVisible({ timeout: 5000 }).catch(() => false)) {
-      await returnButton.first().click({ force: true, noWaitAfter: true }).catch(() => {});
-      // 等待导航完成
-      await page.waitForURL('**/', { timeout: 15000 }).catch(() => {});
-      // 验证已导航到首页
-      expect(page.url()).toMatch(/\/($|\?)/);
-    } else {
-      test.skip(true, '返回按钮未找到');
-    }
+    await expect(returnButton.first()).toBeVisible({ timeout: 10000 });
+    await returnButton.first().click({ force: true, noWaitAfter: true });
+    // 等待导航完成
+    await page.waitForURL('**/', { timeout: 15000 });
+    // 验证已导航到首页
+    expect(page.url()).toMatch(/\/($|\?)/);
   });
 });

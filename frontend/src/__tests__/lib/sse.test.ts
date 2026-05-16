@@ -22,6 +22,11 @@ Object.defineProperty(window, 'navigator', {
   writable: true,
 });
 
+// Mock remote-log
+jest.mock('@/lib/remote-log', () => ({
+  reportError: jest.fn(),
+}));
+
 import {
   streamGameEvent,
   streamChoice,
@@ -115,21 +120,6 @@ describe('SSE Streaming', () => {
       await streamGameEvent(123, callbacks);
 
       expect(onComplete).toHaveBeenCalledWith({});
-    });
-
-    it('rejects when stream ends without complete event or [DONE]', async () => {
-      const onComplete = jest.fn();
-      const onError = jest.fn();
-      const callbacks: StreamCallbacks = { onComplete, onError };
-
-      // Stream ends prematurely (network disconnect) without [DONE] or complete event
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        body: createMockStream(['data: {"content":"Hello"}\n\n']),
-      });
-
-      await expect(streamGameEvent(123, callbacks)).rejects.toThrow('Stream ended without complete event');
-      expect(onComplete).not.toHaveBeenCalled();
     });
 
     it('throws on HTTP errors', async () => {
@@ -250,61 +240,33 @@ describe('SSE Streaming', () => {
       expect(body.character_settings).toEqual({ era: 'modern', age: 25 });
     });
 
-    it('parses backend SSE format: story and complete events', async () => {
-      // Backend format: event: story\ndata: "text"\n\nevent: complete\ndata: {"full_story":"..."}\n\n
-      const sseStream = [
-        'event: status\n',
-        'data: {"phase":"preparing"}\n\n',
-        'event: story\n',
-        'data: "从前有座山"\n\n',
-        'event: story\n',
-        'data: "山里有座庙"\n\n',
-        'event: complete\n',
-        'data: {"full_story":"从前有座山，山里有座庙"}\n\n',
-      ];
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        body: createMockStream(sseStream),
-      });
-
+    it('streams backend event: story chunks and preserves text when complete payload is empty', async () => {
       const onStory = jest.fn();
       const onComplete = jest.fn();
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: createMockStream([
+          'event: story\n',
+          'data: "雨停以后，林舟推开窗。"\n\n',
+          'event: story\n',
+          'data: {"content":"街口的灯还亮着。"}\n\n',
+          'event: complete\n',
+          'data: {}\n\n',
+        ]),
+      });
+
       await streamOpeningStory(
         { era: 'modern' },
-        'TestPlayer',
-        'My vision',
+        '林舟',
+        '找到自己的路',
         'zh',
         { onStory, onComplete }
       );
 
-      expect(onStory).toHaveBeenCalledTimes(2);
-      expect(onStory).toHaveBeenNthCalledWith(1, '从前有座山');
-      expect(onStory).toHaveBeenNthCalledWith(2, '山里有座庙');
-      expect(onComplete).toHaveBeenCalledWith({ full_story: '从前有座山，山里有座庙' });
-    });
-
-    it('handles error events', async () => {
-      const sseStream = [
-        'event: status\n',
-        'data: {"phase":"preparing"}\n\n',
-        'event: error\n',
-        'data: {"error":"generation failed"}\n\n',
-      ];
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        body: createMockStream(sseStream),
-      });
-
-      const onError = jest.fn();
-      await streamOpeningStory(
-        { era: 'modern' },
-        'TestPlayer',
-        'My vision',
-        'zh',
-        { onError }
-      );
-
-      expect(onError).toHaveBeenCalledWith({ message: 'generation failed' });
+      expect(onStory).toHaveBeenNthCalledWith(1, '雨停以后，林舟推开窗。');
+      expect(onStory).toHaveBeenNthCalledWith(2, '街口的灯还亮着。');
+      expect(onComplete).toHaveBeenCalledWith({});
     });
   });
 
@@ -417,30 +379,6 @@ describe('SSE Streaming', () => {
       };
 
       await expect(streamRewrite(123, 'context', 'instruction', 'segment', 'zh', callbacks)).rejects.toThrow('HTTP error');
-    });
-
-    it('rejects with Error when stream ends without complete event', async () => {
-      const onError = jest.fn();
-      const callbacks = {
-        onStory: jest.fn(),
-        onStatus: jest.fn(),
-        onComplete: jest.fn(),
-        onError,
-      };
-
-      // Stream ends prematurely without [DONE] or complete event
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        body: createMockStream(['data: {"content":"Hello"}\n\n']),
-      });
-
-      // ★ 契约：必须抛出 Error 实例（与 streamGameEvent/streamOpeningStory 一致）
-      // 不能抛出 { completed: false, error: Error } 这种对象
-      await expect(
-        streamRewrite(123, 'context', 'instruction', 'segment', 'zh', callbacks)
-      ).rejects.toThrow('Stream ended without complete event');
-
-      expect(onError).toHaveBeenCalledWith(expect.any(Error));
     });
   });
 

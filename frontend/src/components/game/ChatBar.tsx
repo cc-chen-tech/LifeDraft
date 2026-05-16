@@ -157,27 +157,30 @@ export function ChatBar({
   if (!isExpanded) {
     return (
       <div
+        data-testid="chat-bar-launcher"
         className={cn(
-          "fixed bottom-14 right-4 z-50 flex items-center gap-2",
+          "fixed bottom-4 right-4 z-50 flex items-center gap-2 pointer-events-none",
           className
         )}
       >
         <Button
           size="sm"
           variant="outline"
-          className="h-10 rounded-full shadow-lg bg-card"
-          onClick={() => onAdjustStory?.()}
-          disabled={isViewingHistory}
           data-testid="rewrite-button"
+          aria-label="改写故事"
+          className="h-10 rounded-full shadow-lg bg-card/95 backdrop-blur-sm pointer-events-auto"
+          onClick={onAdjustStory}
+          disabled={isViewingHistory}
+          title={isViewingHistory ? "历史回顾模式下不可用" : "改写故事"}
         >
           <Pencil className="w-4 h-4 mr-1" />
           改写
         </Button>
         <Button
           size="icon"
-          className="h-12 w-12 rounded-full shadow-lg bg-primary hover:bg-primary/90"
-          onClick={() => setIsExpanded(true)}
           aria-label="打开聊天"
+          className="h-12 w-12 rounded-full shadow-lg bg-primary hover:bg-primary/90 pointer-events-auto"
+          onClick={() => setIsExpanded(true)}
         >
           <MessageCircle className="w-5 h-5" />
         </Button>
@@ -187,15 +190,44 @@ export function ChatBar({
 
   return (
     <div
+      data-testid="chat-bar-panel"
       className={cn(
-        "fixed bottom-12 left-0 right-0 z-50",
-        "bg-card/95 backdrop-blur-sm border-t border-border",
+        "fixed bottom-4 left-4 right-4 sm:left-auto sm:w-[min(28rem,calc(100vw-2rem))] max-w-md z-50",
+        "bg-card/95 backdrop-blur-sm border border-border shadow-xl rounded-lg",
         "p-3 safe-area-pb",
         className
       )}
     >
       {/* Quick actions row */}
       <div className="flex items-center gap-2 mb-2">
+        <Button
+          size="sm"
+          variant="outline"
+          className="text-xs touch-target"
+          onClick={onSave}
+          disabled={isSaving}
+        >
+          {isSaving ? (
+            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+          ) : (
+            <Save className="w-3 h-3 mr-1" />
+          )}
+          保存
+        </Button>
+
+        <Button
+          size="sm"
+          variant="outline"
+          data-testid="rewrite-button"
+          className="text-xs touch-target"
+          onClick={onAdjustStory}
+          disabled={isViewingHistory}
+          title={isViewingHistory ? "历史回顾模式下不可用" : undefined}
+        >
+          <Pencil className="w-3 h-3 mr-1" />
+          改写
+        </Button>
+
         <Button
           size="sm"
           variant="outline"
@@ -209,19 +241,6 @@ export function ChatBar({
         >
           <RotateCcw className="w-3 h-3 mr-1" />
           重新生成
-        </Button>
-
-        <Button
-          size="sm"
-          variant="outline"
-          className="text-xs touch-target"
-          onClick={() => onAdjustStory?.()}
-          disabled={isViewingHistory}
-          title={isViewingHistory ? "历史回顾模式下不可用" : undefined}
-          data-testid="rewrite-button"
-        >
-          <Pencil className="w-3 h-3 mr-1" />
-          改写
         </Button>
 
         <Button
@@ -248,7 +267,6 @@ export function ChatBar({
             className="h-8 w-8 text-muted-foreground"
             onClick={() => setChatHistory([])}
             title="清空对话"
-            aria-label="清空对话"
           >
             <Trash2 className="w-3.5 h-3.5" />
           </Button>
@@ -259,8 +277,8 @@ export function ChatBar({
           variant="ghost"
           className="h-8 w-8"
           onClick={() => setIsExpanded(false)}
-          title="关闭聊天"
-          aria-label="关闭聊天"
+          aria-label="关闭剧情助手"
+          title="关闭剧情助手"
         >
           <X className="w-4 h-4" />
         </Button>
@@ -318,8 +336,8 @@ export function ChatBar({
           className="h-10 w-10"
           disabled={!message.trim() || isSending}
           onClick={handleSend}
-          title="发送消息"
           aria-label="发送消息"
+          title="发送消息"
         >
           {isSending ? (
             <Loader2 className="w-4 h-4 animate-spin" />

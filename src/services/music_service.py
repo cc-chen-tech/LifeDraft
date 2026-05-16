@@ -3,13 +3,10 @@
 基于故事内容搜索匹配的音乐
 """
 
-import asyncio
 import logging
 import os
-import random
-import time
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
 import httpx
 
@@ -28,29 +25,7 @@ class Song:
     album: str
     duration: int  # 毫秒
     url: Optional[str] = None
-
-
-@dataclass
-class CachedSong:
-    """已验证 URL 的歌曲缓存项。"""
-
-    id: int
-    name: str
-    artists: List[str]
-    album: str
-    duration: int
-    url: str
-    url_expires_at: float
-    verified_at: float
-
-
-@dataclass
-class CachedMusicPool:
-    """音乐缓存池。"""
-
-    analysis: Dict[str, Any]
-    verified_songs: List[CachedSong]
-    created_at: float
+    source: str = "netease"
 
 
 @dataclass
@@ -70,22 +45,153 @@ class MusicRecommendation:
     description: Optional[str] = None  # 音乐氛围描述
 
 
+@dataclass(frozen=True)
+class MusicBrief:
+    """Structured story-to-music intent shared by search and generation."""
+
+    mood: str
+    scene_type: str
+    era_or_environment: str
+    pacing: str
+    energy: str
+    instruments: List[str]
+    search_queries: List[str]
+    negative_cues: List[str] = field(default_factory=list)
+    generation_prompt: str = ""
+
+    @classmethod
+    def default(cls) -> "MusicBrief":
+        return cls(
+            mood="平静",
+            scene_type="叙事",
+            era_or_environment="通用",
+            pacing="舒缓",
+            energy="中低",
+            instruments=["钢琴", "弦乐"],
+            search_queries=["轻音乐", "背景音乐", "纯音乐"],
+            negative_cues=["人声", "歌词", "强节拍流行"],
+            generation_prompt=(
+                "Create a seamless instrumental ambience loop for narrative gameplay, "
+                "45-90 seconds, no vocals, no lyrics, gentle background presence."
+            ),
+        )
+
+    @classmethod
+    def from_analysis(cls, analysis: Dict[str, Any]) -> "MusicBrief":
+        if not isinstance(analysis, dict):
+            return cls.default()
+
+        instruments = analysis.get("instruments")
+        if not isinstance(instruments, list):
+            instruments = cls.default().instruments
+        normalized_instruments = [str(item) for item in instruments if item]
+
+        search_queries = analysis.get("search_queries") or analysis.get("keywords")
+        if not isinstance(search_queries, list):
+            search_queries = cls.default().search_queries
+        normalized_queries = [str(item) for item in search_queries if item]
+
+        negative_cues = analysis.get("negative_cues")
+        if not isinstance(negative_cues, list):
+            negative_cues = cls.default().negative_cues
+        normalized_negative = [str(item) for item in negative_cues if item]
+
+        mood = str(analysis.get("mood") or cls.default().mood)
+        scene_type = str(analysis.get("scene_type") or cls.default().scene_type)
+        era_or_environment = str(
+            analysis.get("era_or_environment")
+            or analysis.get("environment")
+            or cls.default().era_or_environment
+        )
+        pacing = str(analysis.get("pacing") or cls.default().pacing)
+        energy = str(analysis.get("energy") or cls.default().energy)
+        prompt = str(analysis.get("generation_prompt") or "").strip()
+        if not prompt:
+            prompt = (
+                "Create a seamless instrumental ambience loop for narrative gameplay. "
+                f"Mood: {mood}. Scene: {scene_type}. Setting: {era_or_environment}. "
+                f"Pacing: {pacing}. Energy: {energy}. "
+                f"Instruments: {', '.join(normalized_instruments)}. "
+                "No vocals, no lyrics."
+            )
+
+        return cls(
+            mood=mood,
+            scene_type=scene_type,
+            era_or_environment=era_or_environment,
+            pacing=pacing,
+            energy=energy,
+            instruments=normalized_instruments or cls.default().instruments,
+            search_queries=normalized_queries or cls.default().search_queries,
+            negative_cues=normalized_negative,
+            generation_prompt=prompt,
+        )
+
+    def to_analysis(self) -> Dict[str, Any]:
+        return {
+            "mood": self.mood,
+            "scene_type": self.scene_type,
+            "environment": self.era_or_environment,
+            "pacing": self.pacing,
+            "energy": self.energy,
+            "instruments": self.instruments,
+            "keywords": self.search_queries,
+            "negative_cues": self.negative_cues,
+            "generation_prompt": self.generation_prompt,
+        }
+
+
+@dataclass(frozen=True)
+class MusicProviderPolicy:
+    """Provider decision for immediate search and optional premium generation."""
+
+    use_netease: bool
+    enqueue_ai_generation: bool
+
+    @classmethod
+    def select(cls, is_member: bool, ai_music_enabled: bool) -> "MusicProviderPolicy":
+        return cls(
+            use_netease=True,
+            enqueue_ai_generation=bool(is_member and ai_music_enabled),
+        )
+
+
+@dataclass
+class MusicGenerationResult:
+    songs: List[Song]
+    generation_error: Optional[str]
+    used_fallback: bool
+
+
+class MusicGenerationCoordinator:
+    """Coordinates generated-track fallback without owning a provider."""
+
+    def handle_generation_result(
+        self,
+        generated_track: Optional[Song],
+        netease_songs: List[Song],
+        error_message: Optional[str] = None,
+    ) -> MusicGenerationResult:
+        if generated_track is not None:
+            return MusicGenerationResult(
+                songs=[generated_track],
+                generation_error=None,
+                used_fallback=False,
+            )
+        return MusicGenerationResult(
+            songs=netease_songs,
+            generation_error=error_message,
+            used_fallback=True,
+        )
+
+
 class NeteaseMusicClient:
     """网易云音乐 API 客户端"""
 
-    _url_cache: Dict[int, Tuple[str, float]] = {}  # song_id -> (url, expire_timestamp)
-    # ★ 降低 TTL 从 20 分钟到 8 分钟
-    # 网易云 CDN URL 通常只有 5-10 分钟有效期
-    # 20 分钟导致缓存未过期但 URL 已失效（403）
-    # 8 分钟在 CDN 典型有效期内，减少 403 概率
-    URL_CACHE_TTL = 480  # 8 分钟
-    HEALTH_CHECK_TIMEOUT = 3.0  # 快速连通性检查超时
-
-    def __init__(self, base_url: Optional[str] = None):
-        base_url = base_url or os.getenv("NETEASE_MUSIC_API_URL", "http://music-api:3001")
+    def __init__(self, base_url: Optional[str] = None) -> None:
+        base_url = base_url or os.getenv("NETEASE_MUSIC_API_URL", "http://localhost:3000")
         # 将 localhost 替换为 127.0.0.1 避免 IPv6 问题
         self.base_url = base_url.replace("localhost", "127.0.0.1")  # type: ignore
-        self._available: Optional[bool] = None  # None=未检查, True=可用, False=不可用
         # 禁用连接池，避免 503 错误
         limits = httpx.Limits(max_keepalive_connections=0, max_connections=10)
         headers = {
@@ -94,96 +200,47 @@ class NeteaseMusicClient:
         }
         self.client = httpx.AsyncClient(timeout=30.0, limits=limits, headers=headers)
 
-    async def check_availability(self) -> bool:
-        """快速检查 music-api 是否可达。
-
-        使用 self.search() 方法进行检查，确保与实际搜索使用相同的客户端，
-        这样 mock 测试也能正确工作。
-        结果会被缓存到 self._available，后续调用会直接跳过。
-        """
-        if self._available is not None:
-            return self._available
-        try:
-            result = await self.search("test", limit=1, max_retries=0)
-            # search 成功时会设置 self._available = True
-            # 如果 search 返回空列表且未设置 _available，说明服务不可用
-            if self._available is None:
-                self._available = len(result) > 0
-        except Exception:
-            self._available = False
-            logger.warning(f"[NeteaseMusic] music-api unreachable at {self.base_url}")
-        return self._available
-
-    async def search(self, keywords: str, limit: int = 10, max_retries: int = 2) -> List[Song]:
+    async def search(self, keywords: str, limit: int = 10) -> List[Song]:
         """搜索歌曲
 
         Args:
             keywords: 搜索关键词
             limit: 返回数量
-            max_retries: 最大重试次数（针对 5xx 等暂时性错误）
 
         Returns:
             歌曲列表
         """
-        if self._available is False:
+        try:
+            url = f"{self.base_url}/search"
+            params: Dict[str, str | int] = {"keywords": keywords, "limit": limit}
+
+            response = await self.client.get(url, params=params)
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get("code") != 200:
+                logger.warning(f"Search failed: {data}")
+                return []
+
+            songs = []
+            result = data.get("result", {})
+            song_list = result.get("songs", [])
+
+            for song_data in song_list:
+                song = Song(
+                    id=song_data.get("id", 0),
+                    name=song_data.get("name", ""),
+                    artists=[a.get("name", "") for a in song_data.get("artists", [])],
+                    album=song_data.get("album", {}).get("name", ""),
+                    duration=song_data.get("duration", 0),
+                )
+                songs.append(song)
+
+            return songs
+
+        except Exception as e:
+            logger.exception(f"Failed to search music: {e}")
             return []
-        last_error: Optional[Exception] = None
-        for attempt in range(max_retries + 1):
-            try:
-                url = f"{self.base_url}/search"
-                params = {"keywords": keywords, "limit": limit}
-
-                response = await self.client.get(url, params=params)  # type: ignore
-                response.raise_for_status()
-                data = response.json()
-
-                if data.get("code") != 200:
-                    logger.warning(f"Search failed: {data}")
-                    return []
-
-                songs = []
-                result = data.get("result", {})
-                song_list = result.get("songs", [])
-
-                for song_data in song_list:
-                    song = Song(
-                        id=song_data.get("id", 0),
-                        name=song_data.get("name", ""),
-                        artists=[a.get("name", "") for a in song_data.get("artists", [])],
-                        album=song_data.get("album", {}).get("name", ""),
-                        duration=song_data.get("duration", 0),
-                    )
-                    songs.append(song)
-
-                self._available = True  # 成功则重置标记，允许后续请求
-                return songs
-
-            except httpx.HTTPStatusError as e:
-                last_error = e
-                status_code = e.response.status_code
-                if status_code >= 500 and attempt < max_retries:
-                    logger.warning(
-                        f"[NeteaseMusic] Search got {status_code} for '{keywords}', "
-                        f"retrying in 1s... ({attempt + 1}/{max_retries})"
-                    )
-                    await asyncio.sleep(1)
-                    continue
-                logger.exception(f"Failed to search music: {e}")
-                return []
-            except Exception as e:
-                last_error = e
-                if attempt < max_retries:
-                    logger.warning(
-                        f"[NeteaseMusic] Search error for '{keywords}': {e}, "
-                        f"retrying in 1s... ({attempt + 1}/{max_retries})"
-                    )
-                    await asyncio.sleep(1)
-                    continue
-                logger.exception(f"Failed to search music: {e}")
-                return []
-
-        logger.error(f"[NeteaseMusic] Search exhausted retries for '{keywords}': {last_error}")
-        return []
 
     async def get_song_url(self, song_id: int, retry: int = 2) -> Optional[str]:
         """获取歌曲播放 URL
@@ -195,21 +252,6 @@ class NeteaseMusicClient:
         Returns:
             播放 URL
         """
-        if self._available is False:
-            return None
-        # 检查缓存
-        cached = self._url_cache.get(song_id)
-        if cached:
-            url, expire_ts = cached
-            if time.time() < expire_ts:
-                logger.info(f"[MusicCache] 缓存命中: song_id={song_id}")
-                return url
-            else:
-                logger.info(f"[MusicCache] 缓存未命中/过期: song_id={song_id}, 重新获取")
-                del self._url_cache[song_id]
-        else:
-            logger.info(f"[MusicCache] 缓存未命中/过期: song_id={song_id}, 重新获取")
-
         try:
             url = f"{self.base_url}/song/url"
             params = {"id": song_id}
@@ -230,12 +272,6 @@ class NeteaseMusicClient:
                 song_url = songs[0].get("url")
                 if song_url:
                     logger.info(f"[NeteaseMusic] Got URL for song {song_id}: {song_url[:50]}...")
-                    # 写入缓存
-                    self._url_cache[song_id] = (
-                        song_url,
-                        time.time() + self.URL_CACHE_TTL,
-                    )
-                    self._available = True  # 成功则重置标记
                     return song_url  # type: ignore[no-any-return]
                 else:
                     logger.warning(
@@ -247,360 +283,99 @@ class NeteaseMusicClient:
             return None
 
         except httpx.HTTPStatusError as e:
-            status_code = e.response.status_code
-            if retry > 0 and status_code >= 500:
-                logger.warning(
-                    f"[NeteaseMusic] {status_code} error for song {song_id}, "
-                    f"retrying in 1s... ({retry} attempts left)"
-                )
-                await asyncio.sleep(1)
-                return await self.get_song_url(song_id, retry - 1)
+            if e.response.status_code == 503:
+                logger.warning("[NeteaseMusic] Upstream unavailable for song %s; skipping URL", song_id)
+                return None
             logger.exception(f"[NeteaseMusic] Failed to get song URL: {e}")
             return None
         except Exception as e:
-            if retry > 0:
-                logger.warning(
-                    f"[NeteaseMusic] Error getting URL for song {song_id}: {e}, "
-                    f"retrying in 0.5s... ({retry} attempts left)"
-                )
-                await asyncio.sleep(0.5)
-                return await self.get_song_url(song_id, retry - 1)
             logger.exception(f"[NeteaseMusic] Failed to get song URL: {e}")
             return None
 
-    async def close(self):
+    async def close(self) -> None:
         await self.client.aclose()
 
 
 class MusicService:
     """音乐服务：基于故事内容推荐音乐"""
 
-    # ★ 缓存：基于故事文本 hash 缓存分析结果，避免重复 AI 调用
-    # key: story_hash -> value: (analysis_dict, timestamp)
-    _analysis_cache: Dict[str, tuple[Dict[str, Any], float]] = {}
-    _CACHE_TTL = 3600  # 1 小时
-
-    # ★ 缓存池：基于故事文本 hash 缓存已验证 URL 的歌曲池
-    _pool_cache: Dict[str, tuple[CachedMusicPool, float]] = {}
-    POOL_CACHE_TTL = 3600  # 1 小时（池整体重建）
-    POOL_TARGET_SIZE = 25  # 目标池大小
-    POOL_MIN_SIZE = 20  # 最小池大小（低于此值触发补充搜索）
-    POOL_RETURN_MIN = 5  # 最少返回歌曲数
-    POOL_RETURN_MAX = 8  # 最多返回歌曲数
-
-    def __init__(self):
+    def __init__(self) -> None:
         self.ai_client = AIClient()
         self.music_client = NeteaseMusicClient()
-
-    def _story_hash(self, story_text: str) -> str:
-        """生成故事文本的 hash 用于缓存。"""
-        import hashlib
-
-        # 取前 500 字作为 hash 输入（足够区分不同场景，同时避免大文本）
-        preview = story_text[:500] if len(story_text) > 500 else story_text
-        return hashlib.md5(preview.encode("utf-8")).hexdigest()
-
-    async def _get_or_build_pool(
-        self,
-        story_text: str,
-        refresh: bool = False,
-        character_settings: Optional[Dict] = None,
-    ) -> CachedMusicPool:
-        """获取或构建缓存池。
-
-        Args:
-            story_text: 故事文本
-            refresh: 是否刷新（复用分析，重新搜索）
-            character_settings: 角色设定
-
-        Returns:
-            缓存池
-        """
-        story_hash = self._story_hash(story_text)
-        now = time.time()
-
-        # 检查缓存
-        if not refresh:
-            cached = self._pool_cache.get(story_hash)
-            if cached:
-                pool, cached_at = cached
-                if now - cached_at < self.POOL_CACHE_TTL:
-                    logger.info(
-                        f"[MusicPool] 命中缓存池: hash={story_hash[:8]}, "
-                        f"age={int(now - cached_at)}s, songs={len(pool.verified_songs)}"
-                    )
-                    return pool
-                else:
-                    logger.info(f"[MusicPool] 缓存池过期: hash={story_hash[:8]}")
-
-        # 需要构建/重建池
-        logger.info(f"[MusicPool] 构建缓存池: hash={story_hash[:8]}, refresh={refresh}")
-
-        # 获取/复用 AI 分析结果
-        if refresh:
-            cached_analysis = self._analysis_cache.get(story_hash)
-            if cached_analysis:
-                analysis, _ = cached_analysis
-                logger.info("[MusicPool] 刷新: 复用缓存分析")
-            else:
-                analysis = await self._analyze_story_mood(story_text, character_settings)
-                self._analysis_cache[story_hash] = (analysis, now)
-        else:
-            analysis = await self._analyze_story_mood(story_text, character_settings)
-            self._analysis_cache[story_hash] = (analysis, now)
-
-        # 构建搜索关键词
-        search_keywords = self._build_search_keywords(
-            analysis, character_settings=character_settings
-        )
-
-        # ★ 快速连通性检查：如果 music-api 不可达，跳过所有搜索
-        if not await self.music_client.check_availability():
-            logger.warning(
-                "[MusicPool] music-api unreachable, returning empty pool with AI analysis only"
-            )
-            pool = CachedMusicPool(
-                analysis=analysis,
-                verified_songs=[],
-                created_at=now,
-            )
-            self._pool_cache[story_hash] = (pool, now)
-            return pool
-
-        # 刷新模式：打乱关键词顺序
-        if refresh and len(search_keywords) > 3:
-            shuffled = search_keywords[3:]
-            random.shuffle(shuffled)
-            search_keywords = search_keywords[:3] + shuffled
-            logger.info("[MusicPool] 刷新: 关键词重排")
-
-        # 搜索歌曲
-        all_songs: List[Song] = []
-        for keyword in search_keywords[:12]:
-            songs = await self.music_client.search(keyword, limit=25)
-            all_songs.extend(songs)
-
-        # 去重
-        seen_ids: set[int] = set()
-        unique_songs: List[Song] = []
-        for song in all_songs:
-            if song.id not in seen_ids and len(unique_songs) < 30:
-                seen_ids.add(song.id)
-                unique_songs.append(song)
-
-        # 补充搜索（如果太少）
-        if len(unique_songs) < 10:
-            generic_keywords = ["轻音乐", "纯音乐", "背景音乐", "流行", "经典", "华语"]
-            for keyword in generic_keywords:
-                if len(unique_songs) >= 15:
-                    break
-                songs = await self.music_client.search(keyword, limit=15)
-                for song in songs:
-                    if song.id not in seen_ids and len(unique_songs) < 30:
-                        seen_ids.add(song.id)
-                        unique_songs.append(song)
-
-        # 批量获取 URL，只保留有 URL 的
-        verified_songs: List[CachedSong] = []
-        for song in unique_songs[: self.POOL_TARGET_SIZE]:
-            try:
-                url = await self.music_client.get_song_url(song.id)
-                if url:
-                    verified_songs.append(
-                        CachedSong(
-                            id=song.id,
-                            name=song.name,
-                            artists=song.artists,
-                            album=song.album,
-                            duration=song.duration,
-                            url=url,
-                            url_expires_at=now + NeteaseMusicClient.URL_CACHE_TTL,
-                            verified_at=now,
-                        )
-                    )
-            except Exception as e:
-                logger.warning(f"[MusicPool] Failed to get URL for {song.id}: {e}")
-
-        pool = CachedMusicPool(
-            analysis=analysis,
-            verified_songs=verified_songs,
-            created_at=now,
-        )
-        self._pool_cache[story_hash] = (pool, now)
-
-        logger.info(
-            f"[MusicPool] 池构建完成: hash={story_hash[:8]}, "
-            f"verified={len(verified_songs)}/{len(unique_songs)}"
-        )
-        return pool
-
-    async def _refresh_pool_urls(self, pool: CachedMusicPool) -> None:
-        """刷新池中过期 URL 的歌曲。
-
-        过期的 URL 重新获取，获取失败的从池中移除。
-        如果池中歌曲 <5 首，触发补充搜索。
-
-        Args:
-            pool: 缓存池
-        """
-        now = time.time()
-        refreshed: List[CachedSong] = []
-        removed = 0
-
-        for song in pool.verified_songs:
-            if song.url_expires_at < now:
-                # URL 过期，重新获取
-                try:
-                    new_url = await self.music_client.get_song_url(song.id)
-                    if new_url:
-                        refreshed.append(
-                            CachedSong(
-                                id=song.id,
-                                name=song.name,
-                                artists=song.artists,
-                                album=song.album,
-                                duration=song.duration,
-                                url=new_url,
-                                url_expires_at=now + NeteaseMusicClient.URL_CACHE_TTL,
-                                verified_at=now,
-                            )
-                        )
-                        logger.info(f"[MusicPool] URL 刷新成功: {song.id}")
-                    else:
-                        removed += 1
-                        logger.warning(f"[MusicPool] URL 刷新失败，移除: {song.id}")
-                except Exception as e:
-                    removed += 1
-                    logger.warning(f"[MusicPool] URL 刷新异常，移除: {song.id}: {e}")
-            else:
-                refreshed.append(song)
-
-        pool.verified_songs = refreshed
-
-        # 补充搜索（如果太少）
-        if len(refreshed) < 5:
-            logger.info(f"[MusicPool] 歌曲不足({len(refreshed)}<5)，触发补充搜索")
-            generic_keywords = ["轻音乐", "纯音乐", "背景音乐", "流行", "经典"]
-            seen_ids = {s.id for s in refreshed}
-
-            for keyword in generic_keywords:
-                if len(refreshed) >= 5:
-                    break
-                try:
-                    songs = await self.music_client.search(keyword, limit=10)
-                    for song in songs:
-                        if song.id in seen_ids or len(refreshed) >= 10:
-                            continue
-                        try:
-                            url = await self.music_client.get_song_url(song.id)
-                            if url:
-                                refreshed.append(
-                                    CachedSong(
-                                        id=song.id,
-                                        name=song.name,
-                                        artists=song.artists,
-                                        album=song.album,
-                                        duration=song.duration,
-                                        url=url,
-                                        url_expires_at=now + NeteaseMusicClient.URL_CACHE_TTL,
-                                        verified_at=now,
-                                    )
-                                )
-                                seen_ids.add(song.id)
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
-
-            pool.verified_songs = refreshed
-
-        if removed > 0:
-            logger.info(f"[MusicPool] URL 刷新完成: 保留 {len(refreshed)} 首, 移除 {removed} 首")
-
-    def _random_select_songs(self, pool: CachedMusicPool) -> List[CachedSong]:
-        """从缓存池中随机选择 5-8 首歌曲。
-
-        Args:
-            pool: 缓存池
-
-        Returns:
-            随机选择的歌曲列表（5-8首，不重复）
-        """
-        songs = pool.verified_songs
-        count = len(songs)
-
-        if count <= self.POOL_RETURN_MIN:
-            return songs[:]
-
-        select_count = random.randint(self.POOL_RETURN_MIN, min(self.POOL_RETURN_MAX, count))
-        selected = random.sample(songs, select_count)
-        return selected
 
     async def analyze_story_for_music(
         self,
         story_text: str,
-        character_settings: Optional[Dict] = None,
+        character_settings: Optional[Dict[str, Any]] = None,
         refresh: bool = False,
     ) -> MusicRecommendation:
-        """分析故事内容，提取音乐搜索关键词，返回推荐歌曲。
-
-        ★ 使用缓存池优化：
-        - 首次：AI分析 + 搜索 + URL验证 → 缓存池
-        - 后续：从缓存池中随机选择 5-8 首
-        - 刷新：复用AI分析，打乱关键词重新搜索
+        """分析故事内容，提取音乐搜索关键词
 
         Args:
             story_text: 故事文本
             character_settings: 角色设定
-            refresh: 是否刷新（复用缓存的 AI 分析结果，但重新搜索歌曲）
+            refresh: 刷新推荐时保留接口兼容；当前实现重新分析并重新搜索
 
         Returns:
-            音乐推荐结果（5-8首已验证URL的歌曲）
+            音乐推荐结果
         """
-        # 获取或构建缓存池
-        pool = await self._get_or_build_pool(story_text, refresh, character_settings)
+        if refresh:
+            logger.info("[MusicService] Refresh requested; rebuilding recommendation")
 
-        # 刷新池中过期 URL
-        await self._refresh_pool_urls(pool)
+        # 使用 AI 分析故事情绪和场景
+        analysis = await self._analyze_story_mood(story_text, character_settings)
 
-        # 从池中随机选择歌曲
-        selected = self._random_select_songs(pool)
+        # 构建搜索关键词
+        search_keywords = self._build_search_keywords(analysis)
 
-        logger.info(
-            f"[MusicPool] 返回推荐: {len(selected)} 首, " f"pool={len(pool.verified_songs)} 首"
-        )
+        # 搜索歌曲 - 使用更多关键词，获取更多结果
+        all_songs = []
+        # 增加关键词数量和每关键词的搜索数量
+        for keyword in search_keywords[:5]:  # 增加到5个关键词
+            songs = await self.music_client.search(keyword, limit=10)  # 每关键词10首
+            all_songs.extend(songs)
 
-        # 转换为 MusicRecommendation 格式
+        # 去重并限制数量 - 确保至少15首，最多20首
+        seen_ids = set()
+        unique_songs: List[Song] = []
+        for song in all_songs:
+            if song.id not in seen_ids and len(unique_songs) < 20:
+                seen_ids.add(song.id)
+                unique_songs.append(song)
+
+        # 如果歌曲少于5首，使用更通用的关键词补充搜索
+        if len(unique_songs) < 5:
+            logger.warning(
+                f"[MusicService] Only found {len(unique_songs)} songs, searching with generic keywords"
+            )
+            generic_keywords = ["轻音乐", "纯音乐", "背景音乐"]
+            for keyword in generic_keywords:
+                if len(unique_songs) >= 5:
+                    break
+                songs = await self.music_client.search(keyword, limit=10)
+                for song in songs:
+                    if song.id not in seen_ids and len(unique_songs) < 20:
+                        seen_ids.add(song.id)
+                        unique_songs.append(song)
+
         return MusicRecommendation(
-            keywords=self._build_search_keywords(
-                pool.analysis, character_settings=character_settings
-            ),
-            mood=pool.analysis.get("mood", "未知"),
-            scene_type=pool.analysis.get("scene_type", "未知"),
-            songs=[
-                Song(
-                    id=s.id,
-                    name=s.name,
-                    artists=s.artists,
-                    album=s.album,
-                    duration=s.duration,
-                    url=s.url,
-                )
-                for s in selected
-            ],
-            environment=pool.analysis.get("environment"),
-            story_style=pool.analysis.get("story_style"),
-            music_style=pool.analysis.get("music_style"),
-            instruments=pool.analysis.get("instruments"),
-            pacing=pool.analysis.get("pacing"),
-            time_weather=pool.analysis.get("time_weather"),
-            description=pool.analysis.get("description"),
+            keywords=search_keywords,
+            mood=analysis.get("mood", "未知"),
+            scene_type=analysis.get("scene_type", "未知"),
+            songs=unique_songs,
+            environment=analysis.get("environment"),
+            story_style=analysis.get("story_style"),
+            music_style=analysis.get("music_style"),
+            instruments=analysis.get("instruments"),
+            pacing=analysis.get("pacing"),
+            time_weather=analysis.get("time_weather"),
+            description=analysis.get("description"),
         )
 
     async def _analyze_story_mood(
         self,
         story_text: str,
-        character_settings: Optional[Dict] = None,
+        character_settings: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """使用 AI 分析故事情绪、场景、背景和风格"""
 
@@ -672,7 +447,9 @@ class MusicService:
                 text = text.split("```")[1].split("```")[0].strip()
 
             result = json.loads(text)
-            return result  # type: ignore[no-any-return]
+            if not isinstance(result, dict):
+                raise ValueError("Music analysis response is not a JSON object")
+            return result
 
         except Exception as e:
             logger.warning(f"Failed to analyze story mood: {e}")
@@ -707,47 +484,9 @@ class MusicService:
         "专注": ["轻音乐", "学习", "阅读"],
     }
 
-    def _build_search_keywords(
-        self, analysis: Dict[str, Any], character_settings: Optional[Dict] = None
-    ) -> List[str]:
+    def _build_search_keywords(self, analysis: Dict[str, Any]) -> List[str]:
         """构建搜索关键词列表 - 综合考虑情绪、场景、时代、风格"""
         keywords = []
-
-        # 时代感知关键词（最高优先级）
-        if character_settings and "era" in character_settings:
-            era = character_settings["era"]
-            era_name = era.get("era_name", "")
-            era_desc = era.get("era_description", "")
-
-            # 判断是否为古代设定
-            ancient_indicators = [
-                "古代",
-                "古风",
-                "明朝",
-                "唐朝",
-                "宋朝",
-                "清朝",
-                "汉朝",
-                "三国",
-                "战国",
-                "秦",
-                "隋",
-                "元",
-                "魏晋",
-                "南北朝",
-                "春秋",
-                "武侠",
-                "仙侠",
-                "古",
-            ]
-            is_ancient = any(ind in era_name or ind in era_desc for ind in ancient_indicators)
-
-            if is_ancient:
-                # 古代设定：前置古风关键词
-                keywords.extend(["古风", "中国风", "民乐", "古典"])
-            elif any(x in era_name or x in era_desc for x in ["未来", "科幻", "赛博"]):
-                keywords.extend(["电子", "科幻", "未来感"])
-            # 现代设定不需要额外前置
 
         # 获取各维度分析结果
         mood = analysis.get("mood", "")
@@ -843,13 +582,13 @@ class MusicService:
             if "音乐" not in kw and "歌曲" not in kw and len(final_keywords) < 6:
                 final_keywords.append(f"{kw} 音乐")
 
-        return final_keywords[:12]  # 最多返回12个关键词
+        return final_keywords[:6]  # 最多返回6个关键词
 
     async def get_song_play_url(self, song_id: int) -> Optional[str]:
         """获取歌曲播放 URL"""
-        return await self.music_client.get_song_url(song_id)  # type: ignore[no-any-return]
+        return await self.music_client.get_song_url(song_id)
 
-    async def close(self):
+    async def close(self) -> None:
         await self.music_client.close()
 
 

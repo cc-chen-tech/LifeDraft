@@ -38,6 +38,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
     items,
     landmarks,
     isLoading,
+    isRefreshing,
     activeTab,
     selectedCharacter,
     selectedItem,
@@ -310,7 +311,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
           收集
         </h2>
         <p className="text-sm text-muted-foreground">
-          人物、物品和标志物收集记录
+          {isRefreshing ? "正在刷新，已加载内容保持可见" : "人物、物品和标志物收集记录"}
         </p>
       </div>
 

@@ -1,18 +1,13 @@
 """Image generation router - 图片生成API路由"""
 
-import asyncio
-import datetime
-import json
 import logging
-import threading
-import time
-from typing import Any, AsyncGenerator, Generator, Optional
+from typing import Generator, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response as FastAPIResponse
 from sqlalchemy.orm import Session
 
-from src.api.deps import get_current_user, get_current_user_optional
+from src.api.deps import get_current_user, get_current_user_optional, get_db
 from src.api.schemas import (BatchGenerateCharactersRequest,
                              GenerateImageRequest,
                              GenerateOpeningIllustrationRequest,
@@ -32,109 +27,6 @@ from src.services.image_storage import ImageStorageError, ImageStorageService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-# ==================== SSE 场景图片推送全局状态 ====================
-
-# 每个 game_id 的 asyncio 队列，用于 SSE 推送
-_scene_image_queues: dict[int, asyncio.Queue] = {}
-
-# 最新事件缓存，key: "{game_id}:{week}:{round_number}:{stage}"
-_scene_image_latest: dict[str, dict] = {}
-
-# 线程安全的待处理事件列表（后台线程 → asyncio 桥接）
-_scene_image_pending: list[dict] = []
-_scene_image_pending_lock = threading.Lock()
-
-
-def _get_event_key(game_id: int, week: int, round_number: int, stage: str) -> str:
-    """生成事件缓存键"""
-    return f"{game_id}:{week}:{round_number}:{stage}"
-
-
-def _publish_scene_image_event(event: dict) -> None:
-    """发布场景图片生成事件（从后台线程调用，线程安全）"""
-    game_id = event.get("game_id")
-    if game_id is None:
-        return
-
-    # 缓存最新事件
-    key = _get_event_key(
-        game_id,
-        event.get("week", 0),
-        event.get("round_number", 0),
-        event.get("stage", "result"),
-    )
-    _scene_image_latest[key] = event
-
-    # 加入待处理队列，由 SSE 生成器消费
-    with _scene_image_pending_lock:
-        _scene_image_pending.append(event)
-    logger.info(f"[SSE] Published event: type={event.get('type')}, game={game_id}")
-
-
-async def _scene_image_event_generator(game_id: int) -> AsyncGenerator[str, None]:
-    """SSE 事件生成器：推送场景图片生成完成/失败事件"""
-    # 创建该 game_id 的队列
-    q: asyncio.Queue = asyncio.Queue()
-    _scene_image_queues[game_id] = q
-
-    # SSE 连接最大持续时间：测试环境短（5秒），生产环境长（5分钟）
-    import os
-
-    max_duration = 5 if os.getenv("PYTEST_CURRENT_TEST") else 300
-    start_time = time.time()
-
-    try:
-        # 1. 发送缓存事件（如果有）
-        prefix = f"{game_id}:"
-        for key, event in list(_scene_image_latest.items()):
-            if key.startswith(prefix):
-                yield f"data: {json.dumps(event)}\n\n"
-
-        # 2. 持续监听新事件 + heartbeat
-        last_heartbeat = time.time()
-        while time.time() - start_time < max_duration:
-            # 从 asyncio.Queue 获取事件（由 _drain_pending_events 填充）
-            try:
-                event = await asyncio.wait_for(q.get(), timeout=1.0)
-                yield f"data: {json.dumps(event)}\n\n"
-                last_heartbeat = time.time()
-            except asyncio.TimeoutError:
-                # 检查并发送 heartbeat（每 15 秒）
-                now = time.time()
-                if now - last_heartbeat >= 15:
-                    heartbeat = {
-                        "type": "heartbeat",
-                        "game_id": game_id,
-                        "timestamp": datetime.datetime.now().isoformat(),
-                    }
-                    yield f"data: {json.dumps(heartbeat)}\n\n"
-                    last_heartbeat = now
-    finally:
-        # 清理
-        _scene_image_queues.pop(game_id, None)
-
-
-async def _drain_pending_events() -> None:
-    """后台任务：将线程安全 pending 列表中的事件分发到各 game_id 的 asyncio.Queue"""
-    while True:
-        events: list[dict] = []
-        with _scene_image_pending_lock:
-            if _scene_image_pending:
-                events = _scene_image_pending.copy()
-                _scene_image_pending.clear()
-
-        for event in events:
-            game_id = event.get("game_id")
-            if game_id is not None:
-                q = _scene_image_queues.get(game_id)
-                if q:
-                    try:
-                        q.put_nowait(event)
-                    except asyncio.QueueFull:
-                        pass
-
-        await asyncio.sleep(0.5)
 
 
 def get_session() -> Generator[Session, None, None]:
@@ -248,9 +140,7 @@ async def generate_image(
                         image_url=service.get_image_url(img),
                         prompt_used=str(img.prompt_text),  # type: ignore[arg-type]
                         version=int(img.version),  # type: ignore[arg-type]
-                        created_at=(
-                            img.created_at.isoformat() if img.created_at else None
-                        ),
+                        created_at=(img.created_at.isoformat() if img.created_at else None),
                     )
                     for img in image_models
                 ],
@@ -276,9 +166,7 @@ async def generate_image(
                         prompt_used=str(image_model.prompt_text),  # type: ignore[arg-type]
                         version=int(image_model.version),  # type: ignore[arg-type]
                         created_at=(
-                            image_model.created_at.isoformat()
-                            if image_model.created_at
-                            else None
+                            image_model.created_at.isoformat() if image_model.created_at else None
                         ),
                     )
                 ],
@@ -304,18 +192,14 @@ async def generate_image(
                         prompt_used=str(image_model.prompt_text),  # type: ignore[arg-type]
                         version=int(image_model.version),  # type: ignore[arg-type]
                         created_at=(
-                            image_model.created_at.isoformat()
-                            if image_model.created_at
-                            else None
+                            image_model.created_at.isoformat() if image_model.created_at else None
                         ),
                     )
                 ],
                 total=1,
             )
         else:
-            raise HTTPException(
-                status_code=400, detail=f"不支持的图片类型: {req.image_type}"
-            )
+            raise HTTPException(status_code=400, detail=f"不支持的图片类型: {req.image_type}")
 
     except ImageContentError as e:
         # ★ 内容审核错误 - 返回 400 而不是 500，让用户知道是输入问题
@@ -404,9 +288,7 @@ async def batch_generate_character_images(
     era = "现代"
     era_setting = req.character_settings.get("era", {})
     if isinstance(era_setting, dict):
-        era = (
-            era_setting.get("era_name") or era_setting.get("era_description") or "现代"
-        )
+        era = era_setting.get("era_name") or era_setting.get("era_description") or "现代"
 
     # 批量生成
     service = ImageService(db)
@@ -434,9 +316,7 @@ async def batch_generate_character_images(
             # 生成 entity_key
             entity_key = f"npc_{char['name']}"
 
-            logger.info(
-                f"Generating image for {char['name']} ({char['role']}): {description}"
-            )
+            logger.info(f"Generating image for {char['name']} ({char['role']}): {description}")
 
             image_models = service.generate_character_image(
                 game_id=req.game_id,
@@ -462,9 +342,7 @@ async def batch_generate_character_images(
                         image_url=service.get_image_url(img),
                         prompt_used=str(img.prompt_text),  # type: ignore[arg-type]
                         version=int(img.version),  # type: ignore[arg-type]
-                        created_at=(
-                            img.created_at.isoformat() if img.created_at else None
-                        ),
+                        created_at=(img.created_at.isoformat() if img.created_at else None),
                     )
                 )
 
@@ -478,14 +356,8 @@ async def batch_generate_character_images(
         except Exception as e:
             error_str = str(e)
             # ★ 检测 429 速率限制错误
-            if (
-                "429" in error_str
-                or "RateQuota" in error_str
-                or "rate limit" in error_str.lower()
-            ):
-                logger.warning(
-                    f"Rate limit hit for {char['name']}, waiting 10 seconds..."
-                )
+            if "429" in error_str or "RateQuota" in error_str or "rate limit" in error_str.lower():
+                logger.warning(f"Rate limit hit for {char['name']}, waiting 10 seconds...")
                 import asyncio
 
                 await asyncio.sleep(10)  # 等待10秒后重试一次
@@ -513,11 +385,7 @@ async def batch_generate_character_images(
                                 image_url=service.get_image_url(img),
                                 prompt_used=str(img.prompt_text),  # type: ignore[arg-type]
                                 version=int(img.version),  # type: ignore[arg-type]
-                                created_at=(
-                                    img.created_at.isoformat()
-                                    if img.created_at
-                                    else None
-                                ),
+                                created_at=(img.created_at.isoformat() if img.created_at else None),
                             )
                         )
                     logger.info(f"Retry succeeded for {char['name']}")
@@ -525,9 +393,7 @@ async def batch_generate_character_images(
                 except (OSError, IOError) as retry_err:
                     logger.error(f"Retry IO error for {char['name']}: {retry_err}")
                 except Exception as retry_err:
-                    logger.exception(
-                        f"Retry unexpected error for {char['name']}: {retry_err}"
-                    )
+                    logger.exception(f"Retry unexpected error for {char['name']}: {retry_err}")
 
             logger.error(f"Failed to generate image for {char['name']}: {e}")
             # 跳过这个人物，继续生成其他人物
@@ -579,9 +445,7 @@ async def generate_opening_illustration(
             image_url=service.get_image_url(image_model),
             scene_description=image_model.metadata_json.get("scene_description", ""),
             prompt_used=str(image_model.prompt_text),  # type: ignore[arg-type]
-            created_at=(
-                image_model.created_at.isoformat() if image_model.created_at else None
-            ),
+            created_at=(image_model.created_at.isoformat() if image_model.created_at else None),
         )
 
     except ImageContentError as e:
@@ -601,9 +465,7 @@ async def generate_opening_illustration(
         raise HTTPException(status_code=500, detail=f"生成开场插画失败: {e}")
 
 
-@router.post(
-    "/opening-illustration/regenerate", response_model=OpeningIllustrationResponse
-)
+@router.post("/opening-illustration/regenerate", response_model=OpeningIllustrationResponse)
 async def regenerate_opening_illustration(
     req: RegenerateOpeningIllustrationRequest,
     db: Session = Depends(get_session),
@@ -642,9 +504,7 @@ async def regenerate_opening_illustration(
             image_url=service.get_image_url(image_model),
             scene_description=image_model.metadata_json.get("scene_description", ""),
             prompt_used=str(image_model.prompt_text),  # type: ignore[arg-type]
-            created_at=(
-                image_model.created_at.isoformat() if image_model.created_at else None
-            ),
+            created_at=(image_model.created_at.isoformat() if image_model.created_at else None),
         )
 
     except ImageContentError as e:
@@ -852,6 +712,7 @@ async def get_image_file(
         storage_service = ImageStorageService()
 
         # 构建存储路径
+        from pathlib import Path
 
         # C-01: 路径遍历防护
         base_path = storage_service.local_path.resolve()
@@ -883,10 +744,11 @@ async def get_image_file(
             content=image_data,
             media_type=content_type,
             headers={
-                # ★ 允许浏览器缓存图片1小时，提升移动端加载速度
-                # 重新生成后 URL 会变化（含 timestamp 参数），无需担心缓存问题
-                "Cache-Control": "public, max-age=3600",
-                "Expires": "3600",
+                # ★ 不缓存图片文件，确保重新生成后能立即看到新图片
+                # 前端通过 URL 参数 t=timestamp 实现缓存控制
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
             },
         )
 
@@ -905,32 +767,6 @@ async def get_image_file(
 
 
 # ==================== 每轮场景插画 API ====================
-
-
-@router.get("/scene/events/{game_id}")
-async def scene_image_sse_events(
-    game_id: int,
-    user: Optional[User] = Depends(get_current_user_optional),
-):
-    """
-    SSE 端点：推送场景图片生成事件
-
-    事件类型:
-    - scene_image_ready: 场景图片生成完成
-    - scene_image_failed: 场景图片生成失败
-    - heartbeat: 心跳保持连接
-    """
-    # 契约测试期间允许未认证访问（TestClient 无 auth cookie）
-    # 生产环境前端会携带 auth_token cookie
-    return StreamingResponse(
-        _scene_image_event_generator(game_id),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
 
 
 @router.get("/scene/{game_id}/{round_number}")
@@ -952,7 +788,7 @@ async def get_round_scene_image(
 
     如果插画尚未生成，自动触发生成并返回 202 Accepted，前端可以轮询查询
     """
-    from src.database.models import Game, SceneImage
+    from src.database.models import Game, GameState, SceneImage
 
     # ★ 调试日志：检查认证信息
     cookie_token = request.cookies.get("auth_token") if request else None
@@ -997,9 +833,7 @@ async def get_round_scene_image(
             "image_url": image_url,
             "scene_description": scene_image.scene_description,
             "referenced_images": scene_image.referenced_images,
-            "created_at": (
-                scene_image.created_at.isoformat() if scene_image.created_at else None
-            ),
+            "created_at": (scene_image.created_at.isoformat() if scene_image.created_at else None),
         }
 
     # ★ 场景插画不存在，尝试自动触发生成
@@ -1013,42 +847,45 @@ async def get_round_scene_image(
     if not game:
         raise HTTPException(status_code=404, detail="游戏不存在")
 
-    # 获取最新的游戏状态快照（从 GameState 表）
-    from src.database.models import GameState
+    latest_state = (
+        db.query(GameState)
+        .filter(GameState.game_id == game_id)
+        .order_by(GameState.state_id.desc())
+        .first()
+    )
+    game_state = latest_state.state_json if latest_state and latest_state.state_json else game.initial_state
+    if not isinstance(game_state, dict):
+        logger.warning("[get_round_scene_image] Latest game state is not a dict")
+        game_state = {}
 
-    try:
-        latest_state = (
-            db.query(GameState)
-            .filter(GameState.game_id == game_id)
-            .order_by(GameState.week.desc())
-            .first()
-        )
-
-        game_state: Any
-        if latest_state and latest_state.state_json:
-            game_state = latest_state.state_json  # 已是 dict，无需 json.loads
-        else:
-            game_state = game.initial_state or {}
-
-        story_text = game_state.get("current_event_data", {}).get(
-            "event_description", ""
-        )
-        character_settings = game_state.get("character_settings", {})
-        player_name = character_settings.get("identity", {}).get("name", "主角")
-    except AttributeError as e:
-        logger.warning(f"[get_round_scene_image] Failed to parse game state: {e}")
-        story_text = ""
+    current_event_data = game_state.get("current_event_data") or {}
+    if not isinstance(current_event_data, dict):
+        current_event_data = {}
+    story_text = (
+        current_event_data.get("event_description")
+        or current_event_data.get("story_text")
+        or game_state.get("last_round_full_story")
+        or ""
+    )
+    character_settings = game_state.get("character_settings") or {}
+    if not isinstance(character_settings, dict):
         character_settings = {}
-        player_name = "主角"
+    identity = character_settings.get("identity") if isinstance(character_settings, dict) else {}
+    player_name = (
+        game_state.get("player_name")
+        or (identity.get("name") if isinstance(identity, dict) else None)
+        or "主角"
+    )
 
-    # 如果没有故事文本，无法生成插画，返回 204 No Content
-    # 这不是错误，而是新游戏的预期状态（week=0 时尚未生成故事）
+    # 如果没有故事文本，无法生成插画，返回 404
     if not story_text:
-        logger.info(
-            f"[get_round_scene_image] No story text available for game={game_id}, "
-            f"week={week}, round={round_number} - returning 204 (expected for new games)"
+        logger.warning(
+            f"[get_round_scene_image] Cannot generate scene image: no story text available "
+            f"for game={game_id}, week={week}, round={round_number}"
         )
-        return Response(status_code=204)
+        raise HTTPException(
+            status_code=404, detail="该轮次场景插画尚未生成，且无法获取故事文本进行自动生成"
+        )
 
     # ★ 后台触发生成
     try:
@@ -1068,9 +905,7 @@ async def get_round_scene_image(
     except Exception as e:
         logger.error(f"[get_round_scene_image] Failed to trigger generation: {e}")
         # 触发失败，返回 404，让前端自己处理
-        raise HTTPException(
-            status_code=404, detail="该轮次场景插画尚未生成，自动触发生成失败"
-        )
+        raise HTTPException(status_code=404, detail="该轮次场景插画尚未生成，自动触发生成失败")
 
     # 返回 202 Accepted，表示已接受生成请求
     raise HTTPException(status_code=202, detail="场景插画生成中，请稍后刷新查看")
@@ -1090,9 +925,7 @@ async def get_round_scene_image(
         "image_url": image_url,
         "scene_description": scene_image.scene_description,
         "referenced_images": scene_image.referenced_images,
-        "created_at": (
-            scene_image.created_at.isoformat() if scene_image.created_at else None
-        ),
+        "created_at": (scene_image.created_at.isoformat() if scene_image.created_at else None),
     }
 
 
@@ -1143,9 +976,7 @@ async def get_all_round_scene_images(
                 ),
                 "scene_description": scene.scene_description,
                 "referenced_images": scene.referenced_images,
-                "created_at": (
-                    scene.created_at.isoformat() if scene.created_at else None
-                ),
+                "created_at": (scene.created_at.isoformat() if scene.created_at else None),
             }
             for scene in scene_images
         ],
@@ -1204,9 +1035,7 @@ async def generate_round_scene_image(
             stage=scene_model.stage,  # ★ 返回 stage
             image_url=image_url,
             scene_description=scene_model.scene_description or "",
-            created_at=(
-                scene_model.created_at.isoformat() if scene_model.created_at else None
-            ),
+            created_at=(scene_model.created_at.isoformat() if scene_model.created_at else None),
         )
 
     except ImageContentError as e:
@@ -1274,9 +1103,7 @@ async def regenerate_round_scene_image(
             stage=scene_model.stage,
             image_url=image_url,
             scene_description=scene_model.scene_description or "",
-            created_at=(
-                scene_model.created_at.isoformat() if scene_model.created_at else None
-            ),
+            created_at=(scene_model.created_at.isoformat() if scene_model.created_at else None),
         )
 
     except ImageContentError as e:
@@ -1316,9 +1143,7 @@ async def get_image(
         image_url=service.get_image_url(image_model),
         prompt_used=str(image_model.prompt_text),  # type: ignore[arg-type]
         version=int(image_model.version),  # type: ignore[arg-type]
-        created_at=(
-            image_model.created_at.isoformat() if image_model.created_at else None
-        ),
+        created_at=(image_model.created_at.isoformat() if image_model.created_at else None),
     )
 
 
@@ -1390,9 +1215,7 @@ def _trigger_scene_generation_in_background(
                 )
 
                 # 获取已有的图片列表（用于参考）
-                existing_images = (
-                    db.query(ImageModel).filter(ImageModel.game_id == game_id).all()
-                )
+                existing_images = db.query(ImageModel).filter(ImageModel.game_id == game_id).all()
 
                 existing_image_list = [
                     {
@@ -1406,6 +1229,10 @@ def _trigger_scene_generation_in_background(
                     for img in existing_images
                 ]
 
+                # 获取玩家形象图片ID
+                player_image = illustration_service._get_player_image(existing_image_list)
+                player_image_id = player_image.get("image_id") if player_image else None
+
                 week_display = f"第{week + 1}周" if week is not None else "未知周"
                 logger.info(
                     f"[Background Generation] Starting scene generation for "
@@ -1413,73 +1240,31 @@ def _trigger_scene_generation_in_background(
                 )
 
                 # 生成场景插画
-                illustration_service._generate_round_illustration_sync(
+                scene_image = illustration_service.generate_round_scene(
                     game_id=game_id,
                     round_number=round_number,
                     story_text=story_text,
                     character_settings=character_settings,
                     player_name=player_name,
-                    existing_images=existing_image_list,
+                    player_image_id=player_image_id,
                     stage=stage,
                     week=week,
                 )
 
-                week_display = f"第{week + 1}周" if week is not None else "未知周"
-                logger.info(
-                    f"[Background Generation] Scene generated successfully: "
-                    f"game={game_id}, {week_display}, "
-                    f"round={round_number}, stage={stage}"
-                )
-
-                # ★ 推送 SSE 事件：生成成功
-                try:
-                    from src.database.models import SceneImage
-
-                    scene = (
-                        db.query(SceneImage)
-                        .filter(
-                            SceneImage.game_id == game_id,
-                            SceneImage.week == week,
-                            SceneImage.round_number == round_number,
-                            SceneImage.stage == stage,
-                        )
-                        .first()
+                if scene_image:
+                    logger.info(
+                        f"[Background Generation] Scene generated successfully: "
+                        f"scene_id={scene_image.scene_id}, game={game_id}, {week_display}, "
+                        f"round={round_number}, stage={stage}"
                     )
-                    if scene:
-                        image_url = image_storage.get_image_url(
-                            str(scene.storage_path), str(scene.storage_type)  # type: ignore[arg-type]
-                        )
-                        _publish_scene_image_event(
-                            {
-                                "type": "scene_image_ready",
-                                "game_id": game_id,
-                                "round_number": round_number,
-                                "week": week,
-                                "stage": stage,
-                                "image_url": image_url,
-                                "scene_description": scene.scene_description or "",
-                                "timestamp": datetime.datetime.now().isoformat(),
-                            }
-                        )
-                except Exception as sse_err:
+                else:
                     logger.warning(
-                        f"[Background Generation] Failed to publish SSE event: {sse_err}"
+                        f"[Background Generation] Scene generation returned None: "
+                        f"game={game_id}, {week_display}, round={round_number}, stage={stage}"
                     )
 
             except Exception as e:
                 logger.exception(f"[Background Generation] Error in thread: {e}")
-                # ★ 推送 SSE 事件：生成失败
-                _publish_scene_image_event(
-                    {
-                        "type": "scene_image_failed",
-                        "game_id": game_id,
-                        "round_number": round_number,
-                        "week": week,
-                        "stage": stage,
-                        "error": str(e),
-                        "timestamp": datetime.datetime.now().isoformat(),
-                    }
-                )
             finally:
                 db.close()
 

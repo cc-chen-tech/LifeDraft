@@ -8,6 +8,7 @@ from src.ai.generator import EventGenerator
 from src.ai.prompt_sanitizer import (sanitize_custom_action,
                                      sanitize_user_choice)
 from src.ai.system_prompts import get_system_prompt
+from src.ai.text_quality import normalize_generated_story
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +92,7 @@ class StoryService:
                     status_callback=status_callback,
                 )
 
-            return continuation
+            return normalize_generated_story(continuation, language=self.language)
 
         except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
             logger.warning(f"Failed to generate story continuation: {e}")

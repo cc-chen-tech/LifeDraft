@@ -54,6 +54,7 @@ export function OptionCards({
       {options.map((option, i) => (
         <button
           key={i}
+          aria-label={`选择 ${i + 1}：${option.text}`}
           className={cn(
             "option-card group w-full text-left",
             "flex items-start gap-3 px-4 py-3.5 rounded-lg",
@@ -129,6 +130,7 @@ export function OptionCards({
           <Button
             size="icon"
             variant="ghost"
+            aria-label="提交自定义选择"
             className={cn(
               "h-10 w-10 rounded-lg flex-shrink-0",
               "text-muted-foreground/50 hover:text-primary hover:bg-primary/10",

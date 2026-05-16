@@ -10,6 +10,7 @@
 
 import { execSync, spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
+import { existsSync } from 'fs';
 
 const FRONTEND_URL = 'http://localhost:3000';
 const BACKEND_URL = 'http://localhost:8000';
@@ -47,7 +48,10 @@ async function waitForService(url: string, label: string, maxWaitMs = 30_000): P
 }
 
 function startBackend(): ChildProcess {
-  const pythonPath = path.join(PROJECT_ROOT, 'venv', 'bin', 'python3');
+  const venvPythonPath = path.join(PROJECT_ROOT, 'venv', 'bin', 'python3');
+  const pythonPath = existsSync(venvPythonPath)
+    ? venvPythonPath
+    : (process.env.PYTHON || process.env.PYTHON_BIN || 'python3');
   const apiScript = path.join(PROJECT_ROOT, 'run_api.py');
 
   console.log(`  → 启动后端: ${pythonPath} ${apiScript}`);
@@ -94,6 +98,10 @@ export default async function globalSetup() {
   if (backendAlive) {
     console.log(`  ✓ 后端就绪 (${BACKEND_URL})`);
   } else {
+    const backendBecameAlive = await waitForService(BACKEND_URL, '后端', 15_000);
+    if (backendBecameAlive) {
+      console.log(`  ✓ 后端就绪 (${BACKEND_URL})`);
+    } else {
     console.log(`  ⚠ 后端未运行，尝试自动启动...`);
 
     backendProcess = startBackend();
@@ -102,9 +110,10 @@ export default async function globalSetup() {
     const started = await waitForService(BACKEND_HEALTH_ENDPOINT, '后端', 30_000);
     if (!started) {
       console.error('\n  ✗ 后端启动失败！E2E 测试需要后端运行在 port 8000');
-      console.error('    请手动启动: cd /Users/luicy/AI/story2 && python3 run_api.py\n');
+      console.error(`    请手动启动: cd ${PROJECT_ROOT} && python3 run_api.py\n`);
       // 不抛异常 - 让测试自行处理后端不可用的情况
       // 非 AI 测试可能不依赖后端某些功能
+    }
     }
   }
 

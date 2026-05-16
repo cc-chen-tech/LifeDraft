@@ -2,15 +2,20 @@
 
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Any
+from typing import Any, Callable, Generator, TypeVar, cast
 
 from sqlalchemy import (JSON, Boolean, Column, DateTime, Float, ForeignKey,
-                        Index, Integer, String, Text, create_engine)
-from sqlalchemy.orm import declarative_base, relationship, sessionmaker
+                        Index, Integer, String, Text, create_engine, text)
+from sqlalchemy.orm import DeclarativeBase, Session, relationship, sessionmaker
 
 from config.settings import settings
 
-Base: Any = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
+
+
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 class User(Base):
@@ -325,22 +330,54 @@ class GamePlaylist(Base):
     )
 
     # Playback state
-    current_song_json = Column(JSON, nullable=True)  # type: ignore[var-annotated]
-    queue_json = Column(JSON, default=list)  # type: ignore[var-annotated]
-    played_songs_json = Column(JSON, default=list)  # type: ignore[var-annotated]
+    current_song_json = Column(JSON, nullable=True)
+    queue_json = Column(JSON, default=list)
+    played_songs_json = Column(JSON, default=list)
     is_playing = Column(Boolean, default=False)
     volume = Column(Float, default=0.5)
     current_position_ms = Column(Integer, default=0)
 
     # Recommendation metadata
     recommendation_mood = Column(String(50), nullable=True)
-    recommendation_keywords = Column(JSON, nullable=True)  # type: ignore[var-annotated]
+    recommendation_keywords = Column(JSON, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     game = relationship("Game", back_populates="playlist")
+
+
+class GeneratedMusicAsset(Base):
+    """Persisted metadata for reusable AI-generated background music."""
+
+    __tablename__ = "generated_music_assets"
+
+    asset_id = Column(Integer, primary_key=True, autoincrement=True)
+    game_id = Column(Integer, ForeignKey("games.game_id"), nullable=False, index=True)
+    source = Column(String(30), default="ai_generated", nullable=False)
+    provider = Column(String(80), nullable=False, index=True)
+    model = Column(String(120), nullable=False)
+    status = Column(String(30), nullable=False, index=True)
+    music_brief_json = Column(JSON, nullable=False)
+    prompt_text = Column(Text, nullable=False)
+    brief_hash = Column(String(128), nullable=False, index=True)
+    storage_path = Column(String(500), nullable=False)
+    duration_ms = Column(Integer, nullable=False)
+    loopable = Column(Boolean, default=True, nullable=False)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    game = relationship("Game")
+
+    __table_args__ = (
+        Index(
+            "ix_generated_music_asset_brief_provider",
+            "brief_hash",
+            "provider",
+        ),
+    )
 
 
 # Create engine and session
@@ -365,18 +402,19 @@ else:
         connect_args={"check_same_thread": False, "timeout": 30},
     )
 
-SessionLocal = sessionmaker(bind=engine)
+SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 
-def init_db():
+def init_db() -> None:
     """Initialize database tables and performance indexes."""
     Base.metadata.create_all(engine, checkfirst=True)
+    _ensure_legacy_columns()
     # ★ 自动创建性能优化索引（向后兼容：已存在则跳过）
     try:
         from src.database.add_performance_indexes import \
             create_performance_indexes
 
-        create_performance_indexes()
+        create_performance_indexes()  # type: ignore[no-untyped-call]
     except Exception:
         # 索引创建失败不应阻塞应用启动
         import logging
@@ -386,8 +424,37 @@ def init_db():
         )
 
 
+def _ensure_legacy_columns() -> None:
+    """Add columns introduced after older local SQLite DBs were created."""
+    sqlite_columns = {
+        "games": {
+            "narrative_style_id": "VARCHAR",
+            "constraint_level": "VARCHAR DEFAULT 'expert'",
+        },
+        "character_presets": {
+            "narrative_style_id": "VARCHAR DEFAULT 'chinese_classic_saga'",
+            "constraint_level": "VARCHAR DEFAULT 'expert'",
+        },
+    }
+
+    if engine.dialect.name != "sqlite":
+        return
+
+    with engine.begin() as connection:
+        for table_name, columns in sqlite_columns.items():
+            existing = {
+                row[1]
+                for row in connection.execute(text(f"PRAGMA table_info({table_name})"))
+            }
+            for column_name, column_type in columns.items():
+                if column_name not in existing:
+                    connection.execute(
+                        text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+                    )
+
+
 @contextmanager
-def get_db():
+def get_db() -> Generator[Session, None, None]:
     """Get database session as context manager."""
     db = SessionLocal()
     try:
@@ -396,7 +463,7 @@ def get_db():
         db.close()
 
 
-def with_db_session(func):
+def with_db_session(func: F) -> F:
     """
     Decorator that injects a database session as the first argument.
 
@@ -413,7 +480,7 @@ def with_db_session(func):
     from functools import wraps
 
     @wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
         # If db is explicitly passed, use it directly (testing support)
         if "db" in kwargs:
             return func(*args, **kwargs)
@@ -425,4 +492,4 @@ def with_db_session(func):
         finally:
             db.close()
 
-    return wrapper
+    return cast(F, wrapper)

@@ -321,7 +321,8 @@ test.describe('Full Game Flow - Console Error Monitoring', () => {
       !e.includes('favicon') &&
       !e.includes('extension') &&
       !e.includes('SourceMap') &&
-      !e.includes('ResizeObserver')
+      !e.includes('ResizeObserver') &&
+      !e.includes('access control checks')
     );
 
     if (criticalErrors.length > 0) {

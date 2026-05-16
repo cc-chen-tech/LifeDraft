@@ -49,16 +49,20 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("Database initialized")
 
-    # 启动 SSE 场景图片事件分发任务
     import asyncio
 
-    from src.api.routers.images import _drain_pending_events
+    drain_task: Optional[asyncio.Task[None]] = None
+    try:
+        from src.api.routers.images import _drain_pending_events
 
-    drain_task = asyncio.create_task(_drain_pending_events())
+        drain_task = asyncio.create_task(_drain_pending_events())
+    except ImportError:
+        logger.info("Scene image SSE drain task is not configured")
 
     yield
 
-    drain_task.cancel()
+    if drain_task:
+        drain_task.cancel()
     logger.info("FastAPI server shutting down...")
 
     # B-01/B-02: 关闭全局线程池，防止资源泄漏

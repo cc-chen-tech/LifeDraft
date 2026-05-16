@@ -37,11 +37,11 @@ test.describe("Character Creation - Completion Screen Buttons", () => {
     await visionInput.fill("测试愿景");
 
     // 点击下一步进入下一个步骤
-    const nextButton = page.locator("button", { hasText: /下一步|生成角色/ });
-    if (await nextButton.isVisible().catch(() => false)) {
-      await nextButton.click();
-      await page.waitForTimeout(1500);
-    }
+    const nextButton = page.getByRole("button", { name: /下一步|生成角色/ }).first();
+    await expect(nextButton).toBeVisible();
+    await expect(nextButton).toBeEnabled({ timeout: 30000 });
+    await nextButton.click();
+    await page.waitForTimeout(1500);
 
     // 验证上一步按钮存在且可点击
     const prevButton = page.locator("button", { hasText: /上一步/ });

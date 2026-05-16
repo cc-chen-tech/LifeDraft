@@ -1,7 +1,6 @@
 "use client";
 
 import { useGameStore } from "@/stores/useGameStore";
-import { useEventStore } from "@/stores/useEventStore";
 import { gameplay } from "@/lib/api";
 import type { EventOption } from "@/lib/types";
 import type { Phase } from "./usePhaseManager";
@@ -59,17 +58,15 @@ export function handleChoiceComplete(
   result: Record<string, unknown>,
   handlers: ChoiceHandlers
 ): void {
-  const { setRoundSummary, setSummaryText, setCurrentEvent, setGameOver, setOptions, setPhase, setProcessing, setConnectionStatus, setStoryText } = handlers;
+  const { setRoundSummary, setSummaryText, setCurrentEvent, setGameOver, setOptions, setPhase, setProcessing, setConnectionStatus } = handlers;
 
   setProcessing(false);
   setConnectionStatus(null);
 
   // ★ 检查是否发生了重试，如果重试后强制使用后端故事
   const wasRetry = checkAndClearRetry();
-  if (wasRetry && result.story_continuation) {
-    console.log(`[handleChoiceComplete] Retry detected, using backend story (${(result.story_continuation as string).length} chars)`);
-    // ★ 修复：使用 appendStoryText 追加 continuation，而非 setStoryText 替换全部文本
-    useEventStore.getState().appendStoryText(result.story_continuation as string);
+  if (wasRetry) {
+    console.log("[handleChoiceComplete] Retry detected, keeping replacement stream text");
   }
 
   if (result.summary && typeof result.summary === "string") {
@@ -80,22 +77,6 @@ export function handleChoiceComplete(
 
   setCurrentEvent(null);
 
-  // ★ 提取并保存选择影响（资源变化）
-  const effectsApplied = result.effects_applied as Record<string, number> | undefined;
-  const bonusEffects = result.bonus_effects as Record<string, number> | undefined;
-  const allEffects: Record<string, number> = {};
-  if (effectsApplied) {
-    Object.entries(effectsApplied).forEach(([key, val]) => {
-      if (typeof val === "number") allEffects[key] = val;
-    });
-  }
-  if (bonusEffects) {
-    Object.entries(bonusEffects).forEach(([key, val]) => {
-      if (typeof val === "number") {
-        allEffects[key] = (allEffects[key] || 0) + val;
-      }
-    });
-  }
   // ★ 故事完成后，异步生成结果插画 (stage='result')
   const state = useGameStore.getState();
   const roundNumber = (state.roundInfo?.current_round as number) || 0;

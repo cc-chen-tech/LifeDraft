@@ -1,6 +1,6 @@
 """Music playlist service — persistent per-game queue management."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from sqlalchemy.orm import Session
 
@@ -86,29 +86,49 @@ class MusicPlaylistService:
         - The remaining new songs replace the existing queue entirely.
         """
         playlist = cls.get_or_create(db, game_id)
-        current: Optional[SongDict] = playlist.current_song_json  # type: ignore
+        playlist_data = cast(Any, playlist)
+        current: Optional[SongDict] = playlist_data.current_song_json
 
         if current is None:
             # No current song — start from the beginning of the new list
             if songs:
-                playlist.current_song_json = songs[0]  # type: ignore
-                playlist.queue_json = songs[1:]  # type: ignore
+                playlist_data.current_song_json = songs[0]
+                playlist_data.queue_json = songs[1:]
             else:
-                playlist.queue_json = []  # type: ignore
+                playlist_data.queue_json = []
         else:
             current_id = current.get("id")
             # Filter out the current song from the new list
             new_queue = [s for s in songs if s.get("id") != current_id]
-            playlist.queue_json = new_queue  # type: ignore
+            playlist_data.queue_json = new_queue
 
         if mood is not None:
-            playlist.recommendation_mood = mood  # type: ignore
+            playlist_data.recommendation_mood = mood
         if keywords is not None:
-            playlist.recommendation_keywords = keywords  # type: ignore
+            playlist_data.recommendation_keywords = keywords
 
         db.commit()
         db.refresh(playlist)
         return cls._to_state(playlist)
+
+    @staticmethod
+    def insert_generated_track(
+        playlist: Dict[str, Any],
+        generated_track: SongDict,
+    ) -> Dict[str, Any]:
+        """Insert a generated track into future queue without interrupting playback."""
+        queue: List[SongDict] = list(playlist.get("queue") or [])
+        current_song = playlist.get("current_song")
+        generated_id = generated_track.get("id")
+
+        queue = [item for item in queue if item.get("id") != generated_id]
+        insert_at = 1 if queue else 0
+        queue.insert(insert_at, generated_track)
+
+        updated = dict(playlist)
+        updated["current_song"] = current_song
+        updated["queue"] = queue
+        return updated
 
     @classmethod
     def sync_state(
@@ -120,41 +140,43 @@ class MusicPlaylistService:
         volume: float,
     ) -> Dict[str, Any]:
         playlist = cls.get_or_create(db, game_id)
-        playlist.current_position_ms = current_position_ms  # type: ignore
-        playlist.is_playing = is_playing  # type: ignore
-        playlist.volume = volume  # type: ignore
+        playlist_data = cast(Any, playlist)
+        playlist_data.current_position_ms = current_position_ms
+        playlist_data.is_playing = is_playing
+        playlist_data.volume = volume
         db.commit()
         db.refresh(playlist)
         return {
             "success": True,
-            "updated_at": playlist.updated_at.isoformat() if playlist.updated_at else None,  # type: ignore
+            "updated_at": playlist_data.updated_at.isoformat() if playlist_data.updated_at else None,
         }
 
     @classmethod
     def advance(cls, db: Session, game_id: int) -> PlaylistState:
         """Move current song to played_songs tail, pop queue head as new current."""
         playlist = cls.get_or_create(db, game_id)
-        current: Optional[SongDict] = playlist.current_song_json  # type: ignore
-        queue: List[SongDict] = list(playlist.queue_json or [])  # type: ignore
-        played: List[SongDict] = list(playlist.played_songs_json or [])  # type: ignore
+        playlist_data = cast(Any, playlist)
+        current: Optional[SongDict] = playlist_data.current_song_json
+        queue: List[SongDict] = list(playlist_data.queue_json or [])
+        played: List[SongDict] = list(playlist_data.played_songs_json or [])
 
         if current is not None:
             played.append(current)
 
         if queue:
-            playlist.current_song_json = queue[0]  # type: ignore
-            playlist.queue_json = queue[1:]  # type: ignore
-            playlist.played_songs_json = played  # type: ignore
+            playlist_data.current_song_json = queue[0]
+            playlist_data.queue_json = queue[1:]
+            playlist_data.played_songs_json = played
         else:
             # Wrap around: rotate played back to queue, keep the first played as current
             if played:
-                playlist.current_song_json = played[0]  # type: ignore
-                playlist.queue_json = played[1:]  # type: ignore
-                playlist.played_songs_json = []  # type: ignore
+                playlist_data.current_song_json = played[0]
+                playlist_data.queue_json = played[1:]
+                playlist_data.played_songs_json = []
             else:
-                playlist.current_song_json = None  # type: ignore
-                playlist.queue_json = []  # type: ignore
-                playlist.played_songs_json = []  # type: ignore
+                playlist_data.current_song_json = None
+                playlist_data.queue_json = []
+                playlist_data.played_songs_json = []
 
         db.commit()
         db.refresh(playlist)
@@ -164,19 +186,20 @@ class MusicPlaylistService:
     def _to_state(cls, playlist: GamePlaylist) -> PlaylistState:
         from datetime import datetime
 
+        playlist_data = cast(Any, playlist)
         return PlaylistState(
-            game_id=playlist.game_id,  # type: ignore
-            current_song=playlist.current_song_json,  # type: ignore
-            queue=list(playlist.queue_json or []),  # type: ignore
-            played_songs=list(playlist.played_songs_json or []),  # type: ignore
-            is_playing=bool(playlist.is_playing),  # type: ignore
-            volume=float(playlist.volume or 0.5),  # type: ignore
-            current_position_ms=int(playlist.current_position_ms or 0),  # type: ignore
-            recommendation_mood=playlist.recommendation_mood,  # type: ignore
+            game_id=playlist_data.game_id,
+            current_song=playlist_data.current_song_json,
+            queue=list(playlist_data.queue_json or []),
+            played_songs=list(playlist_data.played_songs_json or []),
+            is_playing=bool(playlist_data.is_playing),
+            volume=float(playlist_data.volume or 0.5),
+            current_position_ms=int(playlist_data.current_position_ms or 0),
+            recommendation_mood=playlist_data.recommendation_mood,
             updated_at=(
-                playlist.updated_at.isoformat()  # type: ignore
-                if isinstance(playlist.updated_at, datetime)
-                else str(playlist.updated_at) if playlist.updated_at else None  # type: ignore
+                playlist_data.updated_at.isoformat()
+                if isinstance(playlist_data.updated_at, datetime)
+                else str(playlist_data.updated_at) if playlist_data.updated_at else None
             ),
         )
 
