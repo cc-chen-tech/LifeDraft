@@ -148,7 +148,7 @@ async function navigateToGame(page: Page, context: BrowserContext): Promise<void
 
 test.describe('Claude Code Improvements - E2E Validation', () => {
   // 涉及游戏创建 + AI 故事生成 + SSE 流，需要充足的超时
-  test.setTimeout(120_000);
+  test.setTimeout(300_000);
 
   test.beforeEach(async ({ page, context }) => {
     await ensureAuthenticated(page, context);

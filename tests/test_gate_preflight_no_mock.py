@@ -67,3 +67,12 @@ def test_frontend_image_generation_path_is_checked_before_e2e() -> None:
         in api_source
     )
     assert "fetchJson('/images'" not in api_source
+
+
+def test_ai_heavy_e2e_specs_do_not_override_project_timeout_too_low() -> None:
+    spec = (ROOT / "frontend" / "e2e" / "claude-code-improvements.spec.ts").read_text(
+        encoding="utf-8"
+    )
+
+    assert "test.setTimeout(120_000)" not in spec
+    assert "test.setTimeout(300_000)" in spec
