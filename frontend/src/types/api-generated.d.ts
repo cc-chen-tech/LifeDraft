@@ -1727,6 +1727,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/voice-reading/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Voice Reading Settings */
+        get: operations["get_voice_reading_settings_api_voice_reading_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Voice Reading Settings */
+        patch: operations["update_voice_reading_settings_api_voice_reading_settings_patch"];
+        trace?: never;
+    };
+    "/api/voice-reading/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request Story Reading */
+        post: operations["request_story_reading_api_voice_reading_read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/voice-reading/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Voice Reading Job */
+        get: operations["get_voice_reading_job_api_voice_reading_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/voice-reading/audio/{file_name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Voice Reading Audio */
+        get: operations["get_voice_reading_audio_api_voice_reading_audio__file_name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/voice-reading/upload-consent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload Voice Consent */
+        post: operations["upload_voice_consent_api_voice_reading_upload_consent_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -2536,6 +2622,28 @@ export interface components {
             /** Created At */
             created_at?: string | null;
         };
+        /** ReadingContext */
+        ReadingContext: {
+            /**
+             * Source Type
+             * @description current_story|history_round|summary|ending
+             */
+            source_type: string;
+            /** Game Id */
+            game_id: number;
+            /** Week */
+            week?: number | null;
+            /** Round Number */
+            round_number?: number | null;
+            /** Stage */
+            stage?: string | null;
+            /** Attempt Id */
+            attempt_id?: string | null;
+            /** Text Hash */
+            text_hash: string;
+            /** Text */
+            text: string;
+        };
         /**
          * RegenerateCharacterImageRequest
          * @description 重新生成人物画像请求
@@ -2884,6 +2992,45 @@ export interface components {
             /** Reply */
             reply: string;
         };
+        /** StoryVoiceReadingRequest */
+        StoryVoiceReadingRequest: {
+            context: components["schemas"]["ReadingContext"];
+            /**
+             * Voice Id
+             * @default warm_female
+             */
+            voice_id: string;
+            /**
+             * Speed
+             * @default 1
+             */
+            speed: number;
+            /**
+             * Auto Play
+             * @default false
+             */
+            auto_play: boolean;
+        };
+        /** StoryVoiceReadingResponse */
+        StoryVoiceReadingResponse: {
+            /** Job Id */
+            job_id: number;
+            /** Status */
+            status: string;
+            /** Audio Url */
+            audio_url?: string | null;
+            /** Asset Id */
+            asset_id?: number | null;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /** Error Code */
+            error_code?: string | null;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+        };
         /** UpdateGameSettingsRequest */
         UpdateGameSettingsRequest: {
             /** Constraint Level */
@@ -2917,6 +3064,70 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** VoiceReadingJobResponse */
+        VoiceReadingJobResponse: {
+            /** Job Id */
+            job_id: number;
+            /** Status */
+            status: string;
+            /** Audio Url */
+            audio_url?: string | null;
+            /** Asset Id */
+            asset_id?: number | null;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /** Error Code */
+            error_code?: string | null;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+        };
+        /** VoiceReadingSettingsResponse */
+        VoiceReadingSettingsResponse: {
+            /**
+             * Member Required
+             * @default true
+             */
+            member_required: boolean;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /** Available Voice Colors */
+            available_voice_colors?: string[];
+            /** Selected Voice Color */
+            selected_voice_color?: string | null;
+            /**
+             * Uploaded Voice Available
+             * @default false
+             */
+            uploaded_voice_available: boolean;
+            /**
+             * Auto Read Enabled
+             * @default false
+             */
+            auto_read_enabled: boolean;
+        };
+        /** VoiceReadingSettingsUpdateRequest */
+        VoiceReadingSettingsUpdateRequest: {
+            /** Selected Voice Color */
+            selected_voice_color?: string | null;
+            /** Auto Read Enabled */
+            auto_read_enabled?: boolean | null;
+        };
+        /** VoiceUploadConsentRequest */
+        VoiceUploadConsentRequest: {
+            /**
+             * Consent Confirmed
+             * @default false
+             */
+            consent_confirmed: boolean;
+            /** Sample Name */
+            sample_name?: string | null;
         };
     };
     responses: never;
@@ -5703,6 +5914,187 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_voice_reading_settings_api_voice_reading_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceReadingSettingsResponse"];
+                };
+            };
+        };
+    };
+    update_voice_reading_settings_api_voice_reading_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoiceReadingSettingsUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceReadingSettingsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_story_reading_api_voice_reading_read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoryVoiceReadingRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoryVoiceReadingResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_voice_reading_job_api_voice_reading_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceReadingJobResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_voice_reading_audio_api_voice_reading_audio__file_name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_voice_consent_api_voice_reading_upload_consent_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoiceUploadConsentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
                 };
             };
             /** @description Validation Error */
