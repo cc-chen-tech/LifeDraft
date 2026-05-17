@@ -33,4 +33,4 @@
 - [x] 5.2 Resolve conflicts only in integration.
 - [x] 5.3 Run `openspec validate fix-deep-gameplay-blockers --strict`.
 - [x] 5.4 Run targeted suites for all fixed areas.
-- [ ] 5.5 Run `./test.sh all` from integration worktree.
+- [x] 5.5 Run `./test.sh all` from integration worktree.
