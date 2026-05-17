@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 pytestmark = pytest.mark.api
 
 from src.api.routers.collection import router  # noqa: E402
+from src.game.state import PlayerState  # noqa: E402
 from src.game.state.item_state import ItemState  # noqa: E402
 from src.services.collection_service import (CollectionService,  # noqa: E402
                                              EntityNotFoundError)
@@ -143,6 +144,36 @@ class TestItemState:
         assert data["name"] == "测试物品"
         assert data["description"] == "测试描述"
         assert data["importance"] == "important"
+
+
+class TestCollectionServiceAddEntities:
+    """Test adding recognized entities into collection state."""
+
+    def test_add_entities_persists_recognized_characters(self):
+        """Every concrete named person recognized from story text reaches characters."""
+        service = CollectionService(MagicMock())
+        player_state = PlayerState(player_name="林见微", week=1)
+
+        result = service.add_entities(
+            player_state,
+            items=[],
+            landmarks=[],
+            characters=[
+                {
+                    "name": "赵掌柜",
+                    "description": "赵家船行的掌柜，知道账册和铜钥匙的来历。",
+                    "role": "线索人物",
+                    "importance": "important",
+                    "appear_contexts": ["第1周周一：在赵家船行后院交出账册"],
+                }
+            ],
+        )
+
+        assert result["added_characters"] == ["赵掌柜"]
+        assert "赵掌柜" in player_state.characters
+        assert player_state.characters["赵掌柜"]["relationship_desc"] == (
+            "赵家船行的掌柜，知道账册和铜钥匙的来历。"
+        )
 
 
 class TestCollectionRouterEndpoints:

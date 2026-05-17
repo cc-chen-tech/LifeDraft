@@ -62,8 +62,8 @@ def get_entity_recognition_prompt(
    - 包括：武器、工具、纪念品、宝物、文件、关键道具、有故事背景的物件等
 
 2. **人物识别规则：**
-   - {freq_rule}
-   - 有名字或有明确身份的角色
+   - 每一个在故事正文中出现的具体命名人物都必须返回，即使命名人物只出现1次
+   - 也返回反复出现的、有明确身份的角色
    - 排除完全没有剧情作用的背景路人
    - 包括：朋友、家人、同事、对手、重要NPC等
 
@@ -114,7 +114,7 @@ def get_entity_recognition_prompt(
 }}
 
 **注意事项：**
-1. 只返回{freq_desc}实体
+1. 物品和地点只返回{freq_desc}实体；具体命名人物只要在故事中出现就返回
 2. 不要返回已存在的实体
 3. description必须详细，便于后续生成图片
 4. appear_contexts列出3-5个关键出现场景（包含周数和简要描述）
@@ -151,8 +151,8 @@ Read the entire story carefully and find entities {freq_desc}, generating detail
    - Include: weapons, tools, keepsakes, treasures, documents, key props, story-relevant objects, etc.
 
 2. **Character Recognition Rules:**
-   - {freq_rule}
-   - Named characters or those with clear identities
+   - Every concrete named person appearing in the story text must be returned, even if mentioned only once
+   - Also return recurring characters with clear identities
    - Exclude background extras with no plot relevance
    - Include: friends, family, colleagues, rivals, important NPCs, etc.
 
@@ -203,7 +203,7 @@ Read the entire story carefully and find entities {freq_desc}, generating detail
 }}
 
 **Notes:**
-1. Only return entities {freq_desc}
+1. Only return items and locations {freq_desc}; return every concrete named person that appears in the story
 2. Do not return existing entities
 3. Descriptions must be detailed enough for image generation
 4. appear_contexts should list 3-5 key appearances (with week number and brief description)
