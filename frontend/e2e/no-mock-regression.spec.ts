@@ -43,14 +43,15 @@ test.describe('no-mock regression coverage', () => {
 
   test('choice buttons expose stable accessible names', async ({ page }) => {
     await page.goto('/e2e-regression');
+    const choicesFixture = page.getByRole('region', { name: '选项可访问名称回归夹具' });
 
     await expect(
-      page.getByRole('button', { name: '选择 1：追随江边脚印，查看雾中来客留下的痕迹。' }),
+      choicesFixture.getByRole('button', { name: '选择 1：追随江边脚印，查看雾中来客留下的痕迹。' }),
     ).toBeVisible();
     await expect(
-      page.getByRole('button', { name: '选择 2：先回船舱取火折子，再探桥下暗影。' }),
+      choicesFixture.getByRole('button', { name: '选择 2：先回船舱取火折子，再探桥下暗影。' }),
     ).toBeVisible();
-    await expect(page.getByRole('button', { name: '提交自定义选择' })).toBeVisible();
+    await expect(choicesFixture.getByRole('button', { name: '提交自定义选择' })).toBeVisible();
   });
 
   test('stream retry replaces active story attempt instead of duplicating it', async ({ page }) => {
@@ -72,6 +73,62 @@ test.describe('no-mock regression coverage', () => {
     const launcher = page.locator('[data-testid="chat-bar-launcher"]');
     await expect(launcher).toHaveClass(/pointer-events-none/);
     await expect(page.getByRole('button', { name: '打开聊天' })).toHaveClass(/pointer-events-auto/);
+  });
+
+  test('normal browser pointer clicks still reach midweek choices near the opened chat control', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/e2e-regression');
+
+    await page.getByRole('button', { name: '打开聊天' }).click();
+    await expect(page.locator('[data-testid="chat-bar-panel"]')).toBeVisible();
+
+    await page
+      .getByRole('region', { name: '周中浏览器点击回归夹具' })
+      .evaluate((element) => element.scrollIntoView({ block: 'start' }));
+
+    const targetChoice = page.getByRole('button', {
+      name: '选择 1：周中先追问账册来源，再决定是否赴约。',
+    });
+    await expect(targetChoice).toBeVisible();
+    await expect(page.getByTestId('normal-click-choice')).toHaveText('none');
+
+    await targetChoice.evaluate((element) => (element as HTMLButtonElement).click());
+    await expect(page.getByTestId('normal-click-choice')).toHaveText('midweek-source');
+    await page
+      .getByTestId('reset-normal-click-choice')
+      .evaluate((element) => (element as HTMLButtonElement).click());
+    await expect(page.getByTestId('normal-click-choice')).toHaveText('none');
+
+    const box = await targetChoice.boundingBox();
+    expect(box).not.toBeNull();
+    const clickPoint = {
+      x: box!.x + box!.width / 2,
+      y: box!.y + box!.height / 2,
+    };
+
+    const hitTarget = await page.evaluate(
+      ({ x, y }) => {
+        const element = document.elementFromPoint(x, y);
+        const button = element?.closest('button');
+        return {
+          directTagName: element?.tagName ?? '',
+          role: button?.getAttribute('role') ?? '',
+          ariaLabel: button?.getAttribute('aria-label') ?? '',
+          testId: element?.getAttribute('data-testid') ?? '',
+          tagName: button?.tagName ?? '',
+        };
+      },
+      clickPoint,
+    );
+
+    expect(hitTarget).toMatchObject({
+      tagName: 'BUTTON',
+      ariaLabel: '选择 1：周中先追问账册来源，再决定是否赴约。',
+    });
+
+    await page.mouse.click(clickPoint.x, clickPoint.y);
+
+    await expect(page.getByTestId('normal-click-choice')).toHaveText('midweek-source');
   });
 
   test('history review stays pinned to selected round with matching scene image state', async ({ page }) => {
