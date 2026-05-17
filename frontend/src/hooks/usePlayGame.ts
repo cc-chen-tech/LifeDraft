@@ -233,7 +233,11 @@ export function usePlayGame() {
             const rawEvent = state.current_event as Record<string, unknown> | null;
             const event = rawEvent
               ? {
-                  story: (rawEvent.event_description as string) || (rawEvent.story as string) || "",
+                  story:
+                    (rawEvent.event_description as string) ||
+                    (rawEvent.story_text as string) ||
+                    (rawEvent.story as string) ||
+                    "",
                   options: ((rawEvent.options as EventOption[]) || []),
                 }
               : null;
