@@ -8,7 +8,7 @@ import os
 import time
 from dataclasses import dataclass, field
 from hashlib import sha256
-from typing import Any, Dict, List, Optional, Protocol, Sequence, TypeVar
+from typing import Any, Dict, List, Optional, Protocol, Sequence, TypeVar, Union
 
 import httpx
 
@@ -349,7 +349,7 @@ class NeteaseMusicClient:
         """
         try:
             url = f"{self.base_url}/search"
-            params: Dict[str, str | int] = {"keywords": keywords, "limit": limit}
+            params: Dict[str, Union[str, int]] = {"keywords": keywords, "limit": limit}
 
             response = await self.client.get(url, params=params)
             response.raise_for_status()

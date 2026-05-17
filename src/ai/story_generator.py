@@ -7,7 +7,7 @@ consistency validation with retry, and life-phase determination.
 import json
 import logging
 from types import SimpleNamespace
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Union
 
 from pydantic import ValidationError
 
@@ -26,7 +26,11 @@ logger = logging.getLogger(__name__)
 class StoryGenerator:
     """Generates story text for events and rounds."""
 
-    def __init__(self, client: AIClient, quality_level: QualityLevel | str | None = None):
+    def __init__(
+        self,
+        client: AIClient,
+        quality_level: Optional[Union[QualityLevel, str]] = None,
+    ):
         self.client = client
         self.quality_level = QualityLevel(quality_level or QualityLevel.EXPERT)
         self._quality_profile = PROFILES[self.quality_level]
