@@ -33,15 +33,14 @@ MISMATCHES FOUND (documented before writing corrective code):
      uses `updateCharacterSetting(key, result)` to store the raw response dict under the
      step key, so it works at runtime but the typing is misleading.
 
-3. POST /games/{id}/choice-sync: Frontend api.ts type annotation is completely wrong.
+3. POST /games/{id}/choice-sync: Frontend api.ts must use backend field names.
    - Backend returns:  {story_continuation, summary, effects_applied,
                          need_weekly_summary, weekly_summary?, bonus_effects?, game_over}
-   - Frontend api.ts:  {result, story, current_round, current_week, player_state,
-                         summary?, need_weekly_summary?, weekly_summary?, game_over?}
-   - Frontend runtime (handleChoiceComplete in choiceUtils.ts): accesses backend field
-     names directly (story_continuation, effects_applied, bonus_effects), so it works.
-   - Impact: The TS type is a lie. If someone reads the type and builds code against it,
-     they'll use wrong field names.
+   - Frontend api.ts:  must expose {story_continuation, summary, effects_applied,
+                         need_weekly_summary, weekly_summary?, game_over?}
+   - Frontend runtime (handleChoiceComplete in choiceUtils.ts): accesses the same
+     backend field names directly (story_continuation, effects_applied, bonus_effects).
+   - Impact: This now fails as a hard contract if stale field names return.
 
 4. POST /games/{id}/events (api.ts) vs actual endpoint /{id}/event-sync:
    - Frontend api.ts calls: POST /games/${id}/events  (with trailing 's')
@@ -64,6 +63,7 @@ MISMATCHES FOUND (documented before writing corrective code):
 """
 
 import os
+import re
 from unittest.mock import patch
 
 import pytest
@@ -719,9 +719,8 @@ class TestFrontendMismatchCrossCheck:
                           need_weekly_summary, game_over}
 
         The runtime code in choiceUtils.ts correctly accesses story_continuation
-        and effects_applied (snake_case, matching backend). However, the TypeScript
-        type annotation in api.ts for makeChoiceSync is WRONG — it uses 'result',
-        'story', 'current_round', 'current_week' which don't match the backend.
+        and effects_applied (snake_case, matching backend). The TypeScript
+        type annotation in api.ts must stay aligned with those backend fields.
 
         This test verifies the runtime code is correct.
         """
@@ -743,37 +742,32 @@ class TestFrontendMismatchCrossCheck:
             "bonus_effects" in content
         ), "Runtime handler should access 'bonus_effects' to match backend response field name."
 
-        # The api.ts type annotation for makeChoiceSync is KNOWN to be wrong
-        # (uses 'result', 'story', 'current_round' instead of 'story_continuation').
-        # This is documented at the top of this file as Mismatch #3.
+        # api.ts has a separate hard contract below.
 
-    def test_frontend_api_ts_choice_sync_type_needs_fix(self, frontend_api_ts_path):
-        """Document the known mismatch in api.ts makeChoiceSync type annotation.
+    def test_frontend_api_ts_choice_sync_type_matches_backend(self, frontend_api_ts_path):
+        """api.ts makeChoiceSync type annotation must match the backend.
 
-        The api.ts type for makeChoiceSync says:
-            {result, story, current_round, current_week, player_state, ...}
-
-        But the backend actually returns:
+        The backend returns:
             {story_continuation, summary, effects_applied, need_weekly_summary, game_over}
-
-        This is a KNOWN MISMATCH (see Mismatch #3 at top of file).
-        The runtime works because handleChoiceComplete casts to Record<string, unknown>
-        and accesses the real field names.
         """
         with open(frontend_api_ts_path, "r", encoding="utf-8") as f:
             content = f.read()
 
-        # The type annotation uses wrong field names
-        has_wrong_result = "result: string" in content
-        has_wrong_story = "story: string" in content
+        match = re.search(
+            r"makeChoiceSync:\s*\([^)]*\)\s*=>\s*\n\s*fetchJson<\{(?P<body>.*?)\}>",
+            content,
+            re.DOTALL,
+        )
+        assert match, "Could not locate makeChoiceSync fetchJson response type"
+        body = match.group("body")
 
-        # If either of these is present, the type annotation is still wrong
-        # This is a warning-level check — when fixed, update this test
-        if has_wrong_result and has_wrong_story:
-            import warnings
+        for field in (
+            "story_continuation:",
+            "summary:",
+            "effects_applied:",
+            "need_weekly_summary:",
+        ):
+            assert field in body
 
-            warnings.warn(
-                "api.ts makeChoiceSync type annotation still uses 'result'/'story' "
-                "instead of backend field 'story_continuation'. See Mismatch #3."
-            )
-        # Test always passes — it's a documentation check, not a blocker
+        for stale_field in ("result:", "story:", "current_round:", "current_week:", "player_state:"):
+            assert stale_field not in body
