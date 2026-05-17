@@ -4331,6 +4331,255 @@
         }
       }
     },
+    "/api/voice-reading/settings": {
+      "get": {
+        "tags": [
+          "VoiceReading"
+        ],
+        "summary": "Get Voice Reading Settings",
+        "operationId": "get_voice_reading_settings_api_voice_reading_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceReadingSettingsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "VoiceReading"
+        ],
+        "summary": "Update Voice Reading Settings",
+        "operationId": "update_voice_reading_settings_api_voice_reading_settings_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoiceReadingSettingsUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceReadingSettingsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/voice-reading/read": {
+      "post": {
+        "tags": [
+          "VoiceReading"
+        ],
+        "summary": "Request Story Reading",
+        "operationId": "request_story_reading_api_voice_reading_read_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoryVoiceReadingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoryVoiceReadingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/voice-reading/jobs/{job_id}": {
+      "get": {
+        "tags": [
+          "VoiceReading"
+        ],
+        "summary": "Get Voice Reading Job",
+        "operationId": "get_voice_reading_job_api_voice_reading_jobs__job_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceReadingJobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/voice-reading/audio/{file_name}": {
+      "get": {
+        "tags": [
+          "VoiceReading"
+        ],
+        "summary": "Get Voice Reading Audio",
+        "operationId": "get_voice_reading_audio_api_voice_reading_audio__file_name__get",
+        "parameters": [
+          {
+            "name": "file_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/voice-reading/upload-consent": {
+      "post": {
+        "tags": [
+          "VoiceReading"
+        ],
+        "summary": "Upload Voice Consent",
+        "operationId": "upload_voice_consent_api_voice_reading_upload_consent_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoiceUploadConsentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/health": {
       "get": {
         "summary": "Health Check",
@@ -5937,6 +6186,80 @@
         ],
         "title": "PresetInfo"
       },
+      "ReadingContext": {
+        "properties": {
+          "source_type": {
+            "type": "string",
+            "title": "Source Type",
+            "description": "current_story|history_round|summary|ending"
+          },
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "week": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Week"
+          },
+          "round_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Round Number"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "attempt_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Id"
+          },
+          "text_hash": {
+            "type": "string",
+            "title": "Text Hash"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_type",
+          "game_id",
+          "text_hash",
+          "text"
+        ],
+        "title": "ReadingContext"
+      },
       "RegenerateCharacterImageRequest": {
         "properties": {
           "feedback": {
@@ -6595,6 +6918,102 @@
         ],
         "title": "StoryChatResponse"
       },
+      "StoryVoiceReadingRequest": {
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/ReadingContext"
+          },
+          "voice_id": {
+            "type": "string",
+            "title": "Voice Id",
+            "default": "warm_female"
+          },
+          "speed": {
+            "type": "number",
+            "maximum": 2.0,
+            "minimum": 0.5,
+            "title": "Speed",
+            "default": 1.0
+          },
+          "auto_play": {
+            "type": "boolean",
+            "title": "Auto Play",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "context"
+        ],
+        "title": "StoryVoiceReadingRequest"
+      },
+      "StoryVoiceReadingResponse": {
+        "properties": {
+          "job_id": {
+            "type": "integer",
+            "title": "Job Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "audio_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Url"
+          },
+          "asset_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Id"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status"
+        ],
+        "title": "StoryVoiceReadingResponse"
+      },
       "UpdateGameSettingsRequest": {
         "properties": {
           "constraint_level": {
@@ -6704,6 +7123,167 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VoiceReadingJobResponse": {
+        "properties": {
+          "job_id": {
+            "type": "integer",
+            "title": "Job Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "audio_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Url"
+          },
+          "asset_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Id"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "status"
+        ],
+        "title": "VoiceReadingJobResponse"
+      },
+      "VoiceReadingSettingsResponse": {
+        "properties": {
+          "member_required": {
+            "type": "boolean",
+            "title": "Member Required",
+            "default": true
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": false
+          },
+          "available_voice_colors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Available Voice Colors"
+          },
+          "selected_voice_color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Voice Color"
+          },
+          "uploaded_voice_available": {
+            "type": "boolean",
+            "title": "Uploaded Voice Available",
+            "default": false
+          },
+          "auto_read_enabled": {
+            "type": "boolean",
+            "title": "Auto Read Enabled",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "VoiceReadingSettingsResponse"
+      },
+      "VoiceReadingSettingsUpdateRequest": {
+        "properties": {
+          "selected_voice_color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Voice Color"
+          },
+          "auto_read_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Read Enabled"
+          }
+        },
+        "type": "object",
+        "title": "VoiceReadingSettingsUpdateRequest"
+      },
+      "VoiceUploadConsentRequest": {
+        "properties": {
+          "consent_confirmed": {
+            "type": "boolean",
+            "title": "Consent Confirmed",
+            "default": false
+          },
+          "sample_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample Name"
+          }
+        },
+        "type": "object",
+        "title": "VoiceUploadConsentRequest"
       }
     },
     "securitySchemes": {

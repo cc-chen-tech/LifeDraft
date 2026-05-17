@@ -27,6 +27,7 @@ class FeatureFlags(TypedDict, total=False):
     reactive_compression: bool
     parallel_postprocessing: bool
     generation_state_tracking: bool
+    story_voice_reading: bool
 
 
 # Mapping from feature flag name -> environment variable name
@@ -41,6 +42,7 @@ _ENV_VAR_MAP: Dict[str, str] = {
     "reactive_compression": "ENABLE_REACTIVE_COMPRESSION",
     "parallel_postprocessing": "ENABLE_PARALLEL_POSTPROCESSING",
     "generation_state_tracking": "ENABLE_GENERATION_STATE_TRACKING",
+    "story_voice_reading": "ENABLE_STORY_VOICE_READING",
 }
 
 FEATURE_DEFAULTS: FeatureFlags = {
@@ -54,6 +56,7 @@ FEATURE_DEFAULTS: FeatureFlags = {
     "reactive_compression": False,
     "parallel_postprocessing": False,
     "generation_state_tracking": False,
+    "story_voice_reading": True,
 }
 
 

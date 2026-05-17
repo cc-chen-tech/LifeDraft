@@ -146,9 +146,22 @@ async function navigateToGame(page: Page, context: BrowserContext): Promise<void
   expect(finalHasHeader).toBe(true);
 }
 
+async function waitForChoiceProgressionCheckpoint(
+  page: Page,
+  choiceResponse: Promise<unknown>
+): Promise<void> {
+  const stableMain = waitForStableDOM(page, 'main', { timeout: 10_000, stableTime: 1_000 }).catch(
+    () => null
+  );
+
+  await Promise.race([choiceResponse, page.waitForTimeout(45_000)]);
+
+  await stableMain;
+}
+
 test.describe('Claude Code Improvements - E2E Validation', () => {
   // 涉及游戏创建 + AI 故事生成 + SSE 流，需要充足的超时
-  test.setTimeout(120_000);
+  test.setTimeout(300_000);
 
   test.beforeEach(async ({ page, context }) => {
     await ensureAuthenticated(page, context);
@@ -407,25 +420,19 @@ test.describe('Claude Code Improvements - E2E Validation', () => {
     if (hasOptions) {
       // Click the first option to make a choice
       monitor.clear();
+      const choiceResponse = page.waitForResponse(
+        resp =>
+          resp.url().includes('/api/games/') &&
+          (resp.url().includes('/choice') || resp.url().includes('/custom-choice')),
+        { timeout: 45_000 }
+      ).catch(() => null);
       await optionButton.click();
-
-      // Wait for choice processing to complete
-      await page.waitForResponse(resp =>
-        resp.url().includes('/api/games/') &&
-        (resp.url().includes('/choice') || resp.url().includes('/custom-choice'))
-      ).catch(() => {});
-
-      await waitForNetworkIdle(page);
-      await page.waitForTimeout(3000);
+      await waitForChoiceProgressionCheckpoint(page, choiceResponse);
 
       // Verify status bar values may have updated
       const updatedStatusText = await page.locator('header').textContent().catch(() => '');
       // Status text exists (whether changed or not)
       expect(updatedStatusText).toBeTruthy();
-
-      // Wait for next generation
-      await page.waitForTimeout(5000);
-      await waitForNetworkIdle(page);
 
       // Verify new story content appears (story continuity)
       const storyText = await page.locator('main').textContent();

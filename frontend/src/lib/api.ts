@@ -10,9 +10,23 @@ import type {
   CharacterSettings,
   EffectValues,
   EventOption,
+  StoryVoiceReadingRequest,
+  StoryVoiceReadingResponse,
+  VoiceReadingJobResponse,
+  VoiceReadingSettingsResponse,
+  VoiceReadingSettingsUpdateRequest,
+  VoiceUploadConsentRequest,
 } from './types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
+
+function getLocalBackendApiBase(): string | null {
+  if (typeof window === 'undefined') return null;
+  if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return null;
+  }
+  return `${window.location.protocol}//${window.location.hostname}:8000/api`;
+}
 
 /**
  * 401 重定向防抖：防止并发请求竞态导致多次重定向
@@ -134,6 +148,28 @@ async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: num
       handle401Redirect();
     }
     
+    throw Object.assign(new Error(error.message || 'Request failed'), { status: response.status });
+  }
+
+  return response.json();
+}
+
+async function fetchJsonFromBase<T>(
+  baseUrl: string,
+  url: string,
+  options?: RequestInit & { timeout?: number }
+): Promise<T> {
+  const response = await fetch(`${baseUrl}${url}`, {
+    ...(options || {}),
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    },
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: response.statusText }));
     throw Object.assign(new Error(error.message || 'Request failed'), { status: response.status });
   }
 
@@ -377,6 +413,38 @@ export const api = {
           };
         };
       }>(`/games/${gameId}/regenerate`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+  },
+
+  // Story voice reading
+  voice_reading: {
+    getSettings: () =>
+      fetchJson<VoiceReadingSettingsResponse>('/voice-reading/settings'),
+    updateSettings: (data: VoiceReadingSettingsUpdateRequest) =>
+      fetchJson<VoiceReadingSettingsResponse>('/voice-reading/settings', {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+    requestReading: (data: StoryVoiceReadingRequest) =>
+      getLocalBackendApiBase()
+        ? fetchJsonFromBase<StoryVoiceReadingResponse>(
+            getLocalBackendApiBase() || '',
+            '/voice-reading/read',
+            {
+              method: 'POST',
+              body: JSON.stringify(data),
+            }
+          )
+        : fetchJson<StoryVoiceReadingResponse>('/voice-reading/read', {
+            method: 'POST',
+            body: JSON.stringify(data),
+          }),
+    getJob: (jobId: number) =>
+      fetchJson<VoiceReadingJobResponse>(`/voice-reading/jobs/${jobId}`),
+    uploadConsent: (data: VoiceUploadConsentRequest) =>
+      fetchJson<{ success: boolean; message: string }>('/voice-reading/upload-consent', {
         method: 'POST',
         body: JSON.stringify(data),
       }),

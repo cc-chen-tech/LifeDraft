@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ChatBar } from "@/components/game/ChatBar";
 import { MusicPlayer } from "@/components/game/MusicPlayer";
 import { OptionCards } from "@/components/game/OptionCards";
+import { StoryVoiceControls } from "@/components/game/StoryVoiceControls";
 
 const transparentPixel =
   "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
@@ -20,6 +21,11 @@ export default function E2ERegressionPage() {
     current: { title: string; source: string };
     queue: string[];
   } | null>(null);
+  const autoReadText = streamedStory.includes("苏小二按住账册")
+    ? "苏小二按住账册"
+    : streamedStory.includes("账册被人翻开")
+      ? "账册被人翻开"
+      : "";
 
   const appendFirstAttempt = () => {
     setStreamedStory("雾气从码头仓门涌进来，陆明看见账册被人翻开。");
@@ -160,6 +166,36 @@ export default function E2ERegressionPage() {
             </article>
           </div>
         )}
+      </section>
+
+      <section aria-label="故事朗读回归夹具" className="space-y-3">
+        <StoryVoiceControls
+          currentContext={{
+            source_type: "current_story",
+            game_id: 101,
+            week: 1,
+            round_number: 1,
+            stage: "event",
+            attempt_id: "current",
+            text_hash: "fixture-current",
+            text: "雨夜码头的旧账册被风吹开。",
+          }}
+          historyContext={
+            historySelected
+              ? {
+                  source_type: "history_round",
+                  game_id: 101,
+                  week: 3,
+                  round_number: 2,
+                  stage: "event",
+                  attempt_id: "history-3-2",
+                  text_hash: "fixture-history",
+                  text: "第 3 周第 2 轮，码头边的对峙仍停在旧案账册被交出的瞬间。",
+                }
+              : null
+          }
+          autoReadText={autoReadText}
+        />
       </section>
 
       <ChatBar

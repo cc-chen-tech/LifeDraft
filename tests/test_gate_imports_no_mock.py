@@ -52,3 +52,21 @@ def test_story_music_recommendation_import_paths_are_reachable() -> None:
     for module_name, attr_name in imports:
         module = importlib.import_module(module_name)
         assert hasattr(module, attr_name), f"{module_name}.{attr_name} is not importable"
+
+
+def test_story_voice_reading_import_paths_are_reachable() -> None:
+    imports = [
+        ("src.api.routers.voice_reading", "router"),
+        ("src.api.routers.voice_reading", "request_story_reading"),
+        ("src.services.story_voice_reading", "StoryVoiceReadingService"),
+        ("src.services.story_voice_reading", "ReadingContextValidator"),
+        ("src.services.story_voice_reading", "DeterministicTTSProvider"),
+        ("src.services.story_voice_repository", "StoryVoiceReadingRepository"),
+        ("src.database.models", "VoiceReadingSetting"),
+        ("src.database.models", "VoiceReadingJob"),
+        ("src.database.models", "GeneratedVoiceAsset"),
+    ]
+
+    for module_name, attr_name in imports:
+        module = importlib.import_module(module_name)
+        assert hasattr(module, attr_name), f"{module_name}.{attr_name} is not importable"
