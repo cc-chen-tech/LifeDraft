@@ -455,16 +455,21 @@ async def add_entities(  # type: ignore
             player_state,
             request.get("items", []),
             request.get("landmarks", []),
+            request.get("characters", []),
         )
 
         # 持久化状态变更
         _save_player_state(game_id, player_state)
 
         return {
-            "message": f"成功添加 {len(result['added_items'])} 个物品, {len(result['added_landmarks'])} 个地点",
+            "message": (
+                f"成功添加 {len(result['added_items'])} 个物品, "
+                f"{len(result['added_characters'])} 个人物, "
+                f"{len(result['added_landmarks'])} 个地点"
+            ),
             "success": True,
             "added_items": result["added_items"],
-            "added_characters": [],
+            "added_characters": result["added_characters"],
             "added_landmarks": result["added_landmarks"],
         }
     except (ValueError, TypeError, KeyError) as e:
