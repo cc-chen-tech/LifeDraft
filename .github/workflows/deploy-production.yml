@@ -145,6 +145,21 @@ jobs:
           git reset --hard "${DEPLOY_SHA}"
           docker compose -f docker-compose.ecs.yml up -d --build
           docker compose -f docker-compose.ecs.yml ps
+
+          for attempt in $(seq 1 36); do
+            backend_status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' story2-backend 2>/dev/null || true)"
+            if [ "${backend_status}" = "healthy" ]; then
+              echo "Backend container is healthy."
+              exit 0
+            fi
+
+            echo "Waiting for backend health (${attempt}/36): ${backend_status:-unknown}"
+            sleep 5
+          done
+
+          docker compose -f docker-compose.ecs.yml logs --tail=120 backend
+          echo "Backend container did not become healthy in time." >&2
+          exit 1
           EOF
 
       - name: Smoke test
@@ -153,5 +168,19 @@ jobs:
         run: |
           set -euo pipefail
           base="${PRODUCTION_URL%/}"
-          curl -fsS "${base}/health"
-          curl -fsS "${base}/api/health"
+          for endpoint in /health /api/health; do
+            for attempt in $(seq 1 24); do
+              if curl -fsS "${base}${endpoint}"; then
+                echo "Smoke test passed for ${endpoint}."
+                break
+              fi
+
+              if [ "${attempt}" = "24" ]; then
+                echo "Smoke test failed for ${endpoint} after ${attempt} attempts." >&2
+                exit 1
+              fi
+
+              echo "Waiting for ${endpoint} (${attempt}/24)..."
+              sleep 5
+            done
+          done
