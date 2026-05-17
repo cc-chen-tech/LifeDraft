@@ -72,6 +72,25 @@ export function useGameState({
   // Regenerate abort controller
   const regenerateAbortRef = useRef<AbortController | null>(null);
 
+  const startGenerationAfterSync = useCallback(() => {
+    let started = false;
+    const startGeneration = () => {
+      if (started) return;
+      started = true;
+      generateEventRef.current();
+    };
+
+    const fallbackTimer = setTimeout(startGeneration, 1500);
+    syncPlayerState()
+      .catch((err) => {
+        console.error("[continue] syncPlayerState failed before generation:", err);
+      })
+      .finally(() => {
+        clearTimeout(fallbackTimer);
+        startGeneration();
+      });
+  }, [syncPlayerState, generateEventRef]);
+
   // Save game
   const handleSave = async () => {
     setIsSaving(true);
@@ -99,9 +118,9 @@ export function useGameState({
       setStoryText("");
       generatingRef.current = false;
       setPhase("loading");
-      syncPlayerState().then(() => generateEventRef.current());
+      startGenerationAfterSync();
     }
-  }, [isGameOver, setPhase, setCurrentEvent, setStoryText, generatingRef, syncPlayerState, generateEventRef]);
+  }, [isGameOver, setPhase, setCurrentEvent, setStoryText, generatingRef, startGenerationAfterSync]);
 
   // Continue to next round
   const handleContinueToNextRound = useCallback(() => {
@@ -137,8 +156,8 @@ export function useGameState({
     }
 
     setPhase("loading");
-    syncPlayerState().then(() => generateEventRef.current());
-  }, [setRoundSummary, prefetchResultRef, setStoryText, setOptions, setCurrentEvent, setPhase, generatingRef, prefetchingRef, prefetchAbortRef, syncPlayerState, generateEventRef]);
+    startGenerationAfterSync();
+  }, [setRoundSummary, prefetchResultRef, setStoryText, setOptions, setCurrentEvent, setPhase, generatingRef, prefetchingRef, prefetchAbortRef, startGenerationAfterSync]);
 
   // Regenerate - now uses SSE streaming
   const handleRegenerate = useCallback(async () => {

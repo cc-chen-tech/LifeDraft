@@ -47,7 +47,7 @@ class EntityRecognitionService(BaseExtractionService):
             story_text = self._build_story_text(round_history)
 
             # 使用基类的截断逻辑
-            story_text = self._truncate_story(story_text)
+            story_text = self._truncate_recognition_story(story_text)
 
             # 统计有效事件数量
             valid_events = sum(
@@ -94,6 +94,11 @@ class EntityRecognitionService(BaseExtractionService):
                 existing_characters=existing_characters,
                 existing_landmarks=existing_landmarks,
                 min_appearances=min_appearances,
+            )
+            result = self._normalize_recognized_entities(
+                result,
+                existing_characters=existing_characters,
+                existing_landmarks=existing_landmarks,
             )
             logger.info(
                 f"Parsed entities: {len(result.get('items', []))} items, "
@@ -312,6 +317,38 @@ class EntityRecognitionService(BaseExtractionService):
         )
         return supplemented
 
+    def _normalize_recognized_entities(
+        self,
+        result: Dict[str, List[Dict[str, Any]]],
+        existing_characters: List[str],
+        existing_landmarks: List[str],
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """Remove duplicate aliases from AI and fallback recognition output."""
+        character_full_names = [
+            entity.get("name", "")
+            for entity in result.get("characters", [])
+            if entity.get("name")
+        ] + existing_characters
+        landmark_full_names = [
+            entity.get("name", "")
+            for entity in result.get("landmarks", [])
+            if entity.get("name")
+        ] + existing_landmarks
+
+        return {
+            "items": result.get("items", []),
+            "characters": [
+                entity
+                for entity in result.get("characters", [])
+                if not self._is_person_title_alias(entity.get("name", ""), character_full_names)
+            ],
+            "landmarks": [
+                entity
+                for entity in result.get("landmarks", [])
+                if not self._is_landmark_alias(entity.get("name", ""), landmark_full_names)
+            ],
+        }
+
     def _append_missing_entities(
         self,
         entities: List[Dict[str, Any]],
@@ -333,23 +370,147 @@ class EntityRecognitionService(BaseExtractionService):
 
     def _extract_named_people(self, story_text: str) -> List[str]:
         """提取中文故事中明确命名的人物。"""
-        surnames = (
-            "赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦尤许何吕施张孔曹严华金魏陶姜"
+        single_surnames = (
+            "赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦尤许何吕施张孔曹严华金魏陶姜姚"
             "戚谢邹喻柏水窦章云苏潘葛奚范彭郎鲁韦昌马苗凤花方俞任袁柳鲍史唐费"
             "廉岑薛雷贺倪汤滕殷罗毕郝邬安常乐于时傅皮卞齐康伍余元卜顾孟平黄"
-            "穆萧尹欧阳司马上官诸葛"
+            "穆萧尹林陆石"
         )
-        person_actions = "说|问|答|道|提醒|递|交|带|走|来|去|把|将|在|与|和|、|，|。|：|:"
-        titles = "掌柜|先生|小姐|夫人|师傅|师父|老板|管家|姑娘|公子|大人|老师|医生"
+        compound_surnames = "欧阳|司马|上官|诸葛"
+        name_boundary = r"(?:(?<![\u4e00-\u9fff])|(?<=[见与和向问对请找叫邀同]))"
+        person_actions = (
+            "说|问|答|道|提醒|递|交|带|走|来|去|把|将|在|从|与|和|向|看|笑|皱|捧|"
+            "沉默|扶|扶住|握|握紧|赶|赶来|守|苦笑|又|、|，|。|：|:"
+        )
+        titles = "掌柜|先生|小姐|夫人|师傅|师父|老板|管家|姑娘|公子|大人|老师|医生|差爷|叔|伯|婶|姨|老丈"
+        surname = rf"(?:{compound_surnames}|[{single_surnames}])"
         patterns = [
-            rf"[{surnames}][\u4e00-\u9fff]{{0,2}}(?:{titles})",
+            rf"{name_boundary}{surname}[\u4e00-\u9fff]{{0,2}}?(?:{titles})",
             rf"阿[\u4e00-\u9fff]{{1,2}}?(?=(?:{person_actions}))",
-            rf"[{surnames}][\u4e00-\u9fff]{{1,2}}?(?=(?:{person_actions}))",
+            (
+                rf"{name_boundary}{surname}[\u4e00-\u9fff]{{2}}"
+                rf"(?=(?:的|当年|一直|曾经|已经|正|也|都|从|在|把|将|说|问|提醒|低声|缓缓|"
+                rf"沉默|扶|握|赶|留下|，|。|、|：|:))"
+            ),
+            rf"{name_boundary}{surname}[\u4e00-\u9fff]{{1,2}}?(?=(?:{person_actions}))",
         ]
         names = []
         for pattern in patterns:
             names.extend(re.findall(pattern, story_text))
-        return self._ordered_unique(self._clean_entity_name(name) for name in names)
+        candidates = self._ordered_unique(
+            name
+            for name in (self._clean_entity_name(raw) for raw in names)
+            if self._looks_like_person_name(name)
+        )
+        return self._prune_person_aliases(candidates)
+
+    def _looks_like_person_name(self, name: str) -> bool:
+        """过滤中文人名兜底中的常见短语误识别。"""
+        if len(name) < 2 or len(name) > 5:
+            return False
+        false_positive_tokens = (
+            "方才",
+            "顾客",
+            "水洼",
+            "上扬",
+            "放下",
+            "收购",
+            "别人",
+            "平静",
+            "常见",
+            "郑重",
+            "上传",
+            "施主",
+            "于是",
+            "许久",
+            "马蹄",
+            "知道",
+            "现在",
+            "坐在",
+            "守在",
+            "苦笑",
+        )
+        if any(token in name for token in false_positive_tokens):
+            return False
+        if name.endswith(("上", "下", "前", "后", "里", "中", "处")):
+            return False
+        return True
+
+    def _prune_person_aliases(self, names: List[str]) -> List[str]:
+        """Drop short title aliases when a fuller explicit name is present."""
+        return [name for name in names if not self._is_person_title_alias(name, names)]
+
+    def _is_person_title_alias(self, name: str, full_names: List[str]) -> bool:
+        """Return true when a title-only name duplicates a fuller same-surname name."""
+        title_suffixes = ("先生", "叔", "伯", "姑娘", "公子", "大人")
+        if name.endswith(title_suffixes):
+            return any(
+                full_name != name
+                and full_name.startswith(name[0])
+                and not full_name.endswith(title_suffixes)
+                for full_name in full_names
+            )
+
+        verb_fragment_suffixes = (
+            "知",
+            "现",
+            "坐",
+            "扶",
+            "握",
+            "看",
+            "问",
+            "说",
+            "道",
+            "守",
+            "苦",
+            "来",
+            "去",
+        )
+        return any(
+            full_name
+            and name != full_name
+            and name.startswith(full_name)
+            and len(name) == len(full_name) + 1
+            and name.endswith(verb_fragment_suffixes)
+            for full_name in full_names
+        )
+
+    def _truncate_recognition_story(
+        self,
+        story_text: str,
+        max_length: int = 15000,
+    ) -> str:
+        """Keep early setup and recent/current story for recognition.
+
+        Collection recognition needs recent visible story most. Prefix-only
+        truncation makes late-week characters disappear in long games.
+        """
+        if len(story_text) <= max_length:
+            return story_text
+
+        logger.warning(
+            f"Story text too long ({len(story_text)} chars), truncating to {max_length}"
+        )
+        marker = "\n...[故事过长，中间内容已截断，保留最近剧情用于识别]...\n"
+        content_limit = max(0, max_length - len(marker))
+        head_len = content_limit // 3
+        tail_len = content_limit - head_len
+        return (
+            story_text[:head_len]
+            + marker
+            + story_text[-tail_len:]
+        )
+
+    def _is_landmark_alias(self, name: str, full_names: List[str]) -> bool:
+        """Return true when a place short name is contained in a longer place name."""
+        if not name:
+            return False
+        return any(
+            full_name != name
+            and len(full_name) > len(name)
+            and full_name.endswith(name)
+            for full_name in full_names
+        )
 
     def _extract_named_items(self, story_text: str) -> List[str]:
         """提取明确的道具名，保持范围保守。"""

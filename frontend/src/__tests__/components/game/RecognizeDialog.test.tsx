@@ -6,6 +6,7 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { CollectionPanel } from '@/components/game/CollectionPanel';
+import { RecognizeDialog } from '@/components/game/collection/RecognizeDialog';
 import { useCollectionStore } from '@/stores/useCollectionStore';
 import { spyOnStoreMethods } from '@/__tests__/helpers/store-spy';
 import type { RecognizedEntity } from '@/lib/types';
@@ -88,6 +89,51 @@ describe('RecognizeDialog', () => {
       useCollectionStore.setState({ isRecognizing: true });
       render(<CollectionPanel gameId={1} />);
       expect(document.querySelector('.animate-spin')).toBeInTheDocument();
+    });
+
+    it('shows recognized results instead of stale loading copy once candidates exist', () => {
+      render(
+        <RecognizeDialog
+          open={true}
+          onClose={jest.fn()}
+          onSubmit={jest.fn()}
+          isRecognizing={true}
+          isLoading={false}
+          recognizedEntities={mockRecognizedEntities}
+          selectedItems={mockRecognizedEntities.items}
+          selectedCharacters={mockRecognizedEntities.characters}
+          selectedLandmarks={mockRecognizedEntities.landmarks}
+          onToggleItemSelection={jest.fn()}
+          onToggleCharacterSelection={jest.fn()}
+          onToggleLandmarkSelection={jest.fn()}
+        />
+      );
+
+      expect(screen.queryByText('正在分析故事历史...')).not.toBeInTheDocument();
+      expect(screen.getByText('神秘老人')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /添加到收集/ })).toBeEnabled();
+    });
+
+    it('shows an explicit empty state instead of a blank dialog when no result is available', () => {
+      render(
+        <RecognizeDialog
+          open={true}
+          onClose={jest.fn()}
+          onSubmit={jest.fn()}
+          isRecognizing={false}
+          isLoading={false}
+          recognizedEntities={null}
+          selectedItems={[]}
+          selectedCharacters={[]}
+          selectedLandmarks={[]}
+          onToggleItemSelection={jest.fn()}
+          onToggleCharacterSelection={jest.fn()}
+          onToggleLandmarkSelection={jest.fn()}
+        />
+      );
+
+      expect(screen.getByText('未识别到新的实体')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '添加到收集' })).toBeDisabled();
     });
 
     it('shows recognized items when available', async () => {

@@ -55,6 +55,17 @@ export interface EventHandlers {
   isRetryingRef?: React.MutableRefObject<boolean>;
 }
 
+function enterRetryableCompleteError(
+  handlers: Pick<EventHandlers, "setConnectionStatus" | "setPhase" | "setRoundSummary" | "isRetryingRef">
+): void {
+  handlers.setConnectionStatus("error");
+  handlers.setPhase("error");
+  handlers.setRoundSummary(null);
+  if (handlers.isRetryingRef) {
+    handlers.isRetryingRef.current = false;
+  }
+}
+
 // ==================== Story Helpers ====================
 
 /**
@@ -155,6 +166,7 @@ export function handleEventComplete(
   const receivedOptions = eventData.options || [];
   if (receivedOptions.length === 0) {
     console.error("[onComplete] No options in complete event");
+    enterRetryableCompleteError(handlers);
     return;
   }
 
@@ -162,6 +174,7 @@ export function handleEventComplete(
   const frontendStory = useGameStore.getState().storyText;
   if (!backendStory.trim() && !frontendStory.trim()) {
     console.error("[onComplete] No story text in complete event");
+    enterRetryableCompleteError(handlers);
     return;
   }
   

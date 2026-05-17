@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from src.ai.image_client import ContentInspectionError, ImageGenerationError
 from src.game.round.illustration_service import RoundIllustrationService
@@ -26,6 +27,46 @@ class TestRoundIllustrationServiceInit:
         assert service.image_client == mock_client
         assert service.image_storage == mock_storage
         assert service.db == mock_db
+
+
+class TestRoundIllustrationIntegrity:
+    """Round illustration persistence should be idempotent under duplicate triggers."""
+
+    def test_unique_scene_conflict_rolls_back_and_returns_existing_without_error(self):
+        mock_client = MagicMock()
+        mock_client.analyze_story_for_illustration.return_value = ("茶楼雅室", "林见微坐在窗边。")
+        mock_storage = MagicMock()
+        mock_storage.save_image.return_value = ("2/round_scene/week_2_round_0_event.jpg", "local")
+        mock_db = MagicMock()
+        mock_db.commit.side_effect = IntegrityError(
+            "(sqlite3.IntegrityError) UNIQUE constraint failed: "
+            "scene_images.game_id, scene_images.week, scene_images.round_number, scene_images.stage",
+            "",
+            "",
+        )
+        existing_scene = MagicMock(scene_id=9)
+        mock_db.query.return_value.filter.return_value.first.return_value = existing_scene
+
+        service = RoundIllustrationService(
+            image_client=mock_client,
+            image_storage=mock_storage,
+            db_session=mock_db,
+        )
+        service._generate_scene_image = MagicMock(return_value=(b"image-bytes", "final prompt"))
+
+        service._generate_round_illustration_sync(
+            game_id=2,
+            round_number=0,
+            story_text="林见微在归云客栈后院准备出发。",
+            character_settings={"identity": {"name": "林见微"}},
+            player_name="林见微",
+            existing_images=[],
+            stage="event",
+            week=1,
+        )
+
+        mock_db.rollback.assert_called_once()
+        mock_db.query.assert_called()
 
 
 class TestGetPlayerImage:

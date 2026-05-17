@@ -70,15 +70,15 @@ export default function OpeningStoryPage() {
 
     // 使用测试数据或 store 状态
     const injected = testData as Record<string, unknown> | null;
-    const characterSettings = (injected?.characterSettings as typeof state.characterSettings) || state.characterSettings;
-    const playerName = (injected?.playerName as string) || state.playerName;
-    const lifeVision = (injected?.lifeVision as string) || state.lifeVision;
+    const resolvedCharacterSettings = (injected?.characterSettings as typeof state.characterSettings) || state.characterSettings;
+    const resolvedPlayerName = (injected?.playerName as string) || state.playerName;
+    const resolvedLifeVision = (injected?.lifeVision as string) || state.lifeVision;
 
     console.log("[OpeningStory] Initializing:", {
       gameId: state.gameId,
       hasStory: !!state.openingStory,
-      playerName,
-      settingsCount: Object.keys(characterSettings).length,
+      playerName: resolvedPlayerName,
+      settingsCount: Object.keys(resolvedCharacterSettings).length,
     });
 
     // 如果已有故事，直接显示
@@ -90,8 +90,8 @@ export default function OpeningStoryPage() {
     }
 
     // 检查是否有足够的数据生成故事
-    const hasSettings = Object.keys(characterSettings).length > 0;
-    const hasPlayerName = !!playerName;
+    const hasSettings = Object.keys(resolvedCharacterSettings).length > 0;
+    const hasPlayerName = !!resolvedPlayerName;
 
     if (!hasSettings || !hasPlayerName) {
       console.error("[OpeningStory] Missing data:", { hasSettings, hasPlayerName });
@@ -104,23 +104,27 @@ export default function OpeningStoryPage() {
     setIsStreaming(true);
     abortRef.current = new AbortController();
 
+    let streamedText = "";
+
     streamOpeningStory(
-      state.characterSettings,
-      state.playerName,
-      state.lifeVision,
+      resolvedCharacterSettings,
+      resolvedPlayerName,
+      resolvedLifeVision,
       language,
       {
         onStory: (text) => {
+          streamedText += text;
           setStoryText((prev) => prev + text);
         },
         onComplete: (data) => {
           const fullText = (data && typeof data === 'object' && 'full_story' in data)
             ? (data as { full_story?: string }).full_story || ""
             : "";
-          console.log("[OpeningStory] Generation complete, length:", fullText.length);
-          if (fullText) {
-            setStoryText(fullText);
-            setOpeningStory(fullText);
+          const finalText = fullText || streamedText;
+          console.log("[OpeningStory] Generation complete, length:", finalText.length);
+          if (finalText) {
+            setStoryText(finalText);
+            setOpeningStory(finalText);
           }
           setIsStreaming(false);
           setIsComplete(true);
@@ -131,7 +135,7 @@ export default function OpeningStoryPage() {
             console.log("[OpeningStory] Story complete, triggering illustration generation...");
             // 延迟一点生成插画，让用户先看到故事
             setTimeout(() => {
-              generateOpeningIllustration(gameId, storyText, characterSettings, playerName);
+              generateOpeningIllustration(gameId, finalText, resolvedCharacterSettings, resolvedPlayerName);
             }, 500);
           }
         },
@@ -163,6 +167,8 @@ export default function OpeningStoryPage() {
     const state = useGameStore.getState();
     abortRef.current = new AbortController();
     
+    let streamedText = "";
+
     streamOpeningStory(
       state.characterSettings,
       state.playerName,
@@ -170,15 +176,17 @@ export default function OpeningStoryPage() {
       language,
       {
         onStory: (text) => {
+          streamedText += text;
           setStoryText((prev) => prev + text);
         },
         onComplete: (data) => {
           const fullText = (data && typeof data === 'object' && 'full_story' in data)
             ? (data as { full_story?: string }).full_story || ""
             : "";
-          if (fullText) {
-            setStoryText(fullText);
-            setOpeningStory(fullText);
+          const finalText = fullText || streamedText;
+          if (finalText) {
+            setStoryText(finalText);
+            setOpeningStory(finalText);
           }
           setIsStreaming(false);
           setIsComplete(true);

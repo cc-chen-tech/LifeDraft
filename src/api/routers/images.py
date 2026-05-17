@@ -1194,58 +1194,25 @@ def _trigger_scene_generation_in_background(
 
     def generate_in_thread():
         try:
-            from src.ai.image_client import ImageClient
-            from src.database.models import Image as ImageModel
             from src.database.models import SessionLocal
-            from src.game.round.illustration_service import \
-                RoundIllustrationService
-            from src.services.image_storage import ImageStorageService
 
             # 创建新的数据库会话（在线程中）
             db = SessionLocal()
 
             try:
-                image_client = ImageClient()
-                image_storage = ImageStorageService()
-                illustration_service = RoundIllustrationService(
-                    image_client=image_client,
-                    image_storage=image_storage,
-                    db_session=db,
-                )
-
-                # 获取已有的图片列表（用于参考）
-                existing_images = db.query(ImageModel).filter(ImageModel.game_id == game_id).all()
-
-                existing_image_list = [
-                    {
-                        "image_id": img.image_id,
-                        "image_type": img.image_type,
-                        "entity_name": img.entity_name,
-                        "image_url": image_storage.get_image_url(
-                            str(img.storage_path), str(img.storage_type)  # type: ignore[arg-type]
-                        ),
-                    }
-                    for img in existing_images
-                ]
-
-                # 获取玩家形象图片ID
-                player_image = illustration_service._get_player_image(existing_image_list)
-                player_image_id = player_image.get("image_id") if player_image else None
-
                 week_display = f"第{week + 1}周" if week is not None else "未知周"
                 logger.info(
                     f"[Background Generation] Starting scene generation for "
                     f"game={game_id}, {week_display}, round={round_number}, stage={stage}"
                 )
 
-                # 生成场景插画
-                scene_image = illustration_service.generate_round_scene(
+                service = ImageService(db)
+                scene_image = service.generate_round_scene_image(
                     game_id=game_id,
                     round_number=round_number,
                     story_text=story_text,
                     character_settings=character_settings,
                     player_name=player_name,
-                    player_image_id=player_image_id,
                     stage=stage,
                     week=week,
                 )

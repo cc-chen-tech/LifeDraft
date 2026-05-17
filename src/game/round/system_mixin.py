@@ -61,6 +61,8 @@ class RoundSystemMixin:
 
     def _init_round_services(self) -> None:
         """Initialize round system services. Call this in __init__."""
+        restored_current_event = getattr(self, "_current_event", None)
+
         # Character introduction service
         self._char_intro_service = CharacterIntroductionService(
             player_state_getter=lambda: self.player_state,
@@ -77,6 +79,8 @@ class RoundSystemMixin:
             relationship_service=self.relationship_service,
             event_callback=getattr(self, "event_callback", None),
         )
+        if restored_current_event is not None:
+            self._event_generator_service.current_event = restored_current_event
 
         # Choice processor service
         self._choice_processor = RoundChoiceProcessor(

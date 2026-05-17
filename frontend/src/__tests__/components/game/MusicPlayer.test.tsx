@@ -89,6 +89,22 @@ describe('MusicPlayer', () => {
     const { container } = render(<MusicPlayer storyText="" />);
     expect(container.firstChild).toBeNull();
   });
+
+  it('音乐服务返回空列表时显示可继续游戏的降级提示', async () => {
+    (global.fetch as jest.Mock).mockReset();
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse({
+        mood: '宁静',
+        scene_type: '独处',
+        keywords: ['古风'],
+        songs: [],
+      })
+    );
+
+    render(<MusicPlayer storyText="Test story" />);
+
+    expect(await screen.findByText('音乐服务暂不可用，故事可继续进行')).toBeInTheDocument();
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════

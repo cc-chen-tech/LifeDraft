@@ -10,6 +10,7 @@
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.ai.image_client import ImageClient
@@ -231,7 +232,35 @@ class RoundIllustrationService:
             )
 
             self.db.add(scene_image)
-            self.db.commit()
+            try:
+                self.db.commit()
+            except IntegrityError as exc:
+                self.db.rollback()
+                error_text = str(exc)
+                if "UNIQUE constraint failed" not in error_text or "scene_images" not in error_text:
+                    raise
+
+                existing_scene = (
+                    self.db.query(SceneImage)
+                    .filter(
+                        SceneImage.game_id == game_id,
+                        SceneImage.week == week,
+                        SceneImage.round_number == round_number,
+                        SceneImage.stage == stage,
+                    )
+                    .first()
+                )
+                if existing_scene is None:
+                    raise
+                logger.warning(
+                    "[RoundIllustration] 场景插画唯一约束冲突: "
+                    "game=%s, week=%s, round=%s, stage=%s，跳过重复记录",
+                    game_id,
+                    week,
+                    round_number,
+                    stage,
+                )
+                return
 
             week_display = f"第{week + 1}周" if week is not None else "未知周"
             logger.info(

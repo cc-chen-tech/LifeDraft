@@ -790,7 +790,7 @@ def get_result_generation_prompt(
     custom_constraint_en = ""
     if is_custom:
         custom_constraint_zh = (
-            "\n10. **[MUST] 严格遵循自定义选择（最高优先级约束）**："
+            "\n11. **[MUST] 严格遵循自定义选择（最高优先级约束）**："
             "这是玩家自由输入的自定义行动，不是预设选项。"
             "你必须严格按照这个选择的字面意思生成后续剧情，"
             "绝对不允许偏离、忽略、替换为其他行为，"
@@ -805,7 +805,7 @@ def get_result_generation_prompt(
             "如果玩家选择'离开'，故事必须写离开后的发展，不能写'最终决定留下'。"
         )
         custom_constraint_en = (
-            "\n10. **[MUST] STRICTLY FOLLOW CUSTOM CHOICE (HIGHEST PRIORITY)**: "
+            "\n11. **[MUST] STRICTLY FOLLOW CUSTOM CHOICE (HIGHEST PRIORITY)**: "
             "This is a free-form custom action entered by the player, NOT a preset option. "
             "You MUST generate the continuation strictly according to the literal meaning of this choice. "
             "You are absolutely FORBIDDEN from deviating, ignoring, substituting with another action, "
@@ -838,12 +838,13 @@ def get_result_generation_prompt(
 1. 续写500-800字，详细描述选择后立即发生的事情
 2. 包含具体的场景描写、人物反应和丰富的对话（至少3-5轮自然对话）
 3. 展现这个选择带来的即时后果和情感变化
-4. 保持沉浸式第二人称叙事（"你"的视角）
+4. 必须保持第三人称叙事，使用主角姓名或"他/她"，严禁使用叙述性"你"指代主角
 5. 语言生动流畅，有细节感，对话要体现人物性格
 6. 正确使用标点符号：对话必须用""包裹，句末使用句号/问号/感叹号，句内用逗号合理断句。禁止出现没有标点的大段连续文字
 7. 严禁跳脱叙事：不得提及"游戏""模拟""系统""属性值"等元信息，不得出现作者旁白
 8. **选择必须产生独特影响**：这个续写必须是因这个特定选择才发生的，不能是换任何一个选项都能套用的通用剧情。必须体现：如果玩家选择了另一个完全不同的选项，故事的走向和发展会明显不同
-9. **合理分段**：每段控制在150-300字，适时换段，禁止出现超过500字无换行的超长段落{custom_constraint_zh}
+9. **合理分段**：每段控制在150-300字，适时换段，禁止出现超过500字无换行的超长段落
+10. **不得重复当前故事**：当前故事已经展示给玩家，续写必须从玩家选择之后开始推进；不要重复叙述当前故事中已经发生的场景、旅程、对话或揭示{custom_constraint_zh}
 
 仅返回续写的故事内容，不要其他说明或标题。"""
     else:
@@ -864,12 +865,13 @@ def get_result_generation_prompt(
 1. Write 500-800 words continuing the story
 2. Include specific scene descriptions, character reactions, and rich dialogue (at least 3-5 natural exchanges)
 3. Show immediate consequences and emotional changes from this choice
-4. Maintain immersive second-person narrative ("you" perspective)
+4. Maintain third-person narrative, using the protagonist's name or "he/she"; do not use narrative "you" for the protagonist
 5. Vivid and fluid language with good details, dialogue should reflect character personality
 6. Proper punctuation: dialogue MUST be in quotation marks, every sentence MUST end with a period/question/exclamation, use commas for clause breaks. No run-on paragraphs without punctuation
 7. NO FOURTH-WALL BREAKING: never mention 'game', 'simulation', 'system', 'stats', etc. No author asides
 8. **Choice must have UNIQUE impact**: This continuation MUST be a direct result of THIS specific choice. It cannot be a generic outcome that would apply to any option. Show that if the player had chosen a completely different option, the story direction and development would be noticeably different
-9. **Paragraph breaks**: Keep each paragraph between 150-300 words. Change paragraphs appropriately. NO paragraphs exceeding 500 words without a break{custom_constraint_en}
+9. **Paragraph breaks**: Keep each paragraph between 150-300 words. Change paragraphs appropriately. NO paragraphs exceeding 500 words without a break
+10. **Do not repeat the current story**: The current story has already been shown to the player. Continue from after the player's choice; do not re-narrate scenes, travel, dialogue, or revelations that already happened in the current story{custom_constraint_en}
 
 Return only the story continuation, no other explanations or headers."""
 

@@ -263,6 +263,52 @@ describe('usePlayGame', () => {
       expect(typeof result.current.fetchAllRoundSceneImages).toBe('function');
       expect(typeof result.current.regenerateRoundSceneImage).toBe('function');
     });
+
+    it('fetches result scene for the just completed round after choice advances current_round', async () => {
+      useGameStore.setState({
+        gameId: 42,
+        roundInfo: { current_round: 1, week: 0 },
+        storyText: '刚完成的第 0 轮结果正文。',
+        currentEvent: {
+          story: '刚完成的第 0 轮结果正文。',
+          options: [{ text: '继续查证' }],
+        },
+      } as never);
+      storeSpy.spies.syncState.mockResolvedValue(undefined);
+
+      const { result } = renderHook(() => usePlayGame());
+
+      await waitFor(() => {
+        expect(storeSpy.spies.fetchAllRoundSceneImages).toHaveBeenCalled();
+      });
+      storeSpy.spies.fetchRoundSceneImage.mockClear();
+
+      act(() => {
+        result.current.setPhase('result');
+      });
+
+      await waitFor(() => {
+        expect(storeSpy.spies.fetchRoundSceneImage).toHaveBeenCalledWith(0, 'result');
+      });
+      expect(storeSpy.spies.fetchRoundSceneImage).not.toHaveBeenCalledWith(1, 'result');
+    });
+
+    it('does not fetch a scene image before the generating round has story text', async () => {
+      useGameStore.setState({
+        gameId: 42,
+        roundInfo: { current_round: 2, week: 0 },
+        storyText: '',
+        currentEvent: null,
+      } as never);
+      storeSpy.spies.syncState.mockImplementation(() => new Promise(() => {}));
+
+      renderHook(() => usePlayGame());
+
+      await waitFor(() => {
+        expect(storeSpy.spies.fetchAllRoundSceneImages).toHaveBeenCalled();
+      });
+      expect(storeSpy.spies.fetchRoundSceneImage).not.toHaveBeenCalled();
+    });
   });
 
   describe('Handler functions', () => {
