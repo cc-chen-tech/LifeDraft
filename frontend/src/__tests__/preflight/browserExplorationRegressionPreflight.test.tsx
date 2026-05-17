@@ -58,6 +58,8 @@ const restoredGameState = {
     options: [{ text: "核对暗号" }, { text: "追去船行" }],
   },
   constraint_level: "expert",
+  narrative_style_id: "classic-realism",
+  narrative_style_name: "Classic Realism",
 };
 
 function resetStores() {

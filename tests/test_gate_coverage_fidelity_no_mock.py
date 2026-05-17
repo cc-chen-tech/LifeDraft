@@ -86,6 +86,7 @@ def test_backend_workflow_includes_promoted_high_risk_groups() -> None:
 
     required = {
         "tests/test_api_gameplay.py",
+        "tests/test_frontend_backend_field_contracts.py",
         "tests/test_scene_image_sse_contract.py",
         "tests/test_collection_cache_contract.py",
         "tests/test_session_cache.py",
@@ -118,6 +119,25 @@ def test_backend_legacy_restoration_change_is_validated_in_preflight() -> None:
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
 
     assert "openspec validate restore-backend-legacy-contracts --strict" in script
+
+
+def test_frontend_backend_field_contract_change_is_validated_in_preflight() -> None:
+    """Frontend/backend field contract OpenSpec must stay in preflight."""
+
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+
+    assert "openspec validate harden-frontend-backend-field-contracts --strict" in script
+
+
+def test_frontend_backend_field_contract_file_is_wired() -> None:
+    """Field drift tests must run in both preflight and contract gates."""
+
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+    preflight_tests = _python_tests_from_block(script, "run_preflight")
+    contract_tests = _python_tests_from_block(script, "run_contract")
+
+    assert "tests/test_frontend_backend_field_contracts.py" in preflight_tests
+    assert "tests/test_frontend_backend_field_contracts.py" in contract_tests
 
 
 def test_browser_regression_preflight_file_is_wired() -> None:

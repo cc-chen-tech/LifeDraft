@@ -2724,6 +2724,52 @@
         }
       }
     },
+    "/api/images/scene/events/{game_id}": {
+      "get": {
+        "tags": [
+          "Images"
+        ],
+        "summary": "Stream Scene Image Events",
+        "description": "Return latest scene image generation events as SSE.",
+        "operationId": "stream_scene_image_events_api_images_scene_events__game_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/images/scene/{game_id}/{round_number}": {
       "get": {
         "tags": [

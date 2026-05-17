@@ -62,6 +62,7 @@ describe('RoundSceneImageDisplay', () => {
   describe('with image', () => {
     const mockSceneImage = {
       scene_id: 1,
+      week: 0,
       round_number: 1,
       stage: 'event',
       image_url: 'http://example.com/scene.png',

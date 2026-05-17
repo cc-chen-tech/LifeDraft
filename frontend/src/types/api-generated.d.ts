@@ -1126,6 +1126,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/images/scene/events/{game_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream Scene Image Events
+         * @description Return latest scene image generation events as SSE.
+         */
+        get: operations["stream_scene_image_events_api_images_scene_events__game_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/images/scene/{game_id}/{round_number}": {
         parameters: {
             query?: never;
@@ -4913,6 +4933,37 @@ export interface operations {
                 game_id: number;
                 image_type: string;
                 filename: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stream_scene_image_events_api_images_scene_events__game_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: number;
             };
             cookie?: never;
         };
