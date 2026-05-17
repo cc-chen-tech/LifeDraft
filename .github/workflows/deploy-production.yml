@@ -1,0 +1,157 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["E2E Tests"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  actions: read
+  contents: read
+  deployments: write
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  verify-ci:
+    name: Verify all main checks passed
+    runs-on: ubuntu-latest
+    outputs:
+      deploy_ref: ${{ steps.resolve.outputs.deploy_ref }}
+      deploy_sha: ${{ steps.resolve.outputs.deploy_sha }}
+    steps:
+      - name: Resolve deployment ref
+        id: resolve
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const deployRef = 'main';
+            let deploySha = context.payload.workflow_run?.head_sha;
+
+            if (!deploySha) {
+              const { data } = await github.rest.git.getRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: 'heads/main',
+              });
+              deploySha = data.object.sha;
+            }
+
+            core.setOutput('deploy_ref', deployRef);
+            core.setOutput('deploy_sha', deploySha);
+
+      - name: Require successful main CI
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const requiredWorkflows = [
+              'Backend Tests',
+              'Python Code Quality',
+              'Frontend Build',
+              'Frontend Code Quality',
+              'Frontend Tests',
+              'Frontend Integration Tests',
+              'Coverage Report',
+              'CI',
+              'Wiki Check',
+              'E2E Tests',
+            ];
+            const sha = '${{ steps.resolve.outputs.deploy_sha }}';
+            const deadline = Date.now() + 15 * 60 * 1000;
+
+            while (true) {
+              const { data } = await github.rest.actions.listWorkflowRunsForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                branch: 'main',
+                head_sha: sha,
+                per_page: 100,
+              });
+
+              const byName = new Map();
+              for (const run of data.workflow_runs) {
+                if (!byName.has(run.name)) byName.set(run.name, run);
+              }
+
+              const missing = requiredWorkflows.filter(name => !byName.has(name));
+              const pending = requiredWorkflows.filter(name => {
+                const run = byName.get(name);
+                return run && run.status !== 'completed';
+              });
+              const failed = requiredWorkflows.filter(name => {
+                const run = byName.get(name);
+                return run && run.status === 'completed' && run.conclusion !== 'success';
+              });
+
+              if (!missing.length && !pending.length && !failed.length) {
+                core.info(`All required workflows passed for ${sha}.`);
+                return;
+              }
+
+              if (failed.length) {
+                throw new Error(`Required workflow(s) failed for ${sha}: ${failed.join(', ')}`);
+              }
+
+              if (Date.now() > deadline) {
+                throw new Error(
+                  `Timed out waiting for required workflows for ${sha}. ` +
+                  `Missing: ${missing.join(', ') || 'none'}; pending: ${pending.join(', ') || 'none'}`
+                );
+              }
+
+              core.info(
+                `Waiting for required workflows for ${sha}. ` +
+                `Missing: ${missing.join(', ') || 'none'}; pending: ${pending.join(', ') || 'none'}`
+              );
+              await new Promise(resolve => setTimeout(resolve, 30000));
+            }
+
+  deploy:
+    name: Deploy to ECS host
+    runs-on: ubuntu-latest
+    needs: verify-ci
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL || 'https://story101.live' }}
+    steps:
+      - name: Configure SSH
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.ECS_SSH_KEY }}" > ~/.ssh/ecs_deploy_key
+          chmod 600 ~/.ssh/ecs_deploy_key
+          ssh-keyscan -H "${{ secrets.ECS_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy via Docker Compose
+        env:
+          ECS_HOST: ${{ secrets.ECS_HOST }}
+          ECS_USER: ${{ secrets.ECS_USER || 'root' }}
+          ECS_DEPLOY_PATH: ${{ vars.ECS_DEPLOY_PATH || '/opt/story2' }}
+          DEPLOY_REF: ${{ needs.verify-ci.outputs.deploy_ref }}
+          DEPLOY_SHA: ${{ needs.verify-ci.outputs.deploy_sha }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/ecs_deploy_key "${ECS_USER}@${ECS_HOST}" \
+            "DEPLOY_REF='${DEPLOY_REF}' DEPLOY_SHA='${DEPLOY_SHA}' ECS_DEPLOY_PATH='${ECS_DEPLOY_PATH}' bash -s" <<'EOF'
+          set -euo pipefail
+          cd "${ECS_DEPLOY_PATH}"
+          git fetch origin main
+          git checkout main
+          git reset --hard "${DEPLOY_SHA}"
+          docker compose -f docker-compose.ecs.yml up -d --build
+          docker compose -f docker-compose.ecs.yml ps
+          EOF
+
+      - name: Smoke test
+        env:
+          PRODUCTION_URL: ${{ vars.PRODUCTION_URL || 'https://story101.live' }}
+        run: |
+          set -euo pipefail
+          base="${PRODUCTION_URL%/}"
+          curl -fsS "${base}/health"
+          curl -fsS "${base}/api/health"
