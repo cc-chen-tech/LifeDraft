@@ -375,6 +375,16 @@ class NeteaseMusicClient:
 
             return songs
 
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 503:
+                logger.warning(
+                    "[NeteaseMusic] Search upstream unavailable for keywords=%s; "
+                    "returning empty recommendation",
+                    keywords,
+                )
+                return []
+            logger.exception(f"Failed to search music: {e}")
+            return []
         except Exception as e:
             logger.exception(f"Failed to search music: {e}")
             return []

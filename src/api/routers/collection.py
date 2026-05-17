@@ -1,7 +1,7 @@
 """收集系统API路由 - 人物和物品收集"""
 
 import logging
-from typing import Generator, Optional
+from typing import Any, Dict, Generator, List, Optional
 from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -59,6 +59,43 @@ def _save_player_state(game_id: int, player_state: PlayerState) -> None:
         db.save_game_progress(game_id, player_state)
     except Exception as e:
         logger.warning(f"保存游戏状态失败 (非阻塞): {e}")
+
+
+def _build_entity_recognition_history(player_state: Any) -> List[Dict[str, Any]]:
+    """构建实体识别输入，包含当前未选择但已展示的故事。"""
+    history = list(getattr(player_state, "round_history", None) or [])
+    current_event_data = getattr(player_state, "current_event_data", None) or {}
+    if not isinstance(current_event_data, dict):
+        return history
+
+    event_description = (
+        current_event_data.get("event_description")
+        or current_event_data.get("story_text")
+        or ""
+    )
+    if not event_description:
+        return history
+
+    current_week = getattr(player_state, "week", 0)
+    current_round = getattr(player_state, "current_round", 0)
+    has_current_round_story = any(
+        entry.get("week") == current_week
+        and entry.get("round") == current_round
+        and (entry.get("event_description") or entry.get("story_continuation"))
+        for entry in history
+        if isinstance(entry, dict)
+    )
+    if has_current_round_story:
+        return history
+
+    history.append(
+        {
+            "week": current_week,
+            "round": current_round,
+            "event_description": event_description,
+        }
+    )
+    return history
 
 
 # ==================== 获取收集数据 ====================
@@ -418,13 +455,14 @@ async def recognize_entities(  # type: ignore
             EntityRecognitionService
 
         # 根据游戏进度动态计算阈值
-        total_rounds = len(player_state.round_history) if player_state.round_history else 0
+        recognition_history = _build_entity_recognition_history(player_state)
+        total_rounds = len(recognition_history)
         default_min = max(1, total_rounds // 15)  # 每15回合+1，最低1
         min_appearances = request.get("min_appearances") or default_min
 
         recognition_service = EntityRecognitionService(session.game_loop.ai_generator.ai_client)
         return recognition_service.recognize_from_history(
-            round_history=player_state.round_history,
+            round_history=recognition_history,
             existing_items=existing_items,
             existing_characters=existing_characters,
             existing_landmarks=existing_landmarks,

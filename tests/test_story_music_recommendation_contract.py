@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import inspect
+import logging
 from datetime import datetime
+
+import httpx
+import pytest
 
 from src.database.models import Base, Game, GeneratedMusicAsset
 from src.services.music_playlist_service import MusicPlaylistService, PlaylistQueuePolicy
@@ -18,6 +22,27 @@ from src.services.music_service import (
     MusicService,
     Song,
 )
+
+
+@pytest.mark.asyncio
+async def test_netease_search_503_degrades_without_error_traceback(caplog):
+    from src.services.music_service import NeteaseMusicClient
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, request=request)
+
+    client = NeteaseMusicClient(base_url="http://music-api:3001")
+    await client.client.aclose()
+    client.client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    with caplog.at_level(logging.WARNING):
+        songs = await client.search("古风 纯音乐")
+
+    await client.close()
+
+    assert songs == []
+    assert not [record for record in caplog.records if record.levelno >= logging.ERROR]
+    assert any("unavailable" in record.message.lower() for record in caplog.records)
 
 
 def test_music_brief_from_analysis_contains_generation_and_search_intent():

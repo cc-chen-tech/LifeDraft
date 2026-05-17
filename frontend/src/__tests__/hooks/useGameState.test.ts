@@ -99,6 +99,22 @@ describe('useGameState', () => {
       expect(mockSetters.setCurrentEvent).toHaveBeenCalledWith(null);
     });
 
+    it('starts next event even if player-state sync hangs', async () => {
+      jest.useFakeTimers();
+      mockSetters.syncPlayerState.mockImplementationOnce(() => new Promise(() => {}));
+      const { result } = renderHook(() => useGameState(defaultParams));
+
+      act(() => { result.current.handleContinueAfterSummary(); });
+      expect(mockGenerateEventRef.current).not.toHaveBeenCalled();
+
+      act(() => {
+        jest.advanceTimersByTime(1500);
+      });
+
+      expect(mockGenerateEventRef.current).toHaveBeenCalledTimes(1);
+      jest.useRealTimers();
+    });
+
     it('sets phase to ending when game over', async () => {
       const { result } = renderHook(() =>
         useGameState({ ...defaultParams, isGameOver: true })
@@ -149,6 +165,23 @@ describe('useGameState', () => {
       expect(mockSetters.setCurrentEvent).toHaveBeenCalledWith(null);
       expect(mockSetters.setStoryText).toHaveBeenCalledWith('');
       expect(mockSetters.setPhase).toHaveBeenCalledWith('loading');
+    });
+
+    it('starts next round even if player-state sync hangs', async () => {
+      jest.useFakeTimers();
+      mockPrefetchResultRef.current = null;
+      mockSetters.syncPlayerState.mockImplementationOnce(() => new Promise(() => {}));
+      const { result } = renderHook(() => useGameState(defaultParams));
+
+      act(() => { result.current.handleContinueToNextRound(); });
+      expect(mockGenerateEventRef.current).not.toHaveBeenCalled();
+
+      act(() => {
+        jest.advanceTimersByTime(1500);
+      });
+
+      expect(mockGenerateEventRef.current).toHaveBeenCalledTimes(1);
+      jest.useRealTimers();
     });
 
     it('cancels ongoing prefetch', async () => {

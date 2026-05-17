@@ -8,6 +8,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import openai
 
+from config.prompts._helpers import _build_image_era_constraints
+from src.ai.harness.era_validator import validate_era_consistency
 from src.ai.image_config import SENSITIVE_WORDS, get_scene_analyzer_config
 
 logger = logging.getLogger(__name__)
@@ -341,6 +343,21 @@ class ImagePromptBuilder:
 class DeepSeekPromptEnhancer:
     """使用 DeepSeek 增强 Prompt 的工具类"""
 
+    @staticmethod
+    def _build_scene_visual_era_constraints(era: str) -> str:
+        """Build visual era constraints from the compact era string used by scene analysis."""
+        character_settings = {
+            "era": {
+                "era_description": era,
+                "world_context": era,
+            },
+            "world": {
+                "world_description": era,
+                "technology_level": era,
+            },
+        }
+        return _build_image_era_constraints(character_settings, "zh")
+
     def generate_image_prompt_with_deepseek(
         self,
         character_info: Dict[str, Any],
@@ -438,8 +455,9 @@ class DeepSeekPromptEnhancer:
         era = character_info.get("era", "现代")
         gender = character_info.get("gender", "")
         age = character_info.get("age", "")
+        era_constraints = self._build_scene_visual_era_constraints(era)
 
-        system_prompt = """你是一个专业的电影场景设计师和插画指导。你的任务是分析故事文本，选择最适合绘制的视觉场景。
+        system_prompt = f"""你是一个专业的电影场景设计师和插画指导。你的任务是分析故事文本，选择最适合绘制的视觉场景。
 
 选择标准：
 1. 场景应该有强烈的视觉感（环境、光影、动作）
@@ -448,12 +466,14 @@ class DeepSeekPromptEnhancer:
 4. 优先选择有明确动作和环境描述的场景
 
 重要约束（严格遵守）：
+{era_constraints}
 - 写实主义：画面必须是真实世界的自然呈现，禁止任何科幻、奇幻、超现实元素
 - 禁止全息投影、悬浮信息面板、发光特效等科幻视觉元素
 - 禁止赛博朋克风格：金属质感服装、电路纹理、发光线条
 - 禁止品牌Logo：不得出现星巴克、苹果等真实商业品牌
-- 人物服装必须是日常便装（衬衫、T恤、外套、牛仔裤等）
-- 背景必须是真实环境（街道、室内、公园等），自然光线
+- 人物服装必须严格符合时代背景；古代故事只能使用长袍、襦裙、汉服、布衣、盔甲等传统服饰
+- 背景必须严格符合时代背景；古代故事只能使用茶馆、集市、驿站、书院、衙门、寺院、官道、木船等历史场景
+- 不得把古代茶馆、官道、寺院、客栈改写成现代公路、小餐馆、咖啡厅、办公室或商场
 
 输出格式（严格遵守）：
 【场景描述】简短描述你选择的场景（50字以内）
@@ -522,6 +542,18 @@ class DeepSeekPromptEnhancer:
 
             if not scene_desc:
                 scene_desc = story_text[:100] + "..."
+
+            is_era_valid, era_evidence, _ = validate_era_consistency(
+                "\n".join([scene_desc, composition, atmosphere, illustration_prompt]),
+                {"era": era, "era_type": ""},
+            )
+            if not is_era_valid:
+                logger.warning(
+                    "DeepSeek scene analysis violated visual era constraints; "
+                    "falling back to story-based scene selection: %s",
+                    era_evidence,
+                )
+                return self._fallback_scene_selection(story_text, character_info)
 
             return scene_desc, illustration_prompt
 

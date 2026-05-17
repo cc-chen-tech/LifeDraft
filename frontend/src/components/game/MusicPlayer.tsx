@@ -727,7 +727,7 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
       {/* 无结果 */}
       {recommendation && recommendation.songs.length === 0 && (
         <div className="text-sm text-muted-foreground text-center py-4">
-          未找到匹配的音乐
+          音乐服务暂不可用，故事可继续进行
         </div>
       )}
     </div>

@@ -52,7 +52,7 @@ export function RecognizeDialog({
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto py-4">
-          {isRecognizing ? (
+          {isRecognizing && !recognizedEntities ? (
             <div className="flex flex-col items-center justify-center py-8 gap-3">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
               <p className="text-sm text-muted-foreground">正在分析故事历史...</p>
@@ -163,7 +163,13 @@ export function RecognizeDialog({
                   </div>
                 )}
             </div>
-          ) : null}
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <AlertCircle className="w-12 h-12 mx-auto mb-2 opacity-50" />
+              <p>未识别到新的实体</p>
+              <p className="text-xs mt-1">可以稍后再试，或继续推进故事后重新识别</p>
+            </div>
+          )}
         </div>
 
         <div className="flex gap-2 pt-4 border-t">

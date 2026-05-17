@@ -617,6 +617,267 @@ class TestMinAppearancesBoundary:
         assert {char["name"] for char in result["characters"]} >= {"赵掌柜", "阿宁", "陈砚"}
         assert {landmark["name"] for landmark in result["landmarks"]} >= {"赵家船行"}
 
+    def test_character_fallback_avoids_named_shop_suffix_false_positive(self):
+        """人物兜底应识别故事人物，但不应把书铺名尾部当成人名。"""
+        service = EntityRecognitionService(Mock())
+        round_history = [
+            {
+                "week": 0,
+                "round": 0,
+                "event_description": (
+                    "林见微在怀安书铺遇见赵崇古。柳成璧把一册宋刊本推到她面前，"
+                    "低声问：“林姑娘可愿同行？”"
+                ),
+            }
+        ]
+
+        with patch.object(
+            service,
+            "_call_ai",
+            return_value='{"items": [], "characters": [], "landmarks": []}',
+        ):
+            result = service.recognize_from_history(
+                round_history=round_history,
+                existing_items=[],
+                existing_characters=["林见微"],
+                existing_landmarks=[],
+                min_appearances=3,
+            )
+
+        character_names = {char["name"] for char in result["characters"]}
+        assert character_names >= {"赵崇古", "柳成璧"}
+        assert "安书铺" not in character_names
+
+    def test_character_fallback_rejects_common_phrase_fragments(self):
+        """人物兜底不应把动作、形容词、普通名词片段误识别成人物。"""
+        service = EntityRecognitionService(Mock())
+        round_history = [
+            {
+                "week": 0,
+                "round": 0,
+                "event_description": (
+                    "陈叔抱着一摞书册走进来，在案几上放下。林见微嘴角上扬，"
+                    "小心绕过水洼，来到博雅堂门前。沈掌柜正与文士争执，"
+                    "那文士说愿意出二百贯钱收购。姚琏又折了回来，郑重地捧着木匣。"
+                    "方才姑娘所言极是，旁边顾客也点头称是。"
+                ),
+            }
+        ]
+
+        with patch.object(
+            service,
+            "_call_ai",
+            return_value='{"items": [], "characters": [], "landmarks": []}',
+        ):
+            result = service.recognize_from_history(
+                round_history=round_history,
+                existing_items=[],
+                existing_characters=["林见微"],
+                existing_landmarks=[],
+                min_appearances=3,
+            )
+
+        character_names = {char["name"] for char in result["characters"]}
+        assert character_names >= {"陈叔", "沈掌柜", "姚琏"}
+        assert character_names.isdisjoint(
+            {
+                "上放下",
+                "上扬",
+                "水洼",
+                "钱收购",
+                "郑重",
+                "方才姑娘",
+                "顾客",
+            }
+        )
+
+    def test_character_fallback_rejects_pronoun_fragments_and_title_aliases(self):
+        """人物兜底不应把祈使短语/第二人称片段当人物，也不应重复短称。"""
+        service = EntityRecognitionService(Mock())
+        round_history = [
+            {
+                "week": 0,
+                "round": 1,
+                "event_description": (
+                    "老僧道：“施主此去要小心。”于是你把印章收进袖中。"
+                    "沈伯安在思源茶楼等候，旁人也称他沈先生。沈伯安低声说出旧案。"
+                    "王差爷推门而入，掌柜连忙迎上去。"
+                ),
+            }
+        ]
+
+        with patch.object(
+            service,
+            "_call_ai",
+            return_value='{"items": [], "characters": [], "landmarks": []}',
+        ):
+            result = service.recognize_from_history(
+                round_history=round_history,
+                existing_items=[],
+                existing_characters=["林见微"],
+                existing_landmarks=[],
+                min_appearances=1,
+            )
+
+        character_names = {char["name"] for char in result["characters"]}
+        assert {"沈伯安", "王差爷"}.issubset(character_names)
+        assert character_names.isdisjoint({"施主此", "于是你", "沈伯", "沈先生"})
+
+    def test_character_fallback_rejects_time_and_motion_fragments(self):
+        """人物兜底不应把时间副词和动作片段当人物。"""
+        service = EntityRecognitionService(Mock())
+        round_history = [
+            {
+                "week": 3,
+                "round": 0,
+                "event_description": (
+                    "沈伯安沉默了许久，才抬头看向林见微。"
+                    "马蹄踏着残雪远去，陆辞扶住船舷，石无言握紧竹篙。"
+                    "郑冲从渡口赶来，提醒众人追兵将至。"
+                ),
+            }
+        ]
+
+        with patch.object(
+            service,
+            "_call_ai",
+            return_value='{"items": [], "characters": [], "landmarks": []}',
+        ):
+            result = service.recognize_from_history(
+                round_history=round_history,
+                existing_items=[],
+                existing_characters=["林见微"],
+                existing_landmarks=[],
+                min_appearances=1,
+            )
+
+        character_names = {char["name"] for char in result["characters"]}
+        assert {"沈伯安", "陆辞", "石无言", "郑冲"}.issubset(character_names)
+        assert character_names.isdisjoint({"许久", "马蹄踏"})
+
+    def test_character_fallback_rejects_title_aliases_and_verb_suffixes(self):
+        """人物兜底不应把称谓别名或人名后接动词首字当成新人物。"""
+        service = EntityRecognitionService(Mock())
+        round_history = [
+            {
+                "week": 3,
+                "round": 0,
+                "event_description": (
+                    "林姑娘看向陆公子，陆辞知道此事不能再拖。"
+                    "陆辞现在船尾，陆辞坐在舱口，低声提醒林见微。"
+                    "陆辞苦笑一声，仍然守在船尾。"
+                    "林正言当年留下书信，沈伯安一直没有说出真相。"
+                ),
+            }
+        ]
+
+        with patch.object(
+            service,
+            "_call_ai",
+            return_value='{"items": [], "characters": [], "landmarks": []}',
+        ):
+            result = service.recognize_from_history(
+                round_history=round_history,
+                existing_items=[],
+                existing_characters=["林见微", "陆辞"],
+                existing_landmarks=[],
+                min_appearances=1,
+            )
+
+        character_names = {char["name"] for char in result["characters"]}
+        assert {"林正言", "沈伯安"}.issubset(character_names)
+        assert character_names.isdisjoint(
+            {"林姑娘", "陆公子", "陆辞知", "陆辞现", "陆辞坐", "陆辞苦"}
+        )
+
+    def test_long_history_truncation_preserves_recent_named_people(self):
+        """长历史截断时必须保留最近/当前故事中的人物。"""
+        service = EntityRecognitionService(Mock())
+        long_old_story = "赵掌柜在旧账房里翻找账册。" * 1600
+        round_history = [
+            {
+                "week": 0,
+                "round": 0,
+                "event_description": long_old_story,
+            },
+            {
+                "week": 3,
+                "round": 0,
+                "event_description": (
+                    "乌篷船靠近芦苇荡，石无言握紧竹篙，陆辞守在船尾。"
+                    "沈伯安的信使尚未出现，林见微决定先隐蔽行踪。"
+                ),
+            },
+        ]
+
+        with patch.object(
+            service,
+            "_call_ai",
+            return_value='{"items": [], "characters": [], "landmarks": []}',
+        ):
+            result = service.recognize_from_history(
+                round_history=round_history,
+                existing_items=[],
+                existing_characters=["林见微"],
+                existing_landmarks=[],
+                min_appearances=1,
+            )
+
+        character_names = {char["name"] for char in result["characters"]}
+        assert {"石无言", "陆辞", "沈伯安"}.issubset(character_names)
+
+    def test_recognition_truncation_respects_max_length(self):
+        """头尾截断必须把提示文本也算入最大长度。"""
+        service = EntityRecognitionService(Mock())
+        story_text = "赵掌柜在旧账房。" * 2000 + "石无言握紧竹篙。"
+
+        truncated = service._truncate_recognition_story(story_text, max_length=15000)
+
+        assert len(truncated) <= 15000
+        assert "赵掌柜在旧账房" in truncated
+        assert "石无言握紧竹篙" in truncated
+        assert "中间内容已截断" in truncated
+
+    def test_ai_recognition_prunes_title_and_location_aliases(self):
+        """AI 返回的称谓/地点短名也要被规范化，避免收集面板出现重复别名。"""
+        service = EntityRecognitionService(Mock())
+        round_history = [
+            {
+                "week": 0,
+                "round": 1,
+                "event_description": (
+                    "沈伯安在城南思源茶楼等候。旁人称他沈先生，"
+                    "林见微随后也来到思源茶楼。"
+                ),
+            }
+        ]
+
+        ai_response = """
+        {
+          "items": [],
+          "characters": [
+            {"name": "沈先生", "description": "沈伯安的称谓", "importance": "normal", "appear_count": 2, "appear_contexts": []},
+            {"name": "沈伯安", "description": "旧案知情人", "importance": "important", "appear_count": 3, "appear_contexts": []}
+          ],
+          "landmarks": [
+            {"name": "思源茶楼", "description": "茶楼短名", "importance": "important", "appear_count": 3, "appear_contexts": []},
+            {"name": "城南思源茶楼", "description": "完整地点名", "importance": "important", "appear_count": 2, "appear_contexts": []}
+          ]
+        }
+        """
+
+        with patch.object(service, "_call_ai", return_value=ai_response):
+            result = service.recognize_from_history(
+                round_history=round_history,
+                existing_items=[],
+                existing_characters=["林见微"],
+                existing_landmarks=[],
+                min_appearances=1,
+            )
+
+        assert {char["name"] for char in result["characters"]} == {"沈伯安"}
+        assert {landmark["name"] for landmark in result["landmarks"]} == {"城南思源茶楼"}
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

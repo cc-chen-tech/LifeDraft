@@ -3,6 +3,10 @@
 验证 scene_service 和 models 的导入路径正确。
 """
 
+import ast
+import threading
+from pathlib import Path
+
 
 class TestSceneImageImports:
     """SceneImage 导入验证测试。"""
@@ -32,3 +36,86 @@ class TestSceneImageImports:
         from sqlalchemy.exc import IntegrityError
 
         assert IntegrityError is not None
+
+    def test_images_router_does_not_call_missing_round_illustration_methods(self):
+        """图片路由后台生成路径不应调用不存在的 RoundIllustrationService 方法。"""
+        from src.game.round.illustration_service import RoundIllustrationService
+
+        router_path = Path(__file__).resolve().parents[1] / "src/api/routers/images.py"
+        tree = ast.parse(router_path.read_text(encoding="utf-8"))
+        called_methods: set[str] = set()
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if (
+                isinstance(func, ast.Attribute)
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "illustration_service"
+            ):
+                called_methods.add(func.attr)
+
+        missing_methods = sorted(
+            method
+            for method in called_methods
+            if method.startswith("generate") and not hasattr(RoundIllustrationService, method)
+        )
+        assert missing_methods == []
+
+    def test_background_scene_generation_uses_standard_image_service(self, monkeypatch):
+        """后台场景插画触发器应复用 ImageService 的标准场景图生成路径。"""
+        from src.api.routers import images
+        from src.database import models
+
+        calls: list[dict[str, object]] = []
+
+        class InlineThread:
+            def __init__(self, target, name=None, daemon=None):
+                self.target = target
+                self.name = name
+                self.daemon = daemon
+
+            def start(self):
+                self.target()
+
+        class FakeDB:
+            def __init__(self):
+                self.closed = False
+
+            def close(self):
+                self.closed = True
+
+        class FakeImageService:
+            def __init__(self, db):
+                self.db = db
+
+            def generate_round_scene_image(self, **kwargs):
+                calls.append(kwargs)
+                return type("Scene", (), {"scene_id": 42})()
+
+        monkeypatch.setattr(threading, "Thread", InlineThread)
+        monkeypatch.setattr(models, "SessionLocal", lambda: FakeDB())
+        monkeypatch.setattr(images, "ImageService", FakeImageService)
+
+        images._trigger_scene_generation_in_background(
+            game_id=1,
+            week=0,
+            round_number=2,
+            stage="event",
+            story_text="林见微在码头发现账册。",
+            character_settings={"identity": {"name": "林见微"}},
+            player_name="林见微",
+        )
+
+        assert calls == [
+            {
+                "game_id": 1,
+                "round_number": 2,
+                "story_text": "林见微在码头发现账册。",
+                "character_settings": {"identity": {"name": "林见微"}},
+                "player_name": "林见微",
+                "stage": "event",
+                "week": 0,
+            }
+        ]
