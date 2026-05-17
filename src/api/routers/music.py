@@ -156,7 +156,7 @@ async def recommend_music(
                 album=song.album,
                 duration=song.duration,
                 url=url_map[song.id],
-                source=song.source,
+                source=getattr(song, "source", "netease"),
             )
             for song in recommendation.songs
             if song.id in url_map
@@ -174,8 +174,8 @@ async def recommend_music(
             time_weather=recommendation.time_weather,
             description=recommendation.description,
             music_brief=(
-                recommendation.music_brief.to_analysis()
-                if recommendation.music_brief is not None
+                getattr(recommendation, "music_brief").to_analysis()
+                if getattr(recommendation, "music_brief", None) is not None
                 else None
             ),
             songs=songs,

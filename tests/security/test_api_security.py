@@ -159,10 +159,8 @@ class TestAuthorization:
         with patch("src.api.deps.decode_token") as mock_auth:
             mock_auth.return_value = 1  # User 1
 
-            with patch("src.api.routers.games.get_db") as mock_db:
-                mock_db.return_value.get_game.return_value = MagicMock(
-                    user_id=2  # Belongs to User 2
-                )
+            with patch("src.api.services.session_service.get_game_db") as mock_db:
+                mock_db.return_value.load_saved_game.return_value = None
 
                 response = client.get(
                     "/api/games/1/state", headers={"Authorization": "Bearer token"}

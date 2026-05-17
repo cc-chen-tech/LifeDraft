@@ -492,9 +492,12 @@ def _ensure_legacy_columns() -> None:
             }
             for column_name, column_type in columns.items():
                 if column_name not in existing:
-                    connection.execute(
-                        text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+                    sql = "ALTER TABLE {} ADD COLUMN {} {}".format(
+                        table_name,
+                        column_name,
+                        column_type,
                     )
+                    connection.execute(text(sql))
 
 
 @contextmanager

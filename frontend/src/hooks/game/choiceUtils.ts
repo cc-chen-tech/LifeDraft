@@ -75,6 +75,15 @@ export function handleChoiceComplete(
     setRoundSummary(null);
   }
 
+  const effectsApplied = result.effects_applied;
+  const bonusEffects = result.bonus_effects;
+  if (effectsApplied || bonusEffects) {
+    console.log("[handleChoiceComplete] Effects applied", {
+      effects_applied: effectsApplied,
+      bonus_effects: bonusEffects,
+    });
+  }
+
   setCurrentEvent(null);
 
   // ★ 故事完成后，异步生成结果插画 (stage='result')

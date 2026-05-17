@@ -115,6 +115,8 @@ run_preflight() {
     local story_tts_openspec_code=$?
     openspec validate harden-test-coverage-and-gate-fidelity --strict
     local coverage_gate_openspec_code=$?
+    openspec validate restore-backend-legacy-contracts --strict
+    local restore_backend_openspec_code=$?
     openspec validate codify-browser-exploration-regressions --strict
     local browser_regression_openspec_code=$?
 
@@ -155,7 +157,7 @@ run_preflight() {
     cd "$PROJECT_DIR"
 
     local result=0
-    if [ $openspec_code -ne 0 ] || [ $music_openspec_code -ne 0 ] || [ $redesign_openspec_code -ne 0 ] || [ $shift_left_openspec_code -ne 0 ] || [ $story_voice_openspec_code -ne 0 ] || [ $story_tts_openspec_code -ne 0 ] || [ $coverage_gate_openspec_code -ne 0 ] || [ $browser_regression_openspec_code -ne 0 ] || [ $gate_code -ne 0 ] || [ $tsc_code -ne 0 ] || [ $jest_code -ne 0 ]; then
+    if [ $openspec_code -ne 0 ] || [ $music_openspec_code -ne 0 ] || [ $redesign_openspec_code -ne 0 ] || [ $shift_left_openspec_code -ne 0 ] || [ $story_voice_openspec_code -ne 0 ] || [ $story_tts_openspec_code -ne 0 ] || [ $coverage_gate_openspec_code -ne 0 ] || [ $restore_backend_openspec_code -ne 0 ] || [ $browser_regression_openspec_code -ne 0 ] || [ $gate_code -ne 0 ] || [ $tsc_code -ne 0 ] || [ $jest_code -ne 0 ]; then
         result=1
     fi
 

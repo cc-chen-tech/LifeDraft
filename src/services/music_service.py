@@ -6,6 +6,7 @@
 import logging
 import os
 import time
+import asyncio
 from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import Any, Dict, List, Optional, Protocol, Sequence, TypeVar, Union
@@ -326,10 +327,15 @@ class MusicGenerationCoordinator:
 class NeteaseMusicClient:
     """网易云音乐 API 客户端"""
 
+    HEALTH_CHECK_TIMEOUT = 3.0
+    URL_CACHE_TTL = 480
+    _url_cache: Dict[int, tuple[str, float]] = {}
+
     def __init__(self, base_url: Optional[str] = None) -> None:
-        base_url = base_url or os.getenv("NETEASE_MUSIC_API_URL", "http://localhost:3000")
+        base_url = base_url or os.getenv("NETEASE_MUSIC_API_URL", "http://music-api:3001")
         # 将 localhost 替换为 127.0.0.1 避免 IPv6 问题
         self.base_url = base_url.replace("localhost", "127.0.0.1")  # type: ignore
+        self._available: Optional[bool] = None
         # 禁用连接池，避免 503 错误
         limits = httpx.Limits(max_keepalive_connections=0, max_connections=10)
         headers = {
@@ -338,7 +344,28 @@ class NeteaseMusicClient:
         }
         self.client = httpx.AsyncClient(timeout=30.0, limits=limits, headers=headers)
 
-    async def search(self, keywords: str, limit: int = 10) -> List[Song]:
+    async def check_availability(self) -> bool:
+        """Return cached API availability, probing once when unknown."""
+        if self._available is not None:
+            return self._available
+        try:
+            response = await self.client.get(
+                f"{self.base_url}/health",
+                timeout=self.HEALTH_CHECK_TIMEOUT,
+            )
+            response.raise_for_status()
+            self._available = True
+        except Exception as exc:
+            logger.warning(f"[NeteaseMusic] Health check failed: {exc}")
+            self._available = False
+        return self._available
+
+    async def search(
+        self,
+        keywords: str,
+        limit: int = 10,
+        max_retries: int = 0,
+    ) -> List[Song]:
         """搜索歌曲
 
         Args:
@@ -348,47 +375,50 @@ class NeteaseMusicClient:
         Returns:
             歌曲列表
         """
-        try:
-            url = f"{self.base_url}/search"
-            params: Dict[str, Union[str, int]] = {"keywords": keywords, "limit": limit}
-
-            response = await self.client.get(url, params=params)
-            response.raise_for_status()
-            data = response.json()
-
-            if data.get("code") != 200:
-                logger.warning(f"Search failed: {data}")
-                return []
-
-            songs = []
-            result = data.get("result", {})
-            song_list = result.get("songs", [])
-
-            for song_data in song_list:
-                song = Song(
-                    id=song_data.get("id", 0),
-                    name=song_data.get("name", ""),
-                    artists=[a.get("name", "") for a in song_data.get("artists", [])],
-                    album=song_data.get("album", {}).get("name", ""),
-                    duration=song_data.get("duration", 0),
-                )
-                songs.append(song)
-
-            return songs
-
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 503:
-                logger.warning(
-                    "[NeteaseMusic] Search upstream unavailable for keywords=%s; "
-                    "returning empty recommendation",
-                    keywords,
-                )
-                return []
-            logger.exception(f"Failed to search music: {e}")
+        if self._available is False:
             return []
-        except Exception as e:
-            logger.exception(f"Failed to search music: {e}")
-            return []
+
+        url = f"{self.base_url}/search"
+        params: Dict[str, Union[str, int]] = {"keywords": keywords, "limit": limit}
+
+        for attempt in range(max_retries + 1):
+            try:
+                response = await self.client.get(url, params=params)
+                response.raise_for_status()
+                data = response.json()
+
+                if data.get("code") != 200:
+                    logger.warning(f"Search failed: {data}")
+                    return []
+
+                songs = []
+                result = data.get("result", {})
+                song_list = result.get("songs", [])
+
+                for song_data in song_list:
+                    song = Song(
+                        id=song_data.get("id", 0),
+                        name=song_data.get("name", ""),
+                        artists=[a.get("name", "") for a in song_data.get("artists", [])],
+                        album=song_data.get("album", {}).get("name", ""),
+                        duration=song_data.get("duration", 0),
+                    )
+                    songs.append(song)
+
+                return songs
+            except httpx.HTTPStatusError as e:
+                status_code = e.response.status_code
+                if status_code < 500 or attempt >= max_retries:
+                    logger.exception(f"Failed to search music: {e}")
+                    return []
+                await asyncio.sleep(0.2 * (attempt + 1))
+            except Exception as e:
+                if attempt >= max_retries:
+                    logger.exception(f"Failed to search music: {e}")
+                    return []
+                await asyncio.sleep(0.2 * (attempt + 1))
+
+        return []
 
     async def get_song_url(self, song_id: int, retry: int = 2) -> Optional[str]:
         """获取歌曲播放 URL
@@ -400,49 +430,72 @@ class NeteaseMusicClient:
         Returns:
             播放 URL
         """
-        try:
-            url = f"{self.base_url}/song/url"
-            params = {"id": song_id}
+        cached = self._url_cache.get(song_id)
+        if cached:
+            cached_url, expires_at = cached
+            if expires_at > time.time():
+                return cached_url
+            del self._url_cache[song_id]
 
-            logger.info(f"[NeteaseMusic] Getting song URL for id: {song_id}")
-            response = await self.client.get(url, params=params)
-            response.raise_for_status()
-            data = response.json()
+        url = f"{self.base_url}/song/url"
+        params = {"id": song_id}
 
-            if data.get("code") != 200:
-                logger.warning(
-                    f"[NeteaseMusic] API error: code={data.get('code')}, msg={data.get('message', 'unknown')}"
-                )
-                return None
+        for attempt in range(retry + 1):
+            try:
+                logger.info(f"[NeteaseMusic] Getting song URL for id: {song_id}")
+                response = await self.client.get(url, params=params)
+                response.raise_for_status()
+                data = response.json()
 
-            songs = data.get("data", [])
-            if songs and len(songs) > 0:
-                song_url = songs[0].get("url")
-                if song_url:
-                    safe_url = self._normalize_browser_media_url(str(song_url))
-                    logger.info(f"[NeteaseMusic] Got URL for song {song_id}: {safe_url[:50]}...")
-                    return safe_url
-                else:
+                if data.get("code") != 200:
+                    logger.warning(
+                        f"[NeteaseMusic] API error: code={data.get('code')}, msg={data.get('message', 'unknown')}"
+                    )
+                    return None
+
+                songs = data.get("data", [])
+                if songs and len(songs) > 0:
+                    song_url = songs[0].get("url")
+                    if song_url:
+                        safe_url = self._normalize_browser_media_url(str(song_url))
+                        logger.info(
+                            f"[NeteaseMusic] Got URL for song {song_id}: {safe_url[:50]}..."
+                        )
+                        self._url_cache[song_id] = (
+                            safe_url,
+                            time.time() + self.URL_CACHE_TTL,
+                        )
+                        return safe_url
                     logger.warning(
                         f"[NeteaseMusic] URL is empty for song {song_id}, may be restricted by copyright"
                     )
                     return None
 
-            logger.warning(f"[NeteaseMusic] No data returned for song {song_id}")
-            return None
+                logger.warning(f"[NeteaseMusic] No data returned for song {song_id}")
+                return None
 
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 503:
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 503:
+                    logger.warning(
+                        "[NeteaseMusic] Upstream unavailable for song %s; skipping URL",
+                        song_id,
+                    )
+                    return None
+                if e.response.status_code < 500 or attempt >= retry:
+                    logger.exception(f"[NeteaseMusic] Failed to get song URL: {e}")
+                    return None
                 logger.warning(
-                    "[NeteaseMusic] Upstream unavailable for song %s; skipping URL",
+                    "[NeteaseMusic] Upstream unavailable for song %s; retrying",
                     song_id,
                 )
-                return None
-            logger.exception(f"[NeteaseMusic] Failed to get song URL: {e}")
-            return None
-        except Exception as e:
-            logger.exception(f"[NeteaseMusic] Failed to get song URL: {e}")
-            return None
+                await asyncio.sleep(0.2 * (attempt + 1))
+            except Exception as e:
+                if attempt >= retry:
+                    logger.exception(f"[NeteaseMusic] Failed to get song URL: {e}")
+                    return None
+                await asyncio.sleep(0.2 * (attempt + 1))
+
+        return None
 
     def _normalize_browser_media_url(self, url: str) -> str:
         """Return a browser-safe media URL for HTTPS pages."""
@@ -751,16 +804,27 @@ class MusicService:
         character_settings: Optional[Dict[str, Any]] = None,
     ) -> List[str]:
         """构建搜索关键词列表 - 综合考虑情绪、场景、时代、风格"""
+        era_priority_keywords: List[str] = []
         if character_settings:
             era = character_settings.get("era")
             if isinstance(era, dict):
                 era_name = str(era.get("era_name") or "")
+                era_description = str(era.get("era_description") or "")
+                era_text = f"{era_name} {era_description}"
                 environment_text = str(analysis.get("environment") or "")
-                if era_name and era_name not in {"现代", "当代"} and "古" not in environment_text:
+                is_modern = any(marker in era_text for marker in ("现代", "当代", "202"))
+                is_ancient = bool(era_text.strip()) and not is_modern
+                if is_ancient:
+                    era_priority_keywords = ["古风", "中国风", "古典", "民乐", "传统", "国风"]
+                if is_ancient and "古" not in environment_text:
                     analysis = dict(analysis)
                     analysis["environment"] = f"古风 {environment_text}".strip()
 
         keywords = []
+
+        for kw in era_priority_keywords:
+            if kw not in keywords:
+                keywords.append(kw)
 
         # 获取各维度分析结果
         mood = analysis.get("mood", "")

@@ -14,6 +14,66 @@ export interface StreamCallbacks {
   onReconnecting?: (attempt: number, maxRetries: number) => void;
 }
 
+const maxRetries = 3;
+const SSE_MAX_ATTEMPTS = maxRetries;
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('Aborted', 'AbortError'));
+      return;
+    }
+    const timeout = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timeout);
+      reject(new DOMException('Aborted', 'AbortError'));
+    }, { once: true });
+  });
+}
+
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  callbacks?: StreamCallbacks
+): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < SSE_MAX_ATTEMPTS; attempt += 1) {
+    if (init.signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
+
+    try {
+      const response = await fetch(url, init);
+      if (response.ok) {
+        return response;
+      }
+
+      if (response.status !== 502 && response.status !== 504 && response.status < 500) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      lastError = new Error(`HTTP error! status: ${response.status}`);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw error;
+      }
+      lastError = error instanceof Error ? error : new Error(String(error));
+    }
+
+    if (attempt === SSE_MAX_ATTEMPTS - 1) {
+      break;
+    }
+
+    callbacks?.onConnectionStatus?.('reconnecting');
+    callbacks?.onReconnecting?.(attempt + 1, SSE_MAX_ATTEMPTS);
+    const backoff = Math.pow(2, attempt) * 1000;
+    await sleep(backoff, init.signal ?? undefined);
+  }
+
+  throw lastError || new Error('SSE retry failed');
+}
+
 function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbacks: StreamCallbacks): Promise<void> {
   const decoder = new TextDecoder();
   let buffer = '';
@@ -39,7 +99,10 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
           if (isCompleteReceived && completeData) {
             callbacks.onComplete?.(completeData);
           } else if (!isCompleteReceived) {
-            callbacks.onComplete?.({});
+            const error = new Error('Stream ended without complete event');
+            callbacks.onError?.(error);
+            safeResolve();
+            return;
           }
           safeResolve();
           return;
@@ -139,13 +202,13 @@ export async function streamChoice(
   callbacks: StreamCallbacks,
   options?: { signal?: AbortSignal }
 ): Promise<void> {
-  const response = await fetch(`/api/games/${gameId}/choice`, {
+  const response = await fetchWithRetry(`/api/games/${gameId}/choice`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({ option_index: choiceIndex }),
     signal: options?.signal,
-  });
+  }, callbacks);
 
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
@@ -165,13 +228,13 @@ export async function streamCustomChoice(
   callbacks: StreamCallbacks,
   options?: { signal?: AbortSignal }
 ): Promise<void> {
-  const response = await fetch(`/api/games/${gameId}/custom-choice`, {
+  const response = await fetchWithRetry(`/api/games/${gameId}/custom-choice`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({ custom_text: customChoice }),
     signal: options?.signal,
-  });
+  }, callbacks);
 
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
@@ -374,7 +437,7 @@ export async function streamOpeningStory(
   },
   options?: { signal?: AbortSignal; enableReconnect?: boolean }
 ): Promise<void> {
-  const response = await fetch('/api/character/opening-story', {
+  const response = await fetchWithRetry('/api/character/opening-story', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -385,7 +448,7 @@ export async function streamOpeningStory(
       language: language,
     }),
     signal: options?.signal,
-  });
+  }, callbacks as StreamCallbacks);
 
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);

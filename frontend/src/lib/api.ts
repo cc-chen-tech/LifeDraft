@@ -28,6 +28,8 @@ function getLocalBackendApiBase(): string | null {
   return `${window.location.protocol}//${window.location.hostname}:8000/api`;
 }
 
+type CharacterSettingResponse = Record<string, unknown> | { era: string; era_description: string };
+
 /**
  * 401 重定向防抖：防止并发请求竞态导致多次重定向
  * 一旦触发登出，后续 401 不再重复处理
@@ -369,7 +371,7 @@ export const api = {
       language?: string;
       character_settings?: CharacterSettings
     }) =>
-      fetchJson<Record<string, unknown>>('/character/setting', {
+      fetchJson<CharacterSettingResponse>('/character/setting', {
         method: 'POST',
         body: JSON.stringify(data),
       }),

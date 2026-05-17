@@ -8,24 +8,30 @@ import re
 def normalize_chinese_punctuation(text: str) -> str:
     """Normalize obvious English punctuation artifacts in Chinese prose."""
     replacements = {
-        '："': "：“",
-        ': "': "：“",
-        ':"': "：“",
-        '",': "”，",
-        '."': "。”",
-        '?"': "？”",
-        '!"': "！”",
-        '"': "”",
         ",": "，",
+        ".": "。",
         "?": "？",
         "!": "！",
+        ";": "；",
+        ":": "：",
+        "(": "（",
+        ")": "）",
     }
 
     normalized = text
     for old, new in replacements.items():
         normalized = normalized.replace(old, new)
 
-    normalized = re.sub(r"([\u4e00-\u9fff])[:：]", r"\1：", normalized)
+    quote_open = True
+    chars: list[str] = []
+    for char in normalized:
+        if char == '"':
+            chars.append("“" if quote_open else "”")
+            quote_open = not quote_open
+        else:
+            chars.append(char)
+    normalized = "".join(chars)
+
     normalized = re.sub(r"([，。！？；：])\s+([\u4e00-\u9fff“])", r"\1\2", normalized)
     return normalized
 

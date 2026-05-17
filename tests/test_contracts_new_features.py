@@ -241,17 +241,22 @@ class TestFeatureFlagContracts:
             f"_ENV_VAR_MAP 有 {env_map_keys - flag_keys}"
         )
 
-    def test_feature_defaults_all_false(self):
-        """FEATURE_DEFAULTS 中所有值默认为 False（向后兼容）。
+    def test_feature_defaults_are_conservative(self):
+        """FEATURE_DEFAULTS 中实验功能默认关闭，已发布功能可显式默认开启。
 
-        契约：新特性默认关闭，确保不会影响现有功能。
+        契约：新实验特性默认关闭，确保不会影响现有功能。已完成产品化的
+        story_voice_reading 默认开启，避免回退已沉淀的朗读入口。
         """
         from config.feature_flags import FEATURE_DEFAULTS
 
+        default_enabled = {"story_voice_reading"}
         for flag_name, default_value in FEATURE_DEFAULTS.items():
-            assert (
-                default_value is False
-            ), f"Feature flag '{flag_name}' default is {default_value}, expected False"
+            if flag_name in default_enabled:
+                assert default_value is True
+            else:
+                assert (
+                    default_value is False
+                ), f"Feature flag '{flag_name}' default is {default_value}, expected False"
 
     def test_get_feature_returns_bool(self):
         """get_feature() 对已知和未知 flag 都返回 bool。

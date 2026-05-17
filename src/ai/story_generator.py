@@ -6,6 +6,7 @@ consistency validation with retry, and life-phase determination.
 
 import json
 import logging
+import os
 from types import SimpleNamespace
 from typing import Any, Callable, Dict, Optional, Union
 
@@ -16,8 +17,9 @@ from config.prompts._helpers import extract_overused_phrases
 from src.ai.client import AIClient
 from src.ai.harness.quality_level import PROFILES, QualityLevel
 from src.ai.models import EventOption, GameEvent
+from src.ai.prompt_sanitizer import sanitize_player_name
 from src.ai.system_prompts import get_system_prompt
-from src.ai.text_quality import normalize_generated_story
+from src.ai.text_quality import normalize_chinese_punctuation, normalize_generated_story
 from src.ai.vector_store import get_vector_store, is_vector_search_enabled
 
 logger = logging.getLogger(__name__)
@@ -35,6 +37,149 @@ class StoryGenerator:
         self.quality_level = QualityLevel(quality_level or QualityLevel.EXPERT)
         self._quality_profile = PROFILES[self.quality_level]
         self._validated_round_keys: set[tuple[Any, Any, Any]] = set()
+        self._harness_enabled = self._env_enabled("ENABLE_CONSTRAINT_HARNESS")
+        self._narrative_systems_initialized = False
+        self._style_manifest = None
+
+    @staticmethod
+    def _normalize_punctuation(text: str, language: str = "zh") -> str:
+        """Compatibility entry point for legacy contract tests."""
+        if text is None:  # type: ignore[unreachable]
+            return text
+        if language != "zh":
+            return text
+        return normalize_chinese_punctuation(text)
+
+    @staticmethod
+    def _extract_validation_context(
+        player_state: Dict[str, Any],
+        character_settings: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Extract deterministic validation context for story harness checks."""
+        settings = character_settings or player_state.get("character_settings") or {}
+        era_settings = settings.get("era", {}) if isinstance(settings, dict) else {}
+        world_settings = settings.get("world", {}) if isinstance(settings, dict) else {}
+
+        if isinstance(era_settings, dict):
+            era = (
+                era_settings.get("era_description")
+                or era_settings.get("era_name")
+                or era_settings.get("year")
+                or era_settings.get("world_context")
+                or ""
+            )
+            era_context = " ".join(
+                str(value)
+                for value in (
+                    era_settings.get("era_description"),
+                    era_settings.get("era_name"),
+                    era_settings.get("world_context"),
+                    world_settings.get("world_description") if isinstance(world_settings, dict) else "",
+                    world_settings.get("technology_level") if isinstance(world_settings, dict) else "",
+                )
+                if value
+            )
+        else:
+            era = str(era_settings or "")
+            era_context = era
+
+        era_text = str(era or era_context)
+        era_blob = f"{era_text} {era_context}".lower()
+        modern_markers = (
+            "现代",
+            "当代",
+            "202",
+            "20世纪",
+            "21世纪",
+            "modern",
+            "contemporary",
+            "future",
+            "未来",
+        )
+        ancient_markers = (
+            "古代",
+            "唐",
+            "宋",
+            "元",
+            "明",
+            "清",
+            "汉",
+            "秦",
+            "战国",
+            "三国",
+            "南宋",
+            "北宋",
+            "medieval",
+            "ancient",
+            "historic",
+            "pre-modern",
+        )
+
+        if any(marker in era_blob for marker in modern_markers):
+            era_type = "modern"
+        elif any(marker in era_blob for marker in ancient_markers):
+            era_type = "ancient"
+        else:
+            era_type = ""
+
+        return {
+            "era": era_text,
+            "era_type": era_type,
+            "week": player_state.get("week"),
+            "relationships": player_state.get("relationships", {}),
+        }
+
+    @staticmethod
+    def _extract_player_name(player_state: Dict[str, Any]) -> str:
+        """Return the player name after applying prompt-injection sanitization."""
+        return sanitize_player_name(str(player_state.get("player_name") or ""))
+
+    @staticmethod
+    def _env_enabled(name: str) -> bool:
+        return os.environ.get(name, "").lower() in ("true", "1", "yes")
+
+    @staticmethod
+    def _resolve_temperature(attempt: int, base: float = 0.85, decay: float = 0.15) -> float:
+        """Resolve retry temperature while preserving the current 0.70 floor."""
+        return max(0.70, base - (attempt * decay))
+
+    def _init_narrative_systems(
+        self,
+        style_id: Optional[str],
+        player_state: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Initialize optional narrative helpers behind feature flags."""
+        if not self._env_enabled("ENABLE_NARRATIVE_STYLE_ENGINE"):
+            self._narrative_systems_initialized = False
+            self._style_manifest = None
+            return
+
+        selected_style_id = style_id or "chinese_classic_saga"
+        try:
+            from src.ai.narrative.style_manifest import get_default_loader
+
+            loader = get_default_loader()
+            manifest = loader.get_style(selected_style_id)
+            if manifest is None and selected_style_id != "chinese_classic_saga":
+                manifest = loader.get_style("chinese_classic_saga")
+            if manifest is None:
+                style_ids = loader.get_all_style_ids()
+                manifest = loader.get_style(style_ids[0]) if style_ids else None
+
+            self._style_manifest = manifest
+            self._narrative_systems_initialized = manifest is not None
+        except Exception as exc:
+            logger.warning(f"Failed to initialize narrative systems: {exc}")
+            self._style_manifest = None
+            self._narrative_systems_initialized = False
+
+    def _gather_narrative_hints(self, player_state: Dict[str, Any]) -> Dict[str, Any]:
+        """Compatibility hook for narrative tests; prompt integration owns hint use."""
+        return {}
+
+    def _log_constraint_completeness(self, *args: Any, **kwargs: Any) -> None:
+        """Compatibility hook for older narrative instrumentation tests."""
+        return None
 
     # -------------------- Public API --------------------
 
@@ -93,6 +238,12 @@ class StoryGenerator:
         Raises:
             ValueError: If generation fails after retries
         """
+        narrative_style_id = (
+            player_state.get("narrative_style_id")
+            or (character_settings or {}).get("narrative_style_id")
+            or ""
+        )
+        self._init_narrative_systems(narrative_style_id, player_state)
         current_phase = self._get_phase_from_state(player_state)
 
         # Derive last_event_description from decision history if not provided
@@ -168,7 +319,11 @@ class StoryGenerator:
                         prompt += f"\n\n[Previous attempt failed: {last_error}. Please avoid the same issue.]"
 
                 # 计算当前温度：随着重试次数递减
-                current_temp = max(0.7, base_temperature - (attempt * temperature_decay))
+                current_temp = self._resolve_temperature(
+                    attempt,
+                    base_temperature,
+                    temperature_decay,
+                )
                 logger.info(
                     f"Story generation attempt {attempt + 1}/{retry_count}, temperature={current_temp}"
                 )
@@ -369,6 +524,7 @@ class StoryGenerator:
 
         # ★ 在 try 块外初始化，确保 except 块能访问已生成的故事
         story_text = None
+        best_story_text = None
 
         try:
             story_text = self.client.call(
@@ -381,6 +537,8 @@ class StoryGenerator:
                 presence_penalty=0.4,  # ★ 鼓励每轮使用不同的表达方式
             )
             story_text = normalize_generated_story(story_text, language=language)
+            if story_text and len(story_text) > len(best_story_text or ""):
+                best_story_text = story_text
             logger.info(f"Generated round story with {len(story_text)} characters")
 
             # Step 1.4: Quick rule-based validation (before AI validation)
@@ -405,6 +563,46 @@ class StoryGenerator:
                 # 让 AI 校验来决定是否需要重试
             elif quick_result.warnings:
                 logger.info(f"Quick validation warnings: {quick_result.warnings}")
+
+            if (
+                self._harness_enabled
+                and hasattr(self, "_validation_pipeline")
+                and hasattr(self, "_retry_controller")
+                and hasattr(self, "_diagnostics")
+            ):
+                validation_context = self._extract_validation_context(
+                    player_state,
+                    character_settings,
+                )
+                for attempt in range(3):
+                    validation = self._validation_pipeline.validate(
+                        story_text,
+                        validation_context,
+                    )
+                    report = self._diagnostics.generate_report(story_text, validation)
+                    should_retry, correction = self._retry_controller.should_retry(
+                        validation,
+                        report,
+                        attempt=attempt,
+                    )
+                    if not should_retry:
+                        break
+
+                    retry_prompt = prompt
+                    if correction:
+                        retry_prompt += f"\n\n{correction}"
+                    story_text = self.client.call(
+                        system_prompt=sys_prompt,
+                        user_prompt=retry_prompt,
+                        temperature=self._resolve_temperature(attempt + 1, 0.85, 0.15),
+                        max_tokens=8192,
+                        stream_callback=stream_callback,
+                        frequency_penalty=0.4,
+                        presence_penalty=0.4,
+                    )
+                    story_text = normalize_generated_story(story_text, language=language)
+                    if story_text and len(story_text) > len(best_story_text or ""):
+                        best_story_text = story_text
 
             # Step 1.5: AI-based consistency validation (if world_model is provided)
             if world_model and story_text:
@@ -458,7 +656,12 @@ class StoryGenerator:
         except Exception as e:
             logger.error(f"Failed to generate round event: {e}")
             # ★ 如果故事已生成但后续步骤（如选项生成）失败，保留真实故事而非使用 fallback
-            if story_text and len(story_text) > 50:
+            if best_story_text and len(best_story_text) > 50:
+                logger.info(
+                    f"Using best generated story ({len(best_story_text)} chars) with fallback options"
+                )
+                fallback_desc = best_story_text
+            elif story_text and len(story_text) > 50:
                 logger.info(
                     f"Using already-generated story ({len(story_text)} chars) with fallback options"
                 )

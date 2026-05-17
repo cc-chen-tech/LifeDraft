@@ -1,9 +1,11 @@
 """Image generation router - 图片生成API路由"""
 
 import logging
+import json
 from typing import Generator, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user, get_current_user_optional
@@ -26,6 +28,24 @@ from src.services.image_storage import ImageStorageError, ImageStorageService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+_scene_image_latest: dict[str, dict] = {}
+
+
+def _get_event_key(game_id: int, week: int, round_number: int, stage: str) -> str:
+    """Return the stable cache key for a scene-image SSE event."""
+    return f"{game_id}:{week}:{round_number}:{stage}"
+
+
+def _publish_scene_image_event(event: dict) -> None:
+    """Publish the latest scene-image event for SSE consumers."""
+    key = _get_event_key(
+        int(event.get("game_id", 0)),
+        int(event.get("week", 0)),
+        int(event.get("round_number", 0)),
+        str(event.get("stage") or "result"),
+    )
+    _scene_image_latest[key] = event
 
 
 def get_session() -> Generator[Session, None, None]:
@@ -740,11 +760,7 @@ async def get_image_file(
             content=image_data,
             media_type=content_type,
             headers={
-                # ★ 不缓存图片文件，确保重新生成后能立即看到新图片
-                # 前端通过 URL 参数 t=timestamp 实现缓存控制
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-                "Pragma": "no-cache",
-                "Expires": "0",
+                "Cache-Control": "public, max-age=3600",
             },
         )
 
@@ -763,6 +779,29 @@ async def get_image_file(
 
 
 # ==================== 每轮场景插画 API ====================
+
+
+@router.get("/scene/events/{game_id}")
+async def stream_scene_image_events(
+    game_id: int,
+    user: Optional[User] = Depends(get_current_user_optional),
+):
+    """Return latest scene image generation events as SSE."""
+
+    def event_stream():
+        for event in list(_scene_image_latest.values()):
+            if int(event.get("game_id", -1)) == game_id:
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n".encode("utf-8")
+                return
+
+        heartbeat = {"type": "heartbeat", "game_id": game_id}
+        yield f"data: {json.dumps(heartbeat, ensure_ascii=False)}\n\n".encode("utf-8")
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @router.get("/scene/{game_id}/{round_number}")
@@ -1218,6 +1257,26 @@ def _trigger_scene_generation_in_background(
                 )
 
                 if scene_image:
+                    image_url = image_storage.get_image_url(
+                        str(scene_image.storage_path),
+                        str(scene_image.storage_type),
+                    )
+                    _publish_scene_image_event(
+                        {
+                            "type": "scene_image_ready",
+                            "game_id": game_id,
+                            "round_number": round_number,
+                            "week": week,
+                            "stage": stage,
+                            "image_url": image_url,
+                            "scene_description": scene_image.scene_description,
+                            "timestamp": (
+                                scene_image.created_at.isoformat()
+                                if scene_image.created_at
+                                else None
+                            ),
+                        }
+                    )
                     logger.info(
                         f"[Background Generation] Scene generated successfully: "
                         f"scene_id={scene_image.scene_id}, game={game_id}, {week_display}, "
@@ -1230,6 +1289,16 @@ def _trigger_scene_generation_in_background(
                     )
 
             except Exception as e:
+                _publish_scene_image_event(
+                    {
+                        "type": "scene_image_failed",
+                        "game_id": game_id,
+                        "round_number": round_number,
+                        "week": week,
+                        "stage": stage,
+                        "error": str(e),
+                    }
+                )
                 logger.exception(f"[Background Generation] Error in thread: {e}")
             finally:
                 db.close()

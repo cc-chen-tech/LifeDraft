@@ -79,6 +79,14 @@ def test_browser_regression_change_is_validated_in_preflight() -> None:
     assert "openspec validate codify-browser-exploration-regressions --strict" in script
 
 
+def test_backend_legacy_restoration_change_is_validated_in_preflight() -> None:
+    """Legacy backend restoration OpenSpec contract must stay in preflight."""
+
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+
+    assert "openspec validate restore-backend-legacy-contracts --strict" in script
+
+
 def test_browser_regression_preflight_file_is_wired() -> None:
     """New browser-agent regression tests must not be left out of preflight."""
 
