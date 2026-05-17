@@ -158,3 +158,15 @@ def test_deterministic_voice_audio_bytes_are_playable_wav() -> None:
     assert audio[12:16] == b"fmt "
     assert audio[36:40] == b"data"
     assert len(audio) > 4_000
+
+
+def test_deterministic_voice_audio_duration_leaves_room_for_browser_controls() -> None:
+    audio = build_deterministic_wav("fixture-audio-hash", "warm_female")
+
+    import wave
+    from io import BytesIO
+
+    with wave.open(BytesIO(audio), "rb") as wav:
+        duration_seconds = wav.getnframes() / wav.getframerate()
+
+    assert duration_seconds >= 2.0

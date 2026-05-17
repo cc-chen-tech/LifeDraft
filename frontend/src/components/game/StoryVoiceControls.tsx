@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import { Pause, Play, RotateCcw, Square, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ReadingContext } from "@/lib/types";
@@ -30,6 +31,7 @@ export function StoryVoiceControls({
   const startReading = useStoryVoiceStore((state) => state.startReading);
   const pauseReading = useStoryVoiceStore((state) => state.pauseReading);
   const stopReading = useStoryVoiceStore((state) => state.stopReading);
+  const completeReading = useStoryVoiceStore((state) => state.completeReading);
   const retryReading = useStoryVoiceStore((state) => state.retryReading);
   const failReading = useStoryVoiceStore((state) => state.failReading);
   const setAutoReadEnabled = useStoryVoiceStore((state) => state.setAutoReadEnabled);
@@ -39,7 +41,33 @@ export function StoryVoiceControls({
     (state) => state.userPauseMusicDuringReading
   );
 
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const textSize = compact ? "text-xs" : "text-sm";
+
+  const handlePause = () => {
+    audioRef.current?.pause();
+    pauseReading();
+  };
+
+  const handleContinue = () => {
+    const audio = audioRef.current;
+    if (audio) {
+      if (audio.ended) {
+        audio.currentTime = 0;
+      }
+      void audio.play().catch(failReading);
+    }
+    retryReading();
+  };
+
+  const handleStop = () => {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+    }
+    stopReading();
+  };
 
   return (
     <section
@@ -70,22 +98,22 @@ export function StoryVoiceControls({
           </Button>
         )}
         {readingState === "playing" ? (
-          <Button type="button" size="sm" variant="ghost" onClick={pauseReading}>
+          <Button type="button" size="sm" variant="ghost" onClick={handlePause}>
             <Pause className="w-4 h-4 mr-1.5" />
             暂停朗读
           </Button>
         ) : (
-          <Button type="button" size="sm" variant="ghost" onClick={retryReading}>
+          <Button type="button" size="sm" variant="ghost" onClick={handleContinue}>
             <Play className="w-4 h-4 mr-1.5" />
             继续朗读
           </Button>
         )}
-        <Button type="button" size="sm" variant="ghost" onClick={stopReading}>
+        <Button type="button" size="sm" variant="ghost" onClick={handleStop}>
           <Square className="w-4 h-4 mr-1.5" />
           停止朗读
         </Button>
         {readingState === "failed" && (
-          <Button type="button" size="sm" variant="ghost" onClick={retryReading}>
+          <Button type="button" size="sm" variant="ghost" onClick={handleContinue}>
             <RotateCcw className="w-4 h-4 mr-1.5" />
             重试朗读
           </Button>
@@ -149,14 +177,14 @@ export function StoryVoiceControls({
           音乐: <span data-testid="music-duck-state">{musicDuckState}</span>
         </span>
       </div>
-      {currentAudioUrl && (
-        <audio
-          data-testid="voice-reading-audio-player"
-          src={currentAudioUrl}
-          autoPlay
-          preload="auto"
-        />
-      )}
+      <audio
+        ref={audioRef}
+        data-testid="voice-reading-audio-player"
+        src={currentAudioUrl || undefined}
+        autoPlay={Boolean(currentAudioUrl)}
+        preload="auto"
+        onEnded={completeReading}
+      />
     </section>
   );
 }

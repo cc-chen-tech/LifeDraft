@@ -22,6 +22,7 @@ interface StoryVoiceState {
   startReading: (context: ReadingContext) => Promise<void>;
   pauseReading: () => void;
   stopReading: () => void;
+  completeReading: () => void;
   retryReading: () => void;
   failReading: () => void;
   setAutoReadEnabled: (enabled: boolean) => void;
@@ -102,6 +103,14 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       readingState: "idle",
       currentAudioUrl: "",
       currentJobId: null,
+      musicDuckState:
+        musicDuckState === "ducked" && !userChangedMusic ? "restored" : musicDuckState,
+    });
+  },
+  completeReading: () => {
+    const { musicDuckState, userChangedMusic } = get();
+    set({
+      readingState: "idle",
       musicDuckState:
         musicDuckState === "ducked" && !userChangedMusic ? "restored" : musicDuckState,
     });
