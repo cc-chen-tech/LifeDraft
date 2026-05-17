@@ -2,11 +2,6 @@ name: Deploy Production
 
 on:
   workflow_dispatch:
-    inputs:
-      ref:
-        description: "Git ref to deploy. Defaults to the latest main commit."
-        required: false
-        default: "main"
   workflow_run:
     workflows: ["E2E Tests"]
     types: [completed]
@@ -34,18 +29,14 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const inputRef = context.payload.inputs?.ref || 'main';
-            let deployRef = inputRef;
+            const deployRef = 'main';
             let deploySha = context.payload.workflow_run?.head_sha;
 
             if (!deploySha) {
-              const refName = inputRef.startsWith('refs/')
-                ? inputRef
-                : `heads/${inputRef}`;
               const { data } = await github.rest.git.getRef({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                ref: refName,
+                ref: 'heads/main',
               });
               deploySha = data.object.sha;
             }
@@ -54,7 +45,6 @@ jobs:
             core.setOutput('deploy_sha', deploySha);
 
       - name: Require successful main CI
-        if: github.event_name == 'workflow_run'
         uses: actions/github-script@v7
         with:
           script: |
