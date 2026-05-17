@@ -17,6 +17,7 @@ interface StoryVoiceState {
   playbackMode: StoryVoicePlaybackMode;
   spokenTextLength: number;
   currentSpeechText: string;
+  lastReadingContext: ReadingContext | null;
   errorMessage: string;
   queueText: string;
   autoReadEnabled: boolean;
@@ -27,7 +28,7 @@ interface StoryVoiceState {
   pauseReading: () => void;
   stopReading: () => void;
   completeReading: () => void;
-  retryReading: () => void;
+  retryReading: () => Promise<void>;
   failReading: () => void;
   setAutoReadEnabled: (enabled: boolean) => void;
   enqueueCompletedAttempt: (text: string) => void;
@@ -83,6 +84,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
   playbackMode: "none",
   spokenTextLength: 0,
   currentSpeechText: "",
+  lastReadingContext: null,
   errorMessage: "",
   queueText: "",
   autoReadEnabled: false,
@@ -103,6 +105,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       currentSpeechText: "",
       playbackMode: "none",
       spokenTextLength: 0,
+      lastReadingContext: context,
       errorMessage: "",
       musicDuckState: musicWasPlaying ? "ducked" : get().musicDuckState,
       userChangedMusic: false,
@@ -243,9 +246,14 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
     });
   },
-  retryReading: () => {
-    getSpeechSynthesis()?.resume();
-    set({ readingState: "playing" });
+  retryReading: async () => {
+    const context = get().lastReadingContext;
+    if (!context) {
+      getSpeechSynthesis()?.resume();
+      set({ readingState: "playing" });
+      return;
+    }
+    await get().startReading(context);
   },
   failReading: () => {
     const { musicDuckState, userChangedMusic } = get();

@@ -1,0 +1,38 @@
+{
+  "source": "pytest .pytest_cache/v/cache/lastfailed after full backend coverage run",
+  "collected_tests": 3187,
+  "last_full_backend_result": {
+    "passed": 3100,
+    "failed": 67,
+    "errors": 13,
+    "skipped": 1,
+    "xfailed": 6,
+    "coverage_percent": 71.18
+  },
+  "lastfailed_files": {
+    "tests/test_chinese_text_normalization_contract.py": 10,
+    "tests/test_music_cache_integration.py": 8,
+    "tests/test_music_cache_contract.py": 7,
+    "tests/test_music_service.py": 7,
+    "tests/test_music_service_health_contract.py": 7,
+    "tests/test_scene_image_sse_integration.py": 5,
+    "tests/test_sse_retry_contract.py": 5,
+    "tests/test_scene_image_sse_contract.py": 4,
+    "tests/test_era_validator_integration.py": 3,
+    "tests/test_image_cache_contract.py": 3,
+    "tests/test_music_router.py": 3,
+    "tests/test_story_generator_narrative.py": 3,
+    "tests/test_era_validator_production_contract.py": 2,
+    "tests/test_frontend_contract_alignment.py": 2,
+    "tests/test_music_era_recommendation_contract.py": 2,
+    "tests/security/test_api_security.py": 1,
+    "tests/test_contracts_new_features.py": 1,
+    "tests/test_error_recovery_contract.py": 1,
+    "tests/test_harness_retry_loop.py": 1,
+    "tests/test_music_service_url_contract.py": 1,
+    "tests/test_narrative_integration.py": 1,
+    "tests/test_security_prompt_injection_contract.py": 1,
+    "tests/test_security_sqlalchemy_raw_sql_contract.py": 1,
+    "tests/test_story_generator_best_story_db.py": 1
+  }
+}

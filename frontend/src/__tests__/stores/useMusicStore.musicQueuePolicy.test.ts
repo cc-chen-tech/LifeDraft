@@ -63,6 +63,18 @@ describe("music queue policy", () => {
     expect(state.queue[2].source).toBe("ai_generated");
   });
 
+  it("store mergePlaylist preserves played history when backend songs refresh", async () => {
+    useMusicStore.setState({
+      currentSong: song(1, "Current"),
+      queue: [song(2, "NearTerm")],
+      playedSongs: [song(0, "Already Heard")],
+    });
+
+    await useMusicStore.getState().mergePlaylist(101, [song(3, "Fresh")]);
+
+    expect(useMusicStore.getState().playedSongs.map((item) => item.id)).toEqual([0]);
+  });
+
   it("source label helper surfaces AI tracks without labeling Netease as mandatory", () => {
     expect(getMusicSourceLabel("ai_generated")).toBe("AI");
     expect(getMusicSourceLabel("netease")).toBe("");

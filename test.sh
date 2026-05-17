@@ -113,11 +113,16 @@ run_preflight() {
     local story_voice_openspec_code=$?
     openspec validate add-provider-backed-story-tts --strict
     local story_tts_openspec_code=$?
+    openspec validate harden-test-coverage-and-gate-fidelity --strict
+    local coverage_gate_openspec_code=$?
+    openspec validate codify-browser-exploration-regressions --strict
+    local browser_regression_openspec_code=$?
 
     echo -e "${YELLOW}运行前置 gate 测试...${NC}"
     python -m pytest \
         tests/test_gate_preflight_no_mock.py \
         tests/test_gate_gameplay_behavior_no_mock.py \
+        tests/test_gate_coverage_fidelity_no_mock.py \
         tests/test_gate_contracts_no_mock.py \
         tests/test_music_degradation_no_mock.py \
         tests/test_sse_timeout_contract.py \
@@ -135,6 +140,7 @@ run_preflight() {
     cd "$PROJECT_DIR/frontend"
     npx jest \
         src/__tests__/preflight/storyContinuityPreflight.test.tsx \
+        src/__tests__/preflight/browserExplorationRegressionPreflight.test.tsx \
         src/__tests__/lib/sse.test.ts \
         src/__tests__/stores/useGameStore.test.ts \
         src/__tests__/pages/CreatePage.test.tsx \
@@ -149,7 +155,7 @@ run_preflight() {
     cd "$PROJECT_DIR"
 
     local result=0
-    if [ $openspec_code -ne 0 ] || [ $music_openspec_code -ne 0 ] || [ $redesign_openspec_code -ne 0 ] || [ $shift_left_openspec_code -ne 0 ] || [ $story_voice_openspec_code -ne 0 ] || [ $story_tts_openspec_code -ne 0 ] || [ $gate_code -ne 0 ] || [ $tsc_code -ne 0 ] || [ $jest_code -ne 0 ]; then
+    if [ $openspec_code -ne 0 ] || [ $music_openspec_code -ne 0 ] || [ $redesign_openspec_code -ne 0 ] || [ $shift_left_openspec_code -ne 0 ] || [ $story_voice_openspec_code -ne 0 ] || [ $story_tts_openspec_code -ne 0 ] || [ $coverage_gate_openspec_code -ne 0 ] || [ $browser_regression_openspec_code -ne 0 ] || [ $gate_code -ne 0 ] || [ $tsc_code -ne 0 ] || [ $jest_code -ne 0 ]; then
         result=1
     fi
 
@@ -325,8 +331,21 @@ run_e2e_browser() {
         --no-deps
     local story_voice_result=$?
 
+    local story101_exploration_result=0
+    if [ "${STORY101_DEEP_EXPLORATION:-0}" = "1" ]; then
+        echo -e "${YELLOW}运行 Story101 深度浏览器探索测试...${NC}"
+        npx playwright test e2e/story101-exploration.spec.ts \
+            --project=story101-exploration \
+            --reporter=list \
+            --workers=1 \
+            --no-deps
+        story101_exploration_result=$?
+    else
+        echo -e "${YELLOW}跳过 Story101 深度探索；设置 STORY101_DEEP_EXPLORATION=1 可纳入 e2e。${NC}"
+    fi
+
     local result=0
-    if [ $core_result -ne 0 ] || [ $music_ai_result -ne 0 ] || [ $story_voice_result -ne 0 ]; then
+    if [ $core_result -ne 0 ] || [ $music_ai_result -ne 0 ] || [ $story_voice_result -ne 0 ] || [ $story101_exploration_result -ne 0 ]; then
         result=1
     fi
     
@@ -451,28 +470,72 @@ run_backend() {
     return $result
 }
 
+# Maintained 后端覆盖率
+run_coverage_maintained_backend() {
+    echo -e "${BLUE}========================================${NC}"
+    echo -e "${YELLOW}运行 maintained backend 覆盖率报告...${NC}"
+    echo -e "${BLUE}========================================${NC}"
+
+    cd "$PROJECT_DIR"
+    activate_python_env
+    pytest \
+        tests/test_gate_preflight_no_mock.py \
+        tests/test_gate_gameplay_behavior_no_mock.py \
+        tests/test_gate_coverage_fidelity_no_mock.py \
+        tests/test_gate_static_no_mock.py \
+        tests/test_imports.py \
+        tests/test_gate_imports_no_mock.py \
+        tests/test_api_contract.py \
+        tests/test_gate_contracts_no_mock.py \
+        tests/test_music_playlist_contract.py \
+        tests/test_shift_left_e2e_contract_no_mock.py \
+        tests/test_story_music_recommendation_contract.py \
+        tests/test_story_voice_reading_contract.py \
+        tests/test_ui_bottom_layout_contract_no_mock.py \
+        tests/test_integration_real_db.py \
+        tests/test_database.py \
+        tests/test_gate_real_db_no_mock.py \
+        tests/test_story_music_recommendation_db.py \
+        tests/test_story_voice_reading_db.py \
+        tests/test_music_degradation_no_mock.py \
+        --cov=src --cov-report=term-missing --cov-report=html:htmlcov/maintained-backend --cov-fail-under=25
+}
+
+# Full 后端覆盖率（当前用于可见性；只有 full suite 绿色后才应作为阻塞 gate）
+run_coverage_full_backend() {
+    echo -e "${BLUE}========================================${NC}"
+    echo -e "${YELLOW}运行 full backend 覆盖率报告...${NC}"
+    echo -e "${BLUE}========================================${NC}"
+
+    cd "$PROJECT_DIR"
+    activate_python_env
+    pytest tests/ --cov=src --cov-report=term-missing --cov-report=html:htmlcov/full-backend
+}
+
 # 覆盖率测试
 run_coverage() {
     echo -e "${BLUE}========================================${NC}"
     echo -e "${YELLOW}运行测试并生成覆盖率报告...${NC}"
     echo -e "${BLUE}========================================${NC}"
-    
-    # 后端覆盖率
-    echo -e "${YELLOW}--- 后端覆盖率 ---${NC}"
-    cd "$PROJECT_DIR"
-    activate_python_env
-    pytest tests/ --cov=src --cov-report=term-missing --cov-report=html:htmlcov/backend
-    
+
+    run_coverage_maintained_backend
+    local backend_result=$?
+
     # 前端覆盖率
     echo ""
     echo -e "${YELLOW}--- 前端覆盖率 ---${NC}"
     cd "$PROJECT_DIR/frontend"
     npm test -- --coverage --coverageReporters=text --coverageReporters=html
+    local frontend_result=$?
     
     echo ""
     echo -e "${GREEN}覆盖率报告已生成:${NC}"
-    echo "  后端: $PROJECT_DIR/htmlcov/backend/index.html"
+    echo "  Maintained 后端: $PROJECT_DIR/htmlcov/maintained-backend/index.html"
     echo "  前端: $PROJECT_DIR/frontend/coverage/lcov-report/index.html"
+
+    local result=0
+    [ $backend_result -ne 0 ] || [ $frontend_result -ne 0 ] && result=1
+    return $result
 }
 
 # 安全扫描
@@ -616,6 +679,8 @@ show_help() {
     echo "  backend       - 运行后端全量 pytest 测试"
     echo "  frontend      - 运行前端 tsc + Jest 测试"
     echo "  coverage      - 运行测试并生成覆盖率报告"
+    echo "  coverage-maintained-backend - 运行 maintained backend 覆盖率"
+    echo "  coverage-full-backend       - 运行 full backend 覆盖率（可见性，不代表 gate 通过）"
     echo "  security      - 运行安全扫描 (Bandit)"
     echo "  perf          - 运行性能测试 (Locust)"
     echo "  help          - 显示此帮助信息"
@@ -666,6 +731,12 @@ case "$1" in
         ;;
     coverage)
         run_coverage
+        ;;
+    coverage-maintained-backend)
+        run_coverage_maintained_backend
+        ;;
+    coverage-full-backend)
+        run_coverage_full_backend
         ;;
     security)
         run_security

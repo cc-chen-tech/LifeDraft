@@ -309,7 +309,6 @@ export const useMusicStore = create<MusicState>((set, get) => ({
     set({
       currentSong: merged.currentSong,
       queue: merged.queue,
-      playedSongs: [],
     });
   },
 

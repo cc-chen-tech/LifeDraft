@@ -7,8 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  python-coverage:
-    name: Python Coverage
+  maintained-backend-coverage:
+    name: Maintained Backend Coverage
     runs-on: ubuntu-latest
 
     steps:
@@ -46,19 +46,24 @@ jobs:
           pytest \
             tests/test_gate_preflight_no_mock.py \
             tests/test_gate_gameplay_behavior_no_mock.py \
+            tests/test_gate_coverage_fidelity_no_mock.py \
             tests/test_gate_static_no_mock.py \
             tests/test_imports.py \
             tests/test_gate_imports_no_mock.py \
             tests/test_api_contract.py \
             tests/test_gate_contracts_no_mock.py \
+            tests/test_music_playlist_contract.py \
             tests/test_shift_left_e2e_contract_no_mock.py \
             tests/test_story_music_recommendation_contract.py \
+            tests/test_story_voice_reading_contract.py \
+            tests/test_ui_bottom_layout_contract_no_mock.py \
             tests/test_integration_real_db.py \
             tests/test_database.py \
             tests/test_gate_real_db_no_mock.py \
             tests/test_story_music_recommendation_db.py \
+            tests/test_story_voice_reading_db.py \
             tests/test_music_degradation_no_mock.py \
-            --cov=src --cov-report=xml --cov-report=term
+            --cov=src --cov-report=xml --cov-report=term --cov-fail-under=25
         env:
           PYTHONPATH: ${{ github.workspace }}
           TESTING: 'true'
@@ -72,8 +77,8 @@ jobs:
         uses: codecov/codecov-action@v4
         with:
           files: ./coverage.xml
-          flags: python
-          name: python-coverage
+          flags: maintained-backend
+          name: maintained-backend-coverage
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 

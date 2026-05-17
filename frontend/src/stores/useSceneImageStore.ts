@@ -586,7 +586,10 @@ export const useSceneImageStore = create<SceneImageState>()(
 
           if (data.type === "scene_image_failed") {
             console.warn(`[SSE] Scene generation failed: ${data.error}`);
-            set({ isLoadingRoundSceneImage: false });
+            set({
+              isLoadingRoundSceneImage: false,
+              roundSceneRegenerateError: data.error || "场景插画生成失败",
+            });
             return;
           }
 

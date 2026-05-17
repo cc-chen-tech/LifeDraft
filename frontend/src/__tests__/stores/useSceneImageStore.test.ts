@@ -8,6 +8,26 @@
 import { useSceneImageStore } from '@/stores/useSceneImageStore';
 import { jsonResponse, errorResponse } from '@/__tests__/helpers/fetch';
 
+class MockEventSource {
+  static instances: MockEventSource[] = [];
+  onopen: (() => void) | null = null;
+  onmessage: ((event: { data: string }) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+  close = jest.fn();
+
+  constructor(public url: string) {
+    MockEventSource.instances.push(this);
+  }
+
+  emit(data: unknown) {
+    this.onmessage?.({ data: JSON.stringify(data) });
+  }
+
+  static reset() {
+    MockEventSource.instances = [];
+  }
+}
+
 describe('useSceneImageStore', () => {
   beforeEach(() => {
     // Reset store to initial state
@@ -23,9 +43,11 @@ describe('useSceneImageStore', () => {
       isLoadingHistoryImage: false,
       isGeneratingHistoryImage: false,
       isRegeneratingHistoryImage: false,
+      sseConnection: null,
     });
     jest.clearAllMocks();
     global.fetch = jest.fn();
+    MockEventSource.reset();
   });
 
   describe('fetchAllRoundSceneImages - 跨周次场景测试', () => {
@@ -386,6 +408,80 @@ describe('useSceneImageStore', () => {
       
       const state = useSceneImageStore.getState();
       expect(state.historySceneImage?.scene_id).toBe(1);
+    });
+  });
+
+  describe('scene image SSE recovery', () => {
+    const originalEventSource = global.EventSource;
+
+    beforeEach(() => {
+      (global as unknown as { EventSource: typeof MockEventSource }).EventSource = MockEventSource;
+      jest.spyOn(console, 'log').mockImplementation(() => undefined);
+      jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      (global as unknown as { EventSource: typeof EventSource }).EventSource = originalEventSource;
+      jest.restoreAllMocks();
+    });
+
+    it('records scene_image_failed SSE errors while clearing loading state', () => {
+      useSceneImageStore.setState({
+        isLoadingRoundSceneImage: true,
+        roundSceneRegenerateError: null,
+      });
+
+      useSceneImageStore.getState().subscribeToSceneImageEvents(101);
+      MockEventSource.instances[0].emit({
+        type: 'scene_image_failed',
+        game_id: 101,
+        week: 3,
+        round_number: 2,
+        stage: 'result',
+        error: 'provider timeout',
+        timestamp: '2026-05-17T00:00:00',
+      });
+
+      expect(useSceneImageStore.getState()).toMatchObject({
+        isLoadingRoundSceneImage: false,
+        roundSceneRegenerateError: 'provider timeout',
+      });
+    });
+
+    it('replaces same week round stage image from scene_image_ready SSE events', () => {
+      useSceneImageStore.setState({
+        roundSceneImages: [
+          {
+            scene_id: 1,
+            week: 3,
+            round_number: 2,
+            stage: 'result',
+            image_url: 'old.png',
+            scene_description: 'old',
+            referenced_images: [],
+            created_at: 'old',
+          },
+        ],
+      });
+
+      useSceneImageStore.getState().subscribeToSceneImageEvents(101);
+      MockEventSource.instances[0].emit({
+        type: 'scene_image_ready',
+        scene_id: 9,
+        game_id: 101,
+        week: 3,
+        round_number: 2,
+        stage: 'result',
+        image_url: 'new.png',
+        scene_description: 'new',
+        timestamp: '2026-05-17T00:00:00',
+      });
+
+      const state = useSceneImageStore.getState();
+      expect(state.roundSceneImages).toHaveLength(1);
+      expect(state.currentRoundSceneImage?.scene_id).toBe(9);
+      expect(state.resultSceneImage?.image_url).toBe('new.png');
+      expect(state.roundSceneImages[0].image_url).toBe('new.png');
     });
   });
 });
