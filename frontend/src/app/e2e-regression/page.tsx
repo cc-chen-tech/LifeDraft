@@ -195,6 +195,7 @@ export default function E2ERegressionPage() {
               : null
           }
           autoReadText={autoReadText}
+          showTestControls
         />
       </section>
 

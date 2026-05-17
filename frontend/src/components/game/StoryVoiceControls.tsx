@@ -11,6 +11,7 @@ interface StoryVoiceControlsProps {
   historyContext?: ReadingContext | null;
   autoReadText?: string;
   compact?: boolean;
+  showTestControls?: boolean;
 }
 
 export function StoryVoiceControls({
@@ -18,6 +19,7 @@ export function StoryVoiceControls({
   historyContext,
   autoReadText,
   compact = false,
+  showTestControls = false,
 }: StoryVoiceControlsProps) {
   const readingState = useStoryVoiceStore((state) => state.readingState);
   const currentSource = useStoryVoiceStore((state) => state.currentSource);
@@ -141,33 +143,35 @@ export function StoryVoiceControls({
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          size="sm"
-          variant={autoReadEnabled ? "default" : "outline"}
-          onClick={() => setAutoReadEnabled(!autoReadEnabled)}
-        >
-          {autoReadEnabled ? "关闭自动朗读" : "启用自动朗读"}
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={() => enqueueCompletedAttempt(autoReadText || currentContext.text)}
-        >
-          完成自动朗读入队
-        </Button>
-        <Button type="button" size="sm" variant="outline" onClick={simulateMusicPlaying}>
-          模拟音乐播放中
-        </Button>
-        <Button type="button" size="sm" variant="outline" onClick={userPauseMusicDuringReading}>
-          用户手动暂停音乐
-        </Button>
-        <Button type="button" size="sm" variant="outline" onClick={failReading}>
-          模拟朗读失败
-        </Button>
-      </div>
+      {showTestControls && (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={autoReadEnabled ? "default" : "outline"}
+            onClick={() => setAutoReadEnabled(!autoReadEnabled)}
+          >
+            {autoReadEnabled ? "关闭自动朗读" : "启用自动朗读"}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => enqueueCompletedAttempt(autoReadText || currentContext.text)}
+          >
+            完成自动朗读入队
+          </Button>
+          <Button type="button" size="sm" variant="outline" onClick={simulateMusicPlaying}>
+            模拟音乐播放中
+          </Button>
+          <Button type="button" size="sm" variant="outline" onClick={userPauseMusicDuringReading}>
+            用户手动暂停音乐
+          </Button>
+          <Button type="button" size="sm" variant="outline" onClick={failReading}>
+            模拟朗读失败
+          </Button>
+        </div>
+      )}
 
       <div className={`${textSize} text-muted-foreground flex flex-wrap gap-3`}>
         <span>

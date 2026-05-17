@@ -39,9 +39,14 @@ test.describe('Story voice reading', () => {
 
     await expect(page.getByTestId('voice-reading-source')).toHaveText('history_round');
     await expect(page.getByTestId('voice-reading-context')).toContainText('week=3 round=2 stage=event');
-    await expect(page.getByTestId('voice-reading-job')).toHaveText(/^\d+$/);
     await expect(page.getByTestId('voice-reading-audio-url')).toContainText(
-      '/api/voice-reading/audio/'
+      '/api/voice-reading/audio/',
+      { timeout: 15_000 }
+    );
+    await expect(page.getByTestId('voice-reading-job')).toHaveText(/^\d+$/, { timeout: 15_000 });
+    await expect(page.getByTestId('voice-reading-audio-player')).toHaveJSProperty(
+      'readyState',
+      4
     );
   });
 
