@@ -20,9 +20,69 @@ from config.prompts._helpers import (
     _collect_available_people,
     _format_people_names,
 )
-from src.ai.prompt_sanitizer import sanitize_user_choice
+from src.ai.prompt_sanitizer import sanitize_player_name, sanitize_user_choice
 
 # ==================== 自定义选择相关 Prompts ====================
+
+
+def _resolve_protagonist_name(
+    player_state: Dict[str, Any],
+    character_settings: Optional[Dict[str, Any]],
+    explicit_name: Optional[str],
+) -> str:
+    """Resolve the canonical protagonist name from explicit input, state, or settings."""
+    raw_name = (
+        explicit_name
+        or player_state.get("player_name")
+        or (character_settings or {}).get("player_name")
+        or ""
+    )
+    return sanitize_player_name(str(raw_name)).strip() if raw_name else ""
+
+
+def _build_protagonist_identity_instruction(
+    protagonist_name: str,
+    gender_text: str,
+    language: str,
+) -> str:
+    if not protagonist_name and not gender_text:
+        return ""
+
+    if language == "zh":
+        lines = ["\n【主角身份硬约束】"]
+        if protagonist_name:
+            lines.append(
+                f"主角名称是：{protagonist_name}。必须始终使用这个名字称呼主角，"
+                "禁止编造其他名字，绝对禁止把主角改名为任何其他历史人物、模板人物或新名字。"
+            )
+        if gender_text:
+            lines.append(f"主角性别是：{gender_text}。叙事代词、称谓和社会身份必须与该性别一致。")
+        lines.append("如果时代背景会联想到知名人物，也只能作为背景参照，不能替换主角身份。")
+        return "\n".join(lines)
+
+    lines = ["\n[Protagonist Identity - Hard Constraint]"]
+    if protagonist_name:
+        lines.append(
+            f"The protagonist's exact name is: {protagonist_name}. Always use this name. "
+            "Never rename the protagonist as a historical figure, template character, or new invented name."
+        )
+    if gender_text:
+        lines.append(
+            f"The protagonist's gender is: {gender_text}. Pronouns, titles, and social identity must match it."
+        )
+    lines.append(
+        "If the era evokes famous figures, treat them only as background references, never as the protagonist."
+    )
+    return "\n".join(lines)
+
+
+def _extract_gender_text(character_settings: Optional[Dict[str, Any]]) -> str:
+    gender_info = (character_settings or {}).get("gender")
+    if isinstance(gender_info, dict):
+        return str(gender_info.get("gender") or "").strip()
+    if isinstance(gender_info, str):
+        return gender_info.strip()
+    return ""
 
 
 def get_custom_choice_effects_prompt(
@@ -1074,6 +1134,8 @@ def get_story_only_prompt(
     if character_settings and isinstance(character_settings.get("wealth"), dict):
         currency_name = character_settings["wealth"].get("currency_name", "货币")
     relationships = player_state.get("relationships", {})
+    protagonist_name = _resolve_protagonist_name(player_state, character_settings, player_name)
+    protagonist_gender = _extract_gender_text(character_settings)
 
     rel_str = (
         "、".join([f"{name}({affinity})" for name, affinity in relationships.items()])
@@ -1099,8 +1161,7 @@ def get_story_only_prompt(
             char_parts.append(f"""起始年龄：{age_info.get('age', '未知')}岁""")
 
         if "gender" in character_settings:
-            gender_info = character_settings["gender"]
-            char_parts.append(f"""性别：{gender_info.get('gender', '未知')}""")
+            char_parts.append(f"""性别：{protagonist_gender or '未知'}""")
 
         if "world" in character_settings:
             world = character_settings["world"]
@@ -1120,13 +1181,12 @@ def get_story_only_prompt(
 
         character_context = "\n".join(char_parts)
 
-    # Build player name instruction
-    name_instruction = ""
-    if player_name:
-        if language == "zh":
-            name_instruction = f"""\n【主角名称】\n主角名称是：{player_name}。请始终使用这个名字称呼主角，禁止编造其他名字、添加后缀或改变主角名称。"""
-        else:
-            name_instruction = f"""\n[Protagonist Name]\nThe protagonist's name is: {player_name}. Always use this exact name. Do not invent alternative names, add suffixes, or change the protagonist's name."""
+    # Build protagonist identity instruction
+    name_instruction = _build_protagonist_identity_instruction(
+        protagonist_name,
+        protagonist_gender,
+        language,
+    )
 
     # Build story context
     story_context = ""
@@ -1428,6 +1488,8 @@ def get_round_event_prompt(
     if character_settings and isinstance(character_settings.get("wealth"), dict):
         currency_name = character_settings["wealth"].get("currency_name", "货币")
     relationships = player_state.get("relationships", {})
+    protagonist_name = _resolve_protagonist_name(player_state, character_settings, player_name)
+    protagonist_gender = _extract_gender_text(character_settings)
 
     rel_str = (
         "、".join([f"{name}({affinity})" for name, affinity in relationships.items()])
@@ -1448,6 +1510,13 @@ def get_round_event_prompt(
             char_parts.append(
                 f"""时代背景：{era.get('year', '')}年，{era.get('era_description', '')}"""
             )
+
+        if "age" in character_settings:
+            age_info = character_settings["age"]
+            char_parts.append(f"""起始年龄：{age_info.get('age', age)}岁""")
+
+        if "gender" in character_settings:
+            char_parts.append(f"""性别：{protagonist_gender or '未知'}""")
 
         if "world" in character_settings:
             world = character_settings["world"]
@@ -1481,13 +1550,12 @@ def get_round_event_prompt(
         if char_parts:
             character_context = "\n".join(char_parts)
 
-    # Build player name instruction
-    name_instruction = ""
-    if player_name:
-        if language == "zh":
-            name_instruction = f"""\n【主角名称】\n主角名称是：{player_name}。请始终使用这个名字称呼主角，禁止编造其他名字、添加后缀或改变主角名称。"""
-        else:
-            name_instruction = f"""\n[Protagonist Name]\nThe protagonist's name is: {player_name}. Always use this exact name. Do not invent alternative names, add suffixes, or change the protagonist's name."""
+    # Build protagonist identity instruction
+    name_instruction = _build_protagonist_identity_instruction(
+        protagonist_name,
+        protagonist_gender,
+        language,
+    )
 
     # Round names
     round_names_zh = ["周一", "周中", "周末"]

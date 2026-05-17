@@ -756,6 +756,12 @@ def get_opening_story_prompt(
     if language == "zh":
         return f"""请基于以下角色设定，生成一个生动的开场故事（300-400字）。
 
+【主角身份硬约束 - 违反即失败】
+主角姓名必须是：{sanitized_player_name}
+主角性别必须是：{gender.get('gender', '')}
+绝对禁止把主角改名为狄仁杰、历史名人、模板人物或任何其他新名字。
+即使时代背景会联想到知名人物，也只能作为背景参照，不能替换主角身份。
+
 【角色信息】
 姓名：{sanitized_player_name}
 人生愿景：{sanitized_life_vision}
@@ -802,6 +808,12 @@ def get_opening_story_prompt(
 """
     else:
         return f"""Generate a vivid opening story (300-400 words) based on the following character settings.
+
+[Protagonist Identity - Hard Constraint]
+The protagonist's exact name must be: {sanitized_player_name}
+The protagonist's gender must be: {gender.get('gender', '')}
+Never rename the protagonist as a historical figure, template character, or any newly invented name.
+If the era evokes famous figures, treat them only as background references, never as the protagonist.
 
 【Character Info】
 Name: {sanitized_player_name}
