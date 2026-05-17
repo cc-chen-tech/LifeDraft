@@ -14,6 +14,7 @@ export default function E2ERegressionPage() {
   const [currentStory, setCurrentStory] = useState("当前故事尚未更新");
   const [streamedStory, setStreamedStory] = useState("");
   const [showCollection, setShowCollection] = useState(false);
+  const [normalClickChoice, setNormalClickChoice] = useState("none");
   const [collectionRefreshState, setCollectionRefreshState] = useState<"idle" | "refreshing">("idle");
   const [musicQueueFixture, setMusicQueueFixture] = useState<{
     current: { title: string; source: string };
@@ -30,14 +31,16 @@ export default function E2ERegressionPage() {
 
   return (
     <main className="min-h-screen p-6 space-y-8">
-      <OptionCards
-        options={[
-          { text: "追随江边脚印，查看雾中来客留下的痕迹。" },
-          { text: "先回船舱取火折子，再探桥下暗影。" },
-        ]}
-        onSelect={() => undefined}
-        onCustomChoice={() => undefined}
-      />
+      <section aria-label="选项可访问名称回归夹具">
+        <OptionCards
+          options={[
+            { text: "追随江边脚印，查看雾中来客留下的痕迹。" },
+            { text: "先回船舱取火折子，再探桥下暗影。" },
+          ]}
+          onSelect={() => undefined}
+          onCustomChoice={() => undefined}
+        />
+      </section>
 
       <section aria-label="故事流回归夹具" className="space-y-3">
         <div className="flex gap-3">
@@ -57,6 +60,35 @@ export default function E2ERegressionPage() {
           </button>
         </div>
         <p data-testid="streamed-story">{streamedStory}</p>
+      </section>
+
+      <section
+        aria-label="周中浏览器点击回归夹具"
+        className="relative h-[calc(100vh-3rem)] rounded border border-border p-4"
+      >
+        <div className="absolute bottom-6 left-4 right-4">
+          <OptionCards
+            options={[
+              { text: "周中先追问账册来源，再决定是否赴约。" },
+              { text: "周中暂避锋芒，等夜深后再去码头。" },
+            ]}
+            onSelect={(index) =>
+              setNormalClickChoice(index === 0 ? "midweek-source" : "midweek-dock")
+            }
+            onCustomChoice={(text) => setNormalClickChoice(`custom:${text}`)}
+          />
+          <p data-testid="normal-click-choice" className="mt-3 text-sm">
+            {normalClickChoice}
+          </p>
+          <button
+            type="button"
+            data-testid="reset-normal-click-choice"
+            className="sr-only"
+            onClick={() => setNormalClickChoice("none")}
+          >
+            重置周中点击状态
+          </button>
+        </div>
       </section>
 
       <section aria-label="历史回归夹具" className="space-y-3">

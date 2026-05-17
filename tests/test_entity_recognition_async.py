@@ -587,6 +587,36 @@ class TestMinAppearancesBoundary:
         assert len(result["items"]) == 1
         assert result["items"][0]["name"] == "测试物品"
 
+    def test_recognize_falls_back_when_ai_misses_story_entities(self):
+        """AI 空结果不应让故事中明确命名的实体完全消失。"""
+        service = EntityRecognitionService(Mock())
+        round_history = [
+            {
+                "week": 0,
+                "round": 0,
+                "event_description": "赵掌柜在赵家船行后院把账册和玉佩交给林见微，陈砚递来账本。",
+                "story_continuation": "阿宁提醒林见微，铜钥匙能打开赵家船行的旧库门。",
+                "summary": "林见微认识了赵掌柜和阿宁，并得到关键线索。",
+            }
+        ]
+
+        with patch.object(
+            service,
+            "_call_ai",
+            return_value='{"items": [], "characters": [], "landmarks": []}',
+        ):
+            result = service.recognize_from_history(
+                round_history=round_history,
+                existing_items=[],
+                existing_characters=["林见微"],
+                existing_landmarks=[],
+                min_appearances=1,
+            )
+
+        assert {item["name"] for item in result["items"]} >= {"账册", "玉佩", "铜钥匙"}
+        assert {char["name"] for char in result["characters"]} >= {"赵掌柜", "阿宁", "陈砚"}
+        assert {landmark["name"] for landmark in result["landmarks"]} >= {"赵家船行"}
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

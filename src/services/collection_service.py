@@ -16,7 +16,7 @@ from src.api.schemas import (CharacterCollectionItem, CollectionResponse,
                              ItemCollectionItem, LandmarkCollectionItem)
 from src.database.models import Game
 from src.database.models import Image as ImageModel
-from src.game.state import PlayerState
+from src.game.state import CharacterState, PlayerState
 from src.game.state.item_state import ItemState
 from src.game.state.landmark_state import LandmarkState
 from src.services.image_service import ImageService
@@ -782,14 +782,37 @@ class CollectionService:
         player_state: PlayerState,
         items: List[Dict[str, Any]],
         landmarks: List[Dict[str, Any]],
+        characters: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, List[str]]:
         """批量添加实体到收集系统。
 
         Returns:
-            {"added_items": [...], "added_landmarks": [...]}
+            {"added_items": [...], "added_characters": [...], "added_landmarks": [...]}
         """
         added_items = []
+        added_characters = []
         added_landmarks = []
+
+        character_settings = player_state.character_settings or {}
+        player_name = player_state.player_name or character_settings.get("player_name", "")
+
+        # 添加人物
+        for character_data in characters or []:
+            character_name = character_data.get("name")
+            if (
+                character_name
+                and character_name != player_name
+                and character_name not in player_state.characters
+            ):
+                character = CharacterState(
+                    name=character_name,
+                    role=character_data.get("role", "故事人物"),
+                    relationship_desc=character_data.get("description", ""),
+                    affinity=character_data.get("affinity", 50),
+                )
+                player_state.add_character(character)
+                added_characters.append(character_name)
+                logger.info(f"Added character from recognition: {character_name}")
 
         # 添加物品
         for item_data in items:
@@ -838,7 +861,11 @@ class CollectionService:
                 added_landmarks.append(landmark_name)
                 logger.info(f"Added landmark from recognition: {landmark_name}")
 
-        return {"added_items": added_items, "added_landmarks": added_landmarks}
+        return {
+            "added_items": added_items,
+            "added_characters": added_characters,
+            "added_landmarks": added_landmarks,
+        }
 
     def create_item(
         self,

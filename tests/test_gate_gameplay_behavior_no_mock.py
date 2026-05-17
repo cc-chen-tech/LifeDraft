@@ -2,7 +2,11 @@
 
 import pytest
 
-from config.prompts import get_story_only_prompt
+from config.prompts import (
+    get_opening_story_prompt,
+    get_round_event_prompt,
+    get_story_only_prompt,
+)
 from src.ai.models import EventOption, GameEvent
 from src.ai.option_generator import OptionGenerator
 from src.ai.story_generator import StoryGenerator
@@ -134,3 +138,56 @@ def test_story_prompt_includes_world_model_location_career_and_repetition_constr
     assert "林舟：初级产品经理（海桐科技），级别=junior" in prompt
     assert "职位变动必须合理递进" in prompt
     assert "不要再用“晨光熹微”" in prompt
+
+
+def test_story_prompts_pin_player_identity_from_state_and_character_settings() -> None:
+    player_state = {
+        "player_name": "林见微",
+        "age": 23,
+        "week": 0,
+        "current_round": 0,
+        "rounds_per_week": 3,
+    }
+    character_settings = {
+        "era": {"year": 690, "era_description": "唐代神都洛阳"},
+        "gender": {"gender": "女", "gender_description": "女性"},
+        "world": {"world_description": "古代宫廷与市井交错"},
+        "family": {"family_description": "书香门第"},
+        "traits": {"traits_description": "谨慎敏锐"},
+    }
+
+    story_prompt = get_story_only_prompt(
+        player_state=player_state,
+        language="zh",
+        character_settings=character_settings,
+    )
+    round_prompt = get_round_event_prompt(
+        player_state=player_state,
+        language="zh",
+        round_number=0,
+        round_context="",
+        character_settings=character_settings,
+    )
+
+    for prompt in (story_prompt, round_prompt):
+        assert "主角名称是：林见微" in prompt
+        assert "禁止编造其他名字" in prompt
+        assert "性别：女" in prompt
+
+
+def test_opening_story_prompt_forbids_replacing_player_with_template_hero() -> None:
+    prompt = get_opening_story_prompt(
+        character_settings={
+            "era": {"year": 690, "era_description": "唐代神都洛阳"},
+            "gender": {"gender": "女", "gender_description": "女性"},
+            "world": {"world_description": "古代宫廷与市井交错"},
+        },
+        player_name="林见微",
+        life_vision="查明家族旧案",
+        formatted_family_members="母亲：林夫人",
+        language="zh",
+    )
+
+    assert "主角姓名必须是：林见微" in prompt
+    assert "绝对禁止把主角改名为狄仁杰" in prompt
+    assert "主角性别必须是：女" in prompt
