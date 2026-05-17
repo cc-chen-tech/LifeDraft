@@ -10,6 +10,7 @@ The system SHALL recover or expire an in-progress generation state so the player
 - **AND** the backend active game contains a current event with story text and options
 - **THEN** the frontend MUST show the story and options
 - **AND** it MUST clear the transient generating phase.
+- **AND** the play-page hook MUST expose the restored story/options through its returned UI state, not only through child stores.
 
 #### Scenario: Saved current event survives service initialization
 
@@ -23,6 +24,13 @@ The system SHALL recover or expire an in-progress generation state so the player
 - **WHEN** story or choice generation exceeds the configured long-running threshold
 - **THEN** the UI MUST show a clear long-running generation message
 - **AND** it MUST provide a retry or continue/recover action.
+- **AND** the message MUST explain that long consistency checks, summaries, or image/entity generation can take around one to two minutes.
+
+#### Scenario: Portrait generation remains in progress too long
+
+- **WHEN** character portrait generation exceeds one minute during character creation
+- **THEN** the UI MUST explain that portrait generation usually takes one to two minutes
+- **AND** it MUST provide a recover or refresh-status action.
 
 #### Scenario: No completed event can be recovered
 
