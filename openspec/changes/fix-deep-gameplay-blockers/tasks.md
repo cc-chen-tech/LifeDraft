@@ -156,3 +156,17 @@
 - [x] 22.2 Add a backend unit test for max-length-bounded head/tail truncation.
 - [x] 22.3 Adjust the truncation helper so marker text is included within the maximum length.
 - [x] 22.4 Run targeted entity recognition tests.
+
+## 23. Live Saved Event Render Regression
+
+- [x] 23.1 Reproduce production `/play` showing only loading chrome after the backend has already saved a completed `current_event`.
+- [x] 23.2 Add a frontend hook regression test asserting active-game recovery exposes the saved story/options through `usePlayGame` UI state.
+- [x] 23.3 Confirm recovered active-game data is exposed through hook UI state after the PR #15 recovery fix; no additional production code change required.
+- [x] 23.4 Run targeted hook tests and keep browser/live verification evidence from deployed main.
+
+## 24. Long Generation UX Regression
+
+- [x] 24.1 Reproduce production week transition and portrait generation taking over one minute while the visible UI only exposes weak loading chrome.
+- [x] 24.2 Add frontend component tests for long-running story and portrait generation guidance plus recover/refresh actions.
+- [x] 24.3 Add explicit one-to-two-minute guidance and recover/refresh actions to long-running story and portrait loading states.
+- [x] 24.4 Run targeted loading UI tests; browser verification remains for the final integration/deploy pass.

@@ -141,6 +141,38 @@ describe('usePlayGame', () => {
       });
     });
 
+    it('exposes recovered active event through play UI state instead of staying in loading', async () => {
+      const mockActiveGame = {
+        game_id: 42,
+        player_state: {
+          player_name: '林见微',
+          age: 25,
+          current_round: 0,
+          week: 0,
+        },
+        progress: { week: 0, current_round: 0, rounds_per_week: 3 },
+        round_info: { current_round: 0, week: 0 },
+        current_event: {
+          event_description: '林见微推开书铺木门，掌柜从柜台后抬头。',
+          options: [{ text: '询问掌柜' }, { text: '查看账册' }, { text: '退出书铺' }],
+        },
+      };
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockActiveGame));
+
+      const { result } = renderHook(() => usePlayGame());
+
+      await waitFor(() => {
+        expect(result.current.storyText).toBe('林见微推开书铺木门，掌柜从柜台后抬头。');
+      });
+      expect(result.current.currentEvent).toEqual({
+        story: '林见微推开书铺木门，掌柜从柜台后抬头。',
+        options: [{ text: '询问掌柜' }, { text: '查看账册' }, { text: '退出书铺' }],
+      });
+      expect(result.current.options).toEqual([{ text: '询问掌柜' }, { text: '查看账册' }, { text: '退出书铺' }]);
+      expect(result.current.phase).toBe('options');
+      expect(mockReplace).not.toHaveBeenCalled();
+    });
+
     it('recovers story from last_round_full_story', async () => {
       const mockActiveGame = {
         game_id: 42,

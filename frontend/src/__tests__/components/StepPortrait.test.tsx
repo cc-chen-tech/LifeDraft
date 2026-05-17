@@ -3,7 +3,7 @@
  * Tests the portrait selection step in character creation
  */
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StepPortrait } from "@/components/create/StepPortrait";
 
@@ -33,6 +33,32 @@ describe("StepPortrait", () => {
       expect(
         screen.getByText("AI正在生成人物形象...")
       ).toBeInTheDocument();
+    });
+
+    it("shows long-running portrait guidance and recover action after one minute", () => {
+      jest.useFakeTimers();
+      const onRecover = jest.fn();
+
+      try {
+        render(
+          <StepPortrait
+            {...baseProps}
+            isGeneratingImage={true}
+            onRecover={onRecover}
+          />
+        );
+
+        act(() => {
+          jest.advanceTimersByTime(75_000);
+        });
+
+        expect(screen.getByText(/人物形象生成通常需要 1-2 分钟/)).toBeInTheDocument();
+        const recoverButton = screen.getByRole("button", { name: "刷新状态" });
+        fireEvent.click(recoverButton);
+        expect(onRecover).toHaveBeenCalledTimes(1);
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 

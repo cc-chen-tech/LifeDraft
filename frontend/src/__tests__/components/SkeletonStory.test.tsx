@@ -69,6 +69,17 @@ describe('SkeletonStory', () => {
 
       expect(screen.getByText('已等待 2分30秒')).toBeInTheDocument();
     });
+
+    it('shows long-running guidance and recover action after one minute', () => {
+      const onRecover = jest.fn();
+
+      render(<SkeletonStory elapsedSeconds={75} onRecover={onRecover} />);
+
+      expect(screen.getByText(/复杂生成可能需要 1-2 分钟/)).toBeInTheDocument();
+      const recoverButton = screen.getByRole('button', { name: '恢复当前进度' });
+      recoverButton.click();
+      expect(onRecover).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('custom className', () => {
