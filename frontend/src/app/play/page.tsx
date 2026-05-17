@@ -31,6 +31,7 @@ import { RoundHistoryDrawer } from "@/components/game/RoundHistoryDrawer";
 import { RoundSceneImageDisplay } from "@/components/game/RoundSceneImage";
 import { HistorySceneImage } from "@/components/game/HistorySceneImage";
 import { CollectionPanel } from "@/components/game/CollectionPanel";
+import { StoryVoiceControls } from "@/components/game/StoryVoiceControls";
 
 import { usePlayGame, STATUS_MESSAGES } from "@/hooks/usePlayGame";
 import { useGameIdFromUrl } from "@/hooks/useGameIdFromUrl";
@@ -388,6 +389,34 @@ export default function PlayPage() {
         {/* Story text */}
         {displayText && (
           <>
+            <div className="mb-4">
+              <StoryVoiceControls
+                currentContext={{
+                  source_type: isViewingHistory ? "history_round" : "current_story",
+                  game_id: Number(gameId),
+                  week: isViewingHistory ? currentHistoryRound?.week ?? null : progress?.week ?? null,
+                  round_number: isViewingHistory
+                    ? currentHistoryRound?.round ?? null
+                    : currentRound ?? null,
+                  stage: "event",
+                  attempt_id: isViewingHistory ? "history" : `${progress?.week ?? 0}-${currentRound ?? 0}`,
+                  text_hash: `${displayText.length}-${displayText.slice(0, 16)}`,
+                  text: displayText,
+                }}
+                historyContext={isViewingHistory ? {
+                  source_type: "history_round",
+                  game_id: Number(gameId),
+                  week: currentHistoryRound?.week ?? null,
+                  round_number: currentHistoryRound?.round ?? null,
+                  stage: "event",
+                  attempt_id: "history",
+                  text_hash: `${displayText.length}-${displayText.slice(0, 16)}`,
+                  text: displayText,
+                } : null}
+                autoReadText={displayText}
+                compact
+              />
+            </div>
             <StreamingText
               text={displayText}
               isStreaming={!isViewingHistory && (phase === "generating" || phase === "choosing")}

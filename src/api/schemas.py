@@ -279,6 +279,62 @@ class VoiceUploadConsentRequest(BaseModel):
     sample_name: Optional[str] = None
 
 
+class ReadingContext(BaseModel):
+    source_type: str = Field(..., description="current_story|history_round|summary|ending")
+    game_id: int
+    week: Optional[int] = None
+    round_number: Optional[int] = None
+    stage: Optional[str] = None
+    attempt_id: Optional[str] = None
+    text_hash: str
+    text: str = Field(..., min_length=1)
+
+
+class StoryVoiceReadingRequest(BaseModel):
+    context: ReadingContext
+    voice_id: str = "warm_female"
+    speed: float = Field(default=1.0, ge=0.5, le=2.0)
+    auto_play: bool = False
+
+
+class StoryVoiceReadingResponse(BaseModel):
+    job_id: int
+    status: str
+    audio_url: Optional[str] = None
+    asset_id: Optional[int] = None
+    duration_ms: Optional[int] = None
+    error_code: Optional[str] = None
+    message: str = ""
+
+
+class VoiceReadingJobResponse(BaseModel):
+    job_id: int
+    status: str
+    audio_url: Optional[str] = None
+    asset_id: Optional[int] = None
+    duration_ms: Optional[int] = None
+    error_code: Optional[str] = None
+    message: str = ""
+
+
+class VoiceAssetResponse(BaseModel):
+    asset_id: int
+    source_type: str
+    text_hash: str
+    voice_id: str
+    provider: str
+    model: str
+    storage_path: str
+    duration_ms: int
+    status: str
+
+
+class StoryVoiceErrorResponse(BaseModel):
+    error_code: str
+    message: str
+    field: Optional[str] = None
+
+
 # ==================== Story Adjustment ====================
 
 

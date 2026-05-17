@@ -34,6 +34,62 @@ export interface VoiceUploadConsentRequest {
   sample_name?: string | null;
 }
 
+export interface ReadingContext {
+  source_type: "current_story" | "history_round" | "summary" | "ending";
+  game_id: number;
+  week?: number | null;
+  round_number?: number | null;
+  stage?: string | null;
+  attempt_id?: string | null;
+  text_hash: string;
+  text: string;
+}
+
+export interface StoryVoiceReadingRequest {
+  context: ReadingContext;
+  voice_id: string;
+  speed: number;
+  auto_play: boolean;
+}
+
+export interface StoryVoiceReadingResponse {
+  job_id: number;
+  status: string;
+  audio_url?: string | null;
+  asset_id?: number | null;
+  duration_ms?: number | null;
+  error_code?: string | null;
+  message: string;
+}
+
+export interface VoiceReadingJobResponse {
+  job_id: number;
+  status: string;
+  audio_url?: string | null;
+  asset_id?: number | null;
+  duration_ms?: number | null;
+  error_code?: string | null;
+  message: string;
+}
+
+export interface VoiceAssetResponse {
+  asset_id: number;
+  source_type: string;
+  text_hash: string;
+  voice_id: string;
+  provider: string;
+  model: string;
+  storage_path: string;
+  duration_ms: number;
+  status: string;
+}
+
+export interface StoryVoiceErrorResponse {
+  error_code: string;
+  message: string;
+  field?: string | null;
+}
+
 export interface FriendInfo {
   user_id: number;
   public_id: string;

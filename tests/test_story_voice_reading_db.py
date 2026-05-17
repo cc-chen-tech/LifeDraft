@@ -1,0 +1,160 @@
+"""Real DB integration tests for story voice reading save-read chains."""
+
+from uuid import uuid4
+
+from src.database.models import (
+    GeneratedVoiceAsset,
+    SessionLocal,
+    User,
+    VoiceReadingJob,
+    VoiceReadingSetting,
+    init_db,
+)
+from src.services.story_voice_repository import StoryVoiceReadingRepository
+from src.services.story_voice_reading import build_deterministic_wav
+
+
+def test_voice_settings_save_read_chain_uses_real_database() -> None:
+    init_db()
+    private_id = f"priv_{uuid4().hex[:16]}"
+    public_id = f"pub_{uuid4().hex[:6]}"
+
+    session = SessionLocal()
+    try:
+        user = User(private_id=private_id, public_id=public_id, display_name="Voice User")
+        session.add(user)
+        session.flush()
+
+        repository = StoryVoiceReadingRepository(session)
+        setting = repository.upsert_settings(
+            user_id=int(user.user_id),
+            selected_voice_color="warm_female",
+            auto_read_enabled=True,
+        )
+        session.commit()
+
+        loaded = (
+            session.query(VoiceReadingSetting)
+            .filter(VoiceReadingSetting.user_id == user.user_id)
+            .one()
+        )
+
+        assert loaded.setting_id == setting.setting_id
+        assert loaded.selected_voice_color == "warm_female"
+        assert loaded.auto_read_enabled is True
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_voice_job_and_asset_reuse_by_text_hash_uses_real_database() -> None:
+    init_db()
+    private_id = f"priv_{uuid4().hex[:16]}"
+    public_id = f"pub_{uuid4().hex[:6]}"
+
+    session = SessionLocal()
+    try:
+        user = User(private_id=private_id, public_id=public_id, display_name="Voice Asset")
+        session.add(user)
+        session.flush()
+
+        repository = StoryVoiceReadingRepository(session)
+        context = {
+            "source_type": "current_story",
+            "game_id": 101,
+            "week": 3,
+            "round_number": 2,
+            "stage": "event",
+            "attempt_id": "attempt-1",
+            "text_hash": "hash-current-story",
+            "text": "雨夜码头的旧账册被风吹开。",
+        }
+        asset = repository.create_asset(
+            user_id=int(user.user_id),
+            context=context,
+            voice_id="warm_female",
+            speed=1.0,
+            provider="local",
+            model="deterministic-v1",
+            storage_path="/api/voice-reading/audio/hash-current-story.wav",
+            duration_ms=1600,
+            status="ready",
+        )
+        job = repository.create_job(
+            user_id=int(user.user_id),
+            context=context,
+            voice_id="warm_female",
+            speed=1.0,
+            status="ready",
+            asset_id=int(asset.asset_id),
+        )
+        session.commit()
+
+        loaded_asset = repository.find_ready_asset(
+            text_hash="hash-current-story",
+            voice_id="warm_female",
+            speed=1.0,
+        )
+        loaded_job = session.query(VoiceReadingJob).filter(VoiceReadingJob.job_id == job.job_id).one()
+
+        assert loaded_asset is not None
+        assert loaded_asset.asset_id == asset.asset_id
+        assert loaded_job.asset_id == asset.asset_id
+        assert loaded_job.context_json["game_id"] == 101
+        assert loaded_job.context_json["stage"] == "event"
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_same_round_different_text_hash_does_not_reuse_old_audio() -> None:
+    init_db()
+    private_id = f"priv_{uuid4().hex[:16]}"
+    public_id = f"pub_{uuid4().hex[:6]}"
+
+    session = SessionLocal()
+    try:
+        user = User(private_id=private_id, public_id=public_id, display_name="Voice Regen")
+        session.add(user)
+        session.flush()
+        repository = StoryVoiceReadingRepository(session)
+
+        old_context = {
+            "source_type": "current_story",
+            "game_id": 202,
+            "week": 5,
+            "round_number": 1,
+            "stage": "event",
+            "attempt_id": "old",
+            "text_hash": "old-hash",
+            "text": "旧版本故事。",
+        }
+        repository.create_asset(
+            user_id=int(user.user_id),
+            context=old_context,
+            voice_id="calm_male",
+            speed=1.0,
+            provider="local",
+            model="deterministic-v1",
+            storage_path="/api/voice-reading/audio/old.wav",
+            duration_ms=900,
+            status="ready",
+        )
+        session.commit()
+
+        assert repository.find_ready_asset("old-hash", "calm_male", 1.0) is not None
+        assert repository.find_ready_asset("new-hash", "calm_male", 1.0) is None
+        assert session.query(GeneratedVoiceAsset).count() >= 1
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_deterministic_voice_audio_bytes_are_playable_wav() -> None:
+    audio = build_deterministic_wav("fixture-audio-hash", "warm_female")
+
+    assert audio[:4] == b"RIFF"
+    assert audio[8:12] == b"WAVE"
+    assert audio[12:16] == b"fmt "
+    assert audio[36:40] == b"data"
+    assert len(audio) > 4_000

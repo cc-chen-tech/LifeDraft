@@ -324,6 +324,77 @@ class GamePlaylist(Base):
     game = relationship("Game", back_populates="playlist")
 
 
+class VoiceReadingSetting(Base):
+    """Persisted per-user voice reading settings."""
+
+    __tablename__ = "voice_reading_settings"
+
+    setting_id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=False, unique=True, index=True)
+    selected_voice_color = Column(String(80), nullable=True)
+    auto_read_enabled = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User")
+
+
+class GeneratedVoiceAsset(Base):
+    """Persisted metadata for reusable generated story narration audio."""
+
+    __tablename__ = "generated_voice_assets"
+
+    asset_id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=False, index=True)
+    source_type = Column(String(40), nullable=False, index=True)
+    context_json = Column(JSON, nullable=False)
+    text_hash = Column(String(128), nullable=False, index=True)
+    voice_id = Column(String(80), nullable=False, index=True)
+    speed = Column(Float, default=1.0, nullable=False)
+    provider = Column(String(80), nullable=False, index=True)
+    model = Column(String(120), nullable=False)
+    storage_path = Column(String(500), nullable=False)
+    duration_ms = Column(Integer, nullable=False)
+    status = Column(String(30), nullable=False, index=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User")
+
+    __table_args__ = (
+        Index(
+            "ix_generated_voice_asset_hash_voice_speed",
+            "text_hash",
+            "voice_id",
+            "speed",
+            "status",
+        ),
+    )
+
+
+class VoiceReadingJob(Base):
+    """Story narration job state recoverable after reload."""
+
+    __tablename__ = "voice_reading_jobs"
+
+    job_id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=False, index=True)
+    asset_id = Column(Integer, ForeignKey("generated_voice_assets.asset_id"), nullable=True)
+    context_json = Column(JSON, nullable=False)
+    text_hash = Column(String(128), nullable=False, index=True)
+    voice_id = Column(String(80), nullable=False)
+    speed = Column(Float, default=1.0, nullable=False)
+    status = Column(String(30), nullable=False, index=True)
+    error_code = Column(String(80), nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User")
+    asset = relationship("GeneratedVoiceAsset")
+
+
 class GeneratedMusicAsset(Base):
     """Persisted metadata for reusable AI-generated background music."""
 

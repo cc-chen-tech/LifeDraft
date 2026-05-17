@@ -73,6 +73,8 @@ run_preflight() {
     local redesign_openspec_code=$?
     openspec validate shift-left-e2e-contract-gates --strict
     local shift_left_openspec_code=$?
+    openspec validate add-story-voice-reading --strict
+    local story_voice_openspec_code=$?
 
     echo -e "${YELLOW}运行前置 gate 测试...${NC}"
     python -m pytest \
@@ -105,7 +107,7 @@ run_preflight() {
     cd "$PROJECT_DIR"
 
     local result=0
-    if [ $openspec_code -ne 0 ] || [ $music_openspec_code -ne 0 ] || [ $redesign_openspec_code -ne 0 ] || [ $shift_left_openspec_code -ne 0 ] || [ $gate_code -ne 0 ] || [ $tsc_code -ne 0 ] || [ $jest_code -ne 0 ]; then
+    if [ $openspec_code -ne 0 ] || [ $music_openspec_code -ne 0 ] || [ $redesign_openspec_code -ne 0 ] || [ $shift_left_openspec_code -ne 0 ] || [ $story_voice_openspec_code -ne 0 ] || [ $gate_code -ne 0 ] || [ $tsc_code -ne 0 ] || [ $jest_code -ne 0 ]; then
         result=1
     fi
 
@@ -125,6 +127,8 @@ run_mypy() {
         src/ai/text_quality.py
         src/services/music_service.py
         src/services/music_playlist_service.py
+        src/services/story_voice_reading.py
+        src/services/story_voice_repository.py
         src/database/models.py
     )
     python -m mypy "${MYPY_STRICT_TARGETS[@]}" --strict
@@ -172,6 +176,7 @@ run_contract() {
         tests/test_music_playlist_contract.py \
         tests/test_shift_left_e2e_contract_no_mock.py \
         tests/test_story_music_recommendation_contract.py \
+        tests/test_story_voice_reading_contract.py \
         tests/test_ui_bottom_layout_contract_no_mock.py \
         -v
     local result=$?
@@ -202,6 +207,7 @@ run_db() {
         tests/test_database.py \
         tests/test_gate_real_db_no_mock.py \
         tests/test_story_music_recommendation_db.py \
+        tests/test_story_voice_reading_db.py \
         -v
     local result=$?
     
@@ -260,8 +266,16 @@ run_e2e_browser() {
         --no-deps
     local music_ai_result=$?
 
+    echo -e "${YELLOW}运行读故事 E2E 浏览器测试...${NC}"
+    npx playwright test e2e/story-voice-reading.spec.ts \
+        --project=core \
+        --reporter=list \
+        --workers=1 \
+        --no-deps
+    local story_voice_result=$?
+
     local result=0
-    if [ $core_result -ne 0 ] || [ $music_ai_result -ne 0 ]; then
+    if [ $core_result -ne 0 ] || [ $music_ai_result -ne 0 ] || [ $story_voice_result -ne 0 ]; then
         result=1
     fi
     

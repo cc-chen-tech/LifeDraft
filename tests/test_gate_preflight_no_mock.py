@@ -20,6 +20,7 @@ def test_preflight_script_runs_before_expensive_layers() -> None:
 
     assert "run_preflight" in script
     assert "openspec validate fix-story-continuity-history-media --strict" in script
+    assert "openspec validate add-story-voice-reading --strict" in script
     assert "openspec validate shift-left-e2e-contract-gates --strict" in script
     assert "npx tsc --noEmit --strict" in script
     assert "tests/test_gate_preflight_no_mock.py" in script

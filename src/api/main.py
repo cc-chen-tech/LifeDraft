@@ -18,7 +18,8 @@ from starlette.requests import Request as StarletteRequest
 from config.settings import (SENTRY_DSN, SENTRY_ENVIRONMENT,
                              SENTRY_TRACES_SAMPLE_RATE)
 from src.api.routers import (auth, character, collection, friends, gameplay,
-                             games, images, music, presets, story)
+                             games, images, music, presets, story,
+                             voice_reading)
 from src.database.models import init_db
 
 load_dotenv()
@@ -186,6 +187,7 @@ app.include_router(story.router, prefix="/api/games", tags=["Story"])
 app.include_router(images.router, prefix="/api/images", tags=["Images"])
 app.include_router(collection.router, prefix="/api/collection", tags=["Collection"])
 app.include_router(music.router, prefix="/api", tags=["Music"])
+app.include_router(voice_reading.router, prefix="/api/voice-reading", tags=["VoiceReading"])
 
 
 @app.get("/api/health")
