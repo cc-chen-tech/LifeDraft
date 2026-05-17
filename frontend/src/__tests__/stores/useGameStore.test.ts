@@ -459,6 +459,49 @@ describe('useGameStore', () => {
 
       expect(useGameStore.getState().playerState).toEqual({ player_name: 'SyncedPlayer' });
     });
+
+    it('recovers backend-completed event over stale local generating story', async () => {
+      act(() => {
+        useGameStore.getState().setGameSession(42, 'session-42');
+        useGameStore.getState().setStoryText('AI 正在分析你的选择...');
+        useGameStore.getState().setCurrentEvent({
+          story: 'AI 正在分析你的选择...',
+          options: [{ text: '旧选项，不应继续显示' }],
+        });
+      });
+
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        player_state: {
+          player_name: 'RecoveredPlayer',
+          life_vision: '',
+          energy: 100,
+          mood: 100,
+          knowledge: 0,
+          wealth: 0,
+          age: 18,
+          week: 2,
+          current_round: 1,
+          rounds_per_week: 3,
+          character_settings: {},
+        },
+        progress: { week: 2, current_round: 1, rounds_per_week: 3 },
+        round_info: { current_round: 1, week: 2 },
+        current_event: {
+          event_description: '后端已经完成的新故事正文。',
+          options: [{ text: '查看账册' }, { text: '去码头追问' }],
+        },
+      }));
+
+      await act(async () => {
+        await useGameStore.getState().syncState();
+      });
+
+      expect(useGameStore.getState().storyText).toBe('后端已经完成的新故事正文。');
+      expect(useGameStore.getState().currentEvent).toEqual({
+        story: '后端已经完成的新故事正文。',
+        options: [{ text: '查看账册' }, { text: '去码头追问' }],
+      });
+    });
   });
 
   describe('syncPlayerState', () => {

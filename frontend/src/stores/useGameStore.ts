@@ -298,21 +298,23 @@ export const useGameStore = create<GameState>()(
       try {
         const result = await useSessionStore.getState().syncState();
         if (result && result.event) {
-          const currentOptions = useEventStore.getState().currentEvent?.options || [];
           const newOptions = result.event.options || [];
-          const hasNewOptions = newOptions.length > 0 && currentOptions.length === 0;
           const currentStoryText = useEventStore.getState().storyText;
-          const restoredStory = currentStoryText || result.event.story;
+          const backendStory = result.event.story || result.eventStory || "";
+          const restoredStory = backendStory || currentStoryText;
 
-          if (hasNewOptions) {
+          if (newOptions.length > 0) {
+            if (backendStory && backendStory !== currentStoryText) {
+              useEventStore.getState().setStoryText(backendStory);
+            }
             useEventStore.getState().setCurrentEvent({
               ...result.event,
               story: restoredStory,
             });
           }
 
-          if (!useEventStore.getState().storyText && result.eventStory) {
-            useEventStore.getState().setStoryText(result.eventStory);
+          if (!useEventStore.getState().storyText && restoredStory) {
+            useEventStore.getState().setStoryText(restoredStory);
           }
 
           const currentEvent = useEventStore.getState().currentEvent;

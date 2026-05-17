@@ -117,6 +117,30 @@ describe('usePlayGame', () => {
       });
     });
 
+    it('recovers completed active event story from story_text after refresh', async () => {
+      const mockActiveGame = {
+        game_id: 42,
+        player_state: { player_name: 'TestPlayer', age: 25 },
+        progress: { week: 2, current_round: 1, rounds_per_week: 3 },
+        round_info: { current_round: 1, week: 2 },
+        current_event: {
+          story_text: '后端已完成的周二故事。',
+          options: [{ text: '继续查账' }, { text: '去码头' }],
+        },
+      };
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(mockActiveGame));
+
+      renderHook(() => usePlayGame());
+
+      await waitFor(() => {
+        expect(useGameStore.getState().storyText).toBe('后端已完成的周二故事。');
+      });
+      expect(useGameStore.getState().currentEvent).toEqual({
+        story: '后端已完成的周二故事。',
+        options: [{ text: '继续查账' }, { text: '去码头' }],
+      });
+    });
+
     it('recovers story from last_round_full_story', async () => {
       const mockActiveGame = {
         game_id: 42,
