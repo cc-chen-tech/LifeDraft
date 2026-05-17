@@ -112,3 +112,21 @@ def test_rewrite_discoverability_e2e_seeds_story_before_clicking_rewrite() -> No
     assert "await seedStoryForRewrite(page);" in spec
     assert "/e2e-regression" in spec
     assert "await expect(rewriteButton).toBeEnabled" in spec
+
+
+def test_story_voice_test_controls_stay_out_of_real_play_page() -> None:
+    component = (
+        ROOT / "frontend" / "src" / "components" / "game" / "StoryVoiceControls.tsx"
+    ).read_text(encoding="utf-8")
+    play_page = (ROOT / "frontend" / "src" / "app" / "play" / "page.tsx").read_text(
+        encoding="utf-8"
+    )
+    regression_page = (
+        ROOT / "frontend" / "src" / "app" / "e2e-regression" / "page.tsx"
+    ).read_text(encoding="utf-8")
+
+    assert "showTestControls?: boolean" in component
+    assert "showTestControls = false" in component
+    assert "{showTestControls &&" in component
+    assert "showTestControls" not in play_page
+    assert "showTestControls" in regression_page

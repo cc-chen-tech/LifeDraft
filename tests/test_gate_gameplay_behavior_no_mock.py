@@ -191,3 +191,31 @@ def test_opening_story_prompt_forbids_replacing_player_with_template_hero() -> N
     assert "主角姓名必须是：林见微" in prompt
     assert "绝对禁止把主角改名为狄仁杰" in prompt
     assert "主角性别必须是：女" in prompt
+
+
+def test_round_event_fallback_remains_substantial_story_when_generation_fails() -> None:
+    class FailingClient:
+        def call(self, **_kwargs):
+            raise RuntimeError("AI unavailable")
+
+    event = StoryGenerator(FailingClient()).generate_round_event(
+        player_state={
+            "player_name": "林见微",
+            "age": 22,
+            "week": 1,
+            "current_round": 0,
+        },
+        language="zh",
+        round_number=0,
+        round_context="",
+        character_settings={
+            "era": {"era_description": "唐代神都洛阳"},
+            "traits": {"traits_description": "谨慎敏锐"},
+        },
+        option_generator=OptionGenerator(FailingClient()),
+    )
+
+    assert len(event.event_description) > 100
+    assert event.event_description.endswith("。")
+    assert "林见微" in event.event_description
+    assert len(event.options) == 2
