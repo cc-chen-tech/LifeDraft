@@ -34,3 +34,17 @@
 - [x] 5.3 Run `openspec validate fix-deep-gameplay-blockers --strict`.
 - [x] 5.4 Run targeted suites for all fixed areas.
 - [x] 5.5 Run `./test.sh all` from integration worktree.
+
+## 6. Live Opening State Parity Regression
+
+- [x] 6.1 Reproduce `/story/opening` false "缺少角色数据" error with incomplete store state but available resolved/injected character data.
+- [x] 6.2 Add frontend test asserting opening request payload uses resolved/injected character data, not stale store snapshot.
+- [x] 6.3 Fix opening page generation payload source and complete-story fallback behavior for streamed text.
+- [x] 6.4 Run targeted opening page tests.
+
+## 7. Event Complete Recovery Regression
+
+- [x] 7.1 Reproduce complete-event-without-options and complete-event-without-story paths leaving gameplay in generating phase.
+- [x] 7.2 Add frontend unit tests asserting malformed complete events enter retryable error instead of silently returning.
+- [x] 7.3 Fix event completion handling to clear retry state and switch to error phase when no playable event exists.
+- [x] 7.4 Run targeted event completion tests.

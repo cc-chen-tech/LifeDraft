@@ -22,3 +22,21 @@ The system SHALL recover or expire an in-progress generation state so the player
 - **WHEN** generation state is stale and no completed story/options exist
 - **THEN** the system MUST expire the stale state into a retryable error
 - **AND** it MUST NOT keep restoring an endless generating UI after refresh.
+
+#### Scenario: Stream completes without a playable event
+
+- **WHEN** an event stream completes without options
+- **OR** it completes with options but no recoverable story body
+- **THEN** the frontend MUST enter a retryable error state
+- **AND** it MUST NOT leave the player in the generating phase.
+
+### Requirement: Opening page uses the same effective character source as recovery flow
+
+The opening story page SHALL use resolved character data (store data or injected recovery/test data) consistently for validation and request payloads.
+
+#### Scenario: Store is incomplete but resolved data is available
+
+- **WHEN** `/story/opening` receives resolved character data from injected/recovered source
+- **AND** local store fields are temporarily empty during hydration/recovery
+- **THEN** opening story generation MUST use the resolved data for request payload
+- **AND** the page MUST NOT show the "缺少角色数据" error.

@@ -139,7 +139,8 @@ describe('eventUtils', () => {
       const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
       handleEventComplete({ options: [] } as Record<string, unknown>, mockHandlers);
       expect(consoleSpy).toHaveBeenCalledWith('[onComplete] No options in complete event');
-      expect(mockHandlers.setPhase).not.toHaveBeenCalled();
+      expect(mockHandlers.setConnectionStatus).toHaveBeenCalledWith('error');
+      expect(mockHandlers.setPhase).toHaveBeenCalledWith('error');
       consoleSpy.mockRestore();
     });
 
@@ -166,6 +167,8 @@ describe('eventUtils', () => {
         options: [{ text: 'Option without story' }],
       });
       expect(mockHandlers.setPhase).not.toHaveBeenCalledWith('options');
+      expect(mockHandlers.setConnectionStatus).toHaveBeenCalledWith('error');
+      expect(mockHandlers.setPhase).toHaveBeenCalledWith('error');
 
       consoleSpy.mockRestore();
     });

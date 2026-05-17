@@ -9,6 +9,7 @@ import OpeningStoryPage from '@/app/story/opening/page';
 import { useGameStore } from '@/stores/useGameStore';
 import { useImageStore } from '@/stores/useImageStore';
 import { useUIStore } from '@/stores/useUIStore';
+import { streamOpeningStory } from '@/lib/sse';
 
 const mockPush = jest.fn();
 jest.mock('next/navigation', () => ({
@@ -17,6 +18,12 @@ jest.mock('next/navigation', () => ({
     replace: jest.fn(),
   }),
 }));
+
+jest.mock('@/lib/sse', () => ({
+  streamOpeningStory: jest.fn(),
+}));
+
+const mockStreamOpeningStory = streamOpeningStory as jest.MockedFunction<typeof streamOpeningStory>;
 
 function setupDefaultState() {
   useGameStore.setState({
@@ -37,6 +44,9 @@ function setupDefaultState() {
 describe('OpeningStoryPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockStreamOpeningStory.mockReset();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (window as any).__TEST_DATA__;
     setupDefaultState();
   });
 
@@ -83,6 +93,45 @@ describe('OpeningStoryPage', () => {
       await waitFor(() => {
         expect(screen.getByText(/缺少角色数据|错误/)).toBeInTheDocument();
       });
+    });
+
+    it('uses injected test data for generation request instead of stale store state', async () => {
+      useGameStore.setState({
+        openingStory: '',
+        characterSettings: {} as never,
+        playerName: '',
+        lifeVision: '',
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__TEST_DATA__ = {
+        playerName: 'InjectedHero',
+        lifeVision: 'Injected Vision',
+        characterSettings: { era: { era_name: '古代' } },
+      };
+
+      mockStreamOpeningStory.mockImplementation(
+        (_settings, _name, _vision, _language, handlers) => {
+          handlers.onStory('注入故事片段');
+          handlers.onComplete({ full_story: '注入故事正文' });
+          return Promise.resolve();
+        }
+      );
+
+      render(<OpeningStoryPage />);
+
+      await waitFor(() => {
+        expect(mockStreamOpeningStory).toHaveBeenCalled();
+      });
+
+      expect(mockStreamOpeningStory).toHaveBeenCalledWith(
+        { era: { era_name: '古代' } },
+        'InjectedHero',
+        'Injected Vision',
+        'zh',
+        expect.any(Object),
+        expect.any(Object)
+      );
+      expect(screen.queryByText(/缺少角色数据/)).not.toBeInTheDocument();
     });
   });
 

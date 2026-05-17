@@ -6,6 +6,7 @@ import { renderHook, act } from '@testing-library/react';
 import { useEventGenerator } from '@/hooks/game/useEventGenerator';
 import { useGameStore } from '@/stores/useGameStore';
 import type { Phase, ConnectionStatus } from '@/hooks/game/usePhaseManager';
+import { createSSEMockResponse } from '@/__tests__/helpers/sse-mock';
 
 function setupDefaultState() {
   useGameStore.setState({
@@ -96,6 +97,40 @@ describe('useEventGenerator', () => {
       const fetchCallsBefore = (global.fetch as jest.Mock).mock.calls.length;
       await act(async () => { await result.current.generateEvent(); });
       expect((global.fetch as jest.Mock).mock.calls.length).toBe(fetchCallsBefore);
+    });
+
+    it('enters retryable error when event stream completes without options', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(
+        createSSEMockResponse([
+          'event: complete\ndata: {"event_description":"故事已生成但没有选项","options":[]}\n\n',
+        ])
+      );
+
+      const { result } = renderHook(() => useEventGenerator(defaultParams));
+
+      await act(async () => { await result.current.generateEvent(); });
+
+      expect(mockSetters.setConnectionStatus).toHaveBeenCalledWith('error');
+      expect(mockSetters.setPhase).toHaveBeenCalledWith('error');
+      expect(mockGeneratingRef.current).toBe(false);
+    });
+
+    it('enters retryable error when event stream completes without story body', async () => {
+      setupDefaultState({ storyText: '', currentEvent: null });
+      (global.fetch as jest.Mock).mockResolvedValue(
+        createSSEMockResponse([
+          'event: complete\ndata: {"event_description":"","options":[{"text":"继续"}]}\n\n',
+        ])
+      );
+
+      const { result } = renderHook(() => useEventGenerator(defaultParams));
+
+      await act(async () => { await result.current.generateEvent(); });
+
+      expect(mockSetters.setOptions).not.toHaveBeenCalledWith([{ text: '继续' }]);
+      expect(mockSetters.setConnectionStatus).toHaveBeenCalledWith('error');
+      expect(mockSetters.setPhase).toHaveBeenCalledWith('error');
+      expect(mockGeneratingRef.current).toBe(false);
     });
   });
 });
