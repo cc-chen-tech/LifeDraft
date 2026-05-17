@@ -42,12 +42,7 @@ class PlaylistQueuePolicy:
 
         current_id = self._song_key(current_song)
         queue: List[SongDict] = []
-        if existing_queue:
-            first_upcoming = existing_queue[0]
-            if self._song_key(first_upcoming) != current_id:
-                queue.append(first_upcoming)
-
-        seen_ids = {self._song_key(item) for item in queue}
+        seen_ids: set[Any] = set()
         for song in incoming_songs:
             song_id = self._song_key(song)
             if song_id == current_id or song_id in seen_ids:

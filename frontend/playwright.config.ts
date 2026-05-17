@@ -35,6 +35,10 @@ const AI_HEAVY_TESTS = [
   '**/era-validator-no-false-positive.spec.ts', // 时代验证器, 需要真实 AI 响应
 ];
 
+// Production-site exploration is intentionally manual: it targets story101.live,
+// can run for 30 minutes, and should not block default CI for local code changes.
+const MANUAL_EXPLORATION_TESTS = ['**/story101-exploration.spec.ts'];
+
 export default defineConfig({
   testDir: './e2e',
 
@@ -76,7 +80,7 @@ export default defineConfig({
         // ── CI: 同样分阶段, 但只跑 chromium ──
         {
           name: 'core',
-          testIgnore: AI_HEAVY_TESTS,
+          testIgnore: [...AI_HEAVY_TESTS, ...MANUAL_EXPLORATION_TESTS],
           use: { ...devices['Desktop Chrome'] },
         },
         {
@@ -88,6 +92,16 @@ export default defineConfig({
           retries: 2,           // AI 测试多重试
           fullyParallel: false, // 串行执行, 减少资源竞争
         },
+        ...(process.env.STORY101_DEEP_EXPLORATION === '1'
+          ? [{
+              name: 'story101-exploration',
+              testMatch: MANUAL_EXPLORATION_TESTS,
+              use: { ...devices['Desktop Chrome'] },
+              timeout: 1_800_000,
+              retries: 0,
+              fullyParallel: false,
+            }]
+          : []),
       ]
     : [
         // ── 本地开发: 分阶段 + 移动端 ──
@@ -96,7 +110,7 @@ export default defineConfig({
         // 快速验证 UI 结构、路由、API 契约等
         {
           name: 'core',
-          testIgnore: AI_HEAVY_TESTS,
+          testIgnore: [...AI_HEAVY_TESTS, ...MANUAL_EXPLORATION_TESTS],
           use: { ...devices['Desktop Chrome'] },
         },
 
@@ -115,10 +129,20 @@ export default defineConfig({
         // Phase 3: 移动端测试 (仅非 AI)
         {
           name: 'Mobile Safari',
-          testIgnore: AI_HEAVY_TESTS,
+          testIgnore: [...AI_HEAVY_TESTS, ...MANUAL_EXPLORATION_TESTS],
           use: { ...devices['iPhone 13'] },
           dependencies: ['core'],
         },
+        ...(process.env.STORY101_DEEP_EXPLORATION === '1'
+          ? [{
+              name: 'story101-exploration',
+              testMatch: MANUAL_EXPLORATION_TESTS,
+              use: { ...devices['Desktop Chrome'] },
+              timeout: 1_800_000,
+              retries: 0,
+              fullyParallel: false,
+            }]
+          : []),
       ],
 
   /* Dev server 自动启动 (仅本地) */
