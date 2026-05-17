@@ -46,22 +46,50 @@ jobs:
             src/ai/text_quality.py \
             src/services/music_service.py \
             src/services/music_playlist_service.py \
+            src/services/story_voice_reading.py \
+            src/services/story_voice_repository.py \
             src/database/models.py \
             --strict
           python -m pytest \
             tests/test_gate_preflight_no_mock.py \
             tests/test_gate_gameplay_behavior_no_mock.py \
+            tests/test_gate_coverage_fidelity_no_mock.py \
             tests/test_gate_static_no_mock.py \
             tests/test_imports.py \
             tests/test_gate_imports_no_mock.py \
             tests/test_api_contract.py \
             tests/test_gate_contracts_no_mock.py \
+            tests/test_music_playlist_contract.py \
             tests/test_shift_left_e2e_contract_no_mock.py \
             tests/test_story_music_recommendation_contract.py \
+            tests/test_story_voice_reading_contract.py \
+            tests/test_ui_bottom_layout_contract_no_mock.py \
+            tests/test_api_gameplay.py \
+            tests/test_choices_router.py \
+            tests/test_events_router.py \
+            tests/test_choice_processor_contract.py \
+            tests/test_event_generation_contract.py \
+            tests/test_game_state_round_contract.py \
+            tests/test_image_cache_contract.py \
+            tests/test_scene_image_api.py \
+            tests/test_scene_image_integrity_narrow_contract.py \
+            tests/test_scene_image_sse_contract.py \
+            tests/test_scene_image_sse_integration.py \
+            tests/test_collection_contract.py \
+            tests/test_collection_cache_contract.py \
+            tests/test_collection_imports.py \
+            tests/test_session_cache.py \
+            tests/test_sse_helpers.py \
+            tests/test_sse_retry_contract.py \
+            tests/test_sse_timeout_contract.py \
+            tests/test_sse_thread_pool_contract.py \
             tests/test_integration_real_db.py \
             tests/test_database.py \
             tests/test_gate_real_db_no_mock.py \
             tests/test_story_music_recommendation_db.py \
+            tests/test_story_voice_reading_db.py \
+            tests/test_scene_image_integrity_db.py \
+            tests/test_collection_cache_db.py \
             tests/test_music_degradation_no_mock.py \
             -v --tb=short
         env:

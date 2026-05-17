@@ -5,8 +5,14 @@ This change keeps maintained gates explicit while full backend failures are sort
 Latest full backend result:
 
 - Previous exploration: `3100 passed, 67 failed, 13 errors, 1 skipped, 6 xfailed`
-- Current restoration pass: `3186 passed, 0 failed, 0 errors, 1 skipped, 6 xfailed`
-- Command: `python -m pytest --last-failed -q`
+- Current restoration pass: `3189 passed, 0 failed, 0 errors, 1 skipped, 6 xfailed`
+- Command: `python -m pytest tests -q`
+
+Latest maintained backend promotion:
+
+- Promoted stable gameplay, scene-image, collection cache, session cache, and SSE contract groups into maintained local/CI coverage.
+- Raised maintained backend `--cov-fail-under` from `25` to `30`.
+- Verified final maintained gate: `385 passed`, maintained coverage `32.62%`.
 
 ## Restore Production Behavior
 
@@ -34,4 +40,4 @@ Latest full backend result:
 
 ## Explicit Exclusions
 
-No maintained-gate exclusions were added in this pass. The previous legacy backend failure inventory is now green locally; future exclusions from an existing maintained gate must include a reason in this file or a successor triage artifact.
+No existing maintained-gate tests were excluded. `tests/test_images_router.py` and `tests/test_api_collection.py` were intentionally not promoted in this ratchet because the candidate maintained run exposed legacy mock/session-order fragility in those files. They remain green in the full backend suite and should be stabilized in a focused follow-up before promotion.

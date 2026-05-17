@@ -229,6 +229,25 @@ run_contract() {
         tests/test_story_music_recommendation_contract.py \
         tests/test_story_voice_reading_contract.py \
         tests/test_ui_bottom_layout_contract_no_mock.py \
+        tests/test_api_gameplay.py \
+        tests/test_choices_router.py \
+        tests/test_events_router.py \
+        tests/test_choice_processor_contract.py \
+        tests/test_event_generation_contract.py \
+        tests/test_game_state_round_contract.py \
+        tests/test_image_cache_contract.py \
+        tests/test_scene_image_api.py \
+        tests/test_scene_image_integrity_narrow_contract.py \
+        tests/test_scene_image_sse_contract.py \
+        tests/test_scene_image_sse_integration.py \
+        tests/test_collection_contract.py \
+        tests/test_collection_cache_contract.py \
+        tests/test_collection_imports.py \
+        tests/test_session_cache.py \
+        tests/test_sse_helpers.py \
+        tests/test_sse_retry_contract.py \
+        tests/test_sse_timeout_contract.py \
+        tests/test_sse_thread_pool_contract.py \
         -v
     local result=$?
     
@@ -259,6 +278,8 @@ run_db() {
         tests/test_gate_real_db_no_mock.py \
         tests/test_story_music_recommendation_db.py \
         tests/test_story_voice_reading_db.py \
+        tests/test_scene_image_integrity_db.py \
+        tests/test_collection_cache_db.py \
         -v
     local result=$?
     
@@ -494,13 +515,34 @@ run_coverage_maintained_backend() {
         tests/test_story_music_recommendation_contract.py \
         tests/test_story_voice_reading_contract.py \
         tests/test_ui_bottom_layout_contract_no_mock.py \
+        tests/test_api_gameplay.py \
+        tests/test_choices_router.py \
+        tests/test_events_router.py \
+        tests/test_choice_processor_contract.py \
+        tests/test_event_generation_contract.py \
+        tests/test_game_state_round_contract.py \
+        tests/test_image_cache_contract.py \
+        tests/test_scene_image_api.py \
+        tests/test_scene_image_integrity_narrow_contract.py \
+        tests/test_scene_image_sse_contract.py \
+        tests/test_scene_image_sse_integration.py \
+        tests/test_collection_contract.py \
+        tests/test_collection_cache_contract.py \
+        tests/test_collection_imports.py \
+        tests/test_session_cache.py \
+        tests/test_sse_helpers.py \
+        tests/test_sse_retry_contract.py \
+        tests/test_sse_timeout_contract.py \
+        tests/test_sse_thread_pool_contract.py \
         tests/test_integration_real_db.py \
         tests/test_database.py \
         tests/test_gate_real_db_no_mock.py \
         tests/test_story_music_recommendation_db.py \
         tests/test_story_voice_reading_db.py \
+        tests/test_scene_image_integrity_db.py \
+        tests/test_collection_cache_db.py \
         tests/test_music_degradation_no_mock.py \
-        --cov=src --cov-report=term-missing --cov-report=html:htmlcov/maintained-backend --cov-fail-under=25
+        --cov=src --cov-report=term-missing --cov-report=html:htmlcov/maintained-backend --cov-fail-under=30
 }
 
 # Full 后端覆盖率（当前用于可见性；只有 full suite 绿色后才应作为阻塞 gate）

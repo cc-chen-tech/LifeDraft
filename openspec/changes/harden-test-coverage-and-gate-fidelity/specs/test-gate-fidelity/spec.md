@@ -55,6 +55,10 @@ The system SHALL enforce coverage thresholds only for suites whose scope and rel
 - **WHEN** maintained backend coverage runs in CI
 - **THEN** it enforces a threshold appropriate to the maintained subset and documents that the number is not full-suite coverage
 
+#### Scenario: First threshold ratchet is reached
+- **WHEN** stable high-risk backend contract and DB groups are promoted into maintained coverage
+- **THEN** maintained backend coverage SHALL enforce at least 30% line coverage locally and in CI
+
 #### Scenario: Full backend threshold is deferred
 - **WHEN** the full backend suite contains known stale failures
 - **THEN** full backend coverage may be generated for visibility but SHALL NOT be treated as a blocking full-suite threshold

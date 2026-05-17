@@ -63,6 +63,39 @@ def test_coverage_workflow_names_maintained_backend_scope() -> None:
     assert "maintained-backend-coverage" in coverage_workflow
 
 
+def test_maintained_backend_threshold_has_reached_first_ratchet() -> None:
+    """The first stable promotion batch should keep the maintained threshold at 30%."""
+
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+    coverage_workflow = (ROOT / ".github" / "workflows" / "coverage.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "--cov-fail-under=30" in script
+    assert "--cov-fail-under=30" in coverage_workflow
+    assert "--cov-fail-under=25" not in script
+    assert "--cov-fail-under=25" not in coverage_workflow
+
+
+def test_backend_workflow_includes_promoted_high_risk_groups() -> None:
+    """Maintained backend CI should run the promoted gameplay/media/SSE groups."""
+
+    backend_workflow = (
+        ROOT / ".github" / "workflows" / "backend-tests.yml"
+    ).read_text(encoding="utf-8")
+
+    required = {
+        "tests/test_api_gameplay.py",
+        "tests/test_scene_image_sse_contract.py",
+        "tests/test_collection_cache_contract.py",
+        "tests/test_session_cache.py",
+        "tests/test_sse_helpers.py",
+    }
+
+    missing = sorted(test for test in required if test not in backend_workflow)
+    assert not missing, f"Promoted maintained backend tests missing from CI: {missing}"
+
+
 def test_test_coverage_change_is_validated_in_preflight() -> None:
     """This change's own OpenSpec contract must run before expensive layers."""
 

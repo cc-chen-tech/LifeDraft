@@ -26,3 +26,11 @@
 - [x] 4.3 Run maintained backend coverage.
 - [x] 4.4 Run targeted frontend coverage for newly covered stores.
 - [x] 4.5 Re-run the relevant `test.sh` layers and summarize remaining full-suite debt.
+
+## 5. First Maintained Backend Ratchet
+
+- [x] 5.1 Promote stable gameplay, scene-image, collection cache, session cache, and SSE contract groups into maintained backend coverage.
+- [x] 5.2 Keep unstable legacy router/mock suites out of maintained coverage and record them for follow-up repair.
+- [x] 5.3 Raise maintained backend `--cov-fail-under` from 25 to 30 in local and CI coverage gates.
+- [x] 5.4 Add gate fidelity checks for the promoted high-risk groups and first threshold ratchet.
+- [x] 5.5 Run maintained backend coverage, preflight, OpenSpec validation, and full backend suite after the ratchet.

@@ -1,8 +1,8 @@
 {
   "source": "pytest .pytest_cache/v/cache/lastfailed after full backend coverage run",
-  "collected_tests": 3187,
+  "collected_tests": 3196,
   "last_full_backend_result": {
-    "passed": 3186,
+    "passed": 3189,
     "failed": 0,
     "errors": 0,
     "skipped": 1,
@@ -17,8 +17,19 @@
     "xfailed": 6,
     "coverage_percent": 71.18
   },
-  "latest_command": "python -m pytest --last-failed -q",
-  "latest_duration_seconds": 119.52,
+  "latest_command": "python -m pytest tests -q",
+  "latest_duration_seconds": 115.44,
+  "latest_maintained_backend_result": {
+    "passed": 385,
+    "failed": 0,
+    "errors": 0,
+    "coverage_percent": 32.62,
+    "cov_fail_under": 30
+  },
+  "follow_up_not_promoted": {
+    "tests/test_images_router.py": "Requires router/mock-session stabilization before maintained promotion.",
+    "tests/test_api_collection.py": "Requires permission/session mock cleanup before maintained promotion."
+  },
   "lastfailed_files": {
     "none": 0
   }
