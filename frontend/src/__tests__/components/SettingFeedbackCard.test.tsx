@@ -30,6 +30,22 @@ describe("SettingFeedbackCard", () => {
       expect(screen.getByText("给反馈重新生成")).toBeInTheDocument();
     });
 
+    it("exposes step-specific accessible names for feedback actions", async () => {
+      const user = userEvent.setup();
+      render(<SettingFeedbackCard {...baseProps} />);
+
+      const feedbackButton = screen.getByRole("button", {
+        name: "给家庭背景反馈重新生成",
+      });
+      expect(feedbackButton).toBeInTheDocument();
+
+      await user.click(feedbackButton);
+
+      expect(
+        screen.getByRole("button", { name: "重新生成家庭背景" })
+      ).toBeDisabled();
+    });
+
     it("renders the SettingDisplay content", () => {
       render(<SettingFeedbackCard {...baseProps} />);
       expect(screen.getByTestId("background-content")).toBeInTheDocument();

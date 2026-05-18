@@ -45,6 +45,7 @@ export function SettingFeedbackCard({
           size="sm"
           onClick={() => setIsEditing(!isEditing)}
           disabled={isGenerating}
+          aria-label={isEditing ? `取消${stepLabel}反馈编辑` : `给${stepLabel}反馈重新生成`}
           data-testid={`${stepKey}-feedback-button`}
         >
           <RefreshCw className="w-3.5 h-3.5 mr-1" />
@@ -70,6 +71,7 @@ export function SettingFeedbackCard({
               size="sm"
               onClick={handleRegenerate}
               disabled={isGenerating || !feedback.trim()}
+              aria-label={`重新生成${stepLabel}`}
             >
               {isGenerating ? (
                 <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
