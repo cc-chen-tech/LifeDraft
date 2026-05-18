@@ -68,6 +68,19 @@ class TestNginxSSETimeoutContract:
         ), "location /api/ 缺少 proxy_socket_keepalive on"
 
 
+class TestNginxStaticAssetTransportContract:
+    """Nginx 静态资源传输配置契约。"""
+
+    def _read_nginx_conf(self) -> str:
+        conf_path = PROJECT_ROOT / "nginx" / "ecs-nginx.conf"
+        return conf_path.read_text()
+
+    def test_https_listener_does_not_advertise_http2_for_next_static_assets(self):
+        """Next.js chunks 必须先走 HTTP/1.1，避免浏览器 HTTP/2 chunk 加载失败后无法 hydration。"""
+        conf = self._read_nginx_conf()
+        assert "listen 443 ssl http2" not in conf
+
+
 class TestSSETimeoutConstants:
     """后端 SSE 超时常量契约。"""
 
