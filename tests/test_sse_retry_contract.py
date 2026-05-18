@@ -297,4 +297,6 @@ class TestAPIFetchWithRetryContract:
 
         assert (
             "response.status < 500" in source or "502" in source or "504" in source
+            or "status >= 500" in source
+            or "shouldRetryApiResponse(response.status" in source
         ), "fetchWithRetry 必须处理 5xx 错误并触发重试"

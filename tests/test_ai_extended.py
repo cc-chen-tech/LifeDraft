@@ -571,7 +571,9 @@ class TestStoryGenerator:
             round_context="",
             option_generator=Mock(),
         )
-        assert "quietly" in event.event_description.lower()
+        assert len(event.event_description) > 100
+        assert "does not encounter a dramatic turn" in event.event_description.lower()
+        assert len(event.options) == 2
 
 
 # ==================== StoryRewriter Tests ====================

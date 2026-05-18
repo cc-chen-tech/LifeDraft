@@ -408,10 +408,18 @@ class NeteaseMusicClient:
                 return songs
             except httpx.HTTPStatusError as e:
                 status_code = e.response.status_code
-                if status_code < 500 or attempt >= max_retries:
-                    logger.exception(f"Failed to search music: {e}")
-                    return []
-                await asyncio.sleep(0.2 * (attempt + 1))
+                if status_code >= 500:
+                    logger.warning(
+                        "[NeteaseMusic] Search upstream unavailable for keywords=%s; "
+                        "returning empty recommendation",
+                        keywords,
+                    )
+                    if attempt >= max_retries:
+                        return []
+                    await asyncio.sleep(0.2 * (attempt + 1))
+                    continue
+                logger.exception(f"Failed to search music: {e}")
+                return []
             except Exception as e:
                 if attempt >= max_retries:
                     logger.exception(f"Failed to search music: {e}")
