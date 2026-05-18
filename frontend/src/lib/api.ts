@@ -51,6 +51,13 @@ function handle401Redirect() {
   setTimeout(() => { isRedirectingTo401 = false; }, 3000);
 }
 
+export function shouldRetryApiResponse(status: number, url: string, attemptIndex: number): boolean {
+  if (status >= 500) return true;
+  if (status !== 401) return false;
+  if (url.includes('/voice-reading/')) return false;
+  return attemptIndex === 0;
+}
+
 /**
  * L-03: Fetch with retry mechanism for transient failures
  * Implements exponential backoff for server errors (5xx)
@@ -80,16 +87,10 @@ async function fetchWithRetry(
       
       if (timeoutId) clearTimeout(timeoutId);
       
-      // Only retry on server errors (5xx) or transient 401 (cookie forwarding race)
-      if (response.ok || (response.status < 500 && response.status !== 401)) {
+      if (response.ok || !shouldRetryApiResponse(response.status, url, i)) {
         return response;
       }
-      
-      // 401 只重试一次（第一次可能是 cookie 转发竞态）
-      if (response.status === 401 && i > 0) {
-        return response;
-      }
-      
+
       // Server error - will retry
       lastError = new Error(`Server error: ${response.status}`);
       console.warn(`[API] Server error (${response.status}), attempt ${i + 1}/${retries}`);
