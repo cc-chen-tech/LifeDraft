@@ -34,3 +34,11 @@
 - [x] 5.3 Raise maintained backend `--cov-fail-under` from 25 to 30 in local and CI coverage gates.
 - [x] 5.4 Add gate fidelity checks for the promoted high-risk groups and first threshold ratchet.
 - [x] 5.5 Run maintained backend coverage, preflight, OpenSpec validation, and full backend suite after the ratchet.
+
+## 6. Second Maintained Backend Ratchet
+
+- [x] 6.1 Stabilize legacy API games and collection tests against module reload and dependency override ordering.
+- [x] 6.2 Promote stable legacy API, gameplay, image, session repository, and world-model suites into maintained backend gates.
+- [x] 6.3 Raise maintained backend `--cov-fail-under` from 30 to 40 in local and CI coverage gates.
+- [x] 6.4 Add gate fidelity checks for the promoted legacy groups and second threshold ratchet.
+- [x] 6.5 Run the expanded maintained backend coverage candidate and confirm it passes the 40% gate.

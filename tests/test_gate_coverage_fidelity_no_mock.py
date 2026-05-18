@@ -63,16 +63,18 @@ def test_coverage_workflow_names_maintained_backend_scope() -> None:
     assert "maintained-backend-coverage" in coverage_workflow
 
 
-def test_maintained_backend_threshold_has_reached_first_ratchet() -> None:
-    """The first stable promotion batch should keep the maintained threshold at 30%."""
+def test_maintained_backend_threshold_has_reached_second_ratchet() -> None:
+    """Stable legacy promotions should keep the maintained threshold at 40%."""
 
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
     coverage_workflow = (ROOT / ".github" / "workflows" / "coverage.yml").read_text(
         encoding="utf-8"
     )
 
-    assert "--cov-fail-under=30" in script
-    assert "--cov-fail-under=30" in coverage_workflow
+    assert "--cov-fail-under=40" in script
+    assert "--cov-fail-under=40" in coverage_workflow
+    assert "--cov-fail-under=30" not in script
+    assert "--cov-fail-under=30" not in coverage_workflow
     assert "--cov-fail-under=25" not in script
     assert "--cov-fail-under=25" not in coverage_workflow
 
@@ -86,17 +88,68 @@ def test_backend_workflow_includes_promoted_high_risk_groups() -> None:
 
     required = {
         "tests/test_api_gameplay.py",
+        "tests/test_api_games.py",
         "tests/test_frontend_backend_field_contracts.py",
         "tests/test_images_router.py",
         "tests/test_api_collection.py",
+        "tests/test_collection.py",
+        "tests/test_game_core.py",
+        "tests/test_game_modules.py",
+        "tests/test_image_service.py",
+        "tests/test_image_storage.py",
         "tests/test_scene_image_sse_contract.py",
         "tests/test_collection_cache_contract.py",
         "tests/test_session_cache.py",
+        "tests/test_session_repository_db.py",
         "tests/test_sse_helpers.py",
+        "tests/test_world_model.py",
+        "tests/test_world_model_updater.py",
     }
 
     missing = sorted(test for test in required if test not in backend_workflow)
     assert not missing, f"Promoted maintained backend tests missing from CI: {missing}"
+
+
+def test_second_ratchet_files_are_wired_into_maintained_gates() -> None:
+    """Second-ratchet suites must run in local coverage and both backend CI gates."""
+
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+    backend_workflow = (
+        ROOT / ".github" / "workflows" / "backend-tests.yml"
+    ).read_text(encoding="utf-8")
+    coverage_workflow = (ROOT / ".github" / "workflows" / "coverage.yml").read_text(
+        encoding="utf-8"
+    )
+    coverage_tests = _python_tests_from_block(
+        script, "run_coverage_maintained_backend"
+    )
+
+    required = {
+        "tests/test_collection.py",
+        "tests/test_api_games.py",
+        "tests/test_game_loop.py",
+        "tests/test_system_flow.py",
+        "tests/test_integration.py",
+        "tests/test_regenerate_quick.py",
+        "tests/test_regenerate_fix.py",
+        "tests/test_game_core.py",
+        "tests/test_game_modules.py",
+        "tests/test_world_model.py",
+        "tests/test_world_model_updater.py",
+        "tests/test_image_service.py",
+        "tests/test_image_storage.py",
+        "tests/test_image_client.py",
+        "tests/test_image_client_refactor.py",
+        "tests/test_image_edit_fallback_contract.py",
+        "tests/test_image_thread_pool_contract.py",
+        "tests/test_character_image_extra_params.py",
+        "tests/test_edit_image_extra_params_contract.py",
+        "tests/test_session_repository_db.py",
+    }
+
+    assert required <= coverage_tests
+    assert not sorted(test for test in required if test not in backend_workflow)
+    assert not sorted(test for test in required if test not in coverage_workflow)
 
 
 def test_test_coverage_change_is_validated_in_preflight() -> None:

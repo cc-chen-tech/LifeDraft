@@ -555,7 +555,27 @@ run_coverage_maintained_backend() {
         tests/test_scene_image_integrity_db.py \
         tests/test_collection_cache_db.py \
         tests/test_music_degradation_no_mock.py \
-        --cov=src --cov-report=term-missing --cov-report=html:htmlcov/maintained-backend --cov-fail-under=30
+        tests/test_collection.py \
+        tests/test_api_games.py \
+        tests/test_game_loop.py \
+        tests/test_system_flow.py \
+        tests/test_integration.py \
+        tests/test_regenerate_quick.py \
+        tests/test_regenerate_fix.py \
+        tests/test_game_core.py \
+        tests/test_game_modules.py \
+        tests/test_world_model.py \
+        tests/test_world_model_updater.py \
+        tests/test_image_service.py \
+        tests/test_image_storage.py \
+        tests/test_image_client.py \
+        tests/test_image_client_refactor.py \
+        tests/test_image_edit_fallback_contract.py \
+        tests/test_image_thread_pool_contract.py \
+        tests/test_character_image_extra_params.py \
+        tests/test_edit_image_extra_params_contract.py \
+        tests/test_session_repository_db.py \
+        --cov=src --cov-report=term-missing --cov-report=html:htmlcov/maintained-backend --cov-fail-under=40
 }
 
 # Full 后端覆盖率（当前用于可见性；只有 full suite 绿色后才应作为阻塞 gate）
