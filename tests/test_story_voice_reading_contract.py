@@ -100,7 +100,7 @@ def test_voice_settings_contract_supports_reading_defaults() -> None:
     assert "requestReading" in FRONTEND_API
 
 
-def test_story_voice_controls_request_real_backend_reading_assets() -> None:
+def test_story_voice_controls_use_browser_speech_for_immediate_text_reading() -> None:
     component = (
         ROOT / "frontend" / "src" / "components" / "game" / "StoryVoiceControls.tsx"
     ).read_text(encoding="utf-8")
@@ -110,8 +110,12 @@ def test_story_voice_controls_request_real_backend_reading_assets() -> None:
 
     assert "voice-reading-job" in component
     assert "voice-reading-audio-url" in component
-    assert "api.voice_reading.requestReading" in store
-    assert "crypto.subtle.digest" in store
+    assert "voice-reading-mode" in component
+    assert "voice-reading-spoken-length" in component
+    assert "speechSynthesis" in store
+    assert "SpeechSynthesisUtterance" in store
+    assert "api.voice_reading.requestReading" not in store
+    assert "crypto.subtle.digest" not in store
 
 
 def test_story_voice_reading_routes_are_registered_before_browser_e2e() -> None:
