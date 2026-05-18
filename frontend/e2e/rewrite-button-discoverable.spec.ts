@@ -1,28 +1,62 @@
 /**
  * Rewrite Button Discoverability E2E Test
  *
- * 验证改写入口从收起态移入 ChatBar 展开面板，并打开内联 Sheet。
+ * 验证改写入口在 ChatBar 收起态可直接发现，并打开内联 Sheet。
  */
 
 import { test, expect, Page } from '@playwright/test';
+
+const chatActionViewports = [
+  { name: 'narrow mobile', width: 360, height: 640 },
+  { name: 'mobile portrait', width: 390, height: 844 },
+  { name: 'tablet portrait', width: 768, height: 1024 },
+  { name: 'desktop', width: 1280, height: 720 },
+  { name: 'wide desktop', width: 1440, height: 900 },
+];
 
 async function seedStoryForRewrite(page: Page): Promise<void> {
   await page.goto('/e2e-regression');
   await page.waitForLoadState('domcontentloaded');
   await expect(page.getByLabel('打开聊天')).toBeVisible();
+  await expect(page.locator('[data-testid="global-music-player"]')).toBeVisible();
+}
+
+async function expectCollapsedActionsVisibleAndUncovered(page: Page): Promise<void> {
+  const musicPlayer = page.locator('[data-testid="global-music-player"]');
+  const chatLauncher = page.locator('[data-testid="chat-bar-launcher"]');
+
+  await expect(musicPlayer).toHaveClass(/top-16/);
+  await expect(musicPlayer).not.toHaveClass(/top-0/);
+  await expect(musicPlayer).not.toHaveClass(/bottom-4/);
+  await expect(musicPlayer).not.toHaveClass(/md:bottom-4/);
+  await expect(chatLauncher).toBeVisible({ timeout: 10000 });
+  await expect(page.getByRole('button', { name: '重写' })).toBeVisible({ timeout: 10000 });
+  await expect(page.getByRole('button', { name: '改写' })).toBeVisible({ timeout: 10000 });
+  await expect(page.getByRole('button', { name: '总结' })).toBeVisible({ timeout: 10000 });
+
+  const [musicBox, chatBox] = await Promise.all([
+    musicPlayer.boundingBox(),
+    chatLauncher.boundingBox(),
+  ]);
+  expect(musicBox).not.toBeNull();
+  expect(chatBox).not.toBeNull();
+
+  const boxesOverlap =
+    musicBox!.x < chatBox!.x + chatBox!.width &&
+    musicBox!.x + musicBox!.width > chatBox!.x &&
+    musicBox!.y < chatBox!.y + chatBox!.height &&
+    musicBox!.y + musicBox!.height > chatBox!.y;
+  expect(boxesOverlap).toBe(false);
 }
 
 test.describe('Rewrite Button Discoverability', () => {
-  test('collapsed chat bar has no standalone rewrite button and expanded chat opens inline rewrite sheet', async ({ page }) => {
+  test('collapsed chat bar exposes rewrite/regenerate/summary actions and opens inline rewrite sheet', async ({ page }) => {
     await seedStoryForRewrite(page);
 
     await page.setViewportSize({ width: 390, height: 844 });
 
-    await expect(page.locator('[data-testid="chat-bar-launcher"] [data-testid="rewrite-button"]')).toHaveCount(0);
-    await page.getByLabel('打开聊天').click();
-
-    const rewriteButton = page.locator('[data-testid="chat-bar-panel"] [data-testid="rewrite-button"]');
-    await expect(rewriteButton).toBeVisible({ timeout: 10000 });
+    await expectCollapsedActionsVisibleAndUncovered(page);
+    const rewriteButton = page.locator('[data-testid="chat-bar-launcher"] [data-testid="rewrite-button"]');
     await expect(rewriteButton).toBeEnabled({ timeout: 10000 });
     await rewriteButton.click();
 
@@ -31,4 +65,12 @@ test.describe('Rewrite Button Discoverability', () => {
     await expect(rewriteSheet.getByPlaceholder(/描述你想要的修改/)).toBeVisible();
     await expect(rewriteSheet.getByRole('button', { name: '改写故事' })).toBeVisible();
   });
+
+  for (const viewport of chatActionViewports) {
+    test(`${viewport.name} keeps collapsed chat actions visible and uncovered`, async ({ page }) => {
+      await seedStoryForRewrite(page);
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await expectCollapsedActionsVisibleAndUncovered(page);
+    });
+  }
 });

@@ -1,15 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChatBar } from "@/components/game/ChatBar";
 import { MusicPlayer } from "@/components/game/MusicPlayer";
 import { OptionCards } from "@/components/game/OptionCards";
 import { StoryVoiceControls } from "@/components/game/StoryVoiceControls";
+import { useMusicStore } from "@/stores/useMusicStore";
 
 const transparentPixel =
   "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
 
 export default function E2ERegressionPage() {
+  const setActiveStoryText = useMusicStore((state) => state.setActiveStoryText);
+  const setActiveGameId = useMusicStore((state) => state.setActiveGameId);
+  const setCurrentSong = useMusicStore((state) => state.setCurrentSong);
+  const setQueue = useMusicStore((state) => state.setQueue);
   const [showHistory, setShowHistory] = useState(false);
   const [historySelected, setHistorySelected] = useState(false);
   const [currentStory, setCurrentStory] = useState("当前故事尚未更新");
@@ -26,6 +31,27 @@ export default function E2ERegressionPage() {
     : streamedStory.includes("账册被人翻开")
       ? "账册被人翻开"
       : "";
+
+  useEffect(() => {
+    setActiveStoryText("雨夜码头的旧账册被风吹开。");
+    setActiveGameId(101);
+    setCurrentSong({
+      id: 9101,
+      name: "全局音乐夹具",
+      artists: ["测试"],
+      album: "回归夹具",
+      duration: 120,
+      source: "netease",
+    });
+    setQueue([]);
+
+    return () => {
+      setActiveStoryText(null);
+      setActiveGameId(null);
+      setCurrentSong(null);
+      setQueue([]);
+    };
+  }, [setActiveStoryText, setActiveGameId, setCurrentSong, setQueue]);
 
   const appendFirstAttempt = () => {
     setStreamedStory("雾气从码头仓门涌进来，陆明看见账册被人翻开。");
