@@ -35,6 +35,8 @@ interface StoryVoiceState {
   userPauseMusicDuringReading: () => void;
 }
 
+type ApiError = Error & { status?: number };
+
 function contextLabel(context: ReadingContext): string {
   const parts = [];
   if (context.week !== undefined && context.week !== null) parts.push(`week=${context.week}`);
@@ -106,6 +108,57 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       userChangedMusic: false,
     });
 
+    const startBrowserSpeech = (jobId: number | null) => {
+      const speech = getSpeechSynthesis();
+      if (!speech) {
+        const { musicDuckState, userChangedMusic } = get();
+        set({
+          readingState: "failed",
+          currentJobId: jobId,
+          playbackMode: "browser_speech",
+          spokenTextLength: context.text.length,
+          currentSpeechText: context.text,
+          errorMessage: "Browser speech synthesis is unavailable",
+          musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
+        });
+        return;
+      }
+
+      const utterance = new SpeechSynthesisUtterance(context.text);
+      activeUtterance = utterance;
+      utterance.lang = detectSpeechLanguage(context.text);
+      utterance.rate = 1;
+      utterance.onend = () => {
+        if (activeUtterance === utterance) {
+          activeUtterance = null;
+          get().completeReading();
+        }
+      };
+      utterance.onerror = () => {
+        if (activeUtterance === utterance) {
+          const { musicDuckState, userChangedMusic } = get();
+          activeUtterance = null;
+          set({
+            readingState: "failed",
+            errorMessage: "Browser speech synthesis failed",
+            playbackMode: "browser_speech",
+            musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
+          });
+        }
+      };
+      set({
+        readingState: "playing",
+        currentAudioUrl: "",
+        currentJobId: jobId,
+        playbackMode: "browser_speech",
+        spokenTextLength: context.text.length,
+        currentSpeechText: context.text,
+        errorMessage: "",
+      });
+      speech.cancel();
+      speech.speak(utterance);
+    };
+
     try {
       const textHash = await normalizeTextHash(context.text);
       const response = await api.voice_reading.requestReading({
@@ -144,55 +197,12 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
         return;
       }
 
-      const speech = getSpeechSynthesis();
-      if (!speech) {
-        const { musicDuckState, userChangedMusic } = get();
-        set({
-          readingState: "failed",
-          currentJobId: response.job_id,
-          playbackMode: "browser_speech",
-          spokenTextLength: context.text.length,
-          currentSpeechText: context.text,
-          errorMessage: "Browser speech synthesis is unavailable",
-          musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
-        });
+      startBrowserSpeech(response.job_id);
+    } catch (error) {
+      if ((error as ApiError).status === 401) {
+        startBrowserSpeech(null);
         return;
       }
-
-      const utterance = new SpeechSynthesisUtterance(context.text);
-      activeUtterance = utterance;
-      utterance.lang = detectSpeechLanguage(context.text);
-      utterance.rate = 1;
-      utterance.onend = () => {
-        if (activeUtterance === utterance) {
-          activeUtterance = null;
-          get().completeReading();
-        }
-      };
-      utterance.onerror = () => {
-        if (activeUtterance === utterance) {
-          const { musicDuckState, userChangedMusic } = get();
-          activeUtterance = null;
-          set({
-            readingState: "failed",
-            errorMessage: "Browser speech synthesis failed",
-            playbackMode: "browser_speech",
-            musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
-          });
-        }
-      };
-      set({
-        readingState: "playing",
-        currentAudioUrl: "",
-        currentJobId: response.job_id,
-        playbackMode: "browser_speech",
-        spokenTextLength: context.text.length,
-        currentSpeechText: context.text,
-        errorMessage: "",
-      });
-      speech.cancel();
-      speech.speak(utterance);
-    } catch (error) {
       const { musicDuckState, userChangedMusic } = get();
       set({
         readingState: "failed",
