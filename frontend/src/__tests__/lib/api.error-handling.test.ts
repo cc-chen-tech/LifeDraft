@@ -46,6 +46,14 @@ afterEach(() => {
 
 describe('API Error Handling', () => {
   describe('Special Error Code Handling - 401', () => {
+    it('uses FastAPI detail text instead of generic Request failed for auth login errors', async () => {
+      global.fetch = jest.fn(() =>
+        mockFetchResponse({ detail: 'Invalid private ID' }, 401, false)
+      );
+
+      await expect(api.auth.login({ private_id: 'wrong-id' })).rejects.toThrow('Invalid private ID');
+    });
+
     it('silently handles 401 on /auth/me without triggering logout', async () => {
       global.fetch = jest.fn(() =>
         mockFetchResponse({ message: 'Unauthorized' }, 401, false)

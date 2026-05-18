@@ -1,5 +1,6 @@
 """Tests for friends API routes."""
 
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -209,6 +210,25 @@ class TestGetPendingRequests:
         assert len(data) == 1
         assert data[0]["request_id"] == 1
         assert data[0]["from_user"]["public_id"] == "ABC123"
+
+    def test_get_pending_requests_serializes_datetime(
+        self, client, mock_user_manager, mock_auth, auth_headers
+    ):
+        """Pending request timestamps from the database are serialized as ISO strings."""
+        mock_user_manager.get_pending_friend_requests.return_value = [
+            {
+                "request_id": 1,
+                "from_user_id": 2,
+                "from_public_id": "ABC123",
+                "from_display_name": "Someone",
+                "created_at": datetime(2026, 5, 18, 6, 36, 24, 623019),
+            }
+        ]
+
+        response = client.get("/api/friends/requests", headers=auth_headers)
+
+        assert response.status_code == 200
+        assert response.json()[0]["created_at"] == "2026-05-18T06:36:24.623019"
 
     def test_get_pending_requests_empty(self, client, mock_user_manager, mock_auth, auth_headers):
         """Test getting empty pending requests."""

@@ -99,6 +99,34 @@ describe('useEventGenerator', () => {
       expect((global.fetch as jest.Mock).mock.calls.length).toBe(fetchCallsBefore);
     });
 
+    it('recovers from a stuck generation by aborting stale work and forcing a new stream', async () => {
+      const abort = jest.fn();
+      mockAbortRef.current = { abort } as unknown as AbortController;
+      mockGeneratingRef.current = true;
+      mockPollingRef.current = true;
+      mockIsRetryingRef.current = true;
+      mockPhaseRef.current = 'generating' as Phase;
+
+      (global.fetch as jest.Mock).mockResolvedValue(
+        createSSEMockResponse([
+          'data: {"type":"story","content":"恢复后的故事"}\n\n',
+          'event: complete\ndata: {"event_description":"恢复后的故事","options":[{"text":"继续","effects":{}}]}\n\n',
+        ])
+      );
+
+      const { result } = renderHook(() => useEventGenerator(defaultParams));
+
+      await act(async () => { await result.current.recoverEventGeneration(); });
+
+      expect(abort).toHaveBeenCalled();
+      expect(mockPollingRef.current).toBe(false);
+      expect(mockIsRetryingRef.current).toBe(false);
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/games/1/event'),
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      );
+    });
+
     it('enters retryable error when event stream completes without options', async () => {
       (global.fetch as jest.Mock).mockResolvedValue(
         createSSEMockResponse([

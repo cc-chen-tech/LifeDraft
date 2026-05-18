@@ -80,7 +80,8 @@ export function useEventGenerator({
   };
 
   // Generate event function
-  const generateEvent = useCallback(async () => {
+  const generateEvent = useCallback(async (options?: { force?: boolean }) => {
+    const force = Boolean(options?.force);
     const caller = new Error().stack?.split('\n')[2]?.trim() || 'unknown';
     const state = useGameStore.getState();
     const storyLen = state?.storyText?.length ?? 0;
@@ -91,17 +92,17 @@ export function useEventGenerator({
       console.warn("[generateEvent] Blocked: no gameId");
       return;
     }
-    if (generatingRef.current) {
+    if (generatingRef.current && !force) {
       console.warn("[generateEvent] Blocked: already generating");
       return;
     }
-    if (isRetryingRef.current) {
+    if (isRetryingRef.current && !force) {
       console.warn("[generateEvent] Blocked: retry in progress within existing SSE stream");
       return;
     }
 
     const currentPhase = phaseRef.current;
-    if (currentPhase !== "loading" && currentPhase !== "error") {
+    if (currentPhase !== "loading" && currentPhase !== "error" && !force) {
       console.warn(`[generateEvent] Blocked: current phase is ${currentPhase}`);
       return;
     }
@@ -242,6 +243,40 @@ export function useEventGenerator({
     }
   }, [gameId, setStoryText, appendStoryText, setProcessing, setCurrentEvent, setGameOver, setPhase, phaseRef, setConnectionStatus, setReconnectAttempt, setOptions, setRoundSummary]);
 
+  const recoverEventGeneration = useCallback(async () => {
+    abortRef.current?.abort();
+    prefetchAbortRef.current?.abort();
+    generatingRef.current = false;
+    pollingRef.current = false;
+    prefetchingRef.current = false;
+    isRetryingRef.current = false;
+    prefetchResultRef.current = null;
+    setIsPrefetching(false);
+    setProcessing(false);
+    setConnectionStatus(null);
+    setReconnectAttempt(null);
+    setOptions([]);
+    phaseRef.current = "loading";
+    setPhase("loading");
+    await generateEvent({ force: true });
+  }, [
+    abortRef,
+    prefetchAbortRef,
+    generatingRef,
+    pollingRef,
+    prefetchingRef,
+    isRetryingRef,
+    prefetchResultRef,
+    setIsPrefetching,
+    setProcessing,
+    setConnectionStatus,
+    setReconnectAttempt,
+    setOptions,
+    phaseRef,
+    setPhase,
+    generateEvent,
+  ]);
+
   // Prefetch next event (background generation)
   const prefetchNextEvent = useCallback(async () => {
     if (!gameId) return;
@@ -328,6 +363,7 @@ export function useEventGenerator({
 
   return {
     generateEvent,
+    recoverEventGeneration,
     prefetchNextEvent,
   };
 }

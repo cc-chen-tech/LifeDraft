@@ -91,6 +91,29 @@ describe('RecognizeDialog', () => {
       expect(document.querySelector('.animate-spin')).toBeInTheDocument();
     });
 
+    it('does not show add-in-progress copy while analysis is still running', () => {
+      render(
+        <RecognizeDialog
+          open={true}
+          onClose={jest.fn()}
+          onSubmit={jest.fn()}
+          isRecognizing={true}
+          isLoading={true}
+          recognizedEntities={null}
+          selectedItems={[]}
+          selectedCharacters={[]}
+          selectedLandmarks={[]}
+          onToggleItemSelection={jest.fn()}
+          onToggleCharacterSelection={jest.fn()}
+          onToggleLandmarkSelection={jest.fn()}
+        />
+      );
+
+      expect(screen.getByText('正在分析故事历史...')).toBeInTheDocument();
+      expect(screen.queryByText('添加中...')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '分析中...' })).toBeDisabled();
+    });
+
     it('shows recognized results instead of stale loading copy once candidates exist', () => {
       render(
         <RecognizeDialog

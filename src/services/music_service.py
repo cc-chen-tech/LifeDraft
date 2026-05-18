@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import Any, Dict, List, Optional, Protocol, Sequence, TypeVar, Union
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 
@@ -418,8 +419,9 @@ class NeteaseMusicClient:
             if songs and len(songs) > 0:
                 song_url = songs[0].get("url")
                 if song_url:
-                    logger.info(f"[NeteaseMusic] Got URL for song {song_id}: {song_url[:50]}...")
-                    return song_url  # type: ignore[no-any-return]
+                    safe_url = self._normalize_browser_media_url(str(song_url))
+                    logger.info(f"[NeteaseMusic] Got URL for song {song_id}: {safe_url[:50]}...")
+                    return safe_url
                 else:
                     logger.warning(
                         f"[NeteaseMusic] URL is empty for song {song_id}, may be restricted by copyright"
@@ -441,6 +443,16 @@ class NeteaseMusicClient:
         except Exception as e:
             logger.exception(f"[NeteaseMusic] Failed to get song URL: {e}")
             return None
+
+    def _normalize_browser_media_url(self, url: str) -> str:
+        """Return a browser-safe media URL for HTTPS pages."""
+        parsed = urlparse(url)
+        if parsed.scheme != "http":
+            return url
+        host = parsed.hostname or ""
+        if host in {"localhost", "127.0.0.1", "music-api"}:
+            return url
+        return urlunparse(parsed._replace(scheme="https"))
 
     async def close(self) -> None:
         await self.client.aclose()

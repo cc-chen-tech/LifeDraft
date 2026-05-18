@@ -138,6 +138,7 @@ export function usePlayGame() {
   // ===== Event Generator =====
   const {
     generateEvent,
+    recoverEventGeneration,
     prefetchNextEvent,
   } = useEventGenerator({
     gameId,
@@ -442,6 +443,7 @@ export function usePlayGame() {
     handleSave,
     handleRegenerate,
     generateEvent,
+    recoverEventGeneration,
   };
 
   const history = {
@@ -538,6 +540,7 @@ export function usePlayGame() {
     handleSave,
     handleRegenerate,
     generateEvent,
+    recoverEventGeneration,
 
     // History
     showHistory,

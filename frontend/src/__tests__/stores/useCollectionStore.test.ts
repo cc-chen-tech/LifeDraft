@@ -409,7 +409,7 @@ describe('useCollectionStore', () => {
 
         await useCollectionStore.getState().fetchCollection(1);
 
-        expect(useCollectionStore.getState().error).toBe('Request failed');
+        expect(useCollectionStore.getState().error).toBe('error');
         expect(useCollectionStore.getState().isLoading).toBe(false);
       });
     });
@@ -444,7 +444,7 @@ describe('useCollectionStore', () => {
 
         await useCollectionStore.getState().generateCharacterImage(1, 'Test');
 
-        expect(useCollectionStore.getState().error).toBe('Request failed');
+        expect(useCollectionStore.getState().error).toBe('Generation failed');
         expect(useCollectionStore.getState().generatingImageFor).toBeNull();
       });
     });
@@ -485,7 +485,7 @@ describe('useCollectionStore', () => {
 
         await useCollectionStore.getState().regenerateCharacterImage(1, 'Test', 'feedback');
 
-        expect(useCollectionStore.getState().error).toBe('Request failed');
+        expect(useCollectionStore.getState().error).toBe('error');
         expect(useCollectionStore.getState().regeneratingImageFor).toBeNull();
       });
     });

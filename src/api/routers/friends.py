@@ -1,7 +1,8 @@
 """Friends router — friend requests, list, remove."""
 
 import logging
-from typing import List
+from datetime import datetime
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -12,6 +13,14 @@ from src.api.schemas import (FriendInfo, FriendRequestCreate,
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _serialize_timestamp(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value)
 
 
 @router.post("/request", response_model=MessageResponse)
@@ -72,7 +81,7 @@ async def get_pending_requests(user_id: int = Depends(get_current_user)):
                 public_id=r["from_public_id"],
                 display_name=r.get("from_display_name"),
             ),
-            created_at=r.get("created_at"),
+            created_at=_serialize_timestamp(r.get("created_at")),
         )
         for r in requests
     ]

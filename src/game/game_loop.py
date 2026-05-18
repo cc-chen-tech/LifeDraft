@@ -150,7 +150,7 @@ class GameLoop(RoundSystemMixin):
                 self.current_event = None
             else:
                 try:
-                    from src.ai.models import GameEvent
+                    from src.ai.models import GameEvent, RecoverableGameEvent
 
                     self.current_event = GameEvent(**self.player_state.current_event_data)
                     logger.info(
@@ -158,8 +158,32 @@ class GameLoop(RoundSystemMixin):
                         f"{self.current_event.event_description[:50]}..."
                     )
                 except Exception as e:
-                    logger.warning(f"[LoadGame] Failed to restore current event: {e}")
-                    self.current_event = None
+                    event_description = self.player_state.current_event_data.get(
+                        "event_description", ""
+                    )
+                    if event_description:
+                        saved_options = self.player_state.current_event_data.get("options") or []
+                        try:
+                            self.current_event = RecoverableGameEvent(
+                                event_description=event_description,
+                                options=saved_options,
+                            )
+                        except Exception as recoverable_error:
+                            logger.warning(
+                                "[LoadGame] Dropping malformed partial event options: "
+                                f"{recoverable_error}"
+                            )
+                            self.current_event = RecoverableGameEvent(
+                                event_description=event_description,
+                                options=[],
+                            )
+                        logger.info(
+                            "[LoadGame] Restored partial current event without options: "
+                            f"{event_description[:50]}..."
+                        )
+                    else:
+                        logger.warning(f"[LoadGame] Failed to restore current event: {e}")
+                        self.current_event = None
         else:
             logger.info("[LoadGame] No current_event_data, setting current_event to None")
             self.current_event = None

@@ -436,7 +436,7 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
 
   // 识别实体
   recognizeEntities: async (gameId: number, minAppearances: number = 3) => {
-    set({ isRecognizing: true, error: null });
+    set({ isRecognizing: true, isLoading: false, error: null });
 
     try {
       const result = await api.collection.recognizeEntities(gameId, {

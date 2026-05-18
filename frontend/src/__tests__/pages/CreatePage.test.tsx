@@ -491,6 +491,29 @@ describe('CreatePage', () => {
       expect(screen.getByText('时代背景')).toBeInTheDocument();
     });
 
+    it('shows long-running generation guidance before the request resolves', async () => {
+      jest.useFakeTimers();
+      (global.fetch as jest.Mock).mockImplementation(() => new Promise(() => {}));
+      useGameStore.setState({
+        creationStep: 0,
+        playerName: '陆明',
+        characterSettings: {},
+      });
+
+      render(<CreatePage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('AI正在生成时代背景...')).toBeInTheDocument();
+      });
+
+      act(() => {
+        jest.advanceTimersByTime(15000);
+      });
+
+      expect(screen.getByText('生成时间较久，请继续等待，完成后会自动显示结果。')).toBeInTheDocument();
+      jest.useRealTimers();
+    });
+
     it('handles regenerate button click', async () => {
       (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ era_name: '现代' }));
 

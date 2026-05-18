@@ -31,9 +31,15 @@ interface MusicPlayerProps {
   storyText: string;
   gameId?: number;
   className?: string;
+  autoFetchRecommendation?: boolean;
 }
 
-export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerProps) {
+export function MusicPlayer({
+  storyText,
+  gameId,
+  className = "",
+  autoFetchRecommendation = true,
+}: MusicPlayerProps) {
   const {
     recommendation,
     isLoadingRecommendation,
@@ -471,11 +477,11 @@ export function MusicPlayer({ storyText, gameId, className = "" }: MusicPlayerPr
 
   // 初始加载推荐
   useEffect(() => {
-    if (storyText && !hasFetchedRef.current && !recommendation) {
+    if (autoFetchRecommendation && storyText && !hasFetchedRef.current && !recommendation) {
       hasFetchedRef.current = true;
       fetchRecommendation();
     }
-  }, [storyText, recommendation, fetchRecommendation]);
+  }, [autoFetchRecommendation, storyText, recommendation, fetchRecommendation]);
 
   // 清理
   useEffect(() => {
