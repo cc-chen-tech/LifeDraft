@@ -9,9 +9,8 @@ from fastapi.testclient import TestClient
 # API tests - image endpoints
 pytestmark = pytest.mark.api
 
-from src.api.deps import get_current_user  # noqa: E402
 from src.api.routers.images import verify_game_ownership  # noqa: E402
-from src.api.routers.images import router, verify_image_ownership
+from src.api.routers.images import verify_image_ownership
 from src.services.image_service import ImageContentError  # noqa: E402
 from src.services.image_storage import ImageStorageError  # noqa: E402
 
@@ -19,8 +18,10 @@ from src.services.image_storage import ImageStorageError  # noqa: E402
 @pytest.fixture
 def app():
     """Create test app with images router."""
+    from src.api.routers.images import router as current_router
+
     app = FastAPI()
-    app.include_router(router, prefix="/images")
+    app.include_router(current_router, prefix="/images")
     return app
 
 
@@ -28,6 +29,18 @@ def app():
 def client(app):
     """Create test client."""
     return TestClient(app)
+
+
+def _current_user_dependency():
+    from src.api.routers import images
+
+    return images.get_current_user
+
+
+def _current_user_optional_dependency():
+    from src.api.routers import images
+
+    return images.get_current_user_optional
 
 
 class TestVerifyGameOwnership:
@@ -114,7 +127,7 @@ class TestGetImageFileEndpoint:
         from pathlib import Path
 
         # Mock auth dependency
-        app.dependency_overrides[get_current_user] = lambda: 1
+        app.dependency_overrides[_current_user_dependency()] = lambda: 1
 
         mock_storage = MagicMock()
         mock_storage.image_exists.return_value = True
@@ -138,7 +151,7 @@ class TestGetImageFileEndpoint:
         from pathlib import Path
 
         # Mock auth dependency
-        app.dependency_overrides[get_current_user] = lambda: 1
+        app.dependency_overrides[_current_user_dependency()] = lambda: 1
 
         mock_storage = MagicMock()
         mock_storage.image_exists.return_value = True
@@ -226,7 +239,7 @@ class TestPathTraversalSecurity:
         """Test that path traversal with .. is rejected."""
         from pathlib import Path
 
-        app.dependency_overrides[get_current_user] = lambda: 1
+        app.dependency_overrides[_current_user_dependency()] = lambda: 1
 
         mock_storage = MagicMock()
         mock_storage.image_exists.return_value = False
@@ -248,7 +261,7 @@ class TestPathTraversalSecurity:
         """Test that URL-encoded path traversal is rejected."""
         from pathlib import Path
 
-        app.dependency_overrides[get_current_user] = lambda: 1
+        app.dependency_overrides[_current_user_dependency()] = lambda: 1
 
         mock_storage = MagicMock()
         mock_storage.image_exists.return_value = False
@@ -294,11 +307,11 @@ class TestGenerateImageEndpoint:
     @patch("src.api.routers.images.verify_game_ownership")
     def test_generate_image_success(self, mock_verify, mock_service_class, app, client):
         """Test successful image generation."""
-        from src.api.deps import get_current_user_optional
-
         mock_user = MagicMock()
         mock_user.user_id = 1
-        app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+        app.dependency_overrides[_current_user_optional_dependency()] = (
+            lambda: mock_user.user_id
+        )
 
         mock_service = MagicMock()
         mock_image = MagicMock()
@@ -338,13 +351,15 @@ class TestGenerateImageEndpoint:
 
     @patch("src.api.routers.images.ImageService")
     @patch("src.api.routers.images.verify_game_ownership")
-    def test_generate_image_invalid_type(self, mock_verify, mock_service_class, app, client):
+    def test_generate_image_invalid_type(
+        self, mock_verify, mock_service_class, app, client
+    ):
         """Test generating image with invalid type."""
-        from src.api.deps import get_current_user_optional
-
         mock_user = MagicMock()
         mock_user.user_id = 1
-        app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+        app.dependency_overrides[_current_user_optional_dependency()] = (
+            lambda: mock_user.user_id
+        )
 
         mock_verify.return_value = MagicMock()
 
@@ -368,13 +383,15 @@ class TestGenerateImageEndpoint:
 
     @patch("src.api.routers.images.ImageService")
     @patch("src.api.routers.images.verify_game_ownership")
-    def test_generate_image_content_error(self, mock_verify, mock_service_class, app, client):
+    def test_generate_image_content_error(
+        self, mock_verify, mock_service_class, app, client
+    ):
         """Test handling content moderation error."""
-        from src.api.deps import get_current_user_optional
-
         mock_user = MagicMock()
         mock_user.user_id = 1
-        app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+        app.dependency_overrides[_current_user_optional_dependency()] = (
+            lambda: mock_user.user_id
+        )
 
         mock_service = MagicMock()
         mock_service.generate_character_image.side_effect = ImageContentError(
@@ -414,7 +431,7 @@ class TestImageFileNotFound:
         """Test getting non-existent image file returns 404 or 500."""
         from pathlib import Path
 
-        app.dependency_overrides[get_current_user] = lambda: 1
+        app.dependency_overrides[_current_user_dependency()] = lambda: 1
 
         mock_storage = MagicMock()
         mock_storage.image_exists.return_value = False

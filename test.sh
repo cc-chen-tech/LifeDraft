@@ -121,6 +121,8 @@ run_preflight() {
     local browser_regression_openspec_code=$?
     openspec validate harden-frontend-backend-field-contracts --strict
     local field_contract_openspec_code=$?
+    openspec validate promote-router-collection-maintained-gates --strict
+    local router_collection_openspec_code=$?
 
     echo -e "${YELLOW}运行前置 gate 测试...${NC}"
     python -m pytest \
@@ -129,6 +131,8 @@ run_preflight() {
         tests/test_gate_coverage_fidelity_no_mock.py \
         tests/test_gate_contracts_no_mock.py \
         tests/test_frontend_backend_field_contracts.py \
+        tests/test_images_router.py \
+        tests/test_api_collection.py \
         tests/test_music_degradation_no_mock.py \
         tests/test_sse_timeout_contract.py \
         -v
@@ -160,7 +164,7 @@ run_preflight() {
     cd "$PROJECT_DIR"
 
     local result=0
-    if [ $openspec_code -ne 0 ] || [ $music_openspec_code -ne 0 ] || [ $redesign_openspec_code -ne 0 ] || [ $shift_left_openspec_code -ne 0 ] || [ $story_voice_openspec_code -ne 0 ] || [ $story_tts_openspec_code -ne 0 ] || [ $coverage_gate_openspec_code -ne 0 ] || [ $restore_backend_openspec_code -ne 0 ] || [ $browser_regression_openspec_code -ne 0 ] || [ $field_contract_openspec_code -ne 0 ] || [ $gate_code -ne 0 ] || [ $tsc_code -ne 0 ] || [ $jest_code -ne 0 ]; then
+    if [ $openspec_code -ne 0 ] || [ $music_openspec_code -ne 0 ] || [ $redesign_openspec_code -ne 0 ] || [ $shift_left_openspec_code -ne 0 ] || [ $story_voice_openspec_code -ne 0 ] || [ $story_tts_openspec_code -ne 0 ] || [ $coverage_gate_openspec_code -ne 0 ] || [ $restore_backend_openspec_code -ne 0 ] || [ $browser_regression_openspec_code -ne 0 ] || [ $field_contract_openspec_code -ne 0 ] || [ $router_collection_openspec_code -ne 0 ] || [ $gate_code -ne 0 ] || [ $tsc_code -ne 0 ] || [ $jest_code -ne 0 ]; then
         result=1
     fi
 
@@ -228,6 +232,8 @@ run_contract() {
         tests/test_api_contract.py \
         tests/test_gate_contracts_no_mock.py \
         tests/test_frontend_backend_field_contracts.py \
+        tests/test_images_router.py \
+        tests/test_api_collection.py \
         tests/test_music_playlist_contract.py \
         tests/test_shift_left_e2e_contract_no_mock.py \
         tests/test_story_music_recommendation_contract.py \
@@ -515,6 +521,8 @@ run_coverage_maintained_backend() {
         tests/test_api_contract.py \
         tests/test_gate_contracts_no_mock.py \
         tests/test_frontend_backend_field_contracts.py \
+        tests/test_images_router.py \
+        tests/test_api_collection.py \
         tests/test_music_playlist_contract.py \
         tests/test_shift_left_e2e_contract_no_mock.py \
         tests/test_story_music_recommendation_contract.py \

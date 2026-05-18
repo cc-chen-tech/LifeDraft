@@ -87,6 +87,8 @@ def test_backend_workflow_includes_promoted_high_risk_groups() -> None:
     required = {
         "tests/test_api_gameplay.py",
         "tests/test_frontend_backend_field_contracts.py",
+        "tests/test_images_router.py",
+        "tests/test_api_collection.py",
         "tests/test_scene_image_sse_contract.py",
         "tests/test_collection_cache_contract.py",
         "tests/test_session_cache.py",
@@ -129,6 +131,14 @@ def test_frontend_backend_field_contract_change_is_validated_in_preflight() -> N
     assert "openspec validate harden-frontend-backend-field-contracts --strict" in script
 
 
+def test_router_collection_promotion_change_is_validated_in_preflight() -> None:
+    """Router and collection promotion OpenSpec must stay in preflight."""
+
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+
+    assert "openspec validate promote-router-collection-maintained-gates --strict" in script
+
+
 def test_frontend_backend_field_contract_file_is_wired() -> None:
     """Field drift tests must run in both preflight and contract gates."""
 
@@ -138,6 +148,26 @@ def test_frontend_backend_field_contract_file_is_wired() -> None:
 
     assert "tests/test_frontend_backend_field_contracts.py" in preflight_tests
     assert "tests/test_frontend_backend_field_contracts.py" in contract_tests
+
+
+def test_router_collection_promotion_files_are_wired() -> None:
+    """Promoted router and collection suites must run in maintained gates."""
+
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+    preflight_tests = _python_tests_from_block(script, "run_preflight")
+    contract_tests = _python_tests_from_block(script, "run_contract")
+    coverage_tests = _python_tests_from_block(
+        script, "run_coverage_maintained_backend"
+    )
+
+    required = {
+        "tests/test_images_router.py",
+        "tests/test_api_collection.py",
+    }
+
+    assert required <= preflight_tests
+    assert required <= contract_tests
+    assert required <= coverage_tests
 
 
 def test_browser_regression_preflight_file_is_wired() -> None:

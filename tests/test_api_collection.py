@@ -13,17 +13,14 @@ from fastapi.testclient import TestClient
 # API tests - collection endpoints
 pytestmark = pytest.mark.api
 
-from src.api.deps import get_current_user_optional  # noqa: E402
-from src.api.routers.collection import router  # noqa: E402
-from src.services.collection_service import (EntityNotFoundError,  # noqa: E402
-                                             PermissionDeniedError)
-
 
 @pytest.fixture
 def app():
     """Create test app with collection router."""
+    from src.api.routers.collection import router as current_router
+
     app = FastAPI()
-    app.include_router(router, prefix="/collection")
+    app.include_router(current_router, prefix="/collection")
     return app
 
 
@@ -31,6 +28,24 @@ def app():
 def client(app):
     """Create test client."""
     return TestClient(app)
+
+
+def _current_user_optional_dependency():
+    from src.api.routers import collection
+
+    return collection.get_current_user_optional
+
+
+def _entity_not_found_error():
+    from src.services import collection_service
+
+    return collection_service.EntityNotFoundError
+
+
+def _permission_denied_error():
+    from src.services import collection_service
+
+    return collection_service.PermissionDeniedError
 
 
 # ==================== GET /{game_id} Tests ====================
@@ -86,7 +101,9 @@ class TestGetCollection:
         }
         mock_cs_class.return_value = mock_service
 
-        app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+        app.dependency_overrides[_current_user_optional_dependency()] = (
+            lambda: mock_user.user_id
+        )
         try:
             response = client.get("/collection/1")
             assert response.status_code == 200
@@ -135,7 +152,9 @@ class TestGetCollection:
         }
         mock_cs_class.return_value = mock_service
 
-        app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+        app.dependency_overrides[_current_user_optional_dependency()] = (
+            lambda: mock_user.user_id
+        )
         try:
             response = client.get("/collection/1")
             assert response.status_code == 200
@@ -196,12 +215,14 @@ class TestGenerateCharacterImage:
 
         mock_service = MagicMock()
         mock_service.verify_game_ownership.return_value = MagicMock()
-        mock_service.generate_character_image.side_effect = EntityNotFoundError(
+        mock_service.generate_character_image.side_effect = _entity_not_found_error()(
             "角色 NotExist 不存在"
         )
         mock_cs_class.return_value = mock_service
 
-        app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+        app.dependency_overrides[_current_user_optional_dependency()] = (
+            lambda: mock_user.user_id
+        )
         try:
             response = client.post("/collection/1/characters/NotExist/generate-image")
             assert response.status_code == 404
@@ -237,7 +258,9 @@ class TestGenerateCharacterImage:
         mock_service.generate_character_image.return_value = 123
         mock_cs_class.return_value = mock_service
 
-        app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+        app.dependency_overrides[_current_user_optional_dependency()] = (
+            lambda: mock_user.user_id
+        )
         try:
             response = client.post("/collection/1/characters/TestChar/generate-image")
             assert response.status_code == 200
@@ -280,10 +303,14 @@ class TestGenerateItemImage:
 
         mock_service = MagicMock()
         mock_service.verify_game_ownership.return_value = MagicMock()
-        mock_service.generate_item_image.side_effect = EntityNotFoundError("物品 NotExist 不存在")
+        mock_service.generate_item_image.side_effect = _entity_not_found_error()(
+            "物品 NotExist 不存在"
+        )
         mock_cs_class.return_value = mock_service
 
-        app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+        app.dependency_overrides[_current_user_optional_dependency()] = (
+            lambda: mock_user.user_id
+        )
         try:
             response = client.post("/collection/1/items/NotExist/generate-image")
             assert response.status_code == 404
@@ -303,7 +330,9 @@ class TestGenerateCharacterDescription:
         assert response.status_code == 401
 
     @patch("src.api.routers.collection.session_service")
-    def test_generate_character_description_already_exists(self, mock_session_service, app, client):
+    def test_generate_character_description_already_exists(
+        self, mock_session_service, app, client
+    ):
         """Test that existing description returns success."""
         mock_user = MagicMock()
         mock_user.user_id = 1
@@ -316,9 +345,13 @@ class TestGenerateCharacterDescription:
         mock_session.game_loop = mock_game_loop
         mock_session_service.get_or_restore.return_value = mock_session
 
-        app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+        app.dependency_overrides[_current_user_optional_dependency()] = (
+            lambda: mock_user.user_id
+        )
         try:
-            response = client.post("/collection/1/characters/TestChar/generate-description")
+            response = client.post(
+                "/collection/1/characters/TestChar/generate-description"
+            )
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True
@@ -351,7 +384,9 @@ class TestCollectionErrorScenarios:
 
         mock_game_loop = MagicMock()
         mock_player_state = MagicMock()
-        mock_player_state.characters = {"TestChar": {"name": "TestChar", "affinity": 30}}
+        mock_player_state.characters = {
+            "TestChar": {"name": "TestChar", "affinity": 30}
+        }
         mock_player_state.player_name = "OtherPlayer"
         mock_player_state.character_settings = {}
         mock_game_loop.get_state.return_value = mock_player_state
@@ -365,12 +400,14 @@ class TestCollectionErrorScenarios:
 
         mock_service = MagicMock()
         mock_service.verify_game_ownership.return_value = MagicMock()
-        mock_service.validate_character_for_regenerate.side_effect = PermissionDeniedError(
-            "亲密度不足，无法修改画像"
+        mock_service.validate_character_for_regenerate.side_effect = (
+            _permission_denied_error()("亲密度不足，无法修改画像")
         )
         mock_cs_class.return_value = mock_service
 
-        app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+        app.dependency_overrides[_current_user_optional_dependency()] = (
+            lambda: mock_user.user_id
+        )
         try:
             response = client.post(
                 "/collection/1/characters/TestChar/regenerate-image",
@@ -445,10 +482,14 @@ class TestDeleteItem:
         mock_session_local.return_value = mock_db
 
         mock_service = MagicMock()
-        mock_service.delete_item.side_effect = EntityNotFoundError("物品 NotExist 不存在")
+        mock_service.delete_item.side_effect = _entity_not_found_error()(
+            "物品 NotExist 不存在"
+        )
         mock_cs_class.return_value = mock_service
 
-        app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+        app.dependency_overrides[_current_user_optional_dependency()] = (
+            lambda: mock_user.user_id
+        )
         try:
             response = client.delete("/collection/1/items/NotExist")
             assert response.status_code == 404

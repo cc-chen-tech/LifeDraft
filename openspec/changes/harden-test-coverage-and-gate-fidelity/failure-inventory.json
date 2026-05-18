@@ -1,8 +1,8 @@
 {
   "source": "pytest .pytest_cache/v/cache/lastfailed after full backend coverage run",
-  "collected_tests": 3196,
+  "collected_tests": 3211,
   "last_full_backend_result": {
-    "passed": 3189,
+    "passed": 3204,
     "failed": 0,
     "errors": 0,
     "skipped": 1,
@@ -18,18 +18,19 @@
     "coverage_percent": 71.18
   },
   "latest_command": "python -m pytest tests -q",
-  "latest_duration_seconds": 115.44,
+  "latest_duration_seconds": 96.54,
   "latest_maintained_backend_result": {
-    "passed": 385,
+    "passed": 440,
     "failed": 0,
     "errors": 0,
-    "coverage_percent": 32.62,
+    "coverage_percent": 33.16,
     "cov_fail_under": 30
   },
-  "follow_up_not_promoted": {
-    "tests/test_images_router.py": "Requires router/mock-session stabilization before maintained promotion.",
-    "tests/test_api_collection.py": "Requires permission/session mock cleanup before maintained promotion."
+  "promoted_after_follow_up": {
+    "tests/test_images_router.py": "Promoted after targeted stability run passed with tests/test_api_collection.py.",
+    "tests/test_api_collection.py": "Promoted after targeted stability run passed with tests/test_images_router.py."
   },
+  "follow_up_not_promoted": {},
   "lastfailed_files": {
     "none": 0
   }
