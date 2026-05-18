@@ -135,6 +135,11 @@ async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: num
       throw Object.assign(new Error(error.message || 'Authentication required'), { status: response.status });
     }
 
+    if (response.status === 401 && url.includes('/voice-reading/')) {
+      console.warn(`[API] Voice reading API 401 — falling back without redirect: ${url}`);
+      throw Object.assign(new Error(error.message || 'Authentication required'), { status: response.status });
+    }
+
     // ★ 404 未找到 - 对于场景图片查询，这是正常的未生成状态，不显示错误日志
     if (response.status === 404 && url.includes('/images/scene/')) {
       // 静默处理，前端会轮询直到图片生成完成

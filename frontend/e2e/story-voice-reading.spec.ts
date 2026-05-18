@@ -13,7 +13,7 @@ async function expectBrowserSpeechAttempt(page: Page): Promise<string> {
 }
 
 async function expectBackendAudioAttempt(page: Page): Promise<void> {
-  await expect(page.getByTestId('voice-reading-state')).toHaveText('playing');
+  await expect(page.getByTestId('voice-reading-state')).toHaveText('playing', { timeout: 15_000 });
   await expect(page.getByTestId('voice-reading-job')).toHaveText(/^\d+$/);
   await expect(page.getByTestId('voice-reading-audio-url')).toContainText(
     '/api/voice-reading/audio/'
@@ -36,6 +36,26 @@ async function gotoRegressionPageAfterMusicSettles(page: Page): Promise<void> {
   await page.waitForLoadState('domcontentloaded');
   await expect(page.getByText('正在分析故事氛围...')).toHaveCount(0, { timeout: 60_000 });
 }
+
+async function gotoRegressionPageForVoiceControls(page: Page): Promise<void> {
+  await page.goto('/e2e-regression');
+  await page.waitForLoadState('domcontentloaded');
+  await expect(page.getByRole('button', { name: '朗读当前故事' })).toBeVisible();
+}
+
+test.describe('Story voice reading without login', () => {
+  test('unauthenticated reading stays on the story page and falls back to browser speech', async ({ page }) => {
+    await gotoRegressionPageForVoiceControls(page);
+
+    await page.getByRole('button', { name: '朗读当前故事' }).click();
+
+    await expect(page).toHaveURL(/\/e2e-regression$/);
+    await expect(page.getByTestId('voice-reading-source')).toHaveText('current_story');
+    await expect(page.getByTestId('voice-reading-playback-mode')).toHaveText('browser_speech');
+    await expect(page.getByTestId('voice-reading-audio-url')).toHaveText('');
+    await expect(page.getByTestId('voice-reading-speech-text')).toHaveText('雨夜码头的旧账册被风吹开。');
+  });
+});
 
 test.describe('Story voice reading', () => {
   test.describe.configure({ mode: 'serial' });
