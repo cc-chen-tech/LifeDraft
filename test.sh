@@ -257,7 +257,7 @@ run_e2e_browser() {
     fi
     
     echo -e "${YELLOW}运行完整 Playwright E2E 测试 (chromium)...${NC}"
-    npx playwright test --project=core --reporter=list --workers=1
+    npx playwright test --project=core --reporter=dot --workers=1
     local core_result=$?
 
     echo -e "${YELLOW}运行会员 AI 音乐队列补充 E2E 测试...${NC}"

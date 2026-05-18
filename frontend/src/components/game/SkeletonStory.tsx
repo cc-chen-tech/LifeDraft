@@ -4,6 +4,7 @@ import { memo } from "react";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface SkeletonStoryProps {
   className?: string;
@@ -12,6 +13,10 @@ interface SkeletonStoryProps {
   elapsedSeconds?: number;
   /** 生成阶段提示 */
   phase?: string;
+  /** 长时间等待时恢复当前进度 */
+  onRecover?: () => void;
+  /** 恢复按钮文案 */
+  recoverLabel?: string;
 }
 
 /**
@@ -26,6 +31,8 @@ export const SkeletonStory = memo(function SkeletonStory({
   message = "正在构思故事...",
   elapsedSeconds,
   phase,
+  onRecover,
+  recoverLabel = "恢复当前进度",
 }: SkeletonStoryProps) {
   // 格式化时间
   const formatTime = (seconds: number) => {
@@ -43,6 +50,7 @@ export const SkeletonStory = memo(function SkeletonStory({
     if (seconds < 40) return "故事分支生成中，精彩即将呈现...";
     return "复杂情节推演中，请稍候...";
   };
+  const isLongRunning = elapsedSeconds !== undefined && elapsedSeconds >= 60;
 
   return (
     <div
@@ -81,6 +89,18 @@ export const SkeletonStory = memo(function SkeletonStory({
           <div className="text-xs text-muted-foreground/40 tabular-nums">
             已等待 {formatTime(elapsedSeconds)}
           </div>
+        )}
+
+        {isLongRunning && (
+          <div className="max-w-sm rounded-md border border-border/60 bg-muted/40 px-4 py-3 text-center text-xs text-muted-foreground leading-relaxed">
+            复杂生成可能需要 1-2 分钟，刷新或恢复当前进度不会丢失已保存内容。
+          </div>
+        )}
+
+        {isLongRunning && onRecover && (
+          <Button type="button" variant="outline" size="sm" onClick={onRecover}>
+            {recoverLabel}
+          </Button>
         )}
       </div>
 

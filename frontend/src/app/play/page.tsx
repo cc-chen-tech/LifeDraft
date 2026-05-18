@@ -383,6 +383,7 @@ export default function PlayPage() {
             message={phase === "loading" ? "故事生成中..." : getLoadingMessage()}
             elapsedSeconds={elapsedSeconds}
             phase={phase === "generating" || phase === "choosing" ? getLoadingMessage() : undefined}
+            onRecover={() => window.location.reload()}
           />
         )}
 

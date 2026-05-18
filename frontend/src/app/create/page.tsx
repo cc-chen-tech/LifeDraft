@@ -228,6 +228,7 @@ export default function CreatePage() {
               onFeedbackChange={setImageFeedback}
               onRegenerate={() => regeneratePlayerImage(imageFeedback)}
               onRegenerateFresh={regenerateFreshPlayerImage}
+              onRecover={() => window.location.reload()}
               showToast={showToast}
             />
           )}

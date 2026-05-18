@@ -26,7 +26,8 @@ export function StoryVoiceControls({
   const currentContextLabel = useStoryVoiceStore((state) => state.currentContextLabel);
   const currentAudioUrl = useStoryVoiceStore((state) => state.currentAudioUrl);
   const currentJobId = useStoryVoiceStore((state) => state.currentJobId);
-  const currentPlaybackMode = useStoryVoiceStore((state) => state.currentPlaybackMode);
+  const playbackMode = useStoryVoiceStore((state) => state.playbackMode);
+  const spokenTextLength = useStoryVoiceStore((state) => state.spokenTextLength);
   const currentSpeechText = useStoryVoiceStore((state) => state.currentSpeechText);
   const errorMessage = useStoryVoiceStore((state) => state.errorMessage);
   const queueText = useStoryVoiceStore((state) => state.queueText);
@@ -109,18 +110,23 @@ export function StoryVoiceControls({
             <Pause className="w-4 h-4 mr-1.5" />
             暂停朗读
           </Button>
-        ) : (
+        ) : readingState !== "failed" ? (
           <Button type="button" size="sm" variant="ghost" onClick={handleContinue}>
             <Play className="w-4 h-4 mr-1.5" />
             继续朗读
           </Button>
-        )}
+        ) : null}
         <Button type="button" size="sm" variant="ghost" onClick={handleStop}>
           <Square className="w-4 h-4 mr-1.5" />
           停止朗读
         </Button>
         {readingState === "failed" && (
-          <Button type="button" size="sm" variant="ghost" onClick={handleContinue}>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => void startReading(currentContext)}
+          >
             <RotateCcw className="w-4 h-4 mr-1.5" />
             重试朗读
           </Button>
@@ -142,7 +148,13 @@ export function StoryVoiceControls({
           Audio: <span data-testid="voice-reading-audio-url">{currentAudioUrl}</span>
         </span>
         <span>
-          模式: <span data-testid="voice-reading-playback-mode">{currentPlaybackMode}</span>
+          Mode: <span data-testid="voice-reading-mode">{playbackMode}</span>
+        </span>
+        <span>
+          模式: <span data-testid="voice-reading-playback-mode">{playbackMode}</span>
+        </span>
+        <span>
+          Length: <span data-testid="voice-reading-spoken-length">{spokenTextLength}</span>
         </span>
         <span className="sr-only" data-testid="voice-reading-speech-text">
           {currentSpeechText}
@@ -174,6 +186,9 @@ export function StoryVoiceControls({
           </Button>
           <Button type="button" size="sm" variant="outline" onClick={simulateMusicPlaying}>
             模拟音乐播放中
+          </Button>
+          <Button type="button" size="sm" variant="outline" onClick={completeReading}>
+            模拟朗读结束
           </Button>
           <Button type="button" size="sm" variant="outline" onClick={userPauseMusicDuringReading}>
             用户手动暂停音乐

@@ -87,7 +87,7 @@ export function GlobalMusicPlayer() {
   return (
     <div
       data-testid="global-music-player"
-      className="fixed z-50 top-0 left-0 right-0 safe-area-pt mt-2 md:top-auto md:mt-0 md:bottom-4 md:left-auto md:right-4 md:w-80"
+      className="fixed z-50 top-16 left-0 right-0 safe-area-pt mt-2 md:left-auto md:right-4 md:w-80"
     >
       {/* MusicPlayer always mounted to keep audio alive.
           Use opacity-0 + h-0 + overflow-hidden instead of display:none

@@ -6,7 +6,7 @@ import type { ReadingContext } from "@/lib/types";
 
 export type VoiceReadingState = "idle" | "loading" | "ready" | "playing" | "paused" | "failed";
 export type MusicDuckState = "idle" | "playing" | "ducked" | "restored" | "user_paused";
-export type StoryVoicePlaybackMode = "audio" | "browser_speech";
+export type StoryVoicePlaybackMode = "none" | "browser_speech" | "audio";
 
 interface StoryVoiceState {
   readingState: VoiceReadingState;
@@ -14,7 +14,8 @@ interface StoryVoiceState {
   currentContextLabel: string;
   currentAudioUrl: string;
   currentJobId: number | null;
-  currentPlaybackMode: StoryVoicePlaybackMode | "";
+  playbackMode: StoryVoicePlaybackMode;
+  spokenTextLength: number;
   currentSpeechText: string;
   errorMessage: string;
   queueText: string;
@@ -46,11 +47,29 @@ function contextLabel(context: ReadingContext): string {
 
 async function normalizeTextHash(text: string): Promise<string> {
   const normalized = text.split(/\s+/).filter(Boolean).join(" ");
-  const bytes = new TextEncoder().encode(normalized);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(normalized));
   return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .map((value) => value.toString(16).padStart(2, "0"))
     .join("");
+}
+
+let activeUtterance: SpeechSynthesisUtterance | null = null;
+
+function getSpeechSynthesis(): SpeechSynthesis | null {
+  if (typeof window === "undefined") return null;
+  if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) return null;
+  return window.speechSynthesis;
+}
+
+function detectSpeechLanguage(text: string): string {
+  return /[\u3400-\u9fff]/.test(text) ? "zh-CN" : "en-US";
+}
+
+function restoredMusicDuckState(
+  musicDuckState: MusicDuckState,
+  userChangedMusic: boolean
+): MusicDuckState {
+  return musicDuckState === "ducked" && !userChangedMusic ? "restored" : musicDuckState;
 }
 
 export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
@@ -59,7 +78,8 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
   currentContextLabel: "",
   currentAudioUrl: "",
   currentJobId: null,
-  currentPlaybackMode: "",
+  playbackMode: "none",
+  spokenTextLength: 0,
   currentSpeechText: "",
   errorMessage: "",
   queueText: "",
@@ -70,18 +90,22 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
 
   startReading: async (context) => {
     const { musicWasPlaying } = get();
+    getSpeechSynthesis()?.cancel();
+    activeUtterance = null;
     set({
-      readingState: "playing",
+      readingState: "loading",
       currentSource: context.source_type,
       currentContextLabel: contextLabel(context),
       currentAudioUrl: "",
       currentJobId: null,
-      currentPlaybackMode: "",
       currentSpeechText: "",
+      playbackMode: "none",
+      spokenTextLength: 0,
       errorMessage: "",
       musicDuckState: musicWasPlaying ? "ducked" : get().musicDuckState,
       userChangedMusic: false,
     });
+
     try {
       const textHash = await normalizeTextHash(context.text);
       const response = await api.voice_reading.requestReading({
@@ -95,52 +119,133 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
             : null,
       });
       const shouldPlayAudio = response.playback_mode === "audio" && Boolean(response.audio_url);
-      if (!shouldPlayAudio) {
-        const utterance = new SpeechSynthesisUtterance(context.text);
-        utterance.lang = "zh-CN";
-        utterance.rate = 1;
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(utterance);
+      if (response.status === "failed") {
+        const { musicDuckState, userChangedMusic } = get();
+        set({
+          readingState: "failed",
+          currentJobId: response.job_id,
+          playbackMode: response.playback_mode,
+          errorMessage: response.error_code ?? response.message,
+          musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
+        });
+        return;
       }
+
+      if (shouldPlayAudio) {
+        set({
+          readingState: "playing",
+          currentAudioUrl: response.audio_url ?? "",
+          currentJobId: response.job_id,
+          playbackMode: "audio",
+          spokenTextLength: 0,
+          currentSpeechText: "",
+          errorMessage: "",
+        });
+        return;
+      }
+
+      const speech = getSpeechSynthesis();
+      if (!speech) {
+        const { musicDuckState, userChangedMusic } = get();
+        set({
+          readingState: "failed",
+          currentJobId: response.job_id,
+          playbackMode: "browser_speech",
+          spokenTextLength: context.text.length,
+          currentSpeechText: context.text,
+          errorMessage: "Browser speech synthesis is unavailable",
+          musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
+        });
+        return;
+      }
+
+      const utterance = new SpeechSynthesisUtterance(context.text);
+      activeUtterance = utterance;
+      utterance.lang = detectSpeechLanguage(context.text);
+      utterance.rate = 1;
+      utterance.onend = () => {
+        if (activeUtterance === utterance) {
+          activeUtterance = null;
+          get().completeReading();
+        }
+      };
+      utterance.onerror = () => {
+        if (activeUtterance === utterance) {
+          const { musicDuckState, userChangedMusic } = get();
+          activeUtterance = null;
+          set({
+            readingState: "failed",
+            errorMessage: "Browser speech synthesis failed",
+            playbackMode: "browser_speech",
+            musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
+          });
+        }
+      };
       set({
-        readingState: response.status === "failed" ? "failed" : "playing",
-        currentAudioUrl: shouldPlayAudio ? response.audio_url ?? "" : "",
+        readingState: "playing",
+        currentAudioUrl: "",
         currentJobId: response.job_id,
-        currentPlaybackMode: response.playback_mode,
-        currentSpeechText: shouldPlayAudio ? "" : context.text,
-        errorMessage: response.error_code ?? "",
+        playbackMode: "browser_speech",
+        spokenTextLength: context.text.length,
+        currentSpeechText: context.text,
+        errorMessage: "",
       });
+      speech.cancel();
+      speech.speak(utterance);
     } catch (error) {
+      const { musicDuckState, userChangedMusic } = get();
       set({
         readingState: "failed",
         errorMessage: error instanceof Error ? error.message : "Reading request failed",
+        musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
       });
     }
   },
-  pauseReading: () => set({ readingState: "paused" }),
+  pauseReading: () => {
+    getSpeechSynthesis()?.pause();
+    set({ readingState: "paused" });
+  },
   stopReading: () => {
     const { musicDuckState, userChangedMusic } = get();
+    getSpeechSynthesis()?.cancel();
+    activeUtterance = null;
     set({
       readingState: "idle",
       currentAudioUrl: "",
       currentJobId: null,
-      currentPlaybackMode: "",
+      playbackMode: "none",
+      spokenTextLength: 0,
       currentSpeechText: "",
-      musicDuckState:
-        musicDuckState === "ducked" && !userChangedMusic ? "restored" : musicDuckState,
+      musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
     });
   },
   completeReading: () => {
     const { musicDuckState, userChangedMusic } = get();
+    if (activeUtterance) {
+      getSpeechSynthesis()?.cancel();
+      activeUtterance = null;
+    }
     set({
       readingState: "idle",
+      playbackMode: "none",
+      spokenTextLength: 0,
       currentSpeechText: "",
-      musicDuckState:
-        musicDuckState === "ducked" && !userChangedMusic ? "restored" : musicDuckState,
+      musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
     });
   },
-  retryReading: () => set({ readingState: "playing" }),
-  failReading: () => set({ readingState: "failed" }),
+  retryReading: () => {
+    getSpeechSynthesis()?.resume();
+    set({ readingState: "playing" });
+  },
+  failReading: () => {
+    const { musicDuckState, userChangedMusic } = get();
+    getSpeechSynthesis()?.cancel();
+    activeUtterance = null;
+    set({
+      readingState: "failed",
+      musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
+    });
+  },
   setAutoReadEnabled: (autoReadEnabled) => set({ autoReadEnabled }),
   enqueueCompletedAttempt: (text) => set({ queueText: text }),
   simulateMusicPlaying: () => set({ musicWasPlaying: true, musicDuckState: "playing" }),

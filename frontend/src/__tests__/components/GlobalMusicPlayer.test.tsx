@@ -127,6 +127,17 @@ describe("GlobalMusicPlayer", () => {
   });
 
   describe("Mini player bar", () => {
+    it("stays below the app header on desktop so it cannot cover header controls or the chat launcher", () => {
+      setStoreState({ activeStoryText: "story text" });
+
+      render(<GlobalMusicPlayer />);
+
+      const wrapper = screen.getByTestId("global-music-player");
+      expect(wrapper).toHaveClass("top-16");
+      expect(wrapper).not.toHaveClass("md:top-auto");
+      expect(wrapper).not.toHaveClass("md:bottom-4");
+    });
+
     it("shows song name when currentSong is set", () => {
       setStoreState({
         activeStoryText: "story text",

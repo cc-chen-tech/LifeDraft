@@ -357,4 +357,4 @@ def test_deterministic_voice_audio_duration_leaves_room_for_browser_controls() -
     with wave.open(BytesIO(audio), "rb") as wav:
         duration_seconds = wav.getnframes() / wav.getframerate()
 
-    assert duration_seconds >= 2.0
+    assert duration_seconds >= 8.0

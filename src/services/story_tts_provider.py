@@ -18,6 +18,7 @@ import httpx
 from config.settings import PROJECT_ROOT, settings
 
 PlaybackMode = Literal["audio", "browser_speech"]
+MIN_DETERMINISTIC_AUDIO_DURATION_SECONDS = 8.0
 
 
 @dataclass(frozen=True)
@@ -97,7 +98,10 @@ class DeterministicTTSProvider:
     def synthesize(self, context: Dict[str, Any], voice_id: str, speed: float) -> GeneratedSpeech:
         text = str(context["text"])
         text_hash = str(context["text_hash"])
-        duration = max(2_400, int(len(text) * 120 / speed))
+        duration = max(
+            int(MIN_DETERMINISTIC_AUDIO_DURATION_SECONDS * 1000),
+            int(len(text) * 120 / speed),
+        )
         return GeneratedSpeech(
             storage_path=f"/api/voice-reading/audio/{text_hash}-{voice_id}.wav",
             duration_ms=duration,
@@ -207,7 +211,7 @@ def build_story_tts_provider(provider_name: Optional[str] = None) -> StoryTTSPro
 
 def build_deterministic_wav(text_hash: str, voice_id: str) -> bytes:
     sample_rate = 16_000
-    duration_seconds = 2.4
+    duration_seconds = MIN_DETERMINISTIC_AUDIO_DURATION_SECONDS
     frequency_offsets = {
         "warm_female": 0,
         "calm_male": -70,

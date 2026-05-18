@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -18,6 +18,7 @@ interface StepPortraitProps {
   onFeedbackChange: (feedback: string) => void;
   onRegenerate: () => Promise<void>;
   onRegenerateFresh: () => Promise<void>;
+  onRecover?: () => void;
   showToast: (type: "success" | "error", message: string) => void;
 }
 
@@ -33,11 +34,28 @@ export function StepPortrait({
   onFeedbackChange,
   onRegenerate,
   onRegenerateFresh,
+  onRecover,
   showToast,
 }: StepPortraitProps) {
   const playerImage = playerImages[selectedImageIndex] || playerImages[0] || null;
   const [mainImageError, setMainImageError] = useState(false);
   const [thumbErrors, setThumbErrors] = useState<Set<number>>(new Set());
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const isLongRunning = isGeneratingImage && elapsedSeconds >= 60;
+
+  useEffect(() => {
+    if (!isGeneratingImage) {
+      setElapsedSeconds(0);
+      return;
+    }
+
+    setElapsedSeconds(0);
+    const interval = window.setInterval(() => {
+      setElapsedSeconds((seconds) => seconds + 1);
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, [isGeneratingImage]);
 
   const handleMainImageError = useCallback(() => {
     setMainImageError(true);
@@ -52,11 +70,21 @@ export function StepPortrait({
       {/* 图片展示区 */}
       <div className="w-full">
         {isGeneratingImage ? (
-          <div className="w-full aspect-[9/17] max-w-sm mx-auto bg-secondary rounded-lg overflow-hidden flex items-center justify-center">
+          <div className="w-full aspect-[9/17] max-w-sm mx-auto bg-secondary rounded-lg overflow-hidden flex items-center justify-center px-4">
             <div className="flex flex-col items-center gap-2 text-muted-foreground">
               <Loader2 className="w-8 h-8 animate-spin" />
               <span className="text-sm">AI正在生成人物形象...</span>
               <span className="text-xs text-muted-foreground/60">（生成人物形象）</span>
+              {isLongRunning && (
+                <div className="mt-2 max-w-xs rounded-md border border-border/60 bg-background/40 px-3 py-2 text-center text-xs leading-relaxed">
+                  人物形象生成通常需要 1-2 分钟。你可以继续等待，或刷新状态查看是否已经生成完成。
+                </div>
+              )}
+              {isLongRunning && onRecover && (
+                <Button type="button" variant="outline" size="sm" onClick={onRecover}>
+                  刷新状态
+                </Button>
+              )}
             </div>
           </div>
         ) : playerImages.length > 0 ? (
