@@ -138,6 +138,21 @@ class TestLogin:
         response = client.post("/api/auth/login", json={"private_id": ""})
         assert response.status_code == 422
 
+    def test_login_accepts_private_key_alias_for_displayed_credential(
+        self, client, mock_user_manager, mock_create_token
+    ):
+        """The one-time credential is shown as a private key in UI, so alias payloads must work."""
+        mock_user = MagicMock()
+        mock_user.user_id = 1
+        mock_user.public_id = "ABC123"
+        mock_user.display_name = "TestUser"
+        mock_user_manager.login_by_private_id.return_value = mock_user
+
+        response = client.post("/api/auth/login", json={"private_key": "valid_private_id"})
+
+        assert response.status_code == 200
+        mock_user_manager.login_by_private_id.assert_called_once_with("valid_private_id")
+
 
 class TestGetMe:
     """Tests for GET /api/auth/me."""

@@ -36,6 +36,7 @@ const mockUsePlayGame = {
   handleSave: jest.fn(),
   handleRegenerate: jest.fn(),
   generateEvent: jest.fn(),
+  recoverEventGeneration: jest.fn(),
   getLoadingMessage: jest.fn(() => 'Loading...'),
   hydrated: true,
   router: { push: jest.fn(), replace: jest.fn() },
@@ -317,6 +318,32 @@ describe('PlayPage', () => {
       // Loading skeleton should be shown
       const buttons = screen.getAllByRole('button');
       expect(buttons.length).toBeGreaterThan(0);
+    });
+
+    it('keeps recovery controls visible and uses the forced recovery action when loading has no story or options', async () => {
+      const mockRecoverEventGeneration = jest.fn();
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'loading',
+        options: [],
+        storyText: '',
+        displayText: '',
+        elapsedSeconds: 45,
+        recoverEventGeneration: mockRecoverEventGeneration,
+        getLoadingMessage: () => '故事生成中...',
+      });
+
+      render(<PlayPage />);
+
+      expect(screen.getByText('故事生成中...')).toBeInTheDocument();
+      const recoveryButton = screen.getByRole('button', { name: '恢复当前进度' });
+      expect(recoveryButton).toBeInTheDocument();
+
+      fireEvent.click(recoveryButton);
+      await waitFor(() => {
+        expect(mockRecoverEventGeneration).toHaveBeenCalledTimes(1);
+      });
     });
 
     it('shows generating state with message', async () => {

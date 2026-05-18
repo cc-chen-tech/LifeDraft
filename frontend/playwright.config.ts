@@ -150,7 +150,7 @@ export default defineConfig({
     webServer: {
       command: 'npm run dev',
       url: 'http://localhost:3000',
-      reuseExistingServer: true,
+      reuseExistingServer: false,
       timeout: 120 * 1000,
       env: Object.fromEntries(
         Object.entries(process.env).filter(([, v]) => v !== undefined)

@@ -766,6 +766,11 @@ def get_opening_story_prompt(
 姓名：{sanitized_player_name}
 人生愿景：{sanitized_life_vision}
 
+【人生愿景硬约束 - 违反即失败】
+开场故事必须围绕上述人生愿景展开，并保留其中明确的职业、时代、核心矛盾和叙事人称。
+如果人生愿景指定“调查记者”“科技公司”“城市系统黑幕”等主线，必须让这些元素成为开场冲突或调查动机。
+不得改写为无关的遗产、非遗、中医传承、古代探案或武侠押镖主线。
+
 【时代背景】
 {era.get('era_description', '')}，{era.get('year', '')}年
 {era.get('world_context', '')}

@@ -35,6 +35,42 @@ activate_python_env() {
     fi
 }
 
+ensure_e2e_frontend_port_available() {
+    local frontend_dir="$PROJECT_DIR/frontend"
+    local pids
+    pids="$(lsof -tiTCP:3000 -sTCP:LISTEN 2>/dev/null || true)"
+
+    if [ -z "$pids" ]; then
+        return 0
+    fi
+
+    local pid
+    for pid in $pids; do
+        local cwd
+        cwd="$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -n 1)"
+
+        if [[ "$cwd" == "$frontend_dir"* ]]; then
+            echo -e "${YELLOW}关闭当前 worktree 遗留前端进程 (PID: $pid)...${NC}"
+            kill "$pid" 2>/dev/null || true
+            sleep 1
+            continue
+        fi
+
+        echo -e "${RED}占用 3000 端口的前端不属于当前 worktree，拒绝复用以避免误测。${NC}"
+        echo -e "${RED}PID: $pid${NC}"
+        if [ -n "$cwd" ]; then
+            echo -e "${RED}CWD: $cwd${NC}"
+        fi
+        echo -e "${YELLOW}请先关闭该进程，或在对应 worktree 内运行测试。${NC}"
+        return 1
+    done
+
+    if lsof -tiTCP:3000 -sTCP:LISTEN > /dev/null 2>&1; then
+        echo -e "${RED}3000 端口仍被占用，无法启动当前 worktree 的 E2E 前端。${NC}"
+        return 1
+    fi
+}
+
 # 打印层级标题
 print_layer_header() {
     local layer_num=$1
@@ -100,10 +136,12 @@ run_preflight() {
         src/__tests__/preflight/storyContinuityPreflight.test.tsx \
         src/__tests__/lib/sse.test.ts \
         src/__tests__/stores/useGameStore.test.ts \
+        src/__tests__/pages/CreatePage.test.tsx \
         src/__tests__/hooks/eventUtils.test.ts \
         src/__tests__/components/ChatBar.test.tsx \
         src/__tests__/components/GlobalMusicPlayer.escape.test.tsx \
         src/__tests__/lib/apiRetryPolicy.test.ts \
+        src/__tests__/stores/useCollectionStore.test.ts \
         src/__tests__/stores/useMusicStore.musicQueuePolicy.test.ts \
         --runInBand
     local jest_code=$?
@@ -257,6 +295,14 @@ run_e2e_browser() {
         echo -e "${GREEN}后端已在运行${NC}"
     fi
     
+    ensure_e2e_frontend_port_available
+    local frontend_port_result=$?
+    if [ $frontend_port_result -ne 0 ]; then
+        print_layer_result "e2e" $frontend_port_result
+        E2E_RESULT=$frontend_port_result
+        return $frontend_port_result
+    fi
+
     echo -e "${YELLOW}运行完整 Playwright E2E 测试 (chromium)...${NC}"
     npx playwright test --project=core --reporter=dot --workers=1
     local core_result=$?

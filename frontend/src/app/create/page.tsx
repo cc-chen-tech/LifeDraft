@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -100,6 +101,22 @@ export default function CreatePage() {
     STEP_DESCRIPTIONS,
     CREATION_STEPS,
   } = useCharacterCreation();
+
+  const [showSlowGenerationHint, setShowSlowGenerationHint] = useState(false);
+
+  useEffect(() => {
+    if (!isGenerating) {
+      setShowSlowGenerationHint(false);
+      return;
+    }
+
+    setShowSlowGenerationHint(false);
+    const timer = window.setTimeout(() => {
+      setShowSlowGenerationHint(true);
+    }, 15000);
+
+    return () => window.clearTimeout(timer);
+  }, [currentStepKey, isGenerating]);
 
   // ==================== Auto-generation full-screen UI ====================
   if (autoGenPhase === "generating") {
@@ -243,7 +260,16 @@ export default function CreatePage() {
           )}
 
           {/* Loading state */}
-          {isGenerating && <SkeletonStory message={`AI正在生成${STEP_LABELS[currentStepKey]}...`} />}
+          {isGenerating && (
+            <div className="space-y-3">
+              <SkeletonStory message={`AI正在生成${STEP_LABELS[currentStepKey]}...`} />
+              {showSlowGenerationHint && (
+                <p className="rounded-md border border-border bg-secondary/60 px-3 py-2 text-center text-sm text-muted-foreground">
+                  生成时间较久，请继续等待，完成后会自动显示结果。
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Prompt for name if needed */}
           {!isPortraitStep && !isGenerating && !generatedContent && characterSettings[currentStepKey] == null && !hasBasicInfo && (

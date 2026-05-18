@@ -53,6 +53,7 @@ import {
   Users,
   ArrowRight,
   Palette,
+  RotateCcw,
 } from "lucide-react";
 
 /**
@@ -116,6 +117,7 @@ export default function PlayPage() {
     handleSave,
     handleRegenerate,
     generateEvent,
+    recoverEventGeneration,
 
     // Utilities
     getLoadingMessage,
@@ -210,6 +212,18 @@ export default function PlayPage() {
       console.error("[handleStyleChange]", err);
     }
   }, [gameId]);
+
+  const showEmptyGenerationRecovery =
+    !isViewingHistory &&
+    (phase === "loading" || phase === "generating" || phase === "choosing") &&
+    !displayText &&
+    options.length === 0;
+
+  const handleRecoverGeneration = useCallback(() => {
+    setOptions([]);
+    setPhase("loading");
+    setTimeout(() => recoverEventGeneration(), 0);
+  }, [recoverEventGeneration, setOptions, setPhase]);
 
   // Don't render until hydrated
   if (!hydrated) {
@@ -385,6 +399,23 @@ export default function PlayPage() {
             phase={phase === "generating" || phase === "choosing" ? getLoadingMessage() : undefined}
             onRecover={() => window.location.reload()}
           />
+        )}
+
+        {showEmptyGenerationRecovery && (
+          <div className="mx-auto mb-6 max-w-md rounded-lg border border-border bg-card/70 px-4 py-3 text-center shadow-sm">
+            <p className="mb-3 text-sm text-muted-foreground">
+              如果生成时间较长，可以先恢复当前进度；恢复不会丢失已创建的角色和存档。
+            </p>
+            <Button
+              variant="outline"
+              className="touch-target"
+              aria-label="恢复当前进度"
+              onClick={handleRecoverGeneration}
+            >
+              <RotateCcw className="mr-2 h-4 w-4" />
+              恢复当前进度
+            </Button>
+          </div>
         )}
 
         {/* Story text */}

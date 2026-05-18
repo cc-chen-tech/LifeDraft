@@ -36,6 +36,18 @@ def test_preflight_script_runs_before_expensive_layers() -> None:
     )
 
 
+def test_e2e_gate_does_not_reuse_frontend_from_other_worktree() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+    config = (ROOT / "frontend" / "playwright.config.ts").read_text(encoding="utf-8")
+
+    assert "ensure_e2e_frontend_port_available" in script
+    assert "占用 3000 端口的前端不属于当前 worktree" in script
+    assert script.index("ensure_e2e_frontend_port_available") < script.index(
+        "npx playwright test --project=core"
+    )
+    assert "reuseExistingServer: false" in config
+
+
 def test_frontend_regression_fixture_exercises_changed_surfaces() -> None:
     fixture = (ROOT / "frontend" / "src" / "app" / "e2e-regression" / "page.tsx").read_text(
         encoding="utf-8"
@@ -59,6 +71,14 @@ def test_frontend_regression_fixture_exercises_changed_surfaces() -> None:
         assert test_name in e2e
 
 
+def test_regression_fixture_does_not_hit_real_music_recommendation_by_default() -> None:
+    fixture = (ROOT / "frontend" / "src" / "app" / "e2e-regression" / "page.tsx").read_text(
+        encoding="utf-8"
+    )
+
+    assert "autoFetchRecommendation={false}" in fixture
+
+
 def test_frontend_image_generation_path_is_checked_before_e2e() -> None:
     api_source = (ROOT / "frontend" / "src" / "lib" / "api.ts").read_text(encoding="utf-8")
 
@@ -67,6 +87,14 @@ def test_frontend_image_generation_path_is_checked_before_e2e() -> None:
         in api_source
     )
     assert "fetchJson('/images'" not in api_source
+
+
+def test_api_runtime_files_remain_python39_import_compatible() -> None:
+    router_source = (ROOT / "src" / "api" / "routers" / "friends.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "str | None" not in router_source
 
 
 def test_ai_heavy_e2e_specs_do_not_override_project_timeout_too_low() -> None:

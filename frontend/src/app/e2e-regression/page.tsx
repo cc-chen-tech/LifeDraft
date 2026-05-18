@@ -237,6 +237,7 @@ export default function E2ERegressionPage() {
         <MusicPlayer
           gameId={101}
           storyText="雨夜的码头上，主角刚发现旧账册里藏着失踪亲人的线索。远处传来轮船汽笛声，空气紧张而潮湿。"
+          autoFetchRecommendation={false}
         />
         <button
           type="button"

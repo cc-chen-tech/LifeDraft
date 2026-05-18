@@ -28,3 +28,9 @@ class GameEvent(BaseModel):
             return cls(**data)
         except (json.JSONDecodeError, ValidationError) as e:
             raise ValueError(f"Invalid event format: {e}")
+
+
+class RecoverableGameEvent(GameEvent):
+    """Persisted in-progress event that may not have options yet."""
+
+    options: List[EventOption] = Field(default_factory=list, max_length=4)

@@ -2,7 +2,7 @@
 
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 # ==================== Auth ====================
 
@@ -12,7 +12,11 @@ class RegisterRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    private_id: str = Field(..., min_length=1)
+    private_id: str = Field(
+        ...,
+        min_length=1,
+        validation_alias=AliasChoices("private_id", "private_key"),
+    )
 
 
 class PhoneLoginRequest(BaseModel):

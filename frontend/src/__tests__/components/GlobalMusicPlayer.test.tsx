@@ -16,7 +16,7 @@ jest.mock('@/stores/useMusicStore', () => {
   };
 });
 
-import { useMusicStore } from "@/stores/useMusicStore";
+import { fetchMusicRecommendation, useMusicStore } from "@/stores/useMusicStore";
 import { GlobalMusicPlayer } from "@/components/game/GlobalMusicPlayer";
 
 function setStoreState(overrides: Record<string, unknown> = {}) {
@@ -227,6 +227,14 @@ describe("GlobalMusicPlayer", () => {
   });
 
   describe("Expand/Collapse", () => {
+    it("does not fetch a new recommendation while collapsed", () => {
+      setStoreState({ activeStoryText: "story text", recommendation: null });
+
+      render(<GlobalMusicPlayer />);
+
+      expect(fetchMusicRecommendation).not.toHaveBeenCalled();
+    });
+
     it("shows chevron up icon in collapsed state", () => {
       setStoreState({ activeStoryText: "story text" });
 

@@ -122,7 +122,11 @@ class RoundEventGenerator:
             existing_story = None
             resume_source = None
 
-            if round_history:
+            if self._current_event and not self._current_event.options:
+                existing_story = self._current_event.event_description
+                resume_source = "partial_current_event"
+                logger.info("[Resume Check] Found partial current_event story without options")
+            elif round_history:
                 last_entry = round_history[-1]
                 entry_week = last_entry.get("week")
                 entry_round = last_entry.get("round")

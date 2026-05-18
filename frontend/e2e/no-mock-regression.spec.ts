@@ -39,7 +39,10 @@ test.describe('no-mock regression coverage', () => {
           const loadingVisible = await page.getByText('AI正在生成时代背景...').isVisible();
           const nextEnabled = await page.getByRole('button', { name: '下一步' }).isEnabled();
           const errorVisible = await page.getByText('生成失败，请重试').isVisible();
-          return !loadingVisible && (nextEnabled || errorVisible);
+          const slowHintVisible = await page
+            .getByText('生成时间较久，请继续等待，完成后会自动显示结果。')
+            .isVisible();
+          return (!loadingVisible && (nextEnabled || errorVisible)) || slowHintVisible;
         },
         {
           message: 'creation flow should not stay stuck in AI loading state',

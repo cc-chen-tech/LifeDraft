@@ -178,10 +178,15 @@ export function RecognizeDialog({
           </Button>
           <Button
             onClick={onSubmit}
-            disabled={isLoading || totalSelected === 0}
+            disabled={(isRecognizing && !recognizedEntities) || isLoading || totalSelected === 0}
             className="flex-1"
           >
-            {isLoading ? (
+            {isRecognizing && !recognizedEntities ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                分析中...
+              </>
+            ) : isLoading ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                 添加中...

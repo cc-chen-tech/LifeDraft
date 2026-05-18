@@ -25,6 +25,7 @@ class EntityRecognitionService(BaseExtractionService):
         existing_landmarks: List[str],
         min_appearances: int = 3,
         language: str = "zh",
+        eligible_character_names: Optional[List[str]] = None,
     ) -> Dict[str, List[Dict[str, Any]]]:
         """从历史记录中识别实体。
 
@@ -87,6 +88,12 @@ class EntityRecognitionService(BaseExtractionService):
             logger.info(f"AI raw response (first 500 chars): {response[:500]}")
 
             result = self._parse_recognition_response(response)
+            if eligible_character_names is not None:
+                result["characters"] = self._filter_character_entities_by_metadata(
+                    result.get("characters", []),
+                    eligible_character_names=eligible_character_names,
+                    existing_characters=existing_characters,
+                )
             result = self._supplement_with_story_entities(
                 result=result,
                 story_text=story_text,
@@ -94,6 +101,7 @@ class EntityRecognitionService(BaseExtractionService):
                 existing_characters=existing_characters,
                 existing_landmarks=existing_landmarks,
                 min_appearances=min_appearances,
+                eligible_character_names=eligible_character_names,
             )
             result = self._normalize_recognized_entities(
                 result,
@@ -279,6 +287,7 @@ class EntityRecognitionService(BaseExtractionService):
         existing_characters: List[str],
         existing_landmarks: List[str],
         min_appearances: int,
+        eligible_character_names: Optional[List[str]] = None,
     ) -> Dict[str, List[Dict[str, Any]]]:
         """用确定性文本识别补足 AI 漏掉的明显实体。
 
@@ -291,14 +300,22 @@ class EntityRecognitionService(BaseExtractionService):
             "landmarks": list(result.get("landmarks", [])),
         }
 
-        self._append_missing_entities(
-            supplemented["characters"],
-            self._extract_named_people(story_text),
-            set(existing_characters),
-            self._build_character_fallback_entity,
-            story_text,
-            min_appearances=1,
-        )
+        eligible_set = set(eligible_character_names) if eligible_character_names is not None else None
+        if eligible_set is None:
+            character_candidates = self._extract_named_people(story_text)
+        else:
+            character_candidates = [
+                name for name in self._extract_named_people(story_text) if name in eligible_set
+            ]
+        if character_candidates:
+            self._append_missing_entities(
+                supplemented["characters"],
+                character_candidates,
+                set(existing_characters),
+                self._build_character_fallback_entity,
+                story_text,
+                min_appearances=1,
+            )
         self._append_missing_entities(
             supplemented["items"],
             self._extract_named_items(story_text),
@@ -316,6 +333,28 @@ class EntityRecognitionService(BaseExtractionService):
             min_appearances=min_appearances,
         )
         return supplemented
+
+    def _filter_character_entities_by_metadata(
+        self,
+        characters: List[Dict[str, Any]],
+        eligible_character_names: Optional[List[str]],
+        existing_characters: List[str],
+    ) -> List[Dict[str, Any]]:
+        """Keep only relationship/important character candidates not already collected."""
+        eligible = set(eligible_character_names or [])
+        existing = set(existing_characters)
+        if not eligible:
+            return []
+
+        filtered: List[Dict[str, Any]] = []
+        seen: set[str] = set()
+        for character in characters:
+            name = str(character.get("name", "")).strip()
+            if not name or name in seen or name in existing or name not in eligible:
+                continue
+            filtered.append(character)
+            seen.add(name)
+        return filtered
 
     def _normalize_recognized_entities(
         self,

@@ -545,11 +545,10 @@ test.describe('API Contract - Friends Endpoints', () => {
 test.describe('API Contract - Music Endpoints', () => {
   // 音乐 API 依赖外部网易云服务，响应可能较慢，给更长的超时
   const MUSIC_API_TIMEOUT = 30000;
-  // recommend 需要 AI 分析故事 + 搜索歌曲，耗时更长
-  const MUSIC_RECOMMEND_TIMEOUT = 60000;
 
   test('POST /api/music/recommend should exist', async ({ request }) => {
-    const result = await testEndpoint(request, 'POST', '/api/music/recommend', [200, 401, 422, 429, 500], { story_text: 'A quiet evening in the village.' }, MUSIC_RECOMMEND_TIMEOUT);
+    // Contract existence should stay fast and should not depend on live AI/music providers.
+    const result = await testEndpoint(request, 'POST', '/api/music/recommend', [422, 429], {});
     expect(result.exists).toBe(true);
     expect(result.error).toBeNull();
   });

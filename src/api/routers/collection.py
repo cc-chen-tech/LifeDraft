@@ -98,6 +98,53 @@ def _build_entity_recognition_history(player_state: Any) -> List[Dict[str, Any]]
     return history
 
 
+def _extract_named_entities_from_settings(values: Any) -> List[str]:
+    """Extract explicit entity names from structured character settings."""
+    names: List[str] = []
+    if not isinstance(values, list):
+        return names
+
+    for value in values:
+        if isinstance(value, str):
+            name = value.strip()
+        elif isinstance(value, dict):
+            name = str(
+                value.get("name")
+                or value.get("person_name")
+                or value.get("character_name")
+                or ""
+            ).strip()
+        else:
+            name = ""
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def _build_eligible_recognition_characters(player_state: Any) -> List[str]:
+    """Characters eligible for smart recognition based on relationship metadata."""
+    character_settings = getattr(player_state, "character_settings", None) or {}
+    if not isinstance(character_settings, dict):
+        return []
+
+    relationships = character_settings.get("relationships") or {}
+    family = character_settings.get("family") or {}
+
+    eligible: List[str] = []
+    if isinstance(relationships, dict):
+        eligible.extend(_extract_named_entities_from_settings(relationships.get("key_people")))
+        eligible.extend(
+            _extract_named_entities_from_settings(relationships.get("important_people"))
+        )
+    if isinstance(family, dict):
+        eligible.extend(_extract_named_entities_from_settings(family.get("family_members")))
+
+    player_name = getattr(player_state, "player_name", "") or character_settings.get(
+        "player_name", ""
+    )
+    return [name for name in dict.fromkeys(eligible) if name and name != player_name]
+
+
 # ==================== 获取收集数据 ====================
 
 
@@ -468,6 +515,7 @@ async def recognize_entities(  # type: ignore
             existing_landmarks=existing_landmarks,
             min_appearances=min_appearances,
             language=session.language,
+            eligible_character_names=_build_eligible_recognition_characters(player_state),
         )
     except (ValueError, TypeError, KeyError) as e:
         raise HTTPException(status_code=400, detail=f"实体识别失败: {e}")

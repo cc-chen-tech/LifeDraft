@@ -123,17 +123,20 @@ async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: num
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: response.statusText }));
+    const errorMessage = typeof error.detail === 'string'
+      ? error.detail
+      : error.message || response.statusText || 'Request failed';
 
     // ★ 401 未授权 - 对于 /auth/me 这是正常的未登录状态，不显示错误日志
     if (response.status === 401 && url === '/auth/me') {
       // 静默处理，不显示错误日志
-      throw Object.assign(new Error(error.message || 'Request failed'), { status: response.status });
+      throw Object.assign(new Error(errorMessage), { status: response.status });
     }
 
     // ★ 401 未授权 - 收集面板请求静默处理，不触发重定向
     if (response.status === 401 && url.includes('/collection/')) {
       console.warn(`[API] Collection API 401 — cookie may not have been forwarded: ${url}`);
-      throw Object.assign(new Error(error.message || 'Authentication required'), { status: response.status });
+      throw Object.assign(new Error(errorMessage || 'Authentication required'), { status: response.status });
     }
 
     if (response.status === 401 && url.includes('/voice-reading/')) {
@@ -144,17 +147,17 @@ async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: num
     // ★ 404 未找到 - 对于场景图片查询，这是正常的未生成状态，不显示错误日志
     if (response.status === 404 && url.includes('/images/scene/')) {
       // 静默处理，前端会轮询直到图片生成完成
-      throw Object.assign(new Error(error.message || 'Request failed'), { status: response.status });
+      throw Object.assign(new Error(errorMessage), { status: response.status });
     }
 
-    console.error(`[API Error] ${url} failed with ${response.status}:`, error.message || response.statusText);
+    console.error(`[API Error] ${url} failed with ${response.status}:`, errorMessage);
     
     // ★ 401 未授权 - 使用防竞态的重定向处理
     if (response.status === 401) {
       handle401Redirect();
     }
     
-    throw Object.assign(new Error(error.message || 'Request failed'), { status: response.status });
+    throw Object.assign(new Error(errorMessage), { status: response.status });
   }
 
   return response.json();
@@ -176,7 +179,10 @@ async function fetchJsonFromBase<T>(
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: response.statusText }));
-    throw Object.assign(new Error(error.message || 'Request failed'), { status: response.status });
+    const errorMessage = typeof error.detail === 'string'
+      ? error.detail
+      : error.message || response.statusText || 'Request failed';
+    throw Object.assign(new Error(errorMessage), { status: response.status });
   }
 
   return response.json();

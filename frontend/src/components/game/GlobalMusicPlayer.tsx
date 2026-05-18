@@ -104,6 +104,7 @@ export function GlobalMusicPlayer() {
           storyText={storyText}
           gameId={effectiveGameId}
           className="rounded-none border-0 shadow-none"
+          autoFetchRecommendation={isExpanded}
         />
       </div>
 
