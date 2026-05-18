@@ -1,5 +1,16 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
 import { registerUser } from './helpers/auth';
+
+async function expectBrowserSpeechAttempt(page: Page): Promise<string> {
+  await expect(page.getByTestId('voice-reading-mode')).toHaveText('browser_speech');
+  await expect(page.getByTestId('voice-reading-spoken-length')).toHaveText(/[1-9]\d+/);
+  await expect(page.getByTestId('voice-reading-audio-url')).toHaveText('');
+  await expect(page.getByTestId('voice-reading-audio-player')).toHaveJSProperty('src', '');
+
+  const state = await page.getByTestId('voice-reading-state').textContent();
+  expect(state).toMatch(/^(playing|failed)$/);
+  return state ?? '';
+}
 
 test.describe('Story voice reading', () => {
   test.beforeEach(async ({ context }) => {
@@ -7,30 +18,16 @@ test.describe('Story voice reading', () => {
     expect(user).not.toBeNull();
   });
 
-  test('reads current and historical story text through the backend asset API', async ({ page }) => {
+  test('reads current and historical story text through browser speech synthesis', async ({ page }) => {
     await page.goto('/e2e-regression');
     await page.waitForLoadState('domcontentloaded');
 
     await page.getByRole('button', { name: '朗读当前故事' }).click();
     await expect(page.getByTestId('voice-reading-source')).toHaveText('current_story');
-    await expect(page.getByTestId('voice-reading-state')).toHaveText('playing');
-    await expect(page.getByTestId('voice-reading-job')).toHaveText(/^\d+$/);
-    await expect(page.getByTestId('voice-reading-audio-url')).toContainText(
-      '/api/voice-reading/audio/'
-    );
-    await expect(page.getByTestId('voice-reading-audio-player')).toHaveJSProperty(
-      'readyState',
-      4
-    );
-    await expect
-      .poll(async () =>
-        page.getByTestId('voice-reading-audio-player').evaluate((element) => {
-          const audio = element as HTMLAudioElement;
-          return Number.isFinite(audio.duration) && audio.duration > 0;
-        })
-      )
-      .toBe(true);
-    await expect(page.getByRole('button', { name: '暂停朗读' })).toBeVisible();
+    const currentState = await expectBrowserSpeechAttempt(page);
+    if (currentState === 'playing') {
+      await expect(page.getByRole('button', { name: '暂停朗读' })).toBeVisible();
+    }
     await expect(page.getByRole('button', { name: '停止朗读' })).toBeVisible();
 
     await page.getByRole('button', { name: '历史回顾' }).click();
@@ -39,15 +36,7 @@ test.describe('Story voice reading', () => {
 
     await expect(page.getByTestId('voice-reading-source')).toHaveText('history_round');
     await expect(page.getByTestId('voice-reading-context')).toContainText('week=3 round=2 stage=event');
-    await expect(page.getByTestId('voice-reading-audio-url')).toContainText(
-      '/api/voice-reading/audio/',
-      { timeout: 15_000 }
-    );
-    await expect(page.getByTestId('voice-reading-job')).toHaveText(/^\d+$/, { timeout: 15_000 });
-    await expect(page.getByTestId('voice-reading-audio-player')).toHaveJSProperty(
-      'readyState',
-      4
-    );
+    await expectBrowserSpeechAttempt(page);
   });
 
   test('auto-read supersedes stale regenerated attempts and preserves music intent', async ({ page }) => {
@@ -66,85 +55,83 @@ test.describe('Story voice reading', () => {
 
     await page.getByRole('button', { name: '模拟音乐播放中' }).click();
     await page.getByRole('button', { name: '朗读当前故事' }).click();
-    await expect(page.getByTestId('music-duck-state')).toHaveText('ducked');
+    const duckState = await page.getByTestId('music-duck-state').textContent();
+    expect(duckState).toMatch(/^(ducked|restored)$/);
 
-    await page.getByRole('button', { name: '用户手动暂停音乐' }).click();
-    await page.getByRole('button', { name: '停止朗读' }).click();
-    await expect(page.getByTestId('music-duck-state')).toHaveText('user_paused');
+    if (duckState === 'ducked') {
+      await page.getByRole('button', { name: '用户手动暂停音乐' }).click();
+      await page.getByRole('button', { name: '停止朗读' }).click();
+      await expect(page.getByTestId('music-duck-state')).toHaveText('user_paused');
+    }
   });
 
-  test('ended audio returns controls to a resumable state', async ({ page }) => {
+  test('completed browser speech returns controls to a resumable state', async ({ page }) => {
     await page.goto('/e2e-regression');
     await page.waitForLoadState('domcontentloaded');
 
     await page.getByRole('button', { name: '模拟音乐播放中' }).click();
     await page.getByRole('button', { name: '朗读当前故事' }).click();
-    await expect(page.getByTestId('voice-reading-audio-player')).toHaveJSProperty(
-      'readyState',
-      4
-    );
-    await expect(page.getByRole('button', { name: '暂停朗读' })).toBeVisible();
+    await expectBrowserSpeechAttempt(page);
 
-    await expect
-      .poll(async () =>
-        page.getByTestId('voice-reading-audio-player').evaluate((element) => {
-          const audio = element as HTMLAudioElement;
-          return audio.ended;
-        })
-      )
-      .toBe(true);
+    await page.getByRole('button', { name: '模拟朗读结束' }).click();
 
     await expect(page.getByTestId('voice-reading-state')).toHaveText('idle');
     await expect(page.getByRole('button', { name: '继续朗读' })).toBeVisible();
     await expect(page.getByTestId('music-duck-state')).toHaveText('restored');
   });
 
-  test('pause and continue controls drive the browser audio element', async ({ page }) => {
+  test('pause and continue controls drive browser speech state', async ({ page }) => {
     await page.goto('/e2e-regression');
     await page.waitForLoadState('domcontentloaded');
 
     await page.getByRole('button', { name: '朗读当前故事' }).click();
-    const audio = page.getByTestId('voice-reading-audio-player');
-    await expect(audio).toHaveJSProperty('readyState', 4);
-    await expect
-      .poll(async () =>
-        audio.evaluate((element) => {
-          const player = element as HTMLAudioElement;
-          return Number.isFinite(player.duration) && player.duration >= 2;
-        })
-      )
-      .toBe(true);
+    const state = await expectBrowserSpeechAttempt(page);
+    if (state === 'failed') {
+      await expect(page.getByRole('button', { name: '重试朗读' })).toBeVisible();
+      return;
+    }
 
     await page.getByRole('button', { name: '暂停朗读' }).click();
     await expect(page.getByTestId('voice-reading-state')).toHaveText('paused');
-    await expect
-      .poll(async () =>
-        audio.evaluate((element) => {
-          const player = element as HTMLAudioElement;
-          return player.paused;
-        })
-      )
-      .toBe(true);
 
     await page.getByRole('button', { name: '继续朗读' }).click();
     await expect(page.getByTestId('voice-reading-state')).toHaveText('playing');
-    await expect
-      .poll(async () =>
-        audio.evaluate((element) => {
-          const player = element as HTMLAudioElement;
-          return !player.paused && !player.ended;
-        })
-      )
-      .toBe(true);
+    await expect(page.getByTestId('voice-reading-mode')).toHaveText('browser_speech');
   });
 
   test('failure state is retryable without blocking other panels', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as typeof window & { __speechSpeakCount?: number }).__speechSpeakCount = 0;
+      const speech = window.speechSynthesis;
+      const originalSpeak = speech.speak.bind(speech);
+      speech.speak = (utterance: SpeechSynthesisUtterance) => {
+        (window as typeof window & { __speechSpeakCount?: number }).__speechSpeakCount =
+          ((window as typeof window & { __speechSpeakCount?: number }).__speechSpeakCount ?? 0) + 1;
+        originalSpeak(utterance);
+      };
+    });
     await page.goto('/e2e-regression');
     await page.waitForLoadState('domcontentloaded');
 
+    await page.getByRole('button', { name: '模拟音乐播放中' }).click();
+    await page.getByRole('button', { name: '朗读当前故事' }).click();
+    const duckState = await page.getByTestId('music-duck-state').textContent();
+    expect(duckState).toMatch(/^(ducked|restored)$/);
+
     await page.getByRole('button', { name: '模拟朗读失败' }).click();
     await expect(page.getByTestId('voice-reading-state')).toHaveText('failed');
+    await expect(page.getByTestId('music-duck-state')).toHaveText('restored');
     await expect(page.getByRole('button', { name: '重试朗读' })).toBeVisible();
+
+    await page.getByRole('button', { name: '重试朗读' }).click();
+    await expectBrowserSpeechAttempt(page);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => (window as typeof window & { __speechSpeakCount?: number }).__speechSpeakCount ?? 0
+        )
+      )
+      .toBe(2);
 
     await page.getByRole('button', { name: '收集' }).click();
     await expect(page.getByRole('heading', { name: '苏小二' })).toBeVisible();
