@@ -9,18 +9,21 @@ from fastapi.testclient import TestClient
 # API tests - collection endpoints
 pytestmark = pytest.mark.api
 
-from src.api.routers.collection import router  # noqa: E402
 from src.game.state import PlayerState  # noqa: E402
 from src.game.state.item_state import ItemState  # noqa: E402
-from src.services.collection_service import (CollectionService,  # noqa: E402
-                                             EntityNotFoundError)
+from src.services.collection_service import (
+    CollectionService,  # noqa: E402
+    EntityNotFoundError,
+)
 
 
 @pytest.fixture
 def app():
     """Create test app with collection router."""
+    from src.api.routers.collection import router as current_router
+
     app = FastAPI()
-    app.include_router(router, prefix="/collection")
+    app.include_router(current_router, prefix="/collection")
     return app
 
 
@@ -28,6 +31,18 @@ def app():
 def client(app):
     """Create test client."""
     return TestClient(app)
+
+
+def _current_user_optional_dependency():
+    from src.api.routers import collection
+
+    return collection.get_current_user_optional
+
+
+def _collection_service_class():
+    from src.api.routers import collection
+
+    return collection.CollectionService
 
 
 class TestVerifyGameOwnership:
@@ -181,7 +196,9 @@ class TestCollectionRouterEndpoints:
 
     @patch("src.api.routers.collection.session_service")
     @patch("src.api.routers.collection.SessionLocal")
-    def test_get_collection_unauthorized(self, mock_session_local, mock_session_service, client):
+    def test_get_collection_unauthorized(
+        self, mock_session_local, mock_session_service, client
+    ):
         """Test get_collection returns 401 when not logged in."""
         response = client.get("/collection/1")
         # Should return 401 because no user is provided
@@ -189,7 +206,9 @@ class TestCollectionRouterEndpoints:
 
     @patch("src.api.routers.collection.session_service")
     @patch("src.api.routers.collection.SessionLocal")
-    def test_get_collection_success(self, mock_session_local, mock_session_service, client):
+    def test_get_collection_success(
+        self, mock_session_local, mock_session_service, client
+    ):
         """Test get_collection returns correct data."""
         # Mock user
         mock_user = MagicMock()
@@ -221,11 +240,15 @@ class TestCollectionRouterEndpoints:
 
         # Mock database
         mock_db = MagicMock()
-        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = []
+        mock_db.query.return_value.filter.return_value.order_by.return_value.all.return_value = (
+            []
+        )
         mock_session_local.return_value = mock_db
 
         # Mock image service - now in collection_service module
-        with patch("src.services.collection_service.ImageService") as mock_image_service_class:
+        with patch(
+            "src.services.collection_service.ImageService"
+        ) as mock_image_service_class:
             mock_image_service = MagicMock()
             mock_image_service.get_image_url.return_value = None
             mock_image_service_class.return_value = mock_image_service
@@ -368,7 +391,9 @@ class TestCharacterSettingsNestedDict:
 
         # Extract values as the fixed code should do
         age_val = age_dict.get("age") if isinstance(age_dict, dict) else age_dict
-        gender_val = gender_dict.get("gender") if isinstance(gender_dict, dict) else gender_dict
+        gender_val = (
+            gender_dict.get("gender") if isinstance(gender_dict, dict) else gender_dict
+        )
 
         # Should create without validation error
         item = CharacterCollectionItem(
@@ -425,7 +450,9 @@ class TestRegenerateImageSchemas:
         assert request1.image_id is None
 
         # Test with feedback and image_id
-        request2 = RegenerateCharacterImageRequest(feedback="换一件蓝色衣服", image_id=123)
+        request2 = RegenerateCharacterImageRequest(
+            feedback="换一件蓝色衣服", image_id=123
+        )
         assert request2.feedback == "换一件蓝色衣服"
         assert request2.image_id == 123
 
@@ -487,8 +514,6 @@ class TestRegenerateCharacterImageEndpoint:
 
     def test_character_in_key_people_allowed(self, app):
         """Test that character in key_people (not in characters) is allowed to regenerate image."""
-        from src.api.deps import get_current_user_optional
-        from src.services.image_service import ImageService
 
         mock_user = MagicMock()
         mock_user.user_id = 1
@@ -510,7 +535,9 @@ class TestRegenerateCharacterImageEndpoint:
         mock_image.image_id = 456
         mock_game = MagicMock()
         mock_game.user_id = 1  # Same as mock_user.user_id
-        mock_db_session.query.return_value.filter.return_value.first.return_value = mock_image
+        mock_db_session.query.return_value.filter.return_value.first.return_value = (
+            mock_image
+        )
         # For verify_game_ownership
         mock_db_session.query.return_value.filter.return_value.order_by.return_value.first.return_value = (
             mock_image
@@ -518,14 +545,20 @@ class TestRegenerateCharacterImageEndpoint:
 
         with patch("src.api.routers.collection.session_service") as mock_ss:
             with patch("src.api.routers.collection.SessionLocal") as mock_db_class:
-                with patch.object(CollectionService, "verify_game_ownership") as mock_verify:
-                    with patch.object(ImageService, "regenerate_image") as mock_regenerate:
+                with patch.object(
+                    _collection_service_class(), "verify_game_ownership"
+                ) as mock_verify:
+                    with patch.object(
+                        _collection_service_class(), "regenerate_character_image"
+                    ) as mock_regenerate:
                         mock_ss.get_or_restore.return_value = mock_session
                         mock_db_class.return_value = mock_db_session
                         mock_verify.return_value = mock_game  # Pass ownership check
-                        mock_regenerate.return_value = [mock_image]
+                        mock_regenerate.return_value = int(mock_image.image_id)
 
-                        app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+                        app.dependency_overrides[
+                            _current_user_optional_dependency()
+                        ] = lambda: mock_user.user_id
 
                         test_client = TestClient(app)
                         response = test_client.post(
@@ -541,8 +574,6 @@ class TestRegenerateCharacterImageEndpoint:
 
     def test_character_in_family_members_allowed(self, app):
         """Test that character in family_members is allowed to regenerate image."""
-        from src.api.deps import get_current_user_optional
-        from src.services.image_service import ImageService
 
         mock_user = MagicMock()
         mock_user.user_id = 1
@@ -571,14 +602,20 @@ class TestRegenerateCharacterImageEndpoint:
 
         with patch("src.api.routers.collection.session_service") as mock_ss:
             with patch("src.api.routers.collection.SessionLocal") as mock_db_class:
-                with patch.object(CollectionService, "verify_game_ownership") as mock_verify:
-                    with patch.object(ImageService, "regenerate_image") as mock_regenerate:
+                with patch.object(
+                    _collection_service_class(), "verify_game_ownership"
+                ) as mock_verify:
+                    with patch.object(
+                        _collection_service_class(), "regenerate_character_image"
+                    ) as mock_regenerate:
                         mock_ss.get_or_restore.return_value = mock_session
                         mock_db_class.return_value = mock_db_session
                         mock_verify.return_value = mock_game  # Pass ownership check
-                        mock_regenerate.return_value = [mock_image]
+                        mock_regenerate.return_value = int(mock_image.image_id)
 
-                        app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+                        app.dependency_overrides[
+                            _current_user_optional_dependency()
+                        ] = lambda: mock_user.user_id
 
                         test_client = TestClient(app)
                         response = test_client.post(
@@ -594,8 +631,6 @@ class TestRegenerateCharacterImageEndpoint:
 
     def test_character_in_characters_affinity_49_rejected(self, app):
         """Test that character in player_state.characters with affinity 49 is rejected."""
-        from src.api.deps import get_current_user_optional
-        from src.services.image_service import ImageService
 
         mock_user = MagicMock()
         mock_user.user_id = 1
@@ -622,14 +657,20 @@ class TestRegenerateCharacterImageEndpoint:
 
         with patch("src.api.routers.collection.session_service") as mock_ss:
             with patch("src.api.routers.collection.SessionLocal") as mock_db_class:
-                with patch.object(CollectionService, "verify_game_ownership") as mock_verify:
-                    with patch.object(ImageService, "regenerate_image") as mock_regenerate:
+                with patch.object(
+                    _collection_service_class(), "verify_game_ownership"
+                ) as mock_verify:
+                    with patch.object(
+                        _collection_service_class(), "regenerate_character_image"
+                    ) as mock_regenerate:
                         mock_ss.get_or_restore.return_value = mock_session
                         mock_db_class.return_value = mock_db_session
                         mock_verify.return_value = mock_game
-                        mock_regenerate.return_value = [mock_image]
+                        mock_regenerate.return_value = int(mock_image.image_id)
 
-                        app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+                        app.dependency_overrides[
+                            _current_user_optional_dependency()
+                        ] = lambda: mock_user.user_id
 
                         test_client = TestClient(app)
                         response = test_client.post(
@@ -645,8 +686,6 @@ class TestRegenerateCharacterImageEndpoint:
 
     def test_character_in_characters_affinity_50_allowed(self, app):
         """Test that character in player_state.characters with affinity 50 is allowed."""
-        from src.api.deps import get_current_user_optional
-        from src.services.image_service import ImageService
 
         mock_user = MagicMock()
         mock_user.user_id = 1
@@ -674,14 +713,20 @@ class TestRegenerateCharacterImageEndpoint:
 
         with patch("src.api.routers.collection.session_service") as mock_ss:
             with patch("src.api.routers.collection.SessionLocal") as mock_db_class:
-                with patch.object(CollectionService, "verify_game_ownership") as mock_verify:
-                    with patch.object(ImageService, "regenerate_image") as mock_regenerate:
+                with patch.object(
+                    _collection_service_class(), "verify_game_ownership"
+                ) as mock_verify:
+                    with patch.object(
+                        _collection_service_class(), "regenerate_character_image"
+                    ) as mock_regenerate:
                         mock_ss.get_or_restore.return_value = mock_session
                         mock_db_class.return_value = mock_db_session
                         mock_verify.return_value = mock_game
-                        mock_regenerate.return_value = [mock_image]
+                        mock_regenerate.return_value = int(mock_image.image_id)
 
-                        app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+                        app.dependency_overrides[
+                            _current_user_optional_dependency()
+                        ] = lambda: mock_user.user_id
 
                         test_client = TestClient(app)
                         response = test_client.post(
@@ -697,8 +742,6 @@ class TestRegenerateCharacterImageEndpoint:
 
     def test_player_can_regenerate_own_image(self, app):
         """Test that player can regenerate their own image without affinity check."""
-        from src.api.deps import get_current_user_optional
-        from src.services.image_service import ImageService
 
         mock_user = MagicMock()
         mock_user.user_id = 1
@@ -725,14 +768,20 @@ class TestRegenerateCharacterImageEndpoint:
 
         with patch("src.api.routers.collection.session_service") as mock_ss:
             with patch("src.api.routers.collection.SessionLocal") as mock_db_class:
-                with patch.object(CollectionService, "verify_game_ownership") as mock_verify:
-                    with patch.object(ImageService, "regenerate_image") as mock_regenerate:
+                with patch.object(
+                    _collection_service_class(), "verify_game_ownership"
+                ) as mock_verify:
+                    with patch.object(
+                        _collection_service_class(), "regenerate_character_image"
+                    ) as mock_regenerate:
                         mock_ss.get_or_restore.return_value = mock_session
                         mock_db_class.return_value = mock_db_session
                         mock_verify.return_value = mock_game
-                        mock_regenerate.return_value = [mock_image]
+                        mock_regenerate.return_value = int(mock_image.image_id)
 
-                        app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+                        app.dependency_overrides[
+                            _current_user_optional_dependency()
+                        ] = lambda: mock_user.user_id
 
                         test_client = TestClient(app)
                         response = test_client.post(
@@ -748,7 +797,6 @@ class TestRegenerateCharacterImageEndpoint:
 
     def test_character_not_found_anywhere_returns_404(self, app):
         """Test that character not found anywhere returns 404."""
-        from src.api.deps import get_current_user_optional
 
         mock_user = MagicMock()
         mock_user.user_id = 1
@@ -767,7 +815,9 @@ class TestRegenerateCharacterImageEndpoint:
             with patch("src.api.routers.collection.SessionLocal"):
                 mock_ss.get_or_restore.return_value = mock_session
 
-                app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+                app.dependency_overrides[_current_user_optional_dependency()] = (
+                    lambda: mock_user.user_id
+                )
 
                 test_client = TestClient(app)
                 response = test_client.post(
@@ -783,8 +833,6 @@ class TestRegenerateCharacterImageEndpoint:
 
     def test_character_in_characters_priority_over_key_people(self, app):
         """Test that player_state.characters is checked first and affinity is validated."""
-        from src.api.deps import get_current_user_optional
-        from src.services.image_service import ImageService
 
         # Character exists in BOTH characters (with low affinity) AND key_people
         # Should use characters data and apply affinity check
@@ -819,14 +867,20 @@ class TestRegenerateCharacterImageEndpoint:
 
         with patch("src.api.routers.collection.session_service") as mock_ss:
             with patch("src.api.routers.collection.SessionLocal") as mock_db_class:
-                with patch.object(CollectionService, "verify_game_ownership") as mock_verify:
-                    with patch.object(ImageService, "regenerate_image") as mock_regenerate:
+                with patch.object(
+                    _collection_service_class(), "verify_game_ownership"
+                ) as mock_verify:
+                    with patch.object(
+                        _collection_service_class(), "regenerate_character_image"
+                    ) as mock_regenerate:
                         mock_ss.get_or_restore.return_value = mock_session
                         mock_db_class.return_value = mock_db_session
                         mock_verify.return_value = mock_game
-                        mock_regenerate.return_value = [mock_image]
+                        mock_regenerate.return_value = int(mock_image.image_id)
 
-                        app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+                        app.dependency_overrides[
+                            _current_user_optional_dependency()
+                        ] = lambda: mock_user.user_id
 
                         test_client = TestClient(app)
                         response = test_client.post(

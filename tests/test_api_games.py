@@ -48,9 +48,15 @@ def auth_headers():
 @pytest.fixture
 def mock_auth():
     """Mock authentication."""
-    with patch("src.api.deps.decode_token") as mock:
-        mock.return_value = 1
-        yield mock
+    from src.api.routers import games
+
+    app.dependency_overrides[games.get_current_user] = lambda: 1
+    app.dependency_overrides[games.get_current_user_optional] = lambda: 1
+    try:
+        yield
+    finally:
+        app.dependency_overrides.pop(games.get_current_user, None)
+        app.dependency_overrides.pop(games.get_current_user_optional, None)
 
 
 class TestCreateGame:
@@ -246,7 +252,9 @@ class TestListGames:
 class TestLoadGame:
     """Tests for GET /api/games/{game_id}."""
 
-    def test_load_game_success(self, client, mock_db, mock_session_store, mock_auth, auth_headers):
+    def test_load_game_success(
+        self, client, mock_db, mock_session_store, mock_auth, auth_headers
+    ):
         """Test loading an existing game."""
         mock_db.load_saved_game.return_value = {
             "player_state": {"player_name": "Test"},
@@ -425,7 +433,9 @@ class TestGetActiveGame:
             mock_db.get_active_game.assert_called_once_with(1)
             mock_session_store.put.assert_called_once()
 
-    def test_get_active_game_no_active_game(self, client, mock_db, mock_auth, auth_headers):
+    def test_get_active_game_no_active_game(
+        self, client, mock_db, mock_auth, auth_headers
+    ):
         """Test getting active game when user has none."""
         mock_db.get_active_game.return_value = None
 
@@ -434,7 +444,9 @@ class TestGetActiveGame:
         assert response.status_code == 404
         assert "No active game" in response.json()["detail"]
 
-    def test_get_active_game_deleted_game(self, client, mock_db, mock_auth, auth_headers):
+    def test_get_active_game_deleted_game(
+        self, client, mock_db, mock_auth, auth_headers
+    ):
         """Test getting active game when the game was deleted."""
         mock_db.get_active_game.return_value = 1
         mock_db.load_saved_game.return_value = None  # 游戏已被删除
