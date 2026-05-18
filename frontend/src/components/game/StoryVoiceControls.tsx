@@ -26,6 +26,8 @@ export function StoryVoiceControls({
   const currentContextLabel = useStoryVoiceStore((state) => state.currentContextLabel);
   const currentAudioUrl = useStoryVoiceStore((state) => state.currentAudioUrl);
   const currentJobId = useStoryVoiceStore((state) => state.currentJobId);
+  const currentPlaybackMode = useStoryVoiceStore((state) => state.currentPlaybackMode);
+  const currentSpeechText = useStoryVoiceStore((state) => state.currentSpeechText);
   const errorMessage = useStoryVoiceStore((state) => state.errorMessage);
   const queueText = useStoryVoiceStore((state) => state.queueText);
   const autoReadEnabled = useStoryVoiceStore((state) => state.autoReadEnabled);
@@ -48,6 +50,7 @@ export function StoryVoiceControls({
 
   const handlePause = () => {
     audioRef.current?.pause();
+    window.speechSynthesis.pause();
     pauseReading();
   };
 
@@ -59,6 +62,7 @@ export function StoryVoiceControls({
       }
       void audio.play().catch(failReading);
     }
+    window.speechSynthesis.resume();
     retryReading();
   };
 
@@ -68,6 +72,7 @@ export function StoryVoiceControls({
       audio.pause();
       audio.currentTime = 0;
     }
+    window.speechSynthesis.cancel();
     stopReading();
   };
 
@@ -135,6 +140,12 @@ export function StoryVoiceControls({
         </span>
         <span>
           Audio: <span data-testid="voice-reading-audio-url">{currentAudioUrl}</span>
+        </span>
+        <span>
+          模式: <span data-testid="voice-reading-playback-mode">{currentPlaybackMode}</span>
+        </span>
+        <span className="sr-only" data-testid="voice-reading-speech-text">
+          {currentSpeechText}
         </span>
         {errorMessage && (
           <span>

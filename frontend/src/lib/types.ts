@@ -22,6 +22,11 @@ export interface VoiceReadingSettingsResponse {
   selected_voice_color: string | null;
   uploaded_voice_available: boolean;
   auto_read_enabled: boolean;
+  tts_provider: string;
+  tts_model: string;
+  tts_provider_available: boolean;
+  backend_audio_enabled: boolean;
+  playback_mode: "audio" | "browser_speech";
 }
 
 export interface VoiceReadingSettingsUpdateRequest {
@@ -50,6 +55,7 @@ export interface StoryVoiceReadingRequest {
   voice_id: string;
   speed: number;
   auto_play: boolean;
+  preferred_provider?: string | null;
 }
 
 export interface StoryVoiceReadingResponse {
@@ -58,6 +64,10 @@ export interface StoryVoiceReadingResponse {
   audio_url?: string | null;
   asset_id?: number | null;
   duration_ms?: number | null;
+  playback_mode: "audio" | "browser_speech";
+  provider: string;
+  model: string;
+  media_type?: string | null;
   error_code?: string | null;
   message: string;
 }
@@ -68,6 +78,10 @@ export interface VoiceReadingJobResponse {
   audio_url?: string | null;
   asset_id?: number | null;
   duration_ms?: number | null;
+  playback_mode: "audio" | "browser_speech";
+  provider: string;
+  model: string;
+  media_type?: string | null;
   error_code?: string | null;
   message: string;
 }

@@ -6,6 +6,7 @@ import type { ReadingContext } from "@/lib/types";
 
 export type VoiceReadingState = "idle" | "loading" | "ready" | "playing" | "paused" | "failed";
 export type MusicDuckState = "idle" | "playing" | "ducked" | "restored" | "user_paused";
+export type StoryVoicePlaybackMode = "audio" | "browser_speech";
 
 interface StoryVoiceState {
   readingState: VoiceReadingState;
@@ -13,6 +14,8 @@ interface StoryVoiceState {
   currentContextLabel: string;
   currentAudioUrl: string;
   currentJobId: number | null;
+  currentPlaybackMode: StoryVoicePlaybackMode | "";
+  currentSpeechText: string;
   errorMessage: string;
   queueText: string;
   autoReadEnabled: boolean;
@@ -56,6 +59,8 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
   currentContextLabel: "",
   currentAudioUrl: "",
   currentJobId: null,
+  currentPlaybackMode: "",
+  currentSpeechText: "",
   errorMessage: "",
   queueText: "",
   autoReadEnabled: false,
@@ -71,6 +76,8 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       currentContextLabel: contextLabel(context),
       currentAudioUrl: "",
       currentJobId: null,
+      currentPlaybackMode: "",
+      currentSpeechText: "",
       errorMessage: "",
       musicDuckState: musicWasPlaying ? "ducked" : get().musicDuckState,
       userChangedMusic: false,
@@ -82,11 +89,25 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
         voice_id: "warm_female",
         speed: 1,
         auto_play: true,
+        preferred_provider:
+          typeof window !== "undefined"
+            ? window.localStorage.getItem("story_voice_e2e_provider")
+            : null,
       });
+      const shouldPlayAudio = response.playback_mode === "audio" && Boolean(response.audio_url);
+      if (!shouldPlayAudio) {
+        const utterance = new SpeechSynthesisUtterance(context.text);
+        utterance.lang = "zh-CN";
+        utterance.rate = 1;
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utterance);
+      }
       set({
         readingState: response.status === "failed" ? "failed" : "playing",
-        currentAudioUrl: response.audio_url ?? "",
+        currentAudioUrl: shouldPlayAudio ? response.audio_url ?? "" : "",
         currentJobId: response.job_id,
+        currentPlaybackMode: response.playback_mode,
+        currentSpeechText: shouldPlayAudio ? "" : context.text,
         errorMessage: response.error_code ?? "",
       });
     } catch (error) {
@@ -103,6 +124,8 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       readingState: "idle",
       currentAudioUrl: "",
       currentJobId: null,
+      currentPlaybackMode: "",
+      currentSpeechText: "",
       musicDuckState:
         musicDuckState === "ducked" && !userChangedMusic ? "restored" : musicDuckState,
     });
@@ -111,6 +134,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
     const { musicDuckState, userChangedMusic } = get();
     set({
       readingState: "idle",
+      currentSpeechText: "",
       musicDuckState:
         musicDuckState === "ducked" && !userChangedMusic ? "restored" : musicDuckState,
     });

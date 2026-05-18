@@ -18,6 +18,7 @@ from src.api.schemas import (
     VoiceUploadConsentRequest,
 )
 from src.database.models import SessionLocal
+from src.services.story_tts_provider import read_generated_voice_file
 from src.services.story_voice_reading import StoryVoiceReadingService, build_deterministic_wav
 from src.services.story_voice_repository import StoryVoiceReadingRepository
 
@@ -84,6 +85,13 @@ async def get_voice_reading_job(
 async def get_voice_reading_audio(file_name: str) -> Response:
     if not file_name.endswith(".wav"):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio not found")
+    generated_audio = read_generated_voice_file(file_name)
+    if generated_audio is not None:
+        return Response(
+            content=generated_audio,
+            media_type="audio/wav",
+            headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        )
     stem = file_name[:-4]
     marker = "-"
     if marker not in stem:

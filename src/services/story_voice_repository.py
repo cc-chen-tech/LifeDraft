@@ -45,8 +45,10 @@ class StoryVoiceReadingRepository:
         text_hash: str,
         voice_id: str,
         speed: float,
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
     ) -> Optional[GeneratedVoiceAsset]:
-        return (
+        query = (
             self.db.query(GeneratedVoiceAsset)
             .filter(
                 GeneratedVoiceAsset.text_hash == text_hash,
@@ -54,9 +56,12 @@ class StoryVoiceReadingRepository:
                 GeneratedVoiceAsset.speed == speed,
                 GeneratedVoiceAsset.status == "ready",
             )
-            .order_by(GeneratedVoiceAsset.created_at.desc())
-            .first()
         )
+        if provider is not None:
+            query = query.filter(GeneratedVoiceAsset.provider == provider)
+        if model is not None:
+            query = query.filter(GeneratedVoiceAsset.model == model)
+        return query.order_by(GeneratedVoiceAsset.created_at.desc()).first()
 
     def create_asset(
         self,

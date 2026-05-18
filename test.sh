@@ -75,6 +75,8 @@ run_preflight() {
     local shift_left_openspec_code=$?
     openspec validate add-story-voice-reading --strict
     local story_voice_openspec_code=$?
+    openspec validate add-provider-backed-story-tts --strict
+    local story_tts_openspec_code=$?
 
     echo -e "${YELLOW}运行前置 gate 测试...${NC}"
     python -m pytest \
@@ -107,7 +109,7 @@ run_preflight() {
     cd "$PROJECT_DIR"
 
     local result=0
-    if [ $openspec_code -ne 0 ] || [ $music_openspec_code -ne 0 ] || [ $redesign_openspec_code -ne 0 ] || [ $shift_left_openspec_code -ne 0 ] || [ $story_voice_openspec_code -ne 0 ] || [ $gate_code -ne 0 ] || [ $tsc_code -ne 0 ] || [ $jest_code -ne 0 ]; then
+    if [ $openspec_code -ne 0 ] || [ $music_openspec_code -ne 0 ] || [ $redesign_openspec_code -ne 0 ] || [ $shift_left_openspec_code -ne 0 ] || [ $story_voice_openspec_code -ne 0 ] || [ $story_tts_openspec_code -ne 0 ] || [ $gate_code -ne 0 ] || [ $tsc_code -ne 0 ] || [ $jest_code -ne 0 ]; then
         result=1
     fi
 
@@ -127,6 +129,7 @@ run_mypy() {
         src/ai/text_quality.py
         src/services/music_service.py
         src/services/music_playlist_service.py
+        src/services/story_tts_provider.py
         src/services/story_voice_reading.py
         src/services/story_voice_repository.py
         src/database/models.py
@@ -238,7 +241,7 @@ run_e2e_browser() {
         echo -e "${YELLOW}后端未运行，正在启动...${NC}"
         cd "$PROJECT_DIR"
         activate_python_env
-        API_RELOAD=false python run_api.py > /tmp/backend_e2e.log 2>&1 &
+        STORY_TTS_ALLOW_REQUEST_PROVIDER=1 API_RELOAD=false python run_api.py > /tmp/backend_e2e.log 2>&1 &
         BACKEND_PID=$!
         sleep 3
         if ! lsof -ti:8000 > /dev/null 2>&1; then

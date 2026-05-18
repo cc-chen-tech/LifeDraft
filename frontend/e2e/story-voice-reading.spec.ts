@@ -8,6 +8,9 @@ test.describe('Story voice reading', () => {
   });
 
   test('reads current and historical story text through the backend asset API', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem('story_voice_e2e_provider', 'local');
+    });
     await page.goto('/e2e-regression');
     await page.waitForLoadState('domcontentloaded');
 
@@ -18,6 +21,7 @@ test.describe('Story voice reading', () => {
     await expect(page.getByTestId('voice-reading-audio-url')).toContainText(
       '/api/voice-reading/audio/'
     );
+    await expect(page.getByTestId('voice-reading-playback-mode')).toHaveText('audio');
     await expect(page.getByTestId('voice-reading-audio-player')).toHaveJSProperty(
       'readyState',
       4
@@ -50,6 +54,30 @@ test.describe('Story voice reading', () => {
     );
   });
 
+  test('uses browser speech fallback with the actual story text when backend audio is unavailable', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem('story_voice_e2e_provider', 'browser');
+    });
+    await page.goto('/e2e-regression');
+    await page.waitForLoadState('domcontentloaded');
+
+    await page.getByRole('button', { name: '朗读当前故事' }).click();
+
+    await expect(page.getByTestId('voice-reading-source')).toHaveText('current_story');
+    await expect(page.getByTestId('voice-reading-state')).toHaveText('playing');
+    await expect(page.getByTestId('voice-reading-playback-mode')).toHaveText('browser_speech');
+    await expect(page.getByTestId('voice-reading-audio-url')).toHaveText('');
+    await expect(page.getByTestId('voice-reading-speech-text')).toHaveText('雨夜码头的旧账册被风吹开。');
+    await expect
+      .poll(async () =>
+        page.evaluate(() => {
+          const synth = window.speechSynthesis;
+          return synth.speaking || synth.pending;
+        })
+      )
+      .toBe(true);
+  });
+
   test('auto-read supersedes stale regenerated attempts and preserves music intent', async ({ page }) => {
     await page.goto('/e2e-regression');
     await page.waitForLoadState('domcontentloaded');
@@ -74,6 +102,9 @@ test.describe('Story voice reading', () => {
   });
 
   test('ended audio returns controls to a resumable state', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem('story_voice_e2e_provider', 'local');
+    });
     await page.goto('/e2e-regression');
     await page.waitForLoadState('domcontentloaded');
 
@@ -100,6 +131,9 @@ test.describe('Story voice reading', () => {
   });
 
   test('pause and continue controls drive the browser audio element', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem('story_voice_e2e_provider', 'local');
+    });
     await page.goto('/e2e-regression');
     await page.waitForLoadState('domcontentloaded');
 

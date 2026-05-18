@@ -1,6 +1,8 @@
 """Real DB integration tests for story voice reading save-read chains."""
 
+from pathlib import Path
 from uuid import uuid4
+import wave
 
 from src.database.models import (
     GeneratedVoiceAsset,
@@ -11,7 +13,17 @@ from src.database.models import (
     init_db,
 )
 from src.services.story_voice_repository import StoryVoiceReadingRepository
-from src.services.story_voice_reading import build_deterministic_wav
+from src.services.story_voice_reading import (
+    StoryVoiceReadingService,
+    build_deterministic_wav,
+    normalize_text_hash,
+)
+from src.services.story_tts_provider import (
+    BrowserSpeechTTSProvider,
+    DeterministicTTSProvider,
+    OpenAICompatibleTTSProvider,
+)
+from src.api.schemas import StoryVoiceReadingRequest
 
 
 def test_voice_settings_save_read_chain_uses_real_database() -> None:
@@ -148,6 +160,182 @@ def test_same_round_different_text_hash_does_not_reuse_old_audio() -> None:
     finally:
         session.rollback()
         session.close()
+
+
+def test_provider_model_identity_prevents_wrong_audio_reuse() -> None:
+    init_db()
+    private_id = f"priv_{uuid4().hex[:16]}"
+    public_id = f"pub_{uuid4().hex[:6]}"
+
+    session = SessionLocal()
+    try:
+        user = User(private_id=private_id, public_id=public_id, display_name="Voice Provider")
+        session.add(user)
+        session.flush()
+        repository = StoryVoiceReadingRepository(session)
+        context = {
+            "source_type": "current_story",
+            "game_id": 303,
+            "week": 2,
+            "round_number": 1,
+            "stage": "event",
+            "attempt_id": "provider-a",
+            "text_hash": "same-story-hash",
+            "text": "同一段故事应该按 provider 和 model 区分音频。",
+        }
+        repository.create_asset(
+            user_id=int(user.user_id),
+            context=context,
+            voice_id="warm_female",
+            speed=1.0,
+            provider="local",
+            model="deterministic-v1",
+            storage_path="/api/voice-reading/audio/local.wav",
+            duration_ms=2400,
+            status="ready",
+        )
+        session.commit()
+
+        assert repository.find_ready_asset(
+            "same-story-hash",
+            "warm_female",
+            1.0,
+            provider="local",
+            model="deterministic-v1",
+        ) is not None
+        assert repository.find_ready_asset(
+            "same-story-hash",
+            "warm_female",
+            1.0,
+            provider="openai",
+            model="gpt-4o-mini-tts",
+        ) is None
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_browser_fallback_request_saves_job_without_wav_asset() -> None:
+    init_db()
+    private_id = f"priv_{uuid4().hex[:16]}"
+    public_id = f"pub_{uuid4().hex[:6]}"
+
+    session = SessionLocal()
+    try:
+        user = User(private_id=private_id, public_id=public_id, display_name="Voice Browser")
+        session.add(user)
+        session.flush()
+        repository = StoryVoiceReadingRepository(session)
+        service = StoryVoiceReadingService(repository, provider=BrowserSpeechTTSProvider())
+        text = "浏览器应该朗读这段真实故事文字。"
+        text_hash = normalize_text_hash(text)
+        response = service.request_reading(
+            int(user.user_id),
+            StoryVoiceReadingRequest(
+                context={
+                    "source_type": "current_story",
+                    "game_id": 404,
+                    "week": 1,
+                    "round_number": 1,
+                    "stage": "event",
+                    "attempt_id": "browser",
+                    "text_hash": text_hash,
+                    "text": text,
+                },
+                voice_id="warm_female",
+                speed=1.0,
+                auto_play=True,
+            ),
+        )
+        session.commit()
+
+        assert response.playback_mode == "browser_speech"
+        assert response.audio_url is None
+        assert response.provider == "browser"
+        assert response.asset_id is None
+        assert session.query(GeneratedVoiceAsset).filter_by(text_hash=text_hash).count() == 0
+        assert session.query(VoiceReadingJob).filter_by(job_id=response.job_id).one().status == "ready"
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_provider_backed_request_saves_and_reuses_asset() -> None:
+    init_db()
+    private_id = f"priv_{uuid4().hex[:16]}"
+    public_id = f"pub_{uuid4().hex[:6]}"
+
+    session = SessionLocal()
+    try:
+        user = User(private_id=private_id, public_id=public_id, display_name="Voice Local")
+        session.add(user)
+        session.flush()
+        repository = StoryVoiceReadingRepository(session)
+        service = StoryVoiceReadingService(repository, provider=DeterministicTTSProvider())
+        text = "后端 TTS provider 应该保存并复用这一段故事音频。"
+        text_hash = normalize_text_hash(text)
+        request = StoryVoiceReadingRequest(
+            context={
+                "source_type": "current_story",
+                "game_id": 505,
+                "week": 2,
+                "round_number": 2,
+                "stage": "event",
+                "attempt_id": "local",
+                "text_hash": text_hash,
+                "text": text,
+            },
+            voice_id="warm_female",
+            speed=1.0,
+            auto_play=True,
+        )
+
+        first = service.request_reading(int(user.user_id), request)
+        second = service.request_reading(int(user.user_id), request)
+        session.commit()
+
+        assert first.playback_mode == "audio"
+        assert first.audio_url is not None
+        assert first.provider == "local"
+        assert first.model == "deterministic-v1"
+        assert second.asset_id == first.asset_id
+        assert session.query(GeneratedVoiceAsset).filter_by(text_hash=text_hash).count() == 1
+        assert session.query(VoiceReadingJob).filter_by(text_hash=text_hash).count() == 2
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_openai_compatible_provider_keeps_generated_files_inside_asset_dir(tmp_path: Path) -> None:
+    class ExistingFileOpenAIProvider(OpenAICompatibleTTSProvider):
+        def _request_speech(self, text: str, voice_id: str, speed: float, output_path: Path) -> None:
+            raise AssertionError("fixture file should be reused without network access")
+
+    text_hash = "safe-story-hash"
+    expected_file = tmp_path / "safe-story-hash-warm_female-openai-model-with-path.wav"
+    with wave.open(str(expected_file), "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(16_000)
+        wav.writeframes(b"\x00\x00" * 16)
+
+    provider = ExistingFileOpenAIProvider(
+        api_key="test-key",
+        model="../model/with:path",
+        asset_dir=tmp_path,
+    )
+    speech = provider.synthesize(
+        {
+            "text_hash": text_hash,
+            "text": "路径字符不应该逃出语音资产目录。",
+        },
+        "warm_female",
+        1.0,
+    )
+
+    assert speech.storage_path == "/api/voice-reading/audio/safe-story-hash-warm_female-openai-model-with-path.wav"
+    assert expected_file.is_file()
+    assert not (tmp_path.parent / "model").exists()
 
 
 def test_deterministic_voice_audio_bytes_are_playable_wav() -> None:
