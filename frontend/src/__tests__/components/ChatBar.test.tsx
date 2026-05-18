@@ -38,7 +38,7 @@ describe('ChatBar', () => {
   });
 
   describe('Collapsed state', () => {
-    it('renders collapsed button when not expanded', () => {
+    it('renders collapsed quick action buttons when not expanded', () => {
       render(
         <ChatBar
           gameId={1}
@@ -48,6 +48,9 @@ describe('ChatBar', () => {
       );
       const expandButton = screen.getByLabelText('打开聊天');
       expect(expandButton).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '重写' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '改写' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '总结' })).toBeInTheDocument();
     });
 
     it('does not render when gameId is null', () => {
@@ -59,6 +62,66 @@ describe('ChatBar', () => {
         />
       );
       expect(container.firstChild).toBeNull();
+    });
+
+    it('calls onRegenerate from collapsed quick action', async () => {
+      const user = userEvent.setup();
+      render(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+          storyText="Test story"
+        />
+      );
+
+      await user.click(screen.getByRole('button', { name: '重写' }));
+
+      expect(mockOnRegenerate).toHaveBeenCalled();
+    });
+
+    it('opens rewrite sheet from collapsed quick action', async () => {
+      const user = userEvent.setup();
+      render(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+          storyText="Test story"
+        />
+      );
+
+      await user.click(screen.getByRole('button', { name: '改写' }));
+
+      expect(await screen.findByTestId('inline-rewrite-sheet')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '改写故事' })).toBeInTheDocument();
+    });
+
+    it('expands panel and calls summary API from collapsed quick action', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        summary_text: 'Test summary content',
+        start_week: 1,
+        end_week: 10,
+      }));
+
+      const user = userEvent.setup();
+      render(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+          storyText="Test story"
+        />
+      );
+
+      await user.click(screen.getByRole('button', { name: '总结' }));
+
+      expect(await screen.findByTestId('chat-bar-panel')).toBeInTheDocument();
+      await waitFor(() => {
+        const calls = (global.fetch as jest.Mock).mock.calls;
+        const summaryCall = calls.find((c: unknown[]) => (c[0] as string).includes('/summary'));
+        expect(summaryCall).toBeDefined();
+      });
     });
   });
 

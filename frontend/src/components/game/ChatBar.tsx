@@ -275,24 +275,137 @@ export function ChatBar({
 
   if (!gameId) return null;
 
+  const rewriteSheet = (
+    <Sheet open={isRewriteOpen} onOpenChange={setIsRewriteOpen}>
+      <SheetContent
+        side="bottom"
+        data-testid="inline-rewrite-sheet"
+        className="bg-card border-t border-border"
+      >
+        <SheetHeader>
+          <SheetTitle className="text-foreground">故事调整</SheetTitle>
+          <SheetDescription className="text-muted-foreground">
+            告诉我你希望如何修改这段故事
+          </SheetDescription>
+        </SheetHeader>
+
+        <div className="space-y-4 mt-4">
+          <Textarea
+            value={rewriteInstruction}
+            onChange={(e) => setRewriteInstruction(e.target.value)}
+            placeholder="描述你想要的修改，例如：让场景更加温馨、增加一些对话、改变结局..."
+            className="min-h-[120px] bg-secondary border-border text-sm"
+            disabled={isRewriting}
+          />
+          <Button
+            onClick={() => handleRewrite()}
+            disabled={!rewriteInstruction.trim() || isRewriting || !storyText.trim()}
+            className="w-full touch-target"
+          >
+            {isRewriting ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Pencil className="w-4 h-4 mr-2" />
+            )}
+            改写故事
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+
+  const rewriteToastNode = rewriteToast && (
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-bottom-4 duration-300">
+      <div className={cn(
+        "flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg text-white",
+        rewriteToast.type === "success"
+          ? "bg-green-600"
+          : rewriteToast.type === "loading"
+          ? "bg-blue-600"
+          : "bg-red-600"
+      )}>
+        {rewriteToast.type === "success" ? (
+          <Check className="w-5 h-5" />
+        ) : rewriteToast.type === "loading" ? (
+          <Loader2 className="w-5 h-5 animate-spin" />
+        ) : (
+          <X className="w-5 h-5" />
+        )}
+        <span className="text-sm font-medium">{rewriteToast.message}</span>
+      </div>
+    </div>
+  );
+
   if (!isExpanded) {
     return (
-      <div
-        data-testid="chat-bar-launcher"
-        className={cn(
-          "fixed bottom-4 right-4 z-50 flex items-center gap-2 pointer-events-none",
-          className
-        )}
-      >
-        <Button
-          size="icon"
-          aria-label="打开聊天"
-          className="h-12 w-12 rounded-full shadow-lg bg-primary hover:bg-primary/90 pointer-events-auto"
-          onClick={() => setIsExpanded(true)}
+      <>
+        <div
+          data-testid="chat-bar-launcher"
+          className={cn(
+            "fixed bottom-4 right-4 z-50 flex flex-wrap justify-end items-center gap-2 pointer-events-none",
+            "max-w-[calc(100vw-2rem)]",
+            className
+          )}
         >
-          <MessageCircle className="w-5 h-5" />
-        </Button>
-      </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-10 px-3 text-xs shadow-lg bg-card/95 backdrop-blur-sm pointer-events-auto"
+            onClick={() => onRegenerate?.()}
+            disabled={isViewingHistory}
+            title={isViewingHistory ? "历史回顾模式下不可用" : "重新生成当前故事"}
+          >
+            <RotateCcw className="w-3 h-3 mr-1" />
+            重写
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            data-testid="rewrite-button"
+            className="h-10 px-3 text-xs shadow-lg bg-card/95 backdrop-blur-sm pointer-events-auto"
+            onClick={() => setIsRewriteOpen(true)}
+            disabled={isViewingHistory || !storyText.trim()}
+            title={
+              isViewingHistory
+                ? "历史回顾模式下不可用"
+                : !storyText.trim()
+                ? "暂无可改写的故事"
+                : "改写当前故事"
+            }
+          >
+            <Pencil className="w-3 h-3 mr-1" />
+            改写
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-10 px-3 text-xs shadow-lg bg-card/95 backdrop-blur-sm pointer-events-auto"
+            onClick={() => {
+              setIsExpanded(true);
+              void handleGenerateSummary();
+            }}
+            disabled={isGeneratingSummary || isSending}
+            title="总结当前人生故事"
+          >
+            {isGeneratingSummary ? (
+              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+            ) : (
+              <FileText className="w-3 h-3 mr-1" />
+            )}
+            总结
+          </Button>
+          <Button
+            size="icon"
+            aria-label="打开聊天"
+            className="h-12 w-12 rounded-full shadow-lg bg-primary hover:bg-primary/90 pointer-events-auto"
+            onClick={() => setIsExpanded(true)}
+          >
+            <MessageCircle className="w-5 h-5" />
+          </Button>
+        </div>
+        {rewriteSheet}
+        {rewriteToastNode}
+      </>
     );
   }
 
@@ -460,64 +573,8 @@ export function ChatBar({
           )}
         </Button>
       </div>
-      <Sheet open={isRewriteOpen} onOpenChange={setIsRewriteOpen}>
-        <SheetContent
-          side="bottom"
-          data-testid="inline-rewrite-sheet"
-          className="bg-card border-t border-border"
-        >
-          <SheetHeader>
-            <SheetTitle className="text-foreground">故事调整</SheetTitle>
-            <SheetDescription className="text-muted-foreground">
-              告诉我你希望如何修改这段故事
-            </SheetDescription>
-          </SheetHeader>
-
-          <div className="space-y-4 mt-4">
-            <Textarea
-              value={rewriteInstruction}
-              onChange={(e) => setRewriteInstruction(e.target.value)}
-              placeholder="描述你想要的修改，例如：让场景更加温馨、增加一些对话、改变结局..."
-              className="min-h-[120px] bg-secondary border-border text-sm"
-              disabled={isRewriting}
-            />
-            <Button
-              onClick={() => handleRewrite()}
-              disabled={!rewriteInstruction.trim() || isRewriting || !storyText.trim()}
-              className="w-full touch-target"
-            >
-              {isRewriting ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Pencil className="w-4 h-4 mr-2" />
-              )}
-              改写故事
-            </Button>
-          </div>
-        </SheetContent>
-      </Sheet>
-
-      {rewriteToast && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-bottom-4 duration-300">
-          <div className={cn(
-            "flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg text-white",
-            rewriteToast.type === "success"
-              ? "bg-green-600"
-              : rewriteToast.type === "loading"
-              ? "bg-blue-600"
-              : "bg-red-600"
-          )}>
-            {rewriteToast.type === "success" ? (
-              <Check className="w-5 h-5" />
-            ) : rewriteToast.type === "loading" ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : (
-              <X className="w-5 h-5" />
-            )}
-            <span className="text-sm font-medium">{rewriteToast.message}</span>
-          </div>
-        </div>
-      )}
+      {rewriteSheet}
+      {rewriteToastNode}
     </div>
   );
 }
