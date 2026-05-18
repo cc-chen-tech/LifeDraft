@@ -20,6 +20,7 @@ def test_test_script_runs_mypy_in_strict_mode() -> None:
     assert "src/ai/text_quality.py" in script
     assert "src/services/music_service.py" in script
     assert "src/services/music_playlist_service.py" in script
+    assert "src/services/story_tts_provider.py" in script
     assert "src/services/story_voice_reading.py" in script
     assert "src/services/story_voice_repository.py" in script
     assert "src/database/models.py" in script

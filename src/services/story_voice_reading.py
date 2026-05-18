@@ -3,11 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-import math
-import struct
-import wave
-from io import BytesIO
-from dataclasses import dataclass
+import os
 from typing import Any, Dict, Optional
 
 from fastapi import HTTPException, status
@@ -20,6 +16,13 @@ from src.api.schemas import (
     VoiceReadingSettingsResponse,
 )
 from src.services.story_voice_repository import StoryVoiceReadingRepository
+from src.services.story_tts_provider import (
+    BrowserSpeechTTSProvider,
+    DeterministicTTSProvider,
+    StoryTTSProvider,
+    build_deterministic_wav,
+    build_story_tts_provider,
+)
 
 AVAILABLE_VOICES = ["warm_female", "calm_male", "clear_neutral"]
 
@@ -71,47 +74,22 @@ class ReadingContextValidator:
         return context.model_dump()
 
 
-@dataclass(frozen=True)
-class GeneratedSpeech:
-    storage_path: str
-    duration_ms: int
-    provider: str
-    model: str
-
-
-class DeterministicTTSProvider:
-    """Local deterministic provider used for development and tests."""
-
-    provider = "local"
-    model = "deterministic-v1"
-
-    def synthesize(self, context: Dict[str, Any], voice_id: str, speed: float) -> GeneratedSpeech:
-        text = str(context["text"])
-        text_hash = str(context["text_hash"])
-        duration = max(2_400, int(len(text) * 120 / speed))
-        return GeneratedSpeech(
-            storage_path=f"/api/voice-reading/audio/{text_hash}-{voice_id}.wav",
-            duration_ms=duration,
-            provider=self.provider,
-            model=self.model,
-        )
-
-
 class StoryVoiceReadingService:
     """Application service for settings, reading requests, and job recovery."""
 
     def __init__(
         self,
         repository: StoryVoiceReadingRepository,
-        provider: Optional[DeterministicTTSProvider] = None,
+        provider: Optional[StoryTTSProvider] = None,
         validator: Optional[ReadingContextValidator] = None,
     ) -> None:
         self.repository = repository
-        self.provider = provider or DeterministicTTSProvider()
+        self.provider = provider or build_story_tts_provider()
         self.validator = validator or ReadingContextValidator()
 
     def get_settings(self, user_id: int) -> VoiceReadingSettingsResponse:
         settings = self.repository.get_settings(user_id)
+        provider_metadata = self.provider.metadata()
         return VoiceReadingSettingsResponse(
             member_required=False,
             enabled=True,
@@ -125,6 +103,11 @@ class StoryVoiceReadingService:
             auto_read_enabled=(
                 bool(settings.auto_read_enabled) if settings is not None else False
             ),
+            tts_provider=provider_metadata.provider,
+            tts_model=provider_metadata.model,
+            tts_provider_available=provider_metadata.available,
+            backend_audio_enabled=provider_metadata.backend_audio_enabled,
+            playback_mode=provider_metadata.playback_mode,
         )
 
     def update_settings(
@@ -160,10 +143,40 @@ class StoryVoiceReadingService:
                 },
             )
         context = self.validator.validate(request.context)
+        request_provider_enabled = os.getenv("STORY_TTS_ALLOW_REQUEST_PROVIDER", "0") == "1"
+        provider = (
+            build_story_tts_provider(request.preferred_provider)
+            if request_provider_enabled and request.preferred_provider is not None
+            else self.provider
+        )
+        provider_metadata = provider.metadata()
+        if not provider_metadata.backend_audio_enabled:
+            job = self.repository.create_job(
+                user_id=user_id,
+                context=context,
+                voice_id=request.voice_id,
+                speed=request.speed,
+                status="ready",
+            )
+            return StoryVoiceReadingResponse(
+                job_id=int(job.job_id),
+                status="ready",
+                audio_url=None,
+                asset_id=None,
+                duration_ms=None,
+                playback_mode="browser_speech",
+                provider=provider_metadata.provider,
+                model=provider_metadata.model,
+                media_type=None,
+                message="Use browser speech synthesis for story reading",
+            )
+
         ready_asset = self.repository.find_ready_asset(
             text_hash=str(context["text_hash"]),
             voice_id=request.voice_id,
             speed=request.speed,
+            provider=provider_metadata.provider,
+            model=provider_metadata.model,
         )
         if ready_asset is not None:
             job = self.repository.create_job(
@@ -180,10 +193,35 @@ class StoryVoiceReadingService:
                 audio_url=str(ready_asset.storage_path),
                 asset_id=int(ready_asset.asset_id),
                 duration_ms=int(ready_asset.duration_ms),
+                playback_mode="audio",
+                provider=str(ready_asset.provider),
+                model=str(ready_asset.model),
+                media_type="audio/wav",
                 message="Reused cached reading audio",
             )
 
-        speech = self.provider.synthesize(context, request.voice_id, request.speed)
+        speech = provider.synthesize(context, request.voice_id, request.speed)
+        if speech.playback_mode != "audio" or speech.storage_path is None or speech.duration_ms is None:
+            job = self.repository.create_job(
+                user_id=user_id,
+                context=context,
+                voice_id=request.voice_id,
+                speed=request.speed,
+                status="ready",
+            )
+            return StoryVoiceReadingResponse(
+                job_id=int(job.job_id),
+                status="ready",
+                audio_url=None,
+                asset_id=None,
+                duration_ms=None,
+                playback_mode=speech.playback_mode,
+                provider=speech.provider,
+                model=speech.model,
+                media_type=speech.media_type,
+                message="Use browser speech synthesis for story reading",
+            )
+
         asset = self.repository.create_asset(
             user_id=user_id,
             context=context,
@@ -209,6 +247,10 @@ class StoryVoiceReadingService:
             audio_url=speech.storage_path,
             asset_id=int(asset.asset_id),
             duration_ms=speech.duration_ms,
+            playback_mode=speech.playback_mode,
+            provider=speech.provider,
+            model=speech.model,
+            media_type=speech.media_type,
             message="Generated reading audio",
         )
 
@@ -217,12 +259,17 @@ class StoryVoiceReadingService:
         if job is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
         asset = job.asset
+        playback_mode = "audio" if asset is not None else "browser_speech"
         return VoiceReadingJobResponse(
             job_id=int(job.job_id),
             status=str(job.status),
             audio_url=str(asset.storage_path) if asset is not None else None,
             asset_id=int(asset.asset_id) if asset is not None else None,
             duration_ms=int(asset.duration_ms) if asset is not None else None,
+            playback_mode=playback_mode,
+            provider=str(asset.provider) if asset is not None else "browser",
+            model=str(asset.model) if asset is not None else "browser-speech",
+            media_type="audio/wav" if asset is not None else None,
             error_code=str(job.error_code) if job.error_code is not None else None,
             message=str(job.error_message) if job.error_message is not None else "",
         )
@@ -231,31 +278,3 @@ class StoryVoiceReadingService:
 def normalize_text_hash(text: str) -> str:
     normalized = " ".join(text.split())
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
-
-
-def build_deterministic_wav(text_hash: str, voice_id: str) -> bytes:
-    sample_rate = 16_000
-    duration_seconds = 2.4
-    frequency_offsets = {
-        "warm_female": 0,
-        "calm_male": -70,
-        "clear_neutral": 35,
-    }
-    base_frequency = 440 + frequency_offsets.get(voice_id, 0)
-    seed = int(hashlib.sha256(f"{text_hash}:{voice_id}".encode("utf-8")).hexdigest()[:4], 16)
-    frequency = base_frequency + (seed % 60)
-    amplitude = 9_000
-    frame_count = int(sample_rate * duration_seconds)
-
-    buffer = BytesIO()
-    with wave.open(buffer, "wb") as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)
-        wav.setframerate(sample_rate)
-        frames = bytearray()
-        for index in range(frame_count):
-            envelope = min(1.0, index / 600, (frame_count - index) / 600)
-            sample = int(amplitude * envelope * math.sin(2 * math.pi * frequency * index / sample_rate))
-            frames.extend(struct.pack("<h", sample))
-        wav.writeframes(bytes(frames))
-    return buffer.getvalue()

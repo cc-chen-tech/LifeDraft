@@ -40,9 +40,9 @@ def test_global_music_player_mobile_top_desktop_bottom_contract() -> None:
 
     assert 'data-testid="global-music-player"' in source
     assert 'data-testid="global-music-mini-bar"' in source
-    assert "top-0" in source
+    assert "top-16" in source
     assert "safe-area-pt" in source
-    assert "md:bottom-4" in source
+    assert "md:bottom-4" not in source
     assert "bottom-0 left-0 right-0" not in source
 
 
@@ -50,7 +50,7 @@ def test_e2e_specs_track_new_bottom_and_music_contracts() -> None:
     rewrite_e2e = REWRITE_E2E.read_text(encoding="utf-8")
     playlist_e2e = PLAYLIST_E2E.read_text(encoding="utf-8")
 
-    assert "collapsed chat bar has no standalone rewrite button" in rewrite_e2e
+    assert "collapsed chat bar exposes rewrite/regenerate/summary actions" in rewrite_e2e
     assert "inline rewrite sheet" in rewrite_e2e
     assert 'data-testid="global-music-mini-bar"' in playlist_e2e
     assert ".bottom-0" not in playlist_e2e

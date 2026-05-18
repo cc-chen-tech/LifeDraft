@@ -48,6 +48,10 @@ def test_story_voice_response_fields_match_frontend_contract() -> None:
         "audio_url",
         "asset_id",
         "duration_ms",
+        "playback_mode",
+        "provider",
+        "model",
+        "media_type",
         "error_code",
         "message",
     }
@@ -90,6 +94,11 @@ def test_voice_settings_contract_supports_reading_defaults() -> None:
         "selected_voice_color",
         "uploaded_voice_available",
         "auto_read_enabled",
+        "tts_provider",
+        "tts_model",
+        "tts_provider_available",
+        "backend_audio_enabled",
+        "playback_mode",
     } <= _fields(VoiceReadingSettingsResponse)
     assert {"selected_voice_color", "auto_read_enabled"} <= _fields(
         VoiceReadingSettingsUpdateRequest
@@ -110,12 +119,15 @@ def test_story_voice_controls_use_browser_speech_for_immediate_text_reading() ->
 
     assert "voice-reading-job" in component
     assert "voice-reading-audio-url" in component
-    assert "voice-reading-mode" in component
-    assert "voice-reading-spoken-length" in component
+    assert "api.voice_reading.requestReading" in store
+    assert "crypto.subtle.digest" in store
+    assert "playback_mode === \"audio\"" in store
     assert "speechSynthesis" in store
     assert "SpeechSynthesisUtterance" in store
-    assert "api.voice_reading.requestReading" not in store
-    assert "crypto.subtle.digest" not in store
+    assert "voice-reading-mode" in component
+    assert "voice-reading-spoken-length" in component
+    assert "voice-reading-playback-mode" in component
+    assert "voice-reading-speech-text" in component
 
 
 def test_story_voice_reading_routes_are_registered_before_browser_e2e() -> None:
@@ -126,3 +138,14 @@ def test_story_voice_reading_routes_are_registered_before_browser_e2e() -> None:
     assert "/api/voice-reading/jobs/{job_id}" in routes
     assert "/api/voice-reading/upload-consent" in routes
     assert "/api/voice-reading/audio/{file_name}" in routes
+
+
+def test_story_voice_response_does_not_force_wav_for_browser_fallback() -> None:
+    fields = _fields(StoryVoiceReadingResponse)
+    store = (
+        ROOT / "frontend" / "src" / "stores" / "useStoryVoiceStore.ts"
+    ).read_text(encoding="utf-8")
+
+    assert {"playback_mode", "provider", "model", "media_type"} <= fields
+    assert "browser_speech" in FRONTEND_TYPES
+    assert "currentSpeechText" in store

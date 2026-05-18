@@ -53,9 +53,10 @@ test.describe("叙事风格选择", () => {
     await expect(page.locator("text=设置").first()).toBeVisible();
     await expect(page.locator("text=叙事风格").first()).toBeVisible();
 
-    // Hover 到"叙事风格"上展开子菜单
-    await page.locator("text=叙事风格").first().hover();
-    await page.waitForTimeout(300);
+    // Hover 到"叙事风格"菜单项上展开子菜单，并等待远端风格列表加载完成
+    const narrativeStyleTrigger = page.getByRole("menuitem", { name: /叙事风格/ });
+    await narrativeStyleTrigger.hover();
+    await expect(page.locator("text=中国古典演义").first()).toBeVisible({ timeout: 15000 });
 
     // 子菜单中应包含至少一个选项（如"中国古典演义"）
     await expect(page.locator("text=中国古典演义").first()).toBeVisible();

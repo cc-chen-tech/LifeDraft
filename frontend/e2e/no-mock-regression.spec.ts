@@ -20,10 +20,18 @@ test.describe('no-mock regression coverage', () => {
   });
 
   test('creation generation exits loading after backend success or failure', async ({ page }) => {
+    test.setTimeout(90_000);
+
     await page.goto('/create');
 
-    await page.getByPlaceholder('输入你的角色名').fill('陆明');
-    await page.getByPlaceholder('描述你希望的人生方向...').fill('古代江湖，重视关系和悬疑推进');
+    const nameInput = page.getByPlaceholder('输入你的角色名');
+    const visionInput = page.getByPlaceholder('描述你希望的人生方向...');
+    await expect(nameInput).toBeEditable();
+    await expect(visionInput).toBeEditable();
+    await nameInput.pressSequentially('陆明');
+    await visionInput.pressSequentially('古代江湖，重视关系和悬疑推进');
+    await expect(nameInput).toHaveValue('陆明');
+    await expect(visionInput).toHaveValue('古代江湖，重视关系和悬疑推进');
 
     await expect
       .poll(

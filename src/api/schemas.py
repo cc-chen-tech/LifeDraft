@@ -267,6 +267,11 @@ class VoiceReadingSettingsResponse(BaseModel):
     selected_voice_color: Optional[str] = None
     uploaded_voice_available: bool = False
     auto_read_enabled: bool = False
+    tts_provider: str = "browser"
+    tts_model: str = "browser-speech"
+    tts_provider_available: bool = True
+    backend_audio_enabled: bool = False
+    playback_mode: str = "browser_speech"
 
 
 class VoiceReadingSettingsUpdateRequest(BaseModel):
@@ -295,6 +300,7 @@ class StoryVoiceReadingRequest(BaseModel):
     voice_id: str = "warm_female"
     speed: float = Field(default=1.0, ge=0.5, le=2.0)
     auto_play: bool = False
+    preferred_provider: Optional[str] = None
 
 
 class StoryVoiceReadingResponse(BaseModel):
@@ -303,6 +309,10 @@ class StoryVoiceReadingResponse(BaseModel):
     audio_url: Optional[str] = None
     asset_id: Optional[int] = None
     duration_ms: Optional[int] = None
+    playback_mode: str = "browser_speech"
+    provider: str = "browser"
+    model: str = "browser-speech"
+    media_type: Optional[str] = None
     error_code: Optional[str] = None
     message: str = ""
 
@@ -313,6 +323,10 @@ class VoiceReadingJobResponse(BaseModel):
     audio_url: Optional[str] = None
     asset_id: Optional[int] = None
     duration_ms: Optional[int] = None
+    playback_mode: str = "browser_speech"
+    provider: str = "browser"
+    model: str = "browser-speech"
+    media_type: Optional[str] = None
     error_code: Optional[str] = None
     message: str = ""
 

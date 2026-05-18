@@ -12,22 +12,49 @@ async function expectBrowserSpeechAttempt(page: Page): Promise<string> {
   return state ?? '';
 }
 
+async function expectBackendAudioAttempt(page: Page): Promise<void> {
+  await expect(page.getByTestId('voice-reading-state')).toHaveText('playing');
+  await expect(page.getByTestId('voice-reading-job')).toHaveText(/^\d+$/);
+  await expect(page.getByTestId('voice-reading-audio-url')).toContainText(
+    '/api/voice-reading/audio/'
+  );
+  await expect(page.getByTestId('voice-reading-mode')).toHaveText('audio');
+  await expect(page.getByTestId('voice-reading-playback-mode')).toHaveText('audio');
+  await expect(page.getByTestId('voice-reading-audio-player')).toHaveJSProperty('readyState', 4);
+  await expect
+    .poll(async () =>
+      page.getByTestId('voice-reading-audio-player').evaluate((element) => {
+        const audio = element as HTMLAudioElement;
+        return Number.isFinite(audio.duration) && audio.duration > 0;
+      })
+    )
+    .toBe(true);
+}
+
+async function gotoRegressionPageAfterMusicSettles(page: Page): Promise<void> {
+  await page.goto('/e2e-regression');
+  await page.waitForLoadState('domcontentloaded');
+  await expect(page.getByText('正在分析故事氛围...')).toHaveCount(0, { timeout: 60_000 });
+}
+
 test.describe('Story voice reading', () => {
+  test.describe.configure({ mode: 'serial' });
+
   test.beforeEach(async ({ context }) => {
     const user = await registerUser(context, `VoiceReader_${Date.now()}`);
     expect(user).not.toBeNull();
   });
 
-  test('reads current and historical story text through browser speech synthesis', async ({ page }) => {
-    await page.goto('/e2e-regression');
-    await page.waitForLoadState('domcontentloaded');
+  test('reads current and historical story text through the backend asset API', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem('story_voice_e2e_provider', 'local');
+    });
+    await gotoRegressionPageAfterMusicSettles(page);
 
     await page.getByRole('button', { name: '朗读当前故事' }).click();
     await expect(page.getByTestId('voice-reading-source')).toHaveText('current_story');
-    const currentState = await expectBrowserSpeechAttempt(page);
-    if (currentState === 'playing') {
-      await expect(page.getByRole('button', { name: '暂停朗读' })).toBeVisible();
-    }
+    await expectBackendAudioAttempt(page);
+    await expect(page.getByRole('button', { name: '暂停朗读' })).toBeVisible();
     await expect(page.getByRole('button', { name: '停止朗读' })).toBeVisible();
 
     await page.getByRole('button', { name: '历史回顾' }).click();
@@ -36,12 +63,34 @@ test.describe('Story voice reading', () => {
 
     await expect(page.getByTestId('voice-reading-source')).toHaveText('history_round');
     await expect(page.getByTestId('voice-reading-context')).toContainText('week=3 round=2 stage=event');
-    await expectBrowserSpeechAttempt(page);
+    await expectBackendAudioAttempt(page);
+  });
+
+  test('uses browser speech fallback with the actual story text when backend audio is unavailable', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem('story_voice_e2e_provider', 'browser');
+    });
+    await gotoRegressionPageAfterMusicSettles(page);
+
+    await page.getByRole('button', { name: '朗读当前故事' }).click();
+
+    await expect(page.getByTestId('voice-reading-source')).toHaveText('current_story');
+    await expect(page.getByTestId('voice-reading-state')).toHaveText('playing');
+    await expect(page.getByTestId('voice-reading-playback-mode')).toHaveText('browser_speech');
+    await expect(page.getByTestId('voice-reading-audio-url')).toHaveText('');
+    await expect(page.getByTestId('voice-reading-speech-text')).toHaveText('雨夜码头的旧账册被风吹开。');
+    await expect
+      .poll(async () =>
+        page.evaluate(() => {
+          const synth = window.speechSynthesis;
+          return synth.speaking || synth.pending;
+        })
+      )
+      .toBe(true);
   });
 
   test('auto-read supersedes stale regenerated attempts and preserves music intent', async ({ page }) => {
-    await page.goto('/e2e-regression');
-    await page.waitForLoadState('domcontentloaded');
+    await gotoRegressionPageAfterMusicSettles(page);
 
     await page.getByRole('button', { name: '启用自动朗读' }).click();
     await page.getByRole('button', { name: '模拟首轮 stream' }).click();
@@ -65,13 +114,15 @@ test.describe('Story voice reading', () => {
     }
   });
 
-  test('completed browser speech returns controls to a resumable state', async ({ page }) => {
-    await page.goto('/e2e-regression');
-    await page.waitForLoadState('domcontentloaded');
+  test('ended audio returns controls to a resumable state', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem('story_voice_e2e_provider', 'local');
+    });
+    await gotoRegressionPageAfterMusicSettles(page);
 
     await page.getByRole('button', { name: '模拟音乐播放中' }).click();
     await page.getByRole('button', { name: '朗读当前故事' }).click();
-    await expectBrowserSpeechAttempt(page);
+    await expectBackendAudioAttempt(page);
 
     await page.getByRole('button', { name: '模拟朗读结束' }).click();
 
@@ -80,23 +131,21 @@ test.describe('Story voice reading', () => {
     await expect(page.getByTestId('music-duck-state')).toHaveText('restored');
   });
 
-  test('pause and continue controls drive browser speech state', async ({ page }) => {
-    await page.goto('/e2e-regression');
-    await page.waitForLoadState('domcontentloaded');
+  test('pause and continue controls drive the browser audio element', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem('story_voice_e2e_provider', 'local');
+    });
+    await gotoRegressionPageAfterMusicSettles(page);
 
     await page.getByRole('button', { name: '朗读当前故事' }).click();
-    const state = await expectBrowserSpeechAttempt(page);
-    if (state === 'failed') {
-      await expect(page.getByRole('button', { name: '重试朗读' })).toBeVisible();
-      return;
-    }
+    await expectBackendAudioAttempt(page);
 
     await page.getByRole('button', { name: '暂停朗读' }).click();
     await expect(page.getByTestId('voice-reading-state')).toHaveText('paused');
 
     await page.getByRole('button', { name: '继续朗读' }).click();
     await expect(page.getByTestId('voice-reading-state')).toHaveText('playing');
-    await expect(page.getByTestId('voice-reading-mode')).toHaveText('browser_speech');
+    await expect(page.getByTestId('voice-reading-mode')).toHaveText('audio');
   });
 
   test('failure state is retryable without blocking other panels', async ({ page }) => {
@@ -110,8 +159,7 @@ test.describe('Story voice reading', () => {
         originalSpeak(utterance);
       };
     });
-    await page.goto('/e2e-regression');
-    await page.waitForLoadState('domcontentloaded');
+    await gotoRegressionPageAfterMusicSettles(page);
 
     await page.getByRole('button', { name: '模拟音乐播放中' }).click();
     await page.getByRole('button', { name: '朗读当前故事' }).click();
