@@ -84,6 +84,7 @@ run_preflight() {
         tests/test_gate_gameplay_behavior_no_mock.py \
         tests/test_gate_contracts_no_mock.py \
         tests/test_music_degradation_no_mock.py \
+        tests/test_sse_timeout_contract.py \
         -v
     local gate_code=$?
 
