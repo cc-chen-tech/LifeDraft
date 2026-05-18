@@ -103,6 +103,7 @@ run_preflight() {
         src/__tests__/hooks/eventUtils.test.ts \
         src/__tests__/components/ChatBar.test.tsx \
         src/__tests__/components/GlobalMusicPlayer.escape.test.tsx \
+        src/__tests__/lib/apiRetryPolicy.test.ts \
         src/__tests__/stores/useMusicStore.musicQueuePolicy.test.ts \
         --runInBand
     local jest_code=$?
