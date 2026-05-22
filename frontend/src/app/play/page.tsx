@@ -216,7 +216,6 @@ export default function PlayPage() {
   const showEmptyGenerationRecovery =
     !isViewingHistory &&
     (phase === "loading" || phase === "generating" || phase === "choosing") &&
-    !displayText &&
     options.length === 0;
 
   const handleRecoverGeneration = useCallback(() => {

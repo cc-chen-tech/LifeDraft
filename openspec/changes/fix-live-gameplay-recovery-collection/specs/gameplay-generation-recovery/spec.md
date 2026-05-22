@@ -29,3 +29,10 @@ Recovery controls SHALL remain visible until playable story content is restored.
 - **When** the user clicks it and recovery is still pending
 - **Then** the UI SHALL keep an actionable recovery or retry control visible
 - **And** it SHALL NOT replace the page with only `故事生成中...`.
+
+#### Scenario: Persisted story has no playable options
+- **Given** the play page has restored story text from a previous or partial generation
+- **And** the current phase is still loading, generating, or choosing
+- **And** no choices or continue action are available
+- **Then** the UI SHALL keep an actionable recovery control visible alongside the story text
+- **And** it SHALL NOT require a browser refresh before the player can retry recovery.

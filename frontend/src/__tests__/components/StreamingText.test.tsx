@@ -3,7 +3,7 @@
  * Tests for the streaming text display component
  */
 import { render, screen, waitFor, act } from '@testing-library/react';
-import { StreamingText } from '@/components/game/StreamingText';
+import { StreamingText, formatNarrativeMarkdownForDisplay } from '@/components/game/StreamingText';
 
 // Mock scrollTo
 Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
@@ -165,6 +165,19 @@ Second paragraph`;
       );
 
       expect(screen.getByText('Single paragraph')).toBeInTheDocument();
+    });
+
+    it('adds visual paragraph breaks for long single-line Chinese narrative text', async () => {
+      const text = '林见微推开档案室的门，冷白灯光落在一排排旧案卷上。她发现赵家船行的账册缺了三页，页角却留下同一枚铜钥匙的压痕。窗外的无人机巡逻声越来越近，陆子衿压低声音提醒她马上离开。林见微没有退后，而是把账册拍照上传到加密云端，准备追查科技公司背后的黑幕。';
+
+      const formatted = formatNarrativeMarkdownForDisplay(text);
+      expect(formatted.split('\n\n')).toHaveLength(2);
+
+      const { container } = render(<StreamingText text={text} isStreaming={false} narrative />);
+
+      await waitFor(() => {
+        expect(container.querySelector('.markdown-mock')?.textContent).toContain('\n\n');
+      });
     });
   });
 
