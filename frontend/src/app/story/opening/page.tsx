@@ -16,6 +16,7 @@ import { useGameStore } from "@/stores/useGameStore";
 import { useUIStore } from "@/stores/useUIStore";
 import { useImageStore } from "@/stores/useImageStore";
 import { useHydration } from "@/hooks/useHydration";
+import { games } from "@/lib/api";
 import { streamOpeningStory } from "@/lib/sse";
 import { Play, Loader2, Home, ImageIcon, RefreshCw } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -59,103 +60,133 @@ export default function OpeningStoryPage() {
   useEffect(() => {
     if (!hydrated || initializedRef.current) return;
     initializedRef.current = true;
+    let cancelled = false;
 
-    // ★ 支持测试数据注入（E2E 测试用）
-    const testData = (typeof window !== "undefined" && window.__TEST_DATA__) || null;
-    if (testData) {
-      console.log("[OpeningStory] Using test data injection");
-    }
-
-    const state = useGameStore.getState();
-
-    // 使用测试数据或 store 状态
-    const injected = testData as Record<string, unknown> | null;
-    const resolvedCharacterSettings = (injected?.characterSettings as typeof state.characterSettings) || state.characterSettings;
-    const resolvedPlayerName = (injected?.playerName as string) || state.playerName;
-    const resolvedLifeVision = (injected?.lifeVision as string) || state.lifeVision;
-
-    console.log("[OpeningStory] Initializing:", {
-      gameId: state.gameId,
-      hasStory: !!state.openingStory,
-      playerName: resolvedPlayerName,
-      settingsCount: Object.keys(resolvedCharacterSettings).length,
-    });
-
-    // 如果已有故事，直接显示
-    if (state.openingStory) {
-      console.log("[OpeningStory] Using existing story");
-      setStoryText(state.openingStory);
-      setIsComplete(true);
-      return;
-    }
-
-    // 检查是否有足够的数据生成故事
-    const hasSettings = Object.keys(resolvedCharacterSettings).length > 0;
-    const hasPlayerName = !!resolvedPlayerName;
-
-    if (!hasSettings || !hasPlayerName) {
-      console.error("[OpeningStory] Missing data:", { hasSettings, hasPlayerName });
-      setError("缺少角色数据，无法生成开场故事");
-      return;
-    }
-    
-    // 开始生成故事
-    console.log("[OpeningStory] Starting generation...");
-    setIsStreaming(true);
-    abortRef.current = new AbortController();
-
-    let streamedText = "";
-
-    streamOpeningStory(
-      resolvedCharacterSettings,
-      resolvedPlayerName,
-      resolvedLifeVision,
-      language,
-      {
-        onStory: (text) => {
-          streamedText += text;
-          setStoryText((prev) => prev + text);
-        },
-        onComplete: (data) => {
-          const fullText = (data && typeof data === 'object' && 'full_story' in data)
-            ? (data as { full_story?: string }).full_story || ""
-            : "";
-          const finalText = fullText || streamedText;
-          console.log("[OpeningStory] Generation complete, length:", finalText.length);
-          if (finalText) {
-            setStoryText(finalText);
-            setOpeningStory(finalText);
-          }
-          setIsStreaming(false);
-          setIsComplete(true);
-
-          // ★ 故事生成完成后，触发插画生成
-          if (!illustrationGeneratedRef.current && gameId) {
-            illustrationGeneratedRef.current = true;
-            console.log("[OpeningStory] Story complete, triggering illustration generation...");
-            // 延迟一点生成插画，让用户先看到故事
-            setTimeout(() => {
-              generateOpeningIllustration(gameId, finalText, resolvedCharacterSettings, resolvedPlayerName);
-            }, 500);
-          }
-        },
-        onError: (err) => {
-          console.error("[OpeningStory] SSE error:", err);
-          setIsStreaming(false);
-          setError("故事生成失败: " + (err.message || "未知错误"));
-        },
-      },
-      { 
-        signal: abortRef.current.signal,
-        enableReconnect: false,
+    const initialize = async () => {
+      // ★ 支持测试数据注入（E2E 测试用）
+      const testData = (typeof window !== "undefined" && window.__TEST_DATA__) || null;
+      if (testData) {
+        console.log("[OpeningStory] Using test data injection");
       }
-    );
+
+      let state = useGameStore.getState();
+
+      // 使用测试数据或 store 状态
+      const injected = testData as Record<string, unknown> | null;
+      let resolvedCharacterSettings = (injected?.characterSettings as typeof state.characterSettings) || state.characterSettings;
+      let resolvedPlayerName = (injected?.playerName as string) || state.playerName;
+      let resolvedLifeVision = (injected?.lifeVision as string) || state.lifeVision;
+
+      const needsRecoveredCharacterState =
+        !testData &&
+        !state.openingStory &&
+        (Object.keys(resolvedCharacterSettings).length === 0 || !resolvedPlayerName);
+
+      if (needsRecoveredCharacterState) {
+        try {
+          const activeGameId = state.gameId || (await games.getActive()).game_id;
+          if (activeGameId) {
+            console.log("[OpeningStory] Recovering active game before opening generation:", activeGameId);
+            await useGameStore.getState().loadGameState(activeGameId);
+            state = useGameStore.getState();
+            resolvedCharacterSettings = state.characterSettings;
+            resolvedPlayerName = state.playerName;
+            resolvedLifeVision = state.lifeVision;
+          }
+        } catch (err) {
+          console.warn("[OpeningStory] Active game recovery failed before opening generation:", err);
+        }
+      }
+
+      if (cancelled) return;
+
+      console.log("[OpeningStory] Initializing:", {
+        gameId: state.gameId,
+        hasStory: !!state.openingStory,
+        playerName: resolvedPlayerName,
+        settingsCount: Object.keys(resolvedCharacterSettings).length,
+      });
+
+      // 如果已有故事，直接显示
+      if (state.openingStory) {
+        console.log("[OpeningStory] Using existing story");
+        setStoryText(state.openingStory);
+        setIsComplete(true);
+        return;
+      }
+
+      // 检查是否有足够的数据生成故事
+      const hasSettings = Object.keys(resolvedCharacterSettings).length > 0;
+      const hasPlayerName = !!resolvedPlayerName;
+
+      if (!hasSettings || !hasPlayerName) {
+        console.error("[OpeningStory] Missing data:", { hasSettings, hasPlayerName });
+        setError("缺少角色数据，无法生成开场故事");
+        return;
+      }
+
+      // 开始生成故事
+      console.log("[OpeningStory] Starting generation...");
+      setIsStreaming(true);
+      abortRef.current = new AbortController();
+
+      let streamedText = "";
+
+      streamOpeningStory(
+        resolvedCharacterSettings,
+        resolvedPlayerName,
+        resolvedLifeVision,
+        language,
+        {
+          onStory: (text) => {
+            streamedText += text;
+            setStoryText((prev) => prev + text);
+          },
+          onComplete: (data) => {
+            const fullText = (data && typeof data === 'object' && 'full_story' in data)
+              ? (data as { full_story?: string }).full_story || ""
+              : "";
+            const finalText = fullText || streamedText;
+            console.log("[OpeningStory] Generation complete, length:", finalText.length);
+            if (finalText) {
+              setStoryText(finalText);
+              setOpeningStory(finalText);
+            }
+            setIsStreaming(false);
+            setIsComplete(true);
+
+            // ★ 故事生成完成后，触发插画生成
+            const currentGameId = useGameStore.getState().gameId;
+            if (!illustrationGeneratedRef.current && currentGameId) {
+              illustrationGeneratedRef.current = true;
+              console.log("[OpeningStory] Story complete, triggering illustration generation...");
+              // 延迟一点生成插画，让用户先看到故事
+              setTimeout(() => {
+                generateOpeningIllustration(currentGameId, finalText, resolvedCharacterSettings, resolvedPlayerName);
+              }, 500);
+            }
+          },
+          onError: (err) => {
+            console.error("[OpeningStory] SSE error:", err);
+            setIsStreaming(false);
+            setError("故事生成失败: " + (err.message || "未知错误"));
+          },
+        },
+        {
+          signal: abortRef.current.signal,
+          enableReconnect: false,
+        }
+      );
+    };
+
+    void initialize();
 
     return () => {
+      cancelled = true;
       console.log("[OpeningStory] Cleanup: aborting SSE");
       abortRef.current?.abort();
     };
-  }, [hydrated, language, setOpeningStory]);
+  }, [hydrated, language, setOpeningStory, generateOpeningIllustration]);
 
   const handleRetry = () => {
     console.log("[OpeningStory] Retrying generation...");

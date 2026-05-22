@@ -39,5 +39,7 @@
 - [x] Fix profile page to show an auth-checking state and call `fetchMe` before redirecting.
 - [x] Add story-rendering regression coverage for long single-line Chinese narrative text.
 - [x] Fix narrative rendering to add conservative visual paragraphs without mutating source story text.
+- [x] Add opening-route regression coverage for active game recovery before missing-data error.
+- [x] Fix opening page initialization to load the active game before generating or failing.
 - [ ] Push branch and create PR only after local validation passes.
 - [ ] Merge to `main` only after PR checks are green, then verify deployment/live story101.live recovery flow.

@@ -36,3 +36,10 @@ Recovery controls SHALL remain visible until playable story content is restored.
 - **And** no choices or continue action are available
 - **Then** the UI SHALL keep an actionable recovery control visible alongside the story text
 - **And** it SHALL NOT require a browser refresh before the player can retry recovery.
+
+#### Scenario: Opening route has no local character state but server has an active game
+- **Given** the player opens `/story/opening` after local in-memory game state was reset
+- **And** the backend still has an active game for the current cookie session
+- **When** the opening page initializes
+- **Then** it SHALL recover the active game before deciding character data is missing
+- **And** it SHALL render the recovered opening story or generate from recovered character settings.
