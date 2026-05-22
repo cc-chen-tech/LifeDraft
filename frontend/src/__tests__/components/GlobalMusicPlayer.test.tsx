@@ -173,6 +173,19 @@ describe("GlobalMusicPlayer", () => {
       expect(playButton).toBeInTheDocument();
     });
 
+    it("labels icon-only mini-player controls for reliable browser automation", () => {
+      setStoreState({
+        activeStoryText: "story text",
+        isPlaying: false,
+        audioElement: null,
+      });
+
+      render(<GlobalMusicPlayer />);
+
+      expect(screen.getByRole("button", { name: "打开音乐选择" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "展开音乐播放器" })).toBeInTheDocument();
+    });
+
     it("shows pause button when playing", () => {
       setStoreState({
         activeStoryText: "story text",

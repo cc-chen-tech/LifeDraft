@@ -31,23 +31,53 @@ export default function ProfilePage() {
     sendFriendRequest,
     respondToRequest,
     removeFriend,
+    fetchMe,
   } = useUserStore();
 
   const [copied, setCopied] = useState(false);
   const [friendCode, setFriendCode] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState("");
+  const [authChecked, setAuthChecked] = useState(false);
   const hydrated = useHydration();
 
   useEffect(() => {
     if (!hydrated) return;
+
     if (!isAuthenticated) {
-      router.push("/");
-      return;
+      let cancelled = false;
+      fetchMe()
+        .catch(console.error)
+        .finally(() => {
+          if (!cancelled) {
+            setAuthChecked(true);
+          }
+        });
+      return () => {
+        cancelled = true;
+      };
     }
+
+    setAuthChecked(true);
     fetchFriends().catch(console.error);
     fetchPendingRequests().catch(console.error);
-  }, [hydrated, isAuthenticated, router, fetchFriends, fetchPendingRequests]);
+  }, [hydrated, isAuthenticated, fetchMe, fetchFriends, fetchPendingRequests]);
+
+  useEffect(() => {
+    if (!hydrated || !authChecked || isAuthenticated) return;
+    router.push("/");
+  }, [hydrated, authChecked, isAuthenticated, router]);
+
+  if (!hydrated || !authChecked || !isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span>正在验证登录状态...</span>
+        </div>
+      </div>
+    );
+  }
 
   const handleCopyPublicId = () => {
     if (user?.public_id) {
@@ -75,8 +105,6 @@ export default function ProfilePage() {
       setIsSending(false);
     }
   };
-
-  if (!isAuthenticated) return null;
 
   return (
     <div className="min-h-screen bg-background animate-page-enter">

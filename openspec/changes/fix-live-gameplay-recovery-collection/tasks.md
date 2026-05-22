@@ -33,5 +33,15 @@
 - [x] Run OpenSpec validation for this change.
 - [x] Before PR: run the agreed broader local gate set.
 - [x] Perform code review before commit/PR.
+- [x] Add regression coverage for restored story text with no choices still exposing a recovery action.
+- [x] Fix play-page recovery controls for partial story/no-option pending states.
+- [x] Add profile-route regression coverage for restoring cookie auth before redirect.
+- [x] Fix profile page to show an auth-checking state and call `fetchMe` before redirecting.
+- [x] Add story-rendering regression coverage for long single-line Chinese narrative text.
+- [x] Fix narrative rendering to add conservative visual paragraphs without mutating source story text.
+- [x] Add opening-route regression coverage for active game recovery before missing-data error.
+- [x] Fix opening page initialization to load the active game before generating or failing.
+- [x] Add accessibility regression coverage for global music mini-player icon controls.
+- [x] Fix global music mini-player icon controls to expose stable accessible names.
 - [ ] Push branch and create PR only after local validation passes.
 - [ ] Merge to `main` only after PR checks are green, then verify deployment/live story101.live recovery flow.

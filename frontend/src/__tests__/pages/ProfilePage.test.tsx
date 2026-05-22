@@ -26,7 +26,7 @@ Object.assign(navigator, {
   },
 });
 
-const STORE_METHODS = ['sendFriendRequest', 'respondToRequest', 'removeFriend', 'fetchFriends', 'fetchPendingRequests'] as const;
+const STORE_METHODS = ['sendFriendRequest', 'respondToRequest', 'removeFriend', 'fetchFriends', 'fetchPendingRequests', 'fetchMe'] as const;
 
 type StoreSpy = ReturnType<typeof spyOnStoreMethods<typeof useUserStore, (typeof STORE_METHODS)[number]>>;
 
@@ -210,10 +210,15 @@ describe('ProfilePage', () => {
   });
 
   describe('Not authenticated', () => {
-    it('returns null when not authenticated', () => {
-      useUserStore.setState({ isAuthenticated: false });
-      const { container } = render(<ProfilePage />);
-      expect(container.firstChild).toBeNull();
+    it('shows a visible auth-checking state and restores the current session before redirecting', async () => {
+      useUserStore.setState({ isAuthenticated: false, user: null });
+
+      render(<ProfilePage />);
+
+      expect(screen.getByText('正在验证登录状态...')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(storeSpy.spies.fetchMe).toHaveBeenCalledTimes(1);
+      });
     });
   });
 

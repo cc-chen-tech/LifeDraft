@@ -19,3 +19,14 @@ The login UI SHALL distinguish request validation, invalid credential, and trans
 - **When** the login dialog receives that response
 - **Then** it SHALL show a field/contract-specific error
 - **And** it SHALL NOT show only `Request failed`.
+
+### Requirement: Protected Profile Restores Cookie Auth Before Redirect
+
+Protected profile navigation SHALL validate the current cookie-backed session before treating an empty in-memory auth store as logged out.
+
+#### Scenario: Profile route opens after store reset
+- **Given** a player opens the profile route from the game after a page refresh
+- **And** the in-memory auth store has not been restored yet
+- **When** the profile page hydrates
+- **Then** it SHALL call the current-session endpoint before deciding the player is unauthenticated
+- **And** it SHALL show a visible checking state instead of a blank page while auth restoration is pending.

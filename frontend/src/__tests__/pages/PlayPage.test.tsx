@@ -346,6 +346,33 @@ describe('PlayPage', () => {
       });
     });
 
+    it('keeps recovery controls visible when restored story text has no playable options', async () => {
+      const mockRecoverEventGeneration = jest.fn();
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'loading',
+        options: [],
+        storyText: '已恢复的故事正文，但还没有选项。',
+        displayText: '已恢复的故事正文，但还没有选项。',
+        elapsedSeconds: 20,
+        recoverEventGeneration: mockRecoverEventGeneration,
+        getLoadingMessage: () => '故事生成中...',
+      });
+
+      render(<PlayPage />);
+
+      expect(screen.getByText('已恢复的故事正文，但还没有选项。')).toBeInTheDocument();
+      expect(screen.getByText(/如果生成时间较长/)).toBeInTheDocument();
+      const recoveryButton = screen.getByRole('button', { name: '恢复当前进度' });
+      expect(recoveryButton).toBeInTheDocument();
+
+      fireEvent.click(recoveryButton);
+      await waitFor(() => {
+        expect(mockRecoverEventGeneration).toHaveBeenCalledTimes(1);
+      });
+    });
+
     it('shows generating state with message', async () => {
       const originalHook = jest.requireMock('@/hooks/usePlayGame');
       originalHook.usePlayGame = () => ({

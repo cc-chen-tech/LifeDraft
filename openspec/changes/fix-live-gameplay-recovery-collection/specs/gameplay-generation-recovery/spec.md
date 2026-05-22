@@ -29,3 +29,17 @@ Recovery controls SHALL remain visible until playable story content is restored.
 - **When** the user clicks it and recovery is still pending
 - **Then** the UI SHALL keep an actionable recovery or retry control visible
 - **And** it SHALL NOT replace the page with only `故事生成中...`.
+
+#### Scenario: Persisted story has no playable options
+- **Given** the play page has restored story text from a previous or partial generation
+- **And** the current phase is still loading, generating, or choosing
+- **And** no choices or continue action are available
+- **Then** the UI SHALL keep an actionable recovery control visible alongside the story text
+- **And** it SHALL NOT require a browser refresh before the player can retry recovery.
+
+#### Scenario: Opening route has no local character state but server has an active game
+- **Given** the player opens `/story/opening` after local in-memory game state was reset
+- **And** the backend still has an active game for the current cookie session
+- **When** the opening page initializes
+- **Then** it SHALL recover the active game before deciding character data is missing
+- **And** it SHALL render the recovered opening story or generate from recovered character settings.

@@ -133,6 +133,9 @@ export function StreamingText({
   const sanitizedText = isStreaming
     ? stripIncompleteMarkdown(displayedText)
     : displayedText;
+  const narrativeMarkdown = narrative
+    ? formatNarrativeMarkdownForDisplay(sanitizedText)
+    : sanitizedText;
 
   if (!displayedText && !isStreaming) return null;
 
@@ -148,7 +151,7 @@ export function StreamingText({
       {narrative ? (
         <div className="animate-fade-in-word">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {sanitizedText}
+            {narrativeMarkdown}
           </ReactMarkdown>
           {isStreaming && <span className="typewriter-cursor" />}
         </div>
@@ -167,6 +170,41 @@ export function StreamingText({
       )}
     </div>
   );
+}
+
+/**
+ * Adds visual paragraph breaks for long single-line Chinese narrative text.
+ * Existing markdown/newlines are treated as authored formatting and preserved.
+ */
+export function formatNarrativeMarkdownForDisplay(text: string): string {
+  if (!text) return text;
+  if (/\n/.test(text)) return text;
+
+  const trimmed = text.trim();
+  if (trimmed.length < 120) return text;
+
+  const sentences = extractChineseSentences(trimmed);
+  if (sentences.length < 4) return text;
+
+  const paragraphs: string[] = [];
+  for (let i = 0; i < sentences.length; i += 2) {
+    paragraphs.push(sentences.slice(i, i + 2).join("").trim());
+  }
+
+  return paragraphs.join("\n\n");
+}
+
+function extractChineseSentences(text: string): string[] {
+  const sentencePattern = /[^。！？!?；;]+[。！？!?；;]+[”’」』）】》]?/g;
+  const matches: string[] = text.match(sentencePattern) || [];
+  const consumedLength = matches.join("").length;
+  const tail = text.slice(consumedLength).trim();
+
+  if (tail) {
+    matches.push(tail);
+  }
+
+  return matches.map((sentence) => sentence.trim()).filter(Boolean);
 }
 
 /**
