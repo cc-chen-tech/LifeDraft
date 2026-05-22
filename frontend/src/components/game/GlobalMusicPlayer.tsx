@@ -124,6 +124,8 @@ export function GlobalMusicPlayer() {
 
         {/* Play / Pause */}
         <button
+          aria-label={audioElement ? (isPlaying ? "暂停音乐" : "播放音乐") : "打开音乐选择"}
+          title={audioElement ? (isPlaying ? "暂停音乐" : "播放音乐") : "打开音乐选择"}
           onClick={(e) => {
             e.stopPropagation();
             handleMiniPlayPause();
@@ -151,6 +153,8 @@ export function GlobalMusicPlayer() {
 
         {/* Expand / Collapse */}
         <button
+          aria-label={isExpanded ? "收起音乐播放器" : "展开音乐播放器"}
+          title={isExpanded ? "收起音乐播放器" : "展开音乐播放器"}
           onClick={(e) => {
             e.stopPropagation();
             setIsExpanded(!isExpanded);
