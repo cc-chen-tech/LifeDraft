@@ -348,6 +348,40 @@ class TestGameInitializerIntegration:
             call_kwargs[1].get("narrative_style_id") == "cyberpunk"
         )
 
+    def test_game_initializer_persists_auto_matched_style_into_initial_state(self):
+        """自动匹配出的风格必须进入首个 session state，而不只写到 games 表。"""
+        from unittest.mock import MagicMock
+
+        from src.game.game_initializer import GameInitializer
+
+        mock_db = MagicMock()
+        mock_db.create_game.return_value = 3
+        initializer = GameInitializer(game_db=mock_db, language="zh")
+
+        character_settings = {
+            "era": {"year": 2024, "era_description": "现代都市"},
+            "world": {
+                "world_description": "科技公司数据黑幕，调查记者追查数据隐私案件",
+                "technology_level": "5G、人工智能、大数据、云计算",
+                "social_system": "现代法治社会",
+            },
+            "age": {"age": 28},
+            "gender": {"gender": "女"},
+        }
+
+        game_loop, _ = initializer.initialize_game_from_settings(
+            character_settings=character_settings,
+            player_name="顾晚晴",
+            life_vision="现代都市悬疑，女性调查记者，追查科技公司数据黑幕。",
+            user_id=1,
+        )
+
+        call_kwargs = mock_db.create_game.call_args.kwargs
+        style_id = call_kwargs["narrative_style_id"]
+        assert style_id
+        assert call_kwargs["initial_state"]["narrative_style_id"] == style_id
+        assert getattr(game_loop, "narrative_style_id", None) == style_id
+
     def test_game_initializer_none_style_when_absent(self):
         """无 narrative_style_id 时 GameInitializer 应传 None"""
         from unittest.mock import MagicMock, patch
