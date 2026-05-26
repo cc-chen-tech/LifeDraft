@@ -202,6 +202,19 @@ export default function E2ERegressionPage() {
             week: 1,
             round_number: 1,
             stage: "event",
+            attempt_id: "current-preview",
+            text_hash: "fixture-current-preview",
+            text: "雨夜码头的旧账册被风吹开。",
+          }}
+          autoReadText={autoReadText}
+        />
+        <StoryVoiceControls
+          currentContext={{
+            source_type: "current_story",
+            game_id: 101,
+            week: 1,
+            round_number: 1,
+            stage: "event",
             attempt_id: "current",
             text_hash: "fixture-current",
             text: "雨夜码头的旧账册被风吹开。",
