@@ -34,6 +34,52 @@ def test_test_script_runs_music_frontend_queue_policy_tests() -> None:
     assert "improve-story-music-recommendation-and-premium-ai-queue" in script
 
 
+def test_pr_workflows_skip_full_release_gates() -> None:
+    heavy_workflows = [
+        "coverage.yml",
+        "e2e-tests.yml",
+        "frontend-build.yml",
+        "frontend-integration-tests.yml",
+        "frontend-tests.yml",
+    ]
+
+    for filename in heavy_workflows:
+        workflow = (ROOT / ".github" / "workflows" / filename).read_text(encoding="utf-8")
+        assert "pull_request:" not in workflow, f"{filename} should not run for every PR"
+        assert "push:" in workflow
+        assert "branches: [main]" in workflow
+
+
+def test_backend_workflow_runs_light_gate_on_pr_and_full_suite_on_main() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "backend-tests.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "pull_request:" in workflow
+    assert "Run maintained backend gates for PR" in workflow
+    assert "if: github.event_name == 'pull_request'" in workflow
+    assert "Run full backend suite before main release" in workflow
+    assert "if: github.event_name == 'push' && github.ref == 'refs/heads/main'" in workflow
+    assert "python -m pytest tests -q" in workflow
+
+
+def test_production_deploy_waits_for_main_release_gates() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text(
+        encoding="utf-8"
+    )
+
+    for required in (
+        "'Backend Tests'",
+        "'Frontend Build'",
+        "'Frontend Tests'",
+        "'Frontend Integration Tests'",
+        "'Coverage Report'",
+        "'E2E Tests'",
+    ):
+        assert required in workflow
+    assert 'workflows: ["E2E Tests"]' in workflow
+
+
 def test_gate_tests_do_not_use_skip_or_mocking_constructs() -> None:
     gate_files = sorted((ROOT / "tests").glob("test_gate_*.py"))
     assert gate_files, "Expected gate test files to exist"

@@ -40,7 +40,8 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
 
-      - name: Run maintained backend gates
+      - name: Run maintained backend gates for PR
+        if: github.event_name == 'pull_request'
         run: |
           python -m mypy \
             src/ai/text_quality.py \
@@ -64,6 +65,18 @@ jobs:
             tests/test_story_music_recommendation_db.py \
             tests/test_music_degradation_no_mock.py \
             -v --tb=short
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          TESTING: 'true'
+          JWT_SECRET: 'test-secret-for-ci'
+          OPENAI_API_KEY: 'sk-test-dummy-key-for-ci'
+          IMAGE_API_KEY: 'sk-test-dummy-key-for-ci'
+          IMAGE_API_BASE_URL: 'https://api.openai.com/v1'
+          OPENAI_BASE_URL: 'https://api.openai.com/v1'
+
+      - name: Run full backend suite before main release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: python -m pytest tests -q
         env:
           PYTHONPATH: ${{ github.workspace }}
           TESTING: 'true'

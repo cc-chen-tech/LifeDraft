@@ -3,13 +3,10 @@ name: Frontend Integration Tests
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
-  issues: write
-  pull-requests: write
 
 jobs:
   integration-tests:
@@ -39,22 +36,6 @@ jobs:
         run: npm run test:integration
         env:
           CI: true
-
-      - name: Comment PR with test result
-        if: github.event_name == 'pull_request' && always()
-        continue-on-error: true
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const testResult = process.env.TEST_RESULT === 'success' ? '✅ Passed' : '❌ Failed';
-            await github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `## Integration Tests\n\n**Test Result:** ${testResult}\n`
-            });
-        env:
-          TEST_RESULT: ${{ job.status }}
 
   # Placeholder job for unit tests that integration tests depend on
   unit-tests:
