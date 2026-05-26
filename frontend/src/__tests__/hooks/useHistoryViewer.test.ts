@@ -230,7 +230,7 @@ describe('useHistoryViewer', () => {
       expect(result.current.showHistory).toBe(false);
     });
 
-    it('resets history viewing state when closing drawer while viewing history', () => {
+    it('keeps selected history pinned when closing drawer while viewing history', () => {
       const playerState = {
         round_history: [{ week: 0, round: 0, event_description: 'Story' }],
       };
@@ -255,10 +255,11 @@ describe('useHistoryViewer', () => {
         result.current.setShowHistory(false);
       });
 
-      // ★ Should reset history viewing state
+      // Closing the sidebar must not make the selected historical story unreadable.
       expect(result.current.showHistory).toBe(false);
-      expect(result.current.historyRoundIndex).toBeNull();
-      expect(result.current.isViewingHistory).toBe(false);
+      expect(result.current.historyRoundIndex).toBe(0);
+      expect(result.current.isViewingHistory).toBe(true);
+      expect(result.current.displayText).toContain('Story');
     });
   });
 });

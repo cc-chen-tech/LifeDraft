@@ -379,13 +379,6 @@ export default function PlayPage() {
               <p className="text-sm text-muted-foreground">
                 📖 正在查看历史轮次（只读模式）
               </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleBackToCurrent}
-              >
-                返回当前
-              </Button>
             </div>
           </div>
         )}
@@ -419,49 +412,78 @@ export default function PlayPage() {
 
         {/* Story text */}
         {displayText && (
-          <>
-            <div className="mb-4">
+          isViewingHistory ? (
+            <Card
+              data-testid="history-reading-surface"
+              className="mb-6 border-primary/20 bg-card px-4 py-5 shadow-sm"
+            >
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">历史回顾</p>
+                  <h2 className="text-base font-medium text-foreground">
+                    第 {(currentHistoryRound?.week ?? 0) + 1} 周 · 第 {(currentHistoryRound?.round ?? 0) + 1} 轮
+                  </h2>
+                </div>
+                <Button variant="outline" size="sm" onClick={handleBackToCurrent}>
+                  返回当前
+                </Button>
+              </div>
+              <div className="mb-4">
+                <StoryVoiceControls
+                  currentContext={{
+                    source_type: "history_round",
+                    game_id: Number(gameId),
+                    week: currentHistoryRound?.week ?? null,
+                    round_number: currentHistoryRound?.round ?? null,
+                    stage: "event",
+                    attempt_id: "history",
+                    text_hash: `${displayText.length}-${displayText.slice(0, 16)}`,
+                    text: displayText,
+                  }}
+                  autoReadText={displayText}
+                  compact
+                />
+              </div>
+              <StreamingText
+                text={displayText}
+                isStreaming={false}
+                narrative
+                className="mb-0"
+              />
+            </Card>
+          ) : (
+            <>
+              <div className="mb-4">
               <StoryVoiceControls
                 currentContext={{
-                  source_type: isViewingHistory ? "history_round" : "current_story",
+                  source_type: "current_story",
                   game_id: Number(gameId),
-                  week: isViewingHistory ? currentHistoryRound?.week ?? null : progress?.week ?? null,
-                  round_number: isViewingHistory
-                    ? currentHistoryRound?.round ?? null
-                    : currentRound ?? null,
+                  week: progress?.week ?? null,
+                  round_number: currentRound ?? null,
                   stage: "event",
-                  attempt_id: isViewingHistory ? "history" : `${progress?.week ?? 0}-${currentRound ?? 0}`,
+                  attempt_id: `${progress?.week ?? 0}-${currentRound ?? 0}`,
                   text_hash: `${displayText.length}-${displayText.slice(0, 16)}`,
                   text: displayText,
                 }}
-                historyContext={isViewingHistory ? {
-                  source_type: "history_round",
-                  game_id: Number(gameId),
-                  week: currentHistoryRound?.week ?? null,
-                  round_number: currentHistoryRound?.round ?? null,
-                  stage: "event",
-                  attempt_id: "history",
-                  text_hash: `${displayText.length}-${displayText.slice(0, 16)}`,
-                  text: displayText,
-                } : null}
                 autoReadText={displayText}
                 compact
               />
-            </div>
-            <StreamingText
-              text={displayText}
-              isStreaming={!isViewingHistory && (phase === "generating" || phase === "choosing")}
-              narrative
-              className="mb-6"
-            />
-            {/* ★ 在有故事内容且正在生成时，显示小的加载提示（历史模式下不显示） */}
-            {!isViewingHistory && (phase === "generating" || phase === "choosing") && (
+              </div>
+              <StreamingText
+                text={displayText}
+                isStreaming={phase === "generating" || phase === "choosing"}
+                narrative
+                className="mb-6"
+              />
+              {/* ★ 在有故事内容且正在生成时，显示小的加载提示（历史模式下不显示） */}
+              {(phase === "generating" || phase === "choosing") && (
               <div className="flex items-center justify-center gap-2 text-muted-foreground text-sm py-2">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 <span>{getLoadingMessage()}</span>
               </div>
-            )}
-          </>
+              )}
+            </>
+          )
         )}
 
         {/* ★ 场景插画展示 */}
@@ -539,7 +561,7 @@ export default function PlayPage() {
         )}
 
         {/* Round summary - only in result phase */}
-        {roundSummary && phase === "result" && (
+        {!isViewingHistory && roundSummary && phase === "result" && (
           <div
             className="mb-4 rounded-lg px-4 py-3 animate-fade-in-word"
             style={{ background: 'rgba(99, 102, 241, 0.2)' }}
@@ -554,7 +576,7 @@ export default function PlayPage() {
         {/* Choice impact display removed — effect tracking no longer stored */}
 
         {/* Options */}
-        {phase === "options" && options.length > 0 && (
+        {!isViewingHistory && phase === "options" && options.length > 0 && (
           <div className="animate-fade-in-word">
             <OptionCards
               options={options}
@@ -566,7 +588,7 @@ export default function PlayPage() {
         )}
 
         {/* Result phase - waiting for user confirmation */}
-        {phase === "result" && (
+        {!isViewingHistory && phase === "result" && (
           <div className="animate-fade-in-word space-y-4">
             {(() => {
               const currentRound = (roundInfo?.current_round as number) || 0;
@@ -608,7 +630,7 @@ export default function PlayPage() {
         )}
 
         {/* Weekly summary */}
-        {phase === "summary" && (
+        {!isViewingHistory && phase === "summary" && (
           <div className="animate-page-enter space-y-6">
             <Card className="p-6 bg-card border-primary/20">
               <h3 className="text-lg font-bold text-primary mb-4">
@@ -628,7 +650,7 @@ export default function PlayPage() {
         )}
 
         {/* Ending */}
-        {phase === "ending" && (
+        {!isViewingHistory && phase === "ending" && (
           <div className="animate-page-enter space-y-6 text-center py-12">
             <h2 className="text-2xl font-serif font-bold text-foreground">
               人生落幕
@@ -652,7 +674,7 @@ export default function PlayPage() {
         )}
 
         {/* Error state */}
-        {phase === "error" && (
+        {!isViewingHistory && phase === "error" && (
           <div className="text-center py-12 space-y-4">
             <p className="text-destructive">出现错误，请重试</p>
             <Button
@@ -670,17 +692,19 @@ export default function PlayPage() {
       </main>
 
       {/* Chat bar */}
-      <ChatBar
-        gameId={gameId}
-        onSave={handleSave}
-        onRegenerate={handleRegenerate}
-        storyText={storyText}
-        onRewriteComplete={(newStory) => {
-          setStoryText(newStory);
-        }}
-        isSaving={isSaving}
-        isViewingHistory={isViewingHistory}
-      />
+      {!isViewingHistory && (
+        <ChatBar
+          gameId={gameId}
+          onSave={handleSave}
+          onRegenerate={handleRegenerate}
+          storyText={storyText}
+          onRewriteComplete={(newStory) => {
+            setStoryText(newStory);
+          }}
+          isSaving={isSaving}
+          isViewingHistory={isViewingHistory}
+        />
+      )}
 
       {/* ★ 历史回顾抽屉 */}
       <RoundHistoryDrawer

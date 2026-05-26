@@ -768,6 +768,26 @@ describe('PlayPage', () => {
       render(<PlayPage />);
       expect(screen.getByText('Historical story text')).toBeInTheDocument();
     });
+
+    it('renders history text in a dedicated reading surface without current choices', () => {
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'options',
+        isViewingHistory: true,
+        displayText: 'Historical story text',
+        historyDisplayText: 'Historical story text',
+        currentHistoryRound: { week: 1, round: 2 },
+        options: [
+          { text: 'Current option should not cover history', brief_result: 'Result' },
+        ],
+      });
+
+      render(<PlayPage />);
+
+      expect(screen.getByTestId('history-reading-surface')).toHaveTextContent('Historical story text');
+      expect(screen.queryByText('Current option should not cover history')).not.toBeInTheDocument();
+    });
   });
 
   describe('Settings button', () => {

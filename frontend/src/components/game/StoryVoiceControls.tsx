@@ -48,6 +48,34 @@ export function StoryVoiceControls({
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const textSize = compact ? "text-xs" : "text-sm";
+  const isHistoryReading = currentContext.source_type === "history_round" || Boolean(historyContext);
+
+  if (!showTestControls) {
+    return (
+      <section
+        aria-label="故事朗读预览"
+        className="rounded-lg border border-border/70 bg-card/70 px-3 py-3 shadow-sm"
+      >
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 rounded-md bg-muted p-2 text-muted-foreground">
+            <Volume2 className="h-4 w-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-sm font-medium text-foreground">故事朗读</h2>
+              <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
+                即将开放
+              </span>
+            </div>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              高质量 TTS 声音模型接入后可用。当前先保留故事文本阅读体验，
+              {isHistoryReading ? "历史故事会优先保证可读和可回看。" : "不会启动不可用的朗读任务。"}
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   const handlePause = () => {
     audioRef.current?.pause();
