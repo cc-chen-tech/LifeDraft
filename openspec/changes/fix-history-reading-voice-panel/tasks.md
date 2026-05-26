@@ -18,4 +18,4 @@
 - [x] 3.2 Run OpenSpec strict validation for this change.
 - [x] 3.3 Run local browser-agent verification on the relevant gameplay/regression route.
 - [x] 3.4 Run the appropriate local gate before commit.
-- [ ] 3.5 Perform code review, commit, push, and open/update GitHub PR.
+- [x] 3.5 Perform code review, commit, push, and open/update GitHub PR.
