@@ -25,4 +25,4 @@
 - [x] 4.1 Run targeted OpenSpec, static, import, contract, DB, frontend, and E2E checks during development.
 - [x] 4.2 Perform code review before commit.
 - [x] 4.3 Run full `./test.sh all` before pull request publication.
-- [ ] 4.4 Push branch, open PR, wait for GitHub checks, merge to `main`, and allow automatic deployment.
+- [x] 4.4 Push branch, open PR, wait for GitHub checks, merge to `main`, and allow automatic deployment.

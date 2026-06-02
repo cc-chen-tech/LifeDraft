@@ -127,7 +127,7 @@ run_preflight() {
     local shift_left_openspec_code=$?
     openspec validate add-story-voice-reading --strict
     local story_voice_openspec_code=$?
-    openspec validate add-provider-backed-story-tts --strict
+    openspec validate provider-backed-story-tts --strict
     local story_tts_openspec_code=$?
 
     echo -e "${YELLOW}运行后端 preflight quality 检查...${NC}"

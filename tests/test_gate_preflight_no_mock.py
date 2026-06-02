@@ -67,6 +67,26 @@ def test_preflight_script_runs_before_expensive_layers() -> None:
     )
 
 
+def test_preflight_validates_archived_provider_story_tts_spec() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+    archived_spec = (
+        ROOT
+        / "openspec"
+        / "changes"
+        / "archive"
+        / "2026-06-02-add-provider-backed-story-tts"
+        / "specs"
+        / "provider-backed-story-tts"
+        / "spec.md"
+    )
+    main_spec = ROOT / "openspec" / "specs" / "provider-backed-story-tts" / "spec.md"
+
+    assert archived_spec.exists()
+    assert main_spec.exists()
+    assert "openspec validate provider-backed-story-tts --strict" in script
+    assert "openspec validate add-provider-backed-story-tts --strict" not in script
+
+
 def test_e2e_gate_does_not_reuse_frontend_from_other_worktree() -> None:
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
     config = (ROOT / "frontend" / "playwright.config.ts").read_text(encoding="utf-8")
