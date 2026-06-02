@@ -231,6 +231,20 @@ def test_story_voice_test_controls_stay_out_of_real_play_page() -> None:
     assert "showTestControls" in regression_page
 
 
+def test_play_page_missing_game_state_has_actionable_recovery_ui() -> None:
+    play_page = (ROOT / "frontend" / "src" / "app" / "play" / "page.tsx").read_text(
+        encoding="utf-8"
+    )
+
+    assert "正在恢复当前进度" in play_page
+    assert "返回首页" in play_page
+    assert "window.location.reload()" in play_page
+    assert (
+        'if (!gameId) {\n    return (\n      <div className="min-h-screen flex items-center justify-center">\n        <Loader2'
+        not in play_page
+    )
+
+
 def test_story_voice_e2e_uses_same_origin_api_proxy() -> None:
     api_source = (ROOT / "frontend" / "src" / "lib" / "api.ts").read_text(encoding="utf-8")
     request_reading_block = api_source.split("requestReading: (data: StoryVoiceReadingRequest) =>")[

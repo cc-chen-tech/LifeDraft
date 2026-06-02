@@ -37,15 +37,19 @@ test.describe('Gameplay - Play Page Without Game', () => {
   test('should handle play page without active game', async ({ page }) => {
     await page.goto('/play');
     await page.waitForLoadState('domcontentloaded');
-    
-    // Page should either:
-    // 1. Show a loading spinner (waiting for game)
-    // 2. Redirect to home page
-    // 3. Show an empty state
-    const currentUrl = page.url();
-    
-    // Verify page loaded without error
-    expect(new URL(currentUrl).hostname).toBe('localhost');
+
+    await expect
+      .poll(async () => {
+        const text = await page.locator('body').innerText().catch(() => '');
+        if (text.includes('正在恢复当前进度') && text.includes('返回首页')) {
+          return 'recovery';
+        }
+        if (text.includes('新游戏') && text.includes('加载存档')) {
+          return 'home';
+        }
+        return text || 'empty';
+      })
+      .toMatch(/^(recovery|home)$/);
   });
 
   test('should show loading state on play page', async ({ page }) => {

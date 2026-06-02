@@ -43,5 +43,5 @@
 - [x] Fix opening page initialization to load the active game before generating or failing.
 - [x] Add accessibility regression coverage for global music mini-player icon controls.
 - [x] Fix global music mini-player icon controls to expose stable accessible names.
-- [ ] Push branch and create PR only after local validation passes.
+- [x] Push branch and create PR only after local validation passes.
 - [ ] Merge to `main` only after PR checks are green, then verify deployment/live story101.live recovery flow.

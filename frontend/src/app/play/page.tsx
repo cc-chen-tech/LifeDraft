@@ -236,8 +236,26 @@ export default function PlayPage() {
   // Show loading if no gameId
   if (!gameId) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="min-h-screen flex items-center justify-center bg-background px-4">
+        <div className="w-full max-w-sm space-y-5 text-center">
+          <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+          <div className="space-y-2">
+            <h1 className="text-lg font-semibold text-foreground">正在恢复当前进度</h1>
+            <p className="text-sm text-muted-foreground">
+              如果没有可恢复的游戏，页面会返回首页。你也可以手动返回或重新加载。
+            </p>
+          </div>
+          <div className="flex items-center justify-center gap-3">
+            <Button variant="outline" onClick={() => router.replace("/")}>
+              <Home className="mr-2 h-4 w-4" />
+              返回首页
+            </Button>
+            <Button variant="secondary" onClick={() => window.location.reload()}>
+              <RotateCcw className="mr-2 h-4 w-4" />
+              重新加载
+            </Button>
+          </div>
+        </div>
       </div>
     );
   }
