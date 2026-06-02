@@ -115,6 +115,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
         set({
           readingState: "failed",
           currentJobId: jobId,
+          currentAudioUrl: "",
           playbackMode: "browser_speech",
           spokenTextLength: context.text.length,
           currentSpeechText: context.text,
@@ -140,6 +141,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
           activeUtterance = null;
           set({
             readingState: "failed",
+            currentAudioUrl: "",
             errorMessage: "Browser speech synthesis failed",
             playbackMode: "browser_speech",
             musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
@@ -177,6 +179,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
         set({
           readingState: "failed",
           currentJobId: response.job_id,
+          currentAudioUrl: "",
           playbackMode: response.playback_mode,
           errorMessage: response.error_code ?? response.message,
           musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
@@ -206,6 +209,9 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       const { musicDuckState, userChangedMusic } = get();
       set({
         readingState: "failed",
+        currentAudioUrl: "",
+        currentJobId: null,
+        playbackMode: "none",
         errorMessage: error instanceof Error ? error.message : "Reading request failed",
         musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
       });
@@ -230,7 +236,10 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
     });
   },
   completeReading: () => {
-    const { musicDuckState, userChangedMusic } = get();
+    const { musicDuckState, readingState, userChangedMusic } = get();
+    if (readingState === "failed") {
+      return;
+    }
     if (activeUtterance) {
       getSpeechSynthesis()?.cancel();
       activeUtterance = null;
@@ -253,6 +262,9 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
     activeUtterance = null;
     set({
       readingState: "failed",
+      currentAudioUrl: "",
+      currentJobId: null,
+      playbackMode: "none",
       musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
     });
   },
