@@ -101,7 +101,7 @@ run_preflight() {
     activate_python_env
 
     echo -e "${YELLOW}运行 OpenSpec strict 校验...${NC}"
-    openspec validate fix-story-continuity-history-media --strict
+    openspec validate --all --strict
     local openspec_code=$?
     openspec validate improve-story-music-recommendation-and-premium-ai-queue --strict
     local music_openspec_code=$?

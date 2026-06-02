@@ -3,7 +3,20 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-CHANGE_DIR = ROOT / "openspec" / "changes" / "fix-story-continuity-history-media"
+CHANGE_DIR = (
+    ROOT
+    / "openspec"
+    / "changes"
+    / "archive"
+    / "2026-06-02-fix-story-continuity-history-media"
+)
+SPEC_NAMES = (
+    "collection-stability",
+    "gameplay-continuity",
+    "history-review",
+    "member-voice-reading",
+    "test-gates",
+)
 
 
 def test_fix_story_continuity_change_tasks_stay_complete() -> None:
@@ -15,11 +28,26 @@ def test_fix_story_continuity_change_tasks_stay_complete() -> None:
     assert "8.8 Run targeted regression tests and `./test.sh all`." in tasks
 
 
+def test_archived_story_continuity_specs_are_synced_to_main_specs() -> None:
+    for spec_name in SPEC_NAMES:
+        archived_spec = CHANGE_DIR / "specs" / spec_name / "spec.md"
+        main_spec = ROOT / "openspec" / "specs" / spec_name / "spec.md"
+
+        assert archived_spec.exists()
+        assert main_spec.exists()
+
+        archived_text = archived_spec.read_text(encoding="utf-8")
+        main_text = main_spec.read_text(encoding="utf-8")
+        for requirement in archived_text.split("### Requirement: ")[1:]:
+            title = requirement.split("\n", 1)[0]
+            assert f"### Requirement: {title}" in main_text
+
+
 def test_preflight_script_runs_before_expensive_layers() -> None:
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
 
     assert "run_preflight" in script
-    assert "openspec validate fix-story-continuity-history-media --strict" in script
+    assert "openspec validate --all --strict" in script
     assert "openspec validate add-story-voice-reading --strict" in script
     assert "openspec validate shift-left-e2e-contract-gates --strict" in script
     assert "npx tsc --noEmit --strict" in script
