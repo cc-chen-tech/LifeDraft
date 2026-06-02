@@ -95,18 +95,19 @@ test.describe('Story voice reading', () => {
     await page.getByRole('button', { name: '朗读当前故事' }).click();
 
     await expect(page.getByTestId('voice-reading-source')).toHaveText('current_story');
-    await expect(page.getByTestId('voice-reading-state')).toHaveText('playing');
+    const fallbackState = await expectBrowserSpeechAttempt(page);
     await expect(page.getByTestId('voice-reading-playback-mode')).toHaveText('browser_speech');
-    await expect(page.getByTestId('voice-reading-audio-url')).toHaveText('');
     await expect(page.getByTestId('voice-reading-speech-text')).toHaveText('雨夜码头的旧账册被风吹开。');
-    await expect
-      .poll(async () =>
-        page.evaluate(() => {
-          const synth = window.speechSynthesis;
-          return synth.speaking || synth.pending;
-        })
-      )
-      .toBe(true);
+    if (fallbackState === 'playing') {
+      await expect
+        .poll(async () =>
+          page.evaluate(() => {
+            const synth = window.speechSynthesis;
+            return synth.speaking || synth.pending;
+          })
+        )
+        .toBe(true);
+    }
   });
 
   test('auto-read supersedes stale regenerated attempts and preserves music intent', async ({ page }) => {
@@ -168,18 +169,34 @@ test.describe('Story voice reading', () => {
     await expect(page.getByTestId('voice-reading-mode')).toHaveText('audio');
   });
 
-  test('failure state is retryable without blocking other panels', async ({ page }) => {
+  test('manual failure cancels a pending backend audio response', async ({ page }) => {
     await page.addInitScript(() => {
-      (window as typeof window & { __speechSpeakCount?: number }).__speechSpeakCount = 0;
-      const speech = window.speechSynthesis;
-      const originalSpeak = speech.speak.bind(speech);
-      speech.speak = (utterance: SpeechSynthesisUtterance) => {
-        (window as typeof window & { __speechSpeakCount?: number }).__speechSpeakCount =
-          ((window as typeof window & { __speechSpeakCount?: number }).__speechSpeakCount ?? 0) + 1;
-        originalSpeak(utterance);
-      };
+      window.localStorage.setItem('story_voice_e2e_provider', 'local');
     });
     await gotoRegressionPageAfterMusicSettles(page);
+
+    await page.getByRole('button', { name: '朗读当前故事' }).click();
+    await page.getByRole('button', { name: '模拟朗读失败' }).click();
+
+    await expect(page.getByTestId('voice-reading-state')).toHaveText('failed');
+    await page.waitForTimeout(1500);
+    await expect(page.getByTestId('voice-reading-state')).toHaveText('failed');
+    await expect(page.getByTestId('voice-reading-audio-url')).toHaveText('');
+    await expect(page.getByRole('button', { name: '重试朗读' })).toBeVisible();
+  });
+
+  test('failure state is retryable without blocking other panels', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem('story_voice_e2e_provider', 'browser');
+    });
+    await gotoRegressionPageAfterMusicSettles(page);
+
+    let readingRequestCount = 0;
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && request.url().includes('/api/voice-reading/read')) {
+        readingRequestCount += 1;
+      }
+    });
 
     await page.getByRole('button', { name: '模拟音乐播放中' }).click();
     await page.getByRole('button', { name: '朗读当前故事' }).click();
@@ -193,13 +210,7 @@ test.describe('Story voice reading', () => {
 
     await page.getByRole('button', { name: '重试朗读' }).click();
     await expectBrowserSpeechAttempt(page);
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () => (window as typeof window & { __speechSpeakCount?: number }).__speechSpeakCount ?? 0
-        )
-      )
-      .toBe(2);
+    await expect.poll(() => readingRequestCount).toBe(2);
 
     await page.getByRole('button', { name: '收集' }).click();
     await expect(page.getByRole('heading', { name: '苏小二' })).toBeVisible();

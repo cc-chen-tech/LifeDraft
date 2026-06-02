@@ -20,14 +20,6 @@ import type {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
-function getLocalBackendApiBase(): string | null {
-  if (typeof window === 'undefined') return null;
-  if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-    return null;
-  }
-  return `${window.location.protocol}//${window.location.hostname}:8000/api`;
-}
-
 /**
  * 401 重定向防抖：防止并发请求竞态导致多次重定向
  * 一旦触发登出，后续 401 不再重复处理
@@ -157,31 +149,6 @@ async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: num
       handle401Redirect();
     }
     
-    throw Object.assign(new Error(errorMessage), { status: response.status });
-  }
-
-  return response.json();
-}
-
-async function fetchJsonFromBase<T>(
-  baseUrl: string,
-  url: string,
-  options?: RequestInit & { timeout?: number }
-): Promise<T> {
-  const response = await fetch(`${baseUrl}${url}`, {
-    ...(options || {}),
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: response.statusText }));
-    const errorMessage = typeof error.detail === 'string'
-      ? error.detail
-      : error.message || response.statusText || 'Request failed';
     throw Object.assign(new Error(errorMessage), { status: response.status });
   }
 
@@ -440,19 +407,10 @@ export const api = {
         body: JSON.stringify(data),
       }),
     requestReading: (data: StoryVoiceReadingRequest) =>
-      getLocalBackendApiBase()
-        ? fetchJsonFromBase<StoryVoiceReadingResponse>(
-            getLocalBackendApiBase() || '',
-            '/voice-reading/read',
-            {
-              method: 'POST',
-              body: JSON.stringify(data),
-            }
-          )
-        : fetchJson<StoryVoiceReadingResponse>('/voice-reading/read', {
-            method: 'POST',
-            body: JSON.stringify(data),
-          }),
+      fetchJson<StoryVoiceReadingResponse>('/voice-reading/read', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
     getJob: (jobId: number) =>
       fetchJson<VoiceReadingJobResponse>(`/voice-reading/jobs/${jobId}`),
     uploadConsent: (data: VoiceUploadConsentRequest) =>

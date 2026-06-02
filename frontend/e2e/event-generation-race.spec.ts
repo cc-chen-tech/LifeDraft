@@ -7,7 +7,7 @@
 import { test, expect, Page } from '@playwright/test';
 import { ensureAuthenticated } from './helpers/auth';
 
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
 
 test.describe('Event Generation Race Condition E2E', () => {
   test.beforeEach(async ({ page, context }) => {

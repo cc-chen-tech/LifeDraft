@@ -8,7 +8,7 @@ import { test, expect, Page, BrowserContext } from '@playwright/test';
 import { registerUser } from './helpers/auth';
 import { waitForPageReady } from './helpers/wait-helpers';
 
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
 const API_URL = 'http://localhost:8000';
 
 test.describe('Friends System', () => {

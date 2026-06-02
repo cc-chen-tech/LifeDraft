@@ -17,7 +17,7 @@ import { ensureAuthenticated } from './helpers/auth';
 import { startNetworkMonitoring, formatNetworkErrors } from './helpers/network-monitor';
 import { waitForNetworkIdle, waitForStableDOM } from './helpers/wait-helpers';
 
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
 const API_URL = 'http://localhost:8000';
 
 /** SSE 事件收集器 */

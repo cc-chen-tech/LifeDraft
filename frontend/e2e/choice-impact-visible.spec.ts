@@ -53,6 +53,19 @@ async function applyFirstChoiceForGame(
   return await choiceResp.json();
 }
 
+async function getSavedPlayerState(
+  context: import("@playwright/test").BrowserContext,
+  gameId: number
+): Promise<Record<string, unknown>> {
+  const stateResp = await context.request.get(`${API_URL}/api/games/${gameId}/state`);
+  expect(stateResp.status()).toBe(200);
+  const state = await stateResp.json();
+  const playerState = state.player_state;
+  expect(playerState).toBeTruthy();
+  expect(typeof playerState).toBe("object");
+  return playerState as Record<string, unknown>;
+}
+
 test.describe("选择影响可见性", () => {
   test("选择后显示资源变化", async ({ page, context }) => {
     await ensureAuthenticated(page, context);
@@ -60,16 +73,17 @@ test.describe("选择影响可见性", () => {
     await seedEventForGame(context, gameId);
     const result = await applyFirstChoiceForGame(context, gameId);
     expect(result).toHaveProperty("effects_applied");
+    const savedPlayerState = await getSavedPlayerState(context, gameId);
+    const savedEnergy = savedPlayerState.energy;
+    expect(typeof savedEnergy).toBe("number");
 
     await page.goto(`/play?gameId=${gameId}`);
     await page.waitForLoadState("domcontentloaded");
 
-    // 结果阶段应显示继续按钮，顶部状态栏保留资源展示
-    const continueButton = page.locator("button").filter({ hasText: /确认|继续|进入/ });
-    await expect(continueButton.first()).toBeVisible({ timeout: 30000 });
-
-    const resourceSection = page.locator("text=/精力|情绪|学识|财富/").first();
-    await expect(resourceSection).toBeVisible();
+    const statusBar = page.getByTestId("status-bar").first();
+    await expect(statusBar).toBeVisible({ timeout: 30000 });
+    await expect(statusBar).toContainText(`精力: ${savedEnergy}`);
+    await expect(statusBar).toContainText(/情绪|学识|财富/);
   });
 
   test("同步选择 API 返回 effects_applied", async ({ page, context }) => {

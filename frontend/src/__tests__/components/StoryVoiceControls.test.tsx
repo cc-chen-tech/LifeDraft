@@ -1,7 +1,8 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { StoryVoiceControls } from '@/components/game/StoryVoiceControls';
 import type { ReadingContext } from '@/lib/types';
+import { useStoryVoiceStore } from '@/stores/useStoryVoiceStore';
 
 const currentContext: ReadingContext = {
   source_type: 'current_story',
@@ -15,6 +16,25 @@ const currentContext: ReadingContext = {
 };
 
 describe('StoryVoiceControls', () => {
+  beforeEach(() => {
+    useStoryVoiceStore.setState({
+      readingState: 'idle',
+      currentSource: '',
+      currentContextLabel: '',
+      currentAudioUrl: '',
+      currentJobId: null,
+      playbackMode: 'none',
+      spokenTextLength: 0,
+      currentSpeechText: '',
+      errorMessage: '',
+      queueText: '',
+      autoReadEnabled: false,
+      musicDuckState: 'idle',
+      musicWasPlaying: false,
+      userChangedMusic: false,
+    });
+  });
+
   it('shows a polished unavailable preview instead of raw playback diagnostics by default', () => {
     render(<StoryVoiceControls currentContext={currentContext} compact />);
 
@@ -31,5 +51,32 @@ describe('StoryVoiceControls', () => {
 
     expect(screen.getByTestId('voice-reading-state')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '朗读当前故事' })).toBeInTheDocument();
+  });
+
+  it('keeps retry available when a failed audio attempt later emits ended', () => {
+    render(<StoryVoiceControls currentContext={currentContext} showTestControls />);
+
+    act(() => {
+      useStoryVoiceStore.setState({
+        readingState: 'playing',
+        currentAudioUrl: '/api/voice-reading/audio/job-1.wav',
+        currentJobId: 1,
+        playbackMode: 'audio',
+        musicDuckState: 'ducked',
+      });
+    });
+
+    act(() => {
+      useStoryVoiceStore.getState().failReading();
+    });
+
+    expect(screen.getByTestId('voice-reading-state')).toHaveTextContent('failed');
+    expect(screen.getByTestId('voice-reading-audio-url')).toBeEmptyDOMElement();
+    expect(screen.getByRole('button', { name: '重试朗读' })).toBeVisible();
+
+    fireEvent.ended(screen.getByTestId('voice-reading-audio-player'));
+
+    expect(screen.getByTestId('voice-reading-state')).toHaveTextContent('failed');
+    expect(screen.getByRole('button', { name: '重试朗读' })).toBeVisible();
   });
 });

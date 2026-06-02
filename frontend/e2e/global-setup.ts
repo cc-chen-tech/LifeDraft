@@ -2,17 +2,17 @@
  * Playwright Global Setup - 服务器健康检查与自动启动
  *
  * 在所有测试开始前执行：
- * 1. 检查前端 (port 3000) 是否可达
+ * 1. 检查前端 (configured port) 是否可达
  * 2. 检查后端 (port 8000) 是否可达
  * 3. 后端不可达时自动启动
  * 4. 验证 AI API 连通性（可选，不阻塞非 AI 测试）
  */
 
-import { execSync, spawn, ChildProcess } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import { existsSync } from 'fs';
 
-const FRONTEND_URL = 'http://localhost:3000';
+const FRONTEND_URL = `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
 const BACKEND_URL = 'http://localhost:8000';
 const BACKEND_HEALTH_ENDPOINT = `${BACKEND_URL}/api/games`;
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');

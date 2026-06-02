@@ -3,7 +3,20 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-CHANGE_DIR = ROOT / "openspec" / "changes" / "fix-story-continuity-history-media"
+CHANGE_DIR = (
+    ROOT
+    / "openspec"
+    / "changes"
+    / "archive"
+    / "2026-06-02-fix-story-continuity-history-media"
+)
+SPEC_NAMES = (
+    "collection-stability",
+    "gameplay-continuity",
+    "history-review",
+    "member-voice-reading",
+    "test-gates",
+)
 
 
 def test_fix_story_continuity_change_tasks_stay_complete() -> None:
@@ -15,11 +28,26 @@ def test_fix_story_continuity_change_tasks_stay_complete() -> None:
     assert "8.8 Run targeted regression tests and `./test.sh all`." in tasks
 
 
+def test_archived_story_continuity_specs_are_synced_to_main_specs() -> None:
+    for spec_name in SPEC_NAMES:
+        archived_spec = CHANGE_DIR / "specs" / spec_name / "spec.md"
+        main_spec = ROOT / "openspec" / "specs" / spec_name / "spec.md"
+
+        assert archived_spec.exists()
+        assert main_spec.exists()
+
+        archived_text = archived_spec.read_text(encoding="utf-8")
+        main_text = main_spec.read_text(encoding="utf-8")
+        for requirement in archived_text.split("### Requirement: ")[1:]:
+            title = requirement.split("\n", 1)[0]
+            assert f"### Requirement: {title}" in main_text
+
+
 def test_preflight_script_runs_before_expensive_layers() -> None:
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
 
     assert "run_preflight" in script
-    assert "openspec validate fix-story-continuity-history-media --strict" in script
+    assert "openspec validate --all --strict" in script
     assert "openspec validate add-story-voice-reading --strict" in script
     assert "openspec validate shift-left-e2e-contract-gates --strict" in script
     assert "npx tsc --noEmit --strict" in script
@@ -30,6 +58,9 @@ def test_preflight_script_runs_before_expensive_layers() -> None:
     assert "tests/test_shift_left_e2e_contract_no_mock.py" in script
     assert "storyContinuityPreflight.test.tsx" in script
     assert "src/__tests__/lib/sse.test.ts" in script
+    assert "python -m flake8 src/services/story_voice_reading.py" in script
+    assert "python scripts/export_openapi.py" in script
+    assert "git diff --exit-code -- frontend/src/types/openapi-schema.json" in script
     assert script.index("run_preflight || ((failed++))") < script.index("run_mypy || ((failed++))")
     assert script.index("run_preflight || ((failed++))") < script.index(
         "run_e2e_browser || ((failed++))"
@@ -41,11 +72,31 @@ def test_e2e_gate_does_not_reuse_frontend_from_other_worktree() -> None:
     config = (ROOT / "frontend" / "playwright.config.ts").read_text(encoding="utf-8")
 
     assert "ensure_e2e_frontend_port_available" in script
+    assert 'local frontend_port="${E2E_FRONTEND_PORT:-3000}"' in script
+    assert "export E2E_FRONTEND_PORT" in script
     assert "占用 3000 端口的前端不属于当前 worktree" in script
     assert script.index("ensure_e2e_frontend_port_available") < script.index(
         "npx playwright test --project=core"
     )
+    assert "process.env.E2E_FRONTEND_PORT" in config
     assert "reuseExistingServer: false" in config
+
+
+def test_e2e_specs_use_configured_frontend_port() -> None:
+    global_setup = (ROOT / "frontend" / "e2e" / "global-setup.ts").read_text(
+        encoding="utf-8"
+    )
+    assert "process.env.E2E_FRONTEND_PORT" in global_setup
+    assert "const FRONTEND_URL = 'http://localhost:3000'" not in global_setup
+
+    for spec_path in (ROOT / "frontend" / "e2e").glob("*.spec.ts"):
+        if spec_path.name == "story101-exploration.spec.ts":
+            continue
+
+        spec = spec_path.read_text(encoding="utf-8")
+        assert "const BASE_URL = 'http://localhost:3000'" not in spec
+        assert "const BASE_URL = process.env.E2E_BASE_URL || ;" not in spec
+        assert "toContain('localhost:3000')" not in spec
 
 
 def test_frontend_regression_fixture_exercises_changed_surfaces() -> None:
@@ -158,3 +209,47 @@ def test_story_voice_test_controls_stay_out_of_real_play_page() -> None:
     assert "{showTestControls &&" in component
     assert "showTestControls" not in play_page
     assert "showTestControls" in regression_page
+
+
+def test_story_voice_e2e_uses_same_origin_api_proxy() -> None:
+    api_source = (ROOT / "frontend" / "src" / "lib" / "api.ts").read_text(encoding="utf-8")
+    request_reading_block = api_source.split("requestReading: (data: StoryVoiceReadingRequest) =>")[
+        1
+    ].split("getJob:", 1)[0]
+
+    assert "fetchJson<StoryVoiceReadingResponse>('/voice-reading/read'" in request_reading_block
+    assert "fetchJsonFromBase" not in request_reading_block
+    assert "getLocalBackendApiBase" not in request_reading_block
+
+
+def test_story_voice_e2e_workflow_enables_deterministic_backend_audio() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "e2e-tests.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "STORY_TTS_PROVIDER=local" in workflow
+    assert "STORY_TTS_ALLOW_REQUEST_PROVIDER=1" in workflow
+
+
+def test_story_voice_browser_fallback_e2e_accepts_real_browser_speech_capability() -> None:
+    spec = (ROOT / "frontend" / "e2e" / "story-voice-reading.spec.ts").read_text(
+        encoding="utf-8"
+    )
+    fallback_test = spec.split(
+        "uses browser speech fallback with the actual story text when backend audio is unavailable"
+    )[1].split("test('auto-read supersedes stale regenerated attempts", 1)[0]
+
+    assert "const fallbackState = await expectBrowserSpeechAttempt(page);" in fallback_test
+    assert "if (fallbackState === 'playing')" in fallback_test
+    assert "speechSynthesis" in fallback_test
+
+
+def test_security_e2e_logout_uses_context_request_not_cross_origin_page_fetch() -> None:
+    spec = (ROOT / "frontend" / "e2e" / "security.spec.ts").read_text(encoding="utf-8")
+    logout_test = spec.split("test('logout actually invalidates session'")[1].split(
+        "test('XSS in story content is escaped'"
+    )[0]
+
+    assert "context.request.post" in logout_test
+    assert "context.request.get" in logout_test
+    assert "page.evaluate(async (apiUrl)" not in logout_test

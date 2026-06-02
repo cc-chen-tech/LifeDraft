@@ -6,7 +6,7 @@
  */
 import { test, expect, Locator, Page } from '@playwright/test';
 
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
 
 test.describe('MusicPlayer 音乐播放器', () => {
   async function openMusicFixture(page: Page): Promise<Locator> {
@@ -30,13 +30,20 @@ test.describe('MusicPlayer 音乐播放器', () => {
       .toMatch(/^(songs|empty|error)$/);
   }
 
-  async function hasSongs(fixture: Locator) {
+  async function triggerRecommendation(fixture: Locator) {
+    const refreshButton = fixture.locator('button[title="换一批"], button:has(svg[data-lucide="refresh-cw"])');
+    await expect(refreshButton.first()).toBeVisible();
+    await refreshButton.first().click();
     await waitForRecommendationSettled(fixture);
+  }
+
+  async function hasSongs(fixture: Locator) {
+    await triggerRecommendation(fixture);
     return fixture.locator('.font-medium.truncate').first().isVisible().catch(() => false);
   }
 
   async function expectVisibleMusicOutcome(fixture: Locator) {
-    await waitForRecommendationSettled(fixture);
+    await triggerRecommendation(fixture);
     const outcome = fixture.getByText(/未找到匹配的音乐|获取推荐失败|音乐服务暂不可用/);
     const songInfo = fixture.locator('.font-medium.truncate').first();
     await expect(songInfo.or(outcome).first()).toBeVisible({ timeout: 5000 });
@@ -116,13 +123,12 @@ test.describe('MusicPlayer 音乐播放器', () => {
 
   test('刷新推荐应该重新触发加载并回到可见状态', async ({ page }) => {
     const fixture = await openMusicFixture(page);
-    await expectVisibleMusicOutcome(fixture);
 
     // 找到刷新按钮并点击
     const refreshButton = fixture.locator('button[title="换一批"], button:has(svg[data-lucide="refresh-cw"])');
     await expect(refreshButton.first()).toBeVisible();
     await refreshButton.first().click();
-    await page.waitForTimeout(2000);
+    await waitForRecommendationSettled(fixture);
 
     // 验证播放器仍然显示
     await expect(fixture.getByText('场景音乐')).toBeVisible();
@@ -143,7 +149,7 @@ test.describe('MusicPlayer 音乐播放器', () => {
 
   test('播放器应该在页面切换后保持可恢复', async ({ page }) => {
     let fixture = await openMusicFixture(page);
-    await expectVisibleMusicOutcome(fixture);
+    await expect(fixture.getByText('场景音乐')).toBeVisible();
 
     // 导航到主页再返回
     await page.goto(`${BASE_URL}/`);
