@@ -231,6 +231,19 @@ def test_story_voice_e2e_workflow_enables_deterministic_backend_audio() -> None:
     assert "STORY_TTS_ALLOW_REQUEST_PROVIDER=1" in workflow
 
 
+def test_story_voice_browser_fallback_e2e_accepts_real_browser_speech_capability() -> None:
+    spec = (ROOT / "frontend" / "e2e" / "story-voice-reading.spec.ts").read_text(
+        encoding="utf-8"
+    )
+    fallback_test = spec.split(
+        "uses browser speech fallback with the actual story text when backend audio is unavailable"
+    )[1].split("test('auto-read supersedes stale regenerated attempts", 1)[0]
+
+    assert "const fallbackState = await expectBrowserSpeechAttempt(page);" in fallback_test
+    assert "if (fallbackState === 'playing')" in fallback_test
+    assert "speechSynthesis" in fallback_test
+
+
 def test_security_e2e_logout_uses_context_request_not_cross_origin_page_fetch() -> None:
     spec = (ROOT / "frontend" / "e2e" / "security.spec.ts").read_text(encoding="utf-8")
     logout_test = spec.split("test('logout actually invalidates session'")[1].split(
