@@ -169,8 +169,25 @@ test.describe('Story voice reading', () => {
     await expect(page.getByTestId('voice-reading-mode')).toHaveText('audio');
   });
 
+  test('manual failure cancels a pending backend audio response', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem('story_voice_e2e_provider', 'local');
+    });
+    await gotoRegressionPageAfterMusicSettles(page);
+
+    await page.getByRole('button', { name: '朗读当前故事' }).click();
+    await page.getByRole('button', { name: '模拟朗读失败' }).click();
+
+    await expect(page.getByTestId('voice-reading-state')).toHaveText('failed');
+    await page.waitForTimeout(1500);
+    await expect(page.getByTestId('voice-reading-state')).toHaveText('failed');
+    await expect(page.getByTestId('voice-reading-audio-url')).toHaveText('');
+    await expect(page.getByRole('button', { name: '重试朗读' })).toBeVisible();
+  });
+
   test('failure state is retryable without blocking other panels', async ({ page }) => {
     await page.addInitScript(() => {
+      window.localStorage.setItem('story_voice_e2e_provider', 'browser');
       (window as typeof window & { __speechSpeakCount?: number }).__speechSpeakCount = 0;
       const speech = window.speechSynthesis;
       const originalSpeak = speech.speak.bind(speech);

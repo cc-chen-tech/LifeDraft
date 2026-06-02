@@ -56,6 +56,7 @@ async function normalizeTextHash(text: string): Promise<string> {
 }
 
 let activeUtterance: SpeechSynthesisUtterance | null = null;
+let activeReadingAttempt = 0;
 
 function getSpeechSynthesis(): SpeechSynthesis | null {
   if (typeof window === "undefined") return null;
@@ -91,6 +92,8 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
   userChangedMusic: false,
 
   startReading: async (context) => {
+    const attemptId = activeReadingAttempt + 1;
+    activeReadingAttempt = attemptId;
     const { musicWasPlaying } = get();
     getSpeechSynthesis()?.cancel();
     activeUtterance = null;
@@ -109,9 +112,15 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
     });
 
     const startBrowserSpeech = (jobId: number | null) => {
+      if (attemptId !== activeReadingAttempt) {
+        return;
+      }
       const speech = getSpeechSynthesis();
       if (!speech) {
         const { musicDuckState, userChangedMusic } = get();
+        if (attemptId !== activeReadingAttempt) {
+          return;
+        }
         set({
           readingState: "failed",
           currentJobId: jobId,
@@ -130,13 +139,13 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       utterance.lang = detectSpeechLanguage(context.text);
       utterance.rate = 1;
       utterance.onend = () => {
-        if (activeUtterance === utterance) {
+        if (activeUtterance === utterance && attemptId === activeReadingAttempt) {
           activeUtterance = null;
           get().completeReading();
         }
       };
       utterance.onerror = () => {
-        if (activeUtterance === utterance) {
+        if (activeUtterance === utterance && attemptId === activeReadingAttempt) {
           const { musicDuckState, userChangedMusic } = get();
           activeUtterance = null;
           set({
@@ -148,6 +157,9 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
           });
         }
       };
+      if (attemptId !== activeReadingAttempt) {
+        return;
+      }
       set({
         readingState: "playing",
         currentAudioUrl: "",
@@ -173,6 +185,9 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
             ? window.localStorage.getItem("story_voice_e2e_provider")
             : null,
       });
+      if (attemptId !== activeReadingAttempt) {
+        return;
+      }
       const shouldPlayAudio = response.playback_mode === "audio" && Boolean(response.audio_url);
       if (response.status === "failed") {
         const { musicDuckState, userChangedMusic } = get();
@@ -188,6 +203,9 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       }
 
       if (shouldPlayAudio) {
+        if (attemptId !== activeReadingAttempt) {
+          return;
+        }
         set({
           readingState: "playing",
           currentAudioUrl: response.audio_url ?? "",
@@ -202,6 +220,9 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
 
       startBrowserSpeech(response.job_id);
     } catch (error) {
+      if (attemptId !== activeReadingAttempt) {
+        return;
+      }
       if ((error as ApiError).status === 401) {
         startBrowserSpeech(null);
         return;
@@ -223,6 +244,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
   },
   stopReading: () => {
     const { musicDuckState, userChangedMusic } = get();
+    activeReadingAttempt += 1;
     getSpeechSynthesis()?.cancel();
     activeUtterance = null;
     set({
@@ -240,6 +262,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
     if (readingState === "failed") {
       return;
     }
+    activeReadingAttempt += 1;
     if (activeUtterance) {
       getSpeechSynthesis()?.cancel();
       activeUtterance = null;
@@ -258,6 +281,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
   },
   failReading: () => {
     const { musicDuckState, userChangedMusic } = get();
+    activeReadingAttempt += 1;
     getSpeechSynthesis()?.cancel();
     activeUtterance = null;
     set({
