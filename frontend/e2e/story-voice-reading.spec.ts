@@ -188,16 +188,15 @@ test.describe('Story voice reading', () => {
   test('failure state is retryable without blocking other panels', async ({ page }) => {
     await page.addInitScript(() => {
       window.localStorage.setItem('story_voice_e2e_provider', 'browser');
-      (window as typeof window & { __speechSpeakCount?: number }).__speechSpeakCount = 0;
-      const speech = window.speechSynthesis;
-      const originalSpeak = speech.speak.bind(speech);
-      speech.speak = (utterance: SpeechSynthesisUtterance) => {
-        (window as typeof window & { __speechSpeakCount?: number }).__speechSpeakCount =
-          ((window as typeof window & { __speechSpeakCount?: number }).__speechSpeakCount ?? 0) + 1;
-        originalSpeak(utterance);
-      };
     });
     await gotoRegressionPageAfterMusicSettles(page);
+
+    let readingRequestCount = 0;
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && request.url().includes('/api/voice-reading/read')) {
+        readingRequestCount += 1;
+      }
+    });
 
     await page.getByRole('button', { name: '模拟音乐播放中' }).click();
     await page.getByRole('button', { name: '朗读当前故事' }).click();
@@ -211,13 +210,7 @@ test.describe('Story voice reading', () => {
 
     await page.getByRole('button', { name: '重试朗读' }).click();
     await expectBrowserSpeechAttempt(page);
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () => (window as typeof window & { __speechSpeakCount?: number }).__speechSpeakCount ?? 0
-        )
-      )
-      .toBe(2);
+    await expect.poll(() => readingRequestCount).toBe(2);
 
     await page.getByRole('button', { name: '收集' }).click();
     await expect(page.getByRole('heading', { name: '苏小二' })).toBeVisible();
