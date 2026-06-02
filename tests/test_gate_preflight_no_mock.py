@@ -222,6 +222,15 @@ def test_story_voice_e2e_uses_same_origin_api_proxy() -> None:
     assert "getLocalBackendApiBase" not in request_reading_block
 
 
+def test_story_voice_e2e_workflow_enables_deterministic_backend_audio() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "e2e-tests.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "STORY_TTS_PROVIDER=local" in workflow
+    assert "STORY_TTS_ALLOW_REQUEST_PROVIDER=1" in workflow
+
+
 def test_security_e2e_logout_uses_context_request_not_cross_origin_page_fetch() -> None:
     spec = (ROOT / "frontend" / "e2e" / "security.spec.ts").read_text(encoding="utf-8")
     logout_test = spec.split("test('logout actually invalidates session'")[1].split(
