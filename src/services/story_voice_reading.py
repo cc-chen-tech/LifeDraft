@@ -24,6 +24,15 @@ from src.services.story_tts_provider import (
     build_story_tts_provider,
 )
 
+__all__ = [
+    "BrowserSpeechTTSProvider",
+    "DeterministicTTSProvider",
+    "ReadingContextValidator",
+    "StoryVoiceReadingService",
+    "build_deterministic_wav",
+    "normalize_text_hash",
+]
+
 AVAILABLE_VOICES = ["warm_female", "calm_male", "clear_neutral"]
 
 

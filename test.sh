@@ -37,10 +37,12 @@ activate_python_env() {
 
 ensure_e2e_frontend_port_available() {
     local frontend_dir="$PROJECT_DIR/frontend"
+    local frontend_port="${E2E_FRONTEND_PORT:-3000}"
     local pids
-    pids="$(lsof -tiTCP:3000 -sTCP:LISTEN 2>/dev/null || true)"
+    pids="$(lsof -tiTCP:"$frontend_port" -sTCP:LISTEN 2>/dev/null || true)"
 
     if [ -z "$pids" ]; then
+        export E2E_FRONTEND_PORT="$frontend_port"
         return 0
     fi
 
@@ -61,14 +63,28 @@ ensure_e2e_frontend_port_available() {
         if [ -n "$cwd" ]; then
             echo -e "${RED}CWD: $cwd${NC}"
         fi
-        echo -e "${YELLOW}请先关闭该进程，或在对应 worktree 内运行测试。${NC}"
+
+        if [ -z "${E2E_FRONTEND_PORT:-}" ] && [ "$frontend_port" = "3000" ]; then
+            local fallback_port
+            for fallback_port in 3001 3002 3003 3004 3005; do
+                if ! lsof -tiTCP:"$fallback_port" -sTCP:LISTEN > /dev/null 2>&1; then
+                    export E2E_FRONTEND_PORT="$fallback_port"
+                    echo -e "${YELLOW}切换当前 worktree E2E 前端端口到 $fallback_port。${NC}"
+                    return 0
+                fi
+            done
+        fi
+
+        echo -e "${YELLOW}请先关闭该进程，或设置 E2E_FRONTEND_PORT 为当前 worktree 的空闲端口。${NC}"
         return 1
     done
 
-    if lsof -tiTCP:3000 -sTCP:LISTEN > /dev/null 2>&1; then
-        echo -e "${RED}3000 端口仍被占用，无法启动当前 worktree 的 E2E 前端。${NC}"
+    if lsof -tiTCP:"$frontend_port" -sTCP:LISTEN > /dev/null 2>&1; then
+        echo -e "${RED}$frontend_port 端口仍被占用，无法启动当前 worktree 的 E2E 前端。${NC}"
         return 1
     fi
+
+    export E2E_FRONTEND_PORT="$frontend_port"
 }
 
 # 打印层级标题
@@ -114,6 +130,10 @@ run_preflight() {
     openspec validate add-provider-backed-story-tts --strict
     local story_tts_openspec_code=$?
 
+    echo -e "${YELLOW}运行后端 preflight quality 检查...${NC}"
+    python -m flake8 src/services/story_voice_reading.py --max-line-length=100 --ignore=E501,W503,E203
+    local flake8_code=$?
+
     echo -e "${YELLOW}运行前置 gate 测试...${NC}"
     python -m pytest \
         tests/test_gate_preflight_no_mock.py \
@@ -130,6 +150,16 @@ run_preflight() {
     npx tsc --noEmit --strict
     local tsc_code=$?
     cd "$PROJECT_DIR"
+
+    echo -e "${YELLOW}运行 OpenAPI 类型漂移检查...${NC}"
+    python scripts/export_openapi.py
+    local openapi_export_code=$?
+    cd "$PROJECT_DIR/frontend"
+    npx openapi-typescript src/types/openapi-schema.json -o src/types/api-generated.d.ts
+    local openapi_ts_code=$?
+    cd "$PROJECT_DIR"
+    git diff --exit-code -- frontend/src/types/openapi-schema.json frontend/src/types/api-generated.d.ts
+    local openapi_diff_code=$?
 
     echo -e "${YELLOW}运行前端 preflight Jest 回归测试...${NC}"
     cd "$PROJECT_DIR/frontend"
@@ -149,7 +179,7 @@ run_preflight() {
     cd "$PROJECT_DIR"
 
     local result=0
-    if [ $openspec_code -ne 0 ] || [ $music_openspec_code -ne 0 ] || [ $redesign_openspec_code -ne 0 ] || [ $shift_left_openspec_code -ne 0 ] || [ $story_voice_openspec_code -ne 0 ] || [ $story_tts_openspec_code -ne 0 ] || [ $gate_code -ne 0 ] || [ $tsc_code -ne 0 ] || [ $jest_code -ne 0 ]; then
+    if [ $openspec_code -ne 0 ] || [ $music_openspec_code -ne 0 ] || [ $redesign_openspec_code -ne 0 ] || [ $shift_left_openspec_code -ne 0 ] || [ $story_voice_openspec_code -ne 0 ] || [ $story_tts_openspec_code -ne 0 ] || [ $flake8_code -ne 0 ] || [ $gate_code -ne 0 ] || [ $tsc_code -ne 0 ] || [ $openapi_export_code -ne 0 ] || [ $openapi_ts_code -ne 0 ] || [ $openapi_diff_code -ne 0 ] || [ $jest_code -ne 0 ]; then
         result=1
     fi
 

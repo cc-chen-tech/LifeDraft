@@ -19,7 +19,7 @@ import { ensureAuthenticated, registerUser } from './helpers/auth';
 import { startNetworkMonitoring, waitForNetworkIdle, formatNetworkErrors } from './helpers/network-monitor';
 
 const API_URL = 'http://localhost:8000';
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
 
 // ============================================================================
 // Helper Functions

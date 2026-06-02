@@ -45,7 +45,7 @@ test.describe('Gameplay - Play Page Without Game', () => {
     const currentUrl = page.url();
     
     // Verify page loaded without error
-    expect(currentUrl).toContain('localhost:3000');
+    expect(new URL(currentUrl).hostname).toBe('localhost');
   });
 
   test('should show loading state on play page', async ({ page }) => {
@@ -111,7 +111,7 @@ test.describe('Gameplay - Loading States', () => {
     
     // Page should handle gracefully
     const currentUrl = page.url();
-    expect(currentUrl).toContain('localhost:3000');
+    expect(new URL(currentUrl).hostname).toBe('localhost');
   });
 
   test('play page handles missing game state', async ({ page }) => {

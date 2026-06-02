@@ -3010,6 +3010,8 @@ export interface components {
              * @default false
              */
             auto_play: boolean;
+            /** Preferred Provider */
+            preferred_provider?: string | null;
         };
         /** StoryVoiceReadingResponse */
         StoryVoiceReadingResponse: {
@@ -3023,6 +3025,23 @@ export interface components {
             asset_id?: number | null;
             /** Duration Ms */
             duration_ms?: number | null;
+            /**
+             * Playback Mode
+             * @default browser_speech
+             */
+            playback_mode: string;
+            /**
+             * Provider
+             * @default browser
+             */
+            provider: string;
+            /**
+             * Model
+             * @default browser-speech
+             */
+            model: string;
+            /** Media Type */
+            media_type?: string | null;
             /** Error Code */
             error_code?: string | null;
             /**
@@ -3077,6 +3096,23 @@ export interface components {
             asset_id?: number | null;
             /** Duration Ms */
             duration_ms?: number | null;
+            /**
+             * Playback Mode
+             * @default browser_speech
+             */
+            playback_mode: string;
+            /**
+             * Provider
+             * @default browser
+             */
+            provider: string;
+            /**
+             * Model
+             * @default browser-speech
+             */
+            model: string;
+            /** Media Type */
+            media_type?: string | null;
             /** Error Code */
             error_code?: string | null;
             /**
@@ -3111,6 +3147,31 @@ export interface components {
              * @default false
              */
             auto_read_enabled: boolean;
+            /**
+             * Tts Provider
+             * @default browser
+             */
+            tts_provider: string;
+            /**
+             * Tts Model
+             * @default browser-speech
+             */
+            tts_model: string;
+            /**
+             * Tts Provider Available
+             * @default true
+             */
+            tts_provider_available: boolean;
+            /**
+             * Backend Audio Enabled
+             * @default false
+             */
+            backend_audio_enabled: boolean;
+            /**
+             * Playback Mode
+             * @default browser_speech
+             */
+            playback_mode: string;
         };
         /** VoiceReadingSettingsUpdateRequest */
         VoiceReadingSettingsUpdateRequest: {

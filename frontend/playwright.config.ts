@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const frontendPort = process.env.E2E_FRONTEND_PORT ?? '3000';
+const frontendBaseURL = `http://localhost:${frontendPort}`;
+
 /**
  * E2E 测试配置 - 双阶段执行策略
  *
@@ -69,7 +72,7 @@ export default defineConfig({
 
   /* 共享配置 */
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: frontendBaseURL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -148,8 +151,8 @@ export default defineConfig({
   /* Dev server 自动启动 (仅本地) */
   ...(process.env.CI ? {} : {
     webServer: {
-      command: 'npm run dev',
-      url: 'http://localhost:3000',
+      command: `npm run dev -- --port ${frontendPort}`,
+      url: frontendBaseURL,
       reuseExistingServer: false,
       timeout: 120 * 1000,
       env: Object.fromEntries(

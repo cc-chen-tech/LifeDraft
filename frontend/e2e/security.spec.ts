@@ -92,22 +92,11 @@ test.describe('Security E2E', () => {
     const meResponse1 = await context.request.get(`${API_URL}/api/auth/me`);
     expect(meResponse1.status()).toBe(200);
 
-    const logoutStatus = await page.evaluate(async (apiUrl) => {
-      const response = await fetch(`${apiUrl}/api/auth/logout`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      return response.status;
-    }, API_URL);
-    expect([200, 204]).toContain(logoutStatus);
+    const logoutResponse = await context.request.post(`${API_URL}/api/auth/logout`);
+    expect([200, 204]).toContain(logoutResponse.status());
 
-    const meStatusAfterLogout = await page.evaluate(async (apiUrl) => {
-      const response = await fetch(`${apiUrl}/api/auth/me`, {
-        credentials: 'include',
-      });
-      return response.status;
-    }, API_URL);
-    expect([401, 403]).toContain(meStatusAfterLogout);
+    const meResponseAfterLogout = await context.request.get(`${API_URL}/api/auth/me`);
+    expect([401, 403]).toContain(meResponseAfterLogout.status());
   });
 
   test('XSS in story content is escaped', async ({ page, context }) => {

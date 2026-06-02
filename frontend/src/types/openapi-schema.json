@@ -6939,6 +6939,17 @@
             "type": "boolean",
             "title": "Auto Play",
             "default": false
+          },
+          "preferred_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preferred Provider"
           }
         },
         "type": "object",
@@ -6989,6 +7000,32 @@
               }
             ],
             "title": "Duration Ms"
+          },
+          "playback_mode": {
+            "type": "string",
+            "title": "Playback Mode",
+            "default": "browser_speech"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "default": "browser"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "default": "browser-speech"
+          },
+          "media_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Type"
           },
           "error_code": {
             "anyOf": [
@@ -7167,6 +7204,32 @@
             ],
             "title": "Duration Ms"
           },
+          "playback_mode": {
+            "type": "string",
+            "title": "Playback Mode",
+            "default": "browser_speech"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "default": "browser"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "default": "browser-speech"
+          },
+          "media_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Type"
+          },
           "error_code": {
             "anyOf": [
               {
@@ -7230,6 +7293,31 @@
             "type": "boolean",
             "title": "Auto Read Enabled",
             "default": false
+          },
+          "tts_provider": {
+            "type": "string",
+            "title": "Tts Provider",
+            "default": "browser"
+          },
+          "tts_model": {
+            "type": "string",
+            "title": "Tts Model",
+            "default": "browser-speech"
+          },
+          "tts_provider_available": {
+            "type": "boolean",
+            "title": "Tts Provider Available",
+            "default": true
+          },
+          "backend_audio_enabled": {
+            "type": "boolean",
+            "title": "Backend Audio Enabled",
+            "default": false
+          },
+          "playback_mode": {
+            "type": "string",
+            "title": "Playback Mode",
+            "default": "browser_speech"
           }
         },
         "type": "object",

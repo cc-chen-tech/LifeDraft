@@ -6,7 +6,7 @@
  */
 import { test, expect, Locator, Page } from '@playwright/test';
 
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
 
 test.describe('MusicPlayer 音乐播放器', () => {
   async function openMusicFixture(page: Page): Promise<Locator> {
