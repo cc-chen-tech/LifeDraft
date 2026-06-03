@@ -160,5 +160,48 @@ describe('useEventGenerator', () => {
       expect(mockSetters.setPhase).toHaveBeenCalledWith('error');
       expect(mockGeneratingRef.current).toBe(false);
     });
+
+    it('surfaces recovered partial story instead of staying in generation recovery forever', async () => {
+      jest.useFakeTimers();
+      const partialStory = '第十回 残月孤影探险途\n\n沈清越已经取到证据，但选项仍在生成。';
+      const syncState = jest.fn().mockImplementation(async () => {
+        useGameStore.setState({
+          storyText: partialStory,
+          currentEvent: {
+            story: partialStory,
+            options: [],
+          },
+        } as never);
+      });
+      useGameStore.setState({ syncState } as never);
+
+      (global.fetch as jest.Mock).mockResolvedValue(
+        createSSEMockResponse([
+          'event: error\ndata: {"message":"Timeout waiting for event generation"}\n\n',
+        ])
+      );
+
+      const { result } = renderHook(() => useEventGenerator(defaultParams));
+
+      await act(async () => {
+        void result.current.generateEvent();
+      });
+
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(181000);
+      });
+
+      expect(syncState).toHaveBeenCalled();
+      expect(mockSetters.setStoryText).toHaveBeenCalledWith(partialStory);
+      expect(mockSetters.setCurrentEvent).toHaveBeenCalledWith({
+        story: partialStory,
+        options: [],
+      });
+      expect(mockSetters.setConnectionStatus).toHaveBeenCalledWith('error');
+      expect(mockSetters.setPhase).toHaveBeenCalledWith('error');
+      expect(mockGeneratingRef.current).toBe(false);
+
+      jest.useRealTimers();
+    });
   });
 });

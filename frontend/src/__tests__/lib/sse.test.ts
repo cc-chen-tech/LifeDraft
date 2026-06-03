@@ -122,6 +122,24 @@ describe('SSE Streaming', () => {
       expect(onComplete).toHaveBeenCalledWith({});
     });
 
+    it('does not emit empty complete after an error event', async () => {
+      const onComplete = jest.fn();
+      const onError = jest.fn();
+      const callbacks: StreamCallbacks = { onComplete, onError };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: createMockStream([
+          'event: error\ndata: {"message":"Timeout waiting for event generation"}\n\n',
+        ]),
+      });
+
+      await streamGameEvent(123, callbacks);
+
+      expect(onError).toHaveBeenCalledWith({ message: 'Timeout waiting for event generation' });
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
     it('throws on HTTP errors', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,

@@ -188,6 +188,7 @@ export function useEventGenerator({
           const maxPollingTime = 180000;  // 3分钟，改善用户体验
           const pollInterval = 5000;      // 5秒，更快检测完成状态
           const startTime = Date.now();
+          let recoveredPartialStory = "";
 
           const pollForCompletion = async (): Promise<boolean> => {
             try {
@@ -207,6 +208,19 @@ export function useEventGenerator({
                 setRoundSummary(null);
                 return true;
               }
+
+              const partialStory =
+                state?.currentEvent?.story ||
+                state?.storyText ||
+                "";
+              if (partialStory.trim()) {
+                recoveredPartialStory = partialStory;
+                setStoryText(partialStory);
+                setCurrentEvent({
+                  story: partialStory,
+                  options: [],
+                });
+              }
               return false;
             } catch (pollErr) {
               console.error("Polling error:", pollErr);
@@ -222,12 +236,19 @@ export function useEventGenerator({
             console.log(`Polling... (${Math.round((Date.now() - startTime) / 1000)}s elapsed)`);
           }
 
-          console.warn("Polling timeout after 5 minutes, entering error state");
+          console.warn("Polling timeout after 3 minutes, entering error state");
           setProcessing(false);
           setConnectionStatus("error");
           generatingRef.current = false;
           pollingRef.current = false;
           isRetryingRef.current = false;
+          if (recoveredPartialStory.trim()) {
+            setStoryText(recoveredPartialStory);
+            setCurrentEvent({
+              story: recoveredPartialStory,
+              options: [],
+            });
+          }
           setPhase("error");
         },
       },
