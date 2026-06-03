@@ -53,6 +53,80 @@ class CachedMusicPool:
     analysis: Dict[str, Any]
     verified_songs: List[CachedSong]
     created_at: float
+    query_cursor: int = 0
+
+
+LOVE_POP_CUES = {
+    "匆匆那年",
+    "告白气球",
+    "喜欢你",
+    "恋爱",
+    "爱情",
+    "情歌",
+    "告白",
+    "表白",
+    "甜蜜",
+    "浪漫",
+    "青春",
+    "流行",
+}
+
+SUSPENSE_CONTEXT_CUES = {
+    "悬疑",
+    "追捕",
+    "逃亡",
+    "造假",
+    "医疗",
+    "医院",
+    "数据",
+    "调查",
+    "犯罪",
+    "惊悚",
+    "危机",
+}
+
+SUSPENSE_NEGATIVE_CUES = [
+    "恋爱",
+    "爱情",
+    "情歌",
+    "甜蜜",
+    "告白",
+    "表白",
+    "青春流行",
+    "流行人声",
+    "人声",
+    "歌词",
+    "匆匆那年",
+    "告白气球",
+    "喜欢你",
+]
+
+
+def _dedupe_text(items: Sequence[str]) -> List[str]:
+    deduped: List[str] = []
+    for item in items:
+        normalized = str(item).strip()
+        if normalized and normalized not in deduped:
+            deduped.append(normalized)
+    return deduped
+
+
+def _contains_any(text: str, cues: Sequence[str]) -> bool:
+    return any(cue and cue in text for cue in cues)
+
+
+def _is_love_pop_query(query: str) -> bool:
+    return _contains_any(query, list(LOVE_POP_CUES))
+
+
+def _suspense_search_queries(context_text: str) -> List[str]:
+    queries: List[str] = []
+    if _contains_any(context_text, ["医疗", "医院", "数据", "造假"]):
+        queries.extend(["医疗悬疑 氛围音乐", "现代医院 紧张配乐"])
+    if _contains_any(context_text, ["追捕", "逃亡"]):
+        queries.extend(["追捕逃亡 紧张配乐", "追捕 悬疑 纯音乐"])
+    queries.extend(["现代悬疑 纯音乐", "悬疑 影视配乐", "无歌词 紧张氛围"])
+    return _dedupe_text(queries)
 
 
 @dataclass
@@ -109,6 +183,16 @@ class MusicBrief:
         if not isinstance(analysis, dict):
             return cls.default()
 
+        mood = str(analysis.get("mood") or cls.default().mood)
+        scene_type = str(analysis.get("scene_type") or cls.default().scene_type)
+        era_or_environment = str(
+            analysis.get("era_or_environment")
+            or analysis.get("environment")
+            or cls.default().era_or_environment
+        )
+        pacing = str(analysis.get("pacing") or cls.default().pacing)
+        energy = str(analysis.get("energy") or cls.default().energy)
+
         instruments = analysis.get("instruments")
         if not isinstance(instruments, list):
             instruments = cls.default().instruments
@@ -124,15 +208,30 @@ class MusicBrief:
             negative_cues = cls.default().negative_cues
         normalized_negative = [str(item) for item in negative_cues if item]
 
-        mood = str(analysis.get("mood") or cls.default().mood)
-        scene_type = str(analysis.get("scene_type") or cls.default().scene_type)
-        era_or_environment = str(
-            analysis.get("era_or_environment")
-            or analysis.get("environment")
-            or cls.default().era_or_environment
+        context_text = " ".join(
+            [
+                mood,
+                scene_type,
+                era_or_environment,
+                pacing,
+                energy,
+                str(analysis.get("story_style") or ""),
+                str(analysis.get("music_style") or ""),
+                " ".join(normalized_queries),
+                " ".join(normalized_instruments),
+            ]
         )
-        pacing = str(analysis.get("pacing") or cls.default().pacing)
-        energy = str(analysis.get("energy") or cls.default().energy)
+        if _contains_any(context_text, list(SUSPENSE_CONTEXT_CUES)):
+            filtered_queries = [
+                query for query in normalized_queries if not _is_love_pop_query(query)
+            ]
+            normalized_queries = _dedupe_text(
+                [*_suspense_search_queries(context_text), *filtered_queries]
+            )
+            normalized_negative = _dedupe_text(
+                [*normalized_negative, *SUSPENSE_NEGATIVE_CUES]
+            )
+
         prompt = str(analysis.get("generation_prompt") or "").strip()
         if not prompt:
             prompt = (
@@ -199,7 +298,11 @@ class MusicContextBuilder:
     def build_brief(self, analysis: Dict[str, Any]) -> MusicBrief:
         return MusicBrief.from_analysis(analysis)
 
-    def build_search_queries(self, brief: MusicBrief) -> List[str]:
+    def build_search_queries(
+        self,
+        brief: MusicBrief,
+        query_cursor: int = 0,
+    ) -> List[str]:
         queries: List[str] = []
         blocked = set(brief.negative_cues)
         candidates = [
@@ -221,7 +324,12 @@ class MusicContextBuilder:
             if any(cue and cue in normalized for cue in blocked):
                 continue
             queries.append(normalized)
-        return queries or MusicBrief.default().search_queries
+        if not queries:
+            return MusicBrief.default().search_queries
+        if query_cursor > 0 and len(queries) > 1:
+            cursor = query_cursor % len(queries)
+            queries = [*queries[cursor:], *queries[:cursor]]
+        return queries
 
 
 class MusicTrack(Protocol):
@@ -467,6 +575,7 @@ class MusicService:
 
     _analysis_cache: Dict[str, tuple[Dict[str, Any], float]] = {}
     _pool_cache: Dict[str, tuple[CachedMusicPool, float]] = {}
+    _refresh_cursors: Dict[str, int] = {}
 
     def __init__(self) -> None:
         self.ai_client = AIClient()
@@ -494,7 +603,10 @@ class MusicService:
         analysis = pool.analysis
         music_brief = self.context_builder.build_brief(analysis)
         selected_songs = self._random_select_songs(pool)
-        search_keywords = self.context_builder.build_search_queries(music_brief)
+        search_keywords = self.context_builder.build_search_queries(
+            music_brief,
+            query_cursor=pool.query_cursor,
+        )
 
         return MusicRecommendation(
             keywords=search_keywords,
@@ -549,12 +661,17 @@ class MusicService:
     ) -> CachedMusicPool:
         story_hash = self._story_hash(story_text)
         now = time.time()
+        query_cursor = 0
 
         cached_pool = self._pool_cache.get(story_hash)
         if not refresh and cached_pool and now - cached_pool[1] < self.POOL_CACHE_TTL:
             pool = cached_pool[0]
             await self._refresh_pool_urls(pool, supplement=False)
             return pool
+
+        if refresh:
+            query_cursor = self._refresh_cursors.get(story_hash, 0) + 1
+            self._refresh_cursors[story_hash] = query_cursor
 
         cached_analysis = self._analysis_cache.get(story_hash)
         if cached_analysis and now - cached_analysis[1] < self.ANALYSIS_CACHE_TTL:
@@ -567,6 +684,7 @@ class MusicService:
             analysis=analysis,
             verified_songs=[],
             created_at=now,
+            query_cursor=query_cursor,
         )
         await self._supplement_pool(pool)
         self._pool_cache[story_hash] = (pool, now)
@@ -594,7 +712,10 @@ class MusicService:
     async def _supplement_pool(self, pool: CachedMusicPool) -> None:
         seen_ids = {song.id for song in pool.verified_songs}
         brief = self.context_builder.build_brief(pool.analysis)
-        search_keywords = self.context_builder.build_search_queries(brief)
+        search_keywords = self.context_builder.build_search_queries(
+            brief,
+            query_cursor=pool.query_cursor,
+        )
         if len(pool.verified_songs) < 5:
             search_keywords.extend(["轻音乐", "纯音乐", "背景音乐"])
 
@@ -771,23 +892,60 @@ class MusicService:
         instruments = analysis.get("instruments", [])
         ai_keywords = analysis.get("keywords", [])
 
+        context_text = " ".join(
+            [
+                str(mood),
+                str(environment),
+                str(story_style),
+                str(music_style),
+                " ".join(str(item) for item in ai_keywords if item),
+                " ".join(str(item) for item in instruments if item),
+            ]
+        )
+        is_suspense_context = _contains_any(context_text, list(SUSPENSE_CONTEXT_CUES))
+
         # 1. 优先使用 AI 推荐的完整关键词（已经综合考虑了多维度）
         abstract_words = ["沉思", "悬疑", "独处", "阅读", "思考", "氛围", "感觉"]
+        if is_suspense_context:
+            for kw in _suspense_search_queries(context_text):
+                if kw not in keywords:
+                    keywords.append(kw)
+        else:
+            ancient_priority_keywords = {
+                "古风": ["古风", "中国风", "传统"],
+                "宫廷": ["宫廷", "古典", "庄重"],
+                "江湖": ["武侠", "江湖", "古风"],
+            }
+            for env_key, env_styles in ancient_priority_keywords.items():
+                if env_key in str(environment):
+                    for style in env_styles:
+                        if style not in keywords:
+                            keywords.append(style)
+                    break
         for kw in ai_keywords:
-            if kw and kw not in keywords and kw not in abstract_words:
+            if (
+                kw
+                and kw not in keywords
+                and kw not in abstract_words
+                and not (is_suspense_context and _is_love_pop_query(str(kw)))
+            ):
                 keywords.append(kw)
 
         # 2. 添加音乐风格关键词
-        if music_style and music_style not in keywords:
+        if (
+            music_style
+            and music_style not in keywords
+            and not (is_suspense_context and _is_love_pop_query(str(music_style)))
+        ):
             keywords.append(music_style)
 
         # 3. 添加环境/时代关键词
         environment_keywords = {
             "古风": ["古风", "中国风", "传统"],
-            "现代": ["流行", "现代"],
+            "现代": ["现代", "氛围"],
             "未来": ["电子", "科幻", "未来"],
             "自然": ["自然", "清新", "田园"],
-            "都市": ["都市", "流行", "现代"],
+            "都市": ["都市", "现代", "氛围"],
             "荒野": ["荒野", "苍凉", "自然"],
             "宫廷": ["宫廷", "古典", "庄重"],
             "江湖": ["武侠", "江湖", "古风"],

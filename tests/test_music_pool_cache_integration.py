@@ -91,6 +91,7 @@ class TestGetOrBuildPool:
         """每个测试前清除缓存。"""
         MusicService._analysis_cache.clear()
         MusicService._pool_cache.clear()
+        MusicService._refresh_cursors.clear()
 
     async def test_cache_miss_builds_new_pool(self):
         """缓存未命中时构建新池。"""
@@ -240,6 +241,61 @@ class TestGetOrBuildPool:
         service._analyze_story_mood.assert_not_called()
         assert len(pool.verified_songs) >= 1
 
+    async def test_refresh_advances_search_query_cursor(self):
+        """换一批应复用分析但推进搜索 query，避免同批候选原样返回。"""
+        service = MusicService()
+        story_text = "现代医院里，主角发现医疗数据造假后被追捕，只能连夜逃亡。"
+        story_hash = service._story_hash(story_text)
+        analysis = {
+            "mood": "紧张",
+            "scene_type": "追捕逃亡",
+            "environment": "现代医院",
+            "story_style": "医疗悬疑",
+            "pacing": "急促",
+            "energy": "高",
+            "instruments": ["电子合成器", "低音弦乐"],
+            "search_queries": ["现代悬疑 纯音乐", "医疗悬疑 氛围音乐", "追捕 紧张 配乐"],
+            "negative_cues": ["恋爱", "情歌", "歌词", "流行人声"],
+        }
+        MusicService._analysis_cache[story_hash] = (analysis, time.time())
+        MusicService._pool_cache[story_hash] = (
+            CachedMusicPool(analysis=analysis, verified_songs=[], created_at=time.time()),
+            time.time(),
+        )
+        searched_queries: list[str] = []
+
+        async def fake_search(keyword: str, limit: int = 10):
+            searched_queries.append(keyword)
+            song_id = 9000 + len(searched_queries)
+            return [
+                Song(
+                    id=song_id,
+                    name=f"{keyword} 候选",
+                    artists=["Score"],
+                    album="影视配乐",
+                    duration=120000,
+                )
+            ]
+
+        service._analyze_story_mood = AsyncMock(
+            side_effect=Exception("Should not re-analyze on refresh")
+        )
+        service.music_client.search = AsyncMock(side_effect=fake_search)
+        service.music_client.get_song_url = AsyncMock(
+            side_effect=lambda song_id: f"https://cdn.example.com/{song_id}.mp3"
+        )
+
+        first_pool = await service._get_or_build_pool(story_text, refresh=True)
+        first_query = searched_queries[0]
+        searched_queries.clear()
+
+        second_pool = await service._get_or_build_pool(story_text, refresh=True)
+        second_query = searched_queries[0]
+
+        service._analyze_story_mood.assert_not_called()
+        assert first_pool.query_cursor != second_pool.query_cursor
+        assert first_query != second_query
+
 
 class TestRefreshPoolUrls:
     """验证 _refresh_pool_urls 方法。"""
@@ -248,6 +304,7 @@ class TestRefreshPoolUrls:
     def _clear_caches(self):
         MusicService._analysis_cache.clear()
         MusicService._pool_cache.clear()
+        MusicService._refresh_cursors.clear()
 
     async def test_refreshes_expired_urls(self):
         """过期的 URL 被重新获取。"""

@@ -230,6 +230,37 @@ def test_context_builder_creates_tight_multidimensional_search_pairs():
     assert queries != ["紧张"]
 
 
+def test_modern_medical_chase_suspense_avoids_love_pop_search_leaders():
+    builder = MusicContextBuilder()
+    brief = builder.build_brief(
+        {
+            "mood": "紧张",
+            "scene_type": "追捕逃亡",
+            "environment": "现代医院",
+            "story_style": "医疗悬疑",
+            "music_style": "流行",
+            "pacing": "急促",
+            "energy": "高",
+            "instruments": ["电子合成器", "低音弦乐"],
+            "keywords": ["匆匆那年", "告白气球", "喜欢你", "医疗数据造假"],
+            "search_queries": ["匆匆那年", "告白气球", "喜欢你"],
+            "negative_cues": ["甜蜜流行", "人声"],
+        }
+    )
+
+    queries = builder.build_search_queries(brief)
+    joined_queries = " | ".join(queries)
+    top_queries = " | ".join(queries[:3])
+    love_pop_terms = {"匆匆那年", "告白气球", "喜欢你", "恋爱", "情歌", "甜蜜"}
+
+    assert any(
+        cue in joined_queries
+        for cue in ["悬疑", "追捕", "逃亡", "医疗", "紧张", "氛围", "纯音乐", "无歌词"]
+    )
+    assert not any(term in top_queries for term in love_pop_terms)
+    assert any(cue in brief.negative_cues for cue in ["恋爱", "情歌", "歌词", "流行人声"])
+
+
 def test_music_result_ranker_prefers_brief_matches_and_penalizes_negative_cues():
     brief = MusicBrief(
         mood="紧张",

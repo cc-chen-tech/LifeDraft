@@ -4,7 +4,7 @@
  * 包含：基础渲染 + 卡顿检测（stall detection）逻辑验证
  * 使用真实 Zustand store + global.fetch mock，不 mock store 模块。
  */
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MusicPlayer } from '@/components/game/MusicPlayer';
 import { useMusicStore } from '@/stores/useMusicStore';
 import { jsonResponse } from '@/__tests__/helpers/fetch';
@@ -104,6 +104,58 @@ describe('MusicPlayer', () => {
     render(<MusicPlayer storyText="Test story" />);
 
     expect(await screen.findByText('音乐服务暂不可用，故事可继续进行')).toBeInTheDocument();
+  });
+
+  it('点击换一批时用 refresh 模式请求新候选', async () => {
+    (global.fetch as jest.Mock).mockReset();
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(
+        jsonResponse({
+          mood: '紧张',
+          scene_type: '追捕逃亡',
+          keywords: ['现代悬疑 纯音乐'],
+          songs: [
+            {
+              id: 1,
+              name: '第一批',
+              artists: ['Score'],
+              album: '影视配乐',
+              duration: 180000,
+              url: 'https://example.com/first.mp3',
+            },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          mood: '紧张',
+          scene_type: '追捕逃亡',
+          keywords: ['医疗悬疑 氛围音乐'],
+          songs: [
+            {
+              id: 2,
+              name: '第二批',
+              artists: ['Score'],
+              album: '影视配乐',
+              duration: 180000,
+              url: 'https://example.com/second.mp3',
+            },
+          ],
+        })
+      );
+
+    render(<MusicPlayer storyText="现代医疗数据造假追捕逃亡" gameId={77} />);
+
+    await screen.findByText('第一批');
+    fireEvent.click(screen.getByRole('button', { name: '换一批' }));
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
+    expect(JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body).refresh).toBe(false);
+    expect(JSON.parse((global.fetch as jest.Mock).mock.calls[1][1].body)).toMatchObject({
+      story_text: '现代医疗数据造假追捕逃亡',
+      game_id: 77,
+      refresh: true,
+    });
   });
 });
 

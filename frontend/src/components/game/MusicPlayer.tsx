@@ -78,7 +78,7 @@ export function MusicPlayer({
   const songUrlMapRef = useRef<Map<number, string>>(new Map()); // 预加载的歌曲 URL 映射
 
   // 获取音乐推荐
-  const fetchRecommendation = useCallback(async () => {
+  const fetchRecommendation = useCallback(async (refresh: boolean = false) => {
     if (!storyText || isLoadingRecommendation) return;
 
     setIsLoadingRecommendation(true);
@@ -93,7 +93,7 @@ export function MusicPlayer({
         return;
       }
 
-      const result = await fetchMusicRecommendation(storyText, gameId);
+      const result = await fetchMusicRecommendation(storyText, gameId, refresh);
       setRecommendation(result);
       
       // URL 已由后端批量返回，无需前端预加载
@@ -536,7 +536,7 @@ export function MusicPlayer({
         <Button
           variant="ghost"
           size="sm"
-          onClick={fetchRecommendation}
+          onClick={() => fetchRecommendation(true)}
           disabled={isLoadingRecommendation}
           title="换一批"
           aria-label="换一批"
