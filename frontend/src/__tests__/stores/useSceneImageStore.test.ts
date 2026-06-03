@@ -218,8 +218,62 @@ describe('useSceneImageStore', () => {
       await useSceneImageStore.getState().fetchRoundSceneImage(1, 0, 0);
 
       const state = useSceneImageStore.getState();
-      // 202 triggers error in fetchJson, store resets loading state
-      expect(state.isLoadingRoundSceneImage).toBe(false);
+      expect(state.isLoadingRoundSceneImage).toBe(true);
+    });
+
+    it('clears stale event scene and does not relabel an old week-0 image as current week', async () => {
+      useSceneImageStore.setState({
+        eventSceneImage: {
+          scene_id: 10,
+          week: 0,
+          round_number: 0,
+          stage: 'event',
+          image_url: 'http://example.com/week1-subway.png',
+          scene_description: '第1周地铁站',
+          referenced_images: [],
+          created_at: '2024-01-01T00:00:00Z',
+        },
+        roundSceneImages: [{
+          scene_id: 10,
+          week: 0,
+          round_number: 0,
+          stage: 'event',
+          image_url: 'http://example.com/week1-subway.png',
+          scene_description: '第1周地铁站',
+          referenced_images: [],
+          created_at: '2024-01-01T00:00:00Z',
+        }],
+      });
+
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        scene_id: 10,
+        week: 0,
+        round_number: 0,
+        stage: 'event',
+        image_url: 'http://example.com/week1-subway.png',
+        scene_description: '第1周地铁站',
+        referenced_images: [],
+        created_at: '2024-01-01T00:00:00Z',
+      }));
+
+      await useSceneImageStore.getState().fetchRoundSceneImage(1, 0, 3, 'event');
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/images/scene/1/0?stage=event&week=3',
+        expect.objectContaining({ credentials: 'include' })
+      );
+      const state = useSceneImageStore.getState();
+      expect(state.eventSceneImage).toBeNull();
+      expect(state.roundSceneImages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ scene_id: 10, week: 0, round_number: 0, stage: 'event' }),
+        ])
+      );
+      expect(state.roundSceneImages).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ scene_id: 10, week: 3, round_number: 0, stage: 'event' }),
+        ])
+      );
     });
 
     /**

@@ -847,6 +847,35 @@ describe('PlayPage', () => {
       render(<PlayPage />);
       // Scene image with regenerate should be rendered
     });
+
+    it('refreshes result scene image for the just-completed round', () => {
+      const mockFetch = jest.fn();
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'result',
+        options: [],
+        storyText: 'Result story for the completed round',
+        eventSceneImage: null,
+        resultSceneImage: {
+          scene_id: 4,
+          week: 3,
+          round_number: 3,
+          stage: 'result',
+          image_url: 'http://test.url/week4-result.png',
+          scene_description: '第4周逃亡居民楼证据',
+          referenced_images: [],
+          created_at: '2024-01-04T00:00:00Z',
+        },
+        currentRound: 4,
+        fetchRoundSceneImage: mockFetch,
+      });
+
+      render(<PlayPage />);
+      fireEvent.click(screen.getByText('刷新'));
+
+      expect(mockFetch).toHaveBeenCalledWith(3, 'result');
+    });
   });
 
   describe('ChatBar interactions', () => {

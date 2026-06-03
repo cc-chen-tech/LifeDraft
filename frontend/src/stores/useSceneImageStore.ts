@@ -115,6 +115,18 @@ export const useSceneImageStore = create<SceneImageState>()(
     const makeRequestKey = (gameId: number, roundNumber: number, week: number, stage?: string) =>
       `${gameId}-${roundNumber}-${week}-${stage || 'default'}`;
 
+    const matchesSceneKey = (
+      image: RoundSceneImage | null | undefined,
+      roundNumber: number,
+      week: number,
+      stage?: string
+    ) => Boolean(
+      image &&
+      image.week === week &&
+      image.round_number === roundNumber &&
+      (!stage || image.stage === stage)
+    );
+
     return {
     // Initial State
     roundSceneImages: [],
@@ -183,7 +195,7 @@ export const useSceneImageStore = create<SceneImageState>()(
 
         const newScene: RoundSceneImage = {
           scene_id: result.scene_id,
-          week: result.week || week,
+          week: result.week ?? week,
           round_number: result.round_number,
           stage: result.stage || stage,
           image_url: result.image_url,
@@ -217,7 +229,18 @@ export const useSceneImageStore = create<SceneImageState>()(
       }
 
       const promise = (async () => {
-        set({ isLoadingRoundSceneImage: true });
+        set((state) => ({
+          isLoadingRoundSceneImage: true,
+          eventSceneImage: stage === 'event' && !matchesSceneKey(state.eventSceneImage, roundNumber, week, stage)
+            ? null
+            : state.eventSceneImage,
+          resultSceneImage: stage === 'result' && !matchesSceneKey(state.resultSceneImage, roundNumber, week, stage)
+            ? null
+            : state.resultSceneImage,
+          currentRoundSceneImage: !matchesSceneKey(state.currentRoundSceneImage, roundNumber, week, stage)
+            ? null
+            : state.currentRoundSceneImage,
+        }));
 
         try {
           const scene = stage
@@ -225,11 +248,24 @@ export const useSceneImageStore = create<SceneImageState>()(
             : await api.images.getRoundSceneImage(gameId, roundNumber, week);
 
           if (scene && scene.scene_id) {
+            const sceneWeek = scene.week ?? week;
+            const sceneRound = scene.round_number ?? roundNumber;
+            const sceneStage = scene.stage || stage || 'result';
+
+            if (sceneWeek !== week || sceneRound !== roundNumber || (stage && sceneStage !== stage)) {
+              console.warn("[fetchRoundSceneImage] Ignoring mismatched scene image response:", {
+                requested: { week, roundNumber, stage },
+                received: { week: sceneWeek, roundNumber: sceneRound, stage: sceneStage },
+              });
+              set({ isLoadingRoundSceneImage: false });
+              return;
+            }
+
             const sceneWithStage: RoundSceneImage = {
               scene_id: scene.scene_id,
-              week: scene.week || week,
-              round_number: scene.round_number,
-              stage: scene.stage || stage || 'result',
+              week: sceneWeek,
+              round_number: sceneRound,
+              stage: sceneStage,
               image_url: scene.image_url,
               scene_description: scene.scene_description,
               referenced_images: (scene as { referenced_images?: number[] }).referenced_images || [],
@@ -246,6 +282,9 @@ export const useSceneImageStore = create<SceneImageState>()(
                 : [...state.roundSceneImages, sceneWithStage],
               isLoadingRoundSceneImage: false,
             }));
+          } else if (scene && 'detail' in scene) {
+            console.log(`[fetchRoundSceneImage] Generation is in progress for week=${week}, round=${roundNumber}, stage=${stage || 'result'}`);
+            set({ isLoadingRoundSceneImage: true });
           } else {
             set({ isLoadingRoundSceneImage: false });
           }
@@ -355,6 +394,8 @@ export const useSceneImageStore = create<SceneImageState>()(
           roundSceneImages: state.roundSceneImages.map(s =>
             s.scene_id === currentRoundSceneImage.scene_id ? updatedScene : s
           ),
+          eventSceneImage: updatedScene.stage === 'event' ? updatedScene : state.eventSceneImage,
+          resultSceneImage: updatedScene.stage === 'result' ? updatedScene : state.resultSceneImage,
           isRegeneratingRoundScene: false,
         }));
       } catch (err) {
