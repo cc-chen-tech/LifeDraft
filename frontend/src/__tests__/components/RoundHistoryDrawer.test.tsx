@@ -101,6 +101,30 @@ describe('RoundHistoryDrawer', () => {
   });
 
   describe('interactions', () => {
+    it('calls onOpenChange(false) when clicking the close button', () => {
+      render(<RoundHistoryDrawer {...defaultProps} />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+
+      expect(mockOnOpenChange).toHaveBeenCalledWith(false);
+    });
+
+    it('calls onOpenChange(false) when pressing Escape', () => {
+      render(<RoundHistoryDrawer {...defaultProps} />);
+
+      fireEvent.keyDown(document.body, { key: 'Escape', code: 'Escape' });
+
+      expect(mockOnOpenChange).toHaveBeenCalledWith(false);
+    });
+
+    it('marks the closing overlay as non-interactive so it cannot block other controls', () => {
+      render(<RoundHistoryDrawer {...defaultProps} />);
+
+      const overlay = document.querySelector('[data-slot="sheet-overlay"]');
+
+      expect(overlay).toHaveClass('data-[state=closed]:pointer-events-none');
+    });
+
     it('calls onSelect when clicking a round', () => {
       render(<RoundHistoryDrawer {...defaultProps} />);
 
@@ -109,6 +133,15 @@ describe('RoundHistoryDrawer', () => {
       fireEvent.click(mondayButtons[0]);
 
       expect(mockOnSelect).toHaveBeenCalledWith(0);
+    });
+
+    it('closes the drawer after selecting a round so the readable story surface is exposed', () => {
+      render(<RoundHistoryDrawer {...defaultProps} />);
+
+      fireEvent.click(screen.getAllByText('周一')[0]);
+
+      expect(mockOnSelect).toHaveBeenCalledWith(0);
+      expect(mockOnOpenChange).toHaveBeenCalledWith(false);
     });
 
     it('shows back button when viewing history', () => {
@@ -133,6 +166,31 @@ describe('RoundHistoryDrawer', () => {
       // The selected item should have different styling
       const buttons = screen.getAllByRole('button');
       expect(buttons.length).toBeGreaterThan(0);
+    });
+
+    it('shows readable selected history content instead of only the summary button', () => {
+      const historyWithFullText: RoundHistoryItem[] = [
+        {
+          week: 0,
+          round: 0,
+          summary: 'Short summary only',
+          event_description: 'Full historical event body that should be readable.',
+          story_continuation: 'Full post-choice continuation that should stay visible.',
+        },
+      ];
+
+      render(
+        <RoundHistoryDrawer
+          {...defaultProps}
+          roundHistory={historyWithFullText}
+          selectedIndex={0}
+          isViewingHistory={true}
+        />
+      );
+
+      expect(screen.getByText(/Full historical event body/)).toBeInTheDocument();
+      expect(screen.getByText(/Full post-choice continuation/)).toBeInTheDocument();
+      expect(screen.getByText('选择后的故事发展')).toBeInTheDocument();
     });
   });
 
