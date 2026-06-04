@@ -119,3 +119,38 @@ class TestSceneImageImports:
                 "week": 0,
             }
         ]
+
+    def test_background_scene_generation_deduplicates_in_flight_key(self, monkeypatch):
+        """同一 game/week/round/stage 正在生成时，不应重复启动后台线程。"""
+        from src.api.routers import images
+
+        started_threads: list[str | None] = []
+
+        class HoldingThread:
+            def __init__(self, target, name=None, daemon=None):
+                self.target = target
+                self.name = name
+                self.daemon = daemon
+
+            def start(self):
+                started_threads.append(self.name)
+
+        monkeypatch.setattr(threading, "Thread", HoldingThread)
+        images._scene_image_inflight.clear()
+
+        try:
+            for _ in range(2):
+                images._trigger_scene_generation_in_background(
+                    game_id=7,
+                    week=2,
+                    round_number=1,
+                    stage="result",
+                    story_text="林见微沿着医院数据造假线索追查。",
+                    character_settings={"identity": {"name": "林见微"}},
+                    player_name="林见微",
+                )
+
+            assert started_threads == ["scene-gen-7-2-1-result"]
+            assert images._scene_image_inflight == {"7:2:1:result"}
+        finally:
+            images._scene_image_inflight.clear()

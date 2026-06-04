@@ -46,8 +46,6 @@ export function useHistoryViewer({
   playerState,
   storyText,
   currentEvent,
-  phaseRef,
-  setPhase,
   setOptions,
   gameId,
   fetchHistorySceneImage,
@@ -58,7 +56,6 @@ export function useHistoryViewer({
   // History state
   const [showHistory, setShowHistory] = useState(false);
   const [historyRoundIndex, setHistoryRoundIndex] = useState<number | null>(null);
-  const [historyPhaseBackup, setHistoryPhaseBackup] = useState<Phase | null>(null);
   // ★ 独立的历史显示文本，不受 SSE 回调影响
   const [historyDisplayText, setHistoryDisplayText] = useState<string | null>(null);
   // ★ 历史场景图片状态
@@ -88,11 +85,6 @@ export function useHistoryViewer({
   const handleSelectHistoryRound = useCallback(async (index: number) => {
     const round = roundHistory[index];
     if (!round) return;
-
-    // ★ 备份当前 phase（仅首次进入时）
-    if (historyRoundIndex === null) {
-      setHistoryPhaseBackup(phaseRef.current);
-    }
 
     // Build full story text
     const eventDesc = round.event_description || '';
@@ -135,19 +127,13 @@ export function useHistoryViewer({
     }
 
     console.log(`[history] Viewing round ${index}: week=${round.week}, round=${round.round}`);
-  }, [roundHistory, historyRoundIndex, phaseRef, setOptions, fetchHistorySceneImage, gameId, setStoreHistorySceneImage]);
+  }, [roundHistory, setOptions, fetchHistorySceneImage, gameId, setStoreHistorySceneImage]);
 
   // Return to current round
   const handleBackToCurrent = useCallback(() => {
-    // ★ 恢复备份的 phase
-    if (historyPhaseBackup) {
-      setPhase(historyPhaseBackup);
-    }
-
     // Clear history state
     setHistoryRoundIndex(null);
     setHistoryDisplayText(null);
-    setHistoryPhaseBackup(null);
     // ★ 清除历史图片状态
     setHistorySceneImage(null);
     setStoreHistorySceneImage?.(null);
@@ -161,7 +147,7 @@ export function useHistoryViewer({
     }
 
     console.log('[history] Returned to current round, current story length:', storyText.length);
-  }, [historyPhaseBackup, setPhase, currentEvent, setOptions, storyText.length, setStoreHistorySceneImage]);
+  }, [currentEvent, setOptions, storyText.length, setStoreHistorySceneImage]);
 
   // ★ 为历史轮次生成场景图片
   const handleGenerateHistoryImage = useCallback(async (week: number, round: number, text: string) => {

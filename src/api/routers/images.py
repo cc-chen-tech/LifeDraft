@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _scene_image_latest: Dict[str, Dict[str, Any]] = {}
+_scene_image_inflight: set[str] = set()
 
 
 def _get_event_key(game_id: int, week: int, round_number: int, stage: str) -> str:
@@ -67,6 +68,7 @@ def get_session() -> Generator[Session, None, None]:
 
 @router.get("/scene/events/{game_id}")
 async def scene_image_events(
+    request: Request,
     game_id: int,
     db: Session = Depends(get_session),
     user: int = Depends(get_current_user),
@@ -75,23 +77,30 @@ async def scene_image_events(
     verify_game_ownership(db, game_id, user)
 
     async def event_stream():
-        emitted = False
-        for event in list(_scene_image_latest.values()):
-            if int(event.get("game_id", -1)) != game_id:
-                continue
-            emitted = True
-            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        emitted_keys: set[str] = set()
+        while True:
+            emitted_this_tick = False
+            for key, event in list(_scene_image_latest.items()):
+                if int(event.get("game_id", -1)) != game_id or key in emitted_keys:
+                    continue
+                emitted_this_tick = True
+                emitted_keys.add(key)
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
-        if not emitted:
-            heartbeat = {
-                "type": "heartbeat",
-                "game_id": game_id,
-                "round_number": 0,
-                "week": 0,
-                "stage": "result",
-                "timestamp": datetime.utcnow().isoformat(),
-            }
-            yield f"data: {json.dumps(heartbeat, ensure_ascii=False)}\n\n"
+            if not emitted_this_tick:
+                heartbeat = {
+                    "type": "heartbeat",
+                    "game_id": game_id,
+                    "round_number": 0,
+                    "week": 0,
+                    "stage": "result",
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+                yield f"data: {json.dumps(heartbeat, ensure_ascii=False)}\n\n"
+
+            if await request.is_disconnected():
+                break
+            await asyncio.sleep(15)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
@@ -1250,6 +1259,14 @@ def _trigger_scene_generation_in_background(
         player_name: 玩家名称
     """
     import threading
+    key = _get_event_key(game_id, week, round_number, stage)
+
+    if key in _scene_image_inflight:
+        logger.info(
+            "[Background Generation] Skip duplicate scene generation request: "
+            f"game={game_id}, week={week}, round={round_number}, stage={stage}"
+        )
+        return
 
     def generate_in_thread():
         try:
@@ -1320,9 +1337,11 @@ def _trigger_scene_generation_in_background(
                 logger.exception(f"[Background Generation] Error in thread: {e}")
             finally:
                 db.close()
+            _scene_image_inflight.discard(key)
 
         except Exception as e:
             logger.exception(f"[Background Generation] Failed to setup generation: {e}")
+            _scene_image_inflight.discard(key)
 
     # 启动后台线程
     thread = threading.Thread(
@@ -1330,8 +1349,14 @@ def _trigger_scene_generation_in_background(
         name=f"scene-gen-{game_id}-{week}-{round_number}-{stage}",
         daemon=True,
     )
-    thread.start()
-    logger.info(
-        f"[Background Generation] Thread started for game={game_id}, week={week}, "
-        f"round={round_number}, stage={stage}"
-    )
+    _scene_image_inflight.add(key)
+    try:
+        thread.start()
+        logger.info(
+            f"[Background Generation] Thread started for game={game_id}, week={week}, "
+            f"round={round_number}, stage={stage}"
+        )
+    except Exception as e:
+        _scene_image_inflight.discard(key)
+        logger.exception(f"[Background Generation] Failed to start thread: {e}")
+        raise

@@ -62,6 +62,10 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
             if (data === '[DONE]') {
               // [DONE] marker - resolve with any stored complete data
               if (!isResolved) {
+                if (isErrorReceived) {
+                  safeResolve();
+                  return;
+                }
                 if (completeData) {
                   callbacks.onComplete?.(completeData);
                 } else {

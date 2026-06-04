@@ -193,7 +193,7 @@ describe('useHistoryViewer', () => {
   });
 
   describe('handleBackToCurrent', () => {
-    it('returns to current round and restores state', () => {
+    it('returns to current round without rewinding the live phase', () => {
       const playerState = {
         round_history: [{ week: 0, round: 0, event_description: 'Story' }],
       };
@@ -216,7 +216,31 @@ describe('useHistoryViewer', () => {
       expect(result.current.isViewingHistory).toBe(false);
       // ★ displayText 应该恢复为 storyText
       expect(result.current.displayText).toBe('Current story');
-      expect(mockSetPhase).toHaveBeenCalled();
+      expect(mockSetPhase).not.toHaveBeenCalled();
+    });
+
+    it('does not restore a stale loading phase if the live game completed while reading history', () => {
+      const playerState = {
+        round_history: [{ week: 0, round: 0, event_description: 'Story' }],
+      };
+      const phaseRef = { current: 'loading' as const };
+
+      const { result } = renderHook(() =>
+        useHistoryViewer({ ...defaultParams, playerState, phaseRef })
+      );
+
+      act(() => {
+        result.current.handleSelectHistoryRound(0);
+      });
+
+      phaseRef.current = 'options';
+
+      act(() => {
+        result.current.handleBackToCurrent();
+      });
+
+      expect(result.current.isViewingHistory).toBe(false);
+      expect(mockSetPhase).not.toHaveBeenCalledWith('loading');
     });
 
     it('restores current event options', () => {
