@@ -12,6 +12,7 @@ interface StoryVoiceControlsProps {
   autoReadText?: string;
   autoReadReady?: boolean;
   compact?: boolean;
+  enablePlaybackControls?: boolean;
   showTestControls?: boolean;
 }
 
@@ -21,6 +22,7 @@ export function StoryVoiceControls({
   autoReadText,
   autoReadReady = false,
   compact = false,
+  enablePlaybackControls = false,
   showTestControls = false,
 }: StoryVoiceControlsProps) {
   const readingState = useStoryVoiceStore((state) => state.readingState);
@@ -53,6 +55,7 @@ export function StoryVoiceControls({
   const lastAutoReadKeyRef = useRef<string>("");
   const textSize = compact ? "text-xs" : "text-sm";
   const isHistoryReading = currentContext.source_type === "history_round" || Boolean(historyContext);
+  const shouldShowPlaybackControls = enablePlaybackControls || showTestControls;
 
   useEffect(() => {
     const finalText = autoReadText?.trim();
@@ -82,7 +85,7 @@ export function StoryVoiceControls({
     });
   }, [autoReadReady, autoReadEnabled, autoReadText, currentContext, startReading]);
 
-  if (!showTestControls) {
+  if (!shouldShowPlaybackControls) {
     return (
       <section
         aria-label="故事朗读预览"
@@ -193,41 +196,43 @@ export function StoryVoiceControls({
         )}
       </div>
 
-      <div className={`${textSize} text-muted-foreground flex flex-wrap gap-3`}>
-        <span>
-          状态: <span data-testid="voice-reading-state">{readingState}</span>
-        </span>
-        <span>
-          来源: <span data-testid="voice-reading-source">{currentSource}</span>
-        </span>
-        <span data-testid="voice-reading-context">{currentContextLabel}</span>
-        <span>
-          Job: <span data-testid="voice-reading-job">{currentJobId ?? ""}</span>
-        </span>
-        <span>
-          Provider: <span data-testid="voice-reading-provider">{currentProvider}</span>
-        </span>
-        <span>
-          Audio: <span data-testid="voice-reading-audio-url">{currentAudioUrl}</span>
-        </span>
-        <span>
-          Mode: <span data-testid="voice-reading-mode">{playbackMode}</span>
-        </span>
-        <span>
-          模式: <span data-testid="voice-reading-playback-mode">{playbackMode}</span>
-        </span>
-        <span>
-          Length: <span data-testid="voice-reading-spoken-length">{spokenTextLength}</span>
-        </span>
-        <span className="sr-only" data-testid="voice-reading-speech-text">
-          {currentSpeechText}
-        </span>
-        {errorMessage && (
+      {showTestControls && (
+        <div className={`${textSize} text-muted-foreground flex flex-wrap gap-3`}>
           <span>
-            错误: <span data-testid="voice-reading-error">{errorMessage}</span>
+            状态: <span data-testid="voice-reading-state">{readingState}</span>
           </span>
-        )}
-      </div>
+          <span>
+            来源: <span data-testid="voice-reading-source">{currentSource}</span>
+          </span>
+          <span data-testid="voice-reading-context">{currentContextLabel}</span>
+          <span>
+            Job: <span data-testid="voice-reading-job">{currentJobId ?? ""}</span>
+          </span>
+          <span>
+            Provider: <span data-testid="voice-reading-provider">{currentProvider}</span>
+          </span>
+          <span>
+            Audio: <span data-testid="voice-reading-audio-url">{currentAudioUrl}</span>
+          </span>
+          <span>
+            Mode: <span data-testid="voice-reading-mode">{playbackMode}</span>
+          </span>
+          <span>
+            模式: <span data-testid="voice-reading-playback-mode">{playbackMode}</span>
+          </span>
+          <span>
+            Length: <span data-testid="voice-reading-spoken-length">{spokenTextLength}</span>
+          </span>
+          <span className="sr-only" data-testid="voice-reading-speech-text">
+            {currentSpeechText}
+          </span>
+          {errorMessage && (
+            <span>
+              错误: <span data-testid="voice-reading-error">{errorMessage}</span>
+            </span>
+          )}
+        </div>
+      )}
 
       {showTestControls && (
         <div className="flex flex-wrap gap-2">
@@ -262,14 +267,16 @@ export function StoryVoiceControls({
         </div>
       )}
 
-      <div className={`${textSize} text-muted-foreground flex flex-wrap gap-3`}>
-        <span>
-          队列: <span data-testid="voice-reading-queue">{queueText}</span>
-        </span>
-        <span>
-          音乐: <span data-testid="music-duck-state">{musicDuckState}</span>
-        </span>
-      </div>
+      {showTestControls && (
+        <div className={`${textSize} text-muted-foreground flex flex-wrap gap-3`}>
+          <span>
+            队列: <span data-testid="voice-reading-queue">{queueText}</span>
+          </span>
+          <span>
+            音乐: <span data-testid="music-duck-state">{musicDuckState}</span>
+          </span>
+        </div>
+      )}
       <audio
         ref={audioRef}
         data-testid="voice-reading-audio-player"
