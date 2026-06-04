@@ -34,6 +34,10 @@ interface MusicPlayerProps {
   autoFetchRecommendation?: boolean;
 }
 
+function hasMusicBrief(brief: Record<string, unknown> | undefined): brief is Record<string, unknown> {
+  return brief !== undefined && Object.keys(brief).length > 0;
+}
+
 export function MusicPlayer({
   storyText,
   gameId,
@@ -59,6 +63,8 @@ export function MusicPlayer({
     setCurrentTime,
     setDuration,
     setAudioElement,
+    mergePlaylist,
+    generateAiMusicForStory,
     play,
     pause,
     cleanup,
@@ -66,16 +72,17 @@ export function MusicPlayer({
   } = useMusicStore();
 
   const hasFetchedRef = useRef(false);
+  const generatedMusicStoryKeyRef = useRef<string | null>(null);
   const isLoadingSongRef = useRef(false);
   const [playError, setPlayError] = useState<string | null>(null);
-  const [skippedSongs, setSkippedSongs] = useState<Set<number>>(new Set());
-  const skippedSongsRef = useRef<Set<number>>(new Set()); // 同步跟踪跳过的歌曲
+  const [skippedSongs, setSkippedSongs] = useState<Set<number | string>>(new Set());
+  const skippedSongsRef = useRef<Set<number | string>>(new Set()); // 同步跟踪跳过的歌曲
   const preloadedAudioRef = useRef<HTMLAudioElement | null>(null);
   const preloadedSongRef = useRef<Song | null>(null);
   const activeAudioRef = useRef<HTMLAudioElement | null>(null); // 当前正在播放的音频
   const [isSwitchingSong, setIsSwitchingSong] = useState(false); // 切换歌曲时的加载状态
   const [preloadProgress, setPreloadProgress] = useState(0); // 预加载进度
-  const songUrlMapRef = useRef<Map<number, string>>(new Map()); // 预加载的歌曲 URL 映射
+  const songUrlMapRef = useRef<Map<number | string, string>>(new Map()); // 预加载的歌曲 URL 映射
 
   // 获取音乐推荐
   const fetchRecommendation = useCallback(async (refresh: boolean = false) => {
@@ -95,10 +102,13 @@ export function MusicPlayer({
 
       const result = await fetchMusicRecommendation(storyText, gameId, refresh);
       setRecommendation(result);
+      if (gameId) {
+        await mergePlaylist(gameId, result.songs, result.mood, result.keywords);
+      }
       
       // URL 已由后端批量返回，无需前端预加载
       // 将 URL 存入映射表供备用
-      const urlMap = new Map<number, string>();
+      const urlMap = new Map<number | string, string>();
       result.songs.forEach((song: Song) => {
         if (song.url) {
           urlMap.set(song.id, song.url);
@@ -107,6 +117,17 @@ export function MusicPlayer({
       songUrlMapRef.current = urlMap;
       setPreloadProgress(100);
       console.log(`[MusicPlayer] Received ${urlMap.size}/${result.songs.length} song URLs from backend`);
+
+      const generationKey = gameId ? `${gameId}:${storyText}` : null;
+      if (
+        gameId &&
+        generationKey &&
+        hasMusicBrief(result.music_brief) &&
+        generatedMusicStoryKeyRef.current !== generationKey
+      ) {
+        generatedMusicStoryKeyRef.current = generationKey;
+        void generateAiMusicForStory(storyText, gameId, result.music_brief);
+      }
     } catch (error) {
       console.error("[MusicPlayer] Failed to fetch recommendation:", error);
       setRecommendationError("音乐服务暂不可用");
@@ -120,6 +141,8 @@ export function MusicPlayer({
     setRecommendation,
     setIsLoadingRecommendation,
     setRecommendationError,
+    mergePlaylist,
+    generateAiMusicForStory,
   ]);
   
   // 加载并播放歌曲
@@ -177,7 +200,7 @@ export function MusicPlayer({
       let url = song.url || songUrlMapRef.current.get(song.id);
       
       // 如果没有 URL，尝试实时获取（降级方案）
-      if (!url && !isPreload) {
+      if (!url && !isPreload && typeof song.id === "number") {
         console.log(`[MusicPlayer] Song ${song.id} has no URL, fetching realtime...`);
         try {
           url = await fetchSongUrl(song.id);
@@ -339,7 +362,9 @@ export function MusicPlayer({
     if (preloadedSongRef.current?.id === nextSong.id) return;
     
     try {
-      const url = await fetchSongUrl(nextSong.id);
+      const url = nextSong.url || (
+        typeof nextSong.id === "number" ? await fetchSongUrl(nextSong.id) : null
+      );
       if (url) {
         // 创建并预加载音频
         const audio = new Audio(url);

@@ -157,6 +157,35 @@ describe('MusicPlayer', () => {
       refresh: true,
     });
   });
+
+  it('legacy 推荐响应没有 music_brief 时不触发 AI 生成请求', async () => {
+    (global.fetch as jest.Mock).mockReset();
+    (global.fetch as jest.Mock).mockResolvedValueOnce(
+      jsonResponse({
+        mood: '紧张',
+        scene_type: '追捕逃亡',
+        keywords: ['现代悬疑 纯音乐'],
+        songs: [
+          {
+            id: 1,
+            name: '第一批',
+            artists: ['Score'],
+            album: '影视配乐',
+            duration: 180000,
+            url: 'https://example.com/first.mp3',
+          },
+        ],
+      })
+    );
+
+    render(<MusicPlayer storyText="现代医疗数据造假追捕逃亡" gameId={77} />);
+
+    await screen.findByText('第一批');
+    await Promise.resolve();
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect((global.fetch as jest.Mock).mock.calls[0][0]).toContain('/api/music/recommend');
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════

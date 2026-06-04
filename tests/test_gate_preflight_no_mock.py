@@ -87,6 +87,38 @@ def test_preflight_validates_archived_provider_story_tts_spec() -> None:
     assert "openspec validate add-provider-backed-story-tts --strict" not in script
 
 
+def test_preflight_validates_minimax_story_audio_generation_change() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+    change_dir = ROOT / "openspec" / "changes" / "add-minimax-story-audio-generation"
+
+    assert change_dir.exists()
+    assert (change_dir / "proposal.md").exists()
+    assert (change_dir / "design.md").exists()
+    assert (change_dir / "tasks.md").exists()
+    assert "openspec validate add-minimax-story-audio-generation --strict" in script
+    assert "tests/test_minimax_audio_generation_contract.py" in script
+    assert "tests/test_minimax_audio_generation_db.py" in script
+    assert "e2e/minimax-story-audio-generation.spec.ts" in script
+
+
+def test_minimax_api_key_is_not_committed_to_repository_files() -> None:
+    scanned_suffixes = {".py", ".ts", ".tsx", ".js", ".jsx", ".md", ".yml", ".yaml", ".sh"}
+    allowed_dirs = {".git", ".next", "node_modules", "venv", "test-results", "playwright-report"}
+    leaked_paths: list[str] = []
+
+    for path in ROOT.rglob("*"):
+        if not path.is_file() or path.suffix not in scanned_suffixes:
+            continue
+        if any(part in allowed_dirs for part in path.relative_to(ROOT).parts):
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        token_prefix = "sk-" + "cp-"
+        if token_prefix in text:
+            leaked_paths.append(str(path.relative_to(ROOT)))
+
+    assert leaked_paths == []
+
+
 def test_e2e_gate_does_not_reuse_frontend_from_other_worktree() -> None:
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
     config = (ROOT / "frontend" / "playwright.config.ts").read_text(encoding="utf-8")
@@ -263,6 +295,8 @@ def test_story_voice_e2e_workflow_enables_deterministic_backend_audio() -> None:
 
     assert "STORY_TTS_PROVIDER=local" in workflow
     assert "STORY_TTS_ALLOW_REQUEST_PROVIDER=1" in workflow
+    assert "MINIMAX_E2E_LOCAL_AUDIO=1" in workflow
+    assert "MINIMAX_API_KEY=test-key" in workflow
 
 
 def test_story_voice_browser_fallback_e2e_accepts_real_browser_speech_capability() -> None:

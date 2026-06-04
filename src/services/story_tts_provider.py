@@ -206,6 +206,13 @@ def build_story_tts_provider(provider_name: Optional[str] = None) -> StoryTTSPro
         if openai_provider.metadata().available:
             return openai_provider
         return BrowserSpeechTTSProvider()
+    if provider == "minimax":
+        from src.services.minimax_story_tts_provider import MiniMaxTTSProvider
+
+        minimax_provider = MiniMaxTTSProvider()
+        if minimax_provider.metadata().available:
+            return minimax_provider
+        return BrowserSpeechTTSProvider()
     return BrowserSpeechTTSProvider()
 
 

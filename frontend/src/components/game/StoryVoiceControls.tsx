@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Pause, Play, RotateCcw, Square, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ReadingContext } from "@/lib/types";
@@ -10,6 +10,7 @@ interface StoryVoiceControlsProps {
   currentContext: ReadingContext;
   historyContext?: ReadingContext | null;
   autoReadText?: string;
+  autoReadReady?: boolean;
   compact?: boolean;
   showTestControls?: boolean;
 }
@@ -18,6 +19,7 @@ export function StoryVoiceControls({
   currentContext,
   historyContext,
   autoReadText,
+  autoReadReady = false,
   compact = false,
   showTestControls = false,
 }: StoryVoiceControlsProps) {
@@ -26,6 +28,7 @@ export function StoryVoiceControls({
   const currentContextLabel = useStoryVoiceStore((state) => state.currentContextLabel);
   const currentAudioUrl = useStoryVoiceStore((state) => state.currentAudioUrl);
   const currentJobId = useStoryVoiceStore((state) => state.currentJobId);
+  const currentProvider = useStoryVoiceStore((state) => state.currentProvider);
   const playbackMode = useStoryVoiceStore((state) => state.playbackMode);
   const spokenTextLength = useStoryVoiceStore((state) => state.spokenTextLength);
   const currentSpeechText = useStoryVoiceStore((state) => state.currentSpeechText);
@@ -47,8 +50,37 @@ export function StoryVoiceControls({
   );
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const lastAutoReadKeyRef = useRef<string>("");
   const textSize = compact ? "text-xs" : "text-sm";
   const isHistoryReading = currentContext.source_type === "history_round" || Boolean(historyContext);
+
+  useEffect(() => {
+    const finalText = autoReadText?.trim();
+    if (
+      !autoReadReady ||
+      !autoReadEnabled ||
+      !finalText ||
+      currentContext.source_type !== "current_story"
+    ) {
+      return;
+    }
+
+    const key = [
+      currentContext.game_id,
+      currentContext.week ?? "",
+      currentContext.round_number ?? "",
+      currentContext.stage ?? "",
+      finalText,
+    ].join(":");
+    if (lastAutoReadKeyRef.current === key) return;
+    lastAutoReadKeyRef.current = key;
+
+    void startReading({
+      ...currentContext,
+      text: finalText,
+      text_hash: `${finalText.length}-${finalText.slice(0, 16)}`,
+    });
+  }, [autoReadReady, autoReadEnabled, autoReadText, currentContext, startReading]);
 
   if (!showTestControls) {
     return (
@@ -171,6 +203,9 @@ export function StoryVoiceControls({
         <span data-testid="voice-reading-context">{currentContextLabel}</span>
         <span>
           Job: <span data-testid="voice-reading-job">{currentJobId ?? ""}</span>
+        </span>
+        <span>
+          Provider: <span data-testid="voice-reading-provider">{currentProvider}</span>
         </span>
         <span>
           Audio: <span data-testid="voice-reading-audio-url">{currentAudioUrl}</span>

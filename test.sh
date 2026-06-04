@@ -129,6 +129,8 @@ run_preflight() {
     local story_voice_openspec_code=$?
     openspec validate provider-backed-story-tts --strict
     local story_tts_openspec_code=$?
+    openspec validate add-minimax-story-audio-generation --strict
+    local minimax_audio_openspec_code=$?
 
     echo -e "${YELLOW}运行后端 preflight quality 检查...${NC}"
     python -m flake8 src/services/story_voice_reading.py --max-line-length=100 --ignore=E501,W503,E203
@@ -140,6 +142,7 @@ run_preflight() {
         tests/test_gate_gameplay_behavior_no_mock.py \
         tests/test_gate_contracts_no_mock.py \
         tests/test_music_degradation_no_mock.py \
+        tests/test_minimax_audio_generation_contract.py \
         tests/test_sse_timeout_contract.py \
         -v
     local gate_code=$?
@@ -179,7 +182,7 @@ run_preflight() {
     cd "$PROJECT_DIR"
 
     local result=0
-    if [ $openspec_code -ne 0 ] || [ $music_openspec_code -ne 0 ] || [ $redesign_openspec_code -ne 0 ] || [ $shift_left_openspec_code -ne 0 ] || [ $story_voice_openspec_code -ne 0 ] || [ $story_tts_openspec_code -ne 0 ] || [ $flake8_code -ne 0 ] || [ $gate_code -ne 0 ] || [ $tsc_code -ne 0 ] || [ $openapi_export_code -ne 0 ] || [ $openapi_ts_code -ne 0 ] || [ $openapi_diff_code -ne 0 ] || [ $jest_code -ne 0 ]; then
+    if [ $openspec_code -ne 0 ] || [ $music_openspec_code -ne 0 ] || [ $redesign_openspec_code -ne 0 ] || [ $shift_left_openspec_code -ne 0 ] || [ $story_voice_openspec_code -ne 0 ] || [ $story_tts_openspec_code -ne 0 ] || [ $minimax_audio_openspec_code -ne 0 ] || [ $flake8_code -ne 0 ] || [ $gate_code -ne 0 ] || [ $tsc_code -ne 0 ] || [ $openapi_export_code -ne 0 ] || [ $openapi_ts_code -ne 0 ] || [ $openapi_diff_code -ne 0 ] || [ $jest_code -ne 0 ]; then
         result=1
     fi
 
@@ -199,6 +202,9 @@ run_mypy() {
         src/ai/text_quality.py
         src/services/music_service.py
         src/services/music_playlist_service.py
+        src/services/minimax_config.py
+        src/services/minimax_story_tts_provider.py
+        src/services/minimax_music_generation.py
         src/services/story_tts_provider.py
         src/services/story_voice_reading.py
         src/services/story_voice_repository.py
@@ -247,6 +253,7 @@ run_contract() {
         tests/test_api_contract.py \
         tests/test_gate_contracts_no_mock.py \
         tests/test_music_playlist_contract.py \
+        tests/test_minimax_audio_generation_contract.py \
         tests/test_shift_left_e2e_contract_no_mock.py \
         tests/test_story_music_recommendation_contract.py \
         tests/test_story_voice_reading_contract.py \
@@ -279,6 +286,7 @@ run_db() {
         tests/test_integration_real_db.py \
         tests/test_database.py \
         tests/test_gate_real_db_no_mock.py \
+        tests/test_minimax_audio_generation_db.py \
         tests/test_story_music_recommendation_db.py \
         tests/test_story_voice_reading_db.py \
         -v
@@ -311,7 +319,7 @@ run_e2e_browser() {
         echo -e "${YELLOW}后端未运行，正在启动...${NC}"
         cd "$PROJECT_DIR"
         activate_python_env
-        STORY_TTS_ALLOW_REQUEST_PROVIDER=1 API_RELOAD=false python run_api.py > /tmp/backend_e2e.log 2>&1 &
+        STORY_TTS_ALLOW_REQUEST_PROVIDER=1 MINIMAX_API_KEY=test-key MINIMAX_E2E_LOCAL_AUDIO=1 API_RELOAD=false python run_api.py > /tmp/backend_e2e.log 2>&1 &
         BACKEND_PID=$!
         sleep 3
         if ! lsof -ti:8000 > /dev/null 2>&1; then
@@ -355,8 +363,16 @@ run_e2e_browser() {
         --no-deps
     local story_voice_result=$?
 
+    echo -e "${YELLOW}运行 MiniMax 故事音频生成 E2E 浏览器测试...${NC}"
+    npx playwright test e2e/minimax-story-audio-generation.spec.ts \
+        --project=core \
+        --reporter=list \
+        --workers=1 \
+        --no-deps
+    local minimax_audio_result=$?
+
     local result=0
-    if [ $core_result -ne 0 ] || [ $music_ai_result -ne 0 ] || [ $story_voice_result -ne 0 ]; then
+    if [ $core_result -ne 0 ] || [ $music_ai_result -ne 0 ] || [ $story_voice_result -ne 0 ] || [ $minimax_audio_result -ne 0 ]; then
         result=1
     fi
     

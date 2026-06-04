@@ -461,6 +461,7 @@ export default function PlayPage() {
                     text: displayText,
                   }}
                   autoReadText={displayText}
+                  autoReadReady={false}
                   compact
                 />
               </div>
@@ -486,6 +487,7 @@ export default function PlayPage() {
                   text: displayText,
                 }}
                 autoReadText={displayText}
+                autoReadReady={!isViewingHistory && phase === "options"}
                 compact
               />
               </div>

@@ -12,7 +12,7 @@ import {
   type Song,
 } from "@/stores/useMusicStore";
 
-function song(id: number, name: string, source: Song["source"] = "netease"): Song {
+function song(id: number | string, name: string, source: Song["source"] = "netease"): Song {
   return {
     id,
     name,
@@ -61,6 +61,60 @@ describe("music queue policy", () => {
     expect(state.currentSong?.id).toBe(1);
     expect(state.queue.map((item) => item.id)).toEqual([2, 3, 9]);
     expect(state.queue[2].source).toBe("ai_generated");
+  });
+
+  it("store insertGeneratedTrack places AI music into a future queue slot", () => {
+    useMusicStore.setState({
+      currentSong: song(1, "Current"),
+      queue: [song(2, "NearTerm"), song(3, "Later")],
+      playedSongs: [],
+    });
+
+    useMusicStore.getState().insertGeneratedTrack({
+      ...song(77, "AI MiniMax 雨夜追逐", "ai_generated"),
+      url: "/api/music/generated/brief-77.wav",
+      asset_id: 77,
+    });
+    useMusicStore.getState().insertGeneratedTrack({
+      ...song(77, "AI MiniMax 雨夜追逐", "ai_generated"),
+      url: "/api/music/generated/brief-77.wav",
+      asset_id: 77,
+    });
+
+    const state = useMusicStore.getState();
+    expect(state.currentSong?.id).toBe(1);
+    expect(state.queue.map((item) => item.id)).toEqual([2, 77, 3]);
+    expect(state.queue.filter((item) => item.id === 77)).toHaveLength(1);
+    expect(state.queue[1].source).toBe("ai_generated");
+    expect(state.queue[1].url).toBe("/api/music/generated/brief-77.wav");
+  });
+
+  it("store insertGeneratedTrack also exposes generated music in recommendation songs", () => {
+    useMusicStore.setState({
+      recommendation: {
+        keywords: ["雨夜"],
+        mood: "紧张",
+        scene_type: "追逐",
+        songs: [song(1, "Current"), song(2, "NearTerm"), song(3, "Later")],
+      },
+      currentSong: song(1, "Current"),
+      queue: [song(2, "NearTerm"), song(3, "Later")],
+    });
+
+    useMusicStore.getState().insertGeneratedTrack({
+      ...song("ai-generated-77", "AI MiniMax 雨夜追逐", "ai_generated"),
+      url: "/api/music/generated/brief-77.wav",
+      asset_id: 77,
+    });
+
+    const recommendation = useMusicStore.getState().recommendation;
+    expect(recommendation?.songs.map((item) => item.id)).toEqual([
+      1,
+      2,
+      "ai-generated-77",
+      3,
+    ]);
+    expect(recommendation?.songs[2].source).toBe("ai_generated");
   });
 
   it("source label helper surfaces AI tracks without labeling Netease as mandatory", () => {

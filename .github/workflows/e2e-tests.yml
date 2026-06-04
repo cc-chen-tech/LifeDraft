@@ -51,6 +51,8 @@ jobs:
           echo "IMAGE_API_BASE_URL=https://api.openai.com/v1" >> .env
           echo "STORY_TTS_PROVIDER=local" >> .env
           echo "STORY_TTS_ALLOW_REQUEST_PROVIDER=1" >> .env
+          echo "MINIMAX_API_KEY=test-key" >> .env
+          echo "MINIMAX_E2E_LOCAL_AUDIO=1" >> .env
 
       - name: Start backend server
         run: |

@@ -4,14 +4,17 @@ import asyncio
 import logging
 import re
 from collections import OrderedDict
-from typing import List, Optional, Tuple
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.api.deps import get_current_user_optional
 from src.database.models import SessionLocal
+from src.services.minimax_config import build_minimax_config
 from src.services.music_playlist_service import get_music_playlist_service
 from src.services.music_service import get_music_service
 
@@ -23,6 +26,34 @@ router = APIRouter()
 _audio_cache: OrderedDict[int, Tuple[bytes, str]] = OrderedDict()
 _AUDIO_CACHE_MAX = 10
 _audio_cache_lock = asyncio.Lock()
+
+
+@dataclass(frozen=True)
+class GeneratedMusicPayload:
+    content: bytes
+    media_type: str
+
+
+def read_generated_music_file(
+    file_name: str,
+    asset_dir: Optional[Path] = None,
+) -> Optional[GeneratedMusicPayload]:
+    """Read a generated music asset without allowing path traversal."""
+    allowed_suffixes = {".mp3": "audio/mpeg", ".wav": "audio/wav"}
+    path = Path(file_name)
+    if path.name != file_name or path.suffix not in allowed_suffixes:
+        return None
+    root = asset_dir or build_minimax_config().music_asset_dir
+    candidate = (root / file_name).resolve()
+    root_resolved = root.resolve()
+    if root_resolved not in candidate.parents:
+        return None
+    if not candidate.is_file():
+        return None
+    return GeneratedMusicPayload(
+        content=candidate.read_bytes(),
+        media_type=allowed_suffixes[path.suffix],
+    )
 
 
 class MusicRecommendationRequest(BaseModel):
@@ -77,6 +108,21 @@ class PlaylistSyncRequest(BaseModel):
     current_position_ms: int = 0
     is_playing: bool = False
     volume: float = 0.5
+
+
+class MusicGenerationRequest(BaseModel):
+    """Request body for story-conditioned generated music."""
+
+    game_id: int
+    story_text: str
+    analysis: Dict[str, Any] = Field(default_factory=dict)
+
+
+class MusicGenerationResponse(BaseModel):
+    """Generated music result for frontend queue insertion."""
+
+    track: Dict[str, Any]
+    insert_policy: str
 
 
 @router.post("/music/recommend", response_model=MusicRecommendationResponse)
@@ -186,6 +232,31 @@ async def recommend_music(
         raise HTTPException(status_code=500, detail=f"音乐推荐失败: {str(e)}")
 
 
+@router.post("/music/generate", response_model=MusicGenerationResponse)
+async def generate_music(request: MusicGenerationRequest):
+    """Generate story-conditioned AI music without blocking recommendation search."""
+    from src.services.minimax_music_generation import StoryMusicGenerationService
+
+    config = build_minimax_config()
+    if not config.music_generation_enabled:
+        raise HTTPException(status_code=503, detail="AI music generation is disabled")
+
+    db = SessionLocal()
+    try:
+        track = StoryMusicGenerationService().generate_ready_track(
+            db=db,
+            game_id=request.game_id,
+            story_text=request.story_text,
+            analysis=request.analysis,
+        )
+        return MusicGenerationResponse(track=track, insert_policy="future_queue")
+    except RuntimeError as exc:
+        logger.warning("[MusicAPI] Generated music unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail=str(exc))
+    finally:
+        db.close()
+
+
 @router.get("/music/song-url")
 async def get_song_url(
     song_id: int = Query(..., description="歌曲ID"),
@@ -240,6 +311,23 @@ async def search_music(
     except Exception as e:
         logger.exception(f"Failed to search music: {e}")
         raise HTTPException(status_code=500, detail=f"搜索失败: {str(e)}")
+
+
+@router.get("/music/generated/{file_name}")
+async def get_generated_music(file_name: str) -> Response:
+    """Serve provider-generated music assets from the configured asset directory."""
+    generated_music = read_generated_music_file(file_name)
+    if generated_music is None:
+        raise HTTPException(status_code=404, detail="Generated music not found")
+    return Response(
+        content=generated_music.content,
+        media_type=generated_music.media_type,
+        headers={
+            "content-length": str(len(generated_music.content)),
+            "accept-ranges": "bytes",
+            "cache-control": "public, max-age=300",
+        },
+    )
 
 
 async def _get_or_download_audio(song_id: int, url: str) -> Tuple[bytes, str]:

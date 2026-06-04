@@ -15,6 +15,9 @@ export default function E2ERegressionPage() {
   const setActiveGameId = useMusicStore((state) => state.setActiveGameId);
   const setCurrentSong = useMusicStore((state) => state.setCurrentSong);
   const setQueue = useMusicStore((state) => state.setQueue);
+  const currentSong = useMusicStore((state) => state.currentSong);
+  const queue = useMusicStore((state) => state.queue);
+  const generateAiMusicForStory = useMusicStore((state) => state.generateAiMusicForStory);
   const [showHistory, setShowHistory] = useState(false);
   const [historySelected, setHistorySelected] = useState(false);
   const [currentStory, setCurrentStory] = useState("当前故事尚未更新");
@@ -25,12 +28,14 @@ export default function E2ERegressionPage() {
   const [musicQueueFixture, setMusicQueueFixture] = useState<{
     current: { title: string; source: string };
     queue: string[];
+    generated?: { title: string; source: string; provider: string; url: string };
   } | null>(null);
   const autoReadText = streamedStory.includes("苏小二按住账册")
     ? "苏小二按住账册"
     : streamedStory.includes("账册被人翻开")
       ? "账册被人翻开"
       : "";
+  const autoReadReady = streamedStory.includes("苏小二按住账册");
 
   useEffect(() => {
     setActiveStoryText("雨夜码头的旧账册被风吹开。");
@@ -207,6 +212,7 @@ export default function E2ERegressionPage() {
             text: "雨夜码头的旧账册被风吹开。",
           }}
           autoReadText={autoReadText}
+          autoReadReady={false}
         />
         <StoryVoiceControls
           currentContext={{
@@ -234,6 +240,7 @@ export default function E2ERegressionPage() {
               : null
           }
           autoReadText={autoReadText}
+          autoReadReady={autoReadReady}
           showTestControls
         />
       </section>
@@ -255,6 +262,41 @@ export default function E2ERegressionPage() {
         <button
           type="button"
           className="rounded border px-3 py-2"
+          onClick={() => {
+            setQueue([
+              {
+                id: 9201,
+                name: "网易云 下一曲",
+                artists: ["测试"],
+                album: "回归夹具",
+                duration: 120,
+                source: "netease",
+              },
+              {
+                id: 9202,
+                name: "网易云 后续曲",
+                artists: ["测试"],
+                album: "回归夹具",
+                duration: 120,
+                source: "netease",
+              },
+            ]);
+            void generateAiMusicForStory(
+              "雨夜码头的旧账册被风吹开，主角刚发现失踪亲人的线索。",
+              101,
+              {
+                mood: "紧张",
+                scene_type: "雨夜追逐",
+                environment: "民国码头",
+              }
+            );
+          }}
+        >
+          触发 MiniMax 音乐生成
+        </button>
+        <button
+          type="button"
+          className="rounded border px-3 py-2"
           onClick={() =>
             setMusicQueueFixture({
               current: { title: "网易云 当前曲", source: "netease" },
@@ -264,13 +306,53 @@ export default function E2ERegressionPage() {
         >
           加载会员音乐队列夹具
         </button>
+        <button
+          type="button"
+          className="rounded border px-3 py-2"
+          onClick={() =>
+            setMusicQueueFixture({
+              current: { title: "网易云 当前曲", source: "netease" },
+              queue: ["网易云 下一曲", "AI MiniMax 雨夜追逐", "网易云 后续曲"],
+              generated: {
+                title: "AI MiniMax 雨夜追逐",
+                source: "ai_generated",
+                provider: "minimax",
+                url: "/api/voice-reading/audio/minimax-music-fixture-warm_female.wav",
+              },
+            })
+          }
+        >
+          触发 MiniMax 音乐生成夹具
+        </button>
         {musicQueueFixture && (
           <div aria-label="会员音乐队列状态" className="rounded border p-3">
             <p data-testid="current-music-source">{musicQueueFixture.current.source}</p>
             <p data-testid="current-music-title">{musicQueueFixture.current.title}</p>
             <p data-testid="music-queue-order">{musicQueueFixture.queue.join(" | ")}</p>
+            {musicQueueFixture.generated && (
+              <>
+                <p data-testid="generated-music-provider">
+                  {musicQueueFixture.generated.provider}
+                </p>
+                <p data-testid="generated-music-source">{musicQueueFixture.generated.source}</p>
+                <audio
+                  data-testid="generated-music-audio"
+                  src={musicQueueFixture.generated.url}
+                  preload="auto"
+                />
+              </>
+            )}
           </div>
         )}
+        <div aria-label="真实音乐队列状态" className="rounded border p-3">
+          <p data-testid="real-current-music-title">{currentSong?.name ?? ""}</p>
+          <p data-testid="real-music-queue-order">
+            {queue.map((item) => item.name).join(" | ")}
+          </p>
+          <p data-testid="real-generated-music-url">
+            {queue.find((item) => item.source === "ai_generated")?.url ?? ""}
+          </p>
+        </div>
       </section>
     </main>
   );

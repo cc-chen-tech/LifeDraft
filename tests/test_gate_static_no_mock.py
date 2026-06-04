@@ -21,6 +21,9 @@ def test_test_script_runs_mypy_in_strict_mode() -> None:
     assert "src/services/music_service.py" in script
     assert "src/services/music_playlist_service.py" in script
     assert "src/services/story_tts_provider.py" in script
+    assert "src/services/minimax_config.py" in script
+    assert "src/services/minimax_story_tts_provider.py" in script
+    assert "src/services/minimax_music_generation.py" in script
     assert "src/services/story_voice_reading.py" in script
     assert "src/services/story_voice_repository.py" in script
     assert "src/database/models.py" in script
@@ -32,6 +35,14 @@ def test_test_script_runs_music_frontend_queue_policy_tests() -> None:
 
     assert "useMusicStore.musicQueuePolicy.test.ts" in script
     assert "improve-story-music-recommendation-and-premium-ai-queue" in script
+
+
+def test_test_script_runs_minimax_audio_generation_frontend_tests() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+
+    assert "e2e/minimax-story-audio-generation.spec.ts" in script
+    assert "tests/test_minimax_audio_generation_contract.py" in script
+    assert "tests/test_minimax_audio_generation_db.py" in script
 
 
 def test_gate_tests_do_not_use_skip_or_mocking_constructs() -> None:
