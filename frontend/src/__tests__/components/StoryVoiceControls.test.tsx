@@ -53,6 +53,17 @@ describe('StoryVoiceControls', () => {
     expect(screen.getByRole('button', { name: '朗读当前故事' })).toBeInTheDocument();
   });
 
+  it('renders production playback controls without raw diagnostics when enabled', () => {
+    render(<StoryVoiceControls currentContext={currentContext} enablePlaybackControls compact />);
+
+    expect(screen.getByRole('region', { name: '故事朗读' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '朗读当前故事' })).toBeInTheDocument();
+    expect(screen.queryByText('即将开放')).not.toBeInTheDocument();
+    expect(screen.queryByText(/高质量 TTS 声音模型接入后可用/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Job:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Audio:/)).not.toBeInTheDocument();
+  });
+
   it('keeps retry available when a failed audio attempt later emits ended', () => {
     render(<StoryVoiceControls currentContext={currentContext} showTestControls />);
 

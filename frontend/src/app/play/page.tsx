@@ -463,6 +463,7 @@ export default function PlayPage() {
                   autoReadText={displayText}
                   autoReadReady={false}
                   compact
+                  enablePlaybackControls
                 />
               </div>
               <StreamingText
@@ -489,6 +490,7 @@ export default function PlayPage() {
                 autoReadText={displayText}
                 autoReadReady={!isViewingHistory && phase === "options"}
                 compact
+                enablePlaybackControls
               />
               </div>
               <StreamingText

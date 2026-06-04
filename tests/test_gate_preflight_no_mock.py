@@ -273,7 +273,10 @@ def test_story_voice_test_controls_stay_out_of_real_play_page() -> None:
 
     assert "showTestControls?: boolean" in component
     assert "showTestControls = false" in component
+    assert "enablePlaybackControls?: boolean" in component
+    assert "enablePlaybackControls = false" in component
     assert "{showTestControls &&" in component
+    assert "enablePlaybackControls" in play_page
     assert "showTestControls" not in play_page
     assert "showTestControls" in regression_page
 
