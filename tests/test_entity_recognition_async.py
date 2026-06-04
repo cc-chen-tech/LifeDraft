@@ -826,6 +826,64 @@ class TestMinAppearancesBoundary:
         character_names = {char["name"] for char in result["characters"]}
         assert {"石无言", "陆辞", "沈伯安"}.issubset(character_names)
 
+    def test_long_history_modern_key_characters_with_roles_reach_candidates(self):
+        """第4周长历史中带关系/职位的人物不应被漏掉或只剩主角。"""
+        service = EntityRecognitionService(Mock())
+        long_old_story = "李婉清独自在公司档案室整理旧合同，启明集团的标牌反复出现在走廊。" * 700
+        round_history = [
+            {
+                "week": 0,
+                "round": 0,
+                "event_description": long_old_story,
+            },
+            {
+                "week": 3,
+                "round": 0,
+                "event_description": (
+                    "陈一鸣提出内部审计可能被人做了手脚，陈律师提醒李婉清先保全证据。"
+                    "张副总在会议上否认干预流程，赵铭承认自己见过那份合同。"
+                    "刘洋递来公章使用记录，周先生打来电话，王亮说启明集团法务部正在施压。"
+                    "银行会议室、审计电脑和蓝色文件夹都只是场景和物品。"
+                ),
+            },
+        ]
+
+        with patch.object(
+            service,
+            "_call_ai",
+            return_value='{"items": [], "characters": [], "landmarks": []}',
+        ):
+            result = service.recognize_from_history(
+                round_history=round_history,
+                existing_items=[],
+                existing_characters=["李婉清"],
+                existing_landmarks=[],
+                min_appearances=1,
+                eligible_character_names=[
+                    "陈一鸣",
+                    "陈律师",
+                    "张副总",
+                    "赵铭",
+                    "刘洋",
+                    "周先生",
+                    "王亮",
+                ],
+            )
+
+        character_names = {char["name"] for char in result["characters"]}
+        assert {
+            "陈一鸣",
+            "陈律师",
+            "张副总",
+            "赵铭",
+            "刘洋",
+            "周先生",
+            "王亮",
+        }.issubset(character_names)
+        assert character_names.isdisjoint(
+            {"李婉清", "启明集团", "银行会议室", "审计电脑", "蓝色文件夹", "合同", "公章"}
+        )
+
     def test_recognition_truncation_respects_max_length(self):
         """头尾截断必须把提示文本也算入最大长度。"""
         service = EntityRecognitionService(Mock())

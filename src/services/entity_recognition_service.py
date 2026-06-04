@@ -411,7 +411,7 @@ class EntityRecognitionService(BaseExtractionService):
         """提取中文故事中明确命名的人物。"""
         single_surnames = (
             "赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦尤许何吕施张孔曹严华金魏陶姜姚"
-            "戚谢邹喻柏水窦章云苏潘葛奚范彭郎鲁韦昌马苗凤花方俞任袁柳鲍史唐费"
+            "戚谢邹喻柏水窦章云苏潘葛奚范彭郎鲁韦昌马苗凤花方俞任袁柳刘鲍史唐费"
             "廉岑薛雷贺倪汤滕殷罗毕郝邬安常乐于时傅皮卞齐康伍余元卜顾孟平黄"
             "穆萧尹林陆石"
         )
@@ -419,9 +419,13 @@ class EntityRecognitionService(BaseExtractionService):
         name_boundary = r"(?:(?<![\u4e00-\u9fff])|(?<=[见与和向问对请找叫邀同]))"
         person_actions = (
             "说|问|答|道|提醒|递|交|带|走|来|去|把|将|在|从|与|和|向|看|笑|皱|捧|"
-            "沉默|扶|扶住|握|握紧|赶|赶来|守|苦笑|又|、|，|。|：|:"
+            "提出|承认|否认|表示|解释|反驳|递来|打来|联系|签|站|沉默|扶|扶住|"
+            "握|握紧|赶|赶来|守|苦笑|又|、|，|。|：|:"
         )
-        titles = "掌柜|先生|小姐|夫人|师傅|师父|老板|管家|姑娘|公子|大人|老师|医生|差爷|叔|伯|婶|姨|老丈"
+        titles = (
+            "掌柜|先生|小姐|夫人|师傅|师父|老板|管家|姑娘|公子|大人|老师|医生|"
+            "律师|副总|总监|经理|主任|助理|记者|差爷|叔|伯|婶|姨|老丈"
+        )
         surname = rf"(?:{compound_surnames}|[{single_surnames}])"
         patterns = [
             rf"{name_boundary}{surname}[\u4e00-\u9fff]{{0,2}}?(?:{titles})",
@@ -429,7 +433,7 @@ class EntityRecognitionService(BaseExtractionService):
             (
                 rf"{name_boundary}{surname}[\u4e00-\u9fff]{{2}}"
                 rf"(?=(?:的|当年|一直|曾经|已经|正|也|都|从|在|把|将|说|问|提醒|低声|缓缓|"
-                rf"沉默|扶|握|赶|留下|，|。|、|：|:))"
+                rf"提出|承认|否认|表示|解释|反驳|联系|沉默|扶|握|赶|留下|，|。|、|：|:))"
             ),
             rf"{name_boundary}{surname}[\u4e00-\u9fff]{{1,2}}?(?=(?:{person_actions}))",
         ]

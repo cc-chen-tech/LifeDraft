@@ -18,6 +18,7 @@ from jose import jwt
 os.environ.setdefault("JWT_SECRET", "test-secret-for-sse-contract")
 
 from src.api.main import app  # noqa: E402
+from src.database.models import Game, SessionLocal, init_db  # noqa: E402
 
 client = TestClient(app)
 
@@ -30,6 +31,29 @@ def _auth_headers(user_id: int = 1) -> dict:
         algorithm="HS256",
     )
     return {"Authorization": f"Bearer {token}"}
+
+
+def _create_game(game_id: int, user_id: int = 1) -> None:
+    init_db()
+    db = SessionLocal()
+    try:
+        existing = db.query(Game).filter(Game.game_id == game_id).first()
+        if existing:
+            existing.user_id = user_id
+        else:
+            db.add(Game(game_id=game_id, user_id=user_id, language="zh", initial_state={}))
+        db.commit()
+    finally:
+        db.close()
+
+
+def _delete_game(game_id: int) -> None:
+    db = SessionLocal()
+    try:
+        db.query(Game).filter(Game.game_id == game_id).delete()
+        db.commit()
+    finally:
+        db.close()
 
 
 class TestSceneImageSSEContract:
@@ -52,6 +76,7 @@ class TestSceneImageSSEContract:
             "timestamp": "2026-04-19T10:00:00",
         }
         _scene_image_latest[f"{game_id}:0:1:result"] = event
+        _create_game(game_id)
 
         try:
             with client.get(
@@ -73,6 +98,7 @@ class TestSceneImageSSEContract:
                 assert "timestamp" in data
         finally:
             _scene_image_latest.pop(f"{game_id}:0:1:result", None)
+            _delete_game(game_id)
 
     def test_sse_event_format_failed(self):
         """场景图片生成失败时，SSE 事件应包含错误信息"""
@@ -89,6 +115,7 @@ class TestSceneImageSSEContract:
             "timestamp": "2026-04-19T10:00:00",
         }
         _scene_image_latest[f"{game_id}:1:2:event"] = event
+        _create_game(game_id)
 
         try:
             with client.get(
@@ -102,6 +129,7 @@ class TestSceneImageSSEContract:
                 assert "round_number" in data
         finally:
             _scene_image_latest.pop(f"{game_id}:1:2:event", None)
+            _delete_game(game_id)
 
     def test_sse_event_type_values(self):
         """SSE 事件 type 字段只能是预定义值"""
@@ -121,6 +149,7 @@ class TestSceneImageSSEContract:
                 "timestamp": "2026-04-19T10:00:00",
             }
             _scene_image_latest[f"{game_id}:0:0:result:{event_type}"] = event
+        _create_game(game_id)
 
         try:
             with client.get(
@@ -132,10 +161,22 @@ class TestSceneImageSSEContract:
         finally:
             for event_type in valid_types:
                 _scene_image_latest.pop(f"{game_id}:0:0:result:{event_type}", None)
+            _delete_game(game_id)
 
-    def test_sse_accepts_unauthenticated(self):
-        """SSE 端点允许未认证访问（使用可选认证，契约测试期间兼容 TestClient 无 cookie）"""
+    def test_sse_rejects_unauthenticated(self):
+        """SSE 端点必须拒绝未认证访问，避免泄露其他游戏的场景图事件。"""
         response = client.get("/api/images/scene/events/1")
-        assert (
-            response.status_code == 200
-        ), f"未认证访问 SSE 端点应返回 200 (optional auth)，但返回了 {response.status_code}"
+        assert response.status_code == 401
+
+    def test_sse_rejects_other_user_game(self):
+        """SSE 端点必须校验 game ownership，其他用户不能读取事件。"""
+        game_id = 999996
+        _create_game(game_id, user_id=1)
+        try:
+            response = client.get(
+                f"/api/images/scene/events/{game_id}",
+                headers=_auth_headers(user_id=2),
+            )
+            assert response.status_code == 404
+        finally:
+            _delete_game(game_id)

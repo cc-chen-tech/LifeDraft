@@ -160,5 +160,75 @@ describe('useEventGenerator', () => {
       expect(mockSetters.setPhase).toHaveBeenCalledWith('error');
       expect(mockGeneratingRef.current).toBe(false);
     });
+
+    it('surfaces recovered partial story instead of staying in generation recovery forever', async () => {
+      jest.useFakeTimers();
+      const partialStory = '第十回 残月孤影探险途\n\n沈清越已经取到证据，但选项仍在生成。';
+      const syncState = jest.fn().mockImplementation(async () => {
+        useGameStore.setState({
+          storyText: partialStory,
+          currentEvent: {
+            story: partialStory,
+            options: [],
+          },
+        } as never);
+      });
+      useGameStore.setState({ syncState } as never);
+
+      (global.fetch as jest.Mock).mockResolvedValue(
+        createSSEMockResponse([
+          'event: error\ndata: {"message":"Timeout waiting for event generation"}\n\n',
+        ])
+      );
+
+      const { result } = renderHook(() => useEventGenerator(defaultParams));
+
+      await act(async () => {
+        void result.current.generateEvent();
+      });
+
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(181000);
+      });
+
+      expect(syncState).toHaveBeenCalled();
+      expect(mockSetters.setStoryText).toHaveBeenCalledWith(partialStory);
+      expect(mockSetters.setCurrentEvent).toHaveBeenCalledWith({
+        story: partialStory,
+        options: [],
+      });
+      expect(mockSetters.setConnectionStatus).toHaveBeenCalledWith('error');
+      expect(mockSetters.setPhase).toHaveBeenCalledWith('error');
+      expect(mockGeneratingRef.current).toBe(false);
+
+      jest.useRealTimers();
+    });
+
+    it('clears recovered partial story before retrying so new output is not appended to it', async () => {
+      const partialStory = '半截故事：沈清越刚推开门，正文还没有选项。';
+      setupDefaultState();
+      useGameStore.setState({
+        storyText: partialStory,
+        currentEvent: {
+          story: partialStory,
+          options: [],
+        },
+      } as never);
+      mockPhaseRef.current = 'error' as Phase;
+
+      (global.fetch as jest.Mock).mockResolvedValue(
+        createSSEMockResponse([
+          'data: {"content":"重新生成的完整故事"}\n\n',
+          'event: complete\ndata: {"event_description":"重新生成的完整故事","options":[{"text":"继续","effects":{}}]}\n\n',
+        ])
+      );
+
+      const { result } = renderHook(() => useEventGenerator(defaultParams));
+
+      await act(async () => { await result.current.generateEvent(); });
+
+      expect(mockSetters.setStoryText).toHaveBeenCalledWith('');
+      expect(mockSetters.appendStoryText).toHaveBeenCalledWith('重新生成的完整故事');
+    });
   });
 });

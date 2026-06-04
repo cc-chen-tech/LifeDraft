@@ -161,10 +161,39 @@ describe('useHistoryViewer', () => {
       expect(result.current.historyDisplayText).toContain('Continuation');
       expect(result.current.historyDisplayText).toContain('选择后的故事发展');
     });
+
+    it('keeps selected history text readable when current story changes', () => {
+      const playerState = {
+        round_history: [
+          {
+            week: 0,
+            round: 0,
+            event_description: 'Historical event body',
+            story_continuation: 'Historical continuation body',
+          },
+        ],
+      };
+
+      const { result, rerender } = renderHook(
+        ({ storyText }) =>
+          useHistoryViewer({ ...defaultParams, playerState, storyText }),
+        { initialProps: { storyText: 'Current story before stream update' } }
+      );
+
+      act(() => {
+        result.current.handleSelectHistoryRound(0);
+      });
+
+      rerender({ storyText: 'Current story after stream update' });
+
+      expect(result.current.displayText).toContain('Historical event body');
+      expect(result.current.displayText).toContain('Historical continuation body');
+      expect(result.current.displayText).not.toContain('Current story after stream update');
+    });
   });
 
   describe('handleBackToCurrent', () => {
-    it('returns to current round and restores state', () => {
+    it('returns to current round without rewinding the live phase', () => {
       const playerState = {
         round_history: [{ week: 0, round: 0, event_description: 'Story' }],
       };
@@ -187,7 +216,31 @@ describe('useHistoryViewer', () => {
       expect(result.current.isViewingHistory).toBe(false);
       // ★ displayText 应该恢复为 storyText
       expect(result.current.displayText).toBe('Current story');
-      expect(mockSetPhase).toHaveBeenCalled();
+      expect(mockSetPhase).not.toHaveBeenCalled();
+    });
+
+    it('does not restore a stale loading phase if the live game completed while reading history', () => {
+      const playerState = {
+        round_history: [{ week: 0, round: 0, event_description: 'Story' }],
+      };
+      const phaseRef = { current: 'loading' as const };
+
+      const { result } = renderHook(() =>
+        useHistoryViewer({ ...defaultParams, playerState, phaseRef })
+      );
+
+      act(() => {
+        result.current.handleSelectHistoryRound(0);
+      });
+
+      phaseRef.current = 'options';
+
+      act(() => {
+        result.current.handleBackToCurrent();
+      });
+
+      expect(result.current.isViewingHistory).toBe(false);
+      expect(mockSetPhase).not.toHaveBeenCalledWith('loading');
     });
 
     it('restores current event options', () => {

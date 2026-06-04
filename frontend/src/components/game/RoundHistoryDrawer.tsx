@@ -138,42 +138,74 @@ export function RoundHistoryDrawer({
                         item.event_description || item.story_continuation;
 
                       return (
-                        <button
+                        <div
                           key={`${item.week}-${item.round}`}
-                          onClick={() => onSelect(item.originalIndex)}
-                          className={cn(
-                            "w-full text-left p-3 rounded-lg border transition-all",
-                            "hover:bg-accent hover:border-accent-foreground/20",
-                            isSelected
-                              ? "bg-primary/10 border-primary/30"
-                              : "bg-card border-border"
-                          )}
+                          className="space-y-2"
                         >
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="font-medium text-sm">
-                              {roundName}
-                            </span>
-                            {hasStory && (
-                              <Badge variant="secondary" className="text-xs">
-                                已记录
-                              </Badge>
+                          <button
+                            onClick={() => {
+                              onSelect(item.originalIndex);
+                              onOpenChange(false);
+                            }}
+                            className={cn(
+                              "w-full text-left p-3 rounded-lg border transition-all",
+                              "hover:bg-accent hover:border-accent-foreground/20",
+                              isSelected
+                                ? "bg-primary/10 border-primary/30"
+                                : "bg-card border-border"
                             )}
-                          </div>
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-medium text-sm">
+                                {roundName}
+                              </span>
+                              {hasStory && (
+                                <Badge variant="secondary" className="text-xs">
+                                  已记录
+                                </Badge>
+                              )}
+                            </div>
 
-                          {/* 选择的内容 */}
-                          {item.choice && (
-                            <p className="text-xs text-muted-foreground line-clamp-1 mb-1">
-                              选择: {item.choice}
-                            </p>
-                          )}
+                            {/* 选择的内容 */}
+                            {item.choice && (
+                              <p className="text-xs text-muted-foreground line-clamp-1 mb-1">
+                                选择: {item.choice}
+                              </p>
+                            )}
 
-                          {/* 摘要 */}
-                          {item.summary && (
-                            <p className="text-xs text-muted-foreground line-clamp-2">
-                              {item.summary}
-                            </p>
+                            {/* 摘要 */}
+                            {item.summary && (
+                              <p className="text-xs text-muted-foreground line-clamp-2">
+                                {item.summary}
+                              </p>
+                            )}
+                            {hasStory && (
+                              <p className="mt-2 text-xs text-primary">
+                                点击阅读正文
+                              </p>
+                            )}
+                          </button>
+
+                          {isSelected && hasStory && (
+                            <div className="space-y-3 rounded-md border border-primary/20 bg-primary/5 p-3 text-xs leading-6 text-foreground">
+                              {item.event_description && (
+                                <p className="whitespace-pre-wrap">
+                                  {item.event_description}
+                                </p>
+                              )}
+                              {item.story_continuation && (
+                                <div className="space-y-2">
+                                  <p className="font-medium text-primary">
+                                    选择后的故事发展
+                                  </p>
+                                  <p className="whitespace-pre-wrap">
+                                    {item.story_continuation}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
                           )}
-                        </button>
+                        </div>
                       );
                     })}
                   </div>

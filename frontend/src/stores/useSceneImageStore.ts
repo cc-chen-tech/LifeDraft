@@ -115,6 +115,18 @@ export const useSceneImageStore = create<SceneImageState>()(
     const makeRequestKey = (gameId: number, roundNumber: number, week: number, stage?: string) =>
       `${gameId}-${roundNumber}-${week}-${stage || 'default'}`;
 
+    const matchesSceneKey = (
+      image: RoundSceneImage | null | undefined,
+      roundNumber: number,
+      week: number,
+      stage?: string
+    ) => Boolean(
+      image &&
+      image.week === week &&
+      image.round_number === roundNumber &&
+      (!stage || image.stage === stage)
+    );
+
     return {
     // Initial State
     roundSceneImages: [],
@@ -183,7 +195,7 @@ export const useSceneImageStore = create<SceneImageState>()(
 
         const newScene: RoundSceneImage = {
           scene_id: result.scene_id,
-          week: result.week || week,
+          week: result.week ?? week,
           round_number: result.round_number,
           stage: result.stage || stage,
           image_url: result.image_url,
@@ -217,35 +229,101 @@ export const useSceneImageStore = create<SceneImageState>()(
       }
 
       const promise = (async () => {
-        set({ isLoadingRoundSceneImage: true });
+        const applyRoundScene = (scene: { scene_id: number; week?: number; round_number?: number; stage?: string | null; image_url: string; scene_description: string; created_at: string; referenced_images?: number[] }) => {
+          const sceneWeek = scene.week ?? week;
+          const sceneRound = scene.round_number ?? roundNumber;
+          const sceneStage = scene.stage || stage || 'result';
+
+          if (sceneWeek !== week || sceneRound !== roundNumber || (stage && sceneStage !== stage)) {
+            console.warn("[fetchRoundSceneImage] Ignoring mismatched scene image response:", {
+              requested: { week, roundNumber, stage },
+              received: { week: sceneWeek, roundNumber: sceneRound, stage: sceneStage },
+            });
+            set({ isLoadingRoundSceneImage: false });
+            return;
+          }
+
+          const sceneWithStage: RoundSceneImage = {
+            scene_id: scene.scene_id,
+            week: sceneWeek,
+            round_number: sceneRound,
+            stage: sceneStage,
+            image_url: scene.image_url,
+            scene_description: scene.scene_description,
+            referenced_images: scene.referenced_images || [],
+            created_at: scene.created_at,
+          };
+
+          set((state) => ({
+            // ★ 只更新对应 stage 的图片，不更新 currentRoundSceneImage
+            // currentRoundSceneImage 由 fetchAllRoundSceneImages 统一管理
+            eventSceneImage: sceneWithStage.stage === 'event' ? sceneWithStage : state.eventSceneImage,
+            resultSceneImage: sceneWithStage.stage === 'result' ? sceneWithStage : state.resultSceneImage,
+            roundSceneImages: state.roundSceneImages.some(s => s.week === sceneWithStage.week && s.round_number === roundNumber && s.stage === sceneWithStage.stage)
+              ? state.roundSceneImages.map(s => s.week === sceneWithStage.week && s.round_number === roundNumber && s.stage === sceneWithStage.stage ? sceneWithStage : s)
+              : [...state.roundSceneImages, sceneWithStage],
+            isLoadingRoundSceneImage: false,
+          }));
+        };
+
+        const fetchRoundSceneOnce = async () => stage
+          ? await api.images.getRoundSceneImageByStage(gameId, roundNumber, stage, week)
+          : await api.images.getRoundSceneImage(gameId, roundNumber, week);
+
+        const pollForSceneImage = async () => {
+          const maxAttempts = 12;
+          const pollIntervalMs = 5000;
+
+          for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+            await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+
+            try {
+              const polledScene = await fetchRoundSceneOnce();
+              if (polledScene && 'scene_id' in polledScene) {
+                applyRoundScene(polledScene);
+                return;
+              }
+
+              if (polledScene && 'detail' in polledScene) {
+                console.log(`[fetchRoundSceneImage] Generation still in progress on poll attempt #${attempt + 1}`);
+                continue;
+              }
+            } catch (err) {
+              const error = err as { status?: number; message?: string };
+              if (error.status === 404) {
+                console.log("[fetchRoundSceneImage] Scene not ready yet while polling, keep waiting");
+                continue;
+              }
+              throw err;
+            }
+          }
+
+          set({ isLoadingRoundSceneImage: false });
+        };
+
+        set((state) => ({
+          isLoadingRoundSceneImage: true,
+          eventSceneImage: stage === 'event' && !matchesSceneKey(state.eventSceneImage, roundNumber, week, stage)
+            ? null
+            : state.eventSceneImage,
+          resultSceneImage: stage === 'result' && !matchesSceneKey(state.resultSceneImage, roundNumber, week, stage)
+            ? null
+            : state.resultSceneImage,
+          currentRoundSceneImage: !matchesSceneKey(state.currentRoundSceneImage, roundNumber, week, stage)
+            ? null
+            : state.currentRoundSceneImage,
+        }));
 
         try {
-          const scene = stage
-            ? await api.images.getRoundSceneImageByStage(gameId, roundNumber, stage, week)
-            : await api.images.getRoundSceneImage(gameId, roundNumber, week);
+          const scene = await fetchRoundSceneOnce();
 
-          if (scene && scene.scene_id) {
-            const sceneWithStage: RoundSceneImage = {
-              scene_id: scene.scene_id,
-              week: scene.week || week,
-              round_number: scene.round_number,
-              stage: scene.stage || stage || 'result',
-              image_url: scene.image_url,
-              scene_description: scene.scene_description,
-              referenced_images: (scene as { referenced_images?: number[] }).referenced_images || [],
-              created_at: scene.created_at,
-            };
-
-            set((state) => ({
-              // ★ 只更新对应 stage 的图片，不更新 currentRoundSceneImage
-              // currentRoundSceneImage 由 fetchAllRoundSceneImages 统一管理
-              eventSceneImage: sceneWithStage.stage === 'event' ? sceneWithStage : state.eventSceneImage,
-              resultSceneImage: sceneWithStage.stage === 'result' ? sceneWithStage : state.resultSceneImage,
-              roundSceneImages: state.roundSceneImages.some(s => s.week === sceneWithStage.week && s.round_number === roundNumber && s.stage === sceneWithStage.stage)
-                ? state.roundSceneImages.map(s => s.week === sceneWithStage.week && s.round_number === roundNumber && s.stage === sceneWithStage.stage ? sceneWithStage : s)
-                : [...state.roundSceneImages, sceneWithStage],
-              isLoadingRoundSceneImage: false,
-            }));
+          if (scene && 'scene_id' in scene) {
+            applyRoundScene(scene);
+            return;
+          } else if (scene && 'detail' in scene) {
+            console.log(`[fetchRoundSceneImage] Generation is in progress for week=${week}, round=${roundNumber}, stage=${stage || 'result'}`);
+            set({ isLoadingRoundSceneImage: true });
+            await pollForSceneImage();
           } else {
             set({ isLoadingRoundSceneImage: false });
           }
@@ -355,6 +433,8 @@ export const useSceneImageStore = create<SceneImageState>()(
           roundSceneImages: state.roundSceneImages.map(s =>
             s.scene_id === currentRoundSceneImage.scene_id ? updatedScene : s
           ),
+          eventSceneImage: updatedScene.stage === 'event' ? updatedScene : state.eventSceneImage,
+          resultSceneImage: updatedScene.stage === 'result' ? updatedScene : state.resultSceneImage,
           isRegeneratingRoundScene: false,
         }));
       } catch (err) {

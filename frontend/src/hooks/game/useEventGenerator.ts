@@ -111,9 +111,17 @@ export function useEventGenerator({
     console.log(`[generateEvent] Starting generation for gameId: ${gameId}`);
 
     abortRef.current?.abort();
-    // ★ 不无条件清空故事：如果已有故事内容，保留并继续流式追加；只有为空时才清空
-    const existingStory = useGameStore.getState()?.storyText;
-    if (existingStory && existingStory.length > 0) {
+    const storeState = useGameStore.getState();
+    const existingStory = storeState?.storyText;
+    const currentEvent = storeState?.currentEvent;
+    const shouldClearExistingStory = force ||
+      currentPhase === "error" ||
+      (!currentEvent?.options?.length);
+
+    if (shouldClearExistingStory) {
+      console.log("[generateEvent] Clearing existing story for retry/recovery flow");
+      setStoryText("");
+    } else if (existingStory && existingStory.length > 0) {
       console.log(`[generateEvent] Preserving existing story (${existingStory.length} chars), will append new content`);
     } else {
       setStoryText("");
@@ -188,6 +196,7 @@ export function useEventGenerator({
           const maxPollingTime = 180000;  // 3分钟，改善用户体验
           const pollInterval = 5000;      // 5秒，更快检测完成状态
           const startTime = Date.now();
+          let recoveredPartialStory = "";
 
           const pollForCompletion = async (): Promise<boolean> => {
             try {
@@ -207,6 +216,19 @@ export function useEventGenerator({
                 setRoundSummary(null);
                 return true;
               }
+
+              const partialStory =
+                state?.currentEvent?.story ||
+                state?.storyText ||
+                "";
+              if (partialStory.trim()) {
+                recoveredPartialStory = partialStory;
+                setStoryText(partialStory);
+                setCurrentEvent({
+                  story: partialStory,
+                  options: [],
+                });
+              }
               return false;
             } catch (pollErr) {
               console.error("Polling error:", pollErr);
@@ -222,12 +244,19 @@ export function useEventGenerator({
             console.log(`Polling... (${Math.round((Date.now() - startTime) / 1000)}s elapsed)`);
           }
 
-          console.warn("Polling timeout after 5 minutes, entering error state");
+          console.warn("Polling timeout after 3 minutes, entering error state");
           setProcessing(false);
           setConnectionStatus("error");
           generatingRef.current = false;
           pollingRef.current = false;
           isRetryingRef.current = false;
+          if (recoveredPartialStory.trim()) {
+            setStoryText(recoveredPartialStory);
+            setCurrentEvent({
+              story: recoveredPartialStory,
+              options: [],
+            });
+          }
           setPhase("error");
         },
       },

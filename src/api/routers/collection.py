@@ -101,6 +101,14 @@ def _build_entity_recognition_history(player_state: Any) -> List[Dict[str, Any]]
 def _extract_named_entities_from_settings(values: Any) -> List[str]:
     """Extract explicit entity names from structured character settings."""
     names: List[str] = []
+    if isinstance(values, dict):
+        if any(key in values for key in ("name", "person_name", "character_name")):
+            values = [values]
+        else:
+            values = [
+                value if isinstance(value, dict) and value.get("name") else key
+                for key, value in values.items()
+            ]
     if not isinstance(values, list):
         return names
 
@@ -121,23 +129,77 @@ def _extract_named_entities_from_settings(values: Any) -> List[str]:
     return names
 
 
+def _extend_unique_names(names: List[str], candidates: Any) -> None:
+    """Append non-empty candidate names while preserving first-seen order."""
+    for name in _extract_named_entities_from_settings(candidates):
+        if name and name not in names:
+            names.append(name)
+
+
+def _extend_relationship_effect_names(names: List[str], effects: Any) -> None:
+    if not isinstance(effects, dict):
+        return
+    relationships = effects.get("relationships")
+    if not isinstance(relationships, dict):
+        return
+    for name in relationships.keys():
+        clean_name = str(name).strip()
+        if clean_name and clean_name not in names:
+            names.append(clean_name)
+
+
 def _build_eligible_recognition_characters(player_state: Any) -> List[str]:
     """Characters eligible for smart recognition based on relationship metadata."""
     character_settings = getattr(player_state, "character_settings", None) or {}
     if not isinstance(character_settings, dict):
-        return []
+        character_settings = {}
 
     relationships = character_settings.get("relationships") or {}
     family = character_settings.get("family") or {}
 
     eligible: List[str] = []
     if isinstance(relationships, dict):
-        eligible.extend(_extract_named_entities_from_settings(relationships.get("key_people")))
-        eligible.extend(
-            _extract_named_entities_from_settings(relationships.get("important_people"))
-        )
+        _extend_unique_names(eligible, relationships.get("key_people"))
+        _extend_unique_names(eligible, relationships.get("important_people"))
     if isinstance(family, dict):
-        eligible.extend(_extract_named_entities_from_settings(family.get("family_members")))
+        _extend_unique_names(eligible, family.get("family_members"))
+
+    relationship_scores = getattr(player_state, "relationships", None)
+    if isinstance(relationship_scores, dict):
+        for name in relationship_scores.keys():
+            clean_name = str(name).strip()
+            if clean_name and clean_name not in eligible:
+                eligible.append(clean_name)
+
+    for entry in getattr(player_state, "round_history", None) or []:
+        if isinstance(entry, dict):
+            _extend_relationship_effect_names(eligible, entry.get("effects"))
+
+    current_event_data = getattr(player_state, "current_event_data", None) or {}
+    if isinstance(current_event_data, dict):
+        for option in current_event_data.get("options") or []:
+            if isinstance(option, dict):
+                _extend_relationship_effect_names(eligible, option.get("effects"))
+
+    for storyline in getattr(player_state, "pending_storylines", None) or []:
+        if isinstance(storyline, dict):
+            _extend_unique_names(eligible, storyline.get("related_characters"))
+
+    for seed in getattr(player_state, "foreshadowing_seeds", None) or []:
+        if isinstance(seed, dict):
+            _extend_unique_names(eligible, seed.get("related_characters"))
+
+    for habit in getattr(player_state, "character_habits", None) or []:
+        if isinstance(habit, dict):
+            _extend_unique_names(eligible, [habit.get("character")])
+
+    character_arc_state = getattr(player_state, "character_arc_state", None)
+    if isinstance(character_arc_state, dict):
+        _extend_unique_names(eligible, list(character_arc_state.keys()))
+
+    for world_event in getattr(player_state, "world_breathing_events", None) or []:
+        if isinstance(world_event, dict):
+            _extend_unique_names(eligible, world_event.get("affected_npcs"))
 
     player_name = getattr(player_state, "player_name", "") or character_settings.get(
         "player_name", ""

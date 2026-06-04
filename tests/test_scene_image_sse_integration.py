@@ -18,6 +18,7 @@ from jose import jwt
 os.environ.setdefault("JWT_SECRET", "test-secret-for-sse-integration")
 
 from src.api.main import app  # noqa: E402
+from src.database.models import Game, SessionLocal, init_db  # noqa: E402
 
 
 def _auth_headers(user_id: int = 1) -> dict:
@@ -28,6 +29,29 @@ def _auth_headers(user_id: int = 1) -> dict:
         algorithm="HS256",
     )
     return {"Authorization": f"Bearer {token}"}
+
+
+def _create_game(game_id: int, user_id: int = 1) -> None:
+    init_db()
+    db = SessionLocal()
+    try:
+        existing = db.query(Game).filter(Game.game_id == game_id).first()
+        if existing:
+            existing.user_id = user_id
+        else:
+            db.add(Game(game_id=game_id, user_id=user_id, language="zh", initial_state={}))
+        db.commit()
+    finally:
+        db.close()
+
+
+def _delete_game(game_id: int) -> None:
+    db = SessionLocal()
+    try:
+        db.query(Game).filter(Game.game_id == game_id).delete()
+        db.commit()
+    finally:
+        db.close()
 
 
 @pytest.mark.integration
@@ -78,6 +102,7 @@ class TestSceneImageSSEIntegration:
             "timestamp": "2026-04-19T10:00:00",
         }
         _scene_image_latest[f"{game_id}:1:2:event"] = event
+        _create_game(game_id)
 
         try:
             with TestClient(app) as client:
@@ -94,6 +119,7 @@ class TestSceneImageSSEIntegration:
                     assert data["stage"] == "event"
         finally:
             _scene_image_latest.pop(f"{game_id}:1:2:event", None)
+            _delete_game(game_id)
 
     def test_failed_event_cached_and_fetchable(self):
         """失败事件也应被缓存并能通过 SSE 获取"""
@@ -111,6 +137,7 @@ class TestSceneImageSSEIntegration:
             "timestamp": "2026-04-19T10:00:00",
         }
         _publish_scene_image_event(event)
+        _create_game(game_id)
 
         key = f"{game_id}:0:0:result"
         try:
@@ -127,6 +154,7 @@ class TestSceneImageSSEIntegration:
                     assert "error" in data
         finally:
             _scene_image_latest.pop(key, None)
+            _delete_game(game_id)
 
     def test_publish_from_thread_reaches_sse(self):
         """模拟后台线程发布事件，验证 SSE 端点能获取到"""
@@ -147,6 +175,7 @@ class TestSceneImageSSEIntegration:
                 "timestamp": "2026-04-19T10:00:00",
             }
         )
+        _create_game(game_id)
 
         key = f"{game_id}:0:0:result"
         try:
@@ -162,6 +191,7 @@ class TestSceneImageSSEIntegration:
                     assert data["image_url"] == "/api/images/file/generated.jpg"
         finally:
             _scene_image_latest.pop(key, None)
+            _delete_game(game_id)
 
     def test_event_key_format_consistency(self):
         """事件缓存键应使用统一格式 {game_id}:{week}:{round_number}:{stage}"""

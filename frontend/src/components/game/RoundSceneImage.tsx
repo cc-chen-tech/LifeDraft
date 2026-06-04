@@ -166,6 +166,13 @@ export function RoundSceneImageDisplay({
           {sceneImage.scene_description}
         </p>
 
+        {isLoading && (
+          <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            <span>正在获取或生成最新场景插画...</span>
+          </div>
+        )}
+
         {/* 重新生成输入框 */}
         {showRegenerateInput && (
           <div className="mt-3 pt-3 border-t border-border/50 space-y-2">

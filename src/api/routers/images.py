@@ -1,9 +1,13 @@
 """Image generation router - 图片生成API路由"""
 
+import asyncio
+import json
 import logging
-from typing import Generator, Optional
+from datetime import datetime
+from typing import Any, Dict, Generator, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user, get_current_user_optional
@@ -27,6 +31,31 @@ from src.services.image_storage import ImageStorageError, ImageStorageService
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+_scene_image_latest: Dict[str, Dict[str, Any]] = {}
+_scene_image_inflight: set[str] = set()
+
+
+def _get_event_key(game_id: int, week: int, round_number: int, stage: str) -> str:
+    """Return the stable SSE cache key for a scene image event."""
+    return f"{game_id}:{week}:{round_number}:{stage}"
+
+
+def _publish_scene_image_event(event: Dict[str, Any]) -> None:
+    """Publish a scene image event into the latest-event SSE cache."""
+    key = _get_event_key(
+        int(event["game_id"]),
+        int(event.get("week") or 0),
+        int(event.get("round_number") or 0),
+        str(event.get("stage") or "result"),
+    )
+    _scene_image_latest[key] = event
+
+
+async def _drain_pending_events() -> None:
+    """Compatibility task hook for app lifespan; events are cached synchronously."""
+    while True:
+        await asyncio.sleep(60)
+
 
 def get_session() -> Generator[Session, None, None]:
     """Get a SQLAlchemy session for image operations."""
@@ -35,6 +64,45 @@ def get_session() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+@router.get("/scene/events/{game_id}")
+async def scene_image_events(
+    request: Request,
+    game_id: int,
+    db: Session = Depends(get_session),
+    user: int = Depends(get_current_user),
+):
+    """Stream the latest scene image generation event for a game."""
+    verify_game_ownership(db, game_id, user)
+
+    async def event_stream():
+        emitted_keys: set[str] = set()
+        while True:
+            emitted_this_tick = False
+            for key, event in list(_scene_image_latest.items()):
+                if int(event.get("game_id", -1)) != game_id or key in emitted_keys:
+                    continue
+                emitted_this_tick = True
+                emitted_keys.add(key)
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+            if not emitted_this_tick:
+                heartbeat = {
+                    "type": "heartbeat",
+                    "game_id": game_id,
+                    "round_number": 0,
+                    "week": 0,
+                    "stage": "result",
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+                yield f"data: {json.dumps(heartbeat, ensure_ascii=False)}\n\n"
+
+            if await request.is_disconnected():
+                break
+            await asyncio.sleep(15)
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 def verify_game_ownership(db: Session, game_id: int, user_id: int) -> Game:
@@ -1191,6 +1259,14 @@ def _trigger_scene_generation_in_background(
         player_name: 玩家名称
     """
     import threading
+    key = _get_event_key(game_id, week, round_number, stage)
+
+    if key in _scene_image_inflight:
+        logger.info(
+            "[Background Generation] Skip duplicate scene generation request: "
+            f"game={game_id}, week={week}, round={round_number}, stage={stage}"
+        )
+        return
 
     def generate_in_thread():
         try:
@@ -1218,6 +1294,23 @@ def _trigger_scene_generation_in_background(
                 )
 
                 if scene_image:
+                    image_url = ImageStorageService().get_image_url(
+                        str(scene_image.storage_path),
+                        str(scene_image.storage_type),
+                    )
+                    _publish_scene_image_event(
+                        {
+                            "type": "scene_image_ready",
+                            "game_id": game_id,
+                            "round_number": round_number,
+                            "week": week,
+                            "stage": stage,
+                            "scene_id": scene_image.scene_id,
+                            "image_url": image_url,
+                            "scene_description": scene_image.scene_description,
+                            "timestamp": datetime.utcnow().isoformat(),
+                        }
+                    )
                     logger.info(
                         f"[Background Generation] Scene generated successfully: "
                         f"scene_id={scene_image.scene_id}, game={game_id}, {week_display}, "
@@ -1230,12 +1323,25 @@ def _trigger_scene_generation_in_background(
                     )
 
             except Exception as e:
+                _publish_scene_image_event(
+                    {
+                        "type": "scene_image_failed",
+                        "game_id": game_id,
+                        "round_number": round_number,
+                        "week": week,
+                        "stage": stage,
+                        "error": str(e),
+                        "timestamp": datetime.utcnow().isoformat(),
+                    }
+                )
                 logger.exception(f"[Background Generation] Error in thread: {e}")
             finally:
                 db.close()
+            _scene_image_inflight.discard(key)
 
         except Exception as e:
             logger.exception(f"[Background Generation] Failed to setup generation: {e}")
+            _scene_image_inflight.discard(key)
 
     # 启动后台线程
     thread = threading.Thread(
@@ -1243,8 +1349,14 @@ def _trigger_scene_generation_in_background(
         name=f"scene-gen-{game_id}-{week}-{round_number}-{stage}",
         daemon=True,
     )
-    thread.start()
-    logger.info(
-        f"[Background Generation] Thread started for game={game_id}, week={week}, "
-        f"round={round_number}, stage={stage}"
-    )
+    _scene_image_inflight.add(key)
+    try:
+        thread.start()
+        logger.info(
+            f"[Background Generation] Thread started for game={game_id}, week={week}, "
+            f"round={round_number}, stage={stage}"
+        )
+    except Exception as e:
+        _scene_image_inflight.discard(key)
+        logger.exception(f"[Background Generation] Failed to start thread: {e}")
+        raise

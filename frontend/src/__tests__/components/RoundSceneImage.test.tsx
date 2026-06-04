@@ -96,6 +96,20 @@ describe('RoundSceneImageDisplay', () => {
       expect(mockOnRefresh).toHaveBeenCalled();
     });
 
+    it('shows a clear in-progress status and disables image actions while refreshing an existing scene', () => {
+      render(
+        <RoundSceneImageDisplay
+          {...defaultProps}
+          sceneImage={mockSceneImage as any}
+          isLoading={true}
+        />
+      );
+
+      expect(screen.getByText('正在获取或生成最新场景插画...')).toBeInTheDocument();
+      expect(screen.getByText('刷新')).toBeDisabled();
+      expect(screen.getByText('重生成')).toBeDisabled();
+    });
+
     it('shows regenerate input when regenerate button clicked', async () => {
       render(
         <RoundSceneImageDisplay {...defaultProps} sceneImage={mockSceneImage as any} />

@@ -158,6 +158,8 @@ export default function PlayPage() {
     currentRound,
   } = usePlayGame();
 
+  const resultSceneRound = Math.max(0, currentRound - 1);
+
   // ★ 音乐 store：将当前故事文本和 gameId 传递给 GlobalMusicPlayer
   const setActiveStoryText = useMusicStore((state) => state.setActiveStoryText);
   const setActiveGameId = useMusicStore((state) => state.setActiveGameId);
@@ -543,9 +545,9 @@ export default function PlayPage() {
                   sceneImage={resultSceneImage}
                   isLoading={isLoadingRoundSceneImage}
                   isRegenerating={isRegeneratingRoundScene}
-                  currentRound={currentRound}
+                  currentRound={resultSceneRound}
                   label="结果场景"
-                  onRefresh={() => fetchRoundSceneImage(currentRound, "result")}
+                  onRefresh={() => fetchRoundSceneImage(resultSceneRound, "result")}
                   onRegenerate={regenerateRoundSceneImage}
                 />
               )}
@@ -556,9 +558,9 @@ export default function PlayPage() {
                   sceneImage={eventSceneImage}
                   isLoading={isLoadingRoundSceneImage}
                   isRegenerating={isRegeneratingRoundScene}
-                  currentRound={currentRound}
+                  currentRound={resultSceneRound}
                   label="事件场景"
-                  onRefresh={() => fetchRoundSceneImage(currentRound, "event")}
+                  onRefresh={() => fetchRoundSceneImage(resultSceneRound, "event")}
                   onRegenerate={regenerateRoundSceneImage}
                 />
               )}
