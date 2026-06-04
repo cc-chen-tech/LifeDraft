@@ -1,6 +1,7 @@
 """Early no-mock checks that should fail before slower DB/E2E layers."""
 
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 CHANGE_DIR = (
@@ -198,6 +199,20 @@ def test_api_runtime_files_remain_python39_import_compatible() -> None:
     )
 
     assert "str | None" not in router_source
+
+
+def test_backend_docker_python_version_supports_runtime_requirements() -> None:
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    requirements = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+
+    python_versions = [
+        tuple(int(part) for part in match.groups())
+        for match in re.finditer(r"^FROM python:(\d+)\.(\d+)-slim", dockerfile, re.MULTILINE)
+    ]
+
+    assert python_versions
+    assert "websockets>=16.0" in requirements
+    assert all(version >= (3, 10) for version in python_versions)
 
 
 def test_ai_heavy_e2e_specs_do_not_override_project_timeout_too_low() -> None:
