@@ -1,6 +1,30 @@
 """No-mock gate tests for lazy import paths touched by gameplay fixes."""
 
+import ast
 import importlib
+from pathlib import Path
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_minimax_websocket_runtime_dependency_is_available() -> None:
+    module = importlib.import_module("websockets.sync.client")
+    assert hasattr(module, "connect")
+
+
+def test_minimax_async_tts_provider_does_not_require_websocket_at_import_time() -> None:
+    source_path = PROJECT_ROOT / "src" / "services" / "minimax_story_tts_provider.py"
+    tree = ast.parse(source_path.read_text())
+
+    top_level_imports: list[str] = []
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            top_level_imports.extend(alias.name for alias in node.names)
+        if isinstance(node, ast.ImportFrom) and node.module:
+            top_level_imports.append(node.module)
+
+    assert "websockets.sync.client" not in top_level_imports
 
 
 def test_gameplay_lazy_import_paths_are_reachable() -> None:
@@ -69,6 +93,23 @@ def test_story_voice_reading_import_paths_are_reachable() -> None:
         ("src.database.models", "VoiceReadingSetting"),
         ("src.database.models", "VoiceReadingJob"),
         ("src.database.models", "GeneratedVoiceAsset"),
+    ]
+
+    for module_name, attr_name in imports:
+        module = importlib.import_module(module_name)
+        assert hasattr(module, attr_name), f"{module_name}.{attr_name} is not importable"
+
+
+def test_minimax_story_audio_generation_import_paths_are_reachable() -> None:
+    imports = [
+        ("src.services.minimax_config", "MiniMaxConfig"),
+        ("src.services.minimax_config", "build_minimax_config"),
+        ("src.services.minimax_story_tts_provider", "MiniMaxTTSProvider"),
+        ("src.services.minimax_story_tts_provider", "MiniMaxWebSocketTTSClient"),
+        ("src.services.minimax_music_generation", "MiniMaxMusicGenerationProvider"),
+        ("src.services.minimax_music_generation", "MiniMaxMusicGenerationRequest"),
+        ("src.services.minimax_music_generation", "StoryMusicGenerationService"),
+        ("src.services.minimax_music_generation", "GeneratedMusicAssetRepository"),
     ]
 
     for module_name, attr_name in imports:

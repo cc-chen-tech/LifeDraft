@@ -7,7 +7,7 @@ import { create } from "zustand";
 import type { CharacterSettings } from "@/lib/types";
 
 export interface Song {
-  id: number;
+  id: number | string;
   name: string;
   artists: string[];
   album: string;
@@ -15,6 +15,9 @@ export interface Song {
   url?: string;
   source?: "netease" | "ai_generated";
   asset_id?: number;
+  provider?: string;
+  model?: string;
+  brief_hash?: string;
 }
 
 export interface MusicRecommendation {
@@ -28,6 +31,7 @@ export interface MusicRecommendation {
   pacing?: string;           // 叙事节奏（舒缓、紧凑等）
   time_weather?: string;     // 时间天气（清晨、雨天等）
   description?: string;      // 音乐氛围描述
+  music_brief?: Record<string, unknown>;
   songs: Song[];
 }
 
@@ -36,7 +40,7 @@ export interface MusicQueueMergeResult {
   queue: Song[];
 }
 
-function songKey(song: Song): number {
+function songKey(song: Song): number | string {
   return song.id;
 }
 
@@ -78,8 +82,8 @@ export function getMusicSourceLabel(source: Song["source"] | undefined): string 
   return source === "ai_generated" ? "AI" : "";
 }
 
-function dedupeSongs(songs: Song[], excludedId: number | undefined): Song[] {
-  const seenIds = new Set<number>();
+function dedupeSongs(songs: Song[], excludedId: number | string | undefined): Song[] {
+  const seenIds = new Set<number | string>();
   const result: Song[] = [];
   for (const song of songs) {
     const id = songKey(song);
@@ -148,6 +152,12 @@ interface MusicState {
   setPlaylistGameId: (gameId: number | null) => void;
   loadPlaylist: (gameId: number) => Promise<void>;
   mergePlaylist: (gameId: number, songs: Song[], mood?: string, keywords?: string[]) => Promise<void>;
+  insertGeneratedTrack: (track: Song) => void;
+  generateAiMusicForStory: (
+    storyText: string,
+    gameId: number,
+    analysis?: Record<string, unknown>
+  ) => Promise<void>;
   syncPlaylistState: (gameId: number, positionMs: number, isPlaying: boolean, volume: number) => Promise<void>;
   advanceQueue: () => Promise<void>;
 
@@ -313,6 +323,39 @@ export const useMusicStore = create<MusicState>((set, get) => ({
     });
   },
 
+  insertGeneratedTrack: (track: Song) => {
+    const { queue, recommendation } = get();
+    const generatedId = songKey(track);
+    const nextQueue = queue.filter((item) => songKey(item) !== generatedId);
+    const insertAt = nextQueue.length > 0 ? 1 : 0;
+    nextQueue.splice(insertAt, 0, track);
+
+    let nextRecommendation = recommendation;
+    if (recommendation) {
+      const songs = recommendation.songs.filter((item) => songKey(item) !== generatedId);
+      const recommendationInsertAt = songs.length > 1 ? 2 : songs.length;
+      songs.splice(recommendationInsertAt, 0, track);
+      nextRecommendation = { ...recommendation, songs };
+    }
+
+    set({ queue: nextQueue, recommendation: nextRecommendation });
+  },
+
+  generateAiMusicForStory: async (storyText, gameId, analysis) => {
+    if (!storyText.trim()) return;
+    if (typeof window !== "undefined") {
+      const disabled = window.localStorage.getItem("story_music_ai_generation_disabled");
+      if (disabled === "1" || disabled === "true") return;
+    }
+
+    try {
+      const result = await fetchGeneratedMusic(storyText, gameId, analysis);
+      get().insertGeneratedTrack(result.track);
+    } catch (error) {
+      console.warn("[MusicStore] AI music generation unavailable:", error);
+    }
+  },
+
   syncPlaylistState: async (_gameId: number, _positionMs: number, _isPlaying: boolean, _volume: number) => {
     // Local-only: state is managed client-side
   },
@@ -405,6 +448,32 @@ export async function fetchMusicRecommendation(
   return response.json();
 }
 
+export async function fetchGeneratedMusic(
+  storyText: string,
+  gameId: number,
+  analysis?: Record<string, unknown>
+): Promise<{ track: Song; insert_policy: "future_queue" }> {
+  const response = await fetch(`${API_BASE}/music/generate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    credentials: "include",
+    body: JSON.stringify({
+      story_text: storyText,
+      game_id: gameId,
+      analysis: analysis ?? {},
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "请求失败" }));
+    throw new Error(error.detail || "生成音乐失败");
+  }
+
+  return response.json();
+}
+
 export async function fetchSongUrl(songId: number): Promise<string> {
   const response = await fetch(
     `${API_BASE}/music/song-url?song_id=${songId}`,
@@ -429,8 +498,8 @@ export async function fetchSongUrl(songId: number): Promise<string> {
 export async function preloadAllSongUrls(
   songs: Song[],
   onProgress?: (loaded: number, total: number) => void
-): Promise<Map<number, string>> {
-  const urlMap = new Map<number, string>();
+): Promise<Map<number | string, string>> {
+  const urlMap = new Map<number | string, string>();
   const total = songs.length;
   let loaded = 0;
 
@@ -442,6 +511,9 @@ export async function preloadAllSongUrls(
     const results = await Promise.allSettled(
       batch.map(async (song) => {
         try {
+          if (typeof song.id !== "number") {
+            return { id: song.id, url: song.url ?? null };
+          }
           const url = await fetchSongUrl(song.id);
           return { id: song.id, url };
         } catch (error) {

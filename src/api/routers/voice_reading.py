@@ -83,15 +83,18 @@ async def get_voice_reading_job(
 
 @router.get("/audio/{file_name}")
 async def get_voice_reading_audio(file_name: str) -> Response:
-    if not file_name.endswith(".wav"):
+    if not (file_name.endswith(".wav") or file_name.endswith(".mp3")):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio not found")
     generated_audio = read_generated_voice_file(file_name)
     if generated_audio is not None:
+        media_type = "audio/mpeg" if file_name.endswith(".mp3") else "audio/wav"
         return Response(
             content=generated_audio,
-            media_type="audio/wav",
+            media_type=media_type,
             headers={"Cache-Control": "public, max-age=31536000, immutable"},
         )
+    if not file_name.endswith(".wav"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio not found")
     stem = file_name[:-4]
     marker = "-"
     if marker not in stem:

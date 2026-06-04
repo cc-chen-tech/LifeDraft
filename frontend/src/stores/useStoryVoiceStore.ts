@@ -14,6 +14,7 @@ interface StoryVoiceState {
   currentContextLabel: string;
   currentAudioUrl: string;
   currentJobId: number | null;
+  currentProvider: string;
   playbackMode: StoryVoicePlaybackMode;
   spokenTextLength: number;
   currentSpeechText: string;
@@ -81,6 +82,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
   currentContextLabel: "",
   currentAudioUrl: "",
   currentJobId: null,
+  currentProvider: "",
   playbackMode: "none",
   spokenTextLength: 0,
   currentSpeechText: "",
@@ -103,6 +105,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       currentContextLabel: contextLabel(context),
       currentAudioUrl: "",
       currentJobId: null,
+      currentProvider: "",
       currentSpeechText: "",
       playbackMode: "none",
       spokenTextLength: 0,
@@ -124,6 +127,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
         set({
           readingState: "failed",
           currentJobId: jobId,
+          currentProvider: "browser",
           currentAudioUrl: "",
           playbackMode: "browser_speech",
           spokenTextLength: context.text.length,
@@ -164,6 +168,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
         readingState: "playing",
         currentAudioUrl: "",
         currentJobId: jobId,
+        currentProvider: "browser",
         playbackMode: "browser_speech",
         spokenTextLength: context.text.length,
         currentSpeechText: context.text,
@@ -194,6 +199,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
         set({
           readingState: "failed",
           currentJobId: response.job_id,
+          currentProvider: response.provider,
           currentAudioUrl: "",
           playbackMode: response.playback_mode,
           errorMessage: response.error_code ?? response.message,
@@ -210,6 +216,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
           readingState: "playing",
           currentAudioUrl: response.audio_url ?? "",
           currentJobId: response.job_id,
+          currentProvider: response.provider,
           playbackMode: "audio",
           spokenTextLength: 0,
           currentSpeechText: "",
@@ -232,6 +239,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
         readingState: "failed",
         currentAudioUrl: "",
         currentJobId: null,
+        currentProvider: "",
         playbackMode: "none",
         errorMessage: error instanceof Error ? error.message : "Reading request failed",
         musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
@@ -251,6 +259,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       readingState: "idle",
       currentAudioUrl: "",
       currentJobId: null,
+      currentProvider: "",
       playbackMode: "none",
       spokenTextLength: 0,
       currentSpeechText: "",

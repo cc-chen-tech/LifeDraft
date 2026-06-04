@@ -1,0 +1,290 @@
+"""MiniMax story text-to-speech provider."""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import time
+from pathlib import Path
+from typing import Any, Dict, Mapping, Optional, cast
+from urllib.parse import urlparse
+
+import httpx
+
+from src.services.minimax_config import MiniMaxConfig, build_minimax_config
+from src.services.story_tts_provider import (
+    BrowserSpeechTTSProvider,
+    GeneratedSpeech,
+    StoryTTSProviderMetadata,
+    build_deterministic_wav,
+)
+
+
+class MiniMaxWebSocketTTSClient:
+    """Small boundary for MiniMax WebSocket TTS synthesis."""
+
+    def __init__(self, config: MiniMaxConfig) -> None:
+        self.config = config
+
+    def synthesize_to_file(
+        self,
+        payload: Mapping[str, Any],
+        output_path: Path,
+    ) -> None:
+        """Write synthesized audio to `output_path`.
+
+        The real network implementation is intentionally isolated here so provider
+        contracts and DB tests can exercise all higher layers without credentials.
+        """
+        if os.getenv("MINIMAX_E2E_LOCAL_AUDIO", "0") == "1":
+            text = str(payload.get("text") or "minimax-local-audio")
+            text_hash = str(abs(hash(text)))
+            output_path.write_bytes(build_deterministic_wav(text_hash, "warm_female"))
+            return
+        from websockets.sync.client import connect
+
+        audio_chunks: list[bytes] = []
+        with connect(
+            self.config.tts_websocket_url,
+            additional_headers={"Authorization": f"Bearer {self.config.api_key or ''}"},
+            open_timeout=self.config.request_timeout_seconds,
+            close_timeout=self.config.request_timeout_seconds,
+        ) as websocket:
+            websocket.send(_json_dumps(payload))
+            for message in websocket:
+                audio_hex = _extract_audio_hex(json.loads(str(message)))
+                if audio_hex:
+                    audio_chunks.append(bytes.fromhex(audio_hex))
+                if _is_done_message(json.loads(str(message))):
+                    break
+        if not audio_chunks:
+            raise RuntimeError("MiniMax WebSocket synthesis returned no audio")
+        output_path.write_bytes(b"".join(audio_chunks))
+
+
+class MiniMaxAsyncTTSClient:
+    """Boundary for MiniMax async TTS task creation, polling, and download."""
+
+    def __init__(self, config: MiniMaxConfig) -> None:
+        self.config = config
+
+    def synthesize_to_file(
+        self,
+        payload: Mapping[str, Any],
+        output_path: Path,
+    ) -> None:
+        if self.config.local_audio_enabled:
+            text = str(payload.get("text") or "minimax-local-audio")
+            text_hash = str(abs(hash(text)))
+            output_path.write_bytes(build_deterministic_wav(text_hash, "warm_female"))
+            return
+
+        create_response = self._post_json(self.config.tts_async_create_url, payload)
+        _raise_for_base_resp(create_response)
+        task_id = create_response.get("task_id")
+        if task_id is None:
+            raise RuntimeError("MiniMax async TTS create response did not include task_id")
+        file_id = create_response.get("file_id")
+
+        query_response: Mapping[str, Any] = create_response
+        for _ in range(12):
+            query_response = self._get_json(
+                self.config.tts_async_query_url,
+                {"task_id": str(task_id)},
+            )
+            _raise_for_base_resp(query_response)
+            status = str(query_response.get("status") or "").lower()
+            if status == "success":
+                file_id = query_response.get("file_id") or file_id
+                break
+            if status in {"failed", "expired"}:
+                raise RuntimeError(f"MiniMax async TTS task ended with status {status}")
+            time.sleep(0.5)
+        else:
+            raise RuntimeError("MiniMax async TTS task did not complete before timeout")
+
+        if file_id is None:
+            raise RuntimeError("MiniMax async TTS query response did not include file_id")
+        output_path.write_bytes(self._download_file(file_id))
+
+    def _post_json(self, url: str, payload: Mapping[str, Any]) -> Mapping[str, Any]:
+        _ensure_http_url(url)
+        response = httpx.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {self.config.api_key or ''}",
+                "Content-Type": "application/json",
+            },
+            json=dict(payload),
+            timeout=self.config.request_timeout_seconds,
+        )
+        response.raise_for_status()
+        return cast(Mapping[str, Any], response.json())
+
+    def _get_json(self, url: str, query: Mapping[str, str]) -> Mapping[str, Any]:
+        _ensure_http_url(url)
+        response = httpx.get(
+            url,
+            headers={"Authorization": f"Bearer {self.config.api_key or ''}"},
+            params=dict(query),
+            timeout=self.config.request_timeout_seconds,
+        )
+        response.raise_for_status()
+        return cast(Mapping[str, Any], response.json())
+
+    def _download_file(self, file_id: Any) -> bytes:
+        _ensure_http_url(self.config.file_retrieve_url)
+        response = httpx.get(
+            self.config.file_retrieve_url,
+            headers={"Authorization": f"Bearer {self.config.api_key or ''}"},
+            params={"file_id": str(file_id)},
+            timeout=self.config.request_timeout_seconds,
+        )
+        response.raise_for_status()
+        return response.content
+
+
+class MiniMaxTTSProvider:
+    """MiniMax-backed story TTS provider with browser speech fallback."""
+
+    provider = "minimax"
+
+    def __init__(
+        self,
+        config: Optional[MiniMaxConfig] = None,
+        client: Optional[MiniMaxAsyncTTSClient] = None,
+    ) -> None:
+        self.config = config or build_minimax_config()
+        self.model = self.config.tts_model
+        self.client = client or MiniMaxAsyncTTSClient(self.config)
+
+    def metadata(self) -> StoryTTSProviderMetadata:
+        available = bool(self.config.api_key)
+        return StoryTTSProviderMetadata(
+            provider=self.provider,
+            model=self.model,
+            playback_mode="audio" if available else "browser_speech",
+            media_type="audio/mpeg" if available else None,
+            available=available,
+            backend_audio_enabled=available,
+        )
+
+    def build_async_create_payload(
+        self,
+        text: str,
+        voice_id: str,
+        speed: float,
+    ) -> Dict[str, Any]:
+        return {
+            "model": self.model,
+            "text": text,
+            "language_boost": "auto",
+            "voice_setting": {
+                "voice_id": _map_voice_id(voice_id),
+                "speed": speed,
+                "vol": 1.0,
+                "pitch": 0,
+            },
+            "audio_setting": {
+                "audio_sample_rate": 32000,
+                "bitrate": 128000,
+                "format": "mp3",
+                "channel": 1,
+            },
+        }
+
+    def build_websocket_start_payload(
+        self,
+        text: str,
+        voice_id: str,
+        speed: float,
+    ) -> Dict[str, Any]:
+        payload = self.build_async_create_payload(text, voice_id, speed)
+        payload["stream"] = False
+        payload.pop("language_boost", None)
+        return payload
+
+    def synthesize(self, context: Dict[str, Any], voice_id: str, speed: float) -> GeneratedSpeech:
+        if not self.config.api_key:
+            return BrowserSpeechTTSProvider().synthesize(context, voice_id, speed)
+
+        text = str(context["text"])
+        if len(text) > self.config.tts_max_chars:
+            return BrowserSpeechTTSProvider().synthesize(context, voice_id, speed)
+        text_hash = str(context["text_hash"])
+        extension = "wav" if os.getenv("MINIMAX_E2E_LOCAL_AUDIO", "0") == "1" else "mp3"
+        media_type = "audio/wav" if extension == "wav" else "audio/mpeg"
+        file_name = (
+            f"{_safe_token(text_hash)}-{_safe_token(voice_id)}-"
+            f"{_safe_token(self.provider)}-{_safe_token(self.model)}.{extension}"
+        )
+        self.config.voice_asset_dir.mkdir(parents=True, exist_ok=True)
+        output_path = self.config.voice_asset_dir / file_name
+        if not output_path.exists():
+            payload = self.build_async_create_payload(text, voice_id, speed)
+            try:
+                self.client.synthesize_to_file(payload, output_path)
+            except Exception:
+                return BrowserSpeechTTSProvider().synthesize(context, voice_id, speed)
+
+        return GeneratedSpeech(
+            storage_path=f"/api/voice-reading/audio/{file_name}",
+            duration_ms=max(1_000, int(len(text) * 120 / speed)),
+            provider=self.provider,
+            model=self.model,
+            media_type=media_type,
+            playback_mode="audio",
+        )
+
+
+def _map_voice_id(voice_id: str) -> str:
+    return {
+        "warm_female": "female-shaonv",
+        "calm_male": "male-qn-qingse",
+        "clear_neutral": "female-yujie",
+    }.get(voice_id, "female-shaonv")
+
+
+def _safe_token(value: str) -> str:
+    token = re.sub(r"[^A-Za-z0-9_-]+", "-", value).strip("-_")
+    return token or "unknown"
+
+
+def _json_dumps(payload: Mapping[str, Any]) -> str:
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+
+def _extract_audio_hex(payload: Mapping[str, Any]) -> Optional[str]:
+    candidates = [payload.get("audio")]
+    data = payload.get("data")
+    if isinstance(data, Mapping):
+        candidates.extend([data.get("audio"), data.get("audio_hex")])
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate:
+            return candidate
+    return None
+
+
+def _is_done_message(payload: Mapping[str, Any]) -> bool:
+    candidates = [payload.get("status"), payload.get("event")]
+    data = payload.get("data")
+    if isinstance(data, Mapping):
+        candidates.extend([data.get("status"), data.get("event")])
+    return any(str(candidate).lower() in {"done", "finished", "complete"} for candidate in candidates)
+
+
+def _raise_for_base_resp(payload: Mapping[str, Any]) -> None:
+    base_resp = payload.get("base_resp")
+    if not isinstance(base_resp, Mapping):
+        return
+    status_code = int(base_resp.get("status_code") or 0)
+    if status_code != 0:
+        status_msg = str(base_resp.get("status_msg") or "unknown")
+        raise RuntimeError(f"MiniMax async TTS request failed: {status_code} {status_msg}")
+
+
+def _ensure_http_url(url: str) -> None:
+    scheme = urlparse(url).scheme.lower()
+    if scheme not in {"http", "https"}:
+        raise ValueError("MiniMax async TTS URLs must use http or https")

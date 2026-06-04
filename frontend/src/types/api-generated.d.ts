@@ -1614,6 +1614,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/music/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Music
+         * @description Generate story-conditioned AI music without blocking recommendation search.
+         */
+        post: operations["generate_music_api_music_generate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/music/song-url": {
         parameters: {
             query?: never;
@@ -1648,6 +1668,26 @@ export interface paths {
          * @description 直接搜索音乐
          */
         get: operations["search_music_api_music_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/music/generated/{file_name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Generated Music
+         * @description Serve provider-generated music assets from the configured asset directory.
+         */
+        get: operations["get_generated_music_api_music_generated__file_name__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2493,6 +2533,32 @@ export interface components {
             data?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /**
+         * MusicGenerationRequest
+         * @description Request body for story-conditioned generated music.
+         */
+        MusicGenerationRequest: {
+            /** Game Id */
+            game_id: number;
+            /** Story Text */
+            story_text: string;
+            /** Analysis */
+            analysis?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * MusicGenerationResponse
+         * @description Generated music result for frontend queue insertion.
+         */
+        MusicGenerationResponse: {
+            /** Track */
+            track: {
+                [key: string]: unknown;
+            };
+            /** Insert Policy */
+            insert_policy: string;
         };
         /**
          * MusicRecommendationRequest
@@ -5810,6 +5876,39 @@ export interface operations {
             };
         };
     };
+    generate_music_api_music_generate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MusicGenerationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MusicGenerationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_song_url_api_music_song_url_get: {
         parameters: {
             query: {
@@ -5852,6 +5951,37 @@ export interface operations {
             };
             header?: never;
             path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_generated_music_api_music_generated__file_name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                file_name: string;
+            };
             cookie?: never;
         };
         requestBody?: never;

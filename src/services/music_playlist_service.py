@@ -194,6 +194,29 @@ class MusicPlaylistService:
         return PlaylistQueuePolicy().insert_generated_track(playlist, generated_track)
 
     @classmethod
+    def insert_generated_track_for_game(
+        cls,
+        db: Session,
+        game_id: int,
+        generated_track: SongDict,
+    ) -> PlaylistState:
+        """Persist a generated track into a game's future queue."""
+        playlist = cls.get_or_create(db, game_id)
+        playlist_data = cast(Any, playlist)
+        updated = PlaylistQueuePolicy().insert_generated_track(
+            {
+                "current_song": playlist_data.current_song_json,
+                "queue": list(playlist_data.queue_json or []),
+            },
+            generated_track,
+        )
+        playlist_data.current_song_json = updated["current_song"]
+        playlist_data.queue_json = updated["queue"]
+        db.commit()
+        db.refresh(playlist)
+        return cls._to_state(playlist)
+
+    @classmethod
     def sync_state(
         cls,
         db: Session,

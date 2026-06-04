@@ -4042,6 +4042,48 @@
         ]
       }
     },
+    "/api/music/generate": {
+      "post": {
+        "tags": [
+          "Music"
+        ],
+        "summary": "Generate Music",
+        "description": "Generate story-conditioned AI music without blocking recommendation search.",
+        "operationId": "generate_music_api_music_generate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MusicGenerationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MusicGenerationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/music/song-url": {
       "get": {
         "tags": [
@@ -4130,6 +4172,47 @@
               "title": "Limit"
             },
             "description": "返回数量"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/music/generated/{file_name}": {
+      "get": {
+        "tags": [
+          "Music"
+        ],
+        "summary": "Get Generated Music",
+        "description": "Serve provider-generated music assets from the configured asset directory.",
+        "operationId": "get_generated_music_api_music_generated__file_name__get",
+        "parameters": [
+          {
+            "name": "file_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Name"
+            }
           }
         ],
         "responses": {
@@ -5854,6 +5937,50 @@
           "message"
         ],
         "title": "MessageResponse"
+      },
+      "MusicGenerationRequest": {
+        "properties": {
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "story_text": {
+            "type": "string",
+            "title": "Story Text"
+          },
+          "analysis": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Analysis"
+          }
+        },
+        "type": "object",
+        "required": [
+          "game_id",
+          "story_text"
+        ],
+        "title": "MusicGenerationRequest",
+        "description": "Request body for story-conditioned generated music."
+      },
+      "MusicGenerationResponse": {
+        "properties": {
+          "track": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Track"
+          },
+          "insert_policy": {
+            "type": "string",
+            "title": "Insert Policy"
+          }
+        },
+        "type": "object",
+        "required": [
+          "track",
+          "insert_policy"
+        ],
+        "title": "MusicGenerationResponse",
+        "description": "Generated music result for frontend queue insertion."
       },
       "MusicRecommendationRequest": {
         "properties": {

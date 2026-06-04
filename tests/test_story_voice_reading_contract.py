@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from fastapi.testclient import TestClient
+
 from src.api.main import app
 from src.api.schemas import (
     ReadingContext,
@@ -149,3 +151,25 @@ def test_story_voice_response_does_not_force_wav_for_browser_fallback() -> None:
     assert {"playback_mode", "provider", "model", "media_type"} <= fields
     assert "browser_speech" in FRONTEND_TYPES
     assert "currentSpeechText" in store
+
+
+def test_voice_reading_audio_route_serves_minimax_mp3_assets(tmp_path: Path) -> None:
+    import os
+
+    asset_dir = tmp_path / "voice-assets"
+    asset_dir.mkdir()
+    mp3_file = asset_dir / "minimax-story.mp3"
+    mp3_file.write_bytes(b"ID3\x04\x00\x00\x00\x00\x00\x00")
+    previous_asset_dir = os.environ.get("STORY_TTS_ASSET_DIR")
+    os.environ["STORY_TTS_ASSET_DIR"] = str(asset_dir)
+    try:
+        response = TestClient(app).get("/api/voice-reading/audio/minimax-story.mp3")
+    finally:
+        if previous_asset_dir is None:
+            os.environ.pop("STORY_TTS_ASSET_DIR", None)
+        else:
+            os.environ["STORY_TTS_ASSET_DIR"] = previous_asset_dir
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("audio/mpeg")
+    assert response.content.startswith(b"ID3")
