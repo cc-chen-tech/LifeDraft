@@ -7,7 +7,9 @@
  */
 import { Page, BrowserContext, expect } from '@playwright/test';
 
-const API_URL = 'http://localhost:8000';
+const API_HOST = process.env.E2E_BACKEND_HOST || '127.0.0.1';
+const API_PORT = process.env.E2E_BACKEND_PORT || '8000';
+const API_URL = `http://${API_HOST}:${API_PORT}`;
 
 /**
  * 注册一个新用户并设置 Cookie
@@ -23,6 +25,13 @@ export async function registerUser(
 
   if (registerResponse.ok()) {
     const data = await registerResponse.json();
+    const cookies = await context.cookies();
+    const apiCookies = cookies.filter(
+      c => ['localhost', '127.0.0.1'].includes(c.domain) || API_HOST.includes(c.domain) || c.domain === 'localhost.localdomain',
+    );
+    if (apiCookies.length > 0) {
+      await context.addCookies(apiCookies.map(c => ({ ...c, domain: 'localhost' })));
+    }
     return data;
   }
   return null;
@@ -63,7 +72,9 @@ export async function ensureAuthenticated(page: Page, context: BrowserContext): 
 
     // 显式同步 cookie 到 context（WebKit 移动端需要）
     const cookies = await context.cookies();
-    const apiCookies = cookies.filter(c => API_URL.includes(c.domain) || c.domain === 'localhost');
+    const apiCookies = cookies.filter(
+      c => ['localhost', '127.0.0.1'].includes(c.domain) || API_HOST.includes(c.domain) || c.domain === 'localhost.localdomain',
+    );
     if (apiCookies.length > 0) {
       await context.addCookies(apiCookies.map(c => ({ ...c, domain: 'localhost' })));
     }

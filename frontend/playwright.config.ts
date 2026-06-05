@@ -2,6 +2,35 @@ import { defineConfig, devices } from '@playwright/test';
 
 const frontendPort = process.env.E2E_FRONTEND_PORT ?? '3000';
 const frontendBaseURL = `http://localhost:${frontendPort}`;
+const browserChannel = process.env.E2E_BROWSER_CHANNEL?.trim();
+const chromeExecutable = process.env.E2E_CHROME_EXECUTABLE?.trim();
+const parseBooleanEnv = (value: string | undefined): boolean | null => {
+  if (value === undefined) return null;
+  const normalized = value.trim().toLowerCase();
+  return ['1', 'true', 'yes', 'on'].includes(normalized);
+};
+
+const ciEnabled = parseBooleanEnv(process.env.CI) === true;
+const hasExplicitNoSandbox = process.env.E2E_NO_SANDBOX !== undefined;
+const explicitNoSandbox = parseBooleanEnv(process.env.E2E_NO_SANDBOX);
+const noSandbox = hasExplicitNoSandbox ? explicitNoSandbox === true : ciEnabled;
+
+const launchArgs = noSandbox ? ['--no-sandbox', '--disable-dev-shm-usage'] : [];
+const ignoreLaunchDefaultArgs = noSandbox ? [] : ['--no-sandbox'];
+const launchOptions =
+  chromeExecutable || launchArgs.length || !noSandbox
+    ? {
+        ...(chromeExecutable ? { executablePath: chromeExecutable } : {}),
+        ...(launchArgs.length ? { args: launchArgs } : {}),
+        ...(ignoreLaunchDefaultArgs.length > 0 ? { ignoreDefaultArgs: ignoreLaunchDefaultArgs } : {}),
+      }
+    : {};
+
+const desktopChromeUse = {
+  ...devices['Desktop Chrome'],
+  ...(browserChannel ? { channel: browserChannel } : {}),
+  ...(Object.keys(launchOptions).length ? { launchOptions } : {}),
+};
 
 /**
  * E2E 测试配置 - 双阶段执行策略
@@ -14,9 +43,9 @@ const frontendBaseURL = `http://localhost:${frontendPort}`;
  *    方案：ai-heavy 项目使用 5 分钟超时 + 重试 + 串行执行
  *
  * 执行顺序：
- *   Phase 1: core (非 AI 测试) - 快速、稳定、不消耗服务器资源
- *   Phase 2: ai-heavy (AI 测试) - 慢速、资源密集、串行执行
- *   Phase 3: mobile (非 AI 测试, 仅本地) - 移动端验证
+ *   Phase 1: core (非 AI) - 快速、稳定、不消耗服务器资源
+ *   Phase 2: ai-heavy (AI 资源密集) - 慢速、串行执行
+ *   Phase 3: mobile (非 AI) - 移动端验证
  */
 
 // ============================================================================
@@ -24,17 +53,17 @@ const frontendBaseURL = `http://localhost:${frontendPort}`;
 // 这些测试会触发真实 LLM 调用，消耗大量服务器资源
 // ============================================================================
 const AI_HEAVY_TESTS = [
-  '**/narrative-systems.spec.ts',         // 三大叙事系统集成, 多个 120s timeout
+  '**/narrative-systems.spec.ts',           // 三大叙事系统集成, 多个 120s timeout
   '**/character-settings-persistence.spec.ts', // 角色设置持久化, 300s timeout
-  '**/music-player.spec.ts',              // 音乐播放器, 180s (需 AI 生成故事 + 音乐推荐)
-  '**/music-playlist-persistence.spec.ts', // 播放列表持久化, 180s
-  '**/sse-timeout-sync.spec.ts',          // SSE 超时同步, 创建游戏触发 AI 生成
-  '**/claude-code-improvements.spec.ts',  // 进度显示验证, 120s (需 AI 生成过程)
-  '**/full-game-flow.spec.ts',            // 完整游戏流程, 120s
-  '**/stability.spec.ts',                 // 稳定性测试, 90s
-  '**/event-generation-race.spec.ts',     // 事件生成竞态, 120s
-  '**/story-summary.spec.ts',             // 故事总结, 创建游戏触发 AI
-  '**/choice-impact-visible.spec.ts',      // 选择影响可见性, 需要真实 AI 响应
+  '**/music-player.spec.ts',                // 音乐播放器, 180s (需 AI 生成故事 + 音乐推荐)
+  '**/music-playlist-persistence.spec.ts',  // 播放列表持久化, 180s
+  '**/sse-timeout-sync.spec.ts',            // SSE 超时同步, 创建游戏触发 AI 生成
+  '**/claude-code-improvements.spec.ts',    // 进度显示验证, 120s (需 AI 生成过程)
+  '**/full-game-flow.spec.ts',              // 完整游戏流程, 120s
+  '**/stability.spec.ts',                   // 稳定性测试, 90s
+  '**/event-generation-race.spec.ts',       // 事件生成竞态, 120s
+  '**/story-summary.spec.ts',               // 故事总结, 创建游戏触发 AI
+  '**/choice-impact-visible.spec.ts',       // 选择影响可见性, 需要真实 AI 响应
   '**/era-validator-no-false-positive.spec.ts', // 时代验证器, 需要真实 AI 响应
 ];
 
@@ -84,22 +113,22 @@ export default defineConfig({
         {
           name: 'core',
           testIgnore: [...AI_HEAVY_TESTS, ...MANUAL_EXPLORATION_TESTS],
-          use: { ...devices['Desktop Chrome'] },
+          use: desktopChromeUse,
         },
         {
           name: 'ai-heavy',
           testMatch: AI_HEAVY_TESTS,
           dependencies: ['core'],
-          use: { ...devices['Desktop Chrome'] },
+          use: desktopChromeUse,
           timeout: 300_000,     // 5 分钟超时
           retries: 2,           // AI 测试多重试
-          fullyParallel: false, // 串行执行, 减少资源竞争
+          fullyParallel: false,  // 串行执行, 减少资源竞争
         },
         ...(process.env.STORY101_DEEP_EXPLORATION === '1'
           ? [{
               name: 'story101-exploration',
               testMatch: MANUAL_EXPLORATION_TESTS,
-              use: { ...devices['Desktop Chrome'] },
+              use: desktopChromeUse,
               timeout: 1_800_000,
               retries: 0,
               fullyParallel: false,
@@ -114,7 +143,7 @@ export default defineConfig({
         {
           name: 'core',
           testIgnore: [...AI_HEAVY_TESTS, ...MANUAL_EXPLORATION_TESTS],
-          use: { ...devices['Desktop Chrome'] },
+          use: desktopChromeUse,
         },
 
         // Phase 2: AI 重度测试
@@ -123,7 +152,7 @@ export default defineConfig({
           name: 'ai-heavy',
           testMatch: AI_HEAVY_TESTS,
           dependencies: ['core'],
-          use: { ...devices['Desktop Chrome'] },
+          use: desktopChromeUse,
           timeout: 300_000,      // 5 分钟超时 (AI 生成可能需要 60-180s)
           retries: 1,            // 重试 1 次, 应对瞬时资源不足
           fullyParallel: false,  // 串行执行, 避免多个 AI 请求并发压垮服务器
@@ -140,7 +169,7 @@ export default defineConfig({
           ? [{
               name: 'story101-exploration',
               testMatch: MANUAL_EXPLORATION_TESTS,
-              use: { ...devices['Desktop Chrome'] },
+              use: desktopChromeUse,
               timeout: 1_800_000,
               retries: 0,
               fullyParallel: false,
@@ -149,15 +178,18 @@ export default defineConfig({
       ],
 
   /* Dev server 自动启动 (仅本地) */
-  ...(process.env.CI ? {} : {
-    webServer: {
-      command: `npm run dev -- --port ${frontendPort}`,
-      url: frontendBaseURL,
-      reuseExistingServer: false,
-      timeout: 120 * 1000,
-      env: Object.fromEntries(
-        Object.entries(process.env).filter(([, v]) => v !== undefined)
-      ) as Record<string, string>,
-    },
-  }),
+  ...(process.env.CI
+    ? {}
+    : {
+        webServer: {
+          command: `npm run dev -- --port ${frontendPort}`,
+          url: frontendBaseURL,
+          reuseExistingServer: false,
+          timeout: 120 * 1000,
+          env: Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== undefined)) as Record<
+            string,
+            string
+          >,
+        },
+      }),
 });
