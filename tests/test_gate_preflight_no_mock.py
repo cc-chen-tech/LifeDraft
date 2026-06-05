@@ -152,6 +152,55 @@ def test_e2e_specs_use_configured_frontend_port() -> None:
         assert "toContain('localhost:3000')" not in spec
 
 
+def test_e2e_local_backend_and_browser_launch_are_configurable() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+    config = (ROOT / "frontend" / "playwright.config.ts").read_text(
+        encoding="utf-8"
+    )
+    global_setup = (ROOT / "frontend" / "e2e" / "global-setup.ts").read_text(
+        encoding="utf-8"
+    )
+    auth_helper = (ROOT / "frontend" / "e2e" / "helpers" / "auth.ts").read_text(
+        encoding="utf-8"
+    )
+
+    assert "process.env.E2E_BROWSER_CHANNEL" in config
+    assert "process.env.E2E_CHROME_EXECUTABLE" in config
+    assert "process.env.E2E_NO_SANDBOX" in config
+    assert "const browserChannel = process.env.E2E_BROWSER_CHANNEL?.trim()" in config
+    assert "const chromeExecutable = process.env.E2E_CHROME_EXECUTABLE?.trim()" in config
+    assert "const ciEnabled = parseBooleanEnv(process.env.CI) === true" in config
+    assert "const hasExplicitNoSandbox = process.env.E2E_NO_SANDBOX !== undefined" in config
+    assert "const explicitNoSandbox = parseBooleanEnv(process.env.E2E_NO_SANDBOX)" in config
+    assert "const noSandbox = hasExplicitNoSandbox ? explicitNoSandbox === true : ciEnabled" in config
+    assert "browserChannel ? { channel: browserChannel }" in config
+    assert "chromeExecutable ? { executablePath: chromeExecutable }" in config
+    assert "const launchArgs = noSandbox ? ['--no-sandbox', '--disable-dev-shm-usage'] : []" in config
+    assert "const ignoreLaunchDefaultArgs = noSandbox ? [] : ['--no-sandbox']" in config
+    assert "use: desktopChromeUse" in config
+    assert 'if [ -z "${E2E_NO_SANDBOX+x}" ]; then' in script
+    assert 'if [ "${CI:-}" = "true" ] || [ "${CI:-}" = "1" ]; then' in script
+    assert "export E2E_NO_SANDBOX=1" in script
+    assert "export E2E_NO_SANDBOX=0" in script
+    assert "process.env.E2E_BACKEND_HOST || '127.0.0.1'" in global_setup
+    assert "process.env.E2E_BACKEND_PORT || '8000'" in global_setup
+    assert "process.env.E2E_BACKEND_HOST || '127.0.0.1'" in auth_helper
+    assert "process.env.E2E_BACKEND_PORT || '8000'" in auth_helper
+    assert "API_HOST.includes(c.domain)" in auth_helper
+    register_user_body = auth_helper.split("export async function registerUser", 1)[1].split(
+        "/**\n * 确保用户已登录", 1
+    )[0]
+    assert "await context.addCookies" in register_user_body
+    assert "domain: 'localhost'" in register_user_body
+    assert "E2E_BACKEND_HOST=127.0.0.1 E2E_BACKEND_PORT=8000" in script
+    assert "关闭当前 8000 端口遗留后端进程" in script
+    assert "MINIMAX_E2E_LOCAL_AUDIO=1" in script
+    assert "E2E_FRONTEND_MODE:-prod" in script
+    assert "npm run start -- --hostname 127.0.0.1" in script
+    assert "if ! [ -d \".next\" ]" not in script
+    assert "ulimit -n 8192" in script
+
+
 def test_frontend_regression_fixture_exercises_changed_surfaces() -> None:
     fixture = (ROOT / "frontend" / "src" / "app" / "e2e-regression" / "page.tsx").read_text(
         encoding="utf-8"

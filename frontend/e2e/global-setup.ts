@@ -13,7 +13,9 @@ import * as path from 'path';
 import { existsSync } from 'fs';
 
 const FRONTEND_URL = `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
-const BACKEND_URL = 'http://localhost:8000';
+const BACKEND_HOST = process.env.E2E_BACKEND_HOST || '127.0.0.1';
+const BACKEND_PORT = process.env.E2E_BACKEND_PORT || '8000';
+const BACKEND_URL = `http://${BACKEND_HOST}:${BACKEND_PORT}`;
 const BACKEND_HEALTH_ENDPOINT = `${BACKEND_URL}/api/games`;
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 

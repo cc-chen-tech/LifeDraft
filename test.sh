@@ -110,6 +110,30 @@ print_layer_result() {
     fi
 }
 
+run_playwright_command() {
+    local label=$1
+    shift
+    local output_file
+    output_file="$(mktemp "/tmp/story2-playwright-${label}-XXXX.log")"
+
+    "$@" 2>&1 | tee "$output_file"
+    local result=${PIPESTATUS[0]}
+
+    if [ $result -ne 0 ]; then
+        if rg -E "browserType\.launch: Target page, context or browser has been closed|permission denied|SIGABRT|SIGTRAP|bootstrap_check_in|Target page, context or browser" "$output_file" >/dev/null 2>&1; then
+            echo -e "${RED}检测到 Playwright 浏览器启动异常：当前沙箱环境可能阻断 Chromium 启动。${NC}"
+            echo -e "${YELLOW}建议在有较高系统权限的终端重跑：${NC}"
+            echo -e "${BLUE}  cd ${PROJECT_DIR}/frontend${NC}"
+            echo -e "${BLUE}  export E2E_NO_SANDBOX=${E2E_NO_SANDBOX:-0}${NC}"
+            echo -e "${BLUE}  cd \"${PROJECT_DIR}\"/frontend && CI=1 E2E_FRONTEND_PORT=\${E2E_FRONTEND_PORT:-3000} npx playwright test ...${NC}"
+            echo -e "${YELLOW}若为 CI/容器环境，请显式设置 E2E_NO_SANDBOX=0 做对照验证。${NC}"
+        fi
+    fi
+
+    rm -f "$output_file"
+    return $result
+}
+
 # Preflight: 前置校验
 run_preflight() {
     print_layer_header "0" "前置校验 (preflight)" "OpenSpec、前端类型、关键回归夹具漂移"
@@ -313,27 +337,46 @@ run_e2e_browser() {
 
     cd "$PROJECT_DIR/frontend"
     export PYTHON="$(command -v python)"
-    
-    # 检查后端是否运行
-    if ! lsof -ti:8000 > /dev/null 2>&1; then
-        echo -e "${YELLOW}后端未运行，正在启动...${NC}"
-        cd "$PROJECT_DIR"
-        activate_python_env
-        STORY_TTS_ALLOW_REQUEST_PROVIDER=1 MINIMAX_API_KEY=test-key MINIMAX_E2E_LOCAL_AUDIO=1 API_RELOAD=false python run_api.py > /tmp/backend_e2e.log 2>&1 &
-        BACKEND_PID=$!
-        sleep 3
-        if ! lsof -ti:8000 > /dev/null 2>&1; then
-            echo -e "${RED}后端启动失败，跳过 E2E 测试${NC}"
-            E2E_RESULT=1
-            return 1
+    # 本地默认使用 Playwright 自带 Chromium，避免系统 Chrome 与 --no-sandbox 的组合引发启动崩溃
+    export E2E_BROWSER_CHANNEL="${E2E_BROWSER_CHANNEL:-}"
+    export E2E_CHROME_EXECUTABLE="${E2E_CHROME_EXECUTABLE:-}"
+    # 仅在 CI/容器环境默认开启 --no-sandbox；本地默认保持 sandbox=true，且允许显式覆盖
+    if [ -z "${E2E_NO_SANDBOX+x}" ]; then
+        if [ "${CI:-}" = "true" ] || [ "${CI:-}" = "1" ]; then
+            export E2E_NO_SANDBOX=1
+        else
+            export E2E_NO_SANDBOX=0
         fi
-        echo -e "${GREEN}后端已启动 (PID: $BACKEND_PID)${NC}"
-        cd "$PROJECT_DIR/frontend"
-    else
-        BACKEND_PID=""
-        echo -e "${GREEN}后端已在运行${NC}"
     fi
-    
+
+    echo -e "${BLUE}E2E runtime config: channel='${E2E_BROWSER_CHANNEL:-<auto>}' executable='${E2E_CHROME_EXECUTABLE:-<auto>}' no-sandbox='${E2E_NO_SANDBOX}'${NC}"
+
+    # 提高文件描述符上限，降低 macOS 下 EMFILE 命中率
+    ulimit -n 8192 >/dev/null 2>&1 || ulimit -n 4096 >/dev/null 2>&1 || true
+
+    local existing_backend_pids
+    existing_backend_pids="$(lsof -ti:8000 2>/dev/null || true)"
+    if [ -n "$existing_backend_pids" ]; then
+        echo -e "${YELLOW}关闭当前 8000 端口遗留后端进程 (${existing_backend_pids})...${NC}"
+        kill $existing_backend_pids 2>/dev/null || true
+        sleep 2
+    fi
+
+    echo -e "${YELLOW}启动确定性 E2E 后端...${NC}"
+    cd "$PROJECT_DIR"
+    activate_python_env
+    E2E_BACKEND_HOST=127.0.0.1 E2E_BACKEND_PORT=8000 \
+    STORY_TTS_ALLOW_REQUEST_PROVIDER=1 MINIMAX_API_KEY=test-key MINIMAX_E2E_LOCAL_AUDIO=1 API_RELOAD=false python run_api.py > /tmp/backend_e2e.log 2>&1 &
+    BACKEND_PID=$!
+    sleep 3
+    if ! lsof -ti:8000 > /dev/null 2>&1; then
+        echo -e "${RED}后端启动失败，跳过 E2E 测试${NC}"
+        E2E_RESULT=1
+        return 1
+    fi
+    echo -e "${GREEN}后端已启动 (PID: $BACKEND_PID)${NC}"
+    cd "$PROJECT_DIR/frontend"
+
     ensure_e2e_frontend_port_available
     local frontend_port_result=$?
     if [ $frontend_port_result -ne 0 ]; then
@@ -342,12 +385,50 @@ run_e2e_browser() {
         return $frontend_port_result
     fi
 
+    local frontend_mode="${E2E_FRONTEND_MODE:-prod}"
+    local FRONTEND_PID=""
+
+    if [ "$frontend_mode" = "dev" ]; then
+        echo -e "${YELLOW}使用 Playwright webServer（dev）模式运行 E2E（不推荐）...${NC}"
+        # default behavior will use playwright.config.ts webServer branch
+    else
+        echo -e "${YELLOW}使用生产模式启动前端（next build + start）以规避开发监听问题...${NC}"
+        cd "$PROJECT_DIR/frontend"
+        echo -e "${YELLOW}执行 npm run build，避免复用旧 .next 构建...${NC}"
+        npm run build
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}前端构建失败，跳过 E2E 测试${NC}"
+            E2E_RESULT=1
+            return 1
+        fi
+
+        local frontend_port="${E2E_FRONTEND_PORT:-3000}"
+        cd "$PROJECT_DIR/frontend"
+        CI=1 E2E_FRONTEND_PORT="$frontend_port" npm run start -- --hostname 127.0.0.1 --port "$frontend_port" > /tmp/frontend_e2e.log 2>&1 &
+        FRONTEND_PID=$!
+        sleep 3
+        if ! lsof -iTCP:"$frontend_port" -sTCP:LISTEN >/dev/null 2>&1; then
+            echo -e "${RED}前端启动失败，跳过 E2E 测试${NC}"
+            echo -e "${RED}日志: /tmp/frontend_e2e.log${NC}"
+            if [ -n "$BACKEND_PID" ]; then
+                kill "$BACKEND_PID" 2>/dev/null || true
+            fi
+            E2E_RESULT=1
+            return 1
+        fi
+        echo -e "${GREEN}前端已启动 (PID: $FRONTEND_PID)${NC}"
+    fi
+
+    export CI=1
+    export E2E_BACKEND_HOST=127.0.0.1
+    export E2E_BACKEND_PORT=8000
+
     echo -e "${YELLOW}运行完整 Playwright E2E 测试 (chromium)...${NC}"
-    npx playwright test --project=core --reporter=dot --workers=1
+    run_playwright_command "core" npx playwright test --project=core --reporter=dot --workers=1
     local core_result=$?
 
     echo -e "${YELLOW}运行会员 AI 音乐队列补充 E2E 测试...${NC}"
-    npx playwright test e2e/music-player.spec.ts \
+    run_playwright_command "music-player" npx playwright test e2e/music-player.spec.ts \
         --project=ai-heavy \
         --grep "会员 AI 曲目生成后只进入后续队列且不切换当前歌曲" \
         --reporter=list \
@@ -356,7 +437,7 @@ run_e2e_browser() {
     local music_ai_result=$?
 
     echo -e "${YELLOW}运行读故事 E2E 浏览器测试...${NC}"
-    npx playwright test e2e/story-voice-reading.spec.ts \
+    run_playwright_command "story-voice" npx playwright test e2e/story-voice-reading.spec.ts \
         --project=core \
         --reporter=list \
         --workers=1 \
@@ -364,7 +445,7 @@ run_e2e_browser() {
     local story_voice_result=$?
 
     echo -e "${YELLOW}运行 MiniMax 故事音频生成 E2E 浏览器测试...${NC}"
-    npx playwright test e2e/minimax-story-audio-generation.spec.ts \
+    run_playwright_command "minimax-audio" npx playwright test e2e/minimax-story-audio-generation.spec.ts \
         --project=core \
         --reporter=list \
         --workers=1 \
@@ -375,13 +456,16 @@ run_e2e_browser() {
     if [ $core_result -ne 0 ] || [ $music_ai_result -ne 0 ] || [ $story_voice_result -ne 0 ] || [ $minimax_audio_result -ne 0 ]; then
         result=1
     fi
-    
-    # 清理：如果是我们启动的后端，关掉它
+
     if [ -n "$BACKEND_PID" ]; then
         echo -e "${YELLOW}关闭测试用后端 (PID: $BACKEND_PID)...${NC}"
         kill $BACKEND_PID 2>/dev/null
     fi
-    
+    if [ -n "$FRONTEND_PID" ]; then
+        echo -e "${YELLOW}关闭测试用前端 (PID: $FRONTEND_PID)...${NC}"
+        kill "$FRONTEND_PID" 2>/dev/null
+    fi
+
     print_layer_result "e2e" $result
     E2E_RESULT=$result
     return $result
