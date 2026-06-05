@@ -984,6 +984,54 @@ describe('useCharacterCreation', () => {
       expect(gameSpy.spies.nextCreationStep).toHaveBeenCalled();
     });
 
+    it('includes the accepted world setting in the initial game creation request', async () => {
+      useGameStore.setState({
+        playerName: '顾晚晴',
+        lifeVision: '现代都市悬疑，女性调查记者，追查科技公司数据黑幕，不要跳到古代模板。',
+        creationStep: 3,
+        characterSettings: {
+          era: { year: 960, era_description: '960年北宋初年' },
+          age: { age: 20 },
+          gender: { gender: '女' },
+        },
+      } as never);
+      const generatedWorld = {
+        world_description: '2020年代现代化大都市，科技公司掌控海量用户数据，调查记者追查数据黑幕。',
+        technology_level: '5G、人工智能、大数据、云计算',
+        social_system: '现代法治社会',
+      };
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url.endsWith('/character/setting')) {
+          return Promise.resolve(jsonResponse(generatedWorld));
+        }
+        if (url.endsWith('/games')) {
+          return Promise.resolve(jsonResponse({ game_id: 51 }));
+        }
+        return Promise.resolve(jsonResponse({}));
+      });
+
+      const { result } = renderHook(() => useCharacterCreation());
+
+      await act(async () => {
+        await result.current.handleGenerate();
+      });
+      await act(async () => {
+        await result.current.handleAcceptAndNext();
+      });
+
+      expect(fetchBody('/api/games')).toMatchObject({
+        character_settings: {
+          era: { year: 960, era_description: '960年北宋初年' },
+          age: { age: 20 },
+          gender: { gender: '女' },
+          world: generatedWorld,
+        },
+        player_name: '顾晚晴',
+        life_vision: '现代都市悬疑，女性调查记者，追查科技公司数据黑幕，不要跳到古代模板。',
+        language: 'zh',
+      });
+    });
+
     it('advances to next step on normal non-portrait step', async () => {
       useGameStore.setState({
         playerName: 'TestPlayer',

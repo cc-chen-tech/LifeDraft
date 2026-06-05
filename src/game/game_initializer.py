@@ -110,6 +110,9 @@ class GameInitializer:
             except Exception as e:
                 logger.warning(f"Style auto-match failed: {e}")
 
+        if style_id:
+            initial_state["narrative_style_id"] = style_id
+
         # Save the initial game state to database
         if self.game_db:
             game_id = self.game_db.create_game(

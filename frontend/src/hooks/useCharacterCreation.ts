@@ -405,7 +405,12 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
   }, [isPortraitStep, gameId, characterSettings, isBackgroundGenerating, runAutoGeneration]);
 
   const handleAcceptAndNext = useCallback(async () => {
+    let acceptedCharacterSettings = characterSettings;
     if (!isPortraitStep && generatedContent) {
+      acceptedCharacterSettings = {
+        ...characterSettings,
+        [currentStepKey]: generatedContent,
+      };
       updateCharacterSetting(currentStepKey, generatedContent);
     }
     setGeneratedContent(null);
@@ -415,7 +420,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
       try {
         setIsGenerating(true);
         const result = await api.games.create({
-          character_settings: characterSettings,
+          character_settings: acceptedCharacterSettings,
           player_name: playerName,
           life_vision: lifeVision,
           language,
@@ -424,7 +429,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
         setGameSession(result.game_id, result.game_id.toString());
 
         // ★ 提前启动后台生成，与图片生成并行
-        const allDone = AUTO_ADVANCE_STEPS.every((step) => characterSettings[step] != null);
+        const allDone = AUTO_ADVANCE_STEPS.every((step) => acceptedCharacterSettings[step] != null);
         if (!allDone && !backgroundGenStartedRef.current) {
           console.log("[world] Starting background generation early...");
           backgroundGenStartedRef.current = true;
