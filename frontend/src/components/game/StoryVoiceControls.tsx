@@ -56,9 +56,28 @@ export function StoryVoiceControls({
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const lastAutoReadKeyRef = useRef<string>("");
+  const loadedSettingsRef = useRef(false);
   const textSize = compact ? "text-xs" : "text-sm";
   const isHistoryReading = currentContext.source_type === "history_round" || Boolean(historyContext);
   const shouldShowPlaybackControls = enablePlaybackControls || showTestControls;
+
+  useEffect(() => {
+    if (loadedSettingsRef.current) return;
+    loadedSettingsRef.current = true;
+
+    void api.voice_reading.getSettings()
+      .then((settings) => {
+        if (settings.auto_read_enabled !== autoReadEnabled) {
+          setAutoReadEnabled(settings.auto_read_enabled);
+        }
+        if (settings.selected_voice_color && settings.selected_voice_color !== selectedVoiceId) {
+          setSelectedVoiceId(settings.selected_voice_color);
+        }
+      })
+      .catch((error) => {
+        console.warn("[StoryVoiceControls] Voice settings load unavailable:", error);
+      });
+  }, [autoReadEnabled, selectedVoiceId, setAutoReadEnabled, setSelectedVoiceId]);
 
   useEffect(() => {
     const finalText = autoReadText?.trim();
