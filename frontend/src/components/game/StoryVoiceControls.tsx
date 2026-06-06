@@ -60,6 +60,7 @@ export function StoryVoiceControls({
   const textSize = compact ? "text-xs" : "text-sm";
   const isHistoryReading = currentContext.source_type === "history_round" || Boolean(historyContext);
   const shouldShowPlaybackControls = enablePlaybackControls || showTestControls;
+  const showProductionSettings = !showTestControls;
 
   useEffect(() => {
     if (loadedSettingsRef.current) return;
@@ -201,28 +202,32 @@ export function StoryVoiceControls({
           <Volume2 className="w-4 h-4 mr-1.5" />
           朗读当前故事
         </Button>
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          声音
-          <select
-            aria-label="选择朗读声音"
-            value={selectedVoiceId}
-            onChange={handleVoiceChange}
-            className="h-8 rounded border border-border bg-background px-2 text-sm text-foreground"
-          >
-            <option value="warm_female">温柔女声</option>
-            <option value="calm_male">沉稳男声</option>
-            <option value="clear_neutral">清亮中性</option>
-          </select>
-        </label>
-        <Button
-          type="button"
-          size="sm"
-          variant={autoReadEnabled ? "default" : "outline"}
-          onClick={handleAutoReadToggle}
-          aria-label={autoReadEnabled ? "关闭自动朗读" : "启用自动朗读"}
-        >
-          {autoReadEnabled ? "关闭自动朗读" : "启用自动朗读"}
-        </Button>
+        {showProductionSettings && (
+          <>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              声音
+              <select
+                aria-label="选择朗读声音"
+                value={selectedVoiceId}
+                onChange={handleVoiceChange}
+                className="h-8 rounded border border-border bg-background px-2 text-sm text-foreground"
+              >
+                <option value="warm_female">温柔女声</option>
+                <option value="calm_male">沉稳男声</option>
+                <option value="clear_neutral">清亮中性</option>
+              </select>
+            </label>
+            <Button
+              type="button"
+              size="sm"
+              variant={autoReadEnabled ? "default" : "outline"}
+              onClick={handleAutoReadToggle}
+              aria-label={autoReadEnabled ? "关闭自动朗读" : "启用自动朗读"}
+            >
+              {autoReadEnabled ? "关闭自动朗读" : "启用自动朗读"}
+            </Button>
+          </>
+        )}
         {historyContext && (
           <Button
             type="button"

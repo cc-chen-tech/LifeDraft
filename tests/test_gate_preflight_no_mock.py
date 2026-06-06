@@ -361,6 +361,16 @@ def test_story_voice_production_controls_expose_voice_selection() -> None:
     assert 'voice_id: "warm_female"' not in store
 
 
+def test_story_voice_production_settings_do_not_duplicate_test_controls() -> None:
+    component = (
+        ROOT / "frontend" / "src" / "components" / "game" / "StoryVoiceControls.tsx"
+    ).read_text(encoding="utf-8")
+
+    assert "const showProductionSettings = !showTestControls;" in component
+    assert "{showProductionSettings && (" in component
+    assert component.index("{showProductionSettings && (") < component.index("{showTestControls &&")
+
+
 def test_global_music_player_autogenerates_music_from_completed_story_when_collapsed() -> None:
     global_player = (
         ROOT / "frontend" / "src" / "components" / "game" / "GlobalMusicPlayer.tsx"
