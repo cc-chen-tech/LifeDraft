@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ChangeEvent } from "react";
 import { Pause, Play, RotateCcw, Square, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { api } from "@/lib/api";
 import type { ReadingContext } from "@/lib/types";
 import { useStoryVoiceStore } from "@/stores/useStoryVoiceStore";
 
@@ -37,6 +38,7 @@ export function StoryVoiceControls({
   const errorMessage = useStoryVoiceStore((state) => state.errorMessage);
   const queueText = useStoryVoiceStore((state) => state.queueText);
   const autoReadEnabled = useStoryVoiceStore((state) => state.autoReadEnabled);
+  const selectedVoiceId = useStoryVoiceStore((state) => state.selectedVoiceId);
   const musicDuckState = useStoryVoiceStore((state) => state.musicDuckState);
   const startReading = useStoryVoiceStore((state) => state.startReading);
   const pauseReading = useStoryVoiceStore((state) => state.pauseReading);
@@ -45,6 +47,7 @@ export function StoryVoiceControls({
   const retryReading = useStoryVoiceStore((state) => state.retryReading);
   const failReading = useStoryVoiceStore((state) => state.failReading);
   const setAutoReadEnabled = useStoryVoiceStore((state) => state.setAutoReadEnabled);
+  const setSelectedVoiceId = useStoryVoiceStore((state) => state.setSelectedVoiceId);
   const enqueueCompletedAttempt = useStoryVoiceStore((state) => state.enqueueCompletedAttempt);
   const simulateMusicPlaying = useStoryVoiceStore((state) => state.simulateMusicPlaying);
   const userPauseMusicDuringReading = useStoryVoiceStore(
@@ -140,6 +143,29 @@ export function StoryVoiceControls({
     stopReading();
   };
 
+  const persistVoiceSettings = async (settings: {
+    selected_voice_color?: string | null;
+    auto_read_enabled?: boolean | null;
+  }) => {
+    try {
+      await api.voice_reading.updateSettings(settings);
+    } catch (error) {
+      console.warn("[StoryVoiceControls] Voice settings persistence unavailable:", error);
+    }
+  };
+
+  const handleAutoReadToggle = () => {
+    const nextEnabled = !autoReadEnabled;
+    setAutoReadEnabled(nextEnabled);
+    void persistVoiceSettings({ auto_read_enabled: nextEnabled });
+  };
+
+  const handleVoiceChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const nextVoiceId = event.target.value;
+    setSelectedVoiceId(nextVoiceId);
+    void persistVoiceSettings({ selected_voice_color: nextVoiceId });
+  };
+
   return (
     <section
       aria-label="故事朗读"
@@ -155,6 +181,28 @@ export function StoryVoiceControls({
         >
           <Volume2 className="w-4 h-4 mr-1.5" />
           朗读当前故事
+        </Button>
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          声音
+          <select
+            aria-label="选择朗读声音"
+            value={selectedVoiceId}
+            onChange={handleVoiceChange}
+            className="h-8 rounded border border-border bg-background px-2 text-sm text-foreground"
+          >
+            <option value="warm_female">温柔女声</option>
+            <option value="calm_male">沉稳男声</option>
+            <option value="clear_neutral">清亮中性</option>
+          </select>
+        </label>
+        <Button
+          type="button"
+          size="sm"
+          variant={autoReadEnabled ? "default" : "outline"}
+          onClick={handleAutoReadToggle}
+          aria-label={autoReadEnabled ? "关闭自动朗读" : "启用自动朗读"}
+        >
+          {autoReadEnabled ? "关闭自动朗读" : "启用自动朗读"}
         </Button>
         {historyContext && (
           <Button
@@ -240,7 +288,7 @@ export function StoryVoiceControls({
             type="button"
             size="sm"
             variant={autoReadEnabled ? "default" : "outline"}
-            onClick={() => setAutoReadEnabled(!autoReadEnabled)}
+            onClick={handleAutoReadToggle}
           >
             {autoReadEnabled ? "关闭自动朗读" : "启用自动朗读"}
           </Button>

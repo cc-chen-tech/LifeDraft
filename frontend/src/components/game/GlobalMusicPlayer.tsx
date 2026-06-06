@@ -46,9 +46,13 @@ export function GlobalMusicPlayer() {
     }
   }, [loadPlaylist]);
 
+  // Determine gameId: prefer activeGameId from play page, fallback to playlistGameId
+  const effectiveGameId = activeGameId ?? playlistGameId ?? undefined;
+
   // Determine storyText: use activeStoryText from play page, or "persisted" if music already loaded
   const storyText =
     activeStoryText || (recommendation || currentSong || queue.length > 0 ? "persisted" : "");
+  const shouldAutoFetchRecommendation = Boolean(activeStoryText && effectiveGameId);
 
   useEffect(() => {
     if (!isExpanded) return;
@@ -66,8 +70,6 @@ export function GlobalMusicPlayer() {
   // Only render if we have storyText (either from play page or persisted state)
   if (!storyText) return null;
 
-  // Determine gameId: prefer activeGameId from play page, fallback to playlistGameId
-  const effectiveGameId = activeGameId ?? playlistGameId ?? undefined;
   const songName = currentSong?.name || recommendation?.songs?.[0]?.name || "";
   const artistName = currentSong?.artists?.join(", ") || "";
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -104,7 +106,7 @@ export function GlobalMusicPlayer() {
           storyText={storyText}
           gameId={effectiveGameId}
           className="rounded-none border-0 shadow-none"
-          autoFetchRecommendation={isExpanded}
+          autoFetchRecommendation={shouldAutoFetchRecommendation}
         />
       </div>
 

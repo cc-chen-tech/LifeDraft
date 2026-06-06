@@ -330,6 +330,49 @@ def test_story_voice_test_controls_stay_out_of_real_play_page() -> None:
     assert "showTestControls" in regression_page
 
 
+def test_story_voice_production_controls_expose_persistent_auto_read_toggle() -> None:
+    component = (
+        ROOT / "frontend" / "src" / "components" / "game" / "StoryVoiceControls.tsx"
+    ).read_text(encoding="utf-8")
+
+    auto_read_label = 'aria-label={autoReadEnabled ? "关闭自动朗读" : "启用自动朗读"}'
+    assert auto_read_label in component
+    assert "api.voice_reading.getSettings" in component
+    assert "api.voice_reading.updateSettings" in component
+    assert "settings.auto_read_enabled" in component
+    assert component.index(auto_read_label) < component.index("{showTestControls &&")
+
+
+def test_story_voice_production_controls_expose_voice_selection() -> None:
+    component = (
+        ROOT / "frontend" / "src" / "components" / "game" / "StoryVoiceControls.tsx"
+    ).read_text(encoding="utf-8")
+    store = (ROOT / "frontend" / "src" / "stores" / "useStoryVoiceStore.ts").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'aria-label="选择朗读声音"' in component
+    assert "warm_female" in component
+    assert "calm_male" in component
+    assert "clear_neutral" in component
+    assert "selectedVoiceId" in store
+    assert "settings.selected_voice_color" in component
+    assert 'voice_id: get().selectedVoiceId' in store
+    assert 'voice_id: "warm_female"' not in store
+
+
+def test_global_music_player_autogenerates_music_from_completed_story_when_collapsed() -> None:
+    global_player = (
+        ROOT / "frontend" / "src" / "components" / "game" / "GlobalMusicPlayer.tsx"
+    ).read_text(encoding="utf-8")
+
+    assert "const shouldAutoFetchRecommendation" in global_player
+    assert "activeStoryText" in global_player
+    assert "effectiveGameId" in global_player
+    assert "autoFetchRecommendation={shouldAutoFetchRecommendation}" in global_player
+    assert "autoFetchRecommendation={isExpanded}" not in global_player
+
+
 def test_play_page_missing_game_state_has_actionable_recovery_ui() -> None:
     play_page = (ROOT / "frontend" / "src" / "app" / "play" / "page.tsx").read_text(
         encoding="utf-8"
