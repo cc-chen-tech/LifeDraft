@@ -4823,7 +4823,10 @@ export interface operations {
     };
     scene_image_events_api_images_scene_events__game_id__get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 测试或一次性读取时返回首批事件后直接关闭连接 */
+                once?: boolean;
+            };
             header?: never;
             path: {
                 game_id: number;

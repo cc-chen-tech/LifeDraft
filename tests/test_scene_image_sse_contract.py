@@ -80,7 +80,7 @@ class TestSceneImageSSEContract:
 
         try:
             with client.get(
-                f"/api/images/scene/events/{game_id}", headers=_auth_headers()
+                f"/api/images/scene/events/{game_id}?once=true", headers=_auth_headers()
             ) as response:
                 assert response.status_code == 200
                 # 读取第一行（应该是缓存事件）
@@ -119,7 +119,7 @@ class TestSceneImageSSEContract:
 
         try:
             with client.get(
-                f"/api/images/scene/events/{game_id}", headers=_auth_headers()
+                f"/api/images/scene/events/{game_id}?once=true", headers=_auth_headers()
             ) as response:
                 line = response.iter_lines().__next__()
                 data = json.loads(line[6:].decode())
@@ -153,7 +153,7 @@ class TestSceneImageSSEContract:
 
         try:
             with client.get(
-                f"/api/images/scene/events/{game_id}", headers=_auth_headers()
+                f"/api/images/scene/events/{game_id}?once=true", headers=_auth_headers()
             ) as response:
                 line = response.iter_lines().__next__()
                 data = json.loads(line[6:].decode())

@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any, Dict, Generator, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.params import Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -70,6 +71,7 @@ def get_session() -> Generator[Session, None, None]:
 async def scene_image_events(
     request: Request,
     game_id: int,
+    once: bool = Query(default=False, description="测试或一次性读取时返回首批事件后直接关闭连接"),
     db: Session = Depends(get_session),
     user: int = Depends(get_current_user),
 ):
@@ -78,6 +80,7 @@ async def scene_image_events(
 
     async def event_stream():
         emitted_keys: set[str] = set()
+        emitted_events = 0
         while True:
             emitted_this_tick = False
             for key, event in list(_scene_image_latest.items()):
@@ -86,6 +89,10 @@ async def scene_image_events(
                 emitted_this_tick = True
                 emitted_keys.add(key)
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                emitted_events += 1
+
+            if once and emitted_this_tick:
+                break
 
             if not emitted_this_tick:
                 heartbeat = {
@@ -97,6 +104,12 @@ async def scene_image_events(
                     "timestamp": datetime.utcnow().isoformat(),
                 }
                 yield f"data: {json.dumps(heartbeat, ensure_ascii=False)}\n\n"
+                emitted_events += 1
+
+            if once:
+                if emitted_events:
+                    break
+                continue
 
             if await request.is_disconnected():
                 break
