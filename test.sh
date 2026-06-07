@@ -410,6 +410,10 @@ run_e2e_browser() {
         FRONTEND_PID=$!
         local frontend_started=0
         for frontend_ready_attempt in $(seq 1 45); do
+            if curl -fsS "http://127.0.0.1:$frontend_port" >/dev/null 2>&1; then
+                frontend_started=1
+                break
+            fi
             if lsof -iTCP:"$frontend_port" -sTCP:LISTEN >/dev/null 2>&1; then
                 frontend_started=1
                 break

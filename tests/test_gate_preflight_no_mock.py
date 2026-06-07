@@ -480,6 +480,18 @@ def test_e2e_prod_frontend_start_waits_until_listening_in_ci() -> None:
     assert "sleep 3\n        if ! lsof" not in start_block
 
 
+def test_e2e_prod_frontend_start_uses_http_readiness_in_ci() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+    start_block = script.split("npm run start -- --hostname 127.0.0.1", 1)[1].split(
+        "export CI=1", 1
+    )[0]
+
+    assert 'curl -fsS "http://127.0.0.1:$frontend_port"' in start_block
+    assert start_block.index('curl -fsS "http://127.0.0.1:$frontend_port"') < start_block.index(
+        'kill -0 "$FRONTEND_PID"'
+    )
+
+
 def test_e2e_prod_frontend_disables_standalone_output_for_next_start() -> None:
     next_config = (ROOT / "frontend" / "next.config.ts").read_text(encoding="utf-8")
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
