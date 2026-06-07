@@ -127,6 +127,13 @@ def test_minimax_api_key_is_not_committed_to_repository_files() -> None:
     assert leaked_paths == []
 
 
+def test_generated_minimax_audio_assets_are_gitignored() -> None:
+    gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+
+    assert "data/music_assets/" in gitignore
+    assert "data/voice_assets/" in gitignore
+
+
 def test_e2e_gate_does_not_reuse_frontend_from_other_worktree() -> None:
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
     config = (ROOT / "frontend" / "playwright.config.ts").read_text(encoding="utf-8")
@@ -458,6 +465,18 @@ def test_e2e_workflow_uses_same_layered_gate_as_local_test_sh() -> None:
     assert "run: npm run test:e2e" not in workflow
     assert "Start backend server" not in workflow
     assert "Start frontend server" not in workflow
+
+
+def test_e2e_prod_frontend_start_waits_until_listening_in_ci() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+    start_block = script.split("npm run start -- --hostname 127.0.0.1", 1)[1].split(
+        "export CI=1", 1
+    )[0]
+
+    assert "for frontend_ready_attempt in" in start_block
+    assert 'lsof -iTCP:"$frontend_port" -sTCP:LISTEN' in start_block
+    assert "cat /tmp/frontend_e2e.log" in start_block
+    assert "sleep 3\n        if ! lsof" not in start_block
 
 
 def test_story_voice_browser_fallback_e2e_accepts_real_browser_speech_capability() -> None:

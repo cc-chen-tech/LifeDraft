@@ -407,10 +407,21 @@ run_e2e_browser() {
         cd "$PROJECT_DIR/frontend"
         CI=1 E2E_FRONTEND_PORT="$frontend_port" npm run start -- --hostname 127.0.0.1 --port "$frontend_port" > /tmp/frontend_e2e.log 2>&1 &
         FRONTEND_PID=$!
-        sleep 3
-        if ! lsof -iTCP:"$frontend_port" -sTCP:LISTEN >/dev/null 2>&1; then
+        local frontend_started=0
+        for frontend_ready_attempt in $(seq 1 45); do
+            if lsof -iTCP:"$frontend_port" -sTCP:LISTEN >/dev/null 2>&1; then
+                frontend_started=1
+                break
+            fi
+            if ! kill -0 "$FRONTEND_PID" 2>/dev/null; then
+                break
+            fi
+            sleep 1
+        done
+        if [ "$frontend_started" -ne 1 ]; then
             echo -e "${RED}前端启动失败，跳过 E2E 测试${NC}"
             echo -e "${RED}日志: /tmp/frontend_e2e.log${NC}"
+            cat /tmp/frontend_e2e.log 2>/dev/null || true
             if [ -n "$BACKEND_PID" ]; then
                 kill "$BACKEND_PID" 2>/dev/null || true
             fi
