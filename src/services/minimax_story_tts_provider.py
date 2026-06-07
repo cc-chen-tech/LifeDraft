@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import tarfile
 import time
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, cast
 from urllib.parse import urlparse
@@ -151,8 +153,11 @@ class MiniMaxAsyncTTSClient:
                 timeout=self.config.request_timeout_seconds,
             )
             audio_response.raise_for_status()
-            return audio_response.content
-        return response.content
+            return _extract_audio_file_bytes(
+                audio_response.content,
+                audio_response.headers.get("content-type", ""),
+            )
+        return _extract_audio_file_bytes(response.content, response.headers.get("content-type", ""))
 
 
 class MiniMaxTTSProvider:
@@ -323,6 +328,23 @@ def _extract_file_download_url(response: httpx.Response) -> Optional[str]:
         if isinstance(candidate, str) and candidate.strip():
             return candidate.strip()
     return None
+
+
+def _extract_audio_file_bytes(content: bytes, content_type: str) -> bytes:
+    if "tar" not in content_type.lower():
+        return content
+    with tarfile.open(fileobj=BytesIO(content), mode="r:*") as archive:
+        members = [
+            member
+            for member in archive.getmembers()
+            if member.isfile() and member.name.lower().endswith((".mp3", ".wav"))
+        ]
+        if not members:
+            return content
+        extracted = archive.extractfile(members[0])
+        if extracted is None:
+            return content
+        return extracted.read()
 
 
 def _ensure_http_url(url: str) -> None:
