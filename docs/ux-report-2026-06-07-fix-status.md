@@ -31,6 +31,10 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Regression coverage: `tests/test_game_initializer_relationships_contract.py`, `tests/test_api_games.py::TestCreateGame::test_create_game_accepts_relationships_list_payload`
 - Music player unit coverage now matches the current playlist queue contract: recommendation refreshes persist baseline NetEase songs into `/api/music/playlist/{game_id}`, and legacy recommendation responses without `music_brief` must not call `/api/music/generate`.
   - Regression coverage: `frontend/src/__tests__/components/game/MusicPlayer.test.tsx`
+- Week finalization no longer waits for non-critical post-week enrichment tasks before returning the choice result. Weekly summary, bonus effects, decay, and week advancement still finish synchronously; character profile synthesis plus item/landmark/period summaries now run after the week has advanced.
+  - Regression coverage: `tests/test_finalizer.py::TestFinalizeWeek::test_finalize_week_does_not_wait_for_slow_enrichment_tasks`
+- Collection display and entity recognition now accept legacy list-shaped `character_settings.relationships` payloads, so key people from older saves are not dropped from the collection panel or recognition candidate set.
+  - Regression coverage: `tests/test_collection_cache_db.py::TestSessionServiceRestore::test_collection_service_accepts_legacy_relationships_list`, `tests/test_api_collection.py::TestRecognizeEntities::test_eligible_recognition_characters_accepts_legacy_relationships_list`
 
 ## Verification
 
@@ -61,6 +65,7 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Final state was `week=4`, `round=0`, `round_history` length 12.
   - No week-2 deadlock reproduced on the synchronous API path.
   - Observed latency remains a product blocker: event generation took roughly 30-44s per round and choice processing took roughly 35-106s per round.
+- Focused backend regression batch after the week-finalization and collection compatibility fixes: 51 passed.
 - Frontend full unit suite passes locally in serial mode: `npm run test:unit -- --runInBand` with 97 suites and 1681 tests passing.
 - Production deploy workflow now injects a temporary GitHub token for private-repo fetches on ECS and restores the clean GitHub remote URL after fetch, so the host does not need a persisted token in `origin`.
 

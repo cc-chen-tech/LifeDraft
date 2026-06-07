@@ -1,5 +1,6 @@
 """Tests for RoundFinalizer service."""
 
+import time
 from unittest.mock import MagicMock, patch
 
 from src.game.round.finalizer import RoundFinalizer
@@ -171,6 +172,52 @@ class TestFinalizeWeek:
                     finalizer.finalize_week(result)
 
         mock_state.update.assert_called_once_with(energy=10, mood=5, knowledge=3, wealth=2)
+
+    def test_finalize_week_does_not_wait_for_slow_enrichment_tasks(self):
+        """Slow post-week enrichment must not block the choice response."""
+        mock_state = MagicMock()
+        mock_state.week = 3
+        mock_state.get_game_date_info = MagicMock(return_value={})
+        mock_state.weekly_summaries = [
+            {"week": 0, "summary": "Week 0"},
+            {"week": 1, "summary": "Week 1"},
+            {"week": 2, "summary": "Week 2"},
+        ]
+        mock_state.get_current_week_rounds = MagicMock(return_value=[{"story": "test"}])
+        mock_state.character_settings = {}
+        mock_state.advance_week.side_effect = lambda: setattr(mock_state, "week", 4)
+
+        mock_ai = MagicMock()
+        mock_ai.ai_client = MagicMock()
+        mock_ai.generate_weekly_summary = MagicMock(
+            return_value={"summary": "Week summary", "bonus_effects": {}}
+        )
+
+        finalizer = RoundFinalizer(
+            player_state_getter=MagicMock(return_value=mock_state),
+            ai_generator=mock_ai,
+            language_getter=MagicMock(return_value="zh"),
+            story_service=MagicMock(),
+            character_creator=MagicMock(),
+        )
+
+        def slow_profile_synthesis(*_args, **_kwargs):
+            time.sleep(0.25)
+
+        result = {}
+        with patch.object(finalizer, "_apply_weekly_decay"):
+            with patch.object(finalizer, "_check_and_fix_missing_attributes"):
+                with patch(
+                    "src.game.round.finalizer.WorldModelUpdater.synthesize_character_profiles",
+                    side_effect=slow_profile_synthesis,
+                ):
+                    start = time.perf_counter()
+                    finalizer.finalize_week(result)
+                    duration = time.perf_counter() - start
+
+        assert duration < 0.15
+        assert result["weekly_summary"] == "Week summary"
+        mock_state.advance_week.assert_called_once()
 
 
 class TestGenerateWeeklySummary:

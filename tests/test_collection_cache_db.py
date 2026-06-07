@@ -153,3 +153,38 @@ class TestSessionServiceRestore:
             assert len(result.landmarks) == 1
             assert result.total_items == 1
             assert result.total_landmarks == 1
+
+    def test_collection_service_accepts_legacy_relationships_list(self, db_session):
+        """旧存档中的 relationships list 也应能显示关键人物."""
+        from src.game.state import PlayerState
+        from src.services.collection_service import CollectionService
+
+        player_state = PlayerState.from_dict(
+            {
+                "player_name": "林舟",
+                "week": 1,
+                "age": 25,
+                "character_settings": {
+                    "relationships": [
+                        {
+                            "name": "陆昊然",
+                            "role": "直属导师",
+                            "relationship": "产品团队导师",
+                            "affinity": 70,
+                        },
+                        {
+                            "name": "陈晓雨",
+                            "role": "同期好友",
+                            "relationship": "一起入职的朋友",
+                            "affinity": 65,
+                        },
+                    ],
+                    "family": {"family_members": []},
+                },
+            }
+        )
+
+        result = CollectionService(db_session).get_collection(9999, player_state)
+
+        character_names = {character.name for character in result.characters}
+        assert {"林舟", "陆昊然", "陈晓雨"} <= character_names

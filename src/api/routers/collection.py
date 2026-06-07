@@ -158,7 +158,9 @@ def _build_eligible_recognition_characters(player_state: Any) -> List[str]:
     family = character_settings.get("family") or {}
 
     eligible: List[str] = []
-    if isinstance(relationships, dict):
+    if isinstance(relationships, list):
+        _extend_unique_names(eligible, relationships)
+    elif isinstance(relationships, dict):
         _extend_unique_names(eligible, relationships.get("key_people"))
         _extend_unique_names(eligible, relationships.get("important_people"))
     if isinstance(family, dict):

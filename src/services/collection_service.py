@@ -160,7 +160,7 @@ class CollectionService:
             )
 
         # 2. 从 key_people 获取关键人物
-        key_people = character_settings.get("relationships", {}).get("key_people", [])
+        key_people = self._extract_key_people(character_settings.get("relationships", {}))
         for person in key_people:
             if isinstance(person, dict):
                 char = self._build_key_person(game_id, person, added_names, image_cache)
@@ -176,6 +176,15 @@ class CollectionService:
                     characters.append(char)
 
         return characters
+
+    def _extract_key_people(self, relationships: Any) -> List[Dict[str, Any]]:
+        """Return key people from both canonical and legacy relationship payloads."""
+        if isinstance(relationships, list):
+            return [person for person in relationships if isinstance(person, dict)]
+        if isinstance(relationships, dict):
+            key_people = relationships.get("key_people", [])
+            return [person for person in key_people if isinstance(person, dict)]
+        return []
 
     def _build_player_character(
         self,

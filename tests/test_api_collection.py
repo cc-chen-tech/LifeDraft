@@ -395,6 +395,33 @@ class TestRecognizeEntities:
         )
         assert response.status_code == 401
 
+    def test_eligible_recognition_characters_accepts_legacy_relationships_list(self):
+        """旧 relationships list 中的人物应进入识别候选集."""
+        from src.api.routers.collection import _build_eligible_recognition_characters
+
+        mock_state = MagicMock()
+        mock_state.character_settings = {
+            "player_name": "林舟",
+            "relationships": [
+                {"name": "陆昊然", "role": "导师"},
+                {"name": "陈晓雨", "role": "同期好友"},
+            ],
+            "family": {"family_members": []},
+        }
+        mock_state.relationships = {}
+        mock_state.round_history = []
+        mock_state.current_event_data = {}
+        mock_state.pending_storylines = []
+        mock_state.foreshadowing_seeds = []
+        mock_state.character_habits = []
+        mock_state.character_arc_state = {}
+        mock_state.world_breathing_events = []
+        mock_state.player_name = "林舟"
+
+        names = _build_eligible_recognition_characters(mock_state)
+
+        assert names == ["陆昊然", "陈晓雨"]
+
 
 # ==================== Add Entities Tests ====================
 
