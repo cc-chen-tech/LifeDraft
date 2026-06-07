@@ -335,6 +335,53 @@ class TestGetOrBuildPool:
 
         assert [song.id for song in pool.verified_songs] == [9102]
 
+    async def test_supplement_pool_filters_negative_cue_songs_for_story_context(self):
+        """与故事负向 cue 明确冲突的歌曲不应进入推荐池。"""
+        service = MusicService()
+        pool = CachedMusicPool(
+            analysis={
+                "mood": "紧张",
+                "scene_type": "职场数据造假",
+                "environment": "现代都市",
+                "search_queries": ["现代悬疑 纯音乐"],
+                "negative_cues": ["type beat", "喜欢你", "情歌", "流行人声"],
+            },
+            verified_songs=[],
+            created_at=time.time(),
+        )
+        service.music_client.search = AsyncMock(
+            return_value=[
+                Song(
+                    id=9201,
+                    name="双截棍type beat",
+                    artists=["To."],
+                    album="累了",
+                    duration=178217,
+                ),
+                Song(
+                    id=9202,
+                    name="喜欢你-0.8x",
+                    artists=["翻唱"],
+                    album="流行情歌",
+                    duration=180000,
+                ),
+                Song(
+                    id=9203,
+                    name="都市冷光",
+                    artists=["Score Lab"],
+                    album="现代悬疑配乐",
+                    duration=150000,
+                ),
+            ]
+        )
+        service.music_client.get_song_url = AsyncMock(
+            side_effect=lambda song_id: f"https://cdn.example.com/{song_id}.mp3"
+        )
+
+        await service._supplement_pool(pool)
+
+        assert [song.id for song in pool.verified_songs] == [9203]
+
 
 class TestRefreshPoolUrls:
     """验证 _refresh_pool_urls 方法。"""

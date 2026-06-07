@@ -25,6 +25,8 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Coverage: `frontend/src/__tests__/components/ChatBar.test.tsx`, `frontend/e2e/quality-level.spec.ts`
 - NetEase recommendation results now reject obvious LLM prompt/response leakage titles before they enter the playlist, so search results like "请提供需要分析的文本..." are filtered out even when they have playable URLs.
   - Regression coverage: `tests/test_music_pool_cache_integration.py::TestGetOrBuildPool::test_supplement_pool_filters_prompt_leak_song_titles`
+- NetEase recommendation results now also reject playable songs whose title/album/artist metadata directly matches the story brief's negative cues, for example `type beat`, `喜欢你`, or `情歌` in a tense workplace suspense scene.
+  - Regression coverage: `tests/test_music_pool_cache_integration.py::TestGetOrBuildPool::test_supplement_pool_filters_negative_cue_songs_for_story_context`
 
 ## Verification
 
@@ -48,6 +50,6 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
 
 - Remote GitHub checks are blocked by GitHub billing/spending-limit status, not by retrievable job logs.
 - Fresh MiniMax music generation can take longer than 150 seconds on production; the current design keeps NetEase playback available and inserts generated music only after the asset is ready.
-- Broader music matching quality still needs follow-up: the prompt-leak filter prevents bad titles from entering the queue, but it does not guarantee every NetEase recommendation is semantically strong.
+- Broader music matching quality still needs follow-up: prompt-leak and direct negative-cue filters prevent the worst mismatches from entering the queue, but they do not guarantee every remaining NetEase recommendation is semantically strong.
 - `POST /api/games` still needs a robustness fix for malformed `relationships` payloads; a list shape currently raises a 500 instead of a 4xx validation response or normalization.
 - A real long manual playthrough to week 4 should be rerun after deployment, because local deterministic E2E is not a substitute for live model/runtime behavior.

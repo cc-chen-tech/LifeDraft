@@ -169,6 +169,12 @@ def _looks_like_prompt_leak_song(song: Song) -> bool:
     return any(cue in text for cue in PROMPT_LEAK_SONG_CUES)
 
 
+def _matches_negative_music_cue(song: Song, negative_cues: Sequence[str]) -> bool:
+    """Reject playable search results that contradict the story's music brief."""
+    text = " ".join([song.name, song.album, *song.artists]).lower()
+    return any(cue and str(cue).lower() in text for cue in negative_cues)
+
+
 @dataclass
 class MusicRecommendation:
     """音乐推荐结果"""
@@ -769,6 +775,13 @@ class MusicService:
                 if _looks_like_prompt_leak_song(song):
                     logger.info(
                         "[MusicService] Skipping prompt-leak music result: id=%s name=%s",
+                        song.id,
+                        song.name[:80],
+                    )
+                    continue
+                if _matches_negative_music_cue(song, brief.negative_cues):
+                    logger.info(
+                        "[MusicService] Skipping negative-cue music result: id=%s name=%s",
                         song.id,
                         song.name[:80],
                     )
