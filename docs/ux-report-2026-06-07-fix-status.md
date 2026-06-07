@@ -66,6 +66,12 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - No week-2 deadlock reproduced on the synchronous API path.
   - Observed latency remains a product blocker: event generation took roughly 30-44s per round and choice processing took roughly 35-106s per round.
 - Focused backend regression batch after the week-finalization and collection compatibility fixes: 51 passed.
+- Production deployment verification after manually deploying `d4c36531` to ECS:
+  - `/health` and `/api/health` are healthy, and `/opt/story2` is at `d4c36531`.
+  - Production MiniMax env flags are present without exposing secret values.
+  - Authenticated `/api/voice-reading/settings` returns `tts_provider: "minimax"` and `backend_audio_enabled: true`.
+  - `/api/voice-reading/read` returned backend `audio/mpeg` MiniMax audio for both `warm_female` and `calm_male`.
+  - `/api/music/generate` returned 200 in about 105s with an `ai_generated` track, an audio URL, and `insert_policy: "future_queue"`.
 - Frontend full unit suite passes locally in serial mode: `npm run test:unit -- --runInBand` with 97 suites and 1681 tests passing.
 - Production deploy workflow now injects a temporary GitHub token for private-repo fetches on ECS and restores the clean GitHub remote URL after fetch, so the host does not need a persisted token in `origin`.
 
