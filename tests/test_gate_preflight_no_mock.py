@@ -68,6 +68,13 @@ def test_preflight_script_runs_before_expensive_layers() -> None:
     )
 
 
+def test_playwright_log_tempfile_template_has_enough_random_suffix() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+
+    assert 'mktemp "/tmp/story2-playwright-${label}-XXXXXX.log"' in script
+    assert 'mktemp "/tmp/story2-playwright-${label}-XXXX.log"' not in script
+
+
 def test_preflight_validates_archived_provider_story_tts_spec() -> None:
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
     archived_spec = (
@@ -199,6 +206,19 @@ def test_e2e_local_backend_and_browser_launch_are_configurable() -> None:
     assert "npm run start -- --hostname 127.0.0.1" in script
     assert "if ! [ -d \".next\" ]" not in script
     assert "ulimit -n 8192" in script
+
+
+def test_playwright_global_setup_does_not_spawn_competing_backend() -> None:
+    global_setup = (ROOT / "frontend" / "e2e" / "global-setup.ts").read_text(
+        encoding="utf-8"
+    )
+    global_teardown = (ROOT / "frontend" / "e2e" / "global-teardown.ts").read_text(
+        encoding="utf-8"
+    )
+
+    assert "startBackend()" not in global_setup
+    assert "__e2e_backend_process" not in global_setup
+    assert "__e2e_backend_process" not in global_teardown
 
 
 def test_frontend_regression_fixture_exercises_changed_surfaces() -> None:
@@ -381,6 +401,16 @@ def test_global_music_player_autogenerates_music_from_completed_story_when_colla
     assert "effectiveGameId" in global_player
     assert "autoFetchRecommendation={shouldAutoFetchRecommendation}" in global_player
     assert "autoFetchRecommendation={isExpanded}" not in global_player
+
+
+def test_regression_fixture_does_not_autogenerate_global_ai_music() -> None:
+    fixture = (ROOT / "frontend" / "src" / "app" / "e2e-regression" / "page.tsx").read_text(
+        encoding="utf-8"
+    )
+
+    assert "setActiveStoryText(" in fixture
+    assert "setActiveGameId(null);" in fixture
+    assert "setActiveGameId(101);" not in fixture
 
 
 def test_play_page_missing_game_state_has_actionable_recovery_ui() -> None:

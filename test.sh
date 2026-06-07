@@ -114,7 +114,8 @@ run_playwright_command() {
     local label=$1
     shift
     local output_file
-    output_file="$(mktemp "/tmp/story2-playwright-${label}-XXXX.log")"
+    rm -f "/tmp/story2-playwright-${label}-XXXXXX.log" 2>/dev/null || true
+    output_file="$(mktemp "/tmp/story2-playwright-${label}-XXXXXX.log")"
 
     "$@" 2>&1 | tee "$output_file"
     local result=${PIPESTATUS[0]}

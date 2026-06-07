@@ -39,7 +39,7 @@ export default function E2ERegressionPage() {
 
   useEffect(() => {
     setActiveStoryText("雨夜码头的旧账册被风吹开。");
-    setActiveGameId(101);
+    setActiveGameId(null);
     setCurrentSong({
       id: 9101,
       name: "全局音乐夹具",
