@@ -56,6 +56,8 @@ export function isRecoverableChoiceStreamError(errorMsg: string): boolean {
     errorMsg === "Unknown error" ||
     normalized.includes("network error") ||
     normalized.includes("failed to fetch") ||
+    normalized.includes("empty_response") ||
+    normalized.includes("err_empty_response") ||
     normalized.includes("incomplete_chunked_encoding") ||
     normalized.includes("err_incomplete_chunked_encoding") ||
     normalized.includes("terminated") ||
@@ -289,6 +291,21 @@ export async function handleFallbackChoice(
       await recoverStoryFromRoundHistory(choiceText, handlers.setStoryText, context.baseStoryText);
       enterResultPhase(handlers);
       return true;
+    }
+    if (isRecoverableChoiceStreamError(fallbackErrMsg)) {
+      console.log(`[${logPrefix}] Choice fallback had a transient network failure, attempting history recovery...`);
+      const choiceText = context.customText ??
+        useGameStore.getState().currentEvent?.options?.[context.optionIndex ?? 0]?.text ??
+        "";
+      const recovered = await recoverStoryFromRoundHistory(
+        choiceText,
+        handlers.setStoryText,
+        context.baseStoryText
+      );
+      if (recovered) {
+        enterResultPhase(handlers);
+        return true;
+      }
     }
     return false;
   }

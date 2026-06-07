@@ -135,7 +135,14 @@ export function useChoiceHandler({
       },
     };
 
-    await streamChoice(gameId, optionIndex, callbacks, { signal: abortRef.current.signal });
+    try {
+      await streamChoice(gameId, optionIndex, callbacks, { signal: abortRef.current.signal });
+    } catch (err) {
+      if (abortRef.current?.signal.aborted) {
+        return;
+      }
+      console.warn("[handleChoice] streamChoice rejected after onError handling:", err);
+    }
   };
 
   // Handle custom choice
@@ -184,7 +191,14 @@ export function useChoiceHandler({
       },
     };
 
-    await streamCustomChoice(gameId, customText, callbacks, { signal: abortRef.current.signal });
+    try {
+      await streamCustomChoice(gameId, customText, callbacks, { signal: abortRef.current.signal });
+    } catch (err) {
+      if (abortRef.current?.signal.aborted) {
+        return;
+      }
+      console.warn("[handleCustomChoice] streamCustomChoice rejected after onError handling:", err);
+    }
   };
 
   return {

@@ -282,6 +282,31 @@ describe('choiceUtils', () => {
 
       expect(result).toBe(false);
     });
+
+    it('recovers from a transient choice-sync network failure when backend already saved history', async () => {
+      (global.fetch as jest.Mock).mockRejectedValue(new TypeError('Failed to fetch'));
+      storeSpy.spies.syncPlayerState.mockImplementation(async () => {
+        useGameStore.setState({
+          playerState: {
+            round_history: [{ story_continuation: '后端已经保存的选择结果' }],
+          } as never,
+        });
+      });
+
+      const context: ChoiceErrorContext = {
+        optionIndex: 0,
+        isRetry: false,
+        sseSucceeded: true,
+        baseStoryText: 'Base story',
+      };
+      const result = await handleFallbackChoice(123, context, mockHandlers, 'test');
+
+      expect(result).toBe(true);
+      expect(mockHandlers.setStoryText).toHaveBeenCalledWith(
+        'Base story\n\n--- 主角选择了：Option 1 ---\n\n后端已经保存的选择结果'
+      );
+      expect(mockHandlers.setPhase).toHaveBeenCalledWith('result');
+    });
   });
 
   describe('handleChoiceError', () => {

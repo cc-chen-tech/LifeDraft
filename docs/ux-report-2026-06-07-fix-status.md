@@ -51,6 +51,8 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Regression coverage: `tests/test_story_music_recommendation_contract.py::test_modern_product_workplace_searches_focus_ambience_not_vocal_pop_hits`, `tests/test_music_pool_cache_integration.py::TestGetOrBuildPool::test_supplement_pool_filters_modern_product_workplace_pop_mismatches`
 - Modern workplace NetEase fallback now also rejects weak candidate metadata that does not look like score/background/ambient/electronic/workplace music. Production verification after `eef57d17` still returned `童话镇`, `童话`, and a `童话` vocal remix; this follow-up keeps those generic vocal-pop results out of the verified pool even when they come from broad "都市电子背景音乐" searches.
   - Regression coverage: `tests/test_music_pool_cache_integration.py::TestGetOrBuildPool::test_supplement_pool_filters_workplace_candidates_without_score_metadata`
+- Choice recovery now handles the second transient failure in the fallback chain. Production browser probing showed `/choice` could fail with `ERR_INCOMPLETE_CHUNKED_ENCODING`, then `/choice-sync` could also fail with a transient network/empty-response error even though the backend had already saved the continuation. The frontend now syncs player state, restores the latest `round_history` continuation, and enters `result` instead of staying stuck in `choosing` or surfacing an unhandled stream rejection.
+  - Regression coverage: `frontend/src/__tests__/hooks/choiceUtils.test.ts`, `frontend/src/__tests__/hooks/useChoiceHandler.test.ts`
 
 ## Verification
 
@@ -147,10 +149,15 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Modern product/workplace music recommendation returned no NetEase songs after strict filtering, and had no bad hits for `说散就散`, `匆匆那年`, `夜曲`, `一直很安静`, `童话`, `童话镇`, `情歌`, or `type beat`.
   - Direct NetEase probing showed broad "职场/电子/纯音乐/lofi" queries still return many playable vocal-pop mismatches, so returning an empty safe baseline is currently preferable to poisoning the queue.
   - `/api/music/generate` returned an `ai_generated` track with an audio URL in about 112.7 seconds and inserted it into the playlist `future_queue`.
+- Production browser long-flow probe after deploying `0b396b15`:
+  - Real `/play` choice processing still reproduced transient browser failures: `/choice` failed with `ERR_INCOMPLETE_CHUNKED_ENCODING`, then the fallback `/choice-sync` hit a transient network/empty-response failure from the browser.
+  - Backend logs showed the choice result had already been saved and later state had advanced, so the remaining blocker was frontend recovery from the second fallback failure rather than backend choice persistence.
+- Focused frontend choice/SSE regression batch after adding fallback-history recovery:
+  - `choiceUtils`, `useChoiceHandler`, API error handling, and SSE tests passed: 4 suites, 94 tests passed, 3 skipped.
 
 ## Still Not Claimed As Production-Complete
 
 - Remote GitHub checks are blocked by GitHub billing/spending-limit status, not by retrievable job logs.
 - Fresh MiniMax music generation can take longer than 150 seconds on production; the current design keeps NetEase playback available and inserts generated music only after the asset is ready.
 - Broader music matching quality still needs product tuning: strict modern workplace filtering prevents known bad NetEase songs, but for that scene class the safe NetEase baseline can be empty and the generated MiniMax track becomes the reliable queued music source.
-- Browser/manual long playthrough to week 4 should still be rerun after deployment, because the production synchronous API probe and browser smoke do not validate all `/play` SSE progression states across 12 real rounds.
+- Browser/manual long playthrough to week 4 should still be rerun after deployment of the latest fallback-history recovery, because the previous production browser probe found the second fallback failure described above.
