@@ -61,6 +61,29 @@ def test_voice_settings_save_read_chain_uses_real_database() -> None:
         session.close()
 
 
+def test_voice_settings_use_env_auto_read_default_for_new_user(monkeypatch) -> None:
+    init_db()
+    monkeypatch.setenv("STORY_TTS_AUTO_READ_DEFAULT_ENABLED", "true")
+    private_id = f"priv_{uuid4().hex[:16]}"
+    public_id = f"pub_{uuid4().hex[:6]}"
+
+    session = SessionLocal()
+    try:
+        user = User(private_id=private_id, public_id=public_id, display_name="Voice Default")
+        session.add(user)
+        session.flush()
+
+        response = StoryVoiceReadingService(StoryVoiceReadingRepository(session)).get_settings(
+            int(user.user_id)
+        )
+
+        assert response.auto_read_enabled is True
+        assert session.query(VoiceReadingSetting).filter_by(user_id=int(user.user_id)).count() == 0
+    finally:
+        session.rollback()
+        session.close()
+
+
 def test_voice_job_and_asset_reuse_by_text_hash_uses_real_database() -> None:
     init_db()
     private_id = f"priv_{uuid4().hex[:16]}"

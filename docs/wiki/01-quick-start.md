@@ -75,6 +75,8 @@ cp .env.example .env
 
 如果只配置 `MINIMAX_API_KEY` 但没有设置 `STORY_TTS_PROVIDER=minimax`，故事朗读仍会按默认配置走浏览器语音。测试环境可使用 `STORY_TTS_PROVIDER=local` 和 `MINIMAX_E2E_LOCAL_AUDIO=1`，避免调用付费接口。
 
+自动朗读默认关闭。需要让新用户默认在故事完成后自动朗读时，可显式设置 `STORY_TTS_AUTO_READ_DEFAULT_ENABLED=true`；用户在界面里切换后，以用户自己的设置为准。
+
 ## 当前代码现状提示
 
 - 根目录存在 `docker-compose.ecs.yml`，但未看到通用 `docker-compose.yml`。  

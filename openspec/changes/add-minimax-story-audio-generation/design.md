@@ -50,7 +50,7 @@ Alternative considered: use MiniMax WebSocket TTS as the primary path. It can be
 
 ### 3. Auto-read remains opt-in
 
-The settings default for `auto_read_enabled` remains false. The completion hook only starts TTS automatically when the user has opted in; manual read still works from the voice controls.
+The settings default for `auto_read_enabled` remains false unless `STORY_TTS_AUTO_READ_DEFAULT_ENABLED` is explicitly enabled for the deployment. The completion hook only starts TTS automatically when settings report auto-read enabled; manual read still works from the voice controls.
 
 Alternative considered: auto-read on by default. That improves discoverability but can be intrusive, expensive, and surprising for users in public/noisy environments.
 

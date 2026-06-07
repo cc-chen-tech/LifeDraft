@@ -15,6 +15,7 @@ from src.api.schemas import (
     VoiceReadingJobResponse,
     VoiceReadingSettingsResponse,
 )
+from src.services.minimax_config import build_minimax_config
 from src.services.story_voice_repository import StoryVoiceReadingRepository
 from src.services.story_tts_provider import (
     BrowserSpeechTTSProvider,
@@ -111,7 +112,9 @@ class StoryVoiceReadingService:
             ),
             uploaded_voice_available=False,
             auto_read_enabled=(
-                bool(settings.auto_read_enabled) if settings is not None else False
+                bool(settings.auto_read_enabled)
+                if settings is not None
+                else story_auto_read_default_enabled()
             ),
             tts_provider=provider_metadata.provider,
             tts_model=provider_metadata.model,
@@ -288,6 +291,10 @@ class StoryVoiceReadingService:
 
 def media_type_for_voice_asset(storage_path: str) -> str:
     return "audio/mpeg" if storage_path.lower().endswith(".mp3") else "audio/wav"
+
+
+def story_auto_read_default_enabled() -> bool:
+    return build_minimax_config().story_auto_read_default_enabled
 
 
 def normalize_text_hash(text: str) -> str:
