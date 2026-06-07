@@ -56,7 +56,7 @@ Alternative considered: auto-read on by default. That improves discoverability b
 
 ### 4. Music generation defaults on but is non-blocking and bounded
 
-After story completion, the music orchestration path builds a `MusicBrief`, returns/keeps NetEase recommendations immediately, and schedules MiniMax instrumental generation in the background when enabled. Generated tracks are inserted only into future queue positions.
+After story completion, the music orchestration path builds a `MusicBrief`, returns/keeps NetEase recommendations immediately, and schedules MiniMax instrumental generation in the background when enabled. The NetEase baseline queue is persisted through the playlist API before MiniMax generation, and generated tracks are inserted into the persisted playlist only in future queue positions. The frontend still inserts the returned track into its live store so the current session updates immediately, then can restore the same queue from `/api/music/playlist/{game_id}` after navigation or reload.
 
 Cost and latency bounds:
 

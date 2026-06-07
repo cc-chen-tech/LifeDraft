@@ -25,6 +25,8 @@ function song(id: number | string, name: string, source: Song["source"] = "netea
 
 describe("music queue policy", () => {
   beforeEach(() => {
+    jest.restoreAllMocks();
+    delete (global as typeof globalThis & { fetch?: unknown }).fetch;
     useMusicStore.getState().reset();
   });
 
@@ -61,6 +63,77 @@ describe("music queue policy", () => {
     expect(state.currentSong?.id).toBe(1);
     expect(state.queue.map((item) => item.id)).toEqual([2, 3, 9]);
     expect(state.queue[2].source).toBe("ai_generated");
+  });
+
+  it("store loadPlaylist restores persisted server playlist including generated tracks", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        game_id: 101,
+        current_song: song(1, "网易云 当前曲"),
+        queue: [
+          song(2, "网易云 下一曲"),
+          song("ai-generated-77", "AI MiniMax 雨夜追逐", "ai_generated"),
+        ],
+        played_songs: [song(0, "已播曲")],
+        is_playing: true,
+        volume: 0.8,
+        current_position_ms: 42000,
+      }),
+    }) as jest.Mock;
+
+    await useMusicStore.getState().loadPlaylist(101);
+
+    const state = useMusicStore.getState();
+    expect(global.fetch).toHaveBeenCalledWith("/api/music/playlist/101", {
+      credentials: "include",
+    });
+    expect(state.playlistGameId).toBe(101);
+    expect(state.currentSong?.id).toBe(1);
+    expect(state.queue.map((item) => item.id)).toEqual([2, "ai-generated-77"]);
+    expect(state.queue[1].source).toBe("ai_generated");
+    expect(state.playedSongs.map((item) => item.id)).toEqual([0]);
+    expect(state.isPlaying).toBe(true);
+    expect(state.volume).toBe(0.8);
+    expect(state.currentTime).toBe(42);
+  });
+
+  it("store mergePlaylist persists the Netease baseline queue before generated music arrives", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        game_id: 101,
+        current_song: song(1, "网易云 当前曲"),
+        queue: [song(2, "网易云 下一曲"), song(3, "网易云 后续曲")],
+        played_songs: [],
+        is_playing: false,
+        volume: 0.5,
+        current_position_ms: 0,
+      }),
+    }) as jest.Mock;
+
+    await useMusicStore.getState().mergePlaylist(
+      101,
+      [song(1, "网易云 当前曲"), song(2, "网易云 下一曲"), song(3, "网易云 后续曲")],
+      "紧张",
+      ["雨夜追逐"]
+    );
+
+    expect(global.fetch).toHaveBeenCalledWith("/api/music/playlist/101", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        songs: [
+          song(1, "网易云 当前曲"),
+          song(2, "网易云 下一曲"),
+          song(3, "网易云 后续曲"),
+        ],
+        mood: "紧张",
+        keywords: ["雨夜追逐"],
+      }),
+    });
+    expect(useMusicStore.getState().queue.map((item) => item.id)).toEqual([2, 3]);
   });
 
   it("store insertGeneratedTrack places AI music into a future queue slot", () => {

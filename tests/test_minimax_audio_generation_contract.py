@@ -573,6 +573,100 @@ def test_music_generate_api_returns_ready_track_from_story_without_netease_block
     assert data["insert_policy"] == "future_queue"
 
 
+def test_music_generate_api_persists_generated_track_into_future_playlist_queue(
+    tmp_path: Path,
+) -> None:
+    from src.api.routers.music import router
+
+    init_db()
+    session = SessionLocal()
+    try:
+        game = Game(language="zh", initial_state={"name": "MiniMax API Playlist"})
+        session.add(game)
+        session.commit()
+        session.refresh(game)
+        game_id = int(game.game_id)
+    finally:
+        session.close()
+
+    previous_env = {
+        name: os.environ.get(name)
+        for name in ["MINIMAX_API_KEY", "MINIMAX_E2E_LOCAL_AUDIO", "STORY_MUSIC_ASSET_DIR"]
+    }
+    os.environ["MINIMAX_API_KEY"] = "test-key"
+    os.environ["MINIMAX_E2E_LOCAL_AUDIO"] = "1"
+    os.environ["STORY_MUSIC_ASSET_DIR"] = str(tmp_path / "music")
+    try:
+        app = FastAPI()
+        app.include_router(router, prefix="/api")
+        client = TestClient(app)
+
+        playlist_response = client.put(
+            f"/api/music/playlist/{game_id}",
+            json={
+                "songs": [
+                    {
+                        "id": 101,
+                        "name": "网易云 当前曲",
+                        "artists": ["N"],
+                        "album": "A",
+                        "duration": 1000,
+                        "url": "https://example.com/current.mp3",
+                        "source": "netease",
+                    },
+                    {
+                        "id": 102,
+                        "name": "网易云 下一曲",
+                        "artists": ["N"],
+                        "album": "A",
+                        "duration": 1000,
+                        "url": "https://example.com/next.mp3",
+                        "source": "netease",
+                    },
+                    {
+                        "id": 103,
+                        "name": "网易云 后续曲",
+                        "artists": ["N"],
+                        "album": "A",
+                        "duration": 1000,
+                        "url": "https://example.com/later.mp3",
+                        "source": "netease",
+                    },
+                ]
+            },
+        )
+        assert playlist_response.status_code == 200
+
+        response = client.post(
+            "/api/music/generate",
+            json={
+                "game_id": game_id,
+                "story_text": "雨夜码头的旧账册被风吹开，主角在汽笛声里追向江边。",
+                "analysis": {
+                    "mood": "紧张",
+                    "scene_type": "雨夜追逐",
+                    "environment": "民国码头",
+                },
+            },
+        )
+        persisted = client.get(f"/api/music/playlist/{game_id}")
+    finally:
+        for name, value in previous_env.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+    assert response.status_code == 200
+    track = response.json()["track"]
+    assert persisted.status_code == 200
+    playlist = persisted.json()
+    assert playlist["current_song"]["id"] == 101
+    assert [item["id"] for item in playlist["queue"]] == [102, track["id"], 103]
+    assert playlist["queue"][1]["source"] == "ai_generated"
+    assert playlist["queue"][1]["url"].startswith("/api/music/generated/")
+
+
 def test_music_generate_api_reports_unexpected_generation_failure_without_global_500(
     tmp_path: Path,
 ) -> None:

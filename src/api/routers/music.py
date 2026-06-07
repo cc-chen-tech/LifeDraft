@@ -259,6 +259,11 @@ async def generate_music(request: MusicGenerationRequest):
             story_text=request.story_text,
             analysis=request.analysis,
         )
+        get_music_playlist_service().insert_generated_track_for_game(
+            db=db,
+            game_id=request.game_id,
+            generated_track=track,
+        )
         return MusicGenerationResponse(track=track, insert_policy="future_queue")
     except RuntimeError as exc:
         logger.warning("[MusicAPI] Generated music unavailable: %s", exc)
