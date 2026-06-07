@@ -17,7 +17,7 @@
 import { test, expect, BrowserContext, Page } from '@playwright/test';
 import { ensureAuthenticated } from './helpers/auth';
 
-const API_URL = 'http://localhost:8000';
+const API_URL = process.env.E2E_API_URL || `http://${process.env.E2E_BACKEND_HOST || '127.0.0.1'}:${process.env.E2E_BACKEND_PORT || '8000'}`;
 
 // ============================================================================
 // Helper Functions

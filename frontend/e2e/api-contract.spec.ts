@@ -9,7 +9,7 @@
 
 import { test, expect, APIRequestContext } from '@playwright/test';
 
-const API_URL = 'http://localhost:8000';
+const API_URL = process.env.E2E_API_URL || `http://${process.env.E2E_BACKEND_HOST || '127.0.0.1'}:${process.env.E2E_BACKEND_PORT || '8000'}`;
 
 /**
  * 测试API端点是否存在且可访问

@@ -8,7 +8,7 @@ import { test, expect } from '@playwright/test';
 import { ensureAuthenticated, registerUser } from './helpers/auth';
 import { waitForApiResponse, waitForPageReady } from './helpers/wait-helpers';
 
-const API_URL = 'http://localhost:8000';
+const API_URL = process.env.E2E_API_URL || `http://${process.env.E2E_BACKEND_HOST || '127.0.0.1'}:${process.env.E2E_BACKEND_PORT || '8000'}`;
 
 test.describe('Security E2E', () => {
   test('path traversal blocked in image URLs', async ({ page, request }) => {

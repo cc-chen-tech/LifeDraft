@@ -7,7 +7,7 @@
 import { test, expect } from '@playwright/test';
 
 const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
-const API_BASE = 'http://localhost:8000';
+const API_BASE = process.env.E2E_API_URL || `http://${process.env.E2E_BACKEND_HOST || '127.0.0.1'}:${process.env.E2E_BACKEND_PORT || '8000'}`;
 
 test.describe('Ending Life Review - Page Rendering', () => {
   test('life review card renders with personality labels', async ({ page }) => {

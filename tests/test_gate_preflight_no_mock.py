@@ -144,6 +144,9 @@ def test_e2e_gate_does_not_reuse_frontend_from_other_worktree() -> None:
     assert 'TEST_RUN_ROOT="${TEST_RUN_ROOT:-$PROJECT_DIR/.test-runs}"' in script
     assert 'TEST_RUN_DIR="${TEST_RUN_DIR:-$TEST_RUN_ROOT/$TEST_NAMESPACE}"' in script
     assert 'TEST_LOCK_DIR="$TEST_RUN_ROOT/locks"' in script
+    assert 'mkdir -p "$TEST_LOCK_DIR"' in script
+    assert script.index('mkdir -p "$TEST_LOCK_DIR"') < script.index('mkdir "$lock_dir"')
+    assert "E2E_RESULT=1" in script.split('if ! mkdir "$lock_dir"', 1)[1].split("fi", 1)[0]
     assert 'BACKEND_PID_FILE="$TEST_RUN_DIR/backend.pid"' in script
     assert 'FRONTEND_PID_FILE="$TEST_RUN_DIR/frontend.pid"' in script
     assert 'E2E_DB_PATH="$TEST_DATA_DIR/story2-e2e.sqlite"' in script
@@ -171,7 +174,10 @@ def test_e2e_specs_use_configured_frontend_port() -> None:
         spec = spec_path.read_text(encoding="utf-8")
         assert "const BASE_URL = 'http://localhost:3000'" not in spec
         assert "const BASE_URL = process.env.E2E_BASE_URL || ;" not in spec
+        assert "const API_URL = process.env.E2E_API_URL || ;" not in spec
+        assert "const API_BASE = process.env.E2E_API_URL || ;" not in spec
         assert "toContain('localhost:3000')" not in spec
+        assert "http://localhost:8000" not in spec
 
 
 def test_e2e_local_backend_and_browser_launch_are_configurable() -> None:
@@ -215,11 +221,13 @@ def test_e2e_local_backend_and_browser_launch_are_configurable() -> None:
     assert "await context.addCookies" in register_user_body
     assert "domain: 'localhost'" in register_user_body
     assert 'E2E_BACKEND_HOST=127.0.0.1 E2E_BACKEND_PORT="$E2E_BACKEND_PORT"' in script
+    assert 'API_HOST=127.0.0.1 API_PORT="$E2E_BACKEND_PORT"' in script
     assert 'DATABASE_URL="$LOCAL_E2E_DB_URL"' in script
     assert 'cleanup_pid_file "$BACKEND_PID_FILE" "后端"' in script
     assert "MINIMAX_E2E_LOCAL_AUDIO=1" in script
     assert "E2E_FRONTEND_MODE:-prod" in script
     assert "NEXT_DISABLE_STANDALONE=1 npm run build" in script
+    assert 'BACKEND_URL="http://127.0.0.1:$E2E_BACKEND_PORT"' in script
     assert "npm run start -- --hostname 127.0.0.1" in script
     assert "if ! [ -d \".next\" ]" not in script
     assert "ulimit -n 8192" in script

@@ -9,7 +9,7 @@ import { registerUser } from './helpers/auth';
 import { waitForPageReady } from './helpers/wait-helpers';
 
 const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
-const API_URL = 'http://localhost:8000';
+const API_URL = process.env.E2E_API_URL || `http://${process.env.E2E_BACKEND_HOST || '127.0.0.1'}:${process.env.E2E_BACKEND_PORT || '8000'}`;
 
 async function getApiWithTransientRetry(
   context: BrowserContext,
