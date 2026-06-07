@@ -105,20 +105,27 @@ class MiniMaxMusicGenerationProvider:
             timeout=self.config.request_timeout_seconds,
         )
         response.raise_for_status()
-        audio_url = _extract_audio_url(response.json())
-        if not audio_url:
-            raise RuntimeError("MiniMax music generation response did not include an audio URL")
+        payload = response.json()
+        audio_url = _extract_audio_url(payload)
+        audio_bytes: Optional[bytes]
+        if audio_url:
+            audio_response = httpx.get(audio_url, timeout=self.config.request_timeout_seconds)
+            audio_response.raise_for_status()
+            audio_bytes = audio_response.content
+        else:
+            audio_bytes = _extract_audio_bytes(payload)
 
-        audio_response = httpx.get(audio_url, timeout=self.config.request_timeout_seconds)
-        audio_response.raise_for_status()
+        if not audio_bytes:
+            raise RuntimeError("MiniMax music generation response did not include playable audio")
+
         file_name = f"{brief_hash}-{request.model}.{request.audio_format}"
         self.config.music_asset_dir.mkdir(parents=True, exist_ok=True)
         local_path = self.config.music_asset_dir / file_name
-        local_path.write_bytes(audio_response.content)
+        local_path.write_bytes(audio_bytes)
         return GeneratedMusicFile(
             storage_path=f"/api/music/generated/{file_name}",
             local_path=local_path,
-            duration_ms=60_000,
+            duration_ms=_extract_duration_ms(payload) or 60_000,
             provider=self.provider,
             model=request.model,
             media_type="audio/mpeg" if request.audio_format == "mp3" else "audio/wav",
@@ -333,4 +340,67 @@ def _extract_audio_url(payload: Mapping[str, Any]) -> Optional[str]:
     for candidate in candidates:
         if isinstance(candidate, str) and candidate:
             return candidate
+    return None
+
+
+def _extract_audio_bytes(payload: Mapping[str, Any]) -> Optional[bytes]:
+    candidates: list[Any] = [payload.get("audio"), payload.get("audio_hex")]
+    data = payload.get("data")
+    if isinstance(data, Mapping):
+        candidates.extend([data.get("audio"), data.get("audio_hex")])
+
+    for candidate in candidates:
+        if not isinstance(candidate, str) or not candidate.strip():
+            continue
+        normalized = "".join(candidate.split())
+        try:
+            audio = bytes.fromhex(normalized)
+        except ValueError:
+            continue
+        if audio:
+            return audio
+    return None
+
+
+def _extract_duration_ms(payload: Mapping[str, Any]) -> Optional[int]:
+    candidates: list[Any] = [
+        payload.get("duration_ms"),
+        payload.get("duration"),
+    ]
+    data = payload.get("data")
+    if isinstance(data, Mapping):
+        candidates.extend([data.get("duration_ms"), data.get("duration")])
+    extra_info = payload.get("extra_info")
+    if isinstance(extra_info, Mapping):
+        candidates.extend(
+            [
+                extra_info.get("duration_ms"),
+                extra_info.get("duration"),
+                extra_info.get("music_duration"),
+            ]
+        )
+
+    for candidate in candidates:
+        duration = _coerce_positive_int(candidate)
+        if duration is not None:
+            return duration
+    return None
+
+
+def _coerce_positive_int(value: Any) -> Optional[int]:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    if isinstance(value, float):
+        return int(value) if value > 0 else None
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            parsed = float(stripped)
+        except ValueError:
+            return None
+        return int(parsed) if parsed > 0 else None
     return None
