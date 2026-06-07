@@ -198,7 +198,7 @@ class UpdateGameSettingsRequest(BaseModel):
 
 
 class UpdateCharacterSettingsRequest(BaseModel):
-    character_settings: Dict[str, Any]
+    character_settings: Dict[str, Any] = Field(..., min_length=1)
 
 
 class UpdateNarrativeStyleRequest(BaseModel):

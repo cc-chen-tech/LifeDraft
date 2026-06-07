@@ -16,6 +16,8 @@ from src.ai.utils import extract_json
 
 logger = logging.getLogger(__name__)
 
+PLACEHOLDER_NAME_PREFIXES = ("测试", "示例", "玩家", "主角", "用户")
+
 
 def assign_sexual_orientation() -> str:
     """
@@ -31,6 +33,43 @@ def assign_sexual_orientation() -> str:
         "asexual": 0.01,
     }
     return random.choices(list(weights.keys()), weights=list(weights.values()))[0]
+
+
+def _strip_placeholder_surname_from_family_members(
+    family_setting: Dict[str, Any], player_name: str
+) -> Dict[str, Any]:
+    """Remove fake placeholder prefixes such as '测试' from generated family names."""
+    if not player_name:
+        return family_setting
+
+    placeholder_prefix = next(
+        (prefix for prefix in PLACEHOLDER_NAME_PREFIXES if player_name.startswith(prefix)),
+        "",
+    )
+    if not placeholder_prefix:
+        return family_setting
+
+    members = family_setting.get("family_members")
+    if not isinstance(members, list):
+        return family_setting
+
+    normalized_members = []
+    for member in members:
+        if not isinstance(member, dict):
+            normalized_members.append(member)
+            continue
+
+        normalized_member = dict(member)
+        name = normalized_member.get("name")
+        if isinstance(name, str) and name.startswith(placeholder_prefix):
+            stripped_name = name[len(placeholder_prefix) :].strip()
+            if stripped_name:
+                normalized_member["name"] = stripped_name
+        normalized_members.append(normalized_member)
+
+    normalized_setting = dict(family_setting)
+    normalized_setting["family_members"] = normalized_members
+    return normalized_setting
 
 
 class CharacterCreator:
@@ -144,6 +183,9 @@ class CharacterCreator:
                         logger.debug(
                             f"Set birth_year to {correct_birth_year} (era: {era_year}, age: {age})"
                         )
+
+                if setting_type == "family":
+                    result = _strip_placeholder_surname_from_family_members(result, player_name)
 
                 return result
 

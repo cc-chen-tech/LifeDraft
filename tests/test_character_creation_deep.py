@@ -92,6 +92,48 @@ class TestCharacterCreatorGenerateSetting:
         result = creator.generate_setting("traits", "张三", "成功", {})
         assert "_is_fallback" in result
 
+    def test_family_setting_does_not_keep_placeholder_prefix_as_surname(self):
+        """测试类占位名不应让家庭成员继承“测试”伪姓。"""
+        creator = self._make_creator()
+        creator.ai_generator.generate_completion.return_value = json.dumps(
+            {
+                "family_description": "普通家庭",
+                "family_members": [
+                    {"name": "测试卫国", "role": "父亲", "relationship": "父亲"},
+                    {"name": "测试秀兰", "role": "母亲", "relationship": "母亲"},
+                ],
+                "family_economy": "中等",
+                "family_relationships": "互相关心",
+            },
+            ensure_ascii=False,
+        )
+
+        result = creator.generate_setting("family", "测试小可", "成为产品经理", {})
+
+        names = [member["name"] for member in result["family_members"]]
+        assert names == ["卫国", "秀兰"]
+
+    def test_family_setting_preserves_real_chinese_surname(self):
+        """真实中文姓氏可以被家庭成员继承。"""
+        creator = self._make_creator()
+        creator.ai_generator.generate_completion.return_value = json.dumps(
+            {
+                "family_description": "普通家庭",
+                "family_members": [
+                    {"name": "张卫国", "role": "父亲", "relationship": "父亲"},
+                    {"name": "张秀兰", "role": "母亲", "relationship": "母亲"},
+                ],
+                "family_economy": "中等",
+                "family_relationships": "互相关心",
+            },
+            ensure_ascii=False,
+        )
+
+        result = creator.generate_setting("family", "张三", "成为产品经理", {})
+
+        names = [member["name"] for member in result["family_members"]]
+        assert names == ["张卫国", "张秀兰"]
+
     def test_generate_setting_en_fallback(self):
         """Test English fallback settings."""
         creator = self._make_creator("en")

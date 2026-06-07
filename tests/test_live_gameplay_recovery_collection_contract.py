@@ -112,6 +112,39 @@ def test_opening_prompt_marks_life_vision_as_non_drifting_constraint() -> None:
     assert "不得改写为无关的遗产、非遗、中医传承、古代探案或武侠押镖主线" in prompt
 
 
+def test_opening_prompt_lists_key_people_as_story_constraints() -> None:
+    """Preset key people must be visible to opening story generation."""
+    prompt = get_opening_story_prompt(
+        character_settings={
+            "era": {
+                "era_description": "2020年代中国互联网行业",
+                "year": 2024,
+                "world_context": "移动互联网成熟，AI产品快速发展",
+            },
+            "age": {"age": 29},
+            "gender": {"gender": "男"},
+            "relationships": {
+                "relationships_description": "产品团队和老朋友是核心关系",
+                "key_people": [
+                    {"name": "陈晓雨", "role": "合伙人", "relationship": "大学好友"},
+                    {"name": "林一凡", "role": "工程负责人", "relationship": "同事"},
+                ],
+            },
+        },
+        player_name="陆昊然",
+        life_vision="成为有影响力的AI产品经理",
+        formatted_family_members="父亲：陆建国",
+        language="zh",
+    )
+
+    assert "关键人物" in prompt
+    assert "陈晓雨" in prompt
+    assert "合伙人" in prompt
+    assert "林一凡" in prompt
+    assert "工程负责人" in prompt
+    assert "必须优先使用上述家庭成员和关键人物" in prompt
+
+
 @pytest.mark.asyncio
 async def test_music_client_normalizes_http_media_url_to_https() -> None:
     """Production HTTPS pages must not receive raw http:// audio URLs."""

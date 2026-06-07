@@ -387,6 +387,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/games/{game_id}/character-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Character Settings
+         * @description Persist late character creation settings for an existing game.
+         *
+         *     The create flow may add generated family, relationship, trait, and wealth
+         *     settings after the initial game record exists. This endpoint preserves the
+         *     manually selected settings and merges the generated settings into the saved
+         *     player state before opening story generation starts.
+         */
+        patch: operations["update_character_settings_api_games__game_id__character_settings_patch"];
+        trace?: never;
+    };
     "/api/games/{game_id}/settings": {
         parameters: {
             query?: never;
@@ -3136,6 +3161,13 @@ export interface components {
              */
             message: string;
         };
+        /** UpdateCharacterSettingsRequest */
+        UpdateCharacterSettingsRequest: {
+            /** Character Settings */
+            character_settings: {
+                [key: string]: unknown;
+            };
+        };
         /** UpdateGameSettingsRequest */
         UpdateGameSettingsRequest: {
             /** Constraint Level */
@@ -3853,6 +3885,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GameStateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_character_settings_api_games__game_id__character_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCharacterSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
                 };
             };
             /** @description Validation Error */

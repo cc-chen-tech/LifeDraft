@@ -44,6 +44,7 @@ function handle401Redirect() {
 }
 
 export function shouldRetryApiResponse(status: number, url: string, attemptIndex: number): boolean {
+  if (status === 502 || status === 504) return true;
   if (status >= 500) return true;
   if (status !== 401) return false;
   if (url.includes('/voice-reading/')) return false;

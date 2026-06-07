@@ -245,7 +245,12 @@ describe('SSE Streaming', () => {
     it('calls fetch with POST and character settings', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        body: createMockStream(['data: [DONE]\n\n']),
+        body: createMockStream([
+          'event: story\n',
+          'data: "开场故事。"\n\n',
+          'event: complete\n',
+          'data: {}\n\n',
+        ]),
       });
 
       const callbacks = {
@@ -275,6 +280,36 @@ describe('SSE Streaming', () => {
       expect(body.player_name).toBe('TestPlayer');
       expect(body.life_vision).toBe('My vision');
       expect(body.character_settings).toEqual({ era: 'modern', age: 25 });
+    });
+
+    it('rejects when opening story completes without any story text', async () => {
+      const onStory = jest.fn();
+      const onComplete = jest.fn();
+      const onError = jest.fn();
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: createMockStream([
+          'event: complete\n',
+          'data: {}\n\n',
+        ]),
+      });
+
+      await expect(
+        streamOpeningStory(
+          { era: 'modern' },
+          '林舟',
+          '找到自己的路',
+          'zh',
+          { onStory, onComplete, onError }
+        )
+      ).rejects.toThrow('Opening story stream completed without story text');
+
+      expect(onStory).not.toHaveBeenCalled();
+      expect(onComplete).not.toHaveBeenCalled();
+      expect(onError).toHaveBeenCalledWith({
+        message: 'Opening story stream completed without story text',
+      });
     });
 
     it('streams backend event: story chunks and preserves text when complete payload is empty', async () => {
