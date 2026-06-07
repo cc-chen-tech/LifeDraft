@@ -60,3 +60,29 @@ class TestAsyncTaskLifecycle:
             "/api/collection/1/add-entities", json={"items": [], "landmarks": []}
         )
         assert add_response.status_code in [401, 403, 400, 200]
+
+
+class TestGameplayProbeContract:
+    """轻量 API 探测契约，避免端点存在性测试触发错误业务状态。"""
+
+    def test_anonymous_choice_sync_without_current_event_returns_validation_status(self):
+        create_response = client.post(
+            "/api/games",
+            json={
+                "player_name": "ContractProbe",
+                "life_vision": "保持接口契约稳定",
+                "language": "zh",
+                "constraint_level": "expert",
+                "character_settings": {
+                    "era": {"name": "现代", "year": 2026},
+                    "gender": "unspecified",
+                },
+            },
+        )
+        assert create_response.status_code == 201
+        game_id = create_response.json()["game_id"]
+
+        response = client.post(f"/api/games/{game_id}/choice-sync", json={"option_index": 0})
+
+        assert response.status_code == 422
+        assert response.json()["detail"] == "No current event. Generate an event first."

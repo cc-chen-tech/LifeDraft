@@ -1,26 +1,8 @@
 /**
- * Playwright Global Teardown - 清理由 globalSetup 启动的服务
+ * Playwright Global Teardown - 仅保留清理钩子入口
  */
 
 export default async function globalTeardown() {
-  const backendProcess = (globalThis as any).__e2e_backend_process;
-  if (backendProcess && !backendProcess.killed) {
-    console.log('\n  → 关闭由测试启动的后端进程...');
-    backendProcess.kill('SIGTERM');
-
-    // 等待进程退出
-    await new Promise<void>((resolve) => {
-      const timeout = setTimeout(() => {
-        backendProcess.kill('SIGKILL');
-        resolve();
-      }, 5000);
-
-      backendProcess.on('exit', () => {
-        clearTimeout(timeout);
-        resolve();
-      });
-    });
-
-    console.log('  ✓ 后端进程已关闭\n');
-  }
+  // test.sh 和执行脚本负责启动/关闭后端与前端进程
+  return;
 }

@@ -47,6 +47,8 @@ ENV/
 data/cache/
 data/*.json
 data/images/
+data/music_assets/
+data/voice_assets/
 data/vector_store/
 !data/presets/
 

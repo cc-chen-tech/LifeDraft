@@ -2336,6 +2336,18 @@
               "type": "integer",
               "title": "Game Id"
             }
+          },
+          {
+            "name": "once",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "测试或一次性读取时返回首批事件后直接关闭连接",
+              "default": false,
+              "title": "Once"
+            },
+            "description": "测试或一次性读取时返回首批事件后直接关闭连接"
           }
         ],
         "responses": {

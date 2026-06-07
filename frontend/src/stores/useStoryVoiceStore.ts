@@ -21,6 +21,7 @@ interface StoryVoiceState {
   errorMessage: string;
   queueText: string;
   autoReadEnabled: boolean;
+  selectedVoiceId: string;
   musicDuckState: MusicDuckState;
   musicWasPlaying: boolean;
   userChangedMusic: boolean;
@@ -31,6 +32,7 @@ interface StoryVoiceState {
   retryReading: () => void;
   failReading: () => void;
   setAutoReadEnabled: (enabled: boolean) => void;
+  setSelectedVoiceId: (voiceId: string) => void;
   enqueueCompletedAttempt: (text: string) => void;
   simulateMusicPlaying: () => void;
   userPauseMusicDuringReading: () => void;
@@ -89,6 +91,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
   errorMessage: "",
   queueText: "",
   autoReadEnabled: false,
+  selectedVoiceId: "warm_female",
   musicDuckState: "idle",
   musicWasPlaying: false,
   userChangedMusic: false,
@@ -182,7 +185,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       const textHash = await normalizeTextHash(context.text);
       const response = await api.voice_reading.requestReading({
         context: { ...context, text_hash: textHash },
-        voice_id: "warm_female",
+        voice_id: get().selectedVoiceId,
         speed: 1,
         auto_play: true,
         preferred_provider:
@@ -302,6 +305,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
     });
   },
   setAutoReadEnabled: (autoReadEnabled) => set({ autoReadEnabled }),
+  setSelectedVoiceId: (selectedVoiceId) => set({ selectedVoiceId }),
   enqueueCompletedAttempt: (text) => set({ queueText: text }),
   simulateMusicPlaying: () => set({ musicWasPlaying: true, musicDuckState: "playing" }),
   userPauseMusicDuringReading: () =>

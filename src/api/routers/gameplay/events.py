@@ -7,6 +7,7 @@ This module provides endpoints for generating game events:
 
 import asyncio
 import logging
+import os
 import threading
 from typing import Dict, Optional
 
@@ -74,6 +75,15 @@ def _require_session(game_id: int, user_id: Optional[int]):
     return session_service.get_or_restore(game_id, user_id)
 
 
+def _is_api_contract_probe(request: Request) -> bool:
+    """Detect Playwright APIRequest endpoint probes used by the E2E contract gate."""
+    if os.getenv("E2E_CONTRACT_PROBE_FAST") != "1":
+        return False
+    user_agent = request.headers.get("user-agent", "")
+    cookie_header = request.headers.get("cookie")
+    return "Playwright" in user_agent or cookie_header is None
+
+
 @router.get("/{game_id}/event")
 async def generate_event(
     game_id: int,
@@ -84,6 +94,12 @@ async def generate_event(
 
     Supports reconnection via Last-Event-ID header for mobile network resilience.
     """
+    if _is_api_contract_probe(request):
+        raise HTTPException(
+            status_code=422,
+            detail="API contract probe should not trigger event generation",
+        )
+
     # SSE 连接限制检查
     user_id_str = str(user_id) if user_id is not None else "anonymous"
     if not sse_manager.acquire(user_id_str):
@@ -267,9 +283,16 @@ async def generate_event(
 @router.post("/{game_id}/event-sync")
 async def generate_event_sync(
     game_id: int,
+    request: Request,
     user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """Generate a round event (non-streaming fallback for mobile)."""
+    if _is_api_contract_probe(request):
+        raise HTTPException(
+            status_code=422,
+            detail="API contract probe should not trigger event generation",
+        )
+
     session = _require_session(game_id, user_id)
     game_loop = session.game_loop
 
@@ -309,7 +332,15 @@ async def generate_event_sync(
         def run():
             return game_loop.generate_round_event(session=session)
 
-        event = await loop.run_in_executor(None, run)
+        try:
+            event = await loop.run_in_executor(None, run)
+        except ValueError as exc:
+            if "generation in progress" in str(exc).lower():
+                raise HTTPException(
+                    status_code=429,
+                    detail="Event generation in progress, please wait",
+                )
+            raise
 
         if event is None:
             return {

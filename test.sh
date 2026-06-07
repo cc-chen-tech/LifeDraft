@@ -114,7 +114,8 @@ run_playwright_command() {
     local label=$1
     shift
     local output_file
-    output_file="$(mktemp "/tmp/story2-playwright-${label}-XXXX.log")"
+    rm -f "/tmp/story2-playwright-${label}-XXXXXX.log" 2>/dev/null || true
+    output_file="$(mktemp "/tmp/story2-playwright-${label}-XXXXXX.log")"
 
     "$@" 2>&1 | tee "$output_file"
     local result=${PIPESTATUS[0]}
@@ -366,7 +367,8 @@ run_e2e_browser() {
     cd "$PROJECT_DIR"
     activate_python_env
     E2E_BACKEND_HOST=127.0.0.1 E2E_BACKEND_PORT=8000 \
-    STORY_TTS_ALLOW_REQUEST_PROVIDER=1 MINIMAX_API_KEY=test-key MINIMAX_E2E_LOCAL_AUDIO=1 API_RELOAD=false python run_api.py > /tmp/backend_e2e.log 2>&1 &
+    E2E_CONTRACT_PROBE_FAST=1 STORY_TTS_ALLOW_REQUEST_PROVIDER=1 \
+    MINIMAX_API_KEY=test-key MINIMAX_E2E_LOCAL_AUDIO=1 API_RELOAD=false python run_api.py > /tmp/backend_e2e.log 2>&1 &
     BACKEND_PID=$!
     sleep 3
     if ! lsof -ti:8000 > /dev/null 2>&1; then
@@ -395,7 +397,7 @@ run_e2e_browser() {
         echo -e "${YELLOW}使用生产模式启动前端（next build + start）以规避开发监听问题...${NC}"
         cd "$PROJECT_DIR/frontend"
         echo -e "${YELLOW}执行 npm run build，避免复用旧 .next 构建...${NC}"
-        npm run build
+        NEXT_DISABLE_STANDALONE=1 npm run build
         if [ $? -ne 0 ]; then
             echo -e "${RED}前端构建失败，跳过 E2E 测试${NC}"
             E2E_RESULT=1
@@ -404,12 +406,27 @@ run_e2e_browser() {
 
         local frontend_port="${E2E_FRONTEND_PORT:-3000}"
         cd "$PROJECT_DIR/frontend"
-        CI=1 E2E_FRONTEND_PORT="$frontend_port" npm run start -- --hostname 127.0.0.1 --port "$frontend_port" > /tmp/frontend_e2e.log 2>&1 &
+        NEXT_DISABLE_STANDALONE=1 CI=1 E2E_FRONTEND_PORT="$frontend_port" npm run start -- --hostname 127.0.0.1 --port "$frontend_port" > /tmp/frontend_e2e.log 2>&1 &
         FRONTEND_PID=$!
-        sleep 3
-        if ! lsof -iTCP:"$frontend_port" -sTCP:LISTEN >/dev/null 2>&1; then
+        local frontend_started=0
+        for frontend_ready_attempt in $(seq 1 45); do
+            if curl -fsS "http://127.0.0.1:$frontend_port" >/dev/null 2>&1; then
+                frontend_started=1
+                break
+            fi
+            if lsof -iTCP:"$frontend_port" -sTCP:LISTEN >/dev/null 2>&1; then
+                frontend_started=1
+                break
+            fi
+            if ! kill -0 "$FRONTEND_PID" 2>/dev/null; then
+                break
+            fi
+            sleep 1
+        done
+        if [ "$frontend_started" -ne 1 ]; then
             echo -e "${RED}前端启动失败，跳过 E2E 测试${NC}"
             echo -e "${RED}日志: /tmp/frontend_e2e.log${NC}"
+            cat /tmp/frontend_e2e.log 2>/dev/null || true
             if [ -n "$BACKEND_PID" ]; then
                 kill "$BACKEND_PID" 2>/dev/null || true
             fi

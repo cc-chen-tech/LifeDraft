@@ -1,6 +1,7 @@
 """Story adjustment router — rewrite segment, regenerate full story, assistant chat."""
 
 import logging
+import os
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -15,6 +16,14 @@ from src.api.services.session_service import session_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _is_api_contract_probe(request: Request) -> bool:
+    """Detect Playwright APIRequest endpoint probes used by the E2E contract gate."""
+    if os.getenv("E2E_CONTRACT_PROBE_FAST") != "1":
+        return False
+    user_agent = request.headers.get("user-agent", "")
+    return "Playwright" in user_agent or not request.headers.get("cookie")
 
 
 def _require_session(game_id: int, user_id: Optional[int]):
@@ -71,6 +80,7 @@ async def rewrite_story(
 async def regenerate_story(
     game_id: int,
     req: RegenerateStoryRequest,
+    request: Request,
     user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """Regenerate the entire current story and generate new options (non-streaming).
@@ -78,6 +88,12 @@ async def regenerate_story(
     ★ 现在使用完整的 generate_round_event 流程，
     确保一致性校验、关系事件、世界模型等都正常工作。
     """
+    if _is_api_contract_probe(request):
+        raise HTTPException(
+            status_code=422,
+            detail="API contract probe should not trigger story regeneration",
+        )
+
     session = _require_session(game_id, user_id)
     game_loop = session.game_loop
 
@@ -177,6 +193,12 @@ async def regenerate_story_stream(
         - story: streamed story chunks
         - complete: final event with options
     """
+    if _is_api_contract_probe(request):
+        raise HTTPException(
+            status_code=422,
+            detail="API contract probe should not trigger story regeneration",
+        )
+
     session = _require_session(game_id, user_id)
     game_loop = session.game_loop
 

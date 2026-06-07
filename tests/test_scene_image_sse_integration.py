@@ -107,7 +107,7 @@ class TestSceneImageSSEIntegration:
         try:
             with TestClient(app) as client:
                 with client.get(
-                    f"/api/images/scene/events/{game_id}", headers=_auth_headers()
+                    f"/api/images/scene/events/{game_id}?once=true", headers=_auth_headers()
                 ) as response:
                     assert response.status_code == 200
                     line = response.iter_lines().__next__()
@@ -146,7 +146,7 @@ class TestSceneImageSSEIntegration:
 
             with TestClient(app) as client:
                 with client.get(
-                    f"/api/images/scene/events/{game_id}", headers=_auth_headers()
+                    f"/api/images/scene/events/{game_id}?once=true", headers=_auth_headers()
                 ) as response:
                     line = response.iter_lines().__next__()
                     data = json.loads(line[6:].decode())
@@ -183,7 +183,7 @@ class TestSceneImageSSEIntegration:
 
             with TestClient(app) as client:
                 with client.get(
-                    f"/api/images/scene/events/{game_id}", headers=_auth_headers()
+                    f"/api/images/scene/events/{game_id}?once=true", headers=_auth_headers()
                 ) as response:
                     line = response.iter_lines().__next__()
                     data = json.loads(line[6:].decode())

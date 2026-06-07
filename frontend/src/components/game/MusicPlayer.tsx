@@ -71,7 +71,7 @@ export function MusicPlayer({
     fadeVolume,
   } = useMusicStore();
 
-  const hasFetchedRef = useRef(false);
+  const fetchedRecommendationKeyRef = useRef<string | null>(null);
   const generatedMusicStoryKeyRef = useRef<string | null>(null);
   const isLoadingSongRef = useRef(false);
   const [playError, setPlayError] = useState<string | null>(null);
@@ -502,11 +502,16 @@ export function MusicPlayer({
 
   // 初始加载推荐
   useEffect(() => {
-    if (autoFetchRecommendation && storyText && !hasFetchedRef.current && !recommendation) {
-      hasFetchedRef.current = true;
+    const recommendationKey = gameId ? `${gameId}:${storyText}` : `story:${storyText}`;
+    if (
+      autoFetchRecommendation &&
+      storyText &&
+      fetchedRecommendationKeyRef.current !== recommendationKey
+    ) {
+      fetchedRecommendationKeyRef.current = recommendationKey;
       fetchRecommendation();
     }
-  }, [autoFetchRecommendation, storyText, recommendation, fetchRecommendation]);
+  }, [autoFetchRecommendation, storyText, gameId, fetchRecommendation]);
 
   // 清理
   useEffect(() => {

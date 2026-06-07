@@ -68,6 +68,13 @@ def test_preflight_script_runs_before_expensive_layers() -> None:
     )
 
 
+def test_playwright_log_tempfile_template_has_enough_random_suffix() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+
+    assert 'mktemp "/tmp/story2-playwright-${label}-XXXXXX.log"' in script
+    assert 'mktemp "/tmp/story2-playwright-${label}-XXXX.log"' not in script
+
+
 def test_preflight_validates_archived_provider_story_tts_spec() -> None:
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
     archived_spec = (
@@ -118,6 +125,13 @@ def test_minimax_api_key_is_not_committed_to_repository_files() -> None:
             leaked_paths.append(str(path.relative_to(ROOT)))
 
     assert leaked_paths == []
+
+
+def test_generated_minimax_audio_assets_are_gitignored() -> None:
+    gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+
+    assert "data/music_assets/" in gitignore
+    assert "data/voice_assets/" in gitignore
 
 
 def test_e2e_gate_does_not_reuse_frontend_from_other_worktree() -> None:
@@ -196,9 +210,23 @@ def test_e2e_local_backend_and_browser_launch_are_configurable() -> None:
     assert "关闭当前 8000 端口遗留后端进程" in script
     assert "MINIMAX_E2E_LOCAL_AUDIO=1" in script
     assert "E2E_FRONTEND_MODE:-prod" in script
+    assert "NEXT_DISABLE_STANDALONE=1 npm run build" in script
     assert "npm run start -- --hostname 127.0.0.1" in script
     assert "if ! [ -d \".next\" ]" not in script
     assert "ulimit -n 8192" in script
+
+
+def test_playwright_global_setup_does_not_spawn_competing_backend() -> None:
+    global_setup = (ROOT / "frontend" / "e2e" / "global-setup.ts").read_text(
+        encoding="utf-8"
+    )
+    global_teardown = (ROOT / "frontend" / "e2e" / "global-teardown.ts").read_text(
+        encoding="utf-8"
+    )
+
+    assert "startBackend()" not in global_setup
+    assert "__e2e_backend_process" not in global_setup
+    assert "__e2e_backend_process" not in global_teardown
 
 
 def test_frontend_regression_fixture_exercises_changed_surfaces() -> None:
@@ -330,6 +358,69 @@ def test_story_voice_test_controls_stay_out_of_real_play_page() -> None:
     assert "showTestControls" in regression_page
 
 
+def test_story_voice_production_controls_expose_persistent_auto_read_toggle() -> None:
+    component = (
+        ROOT / "frontend" / "src" / "components" / "game" / "StoryVoiceControls.tsx"
+    ).read_text(encoding="utf-8")
+
+    auto_read_label = 'aria-label={autoReadEnabled ? "关闭自动朗读" : "启用自动朗读"}'
+    assert auto_read_label in component
+    assert "api.voice_reading.getSettings" in component
+    assert "api.voice_reading.updateSettings" in component
+    assert "settings.auto_read_enabled" in component
+    assert component.index(auto_read_label) < component.index("{showTestControls &&")
+
+
+def test_story_voice_production_controls_expose_voice_selection() -> None:
+    component = (
+        ROOT / "frontend" / "src" / "components" / "game" / "StoryVoiceControls.tsx"
+    ).read_text(encoding="utf-8")
+    store = (ROOT / "frontend" / "src" / "stores" / "useStoryVoiceStore.ts").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'aria-label="选择朗读声音"' in component
+    assert "warm_female" in component
+    assert "calm_male" in component
+    assert "clear_neutral" in component
+    assert "selectedVoiceId" in store
+    assert "settings.selected_voice_color" in component
+    assert 'voice_id: get().selectedVoiceId' in store
+    assert 'voice_id: "warm_female"' not in store
+
+
+def test_story_voice_production_settings_do_not_duplicate_test_controls() -> None:
+    component = (
+        ROOT / "frontend" / "src" / "components" / "game" / "StoryVoiceControls.tsx"
+    ).read_text(encoding="utf-8")
+
+    assert "const showProductionSettings = !showTestControls;" in component
+    assert "{showProductionSettings && (" in component
+    assert component.index("{showProductionSettings && (") < component.index("{showTestControls &&")
+
+
+def test_global_music_player_autogenerates_music_from_completed_story_when_collapsed() -> None:
+    global_player = (
+        ROOT / "frontend" / "src" / "components" / "game" / "GlobalMusicPlayer.tsx"
+    ).read_text(encoding="utf-8")
+
+    assert "const shouldAutoFetchRecommendation" in global_player
+    assert "activeStoryText" in global_player
+    assert "effectiveGameId" in global_player
+    assert "autoFetchRecommendation={shouldAutoFetchRecommendation}" in global_player
+    assert "autoFetchRecommendation={isExpanded}" not in global_player
+
+
+def test_regression_fixture_does_not_autogenerate_global_ai_music() -> None:
+    fixture = (ROOT / "frontend" / "src" / "app" / "e2e-regression" / "page.tsx").read_text(
+        encoding="utf-8"
+    )
+
+    assert "setActiveStoryText(" in fixture
+    assert "setActiveGameId(null);" in fixture
+    assert "setActiveGameId(101);" not in fixture
+
+
 def test_play_page_missing_game_state_has_actionable_recovery_ui() -> None:
     play_page = (ROOT / "frontend" / "src" / "app" / "play" / "page.tsx").read_text(
         encoding="utf-8"
@@ -364,6 +455,70 @@ def test_story_voice_e2e_workflow_enables_deterministic_backend_audio() -> None:
     assert "STORY_TTS_ALLOW_REQUEST_PROVIDER=1" in workflow
     assert "MINIMAX_E2E_LOCAL_AUDIO=1" in workflow
     assert "MINIMAX_API_KEY=test-key" in workflow
+
+
+def test_e2e_workflow_uses_same_layered_gate_as_local_test_sh() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "e2e-tests.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "run: ./test.sh e2e" in workflow
+    assert "run: npm run test:e2e" not in workflow
+    assert "Start backend server" not in workflow
+    assert "Start frontend server" not in workflow
+
+
+def test_e2e_prod_frontend_start_waits_until_listening_in_ci() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+    start_block = script.split("npm run start -- --hostname 127.0.0.1", 1)[1].split(
+        "export CI=1", 1
+    )[0]
+
+    assert "for frontend_ready_attempt in" in start_block
+    assert 'lsof -iTCP:"$frontend_port" -sTCP:LISTEN' in start_block
+    assert "cat /tmp/frontend_e2e.log" in start_block
+    assert "sleep 3\n        if ! lsof" not in start_block
+
+
+def test_e2e_prod_frontend_start_uses_http_readiness_in_ci() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+    start_block = script.split("npm run start -- --hostname 127.0.0.1", 1)[1].split(
+        "export CI=1", 1
+    )[0]
+
+    assert 'curl -fsS "http://127.0.0.1:$frontend_port"' in start_block
+    assert start_block.index('curl -fsS "http://127.0.0.1:$frontend_port"') < start_block.index(
+        'kill -0 "$FRONTEND_PID"'
+    )
+
+
+def test_e2e_prod_frontend_disables_standalone_output_for_next_start() -> None:
+    next_config = (ROOT / "frontend" / "next.config.ts").read_text(encoding="utf-8")
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+
+    assert "process.env.NEXT_DISABLE_STANDALONE === '1'" in next_config
+    assert "output: process.env.NEXT_DISABLE_STANDALONE === '1' ? undefined : 'standalone'" in next_config
+    assert "NEXT_DISABLE_STANDALONE=1 npm run build" in script
+    assert 'NEXT_DISABLE_STANDALONE=1 CI=1 E2E_FRONTEND_PORT="$frontend_port" npm run start' in script
+    assert "npm run start -- --hostname 127.0.0.1" in script
+    assert "node .next/standalone/server.js" not in script
+
+
+def test_e2e_api_contract_probe_does_not_trigger_long_story_regeneration() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+    story_router = (ROOT / "src" / "api" / "routers" / "story.py").read_text(encoding="utf-8")
+    events_router = (
+        ROOT / "src" / "api" / "routers" / "gameplay" / "events.py"
+    ).read_text(encoding="utf-8")
+
+    assert "E2E_CONTRACT_PROBE_FAST=1" in script
+    assert "E2E_CONTRACT_PROBE_FAST" in story_router
+    assert 'request.headers.get("user-agent", "")' in story_router
+    assert "API contract probe should not trigger story regeneration" in story_router
+    assert "E2E_CONTRACT_PROBE_FAST" in events_router
+    assert 'request.headers.get("user-agent", "")' in events_router
+    assert 'not request.headers.get("cookie")' not in events_router
+    assert "API contract probe should not trigger event generation" in events_router
 
 
 def test_story_voice_browser_fallback_e2e_accepts_real_browser_speech_capability() -> None:
