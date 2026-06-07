@@ -56,6 +56,11 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - A top-level list-shaped `character_settings.relationships` payload returned 201 instead of 500.
   - Loading the created game returned `player_state.relationships` containing `陆昊然` and `陈晓雨`.
   - Loading the created game returned canonical `character_settings.relationships.key_people` count 2.
+- Production long synchronous gameplay probe on game 55 reached week 4:
+  - Ran 12 real production rounds using `event-sync -> choice-sync -> state`.
+  - Final state was `week=4`, `round=0`, `round_history` length 12.
+  - No week-2 deadlock reproduced on the synchronous API path.
+  - Observed latency remains a product blocker: event generation took roughly 30-44s per round and choice processing took roughly 35-106s per round.
 - Frontend full unit suite passes locally in serial mode: `npm run test:unit -- --runInBand` with 97 suites and 1681 tests passing.
 - Production deploy workflow now injects a temporary GitHub token for private-repo fetches on ECS and restores the clean GitHub remote URL after fetch, so the host does not need a persisted token in `origin`.
 
@@ -64,4 +69,4 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
 - Remote GitHub checks are blocked by GitHub billing/spending-limit status, not by retrievable job logs.
 - Fresh MiniMax music generation can take longer than 150 seconds on production; the current design keeps NetEase playback available and inserts generated music only after the asset is ready.
 - Broader music matching quality still needs follow-up: prompt-leak and direct negative-cue filters prevent the worst mismatches from entering the queue, but they do not guarantee every remaining NetEase recommendation is semantically strong.
-- A real long manual playthrough to week 4 should be rerun after deployment, because local deterministic E2E is not a substitute for live model/runtime behavior.
+- Browser/manual long playthrough to week 4 should still be rerun after deployment, because the production synchronous API probe does not validate all `/play` UI states, SSE streaming behavior, button interactions, media playback, or visual overlap.
