@@ -129,6 +129,7 @@ export function useChoiceHandler({
           optionIndex,
           isRetry,
           sseSucceeded,
+          baseStoryText: choiceBaseStoryRef.current,
           retryChoice: () => handleChoice(optionIndex, true),
         }, "handleChoice");
       },
@@ -178,6 +179,7 @@ export function useChoiceHandler({
           customText,
           isRetry: false,
           sseSucceeded,
+          baseStoryText: choiceBaseStoryRef.current,
         }, "handleCustomChoice");
       },
     };

@@ -4,6 +4,7 @@
  */
 import {
   parseSSEError,
+  isRecoverableChoiceStreamError,
   handleChoiceComplete,
   enterResultPhase,
   handleChoiceAlreadyProcessed,
@@ -94,6 +95,18 @@ describe('choiceUtils', () => {
 
     it('handles number', () => {
       expect(parseSSEError(404)).toBe('404');
+    });
+  });
+
+  describe('isRecoverableChoiceStreamError', () => {
+    it('treats interrupted browser streams as recoverable', () => {
+      expect(isRecoverableChoiceStreamError('network error')).toBe(true);
+      expect(isRecoverableChoiceStreamError('net::ERR_INCOMPLETE_CHUNKED_ENCODING')).toBe(true);
+      expect(isRecoverableChoiceStreamError('Unknown error')).toBe(true);
+    });
+
+    it('does not treat domain validation errors as recoverable stream failures', () => {
+      expect(isRecoverableChoiceStreamError('Invalid option index')).toBe(false);
     });
   });
 
@@ -298,11 +311,45 @@ describe('choiceUtils', () => {
       expect(choiceCalls.length).toBeGreaterThan(0);
     });
 
+    it('falls back when an already-started SSE choice stream is interrupted', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        story_continuation: '完整的同步续写结果',
+        summary: 'Result',
+        need_weekly_summary: false,
+        game_over: false,
+      }));
+      useGameStore.setState({
+        storyText: 'Base story plus partial broken stream',
+        currentEvent: { options: [{ text: 'Option 1' }] } as Record<string, unknown>,
+      });
+
+      const context: ChoiceErrorContext = {
+        optionIndex: 0,
+        isRetry: false,
+        sseSucceeded: true,
+        baseStoryText: 'Base story',
+      };
+
+      await handleChoiceError(
+        { message: 'network error' },
+        123, mockHandlers, context, 'test'
+      );
+
+      const choiceCalls = (global.fetch as jest.Mock).mock.calls.filter(
+        (c: unknown[]) => (c[0] as string).includes('choice-sync')
+      );
+      expect(choiceCalls.length).toBeGreaterThan(0);
+      expect(mockHandlers.setStoryText).toHaveBeenCalledWith(
+        'Base story\n\n--- 主角选择了：Option 1 ---\n\n完整的同步续写结果'
+      );
+      expect(mockHandlers.setPhase).toHaveBeenCalledWith('result');
+    });
+
     it('sets error phase for unhandled errors', async () => {
       const context: ChoiceErrorContext = { optionIndex: 0, isRetry: true, sseSucceeded: true };
 
       await handleChoiceError(
-        { message: 'Unknown error' },
+        { message: 'Invalid option index' },
         123, mockHandlers, context, 'test'
       );
 

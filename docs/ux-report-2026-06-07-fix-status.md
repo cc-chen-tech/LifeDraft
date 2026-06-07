@@ -41,6 +41,8 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Regression coverage: `frontend/src/__tests__/pages/PlayPage.test.tsx`
 - The empty-generation recovery button is now limited to truly empty loading state. A restored or partially streamed story without options no longer shows the same "恢复当前进度" button that force-cleared the visible story and started a duplicate `/event` request.
   - Regression coverage: `frontend/src/__tests__/pages/PlayPage.test.tsx`
+- Choice SSE interruptions now fall back to `choice-sync` even when part of the result stream has already arrived. The fallback rebuilds the result from the pre-choice story text, so a broken `/choice` stream cannot leave the `/play` page in `error` with a half-appended continuation.
+  - Regression coverage: `frontend/src/__tests__/hooks/choiceUtils.test.ts`
 
 ## Verification
 
@@ -93,6 +95,11 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
 - Focused PlayPage regression batch after the recovery/music handoff fix: 59 passed.
 - Frontend full unit suite passes locally in serial mode: `npm run test:unit -- --runInBand` with 97 suites and 1681 tests passing.
 - Production deploy workflow now injects a temporary GitHub token for private-repo fetches on ECS and restores the clean GitHub remote URL after fetch, so the host does not need a persisted token in `origin`.
+- Production browser long-flow probe after deploying `4d6b8b26`:
+  - First event generation reached options and music recommendation only started after the completed story was ready.
+  - The partial-story recovery control stayed hidden while story text was streaming.
+  - Selecting the first option reproduced a remaining blocker: `/api/games/68/choice` failed with `net::ERR_INCOMPLETE_CHUNKED_ENCODING`, and the page entered `error` because the interrupted choice stream was not falling back to `choice-sync`.
+- Focused choice/play regression batch after the interrupted-choice fallback fix: 98 passed.
 
 ## Still Not Claimed As Production-Complete
 
