@@ -44,6 +44,10 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - `/api/music/recommend` returned `music_brief`.
   - `/api/music/generate` returned a MiniMax `ai_generated` MP3 asset.
   - `/api/music/playlist/50` contained the generated MiniMax track in the future queue after the current NetEase baseline track.
+- Production `/api/music/recommend` verification after deploying `aa46c27c` to ECS:
+  - A modern workplace data-fraud suspense story returned `music_brief`.
+  - Prompt-leak title matches: 0.
+  - Direct negative-cue matches for `type beat`, `喜欢你`, `情歌`, and `双截棍`: 0.
 - Production deploy workflow now injects a temporary GitHub token for private-repo fetches on ECS and restores the clean GitHub remote URL after fetch, so the host does not need a persisted token in `origin`.
 
 ## Still Not Claimed As Production-Complete
