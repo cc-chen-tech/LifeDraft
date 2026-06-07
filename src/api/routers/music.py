@@ -56,6 +56,16 @@ def read_generated_music_file(
     )
 
 
+def _music_generation_failure_detail(exc: Exception) -> str:
+    message = str(exc).strip()
+    if message:
+        message = re.sub(r"https?://\S+", "<url>", message)
+        message = re.sub(r"(/[^\s'\"),]+)+", "<path>", message)
+        message = message[:240]
+        return f"AI music generation failed ({type(exc).__name__}: {message})"
+    return f"AI music generation failed ({type(exc).__name__})"
+
+
 class MusicRecommendationRequest(BaseModel):
     """音乐推荐请求"""
 
@@ -253,6 +263,9 @@ async def generate_music(request: MusicGenerationRequest):
     except RuntimeError as exc:
         logger.warning("[MusicAPI] Generated music unavailable: %s", exc)
         raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        logger.exception("[MusicAPI] Generated music failed unexpectedly")
+        raise HTTPException(status_code=503, detail=_music_generation_failure_detail(exc))
     finally:
         db.close()
 
