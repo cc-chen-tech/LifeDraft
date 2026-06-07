@@ -8,6 +8,7 @@ import { useSessionStore } from "@/stores/useSessionStore";
 import { useHydration } from "@/hooks/useHydration";
 import { games } from "@/lib/api";
 import type { EventOption } from "@/lib/types";
+import { resolveRecoveredStoryText } from "@/lib/sessionRecovery";
 
 // Import sub-hooks
 import { usePhaseManager, Phase, ConnectionStatus } from "./game/usePhaseManager";
@@ -245,21 +246,12 @@ export function usePlayGame() {
 
             let recoveredStoryText = event?.story || "";
             if (!recoveredStoryText) {
-              const playerState = state.player_state as Record<string, unknown>;
-              const lastRoundStory = playerState?.last_round_full_story as string;
-              if (lastRoundStory) {
-                recoveredStoryText = lastRoundStory;
-                console.log(`[play] Restored story from last_round_full_story (${lastRoundStory.length} chars)`);
-              } else {
-                const roundHistory = playerState?.round_history as Array<{event_description?: string; story_continuation?: string}>;
-                if (roundHistory && roundHistory.length > 0) {
-                  const lastRound = roundHistory[roundHistory.length - 1];
-                  const eventDesc = lastRound?.event_description || "";
-                  const continuation = lastRound?.story_continuation || "";
-                  recoveredStoryText = eventDesc + (continuation ? "\n\n" + continuation : "");
-                  console.log(`[play] Restored story from round_history (${recoveredStoryText.length} chars)`);
-                }
-              }
+              recoveredStoryText = resolveRecoveredStoryText({
+                eventStory: event?.story,
+                playerState: state.player_state,
+                progress: state.progress,
+                roundInfo: state.round_info,
+              });
             }
 
             useSessionStore.setState({

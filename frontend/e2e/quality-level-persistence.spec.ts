@@ -55,7 +55,13 @@ test.describe("叙事质量持久化", () => {
 
     // 选择大师
     const masterItem = page.locator("[role='menuitemradio']:has-text('大师')");
+    const settingsUpdate = page.waitForResponse((response) =>
+      response.url().includes(`/api/games/${gameId}/settings`) &&
+      response.request().method() === "PATCH" &&
+      response.ok()
+    );
     await masterItem.click();
+    await settingsUpdate;
 
     // 验证已选中
     await expect(masterItem).toHaveAttribute("data-state", "checked");

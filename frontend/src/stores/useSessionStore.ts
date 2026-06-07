@@ -17,6 +17,7 @@ import type {
   CharacterSettings,
   CurrentEventData,
 } from "@/lib/types";
+import { resolveRecoveredStoryText } from "@/lib/sessionRecovery";
 import api from "@/lib/api";
 
 // ★ 同步读取 localStorage 中的持久化数据
@@ -125,23 +126,12 @@ export const useSessionStore = create<SessionState>()(
 
       const playerState = state.player_state;
 
-      let storyText = event?.story || "";
-      if (!storyText) {
-        const lastRoundStory = playerState?.last_round_full_story;
-        if (lastRoundStory) {
-          storyText = lastRoundStory;
-          console.log(`[loadGameState] Restored story from last_round_full_story (${lastRoundStory.length} chars)`);
-        } else {
-          const roundHistory = playerState?.round_history;
-          if (roundHistory && roundHistory.length > 0) {
-            const lastRound = roundHistory[roundHistory.length - 1];
-            const eventDesc = lastRound?.event_description || "";
-            const continuation = lastRound?.story_continuation || "";
-            storyText = eventDesc + (continuation ? "\n\n" + continuation : "");
-            console.log(`[loadGameState] Restored story from round_history (${storyText.length} chars)`);
-          }
-        }
-      }
+      const storyText = resolveRecoveredStoryText({
+        eventStory: event?.story,
+        playerState,
+        progress: state.progress,
+        roundInfo: state.round_info,
+      });
 
       console.log(`[loadGameState] Backend event: hasEvent=${!!event}, storyLen=${event?.story.length || 0}`);
       console.log(`[loadGameState] Final storyText: ${storyText.length} chars`);

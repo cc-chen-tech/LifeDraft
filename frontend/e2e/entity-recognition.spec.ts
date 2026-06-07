@@ -9,45 +9,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { ensureAuthenticated } from './helpers/auth';
-
-const API_URL = 'http://localhost:8000';
-
-// 创建测试游戏，确保有活跃游戏
-async function ensureActiveGame(context: import('@playwright/test').BrowserContext): Promise<number> {
-  // 检查是否已有活跃游戏（404表示没有活跃游戏，这是正常的）
-  const activeResp = await context.request.get(`${API_URL}/api/games/active`);
-  if (activeResp.ok()) {
-    const data = await activeResp.json();
-    return data.game_id;
-  }
-  // 404表示没有活跃游戏，继续创建新游戏
-  if (activeResp.status() !== 404) {
-    console.warn(`检查活跃游戏时出错: ${activeResp.status()}`);
-  }
-
-  // 创建新游戏
-  const createResp = await context.request.post(`${API_URL}/api/games`, {
-    data: {
-      player_name: 'E2E测试角色',
-      life_vision: '探索世界',
-      character_settings: {
-        era: { name: '现代', period: '现代' },
-        age: { age: 18, stage: '青年' },
-        personality: { traits: ['勇敢', '好奇'] },
-        background: { occupation: '学生' },
-      },
-      language: 'zh',
-    },
-  });
-
-  if (!createResp.ok()) {
-    throw new Error(`创建游戏失败: ${createResp.status()} ${await createResp.text()}`);
-  }
-
-  const game = await createResp.json();
-  return game.game_id;
-}
+import { ensureActiveGame } from './helpers/auth';
 
 // 打开收集面板的辅助函数
 async function openCollectionPanel(page: import('@playwright/test').Page) {
@@ -59,9 +21,8 @@ async function openCollectionPanel(page: import('@playwright/test').Page) {
 
 test.describe('异步实体识别功能', () => {
   test.beforeEach(async ({ page, context }) => {
-    // 登录并确保有活跃游戏
-    await ensureAuthenticated(page, context);
-    await ensureActiveGame(context);
+    // 登录并确保有活跃游戏（同一会话）
+    await ensureActiveGame(page, context, { player_name: 'E2E测试角色' });
   });
 
   test('用户点击智能识别 -> 显示识别对话框 -> 展示识别结果', async ({ page }) => {

@@ -194,9 +194,12 @@ run_preflight() {
     npx jest \
         src/__tests__/preflight/storyContinuityPreflight.test.tsx \
         src/__tests__/lib/sse.test.ts \
+        src/__tests__/lib/sessionRecovery.test.ts \
+        src/__tests__/lib/storyTextHash.test.ts \
         src/__tests__/stores/useGameStore.test.ts \
         src/__tests__/pages/CreatePage.test.tsx \
         src/__tests__/hooks/eventUtils.test.ts \
+        src/__tests__/components/MusicPlayer.test.tsx \
         src/__tests__/components/ChatBar.test.tsx \
         src/__tests__/components/GlobalMusicPlayer.escape.test.tsx \
         src/__tests__/lib/apiRetryPolicy.test.ts \
@@ -341,10 +344,14 @@ run_e2e_browser() {
     # 本地默认使用 Playwright 自带 Chromium，避免系统 Chrome 与 --no-sandbox 的组合引发启动崩溃
     export E2E_BROWSER_CHANNEL="${E2E_BROWSER_CHANNEL:-}"
     export E2E_CHROME_EXECUTABLE="${E2E_CHROME_EXECUTABLE:-}"
-    # 仅在 CI/容器环境默认开启 --no-sandbox；本地默认保持 sandbox=true，且允许显式覆盖
+    # 仅在 CI/容器环境默认开启 --no-sandbox；本地优先保持 sandbox=true，避免 macOS 下权限错误
     if [ -z "${E2E_NO_SANDBOX+x}" ]; then
         if [ "${CI:-}" = "true" ] || [ "${CI:-}" = "1" ]; then
-            export E2E_NO_SANDBOX=1
+            if [ -n "${GITHUB_ACTIONS:-}" ] || [ -n "${CI_PIPELINE_ID:-}" ] || [ -n "${CI_SERVER_NAME:-}" ]; then
+                export E2E_NO_SANDBOX=1
+            else
+                export E2E_NO_SANDBOX=0
+            fi
         else
             export E2E_NO_SANDBOX=0
         fi

@@ -26,6 +26,7 @@ import {
   getMusicSourceLabel,
   Song,
 } from "@/stores/useMusicStore";
+import { storyTextToHash } from "@/lib/storyTextHash";
 
 interface MusicPlayerProps {
   storyText: string;
@@ -118,7 +119,8 @@ export function MusicPlayer({
       setPreloadProgress(100);
       console.log(`[MusicPlayer] Received ${urlMap.size}/${result.songs.length} song URLs from backend`);
 
-      const generationKey = gameId ? `${gameId}:${storyText}` : null;
+      const storyHash = storyTextToHash(storyText);
+      const generationKey = gameId ? `${gameId}:${storyHash}` : null;
       if (
         gameId &&
         generationKey &&
@@ -502,7 +504,8 @@ export function MusicPlayer({
 
   // 初始加载推荐
   useEffect(() => {
-    const recommendationKey = gameId ? `${gameId}:${storyText}` : `story:${storyText}`;
+    const storyHash = storyTextToHash(storyText);
+    const recommendationKey = gameId ? `${gameId}:${storyHash}` : `story:${storyHash}`;
     if (
       autoFetchRecommendation &&
       storyText &&

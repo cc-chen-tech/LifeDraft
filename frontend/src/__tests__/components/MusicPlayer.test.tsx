@@ -6,10 +6,11 @@
  * global.Audio mock 需完整（含 addEventListener/removeEventListener）。
  */
 import React from "react";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { MusicPlayer } from "@/components/game/MusicPlayer";
 import { useMusicStore } from "@/stores/useMusicStore";
 import { jsonResponse } from "@/__tests__/helpers/fetch";
+import type { MusicRecommendation } from "@/stores/useMusicStore";
 
 // jsdom 不支持 Audio API，提供完整 mock
 class MockAudioClass {
@@ -103,5 +104,35 @@ describe("MusicPlayer", () => {
 
     expect(await screen.findByText("宁静")).toBeInTheDocument();
     expect(screen.getByText("古风")).toBeInTheDocument();
+  });
+
+  it("uses normalized story hash to avoid duplicate recommendation requests", async () => {
+    const firstRecommendation: MusicRecommendation = {
+      mood: "宁静",
+      scene_type: "独处",
+      keywords: ["古风", "钢琴"],
+      songs: [
+        {
+          id: 1,
+          name: "测试歌曲",
+          artists: ["测试艺术家"],
+          album: "测试专辑",
+          duration: 180000,
+          url: "https://example.com/test.mp3",
+        },
+      ],
+      environment: "古风",
+      story_style: "武侠",
+    };
+
+    const fetchMock = jest.fn().mockResolvedValue(jsonResponse(firstRecommendation));
+    global.fetch = fetchMock as jest.Mock;
+
+    const { rerender } = render(<MusicPlayer storyText="  测试  故事 文本  " />);
+    await waitFor(() => expect(screen.getByText("宁静")).toBeInTheDocument());
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    rerender(<MusicPlayer storyText="测试 故事 文本" />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
   });
 });

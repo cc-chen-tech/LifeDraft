@@ -438,6 +438,27 @@ describe('useGameStore', () => {
 
       expect(useGameStore.getState().storyText).toContain('Event 1');
     });
+
+    it('does not restore story from stale progression data when current round does not align', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        game_id: 42,
+        player_state: {
+          player_name: 'TestPlayer',
+          current_event_data: { event_description: 'current round in progress' },
+          last_round_full_story: 'Old stale story',
+          round_history: [{ week: 1, round: 0, event_description: 'Old story', story_continuation: 'Old continuation' }],
+        },
+        progress: { week: 5, current_round: 3, rounds_per_week: 3 },
+        round_info: { current_round: 3, week: 5 },
+        current_event: null,
+      }));
+
+      await act(async () => {
+        await useGameStore.getState().loadGameState(42);
+      });
+
+      expect(useGameStore.getState().storyText).toBe('');
+    });
   });
 
   describe('syncState', () => {

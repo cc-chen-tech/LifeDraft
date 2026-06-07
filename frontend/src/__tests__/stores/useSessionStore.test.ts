@@ -196,6 +196,29 @@ describe('useSessionStore (Session Management)', () => {
       expect(useGameStore.getState().storyText).toContain('Event 1');
       expect(useGameStore.getState().storyText).toContain('Cont 1');
     });
+
+    it('does not restore stale round history/story when week-round cannot match current progress', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        game_id: 1,
+        player_state: {
+          player_name: 'TestPlayer',
+          current_event_data: { event_description: 'current round is in progress' },
+          last_round_full_story: 'Previous fallback story',
+          round_history: [
+            { week: 1, round: 0, event_description: 'old round story', story_continuation: 'old continuation' },
+          ],
+        },
+        progress: { week: 3, current_round: 2, rounds_per_week: 3 },
+        round_info: { week: 3, current_round: 2 },
+        current_event: null,
+      }));
+
+      await act(async () => {
+        await useGameStore.getState().loadGameState(1);
+      });
+
+      expect(useGameStore.getState().storyText).toBe('');
+    });
   });
 
   // ==================== syncState Tests ====================

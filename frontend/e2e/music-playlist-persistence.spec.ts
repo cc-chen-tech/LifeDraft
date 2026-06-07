@@ -6,8 +6,8 @@
  * 2. Current song remains unchanged when playlist is updated with new recommendations
  * 3. Playlist state is restored after page reload
  */
-import { test, expect, Page, BrowserContext } from '@playwright/test';
-import { ensureAuthenticated } from './helpers/auth';
+import { test, expect } from '@playwright/test';
+import { ensureActiveGame } from './helpers/auth';
 
 const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
 const API_URL = 'http://localhost:8000';
@@ -15,35 +15,14 @@ const API_URL = 'http://localhost:8000';
 test.describe('Music Playlist Persistence', () => {
   test.setTimeout(180_000);
 
-  async function ensureActiveGame(page: Page, context: BrowserContext): Promise<number> {
-    const activeResp = await context.request.get(`${API_URL}/api/games/active`);
-    if (activeResp.ok()) {
-      const data = await activeResp.json();
-      if (data.game_id) return data.game_id;
-    }
-    const response = await context.request.post(`${API_URL}/api/games`, {
-      data: {
-        player_name: '播放列表测试角色',
-        life_vision: '测试音乐播放列表持久化',
-        character_settings: {
-          era: { name: '现代', period: '现代' },
-          age: { age: 18, stage: '青年' },
-          personality: { traits: ['勇敢', '好奇'] },
-          background: { occupation: '学生' },
-        },
-        language: 'zh',
-      },
+  test('music player should survive navigation from /play to / and back', async ({ page }) => {
+    const gameId = await ensureActiveGame(page, page.context(), {
+      player_name: '播放列表测试角色',
+      life_vision: '测试音乐播放列表持久化',
     });
-    const data = await response.json();
-    return data.game_id;
-  }
-
-  test('music player should survive navigation from /play to / and back', async ({ page, context }) => {
-    await ensureAuthenticated(page, context);
-    const gameId = await ensureActiveGame(page, context);
 
     // Seed a playlist via API so the global player has something to render
-    const putResp = await context.request.put(`${API_URL}/api/music/playlist/${gameId}`, {
+    const putResp = await page.request.put(`${API_URL}/api/music/playlist/${gameId}`, {
       data: {
         songs: [
           { id: 2001, name: '导航测试歌曲A', artists: ['歌手A'], album: '专辑X', duration: 180 },
@@ -107,12 +86,14 @@ test.describe('Music Playlist Persistence', () => {
     await page.screenshot({ path: 'test-results/playlist-persisted-navigation.png' });
   });
 
-  test('playlist API should return state after PUT merge', async ({ page, context }) => {
-    await ensureAuthenticated(page, context);
-    const gameId = await ensureActiveGame(page, context);
+  test('playlist API should return state after PUT merge', async ({ page }) => {
+    const gameId = await ensureActiveGame(page, page.context(), {
+      player_name: '播放列表测试角色',
+      life_vision: '测试音乐播放列表持久化',
+    });
 
     // Seed a playlist via API
-    const putResp = await context.request.put(`${API_URL}/api/music/playlist/${gameId}`, {
+    const putResp = await page.request.put(`${API_URL}/api/music/playlist/${gameId}`, {
       data: {
         songs: [
           { id: 1001, name: 'Persisted Song A', artists: ['Artist A'], album: 'Album X', duration: 200 },
@@ -130,14 +111,14 @@ test.describe('Music Playlist Persistence', () => {
     expect(putData.queue[0].id).toBe(1002);
 
     // GET should return the same state
-    const getResp = await context.request.get(`${API_URL}/api/music/playlist/${gameId}`);
+    const getResp = await page.request.get(`${API_URL}/api/music/playlist/${gameId}`);
     expect(getResp.ok()).toBe(true);
     const getData = await getResp.json();
     expect(getData.current_song.id).toBe(1001);
     expect(getData.queue[0].id).toBe(1002);
 
     // PUT with new songs should preserve current
-    const putResp2 = await context.request.put(`${API_URL}/api/music/playlist/${gameId}`, {
+    const putResp2 = await page.request.put(`${API_URL}/api/music/playlist/${gameId}`, {
       data: {
         songs: [
           { id: 1001, name: 'Persisted Song A', artists: ['Artist A'], album: 'Album X', duration: 200 },
@@ -153,7 +134,7 @@ test.describe('Music Playlist Persistence', () => {
     expect(putData2.queue[0].id).toBe(1003); // new queue
 
     // Advance should move to next
-    const advanceResp = await context.request.post(`${API_URL}/api/music/playlist/${gameId}/advance`);
+    const advanceResp = await page.request.post(`${API_URL}/api/music/playlist/${gameId}/advance`);
     expect(advanceResp.ok()).toBe(true);
     const advanceData = await advanceResp.json();
     expect(advanceData.current_song.id).toBe(1003);

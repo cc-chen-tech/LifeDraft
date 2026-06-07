@@ -8,44 +8,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { ensureAuthenticated } from './helpers/auth';
-
-const API_URL = 'http://localhost:8000';
-const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
-
-// 创建测试游戏，确保有活跃游戏
-async function ensureActiveGame(context: import('@playwright/test').BrowserContext): Promise<number> {
-  const activeResp = await context.request.get(`${API_URL}/api/games/active`);
-  if (activeResp.ok()) {
-    const data = await activeResp.json();
-    return data.game_id;
-  }
-
-  if (activeResp.status() !== 404) {
-    console.warn(`检查活跃游戏时出错: ${activeResp.status()}`);
-  }
-
-  const createResp = await context.request.post(`${API_URL}/api/games`, {
-    data: {
-      player_name: '缓存测试角色',
-      life_vision: '探索世界',
-      character_settings: {
-        era: { name: '现代', period: '现代' },
-        age: { age: 18, stage: '青年' },
-        personality: { traits: ['勇敢', '好奇'] },
-        background: { occupation: '学生' },
-      },
-      language: 'zh',
-    },
-  });
-
-  if (!createResp.ok()) {
-    throw new Error(`创建游戏失败: ${createResp.status()} ${await createResp.text()}`);
-  }
-
-  const game = await createResp.json();
-  return game.game_id;
-}
+import { ensureActiveGame } from './helpers/auth';
 
 // 打开收集面板的辅助函数
 async function openCollectionPanel(page: import('@playwright/test').Page) {
@@ -66,8 +29,7 @@ async function closeCollectionPanel(page: import('@playwright/test').Page) {
 
 test.describe('收集面板缓存优化', () => {
   test.beforeEach(async ({ page, context }) => {
-    await ensureAuthenticated(page, context);
-    await ensureActiveGame(context);
+    await ensureActiveGame(page, context, { player_name: '缓存测试角色' });
   });
 
   test('收集面板首次打开正常加载', async ({ page }) => {

@@ -4,12 +4,35 @@
  * E2E Test: Friends System
  * Tests for friend requests, friend list, accept/reject, and remove friends.
  */
-import { test, expect, Page, BrowserContext } from '@playwright/test';
+import { test, expect, Page, BrowserContext, APIResponse } from '@playwright/test';
 import { registerUser } from './helpers/auth';
 import { waitForPageReady } from './helpers/wait-helpers';
 
 const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
 const API_URL = 'http://localhost:8000';
+
+async function getApiWithTransientRetry(
+  context: BrowserContext,
+  url: string,
+  attempts = 3,
+): Promise<APIResponse> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await context.request.get(url);
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/ECONNRESET|ECONNREFUSED|socket hang up/i.test(message) || attempt === attempts) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, attempt * 250));
+    }
+  }
+
+  throw lastError;
+}
 
 test.describe('Friends System', () => {
   // TC-01: 好友列表页面渲染
@@ -245,8 +268,8 @@ test.describe('Friends System - Full Flow', () => {
         expect([200, 201]).toContain(acceptResp.status());
 
         // Verify both users see each other in friends list
-        const friendsA = await contextA.request.get(`${API_URL}/api/friends`);
-        const friendsB = await contextB.request.get(`${API_URL}/api/friends`);
+        const friendsA = await getApiWithTransientRetry(contextA, `${API_URL}/api/friends`);
+        const friendsB = await getApiWithTransientRetry(contextB, `${API_URL}/api/friends`);
 
         if (friendsA.ok() && friendsB.ok()) {
           const friendsAData = await friendsA.json();
