@@ -50,6 +50,10 @@ class GameInitializer:
             raise ValueError("character_settings is required")
         if not player_name:
             raise ValueError("player_name is required")
+        character_settings = dict(character_settings)
+        character_settings["relationships"] = self._normalize_relationships_settings(
+            character_settings.get("relationships", {})
+        )
 
         # 提取 constraint_level（从 character_settings 或默认 expert）
         constraint_level = (
@@ -178,3 +182,17 @@ class GameInitializer:
                         }
 
         logger.debug(f"Initialized {len(initial_state['relationships'])} relationships")
+
+    def _normalize_relationships_settings(self, relationships: Any) -> Dict[str, Any]:
+        """Normalize accepted relationship payload variants to the canonical dict shape."""
+        if isinstance(relationships, list):
+            return {"key_people": relationships}
+        if not isinstance(relationships, dict):
+            return {"key_people": []}
+
+        normalized = dict(relationships)
+        key_people = normalized.get("key_people", [])
+        if not isinstance(key_people, list):
+            key_people = []
+        normalized["key_people"] = key_people
+        return normalized

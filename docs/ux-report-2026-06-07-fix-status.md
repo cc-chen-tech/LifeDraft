@@ -27,6 +27,8 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Regression coverage: `tests/test_music_pool_cache_integration.py::TestGetOrBuildPool::test_supplement_pool_filters_prompt_leak_song_titles`
 - NetEase recommendation results now also reject playable songs whose title/album/artist metadata directly matches the story brief's negative cues, for example `type beat`, `喜欢你`, or `情歌` in a tense workplace suspense scene.
   - Regression coverage: `tests/test_music_pool_cache_integration.py::TestGetOrBuildPool::test_supplement_pool_filters_negative_cue_songs_for_story_context`
+- Game creation now normalizes list-shaped `relationships` payloads into canonical `relationships.key_people` before initializing state, preventing a production 500 when clients send key people as a top-level list.
+  - Regression coverage: `tests/test_game_initializer_relationships_contract.py`, `tests/test_api_games.py::TestCreateGame::test_create_game_accepts_relationships_list_payload`
 
 ## Verification
 
@@ -55,5 +57,4 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
 - Remote GitHub checks are blocked by GitHub billing/spending-limit status, not by retrievable job logs.
 - Fresh MiniMax music generation can take longer than 150 seconds on production; the current design keeps NetEase playback available and inserts generated music only after the asset is ready.
 - Broader music matching quality still needs follow-up: prompt-leak and direct negative-cue filters prevent the worst mismatches from entering the queue, but they do not guarantee every remaining NetEase recommendation is semantically strong.
-- `POST /api/games` still needs a robustness fix for malformed `relationships` payloads; a list shape currently raises a 500 instead of a 4xx validation response or normalization.
 - A real long manual playthrough to week 4 should be rerun after deployment, because local deterministic E2E is not a substitute for live model/runtime behavior.
