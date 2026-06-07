@@ -109,6 +109,10 @@ class MiniMaxMusicGenerationProvider:
         )
         response.raise_for_status()
         payload = response.json()
+        provider_error = _extract_provider_error(payload)
+        if provider_error:
+            raise RuntimeError(provider_error)
+
         audio_url = _extract_audio_url(payload)
         audio_bytes: Optional[bytes]
         if audio_url:
@@ -350,6 +354,22 @@ def _extract_audio_url(payload: Mapping[str, Any]) -> Optional[str]:
 def _is_audio_url(value: str) -> bool:
     stripped = value.strip()
     return stripped.startswith("https://") or stripped.startswith("http://")
+
+
+def _extract_provider_error(payload: Mapping[str, Any]) -> Optional[str]:
+    base_resp = payload.get("base_resp")
+    if not isinstance(base_resp, Mapping):
+        return None
+
+    status_code = base_resp.get("status_code")
+    status_msg = base_resp.get("status_msg")
+    if status_code in (None, 0, "0"):
+        return None
+
+    details = [f"status_code={status_code}"]
+    if isinstance(status_msg, str) and status_msg.strip():
+        details.append(status_msg.strip())
+    return f"MiniMax music generation failed ({'; '.join(details)})"
 
 
 def _extract_audio_bytes(payload: Mapping[str, Any]) -> Optional[bytes]:

@@ -341,6 +341,65 @@ def test_minimax_music_provider_downloads_data_audio_url_from_real_local_http_bo
     assert generated.local_path.read_bytes().startswith(b"ID3")
 
 
+def test_minimax_music_provider_reports_base_resp_error_from_real_local_http_boundary(
+    tmp_path: Path,
+) -> None:
+    from src.services.minimax_config import MiniMaxConfig
+    from src.services.minimax_music_generation import (
+        MiniMaxMusicGenerationProvider,
+        MiniMaxMusicGenerationRequest,
+    )
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            self.rfile.read(int(self.headers["Content-Length"]))
+            response = json.dumps(
+                {"base_resp": {"status_code": 1008, "status_msg": "insufficient balance"}}
+            ).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(response)))
+            self.end_headers()
+            self.wfile.write(response)
+
+        def log_message(self, format: str, *args: object) -> None:
+            return
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        config = MiniMaxConfig.from_env(
+            env={
+                "MINIMAX_API_KEY": "test-key",
+                "MINIMAX_MUSIC_GENERATION_URL": f"http://127.0.0.1:{server.server_port}/music",
+            },
+            voice_asset_dir=tmp_path / "voice",
+            music_asset_dir=tmp_path / "music",
+        )
+        provider = MiniMaxMusicGenerationProvider(config=config)
+        request = MiniMaxMusicGenerationRequest.from_brief(
+            game_id=9005,
+            brief=MusicBrief.default(),
+            model="music-2.6",
+        )
+
+        try:
+            provider.generate_to_asset(request, brief_hash="brief-provider-error")
+        except RuntimeError as exc:
+            error = str(exc)
+        else:
+            raise AssertionError("provider should report MiniMax business errors")
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)
+
+    assert "MiniMax music generation failed" in error
+    assert "status_code=1008" in error
+    assert "insufficient balance" in error
+
+
 def test_minimax_music_provider_saves_hex_audio_response_from_real_local_http_boundary(
     tmp_path: Path,
 ) -> None:
