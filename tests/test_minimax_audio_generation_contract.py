@@ -824,6 +824,93 @@ def test_minimax_tts_client_uses_real_local_async_http_boundary(tmp_path: Path) 
     assert output_path.read_bytes() == audio_bytes
 
 
+def test_minimax_tts_client_waits_for_slow_story_synthesis(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    """Production-length story narration can take longer than the old short poll window."""
+    from src.services.minimax_config import MiniMaxConfig
+    from src.services.minimax_story_tts_provider import MiniMaxAsyncTTSClient
+
+    query_count = 0
+    audio_bytes = b"ID3\x04\x00\x00\x00\x00\x00\x00"
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            self.rfile.read(int(self.headers["Content-Length"]))
+            response = json.dumps(
+                {
+                    "task_id": 406730630730282,
+                    "base_resp": {"status_code": 0, "status_msg": "success"},
+                }
+            ).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(response)))
+            self.end_headers()
+            self.wfile.write(response)
+
+        def do_GET(self) -> None:
+            nonlocal query_count
+            if self.path.startswith("/query"):
+                query_count += 1
+                response = json.dumps(
+                    {
+                        "task_id": 406730630730282,
+                        "status": "success" if query_count >= 20 else "processing",
+                        "file_id": 406730630730282 if query_count >= 20 else None,
+                        "base_resp": {"status_code": 0, "status_msg": "success"},
+                    }
+                ).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(response)))
+                self.end_headers()
+                self.wfile.write(response)
+                return
+            if self.path.startswith("/file"):
+                self.send_response(200)
+                self.send_header("Content-Type", "audio/mpeg")
+                self.send_header("Content-Length", str(len(audio_bytes)))
+                self.end_headers()
+                self.wfile.write(audio_bytes)
+                return
+            self.send_response(404)
+            self.end_headers()
+
+        def log_message(self, format: str, *args: object) -> None:
+            return
+
+    monkeypatch.setattr("src.services.minimax_story_tts_provider.time.sleep", lambda _seconds: None)
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        base_url = f"http://127.0.0.1:{server.server_port}"
+        config = MiniMaxConfig.from_env(
+            env={
+                "MINIMAX_API_KEY": "test-key",
+                "MINIMAX_TTS_ASYNC_CREATE_URL": f"{base_url}/create",
+                "MINIMAX_TTS_ASYNC_QUERY_URL": f"{base_url}/query",
+                "MINIMAX_FILE_RETRIEVE_URL": f"{base_url}/file",
+            },
+            voice_asset_dir=tmp_path / "voice",
+            music_asset_dir=tmp_path / "music",
+        )
+        output_path = tmp_path / "slow-story.mp3"
+        MiniMaxAsyncTTSClient(config).synthesize_to_file(
+            {"model": "speech-02-turbo", "text": "真实故事" * 700},
+            output_path,
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)
+
+    assert query_count == 20
+    assert output_path.read_bytes() == audio_bytes
+
+
 def test_minimax_tts_client_downloads_file_metadata_url_from_real_local_http_boundary(
     tmp_path: Path,
 ) -> None:
