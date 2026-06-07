@@ -5,10 +5,8 @@
  * Tests for security vulnerabilities and protections
  */
 import { test, expect } from '@playwright/test';
-import { ensureAuthenticated, registerUser } from './helpers/auth';
+import { ensureAuthenticated, registerUser, API_URL } from './helpers/auth';
 import { waitForApiResponse, waitForPageReady } from './helpers/wait-helpers';
-
-const API_URL = 'http://localhost:8000';
 
 test.describe('Security E2E', () => {
   test('path traversal blocked in image URLs', async ({ page, request }) => {

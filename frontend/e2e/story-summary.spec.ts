@@ -15,9 +15,7 @@
  */
 
 import { test, expect, BrowserContext, Page } from '@playwright/test';
-import { ensureAuthenticated } from './helpers/auth';
-
-const API_URL = 'http://localhost:8000';
+import { ensureAuthenticated, API_URL } from './helpers/auth';
 
 // ============================================================================
 // Helper Functions

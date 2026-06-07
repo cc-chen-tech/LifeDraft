@@ -1,7 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { ensureAuthenticated } from "./helpers/auth";
-
-const API_URL = "http://localhost:8000";
+import { ensureAuthenticated, API_URL } from "./helpers/auth";
 
 // 通过 API 直接创建测试游戏
 async function createTestGame(

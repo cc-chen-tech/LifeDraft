@@ -5,11 +5,9 @@
  * 防止"用户看到生成失败但后端还在工作"的问题。
  */
 import { test, expect, Page, BrowserContext } from '@playwright/test';
-import { ensureAuthenticated } from './helpers/auth';
+import { ensureAuthenticated, API_URL } from './helpers/auth';
 
 const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
-const API_URL = 'http://localhost:8000';
-
 /** 通过 API 创建测试游戏 */
 async function createTestGame(context: BrowserContext): Promise<number> {
   const createResp = await context.request.post(`${API_URL}/api/games`, {

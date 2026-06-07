@@ -8,8 +8,7 @@
  */
 
 import { test, expect, APIRequestContext } from '@playwright/test';
-
-const API_URL = 'http://localhost:8000';
+import { API_URL } from './helpers/auth';
 
 /**
  * 测试API端点是否存在且可访问

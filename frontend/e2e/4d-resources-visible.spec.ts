@@ -1,7 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { ensureAuthenticated } from "./helpers/auth";
-
-const API_URL = "http://localhost:8000";
+import { ensureAuthenticated, API_URL } from "./helpers/auth";
 
 async function createTestGame(
   context: import("@playwright/test").BrowserContext

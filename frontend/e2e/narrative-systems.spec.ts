@@ -15,10 +15,9 @@
  */
 
 import { test, expect, Page, BrowserContext, APIRequestContext } from '@playwright/test';
-import { ensureAuthenticated, registerUser } from './helpers/auth';
+import { ensureAuthenticated, registerUser, API_URL } from './helpers/auth';
 import { startNetworkMonitoring, waitForNetworkIdle, formatNetworkErrors } from './helpers/network-monitor';
 
-const API_URL = 'http://localhost:8000';
 const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
 
 // ============================================================================

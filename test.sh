@@ -92,6 +92,7 @@ with_e2e_lock() {
         return $?
     fi
 
+    mkdir -p "$TEST_LOCK_DIR"
     local lock_dir="$TEST_LOCK_DIR/e2e.lock"
     if ! mkdir "$lock_dir" 2>/dev/null; then
         echo -e "${RED}另一个 E2E 运行已持有锁，当前运行将退出：${lock_dir}${NC}"
@@ -514,8 +515,9 @@ run_e2e_browser_impl() {
     else
         echo -e "${YELLOW}使用生产模式启动前端（next build + start）以规避开发监听问题...${NC}"
         cd "$PROJECT_DIR/frontend"
+        local backend_url="http://127.0.0.1:$E2E_BACKEND_PORT"
         echo -e "${YELLOW}执行 npm run build，避免复用旧 .next 构建...${NC}"
-        NEXT_DISABLE_STANDALONE=1 npm run build
+        NEXT_DISABLE_STANDALONE=1 BACKEND_URL="$backend_url" NEXT_PUBLIC_API_URL="/api" npm run build
         if [ $? -ne 0 ]; then
             echo -e "${RED}前端构建失败，跳过 E2E 测试${NC}"
             E2E_RESULT=1
@@ -526,7 +528,7 @@ run_e2e_browser_impl() {
 
         local frontend_port="$E2E_FRONTEND_PORT"
         cd "$PROJECT_DIR/frontend"
-        NEXT_DISABLE_STANDALONE=1 CI=1 E2E_FRONTEND_PORT="$frontend_port" npm run start -- --hostname 127.0.0.1 --port "$frontend_port" > "$FRONTEND_LOG" 2>&1 &
+        NEXT_DISABLE_STANDALONE=1 BACKEND_URL="$backend_url" NEXT_PUBLIC_API_URL="/api" CI=1 E2E_FRONTEND_PORT="$frontend_port" npm run start -- --hostname 127.0.0.1 --port "$frontend_port" > "$FRONTEND_LOG" 2>&1 &
         FRONTEND_PID=$!
         echo "$FRONTEND_PID" > "$FRONTEND_PID_FILE"
         local frontend_started=0
