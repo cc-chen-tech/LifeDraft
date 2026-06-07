@@ -16,8 +16,8 @@ const nextConfig: NextConfig = {
       ? { NEXT_PUBLIC_API_BASE: process.env.NEXT_PUBLIC_API_BASE }
       : {}),
   },
-  // Standalone 输出模式用于生产部署
-  output: 'standalone',
+  // Standalone 输出模式用于生产部署；E2E 使用 next start，需要临时关闭。
+  output: process.env.NEXT_DISABLE_STANDALONE === '1' ? undefined : 'standalone',
   // 显式设置 Turbopack root 以避免多 lockfile 导致的模块解析错误
   turbopack: {
     root: __dirname,

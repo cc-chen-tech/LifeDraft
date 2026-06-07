@@ -210,6 +210,7 @@ def test_e2e_local_backend_and_browser_launch_are_configurable() -> None:
     assert "关闭当前 8000 端口遗留后端进程" in script
     assert "MINIMAX_E2E_LOCAL_AUDIO=1" in script
     assert "E2E_FRONTEND_MODE:-prod" in script
+    assert "NEXT_DISABLE_STANDALONE=1 npm run build" in script
     assert "npm run start -- --hostname 127.0.0.1" in script
     assert "if ! [ -d \".next\" ]" not in script
     assert "ulimit -n 8192" in script
@@ -477,6 +478,35 @@ def test_e2e_prod_frontend_start_waits_until_listening_in_ci() -> None:
     assert 'lsof -iTCP:"$frontend_port" -sTCP:LISTEN' in start_block
     assert "cat /tmp/frontend_e2e.log" in start_block
     assert "sleep 3\n        if ! lsof" not in start_block
+
+
+def test_e2e_prod_frontend_disables_standalone_output_for_next_start() -> None:
+    next_config = (ROOT / "frontend" / "next.config.ts").read_text(encoding="utf-8")
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+
+    assert "process.env.NEXT_DISABLE_STANDALONE === '1'" in next_config
+    assert "output: process.env.NEXT_DISABLE_STANDALONE === '1' ? undefined : 'standalone'" in next_config
+    assert "NEXT_DISABLE_STANDALONE=1 npm run build" in script
+    assert 'NEXT_DISABLE_STANDALONE=1 CI=1 E2E_FRONTEND_PORT="$frontend_port" npm run start' in script
+    assert "npm run start -- --hostname 127.0.0.1" in script
+    assert "node .next/standalone/server.js" not in script
+
+
+def test_e2e_api_contract_probe_does_not_trigger_long_story_regeneration() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+    story_router = (ROOT / "src" / "api" / "routers" / "story.py").read_text(encoding="utf-8")
+    events_router = (
+        ROOT / "src" / "api" / "routers" / "gameplay" / "events.py"
+    ).read_text(encoding="utf-8")
+
+    assert "E2E_CONTRACT_PROBE_FAST=1" in script
+    assert "E2E_CONTRACT_PROBE_FAST" in story_router
+    assert 'request.headers.get("user-agent", "")' in story_router
+    assert "API contract probe should not trigger story regeneration" in story_router
+    assert "E2E_CONTRACT_PROBE_FAST" in events_router
+    assert 'request.headers.get("user-agent", "")' in events_router
+    assert 'not request.headers.get("cookie")' not in events_router
+    assert "API contract probe should not trigger event generation" in events_router
 
 
 def test_story_voice_browser_fallback_e2e_accepts_real_browser_speech_capability() -> None:

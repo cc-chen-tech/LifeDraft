@@ -182,7 +182,12 @@ async def make_choice_sync(
     game_loop = session.game_loop
 
     # Restore current_event from database if needed
-    _restore_current_event_if_needed(game_loop, game_id, user_id)
+    try:
+        _restore_current_event_if_needed(game_loop, game_id, user_id)
+    except HTTPException as exc:
+        if user_id is None and exc.status_code == 400:
+            raise HTTPException(status_code=422, detail=exc.detail)
+        raise
 
     if req.option_index >= len(game_loop.current_event.options):
         raise HTTPException(status_code=400, detail="Invalid option index")
@@ -222,7 +227,12 @@ async def make_custom_choice_sync(
     game_loop = session.game_loop
 
     # Restore current_event from database if needed
-    _restore_current_event_if_needed(game_loop, game_id, user_id)
+    try:
+        _restore_current_event_if_needed(game_loop, game_id, user_id)
+    except HTTPException as exc:
+        if user_id is None and exc.status_code == 400:
+            raise HTTPException(status_code=422, detail=exc.detail)
+        raise
 
     # Run in thread pool to avoid blocking
     loop = asyncio.get_running_loop()
