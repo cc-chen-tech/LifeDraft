@@ -272,7 +272,7 @@ def test_provider_backed_request_saves_and_reuses_asset() -> None:
         session.flush()
         repository = StoryVoiceReadingRepository(session)
         service = StoryVoiceReadingService(repository, provider=DeterministicTTSProvider())
-        text = "后端 TTS provider 应该保存并复用这一段故事音频。"
+        text = f"后端 TTS provider 应该保存并复用这一段故事音频。{uuid4().hex}"
         text_hash = normalize_text_hash(text)
         request = StoryVoiceReadingRequest(
             context={
@@ -301,6 +301,114 @@ def test_provider_backed_request_saves_and_reuses_asset() -> None:
         assert second.asset_id == first.asset_id
         assert session.query(GeneratedVoiceAsset).filter_by(text_hash=text_hash).count() == 1
         assert session.query(VoiceReadingJob).filter_by(text_hash=text_hash).count() == 2
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_cached_mp3_voice_asset_returns_mpeg_media_type() -> None:
+    init_db()
+    private_id = f"priv_{uuid4().hex[:16]}"
+    public_id = f"pub_{uuid4().hex[:6]}"
+
+    session = SessionLocal()
+    try:
+        user = User(private_id=private_id, public_id=public_id, display_name="Voice MP3")
+        session.add(user)
+        session.flush()
+        repository = StoryVoiceReadingRepository(session)
+        service = StoryVoiceReadingService(repository, provider=DeterministicTTSProvider())
+        text = f"MiniMax 生成的 MP3 缓存音频应该保持正确媒体类型。{uuid4().hex}"
+        text_hash = normalize_text_hash(text)
+        context = {
+            "source_type": "current_story",
+            "game_id": 606,
+            "week": 3,
+            "round_number": 1,
+            "stage": "event",
+            "attempt_id": "minimax-cache",
+            "text_hash": text_hash,
+            "text": text,
+        }
+        repository.create_asset(
+            user_id=int(user.user_id),
+            context=context,
+            voice_id="warm_female",
+            speed=1.0,
+            provider="local",
+            model="deterministic-v1",
+            storage_path="/api/voice-reading/audio/minimax-story.mp3",
+            duration_ms=3200,
+            status="ready",
+        )
+        session.commit()
+
+        response = service.request_reading(
+            int(user.user_id),
+            StoryVoiceReadingRequest(
+                context=context,
+                voice_id="warm_female",
+                speed=1.0,
+                auto_play=True,
+            ),
+        )
+
+        assert response.playback_mode == "audio"
+        assert response.audio_url == "/api/voice-reading/audio/minimax-story.mp3"
+        assert response.media_type == "audio/mpeg"
+    finally:
+        session.rollback()
+        session.close()
+
+
+def test_job_response_for_mp3_voice_asset_returns_mpeg_media_type() -> None:
+    init_db()
+    private_id = f"priv_{uuid4().hex[:16]}"
+    public_id = f"pub_{uuid4().hex[:6]}"
+
+    session = SessionLocal()
+    try:
+        user = User(private_id=private_id, public_id=public_id, display_name="Voice Job MP3")
+        session.add(user)
+        session.flush()
+        repository = StoryVoiceReadingRepository(session)
+        service = StoryVoiceReadingService(repository, provider=DeterministicTTSProvider())
+        context = {
+            "source_type": "current_story",
+            "game_id": 707,
+            "week": 4,
+            "round_number": 2,
+            "stage": "event",
+            "attempt_id": "minimax-job",
+            "text_hash": "minimax-job-hash",
+            "text": "任务恢复接口也应该报告 MP3 的真实媒体类型。",
+        }
+        asset = repository.create_asset(
+            user_id=int(user.user_id),
+            context=context,
+            voice_id="calm_male",
+            speed=1.0,
+            provider="minimax",
+            model="speech-02-turbo",
+            storage_path="/api/voice-reading/audio/minimax-job.mp3",
+            duration_ms=4100,
+            status="ready",
+        )
+        job = repository.create_job(
+            user_id=int(user.user_id),
+            context=context,
+            voice_id="calm_male",
+            speed=1.0,
+            status="ready",
+            asset_id=int(asset.asset_id),
+        )
+        session.commit()
+
+        response = service.get_job(int(user.user_id), int(job.job_id))
+
+        assert response.playback_mode == "audio"
+        assert response.audio_url == "/api/voice-reading/audio/minimax-job.mp3"
+        assert response.media_type == "audio/mpeg"
     finally:
         session.rollback()
         session.close()

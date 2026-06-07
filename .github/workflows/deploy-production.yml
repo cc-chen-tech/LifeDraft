@@ -155,6 +155,7 @@ jobs:
           export STORY_TTS_PROVIDER=minimax
           export STORY_TTS_ALLOW_REQUEST_PROVIDER=1
           export STORY_MUSIC_AI_GENERATION_ENABLED=true
+          export MINIMAX_TIMEOUT_SECONDS=180
           python3 - <<'PY'
           import os
           from pathlib import Path
@@ -165,6 +166,7 @@ jobs:
               "STORY_TTS_PROVIDER": os.environ["STORY_TTS_PROVIDER"],
               "STORY_TTS_ALLOW_REQUEST_PROVIDER": os.environ["STORY_TTS_ALLOW_REQUEST_PROVIDER"],
               "STORY_MUSIC_AI_GENERATION_ENABLED": os.environ["STORY_MUSIC_AI_GENERATION_ENABLED"],
+              "MINIMAX_TIMEOUT_SECONDS": os.environ["MINIMAX_TIMEOUT_SECONDS"],
           }
 
           existing_lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
