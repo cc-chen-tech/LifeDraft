@@ -11,6 +11,21 @@
 #   Layer 5: E2E浏览器测试        - 前端进度显示、面板交互 (需 browser-agent)
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TEST_NAMESPACE="${TEST_NAMESPACE:-$(printf '%s' "$PROJECT_DIR" | tr '/ ' '__' | tr -c 'A-Za-z0-9._-' '_')}"
+TEST_RUN_ROOT="${TEST_RUN_ROOT:-$PROJECT_DIR/.test-runs}"
+TEST_RUN_DIR="${TEST_RUN_DIR:-$TEST_RUN_ROOT/$TEST_NAMESPACE}"
+TEST_LOCK_DIR="$TEST_RUN_ROOT/locks"
+
+BACKEND_PID_FILE="$TEST_RUN_DIR/backend.pid"
+FRONTEND_PID_FILE="$TEST_RUN_DIR/frontend.pid"
+BACKEND_LOG="$TEST_RUN_DIR/backend.log"
+FRONTEND_LOG="$TEST_RUN_DIR/frontend.log"
+PLAYWRIGHT_LOG_DIR="$TEST_RUN_DIR/playwright"
+TEST_DATA_DIR="$TEST_RUN_DIR/data"
+
+TEST_E2E_BACKEND_PORT_BASE="${TEST_E2E_BACKEND_PORT_BASE:-18000}"
+TEST_E2E_FRONTEND_PORT_BASE="${TEST_E2E_FRONTEND_PORT_BASE:-19000}"
+TEST_E2E_PORT_SCAN_RANGE="${TEST_E2E_PORT_SCAN_RANGE:-80}"
 
 # 颜色定义
 RED='\033[0;31m'
@@ -29,62 +44,112 @@ CONTRACT_RESULT=0
 DB_RESULT=0
 E2E_RESULT=0
 
-activate_python_env() {
-    if [ -f "$PROJECT_DIR/venv/bin/activate" ]; then
-        source "$PROJECT_DIR/venv/bin/activate"
-    fi
+E2E_DB_PATH="$TEST_DATA_DIR/story2_e2e.sqlite"
+E2E_BACKEND_PORT="${E2E_BACKEND_PORT:-}"
+E2E_FRONTEND_PORT="${E2E_FRONTEND_PORT:-}"
+
+ensure_test_dirs() {
+    mkdir -p "$TEST_RUN_DIR" "$TEST_DATA_DIR" "$PLAYWRIGHT_LOG_DIR" "$TEST_LOCK_DIR"
 }
 
-ensure_e2e_frontend_port_available() {
-    local frontend_dir="$PROJECT_DIR/frontend"
-    local frontend_port="${E2E_FRONTEND_PORT:-3000}"
-    local pids
-    pids="$(lsof -tiTCP:"$frontend_port" -sTCP:LISTEN 2>/dev/null || true)"
+cleanup_pid_file() {
+    local pid_file="$1"
+    local label="$2"
 
-    if [ -z "$pids" ]; then
-        export E2E_FRONTEND_PORT="$frontend_port"
+    if [ -z "$pid_file" ] || [ ! -f "$pid_file" ]; then
         return 0
     fi
 
     local pid
-    for pid in $pids; do
-        local cwd
-        cwd="$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -n 1)"
+    pid="$(cat "$pid_file" 2>/dev/null | tr -cd '0-9' | head -n 1 || true)"
+    if [ -z "$pid" ]; then
+        rm -f "$pid_file"
+        return 0
+    fi
 
-        if [[ "$cwd" == "$frontend_dir"* ]]; then
-            echo -e "${YELLOW}关闭当前 worktree 遗留前端进程 (PID: $pid)...${NC}"
-            kill "$pid" 2>/dev/null || true
-            sleep 1
-            continue
-        fi
+    if kill -0 "$pid" 2>/dev/null; then
+        echo -e "${YELLOW}关闭现有${label}进程 (PID: $pid)...${NC}"
+        kill "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+    fi
 
-        echo -e "${RED}占用 3000 端口的前端不属于当前 worktree，拒绝复用以避免误测。${NC}"
-        echo -e "${RED}PID: $pid${NC}"
-        if [ -n "$cwd" ]; then
-            echo -e "${RED}CWD: $cwd${NC}"
-        fi
+    if kill -0 "$pid" 2>/dev/null; then
+        echo -e "${YELLOW}强制关闭${label}进程 (PID: $pid)...${NC}"
+        kill -9 "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+    fi
+    rm -f "$pid_file"
+}
 
-        if [ -z "${E2E_FRONTEND_PORT:-}" ] && [ "$frontend_port" = "3000" ]; then
-            local fallback_port
-            for fallback_port in 3001 3002 3003 3004 3005; do
-                if ! lsof -tiTCP:"$fallback_port" -sTCP:LISTEN > /dev/null 2>&1; then
-                    export E2E_FRONTEND_PORT="$fallback_port"
-                    echo -e "${YELLOW}切换当前 worktree E2E 前端端口到 $fallback_port。${NC}"
-                    return 0
-                fi
-            done
-        fi
+cleanup_e2e_runtimes() {
+    cleanup_pid_file "$BACKEND_PID_FILE" "后端"
+    cleanup_pid_file "$FRONTEND_PID_FILE" "前端"
+}
 
-        echo -e "${YELLOW}请先关闭该进程，或设置 E2E_FRONTEND_PORT 为当前 worktree 的空闲端口。${NC}"
-        return 1
-    done
+with_e2e_lock() {
+    if [ "${TEST_ALLOW_PARALLEL_E2E:-0}" = "1" ]; then
+        "$@"
+        return $?
+    fi
 
-    if lsof -tiTCP:"$frontend_port" -sTCP:LISTEN > /dev/null 2>&1; then
-        echo -e "${RED}$frontend_port 端口仍被占用，无法启动当前 worktree 的 E2E 前端。${NC}"
+    local lock_dir="$TEST_LOCK_DIR/e2e.lock"
+    if ! mkdir "$lock_dir" 2>/dev/null; then
+        echo -e "${RED}另一个 E2E 运行已持有锁，当前运行将退出：${lock_dir}${NC}"
         return 1
     fi
 
-    export E2E_FRONTEND_PORT="$frontend_port"
+    "$@"
+    local status=$?
+    rmdir "$lock_dir" 2>/dev/null || true
+    return $status
+}
+
+is_port_listening() {
+    lsof -tiTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
+}
+
+port_of_namespace_seed() {
+    local base="$1"
+    local ns_hash
+    ns_hash="$(printf '%s' "$TEST_NAMESPACE" | cksum | awk '{print $1}' 2>/dev/null)"
+    if [ -z "$ns_hash" ]; then
+        ns_hash="$(printf '%s' "$PROJECT_DIR" | wc -c | tr -dc '0-9')"
+    fi
+    echo $((base + (ns_hash % 90)))
+}
+
+find_free_port() {
+    local preferred="$1"
+    local base="$2"
+    local range="${3:-80}"
+
+    if [ -n "$preferred" ] && [ "$preferred" -gt 0 ]; then
+        if is_port_listening "$preferred"; then
+            echo -e "${RED}端口 $preferred 已被占用。请先释放该端口或设置 E2E_BACKEND_PORT / E2E_FRONTEND_PORT。${NC}"
+            return 1
+        fi
+        echo "$preferred"
+        return 0
+    fi
+
+    local candidate=$base
+    local idx
+    for idx in $(seq 0 "$range"); do
+        if ! is_port_listening "$candidate"; then
+            echo "$candidate"
+            return 0
+        fi
+        candidate=$((candidate + 1))
+    done
+
+    echo -e "${RED}无法分配空闲端口（$base-$((base + range))）${NC}"
+    return 1
+}
+
+activate_python_env() {
+    if [ -f "$PROJECT_DIR/venv/bin/activate" ]; then
+        source "$PROJECT_DIR/venv/bin/activate"
+    fi
 }
 
 # 打印层级标题
@@ -114,8 +179,8 @@ run_playwright_command() {
     local label=$1
     shift
     local output_file
-    rm -f "/tmp/story2-playwright-${label}-XXXXXX.log" 2>/dev/null || true
-    output_file="$(mktemp "/tmp/story2-playwright-${label}-XXXXXX.log")"
+    rm -f "$PLAYWRIGHT_LOG_DIR/story2-playwright-${label}-"*.log 2>/dev/null || true
+    output_file="${PLAYWRIGHT_LOG_DIR}/story2-playwright-${label}-$(date +%Y%m%d_%H%M%S)-${RANDOM}.log"
 
     "$@" 2>&1 | tee "$output_file"
     local result=${PIPESTATUS[0]}
@@ -126,7 +191,7 @@ run_playwright_command() {
             echo -e "${YELLOW}建议在有较高系统权限的终端重跑：${NC}"
             echo -e "${BLUE}  cd ${PROJECT_DIR}/frontend${NC}"
             echo -e "${BLUE}  export E2E_NO_SANDBOX=${E2E_NO_SANDBOX:-0}${NC}"
-            echo -e "${BLUE}  cd \"${PROJECT_DIR}\"/frontend && CI=1 E2E_FRONTEND_PORT=\${E2E_FRONTEND_PORT:-3000} npx playwright test ...${NC}"
+            echo -e "${BLUE}  cd \"${PROJECT_DIR}\"/frontend && CI=1 E2E_FRONTEND_PORT=\${E2E_FRONTEND_PORT} npx playwright test ...${NC}"
             echo -e "${YELLOW}若为 CI/容器环境，请显式设置 E2E_NO_SANDBOX=0 做对照验证。${NC}"
         fi
     fi
@@ -327,15 +392,58 @@ run_db() {
 
 # Layer 5: E2E 浏览器测试 (Playwright)
 run_e2e_browser() {
+    with_e2e_lock run_e2e_browser_impl
+}
+
+run_e2e_browser_impl() {
     print_layer_header "5" "E2E 浏览器测试" "前端页面渲染、用户交互、前后端联调"
+    ensure_test_dirs
+    cleanup_e2e_runtimes
+    trap cleanup_e2e_runtimes EXIT
+
     cd "$PROJECT_DIR"
     activate_python_env
     echo -e "${YELLOW}初始化 E2E 数据库表结构...${NC}"
+    E2E_DB_PATH="$TEST_DATA_DIR/story2-e2e.sqlite"
+    E2E_BACKEND_PORT="$(
+        find_free_port "$E2E_BACKEND_PORT" "$(port_of_namespace_seed "$TEST_E2E_BACKEND_PORT_BASE")" "$TEST_E2E_PORT_SCAN_RANGE"
+    )"
+    if [ -z "$E2E_BACKEND_PORT" ]; then
+        print_layer_result "e2e" 1
+        E2E_RESULT=1
+        trap - EXIT
+        cleanup_e2e_runtimes
+        return 1
+    fi
+
+    E2E_FRONTEND_PORT="$(
+        find_free_port "$E2E_FRONTEND_PORT" "$(port_of_namespace_seed "$TEST_E2E_FRONTEND_PORT_BASE")" "$TEST_E2E_PORT_SCAN_RANGE"
+    )"
+    if [ -z "$E2E_FRONTEND_PORT" ]; then
+        print_layer_result "e2e" 1
+        E2E_RESULT=1
+        trap - EXIT
+        cleanup_e2e_runtimes
+        return 1
+    fi
+
+    export E2E_BACKEND_PORT
+    export E2E_FRONTEND_PORT
+
+    echo -e "${YELLOW}E2E 命名空间: ${TEST_NAMESPACE}${NC}"
+    echo -e "${YELLOW}E2E 运行目录: ${TEST_RUN_DIR}${NC}"
+    echo -e "${YELLOW}后端 DB: ${E2E_DB_PATH}${NC}"
+    echo -e "${YELLOW}后端端口: ${E2E_BACKEND_PORT}，前端端口: ${E2E_FRONTEND_PORT}${NC}"
+
+    LOCAL_E2E_DB_URL="sqlite:///$E2E_DB_PATH"
+    DATABASE_URL="$LOCAL_E2E_DB_URL" \
     python -c "from src.database.models import init_db; init_db()"
     local init_result=$?
     if [ $init_result -ne 0 ]; then
         print_layer_result "e2e" $init_result
         E2E_RESULT=$init_result
+        trap - EXIT
+        cleanup_e2e_runtimes
         return $init_result
     fi
 
@@ -362,37 +470,28 @@ run_e2e_browser() {
     # 提高文件描述符上限，降低 macOS 下 EMFILE 命中率
     ulimit -n 8192 >/dev/null 2>&1 || ulimit -n 4096 >/dev/null 2>&1 || true
 
-    local existing_backend_pids
-    existing_backend_pids="$(lsof -ti:8000 2>/dev/null || true)"
-    if [ -n "$existing_backend_pids" ]; then
-        echo -e "${YELLOW}关闭当前 8000 端口遗留后端进程 (${existing_backend_pids})...${NC}"
-        kill $existing_backend_pids 2>/dev/null || true
-        sleep 2
-    fi
-
     echo -e "${YELLOW}启动确定性 E2E 后端...${NC}"
     cd "$PROJECT_DIR"
     activate_python_env
-    E2E_BACKEND_HOST=127.0.0.1 E2E_BACKEND_PORT=8000 \
+    E2E_BACKEND_HOST=127.0.0.1 E2E_BACKEND_PORT="$E2E_BACKEND_PORT" \
+    DATABASE_URL="$LOCAL_E2E_DB_URL" \
     E2E_CONTRACT_PROBE_FAST=1 STORY_TTS_ALLOW_REQUEST_PROVIDER=1 \
-    MINIMAX_API_KEY=test-key MINIMAX_E2E_LOCAL_AUDIO=1 API_RELOAD=false python run_api.py > /tmp/backend_e2e.log 2>&1 &
+    MINIMAX_API_KEY=test-key MINIMAX_E2E_LOCAL_AUDIO=1 API_RELOAD=false \
+    python run_api.py > "$BACKEND_LOG" 2>&1 &
     BACKEND_PID=$!
+    echo "$BACKEND_PID" > "$BACKEND_PID_FILE"
     sleep 3
-    if ! lsof -ti:8000 > /dev/null 2>&1; then
+    if ! is_port_listening "$E2E_BACKEND_PORT" || ! kill -0 "$BACKEND_PID" 2>/dev/null; then
         echo -e "${RED}后端启动失败，跳过 E2E 测试${NC}"
+        echo -e "${RED}日志: $BACKEND_LOG${NC}"
+        cat "$BACKEND_LOG" 2>/dev/null || true
         E2E_RESULT=1
+        trap - EXIT
+        cleanup_e2e_runtimes
         return 1
     fi
     echo -e "${GREEN}后端已启动 (PID: $BACKEND_PID)${NC}"
     cd "$PROJECT_DIR/frontend"
-
-    ensure_e2e_frontend_port_available
-    local frontend_port_result=$?
-    if [ $frontend_port_result -ne 0 ]; then
-        print_layer_result "e2e" $frontend_port_result
-        E2E_RESULT=$frontend_port_result
-        return $frontend_port_result
-    fi
 
     local frontend_mode="${E2E_FRONTEND_MODE:-prod}"
     local FRONTEND_PID=""
@@ -408,13 +507,16 @@ run_e2e_browser() {
         if [ $? -ne 0 ]; then
             echo -e "${RED}前端构建失败，跳过 E2E 测试${NC}"
             E2E_RESULT=1
+            trap - EXIT
+            cleanup_e2e_runtimes
             return 1
         fi
 
-        local frontend_port="${E2E_FRONTEND_PORT:-3000}"
+        local frontend_port="$E2E_FRONTEND_PORT"
         cd "$PROJECT_DIR/frontend"
-        NEXT_DISABLE_STANDALONE=1 CI=1 E2E_FRONTEND_PORT="$frontend_port" npm run start -- --hostname 127.0.0.1 --port "$frontend_port" > /tmp/frontend_e2e.log 2>&1 &
+        NEXT_DISABLE_STANDALONE=1 CI=1 E2E_FRONTEND_PORT="$frontend_port" npm run start -- --hostname 127.0.0.1 --port "$frontend_port" > "$FRONTEND_LOG" 2>&1 &
         FRONTEND_PID=$!
+        echo "$FRONTEND_PID" > "$FRONTEND_PID_FILE"
         local frontend_started=0
         for frontend_ready_attempt in $(seq 1 45); do
             if curl -fsS "http://127.0.0.1:$frontend_port" >/dev/null 2>&1; then
@@ -432,12 +534,11 @@ run_e2e_browser() {
         done
         if [ "$frontend_started" -ne 1 ]; then
             echo -e "${RED}前端启动失败，跳过 E2E 测试${NC}"
-            echo -e "${RED}日志: /tmp/frontend_e2e.log${NC}"
-            cat /tmp/frontend_e2e.log 2>/dev/null || true
-            if [ -n "$BACKEND_PID" ]; then
-                kill "$BACKEND_PID" 2>/dev/null || true
-            fi
+            echo -e "${RED}日志: $FRONTEND_LOG${NC}"
+            cat "$FRONTEND_LOG" 2>/dev/null || true
             E2E_RESULT=1
+            trap - EXIT
+            cleanup_e2e_runtimes
             return 1
         fi
         echo -e "${GREEN}前端已启动 (PID: $FRONTEND_PID)${NC}"
@@ -445,7 +546,7 @@ run_e2e_browser() {
 
     export CI=1
     export E2E_BACKEND_HOST=127.0.0.1
-    export E2E_BACKEND_PORT=8000
+    export E2E_BACKEND_PORT
 
     echo -e "${YELLOW}运行完整 Playwright E2E 测试 (chromium)...${NC}"
     run_playwright_command "core" npx playwright test --project=core --reporter=dot --workers=1
@@ -481,14 +582,8 @@ run_e2e_browser() {
         result=1
     fi
 
-    if [ -n "$BACKEND_PID" ]; then
-        echo -e "${YELLOW}关闭测试用后端 (PID: $BACKEND_PID)...${NC}"
-        kill $BACKEND_PID 2>/dev/null
-    fi
-    if [ -n "$FRONTEND_PID" ]; then
-        echo -e "${YELLOW}关闭测试用前端 (PID: $FRONTEND_PID)...${NC}"
-        kill "$FRONTEND_PID" 2>/dev/null
-    fi
+    trap - EXIT
+    cleanup_e2e_runtimes
 
     print_layer_result "e2e" $result
     E2E_RESULT=$result
@@ -610,23 +705,24 @@ run_coverage() {
     echo -e "${BLUE}========================================${NC}"
     echo -e "${YELLOW}运行测试并生成覆盖率报告...${NC}"
     echo -e "${BLUE}========================================${NC}"
+    ensure_test_dirs
     
     # 后端覆盖率
     echo -e "${YELLOW}--- 后端覆盖率 ---${NC}"
     cd "$PROJECT_DIR"
     activate_python_env
-    pytest tests/ --cov=src --cov-report=term-missing --cov-report=html:htmlcov/backend
+    pytest tests/ --cov=src --cov-report=term-missing --cov-report=html:"$TEST_RUN_DIR"/htmlcov/backend
     
     # 前端覆盖率
     echo ""
     echo -e "${YELLOW}--- 前端覆盖率 ---${NC}"
     cd "$PROJECT_DIR/frontend"
-    npm test -- --coverage --coverageReporters=text --coverageReporters=html
+    npm test -- --coverage --coverageReporters=text --coverageReporters=html --coverageDirectory="$TEST_RUN_DIR"/frontend/coverage
     
     echo ""
     echo -e "${GREEN}覆盖率报告已生成:${NC}"
-    echo "  后端: $PROJECT_DIR/htmlcov/backend/index.html"
-    echo "  前端: $PROJECT_DIR/frontend/coverage/lcov-report/index.html"
+    echo "  后端: $TEST_RUN_DIR/htmlcov/backend/index.html"
+    echo "  前端: $TEST_RUN_DIR/frontend/coverage/lcov-report/index.html"
 }
 
 # 安全扫描
@@ -651,20 +747,23 @@ run_perf() {
     echo -e "${BLUE}========================================${NC}"
     echo -e "${YELLOW}运行性能测试 (Locust)...${NC}"
     echo -e "${BLUE}========================================${NC}"
+    ensure_test_dirs
     cd "$PROJECT_DIR"
     activate_python_env
+    PERF_BACKEND_PORT="${E2E_BACKEND_PORT:-8000}"
     
     # 检查后端是否运行
-    if ! lsof -ti:8000 > /dev/null 2>&1; then
+    if ! is_port_listening "$PERF_BACKEND_PORT"; then
         echo -e "${YELLOW}后端未运行，正在启动...${NC}"
-        python run_api.py > /tmp/backend_test.log 2>&1 &
+        DATABASE_URL="sqlite:///$TEST_DATA_DIR/perf.sqlite" \
+        python run_api.py > "$TEST_RUN_DIR/backend_perf.log" 2>&1 &
         sleep 3
     fi
     
     echo -e "${YELLOW}启动 Locust 性能测试...${NC}"
     echo -e "${YELLOW}访问 http://localhost:8089 进行测试配置${NC}"
     cd tests/performance
-    locust -f locustfile.py --host=http://localhost:8000
+    locust -f locustfile.py --host="http://127.0.0.1:${PERF_BACKEND_PORT}"
 }
 
 # 运行所有自动化测试 (Preflight + 5 层)
