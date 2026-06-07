@@ -141,10 +141,16 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - OpenSpec strict validation: 21 passed.
   - Backend preflight quality checks: 86 passed.
   - Frontend preflight Jest regression tests: 297 passed.
+- Production API verification after deploying `0b396b15`:
+  - `story101.live` returned `tts_provider: "minimax"`, `backend_audio_enabled: true`, and `playback_mode: "audio"`.
+  - Direct MiniMax TTS requests for `warm_female` and `calm_male` both returned backend `audio/mpeg` assets that downloaded successfully.
+  - Modern product/workplace music recommendation returned no NetEase songs after strict filtering, and had no bad hits for `说散就散`, `匆匆那年`, `夜曲`, `一直很安静`, `童话`, `童话镇`, `情歌`, or `type beat`.
+  - Direct NetEase probing showed broad "职场/电子/纯音乐/lofi" queries still return many playable vocal-pop mismatches, so returning an empty safe baseline is currently preferable to poisoning the queue.
+  - `/api/music/generate` returned an `ai_generated` track with an audio URL in about 112.7 seconds and inserted it into the playlist `future_queue`.
 
 ## Still Not Claimed As Production-Complete
 
 - Remote GitHub checks are blocked by GitHub billing/spending-limit status, not by retrievable job logs.
 - Fresh MiniMax music generation can take longer than 150 seconds on production; the current design keeps NetEase playback available and inserts generated music only after the asset is ready.
-- Broader music matching quality still needs production follow-up: local regression coverage now blocks the observed modern product/workplace weak matches, but this commit still needs deployment and live `/api/music/recommend` verification on `story101.live`.
+- Broader music matching quality still needs product tuning: strict modern workplace filtering prevents known bad NetEase songs, but for that scene class the safe NetEase baseline can be empty and the generated MiniMax track becomes the reliable queued music source.
 - Browser/manual long playthrough to week 4 should still be rerun after deployment, because the production synchronous API probe and browser smoke do not validate all `/play` SSE progression states across 12 real rounds.
