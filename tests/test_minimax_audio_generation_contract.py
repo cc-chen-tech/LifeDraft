@@ -33,6 +33,7 @@ def test_minimax_config_defaults_are_secret_free_and_provider_specific(tmp_path:
     assert config.file_retrieve_url == "https://api.minimaxi.com/v1/files/retrieve"
     assert config.music_model == "music-2.6"
     assert config.music_generation_url.startswith("https://api.minimaxi.com/")
+    assert config.request_timeout_seconds == 180.0
     assert config.music_generation_enabled is True
     assert config.story_auto_read_default_enabled is False
     assert config.voice_asset_dir == tmp_path / "voice"

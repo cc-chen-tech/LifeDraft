@@ -67,7 +67,7 @@ class MiniMaxConfig:
                 "MINIMAX_MUSIC_GENERATION_URL",
                 "https://api.minimaxi.com/v1/music_generation",
             ),
-            request_timeout_seconds=float(source.get("MINIMAX_TIMEOUT_SECONDS", "60")),
+            request_timeout_seconds=float(source.get("MINIMAX_TIMEOUT_SECONDS", "180")),
             tts_max_chars=int(source.get("MINIMAX_TTS_MAX_CHARS", "50000")),
             max_music_prompt_chars=int(source.get("MINIMAX_MUSIC_PROMPT_MAX_CHARS", "900")),
             music_generation_enabled=_truthy(
