@@ -118,6 +118,11 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
 - Production browser long-flow probe after deploying `f877baa2`:
   - The first post-summary `/event` recovered, proving persisted event state can be read by the next round.
   - A later `/event` still timed out after browser disconnection because FastAPI closed the async generator before it reached the `complete`/autosave block, even though `generate_round_event` finished later in the worker thread. This follow-up moves the persistence into the worker thread immediately after generation returns.
+- Production abort-and-restore probe after deploying `b2346978`:
+  - Direct MiniMax TTS requests for both `warm_female` and `calm_male` returned 200 with `provider=minimax`, `playback_mode=audio`, `media_type=audio/mpeg`, and an audio URL.
+  - A real `/api/games/72/event` stream was intentionally aborted after receiving early status chunks.
+  - The worker continued generation after the browser abort, and `/api/games/72` polling restored `current_event` after about 59 seconds with story length 2513 and 3 options.
+  - This validates the event-disconnect persistence path that previously left `/play` stuck in polling/error after the backend finished generation.
 
 ## Still Not Claimed As Production-Complete
 
