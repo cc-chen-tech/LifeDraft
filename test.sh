@@ -126,7 +126,7 @@ find_free_port() {
 
     if [ -n "$preferred" ] && [ "$preferred" -gt 0 ]; then
         if is_port_listening "$preferred"; then
-            echo -e "${RED}端口 $preferred 已被占用。请先释放该端口或设置 E2E_BACKEND_PORT / E2E_FRONTEND_PORT。${NC}"
+            >&2 echo -e "${RED}端口 $preferred 已被占用。请先释放该端口或设置 E2E_BACKEND_PORT / E2E_FRONTEND_PORT。${NC}"
             return 1
         fi
         echo "$preferred"
@@ -143,7 +143,7 @@ find_free_port() {
         candidate=$((candidate + 1))
     done
 
-    echo -e "${RED}无法分配空闲端口（$base-$((base + range))）${NC}"
+    >&2 echo -e "${RED}无法分配空闲端口（$base-$((base + range))）${NC}"
     return 1
 }
 
@@ -508,14 +508,17 @@ run_e2e_browser_impl() {
 
     local frontend_mode="${E2E_FRONTEND_MODE:-prod}"
     local FRONTEND_PID=""
+    local backend_url="http://127.0.0.1:$E2E_BACKEND_PORT"
 
     if [ "$frontend_mode" = "dev" ]; then
         echo -e "${YELLOW}使用 Playwright webServer（dev）模式运行 E2E（不推荐）...${NC}"
+        BACKEND_URL="$backend_url"
+        NEXT_PUBLIC_API_URL="/api"
+        export BACKEND_URL NEXT_PUBLIC_API_URL
         # default behavior will use playwright.config.ts webServer branch
     else
         echo -e "${YELLOW}使用生产模式启动前端（next build + start）以规避开发监听问题...${NC}"
         cd "$PROJECT_DIR/frontend"
-        local backend_url="http://127.0.0.1:$E2E_BACKEND_PORT"
         echo -e "${YELLOW}执行 npm run build，避免复用旧 .next 构建...${NC}"
         NEXT_DISABLE_STANDALONE=1 BACKEND_URL="$backend_url" NEXT_PUBLIC_API_URL="/api" npm run build
         if [ $? -ne 0 ]; then

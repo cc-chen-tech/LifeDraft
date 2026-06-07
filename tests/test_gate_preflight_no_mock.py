@@ -251,11 +251,33 @@ def test_e2e_frontend_proxy_targets_dynamic_backend_port() -> None:
     build_command = next(line for line in command_lines if "npm run build" in line)
     start_command = next(line for line in command_lines if "npm run start" in line)
 
-    assert 'local backend_url="http://127.0.0.1:$E2E_BACKEND_PORT"' in build_block
+    assert 'local backend_url="http://127.0.0.1:$E2E_BACKEND_PORT"' in script
     assert 'BACKEND_URL="$backend_url"' in build_command
     assert 'NEXT_PUBLIC_API_URL="/api"' in build_command
     assert 'BACKEND_URL="$backend_url"' in start_command
     assert 'NEXT_PUBLIC_API_URL="/api"' in start_command
+
+
+def test_e2e_dev_frontend_proxy_targets_dynamic_backend_port() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+    dev_block = script.split('if [ "$frontend_mode" = "dev" ]; then', 1)[1].split(
+        "else", 1
+    )[0]
+
+    assert 'local backend_url="http://127.0.0.1:$E2E_BACKEND_PORT"' in script
+    assert 'BACKEND_URL="$backend_url"' in dev_block
+    assert 'NEXT_PUBLIC_API_URL="/api"' in dev_block
+    assert "export BACKEND_URL NEXT_PUBLIC_API_URL" in dev_block
+
+
+def test_find_free_port_errors_do_not_pollute_captured_port_value() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+    port_func = script.split("find_free_port() {", 1)[1].split(
+        "\n}\n\nactivate_python_env", 1
+    )[0]
+
+    assert '>&2 echo -e "${RED}端口 $preferred 已被占用。请先释放该端口或设置 E2E_BACKEND_PORT / E2E_FRONTEND_PORT。${NC}"' in port_func
+    assert '>&2 echo -e "${RED}无法分配空闲端口（$base-$((base + range))）${NC}"' in port_func
 
 
 def test_collection_panel_cache_spec_uses_scoped_character_locator() -> None:
