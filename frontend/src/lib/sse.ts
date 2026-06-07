@@ -263,11 +263,11 @@ export async function streamGameEvent(
   callbacks: StreamCallbacks,
   options?: { signal?: AbortSignal }
 ): Promise<void> {
-  const response = await fetch(`/api/games/${gameId}/event`, {
+  const response = await fetchSSEWithRetry(`/api/games/${gameId}/event`, {
     method: 'GET',
     credentials: 'include',
     signal: options?.signal,
-  });
+  }, callbacks);
 
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
@@ -286,11 +286,11 @@ export async function streamRegenerate(
   callbacks: StreamCallbacks,
   options?: { story_context?: string; adjustment?: string; signal?: AbortSignal }
 ): Promise<void> {
-  const response = await fetch(`/api/games/${gameId}/regenerate-stream`, {
+  const response = await fetchSSEWithRetry(`/api/games/${gameId}/regenerate-stream`, {
     method: 'GET',
     credentials: 'include',
     signal: options?.signal,
-  });
+  }, callbacks);
 
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
@@ -309,6 +309,8 @@ interface RewriteCallbacks {
   onStatus: (status: { phase: string }) => void;
   onComplete: (data: unknown) => void;
   onError?: (error: Error) => void;
+  onConnectionStatus?: (status: ConnectionStatus) => void;
+  onReconnecting?: (attempt: number, maxRetries: number) => void;
 }
 
 export async function streamRewrite(
@@ -320,7 +322,7 @@ export async function streamRewrite(
   callbacks: RewriteCallbacks,
   options?: { signal?: AbortSignal }
 ): Promise<{ completed: boolean; error?: Error }> {
-  const response = await fetch(`/api/games/${gameId}/rewrite-stream`, {
+  const response = await fetchSSEWithRetry(`/api/games/${gameId}/rewrite-stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -331,6 +333,9 @@ export async function streamRewrite(
       language: language,
     }),
     signal: options?.signal,
+  }, {
+    onConnectionStatus: callbacks.onConnectionStatus,
+    onReconnecting: callbacks.onReconnecting,
   });
 
   if (!response.ok) {

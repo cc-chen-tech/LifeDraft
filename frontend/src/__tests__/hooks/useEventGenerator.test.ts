@@ -8,6 +8,37 @@ import { useGameStore } from '@/stores/useGameStore';
 import type { Phase, ConnectionStatus } from '@/hooks/game/usePhaseManager';
 import { createSSEMockResponse } from '@/__tests__/helpers/sse-mock';
 
+function createHangingSSEMockResponse(chunks: string[]): Response {
+  let index = 0;
+  const reader: ReadableStreamDefaultReader<Uint8Array> = {
+    read(): Promise<ReadableStreamReadResult<Uint8Array>> {
+      if (index < chunks.length) {
+        const value = new TextEncoder().encode(chunks[index]);
+        index += 1;
+        return Promise.resolve({ done: false, value });
+      }
+      return new Promise(() => {});
+    },
+    cancel(): Promise<void> {
+      return Promise.resolve();
+    },
+    releaseLock(): void {},
+    get closed(): Promise<undefined> {
+      return Promise.resolve(undefined);
+    },
+  };
+  return {
+    ok: true,
+    status: 200,
+    headers: new Headers({ 'content-type': 'text/event-stream' }),
+    body: {
+      locked: false,
+      cancel: () => Promise.resolve(),
+      getReader: () => reader,
+    } as unknown as ReadableStream<Uint8Array>,
+  } as Response;
+}
+
 function setupDefaultState() {
   useGameStore.setState({
     storyText: '',
@@ -229,6 +260,37 @@ describe('useEventGenerator', () => {
 
       expect(mockSetters.setStoryText).toHaveBeenCalledWith('');
       expect(mockSetters.appendStoryText).toHaveBeenCalledWith('重新生成的完整故事');
+    });
+
+    it('clears retrying guard when retry status stream never completes', async () => {
+      jest.useFakeTimers();
+      (global.fetch as jest.Mock).mockResolvedValue(
+        createHangingSSEMockResponse([
+          'event: status\ndata: {"phase":"retrying"}\n\n',
+        ])
+      );
+
+      const { result, unmount } = renderHook(() => useEventGenerator(defaultParams));
+
+      await act(async () => {
+        void result.current.generateEvent();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(mockIsRetryingRef.current).toBe(true);
+
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(61000);
+      });
+
+      expect(mockIsRetryingRef.current).toBe(false);
+      expect(mockGeneratingRef.current).toBe(false);
+      expect(mockSetters.setConnectionStatus).toHaveBeenCalledWith('error');
+      expect(mockSetters.setPhase).toHaveBeenCalledWith('error');
+
+      unmount();
+      jest.useRealTimers();
     });
   });
 });
