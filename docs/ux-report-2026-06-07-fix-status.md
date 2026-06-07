@@ -29,6 +29,8 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Regression coverage: `tests/test_music_pool_cache_integration.py::TestGetOrBuildPool::test_supplement_pool_filters_negative_cue_songs_for_story_context`
 - Game creation now normalizes list-shaped `relationships` payloads into canonical `relationships.key_people` before initializing state, preventing a production 500 when clients send key people as a top-level list.
   - Regression coverage: `tests/test_game_initializer_relationships_contract.py`, `tests/test_api_games.py::TestCreateGame::test_create_game_accepts_relationships_list_payload`
+- Music player unit coverage now matches the current playlist queue contract: recommendation refreshes persist baseline NetEase songs into `/api/music/playlist/{game_id}`, and legacy recommendation responses without `music_brief` must not call `/api/music/generate`.
+  - Regression coverage: `frontend/src/__tests__/components/game/MusicPlayer.test.tsx`
 
 ## Verification
 
@@ -50,6 +52,11 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - A modern workplace data-fraud suspense story returned `music_brief`.
   - Prompt-leak title matches: 0.
   - Direct negative-cue matches for `type beat`, `喜欢你`, `情歌`, and `双截棍`: 0.
+- Production `/api/games` verification after deploying `261125f1` to ECS:
+  - A top-level list-shaped `character_settings.relationships` payload returned 201 instead of 500.
+  - Loading the created game returned `player_state.relationships` containing `陆昊然` and `陈晓雨`.
+  - Loading the created game returned canonical `character_settings.relationships.key_people` count 2.
+- Frontend full unit suite passes locally in serial mode: `npm run test:unit -- --runInBand` with 97 suites and 1681 tests passing.
 - Production deploy workflow now injects a temporary GitHub token for private-repo fetches on ECS and restores the clean GitHub remote URL after fetch, so the host does not need a persisted token in `origin`.
 
 ## Still Not Claimed As Production-Complete
