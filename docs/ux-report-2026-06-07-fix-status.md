@@ -29,9 +29,16 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
 - Focused backend prompt/music/persona tests: 18 passed.
 - Focused frontend unit tests: 74 passed.
 - `./test.sh e2e`: core 301 passed, AI music queue 1 passed, story voice 8 passed, MiniMax story audio generation 4 passed.
+- Production deployment verification on `story101.live` after manually deploying PR #51 head to ECS:
+  - `/api/voice-reading/settings` returns `tts_provider: "minimax"` and `backend_audio_enabled: true` for an authenticated user.
+  - Browser UI on `/e2e-regression` returns `voice-reading-mode=audio`, `voice-reading-provider=minimax`, and a decodable `/api/voice-reading/audio/*.mp3` asset.
+  - Browser auto-read stays idle during the simulated partial stream and starts only after the final story-ready signal.
+  - `/api/music/generate` produces a MiniMax `ai_generated` MP3 asset with `insert_policy: future_queue`.
+  - Browser UI inserts the generated MiniMax music track into the future queue without replacing the current NetEase track.
+- Production deploy workflow now injects a temporary GitHub token for private-repo fetches on ECS and restores the clean GitHub remote URL after fetch, so the host does not need a persisted token in `origin`.
 
 ## Still Not Claimed As Production-Complete
 
 - Remote GitHub checks are blocked by GitHub billing/spending-limit status, not by retrievable job logs.
-- Production MiniMax validation still depends on correctly setting MiniMax secrets in the deployed environment and redeploying.
+- Fresh MiniMax music generation can take longer than 150 seconds on production; the current design keeps NetEase playback available and inserts generated music only after the asset is ready.
 - A real long manual playthrough to week 4 should be rerun after deployment, because local deterministic E2E is not a substitute for live model/runtime behavior.

@@ -499,6 +499,25 @@ def test_production_deploy_syncs_minimax_secret_to_ecs_env_without_committing_ke
     assert "sk-" not in workflow
 
 
+def test_production_deploy_fetches_private_repo_without_persisting_github_token() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "GITHUB_DEPLOY_TOKEN_B64" in workflow
+    assert "github.token" in workflow
+    assert "x-access-token:${GITHUB_DEPLOY_TOKEN}@github.com" in workflow
+    assert "git remote set-url origin https://github.com/cc-chen-tech/LifeDraft.git" in workflow
+    assert "trap cleanup_git_remote EXIT" in workflow
+    assert "unset GITHUB_DEPLOY_TOKEN_B64" in workflow
+    assert workflow.index("x-access-token:${GITHUB_DEPLOY_TOKEN}@github.com") < workflow.index(
+        "git fetch origin main"
+    )
+    assert workflow.index("git fetch origin main") < workflow.rindex(
+        "git remote set-url origin https://github.com/cc-chen-tech/LifeDraft.git"
+    )
+
+
 def test_e2e_prod_frontend_start_waits_until_listening_in_ci() -> None:
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
     start_block = script.split("npm run start -- --hostname 127.0.0.1", 1)[1].split(
