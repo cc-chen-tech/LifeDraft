@@ -460,7 +460,7 @@ export default function PlayPage() {
                     round_number: currentHistoryRound?.round ?? null,
                     stage: "event",
                     attempt_id: "history",
-                    text_hash: `${displayText.length}-${displayText.slice(0, 16)}`,
+                    text_hash: "pending-client-hash",
                     text: displayText,
                   }}
                   autoReadText={displayText}
@@ -487,7 +487,7 @@ export default function PlayPage() {
                   round_number: currentRound ?? null,
                   stage: "event",
                   attempt_id: `${progress?.week ?? 0}-${currentRound ?? 0}`,
-                  text_hash: `${displayText.length}-${displayText.slice(0, 16)}`,
+                  text_hash: "pending-client-hash",
                   text: displayText,
                 }}
                 autoReadText={displayText}

@@ -1,8 +1,10 @@
 import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { webcrypto } from 'node:crypto';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { StoryVoiceControls } from '@/components/game/StoryVoiceControls';
 import type { ReadingContext } from '@/lib/types';
 import { useStoryVoiceStore } from '@/stores/useStoryVoiceStore';
+import { jsonResponse } from '@/__tests__/helpers/fetch';
 
 const currentContext: ReadingContext = {
   source_type: 'current_story',
@@ -17,6 +19,10 @@ const currentContext: ReadingContext = {
 
 describe('StoryVoiceControls', () => {
   beforeEach(() => {
+    Object.defineProperty(globalThis, 'crypto', {
+      value: webcrypto,
+      configurable: true,
+    });
     useStoryVoiceStore.setState({
       readingState: 'idle',
       currentSource: '',
@@ -32,6 +38,7 @@ describe('StoryVoiceControls', () => {
       musicDuckState: 'idle',
       musicWasPlaying: false,
       userChangedMusic: false,
+      startReading: jest.fn(),
     });
   });
 
@@ -89,5 +96,32 @@ describe('StoryVoiceControls', () => {
 
     expect(screen.getByTestId('voice-reading-state')).toHaveTextContent('failed');
     expect(screen.getByRole('button', { name: '重试朗读' })).toBeVisible();
+  });
+
+  it('passes a backend-compatible SHA-256 text hash when auto-reading completed story text', async () => {
+    const startReading = jest.fn();
+    (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+      auto_read_enabled: true,
+      selected_voice_color: 'warm_female',
+    }));
+    useStoryVoiceStore.setState({
+      autoReadEnabled: true,
+      startReading,
+    } as never);
+
+    render(
+      <StoryVoiceControls
+        currentContext={currentContext}
+        autoReadText="一段当前故事。"
+        autoReadReady
+        enablePlaybackControls
+      />
+    );
+
+    await waitFor(() => expect(startReading).toHaveBeenCalledTimes(1));
+    expect(startReading.mock.calls[0][0]).toMatchObject({
+      text: '一段当前故事。',
+      text_hash: '95813215c6b945ae5e1746a1219579a9884fd99997cf398d046f071a819c149e',
+    });
   });
 });

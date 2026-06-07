@@ -263,6 +263,7 @@ run_preflight() {
         src/__tests__/lib/sse.test.ts \
         src/__tests__/lib/sessionRecovery.test.ts \
         src/__tests__/lib/storyTextHash.test.ts \
+        src/__tests__/lib/storyVoiceTextHash.test.ts \
         src/__tests__/stores/useGameStore.test.ts \
         src/__tests__/pages/CreatePage.test.tsx \
         src/__tests__/hooks/eventUtils.test.ts \
