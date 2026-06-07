@@ -29,6 +29,8 @@ function mergeVisibleEntityData<T extends CollectionEntity>(nextItems: T[], curr
 // Request de-dupe and short-lived cache keep the collection panel responsive.
 let _fetchInFlight: { gameId: number; promise: Promise<void> } | null = null;
 let _collectionCache: { gameId: number; timestamp: number } | null = null;
+let _autoCollectInFlight: { gameId: number; promise: Promise<void> } | null = null;
+const _autoCollectAttempted = new Set<number>();
 const CACHE_TTL_MS = 30000;
 
 interface CollectionState {
@@ -80,6 +82,7 @@ interface CollectionState {
   // 识别相关 Actions
   recognizeEntities: (gameId: number, minAppearances?: number) => Promise<EntityRecognitionResponse | null>;
   addRecognizedEntities: (gameId: number, entities: { items: RecognizedEntity[]; characters: RecognizedEntity[]; landmarks: RecognizedEntity[] }) => Promise<void>;
+  autoCollectRecognizedEntities: (gameId: number) => Promise<void>;
   clearRecognizedEntities: () => void;
 
   // 手动添加 Actions
@@ -471,6 +474,50 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
       console.error("[addRecognizedEntities] 错误:", errorMsg);
       set({ error: errorMsg, isLoading: false });
     }
+  },
+
+  autoCollectRecognizedEntities: async (gameId: number) => {
+    if (!gameId) return;
+
+    if (_autoCollectInFlight?.gameId === gameId) {
+      return _autoCollectInFlight.promise;
+    }
+    if (_autoCollectAttempted.has(gameId)) {
+      return;
+    }
+
+    const state = get();
+    const hasCollectedEntities =
+      state.characters.length > 0 || state.items.length > 0 || state.landmarks.length > 0;
+    if (hasCollectedEntities) {
+      return;
+    }
+
+    const autoCollectPromise = (async () => {
+      const recognized = await get().recognizeEntities(gameId, 1);
+      if (!recognized) return;
+
+      const entities = {
+        items: recognized.items || [],
+        characters: recognized.characters || [],
+        landmarks: recognized.landmarks || [],
+      };
+      const hasRecognized =
+        entities.items.length > 0 ||
+        entities.characters.length > 0 ||
+        entities.landmarks.length > 0;
+      if (!hasRecognized) return;
+
+      await get().addRecognizedEntities(gameId, entities);
+      _autoCollectAttempted.add(gameId);
+    })().finally(() => {
+      if (_autoCollectInFlight?.gameId === gameId) {
+        _autoCollectInFlight = null;
+      }
+    });
+
+    _autoCollectInFlight = { gameId, promise: autoCollectPromise };
+    return autoCollectPromise;
   },
 
   // 清除识别结果

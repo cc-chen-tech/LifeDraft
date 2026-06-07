@@ -117,6 +117,7 @@ describe('ChatBar', () => {
       await user.click(screen.getByRole('button', { name: '总结' }));
 
       expect(await screen.findByTestId('chat-bar-panel')).toBeInTheDocument();
+      expect(mockOnRegenerate).not.toHaveBeenCalled();
       await waitFor(() => {
         const calls = (global.fetch as jest.Mock).mock.calls;
         const summaryCall = calls.find((c: unknown[]) => (c[0] as string).includes('/summary'));

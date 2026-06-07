@@ -190,6 +190,53 @@ describe("music queue policy", () => {
     expect(recommendation?.songs[2].source).toBe("ai_generated");
   });
 
+  it("store advanceQueue wraps played songs when the future queue is empty", async () => {
+    useMusicStore.setState({
+      currentSong: song(1, "Current"),
+      queue: [],
+      playedSongs: [song(0, "Previously Played")],
+    });
+
+    await useMusicStore.getState().advanceQueue();
+
+    const state = useMusicStore.getState();
+    expect(state.currentSong?.id).toBe(0);
+    expect(state.queue.map((item) => item.id)).toEqual([1]);
+    expect(state.playedSongs).toEqual([]);
+  });
+
+  it("store advanceQueue uses persisted playlist advance when a game playlist is active", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        game_id: 101,
+        current_song: song(2, "Persisted Next"),
+        queue: [song("ai-generated-77", "AI MiniMax 雨夜追逐", "ai_generated")],
+        played_songs: [song(1, "Persisted Current")],
+        is_playing: true,
+        volume: 0.7,
+        current_position_ms: 0,
+      }),
+    }) as jest.Mock;
+    useMusicStore.setState({
+      playlistGameId: 101,
+      currentSong: song(1, "Current"),
+      queue: [song(2, "Next"), song("ai-generated-77", "AI MiniMax 雨夜追逐", "ai_generated")],
+      playedSongs: [],
+    });
+
+    await useMusicStore.getState().advanceQueue();
+
+    expect(global.fetch).toHaveBeenCalledWith("/api/music/playlist/101/advance", {
+      method: "POST",
+      credentials: "include",
+    });
+    const state = useMusicStore.getState();
+    expect(state.currentSong?.id).toBe(2);
+    expect(state.queue.map((item) => item.id)).toEqual(["ai-generated-77"]);
+    expect(state.queue[0].source).toBe("ai_generated");
+  });
+
   it("source label helper surfaces AI tracks without labeling Netease as mandatory", () => {
     expect(getMusicSourceLabel("ai_generated")).toBe("AI");
     expect(getMusicSourceLabel("netease")).toBe("");

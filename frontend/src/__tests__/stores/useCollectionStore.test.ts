@@ -176,6 +176,186 @@ describe('useCollectionStore', () => {
   });
 
   describe('fetchCollection preserves selection', () => {
+    it('auto-collects recognized story entities when collection is empty', async () => {
+      const emptyCollection = {
+        game_id: 1,
+        characters: [],
+        items: [],
+        landmarks: [],
+        total_characters: 0,
+        total_items: 0,
+        total_landmarks: 0,
+      };
+      const recognizedEntities = {
+        characters: [
+          {
+            name: '赵掌柜',
+            description: '赵家船行的掌柜，知道账册和铜钥匙的来历。',
+            category: 'person',
+            importance: 'important' as const,
+            appear_count: 1,
+            appear_contexts: ['第1周周一：在赵家船行后院交出账册'],
+          },
+        ],
+        items: [
+          {
+            name: '铜钥匙',
+            description: '从旧账册夹层里掉出的关键钥匙。',
+            category: 'tool',
+            importance: 'critical' as const,
+            appear_count: 1,
+            appear_contexts: ['第1周周一：旧账册夹层'],
+          },
+        ],
+        landmarks: [],
+      };
+      const populatedCollection = {
+        game_id: 1,
+        characters: [
+          {
+            name: '赵掌柜',
+            role: '故事人物',
+            description: '赵家船行的掌柜，知道账册和铜钥匙的来历。',
+            affinity: 50,
+            age: null,
+            gender: null,
+            occupation: null,
+            personality_traits: [],
+            image_url: null,
+            image_generated: false,
+            description_generated: true,
+          },
+        ],
+        items: [
+          {
+            name: '铜钥匙',
+            description: '从旧账册夹层里掉出的关键钥匙。',
+            importance: 'critical',
+            category: 'tool',
+            acquired_week: 0,
+            acquired_context: '第1周周一：旧账册夹层',
+            is_key_item: true,
+            image_url: null,
+            image_generated: false,
+            description_generated: true,
+            metadata: {},
+          },
+        ],
+        landmarks: [],
+        total_characters: 1,
+        total_items: 1,
+        total_landmarks: 0,
+      };
+
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(jsonResponse(emptyCollection))
+        .mockResolvedValueOnce(jsonResponse(recognizedEntities))
+        .mockResolvedValueOnce(jsonResponse({
+          message: '成功添加 1 个物品, 1 个人物, 0 个地点',
+          added_items: ['铜钥匙'],
+          added_characters: ['赵掌柜'],
+          added_landmarks: [],
+        }))
+        .mockResolvedValueOnce(jsonResponse(populatedCollection));
+
+      await useCollectionStore.getState().fetchCollection(1);
+      await useCollectionStore.getState().autoCollectRecognizedEntities(1);
+
+      expect(global.fetch).toHaveBeenNthCalledWith(
+        2,
+        '/api/collection/1/recognize-entities',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({
+            entity_types: ['item', 'character', 'landmark'],
+            min_appearances: 1,
+          }),
+        }),
+      );
+      expect(global.fetch).toHaveBeenNthCalledWith(
+        3,
+        '/api/collection/1/add-entities',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('赵掌柜'),
+        }),
+      );
+      expect(useCollectionStore.getState().characters.map((c) => c.name)).toEqual(['赵掌柜']);
+      expect(useCollectionStore.getState().items.map((i) => i.name)).toEqual(['铜钥匙']);
+    });
+
+    it('retries auto collection after an empty recognition result', async () => {
+      const emptyCollection = {
+        game_id: 2,
+        characters: [],
+        items: [],
+        landmarks: [],
+        total_characters: 0,
+        total_items: 0,
+        total_landmarks: 0,
+      };
+      const noEntities = { characters: [], items: [], landmarks: [] };
+      const recognizedEntities = {
+        characters: [
+          {
+            name: '陈晓雨',
+            description: '主角的产品同学。',
+            category: 'person',
+            importance: 'important' as const,
+            appear_count: 1,
+            appear_contexts: ['第1周周中：线上会议'],
+          },
+        ],
+        items: [],
+        landmarks: [],
+      };
+      const populatedCollection = {
+        game_id: 2,
+        characters: [
+          {
+            name: '陈晓雨',
+            role: '故事人物',
+            description: '主角的产品同学。',
+            affinity: 50,
+            age: null,
+            gender: null,
+            occupation: null,
+            personality_traits: [],
+            image_url: null,
+            image_generated: false,
+            description_generated: true,
+          },
+        ],
+        items: [],
+        landmarks: [],
+        total_characters: 1,
+        total_items: 0,
+        total_landmarks: 0,
+      };
+
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(jsonResponse(emptyCollection))
+        .mockResolvedValueOnce(jsonResponse(noEntities))
+        .mockResolvedValueOnce(jsonResponse(recognizedEntities))
+        .mockResolvedValueOnce(jsonResponse({
+          message: '成功添加 0 个物品, 1 个人物, 0 个地点',
+          added_items: [],
+          added_characters: ['陈晓雨'],
+          added_landmarks: [],
+        }))
+        .mockResolvedValueOnce(jsonResponse(populatedCollection));
+
+      await useCollectionStore.getState().fetchCollection(2);
+      await useCollectionStore.getState().autoCollectRecognizedEntities(2);
+      await useCollectionStore.getState().autoCollectRecognizedEntities(2);
+
+      const recognitionCalls = (global.fetch as jest.Mock).mock.calls.filter(([url]) =>
+        String(url).includes('/recognize-entities'),
+      );
+      expect(recognitionCalls).toHaveLength(2);
+      expect(useCollectionStore.getState().characters.map((c) => c.name)).toEqual(['陈晓雨']);
+    });
+
     it('preserves selected character after fetch', async () => {
       // Setup initial state with selected character
       const initialCharacter = {

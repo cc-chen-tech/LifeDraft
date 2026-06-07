@@ -416,8 +416,38 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   },
 
   advanceQueue: async () => {
-    const { queue, currentSong, playedSongs } = get();
-    if (queue.length === 0) return;
+    const { queue, currentSong, playedSongs, playlistGameId } = get();
+    if (playlistGameId && typeof fetch !== "undefined") {
+      try {
+        const response = await fetch(`${API_BASE}/music/playlist/${playlistGameId}/advance`, {
+          method: "POST",
+          credentials: "include",
+        });
+        if (response.ok) {
+          const playlist = (await response.json()) as PlaylistApiState;
+          set(playlistStateToStorePatch(playlist));
+          return;
+        }
+      } catch (error) {
+        console.warn("[MusicStore] Failed to advance persisted playlist, using local queue:", error);
+      }
+    }
+
+    if (queue.length === 0) {
+      if (playedSongs.length === 0) return;
+      const wrappedCurrent = playedSongs[0];
+      const wrappedQueue = [
+        ...playedSongs.slice(1),
+        ...(currentSong ? [{ ...currentSong }] : []),
+      ];
+      set({
+        currentSong: wrappedCurrent,
+        queue: wrappedQueue,
+        playedSongs: [],
+      });
+      return;
+    }
+
     const nextSong = queue[0];
     const newQueue = queue.slice(1);
     set({

@@ -60,6 +60,10 @@ LOVE_POP_CUES = {
     "匆匆那年",
     "告白气球",
     "喜欢你",
+    "等你下课",
+    "不再联系",
+    "双截棍",
+    "type beat",
     "恋爱",
     "爱情",
     "情歌",
@@ -83,6 +87,15 @@ SUSPENSE_CONTEXT_CUES = {
     "犯罪",
     "惊悚",
     "危机",
+    "债务",
+    "负债",
+    "欠债",
+    "追债",
+    "担保",
+    "债主",
+    "律师",
+    "财务",
+    "金融",
 }
 
 SUSPENSE_NEGATIVE_CUES = [
@@ -99,6 +112,10 @@ SUSPENSE_NEGATIVE_CUES = [
     "匆匆那年",
     "告白气球",
     "喜欢你",
+    "等你下课",
+    "不再联系",
+    "双截棍",
+    "type beat",
 ]
 
 
@@ -121,6 +138,8 @@ def _is_love_pop_query(query: str) -> bool:
 
 def _suspense_search_queries(context_text: str) -> List[str]:
     queries: List[str] = []
+    if _contains_any(context_text, ["债务", "负债", "欠债", "追债", "担保", "债主", "律师", "财务", "金融"]):
+        queries.extend(["债务危机 紧张氛围", "金融危机 影视配乐", "商务悬疑 纯音乐"])
     if _contains_any(context_text, ["医疗", "医院", "数据", "造假"]):
         queries.extend(["医疗悬疑 氛围音乐", "现代医院 紧张配乐"])
     if _contains_any(context_text, ["追捕", "逃亡"]):

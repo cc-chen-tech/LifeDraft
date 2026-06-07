@@ -85,6 +85,73 @@ def _extract_gender_text(character_settings: Optional[Dict[str, Any]]) -> str:
     return ""
 
 
+def _settings_text(character_settings: Optional[Dict[str, Any]]) -> str:
+    if not character_settings:
+        return ""
+    parts: list[str] = []
+    for value in character_settings.values():
+        if isinstance(value, dict):
+            parts.extend(str(item) for item in value.values() if item)
+        elif value:
+            parts.append(str(value))
+    return " ".join(parts)
+
+
+def _is_modern_story_setting(character_settings: Optional[Dict[str, Any]]) -> bool:
+    text = _settings_text(character_settings)
+    if not text:
+        return False
+    ancient_cues = ["古代", "唐朝", "宋朝", "元朝", "明朝", "清朝", "江湖", "宫廷", "修仙"]
+    if any(cue in text for cue in ancient_cues):
+        return False
+    modern_cues = ["现代", "当代", "2020", "2021", "2022", "2023", "2024", "互联网", "职场", "都市"]
+    return any(cue in text for cue in modern_cues)
+
+
+def _zh_chapter_label(total_chapter: int) -> str:
+    chapter_number_zh = [
+        "一", "二", "三", "四", "五", "六", "七", "八", "九", "十",
+        "十一", "十二", "十三", "十四", "十五", "十六", "十七", "十八", "十九", "二十",
+    ]
+    if total_chapter <= len(chapter_number_zh):
+        return f"第{chapter_number_zh[total_chapter - 1]}回"
+    return f"第{total_chapter}回"
+
+
+def _zh_timeline_title(week_index: int, round_index: int) -> str:
+    round_names = ["周一", "周中", "周末"]
+    round_name = round_names[round_index] if 0 <= round_index < len(round_names) else f"第{round_index + 1}轮"
+    return f"第{week_index + 1}周·{round_name}"
+
+
+def _build_zh_chapter_constraint(
+    total_chapter: int,
+    week_index: int,
+    round_index: int,
+    character_settings: Optional[Dict[str, Any]],
+) -> str:
+    is_first_chapter = total_chapter == 1
+    if _is_modern_story_setting(character_settings):
+        timeline_title = _zh_timeline_title(week_index, round_index)
+        return f"""
+【时间线标题约束 - 必须严格遵守】
+- 本段故事是整体叙事的第{total_chapter}章，对应时间线：{timeline_title}
+- {'这是故事开篇，之前没有任何情节，绝对禁止提及"上回""上次""之前"等暗示前情的内容' if is_first_chapter else '可以自然承接前文，但严禁编造不在上文提供的历史中的过往事件'}
+- 开头必须以现代时间线标题开场："{timeline_title} 现场标题"
+- 标题应短促、写实、贴近现实主义或职场题材；禁止使用章回体、七字对仗或古风标题
+- 标题后空一行，再开始正文
+"""
+
+    chapter_label = _zh_chapter_label(total_chapter)
+    return f"""
+【章节号约束 - 必须严格遵守】
+- 本段故事是整体叙事的{chapter_label}（第{total_chapter}章）
+- {'这是故事的开篇第一回，之前没有任何情节，绝对禁止提及"上回""上次""之前"等暗示前情的内容' if is_first_chapter else '可以自然承接前文，但严禁编造不在上文提供的历史中的过往事件'}
+- 故事开头必须使用"{chapter_label}"作为章节标识，然后接一句7字对仗标题（如"{chapter_label} 寒冬初遇知音少"）
+- 章节标题后空一行，再开始正文
+"""
+
+
 def get_custom_choice_effects_prompt(
     character_settings: dict,
     current_state: dict,
@@ -530,12 +597,6 @@ def _get_chinese_prompt(
     rounds_per_week = player_state.get("rounds_per_week", 3)
     # ★ 计算总章节号（从1开始），强制LLM使用正确的章节号
     total_chapter = week * rounds_per_week + current_round + 1
-    chapter_number_zh = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十",
-                         "十一", "十二", "十三", "十四", "十五", "十六", "十七", "十八", "十九", "二十"]
-    if total_chapter <= len(chapter_number_zh):
-        chapter_label = f"第{chapter_number_zh[total_chapter - 1]}回"
-    else:
-        chapter_label = f"第{total_chapter}回"
     relationships = player_state.get("relationships", {})
 
     rel_str = "，".join([f"{name}({affinity})" for name, affinity in relationships.items()])
@@ -632,14 +693,12 @@ def _get_chinese_prompt(
         )
 
     # ★ 章节号约束：明确告知LLM当前是第几章，防止从错误数字开始
-    is_first_chapter = total_chapter == 1
-    chapter_constraint = f"""
-【章节号约束 - 必须严格遵守】
-- 本段故事是整体叙事的{chapter_label}（第{total_chapter}章）
-- {'这是故事的开篇第一回，之前没有任何情节，绝对禁止提及"上回""上次""之前"等暗示前情的内容' if is_first_chapter else '可以自然承接前文，但严禁编造不在上文提供的历史中的过往事件'}
-- 故事开头必须使用"{chapter_label}"作为章节标识，然后接一句7字对仗标题（如"{chapter_label} 寒冬初遇知音少"）
-- 章节标题后空一行，再开始正文
-"""
+    chapter_constraint = _build_zh_chapter_constraint(
+        total_chapter,
+        week,
+        current_round,
+        character_settings,
+    )
 
     prompt = f"""你是一个人生模拟游戏的"命运引擎"。请根据以下玩家状态和角色设定，以故事续写的方式生成一个需要拉择的生活事件。
 
@@ -1117,20 +1176,12 @@ def get_story_only_prompt(
     current_round = player_state.get("current_round", 0)
     rounds_per_week = player_state.get("rounds_per_week", 3)
     total_chapter = raw_week * rounds_per_week + current_round + 1
-    chapter_number_zh = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十",
-                         "十一", "十二", "十三", "十四", "十五", "十六", "十七", "十八", "十九", "二十"]
-    if total_chapter <= len(chapter_number_zh):
-        chapter_label = f"第{chapter_number_zh[total_chapter - 1]}回"
-    else:
-        chapter_label = f"第{total_chapter}回"
-    is_first_chapter = total_chapter == 1
-    chapter_constraint = f"""
-【章节号约束 - 必须严格遵守】
-- 本段故事是整体叙事的{chapter_label}（第{total_chapter}章）
-- {'这是故事的开篇第一回，之前没有任何情节，绝对禁止提及"上回""上次""之前"等暗示前情的内容' if is_first_chapter else '可以自然承接前文，但严禁编造不在上文提供的历史中的过往事件'}
-- 故事开头必须使用"{chapter_label}"作为章节标识，然后接一句7字对仗标题（如"{chapter_label} 寒冬初遇知音少"）
-- 章节标题后空一行，再开始正文
-"""
+    chapter_constraint = _build_zh_chapter_constraint(
+        total_chapter,
+        raw_week,
+        current_round,
+        character_settings,
+    )
     # ★ 从 character_settings 提取动态货币单位
     currency_name = "货币"
     if character_settings and isinstance(character_settings.get("wealth"), dict):
@@ -1471,20 +1522,12 @@ def get_round_event_prompt(
     current_round = player_state.get("current_round", 0)
     rounds_per_week = player_state.get("rounds_per_week", 3)
     total_chapter = raw_week * rounds_per_week + current_round + 1
-    chapter_number_zh = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十",
-                         "十一", "十二", "十三", "十四", "十五", "十六", "十七", "十八", "十九", "二十"]
-    if total_chapter <= len(chapter_number_zh):
-        chapter_label = f"第{chapter_number_zh[total_chapter - 1]}回"
-    else:
-        chapter_label = f"第{total_chapter}回"
-    is_first_chapter = total_chapter == 1
-    chapter_constraint = f"""
-【章节号约束 - 必须严格遵守】
-- 本段故事是整体叙事的{chapter_label}（第{total_chapter}章）
-- {'这是故事的开篇第一回，之前没有任何情节，绝对禁止提及"上回""上次""之前"等暗示前情的内容' if is_first_chapter else '可以自然承接前文，但严禁编造不在上文提供的历史中的过往事件'}
-- 故事开头必须使用"{chapter_label}"作为章节标识，然后接一句7字对仗标题（如"{chapter_label} 寒冬初遇知音少"）
-- 章节标题后空一行，再开始正文
-"""
+    chapter_constraint = _build_zh_chapter_constraint(
+        total_chapter,
+        raw_week,
+        current_round,
+        character_settings,
+    )
     # ★ 从 character_settings 提取动态货币单位
     currency_name = "货币"
     if character_settings and isinstance(character_settings.get("wealth"), dict):

@@ -23,6 +23,9 @@ export default function E2ERegressionPage() {
   const [currentStory, setCurrentStory] = useState("当前故事尚未更新");
   const [streamedStory, setStreamedStory] = useState("");
   const [showCollection, setShowCollection] = useState(false);
+  const [autoCollectionState, setAutoCollectionState] = useState<
+    "empty" | "recognizing" | "collected"
+  >("empty");
   const [normalClickChoice, setNormalClickChoice] = useState("none");
   const [collectionRefreshState, setCollectionRefreshState] = useState<"idle" | "refreshing">("idle");
   const [musicQueueFixture, setMusicQueueFixture] = useState<{
@@ -174,7 +177,11 @@ export default function E2ERegressionPage() {
         <button
           type="button"
           className="rounded border px-3 py-2"
-          onClick={() => setShowCollection(true)}
+          onClick={() => {
+            setShowCollection(true);
+            setAutoCollectionState("recognizing");
+            window.setTimeout(() => setAutoCollectionState("collected"), 50);
+          }}
         >
           收集
         </button>
@@ -195,6 +202,15 @@ export default function E2ERegressionPage() {
               <h2 className="text-lg font-medium">苏小二</h2>
               <p>船行里的旧相识，正在刷新时也保持可见。</p>
             </article>
+            <section aria-label="自动实体收集状态" className="mt-3 rounded border p-3">
+              <p data-testid="auto-collection-state">{autoCollectionState}</p>
+              {autoCollectionState === "collected" && (
+                <>
+                  <h3>赵掌柜</h3>
+                  <p>铜钥匙</p>
+                </>
+              )}
+            </section>
           </div>
         )}
       </section>

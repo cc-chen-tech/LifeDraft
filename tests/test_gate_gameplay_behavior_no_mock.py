@@ -1,6 +1,7 @@
 """No-mock gameplay behavior tests for option relevance and text cleanup."""
 
 import pytest
+from unittest.mock import MagicMock
 
 from config.prompts import (
     get_opening_story_prompt,
@@ -219,3 +220,66 @@ def test_round_event_fallback_remains_substantial_story_when_generation_fails() 
     assert event.event_description.endswith("。")
     assert "林见微" in event.event_description
     assert len(event.options) == 2
+
+
+def test_round_event_retries_when_story_ignores_all_key_people_and_fabricates_new_cast() -> None:
+    class DriftClient:
+        def __init__(self):
+            self.calls = []
+
+        def call(self, **kwargs):
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                return (
+                    "马老板把欠条拍在桌上，方蕾和赵子豪站在苏州贸易公司的门口，"
+                    "王丽华低声催促主角马上接管父亲留下的债务。"
+                )
+            return (
+                "陆昊然把产品评审文档推到林见微面前，陈晓雨提醒她先确认用户反馈，"
+                "林一凡则把远程会议链接发进群里。"
+            )
+
+    client = DriftClient()
+    gen = StoryGenerator(client)
+    mock_option_gen = MagicMock()
+    mock_option_gen.generate_options_only.return_value = GameEvent(
+        event_description="",
+        options=[
+            EventOption(text="先和陆昊然核对需求", effects={"knowledge": 5}),
+            EventOption(text="请陈晓雨一起复盘用户反馈", effects={"mood": 2}),
+        ],
+    )
+    mock_option_gen.validate_and_fix_relationships.return_value = None
+    mock_option_gen.validate_options_consistency.return_value = []
+
+    gen.generate_round_event(
+        player_state={
+            "game_id": 7,
+            "player_name": "林见微",
+            "age": 22,
+            "week": 1,
+            "current_round": 0,
+        },
+        language="zh",
+        round_number=0,
+        round_context="第一周周一，产品新人入职后的第一次需求评审。",
+        character_settings={
+            "relationships": {
+                "key_people": [
+                    {"name": "陆昊然", "role": "导师"},
+                    {"name": "陈晓雨", "role": "同事"},
+                    {"name": "林一凡", "role": "朋友"},
+                ]
+            }
+        },
+        option_generator=mock_option_gen,
+    )
+
+    assert len(client.calls) == 2
+    retry_prompt = client.calls[1]["user_prompt"]
+    assert "上一版故事完全没有使用预设关键人物" in retry_prompt
+    story_for_options = mock_option_gen.generate_options_only.call_args.kwargs[
+        "story_description"
+    ]
+    assert "陆昊然" in story_for_options
+    assert "马老板" not in story_for_options

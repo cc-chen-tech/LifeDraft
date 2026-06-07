@@ -65,6 +65,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
     regenerateItemImage,
     recognizeEntities,
     addRecognizedEntities,
+    autoCollectRecognizedEntities,
     clearRecognizedEntities,
     createItem,
     deleteItem,
@@ -96,9 +97,9 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
   // 初始加载
   useEffect(() => {
     if (gameId) {
-      fetchCollection(gameId);
+      void fetchCollection(gameId).then(() => autoCollectRecognizedEntities(gameId));
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchCollection 是 zustand 稳定引用，仅在 gameId 变化时重新获取
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- zustand action 引用稳定，仅在 gameId 变化时重新获取
   }, [gameId]);
 
   // ==================== 点击处理函数 ====================
