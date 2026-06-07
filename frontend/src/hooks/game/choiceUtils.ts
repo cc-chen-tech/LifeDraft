@@ -281,8 +281,8 @@ export async function handleFallbackChoice(
     console.error(`[${logPrefix}] Fallback also failed:`, fallbackErr);
     const fallbackErrMsg = parseSSEError(fallbackErr);
 
-    if (fallbackErrMsg.includes("No current event")) {
-      console.log(`[${logPrefix}] No current event in fallback, entering result phase...`);
+    if (fallbackErrMsg.includes("No current event") || fallbackErrMsg.includes("choice_already_processed")) {
+      console.log(`[${logPrefix}] Choice fallback found already-processed state, entering result phase...`);
       const choiceText = context.customText ??
         useGameStore.getState().currentEvent?.options?.[context.optionIndex ?? 0]?.text ??
         "";

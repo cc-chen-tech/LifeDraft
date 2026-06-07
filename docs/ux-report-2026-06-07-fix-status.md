@@ -43,6 +43,8 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Regression coverage: `frontend/src/__tests__/pages/PlayPage.test.tsx`
 - Choice SSE interruptions now fall back to `choice-sync` even when part of the result stream has already arrived. The fallback rebuilds the result from the pre-choice story text, so a broken `/choice` stream cannot leave the `/play` page in `error` with a half-appended continuation.
   - Regression coverage: `frontend/src/__tests__/hooks/choiceUtils.test.ts`
+- Choice fallback now preserves structured FastAPI error details. When the original `/choice` stream actually completed server-side but the browser saw `ERR_INCOMPLETE_CHUNKED_ENCODING`, a later `/choice-sync` can return `{error: "choice_already_processed"}`; the frontend now recognizes that structured detail and recovers to the result phase instead of showing a generic Bad Request error.
+  - Regression coverage: `frontend/src/__tests__/hooks/choiceUtils.test.ts`, `frontend/src/__tests__/lib/api.error-handling.test.ts`
 
 ## Verification
 
@@ -100,6 +102,11 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - The partial-story recovery control stayed hidden while story text was streaming.
   - Selecting the first option reproduced a remaining blocker: `/api/games/68/choice` failed with `net::ERR_INCOMPLETE_CHUNKED_ENCODING`, and the page entered `error` because the interrupted choice stream was not falling back to `choice-sync`.
 - Focused choice/play regression batch after the interrupted-choice fallback fix: 98 passed.
+- Production browser long-flow probe after deploying `8bde0f85`:
+  - First event generation reached options, and music recommendation still waited until options were ready.
+  - First choice reproduced `/api/games/69/choice` `ERR_INCOMPLETE_CHUNKED_ENCODING`; the new fallback recovered the page to the result phase.
+  - Second choice reproduced the next blocker: the original `/choice` stream completed server-side, then `/choice-sync` returned a structured `choice_already_processed` 400. The API client collapsed that object-shaped detail into `Bad Request`, so the page still entered `error`.
+- Focused choice/API regression batch after preserving structured fallback errors: 125 passed.
 
 ## Still Not Claimed As Production-Complete
 

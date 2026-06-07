@@ -116,9 +116,18 @@ async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: num
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: response.statusText }));
-    const errorMessage = typeof error.detail === 'string'
-      ? error.detail
-      : error.message || response.statusText || 'Request failed';
+    const detail = error.detail;
+    let errorMessage = error.message || response.statusText || 'Request failed';
+    if (typeof detail === 'string') {
+      errorMessage = detail;
+    } else if (detail && typeof detail === 'object') {
+      const detailRecord = detail as Record<string, unknown>;
+      const detailParts = [detailRecord.error, detailRecord.message]
+        .filter((part): part is string => typeof part === 'string' && part.trim().length > 0);
+      if (detailParts.length > 0) {
+        errorMessage = detailParts.join(': ');
+      }
+    }
 
     // ★ 401 未授权 - 对于 /auth/me 这是正常的未登录状态，不显示错误日志
     if (response.status === 401 && url === '/auth/me') {

@@ -230,6 +230,50 @@ describe('choiceUtils', () => {
       expect(mockHandlers.setPhase).toHaveBeenCalledWith('result');
     });
 
+    it('handles fallback failure when the streaming choice already completed server-side', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        detail: {
+          error: 'choice_already_processed',
+          message: 'Choice was already processed. Please continue to next round.',
+        },
+      }, 400));
+
+      const context: ChoiceErrorContext = {
+        optionIndex: 0,
+        isRetry: false,
+        sseSucceeded: true,
+        baseStoryText: 'Base story',
+      };
+      const result = await handleFallbackChoice(123, context, mockHandlers, 'test');
+
+      expect(result).toBe(true);
+      expect(mockHandlers.setPhase).toHaveBeenCalledWith('result');
+    });
+
+    it('preserves structured FastAPI detail errors for already-processed fallback recovery', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        detail: {
+          error: 'choice_already_processed',
+          message: 'Choice was already processed. Please continue to next round.',
+        },
+      }, 400));
+
+      const context: ChoiceErrorContext = {
+        optionIndex: 0,
+        isRetry: false,
+        sseSucceeded: true,
+        baseStoryText: 'Base story',
+      };
+
+      await handleChoiceError(
+        { message: 'network error' },
+        123, mockHandlers, context, 'test'
+      );
+
+      expect(mockHandlers.setPhase).toHaveBeenCalledWith('result');
+      expect(mockHandlers.setConnectionStatus).not.toHaveBeenCalledWith('error');
+    });
+
     it('handles fallback failure with other error', async () => {
       (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ message: 'Network error' }, 400));
 

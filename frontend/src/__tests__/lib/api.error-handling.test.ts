@@ -345,6 +345,21 @@ describe('API Error Handling', () => {
         expect((error as Error).message).toBe('Player name is required');
       }
     });
+
+    it('preserves structured FastAPI detail error code and message', async () => {
+      global.fetch = jest.fn(() =>
+        mockFetchResponse({
+          detail: {
+            error: 'choice_already_processed',
+            message: 'Choice was already processed. Please continue to next round.',
+          },
+        }, 400, false)
+      );
+
+      await expect(api.gameplay.makeChoiceSync(123, { option_index: 0 }))
+        .rejects
+        .toThrow('choice_already_processed: Choice was already processed. Please continue to next round.');
+    });
   });
 
   describe('Request Credentials', () => {
