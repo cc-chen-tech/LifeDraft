@@ -165,10 +165,11 @@ export default function PlayPage() {
   const setActiveGameId = useMusicStore((state) => state.setActiveGameId);
 
   useEffect(() => {
-    if (storyText && !isViewingHistory) {
+    const storyReadyForMusic = phase === "options" || phase === "result";
+    if (storyText && !isViewingHistory && storyReadyForMusic) {
       setActiveStoryText(storyText);
     }
-  }, [storyText, isViewingHistory, setActiveStoryText]);
+  }, [storyText, isViewingHistory, phase, setActiveStoryText]);
 
   useEffect(() => {
     if (gameId) {
@@ -217,7 +218,9 @@ export default function PlayPage() {
 
   const showEmptyGenerationRecovery =
     !isViewingHistory &&
-    (phase === "loading" || phase === "generating" || phase === "choosing") &&
+    phase === "loading" &&
+    !storyText &&
+    !displayText &&
     options.length === 0;
 
   const handleRecoverGeneration = useCallback(() => {

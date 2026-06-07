@@ -37,6 +37,10 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Regression coverage: `tests/test_collection_cache_db.py::TestSessionServiceRestore::test_collection_service_accepts_legacy_relationships_list`, `tests/test_api_collection.py::TestRecognizeEntities::test_eligible_recognition_characters_accepts_legacy_relationships_list`
 - Mainline round illustration generation no longer auto-generates missing entity/person/item/location images by default. Production browser probing showed post-event image backfill could fan out into extra image API calls and hit upstream 429 rate limits; scene illustrations still generate, while entity images remain available through explicit collection/image flows or by setting `AUTO_GENERATE_ENTITY_IMAGES_FOR_SCENES=true`.
   - Regression coverage: `tests/test_sse_helpers.py::TestTriggerRoundIllustration::test_entity_image_backfill_disabled_by_default`, `tests/test_illustration_service.py::TestSyncGeneration::test_sync_generation_skips_missing_entity_image_backfill_by_default`
+- `/play` no longer exposes partial streaming story text to the global music player. Music recommendation and MiniMax music generation now wait until the round story reaches `options` or `result`, matching the product requirement that music work starts after story generation finishes.
+  - Regression coverage: `frontend/src/__tests__/pages/PlayPage.test.tsx`
+- The empty-generation recovery button is now limited to truly empty loading state. A restored or partially streamed story without options no longer shows the same "恢复当前进度" button that force-cleared the visible story and started a duplicate `/event` request.
+  - Regression coverage: `frontend/src/__tests__/pages/PlayPage.test.tsx`
 
 ## Verification
 
@@ -81,7 +85,12 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - First event SSE completed and returned 3 options.
   - Follow-up `/api/games/{id}/state` polling hit a 30s client timeout during the probe.
   - Backend logs showed post-event illustration/entity-image work immediately hit upstream image API 429 limits, so this follow-up disables default entity image backfill in the mainline scene flow before rerunning the browser week-4 path.
+- Production browser long-flow probe after deploying `87a0454e`:
+  - Reproduced `/api/games/{id}/event` `ERR_INCOMPLETE_CHUNKED_ENCODING` while the first event was still generating.
+  - The UI then exposed "恢复当前进度" despite having about 3400 streamed characters, and clicking it cleared that partial story before the backend completed.
+  - Backend logs also showed music recommendation URL probing during the unfinished event stream, so this follow-up prevents partial streaming story text from triggering global music recommendation/generation.
 - Focused illustration regression batch after disabling default entity image backfill: 43 passed.
+- Focused PlayPage regression batch after the recovery/music handoff fix: 59 passed.
 - Frontend full unit suite passes locally in serial mode: `npm run test:unit -- --runInBand` with 97 suites and 1681 tests passing.
 - Production deploy workflow now injects a temporary GitHub token for private-repo fetches on ECS and restores the clean GitHub remote URL after fetch, so the host does not need a persisted token in `origin`.
 
