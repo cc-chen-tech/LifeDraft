@@ -24,6 +24,7 @@ class MiniMaxMusicGenerationRequest:
     audio_format: str = "mp3"
     sample_rate: int = 44100
     bitrate: int = 192000
+    is_instrumental: bool = True
 
     @classmethod
     def from_brief(
@@ -39,6 +40,7 @@ class MiniMaxMusicGenerationRequest:
             "model": self.model,
             "prompt": self.brief.generation_prompt,
             "output_format": self.output_format,
+            "is_instrumental": self.is_instrumental,
             "audio_setting": {
                 "sample_rate": self.sample_rate,
                 "bitrate": self.bitrate,
@@ -52,6 +54,7 @@ class MiniMaxMusicGenerationRequest:
             "format": self.audio_format,
             "sample_rate": self.sample_rate,
             "bitrate": self.bitrate,
+            "is_instrumental": self.is_instrumental,
         }
 
 
@@ -330,17 +333,23 @@ def _extract_audio_url(payload: Mapping[str, Any]) -> Optional[str]:
     candidates = [
         payload.get("audio_url"),
         payload.get("url"),
+        payload.get("audio"),
     ]
     data = payload.get("data")
     if isinstance(data, Mapping):
-        candidates.extend([data.get("audio_url"), data.get("url")])
+        candidates.extend([data.get("audio_url"), data.get("url"), data.get("audio")])
         audio = data.get("audio")
         if isinstance(audio, Mapping):
             candidates.extend([audio.get("audio_url"), audio.get("url")])
     for candidate in candidates:
-        if isinstance(candidate, str) and candidate:
+        if isinstance(candidate, str) and _is_audio_url(candidate):
             return candidate
     return None
+
+
+def _is_audio_url(value: str) -> bool:
+    stripped = value.strip()
+    return stripped.startswith("https://") or stripped.startswith("http://")
 
 
 def _extract_audio_bytes(payload: Mapping[str, Any]) -> Optional[bytes]:

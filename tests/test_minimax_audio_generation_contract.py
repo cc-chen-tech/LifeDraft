@@ -173,6 +173,7 @@ def test_minimax_music_generation_request_uses_url_output_and_audio_settings() -
 
     assert payload["model"] == "music-2.6"
     assert payload["output_format"] == "url"
+    assert payload["is_instrumental"] is True
     assert payload["audio_setting"]["sample_rate"] >= 32000
     assert payload["audio_setting"]["bitrate"] >= 128000
     assert payload["audio_setting"]["format"] in {"mp3", "wav"}
@@ -269,6 +270,75 @@ def test_minimax_music_provider_uses_real_local_http_boundary(tmp_path: Path) ->
     assert generated.local_path.is_file()
     assert generated.local_path.read_bytes().startswith(b"ID3")
     assert generated.duration_ms > 0
+
+
+def test_minimax_music_provider_downloads_data_audio_url_from_real_local_http_boundary(
+    tmp_path: Path,
+) -> None:
+    from src.services.minimax_config import MiniMaxConfig
+    from src.services.minimax_music_generation import (
+        MiniMaxMusicGenerationProvider,
+        MiniMaxMusicGenerationRequest,
+    )
+
+    requests_seen: list[dict[str, Any]] = []
+    get_paths: list[str] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            body = self.rfile.read(int(self.headers["Content-Length"]))
+            requests_seen.append(json.loads(body.decode("utf-8")))
+            response = json.dumps(
+                {"data": {"audio": f"http://127.0.0.1:{server.server_port}/asset.mp3"}}
+            ).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(response)))
+            self.end_headers()
+            self.wfile.write(response)
+
+        def do_GET(self) -> None:
+            get_paths.append(self.path)
+            audio = b"ID3\x04\x00\x00\x00\x00\x00\x00"
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/mpeg")
+            self.send_header("Content-Length", str(len(audio)))
+            self.end_headers()
+            self.wfile.write(audio)
+
+        def log_message(self, format: str, *args: object) -> None:
+            return
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        config = MiniMaxConfig.from_env(
+            env={
+                "MINIMAX_API_KEY": "test-key",
+                "MINIMAX_MUSIC_GENERATION_URL": f"http://127.0.0.1:{server.server_port}/music",
+            },
+            voice_asset_dir=tmp_path / "voice",
+            music_asset_dir=tmp_path / "music",
+        )
+        provider = MiniMaxMusicGenerationProvider(config=config)
+        request = MiniMaxMusicGenerationRequest.from_brief(
+            game_id=9004,
+            brief=MusicBrief.default(),
+            model="music-2.6",
+        )
+
+        generated = provider.generate_to_asset(request, brief_hash="brief-data-audio-url")
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=3)
+
+    assert requests_seen
+    assert requests_seen[0]["is_instrumental"] is True
+    assert get_paths == ["/asset.mp3"]
+    assert generated.storage_path == "/api/music/generated/brief-data-audio-url-music-2.6.mp3"
+    assert generated.local_path.read_bytes().startswith(b"ID3")
 
 
 def test_minimax_music_provider_saves_hex_audio_response_from_real_local_http_boundary(
