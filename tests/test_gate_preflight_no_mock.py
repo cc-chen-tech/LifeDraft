@@ -468,6 +468,20 @@ def test_e2e_workflow_uses_same_layered_gate_as_local_test_sh() -> None:
     assert "Start frontend server" not in workflow
 
 
+def test_production_deploy_syncs_minimax_secret_to_ecs_env_without_committing_key() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}" in workflow
+    assert "MINIMAX_API_KEY_B64" in workflow
+    assert "STORY_TTS_PROVIDER" in workflow
+    assert "STORY_TTS_PROVIDER=minimax" in workflow
+    assert "STORY_TTS_ALLOW_REQUEST_PROVIDER=1" in workflow
+    assert "STORY_MUSIC_AI_GENERATION_ENABLED=true" in workflow
+    assert "sk-" not in workflow
+
+
 def test_e2e_prod_frontend_start_waits_until_listening_in_ci() -> None:
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
     start_block = script.split("npm run start -- --hostname 127.0.0.1", 1)[1].split(

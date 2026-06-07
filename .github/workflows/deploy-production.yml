@@ -134,15 +134,61 @@ jobs:
           ECS_DEPLOY_PATH: ${{ vars.ECS_DEPLOY_PATH || '/opt/story2' }}
           DEPLOY_REF: ${{ needs.verify-ci.outputs.deploy_ref }}
           DEPLOY_SHA: ${{ needs.verify-ci.outputs.deploy_sha }}
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
         run: |
           set -euo pipefail
+          if [ -z "${MINIMAX_API_KEY}" ]; then
+            echo "MINIMAX_API_KEY secret is required for production audio deployment." >&2
+            exit 1
+          fi
+
+          MINIMAX_API_KEY_B64="$(printf '%s' "${MINIMAX_API_KEY}" | base64 | tr -d '\n')"
           ssh -i ~/.ssh/ecs_deploy_key "${ECS_USER}@${ECS_HOST}" \
-            "DEPLOY_REF='${DEPLOY_REF}' DEPLOY_SHA='${DEPLOY_SHA}' ECS_DEPLOY_PATH='${ECS_DEPLOY_PATH}' bash -s" <<'EOF'
+            "DEPLOY_REF='${DEPLOY_REF}' DEPLOY_SHA='${DEPLOY_SHA}' ECS_DEPLOY_PATH='${ECS_DEPLOY_PATH}' MINIMAX_API_KEY_B64='${MINIMAX_API_KEY_B64}' bash -s" <<'EOF'
           set -euo pipefail
           cd "${ECS_DEPLOY_PATH}"
           git fetch origin main
           git checkout main
           git reset --hard "${DEPLOY_SHA}"
+          MINIMAX_API_KEY="$(printf '%s' "${MINIMAX_API_KEY_B64}" | base64 -d)"
+          export MINIMAX_API_KEY
+          export STORY_TTS_PROVIDER=minimax
+          export STORY_TTS_ALLOW_REQUEST_PROVIDER=1
+          export STORY_MUSIC_AI_GENERATION_ENABLED=true
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          env_path = Path(".env")
+          updates = {
+              "MINIMAX_API_KEY": os.environ["MINIMAX_API_KEY"],
+              "STORY_TTS_PROVIDER": os.environ["STORY_TTS_PROVIDER"],
+              "STORY_TTS_ALLOW_REQUEST_PROVIDER": os.environ["STORY_TTS_ALLOW_REQUEST_PROVIDER"],
+              "STORY_MUSIC_AI_GENERATION_ENABLED": os.environ["STORY_MUSIC_AI_GENERATION_ENABLED"],
+          }
+
+          existing_lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
+          seen = set()
+          output = []
+          for line in existing_lines:
+              stripped = line.strip()
+              if not stripped or stripped.startswith("#") or "=" not in line:
+                  output.append(line)
+                  continue
+              key = line.split("=", 1)[0].strip()
+              if key in updates:
+                  output.append(f"{key}={updates[key]}")
+                  seen.add(key)
+              else:
+                  output.append(line)
+
+          for key, value in updates.items():
+              if key not in seen:
+                  output.append(f"{key}={value}")
+
+          env_path.write_text("\n".join(output) + "\n", encoding="utf-8")
+          env_path.chmod(0o600)
+          PY
           docker compose -f docker-compose.ecs.yml up -d --build
           docker compose -f docker-compose.ecs.yml ps
 
