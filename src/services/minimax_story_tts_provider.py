@@ -142,6 +142,16 @@ class MiniMaxAsyncTTSClient:
             timeout=self.config.request_timeout_seconds,
         )
         response.raise_for_status()
+        download_url = _extract_file_download_url(response)
+        if download_url is not None:
+            _ensure_http_url(download_url)
+            audio_response = httpx.get(
+                download_url,
+                headers={"Authorization": f"Bearer {self.config.api_key or ''}"},
+                timeout=self.config.request_timeout_seconds,
+            )
+            audio_response.raise_for_status()
+            return audio_response.content
         return response.content
 
 
@@ -282,6 +292,37 @@ def _raise_for_base_resp(payload: Mapping[str, Any]) -> None:
     if status_code != 0:
         status_msg = str(base_resp.get("status_msg") or "unknown")
         raise RuntimeError(f"MiniMax async TTS request failed: {status_code} {status_msg}")
+
+
+def _extract_file_download_url(response: httpx.Response) -> Optional[str]:
+    content_type = response.headers.get("content-type", "").lower()
+    if "json" not in content_type:
+        return None
+    try:
+        payload = response.json()
+    except ValueError:
+        return None
+    if not isinstance(payload, Mapping):
+        return None
+
+    candidates: list[Any] = [
+        payload.get("download_url"),
+        payload.get("url"),
+    ]
+    file_payload = payload.get("file")
+    if isinstance(file_payload, Mapping):
+        candidates.extend([file_payload.get("download_url"), file_payload.get("url")])
+    data_payload = payload.get("data")
+    if isinstance(data_payload, Mapping):
+        candidates.extend([data_payload.get("download_url"), data_payload.get("url")])
+        data_file = data_payload.get("file")
+        if isinstance(data_file, Mapping):
+            candidates.extend([data_file.get("download_url"), data_file.get("url")])
+
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+    return None
 
 
 def _ensure_http_url(url: str) -> None:
