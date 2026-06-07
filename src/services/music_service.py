@@ -163,6 +163,35 @@ WORKPLACE_NEGATIVE_CUES = [
 
 WORKPLACE_FALLBACK_QUERIES = ["办公室 轻电子 氛围", "数据分析 纯音乐", "产品设计 无歌词"]
 
+WORKPLACE_SCORE_METADATA_CUES = {
+    "纯音乐",
+    "轻音乐",
+    "背景音乐",
+    "配乐",
+    "氛围",
+    "电子",
+    "钢琴",
+    "合成器",
+    "办公室",
+    "职场",
+    "产品",
+    "数据",
+    "用户",
+    "科技",
+    "都市",
+    "城市",
+    "白板",
+    "低调",
+    "专注",
+    "工作",
+    "会议",
+    "instrumental",
+    "ambient",
+    "score",
+    "soundtrack",
+    "ost",
+}
+
 PROMPT_LEAK_SONG_CUES = [
     "请提供需要分析的文本",
     "请补充文本",
@@ -232,6 +261,42 @@ def _matches_negative_music_cue(song: Song, negative_cues: Sequence[str]) -> boo
     """Reject playable search results that contradict the story's music brief."""
     text = " ".join([song.name, song.album, *song.artists]).lower()
     return any(cue and str(cue).lower() in text for cue in negative_cues)
+
+
+def _is_workplace_music_brief(brief: "MusicBrief") -> bool:
+    context_text = " ".join(
+        [
+            brief.mood,
+            brief.scene_type,
+            brief.era_or_environment,
+            brief.pacing,
+            brief.energy,
+            " ".join(brief.instruments),
+            " ".join(brief.search_queries),
+        ]
+    )
+    return _contains_any(context_text, list(WORKPLACE_CONTEXT_CUES))
+
+
+def _matches_workplace_music_candidate(song: Song, brief: "MusicBrief") -> bool:
+    """Keep workplace NetEase fallback strict enough to avoid generic vocal-pop hits."""
+    text = " ".join([song.name, song.album, *song.artists]).lower()
+    if _contains_any(text, list(WORKPLACE_SCORE_METADATA_CUES)):
+        return True
+
+    positive_terms: List[str] = []
+    for value in [
+        brief.mood,
+        brief.scene_type,
+        brief.era_or_environment,
+        brief.pacing,
+        brief.energy,
+        *brief.instruments,
+        *brief.search_queries,
+    ]:
+        positive_terms.extend(str(value).split())
+
+    return any(term and len(term) >= 2 and term.lower() in text for term in positive_terms)
 
 
 @dataclass
@@ -839,7 +904,7 @@ class MusicService:
             query_cursor=pool.query_cursor,
         )
         if len(pool.verified_songs) < 5:
-            if _contains_any(" ".join(brief.search_queries), list(WORKPLACE_CONTEXT_CUES)):
+            if _is_workplace_music_brief(brief):
                 search_keywords.extend(WORKPLACE_FALLBACK_QUERIES)
             else:
                 search_keywords.extend(["轻音乐", "纯音乐", "背景音乐"])
@@ -861,6 +926,16 @@ class MusicService:
                 if _matches_negative_music_cue(song, brief.negative_cues):
                     logger.info(
                         "[MusicService] Skipping negative-cue music result: id=%s name=%s",
+                        song.id,
+                        song.name[:80],
+                    )
+                    continue
+                if (
+                    _is_workplace_music_brief(brief)
+                    and not _matches_workplace_music_candidate(song, brief)
+                ):
+                    logger.info(
+                        "[MusicService] Skipping weak workplace music result: id=%s name=%s",
                         song.id,
                         song.name[:80],
                     )

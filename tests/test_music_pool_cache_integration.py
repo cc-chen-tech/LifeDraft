@@ -424,6 +424,64 @@ class TestGetOrBuildPool:
 
         assert [song.id for song in pool.verified_songs] == [9305]
 
+    async def test_supplement_pool_filters_workplace_candidates_without_score_metadata(self):
+        """现代职场场景应过滤不含配乐/氛围/正向场景元数据的弱相关歌曲。"""
+        service = MusicService()
+        pool = CachedMusicPool(
+            analysis={
+                "mood": "专注夹杂焦虑",
+                "scene_type": "用户访谈复盘",
+                "environment": "2020年代互联网公司会议室",
+                "story_style": "现代职场产品经理成长",
+                "pacing": "紧凑",
+                "energy": "中",
+                "instruments": ["电子合成器", "钢琴"],
+                "keywords": ["AI协作", "产品设计", "用户数据"],
+                "search_queries": ["上海 都市 电子 背景音乐"],
+            },
+            verified_songs=[],
+            created_at=time.time(),
+        )
+        service.music_client.search = AsyncMock(
+            return_value=[
+                Song(
+                    id=9401,
+                    name="童话镇",
+                    artists=["流行歌手"],
+                    album="热门单曲",
+                    duration=180000,
+                ),
+                Song(
+                    id=9402,
+                    name="童话",
+                    artists=["流行歌手"],
+                    album="经典流行",
+                    duration=180000,
+                ),
+                Song(
+                    id=9403,
+                    name="1_AM（童话）",
+                    artists=["Vocal"],
+                    album="翻唱合集",
+                    duration=180000,
+                ),
+                Song(
+                    id=9404,
+                    name="数据白板",
+                    artists=["Score Lab"],
+                    album="都市电子背景音乐",
+                    duration=150000,
+                ),
+            ]
+        )
+        service.music_client.get_song_url = AsyncMock(
+            side_effect=lambda song_id: f"https://cdn.example.com/{song_id}.mp3"
+        )
+
+        await service._supplement_pool(pool)
+
+        assert [song.id for song in pool.verified_songs] == [9404]
+
 
 class TestRefreshPoolUrls:
     """验证 _refresh_pool_urls 方法。"""

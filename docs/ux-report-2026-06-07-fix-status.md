@@ -49,6 +49,8 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Regression coverage: `tests/test_sse_helpers.py::TestSSEAsyncFunctions::test_stream_round_event_persists_state_before_complete_event`
 - Modern product-manager/workplace music intent now uses focused instrumental workplace queries and filters production-observed weak NetEase pop matches such as `说散就散`, `匆匆那年`, `夜曲`, and `一直很安静`.
   - Regression coverage: `tests/test_story_music_recommendation_contract.py::test_modern_product_workplace_searches_focus_ambience_not_vocal_pop_hits`, `tests/test_music_pool_cache_integration.py::TestGetOrBuildPool::test_supplement_pool_filters_modern_product_workplace_pop_mismatches`
+- Modern workplace NetEase fallback now also rejects weak candidate metadata that does not look like score/background/ambient/electronic/workplace music. Production verification after `eef57d17` still returned `童话镇`, `童话`, and a `童话` vocal remix; this follow-up keeps those generic vocal-pop results out of the verified pool even when they come from broad "都市电子背景音乐" searches.
+  - Regression coverage: `tests/test_music_pool_cache_integration.py::TestGetOrBuildPool::test_supplement_pool_filters_workplace_candidates_without_score_metadata`
 
 ## Verification
 
@@ -127,6 +129,15 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - This validates the event-disconnect persistence path that previously left `/play` stuck in polling/error after the backend finished generation.
 - Focused music recommendation regression batch after adding modern product/workplace filters: 62 passed.
 - Full local preflight after adding modern product/workplace filters:
+  - OpenSpec strict validation: 21 passed.
+  - Backend preflight quality checks: 86 passed.
+  - Frontend preflight Jest regression tests: 297 passed.
+- Production API verification after deploying `eef57d17`:
+  - `story101.live` returned `tts_provider: "minimax"`, `backend_audio_enabled: true`, and `playback_mode: "audio"`.
+  - Direct MiniMax TTS requests for `warm_female` and `calm_male` both returned backend `audio/mpeg` assets that downloaded successfully.
+  - Modern product/workplace music recommendation no longer returned the previously observed `说散就散`, `匆匆那年`, `夜曲`, or `一直很安静` terms, but still exposed a new weak NetEase match set: `童话镇`, `童话`, and a `童话` vocal remix. This follow-up adds the stricter weak-candidate metadata filter.
+- Focused music recommendation regression batch after adding weak workplace candidate filtering: 63 passed.
+- Full local preflight after adding weak workplace candidate filtering:
   - OpenSpec strict validation: 21 passed.
   - Backend preflight quality checks: 86 passed.
   - Frontend preflight Jest regression tests: 297 passed.
