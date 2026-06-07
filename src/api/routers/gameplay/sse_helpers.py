@@ -436,6 +436,20 @@ def clear_sse_cache_if_retry(status: dict, session) -> None:
         session.clear_sse_cache()
 
 
+def _persist_generated_event_state(game_loop, game_id: int) -> None:
+    """Persist generated event state immediately after worker generation returns."""
+    try:
+        db = get_db()
+        state = game_loop.get_state()
+        if state:
+            db.save_game_progress(game_id, state)
+            logger.info(f"Auto-saved game state after event generation: game_id={game_id}")
+    except (OSError, IOError) as e:
+        logger.warning(f"Auto-save IO error after event generation: {e}")
+    except Exception as e:
+        logger.exception(f"Auto-save unexpected error after event generation: {e}")
+
+
 async def stream_round_event(
     game_loop, game_id: int, session=None, last_event_id: Optional[int] = None
 ):
@@ -486,6 +500,8 @@ async def stream_round_event(
                 status_callback=status_cb,
                 session=session,
             )
+            if result_holder[0] is not None:
+                _persist_generated_event_state(game_loop, game_id)
         except (ValueError, TypeError, KeyError) as e:
             logger.warning(f"[stream_round_event] Data error in run(): {e}")
             error_holder[0] = e
@@ -577,20 +593,6 @@ async def stream_round_event(
         logger.info(
             f"[SSE Complete] model_dump options count: {len(event_data.get('options', []))}"
         )
-
-        # Auto-save game state after event generation
-        # This ensures user can resume from this point even if the browser drops
-        # the stream at the complete-event boundary.
-        try:
-            db = get_db()
-            state = game_loop.get_state()
-            if state:
-                db.save_game_progress(game_id, state)
-                logger.info(f"Auto-saved game state after event generation: game_id={game_id}")
-        except (OSError, IOError) as e:
-            logger.warning(f"Auto-save IO error after event generation: {e}")
-        except Exception as e:
-            logger.exception(f"Auto-save unexpected error after event generation: {e}")
 
         yield make_sse_event("complete", event_data)
 

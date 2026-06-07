@@ -45,7 +45,7 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Regression coverage: `frontend/src/__tests__/hooks/choiceUtils.test.ts`
 - Choice fallback now preserves structured FastAPI error details. When the original `/choice` stream actually completed server-side but the browser saw `ERR_INCOMPLETE_CHUNKED_ENCODING`, a later `/choice-sync` can return `{error: "choice_already_processed"}`; the frontend now recognizes that structured detail and recovers to the result phase instead of showing a generic Bad Request error.
   - Regression coverage: `frontend/src/__tests__/hooks/choiceUtils.test.ts`, `frontend/src/__tests__/lib/api.error-handling.test.ts`
-- Event SSE completion is now persisted before emitting the final `complete` event. Production browser probing showed the browser can drop the stream at the complete-event boundary; saving before `complete` lets subsequent `/games/{id}` state polling restore the generated story and options instead of overwriting the session with stale empty event data.
+- Event SSE completion is now persisted immediately in the worker thread after `generate_round_event` returns. Production browser probing showed the browser can drop the stream before the async generator reaches its `complete` block; worker-side persistence lets subsequent `/games/{id}` state polling restore the generated story and options instead of overwriting the session with stale empty event data.
   - Regression coverage: `tests/test_sse_helpers.py::TestSSEAsyncFunctions::test_stream_round_event_persists_state_before_complete_event`
 
 ## Verification
@@ -115,6 +115,9 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - First `/choice` again failed with `ERR_INCOMPLETE_CHUNKED_ENCODING`, and the fallback recovered to `result`.
   - The next `/event` failed with `ERR_INCOMPLETE_CHUNKED_ENCODING`; backend logs showed event generation completed and options were produced, but state polling reloaded stale saved state where `current_event_data` was empty. This follow-up persists generated event state before emitting SSE `complete`.
 - Focused SSE regression batch after moving event persistence before complete: 60 passed.
+- Production browser long-flow probe after deploying `f877baa2`:
+  - The first post-summary `/event` recovered, proving persisted event state can be read by the next round.
+  - A later `/event` still timed out after browser disconnection because FastAPI closed the async generator before it reached the `complete`/autosave block, even though `generate_round_event` finished later in the worker thread. This follow-up moves the persistence into the worker thread immediately after generation returns.
 
 ## Still Not Claimed As Production-Complete
 
