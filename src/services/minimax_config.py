@@ -61,7 +61,7 @@ class MiniMaxConfig:
             ),
             file_retrieve_url=source.get(
                 "MINIMAX_FILE_RETRIEVE_URL",
-                "https://api.minimaxi.com/v1/files/retrieve",
+                "https://api.minimaxi.com/v1/files/retrieve_content",
             ),
             music_generation_url=source.get(
                 "MINIMAX_MUSIC_GENERATION_URL",

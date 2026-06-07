@@ -30,7 +30,7 @@ def test_minimax_config_defaults_are_secret_free_and_provider_specific(tmp_path:
     assert config.tts_model.startswith("speech-")
     assert config.tts_async_create_url == "https://api.minimaxi.com/v1/t2a_async_v2"
     assert config.tts_async_query_url == "https://api.minimaxi.com/v1/query/t2a_async_query_v2"
-    assert config.file_retrieve_url == "https://api.minimaxi.com/v1/files/retrieve"
+    assert config.file_retrieve_url == "https://api.minimaxi.com/v1/files/retrieve_content"
     assert config.music_model == "music-2.6"
     assert config.music_generation_url.startswith("https://api.minimaxi.com/")
     assert config.request_timeout_seconds == 180.0
