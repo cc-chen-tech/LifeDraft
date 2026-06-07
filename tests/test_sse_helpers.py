@@ -234,6 +234,40 @@ class TestSSEAsyncFunctions:
         assert True
 
     @pytest.mark.asyncio
+    async def test_stream_round_event_persists_state_before_complete_event(self, monkeypatch):
+        """SSE complete must not be emitted before the generated event is persisted."""
+        from src.api.routers.gameplay import sse_helpers
+
+        saved = {"called": False}
+
+        class FakeDb:
+            def save_game_progress(self, game_id, state):
+                saved["called"] = True
+                saved["game_id"] = game_id
+                saved["state"] = state
+
+        mock_event = MagicMock()
+        mock_event.event_description = "测试事件"
+        mock_event.options = [{"text": "继续"}]
+        mock_event.model_dump.return_value = {
+            "event_description": "测试事件",
+            "options": [{"text": "继续"}],
+        }
+
+        game_loop = MagicMock()
+        game_loop.generate_round_event = MagicMock(return_value=mock_event)
+        game_loop.get_state = MagicMock(return_value={"current_event_data": mock_event.model_dump.return_value})
+
+        monkeypatch.setattr(sse_helpers, "get_db", lambda: FakeDb())
+        monkeypatch.setattr(sse_helpers, "_trigger_round_illustration_generation", lambda *args, **kwargs: None)
+
+        async for event in stream_round_event(game_loop, 123):
+            if "event: complete" in event:
+                assert saved["called"] is True
+                assert saved["game_id"] == 123
+                break
+
+    @pytest.mark.asyncio
     async def test_stream_choice_with_mock(self):
         """测试流式选择处理"""
         game_loop = MagicMock()

@@ -577,10 +577,10 @@ async def stream_round_event(
         logger.info(
             f"[SSE Complete] model_dump options count: {len(event_data.get('options', []))}"
         )
-        yield make_sse_event("complete", event_data)
 
         # Auto-save game state after event generation
-        # This ensures user can resume from this point even if they close the page
+        # This ensures user can resume from this point even if the browser drops
+        # the stream at the complete-event boundary.
         try:
             db = get_db()
             state = game_loop.get_state()
@@ -591,6 +591,8 @@ async def stream_round_event(
             logger.warning(f"Auto-save IO error after event generation: {e}")
         except Exception as e:
             logger.exception(f"Auto-save unexpected error after event generation: {e}")
+
+        yield make_sse_event("complete", event_data)
 
         # ★ 异步触发每轮场景插画生成（不阻塞游戏流程）
         # event 阶段的插画在事件生成完成后触发

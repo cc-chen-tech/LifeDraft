@@ -45,6 +45,8 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Regression coverage: `frontend/src/__tests__/hooks/choiceUtils.test.ts`
 - Choice fallback now preserves structured FastAPI error details. When the original `/choice` stream actually completed server-side but the browser saw `ERR_INCOMPLETE_CHUNKED_ENCODING`, a later `/choice-sync` can return `{error: "choice_already_processed"}`; the frontend now recognizes that structured detail and recovers to the result phase instead of showing a generic Bad Request error.
   - Regression coverage: `frontend/src/__tests__/hooks/choiceUtils.test.ts`, `frontend/src/__tests__/lib/api.error-handling.test.ts`
+- Event SSE completion is now persisted before emitting the final `complete` event. Production browser probing showed the browser can drop the stream at the complete-event boundary; saving before `complete` lets subsequent `/games/{id}` state polling restore the generated story and options instead of overwriting the session with stale empty event data.
+  - Regression coverage: `tests/test_sse_helpers.py::TestSSEAsyncFunctions::test_stream_round_event_persists_state_before_complete_event`
 
 ## Verification
 
@@ -107,6 +109,12 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - First choice reproduced `/api/games/69/choice` `ERR_INCOMPLETE_CHUNKED_ENCODING`; the new fallback recovered the page to the result phase.
   - Second choice reproduced the next blocker: the original `/choice` stream completed server-side, then `/choice-sync` returned a structured `choice_already_processed` 400. The API client collapsed that object-shaped detail into `Bad Request`, so the page still entered `error`.
 - Focused choice/API regression batch after preserving structured fallback errors: 125 passed.
+- Production browser long-flow probe after deploying `d3163f74`:
+  - Authenticated voice settings returned `tts_provider: "minimax"` and `backend_audio_enabled: true`.
+  - Real `/play` auto-read triggered `/api/voice-reading/read` and returned `provider=minimax`, `playback_mode=audio`, and an audio URL.
+  - First `/choice` again failed with `ERR_INCOMPLETE_CHUNKED_ENCODING`, and the fallback recovered to `result`.
+  - The next `/event` failed with `ERR_INCOMPLETE_CHUNKED_ENCODING`; backend logs showed event generation completed and options were produced, but state polling reloaded stale saved state where `current_event_data` was empty. This follow-up persists generated event state before emitting SSE `complete`.
+- Focused SSE regression batch after moving event persistence before complete: 60 passed.
 
 ## Still Not Claimed As Production-Complete
 
