@@ -44,6 +44,8 @@ Alternative considered: call MiniMax directly from story/music services. That is
 
 When `STORY_TTS_PROVIDER=minimax` and credentials are present, story reading will synthesize to a persisted audio file and return `playback_mode=audio`. If MiniMax is not configured or synthesis fails, the response remains truthful: `playback_mode=browser_speech`, no fake WAV/tone URL, and the frontend reads `context.text` with browser speech.
 
+Ready narration assets are reused only within the requesting user's asset set. Equivalent text/voice/speed/provider/model requests from another user must generate or reuse that user's own asset instead of attaching a job to someone else's stored narration file.
+
 Alternative considered: use MiniMax WebSocket TTS as the primary path. It can be lower latency for short snippets, but async TTS better matches complete generated stories, has clearer long-text semantics, and avoids requiring WebSocket runtime dependencies for normal story reading.
 
 ### 3. Auto-read remains opt-in

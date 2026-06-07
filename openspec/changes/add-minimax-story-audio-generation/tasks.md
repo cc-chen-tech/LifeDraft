@@ -49,4 +49,5 @@
 - [x] 6.5 Create a commit only after code review and local verification pass.
 - [x] 6.6 Push the branch and open a GitHub PR.
 - [x] 6.7 Merge after checks are acceptable or any platform/billing blocker is clearly separated from code failures.
-- [x] 6.8 After deployment completes, verify `story101.live` in browser for story reading and generated music behavior; if behavior is wrong, write a failing test before fixing.
+- [ ] 6.8 After deployment completes, verify `story101.live` in browser for story reading and generated music behavior; if behavior is wrong, write a failing test before fixing.
+  - Pending as of PR #51: GitHub Actions jobs are not starting because of account billing/spending-limit annotations, and production MiniMax env/live behavior still needs browser verification after deployment.
