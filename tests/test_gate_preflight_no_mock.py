@@ -449,6 +449,17 @@ def test_story_voice_e2e_workflow_enables_deterministic_backend_audio() -> None:
     assert "MINIMAX_API_KEY=test-key" in workflow
 
 
+def test_e2e_workflow_uses_same_layered_gate_as_local_test_sh() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "e2e-tests.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "run: ./test.sh e2e" in workflow
+    assert "run: npm run test:e2e" not in workflow
+    assert "Start backend server" not in workflow
+    assert "Start frontend server" not in workflow
+
+
 def test_story_voice_browser_fallback_e2e_accepts_real_browser_speech_capability() -> None:
     spec = (ROOT / "frontend" / "e2e" / "story-voice-reading.spec.ts").read_text(
         encoding="utf-8"
