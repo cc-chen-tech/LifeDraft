@@ -72,6 +72,9 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Authenticated `/api/voice-reading/settings` returns `tts_provider: "minimax"` and `backend_audio_enabled: true`.
   - `/api/voice-reading/read` returned backend `audio/mpeg` MiniMax audio for both `warm_female` and `calm_male`.
   - `/api/music/generate` returned 200 in about 105s with an `ai_generated` track, an audio URL, and `insert_policy: "future_queue"`.
+- Production browser smoke after deploying `d4c36531`:
+  - Chromium mobile/tablet/desktop viewports all showed the bottom chat launcher, `重写`, `改写`, `总结`, and the top settings button.
+  - Chromium, Firefox, and WebKit desktop engines all showed the same controls and confirmed the settings menu did not open the chat panel.
 - Frontend full unit suite passes locally in serial mode: `npm run test:unit -- --runInBand` with 97 suites and 1681 tests passing.
 - Production deploy workflow now injects a temporary GitHub token for private-repo fetches on ECS and restores the clean GitHub remote URL after fetch, so the host does not need a persisted token in `origin`.
 
@@ -80,4 +83,4 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
 - Remote GitHub checks are blocked by GitHub billing/spending-limit status, not by retrievable job logs.
 - Fresh MiniMax music generation can take longer than 150 seconds on production; the current design keeps NetEase playback available and inserts generated music only after the asset is ready.
 - Broader music matching quality still needs follow-up: prompt-leak and direct negative-cue filters prevent the worst mismatches from entering the queue, but they do not guarantee every remaining NetEase recommendation is semantically strong.
-- Browser/manual long playthrough to week 4 should still be rerun after deployment, because the production synchronous API probe does not validate all `/play` UI states, SSE streaming behavior, button interactions, media playback, or visual overlap.
+- Browser/manual long playthrough to week 4 should still be rerun after deployment, because the production synchronous API probe and browser smoke do not validate all `/play` SSE progression states across 12 real rounds.
