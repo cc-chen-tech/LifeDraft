@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from src.api.routers.gameplay.sse_helpers import (
-    _trigger_round_illustration_generation, clear_sse_cache_if_retry,
-    make_sse_event, return_sse_error, stream_choice, stream_regenerate,
-    stream_rewrite, stream_round_event)
+    _ensure_entity_images_exist, _trigger_round_illustration_generation,
+    clear_sse_cache_if_retry, make_sse_event, return_sse_error, stream_choice,
+    stream_regenerate, stream_rewrite, stream_round_event)
 
 # Integration tests - SSE stream handling
 pytestmark = pytest.mark.integration
@@ -18,6 +18,20 @@ pytestmark = pytest.mark.integration
 
 class TestTriggerRoundIllustration:
     """场景插画生成触发测试"""
+
+    @pytest.fixture(autouse=True)
+    def _capture_background_jobs(self, monkeypatch):
+        """不要让触发器测试执行真实后台图像生成。"""
+        from src.api.routers.gameplay import sse_helpers
+
+        self.submitted_background_jobs = []
+
+        class FakePool:
+            def submit(pool_self, *args, **kwargs):
+                self.submitted_background_jobs.append((args, kwargs))
+                return MagicMock()
+
+        monkeypatch.setattr(sse_helpers, "_get_sse_thread_pool", lambda: FakePool())
 
     def test_trigger_with_valid_event(self):
         """测试有效事件触发插画生成"""
@@ -66,6 +80,27 @@ class TestTriggerRoundIllustration:
 
         _trigger_round_illustration_generation(game_loop, 1, event, stage="event")
         # 函数启动后台线程，不应该抛出异常
+
+    def test_entity_image_backfill_disabled_by_default(self, monkeypatch):
+        """主线场景插画默认不应为故事实体额外自动补图。"""
+        from src.api.routers.gameplay import sse_helpers
+
+        monkeypatch.setattr(
+            sse_helpers.settings,
+            "AUTO_GENERATE_ENTITY_IMAGES_FOR_SCENES",
+            False,
+        )
+
+        _ensure_entity_images_exist(
+            game_loop=MagicMock(),
+            game_id=1,
+            event=MagicMock(event_description="陈晓雨走进会议室。"),
+            existing_images=[],
+            week=0,
+            round_number=0,
+        )
+
+        assert self.submitted_background_jobs == []
 
 
 class TestMakeSSEEvent:

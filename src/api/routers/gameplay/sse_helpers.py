@@ -10,6 +10,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
+from config.settings import settings
 from src.api.deps import get_db
 
 logger = logging.getLogger(__name__)
@@ -106,6 +107,11 @@ def _trigger_round_illustration_generation(
                     logger.info(
                         f"[RoundIllustration] {week_display} round {round_number} stage={stage} 插画已存在"
                     )
+                    if not settings.AUTO_GENERATE_ENTITY_IMAGES_FOR_SCENES:
+                        logger.info(
+                            "[RoundIllustration] Entity image backfill for scenes is disabled"
+                        )
+                        return
                     # ★ 即使插画已存在，仍然检查并生成缺失的人物图片
                     # 需要先获取已有图片列表
                     images = (
@@ -223,6 +229,9 @@ def _ensure_entity_images_exist(
         week: 周数
         round_number: 轮次
     """
+    if not settings.AUTO_GENERATE_ENTITY_IMAGES_FOR_SCENES:
+        logger.info("[RoundIllustration] Entity image backfill for scenes is disabled")
+        return
 
     def ensure_images():
         try:

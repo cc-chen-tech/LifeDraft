@@ -35,6 +35,8 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Regression coverage: `tests/test_finalizer.py::TestFinalizeWeek::test_finalize_week_does_not_wait_for_slow_enrichment_tasks`
 - Collection display and entity recognition now accept legacy list-shaped `character_settings.relationships` payloads, so key people from older saves are not dropped from the collection panel or recognition candidate set.
   - Regression coverage: `tests/test_collection_cache_db.py::TestSessionServiceRestore::test_collection_service_accepts_legacy_relationships_list`, `tests/test_api_collection.py::TestRecognizeEntities::test_eligible_recognition_characters_accepts_legacy_relationships_list`
+- Mainline round illustration generation no longer auto-generates missing entity/person/item/location images by default. Production browser probing showed post-event image backfill could fan out into extra image API calls and hit upstream 429 rate limits; scene illustrations still generate, while entity images remain available through explicit collection/image flows or by setting `AUTO_GENERATE_ENTITY_IMAGES_FOR_SCENES=true`.
+  - Regression coverage: `tests/test_sse_helpers.py::TestTriggerRoundIllustration::test_entity_image_backfill_disabled_by_default`, `tests/test_illustration_service.py::TestSyncGeneration::test_sync_generation_skips_missing_entity_image_backfill_by_default`
 
 ## Verification
 
@@ -75,6 +77,11 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
 - Production browser smoke after deploying `d4c36531`:
   - Chromium mobile/tablet/desktop viewports all showed the bottom chat launcher, `重写`, `改写`, `总结`, and the top settings button.
   - Chromium, Firefox, and WebKit desktop engines all showed the same controls and confirmed the settings menu did not open the chat panel.
+- Production browser long-flow probe after deploying `d4c36531`:
+  - First event SSE completed and returned 3 options.
+  - Follow-up `/api/games/{id}/state` polling hit a 30s client timeout during the probe.
+  - Backend logs showed post-event illustration/entity-image work immediately hit upstream image API 429 limits, so this follow-up disables default entity image backfill in the mainline scene flow before rerunning the browser week-4 path.
+- Focused illustration regression batch after disabling default entity image backfill: 43 passed.
 - Frontend full unit suite passes locally in serial mode: `npm run test:unit -- --runInBand` with 97 suites and 1681 tests passing.
 - Production deploy workflow now injects a temporary GitHub token for private-repo fetches on ECS and restores the clean GitHub remote URL after fetch, so the host does not need a persisted token in `origin`.
 

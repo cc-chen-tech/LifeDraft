@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from config.settings import settings
 from src.ai.image_client import ImageClient
 from src.ai.image_exceptions import (ContentInspectionError,
                                      ImageGenerationError)
@@ -162,7 +163,7 @@ class RoundIllustrationService:
                     if ref_url:
                         reference_urls.append(ref_url)
                         referenced_image_ids.append(entity_image.get("image_id"))
-                else:
+                elif settings.AUTO_GENERATE_ENTITY_IMAGES_FOR_SCENES:
                     # ★ 如果实体没有图片，自动生成
                     logger.info(
                         f"[RoundIllustration] {entity_type} '{entity_name}' has no image, auto-generating..."
@@ -195,6 +196,10 @@ class RoundIllustrationService:
                         logger.warning(
                             f"[RoundIllustration] Failed to auto-generate {entity_type} image for '{entity_name}': {e}"
                         )
+                else:
+                    logger.info(
+                        f"[RoundIllustration] Skipping auto-generation for {entity_type} '{entity_name}'"
+                    )
 
             # Step 3: 生成场景插画
             image_data, final_prompt = self._generate_scene_image(

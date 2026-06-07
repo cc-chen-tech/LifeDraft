@@ -446,6 +446,60 @@ class TestGenerateRoundIllustrationAsync:
 class TestSyncGeneration:
     """Test _generate_round_illustration_sync method."""
 
+    def test_sync_generation_skips_missing_entity_image_backfill_by_default(self, monkeypatch):
+        """场景插画默认不应因缺少实体参考图而额外生成人物/物品图。"""
+        from src.game.round import illustration_service
+
+        monkeypatch.setattr(
+            illustration_service.settings,
+            "AUTO_GENERATE_ENTITY_IMAGES_FOR_SCENES",
+            False,
+        )
+
+        mock_client = MagicMock()
+        mock_client.analyze_story_for_illustration.return_value = (
+            "会议室讨论",
+            "陈晓雨在会议室里看向白板。",
+        )
+        mock_storage = MagicMock()
+        mock_storage.save_image.return_value = ("1/round_scene/week_1_round_0_event.jpg", "local")
+        mock_db = MagicMock()
+
+        service = RoundIllustrationService(
+            image_client=mock_client,
+            image_storage=mock_storage,
+            db_session=mock_db,
+        )
+        service._extract_involved_entities = MagicMock(
+            return_value=[
+                {
+                    "name": "陈晓雨",
+                    "type": "character",
+                    "description": "产品团队导师",
+                }
+            ]
+        )
+        service._find_entity_image = MagicMock(return_value=None)
+        service._generate_entity_image = MagicMock()
+        service._generate_scene_image = MagicMock(return_value=(b"image-bytes", "final prompt"))
+
+        service._generate_round_illustration_sync(
+            game_id=1,
+            round_number=0,
+            story_text="陈晓雨把 AI 项目的排期写在会议室白板上。",
+            character_settings={"era": {"era": "2020年代中国互联网"}},
+            player_name="林舟",
+            existing_images=[],
+            stage="event",
+            week=0,
+        )
+
+        service._generate_entity_image.assert_not_called()
+        service._generate_scene_image.assert_called_once()
+        mock_storage.save_image.assert_called_once()
+        mock_db.add.assert_called_once()
+        mock_db.commit.assert_called_once()
+
     def test_sync_generation_content_error(self):
         """Test handling of ContentInspectionError."""
         mock_client = MagicMock()
