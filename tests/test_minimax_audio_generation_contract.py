@@ -175,7 +175,7 @@ def test_minimax_music_generation_request_uses_url_output_and_audio_settings() -
     assert payload["output_format"] == "url"
     assert payload["is_instrumental"] is True
     assert payload["audio_setting"]["sample_rate"] >= 32000
-    assert payload["audio_setting"]["bitrate"] >= 128000
+    assert payload["audio_setting"]["bitrate"] == 256000
     assert payload["audio_setting"]["format"] in {"mp3", "wav"}
     assert "instrumental" in payload["prompt"].lower()
     assert "no vocals" in payload["prompt"].lower()
@@ -266,6 +266,7 @@ def test_minimax_music_provider_uses_real_local_http_boundary(tmp_path: Path) ->
     assert requests_seen
     assert requests_seen[0]["model"] == "music-2.6"
     assert requests_seen[0]["output_format"] == "url"
+    assert requests_seen[0]["audio_setting"]["bitrate"] == 256000
     assert generated.storage_path.startswith("/api/music/generated/")
     assert generated.local_path.is_file()
     assert generated.local_path.read_bytes().startswith(b"ID3")

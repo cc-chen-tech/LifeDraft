@@ -23,7 +23,7 @@ class MiniMaxMusicGenerationRequest:
     output_format: str = "url"
     audio_format: str = "mp3"
     sample_rate: int = 44100
-    bitrate: int = 192000
+    bitrate: int = 256000
     is_instrumental: bool = True
 
     @classmethod
