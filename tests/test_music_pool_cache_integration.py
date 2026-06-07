@@ -382,6 +382,48 @@ class TestGetOrBuildPool:
 
         assert [song.id for song in pool.verified_songs] == [9203]
 
+    async def test_supplement_pool_filters_modern_product_workplace_pop_mismatches(self):
+        """现代产品/用户访谈场景不应收进生产中暴露的流行歌曲弱匹配。"""
+        service = MusicService()
+        pool = CachedMusicPool(
+            analysis={
+                "mood": "专注夹杂焦虑",
+                "scene_type": "用户访谈复盘",
+                "environment": "2020年代互联网公司会议室",
+                "story_style": "现代职场产品经理成长",
+                "music_style": "流行",
+                "pacing": "紧凑",
+                "energy": "中",
+                "instruments": ["电子合成器", "钢琴"],
+                "keywords": ["AI协作", "产品设计", "用户数据"],
+                "search_queries": ["产品经理 用户访谈 氛围音乐"],
+            },
+            verified_songs=[],
+            created_at=time.time(),
+        )
+        service.music_client.search = AsyncMock(
+            return_value=[
+                Song(id=9301, name="说散就散", artists=["流行歌手"], album="伤感流行", duration=180000),
+                Song(id=9302, name="匆匆那年", artists=["流行歌手"], album="青春情歌", duration=180000),
+                Song(id=9303, name="夜曲", artists=["流行歌手"], album="热门金曲", duration=180000),
+                Song(id=9304, name="一直很安静", artists=["流行歌手"], album="影视情歌", duration=180000),
+                Song(
+                    id=9305,
+                    name="产品白板冷光",
+                    artists=["Score Lab"],
+                    album="办公室轻电子氛围",
+                    duration=150000,
+                ),
+            ]
+        )
+        service.music_client.get_song_url = AsyncMock(
+            side_effect=lambda song_id: f"https://cdn.example.com/{song_id}.mp3"
+        )
+
+        await service._supplement_pool(pool)
+
+        assert [song.id for song in pool.verified_songs] == [9305]
+
 
 class TestRefreshPoolUrls:
     """验证 _refresh_pool_urls 方法。"""

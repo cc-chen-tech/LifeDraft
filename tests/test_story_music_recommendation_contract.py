@@ -289,6 +289,35 @@ def test_modern_debt_crisis_searches_financial_suspense_not_love_pop_or_type_bea
     assert any(cue in brief.negative_cues for cue in ["type beat", "情歌", "歌词", "流行人声"])
 
 
+def test_modern_product_workplace_searches_focus_ambience_not_vocal_pop_hits():
+    builder = MusicContextBuilder()
+    brief = builder.build_brief(
+        {
+            "mood": "专注夹杂焦虑",
+            "scene_type": "用户访谈复盘",
+            "environment": "2020年代互联网公司会议室",
+            "story_style": "现代职场产品经理成长",
+            "music_style": "流行",
+            "pacing": "紧凑",
+            "energy": "中",
+            "instruments": ["电子合成器", "钢琴"],
+            "keywords": ["AI协作", "产品设计", "用户数据", "说散就散", "匆匆那年"],
+            "search_queries": ["说散就散", "匆匆那年", "夜曲", "一直很安静"],
+            "negative_cues": ["人声"],
+        }
+    )
+
+    queries = builder.build_search_queries(brief)
+    joined_queries = " | ".join(queries)
+    top_queries = " | ".join(queries[:4])
+    blocked_terms = {"说散就散", "匆匆那年", "夜曲", "一直很安静", "情歌", "流行"}
+
+    assert any(cue in joined_queries for cue in ["产品经理", "科技公司", "用户访谈", "数据分析", "办公室"])
+    assert any(cue in joined_queries for cue in ["纯音乐", "氛围", "轻电子", "无歌词"])
+    assert not any(term in top_queries for term in blocked_terms)
+    assert any(cue in brief.negative_cues for cue in ["说散就散", "匆匆那年", "夜曲", "一直很安静", "歌词"])
+
+
 def test_music_result_ranker_prefers_brief_matches_and_penalizes_negative_cues():
     brief = MusicBrief(
         mood="紧张",

@@ -118,6 +118,51 @@ SUSPENSE_NEGATIVE_CUES = [
     "type beat",
 ]
 
+WORKPLACE_CONTEXT_CUES = {
+    "产品经理",
+    "产品设计",
+    "用户访谈",
+    "用户研究",
+    "需求评审",
+    "原型",
+    "迭代",
+    "数据分析",
+    "用户数据",
+    "AI协作",
+    "互联网公司",
+    "科技公司",
+    "会议室",
+    "办公室",
+    "现代职场",
+}
+
+WORKPLACE_NEGATIVE_CUES = [
+    "恋爱",
+    "爱情",
+    "情歌",
+    "甜蜜",
+    "告白",
+    "表白",
+    "青春",
+    "伤感流行",
+    "流行人声",
+    "热门金曲",
+    "影视情歌",
+    "人声",
+    "歌词",
+    "说散就散",
+    "匆匆那年",
+    "夜曲",
+    "一直很安静",
+    "平凡之路",
+    "岁月神偷",
+    "等你下课",
+    "不再联系",
+    "type beat",
+]
+
+WORKPLACE_FALLBACK_QUERIES = ["办公室 轻电子 氛围", "数据分析 纯音乐", "产品设计 无歌词"]
+
 PROMPT_LEAK_SONG_CUES = [
     "请提供需要分析的文本",
     "请补充文本",
@@ -160,6 +205,20 @@ def _suspense_search_queries(context_text: str) -> List[str]:
     if _contains_any(context_text, ["追捕", "逃亡"]):
         queries.extend(["追捕逃亡 紧张配乐", "追捕 悬疑 纯音乐"])
     queries.extend(["现代悬疑 纯音乐", "悬疑 影视配乐", "无歌词 紧张氛围"])
+    return _dedupe_text(queries)
+
+
+def _workplace_search_queries(context_text: str) -> List[str]:
+    queries: List[str] = []
+    if _contains_any(context_text, ["产品经理", "产品设计", "需求评审", "原型", "迭代"]):
+        queries.extend(["产品经理 工作配乐", "产品设计 轻电子", "需求评审 纯音乐"])
+    if _contains_any(context_text, ["用户访谈", "用户研究"]):
+        queries.extend(["用户访谈 氛围音乐", "用户研究 低调配乐"])
+    if _contains_any(context_text, ["数据分析", "用户数据", "AI协作"]):
+        queries.extend(["数据分析 电子氛围", "AI协作 科技氛围"])
+    if _contains_any(context_text, ["互联网公司", "科技公司", "会议室", "办公室", "现代职场"]):
+        queries.extend(["科技公司 低调配乐", *WORKPLACE_FALLBACK_QUERIES])
+    queries.extend(["现代职场 纯音乐", "无歌词 专注氛围"])
     return _dedupe_text(queries)
 
 
@@ -244,6 +303,11 @@ class MusicBrief:
             instruments = cls.default().instruments
         normalized_instruments = [str(item) for item in instruments if item]
 
+        raw_keywords = analysis.get("keywords")
+        normalized_keywords = (
+            [str(item) for item in raw_keywords if item] if isinstance(raw_keywords, list) else []
+        )
+
         search_queries = analysis.get("search_queries") or analysis.get("keywords")
         if not isinstance(search_queries, list):
             search_queries = cls.default().search_queries
@@ -263,10 +327,22 @@ class MusicBrief:
                 energy,
                 str(analysis.get("story_style") or ""),
                 str(analysis.get("music_style") or ""),
+                " ".join(normalized_keywords),
                 " ".join(normalized_queries),
                 " ".join(normalized_instruments),
             ]
         )
+        if _contains_any(context_text, list(WORKPLACE_CONTEXT_CUES)):
+            filtered_queries = [
+                query for query in normalized_queries if not _is_love_pop_query(query)
+            ]
+            normalized_queries = _dedupe_text(
+                [*_workplace_search_queries(context_text), *filtered_queries]
+            )
+            normalized_negative = _dedupe_text(
+                [*normalized_negative, *WORKPLACE_NEGATIVE_CUES]
+            )
+
         if _contains_any(context_text, list(SUSPENSE_CONTEXT_CUES)):
             filtered_queries = [
                 query for query in normalized_queries if not _is_love_pop_query(query)
@@ -763,7 +839,10 @@ class MusicService:
             query_cursor=pool.query_cursor,
         )
         if len(pool.verified_songs) < 5:
-            search_keywords.extend(["轻音乐", "纯音乐", "背景音乐"])
+            if _contains_any(" ".join(brief.search_queries), list(WORKPLACE_CONTEXT_CUES)):
+                search_keywords.extend(WORKPLACE_FALLBACK_QUERIES)
+            else:
+                search_keywords.extend(["轻音乐", "纯音乐", "背景音乐"])
 
         for keyword in search_keywords[:8]:
             if len(pool.verified_songs) >= 20:

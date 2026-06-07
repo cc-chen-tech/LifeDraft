@@ -47,6 +47,8 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Regression coverage: `frontend/src/__tests__/hooks/choiceUtils.test.ts`, `frontend/src/__tests__/lib/api.error-handling.test.ts`
 - Event SSE completion is now persisted immediately in the worker thread after `generate_round_event` returns. Production browser probing showed the browser can drop the stream before the async generator reaches its `complete` block; worker-side persistence lets subsequent `/games/{id}` state polling restore the generated story and options instead of overwriting the session with stale empty event data.
   - Regression coverage: `tests/test_sse_helpers.py::TestSSEAsyncFunctions::test_stream_round_event_persists_state_before_complete_event`
+- Modern product-manager/workplace music intent now uses focused instrumental workplace queries and filters production-observed weak NetEase pop matches such as `说散就散`, `匆匆那年`, `夜曲`, and `一直很安静`.
+  - Regression coverage: `tests/test_story_music_recommendation_contract.py::test_modern_product_workplace_searches_focus_ambience_not_vocal_pop_hits`, `tests/test_music_pool_cache_integration.py::TestGetOrBuildPool::test_supplement_pool_filters_modern_product_workplace_pop_mismatches`
 
 ## Verification
 
@@ -123,10 +125,15 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - A real `/api/games/72/event` stream was intentionally aborted after receiving early status chunks.
   - The worker continued generation after the browser abort, and `/api/games/72` polling restored `current_event` after about 59 seconds with story length 2513 and 3 options.
   - This validates the event-disconnect persistence path that previously left `/play` stuck in polling/error after the backend finished generation.
+- Focused music recommendation regression batch after adding modern product/workplace filters: 62 passed.
+- Full local preflight after adding modern product/workplace filters:
+  - OpenSpec strict validation: 21 passed.
+  - Backend preflight quality checks: 86 passed.
+  - Frontend preflight Jest regression tests: 297 passed.
 
 ## Still Not Claimed As Production-Complete
 
 - Remote GitHub checks are blocked by GitHub billing/spending-limit status, not by retrievable job logs.
 - Fresh MiniMax music generation can take longer than 150 seconds on production; the current design keeps NetEase playback available and inserts generated music only after the asset is ready.
-- Broader music matching quality still needs follow-up: prompt-leak and direct negative-cue filters prevent the worst mismatches from entering the queue, but they do not guarantee every remaining NetEase recommendation is semantically strong.
+- Broader music matching quality still needs production follow-up: local regression coverage now blocks the observed modern product/workplace weak matches, but this commit still needs deployment and live `/api/music/recommend` verification on `story101.live`.
 - Browser/manual long playthrough to week 4 should still be rerun after deployment, because the production synchronous API probe and browser smoke do not validate all `/play` SSE progression states across 12 real rounds.
