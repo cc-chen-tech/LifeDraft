@@ -473,6 +473,8 @@ run_e2e_browser_impl() {
     echo -e "${YELLOW}启动确定性 E2E 后端...${NC}"
     cd "$PROJECT_DIR"
     activate_python_env
+    JWT_SECRET="${JWT_SECRET:-e2e-test-secret}" \
+    API_HOST=127.0.0.1 API_PORT="$E2E_BACKEND_PORT" \
     E2E_BACKEND_HOST=127.0.0.1 E2E_BACKEND_PORT="$E2E_BACKEND_PORT" \
     DATABASE_URL="$LOCAL_E2E_DB_URL" \
     E2E_CONTRACT_PROBE_FAST=1 STORY_TTS_ALLOW_REQUEST_PROVIDER=1 \
@@ -480,8 +482,18 @@ run_e2e_browser_impl() {
     python run_api.py > "$BACKEND_LOG" 2>&1 &
     BACKEND_PID=$!
     echo "$BACKEND_PID" > "$BACKEND_PID_FILE"
-    sleep 3
-    if ! is_port_listening "$E2E_BACKEND_PORT" || ! kill -0 "$BACKEND_PID" 2>/dev/null; then
+    local backend_ready=0
+    for backend_ready_attempt in {1..30}; do
+        if curl -fsS "http://127.0.0.1:$E2E_BACKEND_PORT/api/health" >/dev/null 2>&1; then
+            backend_ready=1
+            break
+        fi
+        if ! kill -0 "$BACKEND_PID" >/dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+    done
+    if [ "$backend_ready" -ne 1 ]; then
         echo -e "${RED}后端启动失败，跳过 E2E 测试${NC}"
         echo -e "${RED}日志: $BACKEND_LOG${NC}"
         cat "$BACKEND_LOG" 2>/dev/null || true

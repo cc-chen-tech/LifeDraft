@@ -206,14 +206,34 @@ def test_e2e_local_backend_and_browser_launch_are_configurable() -> None:
     )[0]
     assert "await context.addCookies" in register_user_body
     assert "domain: 'localhost'" in register_user_body
-    assert "E2E_BACKEND_HOST=127.0.0.1 E2E_BACKEND_PORT=8000" in script
-    assert "关闭当前 8000 端口遗留后端进程" in script
+    assert 'E2E_BACKEND_HOST=127.0.0.1 E2E_BACKEND_PORT="$E2E_BACKEND_PORT"' in script
+    assert "cleanup_e2e_runtimes" in script
     assert "MINIMAX_E2E_LOCAL_AUDIO=1" in script
     assert "E2E_FRONTEND_MODE:-prod" in script
     assert "NEXT_DISABLE_STANDALONE=1 npm run build" in script
     assert "npm run start -- --hostname 127.0.0.1" in script
     assert "if ! [ -d \".next\" ]" not in script
     assert "ulimit -n 8192" in script
+
+
+def test_e2e_backend_sets_required_jwt_secret() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+
+    assert "JWT_SECRET" in script
+    assert "e2e-test-secret" in script
+
+
+def test_e2e_backend_start_waits_for_health_endpoint() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+    start_block = script.split("启动确定性 E2E 后端", 1)[1].split(
+        "cd \"$PROJECT_DIR/frontend\"", 1
+    )[0]
+
+    assert 'API_HOST=127.0.0.1 API_PORT="$E2E_BACKEND_PORT"' in start_block
+    assert "for backend_ready_attempt in" in start_block
+    assert 'curl -fsS "http://127.0.0.1:$E2E_BACKEND_PORT/api/health"' in start_block
+    assert 'cat "$BACKEND_LOG"' in start_block
+    assert "sleep 3\n    if ! lsof" not in start_block
 
 
 def test_playwright_global_setup_does_not_spawn_competing_backend() -> None:

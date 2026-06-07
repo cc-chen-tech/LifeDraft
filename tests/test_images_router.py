@@ -10,7 +10,8 @@ from fastapi.testclient import TestClient
 pytestmark = pytest.mark.api
 
 from src.api.deps import get_current_user  # noqa: E402
-from src.api.routers.images import verify_game_ownership  # noqa: E402
+from config.settings import Settings  # noqa: E402
+from src.api.routers.images import get_session, verify_game_ownership  # noqa: E402
 from src.api.routers.images import router, verify_image_ownership
 from src.services.image_service import ImageContentError  # noqa: E402
 from src.services.image_storage import ImageStorageError  # noqa: E402
@@ -211,6 +212,46 @@ class TestDeleteImageEndpoint:
         with patch("src.api.routers.images.get_session") as mock_session_gen:
             mock_session_gen.return_value = iter([MagicMock()])
             response = client.delete("/images/999")
+
+        assert response.status_code == 404
+
+
+class TestImageMetadataEndpointsWithoutProviderConfig:
+    """Image metadata lookups should not require image generation credentials."""
+
+    def test_get_missing_image_returns_404_without_image_api_key(self, app, monkeypatch):
+        monkeypatch.setattr(Settings, "IMAGE_API_KEY", None)
+        monkeypatch.setattr(Settings, "OPENAI_API_KEY", None)
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        def override_get_session():
+            yield mock_db
+
+        app.dependency_overrides[get_session] = override_get_session
+        try:
+            response = TestClient(app, raise_server_exceptions=False).get("/images/999999")
+        finally:
+            app.dependency_overrides.clear()
+
+        assert response.status_code == 404
+
+    def test_delete_missing_image_returns_404_without_image_api_key(self, app, monkeypatch):
+        monkeypatch.setattr(Settings, "IMAGE_API_KEY", None)
+        monkeypatch.setattr(Settings, "OPENAI_API_KEY", None)
+
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        def override_get_session():
+            yield mock_db
+
+        app.dependency_overrides[get_session] = override_get_session
+        try:
+            response = TestClient(app, raise_server_exceptions=False).delete("/images/999999")
+        finally:
+            app.dependency_overrides.clear()
 
         assert response.status_code == 404
 
