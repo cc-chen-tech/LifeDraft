@@ -23,6 +23,8 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Component coverage: `frontend/src/__tests__/components/game/StatusBar.test.tsx`
 - Summary/settings mismatch has focused guards: summary quick action must not trigger regeneration, and settings must not open the chat panel.
   - Coverage: `frontend/src/__tests__/components/ChatBar.test.tsx`, `frontend/e2e/quality-level.spec.ts`
+- NetEase recommendation results now reject obvious LLM prompt/response leakage titles before they enter the playlist, so search results like "请提供需要分析的文本..." are filtered out even when they have playable URLs.
+  - Regression coverage: `tests/test_music_pool_cache_integration.py::TestGetOrBuildPool::test_supplement_pool_filters_prompt_leak_song_titles`
 
 ## Verification
 
@@ -35,10 +37,17 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Browser auto-read stays idle during the simulated partial stream and starts only after the final story-ready signal.
   - `/api/music/generate` produces a MiniMax `ai_generated` MP3 asset with `insert_policy: future_queue`.
   - Browser UI inserts the generated MiniMax music track into the future queue without replacing the current NetEase track.
+- Production real `/play` verification on game 50 after deploying `7ab5752f` to ECS:
+  - Completed story auto-read called `/api/voice-reading/read` and returned `provider=minimax`, `playback_mode=audio`, and a generated `/api/voice-reading/audio/*.mp3` URL.
+  - `/api/music/recommend` returned `music_brief`.
+  - `/api/music/generate` returned a MiniMax `ai_generated` MP3 asset.
+  - `/api/music/playlist/50` contained the generated MiniMax track in the future queue after the current NetEase baseline track.
 - Production deploy workflow now injects a temporary GitHub token for private-repo fetches on ECS and restores the clean GitHub remote URL after fetch, so the host does not need a persisted token in `origin`.
 
 ## Still Not Claimed As Production-Complete
 
 - Remote GitHub checks are blocked by GitHub billing/spending-limit status, not by retrievable job logs.
 - Fresh MiniMax music generation can take longer than 150 seconds on production; the current design keeps NetEase playback available and inserts generated music only after the asset is ready.
+- Broader music matching quality still needs follow-up: the prompt-leak filter prevents bad titles from entering the queue, but it does not guarantee every NetEase recommendation is semantically strong.
+- `POST /api/games` still needs a robustness fix for malformed `relationships` payloads; a list shape currently raises a 500 instead of a 4xx validation response or normalization.
 - A real long manual playthrough to week 4 should be rerun after deployment, because local deterministic E2E is not a substitute for live model/runtime behavior.

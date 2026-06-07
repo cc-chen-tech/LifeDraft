@@ -118,6 +118,21 @@ SUSPENSE_NEGATIVE_CUES = [
     "type beat",
 ]
 
+PROMPT_LEAK_SONG_CUES = [
+    "请提供需要分析的文本",
+    "请补充文本",
+    "未提供具体文本",
+    "没有提供具体的文本",
+    "无法提取歌名",
+    "提取歌名信息",
+    "若输入文本",
+    "若文本",
+    "若输入无歌名",
+    "我会输出",
+    "输出：0",
+    "按照您的要求",
+]
+
 
 def _dedupe_text(items: Sequence[str]) -> List[str]:
     deduped: List[str] = []
@@ -146,6 +161,12 @@ def _suspense_search_queries(context_text: str) -> List[str]:
         queries.extend(["追捕逃亡 紧张配乐", "追捕 悬疑 纯音乐"])
     queries.extend(["现代悬疑 纯音乐", "悬疑 影视配乐", "无歌词 紧张氛围"])
     return _dedupe_text(queries)
+
+
+def _looks_like_prompt_leak_song(song: Song) -> bool:
+    """Reject search results that are LLM prompt/response text, not song metadata."""
+    text = " ".join([song.name, song.album, *song.artists])
+    return any(cue in text for cue in PROMPT_LEAK_SONG_CUES)
 
 
 @dataclass
@@ -744,6 +765,13 @@ class MusicService:
             songs = await self.music_client.search(keyword, limit=10)
             for song in songs:
                 if song.id in seen_ids or len(pool.verified_songs) >= 20:
+                    continue
+                if _looks_like_prompt_leak_song(song):
+                    logger.info(
+                        "[MusicService] Skipping prompt-leak music result: id=%s name=%s",
+                        song.id,
+                        song.name[:80],
+                    )
                     continue
                 song_url = song.url or await self.music_client.get_song_url(song.id)
                 if not song_url:

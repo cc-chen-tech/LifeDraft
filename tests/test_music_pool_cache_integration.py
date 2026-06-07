@@ -296,6 +296,45 @@ class TestGetOrBuildPool:
         assert first_pool.query_cursor != second_pool.query_cursor
         assert first_query != second_query
 
+    async def test_supplement_pool_filters_prompt_leak_song_titles(self):
+        """网易云搜索结果中的 LLM 提示词泄漏标题不应进入推荐池。"""
+        service = MusicService()
+        pool = CachedMusicPool(
+            analysis={
+                "mood": "紧张",
+                "scene_type": "职场危机",
+                "environment": "现代都市",
+                "search_queries": ["现代悬疑 纯音乐"],
+            },
+            verified_songs=[],
+            created_at=time.time(),
+        )
+        service.music_client.search = AsyncMock(
+            return_value=[
+                Song(
+                    id=9101,
+                    name="请提供需要分析的文本内容，我将按照您的要求提取歌名信息。若输入文本没有歌名，则输出0",
+                    artists=["用户415329033"],
+                    album="请提供需要分析的文本内容",
+                    duration=182768,
+                ),
+                Song(
+                    id=9102,
+                    name="都市暗涌",
+                    artists=["影视配乐"],
+                    album="现代悬疑氛围",
+                    duration=120000,
+                ),
+            ]
+        )
+        service.music_client.get_song_url = AsyncMock(
+            side_effect=lambda song_id: f"https://cdn.example.com/{song_id}.mp3"
+        )
+
+        await service._supplement_pool(pool)
+
+        assert [song.id for song in pool.verified_songs] == [9102]
+
 
 class TestRefreshPoolUrls:
     """验证 _refresh_pool_urls 方法。"""
