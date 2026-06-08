@@ -166,17 +166,17 @@ export default function PlayPage() {
   } = usePlayGame();
 
   const resultSceneRound = Math.max(0, currentRound - 1);
+  const storyReadyForCompletedMedia = phase === "options" || phase === "result";
 
   // ★ 音乐 store：将当前故事文本和 gameId 传递给 GlobalMusicPlayer
   const setActiveStoryText = useMusicStore((state) => state.setActiveStoryText);
   const setActiveGameId = useMusicStore((state) => state.setActiveGameId);
 
   useEffect(() => {
-    const storyReadyForMusic = phase === "options" || phase === "result";
-    if (storyText && !isViewingHistory && storyReadyForMusic) {
+    if (storyText && !isViewingHistory && storyReadyForCompletedMedia) {
       setActiveStoryText(storyText);
     }
-  }, [storyText, isViewingHistory, phase, setActiveStoryText]);
+  }, [storyText, isViewingHistory, storyReadyForCompletedMedia, setActiveStoryText]);
 
   useEffect(() => {
     if (gameId) {
@@ -498,7 +498,7 @@ export default function PlayPage() {
                   text: displayText,
                 }}
                 autoReadText={displayText}
-                autoReadReady={!isViewingHistory && phase === "options"}
+                autoReadReady={!isViewingHistory && storyReadyForCompletedMedia}
                 compact
                 enablePlaybackControls
               />
