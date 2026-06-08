@@ -177,6 +177,46 @@ def test_story_prompts_pin_player_identity_from_state_and_character_settings() -
         assert "性别：女" in prompt
 
 
+def test_story_prompts_limit_each_round_to_one_main_event() -> None:
+    player_state = {
+        "player_name": "顾晨曦",
+        "age": 24,
+        "week": 2,
+        "current_round": 1,
+        "rounds_per_week": 3,
+        "energy": 70,
+        "mood": 62,
+        "knowledge": 58,
+        "wealth": 18000,
+    }
+    character_settings = {
+        "era": {"year": 2024, "era_description": "2024年中国互联网行业"},
+        "identity": {"identity_description": "初级产品经理"},
+        "world": {"world_description": "杭州AI协作工具创业公司"},
+        "relationships": {"key_people": [{"name": "周岚", "role": "直属导师"}]},
+    }
+
+    story_prompt = get_story_only_prompt(
+        player_state=player_state,
+        language="zh",
+        character_settings=character_settings,
+        last_event_description="上周她完成了需求评审。",
+    )
+    round_prompt = get_round_event_prompt(
+        player_state=player_state,
+        language="zh",
+        round_number=1,
+        round_context="周一她收到导师周岚的原型反馈。",
+        character_settings=character_settings,
+    )
+
+    for prompt in (story_prompt, round_prompt):
+        assert "每个回合只推进一个主事件" in prompt
+        assert "只设置一个核心决策点" in prompt
+        assert "禁止在同一回合塞入多个会议、评审、复盘、预热" in prompt
+        assert "禁止把下一周或下一个回合的实际剧情提前写完" in prompt
+
+
 def test_opening_story_prompt_forbids_replacing_player_with_template_hero() -> None:
     prompt = get_opening_story_prompt(
         character_settings={

@@ -76,6 +76,25 @@ def _build_protagonist_identity_instruction(
     return "\n".join(lines)
 
 
+def _build_round_pacing_guard(language: str) -> str:
+    if language == "zh":
+        return """
+
+[MUST] 【回合节奏硬约束 - 违反即重新生成】
+- 每个回合只推进一个主事件，只设置一个核心决策点。
+- 本回合只能覆盖当前周当前阶段的一个连续场景，或一组直接相连的场景。
+- 禁止在同一回合塞入多个会议、评审、复盘、预热、发布、下周安排等不相干事件。
+- 禁止把下一周或下一个回合的实际剧情提前写完；后续事项最多作为一句背景伏笔，不展开成新事件。"""
+
+    return """
+
+[MUST] [Round Pacing Hard Constraint - violation means regeneration]
+- Each round may advance only one main event and set up only one core decision point.
+- This round may cover only one continuous scene, or a short chain of directly connected scenes.
+- Do not pack multiple meetings, reviews, retrospectives, warmups, launches, or next-week plans into the same round.
+- Do not pre-write the actual plot of the next week or next round; future matters may appear only as one brief foreshadowing sentence."""
+
+
 def _extract_gender_text(character_settings: Optional[Dict[str, Any]]) -> str:
     gender_info = (character_settings or {}).get("gender")
     if isinstance(gender_info, dict):
@@ -1347,6 +1366,7 @@ def get_story_only_prompt(
 
     # ★ 构建公共叙事约束（根据质量级别）
     common_constraints = _build_common_story_constraints(language, quality_level)
+    pacing_guard = _build_round_pacing_guard(language)
 
     if language == "zh":
         # === 开头：红线约束摘要 ===
@@ -1368,6 +1388,7 @@ def get_story_only_prompt(
 财富：{wealth:,}{currency_name} | 关系：{rel_str}
 
 [MUST] 强制约束（违反即重新生成）：{storylines_context}{facts_context}{world_model_context}{continuation_mandate}
+{pacing_guard}
 
 [SHOULD] 建议约束：{foreshadowing_context}{habits_context}
 {narrative_enhancements_zh}
@@ -1404,6 +1425,7 @@ Energy: {energy}/100 | Mood: {mood}/100 | Knowledge: {knowledge}/100
 Wealth: ${wealth:,} | Relationships: {rel_str}
 
 [MUST] Mandatory constraints (violation = regeneration):{storylines_context}{facts_context}{world_model_context}{continuation_mandate}
+{pacing_guard}
 
 [SHOULD] Advisory constraints:{foreshadowing_context}{habits_context}
 {narrative_enhancements_en}
@@ -1611,6 +1633,7 @@ def get_round_event_prompt(
 
     # ★ 构建公共叙事约束（根据质量级别）
     common_constraints = _build_common_story_constraints(language, quality_level)
+    pacing_guard = _build_round_pacing_guard(language)
 
     if language == "zh":
         # Build previous rounds context
@@ -1730,6 +1753,7 @@ def get_round_event_prompt(
 财富：{wealth:,}{currency_name} | 关系：{rel_str}{context_section}{rel_events_context}{memory_context}
 
 [MUST] 强制约束（违反即重新生成）：{world_model_context}{storylines_context}{facts_context}{continuation_mandate}{new_char_context}
+{pacing_guard}
 
 [MUST] 写作前红线检查（违反即重新生成）：
 1. 人物位置：检查世界模型约束中角色位置，禁止无故跳跃。场景转换必须交代移动过程
@@ -1872,6 +1896,7 @@ Energy: {energy}/100 | Mood: {mood}/100 | Knowledge: {knowledge}/100
 Wealth: ${wealth:,} | Relationships: {rel_str}{context_section}{rel_events_context}{memory_context}
 
 [MUST] Mandatory constraints (violation = regeneration):{world_model_context_en}{storylines_context}{facts_context}{continuation_mandate_en}{new_char_context_en}
+{pacing_guard}
 
 [MUST] Pre-writing red line checks (violation = regeneration):
 1. Character location: Check world model constraints for each character's position. No unexplained teleportation. Scene changes must describe travel
