@@ -5,6 +5,7 @@
 
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from hashlib import sha256
@@ -259,8 +260,44 @@ def _looks_like_prompt_leak_song(song: Song) -> bool:
 
 def _matches_negative_music_cue(song: Song, negative_cues: Sequence[str]) -> bool:
     """Reject playable search results that contradict the story's music brief."""
-    text = " ".join([song.name, song.album, *song.artists]).lower()
-    return any(cue and str(cue).lower() in text for cue in negative_cues)
+    text = _normalize_music_text(" ".join([song.name, song.album, *song.artists]))
+    identity = _song_identity_key(song)
+    for cue in negative_cues:
+        normalized_cue = _normalize_music_text(str(cue))
+        if normalized_cue and (normalized_cue in text or normalized_cue in identity):
+            return True
+    return False
+
+
+def _normalize_music_text(value: str) -> str:
+    """Normalize song/search text so cue matching survives spaces and punctuation."""
+    return re.sub(r"[\s\-_—–·.。!！?？,，:：;；'\"“”‘’（）()\[\]【】《》/\\\\]+", "", value.lower())
+
+
+def _song_identity_key(song: Union[Song, CachedSong]) -> str:
+    name = re.sub(
+        r"(?i)(?:[-_—–(（\[]?\s*(?:live|remix|伴奏|翻唱|cover|版|版本|加速|降调| slowed|sped up).*)$",
+        "",
+        song.name,
+    ).strip()
+    normalized_name = _normalize_music_text(name)
+    normalized_artists = ",".join(_normalize_music_text(artist) for artist in song.artists[:2])
+    return f"{normalized_name}|{normalized_artists}"
+
+
+def dedupe_music_candidates(songs: Sequence[Song]) -> List[Song]:
+    """Dedupe provider candidates by ID and normalized song identity."""
+    seen_ids: set[int] = set()
+    seen_keys: set[str] = set()
+    deduped: List[Song] = []
+    for song in songs:
+        key = _song_identity_key(song)
+        if song.id in seen_ids or key in seen_keys:
+            continue
+        seen_ids.add(song.id)
+        seen_keys.add(key)
+        deduped.append(song)
+    return deduped
 
 
 def _is_workplace_music_brief(brief: "MusicBrief") -> bool:
@@ -898,6 +935,7 @@ class MusicService:
 
     async def _supplement_pool(self, pool: CachedMusicPool) -> None:
         seen_ids = {song.id for song in pool.verified_songs}
+        seen_song_keys = {_song_identity_key(song) for song in pool.verified_songs}
         brief = self.context_builder.build_brief(pool.analysis)
         search_keywords = self.context_builder.build_search_queries(
             brief,
@@ -914,7 +952,12 @@ class MusicService:
                 break
             songs = await self.music_client.search(keyword, limit=10)
             for song in songs:
-                if song.id in seen_ids or len(pool.verified_songs) >= 20:
+                song_key = _song_identity_key(song)
+                if (
+                    song.id in seen_ids
+                    or song_key in seen_song_keys
+                    or len(pool.verified_songs) >= 20
+                ):
                     continue
                 if _looks_like_prompt_leak_song(song):
                     logger.info(
@@ -958,6 +1001,7 @@ class MusicService:
                     )
                 )
                 seen_ids.add(song.id)
+                seen_song_keys.add(song_key)
 
     async def _analyze_story_mood(
         self,

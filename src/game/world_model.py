@@ -264,6 +264,7 @@ class WorldModel:
         self.character_profiles: Dict[str, CharacterProfile] = (
             {}
         )  # Behavioral profiles per character
+        self.character_settings: Dict[str, Any] = {}
         self.current_week: int = 0
         self.era: str = "modern"
 
@@ -286,6 +287,7 @@ class WorldModel:
 
         # Extract era
         cs = player_state.character_settings or {}
+        wm.character_settings = cs if isinstance(cs, dict) else {}
         era_info = cs.get("era", {})
         wm.era = era_info.get("era_description", "modern")
 
@@ -529,6 +531,11 @@ class WorldModel:
         sections: List[str] = []
 
         # --- Geographic Constraints ---
+        required_cast_lines = self._build_required_cast_constraints(language)
+        if required_cast_lines:
+            sections.append(required_cast_lines)
+
+        # --- Geographic Constraints ---
         loc_lines = self._build_location_constraints(zh)
         if loc_lines:
             sections.append(loc_lines)
@@ -584,6 +591,14 @@ class WorldModel:
         )
 
         return header + "\n" + "\n".join(sections) + "\n" + footer
+
+    def _build_required_cast_constraints(self, language: str) -> str:
+        try:
+            from src.game.relationship_authority import build_required_cast_constraints
+
+            return build_required_cast_constraints(self.character_settings, language=language)
+        except (TypeError, ValueError):
+            return ""
 
     def _build_location_constraints(self, zh: bool) -> str:
         if not self.character_locations:

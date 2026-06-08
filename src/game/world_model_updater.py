@@ -13,6 +13,7 @@ from typing import Dict, List, Optional
 from src.game.constants import (DEFAULT_CAREER_LEVEL, GENERIC_CHARACTER_NAMES,
                                 IMPORTANCE_ORDER, ROLE_KEYWORDS,
                                 VALID_CAREER_LEVELS)
+from src.game.relationship_authority import canonicalize_key_person_candidate
 
 logger = logging.getLogger(__name__)
 
@@ -821,17 +822,33 @@ class WorldModelUpdater:
                     "relationship_desc": "在故事中相遇",
                     "how_we_met": "在故事中自然出现",
                 }
-                character_settings["relationships"]["key_people"].append(new_person)
-                existing_names.add(name)
-                added_count += 1
-                logger.info(f"✨ 同步故事人物到角色设定: {name}")
+                canonical_person = canonicalize_key_person_candidate(
+                    new_person,
+                    character_settings,
+                )
+                canonical_name = str(canonical_person.get("name", name)).strip() or name
+
+                if canonical_name in existing_names:
+                    logger.info(
+                        "✨ 故事人物 %s 映射回预设人物 %s，避免创建替代人物",
+                        name,
+                        canonical_name,
+                    )
+                else:
+                    character_settings["relationships"]["key_people"].append(canonical_person)
+                    existing_names.add(canonical_name)
+                    added_count += 1
+                    logger.info(f"✨ 同步故事人物到角色设定: {canonical_name}")
 
                 # 同步到 player_state.relationships 字典
                 if hasattr(player_state, "relationships") and isinstance(
                     player_state.relationships, dict
                 ):
-                    player_state.relationships[name] = affinity
-                    logger.debug(f"已同步 {name} 的亲和度到 player_state.relationships")
+                    player_state.relationships[canonical_name] = affinity
+                    logger.debug(
+                        "已同步 %s 的亲和度到 player_state.relationships",
+                        canonical_name,
+                    )
 
         if added_count > 0:
             player_state.character_settings = character_settings

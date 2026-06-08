@@ -66,6 +66,39 @@ def _music_generation_failure_detail(exc: Exception) -> str:
     return f"AI music generation failed ({type(exc).__name__})"
 
 
+def _sanitize_music_error(exc: Exception) -> str:
+    message = str(exc).strip() or type(exc).__name__
+    message = re.sub(r"<[^>]+>", "", message)
+    message = re.sub(r"https?://\S+", "<url>", message)
+    message = re.sub(r"\s+", " ", message).strip()
+    return message[:240]
+
+
+def build_degraded_music_recommendation_response(exc: Exception) -> "MusicRecommendationResponse":
+    """Return a JSON-safe degraded recommendation payload for upstream failures."""
+    error = _sanitize_music_error(exc)
+    return MusicRecommendationResponse(
+        keywords=[],
+        mood="unavailable",
+        scene_type="degraded",
+        environment=None,
+        story_style=None,
+        music_style=None,
+        instruments=[],
+        pacing=None,
+        time_weather=None,
+        description="Music recommendation is temporarily unavailable.",
+        music_brief={
+            "degraded": True,
+            "error": error,
+            "negative_cues": [],
+            "search_queries": [],
+            "generation_prompt": "",
+        },
+        songs=[],
+    )
+
+
 class MusicRecommendationRequest(BaseModel):
     """音乐推荐请求"""
 
@@ -239,7 +272,7 @@ async def recommend_music(
 
     except Exception as e:
         logger.exception(f"Failed to recommend music: {e}")
-        raise HTTPException(status_code=500, detail=f"音乐推荐失败: {str(e)}")
+        return build_degraded_music_recommendation_response(e)
 
 
 @router.post("/music/generate", response_model=MusicGenerationResponse)

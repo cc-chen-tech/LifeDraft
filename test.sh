@@ -268,6 +268,7 @@ run_preflight() {
         src/__tests__/stores/useGameStore.test.ts \
         src/__tests__/pages/CreatePage.test.tsx \
         src/__tests__/hooks/eventUtils.test.ts \
+        src/__tests__/hooks/useEventGenerator.test.ts \
         src/__tests__/components/StoryVoiceControls.test.tsx \
         src/__tests__/components/game/MusicPlayer.test.tsx \
         src/__tests__/components/MusicPlayer.test.tsx \
@@ -299,6 +300,7 @@ run_mypy() {
     echo -e "${YELLOW}运行 mypy 严格静态类型检查...${NC}"
     MYPY_STRICT_TARGETS=(
         src/ai/text_quality.py
+        src/game/relationship_authority.py
         src/services/music_service.py
         src/services/music_playlist_service.py
         src/services/minimax_config.py
@@ -333,7 +335,11 @@ run_imports() {
     activate_python_env
     
     echo -e "${YELLOW}运行导入验证测试...${NC}"
-    python -m pytest tests/test_imports.py tests/test_gate_imports_no_mock.py -v
+    python -m pytest \
+        tests/test_imports.py \
+        tests/test_gate_imports_no_mock.py \
+        tests/test_20260608_imports.py \
+        -v
     local result=$?
     
     print_layer_result "imports" $result
@@ -355,6 +361,8 @@ run_contract() {
         tests/test_minimax_audio_generation_contract.py \
         tests/test_shift_left_e2e_contract_no_mock.py \
         tests/test_story_music_recommendation_contract.py \
+        tests/test_20260608_story_quality_contract.py \
+        tests/test_20260608_music_api_degradation_contract.py \
         tests/test_story_voice_reading_contract.py \
         tests/test_ui_bottom_layout_contract_no_mock.py \
         -v
@@ -387,6 +395,7 @@ run_db() {
         tests/test_gate_real_db_no_mock.py \
         tests/test_minimax_audio_generation_db.py \
         tests/test_story_music_recommendation_db.py \
+        tests/test_20260608_story_quality_db.py \
         tests/test_story_voice_reading_db.py \
         -v
     local result=$?
@@ -599,8 +608,16 @@ run_e2e_browser_impl() {
         --no-deps
     local minimax_audio_result=$?
 
+    echo -e "${YELLOW}运行 2026-06-08 质量回归 E2E 浏览器测试...${NC}"
+    run_playwright_command "quality-20260608" npx playwright test e2e/quality-20260608-regressions.spec.ts \
+        --project=core \
+        --reporter=list \
+        --workers=1 \
+        --no-deps
+    local quality_20260608_result=$?
+
     local result=0
-    if [ $core_result -ne 0 ] || [ $music_ai_result -ne 0 ] || [ $story_voice_result -ne 0 ] || [ $minimax_audio_result -ne 0 ]; then
+    if [ $core_result -ne 0 ] || [ $music_ai_result -ne 0 ] || [ $story_voice_result -ne 0 ] || [ $minimax_audio_result -ne 0 ] || [ $quality_20260608_result -ne 0 ]; then
         result=1
     fi
 

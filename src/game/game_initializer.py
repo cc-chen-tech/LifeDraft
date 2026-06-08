@@ -71,7 +71,7 @@ class GameInitializer:
             "energy": settings.INITIAL_ENERGY,
             "mood": settings.INITIAL_MOOD,
             "knowledge": settings.INITIAL_KNOWLEDGE,
-            "wealth": settings.INITIAL_WEALTH,
+            "wealth": self._extract_initial_wealth(character_settings),
             "relationships": {},
             "characters": {},
             "decision_history": [],
@@ -196,3 +196,19 @@ class GameInitializer:
             key_people = []
         normalized["key_people"] = key_people
         return normalized
+
+    @staticmethod
+    def _extract_initial_wealth(character_settings: Dict[str, Any]) -> int:
+        wealth_settings = character_settings.get("wealth")
+        if isinstance(wealth_settings, dict):
+            for key in ("wealth", "amount", "initial_wealth"):
+                value = wealth_settings.get(key)
+                if isinstance(value, bool):
+                    continue
+                if isinstance(value, (int, float)):
+                    return max(0, min(settings.MAX_WEALTH, int(value)))
+                if isinstance(value, str):
+                    digits = "".join(ch for ch in value if ch.isdigit())
+                    if digits:
+                        return max(0, min(settings.MAX_WEALTH, int(digits)))
+        return settings.INITIAL_WEALTH
