@@ -356,6 +356,7 @@ run_contract() {
         tests/test_api_contract.py \
         tests/test_gate_contracts_no_mock.py \
         tests/test_music_playlist_contract.py \
+        tests/test_music_recommend_api_degradation_contract.py \
         tests/test_minimax_audio_generation_contract.py \
         tests/test_shift_left_e2e_contract_no_mock.py \
         tests/test_story_music_recommendation_contract.py \
