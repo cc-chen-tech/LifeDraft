@@ -274,6 +274,7 @@ run_preflight() {
         src/__tests__/components/GlobalMusicPlayer.escape.test.tsx \
         src/__tests__/lib/apiRetryPolicy.test.ts \
         src/__tests__/app/api/route.test.ts \
+        src/__tests__/components/game/CollectionPanelAutoCollect.test.tsx \
         src/__tests__/stores/useCollectionStore.test.ts \
         src/__tests__/stores/useMusicStore.musicQueuePolicy.test.ts \
         --runInBand

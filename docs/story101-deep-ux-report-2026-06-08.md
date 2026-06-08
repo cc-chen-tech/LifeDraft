@@ -245,9 +245,9 @@
   - 补丁 `ddf382a9` 热部署并重建 frontend 后，公网 `/api/health` 和 `/health` 正常。
   - browser-agent 打开 `https://story101.live/e2e-regression`，页面正常加载；长等待提示的触发条件由 PlayPage 回归测试覆盖。
 
-### P2：收集系统粒度仍需复查
+### P2：收集系统粒度复查
 
-初期人物收集可用但物品为 0；推进到第 3 周周总结后，后端开始提取关键物品：`SemantLink API文档U盘`、`林一凡的技术架构笔记`、`竞品分析报告`、`用户调研框架模板`、`里程碑计划初稿` 等。仍需复查 UI 是否同步展示这些新物品，以及智能识别是否继续推荐重复人物。
+初期人物收集可用但物品为 0；推进到第 3 周周总结后，后端开始提取关键物品：`SemantLink API文档U盘`、`林一凡的技术架构笔记`、`竞品分析报告`、`用户调研框架模板`、`里程碑计划初稿` 等。UI 同步展示链路已补组件级复查证据。
 
 本轮已修：
 - 自动收集不再要求人物/物品/地点三类全为空才运行。即使人物已经存在、物品仍为空，也会继续触发实体识别并补充缺失物品。
@@ -257,7 +257,9 @@
 - 回归测试：`auto-collects missing item entities when characters already exist`。
 - 回归测试补充：`continues auto collection after later story rounds introduce new items`。
 - 红灯复现：新增测试在旧逻辑下只发出 1 次 `/recognize-entities`，第二次自动收集被 game-level attempted guard 挡住。
+- UI 复查补充：`renders newly auto-collected story items in the item tab after mount` 使用真实 `CollectionPanel` 和 store/network 链路，验证自动识别新增 `SemantLink API文档U盘` 后，物品 tab 直接显示该物品且计数更新为 `物品 (1)`。
 - 本地验证：`cd frontend && npx jest src/__tests__/stores/useCollectionStore.test.ts --runInBand`、`./test.sh preflight` 均通过。
+- 本地验证补充：`cd frontend && npx jest src/__tests__/components/game/CollectionPanelAutoCollect.test.tsx --runInBand` 通过。
 - 生产复测：
   - 补丁 `3c32ec41` 热部署并重建 frontend 后，公网 `/api/health` 和 `/health` 正常。
   - browser-agent 打开 `https://story101.live/e2e-regression`，页面正常加载并显示“收集”入口；自动补齐缺失实体类别的核心行为由 store 回归测试覆盖。
