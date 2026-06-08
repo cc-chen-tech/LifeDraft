@@ -147,4 +147,62 @@ describe('StoryVoiceControls', () => {
       text_hash: '95813215c6b945ae5e1746a1219579a9884fd99997cf398d046f071a819c149e',
     });
   });
+
+  it('keeps a local auto-read toggle when stale settings finish loading later', async () => {
+    let resolveSettings: (value: Response) => void = () => undefined;
+    const settingsPromise = new Promise<Response>((resolve) => {
+      resolveSettings = resolve;
+    });
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.includes('/voice-reading/settings')) {
+        return settingsPromise;
+      }
+      if (url.includes('/voice-reading/read')) {
+        return Promise.resolve(jsonResponse({
+          job_id: 1,
+          status: 'ready',
+          audio_url: '/api/voice-reading/audio/test.mp3',
+          playback_mode: 'audio',
+          provider: 'minimax',
+          media_type: 'audio/mpeg',
+        }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    const { rerender } = render(
+      <StoryVoiceControls
+        currentContext={currentContext}
+        autoReadText=""
+        autoReadReady={false}
+        showTestControls
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '启用自动朗读' }));
+    resolveSettings(jsonResponse({
+      auto_read_enabled: false,
+      selected_voice_color: 'warm_female',
+    }));
+    await waitFor(() => {
+      expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
+        String(url).includes('/voice-reading/settings')
+      )).toBe(true);
+    });
+
+    rerender(
+      <StoryVoiceControls
+        currentContext={currentContext}
+        autoReadText="一段当前故事。"
+        autoReadReady
+        showTestControls
+      />
+    );
+
+    await waitFor(() => {
+      expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
+        String(url).includes('/voice-reading/read')
+      )).toBe(true);
+    });
+  });
 });

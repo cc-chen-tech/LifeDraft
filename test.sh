@@ -268,6 +268,8 @@ run_preflight() {
         src/__tests__/stores/useGameStore.test.ts \
         src/__tests__/pages/CreatePage.test.tsx \
         src/__tests__/hooks/eventUtils.test.ts \
+        src/__tests__/components/StoryVoiceControls.test.tsx \
+        src/__tests__/components/game/MusicPlayer.test.tsx \
         src/__tests__/components/MusicPlayer.test.tsx \
         src/__tests__/components/ChatBar.test.tsx \
         src/__tests__/components/GlobalMusicPlayer.escape.test.tsx \
