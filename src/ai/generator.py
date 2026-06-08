@@ -163,7 +163,8 @@ class EventGenerator:
             OpenAI stream object that yields chunks
         """
         use_model = model or self.ai_client.model
-        return self.ai_client.client.chat.completions.create(
+        client = self.ai_client.require_openai_client()
+        return client.chat.completions.create(
             model=use_model,
             messages=[
                 {"role": "system", "content": system_prompt},

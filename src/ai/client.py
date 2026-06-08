@@ -67,7 +67,9 @@ class AIClient:
         self.model = model or settings.OPENAI_MODEL
 
         if not self.api_key:
-            raise ValueError("OpenAI API key is required")
+            logger.warning("OpenAI API key is not configured; AI calls will fail until configured")
+            self.client: Optional[openai.OpenAI] = None
+            return
 
         client_kwargs: Dict[str, Any] = {"api_key": self.api_key}
         if settings.OPENAI_BASE_URL:
@@ -77,6 +79,12 @@ class AIClient:
         client_kwargs["timeout"] = 300.0  # 5分钟超时，实体识别需要较长时间
 
         self.client = openai.OpenAI(**client_kwargs)
+
+    def require_openai_client(self) -> openai.OpenAI:
+        """Return the OpenAI client, or fail when an AI call is actually requested."""
+        if self.client is None:
+            raise ValueError("OpenAI API key is required")
+        return self.client
 
     # -------------------- Core Call --------------------
 
@@ -222,6 +230,7 @@ class AIClient:
         last_error = None
         for attempt, current_max_tokens in enumerate(tokens_to_try):
             try:
+                client = self.require_openai_client()
                 if stream_callback:
                     logger.info(
                         f"[AIClient] Using streaming mode, stream_callback={stream_callback is not None}"
@@ -232,7 +241,7 @@ class AIClient:
                         extra_params["frequency_penalty"] = frequency_penalty
                     if presence_penalty > 0:
                         extra_params["presence_penalty"] = presence_penalty
-                    stream = self.client.chat.completions.create(
+                    stream = client.chat.completions.create(
                         model=use_model,
                         messages=messages,  # type: ignore[arg-type]
                         temperature=temperature,
@@ -284,7 +293,7 @@ class AIClient:
                         extra_params_sync["frequency_penalty"] = frequency_penalty
                     if presence_penalty > 0:
                         extra_params_sync["presence_penalty"] = presence_penalty
-                    response = self.client.chat.completions.create(
+                    response = client.chat.completions.create(
                         model=use_model,
                         messages=messages,  # type: ignore[arg-type]
                         temperature=temperature,

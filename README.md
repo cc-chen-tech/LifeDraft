@@ -99,6 +99,10 @@ docker compose -f docker-compose.ecs.yml up -d --build
 - `OPENAI_MODEL`（默认 `gpt-4`，支持 DeepSeek V4 flash 等）
 - `DATABASE_URL`（可选，不填则使用本地 SQLite）
 - `DEFAULT_LANGUAGE`（`zh` / `en`）
+- `MINIMAX_API_KEY`（生产音频必填；不要提交真实 key）
+- `STORY_TTS_PROVIDER`（本地默认 `browser`，生产后端朗读使用 `minimax`）
+- `MINIMAX_TIMEOUT_SECONDS`（建议 `180`；真实音乐生成可能超过 120 秒）
+- `STORY_MUSIC_AI_GENERATION_ENABLED`（是否启用 MiniMax 故事音乐生成）
 - `ENABLE_*` 叙事与实验开关（feature flags：constraint_harness, narrative_style_engine, creative_enhancement, epic_narrative, vector_search, model_fallback, truncation_recovery, reactive_compression, parallel_postprocessing, generation_state_tracking）
 
 ## 开发与测试

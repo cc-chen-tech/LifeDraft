@@ -1,7 +1,6 @@
 """No-mock gameplay behavior tests for option relevance and text cleanup."""
 
 import pytest
-from unittest.mock import MagicMock
 
 from config.prompts import (
     get_opening_story_prompt,
@@ -320,18 +319,29 @@ def test_round_event_retries_when_story_ignores_all_key_people_and_fabricates_ne
                 "林一凡则把远程会议链接发进群里。"
             )
 
+    class RecordingOptionGenerator:
+        def __init__(self):
+            self.generate_options_only_kwargs = None
+
+        def generate_options_only(self, **kwargs):
+            self.generate_options_only_kwargs = kwargs
+            return GameEvent(
+                event_description="",
+                options=[
+                    EventOption(text="先和陆昊然核对需求", effects={"knowledge": 5}),
+                    EventOption(text="请陈晓雨一起复盘用户反馈", effects={"mood": 2}),
+                ],
+            )
+
+        def validate_and_fix_relationships(self, *args, **kwargs):
+            return None
+
+        def validate_options_consistency(self, *args, **kwargs):
+            return []
+
     client = DriftClient()
     gen = StoryGenerator(client)
-    mock_option_gen = MagicMock()
-    mock_option_gen.generate_options_only.return_value = GameEvent(
-        event_description="",
-        options=[
-            EventOption(text="先和陆昊然核对需求", effects={"knowledge": 5}),
-            EventOption(text="请陈晓雨一起复盘用户反馈", effects={"mood": 2}),
-        ],
-    )
-    mock_option_gen.validate_and_fix_relationships.return_value = None
-    mock_option_gen.validate_options_consistency.return_value = []
+    option_generator = RecordingOptionGenerator()
 
     gen.generate_round_event(
         player_state={
@@ -353,15 +363,14 @@ def test_round_event_retries_when_story_ignores_all_key_people_and_fabricates_ne
                 ]
             }
         },
-        option_generator=mock_option_gen,
+        option_generator=option_generator,
     )
 
     assert len(client.calls) == 2
     retry_prompt = client.calls[1]["user_prompt"]
     assert "上一版故事完全没有使用预设关键人物" in retry_prompt
-    story_for_options = mock_option_gen.generate_options_only.call_args.kwargs[
-        "story_description"
-    ]
+    assert option_generator.generate_options_only_kwargs is not None
+    story_for_options = option_generator.generate_options_only_kwargs["story_description"]
     assert "陆昊然" in story_for_options
     assert "马老板" not in story_for_options
 

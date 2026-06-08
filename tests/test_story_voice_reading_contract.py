@@ -118,11 +118,15 @@ def test_story_voice_controls_use_browser_speech_for_immediate_text_reading() ->
     store = (
         ROOT / "frontend" / "src" / "stores" / "useStoryVoiceStore.ts"
     ).read_text(encoding="utf-8")
+    hash_helper = (
+        ROOT / "frontend" / "src" / "lib" / "storyVoiceTextHash.ts"
+    ).read_text(encoding="utf-8")
 
     assert "voice-reading-job" in component
     assert "voice-reading-audio-url" in component
     assert "api.voice_reading.requestReading" in store
-    assert "crypto.subtle.digest" in store
+    assert "storyVoiceTextToHash" in store
+    assert "crypto.subtle.digest" in hash_helper
     assert "playback_mode === \"audio\"" in store
     assert "speechSynthesis" in store
     assert "SpeechSynthesisUtterance" in store

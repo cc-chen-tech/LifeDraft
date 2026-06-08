@@ -74,6 +74,8 @@ def test_playwright_log_tempfile_template_has_enough_random_suffix() -> None:
     assert 'PLAYWRIGHT_LOG_DIR="$TEST_RUN_DIR/playwright"' in script
     assert 'output_file="${PLAYWRIGHT_LOG_DIR}/story2-playwright-${label}-$(date +%Y%m%d_%H%M%S)-${RANDOM}.log"' in script
     assert 'rm -f "$PLAYWRIGHT_LOG_DIR/story2-playwright-${label}-"*.log' in script
+    assert '"$PLAYWRIGHT_LOG_DIR/story2-playwright-${label}-"*.log' in script
+    assert '$(date +%Y%m%d_%H%M%S)-${RANDOM}.log' in script
     assert 'mktemp "/tmp/story2-playwright-${label}-XXXX.log"' not in script
 
 
@@ -156,6 +158,12 @@ def test_e2e_gate_does_not_reuse_frontend_from_other_worktree() -> None:
     assert "E2E 运行目录: ${TEST_RUN_DIR}" in script
     assert "占用 3000 端口的前端不属于当前 worktree" not in script
     assert "ensure_e2e_frontend_port_available" not in script
+    assert 'find_free_port "$E2E_FRONTEND_PORT"' in script
+    assert "TEST_E2E_FRONTEND_PORT_BASE" in script
+    assert 'local frontend_port="$E2E_FRONTEND_PORT"' in script
+    assert script.index('find_free_port "$E2E_FRONTEND_PORT"') < script.index(
+        "npm run start -- --hostname 127.0.0.1"
+    )
     assert "process.env.E2E_FRONTEND_PORT" in config
     assert "reuseExistingServer: false" in config
 
@@ -226,11 +234,105 @@ def test_e2e_local_backend_and_browser_launch_are_configurable() -> None:
     assert 'cleanup_pid_file "$BACKEND_PID_FILE" "后端"' in script
     assert "MINIMAX_E2E_LOCAL_AUDIO=1" in script
     assert "E2E_FRONTEND_MODE:-prod" in script
-    assert "NEXT_DISABLE_STANDALONE=1 npm run build" in script
-    assert 'BACKEND_URL="http://127.0.0.1:$E2E_BACKEND_PORT"' in script
+    assert 'local backend_url="http://127.0.0.1:$E2E_BACKEND_PORT"' in script
+    assert 'BACKEND_URL="$backend_url"' in script
+    assert "cleanup_e2e_runtimes" in script
+    assert 'NEXT_DISABLE_STANDALONE=1 BACKEND_URL="$backend_url" NEXT_PUBLIC_API_URL="/api" npm run build' in script
     assert "npm run start -- --hostname 127.0.0.1" in script
     assert "if ! [ -d \".next\" ]" not in script
     assert "ulimit -n 8192" in script
+
+
+def test_e2e_backend_sets_required_jwt_secret() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+
+    assert "JWT_SECRET" in script
+    assert "e2e-test-secret" in script
+
+
+def test_e2e_backend_start_waits_for_health_endpoint() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+    start_block = script.split("启动确定性 E2E 后端", 1)[1].split(
+        "cd \"$PROJECT_DIR/frontend\"", 1
+    )[0]
+
+    assert 'API_HOST=127.0.0.1 API_PORT="$E2E_BACKEND_PORT"' in start_block
+    assert "for backend_ready_attempt in" in start_block
+    assert 'curl -fsS "http://127.0.0.1:$E2E_BACKEND_PORT/api/health"' in start_block
+    assert 'cat "$BACKEND_LOG"' in start_block
+    assert "sleep 3\n    if ! lsof" not in start_block
+
+
+def test_e2e_frontend_proxy_targets_dynamic_backend_port() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+    build_block = script.split("使用生产模式启动前端", 1)[1].split(
+        "local frontend_started=0", 1
+    )[0]
+    command_lines = [
+        line.strip()
+        for line in build_block.splitlines()
+        if line.strip().startswith("NEXT_DISABLE_STANDALONE=1")
+    ]
+    build_command = next(line for line in command_lines if "npm run build" in line)
+    start_command = next(line for line in command_lines if "npm run start" in line)
+
+    assert 'local backend_url="http://127.0.0.1:$E2E_BACKEND_PORT"' in script
+    assert 'BACKEND_URL="$backend_url"' in build_command
+    assert 'NEXT_PUBLIC_API_URL="/api"' in build_command
+    assert 'BACKEND_URL="$backend_url"' in start_command
+    assert 'NEXT_PUBLIC_API_URL="/api"' in start_command
+
+
+def test_e2e_dev_frontend_proxy_targets_dynamic_backend_port() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+    dev_block = script.split('if [ "$frontend_mode" = "dev" ]; then', 1)[1].split(
+        "else", 1
+    )[0]
+
+    assert 'local backend_url="http://127.0.0.1:$E2E_BACKEND_PORT"' in script
+    assert 'BACKEND_URL="$backend_url"' in dev_block
+    assert 'NEXT_PUBLIC_API_URL="/api"' in dev_block
+    assert "export BACKEND_URL NEXT_PUBLIC_API_URL" in dev_block
+
+
+def test_find_free_port_errors_do_not_pollute_captured_port_value() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+    port_func = script.split("find_free_port() {", 1)[1].split(
+        "\n}\n\nactivate_python_env", 1
+    )[0]
+
+    assert '>&2 echo -e "${RED}端口 $preferred 已被占用。请先释放该端口或设置 E2E_BACKEND_PORT / E2E_FRONTEND_PORT。${NC}"' in port_func
+    assert '>&2 echo -e "${RED}无法分配空闲端口（$base-$((base + range))）${NC}"' in port_func
+
+
+def test_collection_panel_cache_spec_uses_scoped_character_locator() -> None:
+    spec = (
+        ROOT / "frontend" / "e2e" / "collection-panel-cache.spec.ts"
+    ).read_text(encoding="utf-8")
+
+    assert "page.locator('text=缓存测试角色')" not in spec
+    assert "function collectionDialog" in spec
+    assert "collectionDialog(page).getByRole('button', { name: /缓存测试角色.*主角/ })" in spec
+
+
+def test_e2e_specs_do_not_hardcode_default_backend_port() -> None:
+    offenders = []
+    for spec_path in sorted((ROOT / "frontend" / "e2e").glob("*.spec.ts")):
+        text = spec_path.read_text(encoding="utf-8")
+        if "http://localhost:8000" in text or "http://127.0.0.1:8000" in text:
+            offenders.append(spec_path.name)
+
+    assert offenders == []
+
+
+def test_e2e_lock_initializes_lock_directory_before_acquire() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+    lock_block = script.split("with_e2e_lock() {", 1)[1].split(
+        "\n}\n\nis_port_listening", 1
+    )[0]
+
+    assert 'mkdir -p "$TEST_LOCK_DIR"' in lock_block
+    assert lock_block.index('mkdir -p "$TEST_LOCK_DIR"') < lock_block.index('mkdir "$lock_dir"')
 
 
 def test_playwright_global_setup_does_not_spawn_competing_backend() -> None:
@@ -496,6 +598,7 @@ def test_production_deploy_syncs_minimax_secret_to_ecs_env_without_committing_ke
     assert "STORY_TTS_PROVIDER=minimax" in workflow
     assert "STORY_TTS_ALLOW_REQUEST_PROVIDER=1" in workflow
     assert "STORY_MUSIC_AI_GENERATION_ENABLED=true" in workflow
+    assert "MINIMAX_TIMEOUT_SECONDS=180" in workflow
     assert "sk-" not in workflow
 
 
@@ -516,6 +619,28 @@ def test_production_deploy_fetches_private_repo_without_persisting_github_token(
     assert workflow.index("git fetch origin main") < workflow.rindex(
         "git remote set-url origin https://github.com/cc-chen-tech/LifeDraft.git"
     )
+
+
+def test_env_example_documents_minimax_production_audio_settings() -> None:
+    env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
+
+    required_lines = [
+        "MINIMAX_API_KEY=",
+        "MINIMAX_TTS_MODEL=speech-02-turbo",
+        "MINIMAX_MUSIC_MODEL=music-2.6",
+        "MINIMAX_TIMEOUT_SECONDS=180",
+        "MINIMAX_TTS_MAX_CHARS=50000",
+        "MINIMAX_MUSIC_PROMPT_MAX_CHARS=900",
+        "STORY_TTS_PROVIDER=browser",
+        "STORY_TTS_ALLOW_REQUEST_PROVIDER=0",
+        "STORY_MUSIC_AI_GENERATION_ENABLED=true",
+        "STORY_TTS_ASSET_DIR=./data/voice_assets",
+        "STORY_MUSIC_ASSET_DIR=./data/music_assets",
+    ]
+    for line in required_lines:
+        assert line in env_example
+
+    assert "sk-" not in env_example
 
 
 def test_e2e_prod_frontend_start_waits_until_listening_in_ci() -> None:
@@ -548,8 +673,8 @@ def test_e2e_prod_frontend_disables_standalone_output_for_next_start() -> None:
 
     assert "process.env.NEXT_DISABLE_STANDALONE === '1'" in next_config
     assert "output: process.env.NEXT_DISABLE_STANDALONE === '1' ? undefined : 'standalone'" in next_config
-    assert "NEXT_DISABLE_STANDALONE=1 npm run build" in script
-    assert 'NEXT_DISABLE_STANDALONE=1 CI=1 E2E_FRONTEND_PORT="$frontend_port" npm run start' in script
+    assert 'NEXT_DISABLE_STANDALONE=1 BACKEND_URL="$backend_url" NEXT_PUBLIC_API_URL="/api" npm run build' in script
+    assert 'NEXT_DISABLE_STANDALONE=1 BACKEND_URL="$backend_url" NEXT_PUBLIC_API_URL="/api" CI=1 E2E_FRONTEND_PORT="$frontend_port" npm run start' in script
     assert "npm run start -- --hostname 127.0.0.1" in script
     assert "node .next/standalone/server.js" not in script
 

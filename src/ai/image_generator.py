@@ -64,10 +64,20 @@ class ImageGenerator:
         self.image_edit_models = get_image_edit_models()
 
         if not self.api_key:
+            logger.warning(
+                "Image API key is not configured; image generation calls will fail until configured"
+            )
+        if not self.base_url:
+            logger.warning(
+                "Image API base URL is not configured; image generation calls will fail until configured"
+            )
+
+    def require_generation_config(self) -> None:
+        """Fail only when a real image generation provider call is requested."""
+        if not self.api_key:
             raise ValueError(
                 "Image API key is required. Set IMAGE_API_KEY or OPENAI_API_KEY in environment."
             )
-
         if not self.base_url:
             raise ValueError(
                 "Image API base URL is required. Set IMAGE_API_BASE_URL or OPENAI_BASE_URL in environment."
@@ -284,6 +294,8 @@ class ImageGenerator:
         Returns:
             API响应字典
         """
+        self.require_generation_config()
+
         # 构建请求URL
         url = f"{(self.base_url or '').rstrip('/')}/generation"
 
@@ -496,6 +508,8 @@ class ImageGenerator:
         Returns:
             API响应
         """
+        self.require_generation_config()
+
         url = f"{(self.base_url or '').rstrip('/')}/generation"
 
         # 尺寸格式

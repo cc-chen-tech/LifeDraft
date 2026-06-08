@@ -1,7 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { ensureAuthenticated } from "./helpers/auth";
-
-const API_URL = process.env.E2E_API_URL || `http://${process.env.E2E_BACKEND_HOST || '127.0.0.1'}:${process.env.E2E_BACKEND_PORT || '8000'}`;
+import { ensureAuthenticated, API_URL } from "./helpers/auth";
 
 async function createTestGame(
   context: import("@playwright/test").BrowserContext

@@ -13,13 +13,11 @@
  */
 
 import { test, expect, Page, BrowserContext } from '@playwright/test';
-import { ensureAuthenticated } from './helpers/auth';
+import { ensureAuthenticated, API_URL } from './helpers/auth';
 import { startNetworkMonitoring, formatNetworkErrors } from './helpers/network-monitor';
 import { waitForNetworkIdle, waitForStableDOM } from './helpers/wait-helpers';
 
 const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
-const API_URL = process.env.E2E_API_URL || `http://${process.env.E2E_BACKEND_HOST || '127.0.0.1'}:${process.env.E2E_BACKEND_PORT || '8000'}`;
-
 /** SSE 事件收集器 */
 interface SSEEvent {
   eventType: string;

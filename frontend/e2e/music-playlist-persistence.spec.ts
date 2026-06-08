@@ -7,11 +7,9 @@
  * 3. Playlist state is restored after page reload
  */
 import { test, expect } from '@playwright/test';
-import { ensureActiveGame } from './helpers/auth';
+import { ensureActiveGame, API_URL } from './helpers/auth';
 
 const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
-const API_URL = process.env.E2E_API_URL || `http://${process.env.E2E_BACKEND_HOST || '127.0.0.1'}:${process.env.E2E_BACKEND_PORT || '8000'}`;
-
 test.describe('Music Playlist Persistence', () => {
   test.setTimeout(180_000);
 

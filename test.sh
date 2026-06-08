@@ -92,6 +92,7 @@ with_e2e_lock() {
         return $?
     fi
 
+    mkdir -p "$TEST_LOCK_DIR"
     local lock_dir="$TEST_LOCK_DIR/e2e.lock"
     mkdir -p "$TEST_LOCK_DIR"
     if ! mkdir "$lock_dir" 2>/dev/null; then
@@ -127,7 +128,7 @@ find_free_port() {
 
     if [ -n "$preferred" ] && [ "$preferred" -gt 0 ]; then
         if is_port_listening "$preferred"; then
-            echo -e "${RED}端口 $preferred 已被占用。请先释放该端口或设置 E2E_BACKEND_PORT / E2E_FRONTEND_PORT。${NC}"
+            >&2 echo -e "${RED}端口 $preferred 已被占用。请先释放该端口或设置 E2E_BACKEND_PORT / E2E_FRONTEND_PORT。${NC}"
             return 1
         fi
         echo "$preferred"
@@ -144,7 +145,7 @@ find_free_port() {
         candidate=$((candidate + 1))
     done
 
-    echo -e "${RED}无法分配空闲端口（$base-$((base + range))）${NC}"
+    >&2 echo -e "${RED}无法分配空闲端口（$base-$((base + range))）${NC}"
     return 1
 }
 
@@ -482,16 +483,27 @@ run_e2e_browser_impl() {
     echo -e "${YELLOW}启动确定性 E2E 后端...${NC}"
     cd "$PROJECT_DIR"
     activate_python_env
-    E2E_BACKEND_HOST=127.0.0.1 E2E_BACKEND_PORT="$E2E_BACKEND_PORT" \
+    JWT_SECRET="${JWT_SECRET:-e2e-test-secret}" \
     API_HOST=127.0.0.1 API_PORT="$E2E_BACKEND_PORT" \
+    E2E_BACKEND_HOST=127.0.0.1 E2E_BACKEND_PORT="$E2E_BACKEND_PORT" \
     DATABASE_URL="$LOCAL_E2E_DB_URL" \
     E2E_CONTRACT_PROBE_FAST=1 STORY_TTS_ALLOW_REQUEST_PROVIDER=1 \
     MINIMAX_API_KEY=test-key MINIMAX_E2E_LOCAL_AUDIO=1 API_RELOAD=false \
     python run_api.py > "$BACKEND_LOG" 2>&1 &
     BACKEND_PID=$!
     echo "$BACKEND_PID" > "$BACKEND_PID_FILE"
-    sleep 3
-    if ! is_port_listening "$E2E_BACKEND_PORT" || ! kill -0 "$BACKEND_PID" 2>/dev/null; then
+    local backend_ready=0
+    for backend_ready_attempt in {1..30}; do
+        if curl -fsS "http://127.0.0.1:$E2E_BACKEND_PORT/api/health" >/dev/null 2>&1; then
+            backend_ready=1
+            break
+        fi
+        if ! kill -0 "$BACKEND_PID" >/dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+    done
+    if [ "$backend_ready" -ne 1 ]; then
         echo -e "${RED}后端启动失败，跳过 E2E 测试${NC}"
         echo -e "${RED}日志: $BACKEND_LOG${NC}"
         cat "$BACKEND_LOG" 2>/dev/null || true
@@ -505,15 +517,19 @@ run_e2e_browser_impl() {
 
     local frontend_mode="${E2E_FRONTEND_MODE:-prod}"
     local FRONTEND_PID=""
+    local backend_url="http://127.0.0.1:$E2E_BACKEND_PORT"
 
     if [ "$frontend_mode" = "dev" ]; then
         echo -e "${YELLOW}使用 Playwright webServer（dev）模式运行 E2E（不推荐）...${NC}"
+        BACKEND_URL="$backend_url"
+        NEXT_PUBLIC_API_URL="/api"
+        export BACKEND_URL NEXT_PUBLIC_API_URL
         # default behavior will use playwright.config.ts webServer branch
     else
         echo -e "${YELLOW}使用生产模式启动前端（next build + start）以规避开发监听问题...${NC}"
         cd "$PROJECT_DIR/frontend"
         echo -e "${YELLOW}执行 npm run build，避免复用旧 .next 构建...${NC}"
-        BACKEND_URL="http://127.0.0.1:$E2E_BACKEND_PORT" NEXT_DISABLE_STANDALONE=1 npm run build
+        NEXT_DISABLE_STANDALONE=1 BACKEND_URL="$backend_url" NEXT_PUBLIC_API_URL="/api" npm run build
         if [ $? -ne 0 ]; then
             echo -e "${RED}前端构建失败，跳过 E2E 测试${NC}"
             E2E_RESULT=1
@@ -524,7 +540,7 @@ run_e2e_browser_impl() {
 
         local frontend_port="$E2E_FRONTEND_PORT"
         cd "$PROJECT_DIR/frontend"
-        BACKEND_URL="http://127.0.0.1:$E2E_BACKEND_PORT" NEXT_DISABLE_STANDALONE=1 CI=1 E2E_FRONTEND_PORT="$frontend_port" npm run start -- --hostname 127.0.0.1 --port "$frontend_port" > "$FRONTEND_LOG" 2>&1 &
+        NEXT_DISABLE_STANDALONE=1 BACKEND_URL="$backend_url" NEXT_PUBLIC_API_URL="/api" CI=1 E2E_FRONTEND_PORT="$frontend_port" npm run start -- --hostname 127.0.0.1 --port "$frontend_port" > "$FRONTEND_LOG" 2>&1 &
         FRONTEND_PID=$!
         echo "$FRONTEND_PID" > "$FRONTEND_PID_FILE"
         local frontend_started=0

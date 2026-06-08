@@ -43,6 +43,15 @@ function makeBrokenChoiceResponse() {
   } as Response;
 }
 
+function makeHttpErrorResponse(status: number) {
+  return {
+    ok: false,
+    status,
+    headers: new Headers(),
+    body: null,
+  } as Response;
+}
+
 function setupDefaultState() {
   useGameStore.setState({
     progress: { week: 1 },
@@ -177,6 +186,37 @@ describe('useChoiceHandler', () => {
         )
       ).toBe(false);
       warnSpy.mockRestore();
+    });
+
+    it('recovers through fallback when the choice HTTP response fails before SSE parsing', async () => {
+      useGameStore.setState({
+        storyText: '原始故事',
+        currentEvent: { options: [{ text: 'Option 1' }] },
+      } as never);
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(makeHttpErrorResponse(502))
+        .mockResolvedValueOnce(makeHttpErrorResponse(502))
+        .mockResolvedValueOnce(makeHttpErrorResponse(502))
+        .mockResolvedValueOnce(jsonResponse({
+          story_continuation: '同步恢复后的选择结果',
+          need_weekly_summary: false,
+          game_over: false,
+        }));
+
+      const { result } = renderHook(() => useChoiceHandler(defaultParams));
+
+      await act(async () => {
+        await result.current.handleChoice(0);
+      });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/games/1/choice-sync'),
+        expect.objectContaining({ method: 'POST' })
+      );
+      expect(mockSetters.setStoryText).toHaveBeenCalledWith(
+        expect.stringContaining('同步恢复后的选择结果')
+      );
+      expect(mockSetters.setPhase).toHaveBeenCalledWith('result');
     });
   });
 });

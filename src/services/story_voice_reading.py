@@ -193,6 +193,7 @@ class StoryVoiceReadingService:
             user_id=user_id,
         )
         if ready_asset is not None:
+            ready_storage_path = str(ready_asset.storage_path)
             job = self.repository.create_job(
                 user_id=user_id,
                 context=context,
@@ -204,13 +205,13 @@ class StoryVoiceReadingService:
             return StoryVoiceReadingResponse(
                 job_id=int(job.job_id),
                 status="ready",
-                audio_url=str(ready_asset.storage_path),
+                audio_url=ready_storage_path,
                 asset_id=int(ready_asset.asset_id),
                 duration_ms=int(ready_asset.duration_ms),
                 playback_mode="audio",
                 provider=str(ready_asset.provider),
                 model=str(ready_asset.model),
-                media_type=media_type_for_voice_asset(str(ready_asset.storage_path)),
+                media_type=media_type_for_voice_asset(ready_storage_path),
                 message="Reused cached reading audio",
             )
 
@@ -274,6 +275,16 @@ class StoryVoiceReadingService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
         asset = job.asset
         playback_mode = "audio" if asset is not None else "browser_speech"
+        error_code = (
+            str(job.error_code)
+            if job.error_code is not None
+            else None
+        )
+        message = (
+            str(job.error_message)
+            if job.error_message is not None
+            else ""
+        )
         return VoiceReadingJobResponse(
             job_id=int(job.job_id),
             status=str(job.status),
@@ -284,13 +295,20 @@ class StoryVoiceReadingService:
             provider=str(asset.provider) if asset is not None else "browser",
             model=str(asset.model) if asset is not None else "browser-speech",
             media_type=media_type_for_voice_asset(str(asset.storage_path)) if asset is not None else None,
-            error_code=str(job.error_code) if job.error_code is not None else None,
-            message=str(job.error_message) if job.error_message is not None else "",
+            error_code=error_code,
+            message=message,
         )
 
 
 def media_type_for_voice_asset(storage_path: str) -> str:
-    return "audio/mpeg" if storage_path.lower().endswith(".mp3") else "audio/wav"
+    suffix = storage_path.rsplit("?", 1)[0].rsplit(".", 1)[-1].lower()
+    if suffix in {"mp3", "mpeg"}:
+        return "audio/mpeg"
+    if suffix == "m4a":
+        return "audio/mp4"
+    if suffix == "ogg":
+        return "audio/ogg"
+    return "audio/wav"
 
 
 def story_auto_read_default_enabled() -> bool:

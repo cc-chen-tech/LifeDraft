@@ -101,6 +101,7 @@ export function useChoiceHandler({
 
     let sseSucceeded = false;
     let choiceCompleted = false;
+    let errorHandled = false;
 
     const callbacks = {
       ...createSSECallbacks("handleChoice"),
@@ -135,6 +136,7 @@ export function useChoiceHandler({
           console.warn("[handleChoice] Ignoring late SSE error after complete");
           return;
         }
+        errorHandled = true;
         await handleChoiceError(err, gameId, handlers, {
           optionIndex,
           isRetry,
@@ -154,7 +156,18 @@ export function useChoiceHandler({
       if (choiceCompleted) {
         return;
       }
-      console.warn("[handleChoice] streamChoice rejection already handled by recovery");
+      if (!errorHandled) {
+        errorHandled = true;
+        await handleChoiceError(err, gameId, handlers, {
+          optionIndex,
+          isRetry,
+          sseSucceeded,
+          baseStoryText: choiceBaseStoryRef.current,
+          retryChoice: () => handleChoice(optionIndex, true),
+        }, "handleChoice");
+        return;
+      }
+      console.warn("[handleChoice] streamChoice rejected after onError handling");
     }
   };
 
@@ -171,6 +184,7 @@ export function useChoiceHandler({
 
     let sseSucceeded = false;
     let choiceCompleted = false;
+    let errorHandled = false;
 
     const callbacks = {
       ...createSSECallbacks("handleCustomChoice"),
@@ -205,6 +219,7 @@ export function useChoiceHandler({
           console.warn("[handleCustomChoice] Ignoring late SSE error after complete");
           return;
         }
+        errorHandled = true;
         await handleChoiceError(err, gameId, handlers, {
           customText,
           isRetry: false,
@@ -223,7 +238,17 @@ export function useChoiceHandler({
       if (choiceCompleted) {
         return;
       }
-      console.warn("[handleCustomChoice] streamCustomChoice rejection already handled by recovery");
+      if (!errorHandled) {
+        errorHandled = true;
+        await handleChoiceError(err, gameId, handlers, {
+          customText,
+          isRetry: false,
+          sseSucceeded,
+          baseStoryText: choiceBaseStoryRef.current,
+        }, "handleCustomChoice");
+        return;
+      }
+      console.warn("[handleCustomChoice] streamCustomChoice rejected after onError handling");
     }
   };
 
