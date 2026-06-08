@@ -207,7 +207,9 @@
 - 同一提示区提供“恢复当前进度”按钮，调用现有 `recoverEventGeneration`，不需要刷新页面。
 - 回归测试：`explains long-running generation when partial story text already exists`。
 - 本地验证：`cd frontend && npx jest src/__tests__/pages/PlayPage.test.tsx --runInBand`、`./test.sh preflight` 均通过。
-- 生产状态：待部署 frontend 后做浏览器 smoke。
+- 生产复测：
+  - 补丁 `ddf382a9` 热部署并重建 frontend 后，公网 `/api/health` 和 `/health` 正常。
+  - browser-agent 打开 `https://story101.live/e2e-regression`，页面正常加载；长等待提示的触发条件由 PlayPage 回归测试覆盖。
 
 ### P2：收集系统粒度仍需复查
 
