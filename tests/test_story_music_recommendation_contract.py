@@ -98,7 +98,7 @@ def test_provider_policy_keeps_netease_immediate_and_only_members_enqueue_ai():
     ) == MusicProviderPolicy(use_netease=True, enqueue_ai_generation=True)
 
 
-def test_generated_track_insertion_preserves_current_and_first_upcoming_song():
+def test_generated_track_insertion_preserves_current_and_prioritizes_ai_next():
     playlist = {
         "current_song": {"id": 1, "name": "Current", "source": "netease"},
         "queue": [
@@ -116,8 +116,48 @@ def test_generated_track_insertion_preserves_current_and_first_upcoming_song():
     updated = MusicPlaylistService.insert_generated_track(playlist, generated)
 
     assert updated["current_song"]["id"] == 1
-    assert [item["id"] for item in updated["queue"]] == [2, "asset-9", 3]
-    assert updated["queue"][1]["source"] == "ai_generated"
+    assert [item["id"] for item in updated["queue"]] == ["asset-9", 2, 3]
+    assert updated["queue"][0]["source"] == "ai_generated"
+
+
+def test_generated_track_insertion_makes_ai_music_next_after_current():
+    playlist = {
+        "current_song": {"id": 1, "name": "Current", "source": "netease"},
+        "queue": [
+            {"id": 2, "name": "Weak Netease Next", "source": "netease"},
+            {"id": 3, "name": "Later", "source": "netease"},
+        ],
+    }
+    generated = {
+        "id": "asset-10",
+        "name": "AI 产品经理晨会氛围",
+        "source": "ai_generated",
+        "asset_id": 10,
+    }
+
+    updated = MusicPlaylistService.insert_generated_track(playlist, generated)
+
+    assert updated["current_song"]["id"] == 1
+    assert [item["id"] for item in updated["queue"]] == ["asset-10", 2, 3]
+    assert updated["queue"][0]["source"] == "ai_generated"
+
+
+def test_generated_track_becomes_current_when_playlist_has_no_current_song():
+    playlist = {
+        "current_song": None,
+        "queue": [],
+    }
+    generated = {
+        "id": "asset-empty",
+        "name": "AI 职场专注氛围",
+        "source": "ai_generated",
+        "asset_id": 11,
+    }
+
+    updated = MusicPlaylistService.insert_generated_track(playlist, generated)
+
+    assert updated["current_song"]["id"] == "asset-empty"
+    assert updated["queue"] == []
 
 
 def test_ai_generation_failure_keeps_netease_songs_as_fallback():
@@ -314,8 +354,70 @@ def test_modern_product_workplace_searches_focus_ambience_not_vocal_pop_hits():
 
     assert any(cue in joined_queries for cue in ["产品经理", "科技公司", "用户访谈", "数据分析", "办公室"])
     assert any(cue in joined_queries for cue in ["纯音乐", "氛围", "轻电子", "无歌词"])
+    assert "现代医院" not in joined_queries
+    assert "医疗悬疑" not in joined_queries
     assert not any(term in top_queries for term in blocked_terms)
     assert any(cue in brief.negative_cues for cue in ["说散就散", "匆匆那年", "夜曲", "一直很安静", "歌词"])
+
+
+@pytest.mark.asyncio
+async def test_music_service_derives_workplace_filter_from_story_when_ai_analysis_is_generic(
+    monkeypatch,
+):
+    service = MusicService()
+
+    async def generic_analysis(_story_text, _character_settings=None):
+        return {
+            "mood": "平静",
+            "scene_type": "叙事",
+            "environment": "通用",
+            "pacing": "舒缓",
+            "energy": "中低",
+            "instruments": ["钢琴"],
+            "keywords": ["轻音乐"],
+            "search_queries": ["轻音乐"],
+            "negative_cues": ["人声", "歌词"],
+        }
+
+    class FakeMusicClient:
+        async def search(self, keyword, limit=10):
+            return [
+                Song(
+                    id=9001,
+                    name="都选C-乔杉版",
+                    artists=["乔杉"],
+                    album="缝纫机乐队电影插曲",
+                    duration=180000,
+                ),
+                Song(
+                    id=9002,
+                    name="办公室 轻电子 氛围",
+                    artists=["Focus Lab"],
+                    album="现代职场 纯音乐",
+                    duration=180000,
+                ),
+            ]
+
+        async def get_song_url(self, song_id):
+            return f"https://music.example.com/{song_id}.mp3"
+
+    monkeypatch.setattr(service, "_analyze_story_mood", generic_analysis)
+    service.music_client = FakeMusicClient()  # type: ignore[assignment]
+
+    recommendation = await service.analyze_story_for_music(
+        """
+        周一早晨，产品经理顾晨曦在互联网公司的会议室整理用户数据和白皮书。
+        她要和陆昊然、陈晓雨一起准备 AI 协作工具的里程碑计划。
+        """,
+        character_settings={
+            "world_description": "2020年代中国互联网公司，AI协作工具创业项目",
+        },
+    )
+
+    song_names = [song.name for song in recommendation.songs]
+    assert "办公室 轻电子 氛围" in song_names
+    assert "都选C-乔杉版" not in song_names
+    assert any("产品经理" in query or "办公室" in query for query in recommendation.keywords)
 
 
 def test_music_result_ranker_prefers_brief_matches_and_penalizes_negative_cues():

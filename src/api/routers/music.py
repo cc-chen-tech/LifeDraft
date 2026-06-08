@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from src.api.deps import get_current_user_optional
@@ -132,6 +132,14 @@ class MusicGenerationResponse(BaseModel):
     """Generated music result for frontend queue insertion."""
 
     track: Dict[str, Any]
+    insert_policy: str
+
+
+class MusicGenerationEnqueueResponse(BaseModel):
+    """Accepted background music generation job."""
+
+    status: str
+    game_id: int
     insert_policy: str
 
 
@@ -273,6 +281,69 @@ async def generate_music(request: MusicGenerationRequest):
         raise HTTPException(status_code=503, detail=_music_generation_failure_detail(exc))
     finally:
         db.close()
+
+
+def _generate_music_in_background(game_id: int, story_text: str, analysis: Dict[str, Any]) -> None:
+    from src.services.minimax_music_generation import StoryMusicGenerationService
+
+    db = SessionLocal()
+    try:
+        track = StoryMusicGenerationService().generate_ready_track(
+            db=db,
+            game_id=game_id,
+            story_text=story_text,
+            analysis=analysis,
+        )
+        get_music_playlist_service().insert_generated_track_for_game(
+            db=db,
+            game_id=game_id,
+            generated_track=track,
+        )
+        logger.info(
+            "[MusicAPI] Background generated music inserted: game_id=%s track=%s",
+            game_id,
+            track.get("id"),
+        )
+    except Exception as exc:
+        logger.warning(
+            "[MusicAPI] Background generated music unavailable for game_id=%s: %s",
+            game_id,
+            _music_generation_failure_detail(exc),
+        )
+    finally:
+        db.close()
+
+
+@router.post(
+    "/music/generate-async",
+    response_model=MusicGenerationEnqueueResponse,
+    status_code=202,
+)
+async def enqueue_music_generation(
+    request: MusicGenerationRequest,
+    background_tasks: BackgroundTasks,
+):
+    """Start AI music generation in the background and return immediately."""
+    config = build_minimax_config()
+    if not config.music_generation_enabled:
+        raise HTTPException(status_code=503, detail="AI music generation is disabled")
+    if not config.api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="MiniMax music generation requires MINIMAX_API_KEY",
+        )
+
+    background_tasks.add_task(
+        _generate_music_in_background,
+        request.game_id,
+        request.story_text,
+        dict(request.analysis),
+    )
+    return MusicGenerationEnqueueResponse(
+        status="queued",
+        game_id=request.game_id,
+        insert_policy="future_queue",
+    )
 
 
 @router.get("/music/song-url")

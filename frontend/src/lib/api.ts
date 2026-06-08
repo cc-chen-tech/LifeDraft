@@ -314,6 +314,8 @@ export const api = {
         story_continuation: string;
         summary: string;
         effects_applied: Record<string, number>;
+        effects_requested?: Record<string, number>;
+        resource_warnings?: Array<Record<string, unknown>>;
         need_weekly_summary: boolean;
         weekly_summary?: string;
         game_over?: boolean;
@@ -326,6 +328,8 @@ export const api = {
         story_continuation: string;
         summary: string;
         effects_applied: Record<string, number>;
+        effects_requested?: Record<string, number>;
+        resource_warnings?: Array<Record<string, unknown>>;
         need_weekly_summary: boolean;
         weekly_summary?: string;
         game_over?: boolean;

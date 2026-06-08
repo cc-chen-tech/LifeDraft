@@ -100,6 +100,99 @@ def test_minimax_tts_request_payload_uses_story_text_voice_speed_and_model(tmp_p
     assert "1.15" in encoded
 
 
+def test_minimax_tts_maps_all_selectable_voice_colors_to_provider_voice_ids(
+    tmp_path: Path,
+) -> None:
+    from src.services.minimax_config import MiniMaxConfig
+    from src.services.minimax_story_tts_provider import MiniMaxTTSProvider
+
+    provider = MiniMaxTTSProvider(
+        config=MiniMaxConfig.from_env(
+            env={"MINIMAX_API_KEY": "test-key", "MINIMAX_TTS_MODEL": "speech-02-turbo"},
+            voice_asset_dir=tmp_path / "voice",
+            music_asset_dir=tmp_path / "music",
+        )
+    )
+
+    expected = {
+        "warm_female": "female-shaonv",
+        "calm_male": "male-qn-qingse",
+        "clear_neutral": "female-yujie",
+    }
+
+    payloads = {
+        voice_id: provider.build_async_create_payload(
+            text="这一段用于验证每个可选声音都进入 MiniMax 后端。",
+            voice_id=voice_id,
+            speed=1.0,
+        )
+        for voice_id in expected
+    }
+
+    for voice_id, minimax_voice_id in expected.items():
+        assert payloads[voice_id]["voice_setting"]["voice_id"] == minimax_voice_id
+        assert voice_id not in json.dumps(payloads[voice_id], ensure_ascii=False)
+
+    mapped_voice_ids = {
+        payload["voice_setting"]["voice_id"] for payload in payloads.values()
+    }
+    assert len(mapped_voice_ids) == 3
+
+
+def test_minimax_tts_generates_distinct_backend_audio_assets_for_all_selectable_voices(
+    tmp_path: Path,
+) -> None:
+    from src.services.minimax_config import MiniMaxConfig
+    from src.services.minimax_story_tts_provider import MiniMaxTTSProvider
+
+    class CapturingClient:
+        def __init__(self) -> None:
+            self.payloads: list[dict[str, Any]] = []
+
+        def synthesize_to_file(self, payload: dict[str, Any], output_path: Path) -> None:
+            self.payloads.append(payload)
+            output_path.write_bytes(b"ID3\x04\x00\x00\x00\x00\x00\x00")
+
+    client = CapturingClient()
+    provider = MiniMaxTTSProvider(
+        config=MiniMaxConfig.from_env(
+            env={"MINIMAX_API_KEY": "test-key", "MINIMAX_TTS_MODEL": "speech-02-turbo"},
+            voice_asset_dir=tmp_path / "voice",
+            music_asset_dir=tmp_path / "music",
+        ),
+        client=client,  # type: ignore[arg-type]
+    )
+
+    voice_ids = ["warm_female", "calm_male", "clear_neutral"]
+    results = [
+        provider.synthesize(
+            {
+                "text_hash": f"story-hash-{voice_id}",
+                "text": "故事生成完毕后，应使用所选 MiniMax 声音自动朗读。",
+            },
+            voice_id,
+            1.0,
+        )
+        for voice_id in voice_ids
+    ]
+
+    assert [result.playback_mode for result in results] == ["audio", "audio", "audio"]
+    assert [result.provider for result in results] == ["minimax", "minimax", "minimax"]
+    assert [result.media_type for result in results] == ["audio/mpeg", "audio/mpeg", "audio/mpeg"]
+    assert all(
+        result.storage_path and voice_id in result.storage_path
+        for result, voice_id in zip(results, voice_ids)
+    )
+    for result in results:
+        file_name = str(result.storage_path).rsplit("/", 1)[-1]
+        assert (tmp_path / "voice" / file_name).read_bytes().startswith(b"ID3")
+
+    mapped_payload_voice_ids = {
+        payload["voice_setting"]["voice_id"] for payload in client.payloads
+    }
+    assert len(mapped_payload_voice_ids) == 3
+
+
 def test_minimax_tts_over_limit_story_text_falls_back_without_audio(tmp_path: Path) -> None:
     from src.services.minimax_config import MiniMaxConfig
     from src.services.minimax_story_tts_provider import MiniMaxTTSProvider
@@ -662,9 +755,97 @@ def test_music_generate_api_persists_generated_track_into_future_playlist_queue(
     assert persisted.status_code == 200
     playlist = persisted.json()
     assert playlist["current_song"]["id"] == 101
-    assert [item["id"] for item in playlist["queue"]] == [102, track["id"], 103]
-    assert playlist["queue"][1]["source"] == "ai_generated"
-    assert playlist["queue"][1]["url"].startswith("/api/music/generated/")
+    assert [item["id"] for item in playlist["queue"]] == [track["id"], 102, 103]
+    assert playlist["queue"][0]["source"] == "ai_generated"
+    assert playlist["queue"][0]["url"].startswith("/api/music/generated/")
+
+
+def test_music_generate_async_api_returns_quickly_and_persists_future_playlist_track(
+    tmp_path: Path,
+) -> None:
+    from src.api.routers.music import router
+
+    init_db()
+    session = SessionLocal()
+    try:
+        game = Game(language="zh", initial_state={"name": "MiniMax Async Playlist"})
+        session.add(game)
+        session.commit()
+        session.refresh(game)
+        game_id = int(game.game_id)
+    finally:
+        session.close()
+
+    previous_env = {
+        name: os.environ.get(name)
+        for name in ["MINIMAX_API_KEY", "MINIMAX_E2E_LOCAL_AUDIO", "STORY_MUSIC_ASSET_DIR"]
+    }
+    os.environ["MINIMAX_API_KEY"] = "test-key"
+    os.environ["MINIMAX_E2E_LOCAL_AUDIO"] = "1"
+    os.environ["STORY_MUSIC_ASSET_DIR"] = str(tmp_path / "music")
+    try:
+        app = FastAPI()
+        app.include_router(router, prefix="/api")
+        client = TestClient(app)
+
+        playlist_response = client.put(
+            f"/api/music/playlist/{game_id}",
+            json={
+                "songs": [
+                    {
+                        "id": 201,
+                        "name": "网易云 当前曲",
+                        "artists": ["N"],
+                        "album": "A",
+                        "duration": 1000,
+                        "url": "https://example.com/current.mp3",
+                        "source": "netease",
+                    },
+                    {
+                        "id": 202,
+                        "name": "网易云 下一曲",
+                        "artists": ["N"],
+                        "album": "A",
+                        "duration": 1000,
+                        "url": "https://example.com/next.mp3",
+                        "source": "netease",
+                    },
+                ]
+            },
+        )
+        assert playlist_response.status_code == 200
+
+        response = client.post(
+            "/api/music/generate-async",
+            json={
+                "game_id": game_id,
+                "story_text": "雨夜码头的旧账册被风吹开，主角在汽笛声里追向江边。",
+                "analysis": {
+                    "mood": "紧张",
+                    "scene_type": "雨夜追逐",
+                    "environment": "民国码头",
+                },
+            },
+        )
+        persisted = client.get(f"/api/music/playlist/{game_id}")
+    finally:
+        for name, value in previous_env.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+    assert response.status_code == 202
+    assert response.json() == {
+        "status": "queued",
+        "game_id": game_id,
+        "insert_policy": "future_queue",
+    }
+    assert persisted.status_code == 200
+    playlist = persisted.json()
+    assert playlist["current_song"]["id"] == 201
+    assert [item["source"] for item in playlist["queue"]] == ["ai_generated", "netease"]
+    assert playlist["queue"][0]["url"].startswith("/api/music/generated/")
 
 
 def test_music_generate_api_reports_unexpected_generation_failure_without_global_500(

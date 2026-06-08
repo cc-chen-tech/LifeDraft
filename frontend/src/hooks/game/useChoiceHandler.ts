@@ -100,6 +100,7 @@ export function useChoiceHandler({
     abortRef.current = new AbortController();
 
     let sseSucceeded = false;
+    let choiceCompleted = false;
     let errorHandled = false;
 
     const callbacks = {
@@ -125,7 +126,16 @@ export function useChoiceHandler({
         }
         setProcessing(true, status.phase);
       },
+      onComplete: (data: Record<string, unknown>) => {
+        sseSucceeded = true;
+        choiceCompleted = true;
+        handleChoiceComplete(data, handlers);
+      },
       onError: async (err: unknown) => {
+        if (choiceCompleted) {
+          console.warn("[handleChoice] Ignoring late SSE error after complete");
+          return;
+        }
         errorHandled = true;
         await handleChoiceError(err, gameId, handlers, {
           optionIndex,
@@ -143,6 +153,9 @@ export function useChoiceHandler({
       if (abortRef.current?.signal.aborted) {
         return;
       }
+      if (choiceCompleted) {
+        return;
+      }
       if (!errorHandled) {
         errorHandled = true;
         await handleChoiceError(err, gameId, handlers, {
@@ -154,7 +167,7 @@ export function useChoiceHandler({
         }, "handleChoice");
         return;
       }
-      console.warn("[handleChoice] streamChoice rejected after onError handling:", err);
+      console.warn("[handleChoice] streamChoice rejected after onError handling");
     }
   };
 
@@ -170,6 +183,7 @@ export function useChoiceHandler({
     abortRef.current = new AbortController();
 
     let sseSucceeded = false;
+    let choiceCompleted = false;
     let errorHandled = false;
 
     const callbacks = {
@@ -195,7 +209,16 @@ export function useChoiceHandler({
         }
         setProcessing(true, status.phase);
       },
+      onComplete: (data: Record<string, unknown>) => {
+        sseSucceeded = true;
+        choiceCompleted = true;
+        handleChoiceComplete(data, handlers);
+      },
       onError: async (err: unknown) => {
+        if (choiceCompleted) {
+          console.warn("[handleCustomChoice] Ignoring late SSE error after complete");
+          return;
+        }
         errorHandled = true;
         await handleChoiceError(err, gameId, handlers, {
           customText,
@@ -212,6 +235,9 @@ export function useChoiceHandler({
       if (abortRef.current?.signal.aborted) {
         return;
       }
+      if (choiceCompleted) {
+        return;
+      }
       if (!errorHandled) {
         errorHandled = true;
         await handleChoiceError(err, gameId, handlers, {
@@ -222,7 +248,7 @@ export function useChoiceHandler({
         }, "handleCustomChoice");
         return;
       }
-      console.warn("[handleCustomChoice] streamCustomChoice rejected after onError handling:", err);
+      console.warn("[handleCustomChoice] streamCustomChoice rejected after onError handling");
     }
   };
 

@@ -10,6 +10,18 @@ from src.game.game_loop import GameLoop
 logger = logging.getLogger(__name__)
 
 
+def _initial_wealth_from_settings(character_settings: Dict[str, Any]) -> int:
+    wealth_setting = character_settings.get("wealth")
+    if not isinstance(wealth_setting, dict):
+        return settings.INITIAL_WEALTH
+
+    wealth = wealth_setting.get("wealth")
+    if not isinstance(wealth, (int, float)):
+        return settings.INITIAL_WEALTH
+
+    return max(0, min(1_000_000, int(wealth)))
+
+
 class GameInitializer:
     """Handles initialization of new game sessions from character settings."""
 
@@ -71,7 +83,7 @@ class GameInitializer:
             "energy": settings.INITIAL_ENERGY,
             "mood": settings.INITIAL_MOOD,
             "knowledge": settings.INITIAL_KNOWLEDGE,
-            "wealth": settings.INITIAL_WEALTH,
+            "wealth": _initial_wealth_from_settings(character_settings),
             "relationships": {},
             "characters": {},
             "decision_history": [],

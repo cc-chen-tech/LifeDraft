@@ -52,6 +52,9 @@ data/voice_assets/
 data/vector_store/
 !data/presets/
 
+# Runtime TLS certificates
+nginx/ssl/
+
 # Logs
 *.log
 

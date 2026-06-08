@@ -183,6 +183,46 @@ class TestOpeningStoryAPIContract:
             # 验证最终仍有 complete 事件
             assert "complete" in body, "慢速生成最终应有 complete 事件"
 
+    def test_opening_story_timeout_does_not_emit_empty_complete(self, mock_auth):
+        """开场故事超时后不能再发送 full_story 为空的 complete 事件。"""
+        with patch("src.api.routers.character.CharacterCreator") as mock_creator_cls:
+
+            def empty_stream():
+                return
+                yield  # pragma: no cover
+
+            async def immediate_timeout(awaitable, *args, **kwargs):
+                if hasattr(awaitable, "close"):
+                    awaitable.close()
+                raise TimeoutError()
+
+            mock_creator = MagicMock()
+            mock_creator.generate_opening_story.return_value = empty_stream()
+            mock_creator_cls.return_value = mock_creator
+
+            from src.api.routers import character as char_module
+
+            with char_module._cache_lock:
+                char_module._opening_story_cache.clear()
+
+            with patch("src.api.routers.character.asyncio.wait_for", immediate_timeout):
+                response = client.post(
+                    "/api/character/opening-story",
+                    json={
+                        "character_settings": {"era": "现代"},
+                        "player_name": "TestTimeoutNoEmptyComplete",
+                        "life_vision": "探索世界",
+                        "language": "zh",
+                    },
+                    headers={"Authorization": "Bearer test_token"},
+                )
+
+            assert response.status_code == 200
+            body = response.text
+            assert "Generation timeout" in body
+            assert '"full_story": ""' not in body
+            assert "event: complete" not in body
+
     def test_opening_story_cache_hit(self, mock_auth):
         """缓存命中时应直接返回缓存结果，不重新生成"""
         from src.api.routers import character as char_module

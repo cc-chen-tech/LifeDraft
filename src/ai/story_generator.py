@@ -16,6 +16,7 @@ from config.prompts._helpers import extract_overused_phrases
 from src.ai.client import AIClient
 from src.ai.harness.quality_level import PROFILES, QualityLevel
 from src.ai.models import EventOption, GameEvent
+from src.ai.option_generator import OptionGenerator
 from src.ai.system_prompts import get_system_prompt
 from src.ai.text_quality import normalize_generated_story
 from src.ai.vector_store import get_vector_store, is_vector_search_enabled
@@ -190,6 +191,23 @@ class StoryGenerator:
                 logger.debug(f"Story preview (first 200 chars): {story_text[:200]}...")
                 logger.debug(f"Story preview (last 200 chars): ...{story_text[-200:]}")
 
+                from config.prompts._helpers import _collect_available_people
+                from src.ai.quick_validator import quick_validate_story
+
+                available_people_names = [
+                    p.get("name", "")
+                    for p in _collect_available_people(character_settings)
+                    if p.get("name")
+                ]
+                quick_result = quick_validate_story(
+                    story_text=story_text,
+                    character_settings=character_settings,
+                    available_people=available_people_names,
+                    language=language,
+                )
+                if not quick_result.passed:
+                    raise ValueError("; ".join(quick_result.issues))
+
                 # Step 2: Generate options based on the story
                 if option_generator is None:
                     raise ValueError("option_generator is required")
@@ -217,7 +235,7 @@ class StoryGenerator:
                 option_generator.ensure_options_consistency(
                     event=event,
                     story_description=story_text,
-                    available_people=None,
+                    available_people=available_people_names,
                     language=language,
                 )
 
@@ -486,7 +504,7 @@ class StoryGenerator:
         except Exception as e:
             logger.error(f"Failed to generate round event: {e}")
             # ★ 如果故事已生成但后续步骤（如选项生成）失败，保留真实故事而非使用 fallback
-            if story_text and len(story_text) > 50:
+            if story_text and len(story_text) > 20:
                 logger.info(
                     f"Using already-generated story ({len(story_text)} chars) with fallback options"
                 )
@@ -500,20 +518,10 @@ class StoryGenerator:
                 )
             return GameEvent(
                 event_description=fallback_desc,
-                options=[
-                    EventOption(
-                        text=(
-                            "回应眼前的请求" if language == "zh" else "Answer the immediate request"
-                        ),
-                        effects={"energy": 0, "mood": 0, "knowledge": 0, "wealth": 0},
-                    ),
-                    EventOption(
-                        text=(
-                            "先核对现场线索" if language == "zh" else "Check the immediate clues"
-                        ),
-                        effects={"energy": -5, "mood": 5, "knowledge": 5, "wealth": 0},
-                    ),
-                ],
+                options=OptionGenerator.build_contextual_fallback_options(
+                    fallback_desc,
+                    language=language,
+                ),
             )
 
     # -------------------- Internal --------------------

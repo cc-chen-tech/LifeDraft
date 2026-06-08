@@ -2,9 +2,12 @@
  * Tests for PlayPage component
  */
 import React from 'react';
+import { webcrypto } from 'node:crypto';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import PlayPage from '@/app/play/page';
 import { useMusicStore } from '@/stores/useMusicStore';
+import { useStoryVoiceStore } from '@/stores/useStoryVoiceStore';
+import { jsonResponse } from '@/__tests__/helpers/fetch';
 
 // Mock usePlayGame hook
 const mockUsePlayGame = {
@@ -63,7 +66,44 @@ jest.mock('@/hooks/usePlayGame', () => ({
 describe('PlayPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    Object.defineProperty(globalThis, 'crypto', {
+      value: webcrypto,
+      configurable: true,
+    });
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.includes('/voice-reading/settings')) {
+        return Promise.resolve(jsonResponse({
+          auto_read_enabled: false,
+          selected_voice_color: 'warm_female',
+        }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    jest.spyOn(window.HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+    jest.spyOn(window.HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
     useMusicStore.setState({ activeStoryText: null, activeGameId: null });
+    useStoryVoiceStore.setState({
+      readingState: 'idle',
+      currentSource: '',
+      currentContextLabel: '',
+      currentAudioUrl: '',
+      currentJobId: null,
+      currentProvider: '',
+      playbackMode: 'none',
+      spokenTextLength: 0,
+      currentSpeechText: '',
+      errorMessage: '',
+      queueText: '',
+      autoReadEnabled: false,
+      selectedVoiceId: 'warm_female',
+      musicDuckState: 'idle',
+      musicWasPlaying: false,
+      userChangedMusic: false,
+    });
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   describe('Music handoff', () => {
@@ -169,6 +209,20 @@ describe('PlayPage', () => {
       expect(screen.getByText('This is the round summary')).toBeInTheDocument();
     });
 
+    it('renders resource warning details in the result summary', () => {
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'result',
+        roundSummary: '本轮总结\n\n**资源提示**\n- 精力不足，实际变化为 -5',
+        options: [],
+      });
+
+      render(<PlayPage />);
+      expect(screen.getByText(/资源提示/)).toBeInTheDocument();
+      expect(screen.getByText(/精力不足，实际变化为 -5/)).toBeInTheDocument();
+    });
+
     it('calls handleContinueToNextRound on button click', () => {
       const mockContinue = jest.fn();
       const originalHook = jest.requireMock('@/hooks/usePlayGame');
@@ -183,6 +237,50 @@ describe('PlayPage', () => {
       const button = screen.getByRole('button', { name: /进入|确认/ });
       fireEvent.click(button);
       expect(mockContinue).toHaveBeenCalled();
+    });
+
+    it('auto-reads the completed choice result story', async () => {
+      useStoryVoiceStore.setState({ autoReadEnabled: true });
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url.includes('/voice-reading/settings')) {
+          return Promise.resolve(jsonResponse({
+            auto_read_enabled: true,
+            selected_voice_color: 'warm_female',
+          }));
+        }
+        if (url.includes('/voice-reading/read')) {
+          return Promise.resolve(jsonResponse({
+            job_id: 9,
+            status: 'ready',
+            audio_url: '/api/voice-reading/audio/choice-result.mp3',
+            playback_mode: 'audio',
+            provider: 'minimax',
+            media_type: 'audio/mpeg',
+          }));
+        }
+        return Promise.resolve(jsonResponse({}));
+      });
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'result',
+        options: [],
+        storyText: '主角做出选择后的完整续写。',
+        displayText: '主角做出选择后的完整续写。',
+      });
+
+      render(<PlayPage />);
+
+      await waitFor(() => {
+        expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
+          String(url).includes('/voice-reading/read')
+        )).toBe(true);
+      });
+      const readCall = (global.fetch as jest.Mock).mock.calls.find(([url]) =>
+        String(url).includes('/voice-reading/read')
+      );
+      const payload = JSON.parse(String(readCall?.[1]?.body ?? '{}'));
+      expect(payload.context.text).toBe('主角做出选择后的完整续写。');
     });
   });
 
@@ -422,6 +520,31 @@ describe('PlayPage', () => {
       // isStreaming=true during generating — wait for animation
       await waitFor(() => {
         expect(screen.getByText('Some story')).toBeInTheDocument();
+      });
+    });
+
+    it('explains long-running generation when partial story text already exists', async () => {
+      const mockRecoverEventGeneration = jest.fn();
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'generating',
+        options: [],
+        storyText: '部分故事正文已经生成，但选项还在校验。',
+        displayText: '部分故事正文已经生成，但选项还在校验。',
+        elapsedSeconds: 75,
+        recoverEventGeneration: mockRecoverEventGeneration,
+        getLoadingMessage: () => '故事逻辑校验中，正在优化...',
+      });
+
+      render(<PlayPage />);
+
+      expect(screen.getByText(/已等待 1分15秒/)).toBeInTheDocument();
+      expect(screen.getByText(/正在校验故事逻辑和生成选项/)).toBeInTheDocument();
+      const recoveryButton = screen.getByRole('button', { name: '恢复当前进度' });
+      fireEvent.click(recoveryButton);
+      await waitFor(() => {
+        expect(mockRecoverEventGeneration).toHaveBeenCalledTimes(1);
       });
     });
   });

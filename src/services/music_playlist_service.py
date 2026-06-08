@@ -57,14 +57,16 @@ class PlaylistQueuePolicy:
         playlist: Dict[str, Any],
         generated_track: SongDict,
     ) -> Dict[str, Any]:
-        """Insert generated music after the first stable upcoming item."""
+        """Insert generated music as the next upcoming item without interrupting current."""
         queue: List[SongDict] = list(playlist.get("queue") or [])
         current_song = playlist.get("current_song")
         generated_id = self._song_key(generated_track)
 
         queue = [item for item in queue if self._song_key(item) != generated_id]
-        insert_at = 1 if queue else 0
-        queue.insert(insert_at, generated_track)
+        if current_song is None:
+            current_song = generated_track
+        else:
+            queue.insert(0, generated_track)
 
         updated = dict(playlist)
         updated["current_song"] = current_song

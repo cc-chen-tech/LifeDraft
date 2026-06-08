@@ -15,6 +15,51 @@ from typing import Any, Dict, List, Optional
 from src.ai.prompt_sanitizer import sanitize_life_vision, sanitize_player_name
 
 
+def _coerce_month(value: Any) -> int:
+    try:
+        month = int(value)
+    except (TypeError, ValueError):
+        return 1
+    if 1 <= month <= 12:
+        return month
+    return 1
+
+
+def _season_for_month(month: int) -> str:
+    if 3 <= month <= 5:
+        return "春"
+    if 6 <= month <= 8:
+        return "夏"
+    if 9 <= month <= 11:
+        return "秋"
+    return "冬"
+
+
+def _opening_time_anchor(era: Dict[str, Any], language: str) -> str:
+    year = era.get("year", 2024) or 2024
+    month = _coerce_month(era.get("start_month") or era.get("month"))
+    season = _season_for_month(month)
+    if language == "zh":
+        conflict_seasons = "、".join(f"{s}季" for s in ("春", "夏", "秋", "冬") if s != season)
+        return (
+            f"{year}年{month}月第1周（{season}季）。"
+            f"开场故事和主游戏第1周必须从这个时间继续，天气、季节、日期不得冲突；"
+            f"禁止写成{conflict_seasons}或其他月份。"
+            + ("特别禁止写成夏季。" if season != "夏" else "")
+        )
+
+    season_en = {"春": "Spring", "夏": "Summer", "秋": "Autumn", "冬": "Winter"}[season]
+    conflict_seasons_en = ", ".join(
+        s for s in ("Spring", "Summer", "Autumn", "Winter") if s != season_en
+    )
+    return (
+        f"Year {year}, Month {month}, Week 1 ({season_en}). "
+        "The opening story and gameplay Week 1 must continue from this exact time; "
+        f"weather, season, and date must not conflict. Do not write it as {conflict_seasons_en} "
+        "or another month."
+    )
+
+
 def get_character_profile_synthesis_prompt(
     character_name: str,
     character_settings_traits: List[str],
@@ -177,6 +222,9 @@ def get_character_setting_prompt(
             "era": f"""{base_context}
 {'【用户明确要求：' + feedback + '，必须严格按照用户要求生成时代背景】' if feedback else '请生成一个时代背景设定（公元年份）。考虑玩家的人生愿景和姓名的文化背景，选择一个合适的时代。'}
 {'注意：用户反馈优先于人生愿景，必须遵循用户的具体要求。' if feedback else ''}
+硬性规则：
+- 如果人生愿景中明确出现年份、年代、国家/地区、行业或职业（例如“2020年代中国互联网”“产品经理”“AI协作工具”），这些信息是硬约束，时代背景必须直接匹配，不得改写成古代、奇幻或无关时代。
+- 如果人生愿景明确是现代/当代职业线，year 必须是现代公元年份，era_description 和 world_context 必须体现该行业与职业环境。
 返回JSON格式：
 {{
     "year": <具体的公元年份数字>,
@@ -773,6 +821,7 @@ def get_opening_story_prompt(
             key_people_lines.append(f"- {name}" + (f"（{detail}）" if detail else ""))
 
     key_people_text = "\n".join(key_people_lines) if key_people_lines else "无"
+    opening_time_anchor = _opening_time_anchor(era if isinstance(era, dict) else {}, language)
 
     if language == "zh":
         return f"""请基于以下角色设定，生成一个生动的开场故事（300-400字）。
@@ -795,6 +844,9 @@ def get_opening_story_prompt(
 【时代背景】
 {era.get('era_description', '')}，{era.get('year', '')}年
 {era.get('world_context', '')}
+
+【开场时间硬约束】
+{opening_time_anchor}
 
 【基本信息】
 年龄：{age_info.get('age', '')}岁
@@ -853,6 +905,9 @@ Life Vision: {sanitized_life_vision}
 【Era】
 {era.get('era_description', '')}, Year {era.get('year', '')}
 {era.get('world_context', '')}
+
+[Opening Time Hard Constraint]
+{opening_time_anchor}
 
 【Basic Info】
 Age: {age_info.get('age', '')}

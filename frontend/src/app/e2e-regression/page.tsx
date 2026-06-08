@@ -28,6 +28,7 @@ export default function E2ERegressionPage() {
   >("empty");
   const [normalClickChoice, setNormalClickChoice] = useState("none");
   const [collectionRefreshState, setCollectionRefreshState] = useState<"idle" | "refreshing">("idle");
+  const [fixtureGameId, setFixtureGameId] = useState(101);
   const [musicQueueFixture, setMusicQueueFixture] = useState<{
     current: { title: string; source: string };
     queue: string[];
@@ -41,7 +42,11 @@ export default function E2ERegressionPage() {
   const autoReadReady = streamedStory.includes("苏小二按住账册");
 
   useEffect(() => {
-    setActiveStoryText("雨夜码头的旧账册被风吹开。");
+    const configuredGameId = Number(new URLSearchParams(window.location.search).get("gameId"));
+    if (Number.isFinite(configuredGameId) && configuredGameId > 0) {
+      setFixtureGameId(configuredGameId);
+    }
+    setActiveStoryText(null);
     setActiveGameId(null);
     setCurrentSong({
       id: 9101,
@@ -271,7 +276,7 @@ export default function E2ERegressionPage() {
 
       <section aria-label="音乐回归夹具" className="space-y-3">
         <MusicPlayer
-          gameId={101}
+          gameId={fixtureGameId}
           storyText="雨夜的码头上，主角刚发现旧账册里藏着失踪亲人的线索。远处传来轮船汽笛声，空气紧张而潮湿。"
           autoFetchRecommendation={false}
         />
@@ -299,7 +304,7 @@ export default function E2ERegressionPage() {
             ]);
             void generateAiMusicForStory(
               "雨夜码头的旧账册被风吹开，主角刚发现失踪亲人的线索。",
-              101,
+              fixtureGameId,
               {
                 mood: "紧张",
                 scene_type: "雨夜追逐",

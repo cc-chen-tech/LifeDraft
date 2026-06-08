@@ -450,6 +450,20 @@ def _persist_generated_event_state(game_loop, game_id: int) -> None:
         logger.exception(f"Auto-save unexpected error after event generation: {e}")
 
 
+def _persist_choice_state(game_loop, game_id: int) -> None:
+    """Persist choice result state immediately after worker choice processing returns."""
+    try:
+        db = get_db()
+        state = game_loop.get_state()
+        if state:
+            db.save_game_progress(game_id, state)
+            logger.info(f"Auto-saved game state after choice: game_id={game_id}")
+    except (OSError, IOError) as e:
+        logger.warning(f"Auto-save IO error after choice: {e}")
+    except Exception as e:
+        logger.exception(f"Auto-save unexpected error after choice: {e}")
+
+
 async def stream_round_event(
     game_loop, game_id: int, session=None, last_event_id: Optional[int] = None
 ):
@@ -679,6 +693,8 @@ async def stream_choice(
                     stream_callback=stream_cb,
                     status_callback=status_cb,
                 )
+            if result_holder[0] is not None:
+                _persist_choice_state(game_loop, game_id)
         except (ValueError, TypeError, KeyError) as e:
             logger.warning(f"[stream_choice] Data error in run(): {e}")
             error_holder[0] = e
@@ -751,18 +767,6 @@ async def stream_choice(
     result = result_holder[0]
     if result is not None:
         yield make_sse_event("complete", result)
-
-        # Auto-save after choice to persist current_event_data=None
-        try:
-            db = get_db()
-            state = game_loop.get_state()
-            if state:
-                db.save_game_progress(game_id, state)
-                logger.info(f"Auto-saved game state after choice: game_id={game_id}")
-        except (OSError, IOError) as e:
-            logger.warning(f"Auto-save IO error after choice: {e}")
-        except Exception as e:
-            logger.exception(f"Auto-save unexpected error after choice: {e}")
     else:
         yield make_sse_event("error", {"error": "No result from choice processing"})
 

@@ -50,7 +50,7 @@ describe('ChatBar', () => {
       expect(expandButton).toBeInTheDocument();
       expect(screen.getByRole('button', { name: '重写' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: '改写' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: '总结' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '人生总结' })).toBeInTheDocument();
     });
 
     it('does not render when gameId is null', () => {
@@ -114,7 +114,7 @@ describe('ChatBar', () => {
         />
       );
 
-      await user.click(screen.getByRole('button', { name: '总结' }));
+      await user.click(screen.getByRole('button', { name: '人生总结' }));
 
       expect(await screen.findByTestId('chat-bar-panel')).toBeInTheDocument();
       expect(mockOnRegenerate).not.toHaveBeenCalled();
@@ -154,7 +154,7 @@ describe('ChatBar', () => {
       await user.click(screen.getByLabelText('打开聊天'));
       await waitFor(() => {
         expect(screen.getByText('重新生成')).toBeInTheDocument();
-        expect(screen.getByText('总结')).toBeInTheDocument();
+        expect(screen.getByText('人生总结')).toBeInTheDocument();
       });
     });
 
@@ -231,7 +231,7 @@ describe('ChatBar', () => {
       }));
 
       const user = userEvent.setup();
-      await user.click(screen.getByText('总结'));
+      await user.click(screen.getByText('人生总结'));
       await waitFor(() => {
         const calls = (global.fetch as jest.Mock).mock.calls;
         const summaryCall = calls.find((c: unknown[]) => (c[0] as string).includes('/summary'));
@@ -449,16 +449,40 @@ describe('ChatBar', () => {
       );
       await user.click(screen.getByLabelText('打开聊天'));
       await waitFor(() => {
-        expect(screen.getByText('总结')).toBeInTheDocument();
+        expect(screen.getByText('人生总结')).toBeInTheDocument();
       });
-      await user.click(screen.getByText('总结'));
+      await user.click(screen.getByText('人生总结'));
       await waitFor(() => {
-        expect(screen.getByText('请总结我的人生故事')).toBeInTheDocument();
-      });
-      await waitFor(() => {
-        expect(screen.getByText(/人生总结/)).toBeInTheDocument();
         expect(screen.getByText(/Test summary content/)).toBeInTheDocument();
       });
+      expect(screen.getAllByText(/人生总结/).length).toBeGreaterThan(0);
+      expect(screen.queryByText('请总结我的人生故事')).not.toBeInTheDocument();
+    });
+
+    it('presents summary as a dedicated action instead of a fake chat prompt', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        summary_text: 'Dedicated summary content',
+        start_week: 1,
+        end_week: 4,
+      }));
+
+      const user = userEvent.setup();
+      render(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+        />
+      );
+
+      await user.click(screen.getByRole('button', { name: '人生总结' }));
+
+      expect(await screen.findByTestId('chat-bar-panel')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByText(/Dedicated summary content/)).toBeInTheDocument();
+      });
+      expect(screen.getAllByText(/人生总结/).length).toBeGreaterThan(0);
+      expect(screen.queryByText('请总结我的人生故事')).not.toBeInTheDocument();
     });
   });
 });

@@ -53,11 +53,27 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Regression coverage: `tests/test_music_pool_cache_integration.py::TestGetOrBuildPool::test_supplement_pool_filters_workplace_candidates_without_score_metadata`
 - Choice recovery now handles the second transient failure in the fallback chain. Production browser probing showed `/choice` could fail with `ERR_INCOMPLETE_CHUNKED_ENCODING`, then `/choice-sync` could also fail with a transient network/empty-response error even though the backend had already saved the continuation. The frontend now syncs player state, restores the latest `round_history` continuation, and enters `result` instead of staying stuck in `choosing` or surfacing an unhandled stream rejection.
   - Regression coverage: `frontend/src/__tests__/hooks/choiceUtils.test.ts`, `frontend/src/__tests__/hooks/useChoiceHandler.test.ts`
+- Interrupted choice streams now recover saved `round_history` before sending a duplicate `/choice-sync` request. Production browser probing showed the original `/choice` request could already advance backend state while the browser still saw a stream-tail failure; the frontend now restores that saved continuation and enters `result` directly when history is available. Completed choice streams also ignore late SSE errors from the same request.
+  - Regression coverage: `frontend/src/__tests__/hooks/choiceUtils.test.ts`, `frontend/src/__tests__/hooks/useChoiceHandler.test.ts`
+- Streaming choice processing now persists the updated game state inside the worker thread immediately after `make_round_choice`/`make_custom_choice` returns. Production browser probing on game 87 showed `/choice` could finish backend processing but leave `save_game_progress` until a later `/choice-sync`; the saved `round_history` is now available even if the browser disconnects before receiving the SSE `complete` event.
+  - Regression coverage: `tests/test_sse_helpers.py::TestSSEAsyncFunctions::test_stream_choice_persists_state_before_complete_event`
 - Story voice reading hash generation now matches the backend SHA-256 text-hash contract. Production API probing confirmed `/api/voice-reading/read` rejects stale length-prefix hashes with `text_hash_mismatch`; the auto-read controls now compute the backend-compatible hash before starting reading, and `./test.sh preflight` includes that contract test.
   - Regression coverage: `frontend/src/__tests__/components/StoryVoiceControls.test.tsx`, `frontend/src/__tests__/lib/storyVoiceTextHash.test.ts`
 - Story voice auto-read now has regression coverage for the final story-ready path after settings load/toggle timing. Production browser probing confirmed auto-read stays idle on partial stream text and starts only after the final story-ready signal.
   - Regression coverage: `frontend/src/__tests__/components/StoryVoiceControls.test.tsx`
 - Music player component coverage now proves the product path for generated music: a completed story recommendation with `music_brief` calls `/api/music/generate` and inserts the MiniMax `ai_generated` track into the future queue without replacing the current NetEase track.
+  - Regression coverage: `frontend/src/__tests__/components/game/MusicPlayer.test.tsx`
+- The Next.js API proxy now treats `/api/music/generate` as a long-running request. Production browser probing showed MiniMax music generation can take about 125s, while the previous proxy timeout was 120s; the browser path could therefore degrade even though the backend API would have succeeded.
+  - Regression coverage: `frontend/src/__tests__/app/api/route.test.ts`
+- Event SSE polling recovery no longer lets the underlying stream rejection bubble after `onError` has already switched the page into polling recovery. Production week-4 browser probing showed `/event` could recover enough to continue while still logging unhandled `TypeError: network error`; the hook now treats that rejection as already handled when polling recovery is active and no longer logs the raw `TypeError/network error` object.
+  - Regression coverage: `frontend/src/__tests__/hooks/useEventGenerator.test.ts`
+- Choice and custom-choice SSE recovery now use the same clean handled-rejection logging as event recovery. Production game 91 reached the result button after a `/choice` browser-tail `ERR_INCOMPLETE_CHUNKED_ENCODING`, but still logged the raw `TypeError: network error`; the normal and custom choice hooks now keep that recovery path out of console error/noise while preserving the saved-history result recovery.
+  - Regression coverage: `frontend/src/__tests__/hooks/useChoiceHandler.test.ts`
+- MiniMax TTS contract coverage now verifies all three selectable production voice IDs (`warm_female`, `calm_male`, `clear_neutral`) map to distinct MiniMax backend voice IDs and produce backend audio assets instead of silently falling back to browser speech.
+  - Regression coverage: `tests/test_minimax_audio_generation_contract.py`
+- MiniMax music generation no longer requires the browser to hold a 100-150s `/api/music/generate` request open. The frontend now posts a short `/api/music/generate-async` enqueue request, the backend generates and inserts the track in a background task, and the player polls the persisted playlist until the generated track appears.
+  - Regression coverage: `tests/test_minimax_audio_generation_contract.py`, `frontend/src/__tests__/components/game/MusicPlayer.test.tsx`
+- When strict NetEase filtering leaves the safe baseline empty but `music_brief` is present, the player now shows an explicit MiniMax generation-in-progress state instead of saying the music service is unavailable.
   - Regression coverage: `frontend/src/__tests__/components/game/MusicPlayer.test.tsx`
 
 ## Verification
@@ -76,6 +92,13 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Browser auto-read on `/e2e-regression` stayed idle for the simulated partial stream, then posted `/api/voice-reading/read` only after the final story-ready signal.
   - The auto-read request used a backend-compatible SHA-256 `text_hash`, and the response returned `provider=minimax`, `playback_mode=audio`, and an `/api/voice-reading/audio/*.mp3` asset.
   - Production MiniMax music API verification remains green: `/api/music/generate` returns a MiniMax `ai_generated` track with `insert_policy: "future_queue"`, and `/api/music/playlist/{game_id}` contains the generated track.
+- Production browser `/play` probe before the API proxy timeout fix:
+  - Event SSE completed, choice SSE completed, and backend TTS returned a MiniMax audio asset.
+  - Music recommendation returned 200 and then `/api/music/generate` was issued from the browser.
+  - The browser path did not receive the generated music response before the old proxy timeout window, while a direct production API call for the same class of story returned 200 in about 125s. This led to the `/api/music/generate` proxy timeout fix above.
+- Production deployment verification after manually deploying `5030951f3` to ECS:
+  - `/opt/story2` reports `5030951f3`, and the backend health check is healthy.
+  - Same-origin production `/api/music/generate` returned 200 in about 103s with a MiniMax `ai_generated` track and `insert_policy: "future_queue"`.
 - Production real `/play` verification on game 50 after deploying `7ab5752f` to ECS:
   - Completed story auto-read called `/api/voice-reading/read` and returned `provider=minimax`, `playback_mode=audio`, and a generated `/api/voice-reading/audio/*.mp3` URL.
   - `/api/music/recommend` returned `music_brief`.
@@ -178,10 +201,70 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - OpenSpec strict validation: 21 passed.
   - Backend preflight quality checks: 86 passed.
   - Frontend preflight Jest regression tests: 298 passed.
+- Full local preflight after adding interrupted-choice history-first recovery:
+  - OpenSpec strict validation: 21 passed.
+  - Backend preflight quality checks: 86 passed.
+  - Frontend preflight Jest regression tests: 346 passed.
+- Full local preflight after moving streaming-choice persistence into the worker thread:
+  - OpenSpec strict validation: 21 passed.
+  - Backend preflight quality checks: 86 passed.
+  - Frontend preflight Jest regression tests: 346 passed.
+- Full local preflight after suppressing recovered event stream rejections:
+  - OpenSpec strict validation: 21 passed.
+  - Backend preflight quality checks: 86 passed.
+  - Frontend preflight Jest regression tests: 346 passed.
+- Full local preflight after suppressing recovered choice stream rejection details:
+  - OpenSpec strict validation: 21 passed.
+  - Backend preflight quality checks: 86 passed.
+  - Frontend preflight Jest regression tests: 346 passed.
+- Focused MiniMax audio contract batch after adding all selectable TTS voice coverage:
+  - `python -m pytest tests/test_minimax_audio_generation_contract.py -q`: 24 passed.
+- Full local preflight after adding all selectable TTS voice coverage:
+  - OpenSpec strict validation: 21 passed.
+  - Backend preflight quality checks: 88 passed.
+  - Frontend preflight Jest regression tests: 346 passed.
+- Focused async MiniMax music generation batch:
+  - `python -m pytest tests/test_minimax_audio_generation_contract.py -q`: 25 passed.
+  - Frontend unit suite while running the MusicPlayer check: 98 suites passed, 1699 passed, 4 skipped.
+  - `frontend/src/__tests__/components/game/MusicPlayer.test.tsx`: passed with async enqueue plus playlist polling.
+- Full local preflight after async MiniMax music enqueue:
+  - OpenSpec strict validation: 21 passed.
+  - Backend preflight quality checks: 89 passed.
+  - Frontend preflight Jest regression tests: 346 passed.
+- Focused empty-NetEase/MiniMax-generation UI batch:
+  - `cd frontend && npm run test:integration -- --runInBand src/__tests__/components/game/MusicPlayer.test.tsx -t '网易云安全基线为空'`: 1 passed.
+- Full local preflight after the empty-NetEase/MiniMax-generation UI fix:
+  - OpenSpec strict validation: 21 passed.
+  - Backend preflight quality checks: 89 passed.
+  - Frontend preflight Jest regression tests: 347 passed.
+- Production browser verification after deploying the streaming-choice persistence fix:
+  - Game 88 reproduced the browser-tail failure on `/api/games/88/choice`: `net::ERR_INCOMPLETE_CHUNKED_ENCODING`.
+  - Backend logs showed `save_game_progress` and `Auto-saved game state after choice: game_id=88` immediately after choice processing returned, before any `/choice-sync`.
+  - The frontend recovered from saved `round_history` (`recoverStory` found a 929-character continuation), showed `进入周中`, and no longer displayed processing/fallback text.
+  - The browser made 0 `/choice-sync` requests for this recovery path.
+  - The same browser run also verified MiniMax music generation returned 200 and served the generated MP3 asset from `/api/music/generated/...`.
+- Production browser long-flow verification after deploying the streaming-choice persistence fix:
+  - Game 89 ran 12 real browser rounds and reached `week=4`, `round=0`, `round_history` length 12.
+  - The browser saw `/choice` `ERR_INCOMPLETE_CHUNKED_ENCODING` on all 12 choices, but every one recovered through saved `round_history` and the run made 0 `/choice-sync` requests.
+  - `/event` also saw 11 browser-tail `ERR_INCOMPLETE_CHUNKED_ENCODING` interruptions; polling recovered enough to continue the main flow, but the console still logged unhandled `TypeError: network error` rejections.
+  - MiniMax music generation returned 200 in 18 observed browser calls, while 13 observed calls failed with browser `ERR_EMPTY_RESPONSE`; gameplay continued because generated music is a future-queue enhancement rather than a blocking step.
+- Production browser verification after deploying the event/choice clean-log follow-ups:
+  - Game 92 reproduced `/choice` `ERR_INCOMPLETE_CHUNKED_ENCODING`, recovered to the `进入周中` result button, and reported `badConsole=0` with no page errors.
+  - Game 93 waited for the real `/api/music/generate` browser request before closing the test browser. The request returned 200 with `source=ai_generated`, `provider=minimax`, `insert_policy=future_queue`, and the persisted playlist contained an `ai_generated` track.
+  - Game 93 had no `/api/music/generate` request failure when the browser stayed open for the long-running generation request. The earlier `ERR_EMPTY_RESPONSE` observations are therefore classified as browser/test lifecycle aborts of long optional music requests, not confirmed MiniMax generation failures.
+- Production API verification for the previously unverified `clear_neutral` TTS voice:
+  - `/api/voice-reading/settings` returned `tts_provider: "minimax"`, `backend_audio_enabled: true`, and all three selectable voice IDs.
+  - `/api/voice-reading/read` with `voice_id: "clear_neutral"` returned 200 with `provider: "minimax"`, `playback_mode: "audio"`, `media_type: "audio/mpeg"`, and a generated `/api/voice-reading/audio/*.mp3` URL.
+  - Downloading that generated audio URL returned 200 `audio/mpeg`.
+- Remote GitHub CI investigation after rerunning the failed `Frontend Tests / Run Jest Tests` job:
+  - `gh pr checks 51` still reports all PR checks failing in 2-4 seconds.
+  - GitHub job API for run `27114385832` reports `steps: []`, `runner_name: ""`, and `runner_id: 0` for the original failed job.
+  - The downloadable log zip contains only `Run Jest Tests/system.txt`; no checkout, setup, dependency install, lint, Jest, pytest, or app test step exists.
+  - The original and rerun system logs both stop at hosted runner allocation, for example `Waiting for a runner to pick up this job...` and `Job is waiting for a hosted runner to come online.`
+  - After pushing head `49543300`, the fresh `Frontend Tests` run `27114880517` failed the same way: `steps: []`, `runner_name: ""`, `runner_id: 0`, and a one-file `system.txt` log stopping at hosted runner allocation.
+  - This is a GitHub hosted-runner startup failure before repository code executes, not evidence that PR #51's local test suites failed.
 
 ## Still Not Claimed As Production-Complete
 
-- Remote GitHub checks are blocked by GitHub billing/spending-limit status, not by retrievable job logs.
-- Fresh MiniMax music generation can take longer than 150 seconds on production; the current design keeps NetEase playback available and inserts generated music only after the asset is ready.
-- Broader music matching quality still needs product tuning: strict modern workplace filtering prevents known bad NetEase songs, but for that scene class the safe NetEase baseline can be empty and the generated MiniMax track becomes the reliable queued music source.
-- Browser/manual long playthrough to week 4 should still be rerun after deployment of the latest fallback-history recovery, because the previous production browser probe found the second fallback failure described above.
+- Remote GitHub checks are blocked before job steps execute. Current evidence points to GitHub hosted-runner allocation/account capacity rather than a code-level test failure.
+- Broader music matching quality is intentionally conservative for modern workplace scenes: strict filtering prevents known bad NetEase songs, and when the safe baseline is empty the UI now treats MiniMax generation as the active music path instead of surfacing an unavailable-service state.

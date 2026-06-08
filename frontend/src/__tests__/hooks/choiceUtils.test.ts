@@ -30,6 +30,7 @@ function setupDefaultState() {
       options: [{ text: 'Option 1' }, { text: 'Option 2' }],
     } as Record<string, unknown>,
     roundInfo: { current_round: 1 },
+    playerState: null,
   });
 }
 
@@ -114,6 +115,45 @@ describe('choiceUtils', () => {
     it('sets summary when present', () => {
       handleChoiceComplete({ summary: 'Round summary text' }, mockHandlers);
       expect(mockHandlers.setRoundSummary).toHaveBeenCalledWith('Round summary text');
+    });
+
+    it('appends resource warnings to the round summary', () => {
+      handleChoiceComplete({
+        summary: 'Round summary text',
+        resource_warnings: [
+          {
+            resource: 'energy',
+            display_name: '精力',
+            reason: 'insufficient_resource',
+            requested_delta: -20,
+            applied_delta: -5,
+            message: '精力不足，实际变化为 -5',
+          },
+        ],
+      }, mockHandlers);
+
+      expect(mockHandlers.setRoundSummary).toHaveBeenCalledWith(
+        expect.stringContaining('精力不足，实际变化为 -5')
+      );
+    });
+
+    it('shows resource warnings even when the backend summary is empty', () => {
+      handleChoiceComplete({
+        resource_warnings: [
+          {
+            resource: 'energy',
+            display_name: '精力',
+            reason: 'insufficient_resource',
+            requested_delta: -12,
+            applied_delta: 0,
+            message: '精力不足，实际变化为 +0',
+          },
+        ],
+      }, mockHandlers);
+
+      expect(mockHandlers.setRoundSummary).toHaveBeenCalledWith(
+        expect.stringContaining('精力不足，实际变化为 +0')
+      );
     });
 
     it('clears summary when not present', () => {
@@ -411,6 +451,42 @@ describe('choiceUtils', () => {
       expect(mockHandlers.setStoryText).toHaveBeenCalledWith(
         'Base story\n\n--- 主角选择了：Option 1 ---\n\n完整的同步续写结果'
       );
+      expect(mockHandlers.setPhase).toHaveBeenCalledWith('result');
+    });
+
+    it('recovers saved history before issuing a duplicate sync choice after an interrupted stream', async () => {
+      storeSpy.spies.syncPlayerState.mockImplementation(async () => {
+        useGameStore.setState({
+          playerState: {
+            round_history: [{ story_continuation: '后端已保存的流式选择结果' }],
+          } as never,
+        });
+      });
+      useGameStore.setState({
+        storyText: 'Base story plus partial broken stream',
+        currentEvent: { options: [{ text: 'Option 1' }] } as Record<string, unknown>,
+      });
+
+      const context: ChoiceErrorContext = {
+        optionIndex: 0,
+        isRetry: false,
+        sseSucceeded: true,
+        baseStoryText: 'Base story',
+      };
+
+      await handleChoiceError(
+        { message: 'network error' },
+        123, mockHandlers, context, 'test'
+      );
+
+      const choiceCalls = (global.fetch as jest.Mock).mock.calls.filter(
+        (c: unknown[]) => (c[0] as string).includes('choice-sync')
+      );
+      expect(choiceCalls).toHaveLength(0);
+      expect(mockHandlers.setStoryText).toHaveBeenCalledWith(
+        'Base story\n\n--- 主角选择了：Option 1 ---\n\n后端已保存的流式选择结果'
+      );
+      expect(mockHandlers.setConnectionStatus).not.toHaveBeenCalledWith('error');
       expect(mockHandlers.setPhase).toHaveBeenCalledWith('result');
     });
 

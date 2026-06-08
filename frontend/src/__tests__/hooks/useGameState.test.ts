@@ -115,6 +115,17 @@ describe('useGameState', () => {
       jest.useRealTimers();
     });
 
+    it('forces next event generation after weekly summary so stale phase cannot block it', async () => {
+      const { result } = renderHook(() => useGameState(defaultParams));
+
+      await act(async () => {
+        result.current.handleContinueAfterSummary();
+        await Promise.resolve();
+      });
+
+      expect(mockGenerateEventRef.current).toHaveBeenCalledWith({ force: true });
+    });
+
     it('sets phase to ending when game over', async () => {
       const { result } = renderHook(() =>
         useGameState({ ...defaultParams, isGameOver: true })
@@ -182,6 +193,18 @@ describe('useGameState', () => {
 
       expect(mockGenerateEventRef.current).toHaveBeenCalledTimes(1);
       jest.useRealTimers();
+    });
+
+    it('forces next round generation after sync so stale phase cannot leave a blank play page', async () => {
+      mockPrefetchResultRef.current = null;
+      const { result } = renderHook(() => useGameState(defaultParams));
+
+      await act(async () => {
+        result.current.handleContinueToNextRound();
+        await Promise.resolve();
+      });
+
+      expect(mockGenerateEventRef.current).toHaveBeenCalledWith({ force: true });
     });
 
     it('cancels ongoing prefetch', async () => {

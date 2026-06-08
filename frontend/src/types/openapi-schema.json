@@ -4154,6 +4154,48 @@
         }
       }
     },
+    "/api/music/generate-async": {
+      "post": {
+        "tags": [
+          "Music"
+        ],
+        "summary": "Enqueue Music Generation",
+        "description": "Start AI music generation in the background and return immediately.",
+        "operationId": "enqueue_music_generation_api_music_generate_async_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MusicGenerationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MusicGenerationEnqueueResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/music/song-url": {
       "get": {
         "tags": [
@@ -6007,6 +6049,30 @@
           "message"
         ],
         "title": "MessageResponse"
+      },
+      "MusicGenerationEnqueueResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "game_id": {
+            "type": "integer",
+            "title": "Game Id"
+          },
+          "insert_policy": {
+            "type": "string",
+            "title": "Insert Policy"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "game_id",
+          "insert_policy"
+        ],
+        "title": "MusicGenerationEnqueueResponse",
+        "description": "Accepted background music generation job."
       },
       "MusicGenerationRequest": {
         "properties": {

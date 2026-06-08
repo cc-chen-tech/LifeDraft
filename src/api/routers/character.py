@@ -138,6 +138,7 @@ async def generate_opening_story(req: OpeningStoryRequest):
 
         full_text_holder = [""]
         error_holder = [None]
+        timed_out_holder = [False]
         last_activity = [time.time()]
 
         def run():
@@ -190,6 +191,7 @@ async def generate_opening_story(req: OpeningStoryRequest):
                     yield f"event: status\ndata: {json.dumps({'phase': 'writing'}, ensure_ascii=False)}\n\n"
                     continue
                 # 真正的超时
+                timed_out_holder[0] = True
                 yield f"event: error\ndata: {json.dumps({'error': 'Generation timeout'}, ensure_ascii=False)}\n\n"
                 break
 
@@ -203,13 +205,16 @@ async def generate_opening_story(req: OpeningStoryRequest):
 
         # ★ 更新缓存
         with _cache_lock:
-            if error_holder[0] is not None:
+            if timed_out_holder[0] or error_holder[0] is not None or not full_text_holder[0].strip():
                 _opening_story_cache[cache_key] = {
                     "generating": False,
                     "result": None,
                     "timestamp": time.time(),
                 }
-                yield f"event: error\ndata: {json.dumps({'error': str(error_holder[0])}, ensure_ascii=False)}\n\n"
+                if error_holder[0] is not None:
+                    yield f"event: error\ndata: {json.dumps({'error': str(error_holder[0])}, ensure_ascii=False)}\n\n"
+                elif not timed_out_holder[0]:
+                    yield f"event: error\ndata: {json.dumps({'error': 'Opening story stream completed without story text'}, ensure_ascii=False)}\n\n"
                 return
             else:
                 _opening_story_cache[cache_key] = {

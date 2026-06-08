@@ -210,15 +210,24 @@ class QuickValidator:
             return []
 
         present_allowed = [name for name in allowed_names if name in text]
-        if present_allowed:
-            return []
 
         if language != "zh":
+            if present_allowed:
+                return []
             return [
                 "上一版故事完全没有使用预设关键人物；请至少使用一个可用人物列表中的关键人物，并避免凭空替换关系网络。"
             ]
 
         invented_names = self._extract_likely_chinese_person_names(text, allowed_names)
+        if present_allowed:
+            key_people_ratio = len(present_allowed) / len(allowed_names)
+            if key_people_ratio < 0.5 and len(invented_names) >= 3:
+                return [
+                    "上一版故事预设关键人物使用不足，反而引入了大量名单外人物"
+                    f"（{ '、'.join(invented_names[:5]) }）；请围绕可用人物列表重写。"
+                ]
+            return []
+
         if len(invented_names) >= 2:
             return [
                 "上一版故事完全没有使用预设关键人物，反而引入了名单外人物"

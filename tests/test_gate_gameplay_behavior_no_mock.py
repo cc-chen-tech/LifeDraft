@@ -6,6 +6,7 @@ from config.prompts import (
     get_opening_story_prompt,
     get_round_event_prompt,
     get_story_only_prompt,
+    get_weekly_summary_prompt,
 )
 from src.ai.models import EventOption, GameEvent
 from src.ai.option_generator import OptionGenerator
@@ -175,6 +176,46 @@ def test_story_prompts_pin_player_identity_from_state_and_character_settings() -
         assert "性别：女" in prompt
 
 
+def test_story_prompts_limit_each_round_to_one_main_event() -> None:
+    player_state = {
+        "player_name": "顾晨曦",
+        "age": 24,
+        "week": 2,
+        "current_round": 1,
+        "rounds_per_week": 3,
+        "energy": 70,
+        "mood": 62,
+        "knowledge": 58,
+        "wealth": 18000,
+    }
+    character_settings = {
+        "era": {"year": 2024, "era_description": "2024年中国互联网行业"},
+        "identity": {"identity_description": "初级产品经理"},
+        "world": {"world_description": "杭州AI协作工具创业公司"},
+        "relationships": {"key_people": [{"name": "周岚", "role": "直属导师"}]},
+    }
+
+    story_prompt = get_story_only_prompt(
+        player_state=player_state,
+        language="zh",
+        character_settings=character_settings,
+        last_event_description="上周她完成了需求评审。",
+    )
+    round_prompt = get_round_event_prompt(
+        player_state=player_state,
+        language="zh",
+        round_number=1,
+        round_context="周一她收到导师周岚的原型反馈。",
+        character_settings=character_settings,
+    )
+
+    for prompt in (story_prompt, round_prompt):
+        assert "每个回合只推进一个主事件" in prompt
+        assert "只设置一个核心决策点" in prompt
+        assert "禁止在同一回合塞入多个会议、评审、复盘、预热" in prompt
+        assert "禁止把下一周或下一个回合的实际剧情提前写完" in prompt
+
+
 def test_opening_story_prompt_forbids_replacing_player_with_template_hero() -> None:
     prompt = get_opening_story_prompt(
         character_settings={
@@ -191,6 +232,46 @@ def test_opening_story_prompt_forbids_replacing_player_with_template_hero() -> N
     assert "主角姓名必须是：林见微" in prompt
     assert "绝对禁止把主角改名为狄仁杰" in prompt
     assert "主角性别必须是：女" in prompt
+
+
+def test_opening_story_prompt_anchors_first_week_date_and_season() -> None:
+    prompt = get_opening_story_prompt(
+        character_settings={
+            "era": {"year": 2024, "era_description": "2024年中国互联网行业"},
+            "gender": {"gender": "女"},
+            "world": {"world_description": "杭州AI协作工具创业公司"},
+        },
+        player_name="顾晨曦",
+        life_vision="2020年代中国互联网公司，成为AI协作工具产品经理",
+        formatted_family_members="母亲：周梅",
+        language="zh",
+    )
+
+    assert "2024年1月第1周" in prompt
+    assert "冬季" in prompt
+    assert "禁止写成夏季" in prompt
+
+
+def test_weekly_summary_prompt_forbids_next_week_day_mismatch() -> None:
+    prompt = get_weekly_summary_prompt(
+        rounds=[
+            {"round": 0, "summary": "周一完成需求澄清", "choice": "继续推进", "effects": {}},
+            {"round": 1, "summary": "周中评审原型", "choice": "找同事复盘", "effects": {}},
+            {"round": 2, "summary": "周末整理白皮书", "choice": "修改计划", "effects": {}},
+        ],
+        character_settings={},
+        language="zh",
+        game_date_info={
+            "date_string": "2024年1月第1周",
+            "season": "冬",
+            "age": 24,
+            "total_week": 1,
+        },
+    )
+
+    assert "2024年1月第1周" in prompt
+    assert "禁止写成“周日（第2周）”" in prompt
+    assert "不得把下一周" in prompt
 
 
 def test_round_event_fallback_remains_substantial_story_when_generation_fails() -> None:
@@ -218,7 +299,7 @@ def test_round_event_fallback_remains_substantial_story_when_generation_fails() 
     assert len(event.event_description) > 100
     assert event.event_description.endswith("。")
     assert "林见微" in event.event_description
-    assert len(event.options) == 2
+    assert len(event.options) == 3
 
 
 def test_round_event_retries_when_story_ignores_all_key_people_and_fabricates_new_cast() -> None:
@@ -291,4 +372,97 @@ def test_round_event_retries_when_story_ignores_all_key_people_and_fabricates_ne
     assert option_generator.generate_options_only_kwargs is not None
     story_for_options = option_generator.generate_options_only_kwargs["story_description"]
     assert "陆昊然" in story_for_options
+    assert "马老板" not in story_for_options
+
+
+def test_quick_validator_flags_key_people_dilution_with_invented_cast() -> None:
+    from src.ai.quick_validator import quick_validate_story
+
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然在会议室门口只匆匆露了一面。随后马老板、方蕾、赵子豪、"
+            "王丽华、张建国律师轮番要求林见微处理苏州贸易公司的债务。"
+        ),
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("预设关键人物使用不足" in issue for issue in result.issues)
+
+
+def test_event_generation_retries_when_story_dilutes_key_people_with_invented_cast() -> None:
+    class DriftClient:
+        def __init__(self):
+            self.calls = []
+
+        def call(self, **kwargs):
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                return (
+                    "陆昊然在会议室门口只匆匆露了一面。随后马老板、方蕾、赵子豪、"
+                    "王丽华、张建国律师轮番要求林见微处理苏州贸易公司的债务。"
+                )
+            return (
+                "陆昊然把产品评审文档推到林见微面前，陈晓雨提醒她先确认用户反馈，"
+                "林一凡则把远程会议链接发进群里。"
+            )
+
+    client = DriftClient()
+    gen = StoryGenerator(client)
+
+    class RecordingOptionGenerator:
+        def __init__(self):
+            self.generate_options_only_kwargs = None
+
+        def generate_options_only(self, **kwargs):
+            self.generate_options_only_kwargs = kwargs
+            return GameEvent(
+                event_description="",
+                options=[
+                    EventOption(text="先和陆昊然核对需求", effects={"knowledge": 5}),
+                    EventOption(text="请陈晓雨一起复盘用户反馈", effects={"mood": 2}),
+                    EventOption(text="找林一凡确认技术边界", effects={"knowledge": 4}),
+                ],
+            )
+
+        def validate_and_fix_relationships(self, *args, **kwargs):
+            return None
+
+        def validate_event_quality(self, *args, **kwargs):
+            return None
+
+        def ensure_options_consistency(self, *args, **kwargs):
+            return None
+
+    option_generator = RecordingOptionGenerator()
+
+    gen.generate_event(
+        player_state={
+            "game_id": 8,
+            "player_name": "林见微",
+            "age": 22,
+            "week": 1,
+            "current_round": 0,
+        },
+        language="zh",
+        retry_count=2,
+        character_settings={
+            "relationships": {
+                "key_people": [
+                    {"name": "陆昊然", "role": "导师"},
+                    {"name": "陈晓雨", "role": "同事"},
+                    {"name": "林一凡", "role": "朋友"},
+                ]
+            }
+        },
+        option_generator=option_generator,
+    )
+
+    assert len(client.calls) == 2
+    retry_prompt = client.calls[1]["user_prompt"]
+    assert "预设关键人物使用不足" in retry_prompt
+    assert option_generator.generate_options_only_kwargs is not None
+    story_for_options = option_generator.generate_options_only_kwargs["story_description"]
+    assert "陈晓雨" in story_for_options
     assert "马老板" not in story_for_options

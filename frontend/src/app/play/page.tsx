@@ -56,6 +56,13 @@ import {
   RotateCcw,
 } from "lucide-react";
 
+function formatElapsedTime(seconds: number): string {
+  if (seconds < 60) return `${seconds}秒`;
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}分${secs}秒`;
+}
+
 /**
  * GameIdSync - 内部组件，使用 useGameIdFromUrl 同步 URL 参数
  * 必须包裹在 Suspense 中
@@ -159,17 +166,17 @@ export default function PlayPage() {
   } = usePlayGame();
 
   const resultSceneRound = Math.max(0, currentRound - 1);
+  const storyReadyForCompletedMedia = phase === "options" || phase === "result";
 
   // ★ 音乐 store：将当前故事文本和 gameId 传递给 GlobalMusicPlayer
   const setActiveStoryText = useMusicStore((state) => state.setActiveStoryText);
   const setActiveGameId = useMusicStore((state) => state.setActiveGameId);
 
   useEffect(() => {
-    const storyReadyForMusic = phase === "options" || phase === "result";
-    if (storyText && !isViewingHistory && storyReadyForMusic) {
+    if (storyText && !isViewingHistory && storyReadyForCompletedMedia) {
       setActiveStoryText(storyText);
     }
-  }, [storyText, isViewingHistory, phase, setActiveStoryText]);
+  }, [storyText, isViewingHistory, storyReadyForCompletedMedia, setActiveStoryText]);
 
   useEffect(() => {
     if (gameId) {
@@ -491,7 +498,7 @@ export default function PlayPage() {
                   text: displayText,
                 }}
                 autoReadText={displayText}
-                autoReadReady={!isViewingHistory && phase === "options"}
+                autoReadReady={!isViewingHistory && storyReadyForCompletedMedia}
                 compact
                 enablePlaybackControls
               />
@@ -504,10 +511,30 @@ export default function PlayPage() {
               />
               {/* ★ 在有故事内容且正在生成时，显示小的加载提示（历史模式下不显示） */}
               {(phase === "generating" || phase === "choosing") && (
-              <div className="flex items-center justify-center gap-2 text-muted-foreground text-sm py-2">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>{getLoadingMessage()}</span>
-              </div>
+                <div className="space-y-2 py-2">
+                  <div className="flex items-center justify-center gap-2 text-muted-foreground text-sm">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>{getLoadingMessage()}</span>
+                  </div>
+                  {elapsedSeconds >= 60 && (
+                    <div className="mx-auto max-w-md rounded-md border border-border bg-card/70 px-4 py-3 text-center text-xs text-muted-foreground leading-relaxed">
+                      <p>
+                        已等待 {formatElapsedTime(elapsedSeconds)}，正在校验故事逻辑和生成选项；这通常是长剧情的一致性检查，不代表内容丢失。
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-3"
+                        aria-label="恢复当前进度"
+                        onClick={() => void recoverEventGeneration()}
+                      >
+                        <RotateCcw className="mr-2 h-3.5 w-3.5" />
+                        恢复当前进度
+                      </Button>
+                    </div>
+                  )}
+                </div>
               )}
             </>
           )

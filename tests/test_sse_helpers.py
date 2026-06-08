@@ -288,6 +288,40 @@ class TestSSEAsyncFunctions:
 
         assert True
 
+    @pytest.mark.asyncio
+    async def test_stream_choice_persists_state_before_complete_event(self, monkeypatch):
+        """SSE choice complete must not be emitted before the choice result is persisted."""
+        from src.api.routers.gameplay import sse_helpers
+
+        saved = {"called": False}
+
+        class FakeDb:
+            def save_game_progress(self, game_id, state):
+                saved["called"] = True
+                saved["game_id"] = game_id
+                saved["state"] = state
+
+        result = {
+            "story_continuation": "选择后的故事",
+            "summary": "小结",
+            "need_weekly_summary": False,
+            "game_over": False,
+        }
+        state = {"round_history": [{"story_continuation": "选择后的故事"}]}
+
+        game_loop = MagicMock()
+        game_loop.make_round_choice = MagicMock(return_value=result)
+        game_loop.get_state = MagicMock(return_value=state)
+
+        monkeypatch.setattr(sse_helpers, "get_db", lambda: FakeDb())
+
+        async for event in stream_choice(game_loop, 0, 456):
+            if "event: complete" in event:
+                assert saved["called"] is True
+                assert saved["game_id"] == 456
+                assert saved["state"] == state
+                break
+
 
 class TestSSEFunctionsExist:
     """SSE函数存在性测试"""

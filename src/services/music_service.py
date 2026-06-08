@@ -82,7 +82,6 @@ SUSPENSE_CONTEXT_CUES = {
     "造假",
     "医疗",
     "医院",
-    "数据",
     "调查",
     "犯罪",
     "惊悚",
@@ -159,6 +158,13 @@ WORKPLACE_NEGATIVE_CUES = [
     "等你下课",
     "不再联系",
     "type beat",
+    "都选C",
+    "她说",
+    "因为爱情有时差",
+    "一直很安静",
+    "童话",
+    "丑八怪",
+    "可爱女人",
 ]
 
 WORKPLACE_FALLBACK_QUERIES = ["办公室 轻电子 氛围", "数据分析 纯音乐", "产品设计 无歌词"]
@@ -229,7 +235,7 @@ def _suspense_search_queries(context_text: str) -> List[str]:
     queries: List[str] = []
     if _contains_any(context_text, ["债务", "负债", "欠债", "追债", "担保", "债主", "律师", "财务", "金融"]):
         queries.extend(["债务危机 紧张氛围", "金融危机 影视配乐", "商务悬疑 纯音乐"])
-    if _contains_any(context_text, ["医疗", "医院", "数据", "造假"]):
+    if _contains_any(context_text, ["医疗", "医院", "造假"]):
         queries.extend(["医疗悬疑 氛围音乐", "现代医院 紧张配乐"])
     if _contains_any(context_text, ["追捕", "逃亡"]):
         queries.extend(["追捕逃亡 紧张配乐", "追捕 悬疑 纯音乐"])
@@ -866,6 +872,11 @@ class MusicService:
         else:
             analysis = await self._analyze_story_mood(story_text, character_settings)
             self._analysis_cache[story_hash] = (analysis, now)
+        analysis = self._enrich_analysis_from_story_context(
+            analysis,
+            story_text,
+            character_settings,
+        )
 
         pool = CachedMusicPool(
             analysis=analysis,
@@ -876,6 +887,85 @@ class MusicService:
         await self._supplement_pool(pool)
         self._pool_cache[story_hash] = (pool, now)
         return pool
+
+    def _enrich_analysis_from_story_context(
+        self,
+        analysis: Dict[str, Any],
+        story_text: str,
+        character_settings: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Add deterministic scene cues when model analysis is too generic."""
+        enriched = dict(analysis)
+        settings_text_parts: List[str] = []
+        if character_settings:
+            for key in ["world_description", "character_style"]:
+                value = character_settings.get(key)
+                if value:
+                    settings_text_parts.append(str(value))
+            era = character_settings.get("era")
+            if isinstance(era, dict):
+                settings_text_parts.extend(
+                    str(era.get(key) or "")
+                    for key in ["era_name", "era_description"]
+                    if era.get(key)
+                )
+
+        context_text = " ".join(
+            [
+                story_text,
+                " ".join(settings_text_parts),
+                str(enriched.get("mood") or ""),
+                str(enriched.get("scene_type") or ""),
+                str(enriched.get("environment") or ""),
+                str(enriched.get("story_style") or ""),
+                str(enriched.get("music_style") or ""),
+                " ".join(str(item) for item in enriched.get("keywords") or []),
+                " ".join(str(item) for item in enriched.get("search_queries") or []),
+            ]
+        )
+
+        if _contains_any(context_text, list(WORKPLACE_CONTEXT_CUES)):
+            keywords = [
+                str(item)
+                for item in enriched.get("keywords") or []
+                if item and not _is_love_pop_query(str(item))
+            ]
+            search_queries = [
+                str(item)
+                for item in enriched.get("search_queries") or []
+                if item and not _is_love_pop_query(str(item))
+            ]
+            negative_cues = [str(item) for item in enriched.get("negative_cues") or [] if item]
+
+            enriched["environment"] = (
+                f"{enriched.get('environment') or ''} 2020年代互联网公司现代职场"
+            ).strip()
+            enriched["story_style"] = (
+                f"{enriched.get('story_style') or ''} 现代职场产品经理成长"
+            ).strip()
+            enriched["music_style"] = "轻电子纯音乐"
+            enriched["keywords"] = _dedupe_text(
+                [
+                    "产品经理 工作配乐",
+                    "用户数据 纯音乐",
+                    "AI协作 科技氛围",
+                    *keywords,
+                ]
+            )
+            enriched["search_queries"] = _dedupe_text(
+                [*_workplace_search_queries(context_text), *search_queries]
+            )
+            enriched["negative_cues"] = _dedupe_text(
+                [*negative_cues, *WORKPLACE_NEGATIVE_CUES]
+            )
+
+            instruments = enriched.get("instruments")
+            if not isinstance(instruments, list) or not instruments:
+                enriched["instruments"] = ["电子合成器", "钢琴"]
+            elif not any("电子" in str(item) or "合成器" in str(item) for item in instruments):
+                enriched["instruments"] = ["电子合成器", *[str(item) for item in instruments]]
+
+        return enriched
 
     async def _refresh_pool_urls(self, pool: CachedMusicPool, supplement: bool = True) -> None:
         now = time.time()

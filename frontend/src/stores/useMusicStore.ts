@@ -118,6 +118,34 @@ function playlistStateToStorePatch(playlist: PlaylistApiState): Partial<MusicSta
   };
 }
 
+function playlistSongs(playlist: PlaylistApiState): Song[] {
+  return [
+    playlist.current_song,
+    ...(playlist.queue || []),
+  ].filter((song): song is Song => Boolean(song));
+}
+
+function playlistStateToStorePatchWithRecommendation(
+  playlist: PlaylistApiState,
+  recommendation: MusicRecommendation | null
+): Partial<MusicState> {
+  const patch = playlistStateToStorePatch(playlist);
+  if (!recommendation) {
+    return patch;
+  }
+  const songs = playlistSongs(playlist);
+  if (songs.length === 0) {
+    return patch;
+  }
+  return {
+    ...patch,
+    recommendation: {
+      ...recommendation,
+      songs,
+    },
+  };
+}
+
 interface MusicState {
   // 推荐结果
   recommendation: MusicRecommendation | null;
@@ -142,6 +170,7 @@ interface MusicState {
   playedSongs: Song[];
   playlistGameId: number | null;
   isLoadingPlaylist: boolean;
+  isGeneratingAiMusic: boolean;
 
   // Active story context (set by play page)
   activeStoryText: string | null;
@@ -195,6 +224,107 @@ interface MusicState {
 // ★ Use the same relative /api path as api.ts to ensure consistency.
 // Absolute URLs bypass the Next.js proxy and can cause CORS/timeout issues.
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api";
+const GENERATED_MUSIC_POLL_ATTEMPTS = 30;
+const GENERATED_MUSIC_POLL_INTERVAL_MS = 10_000;
+
+function generatedTrackIdsFromSongs(songs: Array<Song | null | undefined>): Set<number | string> {
+  return new Set(
+    songs
+      .filter((song): song is Song => Boolean(song) && song?.source === "ai_generated")
+      .map(songKey)
+  );
+}
+
+function generatedTrackIds(state: MusicState): Set<number | string> {
+  return generatedTrackIdsFromSongs([
+    state.currentSong,
+    ...state.queue,
+    ...(state.recommendation?.songs || []),
+  ]);
+}
+
+function playlistGeneratedTrackIds(playlist: PlaylistApiState): Set<number | string> {
+  return generatedTrackIdsFromSongs([
+    playlist.current_song,
+    ...(playlist.queue || []),
+  ]);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchPlaylistState(gameId: number): Promise<PlaylistApiState | null> {
+  if (typeof fetch === "undefined") return null;
+  const response = await fetch(`${API_BASE}/music/playlist/${gameId}`, {
+    credentials: "include",
+  });
+  if (!response.ok) return null;
+  return (await response.json()) as PlaylistApiState;
+}
+
+function generatedMusicAnalysisMood(analysis?: Record<string, unknown>): string | undefined {
+  return typeof analysis?.mood === "string" ? analysis.mood : undefined;
+}
+
+function generatedMusicAnalysisKeywords(analysis?: Record<string, unknown>): string[] | undefined {
+  const keywords = analysis?.keywords;
+  if (Array.isArray(keywords)) {
+    return keywords.filter((item): item is string => typeof item === "string");
+  }
+  const sceneType = analysis?.scene_type;
+  if (typeof sceneType === "string" && sceneType.trim()) {
+    return [sceneType];
+  }
+  return undefined;
+}
+
+async function persistPlaylistSnapshotBeforeGeneration(
+  gameId: number,
+  currentSong: Song | null,
+  queue: Song[],
+  analysis?: Record<string, unknown>
+): Promise<PlaylistApiState | null> {
+  if (typeof fetch === "undefined") return null;
+  const songs = [currentSong, ...queue].filter((item): item is Song => Boolean(item));
+  if (songs.length === 0) return null;
+
+  const response = await fetch(`${API_BASE}/music/playlist/${gameId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({
+      songs,
+      mood: generatedMusicAnalysisMood(analysis),
+      keywords: generatedMusicAnalysisKeywords(analysis),
+    }),
+  });
+  if (!response.ok) return null;
+  return (await response.json()) as PlaylistApiState;
+}
+
+async function pollPlaylistForGeneratedTrack(
+  gameId: number,
+  initialGeneratedIds: Set<number | string>,
+  onPlaylist: (playlist: PlaylistApiState) => void,
+  attempts: number = GENERATED_MUSIC_POLL_ATTEMPTS,
+  intervalMs: number = GENERATED_MUSIC_POLL_INTERVAL_MS
+): Promise<void> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (attempt > 0) {
+      await sleep(intervalMs);
+    }
+    const playlist = await fetchPlaylistState(gameId);
+    if (!playlist) {
+      continue;
+    }
+    onPlaylist(playlist);
+    const generatedIds = playlistGeneratedTrackIds(playlist);
+    if ([...generatedIds].some((id) => !initialGeneratedIds.has(id))) {
+      return;
+    }
+  }
+}
 
 export const useMusicStore = create<MusicState>((set, get) => ({
   // 初始状态
@@ -213,6 +343,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   playedSongs: [],
   playlistGameId: null,
   isLoadingPlaylist: false,
+  isGeneratingAiMusic: false,
   activeStoryText: null,
   activeGameId: null,
 
@@ -333,7 +464,9 @@ export const useMusicStore = create<MusicState>((set, get) => ({
         });
         if (response.ok) {
           const playlist = (await response.json()) as PlaylistApiState;
-          set(playlistStateToStorePatch(playlist));
+          set((state) =>
+            playlistStateToStorePatchWithRecommendation(playlist, state.recommendation)
+          );
           return;
         }
       }
@@ -363,7 +496,9 @@ export const useMusicStore = create<MusicState>((set, get) => ({
         });
         if (response.ok) {
           const playlist = (await response.json()) as PlaylistApiState;
-          set(playlistStateToStorePatch(playlist));
+          set((state) =>
+            playlistStateToStorePatchWithRecommendation(playlist, state.recommendation)
+          );
           return;
         }
       } catch (error) {
@@ -379,21 +514,23 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   },
 
   insertGeneratedTrack: (track: Song) => {
-    const { queue, recommendation } = get();
+    const { currentSong, queue, recommendation } = get();
     const generatedId = songKey(track);
     const nextQueue = queue.filter((item) => songKey(item) !== generatedId);
-    const insertAt = nextQueue.length > 0 ? 1 : 0;
-    nextQueue.splice(insertAt, 0, track);
+    const nextCurrentSong = currentSong ?? track;
+    if (currentSong) {
+      nextQueue.unshift(track);
+    }
 
     let nextRecommendation = recommendation;
     if (recommendation) {
       const songs = recommendation.songs.filter((item) => songKey(item) !== generatedId);
-      const recommendationInsertAt = songs.length > 1 ? 2 : songs.length;
+      const recommendationInsertAt = songs.length > 0 ? 1 : 0;
       songs.splice(recommendationInsertAt, 0, track);
       nextRecommendation = { ...recommendation, songs };
     }
 
-    set({ queue: nextQueue, recommendation: nextRecommendation });
+    set({ currentSong: nextCurrentSong, queue: nextQueue, recommendation: nextRecommendation });
   },
 
   generateAiMusicForStory: async (storyText, gameId, analysis) => {
@@ -403,11 +540,30 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       if (disabled === "1" || disabled === "true") return;
     }
 
+    set({ isGeneratingAiMusic: true });
     try {
-      const result = await fetchGeneratedMusic(storyText, gameId, analysis);
-      get().insertGeneratedTrack(result.track);
+      const initialGeneratedIds = generatedTrackIds(get());
+      const snapshot = await persistPlaylistSnapshotBeforeGeneration(
+        gameId,
+        get().currentSong,
+        get().queue,
+        analysis
+      );
+      if (snapshot) {
+        set((state) =>
+          playlistStateToStorePatchWithRecommendation(snapshot, state.recommendation)
+        );
+      }
+      await enqueueGeneratedMusic(storyText, gameId, analysis);
+      await pollPlaylistForGeneratedTrack(gameId, initialGeneratedIds, (playlist) => {
+        set((state) =>
+          playlistStateToStorePatchWithRecommendation(playlist, state.recommendation)
+        );
+      });
     } catch (error) {
       console.warn("[MusicStore] AI music generation unavailable:", error);
+    } finally {
+      set({ isGeneratingAiMusic: false });
     }
   },
 
@@ -425,7 +581,9 @@ export const useMusicStore = create<MusicState>((set, get) => ({
         });
         if (response.ok) {
           const playlist = (await response.json()) as PlaylistApiState;
-          set(playlistStateToStorePatch(playlist));
+          set((state) =>
+            playlistStateToStorePatchWithRecommendation(playlist, state.recommendation)
+          );
           return;
         }
       } catch (error) {
@@ -481,6 +639,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       playedSongs: [],
       playlistGameId: null,
       isLoadingPlaylist: false,
+      isGeneratingAiMusic: false,
     });
   },
 
@@ -539,6 +698,32 @@ export async function fetchGeneratedMusic(
   analysis?: Record<string, unknown>
 ): Promise<{ track: Song; insert_policy: "future_queue" }> {
   const response = await fetch(`${API_BASE}/music/generate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    credentials: "include",
+    body: JSON.stringify({
+      story_text: storyText,
+      game_id: gameId,
+      analysis: analysis ?? {},
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "请求失败" }));
+    throw new Error(error.detail || "生成音乐失败");
+  }
+
+  return response.json();
+}
+
+export async function enqueueGeneratedMusic(
+  storyText: string,
+  gameId: number,
+  analysis?: Record<string, unknown>
+): Promise<{ status: "queued"; game_id: number; insert_policy: "future_queue" }> {
+  const response = await fetch(`${API_BASE}/music/generate-async`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
