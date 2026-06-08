@@ -96,10 +96,6 @@ export function ChatBar({
     
     setIsGeneratingSummary(true);
     
-    // 添加用户请求消息
-    const userMsg: ChatMessage = { role: "user", content: "请总结我的人生故事" };
-    setChatHistory((prev) => [...prev, userMsg]);
-    
     try {
       const result = await api.gameplay.generateSummary(gameId, { weeks: 52 });
       const summaryData = result as { summary_text?: string; summary?: string; start_week?: number; end_week?: number };
@@ -109,7 +105,7 @@ export function ChatBar({
       
       const assistantMsg: ChatMessage = {
         role: "assistant",
-        content: `📊 **人生总结（第${startWeek}-${endWeek}周）**\n\n${summaryText}`,
+        content: `**人生总结（第${startWeek}-${endWeek}周）**\n\n${summaryText}`,
       };
       setChatHistory((prev) => [...prev, assistantMsg]);
     } catch (err) {
@@ -385,14 +381,14 @@ export function ChatBar({
               void handleGenerateSummary();
             }}
             disabled={isGeneratingSummary || isSending}
-            title="总结当前人生故事"
+            title="生成人生总结"
           >
             {isGeneratingSummary ? (
               <Loader2 className="w-3 h-3 mr-1 animate-spin" />
             ) : (
               <FileText className="w-3 h-3 mr-1" />
             )}
-            总结
+            人生总结
           </Button>
           <Button
             size="icon"
@@ -482,7 +478,7 @@ export function ChatBar({
           ) : (
             <FileText className="w-3 h-3 mr-1" />
           )}
-          总结
+          人生总结
         </Button>
 
         <div className="flex-1" />

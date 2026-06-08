@@ -209,6 +209,13 @@
 
 “总结”主按钮会打开剧情助手并在其中生成总结。功能可用，但入口和展示位置容易被理解为按钮错位。
 
+本轮已修：
+- 快捷动作和展开面板里的按钮从“总结”改为“人生总结”，避免和普通剧情助手聊天混淆。
+- 生成总结时不再向聊天历史追加“请总结我的人生故事”这类伪用户提问，只显示后端返回的人生总结内容。
+- 回归测试：`presents summary as a dedicated action instead of a fake chat prompt`。
+- 本地验证：`cd frontend && npx jest src/__tests__/components/ChatBar.test.tsx --runInBand`、`./test.sh preflight` 均通过。
+- 生产状态：待部署 frontend 后做浏览器 smoke。
+
 ## 截图证据
 
 截图目录：`docs/screenshots-2026-06-08-story101-deep/`
