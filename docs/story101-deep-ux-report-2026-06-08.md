@@ -239,6 +239,8 @@
 - 生产复测：
   - 补丁 `3c32ec41` 热部署并重建 frontend 后，公网 `/api/health` 和 `/health` 正常。
   - browser-agent 打开 `https://story101.live/e2e-regression`，页面正常加载并显示“收集”入口；自动补齐缺失实体类别的核心行为由 store 回归测试覆盖。
+  - 补丁 `3e6132cf` 热部署并重建 frontend 后，公网 `/api/health` 和 `/health` 正常。
+  - browser-agent 再次打开 `https://story101.live/e2e-regression`，页面正常加载并显示“收集”入口；后续剧情新物品持续自动识别的核心行为由 store 红绿回归测试覆盖。
 
 ### P2：按钮语义仍可优化
 
