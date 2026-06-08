@@ -55,6 +55,8 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Regression coverage: `frontend/src/__tests__/hooks/choiceUtils.test.ts`, `frontend/src/__tests__/hooks/useChoiceHandler.test.ts`
 - Interrupted choice streams now recover saved `round_history` before sending a duplicate `/choice-sync` request. Production browser probing showed the original `/choice` request could already advance backend state while the browser still saw a stream-tail failure; the frontend now restores that saved continuation and enters `result` directly when history is available. Completed choice streams also ignore late SSE errors from the same request.
   - Regression coverage: `frontend/src/__tests__/hooks/choiceUtils.test.ts`, `frontend/src/__tests__/hooks/useChoiceHandler.test.ts`
+- Streaming choice processing now persists the updated game state inside the worker thread immediately after `make_round_choice`/`make_custom_choice` returns. Production browser probing on game 87 showed `/choice` could finish backend processing but leave `save_game_progress` until a later `/choice-sync`; the saved `round_history` is now available even if the browser disconnects before receiving the SSE `complete` event.
+  - Regression coverage: `tests/test_sse_helpers.py::TestSSEAsyncFunctions::test_stream_choice_persists_state_before_complete_event`
 - Story voice reading hash generation now matches the backend SHA-256 text-hash contract. Production API probing confirmed `/api/voice-reading/read` rejects stale length-prefix hashes with `text_hash_mismatch`; the auto-read controls now compute the backend-compatible hash before starting reading, and `./test.sh preflight` includes that contract test.
   - Regression coverage: `frontend/src/__tests__/components/StoryVoiceControls.test.tsx`, `frontend/src/__tests__/lib/storyVoiceTextHash.test.ts`
 - Story voice auto-read now has regression coverage for the final story-ready path after settings load/toggle timing. Production browser probing confirmed auto-read stays idle on partial stream text and starts only after the final story-ready signal.
@@ -190,6 +192,10 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Backend preflight quality checks: 86 passed.
   - Frontend preflight Jest regression tests: 298 passed.
 - Full local preflight after adding interrupted-choice history-first recovery:
+  - OpenSpec strict validation: 21 passed.
+  - Backend preflight quality checks: 86 passed.
+  - Frontend preflight Jest regression tests: 346 passed.
+- Full local preflight after moving streaming-choice persistence into the worker thread:
   - OpenSpec strict validation: 21 passed.
   - Backend preflight quality checks: 86 passed.
   - Frontend preflight Jest regression tests: 346 passed.
