@@ -30,7 +30,7 @@ interface UseGameStateParams {
   } | null>;
   prefetchingRef: React.MutableRefObject<boolean>;
   setIsPrefetching: (prefetching: boolean) => void;
-  generateEventRef: React.MutableRefObject<() => Promise<void>>;
+  generateEventRef: React.MutableRefObject<(options?: { force?: boolean }) => Promise<void>>;
   syncPlayerState: () => Promise<unknown>;
 }
 
@@ -77,7 +77,7 @@ export function useGameState({
     const startGeneration = () => {
       if (started) return;
       started = true;
-      generateEventRef.current();
+      generateEventRef.current({ force: true });
     };
 
     const fallbackTimer = setTimeout(startGeneration, 1500);

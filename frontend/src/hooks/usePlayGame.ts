@@ -88,7 +88,7 @@ export function usePlayGame() {
     event: { story: string; options: EventOption[] } | null;
   } | null>(null);
   const prefetchingRef = useRef(false);
-  const generateEventRef = useRef<() => Promise<void>>(async () => {});
+  const generateEventRef = useRef<(options?: { force?: boolean }) => Promise<void>>(async () => {});
 
   // ===== Phase Manager =====
   const {
