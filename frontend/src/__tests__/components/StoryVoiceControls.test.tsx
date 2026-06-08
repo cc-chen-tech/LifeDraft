@@ -17,6 +17,8 @@ const currentContext: ReadingContext = {
   text: '一段当前故事。',
 };
 
+const originalStartReading = useStoryVoiceStore.getState().startReading;
+
 describe('StoryVoiceControls', () => {
   beforeEach(() => {
     Object.defineProperty(globalThis, 'crypto', {
@@ -38,7 +40,7 @@ describe('StoryVoiceControls', () => {
       musicDuckState: 'idle',
       musicWasPlaying: false,
       userChangedMusic: false,
-      startReading: jest.fn(),
+      startReading: originalStartReading,
     });
   });
 
@@ -98,15 +100,28 @@ describe('StoryVoiceControls', () => {
     expect(screen.getByRole('button', { name: '重试朗读' })).toBeVisible();
   });
 
-  it('passes a backend-compatible SHA-256 text hash when auto-reading completed story text', async () => {
-    const startReading = jest.fn();
-    (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
-      auto_read_enabled: true,
-      selected_voice_color: 'warm_female',
-    }));
+  it('sends a backend-compatible SHA-256 text hash when auto-reading completed story text', async () => {
+    (global.fetch as jest.Mock).mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes('/voice-reading/settings')) {
+        return Promise.resolve(jsonResponse({
+          auto_read_enabled: true,
+          selected_voice_color: 'warm_female',
+        }));
+      }
+      if (url.includes('/voice-reading/read')) {
+        return Promise.resolve(jsonResponse({
+          job_id: 1,
+          status: 'ready',
+          audio_url: '/api/voice-reading/audio/test.mp3',
+          playback_mode: 'audio',
+          provider: 'minimax',
+          media_type: 'audio/mpeg',
+        }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
     useStoryVoiceStore.setState({
       autoReadEnabled: true,
-      startReading,
     } as never);
 
     render(
@@ -118,8 +133,16 @@ describe('StoryVoiceControls', () => {
       />
     );
 
-    await waitFor(() => expect(startReading).toHaveBeenCalledTimes(1));
-    expect(startReading.mock.calls[0][0]).toMatchObject({
+    await waitFor(() => {
+      expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
+        String(url).includes('/voice-reading/read')
+      )).toBe(true);
+    });
+    const readCall = (global.fetch as jest.Mock).mock.calls.find(([url]) =>
+      String(url).includes('/voice-reading/read')
+    );
+    const payload = JSON.parse(String(readCall?.[1]?.body ?? '{}'));
+    expect(payload.context).toMatchObject({
       text: '一段当前故事。',
       text_hash: '95813215c6b945ae5e1746a1219579a9884fd99997cf398d046f071a819c149e',
     });

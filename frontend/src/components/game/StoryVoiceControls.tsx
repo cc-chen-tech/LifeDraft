@@ -4,7 +4,6 @@ import { useEffect, useRef, type ChangeEvent } from "react";
 import { Pause, Play, RotateCcw, Square, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
-import { storyVoiceTextToHash } from "@/lib/storyVoiceTextHash";
 import type { ReadingContext } from "@/lib/types";
 import { useStoryVoiceStore } from "@/stores/useStoryVoiceStore";
 
@@ -102,18 +101,11 @@ export function StoryVoiceControls({
     if (lastAutoReadKeyRef.current === key) return;
     lastAutoReadKeyRef.current = key;
 
-    let cancelled = false;
-    void storyVoiceTextToHash(finalText).then((textHash) => {
-      if (cancelled) return;
-      void startReading({
-        ...currentContext,
-        text: finalText,
-        text_hash: textHash,
-      });
+    void startReading({
+      ...currentContext,
+      text: finalText,
+      text_hash: currentContext.text_hash || "pending-client-hash",
     });
-    return () => {
-      cancelled = true;
-    };
   }, [autoReadReady, autoReadEnabled, autoReadText, currentContext, startReading]);
 
   if (!shouldShowPlaybackControls) {
