@@ -146,6 +146,33 @@
   - 补丁 `ad2c0f90` 热部署并重建 backend 后，生产容器 healthcheck 为 healthy，公网 `/api/health` 和 `/health` 正常。
   - 生产容器内 prompt smoke 已确认普通周故事和三轮故事 prompt 均包含“每个回合只推进一个主事件”“只设置一个核心决策点”“禁止在同一回合塞入多个会议、评审、复盘、预热”“禁止把下一周或下一个回合的实际剧情提前写完”。
 
+### P1：后续剧情人设漂移守门不完整
+
+已修第一层：
+- 三轮故事路径会在完全没有使用预设关键人物、并大量引入陌生人物时触发快速校验重试。
+
+本轮继续复查发现：
+- 普通 `generate_event` 路径缺少同样的 quick validator。
+- 只提到 1 个预设关键人物，但同时塞入 `马老板`、`方蕾`、`赵子豪`、`王丽华`、`张建国律师` 这类陌生替代人物时，旧规则会放过，因为它只判断“是否出现过任一关键人物”。
+
+本轮已修：
+- quick validator 增加“关键人物稀释”规则：当预设关键人物使用比例过低，并出现大量名单外人物时，判定为 cast drift。
+- 普通 `generate_event` 路径也接入同一 quick validator，在生成选项前触发重试。
+- 普通事件的选项一致性校验现在也传入 `available_people`，避免选项继续引用名单外人物。
+- 回归测试：
+  - `test_quick_validator_flags_key_people_dilution_with_invented_cast`
+  - `test_event_generation_retries_when_story_dilutes_key_people_with_invented_cast`
+- 红灯复现：
+  - 旧 quick validator 返回 `passed=True`。
+  - 旧普通 `generate_event` 只调用 1 次 AI，不会重试。
+- 本地验证：
+  - `pytest tests/test_gate_gameplay_behavior_no_mock.py::test_quick_validator_flags_key_people_dilution_with_invented_cast tests/test_gate_gameplay_behavior_no_mock.py::test_event_generation_retries_when_story_dilutes_key_people_with_invented_cast tests/test_gate_gameplay_behavior_no_mock.py::test_round_event_retries_when_story_ignores_all_key_people_and_fabricates_new_cast -q`
+  - `pytest tests/test_gate_gameplay_behavior_no_mock.py -q`
+  - `pytest tests/test_ai_extended.py::TestStoryGenerator -q`
+- 生产复测：
+  - 补丁已热部署并重建 backend，后端容器 healthcheck 为 healthy，公网 `/api/health` 和 `/health` 正常。
+  - 生产容器内 quick validator smoke 对“陆昊然只露面一次 + 马老板/方蕾/赵子豪/王丽华/张建国律师替代主线”返回 `passed=False`，问题为“预设关键人物使用不足”。
+
 ### P1：时间线和季节冲突
 
 开场是 2022 年夏季杭州，主游戏第 1 周变成 2022 年 1 月雪天。周总结中又出现“周日（第2周）”这类日期/周次混乱。
@@ -365,6 +392,7 @@
 - 修复现代职场音乐过滤：从故事正文补充职场 cue，避免 AI 分析泛化时推荐弱匹配流行歌。
 - 修复资源反馈：低精力时 `effects_applied` 反映实际生效变化，后端返回 `resource_warnings`，前端结果页展示资源提示。
 - 修复起始财富初始化：可玩状态优先使用创建阶段生成的财富值，不再固定覆盖为全局默认 1 万。
+- 修复普通事件人设漂移守门：关键人物被少量点名但大量陌生人物替代时会触发重试。
 - 修复开场时间锚点：开场故事与主游戏第 1 周使用同一日期/季节约束，避免开场夏季、第一周冬季的冲突。
 - 新增回归测试：
   - `forces next event generation after weekly summary so stale phase cannot block it`
@@ -379,6 +407,8 @@
   - `shows resource warnings even when the backend summary is empty`
   - `renders resource warning details in the result summary`
   - `test_create_game_preserves_generated_initial_wealth`
+  - `test_quick_validator_flags_key_people_dilution_with_invented_cast`
+  - `test_event_generation_retries_when_story_dilutes_key_people_with_invented_cast`
   - `test_opening_story_prompt_anchors_first_week_date_and_season`
 - 验证：
   - `cd frontend && npx jest src/__tests__/hooks/useGameState.test.ts --runInBand`
@@ -388,6 +418,7 @@
   - `pytest tests/test_story_music_recommendation_contract.py tests/test_minimax_audio_generation_contract.py::test_music_generate_api_persists_generated_track_into_future_playlist_queue tests/test_minimax_audio_generation_contract.py::test_music_generate_async_api_returns_quickly_and_persists_future_playlist_track tests/test_minimax_audio_generation_db.py::test_ready_minimax_music_asset_inserts_as_next_playlist_track -q`
   - `pytest tests/test_choice_processor_contract.py -q`
   - `pytest tests/test_gate_gameplay_behavior_no_mock.py -q`
+  - `pytest tests/test_ai_extended.py::TestStoryGenerator -q`
   - `pytest tests/test_api_games.py::TestCreateGame::test_create_game_preserves_generated_initial_wealth -q`
   - `cd frontend && npx jest src/__tests__/hooks/choiceUtils.test.ts --runInBand`
   - `cd frontend && npx jest src/__tests__/pages/PlayPage.test.tsx --runInBand --testNamePattern='resource warning|shows round summary when available'`

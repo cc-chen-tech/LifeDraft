@@ -364,3 +364,83 @@ def test_round_event_retries_when_story_ignores_all_key_people_and_fabricates_ne
     ]
     assert "陆昊然" in story_for_options
     assert "马老板" not in story_for_options
+
+
+def test_quick_validator_flags_key_people_dilution_with_invented_cast() -> None:
+    from src.ai.quick_validator import quick_validate_story
+
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然在会议室门口只匆匆露了一面。随后马老板、方蕾、赵子豪、"
+            "王丽华、张建国律师轮番要求林见微处理苏州贸易公司的债务。"
+        ),
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("预设关键人物使用不足" in issue for issue in result.issues)
+
+
+def test_event_generation_retries_when_story_dilutes_key_people_with_invented_cast() -> None:
+    class DriftClient:
+        def __init__(self):
+            self.calls = []
+
+        def call(self, **kwargs):
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                return (
+                    "陆昊然在会议室门口只匆匆露了一面。随后马老板、方蕾、赵子豪、"
+                    "王丽华、张建国律师轮番要求林见微处理苏州贸易公司的债务。"
+                )
+            return (
+                "陆昊然把产品评审文档推到林见微面前，陈晓雨提醒她先确认用户反馈，"
+                "林一凡则把远程会议链接发进群里。"
+            )
+
+    client = DriftClient()
+    gen = StoryGenerator(client)
+    mock_option_gen = MagicMock()
+    mock_option_gen.generate_options_only.return_value = GameEvent(
+        event_description="",
+        options=[
+            EventOption(text="先和陆昊然核对需求", effects={"knowledge": 5}),
+            EventOption(text="请陈晓雨一起复盘用户反馈", effects={"mood": 2}),
+            EventOption(text="找林一凡确认技术边界", effects={"knowledge": 4}),
+        ],
+    )
+    mock_option_gen.validate_and_fix_relationships.return_value = None
+    mock_option_gen.validate_event_quality.return_value = None
+    mock_option_gen.ensure_options_consistency.return_value = None
+
+    gen.generate_event(
+        player_state={
+            "game_id": 8,
+            "player_name": "林见微",
+            "age": 22,
+            "week": 1,
+            "current_round": 0,
+        },
+        language="zh",
+        retry_count=2,
+        character_settings={
+            "relationships": {
+                "key_people": [
+                    {"name": "陆昊然", "role": "导师"},
+                    {"name": "陈晓雨", "role": "同事"},
+                    {"name": "林一凡", "role": "朋友"},
+                ]
+            }
+        },
+        option_generator=mock_option_gen,
+    )
+
+    assert len(client.calls) == 2
+    retry_prompt = client.calls[1]["user_prompt"]
+    assert "预设关键人物使用不足" in retry_prompt
+    story_for_options = mock_option_gen.generate_options_only.call_args.kwargs[
+        "story_description"
+    ]
+    assert "陈晓雨" in story_for_options
+    assert "马老板" not in story_for_options

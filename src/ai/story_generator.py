@@ -191,6 +191,23 @@ class StoryGenerator:
                 logger.debug(f"Story preview (first 200 chars): {story_text[:200]}...")
                 logger.debug(f"Story preview (last 200 chars): ...{story_text[-200:]}")
 
+                from config.prompts._helpers import _collect_available_people
+                from src.ai.quick_validator import quick_validate_story
+
+                available_people_names = [
+                    p.get("name", "")
+                    for p in _collect_available_people(character_settings)
+                    if p.get("name")
+                ]
+                quick_result = quick_validate_story(
+                    story_text=story_text,
+                    character_settings=character_settings,
+                    available_people=available_people_names,
+                    language=language,
+                )
+                if not quick_result.passed:
+                    raise ValueError("; ".join(quick_result.issues))
+
                 # Step 2: Generate options based on the story
                 if option_generator is None:
                     raise ValueError("option_generator is required")
@@ -218,7 +235,7 @@ class StoryGenerator:
                 option_generator.ensure_options_consistency(
                     event=event,
                     story_description=story_text,
-                    available_people=None,
+                    available_people=available_people_names,
                     language=language,
                 )
 
