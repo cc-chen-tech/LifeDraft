@@ -353,6 +353,7 @@ run_contract() {
         tests/test_gate_contracts_no_mock.py \
         tests/test_music_playlist_contract.py \
         tests/test_minimax_audio_generation_contract.py \
+        tests/test_character_settings_api_contract.py \
         tests/test_shift_left_e2e_contract_no_mock.py \
         tests/test_story_music_recommendation_contract.py \
         tests/test_story_voice_reading_contract.py \
@@ -583,6 +584,14 @@ run_e2e_browser_impl() {
         --no-deps
     local music_ai_result=$?
 
+    echo -e "${YELLOW}运行角色设定 PATCH 持久化 E2E 浏览器测试...${NC}"
+    run_playwright_command "character-settings" npx playwright test e2e/character-settings-persistence.spec.ts \
+        --project=ai-heavy \
+        --reporter=list \
+        --workers=1 \
+        --no-deps
+    local character_settings_result=$?
+
     echo -e "${YELLOW}运行读故事 E2E 浏览器测试...${NC}"
     run_playwright_command "story-voice" npx playwright test e2e/story-voice-reading.spec.ts \
         --project=core \
@@ -600,7 +609,7 @@ run_e2e_browser_impl() {
     local minimax_audio_result=$?
 
     local result=0
-    if [ $core_result -ne 0 ] || [ $music_ai_result -ne 0 ] || [ $story_voice_result -ne 0 ] || [ $minimax_audio_result -ne 0 ]; then
+    if [ $core_result -ne 0 ] || [ $music_ai_result -ne 0 ] || [ $character_settings_result -ne 0 ] || [ $story_voice_result -ne 0 ] || [ $minimax_audio_result -ne 0 ]; then
         result=1
     fi
 
