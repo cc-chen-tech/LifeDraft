@@ -222,10 +222,13 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - The browser saw `/choice` `ERR_INCOMPLETE_CHUNKED_ENCODING` on all 12 choices, but every one recovered through saved `round_history` and the run made 0 `/choice-sync` requests.
   - `/event` also saw 11 browser-tail `ERR_INCOMPLETE_CHUNKED_ENCODING` interruptions; polling recovered enough to continue the main flow, but the console still logged unhandled `TypeError: network error` rejections.
   - MiniMax music generation returned 200 in 18 observed browser calls, while 13 observed calls failed with browser `ERR_EMPTY_RESPONSE`; gameplay continued because generated music is a future-queue enhancement rather than a blocking step.
+- Production browser verification after deploying the event/choice clean-log follow-ups:
+  - Game 92 reproduced `/choice` `ERR_INCOMPLETE_CHUNKED_ENCODING`, recovered to the `进入周中` result button, and reported `badConsole=0` with no page errors.
+  - Game 93 waited for the real `/api/music/generate` browser request before closing the test browser. The request returned 200 with `source=ai_generated`, `provider=minimax`, `insert_policy=future_queue`, and the persisted playlist contained an `ai_generated` track.
+  - Game 93 had no `/api/music/generate` request failure when the browser stayed open for the long-running generation request. The earlier `ERR_EMPTY_RESPONSE` observations are therefore classified as browser/test lifecycle aborts of long optional music requests, not confirmed MiniMax generation failures.
 
 ## Still Not Claimed As Production-Complete
 
 - Remote GitHub checks are blocked by GitHub billing/spending-limit status, not by retrievable job logs.
 - Fresh MiniMax music generation can take longer than 150 seconds on production; the current design keeps NetEase playback available and inserts generated music only after the asset is ready.
 - Broader music matching quality still needs product tuning: strict modern workplace filtering prevents known bad NetEase songs, but for that scene class the safe NetEase baseline can be empty and the generated MiniMax track becomes the reliable queued music source.
-- Browser MiniMax music generation still intermittently fails with `ERR_EMPTY_RESPONSE` during long-flow play, even though many calls return 200 and serve generated MP3 assets.
