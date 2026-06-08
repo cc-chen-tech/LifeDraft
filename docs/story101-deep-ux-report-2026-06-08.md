@@ -196,6 +196,8 @@
   - `game_id=95` 中保留当前播放不变，MiniMax 异步生成完成后 `ai-generated-77` 成为 queue[0]。
   - 临时 `game_id=96` 初始 `current_song=null`、`queue=[]`，MiniMax 异步生成完成后 `ai-generated-79` 成为 current song；验证后已删除临时游戏。
   - 现代职场推荐 smoke 不再生成 `现代医院` / `医疗悬疑` 搜索词，也未返回 `都选C` 等弱匹配歌名。
+  - 补丁 `28a3391f` 热部署并重建 frontend 后，公网 `/api/health` 和 `/health` 正常。
+  - browser-agent 打开 `https://story101.live/e2e-regression`，音乐回归夹具和 MiniMax 触发入口正常加载；AI 曲进入 playlist 后同步显示到播放器列表的核心行为由组件红绿回归测试覆盖。
 
 ### P1：资源状态缺少玩法反馈
 
