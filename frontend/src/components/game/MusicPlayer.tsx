@@ -626,6 +626,13 @@ export function MusicPlayer({
         </div>
       )}
 
+      {recommendation && recommendation.songs.length > 0 && isGeneratingAiMusic && (
+        <div className="flex items-center justify-center rounded bg-primary/5 px-2 py-2 text-primary">
+          <Loader2 className="w-3 h-3 animate-spin mr-2" />
+          <span className="text-xs">正在生成原创场景音乐，完成后加入下一首</span>
+        </div>
+      )}
+
       {/* 播放器 */}
       {recommendation && recommendation.songs.length > 0 && (
         <div className="space-y-3">

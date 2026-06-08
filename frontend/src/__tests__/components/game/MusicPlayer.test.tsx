@@ -392,6 +392,53 @@ describe('MusicPlayer', () => {
     ]);
     expect(screen.getByText('AI MiniMax 雨夜追逐')).toBeInTheDocument();
   });
+
+  it('有基础歌曲时仍提示 MiniMax 原创音乐正在后台生成', () => {
+    useMusicStore.setState({
+      recommendation: {
+        mood: '紧张',
+        scene_type: '现代职场危机',
+        keywords: ['办公室 轻电子 氛围'],
+        music_brief: {
+          mood: '紧张',
+          scene_type: '现代职场危机',
+          generation_prompt: 'tense modern workplace instrumental ambience, no vocals',
+        },
+        songs: [
+          {
+            id: 1,
+            name: '网易云 当前曲',
+            artists: ['Score'],
+            album: '影视配乐',
+            duration: 180000,
+            url: 'https://example.com/current.mp3',
+            source: 'netease',
+          },
+        ],
+      },
+      currentSong: {
+        id: 1,
+        name: '网易云 当前曲',
+        artists: ['Score'],
+        album: '影视配乐',
+        duration: 180000,
+        url: 'https://example.com/current.mp3',
+        source: 'netease',
+      },
+      isGeneratingAiMusic: true,
+    });
+
+    render(
+      <MusicPlayer
+        storyText="产品经理发现数据异常，会议室气氛紧张。"
+        gameId={77}
+        autoFetchRecommendation={false}
+      />
+    );
+
+    expect(screen.getByText('正在生成原创场景音乐，完成后加入下一首')).toBeInTheDocument();
+    expect(screen.getByText('网易云 当前曲')).toBeInTheDocument();
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════
