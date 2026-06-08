@@ -424,6 +424,31 @@ describe('PlayPage', () => {
         expect(screen.getByText('Some story')).toBeInTheDocument();
       });
     });
+
+    it('explains long-running generation when partial story text already exists', async () => {
+      const mockRecoverEventGeneration = jest.fn();
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'generating',
+        options: [],
+        storyText: '部分故事正文已经生成，但选项还在校验。',
+        displayText: '部分故事正文已经生成，但选项还在校验。',
+        elapsedSeconds: 75,
+        recoverEventGeneration: mockRecoverEventGeneration,
+        getLoadingMessage: () => '故事逻辑校验中，正在优化...',
+      });
+
+      render(<PlayPage />);
+
+      expect(screen.getByText(/已等待 1分15秒/)).toBeInTheDocument();
+      expect(screen.getByText(/正在校验故事逻辑和生成选项/)).toBeInTheDocument();
+      const recoveryButton = screen.getByRole('button', { name: '恢复当前进度' });
+      fireEvent.click(recoveryButton);
+      await waitFor(() => {
+        expect(mockRecoverEventGeneration).toHaveBeenCalledTimes(1);
+      });
+    });
   });
 
   describe('Choosing phase', () => {

@@ -201,6 +201,14 @@
 
 第 2 周周中、第 3 周周一、第 3 周周末均进入 1 分钟以上的逻辑校验/复杂推演阶段。虽然“恢复当前进度”兜底能避免空白，但缺少明确说明：当前是在校验、重写、生成选项、还是等场景图。
 
+本轮已修：
+- 当已有部分故事正文、但仍处于 `generating` / `choosing` 阶段超过 60 秒时，页面会显示“已等待 X，正在校验故事逻辑和生成选项”的说明。
+- 长等待说明明确告知用户这是长剧情一致性检查，不代表内容丢失。
+- 同一提示区提供“恢复当前进度”按钮，调用现有 `recoverEventGeneration`，不需要刷新页面。
+- 回归测试：`explains long-running generation when partial story text already exists`。
+- 本地验证：`cd frontend && npx jest src/__tests__/pages/PlayPage.test.tsx --runInBand`、`./test.sh preflight` 均通过。
+- 生产状态：待部署 frontend 后做浏览器 smoke。
+
 ### P2：收集系统粒度仍需复查
 
 初期人物收集可用但物品为 0；推进到第 3 周周总结后，后端开始提取关键物品：`SemantLink API文档U盘`、`林一凡的技术架构笔记`、`竞品分析报告`、`用户调研框架模板`、`里程碑计划初稿` 等。仍需复查 UI 是否同步展示这些新物品，以及智能识别是否继续推荐重复人物。
