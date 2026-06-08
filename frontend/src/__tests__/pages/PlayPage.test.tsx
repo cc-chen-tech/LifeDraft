@@ -2,9 +2,12 @@
  * Tests for PlayPage component
  */
 import React from 'react';
+import { webcrypto } from 'node:crypto';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import PlayPage from '@/app/play/page';
 import { useMusicStore } from '@/stores/useMusicStore';
+import { useStoryVoiceStore } from '@/stores/useStoryVoiceStore';
+import { jsonResponse } from '@/__tests__/helpers/fetch';
 
 // Mock usePlayGame hook
 const mockUsePlayGame = {
@@ -63,7 +66,44 @@ jest.mock('@/hooks/usePlayGame', () => ({
 describe('PlayPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    Object.defineProperty(globalThis, 'crypto', {
+      value: webcrypto,
+      configurable: true,
+    });
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.includes('/voice-reading/settings')) {
+        return Promise.resolve(jsonResponse({
+          auto_read_enabled: false,
+          selected_voice_color: 'warm_female',
+        }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    jest.spyOn(window.HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+    jest.spyOn(window.HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
     useMusicStore.setState({ activeStoryText: null, activeGameId: null });
+    useStoryVoiceStore.setState({
+      readingState: 'idle',
+      currentSource: '',
+      currentContextLabel: '',
+      currentAudioUrl: '',
+      currentJobId: null,
+      currentProvider: '',
+      playbackMode: 'none',
+      spokenTextLength: 0,
+      currentSpeechText: '',
+      errorMessage: '',
+      queueText: '',
+      autoReadEnabled: false,
+      selectedVoiceId: 'warm_female',
+      musicDuckState: 'idle',
+      musicWasPlaying: false,
+      userChangedMusic: false,
+    });
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   describe('Music handoff', () => {
@@ -197,6 +237,50 @@ describe('PlayPage', () => {
       const button = screen.getByRole('button', { name: /进入|确认/ });
       fireEvent.click(button);
       expect(mockContinue).toHaveBeenCalled();
+    });
+
+    it('auto-reads the completed choice result story', async () => {
+      useStoryVoiceStore.setState({ autoReadEnabled: true });
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url.includes('/voice-reading/settings')) {
+          return Promise.resolve(jsonResponse({
+            auto_read_enabled: true,
+            selected_voice_color: 'warm_female',
+          }));
+        }
+        if (url.includes('/voice-reading/read')) {
+          return Promise.resolve(jsonResponse({
+            job_id: 9,
+            status: 'ready',
+            audio_url: '/api/voice-reading/audio/choice-result.mp3',
+            playback_mode: 'audio',
+            provider: 'minimax',
+            media_type: 'audio/mpeg',
+          }));
+        }
+        return Promise.resolve(jsonResponse({}));
+      });
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'result',
+        options: [],
+        storyText: '主角做出选择后的完整续写。',
+        displayText: '主角做出选择后的完整续写。',
+      });
+
+      render(<PlayPage />);
+
+      await waitFor(() => {
+        expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
+          String(url).includes('/voice-reading/read')
+        )).toBe(true);
+      });
+      const readCall = (global.fetch as jest.Mock).mock.calls.find(([url]) =>
+        String(url).includes('/voice-reading/read')
+      );
+      const payload = JSON.parse(String(readCall?.[1]?.body ?? '{}'));
+      expect(payload.context.text).toBe('主角做出选择后的完整续写。');
     });
   });
 
