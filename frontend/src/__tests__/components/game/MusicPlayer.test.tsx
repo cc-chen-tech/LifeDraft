@@ -390,6 +390,7 @@ describe('MusicPlayer', () => {
       '网易云 下一曲',
       'AI MiniMax 雨夜追逐',
     ]);
+    expect(screen.getByText('AI MiniMax 雨夜追逐')).toBeInTheDocument();
   });
 });
 

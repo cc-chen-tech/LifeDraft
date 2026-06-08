@@ -118,6 +118,34 @@ function playlistStateToStorePatch(playlist: PlaylistApiState): Partial<MusicSta
   };
 }
 
+function playlistSongs(playlist: PlaylistApiState): Song[] {
+  return [
+    playlist.current_song,
+    ...(playlist.queue || []),
+  ].filter((song): song is Song => Boolean(song));
+}
+
+function playlistStateToStorePatchWithRecommendation(
+  playlist: PlaylistApiState,
+  recommendation: MusicRecommendation | null
+): Partial<MusicState> {
+  const patch = playlistStateToStorePatch(playlist);
+  if (!recommendation) {
+    return patch;
+  }
+  const songs = playlistSongs(playlist);
+  if (songs.length === 0) {
+    return patch;
+  }
+  return {
+    ...patch,
+    recommendation: {
+      ...recommendation,
+      songs,
+    },
+  };
+}
+
 interface MusicState {
   // 推荐结果
   recommendation: MusicRecommendation | null;
@@ -396,7 +424,9 @@ export const useMusicStore = create<MusicState>((set, get) => ({
         });
         if (response.ok) {
           const playlist = (await response.json()) as PlaylistApiState;
-          set(playlistStateToStorePatch(playlist));
+          set((state) =>
+            playlistStateToStorePatchWithRecommendation(playlist, state.recommendation)
+          );
           return;
         }
       }
@@ -426,7 +456,9 @@ export const useMusicStore = create<MusicState>((set, get) => ({
         });
         if (response.ok) {
           const playlist = (await response.json()) as PlaylistApiState;
-          set(playlistStateToStorePatch(playlist));
+          set((state) =>
+            playlistStateToStorePatchWithRecommendation(playlist, state.recommendation)
+          );
           return;
         }
       } catch (error) {
@@ -473,7 +505,9 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       const initialGeneratedIds = generatedTrackIds(get());
       await enqueueGeneratedMusic(storyText, gameId, analysis);
       await pollPlaylistForGeneratedTrack(gameId, initialGeneratedIds, (playlist) => {
-        set(playlistStateToStorePatch(playlist));
+        set((state) =>
+          playlistStateToStorePatchWithRecommendation(playlist, state.recommendation)
+        );
       });
     } catch (error) {
       console.warn("[MusicStore] AI music generation unavailable:", error);
@@ -496,7 +530,9 @@ export const useMusicStore = create<MusicState>((set, get) => ({
         });
         if (response.ok) {
           const playlist = (await response.json()) as PlaylistApiState;
-          set(playlistStateToStorePatch(playlist));
+          set((state) =>
+            playlistStateToStorePatchWithRecommendation(playlist, state.recommendation)
+          );
           return;
         }
       } catch (error) {

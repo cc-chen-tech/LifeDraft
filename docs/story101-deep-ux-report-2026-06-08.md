@@ -187,7 +187,11 @@
 - MiniMax 生成曲不再插到网易云下一曲之后；它会在不打断当前播放的前提下成为下一首。
 - 修复“用户数据”误触发医疗悬疑搜索的问题：单独的数据/用户数据不再生成 `现代医院`、`医疗悬疑` 等搜索词，只有医疗/医院/造假等真实悬疑医疗上下文才会触发。
 - 修复网易云严格过滤后为空的边界：如果当前没有正在播放的歌曲，MiniMax 生成曲会直接成为 current song，而不是只落到 queue 里等用户手动切歌。
+- 继续修复一个 UI 同步遗漏：MiniMax 生成曲进入 playlist queue 后，`MusicPlayer` 的可见推荐列表仍可能停留在旧 `recommendation.songs`，导致用户看不到 AI 曲已经成为后续队列。
+- 现在所有 playlist 同步路径都会把 `recommendation.songs` 更新为 `[current_song, ...queue]`，播放器列表、当前曲和后续队列保持一致。
 - 回归测试已覆盖：AI 分析泛化时仍过滤 `都选C`，并推荐 `办公室 轻电子 氛围`；同步覆盖后端 API / DB / 前端 store 队列顺序。
+- 回归测试补充：`带 music_brief 的故事推荐会后台生成 AI 音乐并从播放列表插入后续队列` 现在断言 UI 中可见 `AI MiniMax 雨夜追逐`。
+- 红灯复现：旧逻辑下 store queue 已包含 `AI MiniMax 雨夜追逐`，但播放器 DOM 中找不到该曲名。
 - 生产复测：
   - `game_id=95` 中保留当前播放不变，MiniMax 异步生成完成后 `ai-generated-77` 成为 queue[0]。
   - 临时 `game_id=96` 初始 `current_song=null`、`queue=[]`，MiniMax 异步生成完成后 `ai-generated-79` 成为 current song；验证后已删除临时游戏。
