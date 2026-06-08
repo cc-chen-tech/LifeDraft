@@ -55,6 +55,7 @@ export function MusicPlayer({
     currentTime,
     duration,
     audioElement,
+    isGeneratingAiMusic,
     setRecommendation,
     setIsLoadingRecommendation,
     setRecommendationError,
@@ -764,7 +765,14 @@ export function MusicPlayer({
       )}
 
       {/* 无结果 */}
-      {recommendation && recommendation.songs.length === 0 && (
+      {recommendation && recommendation.songs.length === 0 && isGeneratingAiMusic && (
+        <div className="flex items-center justify-center py-4 text-muted-foreground">
+          <Loader2 className="w-4 h-4 animate-spin mr-2" />
+          <span className="text-sm">正在生成原创场景音乐...</span>
+        </div>
+      )}
+
+      {recommendation && recommendation.songs.length === 0 && !isGeneratingAiMusic && (
         <div className="text-sm text-muted-foreground text-center py-4">
           音乐服务暂不可用，故事可继续进行
         </div>

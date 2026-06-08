@@ -73,6 +73,8 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Regression coverage: `tests/test_minimax_audio_generation_contract.py`
 - MiniMax music generation no longer requires the browser to hold a 100-150s `/api/music/generate` request open. The frontend now posts a short `/api/music/generate-async` enqueue request, the backend generates and inserts the track in a background task, and the player polls the persisted playlist until the generated track appears.
   - Regression coverage: `tests/test_minimax_audio_generation_contract.py`, `frontend/src/__tests__/components/game/MusicPlayer.test.tsx`
+- When strict NetEase filtering leaves the safe baseline empty but `music_brief` is present, the player now shows an explicit MiniMax generation-in-progress state instead of saying the music service is unavailable.
+  - Regression coverage: `frontend/src/__tests__/components/game/MusicPlayer.test.tsx`
 
 ## Verification
 
@@ -229,6 +231,12 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - OpenSpec strict validation: 21 passed.
   - Backend preflight quality checks: 89 passed.
   - Frontend preflight Jest regression tests: 346 passed.
+- Focused empty-NetEase/MiniMax-generation UI batch:
+  - `cd frontend && npm run test:integration -- --runInBand src/__tests__/components/game/MusicPlayer.test.tsx -t '网易云安全基线为空'`: 1 passed.
+- Full local preflight after the empty-NetEase/MiniMax-generation UI fix:
+  - OpenSpec strict validation: 21 passed.
+  - Backend preflight quality checks: 89 passed.
+  - Frontend preflight Jest regression tests: 347 passed.
 - Production browser verification after deploying the streaming-choice persistence fix:
   - Game 88 reproduced the browser-tail failure on `/api/games/88/choice`: `net::ERR_INCOMPLETE_CHUNKED_ENCODING`.
   - Backend logs showed `save_game_progress` and `Auto-saved game state after choice: game_id=88` immediately after choice processing returned, before any `/choice-sync`.
@@ -259,4 +267,4 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
 ## Still Not Claimed As Production-Complete
 
 - Remote GitHub checks are blocked before job steps execute. Current evidence points to GitHub hosted-runner allocation/account capacity rather than a code-level test failure.
-- Broader music matching quality still needs product tuning: strict modern workplace filtering prevents known bad NetEase songs, but for that scene class the safe NetEase baseline can be empty and the generated MiniMax track becomes the reliable queued music source.
+- Broader music matching quality is intentionally conservative for modern workplace scenes: strict filtering prevents known bad NetEase songs, and when the safe baseline is empty the UI now treats MiniMax generation as the active music path instead of surfacing an unavailable-service state.

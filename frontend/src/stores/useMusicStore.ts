@@ -142,6 +142,7 @@ interface MusicState {
   playedSongs: Song[];
   playlistGameId: number | null;
   isLoadingPlaylist: boolean;
+  isGeneratingAiMusic: boolean;
 
   // Active story context (set by play page)
   activeStoryText: string | null;
@@ -274,6 +275,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   playedSongs: [],
   playlistGameId: null,
   isLoadingPlaylist: false,
+  isGeneratingAiMusic: false,
   activeStoryText: null,
   activeGameId: null,
 
@@ -464,6 +466,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       if (disabled === "1" || disabled === "true") return;
     }
 
+    set({ isGeneratingAiMusic: true });
     try {
       const initialGeneratedIds = generatedTrackIds(get());
       await enqueueGeneratedMusic(storyText, gameId, analysis);
@@ -472,6 +475,8 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       });
     } catch (error) {
       console.warn("[MusicStore] AI music generation unavailable:", error);
+    } finally {
+      set({ isGeneratingAiMusic: false });
     }
   },
 
@@ -545,6 +550,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       playedSongs: [],
       playlistGameId: null,
       isLoadingPlaylist: false,
+      isGeneratingAiMusic: false,
     });
   },
 

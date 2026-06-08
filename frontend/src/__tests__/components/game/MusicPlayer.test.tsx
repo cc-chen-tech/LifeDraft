@@ -117,6 +117,43 @@ describe('MusicPlayer', () => {
     expect(await screen.findByText('音乐服务暂不可用，故事可继续进行')).toBeInTheDocument();
   });
 
+  it('网易云安全基线为空但有 music_brief 时显示 MiniMax 生成中而不是不可用', async () => {
+    (global.fetch as jest.Mock).mockReset();
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(
+        jsonResponse({
+          mood: '紧张',
+          scene_type: '现代职场危机',
+          keywords: ['现代职场 纯音乐'],
+          music_brief: {
+            mood: '紧张',
+            scene_type: '现代职场危机',
+            generation_prompt: 'tense modern workplace instrumental ambience, no vocals',
+          },
+          songs: [],
+        })
+      )
+      .mockResolvedValueOnce(playlistResponse(77))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          status: 'queued',
+          insert_policy: 'future_queue',
+          game_id: 77,
+        })
+      )
+      .mockResolvedValue(playlistResponse(77));
+
+    render(<MusicPlayer storyText="产品经理发现数据异常，会议室气氛紧张。" gameId={77} />);
+
+    expect(await screen.findByText('正在生成原创场景音乐...')).toBeInTheDocument();
+    expect(screen.queryByText('音乐服务暂不可用，故事可继续进行')).not.toBeInTheDocument();
+    expect(
+      (global.fetch as jest.Mock).mock.calls.some((call: unknown[]) =>
+        String(call[0]).includes('/api/music/generate-async')
+      )
+    ).toBe(true);
+  });
+
   it('点击换一批时用 refresh 模式请求新候选', async () => {
     (global.fetch as jest.Mock).mockReset();
     (global.fetch as jest.Mock)
