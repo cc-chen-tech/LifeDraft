@@ -1,5 +1,7 @@
 """No-mock gameplay behavior tests for option relevance and text cleanup."""
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from config.prompts import (
