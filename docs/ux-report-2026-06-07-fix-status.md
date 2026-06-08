@@ -71,6 +71,8 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Regression coverage: `frontend/src/__tests__/hooks/useChoiceHandler.test.ts`
 - MiniMax TTS contract coverage now verifies all three selectable production voice IDs (`warm_female`, `calm_male`, `clear_neutral`) map to distinct MiniMax backend voice IDs and produce backend audio assets instead of silently falling back to browser speech.
   - Regression coverage: `tests/test_minimax_audio_generation_contract.py`
+- MiniMax music generation no longer requires the browser to hold a 100-150s `/api/music/generate` request open. The frontend now posts a short `/api/music/generate-async` enqueue request, the backend generates and inserts the track in a background task, and the player polls the persisted playlist until the generated track appears.
+  - Regression coverage: `tests/test_minimax_audio_generation_contract.py`, `frontend/src/__tests__/components/game/MusicPlayer.test.tsx`
 
 ## Verification
 
@@ -219,6 +221,14 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - OpenSpec strict validation: 21 passed.
   - Backend preflight quality checks: 88 passed.
   - Frontend preflight Jest regression tests: 346 passed.
+- Focused async MiniMax music generation batch:
+  - `python -m pytest tests/test_minimax_audio_generation_contract.py -q`: 25 passed.
+  - Frontend unit suite while running the MusicPlayer check: 98 suites passed, 1699 passed, 4 skipped.
+  - `frontend/src/__tests__/components/game/MusicPlayer.test.tsx`: passed with async enqueue plus playlist polling.
+- Full local preflight after async MiniMax music enqueue:
+  - OpenSpec strict validation: 21 passed.
+  - Backend preflight quality checks: 89 passed.
+  - Frontend preflight Jest regression tests: 346 passed.
 - Production browser verification after deploying the streaming-choice persistence fix:
   - Game 88 reproduced the browser-tail failure on `/api/games/88/choice`: `net::ERR_INCOMPLETE_CHUNKED_ENCODING`.
   - Backend logs showed `save_game_progress` and `Auto-saved game state after choice: game_id=88` immediately after choice processing returned, before any `/choice-sync`.
@@ -249,5 +259,4 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
 ## Still Not Claimed As Production-Complete
 
 - Remote GitHub checks are blocked before job steps execute. Current evidence points to GitHub hosted-runner allocation/account capacity rather than a code-level test failure.
-- Fresh MiniMax music generation can take longer than 150 seconds on production; the current design keeps NetEase playback available and inserts generated music only after the asset is ready.
 - Broader music matching quality still needs product tuning: strict modern workplace filtering prevents known bad NetEase songs, but for that scene class the safe NetEase baseline can be empty and the generated MiniMax track becomes the reliable queued music source.

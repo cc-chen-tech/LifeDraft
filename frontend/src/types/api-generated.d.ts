@@ -1659,6 +1659,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/music/generate-async": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enqueue Music Generation
+         * @description Start AI music generation in the background and return immediately.
+         */
+        post: operations["enqueue_music_generation_api_music_generate_async_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/music/song-url": {
         parameters: {
             query?: never;
@@ -2558,6 +2578,18 @@ export interface components {
             data?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /**
+         * MusicGenerationEnqueueResponse
+         * @description Accepted background music generation job.
+         */
+        MusicGenerationEnqueueResponse: {
+            /** Status */
+            status: string;
+            /** Game Id */
+            game_id: number;
+            /** Insert Policy */
+            insert_policy: string;
         };
         /**
          * MusicGenerationRequest
@@ -5966,6 +5998,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MusicGenerationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enqueue_music_generation_api_music_generate_async_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MusicGenerationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MusicGenerationEnqueueResponse"];
                 };
             };
             /** @description Validation Error */
