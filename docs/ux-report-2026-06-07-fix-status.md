@@ -65,7 +65,7 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Regression coverage: `frontend/src/__tests__/components/game/MusicPlayer.test.tsx`
 - The Next.js API proxy now treats `/api/music/generate` as a long-running request. Production browser probing showed MiniMax music generation can take about 125s, while the previous proxy timeout was 120s; the browser path could therefore degrade even though the backend API would have succeeded.
   - Regression coverage: `frontend/src/__tests__/app/api/route.test.ts`
-- Event SSE polling recovery no longer lets the underlying stream rejection bubble after `onError` has already switched the page into polling recovery. Production week-4 browser probing showed `/event` could recover enough to continue while still logging unhandled `TypeError: network error`; the hook now treats that rejection as already handled when polling recovery is active.
+- Event SSE polling recovery no longer lets the underlying stream rejection bubble after `onError` has already switched the page into polling recovery. Production week-4 browser probing showed `/event` could recover enough to continue while still logging unhandled `TypeError: network error`; the hook now treats that rejection as already handled when polling recovery is active and no longer logs the raw `TypeError/network error` object.
   - Regression coverage: `frontend/src/__tests__/hooks/useEventGenerator.test.ts`
 
 ## Verification

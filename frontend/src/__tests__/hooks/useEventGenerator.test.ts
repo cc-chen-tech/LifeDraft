@@ -267,6 +267,7 @@ describe('useEventGenerator', () => {
     });
 
     it('does not bubble stream rejection after event polling recovery starts', async () => {
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
       const recoveredStory = '轮次事件已经由后端保存。';
       const recoveredOptions = [{ text: '继续调查' }];
       const syncState = jest.fn().mockImplementation(async () => {
@@ -293,6 +294,12 @@ describe('useEventGenerator', () => {
         expect(mockSetters.setPhase).toHaveBeenCalledWith('options');
       });
       expect(mockSetters.setConnectionStatus).not.toHaveBeenCalledWith('error');
+      expect(
+        warnSpy.mock.calls.some((args) =>
+          args.some((arg) => String(arg).includes('TypeError') || String(arg).includes('network error'))
+        )
+      ).toBe(false);
+      warnSpy.mockRestore();
     });
 
     it('clears recovered partial story before retrying so new output is not appended to it', async () => {

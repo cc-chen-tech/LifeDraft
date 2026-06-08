@@ -316,7 +316,7 @@ export function useEventGenerator({
       if (err instanceof Error && err.name === 'AbortError') {
         console.log("[generateEvent] Generation aborted (expected)");
       } else if (streamErrorHandled || pollingRef.current) {
-        console.warn("[generateEvent] streamGameEvent rejected after onError recovery handling:", err);
+        console.warn("[generateEvent] streamGameEvent rejection already handled by polling recovery");
       } else {
         throw err; // Re-throw other errors
       }
