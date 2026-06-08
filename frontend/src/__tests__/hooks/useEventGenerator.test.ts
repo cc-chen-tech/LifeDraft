@@ -2,7 +2,7 @@
  * useEventGenerator Tests
  * Tests for the event generation hook
  */
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useEventGenerator } from '@/hooks/game/useEventGenerator';
 import { useGameStore } from '@/stores/useGameStore';
 import type { Phase, ConnectionStatus } from '@/hooks/game/usePhaseManager';
@@ -18,6 +18,37 @@ function createHangingSSEMockResponse(chunks: string[]): Response {
         return Promise.resolve({ done: false, value });
       }
       return new Promise(() => {});
+    },
+    cancel(): Promise<void> {
+      return Promise.resolve();
+    },
+    releaseLock(): void {},
+    get closed(): Promise<undefined> {
+      return Promise.resolve(undefined);
+    },
+  };
+  return {
+    ok: true,
+    status: 200,
+    headers: new Headers({ 'content-type': 'text/event-stream' }),
+    body: {
+      locked: false,
+      cancel: () => Promise.resolve(),
+      getReader: () => reader,
+    } as unknown as ReadableStream<Uint8Array>,
+  } as Response;
+}
+
+function createBrokenSSEMockResponse(chunks: string[] = []): Response {
+  let index = 0;
+  const reader: ReadableStreamDefaultReader<Uint8Array> = {
+    read(): Promise<ReadableStreamReadResult<Uint8Array>> {
+      if (index < chunks.length) {
+        const value = new TextEncoder().encode(chunks[index]);
+        index += 1;
+        return Promise.resolve({ done: false, value });
+      }
+      return Promise.reject(new TypeError('network error'));
     },
     cancel(): Promise<void> {
       return Promise.resolve();
@@ -233,6 +264,35 @@ describe('useEventGenerator', () => {
       expect(mockGeneratingRef.current).toBe(false);
 
       jest.useRealTimers();
+    });
+
+    it('does not bubble stream rejection after event polling recovery starts', async () => {
+      const recoveredStory = '轮次事件已经由后端保存。';
+      const recoveredOptions = [{ text: '继续调查' }];
+      const syncState = jest.fn().mockImplementation(async () => {
+        useGameStore.setState({
+          storyText: recoveredStory,
+          currentEvent: {
+            story: recoveredStory,
+            options: recoveredOptions,
+          },
+        } as never);
+      });
+      useGameStore.setState({ syncState } as never);
+      (global.fetch as jest.Mock).mockResolvedValue(createBrokenSSEMockResponse());
+
+      const { result } = renderHook(() => useEventGenerator(defaultParams));
+
+      await expect(act(async () => {
+        await result.current.generateEvent();
+      })).resolves.toBeUndefined();
+
+      await waitFor(() => {
+        expect(syncState).toHaveBeenCalled();
+        expect(mockSetters.setOptions).toHaveBeenCalledWith(recoveredOptions);
+        expect(mockSetters.setPhase).toHaveBeenCalledWith('options');
+      });
+      expect(mockSetters.setConnectionStatus).not.toHaveBeenCalledWith('error');
     });
 
     it('clears recovered partial story before retrying so new output is not appended to it', async () => {

@@ -65,6 +65,8 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Regression coverage: `frontend/src/__tests__/components/game/MusicPlayer.test.tsx`
 - The Next.js API proxy now treats `/api/music/generate` as a long-running request. Production browser probing showed MiniMax music generation can take about 125s, while the previous proxy timeout was 120s; the browser path could therefore degrade even though the backend API would have succeeded.
   - Regression coverage: `frontend/src/__tests__/app/api/route.test.ts`
+- Event SSE polling recovery no longer lets the underlying stream rejection bubble after `onError` has already switched the page into polling recovery. Production week-4 browser probing showed `/event` could recover enough to continue while still logging unhandled `TypeError: network error`; the hook now treats that rejection as already handled when polling recovery is active.
+  - Regression coverage: `frontend/src/__tests__/hooks/useEventGenerator.test.ts`
 
 ## Verification
 
@@ -199,6 +201,10 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - OpenSpec strict validation: 21 passed.
   - Backend preflight quality checks: 86 passed.
   - Frontend preflight Jest regression tests: 346 passed.
+- Full local preflight after suppressing recovered event stream rejections:
+  - OpenSpec strict validation: 21 passed.
+  - Backend preflight quality checks: 86 passed.
+  - Frontend preflight Jest regression tests: 346 passed.
 - Production browser verification after deploying the streaming-choice persistence fix:
   - Game 88 reproduced the browser-tail failure on `/api/games/88/choice`: `net::ERR_INCOMPLETE_CHUNKED_ENCODING`.
   - Backend logs showed `save_game_progress` and `Auto-saved game state after choice: game_id=88` immediately after choice processing returned, before any `/choice-sync`.
@@ -216,5 +222,4 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
 - Remote GitHub checks are blocked by GitHub billing/spending-limit status, not by retrievable job logs.
 - Fresh MiniMax music generation can take longer than 150 seconds on production; the current design keeps NetEase playback available and inserts generated music only after the asset is ready.
 - Broader music matching quality still needs product tuning: strict modern workplace filtering prevents known bad NetEase songs, but for that scene class the safe NetEase baseline can be empty and the generated MiniMax track becomes the reliable queued music source.
-- Event SSE recovery still logs unhandled `TypeError: network error` after switching to polling. The main flow can continue, but the console noise should be cleaned up.
 - Browser MiniMax music generation still intermittently fails with `ERR_EMPTY_RESPONSE` during long-flow play, even though many calls return 200 and serve generated MP3 assets.

@@ -166,6 +166,7 @@ export function useEventGenerator({
     setConnectionStatus(null);
     setReconnectAttempt(null);
     abortRef.current = new AbortController();
+    let streamErrorHandled = false;
 
     try {
       await streamGameEvent(
@@ -194,6 +195,7 @@ export function useEventGenerator({
           handleEventComplete(data, eventHandlers);
         },
         onError: async (err) => {
+          streamErrorHandled = true;
           clearRetryStatusTimer();
           const errorMsg = parseSSEError(err);
           console.log(`[generateEvent] SSE error: msg="${errorMsg}"`);
@@ -313,6 +315,8 @@ export function useEventGenerator({
       // Ignore AbortError - it's expected when component unmounts or user navigates away
       if (err instanceof Error && err.name === 'AbortError') {
         console.log("[generateEvent] Generation aborted (expected)");
+      } else if (streamErrorHandled || pollingRef.current) {
+        console.warn("[generateEvent] streamGameEvent rejected after onError recovery handling:", err);
       } else {
         throw err; // Re-throw other errors
       }
