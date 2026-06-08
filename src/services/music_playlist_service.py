@@ -63,7 +63,10 @@ class PlaylistQueuePolicy:
         generated_id = self._song_key(generated_track)
 
         queue = [item for item in queue if self._song_key(item) != generated_id]
-        queue.insert(0, generated_track)
+        if current_song is None:
+            current_song = generated_track
+        else:
+            queue.insert(0, generated_track)
 
         updated = dict(playlist)
         updated["current_song"] = current_song

@@ -442,10 +442,13 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   },
 
   insertGeneratedTrack: (track: Song) => {
-    const { queue, recommendation } = get();
+    const { currentSong, queue, recommendation } = get();
     const generatedId = songKey(track);
     const nextQueue = queue.filter((item) => songKey(item) !== generatedId);
-    nextQueue.unshift(track);
+    const nextCurrentSong = currentSong ?? track;
+    if (currentSong) {
+      nextQueue.unshift(track);
+    }
 
     let nextRecommendation = recommendation;
     if (recommendation) {
@@ -455,7 +458,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       nextRecommendation = { ...recommendation, songs };
     }
 
-    set({ queue: nextQueue, recommendation: nextRecommendation });
+    set({ currentSong: nextCurrentSong, queue: nextQueue, recommendation: nextRecommendation });
   },
 
   generateAiMusicForStory: async (storyText, gameId, analysis) => {

@@ -162,6 +162,24 @@ describe("music queue policy", () => {
     expect(state.queue[0].url).toBe("/api/music/generated/brief-77.wav");
   });
 
+  it("store insertGeneratedTrack starts AI music when no current song exists", () => {
+    useMusicStore.setState({
+      currentSong: null,
+      queue: [],
+      playedSongs: [],
+    });
+
+    useMusicStore.getState().insertGeneratedTrack({
+      ...song("ai-generated-empty", "AI 职场专注氛围", "ai_generated"),
+      url: "/api/music/generated/empty.wav",
+      asset_id: 78,
+    });
+
+    const state = useMusicStore.getState();
+    expect(state.currentSong?.id).toBe("ai-generated-empty");
+    expect(state.queue).toEqual([]);
+  });
+
   it("store insertGeneratedTrack also exposes generated music in recommendation songs", () => {
     useMusicStore.setState({
       recommendation: {

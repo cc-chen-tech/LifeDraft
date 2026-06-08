@@ -142,6 +142,24 @@ def test_generated_track_insertion_makes_ai_music_next_after_current():
     assert updated["queue"][0]["source"] == "ai_generated"
 
 
+def test_generated_track_becomes_current_when_playlist_has_no_current_song():
+    playlist = {
+        "current_song": None,
+        "queue": [],
+    }
+    generated = {
+        "id": "asset-empty",
+        "name": "AI 职场专注氛围",
+        "source": "ai_generated",
+        "asset_id": 11,
+    }
+
+    updated = MusicPlaylistService.insert_generated_track(playlist, generated)
+
+    assert updated["current_song"]["id"] == "asset-empty"
+    assert updated["queue"] == []
+
+
 def test_ai_generation_failure_keeps_netease_songs_as_fallback():
     coordinator = MusicGenerationCoordinator()
     netease_songs = [Song(id=101, name="竹林", artists=["A"], album="X", duration=1000, url="u")]
