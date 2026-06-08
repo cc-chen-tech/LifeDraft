@@ -18,6 +18,10 @@ async function openCollectionPanel(page: import('@playwright/test').Page) {
   await expect(page.locator('text=人物、物品和标志物收集记录')).toBeVisible({ timeout: 5000 });
 }
 
+function collectionDialog(page: import('@playwright/test').Page) {
+  return page.getByRole('dialog', { name: '收集' });
+}
+
 // 关闭收集面板的辅助函数
 async function closeCollectionPanel(page: import('@playwright/test').Page) {
   const closeButton = page.locator('button:has-text("Close"), button[aria-label="关闭"]').first();
@@ -49,7 +53,9 @@ test.describe('收集面板缓存优化', () => {
 
     // 第一次打开
     await openCollectionPanel(page);
-    await expect(page.locator('text=缓存测试角色')).toBeVisible();
+    await expect(
+      collectionDialog(page).getByRole('button', { name: /缓存测试角色.*主角/ })
+    ).toBeVisible();
 
     // 关闭面板
     await closeCollectionPanel(page);
@@ -81,8 +87,9 @@ test.describe('收集面板缓存优化', () => {
     await expect(page.getByText(/标志物.*\(/)).toBeVisible();
 
     // 应显示主角
-    await expect(page.locator('text=缓存测试角色')).toBeVisible();
-    await expect(page.locator('text=主角')).toBeVisible();
+    const collection = collectionDialog(page);
+    await expect(collection.getByRole('button', { name: /缓存测试角色.*主角/ })).toBeVisible();
+    await expect(collection.getByText('主角')).toBeVisible();
   });
 
   test('切换标签页不触发新的网络请求', async ({ page }) => {

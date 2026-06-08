@@ -76,31 +76,39 @@ class TestImageClientInit:
 
     @patch("src.ai.image_generator.settings")
     @patch("src.ai.image_config.settings")
-    def test_init_raises_without_api_key(self, mock_config_settings, mock_gen_settings):
-        """测试无API密钥时抛出异常"""
+    def test_generation_raises_without_api_key(self, mock_config_settings, mock_gen_settings):
+        """测试无API密钥时只在真实生成调用阶段抛出异常"""
         for mock_settings in [mock_config_settings, mock_gen_settings]:
             mock_settings.get_image_api_key.return_value = None
             mock_settings.get_image_api_base_url.return_value = "https://api.test.com"
-            mock_settings.TEXT_TO_IMAGE_MODELS = ""
-            mock_settings.IMAGE_EDIT_MODELS = ""
+            mock_settings.IMAGE_MODEL = "test-model"
+            mock_settings.IMAGE_GENERATION_TIMEOUT = 30
+            mock_settings.IMAGE_MAX_RETRIES = 1
+            mock_settings.TEXT_TO_IMAGE_MODELS = "model1"
+            mock_settings.IMAGE_EDIT_MODELS = "edit-model"
 
-        with pytest.raises(ValueError) as exc_info:
-            ImageClient()
+        client = ImageClient()
+        with pytest.raises(ImageGenerationError) as exc_info:
+            client.generate_image("test prompt")
 
         assert "API key" in str(exc_info.value)
 
     @patch("src.ai.image_generator.settings")
     @patch("src.ai.image_config.settings")
-    def test_init_raises_without_base_url(self, mock_config_settings, mock_gen_settings):
-        """测试无Base URL时抛出异常"""
+    def test_generation_raises_without_base_url(self, mock_config_settings, mock_gen_settings):
+        """测试无Base URL时只在真实生成调用阶段抛出异常"""
         for mock_settings in [mock_config_settings, mock_gen_settings]:
             mock_settings.get_image_api_key.return_value = "test-key"
             mock_settings.get_image_api_base_url.return_value = None
-            mock_settings.TEXT_TO_IMAGE_MODELS = ""
-            mock_settings.IMAGE_EDIT_MODELS = ""
+            mock_settings.IMAGE_MODEL = "test-model"
+            mock_settings.IMAGE_GENERATION_TIMEOUT = 30
+            mock_settings.IMAGE_MAX_RETRIES = 1
+            mock_settings.TEXT_TO_IMAGE_MODELS = "model1"
+            mock_settings.IMAGE_EDIT_MODELS = "edit-model"
 
-        with pytest.raises(ValueError) as exc_info:
-            ImageClient()
+        client = ImageClient()
+        with pytest.raises(ImageGenerationError) as exc_info:
+            client.generate_image("test prompt")
 
         assert "base URL" in str(exc_info.value)
 
