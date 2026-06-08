@@ -219,7 +219,7 @@ def test_round_event_fallback_remains_substantial_story_when_generation_fails() 
     assert len(event.event_description) > 100
     assert event.event_description.endswith("。")
     assert "林见微" in event.event_description
-    assert len(event.options) == 2
+    assert len(event.options) == 3
 
 
 def test_round_event_retries_when_story_ignores_all_key_people_and_fabricates_new_cast() -> None:

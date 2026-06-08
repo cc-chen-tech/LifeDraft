@@ -16,6 +16,8 @@ from src.game.constants import GENERIC_CHARACTER_NAMES, GENERIC_OPTION_TEXTS
 
 logger = logging.getLogger(__name__)
 
+TARGET_OPTION_COUNT = 3
+
 
 def _normalize_option_text(text: str) -> str:
     """Normalize option text for generic-option matching."""
@@ -107,14 +109,21 @@ class OptionGenerator:
                         logger.info(f"  Option {i+1}: {opt.text}")
                         logger.info(f"    Effects: {opt.effects}")
 
-                    if len(options) >= 2:
+                    if len(options) >= TARGET_OPTION_COUNT:
+                        if len(options) > TARGET_OPTION_COUNT:
+                            logger.info(
+                                "Received %d options; using first %d",
+                                len(options),
+                                TARGET_OPTION_COUNT,
+                            )
+                            options = options[:TARGET_OPTION_COUNT]
                         logger.info("Options generated successfully!")
                         return GameEvent(
                             event_description=story_description,
                             options=options,
                         )
 
-                last_error = "Invalid options format or fewer than 2 options"
+                last_error = f"Invalid options format or fewer than {TARGET_OPTION_COUNT} options"
                 logger.warning(f"Attempt {attempt + 1}: Invalid options format, retrying...")
 
             except Exception as e:
@@ -123,19 +132,98 @@ class OptionGenerator:
 
         # Fallback: return with default options
         logger.error("All attempts failed, using fallback options")
-        default_options = [
+        default_options = self.build_contextual_fallback_options(
+            story_description=story_description,
+            language=language,
+        )
+        return GameEvent(event_description=story_description, options=default_options)
+
+    @staticmethod
+    def build_contextual_fallback_options(
+        story_description: str,
+        language: str = "zh",
+    ) -> List[EventOption]:
+        """Build three non-generic fallback choices from broad story context."""
+        text = story_description or ""
+
+        if language == "zh":
+            if any(token in text for token in ("协议", "签约", "合作", "合同")):
+                return [
+                    EventOption(
+                        text="细读合作条款",
+                        effects={"energy": -8, "mood": -2, "knowledge": 10, "wealth": 0},
+                    ),
+                    EventOption(
+                        text="请伙伴一起把关",
+                        effects={"energy": -5, "mood": 5, "knowledge": 5, "wealth": 0},
+                    ),
+                    EventOption(
+                        text="先锁定关键风险",
+                        effects={"energy": -6, "mood": 0, "knowledge": 8, "wealth": 0},
+                    ),
+                ]
+
+            if any(token in text for token in ("报告", "数据", "调研", "用户", "反馈")):
+                return [
+                    EventOption(
+                        text="整理用户数据",
+                        effects={"energy": -8, "mood": 0, "knowledge": 10, "wealth": 0},
+                    ),
+                    EventOption(
+                        text="找同伴交叉核验",
+                        effects={"energy": -5, "mood": 5, "knowledge": 6, "wealth": 0},
+                    ),
+                    EventOption(
+                        text="提炼最关键痛点",
+                        effects={"energy": -6, "mood": 2, "knowledge": 8, "wealth": 0},
+                    ),
+                ]
+
+            if any(token in text for token in ("方案", "计划", "提案", "会议", "汇报", "演示")):
+                return [
+                    EventOption(
+                        text="完善方案细节",
+                        effects={"energy": -10, "mood": 0, "knowledge": 8, "wealth": 0},
+                    ),
+                    EventOption(
+                        text="协调关键资源",
+                        effects={"energy": -6, "mood": 5, "knowledge": 3, "wealth": 0},
+                    ),
+                    EventOption(
+                        text="提前演练汇报",
+                        effects={"energy": -8, "mood": 4, "knowledge": 6, "wealth": 0},
+                    ),
+                ]
+
+            return [
+                EventOption(
+                    text="梳理刚发生的变化",
+                    effects={"energy": -5, "mood": 0, "knowledge": 6, "wealth": 0},
+                ),
+                EventOption(
+                    text="询问可信任的人",
+                    effects={"energy": -4, "mood": 4, "knowledge": 4, "wealth": 0},
+                ),
+                EventOption(
+                    text="先确认下一步风险",
+                    effects={"energy": -6, "mood": 0, "knowledge": 7, "wealth": 0},
+                ),
+            ]
+
+        return [
             EventOption(
-                text=("积极面对新的一天" if language == "zh" else "Face the new day positively"),
-                effects={"energy": -5, "mood": 10, "knowledge": 0, "wealth": 0},
-                likely_choice=True,
+                text="Review the key terms",
+                effects={"energy": -6, "mood": 0, "knowledge": 7, "wealth": 0},
             ),
             EventOption(
-                text=("保持平常心继续前进" if language == "zh" else "Keep calm and move forward"),
-                effects={"energy": 0, "mood": 0, "knowledge": 5, "wealth": 0},
-                likely_choice=False,
+                text="Ask an ally to cross-check",
+                effects={"energy": -5, "mood": 4, "knowledge": 5, "wealth": 0},
+            ),
+            EventOption(
+                text="Identify the next risk",
+                effects={"energy": -6, "mood": 0, "knowledge": 7, "wealth": 0},
             ),
         ]
-        return GameEvent(event_description=story_description, options=default_options)
 
     # -------------------- Validation --------------------
 
