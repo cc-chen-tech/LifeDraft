@@ -284,6 +284,100 @@ describe('useCollectionStore', () => {
       expect(useCollectionStore.getState().items.map((i) => i.name)).toEqual(['铜钥匙']);
     });
 
+    it('auto-collects missing item entities when characters already exist', async () => {
+      const existingCharacter = {
+        name: '陈晓雨',
+        role: '核心同事',
+        description: '主角的产品同事。',
+        affinity: 50,
+        age: null,
+        gender: null,
+        occupation: null,
+        personality_traits: [],
+        image_url: null,
+        image_generated: false,
+        description_generated: true,
+      };
+      const existingCollection = {
+        game_id: 303,
+        characters: [existingCharacter],
+        items: [],
+        landmarks: [],
+        total_characters: 1,
+        total_items: 0,
+        total_landmarks: 0,
+      };
+      const recognizedEntities = {
+        characters: [
+          {
+            name: '陈晓雨',
+            description: '已在收集中存在的同事。',
+            category: 'person',
+            importance: 'important' as const,
+            appear_count: 3,
+            appear_contexts: ['第1周：需求评审'],
+          },
+        ],
+        items: [
+          {
+            name: '竞品分析报告',
+            description: '主角推进产品路线时反复使用的关键报告。',
+            category: 'document',
+            importance: 'important' as const,
+            appear_count: 2,
+            appear_contexts: ['第2周周中：评审会上引用'],
+          },
+        ],
+        landmarks: [],
+      };
+      const populatedCollection = {
+        ...existingCollection,
+        items: [
+          {
+            name: '竞品分析报告',
+            description: '主角推进产品路线时反复使用的关键报告。',
+            importance: 'important',
+            category: 'document',
+            acquired_week: 2,
+            acquired_context: '第2周周中：评审会上引用',
+            is_key_item: true,
+            image_url: null,
+            image_generated: false,
+            description_generated: true,
+            metadata: {},
+          },
+        ],
+        total_items: 1,
+      };
+
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(jsonResponse(existingCollection))
+        .mockResolvedValueOnce(jsonResponse(recognizedEntities))
+        .mockResolvedValueOnce(jsonResponse({
+          message: '成功添加 1 个物品, 0 个人物, 0 个地点',
+          added_items: ['竞品分析报告'],
+          added_characters: [],
+          added_landmarks: [],
+        }))
+        .mockResolvedValueOnce(jsonResponse(populatedCollection));
+
+      await useCollectionStore.getState().fetchCollection(303);
+      await useCollectionStore.getState().autoCollectRecognizedEntities(303);
+
+      expect(global.fetch).toHaveBeenNthCalledWith(
+        3,
+        '/api/collection/303/add-entities',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('竞品分析报告'),
+        }),
+      );
+      const addBody = JSON.parse((global.fetch as jest.Mock).mock.calls[2][1].body);
+      expect(addBody.characters).toEqual([]);
+      expect(addBody.items).toHaveLength(1);
+      expect(useCollectionStore.getState().items.map((i) => i.name)).toEqual(['竞品分析报告']);
+    });
+
     it('retries auto collection after an empty recognition result', async () => {
       const emptyCollection = {
         game_id: 2,

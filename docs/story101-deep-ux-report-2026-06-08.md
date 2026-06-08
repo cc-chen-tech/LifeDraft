@@ -205,6 +205,13 @@
 
 初期人物收集可用但物品为 0；推进到第 3 周周总结后，后端开始提取关键物品：`SemantLink API文档U盘`、`林一凡的技术架构笔记`、`竞品分析报告`、`用户调研框架模板`、`里程碑计划初稿` 等。仍需复查 UI 是否同步展示这些新物品，以及智能识别是否继续推荐重复人物。
 
+本轮已修：
+- 自动收集不再要求人物/物品/地点三类全为空才运行。即使人物已经存在、物品仍为空，也会继续触发实体识别并补充缺失物品。
+- 自动添加前按当前收集列表过滤同名人物、物品和地点，避免把已经收集过的人物再次提交给 `add-entities`。
+- 回归测试：`auto-collects missing item entities when characters already exist`。
+- 本地验证：`cd frontend && npx jest src/__tests__/stores/useCollectionStore.test.ts --runInBand`、`./test.sh preflight` 均通过。
+- 生产状态：待部署 frontend 后做浏览器/API smoke。
+
 ### P2：按钮语义仍可优化
 
 “总结”主按钮会打开剧情助手并在其中生成总结。功能可用，但入口和展示位置容易被理解为按钮错位。

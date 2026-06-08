@@ -486,21 +486,18 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
       return;
     }
 
-    const state = get();
-    const hasCollectedEntities =
-      state.characters.length > 0 || state.items.length > 0 || state.landmarks.length > 0;
-    if (hasCollectedEntities) {
-      return;
-    }
-
     const autoCollectPromise = (async () => {
       const recognized = await get().recognizeEntities(gameId, 1);
       if (!recognized) return;
 
+      const current = get();
+      const existingItems = new Set(current.items.map((item) => item.name));
+      const existingCharacters = new Set(current.characters.map((character) => character.name));
+      const existingLandmarks = new Set(current.landmarks.map((landmark) => landmark.name));
       const entities = {
-        items: recognized.items || [],
-        characters: recognized.characters || [],
-        landmarks: recognized.landmarks || [],
+        items: (recognized.items || []).filter((item) => !existingItems.has(item.name)),
+        characters: (recognized.characters || []).filter((character) => !existingCharacters.has(character.name)),
+        landmarks: (recognized.landmarks || []).filter((landmark) => !existingLandmarks.has(landmark.name)),
       };
       const hasRecognized =
         entities.items.length > 0 ||
