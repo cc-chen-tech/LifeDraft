@@ -200,6 +200,7 @@
   - 现代职场推荐 smoke 不再生成 `现代医院` / `医疗悬疑` 搜索词，也未返回 `都选C` 等弱匹配歌名。
   - 补丁 `28a3391f` 热部署并重建 frontend 后，公网 `/api/health` 和 `/health` 正常。
   - browser-agent 打开 `https://story101.live/e2e-regression`，音乐回归夹具和 MiniMax 触发入口正常加载；AI 曲进入 playlist 后同步显示到播放器列表的核心行为由组件红绿回归测试覆盖。
+  - 补丁 `e0323820` 热部署并重建 frontend 后，公网 `/api/health` 和 `/health` 正常；browser-agent 复测 `/e2e-regression`，MiniMax 音乐生成夹具和音乐播放器展开入口正常加载。
 
 ### P1：资源状态缺少玩法反馈
 
