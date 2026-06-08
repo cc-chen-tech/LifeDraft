@@ -598,6 +598,7 @@ def test_production_deploy_syncs_minimax_secret_to_ecs_env_without_committing_ke
     assert "STORY_TTS_PROVIDER=minimax" in workflow
     assert "STORY_TTS_ALLOW_REQUEST_PROVIDER=1" in workflow
     assert "STORY_MUSIC_AI_GENERATION_ENABLED=true" in workflow
+    assert "MINIMAX_TIMEOUT_SECONDS=180" in workflow
     assert "sk-" not in workflow
 
 
@@ -618,6 +619,28 @@ def test_production_deploy_fetches_private_repo_without_persisting_github_token(
     assert workflow.index("git fetch origin main") < workflow.rindex(
         "git remote set-url origin https://github.com/cc-chen-tech/LifeDraft.git"
     )
+
+
+def test_env_example_documents_minimax_production_audio_settings() -> None:
+    env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
+
+    required_lines = [
+        "MINIMAX_API_KEY=",
+        "MINIMAX_TTS_MODEL=speech-02-turbo",
+        "MINIMAX_MUSIC_MODEL=music-2.6",
+        "MINIMAX_TIMEOUT_SECONDS=180",
+        "MINIMAX_TTS_MAX_CHARS=50000",
+        "MINIMAX_MUSIC_PROMPT_MAX_CHARS=900",
+        "STORY_TTS_PROVIDER=browser",
+        "STORY_TTS_ALLOW_REQUEST_PROVIDER=0",
+        "STORY_MUSIC_AI_GENERATION_ENABLED=true",
+        "STORY_TTS_ASSET_DIR=./data/voice_assets",
+        "STORY_MUSIC_ASSET_DIR=./data/music_assets",
+    ]
+    for line in required_lines:
+        assert line in env_example
+
+    assert "sk-" not in env_example
 
 
 def test_e2e_prod_frontend_start_waits_until_listening_in_ci() -> None:
