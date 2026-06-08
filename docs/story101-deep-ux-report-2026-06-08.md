@@ -124,6 +124,9 @@
 - 回归测试：`test_story_prompts_limit_each_round_to_one_main_event`。
 - 红灯复现：新增测试在旧 prompt 下失败，缺少“每个回合只推进一个主事件”。
 - 本地验证：`pytest tests/test_gate_gameplay_behavior_no_mock.py -q`、`pytest tests/test_ai_extended.py -q`、`./test.sh preflight` 均通过。
+- 生产复测：
+  - 补丁 `ad2c0f90` 热部署并重建 backend 后，生产容器 healthcheck 为 healthy，公网 `/api/health` 和 `/health` 正常。
+  - 生产容器内 prompt smoke 已确认普通周故事和三轮故事 prompt 均包含“每个回合只推进一个主事件”“只设置一个核心决策点”“禁止在同一回合塞入多个会议、评审、复盘、预热”“禁止把下一周或下一个回合的实际剧情提前写完”。
 
 ### P1：时间线和季节冲突
 
