@@ -17,4 +17,4 @@
 
 - [x] Run `pytest tests/test_style_matcher.py -q`.
 - [x] Run `cd frontend && npx jest --runTestsByPath src/__tests__/hooks/useCharacterCreation.test.ts --runInBand`.
-- [ ] Run full pre-PR test gate before publishing.
+- [x] Run full pre-PR test gate before publishing.
