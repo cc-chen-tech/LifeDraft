@@ -199,6 +199,12 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - OpenSpec strict validation: 21 passed.
   - Backend preflight quality checks: 86 passed.
   - Frontend preflight Jest regression tests: 346 passed.
+- Production browser verification after deploying the streaming-choice persistence fix:
+  - Game 88 reproduced the browser-tail failure on `/api/games/88/choice`: `net::ERR_INCOMPLETE_CHUNKED_ENCODING`.
+  - Backend logs showed `save_game_progress` and `Auto-saved game state after choice: game_id=88` immediately after choice processing returned, before any `/choice-sync`.
+  - The frontend recovered from saved `round_history` (`recoverStory` found a 929-character continuation), showed `进入周中`, and no longer displayed processing/fallback text.
+  - The browser made 0 `/choice-sync` requests for this recovery path.
+  - The same browser run also verified MiniMax music generation returned 200 and served the generated MP3 asset from `/api/music/generated/...`.
 
 ## Still Not Claimed As Production-Complete
 
