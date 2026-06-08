@@ -139,7 +139,9 @@
 - prompt 明确禁止把下一周写进本周总结，尤其禁止“周日（第2周）”这类把本周周末推进到下一周的表达。
 - 回归测试：`test_weekly_summary_prompt_forbids_next_week_day_mismatch`。
 - 本地验证：`pytest tests/test_gate_gameplay_behavior_no_mock.py -q`、`pytest tests/test_ai_extended.py -q`、`pytest tests/test_api_gameplay.py::TestGenerateSummary -q`、`./test.sh preflight` 均通过。
-- 生产状态：待热部署后做生产容器 prompt smoke。
+- 生产复测：
+  - 补丁 `bbe9a85b` 热部署并重建后端后，生产容器 healthcheck 为 healthy，公网 `/api/health` 和 `/health` 正常。
+  - 生产容器内 prompt smoke 已确认输出“本总结只覆盖2024年1月第1周”“不得把下一周写进本周总结”“禁止写成“周日（第2周）””。
 
 ### P1：音乐匹配仍弱
 
