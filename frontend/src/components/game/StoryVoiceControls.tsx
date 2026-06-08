@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type ChangeEvent } from "react";
-import { Pause, Play, RotateCcw, Square, Volume2 } from "lucide-react";
+import { Loader2, Pause, Play, RotateCcw, Square, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import type { ReadingContext } from "@/lib/types";
@@ -186,6 +186,14 @@ export function StoryVoiceControls({
     void persistVoiceSettings({ selected_voice_color: nextVoiceId });
   };
 
+  const primaryReadLabel =
+    readingState === "loading"
+      ? "正在准备朗读"
+      : readingState === "playing"
+        ? "正在朗读"
+        : "朗读当前故事";
+  const primaryReadDisabled = readingState === "loading" || readingState === "playing";
+
   return (
     <section
       aria-label="故事朗读"
@@ -197,10 +205,15 @@ export function StoryVoiceControls({
           size="sm"
           variant="outline"
           onClick={() => void startReading(currentContext)}
-          aria-label="朗读当前故事"
+          disabled={primaryReadDisabled}
+          aria-label={primaryReadLabel}
         >
-          <Volume2 className="w-4 h-4 mr-1.5" />
-          朗读当前故事
+          {readingState === "loading" ? (
+            <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+          ) : (
+            <Volume2 className="w-4 h-4 mr-1.5" />
+          )}
+          {primaryReadLabel}
         </Button>
         {showProductionSettings && (
           <>
@@ -245,7 +258,7 @@ export function StoryVoiceControls({
             <Pause className="w-4 h-4 mr-1.5" />
             暂停朗读
           </Button>
-        ) : readingState !== "failed" ? (
+        ) : readingState === "paused" ? (
           <Button type="button" size="sm" variant="ghost" onClick={handleContinue}>
             <Play className="w-4 h-4 mr-1.5" />
             继续朗读

@@ -38,6 +38,16 @@
 
 问题：自动朗读触发延迟较长，UI 没有“正在准备自动朗读”的状态；播放中仍显示“朗读当前故事”，状态表达混乱。
 
+本轮已修：
+- `loading` 状态下主按钮改为禁用的“正在准备朗读”，并显示加载图标。
+- `playing` 状态下主按钮改为禁用的“正在朗读”，不再显示可再次点击的“朗读当前故事”。
+- “继续朗读”只在 `paused` 状态出现，避免 idle/loading 阶段误导用户。
+- 回归测试：
+  - `labels backend audio preparation instead of offering another read action`
+  - `labels active backend audio playback instead of showing the idle read action`
+- 红灯复现：旧组件在 `loading` 和 `playing` 下仍暴露“朗读当前故事”按钮。
+- 本地验证：`cd frontend && npx jest src/__tests__/components/StoryVoiceControls.test.tsx --runInBand`、`./test.sh preflight` 均通过。
+
 ### MiniMax 音乐生成
 
 - 生产 `/api/music/generate-async` 返回 `202 queued`。

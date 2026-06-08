@@ -73,6 +73,34 @@ describe('StoryVoiceControls', () => {
     expect(screen.queryByText(/Audio:/)).not.toBeInTheDocument();
   });
 
+  it('labels backend audio preparation instead of offering another read action', () => {
+    useStoryVoiceStore.setState({
+      readingState: 'loading',
+      currentSource: 'current_story',
+      playbackMode: 'none',
+    });
+
+    render(<StoryVoiceControls currentContext={currentContext} enablePlaybackControls compact />);
+
+    expect(screen.getByRole('button', { name: '正在准备朗读' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: '朗读当前故事' })).not.toBeInTheDocument();
+  });
+
+  it('labels active backend audio playback instead of showing the idle read action', () => {
+    useStoryVoiceStore.setState({
+      readingState: 'playing',
+      currentSource: 'current_story',
+      currentAudioUrl: '/api/voice-reading/audio/job-1.mp3',
+      playbackMode: 'audio',
+    });
+
+    render(<StoryVoiceControls currentContext={currentContext} enablePlaybackControls compact />);
+
+    expect(screen.getByRole('button', { name: '正在朗读' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: '朗读当前故事' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '暂停朗读' })).toBeInTheDocument();
+  });
+
   it('keeps retry available when a failed audio attempt later emits ended', () => {
     render(<StoryVoiceControls currentContext={currentContext} showTestControls />);
 
