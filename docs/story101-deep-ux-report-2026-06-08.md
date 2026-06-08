@@ -230,7 +230,11 @@
 本轮已修：
 - 自动收集不再要求人物/物品/地点三类全为空才运行。即使人物已经存在、物品仍为空，也会继续触发实体识别并补充缺失物品。
 - 自动添加前按当前收集列表过滤同名人物、物品和地点，避免把已经收集过的人物再次提交给 `add-entities`。
+- 继续修复一个遗漏：`autoCollectRecognizedEntities` 之前按 `gameId` 只允许自动识别一次。第 1 周补过人物后，第 3/4 周新出现的 U 盘、API 文档、竞品报告等物品不会再自动识别。
+- 现在只保留 in-flight 去重，避免并发重复请求，但允许同一个游戏后续剧情继续触发自动识别和补齐新物品。
 - 回归测试：`auto-collects missing item entities when characters already exist`。
+- 回归测试补充：`continues auto collection after later story rounds introduce new items`。
+- 红灯复现：新增测试在旧逻辑下只发出 1 次 `/recognize-entities`，第二次自动收集被 game-level attempted guard 挡住。
 - 本地验证：`cd frontend && npx jest src/__tests__/stores/useCollectionStore.test.ts --runInBand`、`./test.sh preflight` 均通过。
 - 生产复测：
   - 补丁 `3c32ec41` 热部署并重建 frontend 后，公网 `/api/health` 和 `/health` 正常。

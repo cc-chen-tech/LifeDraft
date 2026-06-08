@@ -378,6 +378,130 @@ describe('useCollectionStore', () => {
       expect(useCollectionStore.getState().items.map((i) => i.name)).toEqual(['竞品分析报告']);
     });
 
+    it('continues auto collection after later story rounds introduce new items', async () => {
+      const existingCharacter = {
+        name: '陈晓雨',
+        role: '核心同事',
+        description: '主角的产品同事。',
+        affinity: 50,
+        age: null,
+        gender: null,
+        occupation: null,
+        personality_traits: [],
+        image_url: null,
+        image_generated: false,
+        description_generated: true,
+      };
+      const existingCollection = {
+        game_id: 404,
+        characters: [existingCharacter],
+        items: [],
+        landmarks: [],
+        total_characters: 1,
+        total_items: 0,
+        total_landmarks: 0,
+      };
+      const firstRecognized = {
+        characters: [],
+        items: [
+          {
+            name: '竞品分析报告',
+            description: '第2周评审会上使用的产品报告。',
+            category: 'document',
+            importance: 'important' as const,
+            appear_count: 2,
+            appear_contexts: ['第2周周中：评审会上引用'],
+          },
+        ],
+        landmarks: [],
+      };
+      const afterFirstCollection = {
+        ...existingCollection,
+        items: [
+          {
+            name: '竞品分析报告',
+            description: '第2周评审会上使用的产品报告。',
+            importance: 'important',
+            category: 'document',
+            acquired_week: 2,
+            acquired_context: '第2周周中：评审会上引用',
+            is_key_item: true,
+            image_url: null,
+            image_generated: false,
+            description_generated: true,
+            metadata: {},
+          },
+        ],
+        total_items: 1,
+      };
+      const secondRecognized = {
+        characters: [],
+        items: [
+          {
+            name: 'SemantLink API文档U盘',
+            description: '第4周被反复查阅的技术资料。',
+            category: 'document',
+            importance: 'critical' as const,
+            appear_count: 2,
+            appear_contexts: ['第4周周一：梳理接口限制'],
+          },
+        ],
+        landmarks: [],
+      };
+      const afterSecondCollection = {
+        ...afterFirstCollection,
+        items: [
+          ...afterFirstCollection.items,
+          {
+            name: 'SemantLink API文档U盘',
+            description: '第4周被反复查阅的技术资料。',
+            importance: 'critical',
+            category: 'document',
+            acquired_week: 4,
+            acquired_context: '第4周周一：梳理接口限制',
+            is_key_item: true,
+            image_url: null,
+            image_generated: false,
+            description_generated: true,
+            metadata: {},
+          },
+        ],
+        total_items: 2,
+      };
+
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(jsonResponse(existingCollection))
+        .mockResolvedValueOnce(jsonResponse(firstRecognized))
+        .mockResolvedValueOnce(jsonResponse({
+          message: '成功添加 1 个物品, 0 个人物, 0 个地点',
+          added_items: ['竞品分析报告'],
+          added_characters: [],
+          added_landmarks: [],
+        }))
+        .mockResolvedValueOnce(jsonResponse(afterFirstCollection))
+        .mockResolvedValueOnce(jsonResponse(secondRecognized))
+        .mockResolvedValueOnce(jsonResponse({
+          message: '成功添加 1 个物品, 0 个人物, 0 个地点',
+          added_items: ['SemantLink API文档U盘'],
+          added_characters: [],
+          added_landmarks: [],
+        }))
+        .mockResolvedValueOnce(jsonResponse(afterSecondCollection));
+
+      await useCollectionStore.getState().fetchCollection(404);
+      await useCollectionStore.getState().autoCollectRecognizedEntities(404);
+      await useCollectionStore.getState().autoCollectRecognizedEntities(404);
+
+      const recognitionCalls = (global.fetch as jest.Mock).mock.calls.filter(([url]) =>
+        String(url).includes('/recognize-entities'),
+      );
+      expect(recognitionCalls).toHaveLength(2);
+      expect(useCollectionStore.getState().items.map((i) => i.name)).toEqual([
+        '竞品分析报告',
+        'SemantLink API文档U盘',
+      ]);
+    });
+
     it('retries auto collection after an empty recognition result', async () => {
       const emptyCollection = {
         game_id: 2,

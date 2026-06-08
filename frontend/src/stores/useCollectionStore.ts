@@ -30,7 +30,6 @@ function mergeVisibleEntityData<T extends CollectionEntity>(nextItems: T[], curr
 let _fetchInFlight: { gameId: number; promise: Promise<void> } | null = null;
 let _collectionCache: { gameId: number; timestamp: number } | null = null;
 let _autoCollectInFlight: { gameId: number; promise: Promise<void> } | null = null;
-const _autoCollectAttempted = new Set<number>();
 const CACHE_TTL_MS = 30000;
 
 interface CollectionState {
@@ -482,9 +481,6 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
     if (_autoCollectInFlight?.gameId === gameId) {
       return _autoCollectInFlight.promise;
     }
-    if (_autoCollectAttempted.has(gameId)) {
-      return;
-    }
 
     const autoCollectPromise = (async () => {
       const recognized = await get().recognizeEntities(gameId, 1);
@@ -506,7 +502,6 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
       if (!hasRecognized) return;
 
       await get().addRecognizedEntities(gameId, entities);
-      _autoCollectAttempted.add(gameId);
     })().finally(() => {
       if (_autoCollectInFlight?.gameId === gameId) {
         _autoCollectInFlight = null;
