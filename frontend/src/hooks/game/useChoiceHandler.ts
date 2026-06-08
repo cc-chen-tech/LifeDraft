@@ -100,6 +100,7 @@ export function useChoiceHandler({
     abortRef.current = new AbortController();
 
     let sseSucceeded = false;
+    let errorHandled = false;
 
     const callbacks = {
       ...createSSECallbacks("handleChoice"),
@@ -125,6 +126,7 @@ export function useChoiceHandler({
         setProcessing(true, status.phase);
       },
       onError: async (err: unknown) => {
+        errorHandled = true;
         await handleChoiceError(err, gameId, handlers, {
           optionIndex,
           isRetry,
@@ -139,6 +141,17 @@ export function useChoiceHandler({
       await streamChoice(gameId, optionIndex, callbacks, { signal: abortRef.current.signal });
     } catch (err) {
       if (abortRef.current?.signal.aborted) {
+        return;
+      }
+      if (!errorHandled) {
+        errorHandled = true;
+        await handleChoiceError(err, gameId, handlers, {
+          optionIndex,
+          isRetry,
+          sseSucceeded,
+          baseStoryText: choiceBaseStoryRef.current,
+          retryChoice: () => handleChoice(optionIndex, true),
+        }, "handleChoice");
         return;
       }
       console.warn("[handleChoice] streamChoice rejected after onError handling:", err);
@@ -157,6 +170,7 @@ export function useChoiceHandler({
     abortRef.current = new AbortController();
 
     let sseSucceeded = false;
+    let errorHandled = false;
 
     const callbacks = {
       ...createSSECallbacks("handleCustomChoice"),
@@ -182,6 +196,7 @@ export function useChoiceHandler({
         setProcessing(true, status.phase);
       },
       onError: async (err: unknown) => {
+        errorHandled = true;
         await handleChoiceError(err, gameId, handlers, {
           customText,
           isRetry: false,
@@ -195,6 +210,16 @@ export function useChoiceHandler({
       await streamCustomChoice(gameId, customText, callbacks, { signal: abortRef.current.signal });
     } catch (err) {
       if (abortRef.current?.signal.aborted) {
+        return;
+      }
+      if (!errorHandled) {
+        errorHandled = true;
+        await handleChoiceError(err, gameId, handlers, {
+          customText,
+          isRetry: false,
+          sseSucceeded,
+          baseStoryText: choiceBaseStoryRef.current,
+        }, "handleCustomChoice");
         return;
       }
       console.warn("[handleCustomChoice] streamCustomChoice rejected after onError handling:", err);
