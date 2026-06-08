@@ -82,7 +82,6 @@ SUSPENSE_CONTEXT_CUES = {
     "造假",
     "医疗",
     "医院",
-    "数据",
     "调查",
     "犯罪",
     "惊悚",
@@ -236,7 +235,7 @@ def _suspense_search_queries(context_text: str) -> List[str]:
     queries: List[str] = []
     if _contains_any(context_text, ["债务", "负债", "欠债", "追债", "担保", "债主", "律师", "财务", "金融"]):
         queries.extend(["债务危机 紧张氛围", "金融危机 影视配乐", "商务悬疑 纯音乐"])
-    if _contains_any(context_text, ["医疗", "医院", "数据", "造假"]):
+    if _contains_any(context_text, ["医疗", "医院", "造假"]):
         queries.extend(["医疗悬疑 氛围音乐", "现代医院 紧张配乐"])
     if _contains_any(context_text, ["追捕", "逃亡"]):
         queries.extend(["追捕逃亡 紧张配乐", "追捕 悬疑 纯音乐"])

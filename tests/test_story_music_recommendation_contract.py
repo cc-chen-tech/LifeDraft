@@ -336,6 +336,8 @@ def test_modern_product_workplace_searches_focus_ambience_not_vocal_pop_hits():
 
     assert any(cue in joined_queries for cue in ["产品经理", "科技公司", "用户访谈", "数据分析", "办公室"])
     assert any(cue in joined_queries for cue in ["纯音乐", "氛围", "轻电子", "无歌词"])
+    assert "现代医院" not in joined_queries
+    assert "医疗悬疑" not in joined_queries
     assert not any(term in top_queries for term in blocked_terms)
     assert any(cue in brief.negative_cues for cue in ["说散就散", "匆匆那年", "夜曲", "一直很安静", "歌词"])
 
