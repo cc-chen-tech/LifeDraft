@@ -53,6 +53,8 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Regression coverage: `tests/test_music_pool_cache_integration.py::TestGetOrBuildPool::test_supplement_pool_filters_workplace_candidates_without_score_metadata`
 - Choice recovery now handles the second transient failure in the fallback chain. Production browser probing showed `/choice` could fail with `ERR_INCOMPLETE_CHUNKED_ENCODING`, then `/choice-sync` could also fail with a transient network/empty-response error even though the backend had already saved the continuation. The frontend now syncs player state, restores the latest `round_history` continuation, and enters `result` instead of staying stuck in `choosing` or surfacing an unhandled stream rejection.
   - Regression coverage: `frontend/src/__tests__/hooks/choiceUtils.test.ts`, `frontend/src/__tests__/hooks/useChoiceHandler.test.ts`
+- Interrupted choice streams now recover saved `round_history` before sending a duplicate `/choice-sync` request. Production browser probing showed the original `/choice` request could already advance backend state while the browser still saw a stream-tail failure; the frontend now restores that saved continuation and enters `result` directly when history is available. Completed choice streams also ignore late SSE errors from the same request.
+  - Regression coverage: `frontend/src/__tests__/hooks/choiceUtils.test.ts`, `frontend/src/__tests__/hooks/useChoiceHandler.test.ts`
 - Story voice reading hash generation now matches the backend SHA-256 text-hash contract. Production API probing confirmed `/api/voice-reading/read` rejects stale length-prefix hashes with `text_hash_mismatch`; the auto-read controls now compute the backend-compatible hash before starting reading, and `./test.sh preflight` includes that contract test.
   - Regression coverage: `frontend/src/__tests__/components/StoryVoiceControls.test.tsx`, `frontend/src/__tests__/lib/storyVoiceTextHash.test.ts`
 - Story voice auto-read now has regression coverage for the final story-ready path after settings load/toggle timing. Production browser probing confirmed auto-read stays idle on partial stream text and starts only after the final story-ready signal.
@@ -187,6 +189,10 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - OpenSpec strict validation: 21 passed.
   - Backend preflight quality checks: 86 passed.
   - Frontend preflight Jest regression tests: 298 passed.
+- Full local preflight after adding interrupted-choice history-first recovery:
+  - OpenSpec strict validation: 21 passed.
+  - Backend preflight quality checks: 86 passed.
+  - Frontend preflight Jest regression tests: 346 passed.
 
 ## Still Not Claimed As Production-Complete
 

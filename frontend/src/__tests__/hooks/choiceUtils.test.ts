@@ -30,6 +30,7 @@ function setupDefaultState() {
       options: [{ text: 'Option 1' }, { text: 'Option 2' }],
     } as Record<string, unknown>,
     roundInfo: { current_round: 1 },
+    playerState: null,
   });
 }
 
@@ -411,6 +412,42 @@ describe('choiceUtils', () => {
       expect(mockHandlers.setStoryText).toHaveBeenCalledWith(
         'Base story\n\n--- 主角选择了：Option 1 ---\n\n完整的同步续写结果'
       );
+      expect(mockHandlers.setPhase).toHaveBeenCalledWith('result');
+    });
+
+    it('recovers saved history before issuing a duplicate sync choice after an interrupted stream', async () => {
+      storeSpy.spies.syncPlayerState.mockImplementation(async () => {
+        useGameStore.setState({
+          playerState: {
+            round_history: [{ story_continuation: '后端已保存的流式选择结果' }],
+          } as never,
+        });
+      });
+      useGameStore.setState({
+        storyText: 'Base story plus partial broken stream',
+        currentEvent: { options: [{ text: 'Option 1' }] } as Record<string, unknown>,
+      });
+
+      const context: ChoiceErrorContext = {
+        optionIndex: 0,
+        isRetry: false,
+        sseSucceeded: true,
+        baseStoryText: 'Base story',
+      };
+
+      await handleChoiceError(
+        { message: 'network error' },
+        123, mockHandlers, context, 'test'
+      );
+
+      const choiceCalls = (global.fetch as jest.Mock).mock.calls.filter(
+        (c: unknown[]) => (c[0] as string).includes('choice-sync')
+      );
+      expect(choiceCalls).toHaveLength(0);
+      expect(mockHandlers.setStoryText).toHaveBeenCalledWith(
+        'Base story\n\n--- 主角选择了：Option 1 ---\n\n后端已保存的流式选择结果'
+      );
+      expect(mockHandlers.setConnectionStatus).not.toHaveBeenCalledWith('error');
       expect(mockHandlers.setPhase).toHaveBeenCalledWith('result');
     });
 

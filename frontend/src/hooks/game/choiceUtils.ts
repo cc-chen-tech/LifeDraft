@@ -354,6 +354,21 @@ export async function handleChoiceError(
   }
 
   // 4. Fallback
+  if (context.sseSucceeded && isRecoverableChoiceStreamError(errorMsg)) {
+    const choiceText = context.customText ??
+      useGameStore.getState().currentEvent?.options?.[context.optionIndex ?? 0]?.text ??
+      "";
+    const recovered = await recoverStoryFromRoundHistory(
+      choiceText,
+      handlers.setStoryText,
+      context.baseStoryText
+    );
+    if (recovered) {
+      enterResultPhase(handlers);
+      return;
+    }
+  }
+
   if (!context.sseSucceeded || isRecoverableChoiceStreamError(errorMsg)) {
     const handled = await handleFallbackChoice(gameId, context, handlers, logPrefix);
     if (handled) return;
