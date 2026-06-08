@@ -316,13 +316,6 @@ describe('MusicPlayer', () => {
         )
       )
       .mockResolvedValueOnce(
-        jsonResponse({
-          status: 'queued',
-          insert_policy: 'future_queue',
-          game_id: 77,
-        })
-      )
-      .mockResolvedValueOnce(
         playlistResponse(
           77,
           {
@@ -344,6 +337,29 @@ describe('MusicPlayer', () => {
               url: 'https://example.com/next.mp3',
               source: 'netease',
             },
+          ]
+        )
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          status: 'queued',
+          insert_policy: 'future_queue',
+          game_id: 77,
+        })
+      )
+      .mockResolvedValueOnce(
+        playlistResponse(
+          77,
+          {
+            id: 1,
+            name: '网易云 当前曲',
+            artists: ['Score'],
+            album: '影视配乐',
+            duration: 180000,
+            url: 'https://example.com/current.mp3',
+            source: 'netease',
+          },
+          [
             {
               id: 'ai-generated-77',
               name: 'AI MiniMax 雨夜追逐',
@@ -354,6 +370,15 @@ describe('MusicPlayer', () => {
               source: 'ai_generated',
               provider: 'minimax',
               model: 'music-01',
+            },
+            {
+              id: 2,
+              name: '网易云 下一曲',
+              artists: ['Score'],
+              album: '影视配乐',
+              duration: 180000,
+              url: 'https://example.com/next.mp3',
+              source: 'netease',
             },
           ]
         )
@@ -387,8 +412,8 @@ describe('MusicPlayer', () => {
     ).toBe(false);
     expect(useMusicStore.getState().currentSong?.name).toBe('网易云 当前曲');
     expect(useMusicStore.getState().queue.map((item) => item.name)).toEqual([
-      '网易云 下一曲',
       'AI MiniMax 雨夜追逐',
+      '网易云 下一曲',
     ]);
     expect(screen.getByText('AI MiniMax 雨夜追逐')).toBeInTheDocument();
   });

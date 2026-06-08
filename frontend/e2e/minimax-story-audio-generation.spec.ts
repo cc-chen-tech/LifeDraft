@@ -1,8 +1,9 @@
 import { test, expect, Page } from '@playwright/test';
-import { registerUser } from './helpers/auth';
+import { ensureActiveGame, registerUser } from './helpers/auth';
 
-async function openRegressionFixture(page: Page): Promise<void> {
-  await page.goto('/e2e-regression');
+async function openRegressionFixture(page: Page, gameId?: number): Promise<void> {
+  const url = gameId ? `/e2e-regression?gameId=${gameId}` : '/e2e-regression';
+  await page.goto(url);
   await page.waitForLoadState('domcontentloaded');
   await expect(page.getByRole('button', { name: '朗读当前故事' })).toBeVisible();
 }
@@ -50,14 +51,18 @@ test.describe('MiniMax story audio generation', () => {
     await expect(page.getByTestId('generated-music-audio')).toHaveJSProperty('readyState', 4);
   });
 
-  test('real generated MiniMax music is inserted into future store queue', async ({ page }) => {
-    await openRegressionFixture(page);
+  test('real generated MiniMax music is inserted into future store queue', async ({ page, context }) => {
+    const gameId = await ensureActiveGame(page, context, {
+      player_name: 'MiniMax音乐队列测试角色',
+      life_vision: '验证故事音乐生成后进入后续队列',
+    });
+    await openRegressionFixture(page, gameId);
 
     await page.getByRole('button', { name: '触发 MiniMax 音乐生成', exact: true }).click();
 
     await expect(page.getByTestId('real-current-music-title')).toHaveText('全局音乐夹具');
     await expect(page.getByTestId('real-music-queue-order')).toContainText(
-      '网易云 下一曲 | AI MiniMax 雨夜追逐 | 网易云 后续曲',
+      'AI MiniMax 雨夜追逐 | 网易云 下一曲 | 网易云 后续曲',
       { timeout: 15_000 }
     );
     await expect(page.getByTestId('real-generated-music-url')).toContainText('/api/music/generated/');

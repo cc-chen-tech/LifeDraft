@@ -263,6 +263,46 @@ async function fetchPlaylistState(gameId: number): Promise<PlaylistApiState | nu
   return (await response.json()) as PlaylistApiState;
 }
 
+function generatedMusicAnalysisMood(analysis?: Record<string, unknown>): string | undefined {
+  return typeof analysis?.mood === "string" ? analysis.mood : undefined;
+}
+
+function generatedMusicAnalysisKeywords(analysis?: Record<string, unknown>): string[] | undefined {
+  const keywords = analysis?.keywords;
+  if (Array.isArray(keywords)) {
+    return keywords.filter((item): item is string => typeof item === "string");
+  }
+  const sceneType = analysis?.scene_type;
+  if (typeof sceneType === "string" && sceneType.trim()) {
+    return [sceneType];
+  }
+  return undefined;
+}
+
+async function persistPlaylistSnapshotBeforeGeneration(
+  gameId: number,
+  currentSong: Song | null,
+  queue: Song[],
+  analysis?: Record<string, unknown>
+): Promise<PlaylistApiState | null> {
+  if (typeof fetch === "undefined") return null;
+  const songs = [currentSong, ...queue].filter((item): item is Song => Boolean(item));
+  if (songs.length === 0) return null;
+
+  const response = await fetch(`${API_BASE}/music/playlist/${gameId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({
+      songs,
+      mood: generatedMusicAnalysisMood(analysis),
+      keywords: generatedMusicAnalysisKeywords(analysis),
+    }),
+  });
+  if (!response.ok) return null;
+  return (await response.json()) as PlaylistApiState;
+}
+
 async function pollPlaylistForGeneratedTrack(
   gameId: number,
   initialGeneratedIds: Set<number | string>,
@@ -503,6 +543,17 @@ export const useMusicStore = create<MusicState>((set, get) => ({
     set({ isGeneratingAiMusic: true });
     try {
       const initialGeneratedIds = generatedTrackIds(get());
+      const snapshot = await persistPlaylistSnapshotBeforeGeneration(
+        gameId,
+        get().currentSong,
+        get().queue,
+        analysis
+      );
+      if (snapshot) {
+        set((state) =>
+          playlistStateToStorePatchWithRecommendation(snapshot, state.recommendation)
+        );
+      }
       await enqueueGeneratedMusic(storyText, gameId, analysis);
       await pollPlaylistForGeneratedTrack(gameId, initialGeneratedIds, (playlist) => {
         set((state) =>

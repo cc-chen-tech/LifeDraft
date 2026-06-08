@@ -136,6 +136,87 @@ describe("music queue policy", () => {
     expect(useMusicStore.getState().queue.map((item) => item.id)).toEqual([2, 3]);
   });
 
+  it("store generateAiMusicForStory persists the current Netease baseline before async AI insertion", async () => {
+    const aiSong = {
+      ...song("ai-generated-77", "AI MiniMax 雨夜追逐", "ai_generated"),
+      url: "/api/music/generated/brief-77.wav",
+      provider: "minimax",
+    };
+    global.fetch = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/music/playlist/101") && init?.method === "PUT") {
+        return {
+          ok: true,
+          json: async () => ({
+            game_id: 101,
+            current_song: song(1, "网易云 当前曲"),
+            queue: [song(2, "网易云 下一曲"), song(3, "网易云 后续曲")],
+            played_songs: [],
+            is_playing: false,
+            volume: 0.5,
+            current_position_ms: 0,
+          }),
+        } as Response;
+      }
+      if (url.endsWith("/api/music/generate-async")) {
+        return {
+          ok: true,
+          json: async () => ({
+            status: "queued",
+            game_id: 101,
+            insert_policy: "future_queue",
+          }),
+        } as Response;
+      }
+      if (url.endsWith("/api/music/playlist/101")) {
+        return {
+          ok: true,
+          json: async () => ({
+            game_id: 101,
+            current_song: song(1, "网易云 当前曲"),
+            queue: [aiSong, song(2, "网易云 下一曲"), song(3, "网易云 后续曲")],
+            played_songs: [],
+            is_playing: false,
+            volume: 0.5,
+            current_position_ms: 0,
+          }),
+        } as Response;
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }) as jest.Mock;
+    useMusicStore.setState({
+      currentSong: song(1, "网易云 当前曲"),
+      queue: [song(2, "网易云 下一曲"), song(3, "网易云 后续曲")],
+    });
+
+    await useMusicStore.getState().generateAiMusicForStory("雨夜码头故事", 101, {
+      mood: "紧张",
+    });
+
+    expect(global.fetch).toHaveBeenNthCalledWith(1, "/api/music/playlist/101", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        songs: [
+          song(1, "网易云 当前曲"),
+          song(2, "网易云 下一曲"),
+          song(3, "网易云 后续曲"),
+        ],
+        mood: "紧张",
+        keywords: undefined,
+      }),
+    });
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/music/generate-async",
+      expect.objectContaining({ method: "POST" })
+    );
+    const state = useMusicStore.getState();
+    expect(state.currentSong?.id).toBe(1);
+    expect(state.queue.map((item) => item.id)).toEqual(["ai-generated-77", 2, 3]);
+  });
+
   it("store insertGeneratedTrack places AI music as the next upcoming track", () => {
     useMusicStore.setState({
       currentSong: song(1, "Current"),

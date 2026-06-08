@@ -535,7 +535,8 @@ def test_regression_fixture_does_not_autogenerate_global_ai_music() -> None:
         encoding="utf-8"
     )
 
-    assert "setActiveStoryText(" in fixture
+    assert "setActiveStoryText(null);" in fixture
+    assert 'setActiveStoryText("雨夜码头的旧账册被风吹开。");' not in fixture
     assert "setActiveGameId(null);" in fixture
     assert "setActiveGameId(101);" not in fixture
 

@@ -148,7 +148,8 @@ test.describe('Story voice reading', () => {
     await page.getByRole('button', { name: '模拟朗读结束' }).click();
 
     await expect(page.getByTestId('voice-reading-state')).toHaveText('idle');
-    await expect(page.getByRole('button', { name: '继续朗读' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '朗读当前故事' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '继续朗读' })).toHaveCount(0);
     await expect(page.getByTestId('music-duck-state')).toHaveText('restored');
   });
 
