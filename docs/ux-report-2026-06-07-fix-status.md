@@ -205,10 +205,16 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - The frontend recovered from saved `round_history` (`recoverStory` found a 929-character continuation), showed `进入周中`, and no longer displayed processing/fallback text.
   - The browser made 0 `/choice-sync` requests for this recovery path.
   - The same browser run also verified MiniMax music generation returned 200 and served the generated MP3 asset from `/api/music/generated/...`.
+- Production browser long-flow verification after deploying the streaming-choice persistence fix:
+  - Game 89 ran 12 real browser rounds and reached `week=4`, `round=0`, `round_history` length 12.
+  - The browser saw `/choice` `ERR_INCOMPLETE_CHUNKED_ENCODING` on all 12 choices, but every one recovered through saved `round_history` and the run made 0 `/choice-sync` requests.
+  - `/event` also saw 11 browser-tail `ERR_INCOMPLETE_CHUNKED_ENCODING` interruptions; polling recovered enough to continue the main flow, but the console still logged unhandled `TypeError: network error` rejections.
+  - MiniMax music generation returned 200 in 18 observed browser calls, while 13 observed calls failed with browser `ERR_EMPTY_RESPONSE`; gameplay continued because generated music is a future-queue enhancement rather than a blocking step.
 
 ## Still Not Claimed As Production-Complete
 
 - Remote GitHub checks are blocked by GitHub billing/spending-limit status, not by retrievable job logs.
 - Fresh MiniMax music generation can take longer than 150 seconds on production; the current design keeps NetEase playback available and inserts generated music only after the asset is ready.
 - Broader music matching quality still needs product tuning: strict modern workplace filtering prevents known bad NetEase songs, but for that scene class the safe NetEase baseline can be empty and the generated MiniMax track becomes the reliable queued music source.
-- Browser/manual long playthrough to week 4 should still be rerun after deployment of the latest fallback-history recovery, because the previous production browser probe found the second fallback failure described above.
+- Event SSE recovery still logs unhandled `TypeError: network error` after switching to polling. The main flow can continue, but the console noise should be cleaned up.
+- Browser MiniMax music generation still intermittently fails with `ERR_EMPTY_RESPONSE` during long-flow play, even though many calls return 200 and serve generated MP3 assets.
