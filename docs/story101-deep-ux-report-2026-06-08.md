@@ -214,7 +214,10 @@
 - 生成总结时不再向聊天历史追加“请总结我的人生故事”这类伪用户提问，只显示后端返回的人生总结内容。
 - 回归测试：`presents summary as a dedicated action instead of a fake chat prompt`。
 - 本地验证：`cd frontend && npx jest src/__tests__/components/ChatBar.test.tsx --runInBand`、`./test.sh preflight` 均通过。
-- 生产状态：待部署 frontend 后做浏览器 smoke。
+- 生产复测：
+  - 补丁 `4e55d8b2` 热部署并重建 frontend 后，公网 `/api/health` 和 `/health` 正常。
+  - browser-agent 打开 `https://story101.live/e2e-regression`，收起态和展开态均显示“人生总结”按钮。
+  - 点击“人生总结”后 DOM 中没有旧的“请总结我的人生故事”伪聊天提问；该 e2e 页面没有真实游戏会话，因此总结 API 返回错误提示，但按钮语义和展示路径已生效。
 
 ## 截图证据
 
