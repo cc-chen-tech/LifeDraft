@@ -120,6 +120,13 @@
 
 开场是 2022 年夏季杭州，主游戏第 1 周变成 2022 年 1 月雪天。周总结中又出现“周日（第2周）”这类日期/周次混乱。
 
+本轮已修一部分：
+- 开场故事 prompt 增加“开场时间硬约束”，默认锚定到 `era.year` 的 `1月第1周（冬季）`，与 `PlayerState.get_game_date_info()` 的第 1 周日期一致。
+- prompt 明确要求开场故事和主游戏第 1 周从同一时间继续，天气、季节、日期不得冲突，并对本次复现的“夏季”增加直接禁止语句。
+- 回归测试：`test_opening_story_prompt_anchors_first_week_date_and_season`。
+
+状态：本地 prompt 契约验证通过，尚待热部署后新开场故事生产复测；“周日（第2周）”这类周总结措辞仍需单独修。
+
 ### P1：音乐匹配仍弱
 
 虽然增加了弱匹配过滤，但生产长流程中仍大量命中爱情/流行歌曲，当前播放曲与场景不匹配。长流程中稳定出现：
@@ -212,6 +219,7 @@
 - 修复音乐队列优先级：MiniMax 生成曲作为下一首入队，不再排在网易云下一曲之后。
 - 修复现代职场音乐过滤：从故事正文补充职场 cue，避免 AI 分析泛化时推荐弱匹配流行歌。
 - 修复资源反馈：低精力时 `effects_applied` 反映实际生效变化，后端返回 `resource_warnings`，前端结果页展示资源提示。
+- 修复开场时间锚点：开场故事与主游戏第 1 周使用同一日期/季节约束，避免开场夏季、第一周冬季的冲突。
 - 新增回归测试：
   - `forces next event generation after weekly summary so stale phase cannot block it`
   - `forces next round generation after sync so stale phase cannot leave a blank play page`
@@ -223,6 +231,7 @@
   - `test_zero_energy_exhausting_choice_applies_no_extra_energy_loss`
   - `appends resource warnings to the round summary`
   - `shows resource warnings even when the backend summary is empty`
+  - `test_opening_story_prompt_anchors_first_week_date_and_season`
 - 验证：
   - `cd frontend && npx jest src/__tests__/hooks/useGameState.test.ts --runInBand`
   - `cd frontend && npx jest src/__tests__/stores/useMusicStore.musicQueuePolicy.test.ts --runInBand`
@@ -230,5 +239,6 @@
   - `pytest tests/test_gate_gameplay_behavior_no_mock.py tests/test_fallback_events_contract.py tests/test_ai_extended.py::TestOptionGenerator tests/test_ai_extended.py::TestStoryGenerator -q`
   - `pytest tests/test_story_music_recommendation_contract.py tests/test_minimax_audio_generation_contract.py::test_music_generate_api_persists_generated_track_into_future_playlist_queue tests/test_minimax_audio_generation_contract.py::test_music_generate_async_api_returns_quickly_and_persists_future_playlist_track tests/test_minimax_audio_generation_db.py::test_ready_minimax_music_asset_inserts_as_next_playlist_track -q`
   - `pytest tests/test_choice_processor_contract.py -q`
+  - `pytest tests/test_gate_gameplay_behavior_no_mock.py -q`
   - `cd frontend && npx jest src/__tests__/hooks/choiceUtils.test.ts --runInBand`
   - `./test.sh preflight`

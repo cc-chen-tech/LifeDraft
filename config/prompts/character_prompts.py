@@ -15,6 +15,51 @@ from typing import Any, Dict, List, Optional
 from src.ai.prompt_sanitizer import sanitize_life_vision, sanitize_player_name
 
 
+def _coerce_month(value: Any) -> int:
+    try:
+        month = int(value)
+    except (TypeError, ValueError):
+        return 1
+    if 1 <= month <= 12:
+        return month
+    return 1
+
+
+def _season_for_month(month: int) -> str:
+    if 3 <= month <= 5:
+        return "春"
+    if 6 <= month <= 8:
+        return "夏"
+    if 9 <= month <= 11:
+        return "秋"
+    return "冬"
+
+
+def _opening_time_anchor(era: Dict[str, Any], language: str) -> str:
+    year = era.get("year", 2024) or 2024
+    month = _coerce_month(era.get("start_month") or era.get("month"))
+    season = _season_for_month(month)
+    if language == "zh":
+        conflict_seasons = "、".join(f"{s}季" for s in ("春", "夏", "秋", "冬") if s != season)
+        return (
+            f"{year}年{month}月第1周（{season}季）。"
+            f"开场故事和主游戏第1周必须从这个时间继续，天气、季节、日期不得冲突；"
+            f"禁止写成{conflict_seasons}或其他月份。"
+            + ("特别禁止写成夏季。" if season != "夏" else "")
+        )
+
+    season_en = {"春": "Spring", "夏": "Summer", "秋": "Autumn", "冬": "Winter"}[season]
+    conflict_seasons_en = ", ".join(
+        s for s in ("Spring", "Summer", "Autumn", "Winter") if s != season_en
+    )
+    return (
+        f"Year {year}, Month {month}, Week 1 ({season_en}). "
+        "The opening story and gameplay Week 1 must continue from this exact time; "
+        f"weather, season, and date must not conflict. Do not write it as {conflict_seasons_en} "
+        "or another month."
+    )
+
+
 def get_character_profile_synthesis_prompt(
     character_name: str,
     character_settings_traits: List[str],
@@ -776,6 +821,7 @@ def get_opening_story_prompt(
             key_people_lines.append(f"- {name}" + (f"（{detail}）" if detail else ""))
 
     key_people_text = "\n".join(key_people_lines) if key_people_lines else "无"
+    opening_time_anchor = _opening_time_anchor(era if isinstance(era, dict) else {}, language)
 
     if language == "zh":
         return f"""请基于以下角色设定，生成一个生动的开场故事（300-400字）。
@@ -798,6 +844,9 @@ def get_opening_story_prompt(
 【时代背景】
 {era.get('era_description', '')}，{era.get('year', '')}年
 {era.get('world_context', '')}
+
+【开场时间硬约束】
+{opening_time_anchor}
 
 【基本信息】
 年龄：{age_info.get('age', '')}岁
@@ -856,6 +905,9 @@ Life Vision: {sanitized_life_vision}
 【Era】
 {era.get('era_description', '')}, Year {era.get('year', '')}
 {era.get('world_context', '')}
+
+[Opening Time Hard Constraint]
+{opening_time_anchor}
 
 【Basic Info】
 Age: {age_info.get('age', '')}

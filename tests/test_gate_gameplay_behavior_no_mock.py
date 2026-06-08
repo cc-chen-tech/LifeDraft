@@ -194,6 +194,24 @@ def test_opening_story_prompt_forbids_replacing_player_with_template_hero() -> N
     assert "主角性别必须是：女" in prompt
 
 
+def test_opening_story_prompt_anchors_first_week_date_and_season() -> None:
+    prompt = get_opening_story_prompt(
+        character_settings={
+            "era": {"year": 2024, "era_description": "2024年中国互联网行业"},
+            "gender": {"gender": "女"},
+            "world": {"world_description": "杭州AI协作工具创业公司"},
+        },
+        player_name="顾晨曦",
+        life_vision="2020年代中国互联网公司，成为AI协作工具产品经理",
+        formatted_family_members="母亲：周梅",
+        language="zh",
+    )
+
+    assert "2024年1月第1周" in prompt
+    assert "冬季" in prompt
+    assert "禁止写成夏季" in prompt
+
+
 def test_round_event_fallback_remains_substantial_story_when_generation_fails() -> None:
     class FailingClient:
         def call(self, **_kwargs):
