@@ -100,6 +100,99 @@ def test_minimax_tts_request_payload_uses_story_text_voice_speed_and_model(tmp_p
     assert "1.15" in encoded
 
 
+def test_minimax_tts_maps_all_selectable_voice_colors_to_provider_voice_ids(
+    tmp_path: Path,
+) -> None:
+    from src.services.minimax_config import MiniMaxConfig
+    from src.services.minimax_story_tts_provider import MiniMaxTTSProvider
+
+    provider = MiniMaxTTSProvider(
+        config=MiniMaxConfig.from_env(
+            env={"MINIMAX_API_KEY": "test-key", "MINIMAX_TTS_MODEL": "speech-02-turbo"},
+            voice_asset_dir=tmp_path / "voice",
+            music_asset_dir=tmp_path / "music",
+        )
+    )
+
+    expected = {
+        "warm_female": "female-shaonv",
+        "calm_male": "male-qn-qingse",
+        "clear_neutral": "female-yujie",
+    }
+
+    payloads = {
+        voice_id: provider.build_async_create_payload(
+            text="这一段用于验证每个可选声音都进入 MiniMax 后端。",
+            voice_id=voice_id,
+            speed=1.0,
+        )
+        for voice_id in expected
+    }
+
+    for voice_id, minimax_voice_id in expected.items():
+        assert payloads[voice_id]["voice_setting"]["voice_id"] == minimax_voice_id
+        assert voice_id not in json.dumps(payloads[voice_id], ensure_ascii=False)
+
+    mapped_voice_ids = {
+        payload["voice_setting"]["voice_id"] for payload in payloads.values()
+    }
+    assert len(mapped_voice_ids) == 3
+
+
+def test_minimax_tts_generates_distinct_backend_audio_assets_for_all_selectable_voices(
+    tmp_path: Path,
+) -> None:
+    from src.services.minimax_config import MiniMaxConfig
+    from src.services.minimax_story_tts_provider import MiniMaxTTSProvider
+
+    class CapturingClient:
+        def __init__(self) -> None:
+            self.payloads: list[dict[str, Any]] = []
+
+        def synthesize_to_file(self, payload: dict[str, Any], output_path: Path) -> None:
+            self.payloads.append(payload)
+            output_path.write_bytes(b"ID3\x04\x00\x00\x00\x00\x00\x00")
+
+    client = CapturingClient()
+    provider = MiniMaxTTSProvider(
+        config=MiniMaxConfig.from_env(
+            env={"MINIMAX_API_KEY": "test-key", "MINIMAX_TTS_MODEL": "speech-02-turbo"},
+            voice_asset_dir=tmp_path / "voice",
+            music_asset_dir=tmp_path / "music",
+        ),
+        client=client,  # type: ignore[arg-type]
+    )
+
+    voice_ids = ["warm_female", "calm_male", "clear_neutral"]
+    results = [
+        provider.synthesize(
+            {
+                "text_hash": f"story-hash-{voice_id}",
+                "text": "故事生成完毕后，应使用所选 MiniMax 声音自动朗读。",
+            },
+            voice_id,
+            1.0,
+        )
+        for voice_id in voice_ids
+    ]
+
+    assert [result.playback_mode for result in results] == ["audio", "audio", "audio"]
+    assert [result.provider for result in results] == ["minimax", "minimax", "minimax"]
+    assert [result.media_type for result in results] == ["audio/mpeg", "audio/mpeg", "audio/mpeg"]
+    assert all(
+        result.storage_path and voice_id in result.storage_path
+        for result, voice_id in zip(results, voice_ids)
+    )
+    for result in results:
+        file_name = str(result.storage_path).rsplit("/", 1)[-1]
+        assert (tmp_path / "voice" / file_name).read_bytes().startswith(b"ID3")
+
+    mapped_payload_voice_ids = {
+        payload["voice_setting"]["voice_id"] for payload in client.payloads
+    }
+    assert len(mapped_payload_voice_ids) == 3
+
+
 def test_minimax_tts_over_limit_story_text_falls_back_without_audio(tmp_path: Path) -> None:
     from src.services.minimax_config import MiniMaxConfig
     from src.services.minimax_story_tts_provider import MiniMaxTTSProvider

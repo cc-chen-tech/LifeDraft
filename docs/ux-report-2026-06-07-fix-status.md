@@ -69,6 +69,8 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Regression coverage: `frontend/src/__tests__/hooks/useEventGenerator.test.ts`
 - Choice and custom-choice SSE recovery now use the same clean handled-rejection logging as event recovery. Production game 91 reached the result button after a `/choice` browser-tail `ERR_INCOMPLETE_CHUNKED_ENCODING`, but still logged the raw `TypeError: network error`; the normal and custom choice hooks now keep that recovery path out of console error/noise while preserving the saved-history result recovery.
   - Regression coverage: `frontend/src/__tests__/hooks/useChoiceHandler.test.ts`
+- MiniMax TTS contract coverage now verifies all three selectable production voice IDs (`warm_female`, `calm_male`, `clear_neutral`) map to distinct MiniMax backend voice IDs and produce backend audio assets instead of silently falling back to browser speech.
+  - Regression coverage: `tests/test_minimax_audio_generation_contract.py`
 
 ## Verification
 
@@ -211,6 +213,12 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - OpenSpec strict validation: 21 passed.
   - Backend preflight quality checks: 86 passed.
   - Frontend preflight Jest regression tests: 346 passed.
+- Focused MiniMax audio contract batch after adding all selectable TTS voice coverage:
+  - `python -m pytest tests/test_minimax_audio_generation_contract.py -q`: 24 passed.
+- Full local preflight after adding all selectable TTS voice coverage:
+  - OpenSpec strict validation: 21 passed.
+  - Backend preflight quality checks: 88 passed.
+  - Frontend preflight Jest regression tests: 346 passed.
 - Production browser verification after deploying the streaming-choice persistence fix:
   - Game 88 reproduced the browser-tail failure on `/api/games/88/choice`: `net::ERR_INCOMPLETE_CHUNKED_ENCODING`.
   - Backend logs showed `save_game_progress` and `Auto-saved game state after choice: game_id=88` immediately after choice processing returned, before any `/choice-sync`.
@@ -226,9 +234,19 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Game 92 reproduced `/choice` `ERR_INCOMPLETE_CHUNKED_ENCODING`, recovered to the `进入周中` result button, and reported `badConsole=0` with no page errors.
   - Game 93 waited for the real `/api/music/generate` browser request before closing the test browser. The request returned 200 with `source=ai_generated`, `provider=minimax`, `insert_policy=future_queue`, and the persisted playlist contained an `ai_generated` track.
   - Game 93 had no `/api/music/generate` request failure when the browser stayed open for the long-running generation request. The earlier `ERR_EMPTY_RESPONSE` observations are therefore classified as browser/test lifecycle aborts of long optional music requests, not confirmed MiniMax generation failures.
+- Production API verification for the previously unverified `clear_neutral` TTS voice:
+  - `/api/voice-reading/settings` returned `tts_provider: "minimax"`, `backend_audio_enabled: true`, and all three selectable voice IDs.
+  - `/api/voice-reading/read` with `voice_id: "clear_neutral"` returned 200 with `provider: "minimax"`, `playback_mode: "audio"`, `media_type: "audio/mpeg"`, and a generated `/api/voice-reading/audio/*.mp3` URL.
+  - Downloading that generated audio URL returned 200 `audio/mpeg`.
+- Remote GitHub CI investigation after rerunning the failed `Frontend Tests / Run Jest Tests` job:
+  - `gh pr checks 51` still reports all PR checks failing in 2-4 seconds.
+  - GitHub job API for run `27114385832` reports `steps: []`, `runner_name: ""`, and `runner_id: 0` for the original failed job.
+  - The downloadable log zip contains only `Run Jest Tests/system.txt`; no checkout, setup, dependency install, lint, Jest, pytest, or app test step exists.
+  - The original and rerun system logs both stop at hosted runner allocation, for example `Waiting for a runner to pick up this job...` and `Job is waiting for a hosted runner to come online.`
+  - This is a GitHub hosted-runner startup failure before repository code executes, not evidence that PR #51's local test suites failed.
 
 ## Still Not Claimed As Production-Complete
 
-- Remote GitHub checks are blocked by GitHub billing/spending-limit status, not by retrievable job logs.
+- Remote GitHub checks are blocked before job steps execute. Current evidence points to GitHub hosted-runner allocation/account capacity rather than a code-level test failure.
 - Fresh MiniMax music generation can take longer than 150 seconds on production; the current design keeps NetEase playback available and inserts generated music only after the asset is ready.
 - Broader music matching quality still needs product tuning: strict modern workplace filtering prevents known bad NetEase songs, but for that scene class the safe NetEase baseline can be empty and the generated MiniMax track becomes the reliable queued music source.
