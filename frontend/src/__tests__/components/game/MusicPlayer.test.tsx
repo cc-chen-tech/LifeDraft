@@ -217,6 +217,111 @@ describe('MusicPlayer', () => {
     expect(calls.some((call: unknown[]) => String(call[0]).includes('/api/music/playlist/77'))).toBe(true);
     expect(calls.some((call: unknown[]) => String(call[0]).includes('/api/music/generate'))).toBe(false);
   });
+
+  it('带 music_brief 的故事推荐会生成 AI 音乐并插入后续队列', async () => {
+    (global.fetch as jest.Mock).mockReset();
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(
+        jsonResponse({
+          mood: '紧张',
+          scene_type: '雨夜追逐',
+          keywords: ['雨夜追逐', '悬疑配乐'],
+          music_brief: {
+            mood: '紧张',
+            scene_type: '雨夜追逐',
+            generation_prompt: '雨夜码头追逐，紧张悬疑，无歌词氛围配乐',
+          },
+          songs: [
+            {
+              id: 1,
+              name: '网易云 当前曲',
+              artists: ['Score'],
+              album: '影视配乐',
+              duration: 180000,
+              url: 'https://example.com/current.mp3',
+              source: 'netease',
+            },
+            {
+              id: 2,
+              name: '网易云 下一曲',
+              artists: ['Score'],
+              album: '影视配乐',
+              duration: 180000,
+              url: 'https://example.com/next.mp3',
+              source: 'netease',
+            },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        playlistResponse(
+          77,
+          {
+            id: 1,
+            name: '网易云 当前曲',
+            artists: ['Score'],
+            album: '影视配乐',
+            duration: 180000,
+            url: 'https://example.com/current.mp3',
+            source: 'netease',
+          },
+          [
+            {
+              id: 2,
+              name: '网易云 下一曲',
+              artists: ['Score'],
+              album: '影视配乐',
+              duration: 180000,
+              url: 'https://example.com/next.mp3',
+              source: 'netease',
+            },
+          ]
+        )
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          insert_policy: 'future_queue',
+          track: {
+            id: 'ai-generated-77',
+            name: 'AI MiniMax 雨夜追逐',
+            artists: ['MiniMax'],
+            album: 'AI Generated',
+            duration: 120000,
+            url: '/api/music/generated/ai-generated-77.mp3',
+            source: 'ai_generated',
+            provider: 'minimax',
+            model: 'music-01',
+          },
+        })
+      );
+
+    render(<MusicPlayer storyText="雨夜码头追逐，主角发现旧账册线索。" gameId={77} />);
+
+    await waitFor(() => {
+      expect(
+        (global.fetch as jest.Mock).mock.calls.some((call: unknown[]) =>
+          String(call[0]).includes('/api/music/generate')
+        )
+      ).toBe(true);
+    });
+
+    const generateCall = (global.fetch as jest.Mock).mock.calls.find((call: unknown[]) =>
+      String(call[0]).includes('/api/music/generate')
+    );
+    expect(JSON.parse(generateCall[1].body)).toMatchObject({
+      story_text: '雨夜码头追逐，主角发现旧账册线索。',
+      game_id: 77,
+      analysis: {
+        mood: '紧张',
+        scene_type: '雨夜追逐',
+      },
+    });
+    expect(useMusicStore.getState().currentSong?.name).toBe('网易云 当前曲');
+    expect(useMusicStore.getState().queue.map((item) => item.name)).toEqual([
+      '网易云 下一曲',
+      'AI MiniMax 雨夜追逐',
+    ]);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════

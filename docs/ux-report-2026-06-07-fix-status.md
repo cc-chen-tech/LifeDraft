@@ -55,6 +55,10 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Regression coverage: `frontend/src/__tests__/hooks/choiceUtils.test.ts`, `frontend/src/__tests__/hooks/useChoiceHandler.test.ts`
 - Story voice reading hash generation now matches the backend SHA-256 text-hash contract. Production API probing confirmed `/api/voice-reading/read` rejects stale length-prefix hashes with `text_hash_mismatch`; the auto-read controls now compute the backend-compatible hash before starting reading, and `./test.sh preflight` includes that contract test.
   - Regression coverage: `frontend/src/__tests__/components/StoryVoiceControls.test.tsx`, `frontend/src/__tests__/lib/storyVoiceTextHash.test.ts`
+- Story voice auto-read now has regression coverage for the final story-ready path after settings load/toggle timing. Production browser probing confirmed auto-read stays idle on partial stream text and starts only after the final story-ready signal.
+  - Regression coverage: `frontend/src/__tests__/components/StoryVoiceControls.test.tsx`
+- Music player component coverage now proves the product path for generated music: a completed story recommendation with `music_brief` calls `/api/music/generate` and inserts the MiniMax `ai_generated` track into the future queue without replacing the current NetEase track.
+  - Regression coverage: `frontend/src/__tests__/components/game/MusicPlayer.test.tsx`
 
 ## Verification
 
@@ -67,6 +71,11 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Browser auto-read stays idle during the simulated partial stream and starts only after the final story-ready signal.
   - `/api/music/generate` produces a MiniMax `ai_generated` MP3 asset with `insert_policy: future_queue`.
   - Browser UI inserts the generated MiniMax music track into the future queue without replacing the current NetEase track.
+- Production deployment verification after manually deploying `2f25c9f96` to ECS:
+  - `/opt/story2` reports `2f25c9f96`, and the backend health check is healthy.
+  - Browser auto-read on `/e2e-regression` stayed idle for the simulated partial stream, then posted `/api/voice-reading/read` only after the final story-ready signal.
+  - The auto-read request used a backend-compatible SHA-256 `text_hash`, and the response returned `provider=minimax`, `playback_mode=audio`, and an `/api/voice-reading/audio/*.mp3` asset.
+  - Production MiniMax music API verification remains green: `/api/music/generate` returns a MiniMax `ai_generated` track with `insert_policy: "future_queue"`, and `/api/music/playlist/{game_id}` contains the generated track.
 - Production real `/play` verification on game 50 after deploying `7ab5752f` to ECS:
   - Completed story auto-read called `/api/voice-reading/read` and returned `provider=minimax`, `playback_mode=audio`, and a generated `/api/voice-reading/audio/*.mp3` URL.
   - `/api/music/recommend` returned `music_brief`.
@@ -85,6 +94,10 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Final state was `week=4`, `round=0`, `round_history` length 12.
   - No week-2 deadlock reproduced on the synchronous API path.
   - Observed latency remains a product blocker: event generation took roughly 30-44s per round and choice processing took roughly 35-106s per round.
+- Production long synchronous gameplay probes after deploying `2f25c9f96` reached week 4 twice:
+  - Game 80 and game 81 each ran 12 real production rounds using `event-sync -> choice-sync -> state`.
+  - Both final states were `week=4`, `round=0`, with no event/choice 5xx and no week-2 deadlock.
+  - Observed latency remains high but stable: individual event and choice calls commonly took tens of seconds.
 - Focused backend regression batch after the week-finalization and collection compatibility fixes: 51 passed.
 - Production deployment verification after manually deploying `d4c36531` to ECS:
   - `/health` and `/api/health` are healthy, and `/opt/story2` is at `d4c36531`.
