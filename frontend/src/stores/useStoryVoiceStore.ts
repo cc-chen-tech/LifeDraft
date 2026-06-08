@@ -31,7 +31,9 @@ interface StoryVoiceState {
   stopReading: () => void;
   completeReading: () => void;
   retryReading: () => void;
-  failReading: () => void;
+  markAudioPlaying: () => void;
+  markAudioReady: (message?: string) => void;
+  failReading: (error?: unknown) => void;
   setAutoReadEnabled: (enabled: boolean) => void;
   setSelectedVoiceId: (voiceId: string) => void;
   enqueueCompletedAttempt: (text: string) => void;
@@ -213,7 +215,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
           return;
         }
         set({
-          readingState: "playing",
+          readingState: "ready",
           currentAudioUrl: response.audio_url ?? "",
           currentJobId: response.job_id,
           currentProvider: response.provider,
@@ -288,16 +290,40 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
     getSpeechSynthesis()?.resume();
     set({ readingState: "playing" });
   },
-  failReading: () => {
+  markAudioPlaying: () => {
+    const { playbackMode, currentAudioUrl, readingState } = get();
+    if (playbackMode !== "audio" || !currentAudioUrl || readingState === "failed") {
+      return;
+    }
+    set({ readingState: "playing", errorMessage: "" });
+  },
+  markAudioReady: (message) => {
+    const { playbackMode, currentAudioUrl, readingState } = get();
+    if (playbackMode !== "audio" || !currentAudioUrl || readingState === "failed") {
+      return;
+    }
+    set({
+      readingState: "ready",
+      errorMessage: message ?? (readingState === "ready" ? get().errorMessage : ""),
+    });
+  },
+  failReading: (error) => {
     const { musicDuckState, userChangedMusic } = get();
     activeReadingAttempt += 1;
     getSpeechSynthesis()?.cancel();
     activeUtterance = null;
+    const errorMessage =
+      error instanceof Error
+        ? error.message
+        : typeof error === "string"
+          ? error
+          : "Story voice playback failed";
     set({
       readingState: "failed",
       currentAudioUrl: "",
       currentJobId: null,
       playbackMode: "none",
+      errorMessage,
       musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
     });
   },

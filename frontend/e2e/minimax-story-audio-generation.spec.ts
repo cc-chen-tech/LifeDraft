@@ -5,7 +5,26 @@ async function openRegressionFixture(page: Page, gameId?: number): Promise<void>
   const url = gameId ? `/e2e-regression?gameId=${gameId}` : '/e2e-regression';
   await page.goto(url);
   await page.waitForLoadState('domcontentloaded');
-  await expect(page.getByRole('button', { name: '朗读当前故事' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '朗读故事' })).toBeVisible();
+}
+
+async function ensureVoiceAudioPlaying(page: Page): Promise<void> {
+  await expect(page.getByTestId('voice-reading-mode')).toHaveText('audio', { timeout: 15_000 });
+  await expect(page.getByTestId('voice-reading-playback-mode')).toHaveText('audio');
+  await expect(page.getByTestId('voice-reading-audio-url')).toContainText('/api/voice-reading/audio/');
+  await expect
+    .poll(async () => page.getByTestId('voice-reading-state').textContent(), {
+      timeout: 15_000,
+    })
+    .toMatch(/^(ready|playing)$/);
+  try {
+    await expect(page.getByTestId('voice-reading-state')).toHaveText('playing', { timeout: 2_000 });
+  } catch {
+    if ((await page.getByTestId('voice-reading-state').textContent()) === 'ready') {
+      await page.getByRole('button', { name: '播放语音' }).click();
+    }
+  }
+  await expect(page.getByTestId('voice-reading-state')).toHaveText('playing', { timeout: 15_000 });
 }
 
 test.describe('MiniMax story audio generation', () => {
@@ -20,12 +39,10 @@ test.describe('MiniMax story audio generation', () => {
     });
     await openRegressionFixture(page);
 
-    await page.getByRole('button', { name: '朗读当前故事' }).click();
+    await page.getByRole('button', { name: '朗读故事' }).click();
 
-    await expect(page.getByTestId('voice-reading-mode')).toHaveText('audio', { timeout: 15_000 });
-    await expect(page.getByTestId('voice-reading-playback-mode')).toHaveText('audio');
+    await ensureVoiceAudioPlaying(page);
     await expect(page.getByTestId('voice-reading-provider')).toHaveText('minimax');
-    await expect(page.getByTestId('voice-reading-audio-url')).toContainText('/api/voice-reading/audio/');
     await expect(page.getByTestId('voice-reading-audio-player')).toHaveJSProperty('readyState', 4);
     await expect
       .poll(async () =>
@@ -79,13 +96,13 @@ test.describe('MiniMax story audio generation', () => {
     await expect(page.getByTestId('voice-reading-audio-url')).toHaveText('');
 
     await page.reload();
-    await expect(page.getByRole('button', { name: '朗读当前故事' })).toBeVisible();
-    await page.getByRole('button', { name: '启用自动朗读' }).click();
+    await expect(page.getByRole('button', { name: '朗读故事' })).toBeVisible();
+    await page.getByRole('checkbox', { name: '自动朗读' }).check();
     await page.getByRole('button', { name: '模拟首轮 stream' }).click();
     await expect(page.getByTestId('voice-reading-state')).toHaveText('idle');
 
     await page.getByRole('button', { name: '模拟 retry 替换' }).click();
-    await expect(page.getByTestId('voice-reading-mode')).toHaveText('audio', { timeout: 15_000 });
+    await ensureVoiceAudioPlaying(page);
     await expect(page.getByTestId('voice-reading-provider')).toHaveText('minimax');
     await expect(page.getByTestId('voice-reading-audio-player')).toHaveJSProperty('readyState', 4);
   });

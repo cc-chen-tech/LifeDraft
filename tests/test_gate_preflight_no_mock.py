@@ -482,7 +482,7 @@ def test_story_voice_production_controls_expose_persistent_auto_read_toggle() ->
         ROOT / "frontend" / "src" / "components" / "game" / "StoryVoiceControls.tsx"
     ).read_text(encoding="utf-8")
 
-    auto_read_label = 'aria-label={autoReadEnabled ? "关闭自动朗读" : "启用自动朗读"}'
+    auto_read_label = 'aria-label="自动朗读"'
     assert auto_read_label in component
     assert "api.voice_reading.getSettings" in component
     assert "api.voice_reading.updateSettings" in component
