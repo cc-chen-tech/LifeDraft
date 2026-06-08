@@ -117,6 +117,45 @@ describe('choiceUtils', () => {
       expect(mockHandlers.setRoundSummary).toHaveBeenCalledWith('Round summary text');
     });
 
+    it('appends resource warnings to the round summary', () => {
+      handleChoiceComplete({
+        summary: 'Round summary text',
+        resource_warnings: [
+          {
+            resource: 'energy',
+            display_name: '精力',
+            reason: 'insufficient_resource',
+            requested_delta: -20,
+            applied_delta: -5,
+            message: '精力不足，实际变化为 -5',
+          },
+        ],
+      }, mockHandlers);
+
+      expect(mockHandlers.setRoundSummary).toHaveBeenCalledWith(
+        expect.stringContaining('精力不足，实际变化为 -5')
+      );
+    });
+
+    it('shows resource warnings even when the backend summary is empty', () => {
+      handleChoiceComplete({
+        resource_warnings: [
+          {
+            resource: 'energy',
+            display_name: '精力',
+            reason: 'insufficient_resource',
+            requested_delta: -12,
+            applied_delta: 0,
+            message: '精力不足，实际变化为 +0',
+          },
+        ],
+      }, mockHandlers);
+
+      expect(mockHandlers.setRoundSummary).toHaveBeenCalledWith(
+        expect.stringContaining('精力不足，实际变化为 +0')
+      );
+    });
+
     it('clears summary when not present', () => {
       handleChoiceComplete({}, mockHandlers);
       expect(mockHandlers.setRoundSummary).toHaveBeenCalledWith(null);

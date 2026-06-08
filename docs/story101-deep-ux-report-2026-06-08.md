@@ -147,7 +147,23 @@
 
 ### P1：资源状态缺少玩法反馈
 
-推进到第 3 周后精力降到 `0`，但游戏仍允许继续高强度推进，没有疲劳提示、恢复建议或失败风险。这会削弱资源系统的存在感。
+复现结果：
+- 生产长流程推进到第 3 周后，精力降到 `0`。
+- 游戏仍允许继续高强度推进，结果页没有疲劳提示、恢复建议或失败风险。
+- 后端状态值会被 `PlayerState.update` 夹到 `0`，但 choice result 的 `effects_applied` 仍返回原始高消耗值，前端因此无法解释“为什么精力已经 0 还继续扣 -20”。
+
+本轮已修：
+- choice processor 在应用效果前计算 `effects_requested` 和实际生效的 `effects_applied`。
+- 当精力/情绪/学识/财富触底或触顶时，返回 `resource_warnings`，例如“精力不足，实际变化为 -5”。
+- 叙事续写、历史记录、decision history 和 API 返回均使用实际生效效果，同时保留请求效果用于解释。
+- 前端 result 阶段会把 `resource_warnings` 合并到本轮结果摘要的“资源提示”区域，避免静默继续。
+- 回归测试：
+  - `test_exhausting_choice_reports_actual_applied_energy_and_warning`
+  - `test_zero_energy_exhausting_choice_applies_no_extra_energy_loss`
+  - `appends resource warnings to the round summary`
+  - `shows resource warnings even when the backend summary is empty`
+
+状态：本地验证通过，尚待热部署到生产后用 `game_id=95` 或新游戏复测。
 
 ### P1：长生成阶段体验仍慢
 
@@ -186,6 +202,7 @@
 - 修复选项生成稳定性：必须返回 3 个选项；fallback 不再使用泛化二选项。
 - 修复音乐队列优先级：MiniMax 生成曲作为下一首入队，不再排在网易云下一曲之后。
 - 修复现代职场音乐过滤：从故事正文补充职场 cue，避免 AI 分析泛化时推荐弱匹配流行歌。
+- 修复资源反馈：低精力时 `effects_applied` 反映实际生效变化，后端返回 `resource_warnings`，前端结果页展示资源提示。
 - 新增回归测试：
   - `forces next event generation after weekly summary so stale phase cannot block it`
   - `forces next round generation after sync so stale phase cannot leave a blank play page`
@@ -193,10 +210,16 @@
   - `test_generate_round_event_option_failure_uses_three_contextual_fallbacks`
   - `test_generated_track_insertion_makes_ai_music_next_after_current`
   - `test_music_service_derives_workplace_filter_from_story_when_ai_analysis_is_generic`
+  - `test_exhausting_choice_reports_actual_applied_energy_and_warning`
+  - `test_zero_energy_exhausting_choice_applies_no_extra_energy_loss`
+  - `appends resource warnings to the round summary`
+  - `shows resource warnings even when the backend summary is empty`
 - 验证：
   - `cd frontend && npx jest src/__tests__/hooks/useGameState.test.ts --runInBand`
   - `cd frontend && npx jest src/__tests__/stores/useMusicStore.musicQueuePolicy.test.ts --runInBand`
   - `cd frontend && npm run test:types`
   - `pytest tests/test_gate_gameplay_behavior_no_mock.py tests/test_fallback_events_contract.py tests/test_ai_extended.py::TestOptionGenerator tests/test_ai_extended.py::TestStoryGenerator -q`
   - `pytest tests/test_story_music_recommendation_contract.py tests/test_minimax_audio_generation_contract.py::test_music_generate_api_persists_generated_track_into_future_playlist_queue tests/test_minimax_audio_generation_contract.py::test_music_generate_async_api_returns_quickly_and_persists_future_playlist_track tests/test_minimax_audio_generation_db.py::test_ready_minimax_music_asset_inserts_as_next_playlist_track -q`
+  - `pytest tests/test_choice_processor_contract.py -q`
+  - `cd frontend && npx jest src/__tests__/hooks/choiceUtils.test.ts --runInBand`
   - `./test.sh preflight`

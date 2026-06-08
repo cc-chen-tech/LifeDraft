@@ -65,6 +65,36 @@ export function isRecoverableChoiceStreamError(errorMsg: string): boolean {
   );
 }
 
+function formatResourceWarnings(result: Record<string, unknown>): string {
+  const warnings = result.resource_warnings;
+  if (!Array.isArray(warnings) || warnings.length === 0) {
+    return "";
+  }
+
+  const lines = warnings
+    .map((warning) => {
+      if (!warning || typeof warning !== "object") {
+        return "";
+      }
+      const warningRecord = warning as Record<string, unknown>;
+      const message = warningRecord.message;
+      if (typeof message === "string" && message.trim()) {
+        return `- ${message.trim()}`;
+      }
+
+      const displayName =
+        typeof warningRecord.display_name === "string" ? warningRecord.display_name : "资源";
+      const appliedDelta =
+        typeof warningRecord.applied_delta === "number"
+          ? `${warningRecord.applied_delta >= 0 ? "+" : ""}${warningRecord.applied_delta}`
+          : "受限";
+      return `- ${displayName}受限，实际变化为 ${appliedDelta}`;
+    })
+    .filter((line): line is string => Boolean(line));
+
+  return lines.length ? `\n\n**资源提示**\n${lines.join("\n")}` : "";
+}
+
 // ==================== Choice Completion ====================
 
 /**
@@ -85,8 +115,11 @@ export function handleChoiceComplete(
     console.log("[handleChoiceComplete] Retry detected, keeping replacement stream text");
   }
 
+  const resourceWarningText = formatResourceWarnings(result);
   if (result.summary && typeof result.summary === "string") {
-    setRoundSummary(result.summary);
+    setRoundSummary(`${result.summary}${resourceWarningText}`);
+  } else if (resourceWarningText) {
+    setRoundSummary(resourceWarningText.trim());
   } else {
     setRoundSummary(null);
   }

@@ -520,6 +520,51 @@ class TestEffectsAppliedIntegrity:
         assert result["effects_applied"]["mood"] == -5
         assert result["effects_applied"]["wealth"] == -200
 
+    def test_exhausting_choice_reports_actual_applied_energy_and_warning(self):
+        """When energy is too low, effects_applied should reflect the actual clamped delta."""
+        state = _make_state(energy=5)
+        event = GameEvent(
+            event_description="你已经连续熬夜三天，但团队还在等你推进上线。",
+            options=[
+                EventOption(
+                    text="继续高强度通宵排查所有数据问题",
+                    effects={"energy": -20, "mood": -5, "knowledge": 5},
+                ),
+                EventOption(text="先停下来补觉恢复状态", effects={"energy": 10, "mood": 2}),
+            ],
+        )
+        proc = _make_processor(player_state=state, current_event=event)
+
+        result = proc.make_round_choice(option_index=0)
+
+        assert state.energy == 0
+        assert result["effects_applied"]["energy"] == -5
+        assert result["effects_requested"]["energy"] == -20
+        assert result["resource_warnings"][0]["resource"] == "energy"
+        assert result["resource_warnings"][0]["reason"] == "insufficient_resource"
+
+    def test_zero_energy_exhausting_choice_applies_no_extra_energy_loss(self):
+        """At zero energy, another exhausting choice should not pretend to spend energy."""
+        state = _make_state(energy=0)
+        event = GameEvent(
+            event_description="你已经精疲力尽，仍有人要求你立刻继续。",
+            options=[
+                EventOption(
+                    text="硬撑着继续处理所有复杂任务",
+                    effects={"energy": -12, "mood": -4, "knowledge": 3},
+                ),
+                EventOption(text="暂停任务并说明自己需要休息", effects={"energy": 8, "mood": 1}),
+            ],
+        )
+        proc = _make_processor(player_state=state, current_event=event)
+
+        result = proc.make_round_choice(option_index=0)
+
+        assert state.energy == 0
+        assert result["effects_applied"]["energy"] == 0
+        assert result["effects_requested"]["energy"] == -12
+        assert result["resource_warnings"][0]["message"]
+
 
 class TestRoundChoiceProcessorLanguage:
     """Verify language getter is called correctly."""

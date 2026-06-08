@@ -258,6 +258,8 @@ class ChoiceResultResponse(BaseModel):
     story_continuation: str = ""
     summary: str = ""
     effects_applied: Dict[str, Any] = Field(default_factory=dict)
+    effects_requested: Dict[str, Any] = Field(default_factory=dict)
+    resource_warnings: List[Dict[str, Any]] = Field(default_factory=list)
     need_weekly_summary: bool = False
     weekly_summary: Optional[str] = None
     bonus_effects: Optional[Dict[str, Any]] = None

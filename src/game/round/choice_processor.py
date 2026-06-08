@@ -7,6 +7,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
+from config.settings import settings
 from src.ai.models import GameEvent
 from src.ai.vector_store import get_vector_store, is_vector_search_enabled
 from src.game.narrative_manager import NarrativeManager
@@ -103,7 +104,8 @@ class RoundChoiceProcessor:
             raise ValueError(f"Invalid option index: {option_index}")
 
         chosen_option = current_event.options[option_index]
-        effects = chosen_option.effects
+        effects_requested = chosen_option.effects
+        effects, resource_warnings = self._normalize_effects_for_current_state(effects_requested)
 
         # 1. Apply effects immediately (real-time update)
         player_state.update(
@@ -135,6 +137,8 @@ class RoundChoiceProcessor:
             choice_text=chosen_option.text,
             story_continuation=story_continuation,
             effects=effects,
+            effects_requested=effects_requested,
+            resource_warnings=resource_warnings,
             full_story=full_story,
             status_callback=status_callback,
             finalize_week_callback=finalize_week_callback,
@@ -171,7 +175,10 @@ class RoundChoiceProcessor:
         logger.info(f"Processing custom choice: {custom_text[:50]}...")
 
         # 1. 调用 AI 生成自定义选择的属性变化（快速 JSON 调用）
-        effects = self._generate_custom_choice_effects(current_event.event_description, custom_text)
+        effects_requested = self._generate_custom_choice_effects(
+            current_event.event_description, custom_text
+        )
+        effects, resource_warnings = self._normalize_effects_for_current_state(effects_requested)
 
         # 2. 应用属性变化
         player_state.update(
@@ -205,6 +212,8 @@ class RoundChoiceProcessor:
             choice_text=custom_text,
             story_continuation=story_continuation,
             effects=effects,
+            effects_requested=effects_requested,
+            resource_warnings=resource_warnings,
             full_story=full_story,
             is_custom=True,
             status_callback=status_callback,
@@ -218,6 +227,8 @@ class RoundChoiceProcessor:
         story_continuation: str,
         effects: Dict[str, Any],
         full_story: str,
+        effects_requested: Optional[Dict[str, Any]] = None,
+        resource_warnings: Optional[list[Dict[str, Any]]] = None,
         is_custom: bool = False,
         status_callback: Optional[Callable[[str], None]] = None,
         finalize_week_callback: Optional[Callable] = None,
@@ -336,6 +347,8 @@ class RoundChoiceProcessor:
             "story_continuation": story_continuation,
             "choice": choice_text,
             "effects": effects.copy(),
+            "effects_requested": (effects_requested or effects).copy(),
+            "resource_warnings": list(resource_warnings or []),
             "date_info": date_info,
             "event_concluded": event_concluded,
         }
@@ -382,6 +395,8 @@ class RoundChoiceProcessor:
             "event": event.event_description[:200] + "...",
             "choice": choice_text,
             "effects": effects.copy(),
+            "effects_requested": (effects_requested or effects).copy(),
+            "resource_warnings": list(resource_warnings or []),
             "date_info": date_info,
         }
         if is_custom:
@@ -412,6 +427,8 @@ class RoundChoiceProcessor:
             "story_continuation": story_continuation,
             "summary": summary,
             "effects_applied": effects.copy(),
+            "effects_requested": (effects_requested or effects).copy(),
+            "resource_warnings": list(resource_warnings or []),
             "need_weekly_summary": need_weekly_summary,
         }
 
@@ -434,6 +451,63 @@ class RoundChoiceProcessor:
             self.result_callback(result, player_state)
 
         return result
+
+    def _normalize_effects_for_current_state(
+        self, effects: Dict[str, Any]
+    ) -> tuple[Dict[str, Any], list[Dict[str, Any]]]:
+        """Return actual deltas after resource bounds plus warning metadata."""
+        player_state = self.player_state
+        if player_state is None:
+            return effects.copy(), []
+
+        normalized = effects.copy()
+        warnings: list[Dict[str, Any]] = []
+
+        bounded_resources = {
+            "energy": (player_state.energy, settings.MIN_RESOURCE, settings.MAX_RESOURCE, "精力"),
+            "mood": (player_state.mood, settings.MIN_RESOURCE, settings.MAX_RESOURCE, "情绪"),
+            "knowledge": (
+                player_state.knowledge,
+                settings.MIN_RESOURCE,
+                settings.MAX_RESOURCE,
+                "学识",
+            ),
+            "wealth": (player_state.wealth, 0, None, "财富"),
+        }
+
+        for resource, (current_value, min_value, max_value, display_name) in bounded_resources.items():
+            requested_delta = effects.get(resource)
+            if not isinstance(requested_delta, int):
+                continue
+
+            raw_next_value = current_value + requested_delta
+            clamped_next_value = max(min_value, raw_next_value)
+            if max_value is not None:
+                clamped_next_value = min(max_value, clamped_next_value)
+
+            actual_delta = clamped_next_value - current_value
+            normalized[resource] = actual_delta
+
+            if actual_delta != requested_delta:
+                direction = "insufficient_resource" if requested_delta < 0 else "resource_cap"
+                message = (
+                    f"{display_name}不足，实际变化为 {actual_delta:+d}"
+                    if direction == "insufficient_resource"
+                    else f"{display_name}已接近上限，实际变化为 {actual_delta:+d}"
+                )
+                warnings.append(
+                    {
+                        "resource": resource,
+                        "display_name": display_name,
+                        "reason": direction,
+                        "current": current_value,
+                        "requested_delta": requested_delta,
+                        "applied_delta": actual_delta,
+                        "message": message,
+                    }
+                )
+
+        return normalized, warnings
 
     def _generate_custom_choice_effects(
         self, event_description: str, custom_text: str
