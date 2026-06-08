@@ -110,6 +110,7 @@
 - era prompt 增加强约束：人生愿景里的年份、年代、国家/地区、行业、职业是硬约束，不能被改写为古代或无关时代。
 - 后端增加确定性校验：如果愿景明确是现代互联网/产品经理/AI/公司等职业线，但 AI 返回古代年份或唐宋元明清等古代 cue，会自动纠正为现代中国互联网行业背景。
 - 回归测试：`test_generate_era_honors_explicit_modern_product_manager_life_vision` 覆盖 AI 返回唐代时的纠偏。
+- 生产复测：`/api/character/setting` 对“2020年代中国互联网公司，成为AI协作工具产品经理”返回 `year=2024`，描述包含 AI / 互联网 / 产品经理，未出现唐代或古代 cue。
 
 ### P1：故事节奏过快
 
