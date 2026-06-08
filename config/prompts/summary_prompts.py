@@ -5,6 +5,33 @@ from typing import Any, Dict, List, Optional
 from config.prompts._helpers import _build_time_context, _format_people_names
 
 
+def _build_weekly_summary_time_guard(
+    game_date_info: Optional[Dict[str, Any]], language: str
+) -> str:
+    if not game_date_info:
+        return ""
+
+    total_week = game_date_info.get("total_week")
+    date_string = game_date_info.get("date_string", "")
+    date_string_en = game_date_info.get("date_string_en", "")
+
+    if language == "zh":
+        next_week = total_week + 1 if isinstance(total_week, int) else "下一"
+        current_label = f"第{total_week}周" if isinstance(total_week, int) else "当前周"
+        return f"""
+【周总结时间边界】
+- 本总结只覆盖{date_string or current_label}这一周的周一、周中、周末三个回合。
+- 不得把下一周写进本周总结，不得把本周周末写成“周日（第{next_week}周）”。
+- 禁止写成“周日（第2周）”这类把日期推进到下一周的表达。"""
+
+    next_week_en = total_week + 1 if isinstance(total_week, int) else "next"
+    current_label_en = f"Week {total_week}" if isinstance(total_week, int) else "the current week"
+    return f"""
+[Weekly Summary Time Boundary]
+- This summary covers only {date_string_en or current_label_en}: Monday, midweek, and weekend.
+- Do not include next week in this week's summary, and do not label this week's weekend as Sunday of Week {next_week_en}."""
+
+
 def get_ending_prompt(
     final_state: Dict[str, Any], decision_history: list, language: str = "en"
 ) -> str:
@@ -930,9 +957,11 @@ Effects: {_format_effects(r.get('effects', {}), language)}
         char_name = character_settings["name"]
 
     time_context = _build_time_context(game_date_info, language)
+    time_guard = _build_weekly_summary_time_guard(game_date_info, language)
 
     if language == "zh":
         prompt = f"""你是人生模拟游戏的周总结生成器。{time_context}
+{time_guard}
 
 本周经历：{rounds_text}
 
@@ -956,6 +985,7 @@ Effects: {_format_effects(r.get('effects', {}), language)}
 注意：只返回有效的JSON，不要任何其他文本。"""
     else:
         prompt = f"""You are a weekly summary generator for a life simulation game.{time_context}
+{time_guard}
 
 This Week's Experience:{rounds_text}
 

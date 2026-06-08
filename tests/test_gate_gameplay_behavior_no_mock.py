@@ -7,6 +7,7 @@ from config.prompts import (
     get_opening_story_prompt,
     get_round_event_prompt,
     get_story_only_prompt,
+    get_weekly_summary_prompt,
 )
 from src.ai.models import EventOption, GameEvent
 from src.ai.option_generator import OptionGenerator
@@ -210,6 +211,28 @@ def test_opening_story_prompt_anchors_first_week_date_and_season() -> None:
     assert "2024年1月第1周" in prompt
     assert "冬季" in prompt
     assert "禁止写成夏季" in prompt
+
+
+def test_weekly_summary_prompt_forbids_next_week_day_mismatch() -> None:
+    prompt = get_weekly_summary_prompt(
+        rounds=[
+            {"round": 0, "summary": "周一完成需求澄清", "choice": "继续推进", "effects": {}},
+            {"round": 1, "summary": "周中评审原型", "choice": "找同事复盘", "effects": {}},
+            {"round": 2, "summary": "周末整理白皮书", "choice": "修改计划", "effects": {}},
+        ],
+        character_settings={},
+        language="zh",
+        game_date_info={
+            "date_string": "2024年1月第1周",
+            "season": "冬",
+            "age": 24,
+            "total_week": 1,
+        },
+    )
+
+    assert "2024年1月第1周" in prompt
+    assert "禁止写成“周日（第2周）”" in prompt
+    assert "不得把下一周" in prompt
 
 
 def test_round_event_fallback_remains_substantial_story_when_generation_fails() -> None:

@@ -132,7 +132,14 @@
   - `特别禁止写成夏季`
 - 公网 `/api/health` 和 `/health` 正常，后端容器 healthcheck 为 healthy。
 
-状态：已热部署并通过生产 prompt smoke；仍需新开场故事长流程复查实际生成文本。“周日（第2周）”这类周总结措辞仍需单独修。
+状态：开场时间锚点已热部署并通过生产 prompt smoke；仍需新开场故事长流程复查实际生成文本。
+
+周总结边界补充修复：
+- 周总结 prompt 增加“周总结时间边界”，明确只覆盖当前周的周一、周中、周末三个回合。
+- prompt 明确禁止把下一周写进本周总结，尤其禁止“周日（第2周）”这类把本周周末推进到下一周的表达。
+- 回归测试：`test_weekly_summary_prompt_forbids_next_week_day_mismatch`。
+- 本地验证：`pytest tests/test_gate_gameplay_behavior_no_mock.py -q`、`pytest tests/test_ai_extended.py -q`、`pytest tests/test_api_gameplay.py::TestGenerateSummary -q`、`./test.sh preflight` 均通过。
+- 生产状态：待热部署后做生产容器 prompt smoke。
 
 ### P1：音乐匹配仍弱
 
