@@ -136,7 +136,7 @@ describe("music queue policy", () => {
     expect(useMusicStore.getState().queue.map((item) => item.id)).toEqual([2, 3]);
   });
 
-  it("store insertGeneratedTrack places AI music into a future queue slot", () => {
+  it("store insertGeneratedTrack places AI music as the next upcoming track", () => {
     useMusicStore.setState({
       currentSong: song(1, "Current"),
       queue: [song(2, "NearTerm"), song(3, "Later")],
@@ -156,10 +156,10 @@ describe("music queue policy", () => {
 
     const state = useMusicStore.getState();
     expect(state.currentSong?.id).toBe(1);
-    expect(state.queue.map((item) => item.id)).toEqual([2, 77, 3]);
+    expect(state.queue.map((item) => item.id)).toEqual([77, 2, 3]);
     expect(state.queue.filter((item) => item.id === 77)).toHaveLength(1);
-    expect(state.queue[1].source).toBe("ai_generated");
-    expect(state.queue[1].url).toBe("/api/music/generated/brief-77.wav");
+    expect(state.queue[0].source).toBe("ai_generated");
+    expect(state.queue[0].url).toBe("/api/music/generated/brief-77.wav");
   });
 
   it("store insertGeneratedTrack also exposes generated music in recommendation songs", () => {
@@ -183,11 +183,11 @@ describe("music queue policy", () => {
     const recommendation = useMusicStore.getState().recommendation;
     expect(recommendation?.songs.map((item) => item.id)).toEqual([
       1,
-      2,
       "ai-generated-77",
+      2,
       3,
     ]);
-    expect(recommendation?.songs[2].source).toBe("ai_generated");
+    expect(recommendation?.songs[1].source).toBe("ai_generated");
   });
 
   it("store advanceQueue wraps played songs when the future queue is empty", async () => {

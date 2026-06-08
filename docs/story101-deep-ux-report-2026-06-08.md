@@ -1,22 +1,24 @@
 # Story101.live 深度体验复测报告
 
-测试时间：2026-06-08 15:08-16:38（Asia/Shanghai）
+测试时间：2026-06-08 15:08-17:10（Asia/Shanghai）
 测试环境：生产 `https://story101.live`
-部署提交：`3385ed2839ab80cbdd8ec4fc183ea2a8f4e629e8` + PR 分支补丁 `1fdfa4ac`
+部署提交：`3385ed2839ab80cbdd8ec4fc183ea2a8f4e629e8` + PR 分支补丁 `1fdfa4ac` / `bc432580`
 测试账号：本轮新注册账号（密钥截图仅作本地证据，不在报告中展开）
 测试游戏：`game_id=95`，顾晨曦，2020年代中国互联网 / AI协作工具 / 产品经理成长线；已从创建流程推进到第 4 周。
 
 ## 结论
 
-本轮生产已经包含 PR #51 代码，MiniMax 环境变量生效，TTS 和音乐生成的核心后端链路都能跑通。
+本轮生产已经包含 PR #51 的主要代码，MiniMax 环境变量生效，TTS 和音乐生成的核心后端链路都能跑通。
 
 初次长流程在第 2 周入口复现空白主内容阻断。该问题已在本轮补回归测试并修复为：继续周总结/下一轮后强制触发事件生成，避免 stale phase/generating 状态挡住 `/event`。补丁热部署后，刷新同一个 `game_id=95` 能恢复第 2 周事件生成，并继续推进到第 4 周。
 
+随后又在生产复现了选项数量不稳定问题：第 2 周周中和第 3 周周末出现二选项/泛化 fallback。已补后端回归测试并修复为：选项生成必须达到 3 个才算有效，fallback 也必须返回 3 个上下文相关选项。补丁 `bc432580` 热部署后，从第 4 周继续推进得到 3 个具体选项：`优先梳理白皮书数据`、`先找林一凡沟通技术进度`、`修改里程碑计划验收细节`。
+
 ## 部署与 CI 状态
 
-- 生产 ECS `/opt/story2` 已部署到 `3385ed2839ab80cbdd8ec4fc183ea2a8f4e629e8`，并热打 PR 分支补丁 `1fdfa4ac` 的前端状态机修复。
+- 生产 ECS `/opt/story2` 已部署到 `3385ed2839ab80cbdd8ec4fc183ea2a8f4e629e8`，并热打 PR 分支补丁 `1fdfa4ac` 的前端状态机修复和 `bc432580` 的三选项 fallback 修复。
 - 生产健康检查通过：`/api/health` 和 `/health` 正常。
-- GitHub PR #51 checks 仍红，但 GitHub run/job 没有 runner/steps，`gh run view --log` 返回 `log not found`。这不是本地测试失败形态，仍属于 CI/runner 层面的发布不稳定因素。
+- GitHub PR #51 checks 仍红，但 GitHub run/job 没有 runner/steps，`gh run view --log` 返回 `log not found`。Actions API 显示失败 job 的 `runner_name=""`、`steps=[]`。这不是本地测试失败形态，仍属于 CI/runner 层面的发布不稳定因素。
 - 生产 MiniMax 配置已生效：`MINIMAX_API_KEY` 可用，`STORY_TTS_PROVIDER=minimax`，`backend_audio_enabled=true`。
 
 ## 已验证通过
@@ -56,9 +58,9 @@
 - 历史回顾能显示第 1 周周一记录和摘要。
 - 设置按钮已恢复为设置菜单，不再误开剧情助手。
 
-## 仍存在的问题
+## 已修复并生产复测通过
 
-### P0：第 2 周入口空白阻断
+### 第 2 周入口空白阻断
 
 复现步骤：
 1. 新建游戏并完成开场。
@@ -76,6 +78,29 @@
 - 若 phaseRef/generating 状态仍旧，`generateEvent` 会被自身 guard 挡住。
 - 修复：继续流程调用 `generateEventRef.current({ force: true })`。
 - 回归测试：`frontend/src/__tests__/hooks/useGameState.test.ts` 新增两条 stale phase 防空白测试。
+- 生产复测：热部署后刷新同一游戏，能恢复第 2 周事件生成，并继续推进到第 4 周。
+
+### 选项结构不稳定
+
+复现步骤：
+1. 在同一个生产游戏中推进到第 2 周周中或第 3 周周末。
+2. 等待故事生成完成。
+
+结果：
+- 第 2 周周中只生成 2 个选项：`陪晓雨去吃麻辣烫再干活` / `直接回家搭调研框架`。
+- 第 3 周周末只生成 2 个选项，且 fallback 文案退化为 `回应眼前的请求` / `先核对现场线索`。
+
+根因判断：
+- 选项生成器允许 `len(options) >= 2` 通过。
+- `StoryGenerator` 的异常 fallback 使用硬编码二选项，且丢失具体故事上下文。
+
+修复：
+- `OptionGenerator` 现在必须生成 3 个选项才算成功，过多选项会截断到 3 个，少于 3 个会重试。
+- fallback 返回 3 个上下文相关选项，不再使用泛化二选项。
+- `StoryGenerator` 选项校验失败时保留已生成故事文本，并用上下文 fallback 补足 3 个选项。
+- 生产复测：`bc432580` 热部署后，第 4 周继续推进得到 3 个具体选项。证据截图：`43-week4-three-specific-options.png`。
+
+## 仍存在的问题
 
 ### P1：创建阶段时代卡片和愿景冲突
 
@@ -89,17 +114,9 @@
 
 开场是 2022 年夏季杭州，主游戏第 1 周变成 2022 年 1 月雪天。周总结中又出现“周日（第2周）”这类日期/周次混乱。
 
-### P1：选项结构不稳定
-
-多次复现：
-- 第 2 周周中只生成 2 个选项：`陪晓雨去吃麻辣烫再干活` / `直接回家搭调研框架`。
-- 第 3 周周末只生成 2 个选项，且 fallback 文案退化为 `回应眼前的请求` / `先核对现场线索`。
-
-本轮已修：`OptionGenerator` 现在必须生成 3 个选项才算成功，fallback 也返回 3 个上下文相关选项；`StoryGenerator` 选项校验失败时不再返回硬编码泛化二选项。
-
 ### P1：音乐匹配仍弱
 
-虽然增加了弱匹配过滤，但网易云检索仍大量命中爱情/流行歌曲，当前播放曲与场景不匹配。长流程中稳定出现：
+虽然增加了弱匹配过滤，但生产长流程中仍大量命中爱情/流行歌曲，当前播放曲与场景不匹配。长流程中稳定出现：
 - `都选C`
 - `她说`
 - `因为爱情有时差`
@@ -107,7 +124,14 @@
 - `童话`
 - `丑八怪`
 
-MiniMax 原创曲能入队，但用户要等当前网易云曲播完或手动切歌才能听到。建议后续把 AI 生成曲的播放优先级前移，或在现代职场场景下限制网易云候选为纯音乐/无歌词/影视配乐。
+根因判断：
+- 当 AI 音乐分析返回泛化结果时，音乐服务没有从故事正文补充“产品经理 / 用户数据 / AI协作 / 会议室”等确定性职场 cue。
+- MiniMax 原创曲插入到网易云下一曲之后，用户要等两首歌或手动切歌才能听到故事定制曲。
+
+本轮已修：
+- 音乐服务会从故事正文和角色设定补充现代职场上下文，并把 `都选C`、`她说`、`因为爱情有时差`、`一直很安静`、`童话`、`丑八怪`、`可爱女人` 等弱匹配流行歌加入职场负面 cue。
+- MiniMax 生成曲不再插到网易云下一曲之后；它会在不打断当前播放的前提下成为下一首。
+- 回归测试已覆盖：AI 分析泛化时仍过滤 `都选C`，并推荐 `办公室 轻电子 氛围`；同步覆盖后端 API / DB / 前端 store 队列顺序。
 
 ### P1：资源状态缺少玩法反馈
 
@@ -142,17 +166,25 @@ MiniMax 原创曲能入队，但用户要等当前网易云曲播完或手动切
 - `40-week2-event-recovered.png` 热部署后第 2 周恢复成功
 - `41-reached-week4.png` 长流程到达第 4 周
 - `42-week2-midweek-two-options.png` 第 2 周周中二选项问题
+- `43-week4-three-specific-options.png` 三选项修复后生产复测
 
 ## 本轮已修
 
 - 修复第 2 周入口空白的前端状态机问题。
 - 修复选项生成稳定性：必须返回 3 个选项；fallback 不再使用泛化二选项。
+- 修复音乐队列优先级：MiniMax 生成曲作为下一首入队，不再排在网易云下一曲之后。
+- 修复现代职场音乐过滤：从故事正文补充职场 cue，避免 AI 分析泛化时推荐弱匹配流行歌。
 - 新增回归测试：
   - `forces next event generation after weekly summary so stale phase cannot block it`
   - `forces next round generation after sync so stale phase cannot leave a blank play page`
   - `test_generate_options_rejects_two_options_and_returns_three_contextual_fallbacks`
   - `test_generate_round_event_option_failure_uses_three_contextual_fallbacks`
+  - `test_generated_track_insertion_makes_ai_music_next_after_current`
+  - `test_music_service_derives_workplace_filter_from_story_when_ai_analysis_is_generic`
 - 验证：
   - `cd frontend && npx jest src/__tests__/hooks/useGameState.test.ts --runInBand`
+  - `cd frontend && npx jest src/__tests__/stores/useMusicStore.musicQueuePolicy.test.ts --runInBand`
   - `cd frontend && npm run test:types`
   - `pytest tests/test_gate_gameplay_behavior_no_mock.py tests/test_fallback_events_contract.py tests/test_ai_extended.py::TestOptionGenerator tests/test_ai_extended.py::TestStoryGenerator -q`
+  - `pytest tests/test_story_music_recommendation_contract.py tests/test_minimax_audio_generation_contract.py::test_music_generate_api_persists_generated_track_into_future_playlist_queue tests/test_minimax_audio_generation_contract.py::test_music_generate_async_api_returns_quickly_and_persists_future_playlist_track tests/test_minimax_audio_generation_db.py::test_ready_minimax_music_asset_inserts_as_next_playlist_track -q`
+  - `./test.sh preflight`

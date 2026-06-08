@@ -755,9 +755,9 @@ def test_music_generate_api_persists_generated_track_into_future_playlist_queue(
     assert persisted.status_code == 200
     playlist = persisted.json()
     assert playlist["current_song"]["id"] == 101
-    assert [item["id"] for item in playlist["queue"]] == [102, track["id"], 103]
-    assert playlist["queue"][1]["source"] == "ai_generated"
-    assert playlist["queue"][1]["url"].startswith("/api/music/generated/")
+    assert [item["id"] for item in playlist["queue"]] == [track["id"], 102, 103]
+    assert playlist["queue"][0]["source"] == "ai_generated"
+    assert playlist["queue"][0]["url"].startswith("/api/music/generated/")
 
 
 def test_music_generate_async_api_returns_quickly_and_persists_future_playlist_track(
@@ -844,8 +844,8 @@ def test_music_generate_async_api_returns_quickly_and_persists_future_playlist_t
     assert persisted.status_code == 200
     playlist = persisted.json()
     assert playlist["current_song"]["id"] == 201
-    assert [item["source"] for item in playlist["queue"]] == ["netease", "ai_generated"]
-    assert playlist["queue"][1]["url"].startswith("/api/music/generated/")
+    assert [item["source"] for item in playlist["queue"]] == ["ai_generated", "netease"]
+    assert playlist["queue"][0]["url"].startswith("/api/music/generated/")
 
 
 def test_music_generate_api_reports_unexpected_generation_failure_without_global_500(

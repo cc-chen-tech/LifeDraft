@@ -445,13 +445,12 @@ export const useMusicStore = create<MusicState>((set, get) => ({
     const { queue, recommendation } = get();
     const generatedId = songKey(track);
     const nextQueue = queue.filter((item) => songKey(item) !== generatedId);
-    const insertAt = nextQueue.length > 0 ? 1 : 0;
-    nextQueue.splice(insertAt, 0, track);
+    nextQueue.unshift(track);
 
     let nextRecommendation = recommendation;
     if (recommendation) {
       const songs = recommendation.songs.filter((item) => songKey(item) !== generatedId);
-      const recommendationInsertAt = songs.length > 1 ? 2 : songs.length;
+      const recommendationInsertAt = songs.length > 0 ? 1 : 0;
       songs.splice(recommendationInsertAt, 0, track);
       nextRecommendation = { ...recommendation, songs };
     }

@@ -138,7 +138,7 @@ def test_minimax_music_asset_save_read_and_reuse_uses_real_database() -> None:
         session.close()
 
 
-def test_ready_minimax_music_asset_inserts_into_future_playlist_slot() -> None:
+def test_ready_minimax_music_asset_inserts_as_next_playlist_track() -> None:
     from src.services.minimax_music_generation import MiniMaxMusicGenerationProvider
 
     init_db()
@@ -180,9 +180,9 @@ def test_ready_minimax_music_asset_inserts_into_future_playlist_slot() -> None:
 
         assert updated.current_song is not None
         assert updated.current_song["id"] == 101
-        assert [item["id"] for item in updated.queue] == [102, "ai-generated-77", 103]
-        assert reloaded.queue[1]["source"] == "ai_generated"
-        assert reloaded.queue[1]["provider"] == "minimax"
+        assert [item["id"] for item in updated.queue] == ["ai-generated-77", 102, 103]
+        assert reloaded.queue[0]["source"] == "ai_generated"
+        assert reloaded.queue[0]["provider"] == "minimax"
     finally:
         session.rollback()
         session.close()
