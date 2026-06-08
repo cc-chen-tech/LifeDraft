@@ -47,6 +47,9 @@
   - `labels active backend audio playback instead of showing the idle read action`
 - 红灯复现：旧组件在 `loading` 和 `playing` 下仍暴露“朗读当前故事”按钮。
 - 本地验证：`cd frontend && npx jest src/__tests__/components/StoryVoiceControls.test.tsx --runInBand`、`./test.sh preflight` 均通过。
+- 生产复测：
+  - 补丁 `cfbb19d5` 热部署并重建 frontend 后，公网 `/api/health` 和 `/health` 正常。
+  - browser-agent 打开 `https://story101.live/e2e-regression`，故事朗读控件正常加载，准备中/播放中文案由组件红绿回归测试覆盖。
 
 ### MiniMax 音乐生成
 
