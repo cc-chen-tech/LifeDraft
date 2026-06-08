@@ -243,6 +243,7 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - GitHub job API for run `27114385832` reports `steps: []`, `runner_name: ""`, and `runner_id: 0` for the original failed job.
   - The downloadable log zip contains only `Run Jest Tests/system.txt`; no checkout, setup, dependency install, lint, Jest, pytest, or app test step exists.
   - The original and rerun system logs both stop at hosted runner allocation, for example `Waiting for a runner to pick up this job...` and `Job is waiting for a hosted runner to come online.`
+  - After pushing head `49543300`, the fresh `Frontend Tests` run `27114880517` failed the same way: `steps: []`, `runner_name: ""`, `runner_id: 0`, and a one-file `system.txt` log stopping at hosted runner allocation.
   - This is a GitHub hosted-runner startup failure before repository code executes, not evidence that PR #51's local test suites failed.
 
 ## Still Not Claimed As Production-Complete
