@@ -21,6 +21,7 @@ from config.prompts._helpers import (
     _format_people_names,
 )
 from src.ai.prompt_sanitizer import sanitize_player_name, sanitize_user_choice
+from src.game.relationship_authority import build_required_cast_constraints
 
 # ==================== 自定义选择相关 Prompts ====================
 
@@ -1284,6 +1285,7 @@ def get_story_only_prompt(
 
     # Build available people constraint string
     available_people_str = _build_available_people_constraint(available_people, "zh")
+    required_cast_context = build_required_cast_constraints(character_settings or {}, language)
 
     # Build time context
     time_context = _build_time_context(game_date_info, language)
@@ -1380,7 +1382,8 @@ def get_story_only_prompt(
 {chapter_constraint}
 
 【角色设定】
-{character_context if character_context else "标准现代青年"}{name_instruction}{available_people_str}{time_context}
+{character_context if character_context else "标准现代青年"}{name_instruction}{available_people_str}
+{required_cast_context}{time_context}
 
 【玩家当前状态】
 年龄：{age}岁 | 第{week}周
@@ -1417,7 +1420,8 @@ def get_story_only_prompt(
 {story_context}{summary_context}
 
 [Character Settings]
-{character_context if character_context else "Standard modern young adult"}{name_instruction}{available_people_str}{time_context}
+{character_context if character_context else "Standard modern young adult"}{name_instruction}{available_people_str}
+{required_cast_context}{time_context}
 
 [Current Player State]
 Age: {age} | Week {week}
@@ -1568,6 +1572,7 @@ def get_round_event_prompt(
     available_people = _collect_available_people(character_settings)
     character_context = ""
     available_people_str = ""
+    required_cast_context = build_required_cast_constraints(character_settings or {}, language)
 
     if character_settings:
         char_parts = []
@@ -1745,7 +1750,8 @@ def get_round_event_prompt(
 {critical_open_zh}
 
 【角色设定】
-{character_context if character_context else "标准现代青年"}{name_instruction}{available_people_str}{time_context}
+{character_context if character_context else "标准现代青年"}{name_instruction}{available_people_str}
+{required_cast_context}{time_context}
 
 【当前状态】
 年龄：{age}岁 | 第{week}周 - {round_name}
@@ -1888,7 +1894,8 @@ Usage tip: Use as character memories, dialogue references, or background context
 {critical_open_en}
 
 [Character Settings]
-{character_context if character_context else "Standard modern young adult"}{name_instruction}{available_people_str}{time_context}
+{character_context if character_context else "Standard modern young adult"}{name_instruction}{available_people_str}
+{required_cast_context}{time_context}
 
 [Current State]
 Age: {age} | Week {week} - {round_name_en}
