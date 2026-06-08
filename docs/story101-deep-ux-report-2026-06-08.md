@@ -1,8 +1,8 @@
 # Story101.live 深度体验复测报告
 
-测试时间：2026-06-08 15:08-17:10（Asia/Shanghai）
+测试时间：2026-06-08 15:08-17:10；2026-06-08 18:00 后继续复查（Asia/Shanghai）
 测试环境：生产 `https://story101.live`
-部署提交：`3385ed2839ab80cbdd8ec4fc183ea2a8f4e629e8` + PR 分支补丁 `1fdfa4ac` / `bc432580`
+部署提交：`3385ed2839ab80cbdd8ec4fc183ea2a8f4e629e8` + PR 分支运行时补丁；后续已热部署到 `7675d9b0` opening-story 后端修复和 `e0323820` 音乐生成状态前端修复，`eaad205b` 及之后测试/文档补充无需生产重建。
 测试账号：本轮新注册账号（密钥截图仅作本地证据，不在报告中展开）
 测试游戏：`game_id=95`，顾晨曦，2020年代中国互联网 / AI协作工具 / 产品经理成长线；已从创建流程推进到第 4 周。
 
@@ -16,9 +16,9 @@
 
 ## 部署与 CI 状态
 
-- 生产 ECS `/opt/story2` 已部署到 `3385ed2839ab80cbdd8ec4fc183ea2a8f4e629e8`，并热打 PR 分支多轮运行时代码补丁；最新运行时热部署到 `e0323820` 的音乐生成状态提示修复，`eaad205b` 仅补测试/文档门禁，无需重建生产容器。
+- 生产 ECS `/opt/story2` 已部署到 `3385ed2839ab80cbdd8ec4fc183ea2a8f4e629e8`，并热打 PR 分支多轮运行时代码补丁；最新运行时包含 `7675d9b0` 的 opening-story 空 complete 修复和 `e0323820` 的音乐生成状态提示修复，`eaad205b` 及后续测试/文档门禁无需重建生产容器。
 - 生产健康检查通过：`/api/health` 和 `/health` 正常。
-- GitHub PR #51 checks 仍红，但不是代码测试失败：Actions API 的 check annotation 明确显示 `The job was not started because recent account payments have failed or your spending limit needs to be increased`。失败 job 的 `runner_name=""`、`steps=[]`，`gh run view --log` 返回 `log not found`，说明 runner 没有启动。需要在 GitHub Billing & plans 修复付款或提高 spending limit 后重新跑 checks。
+- GitHub PR #51 checks 仍红，但不是代码测试失败：Actions API 的 check annotation 明确显示 `The job was not started because recent account payments have failed or your spending limit needs to be increased`。最新 `Run Jest Tests` check-run `80078375418` 仍返回同一 annotation。失败 job 的 `runner_name=""`、`steps=[]`，`gh run view --log` 返回 `log not found`，说明 runner 没有启动。需要在 GitHub Billing & plans 修复付款或提高 spending limit 后重新跑 checks。
 - 生产 MiniMax 配置已生效：`MINIMAX_API_KEY` 可用，`STORY_TTS_PROVIDER=minimax`，`backend_audio_enabled=true`。
 
 ## 已验证通过
@@ -31,9 +31,9 @@
   - `playback_mode=audio`
   - 声音：`warm_female` / `calm_male` / `clear_neutral`
 - 手动朗读三种声音均生成真实后端音频：
-  - `warm_female-minimax-speech-02-turbo.mp3`
-  - `calm_male-minimax-speech-02-turbo.mp3`
-  - `clear_neutral-minimax-speech-02-turbo.mp3`
+  - `warm_female-minimax-speech-02-turbo.mp3`，下载 155508 bytes，文件头 `494433`（MP3 ID3）
+  - `calm_male-minimax-speech-02-turbo.mp3`，下载 168180 bytes，文件头 `494433`（MP3 ID3）
+  - `clear_neutral-minimax-speech-02-turbo.mp3`，下载 181428 bytes，文件头 `494433`（MP3 ID3）
 - 自动朗读开启后，会在故事和选项稳定后触发新的 `/api/voice-reading/read`。
 
 问题：自动朗读触发延迟较长，UI 没有“正在准备自动朗读”的状态；播放中仍显示“朗读当前故事”，状态表达混乱。
@@ -54,6 +54,11 @@
 ### MiniMax 音乐生成
 
 - 生产 `/api/music/generate-async` 返回 `202 queued`。
+- 生产 `/api/music/generate` 在 2026-06-08 18 点后复测成功返回 MiniMax `ai_generated` 曲目：
+  - `provider=minimax`
+  - `model=music-2.6`
+  - `url=/api/music/generated/...-music-2.6.mp3`
+  - `insert_policy=future_queue`
 - 后台 MiniMax 生成成功，并把 AI 曲目插入后续队列：
   - `ai-generated-63`
   - `ai-generated-64`
@@ -239,7 +244,14 @@
   - `resource_warnings[0].message=精力不足，实际变化为 -5`
 - 临时测试游戏已清理。
 
-状态：已热部署并通过生产 API smoke；完整 UI 结果页展示仍可在下一轮长流程中复查。
+状态：已热部署并通过生产 API smoke；UI 结果页展示链路已补页面级回归测试，验证 `roundSummary` 中的“资源提示”和具体限制文案会在 result 阶段显示。
+
+本轮继续补充：
+- 页面级回归测试：`renders resource warning details in the result summary`。
+- 红灯复现：最初 exact text 断言失败，经放大 DOM 发现页面已渲染整段 Markdown mock 文本；测试修正为用户可见子串断言后通过。
+- 本地验证：
+  - `cd frontend && npx jest src/__tests__/pages/PlayPage.test.tsx --runInBand --testNamePattern='resource warning|shows round summary when available'`
+  - `cd frontend && npx jest src/__tests__/hooks/choiceUtils.test.ts src/__tests__/pages/PlayPage.test.tsx --runInBand --testNamePattern='resource warnings|resource warning|round summary'`
 
 ### P1：长生成阶段体验仍慢
 

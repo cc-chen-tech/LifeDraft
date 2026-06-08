@@ -169,6 +169,20 @@ describe('PlayPage', () => {
       expect(screen.getByText('This is the round summary')).toBeInTheDocument();
     });
 
+    it('renders resource warning details in the result summary', () => {
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'result',
+        roundSummary: '本轮总结\n\n**资源提示**\n- 精力不足，实际变化为 -5',
+        options: [],
+      });
+
+      render(<PlayPage />);
+      expect(screen.getByText(/资源提示/)).toBeInTheDocument();
+      expect(screen.getByText(/精力不足，实际变化为 -5/)).toBeInTheDocument();
+    });
+
     it('calls handleContinueToNextRound on button click', () => {
       const mockContinue = jest.fn();
       const originalHook = jest.requireMock('@/hooks/usePlayGame');
