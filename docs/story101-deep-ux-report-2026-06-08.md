@@ -16,9 +16,9 @@
 
 ## 部署与 CI 状态
 
-- 生产 ECS `/opt/story2` 已部署到 `3385ed2839ab80cbdd8ec4fc183ea2a8f4e629e8`，并热打 PR 分支补丁 `1fdfa4ac` 的前端状态机修复和 `bc432580` 的三选项 fallback 修复。
+- 生产 ECS `/opt/story2` 已部署到 `3385ed2839ab80cbdd8ec4fc183ea2a8f4e629e8`，并热打 PR 分支多轮运行时代码补丁；最新运行时热部署到 `e0323820` 的音乐生成状态提示修复，`eaad205b` 仅补测试/文档门禁，无需重建生产容器。
 - 生产健康检查通过：`/api/health` 和 `/health` 正常。
-- GitHub PR #51 checks 仍红，但 GitHub run/job 没有 runner/steps，`gh run view --log` 返回 `log not found`。Actions API 显示失败 job 的 `runner_name=""`、`steps=[]`。这不是本地测试失败形态，仍属于 CI/runner 层面的发布不稳定因素。
+- GitHub PR #51 checks 仍红，但不是代码测试失败：Actions API 的 check annotation 明确显示 `The job was not started because recent account payments have failed or your spending limit needs to be increased`。失败 job 的 `runner_name=""`、`steps=[]`，`gh run view --log` 返回 `log not found`，说明 runner 没有启动。需要在 GitHub Billing & plans 修复付款或提高 spending limit 后重新跑 checks。
 - 生产 MiniMax 配置已生效：`MINIMAX_API_KEY` 可用，`STORY_TTS_PROVIDER=minimax`，`backend_audio_enabled=true`。
 
 ## 已验证通过
