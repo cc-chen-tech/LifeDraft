@@ -164,6 +164,10 @@
 - 如果生成线程正常结束但没有任何正文，也只发送 `Opening story stream completed without story text` 错误，不缓存空故事。
 - 回归测试：`test_opening_story_timeout_does_not_emit_empty_complete` 先复现旧逻辑中 `\"full_story\": \"\"` 仍出现在 SSE body，再验证修复后 timeout 不再发送 `event: complete`。
 - 该契约测试已加入 `./test.sh preflight` 的后端 preflight 测试列表。
+- 生产复测：
+  - 补丁 `7675d9b0` 热部署并重建 backend 后，后端容器 healthcheck 为 healthy，公网 `/api/health` 和 `/health` 正常。
+  - 同一类现代产品经理开场 payload 重新调用 `/api/character/opening-story`，SSE 不再出现空 `complete`；返回 708 字完整开场。
+  - 实际文本包含 `2024年1月6日`、杭州、冬雨、陆昊然、陈晓雨、林一凡；未出现夏季或唐宋元明清等古代 cue。
 
 周总结边界补充修复：
 - 周总结 prompt 增加“周总结时间边界”，明确只覆盖当前周的周一、周中、周末三个回合。
