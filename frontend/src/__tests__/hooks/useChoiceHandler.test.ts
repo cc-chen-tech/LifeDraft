@@ -2,7 +2,7 @@
  * useChoiceHandler Tests
  * Tests for the choice handling hook
  */
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useChoiceHandler } from '@/hooks/game/useChoiceHandler';
 import { useGameStore } from '@/stores/useGameStore';
 import type { Phase, ConnectionStatus } from '@/hooks/game/usePhaseManager';
@@ -125,6 +125,7 @@ describe('useChoiceHandler', () => {
     });
 
     it('does not surface stream rejections after onError fallback handling starts', async () => {
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
       useGameStore.setState({
         currentEvent: { options: [{ text: 'Option 1' }] },
       } as never);
@@ -141,6 +142,41 @@ describe('useChoiceHandler', () => {
       await expect(act(async () => {
         await result.current.handleChoice(0);
       })).resolves.toBeUndefined();
+      await waitFor(() => {
+        expect(mockSetters.setPhase).toHaveBeenCalledWith('result');
+      });
+      expect(
+        warnSpy.mock.calls.some((args) =>
+          args.some((arg) => String(arg).includes('TypeError') || String(arg).includes('network error'))
+        )
+      ).toBe(false);
+      warnSpy.mockRestore();
+    });
+
+    it('does not surface custom-choice stream rejections after fallback handling starts', async () => {
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(makeBrokenChoiceResponse())
+        .mockResolvedValue(jsonResponse({
+          story_continuation: '同步恢复后的自定义选择结果',
+          need_weekly_summary: false,
+          game_over: false,
+        }));
+
+      const { result } = renderHook(() => useChoiceHandler(defaultParams));
+
+      await expect(act(async () => {
+        await result.current.handleCustomChoice('继续调查异常数据');
+      })).resolves.toBeUndefined();
+      await waitFor(() => {
+        expect(mockSetters.setPhase).toHaveBeenCalledWith('result');
+      });
+      expect(
+        warnSpy.mock.calls.some((args) =>
+          args.some((arg) => String(arg).includes('TypeError') || String(arg).includes('network error'))
+        )
+      ).toBe(false);
+      warnSpy.mockRestore();
     });
   });
 });

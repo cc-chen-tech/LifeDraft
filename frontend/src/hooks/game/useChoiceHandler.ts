@@ -132,7 +132,7 @@ export function useChoiceHandler({
       },
       onError: async (err: unknown) => {
         if (choiceCompleted) {
-          console.warn("[handleChoice] Ignoring late SSE error after complete:", err);
+          console.warn("[handleChoice] Ignoring late SSE error after complete");
           return;
         }
         await handleChoiceError(err, gameId, handlers, {
@@ -154,7 +154,7 @@ export function useChoiceHandler({
       if (choiceCompleted) {
         return;
       }
-      console.warn("[handleChoice] streamChoice rejected after onError handling:", err);
+      console.warn("[handleChoice] streamChoice rejection already handled by recovery");
     }
   };
 
@@ -202,7 +202,7 @@ export function useChoiceHandler({
       },
       onError: async (err: unknown) => {
         if (choiceCompleted) {
-          console.warn("[handleCustomChoice] Ignoring late SSE error after complete:", err);
+          console.warn("[handleCustomChoice] Ignoring late SSE error after complete");
           return;
         }
         await handleChoiceError(err, gameId, handlers, {
@@ -223,7 +223,7 @@ export function useChoiceHandler({
       if (choiceCompleted) {
         return;
       }
-      console.warn("[handleCustomChoice] streamCustomChoice rejected after onError handling:", err);
+      console.warn("[handleCustomChoice] streamCustomChoice rejection already handled by recovery");
     }
   };
 

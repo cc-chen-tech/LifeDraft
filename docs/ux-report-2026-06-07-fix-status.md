@@ -67,6 +67,8 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Regression coverage: `frontend/src/__tests__/app/api/route.test.ts`
 - Event SSE polling recovery no longer lets the underlying stream rejection bubble after `onError` has already switched the page into polling recovery. Production week-4 browser probing showed `/event` could recover enough to continue while still logging unhandled `TypeError: network error`; the hook now treats that rejection as already handled when polling recovery is active and no longer logs the raw `TypeError/network error` object.
   - Regression coverage: `frontend/src/__tests__/hooks/useEventGenerator.test.ts`
+- Choice and custom-choice SSE recovery now use the same clean handled-rejection logging as event recovery. Production game 91 reached the result button after a `/choice` browser-tail `ERR_INCOMPLETE_CHUNKED_ENCODING`, but still logged the raw `TypeError: network error`; the normal and custom choice hooks now keep that recovery path out of console error/noise while preserving the saved-history result recovery.
+  - Regression coverage: `frontend/src/__tests__/hooks/useChoiceHandler.test.ts`
 
 ## Verification
 
@@ -202,6 +204,10 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Backend preflight quality checks: 86 passed.
   - Frontend preflight Jest regression tests: 346 passed.
 - Full local preflight after suppressing recovered event stream rejections:
+  - OpenSpec strict validation: 21 passed.
+  - Backend preflight quality checks: 86 passed.
+  - Frontend preflight Jest regression tests: 346 passed.
+- Full local preflight after suppressing recovered choice stream rejection details:
   - OpenSpec strict validation: 21 passed.
   - Backend preflight quality checks: 86 passed.
   - Frontend preflight Jest regression tests: 346 passed.
