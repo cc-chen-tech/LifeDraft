@@ -163,7 +163,16 @@
   - `appends resource warnings to the round summary`
   - `shows resource warnings even when the backend summary is empty`
 
-状态：本地验证通过，尚待热部署到生产后用 `game_id=95` 或新游戏复测。
+生产复测：
+- 补丁 `839193b7` 热部署后，注册临时 smoke 账号并创建临时 `game_id=96`。
+- 将当前事件植入为：精力 `5`，选项消耗 `energy=-20`。
+- 调用公网 `/api/games/96/choice-sync` 返回：
+  - `effects_applied.energy=-5`
+  - `effects_requested.energy=-20`
+  - `resource_warnings[0].message=精力不足，实际变化为 -5`
+- 临时测试游戏已清理。
+
+状态：已热部署并通过生产 API smoke；完整 UI 结果页展示仍可在下一轮长流程中复查。
 
 ### P1：长生成阶段体验仍慢
 
