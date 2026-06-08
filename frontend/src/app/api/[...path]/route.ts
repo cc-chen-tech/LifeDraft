@@ -14,6 +14,7 @@ export const maxDuration = 300; // 5分钟
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000';
 const PROXY_TIMEOUT = 120_000; // 普通请求 2分钟
 const SSE_CONNECT_TIMEOUT = 300_000; // SSE 流式请求连接阶段 5分钟（AI 生成可能很慢）
+const LONG_REQUEST_TIMEOUT = 300_000; // MiniMax 等后端生成请求最长可到 5分钟
 
 // 已知的 SSE 流式路径模式（后端返回 text/event-stream）
 const SSE_PATH_PATTERNS = [
@@ -25,8 +26,16 @@ const SSE_PATH_PATTERNS = [
   '/opening-story',
 ];
 
+const LONG_REQUEST_PATH_PATTERNS = [
+  '/api/music/generate',
+];
+
 function isSSEPath(pathname: string): boolean {
   return SSE_PATH_PATTERNS.some(p => pathname.endsWith(p));
+}
+
+function isLongRequestPath(pathname: string): boolean {
+  return LONG_REQUEST_PATH_PATTERNS.some(p => pathname === p);
 }
 
 // 不应转发的请求头
@@ -89,7 +98,11 @@ async function proxyRequest(request: NextRequest): Promise<NextResponse> {
   // 使用 AbortController 实现超时
   // SSE 路径使用更长的连接超时（AI 生成故事可能需要数分钟）
   const sseRequest = isSSEPath(pathname);
-  const timeout = sseRequest ? SSE_CONNECT_TIMEOUT : PROXY_TIMEOUT;
+  const timeout = sseRequest
+    ? SSE_CONNECT_TIMEOUT
+    : isLongRequestPath(pathname)
+      ? LONG_REQUEST_TIMEOUT
+      : PROXY_TIMEOUT;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
 

@@ -423,6 +423,27 @@ describe('错误处理', () => {
     const res = await resPromise;
     expect(res.status).toBe(504);
   });
+
+  it('/api/music/generate 使用长请求超时，避免 MiniMax 生成被 120 秒代理截断', async () => {
+    (global.fetch as jest.Mock).mockImplementation((_url, opts?: { signal?: AbortSignal }) => {
+      return new Promise((_, reject) => {
+        opts?.signal?.addEventListener('abort', () => {
+          reject(new DOMException('The operation was aborted.', 'AbortError'));
+        });
+      });
+    });
+
+    const req = makeRequest('POST', '/api/music/generate', {
+      body: JSON.stringify({ story_text: 'long story', game_id: 1, analysis: {} }),
+    });
+    const resPromise = POST(req);
+
+    await Promise.resolve();
+    jest.advanceTimersByTime(300_001);
+    const res = await resPromise;
+    expect(res.status).toBe(504);
+    expect(String((res as { body: unknown }).body)).toContain('300s');
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════

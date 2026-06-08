@@ -59,6 +59,8 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Regression coverage: `frontend/src/__tests__/components/StoryVoiceControls.test.tsx`
 - Music player component coverage now proves the product path for generated music: a completed story recommendation with `music_brief` calls `/api/music/generate` and inserts the MiniMax `ai_generated` track into the future queue without replacing the current NetEase track.
   - Regression coverage: `frontend/src/__tests__/components/game/MusicPlayer.test.tsx`
+- The Next.js API proxy now treats `/api/music/generate` as a long-running request. Production browser probing showed MiniMax music generation can take about 125s, while the previous proxy timeout was 120s; the browser path could therefore degrade even though the backend API would have succeeded.
+  - Regression coverage: `frontend/src/__tests__/app/api/route.test.ts`
 
 ## Verification
 
@@ -76,6 +78,10 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Browser auto-read on `/e2e-regression` stayed idle for the simulated partial stream, then posted `/api/voice-reading/read` only after the final story-ready signal.
   - The auto-read request used a backend-compatible SHA-256 `text_hash`, and the response returned `provider=minimax`, `playback_mode=audio`, and an `/api/voice-reading/audio/*.mp3` asset.
   - Production MiniMax music API verification remains green: `/api/music/generate` returns a MiniMax `ai_generated` track with `insert_policy: "future_queue"`, and `/api/music/playlist/{game_id}` contains the generated track.
+- Production browser `/play` probe before the API proxy timeout fix:
+  - Event SSE completed, choice SSE completed, and backend TTS returned a MiniMax audio asset.
+  - Music recommendation returned 200 and then `/api/music/generate` was issued from the browser.
+  - The browser path did not receive the generated music response before the old proxy timeout window, while a direct production API call for the same class of story returned 200 in about 125s. This led to the `/api/music/generate` proxy timeout fix above.
 - Production real `/play` verification on game 50 after deploying `7ab5752f` to ECS:
   - Completed story auto-read called `/api/voice-reading/read` and returned `provider=minimax`, `playback_mode=audio`, and a generated `/api/voice-reading/audio/*.mp3` URL.
   - `/api/music/recommend` returned `music_brief`.
