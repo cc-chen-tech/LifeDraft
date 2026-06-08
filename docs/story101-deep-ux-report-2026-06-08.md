@@ -210,7 +210,9 @@
 - 自动添加前按当前收集列表过滤同名人物、物品和地点，避免把已经收集过的人物再次提交给 `add-entities`。
 - 回归测试：`auto-collects missing item entities when characters already exist`。
 - 本地验证：`cd frontend && npx jest src/__tests__/stores/useCollectionStore.test.ts --runInBand`、`./test.sh preflight` 均通过。
-- 生产状态：待部署 frontend 后做浏览器/API smoke。
+- 生产复测：
+  - 补丁 `3c32ec41` 热部署并重建 frontend 后，公网 `/api/health` 和 `/health` 正常。
+  - browser-agent 打开 `https://story101.live/e2e-regression`，页面正常加载并显示“收集”入口；自动补齐缺失实体类别的核心行为由 store 回归测试覆盖。
 
 ### P2：按钮语义仍可优化
 
