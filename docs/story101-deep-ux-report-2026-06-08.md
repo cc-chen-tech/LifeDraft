@@ -2,7 +2,7 @@
 
 测试时间：2026-06-08 15:08-17:10；2026-06-08 18:00 后继续复查（Asia/Shanghai）
 测试环境：生产 `https://story101.live`
-部署提交：`3385ed2839ab80cbdd8ec4fc183ea2a8f4e629e8` + PR 分支运行时补丁；后续已热部署到 `7675d9b0` opening-story 后端修复和 `e0323820` 音乐生成状态前端修复，`eaad205b` 及之后测试/文档补充无需生产重建。
+部署提交：`3385ed2839ab80cbdd8ec4fc183ea2a8f4e629e8` + PR 分支运行时补丁；后续已热部署到 `7675d9b0` opening-story 后端修复、`e0323820` 音乐生成状态前端修复、以及本轮起始财富初始化后端修复。
 测试账号：本轮新注册账号（密钥截图仅作本地证据，不在报告中展开）
 测试游戏：`game_id=95`，顾晨曦，2020年代中国互联网 / AI协作工具 / 产品经理成长线；已从创建流程推进到第 4 周。
 
@@ -16,7 +16,7 @@
 
 ## 部署与 CI 状态
 
-- 生产 ECS `/opt/story2` 已部署到 `3385ed2839ab80cbdd8ec4fc183ea2a8f4e629e8`，并热打 PR 分支多轮运行时代码补丁；最新运行时包含 `7675d9b0` 的 opening-story 空 complete 修复和 `e0323820` 的音乐生成状态提示修复，`eaad205b` 及后续测试/文档门禁无需重建生产容器。
+- 生产 ECS `/opt/story2` 已部署到 `3385ed2839ab80cbdd8ec4fc183ea2a8f4e629e8`，并热打 PR 分支多轮运行时代码补丁；最新运行时包含 `7675d9b0` 的 opening-story 空 complete 修复、`e0323820` 的音乐生成状态提示修复、以及本轮起始财富初始化后端修复。
 - 生产健康检查通过：`/api/health` 和 `/health` 正常。
 - GitHub PR #51 checks 仍红，但不是代码测试失败：Actions API 的 check annotation 明确显示 `The job was not started because recent account payments have failed or your spending limit needs to be increased`。最新 `Run Jest Tests` check-run `80078375418` 仍返回同一 annotation。失败 job 的 `runner_name=""`、`steps=[]`，`gh run view --log` 返回 `log not found`，说明 runner 没有启动。需要在 GitHub Billing & plans 修复付款或提高 spending limit 后重新跑 checks。
 - 生产 MiniMax 配置已生效：`MINIMAX_API_KEY` 可用，`STORY_TTS_PROVIDER=minimax`，`backend_audio_enabled=true`。
@@ -253,6 +253,37 @@
   - `cd frontend && npx jest src/__tests__/pages/PlayPage.test.tsx --runInBand --testNamePattern='resource warning|shows round summary when available'`
   - `cd frontend && npx jest src/__tests__/hooks/choiceUtils.test.ts src/__tests__/pages/PlayPage.test.tsx --runInBand --testNamePattern='resource warnings|resource warning|round summary'`
 
+### P1：创建资金被初始化默认值覆盖
+
+复现步骤：
+1. 在创建流程中生成的财富设定为 `¥40,000`。
+2. 完成角色创建并进入 `/play`。
+3. 顶部资源栏显示 `财富: ¥10,000`。
+
+结果：
+- 创建阶段和最终预览显示的启动资金与可玩状态不一致。
+- 这会让用户觉得角色设定被系统改掉，也会影响早期决策资源判断。
+
+根因判断：
+- `GameInitializer.initialize_game_from_settings()` 初始化 `player_state.wealth` 时固定读取 `settings.INITIAL_WEALTH`。
+- 后端没有优先读取 `character_settings.wealth.wealth`，因此生成出来的 4 万会被全局默认 1 万覆盖。
+
+本轮已修：
+- 初始化可玩状态时优先使用 `character_settings.wealth.wealth`。
+- 缺失或非法财富值仍回退到全局默认值。
+- 财富值会被夹到 `0..1,000,000`，避免异常输入污染状态。
+- 回归测试：`test_create_game_preserves_generated_initial_wealth`。
+- 红灯复现：旧逻辑下测试失败为 `10000 != 40000`。
+- 本地验证：
+  - `pytest tests/test_api_games.py::TestCreateGame::test_create_game_preserves_generated_initial_wealth -q`
+  - `pytest tests/test_api_games.py::TestCreateGame::test_create_game_accepts_relationships_list_payload tests/test_api_games.py::TestCreateGame::test_create_game_success -q`
+  - `pytest tests/test_gate_preflight_no_mock.py::test_preflight_script_runs_before_expensive_layers -q`
+  - `./test.sh preflight`
+- 生产复测：
+  - 补丁已热部署并重建 backend，后端容器 healthcheck 为 healthy，公网 `/api/health` 和 `/health` 正常。
+  - 临时创建 `game_id=97`，payload 中 `wealth=40000`，公网 `/api/games` 返回 `player_state.wealth=40000`。
+  - 临时测试游戏已清理。
+
 ### P1：长生成阶段体验仍慢
 
 第 2 周周中、第 3 周周一、第 3 周周末均进入 1 分钟以上的逻辑校验/复杂推演阶段。虽然“恢复当前进度”兜底能避免空白，但缺少明确说明：当前是在校验、重写、生成选项、还是等场景图。
@@ -320,6 +351,11 @@
 - `41-reached-week4.png` 长流程到达第 4 周
 - `42-week2-midweek-two-options.png` 第 2 周周中二选项问题
 - `43-week4-three-specific-options.png` 三选项修复后生产复测
+- `44-create-fill-stuck.png` 新一轮创建流程填写与时代生成
+- `45-avatar-generation-stuck.png` 人物形象生成长等待
+- `46-avatar-step-after-long-wait.png` 人物形象生成完成
+- `47-opening-story-new-run.png` 新一轮开场故事
+- `48-week1-generation-long.png` 第 1 周故事生成完成
 
 ## 本轮已修
 
@@ -328,6 +364,7 @@
 - 修复音乐队列优先级：MiniMax 生成曲作为下一首入队，不再排在网易云下一曲之后。
 - 修复现代职场音乐过滤：从故事正文补充职场 cue，避免 AI 分析泛化时推荐弱匹配流行歌。
 - 修复资源反馈：低精力时 `effects_applied` 反映实际生效变化，后端返回 `resource_warnings`，前端结果页展示资源提示。
+- 修复起始财富初始化：可玩状态优先使用创建阶段生成的财富值，不再固定覆盖为全局默认 1 万。
 - 修复开场时间锚点：开场故事与主游戏第 1 周使用同一日期/季节约束，避免开场夏季、第一周冬季的冲突。
 - 新增回归测试：
   - `forces next event generation after weekly summary so stale phase cannot block it`
@@ -340,6 +377,8 @@
   - `test_zero_energy_exhausting_choice_applies_no_extra_energy_loss`
   - `appends resource warnings to the round summary`
   - `shows resource warnings even when the backend summary is empty`
+  - `renders resource warning details in the result summary`
+  - `test_create_game_preserves_generated_initial_wealth`
   - `test_opening_story_prompt_anchors_first_week_date_and_season`
 - 验证：
   - `cd frontend && npx jest src/__tests__/hooks/useGameState.test.ts --runInBand`
@@ -349,5 +388,7 @@
   - `pytest tests/test_story_music_recommendation_contract.py tests/test_minimax_audio_generation_contract.py::test_music_generate_api_persists_generated_track_into_future_playlist_queue tests/test_minimax_audio_generation_contract.py::test_music_generate_async_api_returns_quickly_and_persists_future_playlist_track tests/test_minimax_audio_generation_db.py::test_ready_minimax_music_asset_inserts_as_next_playlist_track -q`
   - `pytest tests/test_choice_processor_contract.py -q`
   - `pytest tests/test_gate_gameplay_behavior_no_mock.py -q`
+  - `pytest tests/test_api_games.py::TestCreateGame::test_create_game_preserves_generated_initial_wealth -q`
   - `cd frontend && npx jest src/__tests__/hooks/choiceUtils.test.ts --runInBand`
+  - `cd frontend && npx jest src/__tests__/pages/PlayPage.test.tsx --runInBand --testNamePattern='resource warning|shows round summary when available'`
   - `./test.sh preflight`

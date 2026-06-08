@@ -234,6 +234,7 @@ run_preflight() {
         tests/test_gate_gameplay_behavior_no_mock.py \
         tests/test_gate_contracts_no_mock.py \
         tests/test_opening_story_contract.py \
+        tests/test_api_games.py::TestCreateGame::test_create_game_preserves_generated_initial_wealth \
         tests/test_music_degradation_no_mock.py \
         tests/test_minimax_audio_generation_contract.py \
         tests/test_sse_timeout_contract.py \
