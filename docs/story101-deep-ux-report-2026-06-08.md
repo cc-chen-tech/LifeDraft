@@ -157,7 +157,13 @@
   - `特别禁止写成夏季`
 - 公网 `/api/health` 和 `/health` 正常，后端容器 healthcheck 为 healthy。
 
-状态：开场时间锚点已热部署并通过生产 prompt smoke；仍需新开场故事长流程复查实际生成文本。
+状态：开场时间锚点已热部署并通过生产 prompt smoke。后续生产 API smoke 又复现了旧问题的后端变体：`/api/character/opening-story` 先返回 `event: error` / `Generation timeout`，随后仍返回 `event: complete` 且 `full_story` 为空，前端会把它误判为完成但正文为 0。
+
+本轮补充修复：
+- 后端 opening-story SSE 超时后会清理生成缓存，但不再发送空 `complete`。
+- 如果生成线程正常结束但没有任何正文，也只发送 `Opening story stream completed without story text` 错误，不缓存空故事。
+- 回归测试：`test_opening_story_timeout_does_not_emit_empty_complete` 先复现旧逻辑中 `\"full_story\": \"\"` 仍出现在 SSE body，再验证修复后 timeout 不再发送 `event: complete`。
+- 该契约测试已加入 `./test.sh preflight` 的后端 preflight 测试列表。
 
 周总结边界补充修复：
 - 周总结 prompt 增加“周总结时间边界”，明确只覆盖当前周的周一、周中、周末三个回合。
