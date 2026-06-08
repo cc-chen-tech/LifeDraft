@@ -50,6 +50,31 @@ class TestCharacterCreatorGenerateSetting:
         result = creator.generate_setting("era", "张三", "成功", {})
         assert result["year"] == 2024
 
+    def test_generate_era_honors_explicit_modern_product_manager_life_vision(self):
+        """明确现代互联网产品经理愿景不能被时代生成漂移成古代。"""
+        creator = self._make_creator()
+        creator.ai_generator.generate_completion.return_value = json.dumps(
+            {
+                "year": 713,
+                "era_description": "唐代长安，坊市繁华，科举与门第影响人生。",
+                "world_context": "大唐盛世，士族与寒门并存。",
+            },
+            ensure_ascii=False,
+        )
+
+        result = creator.generate_setting(
+            "era",
+            "顾晨曦",
+            "2020年代中国互联网公司，成为AI协作工具产品经理",
+            {},
+        )
+
+        assert result["year"] >= 2020
+        combined = f"{result.get('era_description', '')} {result.get('world_context', '')}"
+        assert "唐" not in combined
+        assert "互联网" in combined
+        assert "产品经理" in combined or "产品" in combined
+
     def test_generate_age_setting_corrects_birth_year(self):
         """Test age setting auto-corrects birth_year."""
         creator = self._make_creator()

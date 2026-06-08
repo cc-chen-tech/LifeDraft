@@ -3,6 +3,7 @@
 import json
 import logging
 import random
+import re
 from typing import Any, Dict, List, Optional
 
 from config.prompts import (get_character_setting_prompt,
@@ -17,6 +18,43 @@ from src.ai.utils import extract_json
 logger = logging.getLogger(__name__)
 
 PLACEHOLDER_NAME_PREFIXES = ("测试", "示例", "玩家", "主角", "用户")
+ANCIENT_ERA_CUES = (
+    "唐",
+    "宋",
+    "元",
+    "明",
+    "清",
+    "汉",
+    "秦",
+    "魏晋",
+    "春秋",
+    "战国",
+    "长安",
+    "科举",
+    "王朝",
+    "宫廷",
+    "江湖",
+)
+MODERN_LIFE_VISION_CUES = (
+    "2020",
+    "2021",
+    "2022",
+    "2023",
+    "2024",
+    "2025",
+    "2026",
+    "2020年代",
+    "现代",
+    "当代",
+    "互联网",
+    "产品经理",
+    "AI",
+    "人工智能",
+    "创业",
+    "公司",
+    "远程协作",
+    "5G",
+)
 
 
 def assign_sexual_orientation() -> str:
@@ -70,6 +108,68 @@ def _strip_placeholder_surname_from_family_members(
     normalized_setting = dict(family_setting)
     normalized_setting["family_members"] = normalized_members
     return normalized_setting
+
+
+def _extract_explicit_modern_year(life_vision: str) -> int:
+    years = [
+        int(match)
+        for match in re.findall(r"(20[0-3][0-9])", life_vision)
+        if 2000 <= int(match) <= 2039
+    ]
+    if years:
+        return years[0]
+    if "2020年代" in life_vision or "二零二" in life_vision:
+        return 2024
+    return 2024
+
+
+def _life_vision_requires_modern_context(life_vision: str) -> bool:
+    return any(cue in life_vision for cue in MODERN_LIFE_VISION_CUES)
+
+
+def _era_setting_conflicts_with_modern_life_vision(
+    era_setting: Dict[str, Any],
+    life_vision: str,
+) -> bool:
+    if not _life_vision_requires_modern_context(life_vision):
+        return False
+
+    year = era_setting.get("year")
+    if isinstance(year, int) and year < 1900:
+        return True
+
+    text = " ".join(
+        str(era_setting.get(key) or "")
+        for key in ["era_name", "era_description", "world_context"]
+    )
+    return any(cue in text for cue in ANCIENT_ERA_CUES)
+
+
+def _align_era_setting_with_life_vision(
+    era_setting: Dict[str, Any],
+    life_vision: str,
+    feedback: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Keep explicit modern career visions from drifting into historical eras."""
+    if feedback:
+        return era_setting
+    if not _era_setting_conflicts_with_modern_life_vision(era_setting, life_vision):
+        return era_setting
+
+    year = _extract_explicit_modern_year(life_vision)
+    aligned = dict(era_setting)
+    aligned["year"] = year
+    aligned["era_name"] = f"{year}年前后的中国互联网行业"
+    aligned["era_description"] = (
+        f"{year}年前后的中国现代都市与互联网行业，移动互联网、AI工具、"
+        "远程协作和平台型产品快速发展，适合产品经理成长线。"
+    )
+    aligned["world_context"] = (
+        "中国互联网公司和创业团队竞争激烈，产品经理需要在用户研究、"
+        "数据分析、AI协作和跨部门沟通之间做出取舍。"
+    )
+    aligned["_aligned_to_life_vision"] = True
+    return aligned
 
 
 class CharacterCreator:
@@ -132,6 +232,14 @@ class CharacterCreator:
                 result = extract_json(content)
                 if result is None:
                     raise ValueError(f"Failed to extract JSON from response: {content[:200]}")
+
+                # Validate wealth if it's the wealth setting
+                if setting_type == "era":
+                    result = _align_era_setting_with_life_vision(
+                        result,
+                        life_vision,
+                        feedback=feedback,
+                    )
 
                 # Validate wealth if it's the wealth setting
                 if setting_type == "wealth":
