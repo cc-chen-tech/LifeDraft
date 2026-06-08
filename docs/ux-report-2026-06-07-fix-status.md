@@ -82,6 +82,9 @@ This note tracks follow-up fixes for `docs/ux-report-2026-06-07.md`.
   - Event SSE completed, choice SSE completed, and backend TTS returned a MiniMax audio asset.
   - Music recommendation returned 200 and then `/api/music/generate` was issued from the browser.
   - The browser path did not receive the generated music response before the old proxy timeout window, while a direct production API call for the same class of story returned 200 in about 125s. This led to the `/api/music/generate` proxy timeout fix above.
+- Production deployment verification after manually deploying `5030951f3` to ECS:
+  - `/opt/story2` reports `5030951f3`, and the backend health check is healthy.
+  - Same-origin production `/api/music/generate` returned 200 in about 103s with a MiniMax `ai_generated` track and `insert_policy: "future_queue"`.
 - Production real `/play` verification on game 50 after deploying `7ab5752f` to ECS:
   - Completed story auto-read called `/api/voice-reading/read` and returned `provider=minimax`, `playback_mode=audio`, and a generated `/api/voice-reading/audio/*.mp3` URL.
   - `/api/music/recommend` returned `music_brief`.
