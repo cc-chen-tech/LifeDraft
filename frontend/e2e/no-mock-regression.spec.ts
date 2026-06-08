@@ -170,4 +170,14 @@ test.describe('no-mock regression coverage', () => {
     await expect(page.getByRole('heading', { name: '苏小二' })).toBeVisible();
     await expect(page.getByAltText('苏小二')).toBeVisible();
   });
+
+  test('collection panel surfaces auto-collected recognized story entities', async ({ page }) => {
+    await page.goto('/e2e-regression');
+
+    await page.getByRole('button', { name: '收集' }).click();
+
+    await expect(page.getByTestId('auto-collection-state')).toHaveText('collected');
+    await expect(page.getByRole('heading', { name: '赵掌柜' })).toBeVisible();
+    await expect(page.getByText('铜钥匙')).toBeVisible();
+  });
 });

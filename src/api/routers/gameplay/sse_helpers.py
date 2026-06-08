@@ -10,6 +10,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
+from config.settings import settings
 from src.api.deps import get_db
 
 logger = logging.getLogger(__name__)
@@ -106,6 +107,11 @@ def _trigger_round_illustration_generation(
                     logger.info(
                         f"[RoundIllustration] {week_display} round {round_number} stage={stage} 插画已存在"
                     )
+                    if not settings.AUTO_GENERATE_ENTITY_IMAGES_FOR_SCENES:
+                        logger.info(
+                            "[RoundIllustration] Entity image backfill for scenes is disabled"
+                        )
+                        return
                     # ★ 即使插画已存在，仍然检查并生成缺失的人物图片
                     # 需要先获取已有图片列表
                     images = (
@@ -223,6 +229,9 @@ def _ensure_entity_images_exist(
         week: 周数
         round_number: 轮次
     """
+    if not settings.AUTO_GENERATE_ENTITY_IMAGES_FOR_SCENES:
+        logger.info("[RoundIllustration] Entity image backfill for scenes is disabled")
+        return
 
     def ensure_images():
         try:
@@ -427,6 +436,20 @@ def clear_sse_cache_if_retry(status: dict, session) -> None:
         session.clear_sse_cache()
 
 
+def _persist_generated_event_state(game_loop, game_id: int) -> None:
+    """Persist generated event state immediately after worker generation returns."""
+    try:
+        db = get_db()
+        state = game_loop.get_state()
+        if state:
+            db.save_game_progress(game_id, state)
+            logger.info(f"Auto-saved game state after event generation: game_id={game_id}")
+    except (OSError, IOError) as e:
+        logger.warning(f"Auto-save IO error after event generation: {e}")
+    except Exception as e:
+        logger.exception(f"Auto-save unexpected error after event generation: {e}")
+
+
 async def stream_round_event(
     game_loop, game_id: int, session=None, last_event_id: Optional[int] = None
 ):
@@ -477,6 +500,8 @@ async def stream_round_event(
                 status_callback=status_cb,
                 session=session,
             )
+            if result_holder[0] is not None:
+                _persist_generated_event_state(game_loop, game_id)
         except (ValueError, TypeError, KeyError) as e:
             logger.warning(f"[stream_round_event] Data error in run(): {e}")
             error_holder[0] = e
@@ -568,20 +593,8 @@ async def stream_round_event(
         logger.info(
             f"[SSE Complete] model_dump options count: {len(event_data.get('options', []))}"
         )
-        yield make_sse_event("complete", event_data)
 
-        # Auto-save game state after event generation
-        # This ensures user can resume from this point even if they close the page
-        try:
-            db = get_db()
-            state = game_loop.get_state()
-            if state:
-                db.save_game_progress(game_id, state)
-                logger.info(f"Auto-saved game state after event generation: game_id={game_id}")
-        except (OSError, IOError) as e:
-            logger.warning(f"Auto-save IO error after event generation: {e}")
-        except Exception as e:
-            logger.exception(f"Auto-save unexpected error after event generation: {e}")
+        yield make_sse_event("complete", event_data)
 
         # ★ 异步触发每轮场景插画生成（不阻塞游戏流程）
         # event 阶段的插画在事件生成完成后触发

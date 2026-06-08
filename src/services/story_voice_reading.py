@@ -15,6 +15,7 @@ from src.api.schemas import (
     VoiceReadingJobResponse,
     VoiceReadingSettingsResponse,
 )
+from src.services.minimax_config import build_minimax_config
 from src.services.story_voice_repository import StoryVoiceReadingRepository
 from src.services.story_tts_provider import (
     BrowserSpeechTTSProvider,
@@ -30,6 +31,7 @@ __all__ = [
     "ReadingContextValidator",
     "StoryVoiceReadingService",
     "build_deterministic_wav",
+    "media_type_for_voice_asset",
     "normalize_text_hash",
 ]
 
@@ -110,7 +112,9 @@ class StoryVoiceReadingService:
             ),
             uploaded_voice_available=False,
             auto_read_enabled=(
-                bool(settings.auto_read_enabled) if settings is not None else False
+                bool(settings.auto_read_enabled)
+                if settings is not None
+                else story_auto_read_default_enabled()
             ),
             tts_provider=provider_metadata.provider,
             tts_model=provider_metadata.model,
@@ -186,6 +190,7 @@ class StoryVoiceReadingService:
             speed=request.speed,
             provider=provider_metadata.provider,
             model=provider_metadata.model,
+            user_id=user_id,
         )
         if ready_asset is not None:
             job = self.repository.create_job(
@@ -205,7 +210,7 @@ class StoryVoiceReadingService:
                 playback_mode="audio",
                 provider=str(ready_asset.provider),
                 model=str(ready_asset.model),
-                media_type="audio/wav",
+                media_type=media_type_for_voice_asset(str(ready_asset.storage_path)),
                 message="Reused cached reading audio",
             )
 
@@ -278,10 +283,18 @@ class StoryVoiceReadingService:
             playback_mode=playback_mode,
             provider=str(asset.provider) if asset is not None else "browser",
             model=str(asset.model) if asset is not None else "browser-speech",
-            media_type="audio/wav" if asset is not None else None,
+            media_type=media_type_for_voice_asset(str(asset.storage_path)) if asset is not None else None,
             error_code=str(job.error_code) if job.error_code is not None else None,
             message=str(job.error_message) if job.error_message is not None else "",
         )
+
+
+def media_type_for_voice_asset(storage_path: str) -> str:
+    return "audio/mpeg" if storage_path.lower().endswith(".mp3") else "audio/wav"
+
+
+def story_auto_read_default_enabled() -> bool:
+    return build_minimax_config().story_auto_read_default_enabled
 
 
 def normalize_text_hash(text: str) -> str:

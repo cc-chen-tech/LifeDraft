@@ -39,6 +39,21 @@ function getResourceValue(playerState: Record<string, unknown>, key: string): nu
   return null;
 }
 
+function formatWealth(value: number, wealthSettings: Record<string, unknown> | undefined): string {
+  const amount = value.toLocaleString();
+  const currencySymbol = typeof wealthSettings?.currency === "string"
+    ? wealthSettings.currency.trim()
+    : "";
+  if (currencySymbol) {
+    return `${currencySymbol}${amount}`;
+  }
+
+  const currencyName = typeof wealthSettings?.currency_name === "string"
+    ? wealthSettings.currency_name.trim()
+    : "";
+  return currencyName ? `${amount}${currencyName}` : `${amount}货币`;
+}
+
 /**
  * StatusBar — 游戏进度 & 4D 资源展示
  * - 紧凑模式用于游戏主页顶部
@@ -61,7 +76,6 @@ export const StatusBar = memo(function StatusBar({
   // ★ 从 character_settings 提取动态货币单位
   const characterSettings = playerState.character_settings as Record<string, unknown> | undefined;
   const wealthSettings = characterSettings?.wealth as Record<string, unknown> | undefined;
-  const currencyName = (wealthSettings?.currency_name as string) || "货币";
 
   if (compact) {
     return (
@@ -78,7 +92,7 @@ export const StatusBar = memo(function StatusBar({
         {RESOURCES.map((res) => {
           const value = getResourceValue(playerState, res.key);
           if (value === null) return null;
-          const displayValue = res.key === "wealth" ? `${value.toLocaleString()}${currencyName}` : value;
+          const displayValue = res.key === "wealth" ? formatWealth(value, wealthSettings) : value;
           return (
             <Badge
               key={res.key}
@@ -128,6 +142,7 @@ export const StatusBar = memo(function StatusBar({
           const value = getResourceValue(playerState, res.key);
           if (value === null) return null;
           const ratio = Math.min(value / res.max, 1);
+          const displayValue = res.key === "wealth" ? formatWealth(value, wealthSettings) : value;
           return (
             <div key={res.key} className="flex items-center gap-2">
               <span className="text-muted-foreground w-4">{res.icon}</span>
@@ -149,7 +164,7 @@ export const StatusBar = memo(function StatusBar({
                   getAttributeColor(value, res.max)
                 )}
               >
-                {res.key === "wealth" ? `${value.toLocaleString()}${currencyName}` : value}
+                {displayValue}
               </span>
             </div>
           );

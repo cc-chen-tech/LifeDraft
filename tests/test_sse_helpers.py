@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from src.api.routers.gameplay.sse_helpers import (
-    _trigger_round_illustration_generation, clear_sse_cache_if_retry,
-    make_sse_event, return_sse_error, stream_choice, stream_regenerate,
-    stream_rewrite, stream_round_event)
+    _ensure_entity_images_exist, _trigger_round_illustration_generation,
+    clear_sse_cache_if_retry, make_sse_event, return_sse_error, stream_choice,
+    stream_regenerate, stream_rewrite, stream_round_event)
 
 # Integration tests - SSE stream handling
 pytestmark = pytest.mark.integration
@@ -18,6 +18,20 @@ pytestmark = pytest.mark.integration
 
 class TestTriggerRoundIllustration:
     """场景插画生成触发测试"""
+
+    @pytest.fixture(autouse=True)
+    def _capture_background_jobs(self, monkeypatch):
+        """不要让触发器测试执行真实后台图像生成。"""
+        from src.api.routers.gameplay import sse_helpers
+
+        self.submitted_background_jobs = []
+
+        class FakePool:
+            def submit(pool_self, *args, **kwargs):
+                self.submitted_background_jobs.append((args, kwargs))
+                return MagicMock()
+
+        monkeypatch.setattr(sse_helpers, "_get_sse_thread_pool", lambda: FakePool())
 
     def test_trigger_with_valid_event(self):
         """测试有效事件触发插画生成"""
@@ -66,6 +80,27 @@ class TestTriggerRoundIllustration:
 
         _trigger_round_illustration_generation(game_loop, 1, event, stage="event")
         # 函数启动后台线程，不应该抛出异常
+
+    def test_entity_image_backfill_disabled_by_default(self, monkeypatch):
+        """主线场景插画默认不应为故事实体额外自动补图。"""
+        from src.api.routers.gameplay import sse_helpers
+
+        monkeypatch.setattr(
+            sse_helpers.settings,
+            "AUTO_GENERATE_ENTITY_IMAGES_FOR_SCENES",
+            False,
+        )
+
+        _ensure_entity_images_exist(
+            game_loop=MagicMock(),
+            game_id=1,
+            event=MagicMock(event_description="陈晓雨走进会议室。"),
+            existing_images=[],
+            week=0,
+            round_number=0,
+        )
+
+        assert self.submitted_background_jobs == []
 
 
 class TestMakeSSEEvent:
@@ -197,6 +232,40 @@ class TestSSEAsyncFunctions:
 
         # 验证生成器可以工作
         assert True
+
+    @pytest.mark.asyncio
+    async def test_stream_round_event_persists_state_before_complete_event(self, monkeypatch):
+        """SSE complete must not be emitted before the generated event is persisted."""
+        from src.api.routers.gameplay import sse_helpers
+
+        saved = {"called": False}
+
+        class FakeDb:
+            def save_game_progress(self, game_id, state):
+                saved["called"] = True
+                saved["game_id"] = game_id
+                saved["state"] = state
+
+        mock_event = MagicMock()
+        mock_event.event_description = "测试事件"
+        mock_event.options = [{"text": "继续"}]
+        mock_event.model_dump.return_value = {
+            "event_description": "测试事件",
+            "options": [{"text": "继续"}],
+        }
+
+        game_loop = MagicMock()
+        game_loop.generate_round_event = MagicMock(return_value=mock_event)
+        game_loop.get_state = MagicMock(return_value={"current_event_data": mock_event.model_dump.return_value})
+
+        monkeypatch.setattr(sse_helpers, "get_db", lambda: FakeDb())
+        monkeypatch.setattr(sse_helpers, "_trigger_round_illustration_generation", lambda *args, **kwargs: None)
+
+        async for event in stream_round_event(game_loop, 123):
+            if "event: complete" in event:
+                assert saved["called"] is True
+                assert saved["game_id"] == 123
+                break
 
     @pytest.mark.asyncio
     async def test_stream_choice_with_mock(self):

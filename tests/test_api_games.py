@@ -163,6 +163,34 @@ class TestCreateGame:
 
             assert response.status_code == 400
 
+    def test_create_game_accepts_relationships_list_payload(self, client, mock_db):
+        """List-shaped relationships payload should be normalized instead of raising 500."""
+        mock_db.create_game.return_value = 77
+
+        response = client.post(
+            "/api/games",
+            json={
+                "character_settings": {
+                    "narrative_style_id": "realistic_modern",
+                    "era": {"name": "2020年代中国互联网", "period": "2020年代"},
+                    "age": {"age": 22},
+                    "relationships": [
+                        {"name": "陆昊然", "relation": "导师"},
+                        {"name": "陈晓雨", "relation": "同学"},
+                    ],
+                },
+                "player_name": "MiniMax生产验证",
+                "life_vision": "成为可靠的产品经理",
+                "language": "zh",
+            },
+        )
+
+        assert response.status_code == 201
+        assert response.json()["game_id"] == 77
+        saved_state = mock_db.create_game.call_args.kwargs["initial_state"]
+        assert saved_state["relationships"] == {"陆昊然": 50, "陈晓雨": 50}
+        assert saved_state["character_settings"]["relationships"]["key_people"][0]["name"] == "陆昊然"
+
 
 class TestListGames:
     """Tests for GET /api/games."""

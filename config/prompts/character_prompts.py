@@ -220,6 +220,7 @@ def get_character_setting_prompt(
 请生成家庭情况设定。包括家庭成员、家庭经济状况、家庭关系等。
 
 **重要**：家庭成员必须包含具体姓名，不要用"父母"、"爸爸"这样的模糊称呼。
+**姓名规则**：如果玩家姓名以"测试"、"示例"、"玩家"、"主角"、"用户"等占位词开头，不要把这些词当作姓氏生成父母姓名；例如"测试小可"的父母绝不能叫"测试卫国"或"测试秀兰"。
 
 返回JSON格式：
 {{
@@ -752,6 +753,26 @@ def get_opening_story_prompt(
     relationships = character_settings.get("relationships", {})
     traits = character_settings.get("traits", {})
     wealth = character_settings.get("wealth", {})
+    key_people = relationships.get("key_people", []) if isinstance(relationships, dict) else []
+    key_people_lines: List[str] = []
+    if isinstance(key_people, list):
+        for person in key_people:
+            if not isinstance(person, dict):
+                continue
+            name = str(person.get("name", "")).strip()
+            if not name:
+                continue
+            role = str(person.get("role", "")).strip()
+            relationship_text = str(
+                person.get("relationship")
+                or person.get("relationship_desc")
+                or person.get("relationship_description")
+                or ""
+            ).strip()
+            detail = "，".join(part for part in [role, relationship_text] if part)
+            key_people_lines.append(f"- {name}" + (f"（{detail}）" if detail else ""))
+
+    key_people_text = "\n".join(key_people_lines) if key_people_lines else "无"
 
     if language == "zh":
         return f"""请基于以下角色设定，生成一个生动的开场故事（300-400字）。
@@ -791,6 +812,11 @@ def get_opening_story_prompt(
 
 【社会关系】
 {relationships.get('relationships_description', '')}
+关键人物：
+{key_people_text}
+
+【人物使用硬约束】
+开场故事必须优先使用上述家庭成员和关键人物来建立冲突与关系，不要无故替换为大量新人物；如需新增人物，必须服务于人生愿景和时代背景。
 
 【个人特点】
 {traits.get('traits_description', '')}
@@ -844,6 +870,11 @@ Economy: {family.get('family_economy', '')}
 
 【Relationships】
 {relationships.get('relationships_description', '')}
+Key People:
+{key_people_text}
+
+[Character Usage Hard Constraint]
+The opening story must prioritize the listed family members and key people when establishing conflict and relationships. Do not replace them with many unrelated new characters unless a new character directly serves the life vision and era.
 
 【Traits】
 {traits.get('traits_description', '')}

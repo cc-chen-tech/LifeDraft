@@ -7,6 +7,7 @@ import { useChoiceHandler } from '@/hooks/game/useChoiceHandler';
 import { useGameStore } from '@/stores/useGameStore';
 import type { Phase, ConnectionStatus } from '@/hooks/game/usePhaseManager';
 import { createSSEMockResponse } from '@/__tests__/helpers/sse-mock';
+import { jsonResponse } from '@/__tests__/helpers/fetch';
 
 /** Create a fresh SSE response for streamChoice calls */
 function makeChoiceResponse() {
@@ -14,6 +15,32 @@ function makeChoiceResponse() {
     'event: story\ndata: Choice result story\n\n',
     'event: complete\ndata: {"event_description":"Choice result story","options":[{"text":"Next Option"}]}\n\n',
   ]);
+}
+
+function makeBrokenChoiceResponse() {
+  const reader: ReadableStreamDefaultReader<Uint8Array> = {
+    read(): Promise<ReadableStreamReadResult<Uint8Array>> {
+      return Promise.reject(new TypeError('network error'));
+    },
+    cancel(): Promise<void> {
+      return Promise.resolve();
+    },
+    releaseLock(): void {
+      // no-op
+    },
+    get closed(): Promise<undefined> {
+      return Promise.resolve(undefined);
+    },
+  };
+
+  return {
+    ok: true,
+    status: 200,
+    headers: new Headers({ 'content-type': 'text/event-stream' }),
+    body: {
+      getReader: () => reader,
+    } as unknown as ReadableStream<Uint8Array>,
+  } as Response;
 }
 
 function setupDefaultState() {
@@ -95,6 +122,25 @@ describe('useChoiceHandler', () => {
       const { result } = renderHook(() => useChoiceHandler(defaultParams));
       await act(async () => { await result.current.handleChoice(0); });
       expect(mockAbort).toHaveBeenCalled();
+    });
+
+    it('does not surface stream rejections after onError fallback handling starts', async () => {
+      useGameStore.setState({
+        currentEvent: { options: [{ text: 'Option 1' }] },
+      } as never);
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(makeBrokenChoiceResponse())
+        .mockResolvedValue(jsonResponse({
+          story_continuation: '同步恢复后的选择结果',
+          need_weekly_summary: false,
+          game_over: false,
+        }));
+
+      const { result } = renderHook(() => useChoiceHandler(defaultParams));
+
+      await expect(act(async () => {
+        await result.current.handleChoice(0);
+      })).resolves.toBeUndefined();
     });
   });
 });

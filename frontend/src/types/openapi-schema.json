@@ -882,6 +882,64 @@
         }
       }
     },
+    "/api/games/{game_id}/character-settings": {
+      "patch": {
+        "tags": [
+          "Games"
+        ],
+        "summary": "Update Character Settings",
+        "description": "Persist late character creation settings for an existing game.\n\nThe create flow may add generated family, relationship, trait, and wealth\nsettings after the initial game record exists. This endpoint preserves the\nmanually selected settings and merges the generated settings into the saved\nplayer state before opening story generation starts.",
+        "operationId": "update_character_settings_api_games__game_id__character_settings_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCharacterSettingsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/games/{game_id}/settings": {
       "patch": {
         "tags": [
@@ -7235,6 +7293,21 @@
           "status"
         ],
         "title": "StoryVoiceReadingResponse"
+      },
+      "UpdateCharacterSettingsRequest": {
+        "properties": {
+          "character_settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "minProperties": 1,
+            "title": "Character Settings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "character_settings"
+        ],
+        "title": "UpdateCharacterSettingsRequest"
       },
       "UpdateGameSettingsRequest": {
         "properties": {

@@ -4,7 +4,7 @@ Includes narrative-style endpoints for style browsing and per-game style updates
 """
 
 import logging
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -16,16 +16,30 @@ from src.api.schemas import (CreateSavePointRequest, GameListItem,
                              GameStateResponse, MessageResponse,
                              SaveGameResponse, SavePointItem,
                              SavePointListResponse, StateSnapshotItem,
-                             StateTimelineResponse, UpdateGameSettingsRequest)
+                             StateTimelineResponse, UpdateCharacterSettingsRequest,
+                             UpdateGameSettingsRequest)
 from src.api.services.session_service import session_service
 from src.api.session_store import session_store
 from src.database.models import Game, SessionLocal
 from src.game.game_initializer import GameInitializer
 from src.game.game_loop import GameLoop
+from src.game.state import PlayerState
 from src.utils.language import detect_language_from_state
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _deep_merge_dicts(existing: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
+    """Merge nested character settings without dropping unrelated existing fields."""
+    merged = dict(existing)
+    for key, value in updates.items():
+        current_value = merged.get(key)
+        if isinstance(current_value, dict) and isinstance(value, dict):
+            merged[key] = _deep_merge_dicts(current_value, value)
+        else:
+            merged[key] = value
+    return merged
 
 
 @router.post("", response_model=GameStateResponse, status_code=201)
@@ -405,6 +419,44 @@ async def load_save_point(
         current_event=(game_loop.current_event.model_dump() if game_loop.current_event else None),
         constraint_level=constraint_level,
     )
+
+
+@router.patch("/{game_id}/character-settings", response_model=MessageResponse)
+async def update_character_settings(
+    game_id: int,
+    req: UpdateCharacterSettingsRequest,
+    user_id: int = Depends(get_current_user),
+):
+    """
+    Persist late character creation settings for an existing game.
+
+    The create flow may add generated family, relationship, trait, and wealth
+    settings after the initial game record exists. This endpoint preserves the
+    manually selected settings and merges the generated settings into the saved
+    player state before opening story generation starts.
+    """
+    db = get_db()
+    state_data = db.load_saved_game(game_id, user_id)
+    if state_data is None:
+        raise HTTPException(status_code=404, detail="Game not found or not owned by user")
+
+    existing_settings = state_data.get("character_settings") or {}
+    if not isinstance(existing_settings, dict):
+        existing_settings = {}
+    merged_settings = _deep_merge_dicts(existing_settings, req.character_settings)
+
+    updated_state = dict(state_data)
+    updated_state["character_settings"] = merged_settings
+    player_state = PlayerState.from_dict(updated_state)
+
+    if not db.save_game_progress(game_id, player_state):
+        raise HTTPException(status_code=500, detail="Failed to save character settings")
+
+    game_session = session_store.get(game_id, user_id)
+    if game_session and game_session.game_loop and game_session.game_loop.player_state:
+        game_session.game_loop.player_state.character_settings = merged_settings
+
+    return MessageResponse(success=True, message="Character settings updated")
 
 
 @router.patch("/{game_id}/settings", response_model=MessageResponse)

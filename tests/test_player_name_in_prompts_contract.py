@@ -4,11 +4,66 @@
 Layer 3: 契约测试 — prompt 输出必须包含 player_name。
 """
 
-from config.prompts import get_round_event_prompt, get_story_only_prompt
+from config.prompts import (
+    get_event_generation_prompt,
+    get_round_event_prompt,
+    get_story_only_prompt,
+)
 
 
 class TestPlayerNameInPrompts:
     """测试故事生成 prompt 包含主角名称"""
+
+    def test_modern_chinese_prompts_use_week_timeline_not_classical_chapter_title(self):
+        """现代/当代背景不应强制章回体“第X回 + 七字对仗标题”."""
+        player_state = {
+            "age": 22,
+            "week": 1,
+            "current_round": 1,
+            "rounds_per_week": 3,
+            "energy": 70,
+            "mood": 60,
+            "knowledge": 50,
+            "wealth": 50000,
+            "relationships": {},
+        }
+        modern_settings = {
+            "era": {
+                "year": 2024,
+                "era_description": "2020年代中国互联网职场",
+                "world_context": "现代社会",
+            },
+            "world": {"world_description": "现代都市产品经理成长故事"},
+            "wealth": {"currency": "¥", "currency_name": "元"},
+        }
+
+        prompts = [
+            get_event_generation_prompt(
+                player_state=player_state,
+                language="zh",
+                character_settings=modern_settings,
+            ),
+            get_story_only_prompt(
+                player_state=player_state,
+                language="zh",
+                character_settings=modern_settings,
+                player_name="林小夏",
+            ),
+            get_round_event_prompt(
+                player_state=player_state,
+                language="zh",
+                round_number=1,
+                round_context="",
+                character_settings=modern_settings,
+                player_name="林小夏",
+            ),
+        ]
+
+        for prompt in prompts:
+            assert "第2周·周中" in prompt
+            assert "7字对仗标题" not in prompt
+            assert "故事开头必须使用\"第" not in prompt
+            assert "回\"作为章节标识" not in prompt
 
     def test_story_only_prompt_includes_player_name(self):
         """get_story_only_prompt 输出必须包含传入的 player_name"""

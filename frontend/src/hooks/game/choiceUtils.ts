@@ -13,6 +13,7 @@ export interface ChoiceErrorContext {
   customText?: string;
   isRetry: boolean;
   sseSucceeded: boolean;
+  baseStoryText?: string;
   retryChoice?: () => Promise<void>;
 }
 
@@ -46,6 +47,21 @@ export function parseSSEError(err: unknown): string {
     errAsRecord?.error ||
     err ||
     "Unknown error"
+  );
+}
+
+export function isRecoverableChoiceStreamError(errorMsg: string): boolean {
+  const normalized = errorMsg.toLowerCase();
+  return (
+    errorMsg === "Unknown error" ||
+    normalized.includes("network error") ||
+    normalized.includes("failed to fetch") ||
+    normalized.includes("empty_response") ||
+    normalized.includes("err_empty_response") ||
+    normalized.includes("incomplete_chunked_encoding") ||
+    normalized.includes("err_incomplete_chunked_encoding") ||
+    normalized.includes("terminated") ||
+    normalized.includes("stream")
   );
 }
 
@@ -114,7 +130,8 @@ export function handleChoiceComplete(
  */
 export async function recoverStoryFromRoundHistory(
   choiceText: string,
-  setStoryText: (text: string) => void
+  setStoryText: (text: string) => void,
+  baseStoryText?: string
 ): Promise<boolean> {
   try {
     // syncPlayerState updates the store, then we read from it
@@ -127,7 +144,7 @@ export async function recoverStoryFromRoundHistory(
     if (roundHistory && roundHistory.length > 0) {
       const latestRound = roundHistory[roundHistory.length - 1];
       if (latestRound.story_continuation) {
-        const currentStory = useGameStore.getState().storyText;
+        const currentStory = baseStoryText ?? useGameStore.getState().storyText;
         const continuation = `\n\n--- 主角选择了：${choiceText} ---\n\n${latestRound.story_continuation}`;
         setStoryText(currentStory + continuation);
         console.log(`[recoverStory] Found story continuation (${latestRound.story_continuation.length} chars)`);
@@ -161,10 +178,11 @@ export function enterResultPhase(handlers: ChoiceHandlers): void {
 export async function handleChoiceAlreadyProcessed(
   choiceText: string,
   handlers: ChoiceHandlers,
-  logPrefix: string
+  logPrefix: string,
+  baseStoryText?: string
 ): Promise<void> {
   console.log(`[${logPrefix}] Choice already processed, attempting to sync state...`);
-  await recoverStoryFromRoundHistory(choiceText, handlers.setStoryText);
+  await recoverStoryFromRoundHistory(choiceText, handlers.setStoryText, baseStoryText);
   enterResultPhase(handlers);
 }
 
@@ -174,10 +192,11 @@ export async function handleChoiceAlreadyProcessed(
 export async function handleNoCurrentEvent(
   choiceText: string,
   handlers: ChoiceHandlers,
-  logPrefix: string
+  logPrefix: string,
+  baseStoryText?: string
 ): Promise<void> {
   console.log(`[${logPrefix}] No current event - attempting to sync state...`);
-  await recoverStoryFromRoundHistory(choiceText, handlers.setStoryText);
+  await recoverStoryFromRoundHistory(choiceText, handlers.setStoryText, baseStoryText);
   enterResultPhase(handlers);
 }
 
@@ -233,6 +252,7 @@ export async function handleFallbackChoice(
 
   try {
     let result: {
+      story_continuation?: string;
       summary?: string;
       need_weekly_summary?: boolean;
       weekly_summary?: string;
@@ -247,16 +267,45 @@ export async function handleFallbackChoice(
       return false;
     }
 
+    if (result.story_continuation) {
+      const choiceText = context.customText ??
+        useGameStore.getState().currentEvent?.options?.[context.optionIndex ?? 0]?.text ??
+        "";
+      const baseStory = context.baseStoryText ?? useGameStore.getState().storyText;
+      handlers.setStoryText(
+        `${baseStory}\n\n--- 主角选择了：${choiceText} ---\n\n${result.story_continuation}`
+      );
+    }
+
     handleChoiceComplete(result as Record<string, unknown>, handlers);
     return true;
   } catch (fallbackErr) {
     console.error(`[${logPrefix}] Fallback also failed:`, fallbackErr);
     const fallbackErrMsg = parseSSEError(fallbackErr);
 
-    if (fallbackErrMsg.includes("No current event")) {
-      console.log(`[${logPrefix}] No current event in fallback, entering result phase...`);
+    if (fallbackErrMsg.includes("No current event") || fallbackErrMsg.includes("choice_already_processed")) {
+      console.log(`[${logPrefix}] Choice fallback found already-processed state, entering result phase...`);
+      const choiceText = context.customText ??
+        useGameStore.getState().currentEvent?.options?.[context.optionIndex ?? 0]?.text ??
+        "";
+      await recoverStoryFromRoundHistory(choiceText, handlers.setStoryText, context.baseStoryText);
       enterResultPhase(handlers);
       return true;
+    }
+    if (isRecoverableChoiceStreamError(fallbackErrMsg)) {
+      console.log(`[${logPrefix}] Choice fallback had a transient network failure, attempting history recovery...`);
+      const choiceText = context.customText ??
+        useGameStore.getState().currentEvent?.options?.[context.optionIndex ?? 0]?.text ??
+        "";
+      const recovered = await recoverStoryFromRoundHistory(
+        choiceText,
+        handlers.setStoryText,
+        context.baseStoryText
+      );
+      if (recovered) {
+        enterResultPhase(handlers);
+        return true;
+      }
     }
     return false;
   }
@@ -284,7 +333,7 @@ export async function handleChoiceError(
     const choiceText = context.customText ?? 
       useGameStore.getState().currentEvent?.options?.[context.optionIndex ?? 0]?.text ?? 
       "";
-    await handleChoiceAlreadyProcessed(choiceText, handlers, logPrefix);
+    await handleChoiceAlreadyProcessed(choiceText, handlers, logPrefix, context.baseStoryText);
     return;
   }
 
@@ -293,7 +342,7 @@ export async function handleChoiceError(
     const choiceText = context.customText ?? 
       useGameStore.getState().currentEvent?.options?.[context.optionIndex ?? 0]?.text ?? 
       "";
-    await handleNoCurrentEvent(choiceText, handlers, logPrefix);
+    await handleNoCurrentEvent(choiceText, handlers, logPrefix, context.baseStoryText);
     return;
   }
 
@@ -305,7 +354,7 @@ export async function handleChoiceError(
   }
 
   // 4. Fallback
-  if (!context.sseSucceeded) {
+  if (!context.sseSucceeded || isRecoverableChoiceStreamError(errorMsg)) {
     const handled = await handleFallbackChoice(gameId, context, handlers, logPrefix);
     if (handled) return;
   }

@@ -4,6 +4,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import PlayPage from '@/app/play/page';
+import { useMusicStore } from '@/stores/useMusicStore';
 
 // Mock usePlayGame hook
 const mockUsePlayGame = {
@@ -62,6 +63,43 @@ jest.mock('@/hooks/usePlayGame', () => ({
 describe('PlayPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    useMusicStore.setState({ activeStoryText: null, activeGameId: null });
+  });
+
+  describe('Music handoff', () => {
+    it('does not send partial generating story text to the global music player', async () => {
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'generating',
+        storyText: '流式生成中的半截故事。',
+        displayText: '流式生成中的半截故事。',
+        options: [],
+      });
+
+      render(<PlayPage />);
+
+      await waitFor(() => {
+        expect(useMusicStore.getState().activeGameId).toBe(123);
+      });
+      expect(useMusicStore.getState().activeStoryText).toBeNull();
+    });
+
+    it('sends completed option-phase story text to the global music player', async () => {
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'options',
+        storyText: '已完成并带选项的故事。',
+        displayText: '已完成并带选项的故事。',
+      });
+
+      render(<PlayPage />);
+
+      await waitFor(() => {
+        expect(useMusicStore.getState().activeStoryText).toBe('已完成并带选项的故事。');
+      });
+    });
   });
 
   describe('Loading state', () => {
@@ -346,7 +384,7 @@ describe('PlayPage', () => {
       });
     });
 
-    it('keeps recovery controls visible when restored story text has no playable options', async () => {
+    it('does not show empty recovery controls when streamed story text exists without options', async () => {
       const mockRecoverEventGeneration = jest.fn();
       const originalHook = jest.requireMock('@/hooks/usePlayGame');
       originalHook.usePlayGame = () => ({
@@ -363,14 +401,9 @@ describe('PlayPage', () => {
       render(<PlayPage />);
 
       expect(screen.getByText('已恢复的故事正文，但还没有选项。')).toBeInTheDocument();
-      expect(screen.getByText(/如果生成时间较长/)).toBeInTheDocument();
-      const recoveryButton = screen.getByRole('button', { name: '恢复当前进度' });
-      expect(recoveryButton).toBeInTheDocument();
-
-      fireEvent.click(recoveryButton);
-      await waitFor(() => {
-        expect(mockRecoverEventGeneration).toHaveBeenCalledTimes(1);
-      });
+      expect(screen.queryByText(/如果生成时间较长/)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '恢复当前进度' })).not.toBeInTheDocument();
+      expect(mockRecoverEventGeneration).not.toHaveBeenCalled();
     });
 
     it('shows generating state with message', async () => {

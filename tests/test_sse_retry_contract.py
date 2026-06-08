@@ -1,6 +1,6 @@
 """SSE 流式请求前端重试机制契约测试 (Layer 3)
 
-验证前端 SSE 流式请求（choice / custom-choice / opening-story）
+验证前端 SSE 流式请求（event / choice / custom-choice / regenerate / rewrite / opening-story）
 在遭遇 502/504 时具备指数退避重试能力，防止"一次 502 就永久卡死"。
 
 对应 Bug: #15 (choice 502 卡死), #32 (opening-story 502 卡死)
@@ -42,8 +42,12 @@ class TestSSERetryMechanismContract:
                     paren_end = i
                     break
 
-        # Find opening brace after parameter list
-        brace_start = source.find("{", paren_end)
+        # Find opening brace after the full TypeScript return type. A return type like
+        # Promise<{ completed: boolean }> contains braces before the function body, but
+        # the function body brace is followed by a newline in this file.
+        body_match = re.search(r"\)\s*(?::[\s\S]*?)?\s*\{\n", source[paren_end:])
+        assert body_match, f"必须能找到 {func_name} 的函数体起始位置"
+        brace_start = paren_end + body_match.end() - 1
         assert brace_start != -1, f"必须能找到 {func_name} 的函数体起始位置"
 
         # Count braces to find matching close
@@ -106,6 +110,20 @@ class TestSSERetryMechanismContract:
         has_helper = "fetchWithRetry" in opening_body or "retry" in opening_body.lower()
 
         assert has_retry or has_helper, "streamOpeningStory 必须包含重试机制 (Bug #32)"
+
+    @pytest.mark.parametrize(
+        "func_name",
+        ["streamGameEvent", "streamRegenerate", "streamRewrite"],
+    )
+    def test_gameplay_streams_have_retry_logic(self, func_name: str):
+        """核心玩法 SSE 路径必须和 choice/opening-story 一样走重试 helper。"""
+        source = self._get_sse_source()
+        body = self._extract_function_body(source, func_name)
+
+        assert "fetchSSEWithRetry" in body, (
+            f"{func_name} 必须调用 fetchSSEWithRetry，"
+            "否则第 2 周/重写/改写等核心路径遇到 5xx 会绕过重试保护"
+        )
 
     def test_retry_max_attempts_is_three(self):
         """重试次数必须最多 3 次（1 次原始 + 2 次重试 = 3 次总计）。
@@ -191,14 +209,20 @@ class TestSSERetryMechanismContract:
         )
 
     def test_stream_functions_do_not_use_raw_fetch(self):
-        """streamChoice/streamCustomChoice/streamOpeningStory 不应直接使用无保护的 fetch。
+        """所有导出的 gameplay SSE stream 函数不应直接使用无保护的 fetch。
 
-        ★ 根因：这三个函数之前直接使用原始 fetch，没有任何重试保护。
+        ★ 根因：部分函数之前直接使用原始 fetch，没有任何重试保护。
         """
         source = self._get_sse_source()
 
-        # 提取三个函数的 body
-        funcs = ["streamChoice", "streamCustomChoice", "streamOpeningStory"]
+        funcs = [
+            "streamChoice",
+            "streamCustomChoice",
+            "streamGameEvent",
+            "streamRegenerate",
+            "streamRewrite",
+            "streamOpeningStory",
+        ]
         for func_name in funcs:
             match = re.search(
                 rf"export async function {func_name}\([^)]+\)\s*\{{([^}}]*(?:\{{[^}}]*\}}[^}}]*)*)",

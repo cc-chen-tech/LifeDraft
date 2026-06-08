@@ -50,3 +50,5 @@
 - [x] 6.6 Push the branch and open a GitHub PR.
 - [x] 6.7 Merge after checks are acceptable or any platform/billing blocker is clearly separated from code failures.
 - [x] 6.8 After deployment completes, verify `story101.live` in browser for story reading and generated music behavior; if behavior is wrong, write a failing test before fixing.
+  - Verified on production after deploying PR #51 head manually to the ECS host: the browser UI reports MiniMax backend audio playback for story reading, auto-read waits for the final story-ready signal, and generated MiniMax music is inserted into the future queue without replacing the current NetEase track.
+  - GitHub Actions jobs still do not start because of account billing/spending-limit annotations; this remains separated from code and live runtime verification.

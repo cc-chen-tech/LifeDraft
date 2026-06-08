@@ -135,6 +135,7 @@ jobs:
           DEPLOY_REF: ${{ needs.verify-ci.outputs.deploy_ref }}
           DEPLOY_SHA: ${{ needs.verify-ci.outputs.deploy_sha }}
           MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+          GITHUB_DEPLOY_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if [ -z "${MINIMAX_API_KEY}" ]; then
@@ -143,11 +144,21 @@ jobs:
           fi
 
           MINIMAX_API_KEY_B64="$(printf '%s' "${MINIMAX_API_KEY}" | base64 | tr -d '\n')"
+          GITHUB_DEPLOY_TOKEN_B64="$(printf '%s' "${GITHUB_DEPLOY_TOKEN}" | base64 | tr -d '\n')"
           ssh -i ~/.ssh/ecs_deploy_key "${ECS_USER}@${ECS_HOST}" \
-            "DEPLOY_REF='${DEPLOY_REF}' DEPLOY_SHA='${DEPLOY_SHA}' ECS_DEPLOY_PATH='${ECS_DEPLOY_PATH}' MINIMAX_API_KEY_B64='${MINIMAX_API_KEY_B64}' bash -s" <<'EOF'
+            "DEPLOY_REF='${DEPLOY_REF}' DEPLOY_SHA='${DEPLOY_SHA}' ECS_DEPLOY_PATH='${ECS_DEPLOY_PATH}' MINIMAX_API_KEY_B64='${MINIMAX_API_KEY_B64}' GITHUB_DEPLOY_TOKEN_B64='${GITHUB_DEPLOY_TOKEN_B64}' bash -s" <<'EOF'
           set -euo pipefail
           cd "${ECS_DEPLOY_PATH}"
+          GITHUB_DEPLOY_TOKEN="$(printf '%s' "${GITHUB_DEPLOY_TOKEN_B64}" | base64 -d)"
+          unset GITHUB_DEPLOY_TOKEN_B64
+          cleanup_git_remote() {
+            git remote set-url origin https://github.com/cc-chen-tech/LifeDraft.git || true
+          }
+          trap cleanup_git_remote EXIT
+          git remote set-url origin "https://x-access-token:${GITHUB_DEPLOY_TOKEN}@github.com/cc-chen-tech/LifeDraft.git"
           git fetch origin main
+          git remote set-url origin https://github.com/cc-chen-tech/LifeDraft.git
+          unset GITHUB_DEPLOY_TOKEN
           git checkout main
           git reset --hard "${DEPLOY_SHA}"
           MINIMAX_API_KEY="$(printf '%s' "${MINIMAX_API_KEY_B64}" | base64 -d)"

@@ -90,7 +90,9 @@ class MiniMaxAsyncTTSClient:
         file_id = create_response.get("file_id")
 
         query_response: Mapping[str, Any] = create_response
-        for _ in range(12):
+        poll_interval_seconds = 0.5
+        poll_attempts = max(12, int(self.config.request_timeout_seconds / poll_interval_seconds))
+        for _ in range(poll_attempts):
             query_response = self._get_json(
                 self.config.tts_async_query_url,
                 {"task_id": str(task_id)},
@@ -102,7 +104,7 @@ class MiniMaxAsyncTTSClient:
                 break
             if status in {"failed", "expired"}:
                 raise RuntimeError(f"MiniMax async TTS task ended with status {status}")
-            time.sleep(0.5)
+            time.sleep(poll_interval_seconds)
         else:
             raise RuntimeError("MiniMax async TTS task did not complete before timeout")
 

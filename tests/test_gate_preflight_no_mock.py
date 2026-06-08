@@ -71,7 +71,9 @@ def test_preflight_script_runs_before_expensive_layers() -> None:
 def test_playwright_log_tempfile_template_has_enough_random_suffix() -> None:
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
 
-    assert 'mktemp "/tmp/story2-playwright-${label}-XXXXXX.log"' in script
+    assert 'PLAYWRIGHT_LOG_DIR="$TEST_RUN_DIR/playwright"' in script
+    assert 'output_file="${PLAYWRIGHT_LOG_DIR}/story2-playwright-${label}-$(date +%Y%m%d_%H%M%S)-${RANDOM}.log"' in script
+    assert 'rm -f "$PLAYWRIGHT_LOG_DIR/story2-playwright-${label}-"*.log' in script
     assert 'mktemp "/tmp/story2-playwright-${label}-XXXX.log"' not in script
 
 
@@ -138,13 +140,22 @@ def test_e2e_gate_does_not_reuse_frontend_from_other_worktree() -> None:
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
     config = (ROOT / "frontend" / "playwright.config.ts").read_text(encoding="utf-8")
 
-    assert "ensure_e2e_frontend_port_available" in script
-    assert 'local frontend_port="${E2E_FRONTEND_PORT:-3000}"' in script
+    assert 'TEST_NAMESPACE="${TEST_NAMESPACE:-$(printf' in script
+    assert 'TEST_RUN_ROOT="${TEST_RUN_ROOT:-$PROJECT_DIR/.test-runs}"' in script
+    assert 'TEST_RUN_DIR="${TEST_RUN_DIR:-$TEST_RUN_ROOT/$TEST_NAMESPACE}"' in script
+    assert 'TEST_LOCK_DIR="$TEST_RUN_ROOT/locks"' in script
+    assert 'mkdir -p "$TEST_LOCK_DIR"' in script
+    assert script.index('mkdir -p "$TEST_LOCK_DIR"') < script.index('mkdir "$lock_dir"')
+    assert "E2E_RESULT=1" in script.split('if ! mkdir "$lock_dir"', 1)[1].split("fi", 1)[0]
+    assert 'BACKEND_PID_FILE="$TEST_RUN_DIR/backend.pid"' in script
+    assert 'FRONTEND_PID_FILE="$TEST_RUN_DIR/frontend.pid"' in script
+    assert 'E2E_DB_PATH="$TEST_DATA_DIR/story2-e2e.sqlite"' in script
+    assert 'find_free_port "$E2E_BACKEND_PORT" "$(port_of_namespace_seed "$TEST_E2E_BACKEND_PORT_BASE")"' in script
+    assert 'find_free_port "$E2E_FRONTEND_PORT" "$(port_of_namespace_seed "$TEST_E2E_FRONTEND_PORT_BASE")"' in script
     assert "export E2E_FRONTEND_PORT" in script
-    assert "占用 3000 端口的前端不属于当前 worktree" in script
-    assert script.index("ensure_e2e_frontend_port_available") < script.index(
-        "npx playwright test --project=core"
-    )
+    assert "E2E 运行目录: ${TEST_RUN_DIR}" in script
+    assert "占用 3000 端口的前端不属于当前 worktree" not in script
+    assert "ensure_e2e_frontend_port_available" not in script
     assert "process.env.E2E_FRONTEND_PORT" in config
     assert "reuseExistingServer: false" in config
 
@@ -163,7 +174,10 @@ def test_e2e_specs_use_configured_frontend_port() -> None:
         spec = spec_path.read_text(encoding="utf-8")
         assert "const BASE_URL = 'http://localhost:3000'" not in spec
         assert "const BASE_URL = process.env.E2E_BASE_URL || ;" not in spec
+        assert "const API_URL = process.env.E2E_API_URL || ;" not in spec
+        assert "const API_BASE = process.env.E2E_API_URL || ;" not in spec
         assert "toContain('localhost:3000')" not in spec
+        assert "http://localhost:8000" not in spec
 
 
 def test_e2e_local_backend_and_browser_launch_are_configurable() -> None:
@@ -206,11 +220,14 @@ def test_e2e_local_backend_and_browser_launch_are_configurable() -> None:
     )[0]
     assert "await context.addCookies" in register_user_body
     assert "domain: 'localhost'" in register_user_body
-    assert "E2E_BACKEND_HOST=127.0.0.1 E2E_BACKEND_PORT=8000" in script
-    assert "关闭当前 8000 端口遗留后端进程" in script
+    assert 'E2E_BACKEND_HOST=127.0.0.1 E2E_BACKEND_PORT="$E2E_BACKEND_PORT"' in script
+    assert 'API_HOST=127.0.0.1 API_PORT="$E2E_BACKEND_PORT"' in script
+    assert 'DATABASE_URL="$LOCAL_E2E_DB_URL"' in script
+    assert 'cleanup_pid_file "$BACKEND_PID_FILE" "后端"' in script
     assert "MINIMAX_E2E_LOCAL_AUDIO=1" in script
     assert "E2E_FRONTEND_MODE:-prod" in script
     assert "NEXT_DISABLE_STANDALONE=1 npm run build" in script
+    assert 'BACKEND_URL="http://127.0.0.1:$E2E_BACKEND_PORT"' in script
     assert "npm run start -- --hostname 127.0.0.1" in script
     assert "if ! [ -d \".next\" ]" not in script
     assert "ulimit -n 8192" in script
@@ -482,6 +499,25 @@ def test_production_deploy_syncs_minimax_secret_to_ecs_env_without_committing_ke
     assert "sk-" not in workflow
 
 
+def test_production_deploy_fetches_private_repo_without_persisting_github_token() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "GITHUB_DEPLOY_TOKEN_B64" in workflow
+    assert "github.token" in workflow
+    assert "x-access-token:${GITHUB_DEPLOY_TOKEN}@github.com" in workflow
+    assert "git remote set-url origin https://github.com/cc-chen-tech/LifeDraft.git" in workflow
+    assert "trap cleanup_git_remote EXIT" in workflow
+    assert "unset GITHUB_DEPLOY_TOKEN_B64" in workflow
+    assert workflow.index("x-access-token:${GITHUB_DEPLOY_TOKEN}@github.com") < workflow.index(
+        "git fetch origin main"
+    )
+    assert workflow.index("git fetch origin main") < workflow.rindex(
+        "git remote set-url origin https://github.com/cc-chen-tech/LifeDraft.git"
+    )
+
+
 def test_e2e_prod_frontend_start_waits_until_listening_in_ci() -> None:
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
     start_block = script.split("npm run start -- --hostname 127.0.0.1", 1)[1].split(
@@ -490,7 +526,7 @@ def test_e2e_prod_frontend_start_waits_until_listening_in_ci() -> None:
 
     assert "for frontend_ready_attempt in" in start_block
     assert 'lsof -iTCP:"$frontend_port" -sTCP:LISTEN' in start_block
-    assert "cat /tmp/frontend_e2e.log" in start_block
+    assert 'cat "$FRONTEND_LOG"' in start_block
     assert "sleep 3\n        if ! lsof" not in start_block
 
 

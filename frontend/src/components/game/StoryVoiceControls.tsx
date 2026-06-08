@@ -104,7 +104,7 @@ export function StoryVoiceControls({
     void startReading({
       ...currentContext,
       text: finalText,
-      text_hash: `${finalText.length}-${finalText.slice(0, 16)}`,
+      text_hash: currentContext.text_hash || "pending-client-hash",
     });
   }, [autoReadReady, autoReadEnabled, autoReadText, currentContext, startReading]);
 

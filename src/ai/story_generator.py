@@ -401,8 +401,36 @@ class StoryGenerator:
 
             if not quick_result.passed:
                 logger.warning(f"Quick validation failed: {quick_result.issues}")
-                # 快速校验失败时，记录问题但不立即重试
-                # 让 AI 校验来决定是否需要重试
+                retry_lines = "\n".join(f"- {issue}" for issue in quick_result.issues)
+                if language == "zh":
+                    retry_prompt = (
+                        prompt
+                        + "\n\n【快速一致性修正 - 必须重写】\n"
+                        + retry_lines
+                        + "\n请重新生成本轮故事，严格使用可用人物列表和既有人设，不要新增替代关系网络。"
+                    )
+                else:
+                    retry_prompt = (
+                        prompt
+                        + "\n\n[Quick Consistency Fix - Regenerate Required]\n"
+                        + retry_lines
+                        + "\nRegenerate this round using the available people list and existing character setup."
+                    )
+                if status_callback:
+                    status_callback("retry")
+                story_text = self.client.call(
+                    system_prompt=sys_prompt,
+                    user_prompt=retry_prompt,
+                    temperature=0.65,
+                    max_tokens=8192,
+                    stream_callback=stream_callback,
+                    frequency_penalty=0.4,
+                    presence_penalty=0.4,
+                )
+                story_text = normalize_generated_story(story_text, language=language)
+                logger.info(
+                    "Quick validation retry completed with %d characters", len(story_text)
+                )
             elif quick_result.warnings:
                 logger.info(f"Quick validation warnings: {quick_result.warnings}")
 

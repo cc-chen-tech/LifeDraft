@@ -4,6 +4,7 @@
  */
 import {
   parseSSEError,
+  isRecoverableChoiceStreamError,
   handleChoiceComplete,
   enterResultPhase,
   handleChoiceAlreadyProcessed,
@@ -94,6 +95,18 @@ describe('choiceUtils', () => {
 
     it('handles number', () => {
       expect(parseSSEError(404)).toBe('404');
+    });
+  });
+
+  describe('isRecoverableChoiceStreamError', () => {
+    it('treats interrupted browser streams as recoverable', () => {
+      expect(isRecoverableChoiceStreamError('network error')).toBe(true);
+      expect(isRecoverableChoiceStreamError('net::ERR_INCOMPLETE_CHUNKED_ENCODING')).toBe(true);
+      expect(isRecoverableChoiceStreamError('Unknown error')).toBe(true);
+    });
+
+    it('does not treat domain validation errors as recoverable stream failures', () => {
+      expect(isRecoverableChoiceStreamError('Invalid option index')).toBe(false);
     });
   });
 
@@ -217,6 +230,50 @@ describe('choiceUtils', () => {
       expect(mockHandlers.setPhase).toHaveBeenCalledWith('result');
     });
 
+    it('handles fallback failure when the streaming choice already completed server-side', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        detail: {
+          error: 'choice_already_processed',
+          message: 'Choice was already processed. Please continue to next round.',
+        },
+      }, 400));
+
+      const context: ChoiceErrorContext = {
+        optionIndex: 0,
+        isRetry: false,
+        sseSucceeded: true,
+        baseStoryText: 'Base story',
+      };
+      const result = await handleFallbackChoice(123, context, mockHandlers, 'test');
+
+      expect(result).toBe(true);
+      expect(mockHandlers.setPhase).toHaveBeenCalledWith('result');
+    });
+
+    it('preserves structured FastAPI detail errors for already-processed fallback recovery', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        detail: {
+          error: 'choice_already_processed',
+          message: 'Choice was already processed. Please continue to next round.',
+        },
+      }, 400));
+
+      const context: ChoiceErrorContext = {
+        optionIndex: 0,
+        isRetry: false,
+        sseSucceeded: true,
+        baseStoryText: 'Base story',
+      };
+
+      await handleChoiceError(
+        { message: 'network error' },
+        123, mockHandlers, context, 'test'
+      );
+
+      expect(mockHandlers.setPhase).toHaveBeenCalledWith('result');
+      expect(mockHandlers.setConnectionStatus).not.toHaveBeenCalledWith('error');
+    });
+
     it('handles fallback failure with other error', async () => {
       (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ message: 'Network error' }, 400));
 
@@ -224,6 +281,31 @@ describe('choiceUtils', () => {
       const result = await handleFallbackChoice(123, context, mockHandlers, 'test');
 
       expect(result).toBe(false);
+    });
+
+    it('recovers from a transient choice-sync network failure when backend already saved history', async () => {
+      (global.fetch as jest.Mock).mockRejectedValue(new TypeError('Failed to fetch'));
+      storeSpy.spies.syncPlayerState.mockImplementation(async () => {
+        useGameStore.setState({
+          playerState: {
+            round_history: [{ story_continuation: '后端已经保存的选择结果' }],
+          } as never,
+        });
+      });
+
+      const context: ChoiceErrorContext = {
+        optionIndex: 0,
+        isRetry: false,
+        sseSucceeded: true,
+        baseStoryText: 'Base story',
+      };
+      const result = await handleFallbackChoice(123, context, mockHandlers, 'test');
+
+      expect(result).toBe(true);
+      expect(mockHandlers.setStoryText).toHaveBeenCalledWith(
+        'Base story\n\n--- 主角选择了：Option 1 ---\n\n后端已经保存的选择结果'
+      );
+      expect(mockHandlers.setPhase).toHaveBeenCalledWith('result');
     });
   });
 
@@ -298,11 +380,45 @@ describe('choiceUtils', () => {
       expect(choiceCalls.length).toBeGreaterThan(0);
     });
 
+    it('falls back when an already-started SSE choice stream is interrupted', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        story_continuation: '完整的同步续写结果',
+        summary: 'Result',
+        need_weekly_summary: false,
+        game_over: false,
+      }));
+      useGameStore.setState({
+        storyText: 'Base story plus partial broken stream',
+        currentEvent: { options: [{ text: 'Option 1' }] } as Record<string, unknown>,
+      });
+
+      const context: ChoiceErrorContext = {
+        optionIndex: 0,
+        isRetry: false,
+        sseSucceeded: true,
+        baseStoryText: 'Base story',
+      };
+
+      await handleChoiceError(
+        { message: 'network error' },
+        123, mockHandlers, context, 'test'
+      );
+
+      const choiceCalls = (global.fetch as jest.Mock).mock.calls.filter(
+        (c: unknown[]) => (c[0] as string).includes('choice-sync')
+      );
+      expect(choiceCalls.length).toBeGreaterThan(0);
+      expect(mockHandlers.setStoryText).toHaveBeenCalledWith(
+        'Base story\n\n--- 主角选择了：Option 1 ---\n\n完整的同步续写结果'
+      );
+      expect(mockHandlers.setPhase).toHaveBeenCalledWith('result');
+    });
+
     it('sets error phase for unhandled errors', async () => {
       const context: ChoiceErrorContext = { optionIndex: 0, isRetry: true, sseSucceeded: true };
 
       await handleChoiceError(
-        { message: 'Unknown error' },
+        { message: 'Invalid option index' },
         123, mockHandlers, context, 'test'
       );
 

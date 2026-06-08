@@ -18,7 +18,7 @@ import { startNetworkMonitoring, formatNetworkErrors } from './helpers/network-m
 import { waitForNetworkIdle, waitForStableDOM } from './helpers/wait-helpers';
 
 const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
-const API_URL = 'http://localhost:8000';
+const API_URL = process.env.E2E_API_URL || `http://${process.env.E2E_BACKEND_HOST || '127.0.0.1'}:${process.env.E2E_BACKEND_PORT || '8000'}`;
 
 /** SSE 事件收集器 */
 interface SSEEvent {

@@ -43,6 +43,17 @@ afterAll(() => {
   delete (global as any).Audio;
 });
 
+const playlistResponse = (gameId: number, currentSong: unknown = null, queue: unknown[] = []) =>
+  jsonResponse({
+    game_id: gameId,
+    current_song: currentSong,
+    queue,
+    played_songs: [],
+    is_playing: false,
+    volume: 0.5,
+    current_position_ms: 0,
+  });
+
 describe('MusicPlayer', () => {
   beforeEach(() => {
     global.fetch = jest
@@ -126,6 +137,7 @@ describe('MusicPlayer', () => {
           ],
         })
       )
+      .mockResolvedValueOnce(playlistResponse(77))
       .mockResolvedValueOnce(
         jsonResponse({
           mood: '紧张',
@@ -142,49 +154,68 @@ describe('MusicPlayer', () => {
             },
           ],
         })
-      );
+      )
+      .mockResolvedValueOnce(playlistResponse(77));
 
     render(<MusicPlayer storyText="现代医疗数据造假追捕逃亡" gameId={77} />);
 
     await screen.findByText('第一批');
     fireEvent.click(screen.getByRole('button', { name: '换一批' }));
 
-    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
-    expect(JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body).refresh).toBe(false);
-    expect(JSON.parse((global.fetch as jest.Mock).mock.calls[1][1].body)).toMatchObject({
+    await waitFor(() => {
+      const recommendCalls = (global.fetch as jest.Mock).mock.calls.filter(
+        (call: unknown[]) => String(call[0]).includes('/api/music/recommend')
+      );
+      expect(recommendCalls).toHaveLength(2);
+    });
+
+    const recommendCalls = (global.fetch as jest.Mock).mock.calls.filter(
+      (call: unknown[]) => String(call[0]).includes('/api/music/recommend')
+    );
+    expect(JSON.parse(recommendCalls[0][1].body).refresh).toBe(false);
+    expect(JSON.parse(recommendCalls[1][1].body)).toMatchObject({
       story_text: '现代医疗数据造假追捕逃亡',
       game_id: 77,
       refresh: true,
     });
+    expect(
+      (global.fetch as jest.Mock).mock.calls.some((call: unknown[]) =>
+        String(call[0]).includes('/api/music/playlist/77')
+      )
+    ).toBe(true);
   });
 
   it('legacy 推荐响应没有 music_brief 时不触发 AI 生成请求', async () => {
     (global.fetch as jest.Mock).mockReset();
-    (global.fetch as jest.Mock).mockResolvedValueOnce(
-      jsonResponse({
-        mood: '紧张',
-        scene_type: '追捕逃亡',
-        keywords: ['现代悬疑 纯音乐'],
-        songs: [
-          {
-            id: 1,
-            name: '第一批',
-            artists: ['Score'],
-            album: '影视配乐',
-            duration: 180000,
-            url: 'https://example.com/first.mp3',
-          },
-        ],
-      })
-    );
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(
+        jsonResponse({
+          mood: '紧张',
+          scene_type: '追捕逃亡',
+          keywords: ['现代悬疑 纯音乐'],
+          songs: [
+            {
+              id: 1,
+              name: '第一批',
+              artists: ['Score'],
+              album: '影视配乐',
+              duration: 180000,
+              url: 'https://example.com/first.mp3',
+            },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(playlistResponse(77));
 
     render(<MusicPlayer storyText="现代医疗数据造假追捕逃亡" gameId={77} />);
 
     await screen.findByText('第一批');
     await Promise.resolve();
 
-    expect(global.fetch).toHaveBeenCalledTimes(1);
-    expect((global.fetch as jest.Mock).mock.calls[0][0]).toContain('/api/music/recommend');
+    const calls = (global.fetch as jest.Mock).mock.calls;
+    expect(calls.some((call: unknown[]) => String(call[0]).includes('/api/music/recommend'))).toBe(true);
+    expect(calls.some((call: unknown[]) => String(call[0]).includes('/api/music/playlist/77'))).toBe(true);
+    expect(calls.some((call: unknown[]) => String(call[0]).includes('/api/music/generate'))).toBe(false);
   });
 });
 

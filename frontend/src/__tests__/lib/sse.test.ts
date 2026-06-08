@@ -159,24 +159,65 @@ describe('SSE Streaming', () => {
       expect(onComplete).not.toHaveBeenCalled();
     });
 
-    it('throws on HTTP errors', async () => {
+    it('throws on client HTTP errors without retrying', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
-        status: 500,
-        text: () => Promise.resolve('Server Error'),
+        status: 400,
+        text: () => Promise.resolve('Bad Request'),
       });
 
       const callbacks: StreamCallbacks = {};
 
-      await expect(streamGameEvent(123, callbacks)).rejects.toThrow('HTTP error! status: 500');
+      await expect(streamGameEvent(123, callbacks)).rejects.toThrow('HTTP error! status: 400');
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
-    it('throws on network errors', async () => {
-      mockFetch.mockRejectedValueOnce(new Error('Network failed'));
+    it('throws on network errors after retrying transient failures', async () => {
+      mockFetch
+        .mockRejectedValueOnce(new Error('Network failed'))
+        .mockRejectedValueOnce(new Error('Network failed'))
+        .mockRejectedValueOnce(new Error('Network failed'));
 
       const callbacks: StreamCallbacks = {};
 
-      await expect(streamGameEvent(123, callbacks)).rejects.toThrow('Network failed');
+      const promise = streamGameEvent(123, callbacks);
+      const rejection = expect(promise).rejects.toThrow('Network failed');
+      await Promise.resolve();
+      await jest.advanceTimersByTimeAsync(1000);
+      await Promise.resolve();
+      await jest.advanceTimersByTimeAsync(2000);
+
+      await rejection;
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+    });
+
+    it('retries transient 5xx responses before parsing event stream', async () => {
+      const onChunk = jest.fn();
+      const onReconnecting = jest.fn();
+      const callbacks: StreamCallbacks = { onChunk, onReconnecting };
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 502,
+          text: () => Promise.resolve('Bad Gateway'),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          body: createMockStream([
+            'data: {"content":"Recovered event"}\n\n',
+            'data: [DONE]\n\n',
+          ]),
+        });
+
+      const promise = streamGameEvent(123, callbacks);
+      await Promise.resolve();
+      await jest.advanceTimersByTimeAsync(1000);
+      await promise;
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(onReconnecting).toHaveBeenCalledWith(1, 3);
+      expect(onChunk).toHaveBeenCalledWith('Recovered event');
     });
   });
 
@@ -245,7 +286,12 @@ describe('SSE Streaming', () => {
     it('calls fetch with POST and character settings', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        body: createMockStream(['data: [DONE]\n\n']),
+        body: createMockStream([
+          'event: story\n',
+          'data: "开场故事。"\n\n',
+          'event: complete\n',
+          'data: {}\n\n',
+        ]),
       });
 
       const callbacks = {
@@ -275,6 +321,36 @@ describe('SSE Streaming', () => {
       expect(body.player_name).toBe('TestPlayer');
       expect(body.life_vision).toBe('My vision');
       expect(body.character_settings).toEqual({ era: 'modern', age: 25 });
+    });
+
+    it('rejects when opening story completes without any story text', async () => {
+      const onStory = jest.fn();
+      const onComplete = jest.fn();
+      const onError = jest.fn();
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: createMockStream([
+          'event: complete\n',
+          'data: {}\n\n',
+        ]),
+      });
+
+      await expect(
+        streamOpeningStory(
+          { era: 'modern' },
+          '林舟',
+          '找到自己的路',
+          'zh',
+          { onStory, onComplete, onError }
+        )
+      ).rejects.toThrow('Opening story stream completed without story text');
+
+      expect(onStory).not.toHaveBeenCalled();
+      expect(onComplete).not.toHaveBeenCalled();
+      expect(onError).toHaveBeenCalledWith({
+        message: 'Opening story stream completed without story text',
+      });
     });
 
     it('streams backend event: story chunks and preserves text when complete payload is empty', async () => {
@@ -338,6 +414,35 @@ describe('SSE Streaming', () => {
       await streamRegenerate(123, callbacks);
 
       expect(onChunk).toHaveBeenCalledWith('Regenerated story');
+    });
+
+    it('retries transient 5xx responses before parsing regenerated stream', async () => {
+      const onChunk = jest.fn();
+      const onReconnecting = jest.fn();
+      const callbacks: StreamCallbacks = { onChunk, onReconnecting };
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 504,
+          text: () => Promise.resolve('Gateway Timeout'),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          body: createMockStream([
+            'data: {"content":"Recovered regeneration"}\n\n',
+            'data: [DONE]\n\n',
+          ]),
+        });
+
+      const promise = streamRegenerate(123, callbacks);
+      await Promise.resolve();
+      await jest.advanceTimersByTimeAsync(1000);
+      await promise;
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(onReconnecting).toHaveBeenCalledWith(1, 3);
+      expect(onChunk).toHaveBeenCalledWith('Recovered regeneration');
     });
   });
 
@@ -405,8 +510,8 @@ describe('SSE Streaming', () => {
     it('handles HTTP errors', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
-        status: 500,
-        text: () => Promise.resolve('Server Error'),
+        status: 400,
+        text: () => Promise.resolve('Bad Request'),
       });
 
       const callbacks = {
@@ -416,6 +521,34 @@ describe('SSE Streaming', () => {
       };
 
       await expect(streamRewrite(123, 'context', 'instruction', 'segment', 'zh', callbacks)).rejects.toThrow('HTTP error');
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('retries transient 5xx responses before parsing rewrite stream', async () => {
+      const onStory = jest.fn();
+      const callbacks = { onStory, onStatus: jest.fn(), onComplete: jest.fn() };
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 502,
+          text: () => Promise.resolve('Bad Gateway'),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          body: createMockStream([
+            'data: {"type":"story_chunk","content":"Recovered rewrite"}\n\n',
+            'data: [DONE]\n\n',
+          ]),
+        });
+
+      const promise = streamRewrite(123, 'context', 'instruction', 'segment', 'zh', callbacks);
+      await Promise.resolve();
+      await jest.advanceTimersByTimeAsync(1000);
+      await promise;
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(onStory).toHaveBeenCalledWith('Recovered rewrite');
     });
   });
 

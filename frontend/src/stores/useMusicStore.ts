@@ -40,6 +40,16 @@ export interface MusicQueueMergeResult {
   queue: Song[];
 }
 
+interface PlaylistApiState {
+  game_id: number;
+  current_song: Song | null;
+  queue: Song[];
+  played_songs: Song[];
+  is_playing: boolean;
+  volume: number;
+  current_position_ms: number;
+}
+
 function songKey(song: Song): number | string {
   return song.id;
 }
@@ -94,6 +104,18 @@ function dedupeSongs(songs: Song[], excludedId: number | string | undefined): So
     seenIds.add(id);
   }
   return result;
+}
+
+function playlistStateToStorePatch(playlist: PlaylistApiState): Partial<MusicState> {
+  return {
+    playlistGameId: playlist.game_id,
+    currentSong: playlist.current_song,
+    queue: playlist.queue || [],
+    playedSongs: playlist.played_songs || [],
+    isPlaying: playlist.is_playing,
+    volume: playlist.volume,
+    currentTime: Math.max(0, (playlist.current_position_ms || 0) / 1000),
+  };
 }
 
 interface MusicState {
@@ -301,25 +323,58 @@ export const useMusicStore = create<MusicState>((set, get) => ({
     set({ fadeInterval: newFadeInterval });
   },
 
-  // Playlist actions (local-only; server playlist endpoints have been removed)
+  // Playlist actions
   loadPlaylist: async (gameId: number) => {
     set({ isLoadingPlaylist: true });
     try {
+      if (typeof fetch !== "undefined") {
+        const response = await fetch(`${API_BASE}/music/playlist/${gameId}`, {
+          credentials: "include",
+        });
+        if (response.ok) {
+          const playlist = (await response.json()) as PlaylistApiState;
+          set(playlistStateToStorePatch(playlist));
+          return;
+        }
+      }
       set({ playlistGameId: gameId });
     } catch (error) {
       console.error('[MusicStore] Failed to load playlist:', error);
+      set({ playlistGameId: gameId });
     } finally {
       set({ isLoadingPlaylist: false });
     }
   },
 
-  mergePlaylist: async (_gameId: number, songs: Song[], _mood?: string, _keywords?: string[]) => {
+  mergePlaylist: async (gameId: number, songs: Song[], mood?: string, keywords?: string[]) => {
     const { currentSong, queue } = get();
     const merged = mergeSongsPreservingCurrent(currentSong, queue, songs);
+    if (typeof fetch !== "undefined") {
+      try {
+        const response = await fetch(`${API_BASE}/music/playlist/${gameId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            songs,
+            mood,
+            keywords,
+          }),
+        });
+        if (response.ok) {
+          const playlist = (await response.json()) as PlaylistApiState;
+          set(playlistStateToStorePatch(playlist));
+          return;
+        }
+      } catch (error) {
+        console.warn("[MusicStore] Failed to persist playlist, using local queue:", error);
+      }
+    }
     set({
       currentSong: merged.currentSong,
       queue: merged.queue,
       playedSongs: [],
+      playlistGameId: gameId,
     });
   },
 
@@ -361,8 +416,38 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   },
 
   advanceQueue: async () => {
-    const { queue, currentSong, playedSongs } = get();
-    if (queue.length === 0) return;
+    const { queue, currentSong, playedSongs, playlistGameId } = get();
+    if (playlistGameId && typeof fetch !== "undefined") {
+      try {
+        const response = await fetch(`${API_BASE}/music/playlist/${playlistGameId}/advance`, {
+          method: "POST",
+          credentials: "include",
+        });
+        if (response.ok) {
+          const playlist = (await response.json()) as PlaylistApiState;
+          set(playlistStateToStorePatch(playlist));
+          return;
+        }
+      } catch (error) {
+        console.warn("[MusicStore] Failed to advance persisted playlist, using local queue:", error);
+      }
+    }
+
+    if (queue.length === 0) {
+      if (playedSongs.length === 0) return;
+      const wrappedCurrent = playedSongs[0];
+      const wrappedQueue = [
+        ...playedSongs.slice(1),
+        ...(currentSong ? [{ ...currentSong }] : []),
+      ];
+      set({
+        currentSong: wrappedCurrent,
+        queue: wrappedQueue,
+        playedSongs: [],
+      });
+      return;
+    }
+
     const nextSong = queue[0];
     const newQueue = queue.slice(1);
     set({

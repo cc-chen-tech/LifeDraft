@@ -165,10 +165,11 @@ export default function PlayPage() {
   const setActiveGameId = useMusicStore((state) => state.setActiveGameId);
 
   useEffect(() => {
-    if (storyText && !isViewingHistory) {
+    const storyReadyForMusic = phase === "options" || phase === "result";
+    if (storyText && !isViewingHistory && storyReadyForMusic) {
       setActiveStoryText(storyText);
     }
-  }, [storyText, isViewingHistory, setActiveStoryText]);
+  }, [storyText, isViewingHistory, phase, setActiveStoryText]);
 
   useEffect(() => {
     if (gameId) {
@@ -217,7 +218,9 @@ export default function PlayPage() {
 
   const showEmptyGenerationRecovery =
     !isViewingHistory &&
-    (phase === "loading" || phase === "generating" || phase === "choosing") &&
+    phase === "loading" &&
+    !storyText &&
+    !displayText &&
     options.length === 0;
 
   const handleRecoverGeneration = useCallback(() => {
@@ -457,7 +460,7 @@ export default function PlayPage() {
                     round_number: currentHistoryRound?.round ?? null,
                     stage: "event",
                     attempt_id: "history",
-                    text_hash: `${displayText.length}-${displayText.slice(0, 16)}`,
+                    text_hash: "pending-client-hash",
                     text: displayText,
                   }}
                   autoReadText={displayText}
@@ -484,7 +487,7 @@ export default function PlayPage() {
                   round_number: currentRound ?? null,
                   stage: "event",
                   attempt_id: `${progress?.week ?? 0}-${currentRound ?? 0}`,
-                  text_hash: `${displayText.length}-${displayText.slice(0, 16)}`,
+                  text_hash: "pending-client-hash",
                   text: displayText,
                 }}
                 autoReadText={displayText}

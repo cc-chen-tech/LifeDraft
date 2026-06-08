@@ -40,7 +40,10 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
           if (isCompleteReceived && completeData) {
             callbacks.onComplete?.(completeData);
           } else if (!isCompleteReceived && !isErrorReceived) {
-            callbacks.onComplete?.({});
+            const error = new Error('Stream ended without complete event');
+            callbacks.onError?.(error);
+            reject(error);
+            return;
           }
           safeResolve();
           return;
@@ -139,19 +142,83 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
   });
 }
 
+async function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    throw new DOMException('The operation was aborted.', 'AbortError');
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const timeoutId = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timeoutId);
+        reject(new DOMException('The operation was aborted.', 'AbortError'));
+      },
+      { once: true }
+    );
+  });
+}
+
+function shouldRetrySSEResponse(status: number): boolean {
+  return status === 502 || status === 504 || status >= 500;
+}
+
+async function fetchSSEWithRetry(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  callbacks: StreamCallbacks,
+  maxRetries = 3
+): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    if (init.signal?.aborted) {
+      throw new DOMException('The operation was aborted.', 'AbortError');
+    }
+
+    try {
+      const response = await fetch(input, init);
+      if (response.ok || !shouldRetrySSEResponse(response.status) || attempt === maxRetries - 1) {
+        return response;
+      }
+
+      lastError = new Error(`HTTP error! status: ${response.status}`);
+      callbacks.onConnectionStatus?.('reconnecting');
+      callbacks.onReconnecting?.(attempt + 1, maxRetries);
+    } catch (error) {
+      if (init.signal?.aborted || (error instanceof Error && error.name === 'AbortError')) {
+        throw error;
+      }
+
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (attempt === maxRetries - 1) {
+        throw lastError;
+      }
+
+      callbacks.onConnectionStatus?.('reconnecting');
+      callbacks.onReconnecting?.(attempt + 1, maxRetries);
+    }
+
+    await sleep(Math.pow(2, attempt) * 1000, init.signal || undefined);
+  }
+
+  throw lastError || new Error('SSE retry exhausted');
+}
+
 export async function streamChoice(
   gameId: number,
   choiceIndex: number,
   callbacks: StreamCallbacks,
   options?: { signal?: AbortSignal }
 ): Promise<void> {
-  const response = await fetch(`/api/games/${gameId}/choice`, {
+  const response = await fetchSSEWithRetry(`/api/games/${gameId}/choice`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({ option_index: choiceIndex }),
     signal: options?.signal,
-  });
+  }, callbacks);
 
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
@@ -171,13 +238,13 @@ export async function streamCustomChoice(
   callbacks: StreamCallbacks,
   options?: { signal?: AbortSignal }
 ): Promise<void> {
-  const response = await fetch(`/api/games/${gameId}/custom-choice`, {
+  const response = await fetchSSEWithRetry(`/api/games/${gameId}/custom-choice`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({ custom_text: customChoice }),
     signal: options?.signal,
-  });
+  }, callbacks);
 
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
@@ -196,11 +263,11 @@ export async function streamGameEvent(
   callbacks: StreamCallbacks,
   options?: { signal?: AbortSignal }
 ): Promise<void> {
-  const response = await fetch(`/api/games/${gameId}/event`, {
+  const response = await fetchSSEWithRetry(`/api/games/${gameId}/event`, {
     method: 'GET',
     credentials: 'include',
     signal: options?.signal,
-  });
+  }, callbacks);
 
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
@@ -219,11 +286,11 @@ export async function streamRegenerate(
   callbacks: StreamCallbacks,
   options?: { story_context?: string; adjustment?: string; signal?: AbortSignal }
 ): Promise<void> {
-  const response = await fetch(`/api/games/${gameId}/regenerate-stream`, {
+  const response = await fetchSSEWithRetry(`/api/games/${gameId}/regenerate-stream`, {
     method: 'GET',
     credentials: 'include',
     signal: options?.signal,
-  });
+  }, callbacks);
 
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
@@ -242,6 +309,8 @@ interface RewriteCallbacks {
   onStatus: (status: { phase: string }) => void;
   onComplete: (data: unknown) => void;
   onError?: (error: Error) => void;
+  onConnectionStatus?: (status: ConnectionStatus) => void;
+  onReconnecting?: (attempt: number, maxRetries: number) => void;
 }
 
 export async function streamRewrite(
@@ -253,7 +322,7 @@ export async function streamRewrite(
   callbacks: RewriteCallbacks,
   options?: { signal?: AbortSignal }
 ): Promise<{ completed: boolean; error?: Error }> {
-  const response = await fetch(`/api/games/${gameId}/rewrite-stream`, {
+  const response = await fetchSSEWithRetry(`/api/games/${gameId}/rewrite-stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -264,6 +333,9 @@ export async function streamRewrite(
       language: language,
     }),
     signal: options?.signal,
+  }, {
+    onConnectionStatus: callbacks.onConnectionStatus,
+    onReconnecting: callbacks.onReconnecting,
   });
 
   if (!response.ok) {
@@ -380,7 +452,7 @@ export async function streamOpeningStory(
   },
   options?: { signal?: AbortSignal; enableReconnect?: boolean }
 ): Promise<void> {
-  const response = await fetch('/api/character/opening-story', {
+  const response = await fetchSSEWithRetry('/api/character/opening-story', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -391,7 +463,7 @@ export async function streamOpeningStory(
       language: language,
     }),
     signal: options?.signal,
-  });
+  }, {});
 
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
@@ -402,9 +474,19 @@ export async function streamOpeningStory(
     throw new Error('No response body');
   }
 
+  let streamedText = '';
   return parseSSEStream(reader, {
-    onStory: callbacks.onStory,
-    onComplete: callbacks.onComplete as ((data: Record<string, unknown>) => void) | undefined,
+    onStory: (text) => {
+      streamedText += text;
+      callbacks.onStory?.(text);
+    },
+    onComplete: (data) => {
+      const fullStory = typeof data.full_story === 'string' ? data.full_story : '';
+      if (!streamedText.trim() && !fullStory.trim()) {
+        throw new Error('Opening story stream completed without story text');
+      }
+      callbacks.onComplete?.(data);
+    },
     onError: (error) => callbacks.onError?.({ message: error.message || 'Stream error' }),
   });
 }

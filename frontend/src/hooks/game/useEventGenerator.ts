@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useGameStore } from "@/stores/useGameStore";
 import { streamGameEvent } from "@/lib/sse";
 import type { EventOption } from "@/lib/types";
@@ -64,6 +64,42 @@ export function useEventGenerator({
   prefetchingRef,
   isRetryingRef,
 }: UseEventGeneratorParams) {
+  const retryStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearRetryStatusTimer = useCallback(() => {
+    if (retryStatusTimerRef.current) {
+      clearTimeout(retryStatusTimerRef.current);
+      retryStatusTimerRef.current = null;
+    }
+  }, []);
+
+  const armRetryStatusTimeout = useCallback(() => {
+    clearRetryStatusTimer();
+    retryStatusTimerRef.current = setTimeout(() => {
+      if (!isRetryingRef.current) return;
+      console.warn("[generateEvent] Retry status timed out, clearing retry guard");
+      isRetryingRef.current = false;
+      generatingRef.current = false;
+      pollingRef.current = false;
+      setProcessing(false);
+      setConnectionStatus("error");
+      setReconnectAttempt(null);
+      setRoundSummary(null);
+      setPhase("error");
+      retryStatusTimerRef.current = null;
+    }, 60000);
+  }, [
+    clearRetryStatusTimer,
+    generatingRef,
+    isRetryingRef,
+    pollingRef,
+    setConnectionStatus,
+    setPhase,
+    setProcessing,
+    setReconnectAttempt,
+    setRoundSummary,
+  ]);
+
   // Event handlers object for utility functions
   const eventHandlers: EventHandlers = {
     setStoryText,
@@ -136,7 +172,14 @@ export function useEventGenerator({
       gameId,
       {
         onStory: appendStoryText,
-        onStatus: (status) => handleStatusUpdate(status, setProcessing, isRetryingRef),
+        onStatus: (status) => {
+          handleStatusUpdate(status, setProcessing, isRetryingRef);
+          if (status.phase === "retry" || status.phase === "retrying") {
+            armRetryStatusTimeout();
+          } else {
+            clearRetryStatusTimer();
+          }
+        },
         onConnectionStatus: (status) => {
           setConnectionStatus(status);
           if (status !== "reconnecting") {
@@ -146,8 +189,12 @@ export function useEventGenerator({
         onReconnecting: (attempt, maxRetries) => {
           setReconnectAttempt({ current: attempt, max: maxRetries });
         },
-        onComplete: (data) => handleEventComplete(data, eventHandlers),
+        onComplete: (data) => {
+          clearRetryStatusTimer();
+          handleEventComplete(data, eventHandlers);
+        },
         onError: async (err) => {
+          clearRetryStatusTimer();
           const errorMsg = parseSSEError(err);
           console.log(`[generateEvent] SSE error: msg="${errorMsg}"`);
 
@@ -270,7 +317,7 @@ export function useEventGenerator({
         throw err; // Re-throw other errors
       }
     }
-  }, [gameId, setStoryText, appendStoryText, setProcessing, setCurrentEvent, setGameOver, setPhase, phaseRef, setConnectionStatus, setReconnectAttempt, setOptions, setRoundSummary]);
+  }, [gameId, setStoryText, appendStoryText, setProcessing, setCurrentEvent, setGameOver, setPhase, phaseRef, setConnectionStatus, setReconnectAttempt, setOptions, setRoundSummary, armRetryStatusTimeout, clearRetryStatusTimer]);
 
   const recoverEventGeneration = useCallback(async () => {
     abortRef.current?.abort();
@@ -279,6 +326,7 @@ export function useEventGenerator({
     pollingRef.current = false;
     prefetchingRef.current = false;
     isRetryingRef.current = false;
+    clearRetryStatusTimer();
     prefetchResultRef.current = null;
     setIsPrefetching(false);
     setProcessing(false);
@@ -303,6 +351,7 @@ export function useEventGenerator({
     setOptions,
     phaseRef,
     setPhase,
+    clearRetryStatusTimer,
     generateEvent,
   ]);
 
@@ -387,8 +436,9 @@ export function useEventGenerator({
       pollingRef.current = false;
       prefetchingRef.current = false;
       isRetryingRef.current = false;
+      clearRetryStatusTimer();
     };
-  }, []);
+  }, [abortRef, prefetchAbortRef, generatingRef, pollingRef, prefetchingRef, isRetryingRef, clearRetryStatusTimer]);
 
   return {
     generateEvent,

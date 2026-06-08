@@ -90,6 +90,12 @@ class QuickValidator:
         "游戏公司",
     ]
 
+    COMMON_CHINESE_SURNAMES = (
+        "赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦尤许何吕施张孔曹严华金魏陶姜谢"
+        "邹喻柏水窦章云苏潘葛奚范彭郎鲁韦昌马苗凤花方俞任袁柳鲍史唐费廉"
+        "岑薛雷贺倪汤滕殷罗毕郝邬安常乐于时傅皮卞齐康伍余元卜顾孟平黄"
+    )
+
     def __init__(self):
         self._forbidden_pattern_zh = self._build_forbidden_pattern("zh")
         self._forbidden_pattern_en = self._build_forbidden_pattern("en")
@@ -134,6 +140,10 @@ class QuickValidator:
         if available_people:
             name_issues = self._check_character_names(story_text, available_people, language)
             warnings.extend(name_issues)  # 作为警告，不阻止生成
+            cast_drift_issues = self._check_key_people_cast_drift(
+                story_text, available_people, language
+            )
+            issues.extend(cast_drift_issues)
 
         # 3. 检查人称一致性
         perspective_issues = self._check_perspective_consistency(story_text, language)
@@ -190,6 +200,53 @@ class QuickValidator:
         # 不再尝试从文本中提取人名，因为误报率太高
         # 只检查 available_people 中的人名是否出现在文本中（用于其他用途）
         return warnings
+
+    def _check_key_people_cast_drift(
+        self, text: str, available_people: List[str], language: str
+    ) -> List[str]:
+        """Detect severe drift where key people disappear and a new named cast appears."""
+        allowed_names = [name.strip() for name in available_people if name and name.strip()]
+        if len(allowed_names) < 2:
+            return []
+
+        present_allowed = [name for name in allowed_names if name in text]
+        if present_allowed:
+            return []
+
+        if language != "zh":
+            return [
+                "上一版故事完全没有使用预设关键人物；请至少使用一个可用人物列表中的关键人物，并避免凭空替换关系网络。"
+            ]
+
+        invented_names = self._extract_likely_chinese_person_names(text, allowed_names)
+        if len(invented_names) >= 2:
+            return [
+                "上一版故事完全没有使用预设关键人物，反而引入了名单外人物"
+                f"（{ '、'.join(invented_names[:5]) }）；请围绕可用人物列表重写。"
+            ]
+
+        return [
+            "上一版故事完全没有使用预设关键人物；请至少使用一个可用人物列表中的关键人物，并避免凭空替换关系网络。"
+        ]
+
+    def _extract_likely_chinese_person_names(
+        self, text: str, allowed_names: List[str]
+    ) -> List[str]:
+        surname_class = re.escape(self.COMMON_CHINESE_SURNAMES)
+        role_titles = "老板|经理|律师|老师|医生|同事|主管|主任|警官|先生|女士|小姐|阿姨|叔叔"
+        pattern = re.compile(
+            rf"([{surname_class}][\u4e00-\u9fff]{{1,2}}(?:{role_titles})?)"
+        )
+        names: List[str] = []
+        for match in pattern.findall(text):
+            candidate = str(match).strip("，。！？、；：“”‘’（）()《》")
+            if not candidate or candidate in allowed_names:
+                continue
+            if any(candidate in allowed or allowed in candidate for allowed in allowed_names):
+                continue
+            if candidate not in names:
+                names.append(candidate)
+        return names
 
     def _check_perspective_consistency(self, text: str, language: str) -> List[str]:
         """Check that narrative does not use first-person perspective.

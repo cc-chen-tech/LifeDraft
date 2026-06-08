@@ -65,6 +65,9 @@ class Settings:
         os.getenv("IMAGE_GENERATION_TIMEOUT", "120")
     )  # ★ 默认120秒，图生图需要更长时间
     IMAGE_MAX_RETRIES: int = int(os.getenv("IMAGE_MAX_RETRIES", "3"))
+    AUTO_GENERATE_ENTITY_IMAGES_FOR_SCENES: bool = (
+        os.getenv("AUTO_GENERATE_ENTITY_IMAGES_FOR_SCENES", "false").lower() == "true"
+    )
 
     # ★ 模型降级配置（逗号分隔，可在.env中覆盖）
     TEXT_TO_IMAGE_MODELS: str = os.getenv("TEXT_TO_IMAGE_MODELS", "qwen-image-max,wanx2.1-v2,qwen-image-plus")

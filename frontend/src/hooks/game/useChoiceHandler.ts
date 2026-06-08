@@ -129,12 +129,20 @@ export function useChoiceHandler({
           optionIndex,
           isRetry,
           sseSucceeded,
+          baseStoryText: choiceBaseStoryRef.current,
           retryChoice: () => handleChoice(optionIndex, true),
         }, "handleChoice");
       },
     };
 
-    await streamChoice(gameId, optionIndex, callbacks, { signal: abortRef.current.signal });
+    try {
+      await streamChoice(gameId, optionIndex, callbacks, { signal: abortRef.current.signal });
+    } catch (err) {
+      if (abortRef.current?.signal.aborted) {
+        return;
+      }
+      console.warn("[handleChoice] streamChoice rejected after onError handling:", err);
+    }
   };
 
   // Handle custom choice
@@ -178,11 +186,19 @@ export function useChoiceHandler({
           customText,
           isRetry: false,
           sseSucceeded,
+          baseStoryText: choiceBaseStoryRef.current,
         }, "handleCustomChoice");
       },
     };
 
-    await streamCustomChoice(gameId, customText, callbacks, { signal: abortRef.current.signal });
+    try {
+      await streamCustomChoice(gameId, customText, callbacks, { signal: abortRef.current.signal });
+    } catch (err) {
+      if (abortRef.current?.signal.aborted) {
+        return;
+      }
+      console.warn("[handleCustomChoice] streamCustomChoice rejected after onError handling:", err);
+    }
   };
 
   return {

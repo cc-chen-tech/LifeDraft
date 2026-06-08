@@ -47,6 +47,7 @@ class StoryVoiceReadingRepository:
         speed: float,
         provider: Optional[str] = None,
         model: Optional[str] = None,
+        user_id: Optional[int] = None,
     ) -> Optional[GeneratedVoiceAsset]:
         query = (
             self.db.query(GeneratedVoiceAsset)
@@ -61,6 +62,8 @@ class StoryVoiceReadingRepository:
             query = query.filter(GeneratedVoiceAsset.provider == provider)
         if model is not None:
             query = query.filter(GeneratedVoiceAsset.model == model)
+        if user_id is not None:
+            query = query.filter(GeneratedVoiceAsset.user_id == user_id)
         return query.order_by(GeneratedVoiceAsset.created_at.desc()).first()
 
     def create_asset(

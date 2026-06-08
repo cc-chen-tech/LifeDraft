@@ -18,7 +18,7 @@ import { test, expect, Page, BrowserContext, APIRequestContext } from '@playwrig
 import { ensureAuthenticated, registerUser } from './helpers/auth';
 import { startNetworkMonitoring, waitForNetworkIdle, formatNetworkErrors } from './helpers/network-monitor';
 
-const API_URL = 'http://localhost:8000';
+const API_URL = process.env.E2E_API_URL || `http://${process.env.E2E_BACKEND_HOST || '127.0.0.1'}:${process.env.E2E_BACKEND_PORT || '8000'}`;
 const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
 
 // ============================================================================

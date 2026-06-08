@@ -271,9 +271,9 @@ class TestEraAnachronismContract:
         )
 
         # week=2, current_round=0, rounds_per_week=3 -> total_chapter = 2*3+0+1 = 7
-        assert "第七回" in prompt, "提示词应包含正确的章节号'第七回'"
+        assert "第3周·周一" in prompt, "现代背景提示词应使用周次时间线标题"
         assert "第7章" in prompt, "提示词应包含数字章节号'第7章'"
-        assert "章节号约束" in prompt, "提示词应包含章节号约束区块"
+        assert "时间线标题约束" in prompt, "现代背景提示词应包含时间线标题约束区块"
 
     @pytest.mark.xfail(reason="currency_name 默认为'货币'，碳信用货币功能尚未实现")
     def test_currency_is_carbon_credit_in_prompt(self):
@@ -341,5 +341,5 @@ class TestEraAnachronismContract:
         )
 
         # week=0, current_round=0 -> total_chapter = 1
-        assert "第一回" in prompt, "第一章应显示'第一回'"
+        assert "第1周·周一" in prompt, "现代背景第一章应显示周次时间线"
         assert "绝对禁止提及" in prompt, "第一章应包含禁止提及'上回'的约束"

@@ -296,6 +296,192 @@ class TestGetOrBuildPool:
         assert first_pool.query_cursor != second_pool.query_cursor
         assert first_query != second_query
 
+    async def test_supplement_pool_filters_prompt_leak_song_titles(self):
+        """网易云搜索结果中的 LLM 提示词泄漏标题不应进入推荐池。"""
+        service = MusicService()
+        pool = CachedMusicPool(
+            analysis={
+                "mood": "紧张",
+                "scene_type": "职场危机",
+                "environment": "现代都市",
+                "search_queries": ["现代悬疑 纯音乐"],
+            },
+            verified_songs=[],
+            created_at=time.time(),
+        )
+        service.music_client.search = AsyncMock(
+            return_value=[
+                Song(
+                    id=9101,
+                    name="请提供需要分析的文本内容，我将按照您的要求提取歌名信息。若输入文本没有歌名，则输出0",
+                    artists=["用户415329033"],
+                    album="请提供需要分析的文本内容",
+                    duration=182768,
+                ),
+                Song(
+                    id=9102,
+                    name="都市暗涌",
+                    artists=["影视配乐"],
+                    album="现代悬疑氛围",
+                    duration=120000,
+                ),
+            ]
+        )
+        service.music_client.get_song_url = AsyncMock(
+            side_effect=lambda song_id: f"https://cdn.example.com/{song_id}.mp3"
+        )
+
+        await service._supplement_pool(pool)
+
+        assert [song.id for song in pool.verified_songs] == [9102]
+
+    async def test_supplement_pool_filters_negative_cue_songs_for_story_context(self):
+        """与故事负向 cue 明确冲突的歌曲不应进入推荐池。"""
+        service = MusicService()
+        pool = CachedMusicPool(
+            analysis={
+                "mood": "紧张",
+                "scene_type": "职场数据造假",
+                "environment": "现代都市",
+                "search_queries": ["现代悬疑 纯音乐"],
+                "negative_cues": ["type beat", "喜欢你", "情歌", "流行人声"],
+            },
+            verified_songs=[],
+            created_at=time.time(),
+        )
+        service.music_client.search = AsyncMock(
+            return_value=[
+                Song(
+                    id=9201,
+                    name="双截棍type beat",
+                    artists=["To."],
+                    album="累了",
+                    duration=178217,
+                ),
+                Song(
+                    id=9202,
+                    name="喜欢你-0.8x",
+                    artists=["翻唱"],
+                    album="流行情歌",
+                    duration=180000,
+                ),
+                Song(
+                    id=9203,
+                    name="都市冷光",
+                    artists=["Score Lab"],
+                    album="现代悬疑配乐",
+                    duration=150000,
+                ),
+            ]
+        )
+        service.music_client.get_song_url = AsyncMock(
+            side_effect=lambda song_id: f"https://cdn.example.com/{song_id}.mp3"
+        )
+
+        await service._supplement_pool(pool)
+
+        assert [song.id for song in pool.verified_songs] == [9203]
+
+    async def test_supplement_pool_filters_modern_product_workplace_pop_mismatches(self):
+        """现代产品/用户访谈场景不应收进生产中暴露的流行歌曲弱匹配。"""
+        service = MusicService()
+        pool = CachedMusicPool(
+            analysis={
+                "mood": "专注夹杂焦虑",
+                "scene_type": "用户访谈复盘",
+                "environment": "2020年代互联网公司会议室",
+                "story_style": "现代职场产品经理成长",
+                "music_style": "流行",
+                "pacing": "紧凑",
+                "energy": "中",
+                "instruments": ["电子合成器", "钢琴"],
+                "keywords": ["AI协作", "产品设计", "用户数据"],
+                "search_queries": ["产品经理 用户访谈 氛围音乐"],
+            },
+            verified_songs=[],
+            created_at=time.time(),
+        )
+        service.music_client.search = AsyncMock(
+            return_value=[
+                Song(id=9301, name="说散就散", artists=["流行歌手"], album="伤感流行", duration=180000),
+                Song(id=9302, name="匆匆那年", artists=["流行歌手"], album="青春情歌", duration=180000),
+                Song(id=9303, name="夜曲", artists=["流行歌手"], album="热门金曲", duration=180000),
+                Song(id=9304, name="一直很安静", artists=["流行歌手"], album="影视情歌", duration=180000),
+                Song(
+                    id=9305,
+                    name="产品白板冷光",
+                    artists=["Score Lab"],
+                    album="办公室轻电子氛围",
+                    duration=150000,
+                ),
+            ]
+        )
+        service.music_client.get_song_url = AsyncMock(
+            side_effect=lambda song_id: f"https://cdn.example.com/{song_id}.mp3"
+        )
+
+        await service._supplement_pool(pool)
+
+        assert [song.id for song in pool.verified_songs] == [9305]
+
+    async def test_supplement_pool_filters_workplace_candidates_without_score_metadata(self):
+        """现代职场场景应过滤不含配乐/氛围/正向场景元数据的弱相关歌曲。"""
+        service = MusicService()
+        pool = CachedMusicPool(
+            analysis={
+                "mood": "专注夹杂焦虑",
+                "scene_type": "用户访谈复盘",
+                "environment": "2020年代互联网公司会议室",
+                "story_style": "现代职场产品经理成长",
+                "pacing": "紧凑",
+                "energy": "中",
+                "instruments": ["电子合成器", "钢琴"],
+                "keywords": ["AI协作", "产品设计", "用户数据"],
+                "search_queries": ["上海 都市 电子 背景音乐"],
+            },
+            verified_songs=[],
+            created_at=time.time(),
+        )
+        service.music_client.search = AsyncMock(
+            return_value=[
+                Song(
+                    id=9401,
+                    name="童话镇",
+                    artists=["流行歌手"],
+                    album="热门单曲",
+                    duration=180000,
+                ),
+                Song(
+                    id=9402,
+                    name="童话",
+                    artists=["流行歌手"],
+                    album="经典流行",
+                    duration=180000,
+                ),
+                Song(
+                    id=9403,
+                    name="1_AM（童话）",
+                    artists=["Vocal"],
+                    album="翻唱合集",
+                    duration=180000,
+                ),
+                Song(
+                    id=9404,
+                    name="数据白板",
+                    artists=["Score Lab"],
+                    album="都市电子背景音乐",
+                    duration=150000,
+                ),
+            ]
+        )
+        service.music_client.get_song_url = AsyncMock(
+            side_effect=lambda song_id: f"https://cdn.example.com/{song_id}.mp3"
+        )
+
+        await service._supplement_pool(pool)
+
+        assert [song.id for song in pool.verified_songs] == [9404]
+
 
 class TestRefreshPoolUrls:
     """验证 _refresh_pool_urls 方法。"""

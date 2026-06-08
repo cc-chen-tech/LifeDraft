@@ -4,6 +4,7 @@ Handles weekly summaries, bonus effects, and periodic summaries.
 """
 
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Dict, Optional
 
@@ -97,8 +98,25 @@ class RoundFinalizer:
         player_state.advance_week()
         logger.info(f"Advanced to 第{player_state.week + 1}周")
 
-        # Synthesize character profiles + summaries in parallel
         new_week = player_state.week
+        self._start_post_week_enrichment(new_week)
+
+    def _start_post_week_enrichment(self, new_week: int) -> None:
+        """Run non-critical week-end enrichment without blocking the choice response."""
+        thread = threading.Thread(
+            target=self._run_post_week_enrichment_tasks,
+            args=(new_week,),
+            name=f"post-week-enrichment-{new_week}",
+            daemon=True,
+        )
+        thread.start()
+
+    def _run_post_week_enrichment_tasks(self, new_week: int) -> None:
+        """Synthesize profiles and collection metadata after the week has advanced."""
+        player_state = self.player_state
+        if not player_state:
+            return
+
         parallel_tasks = []
         with ThreadPoolExecutor(max_workers=4) as executor:
             # Always run character profile synthesis

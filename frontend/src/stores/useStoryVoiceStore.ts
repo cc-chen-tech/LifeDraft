@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { api } from "@/lib/api";
+import { storyVoiceTextToHash } from "@/lib/storyVoiceTextHash";
 import type { ReadingContext } from "@/lib/types";
 
 export type VoiceReadingState = "idle" | "loading" | "ready" | "playing" | "paused" | "failed";
@@ -51,11 +52,7 @@ function contextLabel(context: ReadingContext): string {
 }
 
 async function normalizeTextHash(text: string): Promise<string> {
-  const normalized = text.split(/\s+/).filter(Boolean).join(" ");
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(normalized));
-  return Array.from(new Uint8Array(digest))
-    .map((value) => value.toString(16).padStart(2, "0"))
-    .join("");
+  return storyVoiceTextToHash(text);
 }
 
 let activeUtterance: SpeechSynthesisUtterance | null = null;

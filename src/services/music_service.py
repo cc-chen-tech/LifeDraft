@@ -60,6 +60,10 @@ LOVE_POP_CUES = {
     "匆匆那年",
     "告白气球",
     "喜欢你",
+    "等你下课",
+    "不再联系",
+    "双截棍",
+    "type beat",
     "恋爱",
     "爱情",
     "情歌",
@@ -83,6 +87,15 @@ SUSPENSE_CONTEXT_CUES = {
     "犯罪",
     "惊悚",
     "危机",
+    "债务",
+    "负债",
+    "欠债",
+    "追债",
+    "担保",
+    "债主",
+    "律师",
+    "财务",
+    "金融",
 }
 
 SUSPENSE_NEGATIVE_CUES = [
@@ -99,6 +112,99 @@ SUSPENSE_NEGATIVE_CUES = [
     "匆匆那年",
     "告白气球",
     "喜欢你",
+    "等你下课",
+    "不再联系",
+    "双截棍",
+    "type beat",
+]
+
+WORKPLACE_CONTEXT_CUES = {
+    "产品经理",
+    "产品设计",
+    "用户访谈",
+    "用户研究",
+    "需求评审",
+    "原型",
+    "迭代",
+    "数据分析",
+    "用户数据",
+    "AI协作",
+    "互联网公司",
+    "科技公司",
+    "会议室",
+    "办公室",
+    "现代职场",
+}
+
+WORKPLACE_NEGATIVE_CUES = [
+    "恋爱",
+    "爱情",
+    "情歌",
+    "甜蜜",
+    "告白",
+    "表白",
+    "青春",
+    "伤感流行",
+    "流行人声",
+    "热门金曲",
+    "影视情歌",
+    "人声",
+    "歌词",
+    "说散就散",
+    "匆匆那年",
+    "夜曲",
+    "一直很安静",
+    "平凡之路",
+    "岁月神偷",
+    "等你下课",
+    "不再联系",
+    "type beat",
+]
+
+WORKPLACE_FALLBACK_QUERIES = ["办公室 轻电子 氛围", "数据分析 纯音乐", "产品设计 无歌词"]
+
+WORKPLACE_SCORE_METADATA_CUES = {
+    "纯音乐",
+    "轻音乐",
+    "背景音乐",
+    "配乐",
+    "氛围",
+    "电子",
+    "钢琴",
+    "合成器",
+    "办公室",
+    "职场",
+    "产品",
+    "数据",
+    "用户",
+    "科技",
+    "都市",
+    "城市",
+    "白板",
+    "低调",
+    "专注",
+    "工作",
+    "会议",
+    "instrumental",
+    "ambient",
+    "score",
+    "soundtrack",
+    "ost",
+}
+
+PROMPT_LEAK_SONG_CUES = [
+    "请提供需要分析的文本",
+    "请补充文本",
+    "未提供具体文本",
+    "没有提供具体的文本",
+    "无法提取歌名",
+    "提取歌名信息",
+    "若输入文本",
+    "若文本",
+    "若输入无歌名",
+    "我会输出",
+    "输出：0",
+    "按照您的要求",
 ]
 
 
@@ -121,12 +227,76 @@ def _is_love_pop_query(query: str) -> bool:
 
 def _suspense_search_queries(context_text: str) -> List[str]:
     queries: List[str] = []
+    if _contains_any(context_text, ["债务", "负债", "欠债", "追债", "担保", "债主", "律师", "财务", "金融"]):
+        queries.extend(["债务危机 紧张氛围", "金融危机 影视配乐", "商务悬疑 纯音乐"])
     if _contains_any(context_text, ["医疗", "医院", "数据", "造假"]):
         queries.extend(["医疗悬疑 氛围音乐", "现代医院 紧张配乐"])
     if _contains_any(context_text, ["追捕", "逃亡"]):
         queries.extend(["追捕逃亡 紧张配乐", "追捕 悬疑 纯音乐"])
     queries.extend(["现代悬疑 纯音乐", "悬疑 影视配乐", "无歌词 紧张氛围"])
     return _dedupe_text(queries)
+
+
+def _workplace_search_queries(context_text: str) -> List[str]:
+    queries: List[str] = []
+    if _contains_any(context_text, ["产品经理", "产品设计", "需求评审", "原型", "迭代"]):
+        queries.extend(["产品经理 工作配乐", "产品设计 轻电子", "需求评审 纯音乐"])
+    if _contains_any(context_text, ["用户访谈", "用户研究"]):
+        queries.extend(["用户访谈 氛围音乐", "用户研究 低调配乐"])
+    if _contains_any(context_text, ["数据分析", "用户数据", "AI协作"]):
+        queries.extend(["数据分析 电子氛围", "AI协作 科技氛围"])
+    if _contains_any(context_text, ["互联网公司", "科技公司", "会议室", "办公室", "现代职场"]):
+        queries.extend(["科技公司 低调配乐", *WORKPLACE_FALLBACK_QUERIES])
+    queries.extend(["现代职场 纯音乐", "无歌词 专注氛围"])
+    return _dedupe_text(queries)
+
+
+def _looks_like_prompt_leak_song(song: Song) -> bool:
+    """Reject search results that are LLM prompt/response text, not song metadata."""
+    text = " ".join([song.name, song.album, *song.artists])
+    return any(cue in text for cue in PROMPT_LEAK_SONG_CUES)
+
+
+def _matches_negative_music_cue(song: Song, negative_cues: Sequence[str]) -> bool:
+    """Reject playable search results that contradict the story's music brief."""
+    text = " ".join([song.name, song.album, *song.artists]).lower()
+    return any(cue and str(cue).lower() in text for cue in negative_cues)
+
+
+def _is_workplace_music_brief(brief: "MusicBrief") -> bool:
+    context_text = " ".join(
+        [
+            brief.mood,
+            brief.scene_type,
+            brief.era_or_environment,
+            brief.pacing,
+            brief.energy,
+            " ".join(brief.instruments),
+            " ".join(brief.search_queries),
+        ]
+    )
+    return _contains_any(context_text, list(WORKPLACE_CONTEXT_CUES))
+
+
+def _matches_workplace_music_candidate(song: Song, brief: "MusicBrief") -> bool:
+    """Keep workplace NetEase fallback strict enough to avoid generic vocal-pop hits."""
+    text = " ".join([song.name, song.album, *song.artists]).lower()
+    if _contains_any(text, list(WORKPLACE_SCORE_METADATA_CUES)):
+        return True
+
+    positive_terms: List[str] = []
+    for value in [
+        brief.mood,
+        brief.scene_type,
+        brief.era_or_environment,
+        brief.pacing,
+        brief.energy,
+        *brief.instruments,
+        *brief.search_queries,
+    ]:
+        positive_terms.extend(str(value).split())
+
+    return any(term and len(term) >= 2 and term.lower() in text for term in positive_terms)
 
 
 @dataclass
@@ -198,6 +368,11 @@ class MusicBrief:
             instruments = cls.default().instruments
         normalized_instruments = [str(item) for item in instruments if item]
 
+        raw_keywords = analysis.get("keywords")
+        normalized_keywords = (
+            [str(item) for item in raw_keywords if item] if isinstance(raw_keywords, list) else []
+        )
+
         search_queries = analysis.get("search_queries") or analysis.get("keywords")
         if not isinstance(search_queries, list):
             search_queries = cls.default().search_queries
@@ -217,10 +392,22 @@ class MusicBrief:
                 energy,
                 str(analysis.get("story_style") or ""),
                 str(analysis.get("music_style") or ""),
+                " ".join(normalized_keywords),
                 " ".join(normalized_queries),
                 " ".join(normalized_instruments),
             ]
         )
+        if _contains_any(context_text, list(WORKPLACE_CONTEXT_CUES)):
+            filtered_queries = [
+                query for query in normalized_queries if not _is_love_pop_query(query)
+            ]
+            normalized_queries = _dedupe_text(
+                [*_workplace_search_queries(context_text), *filtered_queries]
+            )
+            normalized_negative = _dedupe_text(
+                [*normalized_negative, *WORKPLACE_NEGATIVE_CUES]
+            )
+
         if _contains_any(context_text, list(SUSPENSE_CONTEXT_CUES)):
             filtered_queries = [
                 query for query in normalized_queries if not _is_love_pop_query(query)
@@ -717,7 +904,10 @@ class MusicService:
             query_cursor=pool.query_cursor,
         )
         if len(pool.verified_songs) < 5:
-            search_keywords.extend(["轻音乐", "纯音乐", "背景音乐"])
+            if _is_workplace_music_brief(brief):
+                search_keywords.extend(WORKPLACE_FALLBACK_QUERIES)
+            else:
+                search_keywords.extend(["轻音乐", "纯音乐", "背景音乐"])
 
         for keyword in search_keywords[:8]:
             if len(pool.verified_songs) >= 20:
@@ -725,6 +915,30 @@ class MusicService:
             songs = await self.music_client.search(keyword, limit=10)
             for song in songs:
                 if song.id in seen_ids or len(pool.verified_songs) >= 20:
+                    continue
+                if _looks_like_prompt_leak_song(song):
+                    logger.info(
+                        "[MusicService] Skipping prompt-leak music result: id=%s name=%s",
+                        song.id,
+                        song.name[:80],
+                    )
+                    continue
+                if _matches_negative_music_cue(song, brief.negative_cues):
+                    logger.info(
+                        "[MusicService] Skipping negative-cue music result: id=%s name=%s",
+                        song.id,
+                        song.name[:80],
+                    )
+                    continue
+                if (
+                    _is_workplace_music_brief(brief)
+                    and not _matches_workplace_music_candidate(song, brief)
+                ):
+                    logger.info(
+                        "[MusicService] Skipping weak workplace music result: id=%s name=%s",
+                        song.id,
+                        song.name[:80],
+                    )
                     continue
                 song_url = song.url or await self.music_client.get_song_url(song.id)
                 if not song_url:

@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { ensureAuthenticated } from "./helpers/auth";
 
-const API_URL = "http://localhost:8000";
+const API_URL = process.env.E2E_API_URL || `http://${process.env.E2E_BACKEND_HOST || '127.0.0.1'}:${process.env.E2E_BACKEND_PORT || '8000'}`;
 
 // 通过 API 直接创建测试游戏
 async function createTestGame(
@@ -52,6 +52,7 @@ test.describe("叙事质量设置", () => {
     // 断言 DropdownMenu 可见且包含"设置"和"叙事质量"
     await expect(page.locator("text=设置").first()).toBeVisible();
     await expect(page.locator("text=叙事质量").first()).toBeVisible();
+    await expect(page.locator('[data-testid="chat-bar-panel"]')).not.toBeVisible();
 
     // Hover 到"叙事质量"上展开子菜单
     await page.locator("text=叙事质量").first().hover();
