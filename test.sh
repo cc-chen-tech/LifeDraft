@@ -309,6 +309,7 @@ run_mypy() {
         src/services/minimax_config.py
         src/services/minimax_story_tts_provider.py
         src/services/minimax_music_generation.py
+        src/game/relationship_authority.py
         src/services/story_tts_provider.py
         src/services/story_voice_reading.py
         src/services/story_voice_repository.py
@@ -366,6 +367,7 @@ run_contract() {
         tests/test_character_settings_api_contract.py \
         tests/test_shift_left_e2e_contract_no_mock.py \
         tests/test_story_music_recommendation_contract.py \
+        tests/test_preset_cast_authority_contract.py \
         tests/test_story_voice_reading_contract.py \
         tests/test_collection_contract.py \
         tests/test_collection_cache_contract.py \
