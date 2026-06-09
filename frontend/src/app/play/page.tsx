@@ -236,6 +236,19 @@ export default function PlayPage() {
     setTimeout(() => recoverEventGeneration(), 0);
   }, [recoverEventGeneration, setOptions, setPhase]);
 
+  const handleOpenCollection = useCallback(() => {
+    setShowCollection(true);
+    setShowHistory(false);
+    if (isViewingHistory) {
+      handleBackToCurrent();
+    }
+  }, [handleBackToCurrent, isViewingHistory, setShowHistory]);
+
+  const handleOpenHistoryPanel = useCallback(() => {
+    setShowCollection(false);
+    handleOpenHistory();
+  }, [handleOpenHistory]);
+
   // Don't render until hydrated
   if (!hydrated) {
     return (
@@ -295,7 +308,7 @@ export default function PlayPage() {
               variant="ghost"
               size="sm"
               className="h-8 px-2"
-              onClick={() => setShowCollection(true)}
+              onClick={handleOpenCollection}
               title="收集"
               aria-label="收集"
             >
@@ -319,7 +332,7 @@ export default function PlayPage() {
               variant="ghost"
               size="sm"
               className={cn("h-8 px-2", isViewingHistory && "text-primary")}
-              onClick={handleOpenHistory}
+              onClick={handleOpenHistoryPanel}
               title="历史回顾"
               aria-label="历史回顾"
             >

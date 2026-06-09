@@ -727,6 +727,42 @@ describe('PlayPage', () => {
       // Settings button should be present
       expect(buttons.length).toBeGreaterThan(0);
     });
+
+    it('closes history mode before opening collection panel', () => {
+      const mockSetShowHistory = jest.fn();
+      const mockHandleBackToCurrent = jest.fn();
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        isViewingHistory: true,
+        setShowHistory: mockSetShowHistory,
+        handleBackToCurrent: mockHandleBackToCurrent,
+      });
+
+      render(<PlayPage />);
+
+      const collectionButton = screen.getByRole('button', { name: '收集' });
+      fireEvent.click(collectionButton);
+
+      expect(mockSetShowHistory).toHaveBeenCalledWith(false);
+      expect(mockHandleBackToCurrent).toHaveBeenCalled();
+    });
+
+    it('opens history panel when history button clicked', () => {
+      const mockHandleOpenHistory = jest.fn();
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        handleOpenHistory: mockHandleOpenHistory,
+      });
+
+      render(<PlayPage />);
+
+      const historyButton = screen.getByRole('button', { name: '历史回顾' });
+      fireEvent.click(historyButton);
+
+      expect(mockHandleOpenHistory).toHaveBeenCalled();
+    });
   });
 
   describe('Result phase button text', () => {
