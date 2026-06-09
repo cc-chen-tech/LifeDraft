@@ -125,7 +125,28 @@ def _is_modern_story_setting(character_settings: Optional[Dict[str, Any]]) -> bo
     if any(cue in text for cue in ancient_cues):
         return False
     modern_cues = ["现代", "当代", "2020", "2021", "2022", "2023", "2024", "互联网", "职场", "都市"]
-    return any(cue in text for cue in modern_cues)
+    if any(cue in text for cue in modern_cues):
+        return True
+
+    realistic_cues = [
+        "产品经理",
+        "公司",
+        "创业",
+        "职业",
+        "工作",
+        "上班",
+        "同事",
+        "大学",
+        "学校",
+        "¥",
+        "元",
+    ]
+    if any(cue in text for cue in realistic_cues):
+        return True
+
+    realistic_sections = {"basic", "career", "wealth", "education", "family", "relationships"}
+    settings = character_settings or {}
+    return any(section in settings for section in realistic_sections)
 
 
 def _zh_chapter_label(total_chapter: int) -> str:

@@ -360,6 +360,7 @@ run_contract() {
     echo -e "${YELLOW}运行 API 契约测试...${NC}"
     python -m pytest \
         tests/test_api_contract.py \
+        tests/test_player_name_in_prompts_contract.py \
         tests/test_gate_contracts_no_mock.py \
         tests/test_music_playlist_contract.py \
         tests/test_music_recommend_api_degradation_contract.py \
