@@ -131,4 +131,21 @@ test.describe('收集面板缓存优化', () => {
     // （注意：首次打开已经发过一次请求）
     expect(collectionRequestCount).toBe(0);
   });
+
+  test('历史回顾与收集面板不能同时打开', async ({ page }) => {
+    await page.goto('/play');
+    await page.waitForLoadState('domcontentloaded');
+
+    const historyButton = page.getByRole('button', { name: '历史回顾' });
+    const collectionButton = page.getByRole('button', { name: '收集' });
+    const historyDialog = page.getByRole('dialog', { name: '历史回顾' });
+    const collectionDialog = page.getByRole('dialog', { name: '收集' });
+
+    await historyButton.click();
+    await expect(historyDialog).toBeVisible({ timeout: 10000 });
+
+    await collectionButton.click();
+    await expect(collectionDialog).toBeVisible({ timeout: 10000 });
+    await expect(historyDialog).not.toBeVisible();
+  });
 });

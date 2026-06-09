@@ -236,6 +236,16 @@ export default function PlayPage() {
     setTimeout(() => recoverEventGeneration(), 0);
   }, [recoverEventGeneration, setOptions, setPhase]);
 
+  const handleOpenCollection = useCallback(() => {
+    setShowCollection(true);
+    setShowHistory(false);
+  }, [setShowHistory]);
+
+  const handleOpenHistoryPanel = useCallback(() => {
+    setShowCollection(false);
+    handleOpenHistory();
+  }, [handleOpenHistory]);
+
   // Don't render until hydrated
   if (!hydrated) {
     return (
@@ -295,7 +305,7 @@ export default function PlayPage() {
               variant="ghost"
               size="sm"
               className="h-8 px-2"
-              onClick={() => setShowCollection(true)}
+              onClick={handleOpenCollection}
               title="收集"
               aria-label="收集"
             >
@@ -319,7 +329,7 @@ export default function PlayPage() {
               variant="ghost"
               size="sm"
               className={cn("h-8 px-2", isViewingHistory && "text-primary")}
-              onClick={handleOpenHistory}
+              onClick={handleOpenHistoryPanel}
               title="历史回顾"
               aria-label="历史回顾"
             >
@@ -775,8 +785,12 @@ export default function PlayPage() {
       />
 
       {/* ★ 收集面板 */}
-      <Sheet open={showCollection} onOpenChange={setShowCollection}>
-        <SheetContent side="right" className="w-[400px] sm:w-[540px] p-0">
+      <Sheet modal={false} open={showCollection} onOpenChange={setShowCollection}>
+        <SheetContent
+          side="right"
+          className="w-[400px] sm:w-[540px] p-0"
+          overlayClassName="pointer-events-none bg-transparent"
+        >
           <SheetTitle className="sr-only">收集</SheetTitle>
           <CollectionPanel gameId={gameId || 0} />
         </SheetContent>

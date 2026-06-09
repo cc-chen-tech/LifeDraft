@@ -83,8 +83,12 @@ export function RoundHistoryDrawer({
     .sort((a, b) => a - b);
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="left" className="w-80 sm:w-96 p-0">
+    <Sheet modal={false} open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="left"
+        className="w-80 sm:w-96 p-0"
+        overlayClassName="pointer-events-none bg-transparent"
+      >
         <SheetHeader className="p-4 border-b">
           <SheetTitle className="flex items-center gap-2">
             <History className="w-5 h-5" />
