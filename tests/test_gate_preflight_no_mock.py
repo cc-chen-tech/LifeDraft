@@ -540,6 +540,13 @@ def test_story_voice_production_settings_do_not_duplicate_test_controls() -> Non
     assert component.index("{showProductionSettings && (") < component.index("{showTestControls &&")
 
 
+def test_preflight_runs_dialog_and_sheet_a11y_regressions() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+
+    assert "src/__tests__/components/DialogA11y.test.tsx" in script
+    assert "src/__tests__/components/SheetA11y.test.tsx" in script
+
+
 def test_global_music_player_autogenerates_music_from_completed_story_when_collapsed() -> None:
     global_player = (
         ROOT / "frontend" / "src" / "components" / "game" / "GlobalMusicPlayer.tsx"

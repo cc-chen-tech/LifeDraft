@@ -5,8 +5,9 @@ The 2026-06-08 UX report captured a Radix accessibility warning: `Missing Descri
 ## What Changes
 
 - Add a base `DialogContent` fallback description so dialogs do not emit Radix's missing-description warning.
+- Add the same fallback to `SheetContent`, because gameplay side panels are Radix Dialog content under the hood and can emit the same warning.
 - Keep existing visible `DialogDescription` content unchanged for dialogs that already provide specific descriptions.
-- Add a frontend regression test for `DialogContent` opened without an explicit description.
+- Add frontend regression tests for `DialogContent` and `SheetContent` opened without an explicit description.
 - Add the new regression test to `test.sh` preflight.
 
 ## Capabilities
@@ -18,5 +19,5 @@ The 2026-06-08 UX report captured a Radix accessibility warning: `Missing Descri
 
 ## Impact
 
-- Shared frontend dialog primitive: `frontend/src/components/ui/dialog.tsx`.
+- Shared frontend dialog and sheet primitives: `frontend/src/components/ui/dialog.tsx`, `frontend/src/components/ui/sheet.tsx`.
 - Frontend preflight Jest coverage in `test.sh`.
