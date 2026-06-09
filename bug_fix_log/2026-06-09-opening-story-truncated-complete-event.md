@@ -26,6 +26,10 @@ That meant a long story ending in an incomplete Chinese sentence could be cached
 
 The test verifies that a sufficiently long Chinese opening-story fragment ending without terminal punctuation emits an SSE `error` event, does not emit `complete`, and is not cached as a valid result.
 
+- `tests/test_opening_story_contract.py::TestOpeningStoryAPIContract::test_opening_story_length_finish_reason_truncation`
+
+This additional regression verifies `finish_reason == "length"` (common provider truncation signal) is treated as failed generation and also leaves cache `result` empty.
+
 ## Fix
 
 - `src/api/routers/character.py`
@@ -37,13 +41,25 @@ The test verifies that a sufficiently long Chinese opening-story fragment ending
 ## Verification
 
 - `pytest tests/test_opening_story_contract.py -q`
-- `pytest tests/test_opening_story_contract.py tests/test_gate_gameplay_behavior_no_mock.py tests/test_character_settings_api_contract.py tests/test_api_games.py -q`
+- `./test.sh mypy`
+- `./test.sh imports`
+- `./test.sh contract`
+- `./test.sh db`
+- `./test.sh e2e`
 - `./test.sh preflight`
-- Pushed `main` to `origin/main`.
-- GitHub Actions for the pushed commit failed before usable runner logs were available: `gh run view --log-failed` returned `log not found`, so this remains classified as a platform runner/check blocker rather than a code failure.
-- Deployed the pushed commit to ECS `/opt/story2`.
-- Verified production health:
-  - `https://story101.live/api/health` returned `{"status":"ok","active_sessions":0}`.
-  - `https://story101.live/` returned `HTTP/1.1 200 OK`.
+- `./test.sh preflight`（includes OpenSpec、前置门禁、前端静态检查、关键 Jest 回归）
 
-Status: fixed, pushed, manually deployed to ECS, and production health verified.
+Observed: all listed command layers passed locally in this environment.
+
+- `./test.sh e2e` passed with 303+ core/browser tests and 4+专项 suites:
+  - `core`: 303 tests
+  - `e2e/story-voice-reading.spec.ts`: 8/8
+  - `e2e/minimax-story-audio-generation.spec.ts`: 4/4
+  - `e2e/character-settings-persistence.spec.ts`: 1/1
+  - `e2e/collection-panel-cache.spec.ts`: 5/5
+  - `e2e/collection.spec.ts`: 22/22
+  - `e2e/entity-recognition.spec.ts`: 27/27
+
+Status: fixed locally with full layered verification.
+
+Status: fixed in code, fully verified locally by preflight + e2e, and docs updated with latest test evidence.
