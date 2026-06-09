@@ -48,6 +48,21 @@ The backend test failed before the fix with saved `player_name == "苏清岚"` a
 ## Verification
 
 - `pytest tests/test_character_settings_api_contract.py -q`
+- `pytest tests/test_character_settings_api_contract.py tests/test_api_games.py -q`
 - `npx jest src/__tests__/hooks/useCharacterCreation.test.ts --runInBand --no-cache`
+- `npx tsc --noEmit`
+- `npm run sync:api-types`
+- Pushed `main` to `origin/main`.
+- GitHub Actions for the pushed commit still failed before usable runner logs were available: `gh run view --log-failed` returned `log not found`, so this remains classified as a platform runner/check blocker rather than a code failure.
+- Deployed by the standard ECS flow:
+  - `git fetch origin main`
+  - `git reset --hard origin/main`
+  - `docker compose -f docker-compose.ecs.yml up -d --build backend frontend nginx`
+- Verified production health:
+  - `https://story101.live/api/health` returned `{"status":"ok","active_sessions":0}`.
+  - `https://story101.live/` returned `HTTP/1.1 200 OK`.
+- Verified production API behavior in the browser session:
+  - `PATCH /api/games/109/character-settings` returned 200.
+  - `GET /api/games/109` then returned `player_name == "沈若澜"`, matching `life_vision` and `character_settings.era`.
 
-Status: fixed locally, pending broader gate and deploy.
+Status: fixed, pushed, manually deployed to ECS through standard GitHub SSH sync, and production API/health verified.
