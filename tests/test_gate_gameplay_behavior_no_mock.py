@@ -513,6 +513,9 @@ def test_event_generation_retries_when_story_dilutes_key_people_with_invented_ca
         def validate_event_quality(self, *args, **kwargs):
             return None
 
+        def validate_options_consistency(self, *args, **kwargs):
+            return []
+
         def ensure_options_consistency(self, *args, **kwargs):
             return None
 
@@ -547,3 +550,75 @@ def test_event_generation_retries_when_story_dilutes_key_people_with_invented_ca
     story_for_options = option_generator.generate_options_only_kwargs["story_description"]
     assert "陈晓雨" in story_for_options
     assert "马老板" not in story_for_options
+
+
+def test_round_event_retries_when_modern_story_drifts_into_cyberpunk_ip_world() -> None:
+    class DriftClient:
+        def __init__(self):
+            self.calls = []
+
+        def call(self, **kwargs):
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                return (
+                    "夜之城的霓虹灯照在张若虚脸上，荒坂集团的安全员追着V穿过Viktor的诊所，"
+                    "义体医生让他准备植入新的神经接口。"
+                )
+            return "张若虚在上海办公室复盘用户反馈，决定先和研发同事确认需求边界。"
+
+    class RecordingOptionGenerator:
+        def __init__(self):
+            self.generate_options_only_kwargs = None
+
+        def generate_options_only(self, **kwargs):
+            self.generate_options_only_kwargs = kwargs
+            return GameEvent(
+                event_description="",
+                options=[
+                    EventOption(text="复盘用户反馈", effects={"knowledge": 5}),
+                    EventOption(text="确认需求边界", effects={"energy": -3}),
+                ],
+            )
+
+        def validate_and_fix_relationships(self, *args, **kwargs):
+            return None
+
+        def validate_event_quality(self, *args, **kwargs):
+            return None
+
+        def validate_options_consistency(self, *args, **kwargs):
+            return []
+
+        def ensure_options_consistency(self, *args, **kwargs):
+            return None
+
+    client = DriftClient()
+    option_generator = RecordingOptionGenerator()
+
+    StoryGenerator(client).generate_round_event(
+        player_state={
+            "game_id": 9,
+            "player_name": "张若虚",
+            "age": 28,
+            "week": 1,
+            "current_round": 0,
+        },
+        language="zh",
+        round_number=0,
+        round_context="现代上海互联网公司的一周开始。",
+        character_settings={
+            "era": {"year": 2024, "era_description": "2024年中国现代都市"},
+            "world": {"world_description": "现实中的上海互联网公司，普通产品经理成长线"},
+            "career": {"occupation": "产品经理"},
+        },
+        option_generator=option_generator,
+    )
+
+    assert len(client.calls) == 2
+    retry_prompt = client.calls[1]["user_prompt"]
+    assert "赛博朋克" in retry_prompt or "外部IP" in retry_prompt
+    assert option_generator.generate_options_only_kwargs is not None
+    story_for_options = option_generator.generate_options_only_kwargs["story_description"]
+    assert "上海办公室" in story_for_options
+    assert "夜之城" not in story_for_options
+    assert "荒坂" not in story_for_options

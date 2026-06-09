@@ -192,6 +192,49 @@ _MODERN_FORBIDDEN_HISTORICAL = [
     "东市",
 ]
 
+_EXTERNAL_CYBERPUNK_IP_TERMS = [
+    "夜之城",
+    "荒坂集团",
+    "荒坂",
+    "Cyberpunk 2077",
+    "Night City",
+    "Arasaka",
+    "Viktor",
+    "维克多·威克托",
+    "强尼·银手",
+    "Johnny Silverhand",
+]
+
+_MODERN_FORBIDDEN_UNREQUESTED_CYBERPUNK = [
+    *_EXTERNAL_CYBERPUNK_IP_TERMS,
+    "赛博朋克",
+    "义体",
+    "机械义肢",
+    "电子眼",
+    "神经接口",
+    "黑客义体",
+    "霓虹废土",
+    "反乌托邦公司战争",
+]
+
+
+def _find_terms(text: str, terms: List[str]) -> List[str]:
+    lowered = text.lower()
+    found: List[str] = []
+    for term in terms:
+        if term in text or term.lower() in lowered:
+            found.append(term)
+    return found
+
+
+def _is_explicit_cyberpunk_context(era: str, era_type: str) -> bool:
+    text = f"{era} {era_type}".lower()
+    return (
+        era_type == "cyberpunk"
+        or "赛博朋克" in text
+        or "cyberpunk" in text
+    )
+
 
 def validate_era_consistency(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """检查故事文本是否与设定的时代背景一致。
@@ -206,12 +249,31 @@ def validate_era_consistency(story_text: str, context: dict) -> Tuple[bool, str,
     era = context.get("era", "")
     era_type = context.get("era_type", "")
 
+    if _is_explicit_cyberpunk_context(era, era_type):
+        found_ip = _find_terms(story_text, _EXTERNAL_CYBERPUNK_IP_TERMS)
+
+        if found_ip:
+            evidence = f"检测到外部赛博朋克IP漂移: {', '.join(found_ip[:5])}"
+            return (
+                False,
+                evidence,
+                {
+                    "found_cyberpunk_ip": found_ip,
+                    "era": era,
+                    "era_type": "cyberpunk",
+                },
+            )
+
+        return True, "", {"era": era, "era_type": "cyberpunk", "checked_keywords": len(_EXTERNAL_CYBERPUNK_IP_TERMS)}
+
     # 现代/当代背景也需要反向校验，防止故事漂移成古代朝代、古风称谓或前现代货币。
     if era_type == "modern" or "现代" in era or "当代" in era or "未来" in era:
         found_historical: List[str] = []
         for keyword in _MODERN_FORBIDDEN_HISTORICAL:
             if keyword in story_text:
                 found_historical.append(keyword)
+
+        found_cyberpunk_ip = _find_terms(story_text, _MODERN_FORBIDDEN_UNREQUESTED_CYBERPUNK)
 
         if found_historical:
             evidence = f"现代背景检测到古代/前现代漂移: {', '.join(found_historical[:5])}"
@@ -225,7 +287,19 @@ def validate_era_consistency(story_text: str, context: dict) -> Tuple[bool, str,
                 },
             )
 
-        return True, "", {"era": era, "era_type": "modern", "checked_keywords": len(_MODERN_FORBIDDEN_HISTORICAL)}
+        if found_cyberpunk_ip:
+            evidence = f"现代现实主义背景检测到未请求的赛博朋克/外部IP漂移: {', '.join(found_cyberpunk_ip[:5])}"
+            return (
+                False,
+                evidence,
+                {
+                    "found_cyberpunk_ip": found_cyberpunk_ip,
+                    "era": era,
+                    "era_type": "modern",
+                },
+            )
+
+        return True, "", {"era": era, "era_type": "modern", "checked_keywords": len(_MODERN_FORBIDDEN_HISTORICAL) + len(_MODERN_FORBIDDEN_UNREQUESTED_CYBERPUNK)}
 
     # 如果时代未明确指定为古代，检查 era 字符串是否包含古代关键词
     ancient_keywords = [

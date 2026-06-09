@@ -22,8 +22,16 @@ Story generation prompts SHALL preserve realistic modern character settings and 
 - **Then** the prompt SHALL explicitly forbid unrequested cyberpunk/future-world drift
 - **And** the prompt SHALL explicitly forbid introducing known external IP worlds or proper nouns such as "夜之城", "荒坂集团", and "Cyberpunk 2077".
 
+#### Scenario: Generated modern story ignores the prompt boundary
+
+- **Given** character settings describe a contemporary realistic character without sci-fi or cyberpunk intent
+- **When** generated story text contains unrequested cyberpunk/IP-world terms such as "夜之城", "荒坂集团", "Viktor", or "义体"
+- **Then** quick validation SHALL reject the story before options are generated
+- **And** the round-event generator SHALL retry with corrective instructions.
+
 #### Scenario: Explicit cyberpunk settings
 
 - **Given** character settings explicitly request cyberpunk or future sci-fi
-- **When** a story prompt is generated
-- **Then** the prompt SHALL NOT add the realistic-modern cyberpunk prohibition block.
+- **When** a story prompt or quick validation check is generated
+- **Then** the realistic-modern cyberpunk prohibition block SHALL NOT be applied to generic original cyberpunk elements
+- **And** external IP proper nouns such as "夜之城", "荒坂集团", or "Cyberpunk 2077" SHALL still be treated as setting drift unless explicitly present in the character settings.
