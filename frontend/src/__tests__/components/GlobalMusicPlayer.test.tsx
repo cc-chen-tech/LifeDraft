@@ -213,6 +213,7 @@ describe("GlobalMusicPlayer", () => {
       await user.click(screen.getByRole("button", { name: "展开声音面板" }));
 
       const panel = screen.getByTestId("unified-sound-panel");
+      expect(within(panel).getByText("声音控制")).toBeInTheDocument();
       const musicSection = within(panel).getByTestId("sound-music-section");
       const readingSection = within(panel).getByTestId("sound-reading-section");
 
@@ -243,7 +244,7 @@ describe("GlobalMusicPlayer", () => {
 
       render(<GlobalMusicPlayer />);
       expect(screen.getAllByText("My Song")[0]).toBeInTheDocument();
-      expect(screen.getByText("Artist A, Artist B")).toBeInTheDocument();
+      expect(within(screen.getByTestId("global-music-mini-bar")).getByText("Artist A, Artist B")).toBeInTheDocument();
     });
 
     it("labels the collapsed control as sound instead of music-only waiting text", () => {
@@ -286,7 +287,8 @@ describe("GlobalMusicPlayer", () => {
       expect(screen.getByRole("button", { name: "展开声音面板" })).toBeInTheDocument();
     });
 
-    it("exposes music and narration as sibling controls while collapsed", () => {
+    it("keeps collapsed controls simple and moves narration controls into the sound panel", async () => {
+      const user = userEvent.setup();
       const fakeAudio = {
         pause: jest.fn(),
         play: jest.fn(),
@@ -311,27 +313,13 @@ describe("GlobalMusicPlayer", () => {
 
       const miniBar = within(screen.getByTestId("global-music-mini-bar"));
       expect(miniBar.getByRole("button", { name: "播放音乐" })).toBeInTheDocument();
-      expect(miniBar.getByRole("button", { name: "朗读故事" })).toBeInTheDocument();
       expect(miniBar.getByRole("button", { name: "展开声音面板" })).toBeInTheDocument();
-    });
+      expect(miniBar.queryByRole("button", { name: "朗读故事" })).not.toBeInTheDocument();
 
-    it("starts narration from the collapsed sound bar without forcing the user to open settings", async () => {
-      const user = userEvent.setup();
-      const startReading = jest.fn().mockResolvedValue(undefined);
-      setStoreState({ activeStoryText: "story text" });
-      useStoryVoiceStore.setState({
-        activeReadingContext,
-        activeAutoReadText: activeReadingContext.text,
-        activeAutoReadReady: true,
-        startReading,
-      } as never);
+      await user.click(miniBar.getByRole("button", { name: "展开声音面板" }));
 
-      render(<GlobalMusicPlayer />);
-
-      await user.click(screen.getByRole("button", { name: "朗读故事" }));
-
-      expect(startReading).toHaveBeenCalledWith(activeReadingContext);
-      expect(screen.queryByRole("region", { name: "声音面板" })).not.toBeInTheDocument();
+      const readingSection = screen.getByTestId("sound-reading-section");
+      expect(within(readingSection).getByRole("button", { name: "朗读故事" })).toBeInTheDocument();
     });
 
     it("does not use explanatory copy inside the sound panel", async () => {

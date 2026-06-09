@@ -15,7 +15,7 @@ import { MusicPlayer } from "./MusicPlayer";
 import { StoryVoiceControls } from "./StoryVoiceControls";
 import { useMusicStore } from "@/stores/useMusicStore";
 import { useStoryVoiceStore } from "@/stores/useStoryVoiceStore";
-import { Play, Pause, ChevronUp, ChevronDown, Loader2, RotateCcw, Volume2 } from "lucide-react";
+import { Play, Pause, ChevronUp, ChevronDown, Volume2 } from "lucide-react";
 
 export function GlobalMusicPlayer() {
   const hasInitRef = useRef(false);
@@ -37,9 +37,6 @@ export function GlobalMusicPlayer() {
   const activeAutoReadText = useStoryVoiceStore((state) => state.activeAutoReadText);
   const activeAutoReadReady = useStoryVoiceStore((state) => state.activeAutoReadReady);
   const readingState = useStoryVoiceStore((state) => state.readingState);
-  const startReading = useStoryVoiceStore((state) => state.startReading);
-  const pauseReading = useStoryVoiceStore((state) => state.pauseReading);
-  const retryReading = useStoryVoiceStore((state) => state.retryReading);
 
   // On mount, try to restore the active game playlist from localStorage
   useEffect(() => {
@@ -105,56 +102,7 @@ export function GlobalMusicPlayer() {
     }
   };
 
-  const handleMiniNarrationAction = () => {
-    if (!activeReadingContext) {
-      setIsExpanded(true);
-      return;
-    }
-
-    if (readingState === "loading") {
-      return;
-    }
-    if (readingState === "playing") {
-      pauseReading();
-      return;
-    }
-    if (readingState === "paused") {
-      retryReading();
-      return;
-    }
-    if (readingState === "ready") {
-      setIsExpanded(true);
-      return;
-    }
-
-    void startReading(activeReadingContext);
-  };
-
   const miniMusicLabel = audioElement ? (isPlaying ? "暂停音乐" : "播放音乐") : "打开声音面板";
-  const miniNarrationLabel =
-    !activeReadingContext
-      ? "打开朗读设置"
-      : readingState === "loading"
-        ? "正在生成语音"
-        : readingState === "playing"
-          ? "暂停朗读"
-          : readingState === "paused"
-            ? "继续朗读"
-            : readingState === "ready"
-              ? "播放朗读语音"
-              : readingState === "failed"
-                ? "重试朗读"
-                : "朗读故事";
-  const MiniNarrationIcon =
-    readingState === "loading"
-      ? Loader2
-      : readingState === "playing"
-        ? Pause
-        : readingState === "paused" || readingState === "ready"
-          ? Play
-          : readingState === "failed"
-            ? RotateCcw
-            : Volume2;
 
   return (
     <div
@@ -178,9 +126,12 @@ export function GlobalMusicPlayer() {
       >
         <div data-testid="unified-sound-panel" className="divide-y divide-border/70">
           <div className="px-4 py-3">
-            <div className="flex items-center gap-2 text-sm font-medium">
-              <Volume2 className="h-4 w-4 text-primary" />
-              声音
+            <div className="flex items-start gap-2">
+              <Volume2 className="mt-0.5 h-4 w-4 text-primary" />
+              <div className="min-w-0">
+                <div className="text-sm font-medium">声音控制</div>
+                <div className="truncate text-xs text-muted-foreground">{soundStatus}</div>
+              </div>
             </div>
           </div>
 
@@ -258,23 +209,6 @@ export function GlobalMusicPlayer() {
             {soundStatus}
           </div>
         </div>
-
-        {activeReadingContext && (
-          <button
-            aria-label={miniNarrationLabel}
-            title={miniNarrationLabel}
-            disabled={readingState === "loading"}
-            onClick={(e) => {
-              e.stopPropagation();
-              handleMiniNarrationAction();
-            }}
-            className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full border border-border bg-background text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <MiniNarrationIcon
-              className={`w-4 h-4 ${readingState === "loading" ? "animate-spin" : ""}`}
-            />
-          </button>
-        )}
 
         {/* Expand / Collapse */}
         <button
