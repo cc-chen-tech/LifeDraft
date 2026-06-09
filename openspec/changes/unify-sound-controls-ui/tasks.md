@@ -6,7 +6,7 @@
 - [x] Remove the redundant collapsed narration button so the closed sound bar is not overloaded.
 - [x] Keep manual narration available inside the expanded sound panel.
 - [x] Remove the redundant stop action while generated narration audio is merely ready to play.
-- [x] Add regression coverage for a card-based sound mixer instead of a `divide-y` stacked toolbar.
+- [x] Add regression coverage for a flat two-channel mixer instead of nested card toolbars.
 - [x] Group embedded narration primary controls separately from voice settings and auto-read.
 - [x] Simplify the collapsed sound bar to one primary sound control plus expand, with narration controls only inside the unified panel.
 - [x] Add PlayPage coverage proving the story body no longer renders a standalone narration bar.
