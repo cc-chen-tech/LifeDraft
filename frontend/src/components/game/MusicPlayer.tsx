@@ -33,6 +33,7 @@ interface MusicPlayerProps {
   gameId?: number;
   className?: string;
   autoFetchRecommendation?: boolean;
+  embedded?: boolean;
 }
 
 function hasMusicBrief(brief: Record<string, unknown> | undefined): brief is Record<string, unknown> {
@@ -44,6 +45,7 @@ export function MusicPlayer({
   gameId,
   className = "",
   autoFetchRecommendation = true,
+  embedded = false,
 }: MusicPlayerProps) {
   const {
     recommendation,
@@ -543,7 +545,8 @@ export function MusicPlayer({
 
   return (
     <div
-      className={`bg-card border rounded-lg p-4 shadow-sm ${className}`}
+      data-testid={embedded ? "sound-music-channel" : undefined}
+      className={`${embedded ? "space-y-3" : "bg-card border rounded-lg p-4 shadow-sm"} ${className}`}
     >
       {/* 头部：标题和刷新按钮 */}
       <div className="flex items-center justify-between mb-3">

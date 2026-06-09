@@ -145,6 +145,7 @@ export function GlobalMusicPlayer() {
                 gameId={effectiveGameId}
                 className="rounded-none border-0 bg-transparent p-0 shadow-none"
                 autoFetchRecommendation={shouldAutoFetchRecommendation}
+                embedded
               />
             ) : (
               <div className="text-sm text-muted-foreground">
@@ -158,14 +159,16 @@ export function GlobalMusicPlayer() {
               data-testid="sound-reading-section"
               className="rounded-lg border border-border/70 bg-background/60 p-3"
             >
-              <StoryVoiceControls
-                currentContext={activeReadingContext}
-                autoReadText={activeAutoReadText}
-                autoReadReady={activeAutoReadReady}
-                compact
-                embedded
-                enablePlaybackControls
-              />
+              <div data-testid="sound-reading-channel" className="space-y-3">
+                <StoryVoiceControls
+                  currentContext={activeReadingContext}
+                  autoReadText={activeAutoReadText}
+                  autoReadReady={activeAutoReadReady}
+                  compact
+                  embedded
+                  enablePlaybackControls
+                />
+              </div>
             </div>
           )}
         </div>

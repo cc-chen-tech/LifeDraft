@@ -339,7 +339,10 @@ describe('PlayPage', () => {
       expect(payload.context.text).toBe('主角做出选择后的完整续写。');
 
       await user.click(screen.getByRole('button', { name: '展开声音面板' }));
-      expect(screen.getByRole('region', { name: '故事朗读' })).toBeInTheDocument();
+      expect(screen.getByRole('region', { name: '声音面板' })).toBeInTheDocument();
+      expect(screen.getByTestId('sound-reading-section')).toBeInTheDocument();
+      expect(screen.getByTestId('sound-reading-channel')).toBeInTheDocument();
+      expect(screen.queryByRole('region', { name: '故事朗读' })).not.toBeInTheDocument();
     });
   });
 

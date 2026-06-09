@@ -192,11 +192,11 @@ describe("GlobalMusicPlayer", () => {
 
       expect(screen.getByRole("region", { name: "声音面板" })).toBeInTheDocument();
       expect(screen.getByText("场景音乐")).toBeInTheDocument();
-      expect(screen.getByRole("region", { name: "故事朗读" })).toBeInTheDocument();
+      expect(screen.queryByRole("region", { name: "故事朗读" })).not.toBeInTheDocument();
       expect(screen.getByRole("checkbox", { name: "自动朗读" })).toBeInTheDocument();
     });
 
-    it("presents music and narration as one unified sound panel with peer sections", async () => {
+    it("presents music and narration as one unified sound panel with embedded channels", async () => {
       const user = userEvent.setup();
       setStoreState({
         activeStoryText: "story text",
@@ -222,7 +222,11 @@ describe("GlobalMusicPlayer", () => {
       expect(within(readingSection).getByRole("button", { name: "朗读故事" })).toBeInTheDocument();
       expect(within(readingSection).getByRole("combobox", { name: "选择朗读声音" })).toBeInTheDocument();
       expect(within(readingSection).getByRole("checkbox", { name: "自动朗读" })).toBeInTheDocument();
-      expect(readingSection).not.toHaveClass("border-t");
+      expect(within(panel).queryByRole("region", { name: "故事朗读" })).not.toBeInTheDocument();
+      expect(within(panel).getByTestId("sound-music-channel")).not.toHaveClass("bg-card");
+      expect(within(panel).getByTestId("sound-music-channel")).not.toHaveClass("border");
+      expect(within(panel).getByTestId("sound-reading-channel")).not.toHaveClass("bg-card");
+      expect(within(panel).getByTestId("sound-reading-channel")).not.toHaveClass("border");
     });
 
     it("uses one card-based sound mixer instead of stacked standalone toolbars", async () => {
