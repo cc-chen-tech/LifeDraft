@@ -188,13 +188,17 @@ def test_ready_minimax_music_asset_inserts_as_next_playlist_track() -> None:
         session.close()
 
 
-def test_story_music_generation_service_saves_reuses_and_returns_playlist_track(tmp_path) -> None:
+def test_story_music_generation_service_saves_reuses_and_returns_playlist_track(
+    tmp_path,
+    monkeypatch,
+) -> None:
     from src.services.minimax_config import MiniMaxConfig
     from src.services.minimax_music_generation import (
         MiniMaxMusicGenerationProvider,
         StoryMusicGenerationService,
     )
 
+    monkeypatch.setenv("STORY_MUSIC_LOCAL_LIBRARY_ENABLED", "false")
     init_db()
     session = SessionLocal()
     try:

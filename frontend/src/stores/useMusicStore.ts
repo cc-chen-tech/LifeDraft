@@ -18,6 +18,9 @@ export interface Song {
   provider?: string;
   model?: string;
   brief_hash?: string;
+  library_reused?: boolean;
+  match_score?: number;
+  match_reason?: string;
 }
 
 export interface MusicRecommendation {

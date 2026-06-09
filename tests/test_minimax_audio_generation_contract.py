@@ -868,11 +868,17 @@ def test_music_generate_api_reports_unexpected_generation_failure_without_global
     asset_path_that_is_file.write_text("not a directory", encoding="utf-8")
     previous_env = {
         name: os.environ.get(name)
-        for name in ["MINIMAX_API_KEY", "MINIMAX_E2E_LOCAL_AUDIO", "STORY_MUSIC_ASSET_DIR"]
+        for name in [
+            "MINIMAX_API_KEY",
+            "MINIMAX_E2E_LOCAL_AUDIO",
+            "STORY_MUSIC_ASSET_DIR",
+            "STORY_MUSIC_LOCAL_LIBRARY_ENABLED",
+        ]
     }
     os.environ["MINIMAX_API_KEY"] = "test-key"
     os.environ["MINIMAX_E2E_LOCAL_AUDIO"] = "1"
     os.environ["STORY_MUSIC_ASSET_DIR"] = str(asset_path_that_is_file)
+    os.environ["STORY_MUSIC_LOCAL_LIBRARY_ENABLED"] = "false"
     try:
         app = FastAPI()
         app.include_router(router, prefix="/api")

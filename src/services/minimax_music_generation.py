@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -11,8 +12,11 @@ import httpx
 from sqlalchemy.orm import Session
 
 from src.database.models import GeneratedMusicAsset
+from src.services.local_ai_music_library import LocalAiMusicLibraryService
 from src.services.minimax_config import MiniMaxConfig, build_minimax_config
 from src.services.music_service import MusicBrief
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -227,6 +231,29 @@ class StoryMusicGenerationService:
             generation_settings=settings,
         )
         if ready_asset is None:
+            local_library = LocalAiMusicLibraryService()
+            try:
+                local_match = local_library.find_best_match(
+                    db,
+                    requesting_game_id=game_id,
+                    brief=brief,
+                    provider=self.provider.provider,
+                    model=request.model,
+                    generation_settings=settings,
+                )
+                if local_match.hit:
+                    return local_library.reuse_match(
+                        db,
+                        decision=local_match,
+                        requesting_game_id=game_id,
+                        current_brief=brief,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "[MusicGeneration] Local AI music library lookup degraded: %s",
+                    exc,
+                )
+
             generated = self.provider.generate_to_asset(request, brief_hash=brief_hash)
             ready_asset = repository.create_ready_asset(
                 game_id=game_id,
@@ -239,6 +266,7 @@ class StoryMusicGenerationService:
                 duration_ms=generated.duration_ms,
                 generation_settings=settings,
             )
+            LocalAiMusicLibraryService().upsert_ready_asset(db, ready_asset)
             db.commit()
             db.refresh(ready_asset)
 
