@@ -107,7 +107,7 @@ describe('RoundSceneImageDisplay', () => {
 
       expect(screen.getByText('正在获取或生成最新场景插画...')).toBeInTheDocument();
       expect(screen.getByText('刷新')).toBeDisabled();
-      expect(screen.getByText('重生成')).toBeDisabled();
+      expect(screen.getByRole('button', { name: '重新生成插画' })).toBeDisabled();
     });
 
     it('shows regenerate input when regenerate button clicked', async () => {
@@ -115,7 +115,7 @@ describe('RoundSceneImageDisplay', () => {
         <RoundSceneImageDisplay {...defaultProps} sceneImage={mockSceneImage as any} />
       );
 
-      fireEvent.click(screen.getByText('重生成'));
+      fireEvent.click(screen.getByRole('button', { name: '重新生成插画' }));
 
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/让场景更明亮/)).toBeInTheDocument();
@@ -129,7 +129,7 @@ describe('RoundSceneImageDisplay', () => {
       );
 
       // Open regenerate input
-      fireEvent.click(screen.getByText('重生成'));
+      fireEvent.click(screen.getByRole('button', { name: '重新生成插画' }));
 
       // Enter prompt
       const input = screen.getByPlaceholderText(/让场景更明亮/);

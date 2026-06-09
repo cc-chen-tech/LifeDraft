@@ -222,7 +222,7 @@ export function RoundSceneImageDisplay({
                 disabled={isLoading || isRegenerating}
               >
                 <RefreshCw className="w-3 h-3 mr-1" />
-                重生成
+                重新生成插画
               </Button>
             )}
             <Button
