@@ -161,6 +161,37 @@ _MODERN_ALLOWED = [
     "当下",
 ]
 
+_MODERN_FORBIDDEN_HISTORICAL = [
+    "长安",
+    "洛阳",
+    "汴京",
+    "临安",
+    "唐朝",
+    "宋朝",
+    "元朝",
+    "明朝",
+    "清朝",
+    "大唐",
+    "南宋",
+    "北宋",
+    "郎君",
+    "娘子",
+    "将作监",
+    "科举",
+    "客栈",
+    "茶楼",
+    "木坊",
+    "银两",
+    "铜钱",
+    "三百文",
+    "贯钱",
+    "文钱",
+    "绢帛",
+    "胡商",
+    "西市",
+    "东市",
+]
+
 
 def validate_era_consistency(story_text: str, context: dict) -> Tuple[bool, str, dict]:
     """检查故事文本是否与设定的时代背景一致。
@@ -175,9 +206,26 @@ def validate_era_consistency(story_text: str, context: dict) -> Tuple[bool, str,
     era = context.get("era", "")
     era_type = context.get("era_type", "")
 
-    # 如果时代本身就是现代，跳过检查
+    # 现代/当代背景也需要反向校验，防止故事漂移成古代朝代、古风称谓或前现代货币。
     if era_type == "modern" or "现代" in era or "当代" in era or "未来" in era:
-        return True, "", {"skipped": True, "reason": "modern era, no check needed"}
+        found_historical: List[str] = []
+        for keyword in _MODERN_FORBIDDEN_HISTORICAL:
+            if keyword in story_text:
+                found_historical.append(keyword)
+
+        if found_historical:
+            evidence = f"现代背景检测到古代/前现代漂移: {', '.join(found_historical[:5])}"
+            return (
+                False,
+                evidence,
+                {
+                    "found_historical": found_historical,
+                    "era": era,
+                    "era_type": "modern",
+                },
+            )
+
+        return True, "", {"era": era, "era_type": "modern", "checked_keywords": len(_MODERN_FORBIDDEN_HISTORICAL)}
 
     # 如果时代未明确指定为古代，检查 era 字符串是否包含古代关键词
     ancient_keywords = [

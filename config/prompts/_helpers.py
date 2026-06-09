@@ -940,11 +940,22 @@ The character is set in a historical/pre-modern era. The following modern concep
 - If "coffee" appears, it must be ancient tea or wine; if "hospital" appears, it must be an ancient apothecary
 - Characters must wear ancient clothing, use ancient tools, follow ancient etiquette. NO suits, ties, or modern items"""
 
-    # Modern era — lighter constraints
+    # Modern era — explicitly prevent reverse drift into historical/classical settings.
     if language == "zh":
-        return "\n【时代一致性约束】角色设定为现代/当代背景，故事中可以使用现代科技、交通工具和生活方式，但应符合角色的具体时代（如2020年代不应出现过于超前的科技）。"
+        return """\n【★ 反向时代漂移红线（违反即失败）★】
+角色设定为现代/当代现实主义背景，故事必须保留现代城市、现代职业、现代货币和2020年代生活方式。
+- 禁止古风漂移：不得把现代角色改写到唐朝、宋朝、明朝、清朝、长安、洛阳、汴京、临安、西市、东市等朝代/古城语境。
+- 禁止古代称谓和社会制度：郎君、娘子、将作监、科举、客栈、茶楼、木坊、胡商等只能在玩家明确要求历史背景时出现。
+- 禁止古代货币和器物替代现代设定：铜钱、三百文、贯钱、银两、绢帛等不得替代元、工资、投资款、合同、账户、工作室预算。
+- 如果角色是当代创业者、独立游戏制作人、产品经理、职场人或学生，场景必须围绕现代办公室/工作室/学校/家庭/城市生活展开。
+- 可以出现现代科技、交通工具和生活方式，但应符合具体时代（如2020年代不应出现过于超前的科技）。"""
     else:
-        return "\n[Era Consistency] Character is set in a modern/contemporary era. Modern technology, transportation, and lifestyle are appropriate, but should match the specific time period."
+        return """\n[★ REVERSE ERA DRIFT RED LINE (violation = failure) ★]
+The character is set in a modern/contemporary realistic era. Preserve modern cities, jobs, currency, and 2020s lifestyle.
+- Do not drift into dynasties, medieval cities, historical markets, inns, guild workshops, imperial exams, or archaic titles unless the player explicitly requested a historical setting.
+- Do not replace modern money, salary, investment, contracts, accounts, or studio budgets with coins, taels, silver, tribute, or scrolls.
+- If the character is a contemporary founder, indie game developer, product manager, worker, or student, scenes must stay grounded in modern offices, studios, schools, homes, or city life.
+- Modern technology, transportation, and lifestyle are appropriate, but should match the specific time period."""
 
 
 def build_realistic_modern_world_boundary(

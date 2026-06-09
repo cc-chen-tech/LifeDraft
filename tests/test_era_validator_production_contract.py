@@ -121,8 +121,8 @@ class TestEraValidatorProductionContract:
         )
         assert info2.get("skipped") is not True, "historic period 应被识别为古代背景"
 
-    def test_modern_era_skips_validation(self):
-        """现代背景应跳过古代验证"""
+    def test_modern_era_allows_modern_story(self):
+        """现代背景中的现代元素应通过验证"""
         from src.ai.harness.era_validator import validate_era_consistency
 
         passed, evidence, info = validate_era_consistency(
@@ -130,7 +130,36 @@ class TestEraValidatorProductionContract:
             {"era": "现代", "era_type": "modern"},
         )
         assert passed is True
-        assert info.get("skipped") is True
+        assert info.get("era_type") == "modern"
+
+    def test_modern_era_rejects_historical_drift(self):
+        """现代背景故事漂移成古代长安/铜钱/郎君时应被检测到"""
+        from src.ai.harness.era_validator import validate_era_consistency
+
+        passed, evidence, info = validate_era_consistency(
+            "林知远站在长安西市的木坊里，鲁师傅收下三百文铜钱，称他为林郎君。",
+            {"era": "2024年现代上海", "era_type": "modern"},
+        )
+        assert passed is False
+        assert "found_historical" in info
+        assert any(term in info["found_historical"] for term in ["长安", "铜钱", "郎君"])
+
+    def test_quick_validator_rejects_modern_story_historical_drift(self):
+        """生产快速校验必须阻止现代角色故事漂移到古代叙事。"""
+        from src.ai.quick_validator import quick_validate_story
+
+        result = quick_validate_story(
+            story_text="林知远站在长安西市的木坊里，鲁师傅收下三百文铜钱，称他为林郎君。",
+            character_settings={
+                "era": {
+                    "era_description": "2024年现代上海",
+                    "world_context": "现代社会，独立游戏制作人与创业团队",
+                },
+            },
+            language="zh",
+        )
+        assert result.passed is False
+        assert any("现代背景检测到古代" in issue for issue in result.issues)
 
     def test_era_validator_no_false_positive_network_substring(self):
         """'网络' 不应匹配 '网络' 作为其他词的组成部分"""

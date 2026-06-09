@@ -9,6 +9,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from src.ai.harness.era_validator import validate_era_consistency
+
 logger = logging.getLogger(__name__)
 
 
@@ -149,6 +151,13 @@ class QuickValidator:
         perspective_issues = self._check_perspective_consistency(story_text, language)
         issues.extend(perspective_issues)
 
+        # 4. 检查时代一致性，包括现代设定被漂移成古代叙事的反向错误。
+        era_context = self.extract_era_context(character_settings)
+        if era_context.get("era") or era_context.get("era_type"):
+            era_passed, era_evidence, _ = validate_era_consistency(story_text, era_context)
+            if not era_passed and era_evidence:
+                issues.append(era_evidence)
+
         passed = len(issues) == 0
         result = QuickValidationResult(passed=passed, issues=issues, warnings=warnings)
 
@@ -158,6 +167,118 @@ class QuickValidator:
             logger.info(f"Quick validation warnings: {warnings}")
 
         return result
+
+    @classmethod
+    def extract_era_context(
+        cls,
+        character_settings: Optional[Dict[str, Any]],
+    ) -> Dict[str, str]:
+        """Extract a compact era validation context from character settings."""
+        if not isinstance(character_settings, dict):
+            return {"era": "", "era_type": ""}
+
+        era_value = character_settings.get("era")
+        era_text = cls._first_text(
+            era_value,
+            [
+                "era_description",
+                "era_name",
+                "name",
+                "description",
+                "world_context",
+                "period",
+                "year",
+            ],
+        )
+        era_context_text = cls._joined_text(era_value)
+        world_context_text = cls._joined_text(character_settings.get("world"))
+        combined = " ".join(
+            part
+            for part in [
+                era_text,
+                era_context_text,
+                world_context_text,
+                cls._joined_text(character_settings),
+            ]
+            if part
+        )
+        return {
+            "era": era_text or combined[:80],
+            "era_type": cls._infer_era_type(combined),
+        }
+
+    @staticmethod
+    def _first_text(value: Any, keys: List[str]) -> str:
+        if isinstance(value, dict):
+            for key in keys:
+                item = value.get(key)
+                if item is not None and str(item).strip():
+                    return str(item).strip()
+            return ""
+        if value is not None and str(value).strip():
+            return str(value).strip()
+        return ""
+
+    @classmethod
+    def _joined_text(cls, value: Any) -> str:
+        if isinstance(value, dict):
+            return " ".join(cls._joined_text(item) for item in value.values() if item is not None)
+        if isinstance(value, list):
+            return " ".join(cls._joined_text(item) for item in value if item is not None)
+        if value is not None:
+            return str(value)
+        return ""
+
+    @staticmethod
+    def _infer_era_type(text: str) -> str:
+        ancient_keywords = [
+            "古代",
+            "唐",
+            "宋",
+            "元",
+            "明",
+            "清",
+            "汉",
+            "秦",
+            "周",
+            "长安",
+            "洛阳",
+            "南宋",
+            "北宋",
+            "medieval",
+            "ancient",
+            "dynasty",
+            "historic",
+        ]
+        modern_keywords = [
+            "现代",
+            "当代",
+            "未来",
+            "2020",
+            "2021",
+            "2022",
+            "2023",
+            "2024",
+            "2025",
+            "2026",
+            "互联网",
+            "公司",
+            "职场",
+            "创业",
+            "都市",
+            "上海",
+            "游戏制作",
+            "独立游戏",
+            "modern",
+            "contemporary",
+            "startup",
+        ]
+
+        if any(keyword in text for keyword in ancient_keywords):
+            return "ancient"
+        if any(keyword in text for keyword in modern_keywords):
+            return "modern"
+        return ""
 
     def _check_forbidden_words(self, text: str, language: str) -> List[str]:
         """Check for forbidden meta-reference words."""

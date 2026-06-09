@@ -81,3 +81,32 @@ def test_master_mode_max_five_attempts():
     )
 
     assert client.call.call_count >= 1
+
+
+def test_round_event_uses_fallback_when_quick_validation_retry_still_drifts():
+    """重试后仍然时代漂移时，不应把无效故事交给选项生成器。"""
+    drifting_story = "林知远站在长安西市的木坊里，鲁师傅收下三百文铜钱，称他为林郎君。"
+    mock_client = MagicMock()
+    mock_client.call.side_effect = [drifting_story, drifting_story]
+    gen = StoryGenerator(mock_client, quality_level=QualityLevel.EXPERT)
+    mock_option_gen = MagicMock()
+
+    event = gen.generate_round_event(
+        player_state={"game_id": 1, "current_week": 1},
+        language="zh",
+        round_number=1,
+        round_context="",
+        character_settings={
+            "era": {
+                "era_description": "2024年现代上海",
+                "world_context": "现代社会，独立游戏制作人与创业团队",
+            },
+        },
+        option_generator=mock_option_gen,
+    )
+
+    assert mock_client.call.call_count == 2
+    mock_option_gen.generate_options_only.assert_not_called()
+    assert "长安" not in event.event_description
+    assert "铜钱" not in event.event_description
+    assert "2024年现代上海" in event.event_description

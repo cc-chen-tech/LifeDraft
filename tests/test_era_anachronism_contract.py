@@ -160,6 +160,46 @@ class TestEraAnachronismContract:
                     "禁止" not in context
                 ), f"现代背景不应禁止'{term}'，但上下文中出现了禁止: {context}"
 
+    def test_modern_era_prompt_forbids_historical_drift(self):
+        """现代现实主义背景应明确禁止朝代/古风/铜钱等反向时代漂移"""
+        from config.prompts.story_prompts import get_event_generation_prompt
+
+        player_state = {
+            "age": 35,
+            "energy": 70,
+            "mood": 60,
+            "knowledge": 55,
+            "wealth": 10000,
+            "week": 1,
+            "relationships": {},
+            "decision_history": [],
+        }
+        character_settings = {
+            "era": {
+                "year": "2024",
+                "era_description": "当代上海现实主义创业环境",
+                "world_context": "现代城市生活，独立游戏制作人与团队融资压力",
+            },
+            "world": {
+                "world_description": "当代上海独立游戏工作室",
+                "technology_level": "2020年代现实科技",
+            },
+            "wealth": {"currency": "¥", "currency_name": "元"},
+        }
+
+        prompt = get_event_generation_prompt(
+            player_state=player_state,
+            language="zh",
+            character_settings=character_settings,
+        )
+
+        assert "反向时代漂移" in prompt or "禁止古风漂移" in prompt
+        forbidden_terms = ["长安", "唐朝", "宋朝", "铜钱", "郎君", "木坊"]
+        assert any(term in prompt for term in forbidden_terms), (
+            "现代背景 prompt 必须明确列出古代漂移禁止词，"
+            f"实际未找到: {forbidden_terms}"
+        )
+
     def test_era_anachronism_helper_exists(self):
         """EraConstraintBuilder 辅助函数应存在"""
         from config.prompts._helpers import _build_era_anachronism_constraints

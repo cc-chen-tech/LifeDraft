@@ -1,22 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import { Noto_Sans_SC, Noto_Serif_SC } from "next/font/google";
 import ErrorReporter from "@/components/ErrorReporter";
 import GlobalMusicPlayerWrapper from "@/components/game/GlobalMusicPlayerWrapper";
 import "./globals.css";
-
-const notoSansSC = Noto_Sans_SC({
-  variable: "--font-sans-sc",
-  subsets: ["latin"],
-  weight: ["400", "500", "700"],
-  display: "swap",
-});
-
-const notoSerifSC = Noto_Serif_SC({
-  variable: "--font-serif-sc",
-  subsets: ["latin"],
-  weight: ["400", "700"],
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: "Story Life - 人生模拟器",
@@ -37,9 +22,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh" className="dark">
-      <body
-        className={`${notoSansSC.variable} ${notoSerifSC.variable} font-sans antialiased`}
-      >
+      <body className="font-sans antialiased">
         <ErrorReporter />
         {children}
         <GlobalMusicPlayerWrapper />

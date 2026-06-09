@@ -6,6 +6,7 @@ consistency validation with retry, and life-phase determination.
 
 import json
 import logging
+import os
 from types import SimpleNamespace
 from typing import Any, Callable, Dict, Optional, Union
 
@@ -37,6 +38,11 @@ class StoryGenerator:
         self.quality_level = QualityLevel(quality_level or QualityLevel.EXPERT)
         self._quality_profile = PROFILES[self.quality_level]
         self._validated_round_keys: set[tuple[Any, Any, Any]] = set()
+        self._harness_enabled = self._env_enabled("ENABLE_CONSTRAINT_HARNESS")
+        self._narrative_systems_initialized = False
+        self._style_manifest = None
+        self._prompt_builder = None
+        self._style_validator = None
 
     # -------------------- Public API --------------------
 
@@ -95,6 +101,13 @@ class StoryGenerator:
         Raises:
             ValueError: If generation fails after retries
         """
+        style_id = str(
+            player_state.get("narrative_style_id")
+            or (character_settings or {}).get("narrative_style_id")
+            or ""
+        )
+        self._init_narrative_systems(style_id, player_state)
+
         current_phase = self._get_phase_from_state(player_state)
 
         # Derive last_event_description from decision history if not provided
@@ -450,6 +463,24 @@ class StoryGenerator:
                 logger.info(
                     "Quick validation retry completed with %d characters", len(story_text)
                 )
+                retry_result = quick_validate_story(
+                    story_text=story_text,
+                    character_settings=character_settings,
+                    available_people=available_people_names,
+                    language=language,
+                )
+                if not retry_result.passed:
+                    logger.warning(
+                        "Quick validation retry still failed: %s",
+                        retry_result.issues,
+                    )
+                    story_text = None
+                    raise ValueError(
+                        "Quick validation retry failed: "
+                        + "; ".join(retry_result.issues)
+                    )
+                if retry_result.warnings:
+                    logger.info(f"Quick validation retry warnings: {retry_result.warnings}")
             elif quick_result.warnings:
                 logger.info(f"Quick validation warnings: {quick_result.warnings}")
 
@@ -526,6 +557,71 @@ class StoryGenerator:
             )
 
     # -------------------- Internal --------------------
+
+    @staticmethod
+    def _env_enabled(name: str) -> bool:
+        return os.environ.get(name, "").lower() in ("true", "1", "yes")
+
+    def _init_narrative_systems(
+        self,
+        style_id: str,
+        player_state: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Initialize optional narrative style systems when the feature flag is on."""
+        del player_state
+        if self._narrative_systems_initialized:
+            return
+
+        if not self._env_enabled("ENABLE_NARRATIVE_STYLE_ENGINE"):
+            self._narrative_systems_initialized = True
+            return
+
+        try:
+            from src.ai.narrative.style_manifest import get_style
+            from src.ai.narrative.style_prompt_builder import StyleAwarePromptBuilder
+            from src.ai.narrative.style_validator import StyleAwareValidator
+
+            self._style_manifest = get_style(style_id)
+            if not self._style_manifest and not style_id:
+                self._style_manifest = get_style("magical_realism")
+
+            if self._style_manifest:
+                self._prompt_builder = StyleAwarePromptBuilder(self._style_manifest)
+                self._style_validator = StyleAwareValidator(self._style_manifest)
+                logger.info(
+                    "Style engine initialized: %s",
+                    self._style_manifest.style_id,
+                )
+            else:
+                logger.warning("Style %r not found, style engine disabled", style_id)
+        except Exception as exc:
+            logger.warning("Failed to initialize narrative style systems: %s", exc)
+        finally:
+            self._narrative_systems_initialized = True
+
+    def _gather_narrative_hints(
+        self,
+        player_state: Dict[str, Any],
+        character_settings: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Return optional narrative hints for legacy extension points."""
+        del player_state, character_settings
+        return {}
+
+    def _log_constraint_completeness(self, *args: Any, **kwargs: Any) -> None:
+        """Legacy diagnostics hook retained for tests and extension callers."""
+        del args, kwargs
+
+    def _extract_validation_context(
+        self,
+        player_state: Dict[str, Any],
+        character_settings: Optional[Dict[str, Any]],
+    ) -> Dict[str, str]:
+        """Return the era context used by fast story validation."""
+        del player_state
+        from src.ai.quick_validator import QuickValidator
+
+        return QuickValidator.extract_era_context(character_settings)
 
     @staticmethod
     def _build_round_story_fallback(

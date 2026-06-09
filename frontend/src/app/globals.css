@@ -55,6 +55,10 @@
 /* Always dark - Cinematic Cold palette */
 :root {
   --radius: 0.625rem;
+  --font-sans-sc: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", Arial, sans-serif;
+  --font-serif-sc: "Songti SC", "STSong", "Noto Serif SC", Georgia, serif;
+  --font-geist-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 
   /* Cinematic Cold 深藏青底色 */
   --background: #0a0f1a;

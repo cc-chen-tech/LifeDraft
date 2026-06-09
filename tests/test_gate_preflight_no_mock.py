@@ -138,6 +138,20 @@ def test_generated_minimax_audio_assets_are_gitignored() -> None:
     assert "data/voice_assets/" in gitignore
 
 
+def test_frontend_layout_does_not_depend_on_google_font_network() -> None:
+    layout = (ROOT / "frontend" / "src" / "app" / "layout.tsx").read_text(
+        encoding="utf-8"
+    )
+    globals_css = (ROOT / "frontend" / "src" / "app" / "globals.css").read_text(
+        encoding="utf-8"
+    )
+
+    assert "next/font/google" not in layout
+    assert "fonts.gstatic.com" not in layout
+    assert "--font-sans-sc" in globals_css
+    assert "--font-serif-sc" in globals_css
+
+
 def test_e2e_gate_does_not_reuse_frontend_from_other_worktree() -> None:
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
     config = (ROOT / "frontend" / "playwright.config.ts").read_text(encoding="utf-8")
