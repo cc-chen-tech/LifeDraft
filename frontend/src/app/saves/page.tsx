@@ -59,6 +59,7 @@ export default function SavesPage() {
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const visibleSavedGames = isAuthenticated ? savedGames : [];
 
   const showToast = (type: "success" | "error", message: string) => {
     setToast({ type, message });
@@ -150,7 +151,7 @@ export default function SavesPage() {
               重试
             </Button>
           </div>
-        ) : savedGames.length === 0 ? (
+        ) : visibleSavedGames.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-muted-foreground mb-4">暂无存档</p>
             <Button onClick={() => {
@@ -162,7 +163,7 @@ export default function SavesPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {savedGames
+            {visibleSavedGames
               .sort((a, b) => {
                 const timeA = a.updated_at ? new Date(a.updated_at).getTime() : 0;
                 const timeB = b.updated_at ? new Date(b.updated_at).getTime() : 0;
