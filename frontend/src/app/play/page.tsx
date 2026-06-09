@@ -166,7 +166,8 @@ export default function PlayPage() {
   } = usePlayGame();
 
   const resultSceneRound = Math.max(0, currentRound - 1);
-  const storyReadyForCompletedMedia = phase === "options" || phase === "result";
+  const storyReadyForCompletedMedia =
+    phase === "options" || phase === "result" || phase === "summary";
   const isCurrentStoryBusy = phase === "loading" || phase === "generating" || phase === "choosing";
 
   // ★ 音乐 store：将当前故事文本和 gameId 传递给 GlobalMusicPlayer
@@ -609,8 +610,8 @@ export default function PlayPage() {
                 />
               )}
 
-              {/* ★ 结果插画：只在 result 阶段显示 */}
-              {phase === "result" && resultSceneImage && (
+              {/* ★ 结果插画：在 result/summary 阶段显示 */}
+              {(phase === "result" || phase === "summary") && resultSceneImage && (
                 <RoundSceneImageDisplay
                   sceneImage={resultSceneImage}
                   isLoading={isLoadingRoundSceneImage}
@@ -622,8 +623,8 @@ export default function PlayPage() {
                 />
               )}
 
-              {/* ★ result 阶段兜底：没有 result 插画时回退显示事件插画 */}
-              {phase === "result" && !resultSceneImage && eventSceneImage && (
+              {/* ★ result/summary 阶段兜底：没有 result 插画时回退显示事件插画 */}
+              {(phase === "result" || phase === "summary") && !resultSceneImage && eventSceneImage && (
                 <RoundSceneImageDisplay
                   sceneImage={eventSceneImage}
                   isLoading={isLoadingRoundSceneImage}
@@ -642,7 +643,7 @@ export default function PlayPage() {
                   isLoading={isLoadingRoundSceneImage}
                   isRegenerating={isRegeneratingRoundScene}
                   currentRound={currentRound}
-                  onRefresh={() => fetchRoundSceneImage(currentRound, phase === 'options' ? 'event' : phase === 'result' ? 'result' : undefined)}
+                  onRefresh={() => fetchRoundSceneImage(currentRound, phase === 'options' ? 'event' : (phase === 'result' || phase === 'summary') ? 'result' : undefined)}
                   onRegenerate={regenerateRoundSceneImage}
                 />
               )}

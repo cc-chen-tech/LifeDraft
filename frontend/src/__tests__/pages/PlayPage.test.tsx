@@ -344,6 +344,72 @@ describe('PlayPage', () => {
       expect(screen.getByTestId('sound-reading-channel')).toBeInTheDocument();
       expect(screen.queryByRole('region', { name: '故事朗读' })).not.toBeInTheDocument();
     });
+
+    it('auto-reads the completed choice story before showing weekly summary', async () => {
+      useStoryVoiceStore.setState({ autoReadEnabled: true });
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url.includes('/voice-reading/settings')) {
+          return Promise.resolve(jsonResponse({
+            auto_read_enabled: true,
+            selected_voice_color: 'warm_female',
+          }));
+        }
+        if (url.includes('/voice-reading/read')) {
+          return Promise.resolve(jsonResponse({
+            job_id: 10,
+            status: 'ready',
+            audio_url: '/api/voice-reading/audio/choice-before-summary.mp3',
+            playback_mode: 'audio',
+            provider: 'minimax',
+            media_type: 'audio/mpeg',
+          }));
+        }
+        if (url.includes('/music/recommend')) {
+          return Promise.resolve(jsonResponse({
+            keywords: ['周总结前的选择后续写'],
+            mood: 'calm',
+            scene_type: 'story_result',
+            songs: [],
+          }));
+        }
+        return Promise.resolve(jsonResponse({}));
+      });
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'summary',
+        options: [],
+        storyText: '主角做出选择后的完整续写，随后进入本周总结。',
+        displayText: '主角做出选择后的完整续写，随后进入本周总结。',
+        summaryText: '这一周的总结内容。',
+      });
+
+      render(
+        <>
+          <PlayPage />
+          <GlobalMusicPlayer />
+        </>
+      );
+
+      await waitFor(() => {
+        expect(useStoryVoiceStore.getState().activeReadingContext?.text).toBe(
+          '主角做出选择后的完整续写，随后进入本周总结。'
+        );
+      });
+      expect(useStoryVoiceStore.getState().activeAutoReadReady).toBe(true);
+
+      await waitFor(() => {
+        expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
+          String(url).includes('/voice-reading/read')
+        )).toBe(true);
+      });
+
+      const readCall = (global.fetch as jest.Mock).mock.calls.find(([url]) =>
+        String(url).includes('/voice-reading/read')
+      );
+      const payload = JSON.parse(String(readCall?.[1]?.body ?? '{}'));
+      expect(payload.context.text).toBe('主角做出选择后的完整续写，随后进入本周总结。');
+    });
   });
 
   describe('Summary phase', () => {
