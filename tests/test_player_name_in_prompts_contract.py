@@ -113,6 +113,35 @@ class TestPlayerNameInPrompts:
             assert "7字对仗标题" not in prompt
             assert "章回体" in prompt and "禁止使用章回体" in prompt
 
+    def test_explicit_ancient_settings_keep_classical_chapter_title(self):
+        """明确古代/江湖设定仍可使用章回体标题。"""
+        player_state = {
+            "age": 28,
+            "week": 2,
+            "current_round": 0,
+            "rounds_per_week": 3,
+            "energy": 70,
+            "mood": 60,
+            "knowledge": 50,
+            "wealth": 50000,
+            "relationships": {},
+        }
+        ancient_settings = {
+            "era": {"era_description": "唐朝江湖", "world_context": "古代中国"},
+            "world": {"world_description": "长安城外的武侠故事"},
+        }
+
+        prompt = get_story_only_prompt(
+            player_state=player_state,
+            language="zh",
+            character_settings=ancient_settings,
+            player_name="狄仁杰",
+        )
+
+        assert "第七回" in prompt
+        assert "7字对仗标题" in prompt
+        assert "第3周·周一" not in prompt
+
     def test_story_only_prompt_includes_player_name(self):
         """get_story_only_prompt 输出必须包含传入的 player_name"""
         player_state = {
@@ -344,10 +373,10 @@ class TestPlayerNameInPrompts:
         assert isinstance(prompt, str)
         assert len(prompt) > 0
 
-    # ── 章节号约束 contract tests ──
+    # ── 默认现代标题 contract tests ──
 
-    def test_story_only_prompt_has_chapter_label_first_round(self):
-        """get_story_only_prompt 新游戏(week=0,current_round=0)必须包含'第一回'章节标识"""
+    def test_story_only_prompt_without_settings_uses_modern_timeline_first_round(self):
+        """无 character_settings 时默认现代青年，不应回退到古风“第一回”标题。"""
         player_state = {
             "age": 35,
             "week": 0,
@@ -364,12 +393,12 @@ class TestPlayerNameInPrompts:
             language="zh",
             player_name="狄仁杰",
         )
-        assert (
-            "第一回" in prompt
-        ), f"prompt 必须包含章节标识 '第一回'，未被找到。prompt 前800字: {prompt[:800]}"
+        assert "第1周·周一" in prompt, f"prompt 必须包含现代时间线标题。prompt 前800字: {prompt[:800]}"
+        assert "第一回" not in prompt
+        assert "7字对仗标题" not in prompt
 
     def test_story_only_prompt_has_chapter_constraint_text(self):
-        """get_story_only_prompt 必须包含'章节号约束'或'本段故事'等章节定位文本"""
+        """get_story_only_prompt 必须包含章节定位文本"""
         player_state = {
             "age": 35,
             "week": 0,
@@ -390,8 +419,8 @@ class TestPlayerNameInPrompts:
             "本段故事是整体叙事的" in prompt
         ), f"prompt 必须包含章节定位文本，实际未找到。prompt 前800字: {prompt[:800]}"
 
-    def test_story_only_prompt_chapter_label_week2_round0(self):
-        """get_story_only_prompt week=2,current_round=0→第7回 (2*3+0+1=7)"""
+    def test_story_only_prompt_without_settings_uses_modern_timeline_week2_round0(self):
+        """无 character_settings 时 week=2,current_round=0 应使用第3周·周一，不应使用第七回。"""
         player_state = {
             "age": 35,
             "week": 2,
@@ -408,9 +437,9 @@ class TestPlayerNameInPrompts:
             language="zh",
             player_name="狄仁杰",
         )
-        assert (
-            "第七回" in prompt
-        ), f"prompt 必须包含章节标识 '第七回'，未被找到。prompt 前800字: {prompt[:800]}"
+        assert "第3周·周一" in prompt, f"prompt 必须包含现代时间线标题。prompt 前800字: {prompt[:800]}"
+        assert "第七回" not in prompt
+        assert "7字对仗标题" not in prompt
 
     def test_story_only_prompt_first_chapter_no_prior_reference(self):
         """新游戏第一章prompt应包含禁止提及前情内容"""
@@ -431,11 +460,11 @@ class TestPlayerNameInPrompts:
             player_name="狄仁杰",
         )
         assert (
-            "之前没有任何情节" in prompt or "开篇第一回" in prompt or "禁止提及" in prompt
+            "之前没有任何情节" in prompt and "禁止提及" in prompt
         ), f"第一章prompt必须禁止提及前情内容。prompt前800字: {prompt[:800]}"
 
-    def test_round_event_prompt_chapter_label_consistent(self):
-        """get_round_event_prompt week=0,round=0→第一回，验证公式一致性"""
+    def test_round_event_prompt_without_settings_uses_modern_timeline_first_round(self):
+        """get_round_event_prompt 无 character_settings 时 week=0,round=0 应使用第1周·周一。"""
         player_state = {
             "age": 35,
             "week": 0,
@@ -454,12 +483,12 @@ class TestPlayerNameInPrompts:
             round_context="",
             player_name="狄仁杰",
         )
-        assert (
-            "第一回" in prompt
-        ), f"round_event_prompt 必须包含章节标识 '第一回'。prompt前800字: {prompt[:800]}"
+        assert "第1周·周一" in prompt, f"round_event_prompt 必须包含现代时间线标题。prompt前800字: {prompt[:800]}"
+        assert "第一回" not in prompt
+        assert "7字对仗标题" not in prompt
 
-    def test_round_event_prompt_chapter_week2_round0(self):
-        """get_round_event_prompt week=2,round=0→第七回，验证跨周章节号"""
+    def test_round_event_prompt_without_settings_uses_modern_timeline_week2_round0(self):
+        """get_round_event_prompt 无 character_settings 时 week=2,round=0 应使用第3周·周一。"""
         player_state = {
             "age": 35,
             "week": 2,
@@ -478,12 +507,12 @@ class TestPlayerNameInPrompts:
             round_context="",
             player_name="狄仁杰",
         )
-        assert (
-            "第七回" in prompt
-        ), f"week=2,round=0→total_chapter=7，必须包含'第七回'。prompt前800字: {prompt[:800]}"
+        assert "第3周·周一" in prompt, f"round_event_prompt 必须包含现代时间线标题。prompt前800字: {prompt[:800]}"
+        assert "第七回" not in prompt
+        assert "7字对仗标题" not in prompt
 
     def test_round_event_prompt_has_chapter_constraint_block(self):
-        """get_round_event_prompt 必须包含章节号约束区块"""
+        """get_round_event_prompt 必须包含时间线/章节定位区块"""
         player_state = {
             "age": 35,
             "week": 0,
@@ -503,6 +532,6 @@ class TestPlayerNameInPrompts:
             player_name="狄仁杰",
         )
         assert (
-            "章节号约束" in prompt
-        ), f"round_event_prompt 必须包含章节号约束区块。prompt前800字: {prompt[:800]}"
+            "时间线标题约束" in prompt
+        ), f"round_event_prompt 必须包含现代时间线约束区块。prompt前800字: {prompt[:800]}"
         assert "本段故事是整体叙事的" in prompt, "必须包含章节定位说明"
