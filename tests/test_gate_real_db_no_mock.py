@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import os
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 
+from src.api.deps import create_token
 from src.api.routers.images import get_round_scene_image
 from src.database.models import (Base, Game, GameState, SceneImage,
                                  SessionLocal, User, engine, init_db)
@@ -157,6 +160,155 @@ def test_scene_image_save_read_chain_uses_week_round_stage_key() -> None:
         assert loaded.round_number == 2
     finally:
         session.rollback()
+        session.close()
+
+
+def test_saved_games_list_is_limited_to_authenticated_user_real_db(client: TestClient) -> None:
+    init_db()
+    os.environ.setdefault("JWT_SECRET", "saved-game-isolation-test-secret")
+    suffix = uuid4().hex[:12]
+
+    session = SessionLocal()
+    created_game_ids: list[int] = []
+    created_user_ids: list[int] = []
+    try:
+        user_a = User(
+            private_id=f"save-list-a-{suffix}",
+            public_id=f"A{suffix[:7]}",
+            display_name=f"Save List A {suffix}",
+        )
+        user_b = User(
+            private_id=f"save-list-b-{suffix}",
+            public_id=f"B{suffix[:7]}",
+            display_name=f"Save List B {suffix}",
+        )
+        session.add_all([user_a, user_b])
+        session.flush()
+        created_user_ids.extend([int(user_a.user_id), int(user_b.user_id)])
+
+        own_game = Game(
+            user_id=user_a.user_id,
+            language="zh",
+            initial_state={"player_name": f"Owner {suffix}", "week": 2, "age": 29},
+        )
+        other_game = Game(
+            user_id=user_b.user_id,
+            language="zh",
+            initial_state={"player_name": f"Other {suffix}", "week": 9, "age": 41},
+        )
+        session.add_all([own_game, other_game])
+        session.flush()
+        created_game_ids.extend([int(own_game.game_id), int(other_game.game_id)])
+        session.add_all(
+            [
+                GameState(
+                    game_id=own_game.game_id,
+                    week=2,
+                    age=29,
+                    state_json={"player_name": f"Owner Latest {suffix}", "week": 2, "age": 29},
+                ),
+                GameState(
+                    game_id=other_game.game_id,
+                    week=9,
+                    age=41,
+                    state_json={"player_name": f"Other Latest {suffix}", "week": 9, "age": 41},
+                ),
+            ]
+        )
+        session.commit()
+
+        token = create_token(int(user_a.user_id))
+        response = client.get("/api/games", headers={"Authorization": f"Bearer {token}"})
+
+        assert response.status_code == 200
+        payload = response.json()
+        ids = {item["game_id"] for item in payload}
+        names = {item["player_name"] for item in payload}
+
+        assert int(own_game.game_id) in ids
+        assert int(other_game.game_id) not in ids
+        assert f"Owner Latest {suffix}" in names
+        assert f"Other Latest {suffix}" not in names
+    finally:
+        session.rollback()
+        if created_game_ids:
+            session.query(GameState).filter(GameState.game_id.in_(created_game_ids)).delete(
+                synchronize_session=False
+            )
+            session.query(Game).filter(Game.game_id.in_(created_game_ids)).delete(
+                synchronize_session=False
+            )
+        if created_user_ids:
+            session.query(User).filter(User.user_id.in_(created_user_ids)).delete(
+                synchronize_session=False
+            )
+        session.commit()
+        session.close()
+
+
+def test_saved_game_load_rejects_other_users_game_real_db(client: TestClient) -> None:
+    init_db()
+    os.environ.setdefault("JWT_SECRET", "saved-game-isolation-test-secret")
+    suffix = uuid4().hex[:12]
+
+    session = SessionLocal()
+    created_game_ids: list[int] = []
+    created_user_ids: list[int] = []
+    try:
+        user_a = User(
+            private_id=f"save-load-a-{suffix}",
+            public_id=f"C{suffix[:7]}",
+            display_name=f"Save Load A {suffix}",
+        )
+        user_b = User(
+            private_id=f"save-load-b-{suffix}",
+            public_id=f"D{suffix[:7]}",
+            display_name=f"Save Load B {suffix}",
+        )
+        session.add_all([user_a, user_b])
+        session.flush()
+        created_user_ids.extend([int(user_a.user_id), int(user_b.user_id)])
+
+        other_game = Game(
+            user_id=user_b.user_id,
+            language="zh",
+            initial_state={"player_name": f"Forbidden {suffix}", "week": 5, "age": 37},
+        )
+        session.add(other_game)
+        session.flush()
+        created_game_ids.append(int(other_game.game_id))
+        session.add(
+            GameState(
+                game_id=other_game.game_id,
+                week=5,
+                age=37,
+                state_json={"player_name": f"Forbidden Latest {suffix}", "week": 5, "age": 37},
+            )
+        )
+        session.commit()
+
+        token = create_token(int(user_a.user_id))
+        response = client.get(
+            f"/api/games/{int(other_game.game_id)}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert response.status_code == 404
+        assert f"Forbidden Latest {suffix}" not in response.text
+    finally:
+        session.rollback()
+        if created_game_ids:
+            session.query(GameState).filter(GameState.game_id.in_(created_game_ids)).delete(
+                synchronize_session=False
+            )
+            session.query(Game).filter(Game.game_id.in_(created_game_ids)).delete(
+                synchronize_session=False
+            )
+        if created_user_ids:
+            session.query(User).filter(User.user_id.in_(created_user_ids)).delete(
+                synchronize_session=False
+            )
+        session.commit()
         session.close()
 
 
