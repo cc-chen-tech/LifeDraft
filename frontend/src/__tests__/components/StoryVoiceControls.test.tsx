@@ -694,4 +694,53 @@ describe('StoryVoiceControls', () => {
       )).toBe(true);
     });
   });
+
+  it('keeps a locally selected voice when stale settings finish loading later', async () => {
+    let resolveSettings: (value: Response) => void = () => undefined;
+    const settingsPromise = new Promise<Response>((resolve) => {
+      resolveSettings = resolve;
+    });
+    (global.fetch as jest.Mock).mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes('/voice-reading/settings')) {
+        return settingsPromise;
+      }
+      if (url.includes('/voice-reading/read')) {
+        const payload = JSON.parse(String(init?.body ?? '{}'));
+        return Promise.resolve(jsonResponse({
+          job_id: payload.voice_id === 'clear_neutral' ? 3 : 2,
+          status: 'ready',
+          audio_url: `/api/voice-reading/audio/${payload.voice_id}.mp3`,
+          playback_mode: 'audio',
+          provider: 'minimax',
+          media_type: 'audio/mpeg',
+        }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    render(<StoryVoiceControls currentContext={currentContext} enablePlaybackControls compact />);
+
+    fireEvent.change(screen.getByRole('combobox', { name: '选择朗读声音' }), {
+      target: { value: 'clear_neutral' },
+    });
+    resolveSettings(jsonResponse({
+      auto_read_enabled: false,
+      selected_voice_color: 'calm_male',
+    }));
+
+    await waitFor(() => {
+      expect(useStoryVoiceStore.getState().selectedVoiceId).toBe('clear_neutral');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '朗读故事' }));
+
+    await waitFor(() => {
+      const readCalls = (global.fetch as jest.Mock).mock.calls.filter(([url]) =>
+        String(url).includes('/voice-reading/read')
+      );
+      expect(readCalls.length).toBeGreaterThan(0);
+      const latestPayload = JSON.parse(String(readCalls.at(-1)?.[1]?.body ?? '{}'));
+      expect(latestPayload.voice_id).toBe('clear_neutral');
+    });
+  });
 });
