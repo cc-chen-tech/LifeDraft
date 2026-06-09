@@ -48,7 +48,7 @@ describe('ChatBar', () => {
       );
       const expandButton = screen.getByLabelText('打开聊天');
       expect(expandButton).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: '重写' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '重新生成' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: '改写' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: '人生总结' })).toBeInTheDocument();
     });
@@ -75,7 +75,7 @@ describe('ChatBar', () => {
         />
       );
 
-      await user.click(screen.getByRole('button', { name: '重写' }));
+      await user.click(screen.getByRole('button', { name: '重新生成' }));
 
       expect(mockOnRegenerate).toHaveBeenCalled();
     });
