@@ -7,9 +7,11 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import PlayPage from '@/app/play/page';
 import { GlobalMusicPlayer } from '@/components/game/GlobalMusicPlayer';
+import { useGameStore } from '@/stores/useGameStore';
 import { useMusicStore } from '@/stores/useMusicStore';
 import { useStoryVoiceStore } from '@/stores/useStoryVoiceStore';
 import { jsonResponse } from '@/__tests__/helpers/fetch';
+import { createSSEMockResponse } from '@/__tests__/helpers/sse-mock';
 
 // Mock usePlayGame hook
 const mockUsePlayGame = {
@@ -420,6 +422,57 @@ describe('PlayPage', () => {
       
       render(<PlayPage />);
       expect(screen.getByText('保存失败')).toBeInTheDocument();
+    });
+  });
+
+  describe('Rewrite functionality', () => {
+    it('keeps currentEvent in sync when inline rewrite completes', async () => {
+      const user = userEvent.setup();
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      const originalStory = '原始故事。';
+      const rewrittenStory = '改写后的故事。';
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'options',
+        storyText: originalStory,
+        displayText: originalStory,
+      });
+      useGameStore.setState({
+        currentEvent: {
+          story: originalStory,
+          options: [{ text: '继续', brief_result: '继续推进' }],
+        },
+        storyText: originalStory,
+      });
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url.includes('/voice-reading/settings')) {
+          return Promise.resolve(jsonResponse({
+            auto_read_enabled: false,
+            selected_voice_color: 'warm_female',
+          }));
+        }
+        if (url.includes('/rewrite-stream')) {
+          return Promise.resolve(createSSEMockResponse([
+            `event: complete\ndata: {"new_story":"${rewrittenStory}","rewritten_story":"${rewrittenStory}"}\n\n`,
+          ]));
+        }
+        return Promise.resolve(jsonResponse({}));
+      });
+
+      render(<PlayPage />);
+
+      await user.click(screen.getByRole('button', { name: '改写' }));
+      fireEvent.change(screen.getByPlaceholderText(/描述你想要的修改/), {
+        target: { value: '让语气更温柔' },
+      });
+      await user.click(screen.getByRole('button', { name: '改写故事' }));
+
+      await waitFor(() => {
+        expect(mockUsePlayGame.setStoryText).toHaveBeenCalledWith(rewrittenStory);
+      });
+      await waitFor(() => {
+        expect(useGameStore.getState().currentEvent?.story).toBe(rewrittenStory);
+      });
     });
   });
 

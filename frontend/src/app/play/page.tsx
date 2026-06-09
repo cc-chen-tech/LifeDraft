@@ -297,6 +297,17 @@ export default function PlayPage() {
     handleOpenHistory();
   }, [handleOpenHistory]);
 
+  const handleRewriteComplete = useCallback((newStory: string) => {
+    setStoryText(newStory);
+    const currentEvent = useGameStore.getState().currentEvent;
+    if (currentEvent) {
+      useGameStore.getState().setCurrentEvent({
+        ...currentEvent,
+        story: newStory,
+      });
+    }
+  }, [setStoryText]);
+
   // Don't render until hydrated
   if (!hydrated) {
     return (
@@ -777,9 +788,7 @@ export default function PlayPage() {
           onSave={handleSave}
           onRegenerate={handleRegenerate}
           storyText={storyText}
-          onRewriteComplete={(newStory) => {
-            setStoryText(newStory);
-          }}
+          onRewriteComplete={handleRewriteComplete}
           isSaving={isSaving}
           isStoryBusy={isCurrentStoryBusy}
           isViewingHistory={isViewingHistory}
