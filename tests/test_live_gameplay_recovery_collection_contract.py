@@ -54,6 +54,39 @@ def test_entity_recognition_characters_are_gated_by_relationship_metadata() -> N
     assert [character["name"] for character in result["characters"]] == ["陆子衿"]
 
 
+def test_entity_recognition_empty_character_whitelist_still_collects_clear_story_people() -> None:
+    """An empty relationship whitelist must not hide obvious named story characters."""
+    service = EntityRecognitionService(
+        _FakeAIClient('{"items": [], "characters": [], "landmarks": []}')
+    )
+
+    result = service.recognize_from_history(
+        round_history=[
+            {
+                "week": 1,
+                "round": 0,
+                "event_description": (
+                    "马老板把欠条拍在桌上，方蕾要求林见微立刻接手苏州贸易公司的债务。"
+                    "赵子豪在旁边翻出旧账。王丽华留下的签字担保被重新摆到灯下。"
+                ),
+            }
+        ],
+        existing_items=[],
+        existing_characters=["林见微"],
+        existing_landmarks=[],
+        min_appearances=1,
+        language="zh",
+        eligible_character_names=[],
+    )
+
+    assert {character["name"] for character in result["characters"]} == {
+        "马老板",
+        "方蕾",
+        "赵子豪",
+        "王丽华",
+    }
+
+
 def test_entity_recognition_does_not_repropose_existing_eligible_character() -> None:
     """Already collected relationship characters should not return as new candidates."""
     service = EntityRecognitionService(
