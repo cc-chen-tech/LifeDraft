@@ -22,3 +22,26 @@ Voice-reading API failures SHALL not create a long silent wait before browser sp
 - **THEN** the frontend MUST NOT retry the voice-reading request
 - **AND** the story voice store MUST start browser speech fallback
 - **AND** the user MUST not remain in a failed or indefinitely loading reading state.
+
+### Requirement: Browser-provider settings start speech without backend delay
+
+When production settings report browser speech as the active provider and backend audio as disabled, the frontend SHALL start browser speech directly instead of attempting backend audio first.
+
+#### Scenario: Production voice settings disable backend audio
+- **GIVEN** `/voice-reading/settings` returns `tts_provider` as `browser`
+- **AND** `backend_audio_enabled` is `false`
+- **WHEN** the user starts reading the current story
+- **THEN** the frontend MUST NOT call `/voice-reading/read`
+- **AND** the story voice store MUST enter browser speech playback.
+
+### Requirement: Browser voice switching uses the newly selected voice
+
+Changing the selected voice while browser speech is active SHALL restart speech with the new voice color immediately.
+
+#### Scenario: Switch from warm female to calm male
+- **GIVEN** browser speech is currently reading with `warm_female`
+- **AND** the browser exposes both female and male Chinese voices
+- **WHEN** the user selects `calm_male`
+- **THEN** the frontend MUST cancel the current utterance
+- **AND** the next utterance MUST use the matching male browser voice
+- **AND** matching `male` MUST NOT accidentally match the substring inside `female`.
