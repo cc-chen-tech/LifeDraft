@@ -64,8 +64,8 @@ async function getSavedPlayerState(
   return playerState as Record<string, unknown>;
 }
 
-test.describe("选择影响可见性", () => {
-  test("选择后显示资源变化", async ({ page, context }) => {
+test.describe("选择影响资源隐藏", () => {
+  test("选择后状态栏不显示资源变化", async ({ page, context }) => {
     await ensureAuthenticated(page, context);
     const gameId = await createTestGame(context);
     await seedEventForGame(context, gameId);
@@ -80,8 +80,8 @@ test.describe("选择影响可见性", () => {
 
     const statusBar = page.getByTestId("status-bar").first();
     await expect(statusBar).toBeVisible({ timeout: 30000 });
-    await expect(statusBar).toContainText(`精力: ${savedEnergy}`);
-    await expect(statusBar).toContainText(/情绪|学识|财富/);
+    await expect(statusBar).not.toContainText(`精力: ${savedEnergy}`);
+    await expect(statusBar).not.toContainText(/情绪|学识|财富/);
   });
 
   test("同步选择 API 返回 effects_applied", async ({ page, context }) => {

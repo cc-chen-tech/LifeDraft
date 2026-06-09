@@ -30,8 +30,8 @@ async function createTestGame(
   return game.game_id;
 }
 
-test.describe("4D 资源可见性", () => {
-  test("游戏页面顶部状态栏显示 4D 资源", async ({ page, context }) => {
+test.describe("4D 资源隐藏", () => {
+  test("游戏页面顶部状态栏隐藏 4D 资源", async ({ page, context }) => {
     await ensureAuthenticated(page, context);
     const gameId = await createTestGame(context);
 
@@ -43,13 +43,11 @@ test.describe("4D 资源可见性", () => {
     const statusBar = page.locator("[data-testid='status-bar']").first();
     await expect(statusBar).toBeVisible();
 
-    // 4D 资源中至少有一个应可见（精力、情绪、学识、财富）
-    const resourceLabels = page.locator("text=/精力|情绪|学识|财富|energy|mood|knowledge|wealth/i");
-    const count = await resourceLabels.count();
-    expect(count).toBeGreaterThan(0);
+    await expect(statusBar).toContainText("岁");
+    await expect(statusBar.locator("text=/精力|情绪|学识|财富|energy|mood|knowledge|wealth/i")).toHaveCount(0);
   });
 
-  test("资源数值与 API 返回一致", async ({ page, context }) => {
+  test("API 保留资源字段但页面不展示资源数值", async ({ page, context }) => {
     await ensureAuthenticated(page, context);
     const gameId = await createTestGame(context);
 
@@ -65,11 +63,14 @@ test.describe("4D 资源可见性", () => {
     // 等待状态栏加载完成
     await page.waitForSelector("[data-testid='status-bar']", { timeout: 15000 });
 
-    // 页面应显示 player_state 中的资源值（StatusBar 格式: "精力: 70"）
+    expect(playerState).toHaveProperty("energy");
+    expect(playerState).toHaveProperty("mood");
+    expect(playerState).toHaveProperty("knowledge");
+    expect(playerState).toHaveProperty("wealth");
+
     const energyValue = String(playerState.energy ?? "");
     if (energyValue) {
-      // StatusBar 以 "精力: 70" 格式渲染，text= 做子串匹配能找到
-      await expect(page.locator(`text=精力: ${energyValue}`).first()).toBeVisible({ timeout: 10000 });
+      await expect(page.locator(`text=精力: ${energyValue}`).first()).toHaveCount(0);
     }
   });
 });

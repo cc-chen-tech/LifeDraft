@@ -67,10 +67,13 @@ describe("LifeReviewCard", () => {
       expect(screen.getByText(/“Live and let live”/)).toBeInTheDocument();
     });
 
-    it("renders resource curves section", () => {
+    it("hides resource curves section", () => {
       render(<LifeReviewCard data={baseData} />);
-      expect(screen.getByText("资源曲线")).toBeInTheDocument();
-      expect(screen.getByText("50")).toBeInTheDocument(); // last value of energy
+      expect(screen.queryByText("资源曲线")).not.toBeInTheDocument();
+      expect(screen.queryByText("energy")).not.toBeInTheDocument();
+      expect(screen.queryByText("mood")).not.toBeInTheDocument();
+      expect(screen.queryByText("knowledge")).not.toBeInTheDocument();
+      expect(screen.queryByText("wealth")).not.toBeInTheDocument();
     });
   });
 
