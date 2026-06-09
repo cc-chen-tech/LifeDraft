@@ -656,7 +656,10 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
         console.log("[create] Game already exists:", gameId);
         // Persist auto-generated character settings back to the server
         try {
-          await api.games.patchCharacterSettings(gameId, characterSettings);
+          await api.games.patchCharacterSettings(gameId, characterSettings, {
+            player_name: playerName.trim(),
+            life_vision: lifeVision,
+          });
           console.log("[create] Character settings patched successfully");
         } catch (patchErr) {
           console.warn("[create] Failed to patch character settings (non-blocking):", patchErr);

@@ -466,6 +466,10 @@ async def update_character_settings(
 
     updated_state = dict(state_data)
     updated_state["character_settings"] = merged_settings
+    if req.player_name is not None and req.player_name.strip():
+        updated_state["player_name"] = req.player_name.strip()
+    if req.life_vision is not None:
+        updated_state["life_vision"] = req.life_vision
     late_initial_wealth = _extract_generated_initial_wealth(req.character_settings)
     should_sync_late_wealth = (
         late_initial_wealth is not None and _is_before_first_played_round(state_data)
@@ -480,6 +484,10 @@ async def update_character_settings(
     game_session = session_store.get(game_id, user_id)
     if game_session and game_session.game_loop and game_session.game_loop.player_state:
         game_session.game_loop.player_state.character_settings = merged_settings
+        if req.player_name is not None and req.player_name.strip():
+            game_session.game_loop.player_state.player_name = req.player_name.strip()
+        if req.life_vision is not None:
+            game_session.game_loop.player_state.life_vision = req.life_vision
         if should_sync_late_wealth:
             game_session.game_loop.player_state.wealth = late_initial_wealth
 

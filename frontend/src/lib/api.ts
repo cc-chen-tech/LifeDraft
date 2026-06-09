@@ -220,10 +220,14 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify(data),
       }),
-    patchCharacterSettings: (gameId: number, characterSettings: CharacterSettings) =>
+    patchCharacterSettings: (
+      gameId: number,
+      characterSettings: CharacterSettings,
+      identity?: { player_name?: string; life_vision?: string },
+    ) =>
       fetchJson<{ success: boolean; message: string }>(`/games/${gameId}/character-settings`, {
         method: 'PATCH',
-        body: JSON.stringify({ character_settings: characterSettings }),
+        body: JSON.stringify({ character_settings: characterSettings, ...identity }),
       }),
     // Narrative style
     listNarrativeStyles: (gameId: number) =>

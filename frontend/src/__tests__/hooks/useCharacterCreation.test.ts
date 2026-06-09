@@ -906,6 +906,29 @@ describe('useCharacterCreation', () => {
       expect(mockPush).toHaveBeenCalledWith('/story/opening');
     });
 
+    it('patches existing game identity when gameId already exists', async () => {
+      useGameStore.setState({
+        playerName: '沈若澜',
+        lifeVision: '2026年的深圳，女性AI教育产品创始人',
+        gameId: 109,
+        characterSettings: { era: { era_description: '2026年的深圳' } },
+      } as never);
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ success: true }));
+
+      const { result } = renderHook(() => useCharacterCreation());
+
+      await act(async () => {
+        await result.current.handleStartGame();
+      });
+
+      expect(fetchBody('/api/games/109/character-settings')).toMatchObject({
+        character_settings: { era: { era_description: '2026年的深圳' } },
+        player_name: '沈若澜',
+        life_vision: '2026年的深圳，女性AI教育产品创始人',
+      });
+      expect(mockPush).toHaveBeenCalledWith('/story/opening');
+    });
+
     it('creates a new game and navigates when no gameId', async () => {
       useGameStore.setState({
         playerName: 'TestPlayer',

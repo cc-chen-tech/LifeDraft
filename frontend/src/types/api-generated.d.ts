@@ -3199,6 +3199,10 @@ export interface components {
             character_settings: {
                 [key: string]: unknown;
             };
+            /** Player Name */
+            player_name?: string | null;
+            /** Life Vision */
+            life_vision?: string | null;
         };
         /** UpdateGameSettingsRequest */
         UpdateGameSettingsRequest: {

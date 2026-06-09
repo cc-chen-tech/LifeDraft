@@ -7367,6 +7367,28 @@
             "type": "object",
             "minProperties": 1,
             "title": "Character Settings"
+          },
+          "player_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Player Name"
+          },
+          "life_vision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Life Vision"
           }
         },
         "type": "object",

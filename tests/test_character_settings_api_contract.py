@@ -139,6 +139,48 @@ class TestCharacterSettingsUpdateAPIContract:
         assert saved_state["character_settings"]["wealth"]["wealth"] == 60000
         assert saved_state["wealth"] == 60000
 
+    def test_update_character_settings_can_replace_stale_identity_before_play(self) -> None:
+        """已有 gameId 继续创建新角色时，应同步覆盖旧 player_name/life_vision。"""
+        db = MagicMock()
+        existing_state = {
+            "player_name": "苏清岚",
+            "life_vision": "2024年上海，女性独立游戏制作人",
+            "age": 30,
+            "week": 0,
+            "current_round": 0,
+            "wealth": 60000,
+            "character_settings": {
+                "era": {"era_description": "2024年的上海"},
+            },
+        }
+        db.load_saved_game.return_value = existing_state
+        db.save_game_progress.return_value = True
+
+        late_settings = {
+            "era": {"era_description": "2026年的深圳"},
+            "age": {"age": 32, "birth_year": 1994},
+            "wealth": {"wealth": 80000},
+        }
+
+        with patch("src.api.deps.decode_token", return_value=1), patch(
+            "src.api.routers.games.get_db", return_value=db
+        ):
+            response = client.patch(
+                "/api/games/109/character-settings",
+                json={
+                    "character_settings": late_settings,
+                    "player_name": "沈若澜",
+                    "life_vision": "2026年的深圳，女性AI教育产品创始人",
+                },
+                headers={"Authorization": "Bearer test-token"},
+            )
+
+        assert response.status_code == 200
+        saved_state = db.save_game_progress.call_args.args[1].to_dict()
+        assert saved_state["player_name"] == "沈若澜"
+        assert saved_state["life_vision"] == "2026年的深圳，女性AI教育产品创始人"
+        assert saved_state["character_settings"]["era"]["era_description"] == "2026年的深圳"
+
     def test_update_character_settings_rejects_empty_payload(self) -> None:
         with patch("src.api.deps.decode_token", return_value=1):
             response = client.patch(
