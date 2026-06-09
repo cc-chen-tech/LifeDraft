@@ -80,6 +80,15 @@ class StoryService:
             )
             logger.debug(f"Generated story continuation: {len(continuation)} chars")
 
+            continuation = self._quick_validate_and_retry_continuation(
+                continuation=continuation,
+                character_settings=character_settings or {},
+                original_prompt=prompt,
+                sys_prompt=sys_prompt,
+                stream_callback=stream_callback,
+                status_callback=status_callback,
+            )
+
             # ★ 一致性校验：检查结果故事是否与世界模型一致
             if player_state and continuation:
                 continuation = self._validate_and_retry_continuation(
@@ -107,6 +116,86 @@ class StoryService:
             if stream_callback:
                 stream_callback(fallback)
             return fallback
+
+    def _quick_validate_and_retry_continuation(
+        self,
+        continuation: str,
+        character_settings: Dict[str, Any],
+        original_prompt: str,
+        sys_prompt: str,
+        stream_callback: Optional[Callable[[str], None]] = None,
+        status_callback: Optional[Callable[[str], None]] = None,
+    ) -> str:
+        """Fast local validation for post-choice story continuations."""
+        if not continuation:
+            return continuation
+
+        from config.prompts._helpers import _collect_available_people
+        from src.ai.quick_validator import quick_validate_story
+
+        available_people_names = [
+            p.get("name", "")
+            for p in _collect_available_people(character_settings)
+            if p.get("name")
+        ]
+        result = quick_validate_story(
+            story_text=continuation,
+            character_settings=character_settings,
+            available_people=available_people_names,
+            language=self.language,
+        )
+        if result.passed:
+            return continuation
+
+        logger.warning("[StoryContinuation] Quick validation failed: %s", result.issues)
+        if status_callback:
+            status_callback("retrying")
+            status_callback("retry")
+
+        retry_lines = "\n".join(f"- {issue}" for issue in result.issues)
+        if self.language == "zh":
+            retry_prompt = (
+                original_prompt
+                + "\n\n【选择后续写一致性修正 - 必须重写】\n"
+                + "上一版选择后续写存在以下问题：\n"
+                + retry_lines
+                + "\n请重新续写玩家选择之后的故事，严格遵守角色设定、现实主义世界边界和预设关键人物关系。"
+            )
+        else:
+            retry_prompt = (
+                original_prompt
+                + "\n\n[Choice Continuation Consistency Fix - Regenerate Required]\n"
+                + "The previous post-choice continuation had these issues:\n"
+                + retry_lines
+                + "\nRewrite the continuation after the player's choice, strictly following the character setup, world boundary, and preset key people relationships."
+            )
+
+        retry_continuation = self.ai_generator.generate_completion(
+            prompt=retry_prompt,
+            system_prompt=sys_prompt,
+            temperature=0.65,
+            max_tokens=4096,
+            stream_callback=stream_callback,
+            retry_count=1,
+            language=self.language,
+        )
+        retry_result = quick_validate_story(
+            story_text=retry_continuation,
+            character_settings=character_settings,
+            available_people=available_people_names,
+            language=self.language,
+        )
+        if retry_result.passed:
+            return retry_continuation
+
+        logger.warning(
+            "[StoryContinuation] Quick validation retry still failed: %s",
+            retry_result.issues,
+        )
+        raise ValueError(
+            "Choice continuation quick validation failed: "
+            + "; ".join(retry_result.issues)
+        )
 
     def generate_fallback_continuation(self, chosen_option: str, effects: Dict[str, Any]) -> str:
         """

@@ -175,6 +175,41 @@ class TestProcessDecision:
         )
         assert result["result_text"] == "You feel great!"
 
+    def test_ai_result_generation_passes_character_settings_to_choice_prompt(self):
+        """Choice result prompt should preserve preset cast and world authority."""
+        player = PlayerState()
+        player.character_settings = {
+            "era": {"year": 2024, "era_description": "2024年中国现代都市"},
+            "world": {"world_description": "现实中的上海互联网公司，普通产品经理成长线"},
+            "occupation": {"occupation": "产品经理"},
+            "relationships": {
+                "key_people": [
+                    {"name": "陆昊然", "role": "导师"},
+                    {"name": "陈晓雨", "role": "闺蜜"},
+                    {"name": "林一凡", "role": "同期"},
+                ]
+            },
+        }
+        mock_gen = Mock()
+        mock_gen.generate_completion.return_value = "陆昊然陪她复盘了需求优先级。"
+
+        process_decision(
+            player,
+            "林见微刚结束需求评审，陆昊然在会议室门口等她复盘。",
+            0,
+            [{"text": "和陆昊然复盘需求", "effects": {"knowledge": 5}}],
+            language="zh",
+            generate_result_text=True,
+            ai_generator=mock_gen,
+        )
+
+        prompt = mock_gen.generate_completion.call_args.kwargs["prompt"]
+        assert "预设关键人物" in prompt
+        assert "陆昊然" in prompt
+        assert "陈晓雨" in prompt
+        assert "林一凡" in prompt
+        assert "现实主义世界边界" in prompt
+
 
 class TestGenerateFallbackResult:
     """Test _generate_fallback_result function."""

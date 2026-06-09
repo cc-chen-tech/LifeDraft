@@ -22,3 +22,11 @@
 - [x] Inject the same authority blocks into the scheduled event prompt path so commitment fulfillment cannot bypass the main story prompt guardrails.
 - [x] Add a regression test proving scheduled/commitment events retry when generated text replaces the preset cast with invented named substitutes.
 - [x] Run scheduled event text through quick validation before returning it to the player.
+
+## 5. 2026-06-10 Follow-up
+
+- [x] Add a regression test proving choice-result prompts inherit preset cast authority and realistic-setting boundaries.
+- [x] Inject preset cast authority, available people, era constraints, and modern-world boundaries into post-choice continuation prompts.
+- [x] Add a regression test proving post-choice continuations retry when generated text drifts into external IP or invented cast.
+- [x] Run choice-result continuations through quick validation before returning or saving them.
+- [x] Pass `PlayerState.character_settings` into the legacy `process_decision` result-generation path.

@@ -225,7 +225,11 @@ def process_decision(
         if ai_generator:
             try:
                 prompt = get_result_generation_prompt(
-                    event_description, chosen_option.get("text", ""), effects, language
+                    event_description,
+                    chosen_option.get("text", ""),
+                    effects,
+                    language,
+                    character_settings=player_state.character_settings,
                 )
                 result_text = ai_generator.generate_completion(
                     prompt=prompt,

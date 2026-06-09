@@ -26,6 +26,18 @@ Story generation SHALL treat preset key people in character settings as canonica
 - **THEN** the scheduled event generator MUST retry with the validation failure included in the prompt
 - **AND** it MUST return the corrected event instead of the drifted response
 
+#### Scenario: Choice result continuations inherit preset relationship authority
+- **GIVEN** a player chooses an option after a story involving preset key people
+- **WHEN** the post-choice continuation prompt is built
+- **THEN** the prompt MUST include the canonical preset cast and no-substitution rule
+- **AND** it MUST include the realistic-world boundary and era constraints used by ordinary story prompts
+
+#### Scenario: Choice result continuations retry cast and setting drift before returning
+- **GIVEN** a post-choice continuation generation response drifts into an unrelated external IP world or invented named substitutes
+- **WHEN** quick validation flags that continuation
+- **THEN** the story service MUST retry with the validation failure included in the prompt
+- **AND** it MUST return the corrected continuation instead of the drifted response
+
 #### Scenario: Generic bystanders remain allowed
 - **GIVEN** a story scene needs non-recurring background people
 - **WHEN** the preset cast authority block is present
