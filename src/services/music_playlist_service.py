@@ -1,5 +1,6 @@
 """Music playlist service — persistent per-game queue management."""
 
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, cast
 
@@ -8,6 +9,52 @@ from sqlalchemy.orm import Session
 from src.database.models import GamePlaylist
 
 SongDict = Dict[str, Any]
+
+REPORTED_TITLE_FAMILY_CUES = {
+    "小幸运",
+    "断了的弦",
+    "绅士",
+    "红尘客栈",
+    "非你莫属",
+    "给我一首歌的时间",
+    "等你下课",
+    "不再联系",
+    "说散就散",
+    "匆匆那年",
+    "告白气球",
+    "喜欢你",
+    "夜曲",
+    "一直很安静",
+    "平凡之路",
+    "岁月神偷",
+    "都选C",
+    "她说",
+    "童话",
+    "丑八怪",
+    "可爱女人",
+}
+
+
+def _canonical_playlist_title(title: object) -> str:
+    text = str(title or "").casefold()
+    text = re.sub(r"[（(][^）)]*[）)]", "", text)
+    text = re.sub(
+        r"(心动版|加速版|降速版|抖音版|翻唱版|古风翻唱|翻唱|cover|伴奏|纯音乐版|剪辑版|完整版|live|remix|remaster|0\.\d+x|\d+(?:\.\d+)?x|版)",
+        "",
+        text,
+    )
+    return re.sub(r"[\s\-—_·.。…!！?？,，、:：;；'\"“”‘’《》\[\]【】/\\]+", "", text)
+
+
+def _playlist_title_family_key(song: SongDict) -> str:
+    canonical_title = _canonical_playlist_title(song.get("name"))
+    for cue in REPORTED_TITLE_FAMILY_CUES:
+        canonical_cue = _canonical_playlist_title(cue)
+        if canonical_cue and (
+            canonical_title == canonical_cue or canonical_cue in canonical_title
+        ):
+            return canonical_cue
+    return canonical_title
 
 
 @dataclass(frozen=True)
@@ -41,14 +88,21 @@ class PlaylistQueuePolicy:
             return PlaylistMergeResult(current_song=None, queue=list(existing_queue))
 
         current_id = self._song_key(current_song)
+        current_title_key = _playlist_title_family_key(current_song)
         queue: List[SongDict] = []
         seen_ids: set[Any] = set()
+        seen_title_keys: set[str] = {current_title_key} if current_title_key else set()
         for song in incoming_songs:
             song_id = self._song_key(song)
+            title_key = _playlist_title_family_key(song)
             if song_id == current_id or song_id in seen_ids:
+                continue
+            if title_key and title_key in seen_title_keys:
                 continue
             queue.append(song)
             seen_ids.add(song_id)
+            if title_key:
+                seen_title_keys.add(title_key)
 
         return PlaylistMergeResult(current_song=current_song, queue=queue)
 
@@ -80,12 +134,18 @@ class PlaylistQueuePolicy:
     ) -> List[SongDict]:
         deduped: List[SongDict] = []
         seen_ids: set[Any] = set()
+        seen_title_keys: set[str] = set()
         for song in songs:
             song_id = self._song_key(song)
+            title_key = _playlist_title_family_key(song)
             if song_id == excluded_id or song_id in seen_ids:
+                continue
+            if title_key and title_key in seen_title_keys:
                 continue
             deduped.append(song)
             seen_ids.add(song_id)
+            if title_key:
+                seen_title_keys.add(title_key)
         return deduped
 
 

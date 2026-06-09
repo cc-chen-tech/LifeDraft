@@ -232,6 +232,10 @@ GENERIC_NO_VOCAL_NEGATIVE_CUES = {
 REPORTED_VOCAL_POP_TITLE_CUES = {
     "小幸运",
     "断了的弦",
+    "绅士",
+    "红尘客栈",
+    "非你莫属",
+    "给我一首歌的时间",
     "等你下课",
     "不再联系",
     "说散就散",
@@ -312,11 +316,22 @@ def _canonical_music_title(title: str) -> str:
     text = str(title).casefold()
     text = re.sub(r"[（(][^）)]*[）)]", "", text)
     text = re.sub(
-        r"(心动版|加速版|降速版|抖音版|翻唱版|翻唱|cover|伴奏|纯音乐版|剪辑版|完整版|live|remix|remaster|0\.\d+x|\d+(?:\.\d+)?x|版)",
+        r"(心动版|加速版|降速版|抖音版|翻唱版|古风翻唱|翻唱|cover|伴奏|纯音乐版|剪辑版|完整版|live|remix|remaster|0\.\d+x|\d+(?:\.\d+)?x|版)",
         "",
         text,
     )
     return re.sub(r"[\s\-—_·.。…!！?？,，、:：;；'\"“”‘’《》\[\]【】/\\]+", "", text)
+
+
+def _music_title_family_key(title: str) -> str:
+    canonical_title = _canonical_music_title(title)
+    for cue in REPORTED_VOCAL_POP_TITLE_CUES:
+        canonical_cue = _canonical_music_title(cue)
+        if canonical_cue and (
+            canonical_title == canonical_cue or canonical_cue in canonical_title
+        ):
+            return canonical_cue
+    return canonical_title
 
 
 def _brief_requests_no_vocal(brief: "MusicBrief") -> bool:
@@ -339,7 +354,7 @@ def _matches_negative_music_cue(
     ):
         return False
 
-    canonical_title = _canonical_music_title(song.name)
+    canonical_title = _music_title_family_key(song.name)
     for cue in REPORTED_VOCAL_POP_TITLE_CUES:
         canonical_cue = _canonical_music_title(cue)
         if canonical_cue and (canonical_title == canonical_cue or canonical_cue in canonical_title):
@@ -659,7 +674,7 @@ class MusicResultRanker:
         for song in ranked:
             if _matches_negative_music_cue(song, brief.negative_cues, strict_no_vocal):
                 continue
-            canonical_title = _canonical_music_title(song.name)
+            canonical_title = _music_title_family_key(song.name)
             if canonical_title and canonical_title in seen_titles:
                 continue
             if canonical_title:
@@ -1087,7 +1102,7 @@ class MusicService:
 
     async def _supplement_pool(self, pool: CachedMusicPool) -> None:
         seen_ids = {song.id for song in pool.verified_songs}
-        seen_titles = {_canonical_music_title(song.name) for song in pool.verified_songs}
+        seen_titles = {_music_title_family_key(song.name) for song in pool.verified_songs}
         brief = self.context_builder.build_brief(pool.analysis)
         strict_no_vocal = _brief_requests_no_vocal(brief)
         search_keywords = self.context_builder.build_search_queries(
@@ -1107,7 +1122,7 @@ class MusicService:
             for song in songs:
                 if song.id in seen_ids or len(pool.verified_songs) >= 20:
                     continue
-                canonical_title = _canonical_music_title(song.name)
+                canonical_title = _music_title_family_key(song.name)
                 if canonical_title and canonical_title in seen_titles:
                     continue
                 if _looks_like_prompt_leak_song(song):
