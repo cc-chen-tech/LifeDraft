@@ -246,6 +246,47 @@ describe('OpeningStoryPage', () => {
       expect(screen.getByText('开始我的人生')).toBeInTheDocument();
     });
 
+    it('disables start game button while opening illustration is still generating', async () => {
+      useImageStore.setState({ isGeneratingIllustration: true });
+      const user = userEvent.setup();
+      render(<OpeningStoryPage />);
+
+      const startButton = screen.getByRole('button', { name: '开场插画生成完成后可开始' });
+      expect(startButton).toBeDisabled();
+
+      await user.click(startButton);
+      expect(mockPush).not.toHaveBeenCalled();
+    });
+
+    it('keeps start game disabled immediately after a newly generated story while illustration is queued', async () => {
+      useGameStore.setState({
+        gameId: 123,
+        openingStory: '',
+        characterSettings: { era: { era_name: '现代' } },
+        playerName: 'QueuedHero',
+        lifeVision: 'Build carefully',
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).__TEST_DATA__ = {
+        playerName: 'QueuedHero',
+        lifeVision: 'Build carefully',
+        characterSettings: { era: { era_name: '现代' } },
+      };
+      mockStreamOpeningStory.mockImplementation(
+        (_settings, _name, _vision, _language, handlers) => {
+          handlers.onComplete({ full_story: '新生成的开场故事。' });
+          return Promise.resolve();
+        }
+      );
+
+      render(<OpeningStoryPage />);
+
+      expect(await screen.findByText('新生成的开场故事。')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: '开场插画生成完成后可开始' })
+      ).toBeDisabled();
+    });
+
     it('navigates to play page when clicking start', async () => {
       const user = userEvent.setup();
       render(<OpeningStoryPage />);

@@ -12,6 +12,7 @@ interface StoryVoiceControlsProps {
   historyContext?: ReadingContext | null;
   autoReadText?: string;
   autoReadReady?: boolean;
+  isStoryReady?: boolean;
   compact?: boolean;
   enablePlaybackControls?: boolean;
   showTestControls?: boolean;
@@ -22,6 +23,7 @@ export function StoryVoiceControls({
   historyContext,
   autoReadText,
   autoReadReady = false,
+  isStoryReady = true,
   compact = false,
   enablePlaybackControls = false,
   showTestControls = false,
@@ -227,7 +229,7 @@ export function StoryVoiceControls({
   };
 
   const handlePrimaryAction = () => {
-    if (readingState === "loading") return;
+    if (readingState === "loading" || !isStoryReady) return;
     if (readingState === "ready") {
       playGeneratedAudio(true);
       return;
@@ -244,7 +246,9 @@ export function StoryVoiceControls({
   };
 
   const primaryReadLabel =
-    readingState === "loading"
+    !isStoryReady
+      ? "故事生成完成后可朗读"
+      : readingState === "loading"
       ? "正在生成语音"
       : readingState === "ready"
         ? "播放语音"
@@ -255,7 +259,7 @@ export function StoryVoiceControls({
             : readingState === "failed"
               ? "重试朗读"
               : "朗读故事";
-  const primaryReadDisabled = readingState === "loading";
+  const primaryReadDisabled = readingState === "loading" || !isStoryReady;
   const showStopButton = ["loading", "ready", "playing", "paused"].includes(readingState);
   const PrimaryIcon =
     readingState === "loading"

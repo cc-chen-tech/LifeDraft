@@ -48,6 +48,7 @@ interface ChatBarProps {
   storyText?: string;
   onRewriteComplete?: (newStory: string) => void;
   isSaving?: boolean;
+  isStoryBusy?: boolean;
   isViewingHistory?: boolean;  // ★ 是否在历史回顾模式
   className?: string;
 }
@@ -65,6 +66,7 @@ export function ChatBar({
   storyText = "",
   onRewriteComplete,
   isSaving = false,
+  isStoryBusy = false,
   isViewingHistory = false,
   className,
 }: ChatBarProps) {
@@ -101,7 +103,7 @@ export function ChatBar({
 
   // 生成总结并显示在专用总结面板中
   const handleGenerateSummary = useCallback(async () => {
-    if (!gameId || isGeneratingSummary) return;
+    if (!gameId || isGeneratingSummary || isStoryBusy) return;
 
     setIsSummaryOpen(true);
     setLifeSummaryError(null);
@@ -121,7 +123,7 @@ export function ChatBar({
     } finally {
       setIsGeneratingSummary(false);
     }
-  }, [gameId, isGeneratingSummary]);
+  }, [gameId, isGeneratingSummary, isStoryBusy]);
 
   const handleSend = useCallback(async () => {
     const text = message.trim();
@@ -183,7 +185,7 @@ export function ChatBar({
   const handleRewrite = useCallback(async (): Promise<void> => {
     const instruction = rewriteInstruction.trim();
     const fullStory = storyText.trim();
-    if (!instruction || !gameId || !fullStory || isRewriting) return;
+    if (!instruction || !gameId || !fullStory || isRewriting || isStoryBusy) return;
 
     setIsRewriting(true);
     accumulatedStoryRef.current = "";
@@ -267,6 +269,7 @@ export function ChatBar({
   }, [
     gameId,
     isRewriting,
+    isStoryBusy,
     onRewriteComplete,
     rewriteInstruction,
     showRewriteToast,
@@ -274,6 +277,11 @@ export function ChatBar({
   ]);
 
   if (!gameId) return null;
+
+  const storyBusyTitle = "故事生成完成后可用";
+  const storyActionDisabled = isViewingHistory || isStoryBusy;
+  const rewriteDisabled = storyActionDisabled || !storyText.trim();
+  const summaryDisabled = isGeneratingSummary || isSending || isStoryBusy;
 
   const rewriteSheet = (
     <Sheet open={isRewriteOpen} onOpenChange={setIsRewriteOpen}>
@@ -299,7 +307,7 @@ export function ChatBar({
           />
           <Button
             onClick={() => handleRewrite()}
-            disabled={!rewriteInstruction.trim() || isRewriting || !storyText.trim()}
+            disabled={!rewriteInstruction.trim() || isRewriting || !storyText.trim() || isStoryBusy}
             className="w-full touch-target"
           >
             {isRewriting ? (
@@ -407,8 +415,14 @@ export function ChatBar({
             variant="outline"
             className="h-10 px-3 text-xs shadow-lg bg-card/95 backdrop-blur-sm pointer-events-auto"
             onClick={() => onRegenerate?.()}
-            disabled={isViewingHistory}
-            title={isViewingHistory ? "历史回顾模式下不可用" : "重新生成当前故事"}
+            disabled={storyActionDisabled}
+            title={
+              isStoryBusy
+                ? storyBusyTitle
+                : isViewingHistory
+                ? "历史回顾模式下不可用"
+                : "重新生成当前故事"
+            }
           >
             <RotateCcw className="w-3 h-3 mr-1" />
             重新生成
@@ -419,9 +433,11 @@ export function ChatBar({
             data-testid="rewrite-button"
             className="h-10 px-3 text-xs shadow-lg bg-card/95 backdrop-blur-sm pointer-events-auto"
             onClick={() => setIsRewriteOpen(true)}
-            disabled={isViewingHistory || !storyText.trim()}
+            disabled={rewriteDisabled}
             title={
-              isViewingHistory
+              isStoryBusy
+                ? storyBusyTitle
+                : isViewingHistory
                 ? "历史回顾模式下不可用"
                 : !storyText.trim()
                 ? "暂无可改写的故事"
@@ -436,8 +452,8 @@ export function ChatBar({
             variant="outline"
             className="h-10 px-3 text-xs shadow-lg bg-card/95 backdrop-blur-sm pointer-events-auto"
             onClick={() => void handleGenerateSummary()}
-            disabled={isGeneratingSummary || isSending}
-            title="生成人生总结"
+            disabled={summaryDisabled}
+            title={isStoryBusy ? storyBusyTitle : "生成人生总结"}
           >
             {isGeneratingSummary ? (
               <Loader2 className="w-3 h-3 mr-1 animate-spin" />
@@ -495,9 +511,11 @@ export function ChatBar({
           data-testid="rewrite-button"
           className="text-xs touch-target"
           onClick={() => setIsRewriteOpen(true)}
-          disabled={isViewingHistory || !storyText.trim()}
+          disabled={rewriteDisabled}
           title={
-            isViewingHistory
+            isStoryBusy
+              ? storyBusyTitle
+              : isViewingHistory
               ? "历史回顾模式下不可用"
               : !storyText.trim()
               ? "暂无可改写的故事"
@@ -516,8 +534,14 @@ export function ChatBar({
             console.log("[ChatBar] Triggering SSE regeneration...");
             onRegenerate?.();
           }}
-          disabled={isViewingHistory}
-          title={isViewingHistory ? "历史回顾模式下不可用" : undefined}
+          disabled={storyActionDisabled}
+          title={
+            isStoryBusy
+              ? storyBusyTitle
+              : isViewingHistory
+              ? "历史回顾模式下不可用"
+              : undefined
+          }
         >
           <RotateCcw className="w-3 h-3 mr-1" />
           重新生成
@@ -528,7 +552,8 @@ export function ChatBar({
           variant="outline"
           className="text-xs touch-target"
           onClick={() => void handleGenerateSummary()}
-          disabled={isGeneratingSummary || isSending}
+          disabled={summaryDisabled}
+          title={isStoryBusy ? storyBusyTitle : "生成人生总结"}
         >
           {isGeneratingSummary ? (
             <Loader2 className="w-3 h-3 mr-1 animate-spin" />

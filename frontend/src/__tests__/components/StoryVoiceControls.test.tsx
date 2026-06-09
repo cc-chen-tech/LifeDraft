@@ -92,6 +92,20 @@ describe('StoryVoiceControls', () => {
     expect(screen.queryByText(/Audio:/)).not.toBeInTheDocument();
   });
 
+  it('disables reading while the current story is still generating', () => {
+    render(
+      <StoryVoiceControls
+        currentContext={currentContext}
+        enablePlaybackControls
+        compact
+        isStoryReady={false}
+      />
+    );
+
+    const readButton = screen.getByRole('button', { name: '故事生成完成后可朗读' });
+    expect(readButton).toBeDisabled();
+  });
+
   it('labels backend audio preparation without pretending playback already started', () => {
     useStoryVoiceStore.setState({
       readingState: 'loading',

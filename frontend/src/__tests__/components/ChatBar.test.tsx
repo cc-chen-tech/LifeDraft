@@ -80,6 +80,34 @@ describe('ChatBar', () => {
       expect(mockOnRegenerate).toHaveBeenCalled();
     });
 
+    it('disables rewrite and regeneration while the current story is still generating', async () => {
+      const user = userEvent.setup();
+      render(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+          storyText="Partial streamed story"
+          isStoryBusy
+        />
+      );
+
+      const regenerateButton = screen.getByRole('button', { name: '重新生成' });
+      const rewriteButton = screen.getByRole('button', { name: '改写' });
+      const summaryButton = screen.getByRole('button', { name: '人生总结' });
+
+      expect(regenerateButton).toBeDisabled();
+      expect(rewriteButton).toBeDisabled();
+      expect(summaryButton).toBeDisabled();
+      await user.click(regenerateButton);
+      await user.click(summaryButton);
+      expect(mockOnRegenerate).not.toHaveBeenCalled();
+      const summaryCalled = (global.fetch as jest.Mock).mock.calls.some((c: unknown[]) =>
+        (c[0] as string).includes('/summary')
+      );
+      expect(summaryCalled).toBe(false);
+    });
+
     it('opens rewrite sheet from collapsed quick action', async () => {
       const user = userEvent.setup();
       render(

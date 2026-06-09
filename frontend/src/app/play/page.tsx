@@ -167,6 +167,7 @@ export default function PlayPage() {
 
   const resultSceneRound = Math.max(0, currentRound - 1);
   const storyReadyForCompletedMedia = phase === "options" || phase === "result";
+  const isCurrentStoryBusy = phase === "loading" || phase === "generating" || phase === "choosing";
 
   // ★ 音乐 store：将当前故事文本和 gameId 传递给 GlobalMusicPlayer
   const setActiveStoryText = useMusicStore((state) => state.setActiveStoryText);
@@ -512,6 +513,7 @@ export default function PlayPage() {
                 }}
                 autoReadText={displayText}
                 autoReadReady={!isViewingHistory && storyReadyForCompletedMedia}
+                isStoryReady={storyReadyForCompletedMedia}
                 compact
                 enablePlaybackControls
               />
@@ -769,6 +771,7 @@ export default function PlayPage() {
             setStoryText(newStory);
           }}
           isSaving={isSaving}
+          isStoryBusy={isCurrentStoryBusy}
           isViewingHistory={isViewingHistory}
         />
       )}
