@@ -4,7 +4,9 @@
 import React from 'react';
 import { webcrypto } from 'node:crypto';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import PlayPage from '@/app/play/page';
+import { GlobalMusicPlayer } from '@/components/game/GlobalMusicPlayer';
 import { useMusicStore } from '@/stores/useMusicStore';
 import { useStoryVoiceStore } from '@/stores/useStoryVoiceStore';
 import { jsonResponse } from '@/__tests__/helpers/fetch';
@@ -99,6 +101,9 @@ describe('PlayPage', () => {
       musicDuckState: 'idle',
       musicWasPlaying: false,
       userChangedMusic: false,
+      activeReadingContext: null,
+      activeAutoReadText: '',
+      activeAutoReadReady: false,
     });
   });
 
@@ -135,6 +140,12 @@ describe('PlayPage', () => {
       });
 
       render(<PlayPage />);
+
+      await waitFor(() => {
+        expect(useStoryVoiceStore.getState().activeReadingContext?.text).toBe(
+          '已完成并带选项的故事。'
+        );
+      });
 
       await waitFor(() => {
         expect(useMusicStore.getState().activeStoryText).toBe('已完成并带选项的故事。');
@@ -240,6 +251,7 @@ describe('PlayPage', () => {
     });
 
     it('auto-reads the completed choice result story', async () => {
+      const user = userEvent.setup();
       useStoryVoiceStore.setState({ autoReadEnabled: true });
       (global.fetch as jest.Mock).mockImplementation((url: string) => {
         if (url.includes('/voice-reading/settings')) {
@@ -258,6 +270,14 @@ describe('PlayPage', () => {
             media_type: 'audio/mpeg',
           }));
         }
+        if (url.includes('/music/recommend')) {
+          return Promise.resolve(jsonResponse({
+            keywords: ['选择后的故事'],
+            mood: 'calm',
+            scene_type: 'story_result',
+            songs: [],
+          }));
+        }
         return Promise.resolve(jsonResponse({}));
       });
       const originalHook = jest.requireMock('@/hooks/usePlayGame');
@@ -269,7 +289,21 @@ describe('PlayPage', () => {
         displayText: '主角做出选择后的完整续写。',
       });
 
-      render(<PlayPage />);
+      render(
+        <>
+          <PlayPage />
+          <GlobalMusicPlayer />
+        </>
+      );
+
+      await waitFor(() => {
+        expect(useStoryVoiceStore.getState().activeReadingContext?.text).toBe(
+          '主角做出选择后的完整续写。'
+        );
+      });
+      expect(useStoryVoiceStore.getState().activeAutoReadReady).toBe(true);
+      await user.click(screen.getByRole('button', { name: '展开声音面板' }));
+      expect(screen.getByRole('region', { name: '故事朗读' })).toBeInTheDocument();
 
       await waitFor(() => {
         expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>

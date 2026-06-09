@@ -12,8 +12,10 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { MusicPlayer } from "./MusicPlayer";
+import { StoryVoiceControls } from "./StoryVoiceControls";
 import { useMusicStore } from "@/stores/useMusicStore";
-import { Play, Pause, ChevronUp, ChevronDown } from "lucide-react";
+import { useStoryVoiceStore } from "@/stores/useStoryVoiceStore";
+import { Play, Pause, ChevronUp, ChevronDown, Volume2 } from "lucide-react";
 
 export function GlobalMusicPlayer() {
   const hasInitRef = useRef(false);
@@ -31,6 +33,10 @@ export function GlobalMusicPlayer() {
   const currentTime = useMusicStore((state) => state.currentTime);
   const duration = useMusicStore((state) => state.duration);
   const audioElement = useMusicStore((state) => state.audioElement);
+  const activeReadingContext = useStoryVoiceStore((state) => state.activeReadingContext);
+  const activeAutoReadText = useStoryVoiceStore((state) => state.activeAutoReadText);
+  const activeAutoReadReady = useStoryVoiceStore((state) => state.activeAutoReadReady);
+  const readingState = useStoryVoiceStore((state) => state.readingState);
 
   // On mount, try to restore the active game playlist from localStorage
   useEffect(() => {
@@ -67,12 +73,13 @@ export function GlobalMusicPlayer() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isExpanded]);
 
-  // Only render if we have storyText (either from play page or persisted state)
-  if (!storyText) return null;
+  // Only render when at least one sound surface has context.
+  if (!storyText && !activeReadingContext) return null;
 
   const songName = currentSong?.name || recommendation?.songs?.[0]?.name || "";
   const artistName = currentSong?.artists?.join(", ") || "";
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const soundStatus = artistName || (readingState === "idle" ? "音乐与朗读" : "故事朗读中");
 
   // Handle play/pause from the mini bar.
   // If audioElement exists, use store.togglePlay (direct control).
@@ -81,13 +88,15 @@ export function GlobalMusicPlayer() {
     if (audioElement) {
       togglePlay();
     } else {
-      // No audio element — expand the player so user can pick a song
+      // No audio element — expand the sound panel so user can pick music or read story.
       setIsExpanded(true);
     }
   };
 
   return (
     <div
+      role="region"
+      aria-label="声音控制"
       data-testid="global-music-player"
       className="fixed z-50 top-16 left-0 right-0 safe-area-pt mt-2 md:left-auto md:right-4 md:w-80"
     >
@@ -97,20 +106,46 @@ export function GlobalMusicPlayer() {
       <div
         className={
           isExpanded
-            ? "bg-card border rounded-b-lg md:rounded-lg shadow-lg max-h-[60vh] overflow-y-auto"
+            ? "bg-card border rounded-b-lg md:rounded-lg shadow-lg max-h-[68vh] overflow-y-auto"
             : "opacity-0 h-0 overflow-hidden pointer-events-none absolute top-full left-0 right-0"
         }
         aria-hidden={!isExpanded}
+        role={isExpanded ? "region" : undefined}
+        aria-label={isExpanded ? "声音面板" : undefined}
       >
-        <MusicPlayer
-          storyText={storyText}
-          gameId={effectiveGameId}
-          className="rounded-none border-0 shadow-none"
-          autoFetchRecommendation={shouldAutoFetchRecommendation}
-        />
+        <div className="px-4 pt-3">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Volume2 className="h-4 w-4 text-primary" />
+            声音
+          </div>
+        </div>
+        {storyText ? (
+          <MusicPlayer
+            storyText={storyText}
+            gameId={effectiveGameId}
+            className="rounded-none border-0 shadow-none"
+            autoFetchRecommendation={shouldAutoFetchRecommendation}
+          />
+        ) : (
+          <div className="px-4 py-3 text-sm text-muted-foreground">
+            故事生成完成后会自动推荐音乐。
+          </div>
+        )}
+        {activeReadingContext && (
+          <div className="px-4 pb-4">
+            <StoryVoiceControls
+              currentContext={activeReadingContext}
+              autoReadText={activeAutoReadText}
+              autoReadReady={activeAutoReadReady}
+              compact
+              embedded
+              enablePlaybackControls
+            />
+          </div>
+        )}
       </div>
 
-      {/* Mini player bar — always visible */}
+      {/* Sound mini bar — always visible */}
       <div
         data-testid="global-music-mini-bar"
         className="relative bg-card/95 backdrop-blur-sm border-b md:border md:rounded-lg flex items-center gap-2 px-3 py-2 cursor-pointer"
@@ -126,8 +161,8 @@ export function GlobalMusicPlayer() {
 
         {/* Play / Pause */}
         <button
-          aria-label={audioElement ? (isPlaying ? "暂停音乐" : "播放音乐") : "打开音乐选择"}
-          title={audioElement ? (isPlaying ? "暂停音乐" : "播放音乐") : "打开音乐选择"}
+          aria-label={audioElement ? (isPlaying ? "暂停音乐" : "播放音乐") : "打开声音面板"}
+          title={audioElement ? (isPlaying ? "暂停音乐" : "播放音乐") : "打开声音面板"}
           onClick={(e) => {
             e.stopPropagation();
             handleMiniPlayPause();
@@ -144,19 +179,17 @@ export function GlobalMusicPlayer() {
         {/* Song info */}
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium truncate">
-            {songName || "等待音乐..."}
+          {songName || "等待音乐..."}
           </div>
-          {artistName && (
-            <div className="text-xs text-muted-foreground truncate">
-              {artistName}
-            </div>
-          )}
+          <div className="text-xs text-muted-foreground truncate">
+            {soundStatus}
+          </div>
         </div>
 
         {/* Expand / Collapse */}
         <button
-          aria-label={isExpanded ? "收起音乐播放器" : "展开音乐播放器"}
-          title={isExpanded ? "收起音乐播放器" : "展开音乐播放器"}
+          aria-label={isExpanded ? "收起声音面板" : "展开声音面板"}
+          title={isExpanded ? "收起声音面板" : "展开声音面板"}
           onClick={(e) => {
             e.stopPropagation();
             setIsExpanded(!isExpanded);

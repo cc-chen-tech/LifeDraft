@@ -13,6 +13,7 @@ interface StoryVoiceControlsProps {
   autoReadText?: string;
   autoReadReady?: boolean;
   compact?: boolean;
+  embedded?: boolean;
   enablePlaybackControls?: boolean;
   showTestControls?: boolean;
 }
@@ -23,6 +24,7 @@ export function StoryVoiceControls({
   autoReadText,
   autoReadReady = false,
   compact = false,
+  embedded = false,
   enablePlaybackControls = false,
   showTestControls = false,
 }: StoryVoiceControlsProps) {
@@ -271,7 +273,11 @@ export function StoryVoiceControls({
   return (
     <section
       aria-label="故事朗读"
-      className="rounded border border-border bg-card/60 p-3 space-y-3"
+      className={
+        embedded
+          ? "space-y-3 border-t border-border/70 pt-3"
+          : "rounded border border-border bg-card/60 p-3 space-y-3"
+      }
     >
       <div className="flex flex-wrap items-center gap-2">
         <Button
