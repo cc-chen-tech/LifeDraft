@@ -30,8 +30,10 @@ def _is_choice_already_processed(exc: HTTPException) -> bool:
     return "choice_already_processed" in str(detail)
 
 
-def _latest_processed_choice_result(state_data: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    """Build an idempotent choice-sync response from the latest saved round."""
+def _latest_processed_choice_result(
+    state_data: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """Build an idempotent sync response from the latest saved round result."""
     round_history = state_data.get("round_history", []) if state_data else []
     if not isinstance(round_history, list) or not round_history:
         return None
@@ -53,8 +55,10 @@ def _latest_processed_choice_result(state_data: Optional[Dict[str, Any]]) -> Opt
         "story_continuation": story_continuation if isinstance(story_continuation, str) else "",
         "summary": summary if isinstance(summary, str) else "",
         "effects_applied": effects if isinstance(effects, dict) else {},
-        "effects_requested": effects_requested if isinstance(effects_requested, dict) else (
-            effects if isinstance(effects, dict) else {}
+        "effects_requested": (
+            effects_requested
+            if isinstance(effects_requested, dict)
+            else effects if isinstance(effects, dict) else {}
         ),
         "resource_warnings": resource_warnings if isinstance(resource_warnings, list) else [],
         "need_weekly_summary": False,
@@ -64,7 +68,8 @@ def _latest_processed_choice_result(state_data: Optional[Dict[str, Any]]) -> Opt
 
 
 def _restore_latest_processed_choice_result(
-    game_id: int, user_id: Optional[int]
+    game_id: int,
+    user_id: Optional[int],
 ) -> Optional[Dict[str, Any]]:
     db = get_db()
     state_data = db.load_saved_game(game_id, user_id)  # type: ignore[arg-type]
