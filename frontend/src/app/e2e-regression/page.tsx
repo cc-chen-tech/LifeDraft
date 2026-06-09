@@ -45,7 +45,9 @@ export default function E2ERegressionPage() {
   const autoReadReady = streamedStory.includes("苏小二按住账册");
 
   useEffect(() => {
-    const configuredGameId = Number(new URLSearchParams(window.location.search).get("gameId"));
+    const searchParams = new URLSearchParams(window.location.search);
+    const configuredGameId = Number(searchParams.get("gameId"));
+    const enableGlobalVoiceFixture = searchParams.get("globalVoice") === "1";
     if (Number.isFinite(configuredGameId) && configuredGameId > 0) {
       setFixtureGameId(configuredGameId);
     }
@@ -59,20 +61,24 @@ export default function E2ERegressionPage() {
       duration: 120,
       source: "netease",
     });
-    setActiveReadingTarget({
-      context: {
-        source_type: "current_story",
-        game_id: configuredGameId || 101,
-        week: 1,
-        round_number: 1,
-        stage: "event",
-        attempt_id: "global-sound-fixture",
-        text_hash: "fixture-global-sound",
-        text: "雨夜码头的旧账册被风吹开。",
-      },
-      autoReadText: "雨夜码头的旧账册被风吹开。",
-      autoReadReady: true,
-    });
+    if (enableGlobalVoiceFixture) {
+      setActiveReadingTarget({
+        context: {
+          source_type: "current_story",
+          game_id: configuredGameId || 101,
+          week: 1,
+          round_number: 1,
+          stage: "event",
+          attempt_id: "global-sound-fixture",
+          text_hash: "fixture-global-sound",
+          text: "雨夜码头的旧账册被风吹开。",
+        },
+        autoReadText: "雨夜码头的旧账册被风吹开。",
+        autoReadReady: true,
+      });
+    } else {
+      clearActiveReadingTarget();
+    }
     setQueue([]);
 
     return () => {

@@ -6,6 +6,7 @@ async function openRegressionFixture(page: Page, gameId?: number): Promise<void>
   await page.goto(url);
   await page.waitForLoadState('domcontentloaded');
   await expect(page.getByRole('button', { name: '朗读故事' })).toBeVisible();
+  await expect(page.getByTestId('voice-reading-audio-player')).toHaveCount(1);
 }
 
 async function ensureVoiceAudioPlaying(page: Page): Promise<void> {

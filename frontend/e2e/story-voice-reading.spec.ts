@@ -53,6 +53,7 @@ async function gotoRegressionPageForVoiceControls(page: Page): Promise<void> {
   await page.goto('/e2e-regression');
   await page.waitForLoadState('domcontentloaded');
   await expect(page.getByRole('button', { name: '朗读故事' })).toBeVisible();
+  await expect(page.getByTestId('voice-reading-audio-player')).toHaveCount(1);
 }
 
 test.describe('Story voice reading without login', () => {
