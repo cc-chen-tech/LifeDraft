@@ -6,6 +6,7 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
+from src.api.deps import get_current_user_optional
 from src.api.routers.gameplay.choices import (_require_session,
                                               _restore_current_event_if_needed,
                                               router)
@@ -130,9 +131,10 @@ class TestMakeChoiceEndpoint:
     @patch("src.api.routers.gameplay.choices.get_db")
     @patch("src.api.routers.gameplay.choices._require_session")
     def test_choice_sync_returns_latest_result_when_choice_already_processed(
-        self, mock_require, mock_get_db, client
+        self, mock_require, mock_get_db, app, client
     ):
         """重复 choice-sync 不应让已完成的选择卡在恢复/备用模式。"""
+        app.dependency_overrides[get_current_user_optional] = lambda: 42
         mock_session = MagicMock()
         mock_game_loop = MagicMock()
         mock_game_loop.current_event = None
@@ -155,19 +157,45 @@ class TestMakeChoiceEndpoint:
         }
         mock_get_db.return_value = mock_db
 
-        response = client.post("/games/1/choice-sync", json={"option_index": 2})
+        try:
+            response = client.post("/games/1/choice-sync", json={"option_index": 2})
 
-        assert response.status_code == 200
-        assert response.json() == {
-            "story_continuation": "你决定给陈思颖打电话确认明天的安排。",
-            "summary": "你确认了创业推进的下一步。",
-            "effects_applied": {"energy": -5, "mood": 3},
-            "effects_requested": {"energy": -5, "mood": 3},
-            "resource_warnings": [],
-            "need_weekly_summary": False,
-            "weekly_summary": None,
-            "game_over": False,
+            assert response.status_code == 200
+            assert response.json() == {
+                "story_continuation": "你决定给陈思颖打电话确认明天的安排。",
+                "summary": "你确认了创业推进的下一步。",
+                "effects_applied": {"energy": -5, "mood": 3},
+                "effects_requested": {"energy": -5, "mood": 3},
+                "resource_warnings": [],
+                "need_weekly_summary": False,
+                "weekly_summary": None,
+                "game_over": False,
+            }
+        finally:
+            app.dependency_overrides.clear()
+
+    @patch("src.api.routers.gameplay.choices.get_db")
+    @patch("src.api.routers.gameplay.choices._require_session")
+    def test_choice_sync_does_not_return_processed_history_to_anonymous_user(
+        self, mock_require, mock_get_db, client
+    ):
+        """匿名重复 choice-sync 不能返回已保存历史，避免跨用户数据泄漏。"""
+        mock_session = MagicMock()
+        mock_game_loop = MagicMock()
+        mock_game_loop.current_event = None
+        mock_session.game_loop = mock_game_loop
+        mock_require.return_value = mock_session
+
+        mock_db = MagicMock()
+        mock_db.load_saved_game.return_value = {
+            "round_history": [{"story_continuation": "private saved result"}]
         }
+        mock_get_db.return_value = mock_db
+
+        response = client.post("/games/1/choice-sync", json={"option_index": 0})
+
+        assert response.status_code == 422
+        assert "choice_already_processed" in str(response.json()["detail"])
 
 
 class TestCustomChoiceEndpoint:

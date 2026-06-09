@@ -239,7 +239,7 @@ async def make_choice_sync(
     try:
         _restore_current_event_if_needed(game_loop, game_id, user_id)
     except HTTPException as exc:
-        if _is_choice_already_processed(exc):
+        if user_id is not None and _is_choice_already_processed(exc):
             result = _restore_latest_processed_choice_result(game_id, user_id)
             if result is not None:
                 return result
@@ -288,7 +288,7 @@ async def make_custom_choice_sync(
     try:
         _restore_current_event_if_needed(game_loop, game_id, user_id)
     except HTTPException as exc:
-        if _is_choice_already_processed(exc):
+        if user_id is not None and _is_choice_already_processed(exc):
             result = _restore_latest_processed_choice_result(game_id, user_id)
             if result is not None:
                 return result
