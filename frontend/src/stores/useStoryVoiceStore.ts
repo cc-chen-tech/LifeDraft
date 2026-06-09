@@ -317,8 +317,14 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
     };
 
     try {
+      const preferredProvider =
+        typeof window !== "undefined"
+          ? window.localStorage.getItem("story_voice_e2e_provider")
+          : null;
       const { ttsProvider, backendAudioEnabled } = get();
-      if (ttsProvider === "browser" || backendAudioEnabled === false) {
+      const browserOnlyRuntime =
+        !preferredProvider && (ttsProvider === "browser" || backendAudioEnabled === false);
+      if (preferredProvider === "browser" || browserOnlyRuntime) {
         startBrowserSpeech(null);
         return;
       }
@@ -329,10 +335,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
         voice_id: selectedVoiceId,
         speed: 1,
         auto_play: true,
-        preferred_provider:
-          typeof window !== "undefined"
-            ? window.localStorage.getItem("story_voice_e2e_provider")
-            : null,
+        preferred_provider: preferredProvider,
       });
       if (attemptId !== activeReadingAttempt) {
         return;

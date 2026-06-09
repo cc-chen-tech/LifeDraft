@@ -27,6 +27,7 @@ describe('StoryVoiceControls', () => {
       configurable: true,
     });
     (global.fetch as jest.Mock).mockClear();
+    window.localStorage.removeItem('story_voice_e2e_provider');
     (global.fetch as jest.Mock).mockImplementation((url: string) => {
       if (url.includes('/voice-reading/settings')) {
         return Promise.resolve(jsonResponse({
@@ -380,6 +381,50 @@ describe('StoryVoiceControls', () => {
     expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
       String(url).includes('/voice-reading/read')
     )).toBe(false);
+  });
+
+  it('honors explicit provider override before browser-only runtime settings', async () => {
+    window.localStorage.setItem('story_voice_e2e_provider', 'local');
+    const playSpy = window.HTMLMediaElement.prototype.play as jest.Mock;
+    (global.fetch as jest.Mock).mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes('/voice-reading/settings')) {
+        return Promise.resolve(jsonResponse({
+          auto_read_enabled: false,
+          selected_voice_color: 'warm_female',
+          tts_provider: 'browser',
+          backend_audio_enabled: false,
+        }));
+      }
+      if (url.includes('/voice-reading/read')) {
+        const body = JSON.parse(String(init?.body));
+        expect(body.preferred_provider).toBe('local');
+        return Promise.resolve(jsonResponse({
+          job_id: 11,
+          status: 'ready',
+          audio_url: '/api/voice-reading/audio/local-test.wav',
+          playback_mode: 'audio',
+          provider: 'local',
+          media_type: 'audio/wav',
+        }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    render(<StoryVoiceControls currentContext={currentContext} enablePlaybackControls compact />);
+
+    await waitFor(() => {
+      expect(useStoryVoiceStore.getState().ttsProvider).toBe('browser');
+    });
+    fireEvent.click(screen.getByRole('button', { name: '朗读故事' }));
+
+    await waitFor(() => {
+      expect(useStoryVoiceStore.getState().playbackMode).toBe('audio');
+    });
+    expect(playSpy).toHaveBeenCalled();
+    expect(useStoryVoiceStore.getState().currentProvider).toBe('local');
+    expect(useStoryVoiceStore.getState().currentAudioUrl).toBe(
+      '/api/voice-reading/audio/local-test.wav'
+    );
   });
 
   it('restarts browser speech immediately with the new selected voice', async () => {

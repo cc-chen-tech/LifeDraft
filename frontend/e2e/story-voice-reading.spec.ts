@@ -224,7 +224,7 @@ test.describe('Story voice reading', () => {
 
     await page.getByRole('button', { name: '重试朗读' }).click();
     await expectBrowserSpeechAttempt(page);
-    await expect.poll(() => readingRequestCount).toBe(2);
+    await expect.poll(() => readingRequestCount).toBe(0);
 
     await page.getByRole('button', { name: '收集' }).click();
     await expect(page.getByRole('heading', { name: '苏小二' })).toBeVisible();
