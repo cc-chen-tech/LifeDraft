@@ -273,6 +273,55 @@ class TestOpeningStoryAPIContract:
             assert cache_entry is not None
             assert cache_entry["result"] is None
 
+    def test_opening_story_length_finish_reason_truncation(self, mock_auth):
+        """当 finish_reason 为 length 时应视为截断，转为 error 并清缓存。"""
+        with patch("src.api.routers.character.CharacterCreator") as mock_creator_cls:
+
+            def length_finish_stream():
+                yield MagicMock(
+                    choices=[
+                        MagicMock(
+                            delta=MagicMock(
+                                content=(
+                                    "夜色里，林知夏拖着行李走进一间昏暗的共享办公区。"
+                                    "她的银行卡只剩下 5800 元，团队还在争论"
+                                )
+                            ),
+                            finish_reason="length",
+                        )
+                    ]
+                )
+
+            mock_creator = MagicMock()
+            mock_creator.generate_opening_story.return_value = length_finish_stream()
+            mock_creator_cls.return_value = mock_creator
+
+            from src.api.routers import character as char_module
+
+            with char_module._cache_lock:
+                char_module._opening_story_cache.clear()
+
+            response = client.post(
+                "/api/character/opening-story",
+                json={
+                    "character_settings": {"era": "现代"},
+                    "player_name": "TestLengthFinish",
+                    "life_vision": "探索世界",
+                    "language": "zh",
+                },
+                headers={"Authorization": "Bearer test_token"},
+            )
+
+            assert response.status_code == 200
+            body = response.text
+            assert "Opening story appears truncated" in body
+            assert "event: complete" not in body
+
+            with char_module._cache_lock:
+                cache_entry = char_module._opening_story_cache.get("TestLengthFinish")
+            assert cache_entry is not None
+            assert cache_entry["result"] is None
+
     def test_opening_story_wait_for_timeout_while_thread_alive_is_heartbeat_not_failure(self, mock_auth):
         """队列等待提前超时时，只要生成线程仍活跃，就应保持 SSE 而不是立刻报 Generation timeout。"""
         with patch("src.api.routers.character.CharacterCreator") as mock_creator_cls:

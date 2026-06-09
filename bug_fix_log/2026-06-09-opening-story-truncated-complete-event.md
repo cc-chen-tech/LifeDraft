@@ -37,5 +37,13 @@ The test verifies that a sufficiently long Chinese opening-story fragment ending
 ## Verification
 
 - `pytest tests/test_opening_story_contract.py -q`
+- `pytest tests/test_opening_story_contract.py tests/test_gate_gameplay_behavior_no_mock.py tests/test_character_settings_api_contract.py tests/test_api_games.py -q`
+- `./test.sh preflight`
+- Pushed `main` to `origin/main`.
+- GitHub Actions for the pushed commit failed before usable runner logs were available: `gh run view --log-failed` returned `log not found`, so this remains classified as a platform runner/check blocker rather than a code failure.
+- Deployed the pushed commit to ECS `/opt/story2`.
+- Verified production health:
+  - `https://story101.live/api/health` returned `{"status":"ok","active_sessions":0}`.
+  - `https://story101.live/` returned `HTTP/1.1 200 OK`.
 
-Status: fixed locally, pending broader gate and deploy.
+Status: fixed, pushed, manually deployed to ECS, and production health verified.
