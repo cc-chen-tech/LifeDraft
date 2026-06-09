@@ -64,6 +64,7 @@ export function StoryVoiceControls({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const lastAutoReadKeyRef = useRef<string>("");
   const loadedSettingsRef = useRef(false);
+  const userSelectedVoiceRef = useRef(false);
   const textSize = compact ? "text-xs" : "text-sm";
   const isHistoryReading = currentContext.source_type === "history_round" || Boolean(historyContext);
   const shouldShowPlaybackControls = enablePlaybackControls || showTestControls;
@@ -82,7 +83,11 @@ export function StoryVoiceControls({
         if (settings.auto_read_enabled !== autoReadEnabled) {
           setAutoReadEnabled(settings.auto_read_enabled);
         }
-        if (settings.selected_voice_color && settings.selected_voice_color !== selectedVoiceId) {
+        if (
+          !userSelectedVoiceRef.current &&
+          settings.selected_voice_color &&
+          settings.selected_voice_color !== selectedVoiceId
+        ) {
           setSelectedVoiceId(settings.selected_voice_color);
         }
       })
@@ -228,6 +233,7 @@ export function StoryVoiceControls({
 
   const handleVoiceChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const nextVoiceId = event.target.value;
+    userSelectedVoiceRef.current = true;
     setSelectedVoiceId(nextVoiceId);
     void persistVoiceSettings({ selected_voice_color: nextVoiceId });
     if (["loading", "ready", "playing", "paused"].includes(readingState)) {
