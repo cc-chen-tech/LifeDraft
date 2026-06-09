@@ -6,6 +6,7 @@ The 2026-06-08 UX report shows a P0 narrative quality failure: preset key people
 
 - Add a relationship authority helper that extracts canonical preset key people from character settings.
 - Inject canonical names, roles, relationship labels, and a no-rename/no-substitute rule into story prompts.
+- Require each generated round to use at least one canonical preset key person, preventing the "0 出场" failure mode even when no invented substitute is detected.
 - Carry the same preset cast authority into WorldModel constraints so later rounds preserve the relationship network.
 - Extend the same authority and realistic-world boundary to post-choice story continuation prompts.
 - Run post-choice continuations through fast local drift validation before they are saved or returned.
