@@ -62,12 +62,27 @@ function contextLabel(context: ReadingContext): string {
   return parts.join(" ");
 }
 
+function readingRequestKey(context: ReadingContext, voiceId: string): string {
+  return [
+    voiceId,
+    context.source_type,
+    context.game_id ?? "",
+    context.week ?? "",
+    context.round_number ?? "",
+    context.stage ?? "",
+    context.attempt_id ?? "",
+    context.text_hash ?? "",
+    context.text,
+  ].join("\u001f");
+}
+
 async function normalizeTextHash(text: string): Promise<string> {
   return storyVoiceTextToHash(text);
 }
 
 let activeUtterance: SpeechSynthesisUtterance | null = null;
 let activeReadingAttempt = 0;
+let activeLoadingRequestKey: string | null = null;
 
 function getSpeechSynthesis(): SpeechSynthesis | null {
   if (typeof window === "undefined") return null;
@@ -187,8 +202,15 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
     }),
 
   startReading: async (context) => {
+    const selectedVoiceId = get().selectedVoiceId;
+    const requestKey = readingRequestKey(context, selectedVoiceId);
+    if (get().readingState === "loading" && activeLoadingRequestKey === requestKey) {
+      return;
+    }
+
     const attemptId = activeReadingAttempt + 1;
     activeReadingAttempt = attemptId;
+    activeLoadingRequestKey = requestKey;
     const { musicWasPlaying } = get();
     const browserSpeech = getSpeechSynthesis();
     browserSpeech?.getVoices?.();
@@ -230,6 +252,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
           errorMessage: "Browser speech synthesis is unavailable",
           musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
         });
+        activeLoadingRequestKey = null;
         return;
       }
 
@@ -238,7 +261,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       utterance.lang = detectSpeechLanguage(context.text);
       utterance.voice = selectBrowserSpeechVoice(
         speech,
-        get().selectedVoiceId,
+        selectedVoiceId,
         utterance.lang
       );
       utterance.rate = 1;
@@ -259,6 +282,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
             playbackMode: "browser_speech",
             musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
           });
+          activeLoadingRequestKey = null;
         }
       };
       if (attemptId !== activeReadingAttempt) {
@@ -274,6 +298,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
         currentSpeechText: context.text,
         errorMessage: "",
       });
+      activeLoadingRequestKey = null;
       speech.cancel();
       speech.speak(utterance);
     };
@@ -282,7 +307,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       const textHash = await normalizeTextHash(context.text);
       const response = await api.voice_reading.requestReading({
         context: { ...context, text_hash: textHash },
-        voice_id: get().selectedVoiceId,
+        voice_id: selectedVoiceId,
         speed: 1,
         auto_play: true,
         preferred_provider:
@@ -305,6 +330,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
           errorMessage: response.error_code ?? response.message,
           musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
         });
+        activeLoadingRequestKey = null;
         return;
       }
 
@@ -312,6 +338,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
         if (attemptId !== activeReadingAttempt) {
           return;
         }
+        activeLoadingRequestKey = null;
         set({
           readingState: "ready",
           currentAudioUrl: response.audio_url ?? "",
@@ -335,6 +362,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
         return;
       }
       const { musicDuckState, userChangedMusic } = get();
+      activeLoadingRequestKey = null;
       set({
         readingState: "failed",
         currentAudioUrl: "",
@@ -353,6 +381,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
   stopReading: () => {
     const { musicDuckState, userChangedMusic } = get();
     activeReadingAttempt += 1;
+    activeLoadingRequestKey = null;
     getSpeechSynthesis()?.cancel();
     activeUtterance = null;
     set({
@@ -372,6 +401,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       return;
     }
     activeReadingAttempt += 1;
+    activeLoadingRequestKey = null;
     if (activeUtterance) {
       getSpeechSynthesis()?.cancel();
       activeUtterance = null;
@@ -408,6 +438,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
   failReading: (error) => {
     const { musicDuckState, userChangedMusic } = get();
     activeReadingAttempt += 1;
+    activeLoadingRequestKey = null;
     getSpeechSynthesis()?.cancel();
     activeUtterance = null;
     const errorMessage =

@@ -51,6 +51,11 @@ export function shouldRetryApiResponse(status: number, url: string, attemptIndex
   return attemptIndex === 0;
 }
 
+export function shouldRetryApiError(url: string, attemptIndex: number, retries: number): boolean {
+  if (url.includes('/voice-reading/')) return false;
+  return attemptIndex < retries - 1;
+}
+
 /**
  * L-03: Fetch with retry mechanism for transient failures
  * Implements exponential backoff for server errors (5xx)
@@ -98,8 +103,8 @@ async function fetchWithRetry(
       lastError = error instanceof Error ? error : new Error(String(error));
       console.warn(`[API] Request failed, attempt ${i + 1}/${retries}:`, error);
       
-      // On last retry, throw immediately
-      if (i === retries - 1) {
+      // On last retry, or for endpoints that need immediate fallback, throw immediately.
+      if (!shouldRetryApiError(url, i, retries)) {
         throw lastError;
       }
     }
