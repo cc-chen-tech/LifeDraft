@@ -142,6 +142,7 @@ export function GlobalMusicPlayer() {
                 gameId={effectiveGameId}
                 className="rounded-none border-0 bg-transparent p-0 shadow-none"
                 autoFetchRecommendation={shouldAutoFetchRecommendation}
+                embedded
               />
             ) : (
               <div className="text-sm text-muted-foreground">

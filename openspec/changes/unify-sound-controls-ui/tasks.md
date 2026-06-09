@@ -9,3 +9,4 @@
 - [x] Simplify the collapsed sound bar to one primary sound control plus expand, with narration controls only inside the unified panel.
 - [x] Add PlayPage coverage proving the story body no longer renders a standalone narration bar.
 - [x] Run focused component tests for the global sound panel and story voice controls.
+- [x] Add regression coverage that the expanded panel has embedded music/narration channels instead of nested sound regions or card shells.

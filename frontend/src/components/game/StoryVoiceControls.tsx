@@ -286,8 +286,10 @@ export function StoryVoiceControls({
             : Volume2;
 
   return (
-    <section
-      aria-label="故事朗读"
+    <div
+      data-testid={embedded ? "sound-reading-channel" : undefined}
+      role={embedded ? undefined : "region"}
+      aria-label={embedded ? undefined : "故事朗读"}
       className={
         embedded
           ? "space-y-2"
@@ -475,6 +477,6 @@ export function StoryVoiceControls({
         onError={failReading}
         onEnded={completeReading}
       />
-    </section>
+    </div>
   );
 }
