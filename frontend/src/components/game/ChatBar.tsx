@@ -411,7 +411,7 @@ export function ChatBar({
             title={isViewingHistory ? "历史回顾模式下不可用" : "重新生成当前故事"}
           >
             <RotateCcw className="w-3 h-3 mr-1" />
-            重写
+            重新生成
           </Button>
           <Button
             size="sm"

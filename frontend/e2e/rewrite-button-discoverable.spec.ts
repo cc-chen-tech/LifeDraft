@@ -30,7 +30,7 @@ async function expectCollapsedActionsVisibleAndUncovered(page: Page): Promise<vo
   await expect(musicPlayer).not.toHaveClass(/bottom-4/);
   await expect(musicPlayer).not.toHaveClass(/md:bottom-4/);
   await expect(chatLauncher).toBeVisible({ timeout: 10000 });
-  await expect(page.getByRole('button', { name: '重写' })).toBeVisible({ timeout: 10000 });
+  await expect(page.getByRole('button', { name: '重新生成' })).toBeVisible({ timeout: 10000 });
   await expect(page.getByRole('button', { name: '改写' })).toBeVisible({ timeout: 10000 });
   await expect(page.getByRole('button', { name: '总结' })).toBeVisible({ timeout: 10000 });
 
