@@ -185,6 +185,16 @@ class RoundEventGenerator:
                 )
 
             if existing_story and len(existing_story) > 100:
+                if not self._existing_story_satisfies_quick_constraints(
+                    existing_story=existing_story,
+                    character_settings=player_state.character_settings,
+                    language=self.language,
+                    resume_source=resume_source or "unknown",
+                ):
+                    existing_story = None
+                    resume_source = None
+
+            if existing_story and len(existing_story) > 100:
                 # ★ Check options cache first
                 cached_options = None
                 if session:
@@ -460,6 +470,47 @@ class RoundEventGenerator:
             self._generating = False  # Reset flag on error
             self._generating_start_time = None
             return event
+
+    def _existing_story_satisfies_quick_constraints(
+        self,
+        *,
+        existing_story: str,
+        character_settings: dict[str, Any],
+        language: str,
+        resume_source: str,
+    ) -> bool:
+        """Do not resume a persisted story that already violates hard story constraints."""
+        if not existing_story:
+            return True
+
+        from src.ai.quick_validator import quick_validate_story
+
+        available_people_names = [
+            p.get("name", "")
+            for p in _collect_available_people(character_settings)
+            if p.get("name")
+        ]
+        quick_result = quick_validate_story(
+            story_text=existing_story,
+            character_settings=character_settings,
+            available_people=available_people_names,
+            language=language,
+        )
+        if quick_result.passed:
+            if quick_result.warnings:
+                logger.info(
+                    "[Resume Check] Existing story warnings from %s: %s",
+                    resume_source,
+                    quick_result.warnings,
+                )
+            return True
+
+        logger.warning(
+            "[Resume Check] Rejecting existing story from %s because it violates quick constraints: %s",
+            resume_source,
+            quick_result.issues,
+        )
+        return False
 
     def _generate_fallback_event(self, is_round: bool = True) -> GameEvent:
         """Generate a fallback event when AI generation fails."""
