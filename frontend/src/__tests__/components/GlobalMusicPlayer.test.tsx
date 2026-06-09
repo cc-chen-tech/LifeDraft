@@ -229,7 +229,7 @@ describe("GlobalMusicPlayer", () => {
       expect(within(panel).getByTestId("sound-reading-channel")).not.toHaveClass("border");
     });
 
-    it("uses one card-based sound mixer instead of stacked standalone toolbars", async () => {
+    it("uses one sound mixer with channel rows instead of nested cards", async () => {
       const user = userEvent.setup();
       setStoreState({
         activeStoryText: "story text",
@@ -249,10 +249,15 @@ describe("GlobalMusicPlayer", () => {
       const musicSection = within(panel).getByTestId("sound-music-section");
       const readingSection = within(panel).getByTestId("sound-reading-section");
 
-      expect(panel).toHaveClass("space-y-3");
-      expect(panel).not.toHaveClass("divide-y");
-      expect(musicSection).toHaveClass("rounded-lg");
-      expect(readingSection).toHaveClass("rounded-lg");
+      expect(panel).toHaveClass("divide-y");
+      expect(musicSection).toHaveClass("py-3");
+      expect(readingSection).toHaveClass("py-3");
+      expect(musicSection).not.toHaveClass("rounded-lg");
+      expect(musicSection).not.toHaveClass("border");
+      expect(musicSection).not.toHaveClass("bg-background/60");
+      expect(readingSection).not.toHaveClass("rounded-lg");
+      expect(readingSection).not.toHaveClass("border");
+      expect(readingSection).not.toHaveClass("bg-background/60");
       expect(within(readingSection).getByTestId("story-voice-embedded-module")).toBeInTheDocument();
     });
 
