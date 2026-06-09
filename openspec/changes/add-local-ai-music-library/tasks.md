@@ -43,4 +43,4 @@
 - [x] 6.1 Run targeted backend contract and DB tests for local AI music library behavior.
 - [x] 6.2 Run targeted frontend music store/player tests.
 - [x] 6.3 Run `openspec validate add-local-ai-music-library --strict`.
-- [ ] 6.4 Run the relevant `./test.sh` layers for the touched backend, DB, contract, frontend, and E2E music behavior before implementation is marked complete.
+- [x] 6.4 Run the relevant `./test.sh` layers for the touched backend, DB, contract, frontend, and E2E music behavior before implementation is marked complete.

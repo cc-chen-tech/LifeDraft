@@ -40,4 +40,4 @@
 - [x] 6.1 Run targeted backend music contract tests for fixtures, scoring, prompt building, and fallback.
 - [x] 6.2 Run targeted frontend music store/player tests affected by metadata preservation.
 - [x] 6.3 Run `openspec validate improve-music-scene-matching-quality --strict`.
-- [ ] 6.4 Run the relevant `./test.sh` layers for backend contract, DB, frontend, and music E2E behavior before implementation is marked complete.
+- [x] 6.4 Run the relevant `./test.sh` layers for backend contract, DB, frontend, and music E2E behavior before implementation is marked complete.
