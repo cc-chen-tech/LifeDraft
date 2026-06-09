@@ -10,6 +10,9 @@ The 2026-06-08 UX report shows a P0 narrative quality failure: preset key people
 - Carry the same preset cast authority into WorldModel constraints so later rounds preserve the relationship network.
 - Extend the same authority and realistic-world boundary to post-choice story continuation prompts.
 - Run post-choice continuations through fast local drift validation before they are saved or returned.
+- Prevent story-character synchronization from promoting a newly invented named person
+  when that name is introduced as a substitute for an existing preset relationship
+  role, such as a new "mentor" replacing the canonical mentor.
 - Add no-mock import and contract coverage wired into `test.sh` before implementation.
 
 ## Impact

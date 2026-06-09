@@ -36,3 +36,9 @@
 - [x] Add regression assertions proving preset-cast prompts require at least one canonical preset key person per round.
 - [x] Extend the shared relationship authority prompt block so story-only, round-event, choice-result, scheduled-event, and WorldModel paths inherit the same presence requirement.
 - [x] Run targeted preset-cast contract tests.
+
+## 7. 2026-06-10 Story Character Sync Follow-up
+
+- [x] Add a regression test proving story-character sync does not promote a named substitute for a preset role.
+- [x] Skip automatic key_people promotion when a new name appears in the local context of an existing preset role/relationship token.
+- [x] Run the targeted world model updater character-sync tests.
