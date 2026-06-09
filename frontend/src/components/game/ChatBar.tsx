@@ -35,6 +35,12 @@ interface ChatMessage {
   content: string;
 }
 
+interface LifeSummary {
+  text: string;
+  startWeek: number;
+  endWeek: number;
+}
+
 interface ChatBarProps {
   gameId: number | null;
   onSave?: () => void;
@@ -67,6 +73,9 @@ export function ChatBar({
   const [rewriteInstruction, setRewriteInstruction] = useState("");
   const [message, setMessage] = useState("");
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [isSummaryOpen, setIsSummaryOpen] = useState(false);
+  const [lifeSummary, setLifeSummary] = useState<LifeSummary | null>(null);
+  const [lifeSummaryError, setLifeSummaryError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [isRewriting, setIsRewriting] = useState(false);
@@ -90,10 +99,12 @@ export function ChatBar({
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatHistory]);
 
-  // 生成总结并显示在对话框中
+  // 生成总结并显示在专用总结面板中
   const handleGenerateSummary = useCallback(async () => {
     if (!gameId || isGeneratingSummary) return;
-    
+
+    setIsSummaryOpen(true);
+    setLifeSummaryError(null);
     setIsGeneratingSummary(true);
     
     try {
@@ -102,18 +113,11 @@ export function ChatBar({
       const summaryText = summaryData.summary_text || summaryData.summary || "暂无总结内容";
       const startWeek = summaryData.start_week || 1;
       const endWeek = summaryData.end_week || 0;
-      
-      const assistantMsg: ChatMessage = {
-        role: "assistant",
-        content: `**人生总结（第${startWeek}-${endWeek}周）**\n\n${summaryText}`,
-      };
-      setChatHistory((prev) => [...prev, assistantMsg]);
+
+      setLifeSummary({ text: summaryText, startWeek, endWeek });
     } catch (err) {
       console.error("Generate summary failed:", err);
-      setChatHistory((prev) => [
-        ...prev,
-        { role: "assistant", content: "抱歉，生成总结时出了点问题，请稍后再试。" },
-      ]);
+      setLifeSummaryError("生成总结时出了点问题，请稍后再试。");
     } finally {
       setIsGeneratingSummary(false);
     }
@@ -332,6 +336,61 @@ export function ChatBar({
     </div>
   );
 
+  const lifeSummaryPanel = isSummaryOpen && (
+    <section
+      data-testid="life-summary-panel"
+      aria-label="人生总结"
+      className={cn(
+        "fixed bottom-20 left-4 right-4 sm:left-auto sm:w-[min(28rem,calc(100vw-2rem))] max-w-md z-50",
+        "bg-card/95 backdrop-blur-sm border border-border shadow-xl rounded-lg",
+        "p-4 safe-area-pb",
+        className
+      )}
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <FileText className="w-4 h-4 text-primary" />
+        <h2 className="text-sm font-semibold text-foreground">人生总结</h2>
+        <div className="flex-1" />
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-8 w-8"
+          onClick={() => setIsSummaryOpen(false)}
+          aria-label="关闭人生总结"
+          title="关闭人生总结"
+        >
+          <X className="w-4 h-4" />
+        </Button>
+      </div>
+
+      <div className="max-h-[320px] overflow-y-auto text-sm text-muted-foreground">
+        {isGeneratingSummary ? (
+          <div className="flex items-center gap-2 rounded-lg bg-secondary px-3 py-2">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            正在生成总结...
+          </div>
+        ) : lifeSummaryError ? (
+          <div className="rounded-lg bg-destructive/10 px-3 py-2 text-destructive">
+            {lifeSummaryError}
+          </div>
+        ) : lifeSummary ? (
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+              第{lifeSummary.startWeek}-{lifeSummary.endWeek}周
+            </p>
+            <div className="prose prose-sm prose-invert max-w-none text-muted-foreground">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {lifeSummary.text}
+              </ReactMarkdown>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-lg bg-secondary px-3 py-2">暂无总结内容</div>
+        )}
+      </div>
+    </section>
+  );
+
   if (!isExpanded) {
     return (
       <>
@@ -376,10 +435,7 @@ export function ChatBar({
             size="sm"
             variant="outline"
             className="h-10 px-3 text-xs shadow-lg bg-card/95 backdrop-blur-sm pointer-events-auto"
-            onClick={() => {
-              setIsExpanded(true);
-              void handleGenerateSummary();
-            }}
+            onClick={() => void handleGenerateSummary()}
             disabled={isGeneratingSummary || isSending}
             title="生成人生总结"
           >
@@ -400,6 +456,7 @@ export function ChatBar({
           </Button>
         </div>
         {rewriteSheet}
+        {lifeSummaryPanel}
         {rewriteToastNode}
       </>
     );
@@ -470,7 +527,7 @@ export function ChatBar({
           size="sm"
           variant="outline"
           className="text-xs touch-target"
-          onClick={handleGenerateSummary}
+          onClick={() => void handleGenerateSummary()}
           disabled={isGeneratingSummary || isSending}
         >
           {isGeneratingSummary ? (
@@ -570,6 +627,7 @@ export function ChatBar({
         </Button>
       </div>
       {rewriteSheet}
+      {lifeSummaryPanel}
       {rewriteToastNode}
     </div>
   );

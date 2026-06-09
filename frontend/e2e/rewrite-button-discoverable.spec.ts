@@ -66,6 +66,18 @@ test.describe('Rewrite Button Discoverability', () => {
     await expect(rewriteSheet.getByRole('button', { name: '改写故事' })).toBeVisible();
   });
 
+  test('collapsed summary action opens summary panel without story assistant input', async ({ page }) => {
+    await seedStoryForRewrite(page);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    await page.getByRole('button', { name: '总结' }).click();
+
+    await expect(page.locator('[data-testid="life-summary-panel"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="chat-bar-panel"]')).not.toBeVisible();
+    await expect(page.getByPlaceholder(/向剧情助手提问/)).not.toBeVisible();
+  });
+
   for (const viewport of chatActionViewports) {
     test(`${viewport.name} keeps collapsed chat actions visible and uncovered`, async ({ page }) => {
       await seedStoryForRewrite(page);
