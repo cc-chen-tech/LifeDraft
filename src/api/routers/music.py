@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from src.api.deps import get_current_user_optional
 from src.database.models import SessionLocal
 from src.services.minimax_config import build_minimax_config
+from src.services.music_service import MusicBrief
 from src.services.music_playlist_service import get_music_playlist_service
 from src.services.music_service import get_music_service
 
@@ -26,6 +27,7 @@ router = APIRouter()
 _audio_cache: OrderedDict[int, Tuple[bytes, str]] = OrderedDict()
 _AUDIO_CACHE_MAX = 10
 _audio_cache_lock = asyncio.Lock()
+MUSIC_RECOMMEND_ROUTE_TIMEOUT_SECONDS = 0.9
 
 
 @dataclass(frozen=True)
@@ -104,6 +106,25 @@ class MusicRecommendationResponse(BaseModel):
     songs: List[SongResponse]
 
 
+def _fallback_music_recommendation_response() -> MusicRecommendationResponse:
+    """Return a non-blocking recommendation shape when the music service is unavailable."""
+    brief = MusicBrief.default()
+    return MusicRecommendationResponse(
+        keywords=brief.search_queries,
+        mood=brief.mood,
+        scene_type=brief.scene_type,
+        environment=brief.era_or_environment,
+        story_style="通用叙事",
+        music_style="纯音乐",
+        instruments=brief.instruments,
+        pacing=brief.pacing,
+        time_weather=None,
+        description="音乐推荐暂不可用，游戏继续进行",
+        music_brief=brief.to_analysis(),
+        songs=[],
+    )
+
+
 class PlaylistUpdateRequest(BaseModel):
     """Request body for updating a game playlist with new recommendation songs."""
 
@@ -157,14 +178,14 @@ async def recommend_music(
         music_service = get_music_service()
 
         # 分析故事并获取推荐
-        recommendation = await music_service.analyze_story_for_music(
-            story_text=request.story_text,
-            character_settings=request.character_settings,
-            refresh=request.refresh,
+        recommendation = await asyncio.wait_for(
+            music_service.analyze_story_for_music(
+                story_text=request.story_text,
+                character_settings=request.character_settings,
+                refresh=request.refresh,
+            ),
+            timeout=MUSIC_RECOMMEND_ROUTE_TIMEOUT_SECONDS,
         )
-
-        # 批量获取所有歌曲的播放 URL（并行）
-        import asyncio
 
         async def get_song_url_with_id(song):
             """获取歌曲 URL 并返回 (id, url)"""
@@ -220,11 +241,13 @@ async def recommend_music(
                 album=song.album,
                 duration=song.duration,
                 url=url_map[song.id],
-                source=song.source,
+                source=getattr(song, "source", "netease"),
             )
             for song in recommendation.songs
             if song.id in url_map
         ]
+
+        music_brief = getattr(recommendation, "music_brief", None)
 
         return MusicRecommendationResponse(
             keywords=recommendation.keywords,
@@ -237,17 +260,17 @@ async def recommend_music(
             pacing=recommendation.pacing,
             time_weather=recommendation.time_weather,
             description=recommendation.description,
-            music_brief=(
-                recommendation.music_brief.to_analysis()
-                if recommendation.music_brief is not None
-                else None
-            ),
+            music_brief=music_brief.to_analysis() if music_brief is not None else None,
             songs=songs,
         )
 
     except Exception as e:
-        logger.exception(f"Failed to recommend music: {e}")
-        raise HTTPException(status_code=500, detail=f"音乐推荐失败: {str(e)}")
+        logger.warning(
+            "Music recommendation degraded to empty fallback: %s",
+            e,
+            exc_info=True,
+        )
+        return _fallback_music_recommendation_response()
 
 
 @router.post("/music/generate", response_model=MusicGenerationResponse)
@@ -391,7 +414,7 @@ async def search_music(
                     album=song.album,
                     duration=song.duration,
                     url=song.url,
-                    source=song.source,
+                    source=getattr(song, "source", "netease"),
                 )
                 for song in songs
             ]
