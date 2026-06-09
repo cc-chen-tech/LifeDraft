@@ -79,6 +79,72 @@ function detectSpeechLanguage(text: string): string {
   return /[\u3400-\u9fff]/.test(text) ? "zh-CN" : "en-US";
 }
 
+const BROWSER_VOICE_CUES: Record<string, string[]> = {
+  warm_female: [
+    "female",
+    "woman",
+    "xiaoxiao",
+    "xiaoyi",
+    "xiaobei",
+    "xiaoqiu",
+    "xiaoshuang",
+    "huihui",
+    "yaoyao",
+    "tingting",
+    "mei",
+  ],
+  calm_male: [
+    "male",
+    "man",
+    "yunxi",
+    "yunjian",
+    "kang",
+    "hao",
+    "kangkang",
+  ],
+  clear_neutral: [
+    "neutral",
+    "natural",
+    "mandarin",
+    "chinese",
+    "普通话",
+    "中文",
+  ],
+};
+
+function isChineseVoice(voice: SpeechSynthesisVoice): boolean {
+  const haystack = `${voice.lang} ${voice.name} ${voice.voiceURI}`.toLowerCase();
+  return (
+    haystack.includes("zh") ||
+    haystack.includes("cmn") ||
+    haystack.includes("mandarin") ||
+    haystack.includes("chinese") ||
+    haystack.includes("普通话") ||
+    haystack.includes("中文")
+  );
+}
+
+function selectBrowserSpeechVoice(
+  speech: SpeechSynthesis,
+  voiceId: string,
+  language: string
+): SpeechSynthesisVoice | null {
+  const voices = typeof speech.getVoices === "function" ? speech.getVoices() : [];
+  if (!voices.length) return null;
+
+  const languageVoices =
+    language.toLowerCase().startsWith("zh")
+      ? voices.filter(isChineseVoice)
+      : voices.filter((voice) => voice.lang?.toLowerCase().startsWith(language.toLowerCase()));
+  const candidates = languageVoices.length ? languageVoices : voices;
+  const cues = BROWSER_VOICE_CUES[voiceId] ?? BROWSER_VOICE_CUES.warm_female;
+  const matched = candidates.find((voice) => {
+    const haystack = `${voice.name} ${voice.voiceURI} ${voice.lang}`.toLowerCase();
+    return cues.some((cue) => haystack.includes(cue));
+  });
+  return matched ?? candidates[0] ?? null;
+}
+
 function restoredMusicDuckState(
   musicDuckState: MusicDuckState,
   userChangedMusic: boolean
@@ -124,7 +190,9 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
     const attemptId = activeReadingAttempt + 1;
     activeReadingAttempt = attemptId;
     const { musicWasPlaying } = get();
-    getSpeechSynthesis()?.cancel();
+    const browserSpeech = getSpeechSynthesis();
+    browserSpeech?.getVoices?.();
+    browserSpeech?.cancel();
     activeUtterance = null;
     set({
       readingState: "loading",
@@ -168,6 +236,11 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       const utterance = new SpeechSynthesisUtterance(context.text);
       activeUtterance = utterance;
       utterance.lang = detectSpeechLanguage(context.text);
+      utterance.voice = selectBrowserSpeechVoice(
+        speech,
+        get().selectedVoiceId,
+        utterance.lang
+      );
       utterance.rate = 1;
       utterance.onend = () => {
         if (activeUtterance === utterance && attemptId === activeReadingAttempt) {
@@ -257,7 +330,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       if (attemptId !== activeReadingAttempt) {
         return;
       }
-      if ((error as ApiError).status === 401) {
+      if ((error as ApiError).status === 401 || getSpeechSynthesis()) {
         startBrowserSpeech(null);
         return;
       }

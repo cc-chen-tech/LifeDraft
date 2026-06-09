@@ -250,7 +250,7 @@ describe('PlayPage', () => {
       expect(mockContinue).toHaveBeenCalled();
     });
 
-    it('auto-reads the completed choice result story', async () => {
+    it('auto-reads the completed choice result story while the sound panel stays collapsed', async () => {
       const user = userEvent.setup();
       useStoryVoiceStore.setState({ autoReadEnabled: true });
       (global.fetch as jest.Mock).mockImplementation((url: string) => {
@@ -302,19 +302,21 @@ describe('PlayPage', () => {
         );
       });
       expect(useStoryVoiceStore.getState().activeAutoReadReady).toBe(true);
-      await user.click(screen.getByRole('button', { name: '展开声音面板' }));
-      expect(screen.getByRole('region', { name: '故事朗读' })).toBeInTheDocument();
 
       await waitFor(() => {
         expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
           String(url).includes('/voice-reading/read')
         )).toBe(true);
       });
+      expect(screen.queryByRole('region', { name: '声音面板' })).not.toBeInTheDocument();
       const readCall = (global.fetch as jest.Mock).mock.calls.find(([url]) =>
         String(url).includes('/voice-reading/read')
       );
       const payload = JSON.parse(String(readCall?.[1]?.body ?? '{}'));
       expect(payload.context.text).toBe('主角做出选择后的完整续写。');
+
+      await user.click(screen.getByRole('button', { name: '展开声音面板' }));
+      expect(screen.getByRole('region', { name: '故事朗读' })).toBeInTheDocument();
     });
   });
 
