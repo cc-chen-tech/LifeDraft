@@ -30,3 +30,9 @@
 - [x] Add a regression test proving post-choice continuations retry when generated text drifts into external IP or invented cast.
 - [x] Run choice-result continuations through quick validation before returning or saving them.
 - [x] Pass `PlayerState.character_settings` into the legacy `process_decision` result-generation path.
+
+## 6. 2026-06-10 Cast Presence Follow-up
+
+- [x] Add a regression test proving preset-cast authority requires each generated round to use at least one preset key person.
+- [x] Strengthen the shared preset-cast authority block so story-only, round-event, choice-result, scheduled-event, and world-model prompts inherit the per-round key-person presence rule.
+- [x] Run targeted preset-cast tests and OpenSpec validation after the constraint update.

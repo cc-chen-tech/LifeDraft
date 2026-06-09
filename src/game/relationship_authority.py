@@ -48,12 +48,18 @@ def build_required_cast_constraints(
     if not people:
         return ""
 
+    names = [person["name"] for person in people if person.get("name")]
+
     if language == "zh":
         lines = [
             "👥 【预设关键人物关系 — canonical name 必须严格使用，不得改名、不得替换】",
         ]
         for person in people:
             lines.append(f"  - {person['name']}：{_person_facts(person)}")
+        if names:
+            lines.append(
+                f"  [MUST] 本轮必须至少使用1位预设关键人物：{'、'.join(names)}至少一位。"
+            )
         lines.append(
             "  ⚠️ 以上人物是玩家预设关系网；如需导师、闺蜜、同期等关系，必须使用对应 canonical name。"
         )
@@ -66,6 +72,10 @@ def build_required_cast_constraints(
     ]
     for person in people:
         lines.append(f"  - {person['name']}: {_person_facts(person)}")
+    if names:
+        lines.append(
+            f"  [MUST] Use at least one preset key person this round: {', '.join(names)}."
+        )
     lines.append(
         "  These people are the player's preset relationship network; use the matching canonical name for mentor, friend, peer, or similar roles."
     )

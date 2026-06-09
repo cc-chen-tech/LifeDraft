@@ -84,6 +84,8 @@ def test_required_cast_constraints_include_all_preset_people() -> None:
     assert "同期" in text
     assert "不得改名" in text
     assert "不得替换" in text
+    assert "本轮必须至少使用1位预设关键人物" in text
+    assert "陆昊然、陈晓雨、林一凡至少一位" in text
     assert "苏婉清" not in text
 
 
@@ -104,6 +106,7 @@ def test_story_only_prompt_injects_required_cast_authority() -> None:
     assert "同期" in prompt
     assert "不得改名" in prompt
     assert "不得替换" in prompt
+    assert "本轮必须至少使用1位预设关键人物" in prompt
 
 
 def test_round_event_prompt_injects_required_cast_authority() -> None:
@@ -124,6 +127,8 @@ def test_round_event_prompt_injects_required_cast_authority() -> None:
     assert "同期" in prompt
     assert "不得改名" in prompt
     assert "不得替换" in prompt
+    assert "本轮必须至少使用1位预设关键人物" in prompt
+    assert "陆昊然、陈晓雨、林一凡至少一位" in prompt
 
 
 def test_choice_result_prompt_injects_required_cast_authority_and_world_boundary() -> None:
@@ -146,6 +151,7 @@ def test_choice_result_prompt_injects_required_cast_authority_and_world_boundary
     assert "禁止赛博朋克" in prompt
     assert "夜之城" in prompt
     assert "荒坂集团" in prompt
+    assert "本轮必须至少使用1位预设关键人物" in prompt
 
 
 def test_scheduled_event_prompt_inherits_story_authority_constraints() -> None:
@@ -184,6 +190,7 @@ def test_scheduled_event_prompt_inherits_story_authority_constraints() -> None:
     assert "不得替换" in prompt
     assert "现实主义世界边界" in prompt
     assert "禁止赛博朋克" in prompt
+    assert "本轮必须至少使用1位预设关键人物" in prompt
 
 
 def test_scheduled_event_generation_retries_when_story_replaces_preset_cast() -> None:
@@ -368,3 +375,4 @@ def test_world_model_constraints_include_required_cast_from_character_settings()
     assert "同期" in text
     assert "不得改名" in text
     assert "不得替换" in text
+    assert "本轮必须至少使用1位预设关键人物" in text
