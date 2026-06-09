@@ -65,6 +65,53 @@ class TestPlayerNameInPrompts:
             assert "故事开头必须使用\"第" not in prompt
             assert "回\"作为章节标识" not in prompt
 
+    def test_realistic_age_and_career_settings_default_to_modern_timeline_title(self):
+        """普通年龄/职业设定缺少现代关键词时，也不应回退到古风章回体。"""
+        player_state = {
+            "age": 28,
+            "week": 2,
+            "current_round": 0,
+            "rounds_per_week": 3,
+            "energy": 70,
+            "mood": 60,
+            "knowledge": 50,
+            "wealth": 50000,
+            "relationships": {},
+        }
+        realistic_settings = {
+            "basic": {"name": "张若虚", "age": 28},
+            "career": {"job_title": "产品经理", "company": "创业公司"},
+            "wealth": {"currency": "¥", "currency_name": "元"},
+        }
+
+        prompts = [
+            get_event_generation_prompt(
+                player_state=player_state,
+                language="zh",
+                character_settings=realistic_settings,
+            ),
+            get_story_only_prompt(
+                player_state=player_state,
+                language="zh",
+                character_settings=realistic_settings,
+                player_name="张若虚",
+            ),
+            get_round_event_prompt(
+                player_state=player_state,
+                language="zh",
+                round_number=0,
+                round_context="",
+                character_settings=realistic_settings,
+                player_name="张若虚",
+            ),
+        ]
+
+        for prompt in prompts:
+            assert "第3周·周一" in prompt
+            assert "第七回" not in prompt
+            assert "7字对仗标题" not in prompt
+            assert "章回体" in prompt and "禁止使用章回体" in prompt
+
     def test_story_only_prompt_includes_player_name(self):
         """get_story_only_prompt 输出必须包含传入的 player_name"""
         player_state = {
