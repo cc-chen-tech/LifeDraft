@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from config.prompts.story_prompts import get_round_event_prompt, get_story_only_prompt
+from src.game.round.event_generator import RoundEventGenerator
 from src.game.world_model import WorldModel
 
 
@@ -118,6 +119,44 @@ def test_round_event_prompt_injects_required_cast_authority() -> None:
     assert "同期" in prompt
     assert "不得改名" in prompt
     assert "不得替换" in prompt
+
+
+def test_scheduled_event_prompt_inherits_story_authority_constraints() -> None:
+    generator = RoundEventGenerator(
+        player_state_getter=lambda: None,
+        ai_generator=None,
+        language_getter=lambda: "zh",
+        character_introduction_service=None,
+        summary_selector=None,
+        relationship_service=None,
+    )
+
+    prompt = generator._build_scheduled_event_prompt(
+        scheduled_events=[
+            {
+                "description": "周三和导师复盘需求优先级",
+                "parties": ["陆昊然"],
+                "event_hint": "围绕产品经理成长线推进",
+            }
+        ],
+        player_state={
+            "player_name": "林清",
+            "week": 1,
+            "current_round": 1,
+        },
+        character_settings=_modern_product_manager_settings(),
+        language="zh",
+    )
+
+    assert "主角名称是：林清" in prompt
+    assert "预设关键人物" in prompt
+    assert "陆昊然" in prompt
+    assert "陈晓雨" in prompt
+    assert "林一凡" in prompt
+    assert "不得改名" in prompt
+    assert "不得替换" in prompt
+    assert "现实主义世界边界" in prompt
+    assert "禁止赛博朋克" in prompt
 
 
 def test_world_model_constraints_include_required_cast_from_character_settings() -> None:

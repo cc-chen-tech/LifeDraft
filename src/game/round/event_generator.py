@@ -7,9 +7,20 @@ import logging
 import time
 from typing import Any, Callable, Optional
 
-from config.prompts.story_prompts import resolve_protagonist_name
+from config.prompts._helpers import (
+    _build_available_people_constraint,
+    _build_era_anachronism_constraints,
+    _build_full_character_context,
+    build_realistic_modern_world_boundary,
+)
+from config.prompts.story_prompts import (
+    _build_protagonist_identity_instruction,
+    _extract_gender_text,
+    resolve_protagonist_name,
+)
 from src.ai.models import GameEvent
 from src.game.narrative_manager import NarrativeManager
+from src.game.relationship_authority import build_required_cast_constraints
 
 logger = logging.getLogger(__name__)
 
@@ -611,6 +622,23 @@ class RoundEventGenerator:
         parties_str = "、".join(all_parties) if all_parties else ""
 
         player_name = resolve_protagonist_name(player_state, character_settings, None) or "主角"
+        protagonist_gender = _extract_gender_text(character_settings)
+        character_context, available_people = _build_full_character_context(
+            character_settings,
+            language,
+        )
+        available_people_str = _build_available_people_constraint(available_people, language)
+        name_instruction = _build_protagonist_identity_instruction(
+            player_name,
+            protagonist_gender,
+            language,
+        )
+        required_cast_context = build_required_cast_constraints(character_settings or {}, language)
+        modern_world_boundary = build_realistic_modern_world_boundary(
+            character_settings,
+            language,
+        )
+        era_constraints = _build_era_anachronism_constraints(character_settings, language)
         week = player_state.get("week", 0)
         current_round = player_state.get("current_round", 0)
 
@@ -632,6 +660,10 @@ class RoundEventGenerator:
 
 当前时间：第{week}周，{round_name}
 玩家姓名：{player_name}
+
+【角色设定硬约束】
+{character_context if character_context else "标准现代青年"}{name_instruction}{available_people_str}
+{required_cast_context}{modern_world_boundary}{era_constraints}
 
 【要求】
 1. 事件必须围绕兑现上述承诺展开
@@ -661,6 +693,10 @@ Event hints: {combined_hint}
 
 Current time: Week {week}, {round_name}
 Player name: {player_name}
+
+[Character Setting Hard Constraints]
+{character_context if character_context else "Standard modern young adult"}{name_instruction}{available_people_str}
+{required_cast_context}{modern_world_boundary}{era_constraints}
 
 [Requirements]
 1. The event must center on fulfilling the above commitment
