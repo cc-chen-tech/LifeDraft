@@ -55,7 +55,28 @@ async function gotoRegressionPageForVoiceControls(page: Page): Promise<void> {
   await expect(page.getByRole('button', { name: '朗读故事' })).toBeVisible();
 }
 
+async function expandGlobalSoundPanel(page: Page) {
+  const soundControls = page.getByRole('region', { name: '声音控制' });
+  await expect(soundControls).toBeVisible();
+  await soundControls.getByRole('button', { name: '展开声音面板' }).click();
+  const soundPanel = page.getByRole('region', { name: '声音面板' });
+  await expect(soundPanel).toBeVisible();
+  return soundPanel;
+}
+
 test.describe('Story voice reading without login', () => {
+  test('global sound panel combines music playback and story narration controls', async ({ page }) => {
+    await gotoRegressionPageAfterMusicSettles(page);
+
+    const soundPanel = await expandGlobalSoundPanel(page);
+
+    await expect(soundPanel.getByText('场景音乐')).toBeVisible();
+    await expect(soundPanel.getByRole('region', { name: '故事朗读' })).toBeVisible();
+    await expect(soundPanel.getByRole('button', { name: '朗读故事' })).toBeVisible();
+    await expect(soundPanel.getByRole('checkbox', { name: '自动朗读' })).toBeVisible();
+    await expect(soundPanel.getByRole('combobox', { name: '选择朗读声音' })).toBeVisible();
+  });
+
   test('unauthenticated reading stays on the story page and falls back to browser speech', async ({ page }) => {
     await gotoRegressionPageForVoiceControls(page);
 

@@ -6,6 +6,7 @@ import { MusicPlayer } from "@/components/game/MusicPlayer";
 import { OptionCards } from "@/components/game/OptionCards";
 import { StoryVoiceControls } from "@/components/game/StoryVoiceControls";
 import { useMusicStore } from "@/stores/useMusicStore";
+import { useStoryVoiceStore } from "@/stores/useStoryVoiceStore";
 
 const transparentPixel =
   "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
@@ -18,6 +19,8 @@ export default function E2ERegressionPage() {
   const currentSong = useMusicStore((state) => state.currentSong);
   const queue = useMusicStore((state) => state.queue);
   const generateAiMusicForStory = useMusicStore((state) => state.generateAiMusicForStory);
+  const setActiveReadingTarget = useStoryVoiceStore((state) => state.setActiveReadingTarget);
+  const clearActiveReadingTarget = useStoryVoiceStore((state) => state.clearActiveReadingTarget);
   const [showHistory, setShowHistory] = useState(false);
   const [historySelected, setHistorySelected] = useState(false);
   const [currentStory, setCurrentStory] = useState("当前故事尚未更新");
@@ -57,14 +60,36 @@ export default function E2ERegressionPage() {
       source: "netease",
     });
     setQueue([]);
+    setActiveReadingTarget({
+      context: {
+        source_type: "current_story",
+        game_id: 101,
+        week: 1,
+        round_number: 1,
+        stage: "event",
+        attempt_id: "global-sound-panel",
+        text_hash: "fixture-global-sound-panel",
+        text: "雨夜码头的旧账册被风吹开。",
+      },
+      autoReadText: "雨夜码头的旧账册被风吹开。",
+      autoReadReady: false,
+    });
 
     return () => {
       setActiveStoryText(null);
       setActiveGameId(null);
       setCurrentSong(null);
       setQueue([]);
+      clearActiveReadingTarget();
     };
-  }, [setActiveStoryText, setActiveGameId, setCurrentSong, setQueue]);
+  }, [
+    clearActiveReadingTarget,
+    setActiveReadingTarget,
+    setActiveStoryText,
+    setActiveGameId,
+    setCurrentSong,
+    setQueue,
+  ]);
 
   const appendFirstAttempt = () => {
     setStreamedStory("雾气从码头仓门涌进来，陆明看见账册被人翻开。");
