@@ -137,6 +137,54 @@ class TestMusicPlaylistContract:
         assert len(data["queue"]) == 1
         assert data["queue"][0]["id"] == 2
 
+    def test_put_playlist_dedupes_future_queue_by_title_family_save_read(self):
+        """PUT must persist a queue deduped by title family, not only by id."""
+        game_id = self._create_game()
+        db = SessionLocal()
+        db.add(
+            GamePlaylist(
+                game_id=game_id,
+                current_song_json={"id": 10, "name": "网易云 当前曲"},
+                queue_json=[],
+            )
+        )
+        db.commit()
+        db.close()
+
+        resp = client.put(
+            f"/api/music/playlist/{game_id}",
+            json={
+                "songs": [
+                    {"id": 10, "name": "网易云 当前曲", "artists": ["A"], "album": "X", "duration": 200},
+                    {"id": 20, "name": "绅士", "artists": ["B"], "album": "流行", "duration": 180},
+                    {"id": 21, "name": "绅士 (Live)", "artists": ["C"], "album": "翻唱", "duration": 180},
+                    {"id": 22, "name": "红尘客栈", "artists": ["D"], "album": "热门", "duration": 180},
+                    {"id": 23, "name": "红尘客栈 - 古风翻唱", "artists": ["E"], "album": "翻唱", "duration": 180},
+                    {"id": 24, "name": "办公室 轻电子 氛围", "artists": ["Score"], "album": "现代职场 纯音乐", "duration": 180},
+                ],
+                "mood": "专注",
+                "keywords": ["办公室"],
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["current_song"]["id"] == 10
+        assert [song["name"] for song in data["queue"]] == [
+            "绅士",
+            "红尘客栈",
+            "办公室 轻电子 氛围",
+        ]
+
+        persisted = client.get(f"/api/music/playlist/{game_id}")
+        assert persisted.status_code == 200
+        persisted_data = persisted.json()
+        assert persisted_data["current_song"]["id"] == 10
+        assert [song["name"] for song in persisted_data["queue"]] == [
+            "绅士",
+            "红尘客栈",
+            "办公室 轻电子 氛围",
+        ]
+
     def test_sync_playlist_state(self):
         """POST /sync must update position, is_playing, volume."""
         game_id = self._create_game()

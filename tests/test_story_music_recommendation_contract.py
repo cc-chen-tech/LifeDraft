@@ -497,6 +497,34 @@ def test_music_result_ranker_filters_reported_negative_cue_failures_and_dedupes_
     assert [song.name for song in filtered] == ["办公室 轻电子 氛围", "商务低调钢琴"]
 
 
+def test_music_result_ranker_filters_reported_tail_mismatch_title_families():
+    brief = MusicBrief(
+        mood="专注夹杂焦虑",
+        scene_type="用户访谈复盘",
+        era_or_environment="2020年代互联网公司会议室",
+        pacing="紧凑",
+        energy="中",
+        instruments=["电子合成器", "钢琴"],
+        search_queries=["产品经理 工作配乐", "办公室 轻电子 氛围"],
+        negative_cues=["人声", "歌词", "情歌", "流行人声", "热门金曲"],
+        generation_prompt="instrumental ambience loop, no vocals, no lyrics",
+    )
+    songs = [
+        Song(id=4101, name="绅士", artists=["薛之谦"], album="流行人声", duration=180000),
+        Song(id=4102, name="绅士 (Live)", artists=["翻唱"], album="热门金曲", duration=180000),
+        Song(id=4103, name="红尘客栈", artists=["周杰伦"], album="热门金曲", duration=180000),
+        Song(id=4104, name="红尘客栈 - 古风翻唱", artists=["Vocal"], album="翻唱合集", duration=180000),
+        Song(id=4105, name="非你莫属", artists=["流行歌手"], album="情歌", duration=180000),
+        Song(id=4106, name="给我一首歌的时间", artists=["流行歌手"], album="热门金曲", duration=180000),
+        Song(id=4201, name="办公室 轻电子 氛围", artists=["Focus Lab"], album="现代职场 纯音乐", duration=180000),
+        Song(id=4202, name="用户数据冷光", artists=["Score Lab"], album="都市电子背景音乐", duration=180000),
+    ]
+
+    filtered = MusicResultRanker().filter_and_dedupe(songs, brief)
+
+    assert [song.name for song in filtered] == ["办公室 轻电子 氛围", "用户数据冷光"]
+
+
 def test_music_service_pool_selection_applies_negative_filter_and_title_dedupe():
     brief = MusicBrief(
         mood="温馨",
