@@ -10,5 +10,5 @@
 
 ## 2. Publish
 
-- [ ] 2.1 Commit and push the regression coverage.
-- [ ] 2.2 Open a ready PR.
+- [x] 2.1 Commit and push the regression coverage.
+- [x] 2.2 Open a ready PR.
