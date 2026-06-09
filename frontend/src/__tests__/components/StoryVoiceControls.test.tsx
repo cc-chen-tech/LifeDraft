@@ -1,10 +1,11 @@
 import React from 'react';
 import { webcrypto } from 'node:crypto';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { StoryVoiceControls } from '@/components/game/StoryVoiceControls';
 import type { ReadingContext } from '@/lib/types';
 import { useStoryVoiceStore } from '@/stores/useStoryVoiceStore';
-import { jsonResponse } from '@/__tests__/helpers/fetch';
+import { errorResponse, jsonResponse } from '@/__tests__/helpers/fetch';
 
 const currentContext: ReadingContext = {
   source_type: 'current_story',
@@ -58,8 +59,47 @@ describe('StoryVoiceControls', () => {
   });
 
   afterEach(() => {
+    jest.useRealTimers();
     jest.restoreAllMocks();
   });
+
+  function installSpeechSynthesisMock(voices: Array<Partial<SpeechSynthesisVoice>> = []) {
+    const spoken: SpeechSynthesisUtterance[] = [];
+    const speech = {
+      cancel: jest.fn(),
+      pause: jest.fn(),
+      resume: jest.fn(),
+      speak: jest.fn((utterance: SpeechSynthesisUtterance) => {
+        spoken.push(utterance);
+      }),
+      getVoices: jest.fn(() => voices as SpeechSynthesisVoice[]),
+    };
+    class FakeSpeechSynthesisUtterance {
+      text: string;
+      lang = '';
+      rate = 1;
+      voice: SpeechSynthesisVoice | null = null;
+      onend: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+
+      constructor(text: string) {
+        this.text = text;
+      }
+    }
+    Object.defineProperty(window, 'speechSynthesis', {
+      value: speech,
+      configurable: true,
+    });
+    Object.defineProperty(window, 'SpeechSynthesisUtterance', {
+      value: FakeSpeechSynthesisUtterance,
+      configurable: true,
+    });
+    Object.defineProperty(globalThis, 'SpeechSynthesisUtterance', {
+      value: FakeSpeechSynthesisUtterance,
+      configurable: true,
+    });
+    return { speech, spoken };
+  }
 
   it('shows a polished unavailable preview instead of raw playback diagnostics by default', () => {
     render(<StoryVoiceControls currentContext={currentContext} compact />);
@@ -200,6 +240,83 @@ describe('StoryVoiceControls', () => {
     );
     expect(screen.queryByRole('button', { name: '重试朗读' })).not.toBeInTheDocument();
 
+  });
+
+  it('uses the selected browser speech voice when backend audio falls back to browser speech', async () => {
+    const { speech, spoken } = installSpeechSynthesisMock([
+      { name: 'Chinese Xiaoxiao Natural', lang: 'zh-CN' },
+      { name: 'Chinese Yunxi Male Natural', lang: 'zh-CN' },
+      { name: 'English Narrator', lang: 'en-US' },
+    ]);
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.includes('/voice-reading/settings')) {
+        return Promise.resolve(jsonResponse({
+          auto_read_enabled: false,
+          selected_voice_color: 'calm_male',
+        }));
+      }
+      if (url.includes('/voice-reading/read')) {
+        return Promise.resolve(jsonResponse({
+          job_id: 7,
+          status: 'ready',
+          audio_url: null,
+          playback_mode: 'browser_speech',
+          provider: 'browser',
+          media_type: 'text/plain',
+        }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    useStoryVoiceStore.setState({ selectedVoiceId: 'calm_male' });
+
+    render(<StoryVoiceControls currentContext={currentContext} enablePlaybackControls compact />);
+
+    fireEvent.click(screen.getByRole('button', { name: '朗读故事' }));
+
+    await waitFor(() => {
+      expect(speech.speak).toHaveBeenCalledTimes(1);
+    });
+    expect(spoken[0].voice?.name).toBe('Chinese Yunxi Male Natural');
+    expect(useStoryVoiceStore.getState().playbackMode).toBe('browser_speech');
+  });
+
+  it('falls back to browser speech when the backend voice request is unavailable', async () => {
+    jest.useFakeTimers();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    const { speech } = installSpeechSynthesisMock([
+      { name: 'Chinese Xiaoxiao Natural', lang: 'zh-CN' },
+    ]);
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.includes('/voice-reading/settings')) {
+        return Promise.resolve(jsonResponse({
+          auto_read_enabled: false,
+          selected_voice_color: 'warm_female',
+        }));
+      }
+      if (url.includes('/voice-reading/read')) {
+        return Promise.resolve(errorResponse(503, 'MiniMax TTS unavailable'));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    render(<StoryVoiceControls currentContext={currentContext} enablePlaybackControls compact />);
+
+    await user.click(screen.getByRole('button', { name: '朗读故事' }));
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(2000);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(speech.speak).toHaveBeenCalledTimes(1);
+    });
+    expect(useStoryVoiceStore.getState().readingState).toBe('playing');
+    expect(useStoryVoiceStore.getState().currentProvider).toBe('browser');
+    expect(useStoryVoiceStore.getState().errorMessage).toBe('');
   });
 
   it('regenerates the active reading immediately when voice changes mid-playback', async () => {

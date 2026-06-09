@@ -10,8 +10,12 @@ describe("api retry policy", () => {
     expect(shouldRetryApiResponse(401, "/games", 1)).toBe(false);
   });
 
-  it("retries server errors and does not retry normal client errors", () => {
-    expect(shouldRetryApiResponse(503, "/voice-reading/read", 0)).toBe(true);
+  it("does not retry voice reading server errors so browser speech fallback starts immediately", () => {
+    expect(shouldRetryApiResponse(503, "/voice-reading/read", 0)).toBe(false);
     expect(shouldRetryApiResponse(404, "/voice-reading/read", 0)).toBe(false);
+  });
+
+  it("still retries transient server errors for non-voice endpoints", () => {
+    expect(shouldRetryApiResponse(503, "/games/1/event", 0)).toBe(true);
   });
 });
