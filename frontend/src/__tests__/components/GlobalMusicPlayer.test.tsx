@@ -3,7 +3,7 @@
  * Tests the global music player wrapper with store integration
  */
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 // Mock API-calling functions from music store to avoid real HTTP calls
@@ -184,6 +184,34 @@ describe("GlobalMusicPlayer", () => {
       expect(screen.getByText("场景音乐")).toBeInTheDocument();
       expect(screen.getByRole("region", { name: "故事朗读" })).toBeInTheDocument();
       expect(screen.getByRole("checkbox", { name: "自动朗读" })).toBeInTheDocument();
+    });
+
+    it("presents music and narration as one unified sound panel with peer sections", async () => {
+      const user = userEvent.setup();
+      setStoreState({
+        activeStoryText: "story text",
+        currentSong: { id: 2, name: "Playing Song", artists: ["Artist"], album: "", duration: 200 },
+      });
+      useStoryVoiceStore.setState({
+        activeReadingContext,
+        activeAutoReadText: activeReadingContext.text,
+        activeAutoReadReady: true,
+      } as never);
+
+      render(<GlobalMusicPlayer />);
+
+      await user.click(screen.getByRole("button", { name: "展开声音面板" }));
+
+      const panel = screen.getByTestId("unified-sound-panel");
+      const musicSection = within(panel).getByTestId("sound-music-section");
+      const readingSection = within(panel).getByTestId("sound-reading-section");
+
+      expect(within(musicSection).getByText("场景音乐")).toBeInTheDocument();
+      expect(within(readingSection).getByText("故事朗读")).toBeInTheDocument();
+      expect(within(readingSection).getByRole("button", { name: "朗读故事" })).toBeInTheDocument();
+      expect(within(readingSection).getByRole("combobox", { name: "选择朗读声音" })).toBeInTheDocument();
+      expect(within(readingSection).getByRole("checkbox", { name: "自动朗读" })).toBeInTheDocument();
+      expect(readingSection).not.toHaveClass("border-t");
     });
 
     it("stays below the app header on desktop so it cannot cover header controls or the chat launcher", () => {

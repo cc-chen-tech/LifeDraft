@@ -279,11 +279,38 @@ export function StoryVoiceControls({
       aria-label="故事朗读"
       className={
         embedded
-          ? "space-y-3 border-t border-border/70 pt-3"
+          ? "space-y-2"
           : "rounded border border-border bg-card/60 p-3 space-y-3"
       }
     >
-      <div className="flex flex-wrap items-center gap-2">
+      {embedded && showProductionSettings && (
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <Volume2 className="h-4 w-4 shrink-0 text-primary" />
+            <div className="min-w-0">
+              <div className="text-sm font-medium leading-5 text-foreground">故事朗读</div>
+              <div className="truncate text-xs text-muted-foreground">
+                {readingState === "loading"
+                  ? "正在准备语音"
+                  : readingState === "playing"
+                    ? "正在朗读当前故事"
+                    : readingState === "paused"
+                      ? "朗读已暂停"
+                      : readingState === "ready"
+                        ? "语音已生成，可播放"
+                        : readingState === "failed"
+                          ? "朗读失败，可重试"
+                          : autoReadEnabled
+                            ? "故事生成完成后自动朗读"
+                            : "手动朗读当前故事"}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className={embedded ? "flex flex-col gap-2" : "flex flex-wrap items-center gap-2"}>
+        <div className="flex flex-wrap items-center gap-2">
         <Button
           type="button"
           size="sm"
@@ -324,6 +351,7 @@ export function StoryVoiceControls({
             </label>
           </>
         )}
+        </div>
         {historyContext && (
           <Button
             type="button"

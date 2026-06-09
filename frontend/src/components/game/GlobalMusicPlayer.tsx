@@ -113,36 +113,45 @@ export function GlobalMusicPlayer() {
         role={isExpanded ? "region" : undefined}
         aria-label={isExpanded ? "声音面板" : undefined}
       >
-        <div className="px-4 pt-3">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <Volume2 className="h-4 w-4 text-primary" />
-            声音
+        <div data-testid="unified-sound-panel" className="divide-y divide-border/70">
+          <div className="px-4 py-3">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Volume2 className="h-4 w-4 text-primary" />
+              声音
+            </div>
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              场景音乐和故事朗读统一在这里控制
+            </div>
           </div>
+
+          <div data-testid="sound-music-section" className="px-4 py-3">
+            {storyText ? (
+              <MusicPlayer
+                storyText={storyText}
+                gameId={effectiveGameId}
+                className="rounded-none border-0 bg-transparent p-0 shadow-none"
+                autoFetchRecommendation={shouldAutoFetchRecommendation}
+              />
+            ) : (
+              <div className="text-sm text-muted-foreground">
+                故事生成完成后会自动推荐音乐。
+              </div>
+            )}
+          </div>
+
+          {activeReadingContext && (
+            <div data-testid="sound-reading-section" className="px-4 py-3">
+              <StoryVoiceControls
+                currentContext={activeReadingContext}
+                autoReadText={activeAutoReadText}
+                autoReadReady={activeAutoReadReady}
+                compact
+                embedded
+                enablePlaybackControls
+              />
+            </div>
+          )}
         </div>
-        {storyText ? (
-          <MusicPlayer
-            storyText={storyText}
-            gameId={effectiveGameId}
-            className="rounded-none border-0 shadow-none"
-            autoFetchRecommendation={shouldAutoFetchRecommendation}
-          />
-        ) : (
-          <div className="px-4 py-3 text-sm text-muted-foreground">
-            故事生成完成后会自动推荐音乐。
-          </div>
-        )}
-        {activeReadingContext && (
-          <div className="px-4 pb-4">
-            <StoryVoiceControls
-              currentContext={activeReadingContext}
-              autoReadText={activeAutoReadText}
-              autoReadReady={activeAutoReadReady}
-              compact
-              embedded
-              enablePlaybackControls
-            />
-          </div>
-        )}
       </div>
 
       {/* Sound mini bar — always visible */}
