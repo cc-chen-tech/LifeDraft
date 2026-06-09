@@ -7,7 +7,7 @@ The 2026-06-08 UX report observed that the saves page could expose games that di
 - Require `GET /api/games` to return only unfinished games owned by the authenticated user.
 - Require single-game load paths used from the saves experience to reject games owned by another user.
 - Add no-mock regression coverage with real database records for two users and saved game states.
-- Keep the frontend contract unchanged: `/saves` continues to consume the authenticated `GET /api/games` response and must not rely on client-side filtering for privacy.
+- Keep backend ownership enforcement authoritative while ensuring `/saves` never renders stale client-side save arrays when the current session is unauthenticated or unresolved.
 
 ## Capabilities
 
