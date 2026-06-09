@@ -12,6 +12,8 @@ import pytest
 from src.database.models import Base, Game, GeneratedMusicAsset
 from src.services.music_playlist_service import MusicPlaylistService, PlaylistQueuePolicy
 from src.services.music_service import (
+    CachedMusicPool,
+    CachedSong,
     MusicBrief,
     MusicContextBuilder,
     MusicGenerationCoordinator,
@@ -464,6 +466,65 @@ def test_music_result_ranker_preserves_order_when_only_weak_terms_match():
     ranked = MusicResultRanker().rank(songs, brief)
 
     assert [song.id for song in ranked] == [1, 2, 3]
+
+
+def test_music_result_ranker_filters_reported_negative_cue_failures_and_dedupes_versions():
+    brief = MusicBrief(
+        mood="温馨但专注",
+        scene_type="商业计划书对话",
+        era_or_environment="现代苏州面馆",
+        pacing="舒缓",
+        energy="中低",
+        instruments=["钢琴", "轻电子"],
+        search_queries=["温暖 闺蜜 商业计划书", "办公室 轻电子 氛围"],
+        negative_cues=["人声", "歌词", "情歌", "流行人声"],
+        generation_prompt="instrumental ambience loop, no vocals, no lyrics",
+    )
+    songs = [
+        Song(id=1101, name="小幸运", artists=["说晚安wy."], album="翻唱合集", duration=180000),
+        Song(id=1102, name="小幸运（如果真相带来痛苦...）", artists=["山海意难平"], album="流行", duration=180000),
+        Song(id=1103, name="小幸运(0.98x)", artists=["对方正在输入中"], album="流行", duration=180000),
+        Song(id=1104, name="坤坤错过", artists=["HOPEMIAO"], album="抽象梗曲", duration=180000),
+        Song(id=1105, name="起坤了只因你太美", artists=["子城"], album="抽象梗曲", duration=180000),
+        Song(id=1106, name="断了的弦", artists=["童sir"], album="翻唱合集", duration=180000),
+        Song(id=1107, name="断了的弦（心动版）", artists=["主唱.阿森"], album="翻唱合集", duration=180000),
+        Song(id=2101, name="办公室 轻电子 氛围", artists=["Focus Lab"], album="现代职场 纯音乐", duration=180000),
+        Song(id=2102, name="商务低调钢琴", artists=["Score Lab"], album="背景音乐", duration=180000),
+    ]
+
+    filtered = MusicResultRanker().filter_and_dedupe(songs, brief)
+
+    assert [song.name for song in filtered] == ["办公室 轻电子 氛围", "商务低调钢琴"]
+
+
+def test_music_service_pool_selection_applies_negative_filter_and_title_dedupe():
+    brief = MusicBrief(
+        mood="温馨",
+        scene_type="闺蜜商业计划书对话",
+        era_or_environment="现代职场",
+        pacing="舒缓",
+        energy="中低",
+        instruments=["钢琴", "电子合成器"],
+        search_queries=["商业计划书 轻音乐"],
+        negative_cues=["人声", "歌词", "情歌", "流行人声"],
+        generation_prompt="instrumental ambience loop, no vocals, no lyrics",
+    )
+    now = datetime.utcnow().timestamp()
+    pool = CachedMusicPool(
+        analysis=brief.to_analysis(),
+        verified_songs=[
+            CachedSong(id=3101, name="断了的弦", artists=["童sir"], album="翻唱", duration=180000, url="https://m/3101.mp3", url_expires_at=now + 600, verified_at=now),
+            CachedSong(id=3102, name="断了的弦（心动版）", artists=["主唱.阿森"], album="翻唱", duration=180000, url="https://m/3102.mp3", url_expires_at=now + 600, verified_at=now),
+            CachedSong(id=3103, name="断了的弦(0.98x)", artists=["微甜的小风"], album="翻唱", duration=180000, url="https://m/3103.mp3", url_expires_at=now + 600, verified_at=now),
+            CachedSong(id=3201, name="商务低调钢琴", artists=["Score Lab"], album="背景音乐", duration=180000, url="https://m/3201.mp3", url_expires_at=now + 600, verified_at=now),
+            CachedSong(id=3202, name="办公室 轻电子 氛围", artists=["Focus Lab"], album="现代职场 纯音乐", duration=180000, url="https://m/3202.mp3", url_expires_at=now + 600, verified_at=now),
+        ],
+        created_at=now,
+    )
+
+    selected = MusicService()._random_select_songs(pool)
+
+    assert [song.name for song in selected] == ["办公室 轻电子 氛围", "商务低调钢琴"]
 
 
 def test_music_recommendation_keeps_legacy_fields_and_exposes_music_brief():
