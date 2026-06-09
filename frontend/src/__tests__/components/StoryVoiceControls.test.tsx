@@ -26,6 +26,7 @@ describe('StoryVoiceControls', () => {
       value: webcrypto,
       configurable: true,
     });
+    (global.fetch as jest.Mock).mockClear();
     (global.fetch as jest.Mock).mockImplementation((url: string) => {
       if (url.includes('/voice-reading/settings')) {
         return Promise.resolve(jsonResponse({
@@ -51,6 +52,8 @@ describe('StoryVoiceControls', () => {
       queueText: '',
       autoReadEnabled: false,
       selectedVoiceId: 'warm_female',
+      ttsProvider: '',
+      backendAudioEnabled: true,
       musicDuckState: 'idle',
       musicWasPlaying: false,
       userChangedMusic: false,
@@ -336,6 +339,96 @@ describe('StoryVoiceControls', () => {
     expect(useStoryVoiceStore.getState().readingState).toBe('playing');
     expect(useStoryVoiceStore.getState().currentProvider).toBe('browser');
     expect(useStoryVoiceStore.getState().errorMessage).toBe('');
+  });
+
+  it('starts browser speech immediately when production settings disable backend audio', async () => {
+    const { speech, spoken } = installSpeechSynthesisMock([
+      {
+        name: 'Chinese Xiaoxiao Female Natural',
+        voiceURI: 'xiaoxiao',
+        lang: 'zh-CN',
+      },
+    ]);
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.includes('/voice-reading/settings')) {
+        return Promise.resolve(jsonResponse({
+          auto_read_enabled: false,
+          selected_voice_color: 'warm_female',
+          tts_provider: 'browser',
+          backend_audio_enabled: false,
+        }));
+      }
+      if (url.includes('/voice-reading/read')) {
+        throw new Error('browser-mode should not request backend audio');
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    render(<StoryVoiceControls currentContext={currentContext} enablePlaybackControls compact />);
+
+    await waitFor(() => {
+      expect(useStoryVoiceStore.getState().ttsProvider).toBe('browser');
+    });
+    fireEvent.click(screen.getByRole('button', { name: '朗读故事' }));
+
+    await waitFor(() => {
+      expect(speech.speak).toHaveBeenCalledTimes(1);
+    });
+    expect(spoken[0].voice?.name).toBe('Chinese Xiaoxiao Female Natural');
+    expect(useStoryVoiceStore.getState().readingState).toBe('playing');
+    expect(useStoryVoiceStore.getState().currentProvider).toBe('browser');
+    expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
+      String(url).includes('/voice-reading/read')
+    )).toBe(false);
+  });
+
+  it('restarts browser speech immediately with the new selected voice', async () => {
+    const { speech, spoken } = installSpeechSynthesisMock([
+      {
+        name: 'Chinese Xiaoxiao Female Natural',
+        voiceURI: 'xiaoxiao',
+        lang: 'zh-CN',
+      },
+      {
+        name: 'Chinese Yunxi Male Natural',
+        voiceURI: 'yunxi',
+        lang: 'zh-CN',
+      },
+    ]);
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.includes('/voice-reading/settings')) {
+        return Promise.resolve(jsonResponse({
+          auto_read_enabled: false,
+          selected_voice_color: 'warm_female',
+          tts_provider: 'browser',
+          backend_audio_enabled: false,
+        }));
+      }
+      if (url.includes('/voice-reading/read')) {
+        throw new Error('browser-mode should not request backend audio');
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    render(<StoryVoiceControls currentContext={currentContext} enablePlaybackControls compact />);
+
+    await waitFor(() => {
+      expect(useStoryVoiceStore.getState().ttsProvider).toBe('browser');
+    });
+    fireEvent.click(screen.getByRole('button', { name: '朗读故事' }));
+    await waitFor(() => {
+      expect(useStoryVoiceStore.getState().readingState).toBe('playing');
+    });
+
+    fireEvent.change(screen.getByRole('combobox', { name: '选择朗读声音' }), {
+      target: { value: 'calm_male' },
+    });
+
+    await waitFor(() => {
+      expect(speech.speak).toHaveBeenCalledTimes(2);
+    });
+    expect(speech.cancel).toHaveBeenCalled();
+    expect(spoken.at(-1)?.voice?.name).toBe('Chinese Yunxi Male Natural');
   });
 
   it('coalesces duplicate read starts for the same story and voice while generation is in flight', async () => {

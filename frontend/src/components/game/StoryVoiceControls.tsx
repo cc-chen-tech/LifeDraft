@@ -54,6 +54,7 @@ export function StoryVoiceControls({
   const failReading = useStoryVoiceStore((state) => state.failReading);
   const setAutoReadEnabled = useStoryVoiceStore((state) => state.setAutoReadEnabled);
   const setSelectedVoiceId = useStoryVoiceStore((state) => state.setSelectedVoiceId);
+  const setVoiceRuntimeSettings = useStoryVoiceStore((state) => state.setVoiceRuntimeSettings);
   const enqueueCompletedAttempt = useStoryVoiceStore((state) => state.enqueueCompletedAttempt);
   const simulateMusicPlaying = useStoryVoiceStore((state) => state.simulateMusicPlaying);
   const userPauseMusicDuringReading = useStoryVoiceStore(
@@ -74,6 +75,10 @@ export function StoryVoiceControls({
 
     void api.voice_reading.getSettings()
       .then((settings) => {
+        setVoiceRuntimeSettings({
+          ttsProvider: settings.tts_provider,
+          backendAudioEnabled: settings.backend_audio_enabled,
+        });
         if (settings.auto_read_enabled !== autoReadEnabled) {
           setAutoReadEnabled(settings.auto_read_enabled);
         }
@@ -84,7 +89,13 @@ export function StoryVoiceControls({
       .catch((error) => {
         console.warn("[StoryVoiceControls] Voice settings load unavailable:", error);
       });
-  }, [autoReadEnabled, selectedVoiceId, setAutoReadEnabled, setSelectedVoiceId]);
+  }, [
+    autoReadEnabled,
+    selectedVoiceId,
+    setAutoReadEnabled,
+    setSelectedVoiceId,
+    setVoiceRuntimeSettings,
+  ]);
 
   useEffect(() => {
     const finalText = autoReadText?.trim();
@@ -226,7 +237,7 @@ export function StoryVoiceControls({
         audio.currentTime = 0;
       }
       window.speechSynthesis?.cancel?.();
-      void startReading(activeContext);
+      void startReading(activeContext, { voiceId: nextVoiceId });
     }
   };
 

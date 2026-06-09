@@ -525,7 +525,8 @@ def test_story_voice_production_controls_expose_voice_selection() -> None:
     assert "clear_neutral" in component
     assert "selectedVoiceId" in store
     assert "settings.selected_voice_color" in component
-    assert "const selectedVoiceId = get().selectedVoiceId" in store
+    assert "options?.voiceId ?? get().selectedVoiceId" in store
+    assert "startReading(activeContext, { voiceId: nextVoiceId })" in component
     assert "voice_id: selectedVoiceId" in store
     assert 'voice_id: "warm_female"' not in store
 

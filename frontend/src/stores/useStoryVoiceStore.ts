@@ -23,6 +23,8 @@ interface StoryVoiceState {
   queueText: string;
   autoReadEnabled: boolean;
   selectedVoiceId: string;
+  ttsProvider: string;
+  backendAudioEnabled: boolean;
   musicDuckState: MusicDuckState;
   musicWasPlaying: boolean;
   userChangedMusic: boolean;
@@ -35,7 +37,7 @@ interface StoryVoiceState {
     autoReadReady: boolean;
   }) => void;
   clearActiveReadingTarget: () => void;
-  startReading: (context: ReadingContext) => Promise<void>;
+  startReading: (context: ReadingContext, options?: { voiceId?: string }) => Promise<void>;
   pauseReading: () => void;
   stopReading: () => void;
   completeReading: () => void;
@@ -45,6 +47,10 @@ interface StoryVoiceState {
   failReading: (error?: unknown) => void;
   setAutoReadEnabled: (enabled: boolean) => void;
   setSelectedVoiceId: (voiceId: string) => void;
+  setVoiceRuntimeSettings: (settings: {
+    ttsProvider?: string | null;
+    backendAudioEnabled?: boolean | null;
+  }) => void;
   enqueueCompletedAttempt: (text: string) => void;
   simulateMusicPlaying: () => void;
   userPauseMusicDuringReading: () => void;
@@ -153,9 +159,14 @@ function selectBrowserSpeechVoice(
       : voices.filter((voice) => voice.lang?.toLowerCase().startsWith(language.toLowerCase()));
   const candidates = languageVoices.length ? languageVoices : voices;
   const cues = BROWSER_VOICE_CUES[voiceId] ?? BROWSER_VOICE_CUES.warm_female;
+  const matchesCue = (haystack: string, cue: string) => {
+    if (cue === "male") return /\bmale\b/.test(haystack) && !/\bfemale\b/.test(haystack);
+    if (cue === "man") return /\bman\b/.test(haystack);
+    return haystack.includes(cue);
+  };
   const matched = candidates.find((voice) => {
     const haystack = `${voice.name} ${voice.voiceURI} ${voice.lang}`.toLowerCase();
-    return cues.some((cue) => haystack.includes(cue));
+    return cues.some((cue) => matchesCue(haystack, cue));
   });
   return matched ?? candidates[0] ?? null;
 }
@@ -181,6 +192,8 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
   queueText: "",
   autoReadEnabled: false,
   selectedVoiceId: "warm_female",
+  ttsProvider: "",
+  backendAudioEnabled: true,
   musicDuckState: "idle",
   musicWasPlaying: false,
   userChangedMusic: false,
@@ -201,8 +214,8 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       activeAutoReadReady: false,
     }),
 
-  startReading: async (context) => {
-    const selectedVoiceId = get().selectedVoiceId;
+  startReading: async (context, options) => {
+    const selectedVoiceId = options?.voiceId ?? get().selectedVoiceId;
     const requestKey = readingRequestKey(context, selectedVoiceId);
     if (get().readingState === "loading" && activeLoadingRequestKey === requestKey) {
       return;
@@ -304,6 +317,12 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
     };
 
     try {
+      const { ttsProvider, backendAudioEnabled } = get();
+      if (ttsProvider === "browser" || backendAudioEnabled === false) {
+        startBrowserSpeech(null);
+        return;
+      }
+
       const textHash = await normalizeTextHash(context.text);
       const response = await api.voice_reading.requestReading({
         context: { ...context, text_hash: textHash },
@@ -458,6 +477,11 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
   },
   setAutoReadEnabled: (autoReadEnabled) => set({ autoReadEnabled }),
   setSelectedVoiceId: (selectedVoiceId) => set({ selectedVoiceId }),
+  setVoiceRuntimeSettings: ({ ttsProvider, backendAudioEnabled }) =>
+    set((state) => ({
+      ttsProvider: ttsProvider ?? state.ttsProvider,
+      backendAudioEnabled: backendAudioEnabled ?? state.backendAudioEnabled,
+    })),
   enqueueCompletedAttempt: (text) => set({ queueText: text }),
   simulateMusicPlaying: () => set({ musicWasPlaying: true, musicDuckState: "playing" }),
   userPauseMusicDuringReading: () =>
