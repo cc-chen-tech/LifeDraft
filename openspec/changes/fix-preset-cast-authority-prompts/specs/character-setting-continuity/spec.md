@@ -46,3 +46,9 @@ Story generation SHALL treat preset key people in character settings as canonica
 - **WHEN** the preset cast authority block is present
 - **THEN** the story MAY use generic labels such as 路人 or 陌生人
 - **AND** it MUST NOT introduce a named substitute for an existing preset relationship role
+
+#### Scenario: Story character sync ignores invented substitutes for preset roles
+- **GIVEN** character settings define a canonical preset person for a role such as 导师
+- **WHEN** a generated story introduces a new named person in the local context of that same role
+- **THEN** story-character synchronization MUST NOT promote that new name into `relationships.key_people`
+- **AND** it MUST NOT add that new name to the relationship affinity map

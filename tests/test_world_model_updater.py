@@ -447,6 +447,33 @@ class TestSyncStoryCharacters:
         names = [p["name"] for p in key_people]
         assert names.count("张三") == 1
 
+    def test_sync_does_not_promote_named_substitute_for_preset_role(self):
+        """故事漂移出的新导师不能被固化为预设导师的替身。"""
+        player_state = MagicMock()
+        player_state.relationships = {}
+        player_state.character_settings = {
+            "relationships": {
+                "key_people": [
+                    {"name": "陆昊然", "role": "导师", "affinity": 60},
+                    {"name": "陈晓雨", "role": "闺蜜", "affinity": 80},
+                ]
+            }
+        }
+
+        story_text = "新导师苏婉清把复盘文档递给主角，要求她不要再找陆昊然确认需求。"
+        relationships_in_effects = {"苏婉清": 70}
+
+        WorldModelUpdater.sync_story_characters_to_settings(
+            player_state,
+            story_text=story_text,
+            relationships_in_effects=relationships_in_effects,
+        )
+
+        key_people = player_state.character_settings["relationships"]["key_people"]
+        names = [p["name"] for p in key_people]
+        assert "苏婉清" not in names
+        assert "苏婉清" not in player_state.relationships
+
     def test_sync_with_family_members(self):
         """测试家庭成员不会被重复添加"""
         player_state = MagicMock()

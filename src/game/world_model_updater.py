@@ -764,9 +764,14 @@ class WorldModelUpdater:
             character_settings["relationships"]["key_people"] = []
 
         existing_names = set()
+        protected_role_tokens = set()
         for person in character_settings["relationships"]["key_people"]:
             if isinstance(person, dict) and person.get("name"):
                 existing_names.add(person["name"])
+                for key in ("role", "relationship", "relationship_desc", "description"):
+                    value = str(person.get(key) or "").strip()
+                    if len(value) >= 2 and value not in GENERIC_CHARACTER_NAMES:
+                        protected_role_tokens.add(value.lower())
 
         # 从家庭成员中收集
         family = character_settings.get("family", {})
@@ -804,6 +809,26 @@ class WorldModelUpdater:
 
             return "故事中结识"
 
+        def conflicts_with_preset_role(name: str, story: str, inferred_role: str) -> bool:
+            """Return True when a new name is introduced as a substitute for preset roles."""
+            if not protected_role_tokens:
+                return False
+
+            inferred = inferred_role.strip().lower()
+            if inferred and inferred in protected_role_tokens:
+                return True
+
+            name_lower = name.lower()
+            story_lower = story.lower()
+            idx = story_lower.find(name_lower)
+            if idx < 0:
+                return False
+
+            context_start = max(0, idx - 30)
+            context_end = min(len(story_lower), idx + len(name_lower) + 30)
+            context = story_lower[context_start:context_end]
+            return any(token in context for token in protected_role_tokens)
+
         # 同步人物
         added_count = 0
         for name in new_names_from_effects:
@@ -814,6 +839,13 @@ class WorldModelUpdater:
                     relationships_in_effects.get(name, 50) if relationships_in_effects else 50
                 )
                 inferred_role = infer_role_from_story(name, story_text)
+                if conflicts_with_preset_role(name, story_text, inferred_role):
+                    logger.info(
+                        "跳过疑似预设关系替身的新人物同步: %s role=%s",
+                        name,
+                        inferred_role,
+                    )
+                    continue
                 new_person = {
                     "name": name,
                     "role": inferred_role,
