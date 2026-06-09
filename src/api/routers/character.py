@@ -22,6 +22,8 @@ router = APIRouter()
 # ★ 开场故事防重复缓存：{player_name: {"generating": bool, "result": str, "timestamp": float}}
 _opening_story_cache: Dict[str, Any] = {}
 _cache_lock = threading.Lock()
+OPENING_STORY_HEARTBEAT_INTERVAL = 5.0
+OPENING_STORY_HARD_TIMEOUT = 180.0
 
 
 @router.post("/setting")
@@ -174,23 +176,19 @@ async def generate_opening_story(req: OpeningStoryRequest):
         thread = threading.Thread(target=run, daemon=True)
         thread.start()
 
-        # ★ 30秒超时（比120秒更快检测卡住），每5秒发送heartbeat保持连接
-        HEARTBEAT_INTERVAL = 5.0
-        QUEUE_TIMEOUT = 30.0
-        next_heartbeat = time.time() + HEARTBEAT_INTERVAL
+        next_heartbeat = time.time() + OPENING_STORY_HEARTBEAT_INTERVAL
 
         while True:
             try:
-                # 使用较短的超时以便定期发送heartbeat
-                wait_time = min(QUEUE_TIMEOUT, max(0.1, next_heartbeat - time.time()))
+                wait_time = max(0.1, next_heartbeat - time.time())
                 event_type, data = await asyncio.wait_for(q.get(), timeout=wait_time)
             except asyncio.TimeoutError:
-                # 检查是否是heartbeat时间
-                if time.time() >= next_heartbeat:
-                    next_heartbeat = time.time() + HEARTBEAT_INTERVAL
+                now = time.time()
+                if thread.is_alive() and now - last_activity[0] < OPENING_STORY_HARD_TIMEOUT:
+                    next_heartbeat = now + OPENING_STORY_HEARTBEAT_INTERVAL
                     yield f"event: status\ndata: {json.dumps({'phase': 'writing'}, ensure_ascii=False)}\n\n"
+                    await asyncio.sleep(0.1)
                     continue
-                # 真正的超时
                 timed_out_holder[0] = True
                 yield f"event: error\ndata: {json.dumps({'error': 'Generation timeout'}, ensure_ascii=False)}\n\n"
                 break
@@ -198,7 +196,7 @@ async def generate_opening_story(req: OpeningStoryRequest):
             if event_type == "__done__":
                 break
             yield f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-            next_heartbeat = time.time() + HEARTBEAT_INTERVAL
+            next_heartbeat = time.time() + OPENING_STORY_HEARTBEAT_INTERVAL
 
         # ★ 线程通常已完成，最多等0.1秒（原为5秒，导致不必要的延迟）
         thread.join(timeout=0.1)

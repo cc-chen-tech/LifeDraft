@@ -4,6 +4,7 @@
 这些测试在实现代码之前编写，定义了生产者和消费者之间的契约。
 """
 
+import asyncio
 import json
 import time
 from unittest.mock import MagicMock, patch
@@ -222,6 +223,51 @@ class TestOpeningStoryAPIContract:
             assert "Generation timeout" in body
             assert '"full_story": ""' not in body
             assert "event: complete" not in body
+
+    def test_opening_story_wait_for_timeout_while_thread_alive_is_heartbeat_not_failure(self, mock_auth):
+        """队列等待提前超时时，只要生成线程仍活跃，就应保持 SSE 而不是立刻报 Generation timeout。"""
+        with patch("src.api.routers.character.CharacterCreator") as mock_creator_cls:
+            call_count = {"wait_for": 0}
+            original_wait_for = asyncio.wait_for
+
+            def slow_first_chunk_stream():
+                time.sleep(0.05)
+                yield MagicMock(choices=[MagicMock(delta=MagicMock(content="最终故事"))])
+
+            async def first_wait_times_out(awaitable, *args, **kwargs):
+                call_count["wait_for"] += 1
+                if call_count["wait_for"] == 1:
+                    if hasattr(awaitable, "close"):
+                        awaitable.close()
+                    raise TimeoutError()
+                return await original_wait_for(awaitable, *args, **kwargs)
+
+            mock_creator = MagicMock()
+            mock_creator.generate_opening_story.return_value = slow_first_chunk_stream()
+            mock_creator_cls.return_value = mock_creator
+
+            from src.api.routers import character as char_module
+
+            with char_module._cache_lock:
+                char_module._opening_story_cache.clear()
+
+            with patch("src.api.routers.character.asyncio.wait_for", first_wait_times_out):
+                response = client.post(
+                    "/api/character/opening-story",
+                    json={
+                        "character_settings": {"era": "现代"},
+                        "player_name": "TestTransientQueueTimeout",
+                        "life_vision": "探索世界",
+                        "language": "zh",
+                    },
+                    headers={"Authorization": "Bearer test_token"},
+                )
+
+            assert response.status_code == 200
+            body = response.text
+            assert "Generation timeout" not in body
+            assert "最终故事" in body
+            assert "event: complete" in body
 
     def test_opening_story_cache_hit(self, mock_auth):
         """缓存命中时应直接返回缓存结果，不重新生成"""
