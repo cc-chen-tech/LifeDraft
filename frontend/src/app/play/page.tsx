@@ -239,7 +239,10 @@ export default function PlayPage() {
   const handleOpenCollection = useCallback(() => {
     setShowCollection(true);
     setShowHistory(false);
-  }, [setShowHistory]);
+    if (isViewingHistory) {
+      handleBackToCurrent();
+    }
+  }, [handleBackToCurrent, isViewingHistory, setShowHistory]);
 
   const handleOpenHistoryPanel = useCallback(() => {
     setShowCollection(false);

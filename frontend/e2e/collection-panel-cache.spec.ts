@@ -143,9 +143,14 @@ test.describe('收集面板缓存优化', () => {
 
     await historyButton.click();
     await expect(historyDialog).toBeVisible({ timeout: 10000 });
+    await expect(collectionDialog).not.toBeVisible();
 
     await collectionButton.click();
     await expect(collectionDialog).toBeVisible({ timeout: 10000 });
     await expect(historyDialog).not.toBeVisible();
+
+    await historyButton.click();
+    await expect(historyDialog).toBeVisible({ timeout: 10000 });
+    await expect(collectionDialog).not.toBeVisible();
   });
 });
