@@ -42,6 +42,25 @@ def _deep_merge_dicts(existing: Dict[str, Any], updates: Dict[str, Any]) -> Dict
     return merged
 
 
+def _extract_generated_initial_wealth(character_settings: Dict[str, Any]) -> Optional[int]:
+    wealth_setting = character_settings.get("wealth")
+    if not isinstance(wealth_setting, dict):
+        return None
+
+    wealth = wealth_setting.get("wealth")
+    if not isinstance(wealth, (int, float)):
+        return None
+
+    return max(0, min(1_000_000, int(wealth)))
+
+
+def _is_before_first_played_round(state_data: Dict[str, Any]) -> bool:
+    week = state_data.get("week", 0)
+    current_round = state_data.get("current_round", 0)
+    round_history = state_data.get("round_history") or []
+    return int(week or 0) <= 0 and int(current_round or 0) <= 0 and not round_history
+
+
 @router.post("", response_model=GameStateResponse, status_code=201)
 async def create_game(
     req: CreateGameRequest,
@@ -447,6 +466,12 @@ async def update_character_settings(
 
     updated_state = dict(state_data)
     updated_state["character_settings"] = merged_settings
+    late_initial_wealth = _extract_generated_initial_wealth(req.character_settings)
+    should_sync_late_wealth = (
+        late_initial_wealth is not None and _is_before_first_played_round(state_data)
+    )
+    if should_sync_late_wealth:
+        updated_state["wealth"] = late_initial_wealth
     player_state = PlayerState.from_dict(updated_state)
 
     if not db.save_game_progress(game_id, player_state):
@@ -455,6 +480,8 @@ async def update_character_settings(
     game_session = session_store.get(game_id, user_id)
     if game_session and game_session.game_loop and game_session.game_loop.player_state:
         game_session.game_loop.player_state.character_settings = merged_settings
+        if should_sync_late_wealth:
+            game_session.game_loop.player_state.wealth = late_initial_wealth
 
     return MessageResponse(success=True, message="Character settings updated")
 

@@ -91,6 +91,12 @@ def _merge_over_fragmented_lines(text: str) -> str:
     return "\n\n".join(merged_blocks)
 
 
+def _close_unbalanced_chinese_quotes(text: str) -> str:
+    if text.count("“") > text.count("”"):
+        return text.rstrip() + "”"
+    return text
+
+
 def normalize_generated_story(
     text: str,
     language: str = "zh",
@@ -108,4 +114,6 @@ def normalize_generated_story(
 
     normalized = re.sub(r"[ \t]+\n", "\n", normalized)
     normalized = re.sub(r"\n{3,}", "\n\n", normalized)
+    if language == "zh":
+        normalized = _close_unbalanced_chinese_quotes(normalized)
     return normalized.strip()

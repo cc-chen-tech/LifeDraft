@@ -84,6 +84,17 @@ def test_generated_story_normalizer_removes_internal_state_leaks_and_over_fragme
     assert "你推开门。雨声停了。" in cleaned
 
 
+def test_generated_story_normalizer_closes_unbalanced_chinese_dialogue_quote() -> None:
+    raw = (
+        "苏清岚接过咖啡暖着手。\n\n"
+        "陈雨桐拉过椅子坐下：“你昨晚又失眠了？黑眼圈都快掉到下巴了。"
+    )
+
+    cleaned = normalize_generated_story(raw, language="zh", perspective="third")
+
+    assert cleaned.endswith("。”")
+
+
 def test_narrative_quality_rejects_mixed_perspective_and_internal_leaks() -> None:
     text = "你走进铺子。\n\n我忽然想起系统判定：mood +5，wealth -10。"
 
