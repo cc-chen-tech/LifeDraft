@@ -11,6 +11,7 @@ import {
   handleNoCurrentEvent,
   handleFallbackChoice,
   handleChoiceError,
+  recoverStoryFromRoundHistory,
   ChoiceHandlers,
   ChoiceErrorContext,
 } from '@/hooks/game/choiceUtils';
@@ -224,6 +225,32 @@ describe('choiceUtils', () => {
 
       await handleNoCurrentEvent('Choice text', mockHandlers, 'test');
       expect(mockHandlers.setPhase).toHaveBeenCalledWith('result');
+    });
+  });
+
+  describe('recoverStoryFromRoundHistory', () => {
+    it('does not append stale history when the saved choice differs from the current choice', async () => {
+      storeSpy.spies.syncPlayerState.mockImplementation(async () => {
+        useGameStore.setState({
+          playerState: {
+            round_history: [
+              {
+                choice: '要求林晓薇修改第七款',
+                story_continuation: '旧的林晓薇谈判结果',
+              },
+            ],
+          } as never,
+        });
+      });
+
+      const recovered = await recoverStoryFromRoundHistory(
+        '主动与父亲聊查账事宜',
+        mockHandlers.setStoryText,
+        'Base story'
+      );
+
+      expect(recovered).toBe(false);
+      expect(mockHandlers.setStoryText).not.toHaveBeenCalled();
     });
   });
 

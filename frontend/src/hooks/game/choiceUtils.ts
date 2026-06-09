@@ -171,11 +171,27 @@ export async function recoverStoryFromRoundHistory(
     await useGameStore.getState().syncPlayerState();
     const playerState = useGameStore.getState().playerState;
     const roundHistory = playerState?.round_history as
-      | Array<{ story_continuation?: string }>
+      | Array<{ choice?: string; story_continuation?: string }>
       | undefined;
 
     if (roundHistory && roundHistory.length > 0) {
-      const latestRound = roundHistory[roundHistory.length - 1];
+      const normalizeChoice = (value?: string) => value?.trim().replace(/\s+/g, " ") ?? "";
+      const expectedChoice = normalizeChoice(choiceText);
+      const entriesWithChoice = roundHistory.filter((entry) => normalizeChoice(entry.choice));
+      const latestRound =
+        entriesWithChoice.length > 0
+          ? [...entriesWithChoice].reverse().find((entry) => normalizeChoice(entry.choice) === expectedChoice)
+          : roundHistory[roundHistory.length - 1];
+
+      if (!latestRound && entriesWithChoice.length > 0) {
+        console.warn("[recoverStory] No round history entry matched current choice; skipping stale recovery");
+        return false;
+      }
+
+      if (!latestRound) {
+        return false;
+      }
+
       if (latestRound.story_continuation) {
         const currentStory = baseStoryText ?? useGameStore.getState().storyText;
         const continuation = `\n\n--- 主角选择了：${choiceText} ---\n\n${latestRound.story_continuation}`;
