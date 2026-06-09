@@ -54,6 +54,13 @@ MODERN_LIFE_VISION_CUES = (
     "公司",
     "远程协作",
     "5G",
+    "上海",
+    "游戏",
+    "开发者",
+    "叙事设计",
+    "音乐创作",
+    "不要古代",
+    "不要穿越",
 )
 
 
@@ -145,6 +152,34 @@ def _era_setting_conflicts_with_modern_life_vision(
     return any(cue in text for cue in ANCIENT_ERA_CUES)
 
 
+def _modern_alignment_profile(life_vision: str, year: int) -> Dict[str, str]:
+    if any(cue in life_vision for cue in ("游戏", "开发者", "叙事设计", "音乐创作")):
+        city = "上海" if "上海" in life_vision else "中国现代都市"
+        return {
+            "era_name": f"{year}年前后的{city}数字内容与独立游戏行业",
+            "era_description": (
+                f"{year}年前后的{city}现代都市生活，独立游戏、叙事设计、"
+                "数字发行、AI创作工具和音乐制作生态快速发展。"
+            ),
+            "world_context": (
+                "独立游戏团队、创作者社群、玩家社区和平台渠道共同塑造职业机会，"
+                "主角需要在创意表达、项目管理、商业化压力和音乐叙事融合之间做取舍。"
+            ),
+        }
+
+    return {
+        "era_name": f"{year}年前后的中国互联网行业",
+        "era_description": (
+            f"{year}年前后的中国现代都市与互联网行业，移动互联网、AI工具、"
+            "远程协作和平台型产品快速发展，适合产品经理成长线。"
+        ),
+        "world_context": (
+            "中国互联网公司和创业团队竞争激烈，产品经理需要在用户研究、"
+            "数据分析、AI协作和跨部门沟通之间做出取舍。"
+        ),
+    }
+
+
 def _align_era_setting_with_life_vision(
     era_setting: Dict[str, Any],
     life_vision: str,
@@ -157,17 +192,10 @@ def _align_era_setting_with_life_vision(
         return era_setting
 
     year = _extract_explicit_modern_year(life_vision)
+    profile = _modern_alignment_profile(life_vision, year)
     aligned = dict(era_setting)
     aligned["year"] = year
-    aligned["era_name"] = f"{year}年前后的中国互联网行业"
-    aligned["era_description"] = (
-        f"{year}年前后的中国现代都市与互联网行业，移动互联网、AI工具、"
-        "远程协作和平台型产品快速发展，适合产品经理成长线。"
-    )
-    aligned["world_context"] = (
-        "中国互联网公司和创业团队竞争激烈，产品经理需要在用户研究、"
-        "数据分析、AI协作和跨部门沟通之间做出取舍。"
-    )
+    aligned.update(profile)
     aligned["_aligned_to_life_vision"] = True
     return aligned
 

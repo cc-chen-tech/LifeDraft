@@ -75,6 +75,33 @@ class TestCharacterCreatorGenerateSetting:
         assert "互联网" in combined
         assert "产品经理" in combined or "产品" in combined
 
+    def test_generate_era_honors_modern_shanghai_game_developer_life_vision(self):
+        """现代上海游戏开发者愿景不能被时代生成漂移成北宋。"""
+        creator = self._make_creator()
+        creator.ai_generator.generate_completion.return_value = json.dumps(
+            {
+                "year": 1100,
+                "era_description": "1100年北宋中后期，文化艺术繁荣，理学兴起，市民经济活跃。",
+                "world_context": "北宋王朝科举制度完善，文人地位崇高。",
+            },
+            ensure_ascii=False,
+        )
+
+        result = creator.generate_setting(
+            "era",
+            "许知夏",
+            "现代上海，独立游戏开发者，女性，关注叙事设计和音乐创作，不要古代、不要穿越。",
+            {},
+        )
+
+        assert result["year"] >= 2020
+        combined = f"{result.get('era_description', '')} {result.get('world_context', '')}"
+        assert "宋" not in combined
+        assert "北宋" not in combined
+        assert "科举" not in combined
+        assert "现代" in combined
+        assert "游戏" in combined or "叙事" in combined
+
     def test_generate_age_setting_corrects_birth_year(self):
         """Test age setting auto-corrects birth_year."""
         creator = self._make_creator()

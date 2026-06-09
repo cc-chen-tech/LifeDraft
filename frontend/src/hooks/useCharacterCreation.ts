@@ -130,8 +130,8 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     nextCreationStep,
     prevCreationStep,
     updateCharacterSetting,
-    setPlayerName,
-    setLifeVision,
+    setPlayerName: storeSetPlayerName,
+    setLifeVision: storeSetLifeVision,
     resetCreation,
     gameId,
     setGameSession,
@@ -178,6 +178,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
   const [showDetails, setShowDetails] = useState(false);
 
   const autoGenTriggeredRef = useRef<Record<string, boolean>>({});
+  const basicInfoVersionRef = useRef(0);
   const backgroundGenStartedRef = useRef(false);
   const [isBackgroundGenerating, setIsBackgroundGenerating] = useState(false);
 
@@ -187,6 +188,29 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
   const isLastStep = creationStep === CREATION_STEPS.length - 1;
   const isPortraitStep = currentStepKey === "portrait";
   const hasBasicInfo = playerName.trim().length > 0;
+
+  const invalidateEraGeneration = useCallback(() => {
+    basicInfoVersionRef.current += 1;
+    if (currentStepKey !== "era") return;
+    autoGenTriggeredRef.current[currentStepKey] = false;
+    setGeneratedContent(null);
+  }, [currentStepKey]);
+
+  const setPlayerName = useCallback(
+    (name: string) => {
+      invalidateEraGeneration();
+      storeSetPlayerName(name);
+    },
+    [invalidateEraGeneration, storeSetPlayerName]
+  );
+
+  const setLifeVision = useCallback(
+    (vision: string) => {
+      invalidateEraGeneration();
+      storeSetLifeVision(vision);
+    },
+    [invalidateEraGeneration, storeSetLifeVision]
+  );
 
   // Retry wrapper
   const withRetry = async <T,>(
@@ -212,6 +236,8 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
   const handleGenerate = useCallback(
     async (fb?: string) => {
       if (!hasBasicInfo) return;
+      const requestInput = { currentStepKey, playerName, lifeVision };
+      const requestBasicInfoVersion = basicInfoVersionRef.current;
       setIsGenerating(true);
       setGeneratedContent(null);
 
@@ -226,6 +252,20 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
             language,
           })
         );
+        const latestState = useGameStore.getState();
+        const latestInput = {
+          currentStepKey: CREATION_STEPS[latestState.creationStep],
+          playerName: latestState.playerName,
+          lifeVision: latestState.lifeVision,
+        };
+        if (
+          requestBasicInfoVersion !== basicInfoVersionRef.current ||
+          latestInput.currentStepKey !== requestInput.currentStepKey ||
+          latestInput.playerName !== requestInput.playerName ||
+          latestInput.lifeVision !== requestInput.lifeVision
+        ) {
+          return;
+        }
         setGeneratedContent(result);
       } catch (err) {
         console.error("Generation failed after retries:", err);
@@ -247,6 +287,12 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
       }
     });
   }, [creationStep]);
+
+  useEffect(() => {
+    if (currentStepKey !== "era") return;
+    autoGenTriggeredRef.current[currentStepKey] = false;
+    setGeneratedContent(null);
+  }, [currentStepKey, playerName, lifeVision]);
 
   // Auto-generate on step enter
   useEffect(() => {

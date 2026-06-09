@@ -5,7 +5,7 @@
  */
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useCharacterCreation } from '@/hooks/useCharacterCreation';
-import { useGameStore } from '@/stores/useGameStore';
+import { useCharacterStore, useGameStore } from '@/stores/useGameStore';
 import { useImageStore } from '@/stores/useImageStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { spyOnStoreMethods } from '@/__tests__/helpers/store-spy';
@@ -43,6 +43,14 @@ type GameStoreSpy = ReturnType<typeof spyOnStoreMethods<typeof useGameStore, (ty
 type ImageStoreSpy = ReturnType<typeof spyOnStoreMethods<typeof useImageStore, (typeof IMAGE_METHODS)[number]>>;
 
 function setupDefaultState() {
+  useCharacterStore.setState({
+    creationStep: 0,
+    characterSettings: {},
+    playerName: '',
+    lifeVision: '',
+    openingStory: '',
+    isPresetLoaded: false,
+  } as never);
   useGameStore.setState({
     creationStep: 0,
     characterSettings: {},
@@ -380,6 +388,85 @@ describe('useCharacterCreation', () => {
       });
 
       expect(result.current.generatedContent).toEqual(expectedContent);
+    });
+
+    it('discards era generated from stale life vision when user edits vision before response returns', async () => {
+      useGameStore.setState({
+        playerName: '许知夏',
+        lifeVision: '',
+        creationStep: 0,
+        characterSettings: { era: { era_name: 'placeholder' } },
+      } as never);
+
+      let resolveGeneration!: (value: Response) => void;
+      (global.fetch as jest.Mock).mockReturnValue(
+        new Promise<Response>((resolve) => {
+          resolveGeneration = resolve;
+        })
+      );
+
+      const { result } = renderHook(() => useCharacterCreation());
+
+      let generationPromise!: Promise<void>;
+      await act(async () => {
+        generationPromise = result.current.handleGenerate();
+      });
+
+      act(() => {
+        result.current.setLifeVision('现代上海，独立游戏开发者，不要古代、不要穿越。');
+      });
+
+      await act(async () => {
+        resolveGeneration(
+          jsonResponse({
+            year: 1100,
+            era_description: '1100年北宋中后期，科举制度完善。',
+            world_context: '北宋王朝文人地位崇高。',
+          })
+        );
+        await generationPromise;
+      });
+
+      expect(result.current.generatedContent).toBeNull();
+    });
+
+    it('discards feedback regeneration when life vision changes before response returns', async () => {
+      useGameStore.setState({
+        playerName: '许知夏',
+        lifeVision: '现代上海，独立游戏开发者。',
+        creationStep: 0,
+        characterSettings: {},
+      } as never);
+
+      let resolveGeneration!: (value: Response) => void;
+      (global.fetch as jest.Mock).mockReturnValue(
+        new Promise<Response>((resolve) => {
+          resolveGeneration = resolve;
+        })
+      );
+
+      const { result } = renderHook(() => useCharacterCreation());
+
+      let generationPromise!: Promise<void>;
+      await act(async () => {
+        generationPromise = result.current.handleGenerate('请保持现代都市背景。');
+      });
+
+      act(() => {
+        result.current.setLifeVision('现代上海，独立游戏音乐制作人，不要古代。');
+      });
+
+      await act(async () => {
+        resolveGeneration(
+          jsonResponse({
+            year: 1100,
+            era_description: '1100年北宋中后期，科举制度完善。',
+          })
+        );
+        await generationPromise;
+      });
+
+      expect(result.current.generatedContent).toBeNull();
     });
 
     it('handles generation with feedback string', async () => {
