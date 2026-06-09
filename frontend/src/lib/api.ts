@@ -27,13 +27,14 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 let isRedirectingTo401 = false;
 
 function handle401Redirect() {
-  if (isRedirectingTo401) return; // 已在处理中，跳过
-  isRedirectingTo401 = true;
-  
-  console.warn('[API] Session expired or invalid, redirecting to home...');
   // 清除 localStorage 中的游戏状态
   localStorage.removeItem('gameId');
   localStorage.removeItem('gameState');
+
+  if (isRedirectingTo401) return; // 已在处理中，只跳过重复跳转
+  isRedirectingTo401 = true;
+
+  console.warn('[API] Session expired or invalid, redirecting to home...');
   // 跳转到首页（如果不是已经在首页）
   if (typeof window !== 'undefined' && window.location.pathname !== '/') {
     window.location.href = '/';

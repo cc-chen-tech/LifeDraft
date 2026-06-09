@@ -41,6 +41,35 @@ interface LifeSummary {
   endWeek: number;
 }
 
+function normalizeSummaryWeek(value: number | undefined, fallback: number): number {
+  const num = Math.trunc(Number(value));
+  if (!Number.isFinite(num) || Number.isNaN(num) || num <= 0) {
+    return fallback;
+  }
+  return num;
+}
+
+function normalizeSummaryWeeks(startWeek: number | undefined, endWeek: number | undefined): {
+  startWeek: number;
+  endWeek: number;
+} {
+  const normalizedStart = normalizeSummaryWeek(startWeek, 1);
+  const normalizedEnd = normalizeSummaryWeek(endWeek, normalizedStart);
+
+  return {
+    startWeek: normalizedStart,
+    endWeek: Math.max(normalizedStart, normalizedEnd),
+  };
+}
+
+function getSummaryWeekLabel(startWeek: number, endWeek: number): string {
+  if (startWeek === endWeek) {
+    return `第${startWeek}周`;
+  }
+
+  return `第${startWeek}-${endWeek}周`;
+}
+
 interface ChatBarProps {
   gameId: number | null;
   onSave?: () => void;
@@ -113,8 +142,10 @@ export function ChatBar({
       const result = await api.gameplay.generateSummary(gameId, { weeks: 52 });
       const summaryData = result as { summary_text?: string; summary?: string; start_week?: number; end_week?: number };
       const summaryText = summaryData.summary_text || summaryData.summary || "暂无总结内容";
-      const startWeek = summaryData.start_week || 1;
-      const endWeek = summaryData.end_week || 0;
+      const { startWeek, endWeek } = normalizeSummaryWeeks(
+        summaryData.start_week,
+        summaryData.end_week
+      );
 
       setLifeSummary({ text: summaryText, startWeek, endWeek });
     } catch (err) {
@@ -384,7 +415,7 @@ export function ChatBar({
         ) : lifeSummary ? (
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground">
-              第{lifeSummary.startWeek}-{lifeSummary.endWeek}周
+              {getSummaryWeekLabel(lifeSummary.startWeek, lifeSummary.endWeek)}
             </p>
             <div className="prose prose-sm prose-invert max-w-none text-muted-foreground">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>

@@ -99,7 +99,7 @@ describe('API Error Handling', () => {
       expect(mockLocalStorage.removeItem).toHaveBeenCalledWith('gameState');
     });
 
-    it.skip('triggers logout on 401 for gameplay endpoints', async () => {
+    it('triggers logout on 401 for gameplay endpoints', async () => {
       global.fetch = jest.fn(() =>
         mockFetchResponse({ message: 'Unauthorized' }, 401, false)
       );
@@ -111,7 +111,7 @@ describe('API Error Handling', () => {
       expect(mockLocalStorage.removeItem).toHaveBeenCalledWith('gameState');
     });
 
-    it.skip('triggers logout on 401 for auth logout endpoint', async () => {
+    it('triggers logout on 401 for auth logout endpoint', async () => {
       global.fetch = jest.fn(() =>
         mockFetchResponse({ message: 'Unauthorized' }, 401, false)
       );
@@ -123,7 +123,7 @@ describe('API Error Handling', () => {
       expect(mockLocalStorage.removeItem).toHaveBeenCalledWith('gameState');
     });
 
-    it.skip('debounces 401 redirect to prevent multiple redirects', async () => {
+    it('debounces 401 redirect to prevent multiple redirects', async () => {
       global.fetch = jest.fn(() =>
         mockFetchResponse({ message: 'Unauthorized' }, 401, false)
       );

@@ -452,10 +452,11 @@ def test_choice_impact_ui_e2e_seeds_event_before_opening_play_page() -> None:
     spec = (ROOT / "frontend" / "e2e" / "choice-impact-visible.spec.ts").read_text(
         encoding="utf-8"
     )
-    ui_test = spec.split('test("选择后显示资源变化"')[1].split('test("同步选择 API 返回 effects_applied"')[0]
+    ui_test = spec.split('test("选择后状态栏不显示资源变化"')[1].split('test("同步选择 API 返回 effects_applied"')[0]
 
     assert "seedEventForGame" in spec
     assert "await seedEventForGame(context, gameId);" in ui_test
+    assert "not.toContainText" in ui_test
     assert 'await page.waitForTimeout(3000);' not in ui_test
 
 

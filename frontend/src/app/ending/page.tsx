@@ -56,10 +56,6 @@ export default function EndingPage() {
   const finalStats = endingData?.final_stats as
     | Record<string, unknown>
     | undefined;
-  const energy = finalStats?.energy as number | undefined;
-  const mood = finalStats?.mood as number | undefined;
-  const knowledge = finalStats?.knowledge as number | undefined;
-  const wealth = finalStats?.wealth as number | undefined;
   const relationships = finalStats?.relationships as
     | Record<string, number>
     | undefined;
@@ -91,41 +87,6 @@ export default function EndingPage() {
             )}
 
             <Separator />
-
-            {/* Final Stats */}
-            {finalStats && (
-              <div className="py-4">
-                <h3 className="text-sm font-medium text-foreground mb-4">
-                  最终状态
-                </h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="text-center">
-                    <p className="text-xs text-muted-foreground mb-1">精力</p>
-                    <span className="text-2xl font-bold text-emerald-400">
-                      {energy ?? "--"}
-                    </span>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-xs text-muted-foreground mb-1">情绪</p>
-                    <span className="text-2xl font-bold text-sky-400">
-                      {mood ?? "--"}
-                    </span>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-xs text-muted-foreground mb-1">学识</p>
-                    <span className="text-2xl font-bold text-violet-400">
-                      {knowledge ?? "--"}
-                    </span>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-xs text-muted-foreground mb-1">财富</p>
-                    <span className="text-2xl font-bold text-amber-400">
-                      {wealth?.toLocaleString() ?? "--"}碳信用
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Relationships */}
             {relationships && Object.keys(relationships).length > 0 && (

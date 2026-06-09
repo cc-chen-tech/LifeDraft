@@ -117,12 +117,14 @@ describe('RoundHistoryDrawer', () => {
       expect(mockOnOpenChange).toHaveBeenCalledWith(false);
     });
 
-    it('marks the closing overlay as non-interactive so it cannot block other controls', () => {
+    it('does not render a blocking overlay and keeps closing content non-interactive', () => {
       render(<RoundHistoryDrawer {...defaultProps} />);
 
       const overlay = document.querySelector('[data-slot="sheet-overlay"]');
+      const content = document.querySelector('[data-slot="sheet-content"]');
 
-      expect(overlay).toHaveClass('data-[state=closed]:pointer-events-none');
+      expect(overlay).toBeNull();
+      expect(content).toHaveClass('data-[state=closed]:pointer-events-none');
     });
 
     it('calls onSelect when clicking a round', () => {

@@ -1,6 +1,6 @@
 /**
  * components/game/StatusBar.tsx Tests
- * Tests for status bar component — 4D resources display
+ * Tests for status bar component resource-metric visibility contract
  */
 
 import React from "react";
@@ -44,37 +44,14 @@ describe("StatusBar", () => {
       expect(screen.getByText("5/10")).toBeInTheDocument();
     });
 
-    it("displays 4D resources", () => {
+    it("hides runtime resource metrics", () => {
       render(<StatusBar playerState={mockPlayerState} progress={null} />);
 
-      expect(screen.getByText(/精力: 80/)).toBeInTheDocument();
-      expect(screen.getByText(/情绪: 65/)).toBeInTheDocument();
-      expect(screen.getByText(/学识: 70/)).toBeInTheDocument();
-      expect(screen.getByText(/财富/)).toBeInTheDocument();
-    });
-
-    it("formats wealth with currency symbol", () => {
-      render(<StatusBar playerState={mockPlayerState} progress={null} />);
-
-      expect(screen.getByText(/5,000货币/)).toBeInTheDocument();
-    });
-
-    it("uses yuan instead of generic currency for modern wealth fallback", () => {
-      render(
-        <StatusBar
-          playerState={{
-            ...mockPlayerState,
-            character_settings: {
-              era: { name: "现代" },
-              wealth: { wealth: 5000 },
-            },
-          }}
-          progress={null}
-        />
-      );
-
-      expect(screen.getByText(/5,000元/)).toBeInTheDocument();
-      expect(screen.queryByText(/5,000货币/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/精力/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/情绪/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/学识/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/财富/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/5,000/)).not.toBeInTheDocument();
     });
   });
 
@@ -95,47 +72,15 @@ describe("StatusBar", () => {
       expect(screen.getByText("进度 5/10")).toBeInTheDocument();
     });
 
-    it("displays all 4D resources with bars", () => {
+    it("hides all resource bars", () => {
       render(
         <StatusBar playerState={mockPlayerState} progress={null} compact={false} />
       );
 
-      expect(screen.getByText("精力")).toBeInTheDocument();
-      expect(screen.getByText("情绪")).toBeInTheDocument();
-      expect(screen.getByText("学识")).toBeInTheDocument();
-      expect(screen.getByText("财富")).toBeInTheDocument();
-    });
-  });
-
-  describe("resource colors", () => {
-    it("applies success color for high values", () => {
-      const highEnergyState = {
-        ...mockPlayerState,
-        energy: 90,
-      };
-
-      render(<StatusBar playerState={highEnergyState} progress={null} />);
-      expect(screen.getByText(/精力: 90/)).toBeInTheDocument();
-    });
-
-    it("applies warning color for medium values", () => {
-      const mediumEnergyState = {
-        ...mockPlayerState,
-        energy: 50,
-      };
-
-      render(<StatusBar playerState={mediumEnergyState} progress={null} />);
-      expect(screen.getByText(/精力: 50/)).toBeInTheDocument();
-    });
-
-    it("applies destructive color for low values", () => {
-      const lowEnergyState = {
-        ...mockPlayerState,
-        energy: 20,
-      };
-
-      render(<StatusBar playerState={lowEnergyState} progress={null} />);
-      expect(screen.getByText(/精力: 20/)).toBeInTheDocument();
+      expect(screen.queryByText("精力")).not.toBeInTheDocument();
+      expect(screen.queryByText("情绪")).not.toBeInTheDocument();
+      expect(screen.queryByText("学识")).not.toBeInTheDocument();
+      expect(screen.queryByText("财富")).not.toBeInTheDocument();
     });
   });
 

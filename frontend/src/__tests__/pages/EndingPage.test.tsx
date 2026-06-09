@@ -82,13 +82,17 @@ describe('EndingPage', () => {
       });
     });
 
-    it('shows final stats', async () => {
+    it('hides final numeric resource stats', async () => {
       render(<EndingPage />);
       await waitFor(() => {
-        expect(screen.getByText('最终状态')).toBeInTheDocument();
-        expect(screen.getByText('80')).toBeInTheDocument();
-        expect(screen.getByText('90')).toBeInTheDocument();
+        expect(screen.getByText('圆满人生')).toBeInTheDocument();
       });
+
+      expect(screen.queryByText('最终状态')).not.toBeInTheDocument();
+      expect(screen.queryByText('精力')).not.toBeInTheDocument();
+      expect(screen.queryByText('情绪')).not.toBeInTheDocument();
+      expect(screen.queryByText('学识')).not.toBeInTheDocument();
+      expect(screen.queryByText('财富')).not.toBeInTheDocument();
     });
 
     it('shows relationships', async () => {

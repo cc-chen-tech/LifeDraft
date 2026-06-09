@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { StatusBar } from '@/components/game/StatusBar';
 
 describe('StatusBar', () => {
-  it('formats wealth with the configured currency symbol before the amount', () => {
+  it('hides wealth even when a configured currency symbol is available', () => {
     render(
       <StatusBar
         playerState={{
@@ -24,7 +24,10 @@ describe('StatusBar', () => {
       />,
     );
 
-    expect(screen.getByText('财富: ¥50,000')).toBeInTheDocument();
+    expect(screen.getByText('22岁 第1周')).toBeInTheDocument();
+    expect(screen.getByText('1/3')).toBeInTheDocument();
+    expect(screen.queryByText('财富: ¥50,000')).not.toBeInTheDocument();
     expect(screen.queryByText('财富: 50,000人民币')).not.toBeInTheDocument();
+    expect(screen.queryByText(/精力|情绪|学识|财富/)).not.toBeInTheDocument();
   });
 });

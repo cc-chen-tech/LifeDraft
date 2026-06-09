@@ -101,12 +101,22 @@ describe('OpeningStoryPage', () => {
       });
     });
 
-    it.skip('shows error when missing gameId', async () => {
+    it('generates opening story without gameId when character data is present', async () => {
       useGameStore.setState({ gameId: null as never, openingStory: '' });
+      mockStreamOpeningStory.mockImplementation(
+        (_settings, _name, _vision, _language, handlers) => {
+          handlers.onStory('无存档开场片段');
+          handlers.onComplete({ full_story: '无存档开场正文' });
+          return Promise.resolve();
+        }
+      );
+
       render(<OpeningStoryPage />);
+
       await waitFor(() => {
-        expect(screen.getByText(/缺少角色数据|错误/)).toBeInTheDocument();
+        expect(screen.getByText('无存档开场正文')).toBeInTheDocument();
       });
+      expect(screen.queryByText(/缺少角色数据|错误/)).not.toBeInTheDocument();
     });
 
     it('uses injected test data for generation request instead of stale store state', async () => {

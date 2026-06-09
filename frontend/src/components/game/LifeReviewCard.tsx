@@ -41,45 +41,7 @@ interface LifeReviewCardProps {
   data: LifeReviewData;
 }
 
-function MiniSparkline({ data, color }: { data: number[]; color: string }) {
-  if (!data || data.length < 2) return null;
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const range = max - min || 1;
-  const width = 120;
-  const height = 30;
-  const step = width / (data.length - 1);
-
-  const points = data
-    .map((v, i) => {
-      const x = i * step;
-      const y = height - ((v - min) / range) * height;
-      return `${x},${y}`;
-    })
-    .join(" ");
-
-  return (
-    <svg width={width} height={height} className="overflow-visible">
-      <polyline
-        points={points}
-        fill="none"
-        stroke={color}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 export function LifeReviewCard({ data }: LifeReviewCardProps) {
-  const curveColors = {
-    energy: "#34d399",
-    mood: "#38bdf8",
-    knowledge: "#a78bfa",
-    wealth: "#fbbf24",
-  };
-
   return (
     <Card
       data-testid="life-review-card"
@@ -107,29 +69,6 @@ export function LifeReviewCard({ data }: LifeReviewCardProps) {
         <p className="text-lg font-serif italic text-muted-foreground">
           &ldquo;{data.life_motto}&rdquo;
         </p>
-      </div>
-
-      <Separator />
-
-      {/* Resource Curves */}
-      <div>
-        <h3 className="text-sm font-medium text-foreground mb-3">资源曲线</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {Object.entries(data.resource_curves).map(([key, values]) => (
-            <div key={key} className="text-center">
-              <p className="text-xs text-muted-foreground capitalize mb-1">
-                {key}
-              </p>
-              <MiniSparkline
-                data={values}
-                color={curveColors[key as keyof typeof curveColors]}
-              />
-              <p className="text-sm font-semibold mt-1">
-                {values[values.length - 1]}
-              </p>
-            </div>
-          ))}
-        </div>
       </div>
 
       <Separator />
