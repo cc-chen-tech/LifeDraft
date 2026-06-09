@@ -8,16 +8,19 @@ Story generation SHALL treat preset key people in character settings as canonica
 - **WHEN** story-only or round-event prompts are built
 - **THEN** the prompt MUST include each canonical name with its role or relationship label
 - **AND** it MUST instruct the model not to rename these people or transfer their roles to invented substitutes
+- **AND** it MUST require each generated round to use at least one canonical preset key person
 
 #### Scenario: World model carries preset relationship authority
 - **GIVEN** a saved player state includes preset key people in character settings
 - **WHEN** the WorldModel is built from that player state
 - **THEN** its constraint text MUST include the canonical preset cast and no-substitution rule
+- **AND** it MUST require at least one canonical preset key person to anchor each generated round
 
 #### Scenario: Scheduled commitment events inherit preset relationship authority
 - **GIVEN** a scheduled event is due for a player with preset key people
 - **WHEN** the scheduled event prompt is built
 - **THEN** the prompt MUST include the canonical preset cast and no-substitution rule
+- **AND** it MUST require at least one canonical preset key person to appear in the event
 - **AND** it MUST include the protagonist identity constraint and setting boundary constraints used by ordinary story prompts
 
 #### Scenario: Scheduled commitment events retry cast drift before returning

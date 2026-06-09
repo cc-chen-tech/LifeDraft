@@ -57,6 +57,8 @@ def build_required_cast_constraints(
         lines.append(
             "  ⚠️ 以上人物是玩家预设关系网；如需导师、闺蜜、同期等关系，必须使用对应 canonical name。"
         )
+        names = "、".join(person["name"] for person in people)
+        lines.append(f"  [MUST] 本轮必须至少使用1位预设关键人物：{names}至少一位。")
         lines.append("  ⚠️ 不得把这些人物的身份、关系或剧情功能转移给新命名人物。")
         lines.append("  ✅ 非关键背景人物只能使用「路人」「陌生人」「同事」等通用称谓。")
         return "\n".join(lines)
@@ -69,6 +71,8 @@ def build_required_cast_constraints(
     lines.append(
         "  These people are the player's preset relationship network; use the matching canonical name for mentor, friend, peer, or similar roles."
     )
+    names = ", ".join(person["name"] for person in people)
+    lines.append(f"  [MUST] Each round must use at least one preset key person: one of {names}.")
     lines.append("  Do not transfer these identities, relationships, or plot functions to new named people.")
     lines.append("  Generic background people may use labels such as passerby, stranger, or colleague.")
     return "\n".join(lines)
