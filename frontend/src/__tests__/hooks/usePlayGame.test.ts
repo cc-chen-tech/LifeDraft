@@ -264,6 +264,31 @@ describe('usePlayGame', () => {
         expect(storeSpy.spies.syncState).toHaveBeenCalled();
       });
     });
+
+    it('redirects without generating an event when initial sync rejects a stale gameId', async () => {
+      useGameStore.setState({ gameId: 46, storyText: '', currentEvent: null } as never);
+      storeSpy.spies.syncState.mockRejectedValue(
+        Object.assign(new Error('Game not found'), { status: 404 })
+      );
+
+      renderHook(() => usePlayGame());
+
+      await waitFor(() => {
+        expect(storeSpy.spies.syncState).toHaveBeenCalled();
+      });
+
+      await waitFor(() => {
+        expect(mockReplace).toHaveBeenCalledWith('/');
+      });
+      expect(global.fetch).not.toHaveBeenCalledWith(
+        expect.stringContaining('/api/games/46/event'),
+        expect.anything()
+      );
+      expect(global.fetch).not.toHaveBeenCalledWith(
+        expect.stringContaining('/api/games/active'),
+        expect.anything()
+      );
+    });
   });
 
   describe('Ending Data', () => {
