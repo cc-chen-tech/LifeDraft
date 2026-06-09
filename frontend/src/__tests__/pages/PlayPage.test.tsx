@@ -1099,11 +1099,15 @@ describe('PlayPage', () => {
   });
 
   describe('Settings button', () => {
-    it('toggles scene image setting', () => {
+    it('opens the settings menu without opening the story assistant', async () => {
+      const user = userEvent.setup();
       render(<PlayPage />);
 
-      const buttons = screen.getAllByRole('button');
-      expect(buttons.length).toBeGreaterThan(0);
+      await user.click(screen.getByRole('button', { name: '设置' }));
+
+      expect(await screen.findByText('叙事质量')).toBeInTheDocument();
+      expect(screen.getByText('叙事风格')).toBeInTheDocument();
+      expect(screen.queryByPlaceholderText(/向剧情助手提问/i)).not.toBeInTheDocument();
     });
   });
 
