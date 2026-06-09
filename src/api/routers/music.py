@@ -6,7 +6,7 @@ import re
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
@@ -273,14 +273,41 @@ async def recommend_music(
         return _fallback_music_recommendation_response()
 
 
-@router.post("/music/generate", response_model=MusicGenerationResponse)
-async def generate_music(request: MusicGenerationRequest):
+@router.post(
+    "/music/generate",
+    response_model=Union[MusicGenerationResponse, MusicGenerationEnqueueResponse],
+    responses={202: {"model": MusicGenerationEnqueueResponse}},
+)
+async def generate_music(
+    request: MusicGenerationRequest,
+    background_tasks: BackgroundTasks,
+    response: Response,
+):
     """Generate story-conditioned AI music without blocking recommendation search."""
     from src.services.minimax_music_generation import StoryMusicGenerationService
 
     config = build_minimax_config()
     if not config.music_generation_enabled:
         raise HTTPException(status_code=503, detail="AI music generation is disabled")
+    if not config.api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="MiniMax music generation requires MINIMAX_API_KEY",
+        )
+
+    if not config.local_audio_enabled:
+        background_tasks.add_task(
+            _generate_music_in_background,
+            request.game_id,
+            request.story_text,
+            dict(request.analysis),
+        )
+        response.status_code = 202
+        return MusicGenerationEnqueueResponse(
+            status="queued",
+            game_id=request.game_id,
+            insert_policy="future_queue",
+        )
 
     db = SessionLocal()
     try:
