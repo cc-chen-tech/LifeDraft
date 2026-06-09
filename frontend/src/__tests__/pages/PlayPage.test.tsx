@@ -153,6 +153,27 @@ describe('PlayPage', () => {
         expect(useMusicStore.getState().activeStoryText).toBe('已完成并带选项的故事。');
       });
     });
+
+    it('does not render a standalone narration bar inside the story page', async () => {
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'options',
+        storyText: '已完成并带选项的故事。',
+        displayText: '已完成并带选项的故事。',
+      });
+
+      render(<PlayPage />);
+
+      await waitFor(() => {
+        expect(useStoryVoiceStore.getState().activeReadingContext?.text).toBe(
+          '已完成并带选项的故事。'
+        );
+      });
+
+      expect(screen.queryByRole('region', { name: '故事朗读' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '朗读故事' })).not.toBeInTheDocument();
+    });
   });
 
   describe('Loading state', () => {
