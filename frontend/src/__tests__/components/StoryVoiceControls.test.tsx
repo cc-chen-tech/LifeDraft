@@ -319,6 +319,53 @@ describe('StoryVoiceControls', () => {
     expect(useStoryVoiceStore.getState().errorMessage).toBe('');
   });
 
+  it('coalesces duplicate read starts for the same story and voice while generation is in flight', async () => {
+    let resolveRead: (value: Response) => void = () => undefined;
+    const readPromise = new Promise<Response>((resolve) => {
+      resolveRead = resolve;
+    });
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.includes('/voice-reading/settings')) {
+        return Promise.resolve(jsonResponse({
+          auto_read_enabled: false,
+          selected_voice_color: 'warm_female',
+        }));
+      }
+      if (url.includes('/voice-reading/read')) {
+        return readPromise;
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    const readCallCountBeforeStart = (global.fetch as jest.Mock).mock.calls.filter(([url]) =>
+      String(url).includes('/voice-reading/read')
+    ).length;
+
+    const firstStart = useStoryVoiceStore.getState().startReading(currentContext);
+    const duplicateStart = useStoryVoiceStore.getState().startReading(currentContext);
+
+    await waitFor(() => {
+      const readCalls = (global.fetch as jest.Mock).mock.calls.filter(([url]) =>
+        String(url).includes('/voice-reading/read')
+      );
+      expect(readCalls).toHaveLength(readCallCountBeforeStart + 1);
+    });
+
+    resolveRead(jsonResponse({
+      job_id: 3,
+      status: 'ready',
+      audio_url: '/api/voice-reading/audio/dedupe.mp3',
+      playback_mode: 'audio',
+      provider: 'minimax',
+      media_type: 'audio/mpeg',
+    }));
+    await Promise.all([firstStart, duplicateStart]);
+
+    expect(useStoryVoiceStore.getState().currentAudioUrl).toBe(
+      '/api/voice-reading/audio/dedupe.mp3'
+    );
+  });
+
   it('regenerates the active reading immediately when voice changes mid-playback', async () => {
     const playSpy = window.HTMLMediaElement.prototype.play as jest.Mock;
     playSpy.mockResolvedValue(undefined);
