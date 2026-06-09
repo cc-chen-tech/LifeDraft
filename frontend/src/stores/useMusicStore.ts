@@ -696,7 +696,10 @@ export async function fetchGeneratedMusic(
   storyText: string,
   gameId: number,
   analysis?: Record<string, unknown>
-): Promise<{ track: Song; insert_policy: "future_queue" }> {
+): Promise<
+  | { track: Song; insert_policy: "future_queue" }
+  | { status: "queued"; game_id: number; insert_policy: "future_queue" }
+> {
   const response = await fetch(`${API_BASE}/music/generate`, {
     method: "POST",
     headers: {
