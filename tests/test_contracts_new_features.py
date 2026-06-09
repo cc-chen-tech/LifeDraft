@@ -242,16 +242,19 @@ class TestFeatureFlagContracts:
         )
 
     def test_feature_defaults_all_false(self):
-        """FEATURE_DEFAULTS 中所有值默认为 False（向后兼容）。
+        """FEATURE_DEFAULTS 中的默认值符合向后兼容策略。
 
-        契约：新特性默认关闭，确保不会影响现有功能。
+        契约：除已明确启用的故事语音阅读特性外，其余新特性默认关闭。
         """
         from config.feature_flags import FEATURE_DEFAULTS
 
+        intentionally_enabled_by_default = {"story_voice_reading"}
+
         for flag_name, default_value in FEATURE_DEFAULTS.items():
+            expected = True if flag_name in intentionally_enabled_by_default else False
             assert (
-                default_value is False
-            ), f"Feature flag '{flag_name}' default is {default_value}, expected False"
+                default_value is expected
+            ), f"Feature flag '{flag_name}' default is {default_value}, expected {expected}"
 
     def test_get_feature_returns_bool(self):
         """get_feature() 对已知和未知 flag 都返回 bool。

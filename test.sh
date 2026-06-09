@@ -273,6 +273,7 @@ run_preflight() {
         src/__tests__/components/StoryVoiceControls.test.tsx \
         src/__tests__/components/StatusBar.test.tsx \
         src/__tests__/components/DialogA11y.test.tsx \
+        src/__tests__/pages/PlayPage.test.tsx \
         src/__tests__/components/game/MusicPlayer.test.tsx \
         src/__tests__/components/MusicPlayer.test.tsx \
         src/__tests__/components/ChatBar.test.tsx \

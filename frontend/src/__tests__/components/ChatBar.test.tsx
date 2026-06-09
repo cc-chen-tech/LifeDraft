@@ -517,5 +517,89 @@ describe('ChatBar', () => {
       expect(screen.getAllByText(/人生总结/).length).toBeGreaterThan(0);
       expect(screen.queryByText('请总结我的人生故事')).not.toBeInTheDocument();
     });
+
+    it('renders a single-week summary title as 第N周', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        summary_text: 'Single week summary',
+        start_week: 1,
+        end_week: 1,
+      }));
+
+      const user = userEvent.setup();
+      render(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+        />
+      );
+
+      await user.click(screen.getByRole('button', { name: '人生总结' }));
+
+      expect(await screen.findByText('第1周')).toBeInTheDocument();
+    });
+
+    it('normalizes invalid end week to start week before rendering', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        summary_text: 'Recovered weekly summary',
+        start_week: 3,
+        end_week: 0,
+      }));
+
+      const user = userEvent.setup();
+      render(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+        />
+      );
+
+      await user.click(screen.getByRole('button', { name: '人生总结' }));
+
+      expect(await screen.findByText('第3周')).toBeInTheDocument();
+    });
+
+    it('normalizes end week smaller than start week to start week', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        summary_text: 'Range-corrected summary',
+        start_week: 3,
+        end_week: 2,
+      }));
+
+      const user = userEvent.setup();
+      render(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+        />
+      );
+
+      await user.click(screen.getByRole('button', { name: '人生总结' }));
+
+      expect(await screen.findByText('第3周')).toBeInTheDocument();
+    });
+
+    it('normalizes invalid start week to 1 and keeps label readable', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        summary_text: 'Fallback summary',
+        start_week: 0,
+        end_week: 0,
+      }));
+
+      const user = userEvent.setup();
+      render(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+        />
+      );
+
+      await user.click(screen.getByRole('button', { name: '人生总结' }));
+
+      expect(await screen.findByText('第1周')).toBeInTheDocument();
+    });
   });
 });
