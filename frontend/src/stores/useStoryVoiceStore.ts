@@ -26,6 +26,15 @@ interface StoryVoiceState {
   musicDuckState: MusicDuckState;
   musicWasPlaying: boolean;
   userChangedMusic: boolean;
+  activeReadingContext: ReadingContext | null;
+  activeAutoReadText: string;
+  activeAutoReadReady: boolean;
+  setActiveReadingTarget: (target: {
+    context: ReadingContext;
+    autoReadText: string;
+    autoReadReady: boolean;
+  }) => void;
+  clearActiveReadingTarget: () => void;
   startReading: (context: ReadingContext) => Promise<void>;
   pauseReading: () => void;
   stopReading: () => void;
@@ -94,6 +103,22 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
   musicDuckState: "idle",
   musicWasPlaying: false,
   userChangedMusic: false,
+  activeReadingContext: null,
+  activeAutoReadText: "",
+  activeAutoReadReady: false,
+
+  setActiveReadingTarget: ({ context, autoReadText, autoReadReady }) =>
+    set({
+      activeReadingContext: context,
+      activeAutoReadText: autoReadText,
+      activeAutoReadReady: autoReadReady,
+    }),
+  clearActiveReadingTarget: () =>
+    set({
+      activeReadingContext: null,
+      activeAutoReadText: "",
+      activeAutoReadReady: false,
+    }),
 
   startReading: async (context) => {
     const attemptId = activeReadingAttempt + 1;
