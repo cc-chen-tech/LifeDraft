@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from config.prompts.story_prompts import get_round_event_prompt, get_story_only_prompt
+from src.ai.models import EventOption, GameEvent
 from src.game.round.event_generator import RoundEventGenerator
 from src.game.world_model import WorldModel
 
@@ -220,6 +221,104 @@ def test_scheduled_event_generation_retries_when_story_replaces_preset_cast() ->
     assert event is not None
     assert "没有使用预设关键人物" in client.calls[1]["user_prompt"]
     assert "陆昊然" in event.event_description
+    assert "马老板" not in event.event_description
+
+
+def test_resume_existing_round_story_rejects_preset_cast_drift_before_options_only() -> None:
+    drift_story = (
+        "马老板把欠条摊在会议桌上，方蕾要求林清立刻接手苏州贸易公司的债务。"
+        "赵子豪在旁边翻出旧账，王丽华不断催促她签字，整个故事完全围绕债务谈判展开。"
+        "这段内容没有导师复盘、闺蜜支持或同期产品经理成长，只剩下陌生债主网络反复施压。"
+    )
+    repaired_event = GameEvent(
+        event_description="陆昊然把需求复盘表推到林清面前，陈晓雨陪她整理情绪。",
+        options=[
+            EventOption(text="和陆昊然复盘需求", effects={"knowledge": 5}),
+            EventOption(text="请陈晓雨陪同整理反馈", effects={"mood": 3}),
+        ],
+    )
+
+    class FakeAI:
+        def __init__(self) -> None:
+            self.options_only_calls = 0
+            self.round_generation_calls = 0
+
+        def generate_options_only(self, **kwargs: Any) -> GameEvent:
+            self.options_only_calls += 1
+            return GameEvent(
+                event_description=kwargs["story_description"],
+                options=[
+                    EventOption(text="继续债务谈判", effects={"mood": -5}),
+                    EventOption(text="联系方蕾处理欠条", effects={"knowledge": 2}),
+                ],
+            )
+
+        def generate_round_event(self, **kwargs: Any) -> GameEvent:
+            self.round_generation_calls += 1
+            return repaired_event
+
+    class PlayerState:
+        player_name = "林清"
+        week = 1
+        current_round = 1
+        last_round_full_story = ""
+        current_event_data: dict[str, Any] = {}
+        pending_storylines: list[Any] = []
+        established_facts: list[Any] = []
+        last_event_concluded = True
+        character_habits: list[Any] = []
+        foreshadowing_seeds: list[Any] = []
+        round_history = [
+            {
+                "week": 1,
+                "round": 1,
+                "event_description": drift_story,
+                "story_continuation": "",
+            }
+        ]
+        character_settings = _modern_product_manager_settings()
+
+        def to_dict(self) -> dict[str, Any]:
+            return {
+                "player_name": "林清",
+                "week": self.week,
+                "current_round": self.current_round,
+                "character_settings": self.character_settings,
+                "round_history": self.round_history,
+            }
+
+        def get_pending_scheduled_events(self, *_args: Any) -> list[Any]:
+            return []
+
+        def get_round_context(self) -> str:
+            return "上一轮生成的故事疑似漂移。"
+
+        def get_game_date_info(self) -> dict[str, Any]:
+            return {}
+
+    fake_ai = FakeAI()
+    generator = RoundEventGenerator(
+        player_state_getter=PlayerState,
+        ai_generator=fake_ai,
+        language_getter=lambda: "zh",
+        character_introduction_service=SimpleNamespace(
+            maybe_generate_new_character=lambda probability=0.0: None,
+            check_introduction_opportunity=lambda: None,
+        ),
+        summary_selector=SimpleNamespace(
+            select_relevant_historical_summary=lambda _player_state: (None, None)
+        ),
+        relationship_service=SimpleNamespace(
+            get_triggered_events=lambda *_args, **_kwargs: [],
+            mark_event_triggered=lambda *_args, **_kwargs: None,
+        ),
+    )
+
+    event = generator.generate_round_event()
+
+    assert fake_ai.options_only_calls == 0
+    assert fake_ai.round_generation_calls == 1
+    assert event.event_description == repaired_event.event_description
     assert "马老板" not in event.event_description
 
 
