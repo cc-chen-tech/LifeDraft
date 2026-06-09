@@ -50,7 +50,8 @@
 - `npx jest src/__tests__/preflight/storyContinuityPreflight.test.tsx --runInBand`：3 passed
 - `npx tsc --noEmit`：passed
 - `./test.sh preflight`：passed
+- 生产验证：部署 `2fca433a` 后，在 game `108` 刷新新 bundle，选择“细读合作条款”生成后续故事；控制台未再出现短 `event_description` 覆盖长 stream 的 `TRUNCATE`，页面保留长正文和轮次小结。
 
 ## 状态
 
-已本地修复并通过 preflight 验证。仍需提交、推送、部署后在生产继续验证第 1 周故事不再被短摘要截断。
+已提交、推送、部署并通过生产后续选择验证。部署前已保存的截断正文不会被前端自动回溯修复，后续新生成轮次不再触发该覆盖问题。
