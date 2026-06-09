@@ -4,6 +4,13 @@
 
 Chinese story prompts SHALL use modern week/round timeline titles for ordinary non-ancient character settings, even when the setting does not explicitly include words such as "现代" or "职场".
 
+#### Scenario: Missing settings use the standard modern default
+
+- **GIVEN** no character settings were provided
+- **WHEN** a Chinese story prompt is built for the default protagonist context
+- **THEN** the prompt MUST require a title such as "第N周·周一"
+- **AND** the prompt MUST NOT require "第X回" chapter labels or seven-character couplet titles
+
 #### Scenario: Age and career settings without ancient cues
 
 - **GIVEN** character settings include an adult protagonist and a realistic career

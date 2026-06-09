@@ -188,7 +188,7 @@ def _settings_text(character_settings: Optional[Dict[str, Any]]) -> str:
 def _is_modern_story_setting(character_settings: Optional[Dict[str, Any]]) -> bool:
     text = _settings_text(character_settings)
     if not text:
-        return False
+        return True
     ancient_cues = ["古代", "唐朝", "宋朝", "元朝", "明朝", "清朝", "江湖", "宫廷", "修仙"]
     if any(cue in text for cue in ancient_cues):
         return False

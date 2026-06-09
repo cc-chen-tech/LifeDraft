@@ -1,6 +1,7 @@
 ## 1. Tests
 
 - [x] Add a contract test for ordinary modern age/career settings that lack explicit modern keywords.
+- [x] Add a contract test for missing character settings using the default modern protagonist context.
 - [x] Add the contract test file to `test.sh contract`.
 
 ## 2. Fix
