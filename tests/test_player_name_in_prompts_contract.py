@@ -9,6 +9,7 @@ from config.prompts import (
     get_round_event_prompt,
     get_story_only_prompt,
 )
+from src.ai.story_generator import StoryGenerator
 
 
 class TestPlayerNameInPrompts:
@@ -218,6 +219,111 @@ class TestPlayerNameInPrompts:
         assert (
             has_instruction
         ), f"round prompt 必须包含主角名称使用指令。prompt 前800字: {prompt[:800]}"
+
+    def test_marked_player_role_name_overrides_generated_session_name(self):
+        """角色设定明确标记玩家角色时，不应把测试会话名写入叙事主角约束。"""
+        player_state = {
+            "player_name": "心跳测试0737",
+            "age": 28,
+            "week": 3,
+            "current_round": 0,
+            "rounds_per_week": 3,
+            "energy": 70,
+            "mood": 60,
+            "knowledge": 50,
+            "wealth": 500000,
+            "relationships": {"王思远": 45},
+        }
+        character_settings = {
+            "era": {"year": 2025, "era_description": "当代中国人工智能创业环境"},
+            "world": {"world_description": "深圳 AI 创业公司融资与产品交付压力并存"},
+            "relationships": {
+                "key_people": [
+                    {
+                        "name": "王思远",
+                        "role": "合伙人",
+                        "relationship": "赵谦（玩家角色）的大学同学和创业搭档",
+                    }
+                ]
+            },
+            "traits": {"traits_description": "赵谦是一位谨慎但愿意承担风险的 AI 创业者"},
+            "wealth": {"currency": "¥", "currency_name": "元"},
+        }
+
+        story_prompt = get_story_only_prompt(
+            player_state=player_state,
+            language="zh",
+            character_settings=character_settings,
+        )
+        round_prompt = get_round_event_prompt(
+            player_state=player_state,
+            language="zh",
+            round_number=0,
+            round_context="",
+            character_settings=character_settings,
+        )
+
+        for prompt in (story_prompt, round_prompt):
+            assert "主角名称是：赵谦" in prompt
+            assert "主角名称是：心跳测试0737" not in prompt
+
+    def test_round_story_fallback_uses_marked_player_role_name(self):
+        """模型失败走兜底故事时，也必须使用角色设定里的玩家角色名。"""
+        player_state = {
+            "player_name": "心跳测试0737",
+            "age": 28,
+            "week": 3,
+            "current_round": 0,
+        }
+        character_settings = {
+            "relationships": {
+                "key_people": [
+                    {
+                        "name": "王思远",
+                        "relationship": "赵谦（玩家角色）的大学同学和创业搭档",
+                    }
+                ]
+            },
+            "traits": {"traits_description": "赵谦是一位谨慎但愿意承担风险的 AI 创业者"},
+        }
+
+        fallback_story = StoryGenerator._build_round_story_fallback(
+            player_state=player_state,
+            character_settings=character_settings,
+            language="zh",
+            round_number=0,
+        )
+
+        assert "赵谦没有遇到突发的巨大转折" in fallback_story
+        assert "心跳测试0737" not in fallback_story
+
+    def test_world_model_uses_marked_player_role_name_for_protagonist_records(self):
+        """世界模型从字典状态构建时，也不应把测试会话名当作主角职业记录名。"""
+        player_state = {
+            "player_name": "心跳测试0737",
+            "week": 3,
+            "character_settings": {
+                "relationships": {
+                    "key_people": [
+                        {
+                            "name": "王思远",
+                            "relationship": "赵谦（玩家角色）的大学同学和创业搭档",
+                        }
+                    ]
+                },
+                "occupation": {
+                    "occupation": "AI 创业者",
+                    "employer": "星链智能",
+                    "level": "lead",
+                },
+            },
+        }
+
+        world_model = StoryGenerator._build_world_model_from_state_dict(player_state)
+
+        assert world_model is not None
+        assert "赵谦" in world_model.career_records
+        assert "心跳测试0737" not in world_model.career_records
 
     def test_player_name_empty_does_not_break(self):
         """player_name 为空字符串时不应导致错误"""

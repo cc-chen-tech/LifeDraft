@@ -13,6 +13,7 @@ from pydantic import ValidationError
 
 from config.prompts import get_round_event_prompt, get_story_only_prompt
 from config.prompts._helpers import extract_overused_phrases
+from config.prompts.story_prompts import resolve_protagonist_name
 from src.ai.client import AIClient
 from src.ai.harness.quality_level import PROFILES, QualityLevel
 from src.ai.models import EventOption, GameEvent
@@ -533,7 +534,7 @@ class StoryGenerator:
         language: str,
         round_number: int,
     ) -> str:
-        player_name = str(player_state.get("player_name") or player_state.get("name") or "你")
+        player_name = resolve_protagonist_name(player_state, character_settings, None) or "你"
 
         if language == "zh":
             era = ""
@@ -722,10 +723,11 @@ class StoryGenerator:
         try:
             from src.game.world_model import WorldModel
 
+            character_settings = player_state.get("character_settings", {})
             state_obj = SimpleNamespace(
                 week=player_state.get("week", 0),
-                player_name=player_state.get("player_name", "主角"),
-                character_settings=player_state.get("character_settings", {}),
+                player_name=resolve_protagonist_name(player_state, character_settings, None) or "主角",
+                character_settings=character_settings,
                 established_facts=player_state.get("established_facts", []),
                 world_model_data=player_state.get("world_model_data", {}),
             )

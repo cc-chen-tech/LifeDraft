@@ -1,5 +1,6 @@
 """Story generation prompts."""
 
+import re
 from typing import Any, Dict, Optional
 
 from config.prompts._helpers import (
@@ -27,19 +28,85 @@ from src.game.relationship_authority import build_required_cast_constraints
 # ==================== 自定义选择相关 Prompts ====================
 
 
-def _resolve_protagonist_name(
+_CHINESE_NAME_RE = re.compile(r"^[\u4e00-\u9fff]{2,4}$")
+_PROTAGONIST_MARKER_RE = re.compile(r"([\u4e00-\u9fff]{2,4})[（(]\s*玩家角色\s*[）)]")
+
+
+def _clean_protagonist_name(raw_name: Any) -> str:
+    if not raw_name:
+        return ""
+    return sanitize_player_name(str(raw_name)).strip()
+
+
+def _looks_like_generated_session_name(name: str) -> bool:
+    return bool(re.search(r"(测试|test|heartbeat|心跳).*\d", name, re.IGNORECASE))
+
+
+def _extract_marked_protagonist_name(value: Any) -> str:
+    if isinstance(value, dict):
+        for nested_value in value.values():
+            name = _extract_marked_protagonist_name(nested_value)
+            if name:
+                return name
+        return ""
+    if isinstance(value, list):
+        for item in value:
+            name = _extract_marked_protagonist_name(item)
+            if name:
+                return name
+        return ""
+    if not isinstance(value, str):
+        return ""
+
+    match = _PROTAGONIST_MARKER_RE.search(value)
+    if not match:
+        return ""
+    name = _clean_protagonist_name(match.group(1))
+    return name if _CHINESE_NAME_RE.match(name) else ""
+
+
+def _extract_settings_protagonist_name(character_settings: Optional[Dict[str, Any]]) -> str:
+    if not character_settings:
+        return ""
+
+    for section_key in ("identity", "basic", "profile"):
+        section = character_settings.get(section_key)
+        if isinstance(section, dict):
+            name = _clean_protagonist_name(section.get("name") or section.get("player_name"))
+            if name:
+                return name
+
+    for key in ("name", "player_name"):
+        name = _clean_protagonist_name(character_settings.get(key))
+        if name:
+            return name
+
+    return _extract_marked_protagonist_name(character_settings)
+
+
+def resolve_protagonist_name(
     player_state: Dict[str, Any],
     character_settings: Optional[Dict[str, Any]],
     explicit_name: Optional[str],
 ) -> str:
     """Resolve the canonical protagonist name from explicit input, state, or settings."""
-    raw_name = (
-        explicit_name
-        or player_state.get("player_name")
-        or (character_settings or {}).get("player_name")
-        or ""
-    )
-    return sanitize_player_name(str(raw_name)).strip() if raw_name else ""
+    explicit_clean = _clean_protagonist_name(explicit_name)
+    settings_clean = _extract_settings_protagonist_name(character_settings)
+    player_clean = _clean_protagonist_name(player_state.get("player_name") or player_state.get("name"))
+
+    if explicit_clean and not (
+        settings_clean and _looks_like_generated_session_name(explicit_clean)
+    ):
+        return explicit_clean
+    return settings_clean or explicit_clean or player_clean
+
+
+def _resolve_protagonist_name(
+    player_state: Dict[str, Any],
+    character_settings: Optional[Dict[str, Any]],
+    explicit_name: Optional[str],
+) -> str:
+    return resolve_protagonist_name(player_state, character_settings, explicit_name)
 
 
 def _build_protagonist_identity_instruction(

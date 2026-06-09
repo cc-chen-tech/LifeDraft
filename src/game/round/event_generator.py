@@ -7,6 +7,7 @@ import logging
 import time
 from typing import Any, Callable, Optional
 
+from config.prompts.story_prompts import resolve_protagonist_name
 from src.ai.models import GameEvent
 from src.game.narrative_manager import NarrativeManager
 
@@ -609,7 +610,7 @@ class RoundEventGenerator:
         combined_hint = "；".join(event_hints) if event_hints else ""
         parties_str = "、".join(all_parties) if all_parties else ""
 
-        player_name = player_state.get("player_name", "主角")
+        player_name = resolve_protagonist_name(player_state, character_settings, None) or "主角"
         week = player_state.get("week", 0)
         current_round = player_state.get("current_round", 0)
 
