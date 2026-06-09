@@ -159,6 +159,70 @@ def test_scheduled_event_prompt_inherits_story_authority_constraints() -> None:
     assert "禁止赛博朋克" in prompt
 
 
+def test_scheduled_event_generation_retries_when_story_replaces_preset_cast() -> None:
+    class DriftClient:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        def call(self, **kwargs: Any) -> str:
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                return """
+                {
+                  "event_description": "马老板把欠条摊在会议桌上，方蕾要求林清立刻接手苏州贸易公司的债务。",
+                  "options": [
+                    {"text": "先稳住马老板", "effects": {"mood": -5}},
+                    {"text": "找方蕾谈判", "effects": {"knowledge": 3}}
+                  ]
+                }
+                """
+            return """
+            {
+              "event_description": "陆昊然把需求复盘表推到林清面前，提醒她先确认用户反馈，陈晓雨则陪她整理情绪。",
+              "options": [
+                {"text": "和陆昊然复盘需求", "effects": {"knowledge": 5}},
+                {"text": "请陈晓雨陪同复盘", "effects": {"mood": 3}}
+              ]
+            }
+            """
+
+    class PlayerState:
+        def to_dict(self) -> dict[str, Any]:
+            return {
+                "player_name": "林清",
+                "week": 1,
+                "current_round": 1,
+                "character_settings": _modern_product_manager_settings(),
+            }
+
+    client = DriftClient()
+    generator = RoundEventGenerator(
+        player_state_getter=lambda: None,
+        ai_generator=SimpleNamespace(ai_client=client),
+        language_getter=lambda: "zh",
+        character_introduction_service=None,
+        summary_selector=None,
+        relationship_service=None,
+    )
+
+    event = generator._generate_scheduled_event(
+        scheduled_events=[
+            {
+                "description": "周三和导师复盘需求优先级",
+                "parties": ["陆昊然"],
+                "event_hint": "围绕产品经理成长线推进",
+            }
+        ],
+        player_state=PlayerState(),
+    )
+
+    assert len(client.calls) == 2
+    assert event is not None
+    assert "没有使用预设关键人物" in client.calls[1]["user_prompt"]
+    assert "陆昊然" in event.event_description
+    assert "马老板" not in event.event_description
+
+
 def test_world_model_constraints_include_required_cast_from_character_settings() -> None:
     player_state = SimpleNamespace(
         week=2,

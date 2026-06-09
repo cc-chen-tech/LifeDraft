@@ -20,6 +20,12 @@ Story generation SHALL treat preset key people in character settings as canonica
 - **THEN** the prompt MUST include the canonical preset cast and no-substitution rule
 - **AND** it MUST include the protagonist identity constraint and setting boundary constraints used by ordinary story prompts
 
+#### Scenario: Scheduled commitment events retry cast drift before returning
+- **GIVEN** a scheduled event generation response replaces the preset cast with invented named substitutes
+- **WHEN** quick validation flags that story as not using preset key people
+- **THEN** the scheduled event generator MUST retry with the validation failure included in the prompt
+- **AND** it MUST return the corrected event instead of the drifted response
+
 #### Scenario: Generic bystanders remain allowed
 - **GIVEN** a story scene needs non-recurring background people
 - **WHEN** the preset cast authority block is present

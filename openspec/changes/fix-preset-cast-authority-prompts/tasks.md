@@ -20,3 +20,5 @@
 
 - [x] Add a regression test proving scheduled/commitment events inherit protagonist identity, preset cast, and realistic-setting authority constraints.
 - [x] Inject the same authority blocks into the scheduled event prompt path so commitment fulfillment cannot bypass the main story prompt guardrails.
+- [x] Add a regression test proving scheduled/commitment events retry when generated text replaces the preset cast with invented named substitutes.
+- [x] Run scheduled event text through quick validation before returning it to the player.

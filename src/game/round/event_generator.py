@@ -11,6 +11,7 @@ from config.prompts._helpers import (
     _build_available_people_constraint,
     _build_era_anachronism_constraints,
     _build_full_character_context,
+    _collect_available_people,
     build_realistic_modern_world_boundary,
 )
 from config.prompts.story_prompts import (
@@ -552,42 +553,80 @@ class RoundEventGenerator:
 
             sys_prompt = get_system_prompt("story_novelist", self.language)
 
-            # 调用AI生成
-            response = self.ai_generator.ai_client.call(
-                system_prompt=sys_prompt,
-                user_prompt=prompt,
-                temperature=0.85,
-                max_tokens=8192,
-                stream_callback=stream_callback,
-            )
-
-            # 解析响应
             from src.ai.utils import extract_json
+            from src.ai.quick_validator import quick_validate_story
 
-            data = extract_json(response)
+            available_people_names = [
+                p.get("name", "")
+                for p in _collect_available_people(character_settings)
+                if p.get("name")
+            ]
+            last_validation_error = ""
 
-            if data:
-                from src.ai.models import EventOption, GameEvent
-
-                event_desc = data.get("event_description", "")
-                options_data = data.get("options", [])
-
-                options = []
-                for opt in options_data:
-                    options.append(
-                        EventOption(
-                            text=opt.get("text", ""),
-                            effects=opt.get("effects", {}),
+            for attempt in range(2):
+                prompt_for_attempt = prompt
+                if attempt > 0 and last_validation_error:
+                    if self.language == "zh":
+                        prompt_for_attempt += (
+                            "\n\n【快速一致性修正 - 必须重写】\n"
+                            f"{last_validation_error}\n"
+                            "请重新生成这个预定事件，严格使用可用人物列表、预设关键人物和既有人设。"
                         )
-                    )
+                    else:
+                        prompt_for_attempt += (
+                            "\n\n[Quick Consistency Fix - Regenerate Required]\n"
+                            f"{last_validation_error}\n"
+                            "Regenerate this scheduled event using the available people, preset cast, and existing setting."
+                        )
+                    if status_callback:
+                        status_callback("retry")
 
-                if event_desc and options:
-                    event = GameEvent(
-                        event_description=event_desc,
-                        options=options,
-                    )
-                    logger.info(f"成功生成预定事件: {event_desc[:60]}...")
-                    return event
+                response = self.ai_generator.ai_client.call(
+                    system_prompt=sys_prompt,
+                    user_prompt=prompt_for_attempt,
+                    temperature=0.85 if attempt == 0 else 0.65,
+                    max_tokens=8192,
+                    stream_callback=stream_callback if attempt == 0 else None,
+                )
+
+                data = extract_json(response)
+
+                if data:
+                    from src.ai.models import EventOption, GameEvent
+
+                    event_desc = data.get("event_description", "")
+                    options_data = data.get("options", [])
+
+                    options = []
+                    for opt in options_data:
+                        options.append(
+                            EventOption(
+                                text=opt.get("text", ""),
+                                effects=opt.get("effects", {}),
+                            )
+                        )
+
+                    if event_desc and options:
+                        quick_result = quick_validate_story(
+                            story_text=event_desc,
+                            character_settings=character_settings,
+                            available_people=available_people_names,
+                            language=self.language,
+                        )
+                        if not quick_result.passed:
+                            last_validation_error = "; ".join(quick_result.issues)
+                            logger.warning(
+                                "Scheduled event quick validation failed: %s",
+                                quick_result.issues,
+                            )
+                            continue
+
+                        event = GameEvent(
+                            event_description=event_desc,
+                            options=options,
+                        )
+                        logger.info(f"成功生成预定事件: {event_desc[:60]}...")
+                        return event
 
             # 如果解析失败，生成一个简单的事件
             logger.warning("解析预定事件响应失败，使用简化版本")
