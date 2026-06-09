@@ -5,6 +5,7 @@
 
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from hashlib import sha256
@@ -213,6 +214,49 @@ PROMPT_LEAK_SONG_CUES = [
     "按照您的要求",
 ]
 
+GENERIC_NO_VOCAL_NEGATIVE_CUES = {
+    "人声",
+    "歌词",
+    "流行人声",
+    "情歌",
+    "甜蜜流行",
+    "热门金曲",
+    "影视情歌",
+    "伤感流行",
+    "no vocals",
+    "no lyrics",
+    "vocal",
+    "lyrics",
+}
+
+REPORTED_VOCAL_POP_TITLE_CUES = {
+    "小幸运",
+    "断了的弦",
+    "等你下课",
+    "不再联系",
+    "说散就散",
+    "匆匆那年",
+    "告白气球",
+    "喜欢你",
+    "夜曲",
+    "一直很安静",
+    "平凡之路",
+    "岁月神偷",
+    "都选C",
+    "她说",
+    "童话",
+    "丑八怪",
+    "可爱女人",
+}
+
+REPORTED_MEME_TITLE_CUES = {
+    "坤坤错过",
+    "起坤了只因你太美",
+    "只因你太美",
+    "鸡如火",
+    "功夫鸡",
+}
+
 
 def _dedupe_text(items: Sequence[str]) -> List[str]:
     deduped: List[str] = []
@@ -263,10 +307,45 @@ def _looks_like_prompt_leak_song(song: Song) -> bool:
     return any(cue in text for cue in PROMPT_LEAK_SONG_CUES)
 
 
-def _matches_negative_music_cue(song: Song, negative_cues: Sequence[str]) -> bool:
+def _canonical_music_title(title: str) -> str:
+    """Normalize title variants so covers/speed edits dedupe as one track."""
+    text = str(title).casefold()
+    text = re.sub(r"[（(][^）)]*[）)]", "", text)
+    text = re.sub(
+        r"(心动版|加速版|降速版|抖音版|翻唱版|翻唱|cover|伴奏|纯音乐版|剪辑版|完整版|live|remix|remaster|0\.\d+x|\d+(?:\.\d+)?x|版)",
+        "",
+        text,
+    )
+    return re.sub(r"[\s\-—_·.。…!！?？,，、:：;；'\"“”‘’《》\[\]【】/\\]+", "", text)
+
+
+def _brief_requests_no_vocal(brief: "MusicBrief") -> bool:
+    text = " ".join([*brief.negative_cues, brief.generation_prompt]).casefold()
+    return any(cue.casefold() in text for cue in GENERIC_NO_VOCAL_NEGATIVE_CUES)
+
+
+def _matches_negative_music_cue(
+    song: "MusicTrack",
+    negative_cues: Sequence[str],
+    strict_no_vocal: bool = False,
+) -> bool:
     """Reject playable search results that contradict the story's music brief."""
-    text = " ".join([song.name, song.album, *song.artists]).lower()
-    return any(cue and str(cue).lower() in text for cue in negative_cues)
+    text = " ".join([song.name, song.album, *song.artists]).casefold()
+    if any(cue and str(cue).casefold() in text for cue in negative_cues):
+        return True
+
+    if not strict_no_vocal and not any(
+        str(cue).casefold() in GENERIC_NO_VOCAL_NEGATIVE_CUES for cue in negative_cues
+    ):
+        return False
+
+    canonical_title = _canonical_music_title(song.name)
+    for cue in REPORTED_VOCAL_POP_TITLE_CUES:
+        canonical_cue = _canonical_music_title(cue)
+        if canonical_cue and (canonical_title == canonical_cue or canonical_cue in canonical_title):
+            return True
+
+    return any(cue.casefold() in text for cue in REPORTED_MEME_TITLE_CUES)
 
 
 def _is_workplace_music_brief(brief: "MusicBrief") -> bool:
@@ -567,6 +646,28 @@ class MusicResultRanker:
             return list(songs)
         return [song for _, _, song in sorted(scored, key=lambda item: item[0], reverse=True)]
 
+    def filter_and_dedupe(
+        self,
+        songs: Sequence[TMusicTrack],
+        brief: MusicBrief,
+    ) -> List[TMusicTrack]:
+        ranked = self.rank(songs, brief)
+        strict_no_vocal = _brief_requests_no_vocal(brief)
+        seen_titles: set[str] = set()
+        filtered: List[TMusicTrack] = []
+
+        for song in ranked:
+            if _matches_negative_music_cue(song, brief.negative_cues, strict_no_vocal):
+                continue
+            canonical_title = _canonical_music_title(song.name)
+            if canonical_title and canonical_title in seen_titles:
+                continue
+            if canonical_title:
+                seen_titles.add(canonical_title)
+            filtered.append(song)
+
+        return filtered
+
 
 @dataclass(frozen=True)
 class MusicGenerationJob:
@@ -840,10 +941,8 @@ class MusicService:
                 continue
             songs.append(song)
             seen_ids.add(song.id)
-        if len(songs) <= 5:
-            return songs
         brief = self.context_builder.build_brief(pool.analysis)
-        ranked = self.result_ranker.rank(songs, brief)
+        ranked = self.result_ranker.filter_and_dedupe(songs, brief)
         return ranked[: min(8, len(ranked))]
 
     async def _get_or_build_pool(
@@ -988,7 +1087,9 @@ class MusicService:
 
     async def _supplement_pool(self, pool: CachedMusicPool) -> None:
         seen_ids = {song.id for song in pool.verified_songs}
+        seen_titles = {_canonical_music_title(song.name) for song in pool.verified_songs}
         brief = self.context_builder.build_brief(pool.analysis)
+        strict_no_vocal = _brief_requests_no_vocal(brief)
         search_keywords = self.context_builder.build_search_queries(
             brief,
             query_cursor=pool.query_cursor,
@@ -1006,6 +1107,9 @@ class MusicService:
             for song in songs:
                 if song.id in seen_ids or len(pool.verified_songs) >= 20:
                     continue
+                canonical_title = _canonical_music_title(song.name)
+                if canonical_title and canonical_title in seen_titles:
+                    continue
                 if _looks_like_prompt_leak_song(song):
                     logger.info(
                         "[MusicService] Skipping prompt-leak music result: id=%s name=%s",
@@ -1013,7 +1117,7 @@ class MusicService:
                         song.name[:80],
                     )
                     continue
-                if _matches_negative_music_cue(song, brief.negative_cues):
+                if _matches_negative_music_cue(song, brief.negative_cues, strict_no_vocal):
                     logger.info(
                         "[MusicService] Skipping negative-cue music result: id=%s name=%s",
                         song.id,
@@ -1048,6 +1152,8 @@ class MusicService:
                     )
                 )
                 seen_ids.add(song.id)
+                if canonical_title:
+                    seen_titles.add(canonical_title)
 
     async def _analyze_story_mood(
         self,
