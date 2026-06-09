@@ -43,5 +43,15 @@ Both tests were verified red before the fixes and green after the fixes.
 
 - `pytest tests/test_character_settings_api_contract.py -q`
 - `pytest tests/test_gate_gameplay_behavior_no_mock.py -q -k 'quote or normalizer'`
+- `pytest tests/test_gate_gameplay_behavior_no_mock.py tests/test_character_settings_api_contract.py tests/test_api_games.py -q`
+- `./test.sh preflight`
 
-Status: fixed locally, pending broader gate and deploy.
+Deployment verification:
+
+- Commit `19a976864cf82a1caeb01fb51270824209a5a012` pushed to `origin/main`.
+- GitHub Actions for this commit failed in 4-6 seconds with `log not found`, consistent with the current runner/platform blocker.
+- ECS `/opt/story2` manually deployed to `19a976864cf82a1caeb01fb51270824209a5a012`.
+- ECS backend, music, frontend, and nginx containers are up; backend and music are healthy.
+- Public `https://story101.live/api/health` returned `{"status":"ok","active_sessions":0}` and the homepage returned `HTTP/1.1 200 OK`.
+
+Status: fixed, pushed, manually deployed, and production health verified.
