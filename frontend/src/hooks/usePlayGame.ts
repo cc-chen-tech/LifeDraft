@@ -21,6 +21,12 @@ import { useHistoryViewer } from "./game/useHistoryViewer";
 export type { Phase, ConnectionStatus };
 export { STATUS_MESSAGES } from "./game/usePhaseManager";
 
+function isNotFoundError(err: unknown): boolean {
+  const error = err as { status?: number; message?: string } | null;
+  const message = String(error?.message || "");
+  return error?.status === 404 || message.includes("404") || message.toLowerCase().includes("not found");
+}
+
 /**
  * Custom hook that manages all game logic for the play page.
  * Composes multiple sub-hooks for better maintainability.
@@ -225,6 +231,10 @@ export function usePlayGame() {
 
     const attemptRecovery = async () => {
       if (!gameId) {
+        if (redirectCheckedRef.current) {
+          console.warn("[play] No gameId after a checked session, skipping active recovery");
+          return;
+        }
         console.warn("[play] No gameId in localStorage, attempting server-side recovery...");
 
         try {
@@ -339,6 +349,14 @@ export function usePlayGame() {
           generateEvent();
         }
       } catch (err) {
+        if (isNotFoundError(err)) {
+          console.warn("[play] Stored game no longer exists, clearing session and returning home");
+          useGameStore.getState().resetGame();
+          setProcessing(false);
+          setPhase("error");
+          router.replace("/");
+          return;
+        }
         console.error("[play] syncState failed:", err);
         generateEvent();
       }
