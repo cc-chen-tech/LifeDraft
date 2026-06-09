@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Package, Wand2, Loader2, Plus, Image } from "lucide-react";
@@ -93,12 +93,34 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
   // 删除确认相关状态
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [entityToDelete, setEntityToDelete] = useState<EntityToDelete | null>(null);
+  const [isInitialSyncing, setIsInitialSyncing] = useState(false);
 
   // 初始加载
-  useEffect(() => {
-    if (gameId) {
-      void fetchCollection(gameId).then(() => autoCollectRecognizedEntities(gameId));
-    }
+  useLayoutEffect(() => {
+    let cancelled = false;
+
+    if (!gameId) return;
+
+    setIsInitialSyncing(true);
+    void (async () => {
+      await fetchCollection(gameId);
+
+      const state = useCollectionStore.getState();
+      const needsInitialRecognition =
+        state.items.length === 0 &&
+        state.landmarks.length === 0;
+      if (needsInitialRecognition) {
+        await autoCollectRecognizedEntities(gameId);
+      }
+
+      if (!cancelled) {
+        setIsInitialSyncing(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- zustand action 引用稳定，仅在 gameId 变化时重新获取
   }, [gameId]);
 
@@ -312,7 +334,7 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
           收集
         </h2>
         <p className="text-sm text-muted-foreground">
-          {isRefreshing ? "正在刷新，已加载内容保持可见" : "人物、物品和标志物收集记录"}
+          {isInitialSyncing || isRefreshing ? "正在刷新，已加载内容保持可见" : "人物、物品和标志物收集记录"}
         </p>
       </div>
 

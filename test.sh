@@ -337,7 +337,11 @@ run_imports() {
     activate_python_env
     
     echo -e "${YELLOW}运行导入验证测试...${NC}"
-    python -m pytest tests/test_imports.py tests/test_gate_imports_no_mock.py -v
+    python -m pytest \
+        tests/test_imports.py \
+        tests/test_gate_imports_no_mock.py \
+        tests/test_collection_imports.py \
+        -v
     local result=$?
     
     print_layer_result "imports" $result
@@ -361,6 +365,10 @@ run_contract() {
         tests/test_shift_left_e2e_contract_no_mock.py \
         tests/test_story_music_recommendation_contract.py \
         tests/test_story_voice_reading_contract.py \
+        tests/test_collection_contract.py \
+        tests/test_collection_cache_contract.py \
+        tests/test_collection_recognition_current_event.py \
+        tests/test_live_gameplay_recovery_collection_contract.py \
         tests/test_ui_bottom_layout_contract_no_mock.py \
         -v
     local result=$?
@@ -393,6 +401,7 @@ run_db() {
         tests/test_minimax_audio_generation_db.py \
         tests/test_story_music_recommendation_db.py \
         tests/test_story_voice_reading_db.py \
+        tests/test_collection_cache_db.py \
         -v
     local result=$?
     
@@ -612,8 +621,19 @@ run_e2e_browser_impl() {
         --no-deps
     local minimax_audio_result=$?
 
+    echo -e "${YELLOW}运行实体收集与识别 E2E 浏览器测试...${NC}"
+    run_playwright_command "collection-recognition" npx playwright test \
+        e2e/collection.spec.ts \
+        e2e/collection-panel-cache.spec.ts \
+        e2e/entity-recognition.spec.ts \
+        --project=core \
+        --reporter=list \
+        --workers=1 \
+        --no-deps
+    local collection_recognition_result=$?
+
     local result=0
-    if [ $core_result -ne 0 ] || [ $music_ai_result -ne 0 ] || [ $character_settings_result -ne 0 ] || [ $story_voice_result -ne 0 ] || [ $minimax_audio_result -ne 0 ]; then
+    if [ $core_result -ne 0 ] || [ $music_ai_result -ne 0 ] || [ $character_settings_result -ne 0 ] || [ $story_voice_result -ne 0 ] || [ $minimax_audio_result -ne 0 ] || [ $collection_recognition_result -ne 0 ]; then
         result=1
     fi
 
