@@ -55,6 +55,8 @@ function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
 }) {
+  const needsFallbackDescription = !hasDialogDescription(children)
+
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
@@ -66,6 +68,11 @@ function DialogContent({
         )}
         {...props}
       >
+        {needsFallbackDescription && (
+          <DialogPrimitive.Description className="sr-only">
+            Dialog content
+          </DialogPrimitive.Description>
+        )}
         {children}
         {showCloseButton && (
           <DialogPrimitive.Close
@@ -79,6 +86,28 @@ function DialogContent({
       </DialogPrimitive.Content>
     </DialogPortal>
   )
+}
+
+function hasDialogDescription(children: React.ReactNode): boolean {
+  let found = false
+
+  React.Children.forEach(children, (child) => {
+    if (found || !React.isValidElement(child)) {
+      return
+    }
+
+    if (child.type === DialogDescription) {
+      found = true
+      return
+    }
+
+    const props = child.props as { children?: React.ReactNode }
+    if (props.children && hasDialogDescription(props.children)) {
+      found = true
+    }
+  })
+
+  return found
 }
 
 function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
