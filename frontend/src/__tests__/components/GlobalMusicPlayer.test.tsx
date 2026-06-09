@@ -17,7 +17,20 @@ jest.mock('@/stores/useMusicStore', () => {
 });
 
 import { fetchMusicRecommendation, useMusicStore } from "@/stores/useMusicStore";
+import { useStoryVoiceStore } from "@/stores/useStoryVoiceStore";
 import { GlobalMusicPlayer } from "@/components/game/GlobalMusicPlayer";
+import type { ReadingContext } from "@/lib/types";
+
+const activeReadingContext: ReadingContext = {
+  source_type: "current_story",
+  game_id: 1,
+  week: 1,
+  round_number: 1,
+  stage: "event",
+  attempt_id: "1-1",
+  text_hash: "hash",
+  text: "一段需要朗读的故事。",
+};
 
 function setStoreState(overrides: Record<string, unknown> = {}) {
   useMusicStore.setState({
@@ -54,6 +67,27 @@ describe("GlobalMusicPlayer", () => {
       duration: 0,
       audioElement: null as never,
     });
+    useStoryVoiceStore.setState({
+      readingState: "idle",
+      currentSource: "",
+      currentContextLabel: "",
+      currentAudioUrl: "",
+      currentJobId: null,
+      currentProvider: "",
+      playbackMode: "none",
+      spokenTextLength: 0,
+      currentSpeechText: "",
+      errorMessage: "",
+      queueText: "",
+      autoReadEnabled: false,
+      selectedVoiceId: "warm_female",
+      musicDuckState: "idle",
+      musicWasPlaying: false,
+      userChangedMusic: false,
+      activeReadingContext: null,
+      activeAutoReadText: "",
+      activeAutoReadReady: false,
+    } as never);
     loadPlaylistSpy = jest.spyOn(useMusicStore.getState(), 'loadPlaylist').mockResolvedValue(undefined);
     togglePlaySpy = jest.spyOn(useMusicStore.getState(), 'togglePlay');
   });
@@ -127,6 +161,31 @@ describe("GlobalMusicPlayer", () => {
   });
 
   describe("Mini player bar", () => {
+    it("combines music and story reading into one expandable sound panel", async () => {
+      const user = userEvent.setup();
+      setStoreState({
+        activeStoryText: "story text",
+        currentSong: { id: 2, name: "Playing Song", artists: ["Artist"], album: "", duration: 200 },
+      });
+      useStoryVoiceStore.setState({
+        activeReadingContext,
+        activeAutoReadText: activeReadingContext.text,
+        activeAutoReadReady: true,
+      } as never);
+
+      render(<GlobalMusicPlayer />);
+
+      expect(screen.getByRole("region", { name: "声音控制" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "展开声音面板" })).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "展开声音面板" }));
+
+      expect(screen.getByRole("region", { name: "声音面板" })).toBeInTheDocument();
+      expect(screen.getByText("场景音乐")).toBeInTheDocument();
+      expect(screen.getByRole("region", { name: "故事朗读" })).toBeInTheDocument();
+      expect(screen.getByRole("checkbox", { name: "自动朗读" })).toBeInTheDocument();
+    });
+
     it("stays below the app header on desktop so it cannot cover header controls or the chat launcher", () => {
       setStoreState({ activeStoryText: "story text" });
 
@@ -182,8 +241,8 @@ describe("GlobalMusicPlayer", () => {
 
       render(<GlobalMusicPlayer />);
 
-      expect(screen.getByRole("button", { name: "打开音乐选择" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "展开音乐播放器" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "打开声音面板" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "展开声音面板" })).toBeInTheDocument();
     });
 
     it("shows pause button when playing", () => {
@@ -235,7 +294,7 @@ describe("GlobalMusicPlayer", () => {
       await user.click(playPauseButton);
 
       // After click, the expanded MusicPlayer container should be visible
-      expect(document.querySelector('.max-h-\\[60vh\\]')).toBeInTheDocument();
+      expect(screen.getByRole("region", { name: "声音面板" })).toBeInTheDocument();
     });
   });
 
@@ -266,7 +325,7 @@ describe("GlobalMusicPlayer", () => {
       await user.click(miniBar!);
 
       // MusicPlayer always mounted, expanded after click
-      expect(document.querySelector('.max-h-\\[60vh\\]')).toBeInTheDocument();
+      expect(screen.getByRole("region", { name: "声音面板" })).toBeInTheDocument();
     });
   });
 

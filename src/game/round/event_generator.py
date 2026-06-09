@@ -7,9 +7,21 @@ import logging
 import time
 from typing import Any, Callable, Optional
 
-from config.prompts.story_prompts import resolve_protagonist_name
+from config.prompts._helpers import (
+    _build_available_people_constraint,
+    _build_era_anachronism_constraints,
+    _build_full_character_context,
+    _collect_available_people,
+    build_realistic_modern_world_boundary,
+)
+from config.prompts.story_prompts import (
+    _build_protagonist_identity_instruction,
+    _extract_gender_text,
+    resolve_protagonist_name,
+)
 from src.ai.models import GameEvent
 from src.game.narrative_manager import NarrativeManager
+from src.game.relationship_authority import build_required_cast_constraints
 
 logger = logging.getLogger(__name__)
 
@@ -541,42 +553,80 @@ class RoundEventGenerator:
 
             sys_prompt = get_system_prompt("story_novelist", self.language)
 
-            # 调用AI生成
-            response = self.ai_generator.ai_client.call(
-                system_prompt=sys_prompt,
-                user_prompt=prompt,
-                temperature=0.85,
-                max_tokens=8192,
-                stream_callback=stream_callback,
-            )
-
-            # 解析响应
             from src.ai.utils import extract_json
+            from src.ai.quick_validator import quick_validate_story
 
-            data = extract_json(response)
+            available_people_names = [
+                p.get("name", "")
+                for p in _collect_available_people(character_settings)
+                if p.get("name")
+            ]
+            last_validation_error = ""
 
-            if data:
-                from src.ai.models import EventOption, GameEvent
-
-                event_desc = data.get("event_description", "")
-                options_data = data.get("options", [])
-
-                options = []
-                for opt in options_data:
-                    options.append(
-                        EventOption(
-                            text=opt.get("text", ""),
-                            effects=opt.get("effects", {}),
+            for attempt in range(2):
+                prompt_for_attempt = prompt
+                if attempt > 0 and last_validation_error:
+                    if self.language == "zh":
+                        prompt_for_attempt += (
+                            "\n\n【快速一致性修正 - 必须重写】\n"
+                            f"{last_validation_error}\n"
+                            "请重新生成这个预定事件，严格使用可用人物列表、预设关键人物和既有人设。"
                         )
-                    )
+                    else:
+                        prompt_for_attempt += (
+                            "\n\n[Quick Consistency Fix - Regenerate Required]\n"
+                            f"{last_validation_error}\n"
+                            "Regenerate this scheduled event using the available people, preset cast, and existing setting."
+                        )
+                    if status_callback:
+                        status_callback("retry")
 
-                if event_desc and options:
-                    event = GameEvent(
-                        event_description=event_desc,
-                        options=options,
-                    )
-                    logger.info(f"成功生成预定事件: {event_desc[:60]}...")
-                    return event
+                response = self.ai_generator.ai_client.call(
+                    system_prompt=sys_prompt,
+                    user_prompt=prompt_for_attempt,
+                    temperature=0.85 if attempt == 0 else 0.65,
+                    max_tokens=8192,
+                    stream_callback=stream_callback if attempt == 0 else None,
+                )
+
+                data = extract_json(response)
+
+                if data:
+                    from src.ai.models import EventOption, GameEvent
+
+                    event_desc = data.get("event_description", "")
+                    options_data = data.get("options", [])
+
+                    options = []
+                    for opt in options_data:
+                        options.append(
+                            EventOption(
+                                text=opt.get("text", ""),
+                                effects=opt.get("effects", {}),
+                            )
+                        )
+
+                    if event_desc and options:
+                        quick_result = quick_validate_story(
+                            story_text=event_desc,
+                            character_settings=character_settings,
+                            available_people=available_people_names,
+                            language=self.language,
+                        )
+                        if not quick_result.passed:
+                            last_validation_error = "; ".join(quick_result.issues)
+                            logger.warning(
+                                "Scheduled event quick validation failed: %s",
+                                quick_result.issues,
+                            )
+                            continue
+
+                        event = GameEvent(
+                            event_description=event_desc,
+                            options=options,
+                        )
+                        logger.info(f"成功生成预定事件: {event_desc[:60]}...")
+                        return event
 
             # 如果解析失败，生成一个简单的事件
             logger.warning("解析预定事件响应失败，使用简化版本")
@@ -611,6 +661,23 @@ class RoundEventGenerator:
         parties_str = "、".join(all_parties) if all_parties else ""
 
         player_name = resolve_protagonist_name(player_state, character_settings, None) or "主角"
+        protagonist_gender = _extract_gender_text(character_settings)
+        character_context, available_people = _build_full_character_context(
+            character_settings,
+            language,
+        )
+        available_people_str = _build_available_people_constraint(available_people, language)
+        name_instruction = _build_protagonist_identity_instruction(
+            player_name,
+            protagonist_gender,
+            language,
+        )
+        required_cast_context = build_required_cast_constraints(character_settings or {}, language)
+        modern_world_boundary = build_realistic_modern_world_boundary(
+            character_settings,
+            language,
+        )
+        era_constraints = _build_era_anachronism_constraints(character_settings, language)
         week = player_state.get("week", 0)
         current_round = player_state.get("current_round", 0)
 
@@ -632,6 +699,10 @@ class RoundEventGenerator:
 
 当前时间：第{week}周，{round_name}
 玩家姓名：{player_name}
+
+【角色设定硬约束】
+{character_context if character_context else "标准现代青年"}{name_instruction}{available_people_str}
+{required_cast_context}{modern_world_boundary}{era_constraints}
 
 【要求】
 1. 事件必须围绕兑现上述承诺展开
@@ -661,6 +732,10 @@ Event hints: {combined_hint}
 
 Current time: Week {week}, {round_name}
 Player name: {player_name}
+
+[Character Setting Hard Constraints]
+{character_context if character_context else "Standard modern young adult"}{name_instruction}{available_people_str}
+{required_cast_context}{modern_world_boundary}{era_constraints}
 
 [Requirements]
 1. The event must center on fulfilling the above commitment
