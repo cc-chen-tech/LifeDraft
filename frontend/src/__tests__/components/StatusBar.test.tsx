@@ -58,6 +58,24 @@ describe("StatusBar", () => {
 
       expect(screen.getByText(/5,000货币/)).toBeInTheDocument();
     });
+
+    it("uses yuan instead of generic currency for modern wealth fallback", () => {
+      render(
+        <StatusBar
+          playerState={{
+            ...mockPlayerState,
+            character_settings: {
+              era: { name: "现代" },
+              wealth: { wealth: 5000 },
+            },
+          }}
+          progress={null}
+        />
+      );
+
+      expect(screen.getByText(/5,000元/)).toBeInTheDocument();
+      expect(screen.queryByText(/5,000货币/)).not.toBeInTheDocument();
+    });
   });
 
   describe("full mode", () => {

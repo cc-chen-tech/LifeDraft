@@ -39,7 +39,23 @@ function getResourceValue(playerState: Record<string, unknown>, key: string): nu
   return null;
 }
 
-function formatWealth(value: number, wealthSettings: Record<string, unknown> | undefined): string {
+function isModernEra(characterSettings: Record<string, unknown> | undefined): boolean {
+  const era = characterSettings?.era;
+  if (!era || typeof era !== "object") return false;
+
+  const eraValues = Object.values(era as Record<string, unknown>);
+  return eraValues.some((value) => {
+    if (typeof value === "number") return value >= 1912;
+    if (typeof value !== "string") return false;
+    return /现代|当代|近现代|2020|20\d{2}|19\d{2}/.test(value);
+  });
+}
+
+function formatWealth(
+  value: number,
+  wealthSettings: Record<string, unknown> | undefined,
+  characterSettings: Record<string, unknown> | undefined
+): string {
   const amount = value.toLocaleString();
   const currencySymbol = typeof wealthSettings?.currency === "string"
     ? wealthSettings.currency.trim()
@@ -51,7 +67,11 @@ function formatWealth(value: number, wealthSettings: Record<string, unknown> | u
   const currencyName = typeof wealthSettings?.currency_name === "string"
     ? wealthSettings.currency_name.trim()
     : "";
-  return currencyName ? `${amount}${currencyName}` : `${amount}货币`;
+  if (currencyName) {
+    return `${amount}${currencyName}`;
+  }
+
+  return `${amount}${isModernEra(characterSettings) ? "元" : "货币"}`;
 }
 
 /**
@@ -92,7 +112,9 @@ export const StatusBar = memo(function StatusBar({
         {RESOURCES.map((res) => {
           const value = getResourceValue(playerState, res.key);
           if (value === null) return null;
-          const displayValue = res.key === "wealth" ? formatWealth(value, wealthSettings) : value;
+          const displayValue = res.key === "wealth"
+            ? formatWealth(value, wealthSettings, characterSettings)
+            : value;
           return (
             <Badge
               key={res.key}
@@ -142,7 +164,9 @@ export const StatusBar = memo(function StatusBar({
           const value = getResourceValue(playerState, res.key);
           if (value === null) return null;
           const ratio = Math.min(value / res.max, 1);
-          const displayValue = res.key === "wealth" ? formatWealth(value, wealthSettings) : value;
+          const displayValue = res.key === "wealth"
+            ? formatWealth(value, wealthSettings, characterSettings)
+            : value;
           return (
             <div key={res.key} className="flex items-center gap-2">
               <span className="text-muted-foreground w-4">{res.icon}</span>
