@@ -444,6 +444,46 @@ describe('eventUtils', () => {
         expect(localHandlers.setPhase).toHaveBeenCalledWith('options');
       });
     });
+
+    it('keeps long retry stream when backend complete only returns a short event summary', () => {
+      jest.isolateModules(() => {
+        const { useGameStore } = require('@/stores/useGameStore');
+        const streamedStory = [
+          '第1周·周一 晨光与抉择',
+          '清晨七点半，上海的天空还带着冬日特有的灰蓝色调。',
+          '许知夏站在租住的小公寓窗前，反复权衡独立游戏路演、搭档林悦的提醒，以及陆一鸣对声音叙事的建议。',
+          '她把《第七封来信》的主题旋律重新拆成三段，让玩家先听见角色的犹豫，再听见城市的雨声。',
+        ].join('\n').repeat(10);
+        useGameStore.setState({ storyText: streamedStory, currentEvent: null } as never);
+
+        const { markRetry, handleEventComplete: localHandleEventComplete } = require('@/hooks/game/eventUtils');
+        jest.spyOn(console, 'log').mockImplementation();
+        markRetry();
+
+        const localHandlers = {
+          setStoryText: jest.fn(), setOptions: jest.fn(), setCurrentEvent: jest.fn(),
+          setPhase: jest.fn(), setGameOver: jest.fn(), setRoundSummary: jest.fn(),
+          setProcessing: jest.fn(), setConnectionStatus: jest.fn(), appendStoryText: jest.fn(),
+          generatingRef: { current: true }, isRetryingRef: { current: false },
+        };
+        const options = [{ text: '细读合作条款' }, { text: '请伙伴一起把关' }, { text: '先锁定关键风险' }];
+        const shortSummary = [
+          '在21世纪20年代的上海，中国独立游戏产业蓬勃发展，数字创意与音乐艺术交汇的时代。',
+          '玩家作为独立游戏开发者，身处科技与人文交织的都市，关注叙事设计与音乐创作，追求个人表达与商业创新的平衡。',
+          '周初，许知夏没有遇到突发的巨大转折，但生活仍然留下了需要判断的细节。',
+          '她需要确认身边人的态度，并衡量接下来要投入多少精力。',
+        ].join('');
+
+        localHandleEventComplete({
+          event_description: shortSummary,
+          options,
+        } as Record<string, unknown>, localHandlers);
+
+        expect(localHandlers.setStoryText).toHaveBeenCalledWith(streamedStory);
+        expect(localHandlers.setCurrentEvent).toHaveBeenCalledWith({ story: streamedStory, options });
+        expect(localHandlers.setPhase).toHaveBeenCalledWith('options');
+      });
+    });
   });
 
   describe('Scene image generation branches', () => {

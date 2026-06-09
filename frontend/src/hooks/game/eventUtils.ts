@@ -101,6 +101,14 @@ export function selectFinalStory(
   return { useBackend: false, finalStory: frontendStory };
 }
 
+function shouldKeepRetryStream(frontendStory: string, backendStory: string): boolean {
+  if (!frontendStory.trim() || !backendStory.trim()) return false;
+  if (backendStory.length < 50 && frontendStory.length > 100) return true;
+  if (frontendStory.length < 800) return false;
+  if (backendStory.length >= frontendStory.length * 0.7) return false;
+  return !frontendStory.startsWith(backendStory) && !backendStory.startsWith(frontendStory);
+}
+
 /**
  * 流式追加文本
  */
@@ -178,14 +186,14 @@ export function handleEventComplete(
     return;
   }
   
-  // ★ 检查是否发生了重试，如果重试后强制使用后端故事
-  // 但如果后端返回的是 fallback 故事（很短），且前端有更长的流式故事，仍优先用前端的
+  // Retry streams may complete with either the full backend story or a shorter
+  // event summary; keep substantial streamed prose when the payload is only a summary.
   const wasRetry = checkAndClearRetry();
   if (wasRetry && backendStory) {
-    // ★ 如果前端有更长的流式故事（来自重试生成），且后端故事明显是 fallback（< 50字）
-    // 说明重试后的故事已流式传输到前端，但后续步骤失败返回了 fallback
-    if (frontendStory.length > 100 && backendStory.length < 50) {
-      console.log(`[onComplete] Retry detected but backend story is fallback (${backendStory.length} chars), using frontend story (${frontendStory.length} chars)`);
+    // If retry streaming already produced a substantial story and the complete
+    // payload only carries a short event summary, keep the streamed story body.
+    if (shouldKeepRetryStream(frontendStory, backendStory)) {
+      console.log(`[onComplete] Retry detected but backend story is shorter than streamed story (${backendStory.length}/${frontendStory.length} chars), using frontend story`);
       setStoryText(frontendStory);
       setOptions(receivedOptions);
       setCurrentEvent({ story: frontendStory, options: receivedOptions });
