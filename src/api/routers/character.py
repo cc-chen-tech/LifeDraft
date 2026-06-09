@@ -5,11 +5,12 @@ import json
 import logging
 import threading
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
+from src.ai.truncation_recovery import TruncationRecovery
 from src.api.schemas import (GenerateAttributesRequest,
                              GenerateRelationshipRequest,
                              GenerateSettingRequest, OpeningStoryRequest,
@@ -24,6 +25,20 @@ _opening_story_cache: Dict[str, Any] = {}
 _cache_lock = threading.Lock()
 OPENING_STORY_HEARTBEAT_INTERVAL = 5.0
 OPENING_STORY_HARD_TIMEOUT = 180.0
+OPENING_STORY_TRUNCATION_MIN_CHARS = 50
+
+
+def _opening_story_appears_truncated(
+    text: str, finish_reason: Optional[str], language: str
+) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return False
+    if finish_reason == "length":
+        return True
+    if language != "zh" or len(stripped) < OPENING_STORY_TRUNCATION_MIN_CHARS:
+        return False
+    return TruncationRecovery().detect_truncation(stripped, "stop")
 
 
 @router.post("/setting")
@@ -142,6 +157,7 @@ async def generate_opening_story(req: OpeningStoryRequest):
         error_holder = [None]
         timed_out_holder = [False]
         last_activity = [time.time()]
+        finish_reason_holder = [None]
 
         def run():
             try:
@@ -153,6 +169,8 @@ async def generate_opening_story(req: OpeningStoryRequest):
 
                 for chunk in stream_response:
                     if hasattr(chunk, "choices") and len(chunk.choices) > 0:
+                        if getattr(chunk.choices[0], "finish_reason", None):
+                            finish_reason_holder[0] = chunk.choices[0].finish_reason
                         delta = chunk.choices[0].delta
                         if hasattr(delta, "content") and delta.content:
                             text = delta.content
@@ -203,7 +221,15 @@ async def generate_opening_story(req: OpeningStoryRequest):
 
         # ★ 更新缓存
         with _cache_lock:
-            if timed_out_holder[0] or error_holder[0] is not None or not full_text_holder[0].strip():
+            appears_truncated = _opening_story_appears_truncated(
+                full_text_holder[0], finish_reason_holder[0], req.language
+            )
+            if (
+                timed_out_holder[0]
+                or error_holder[0] is not None
+                or not full_text_holder[0].strip()
+                or appears_truncated
+            ):
                 _opening_story_cache[cache_key] = {
                     "generating": False,
                     "result": None,
@@ -211,6 +237,8 @@ async def generate_opening_story(req: OpeningStoryRequest):
                 }
                 if error_holder[0] is not None:
                     yield f"event: error\ndata: {json.dumps({'error': str(error_holder[0])}, ensure_ascii=False)}\n\n"
+                elif appears_truncated:
+                    yield f"event: error\ndata: {json.dumps({'error': 'Opening story appears truncated'}, ensure_ascii=False)}\n\n"
                 elif not timed_out_holder[0]:
                     yield f"event: error\ndata: {json.dumps({'error': 'Opening story stream completed without story text'}, ensure_ascii=False)}\n\n"
                 return

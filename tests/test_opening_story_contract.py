@@ -224,6 +224,55 @@ class TestOpeningStoryAPIContract:
             assert '"full_story": ""' not in body
             assert "event: complete" not in body
 
+    def test_opening_story_truncated_text_does_not_emit_complete_or_cache(self, mock_auth):
+        """开场故事疑似截断时不能被缓存或作为完整故事发送。"""
+        with patch("src.api.routers.character.CharacterCreator") as mock_creator_cls:
+
+            def truncated_stream():
+                yield MagicMock(
+                    choices=[
+                        MagicMock(
+                            delta=MagicMock(
+                                content=(
+                                    "2024年1月，林知夏站在上海共享办公空间里，盯着银行余额。"
+                                    "她知道六万元启动资金必须撑过第一轮版本开发，团队还在等待发行顾问回复。"
+                                    "门外传来脚步声，刘子涵推"
+                                )
+                            ),
+                            finish_reason=None,
+                        )
+                    ]
+                )
+
+            mock_creator = MagicMock()
+            mock_creator.generate_opening_story.return_value = truncated_stream()
+            mock_creator_cls.return_value = mock_creator
+
+            from src.api.routers import character as char_module
+
+            with char_module._cache_lock:
+                char_module._opening_story_cache.clear()
+
+            response = client.post(
+                "/api/character/opening-story",
+                json={
+                    "character_settings": {"era": "现代"},
+                    "player_name": "TestTruncatedOpening",
+                    "life_vision": "探索世界",
+                    "language": "zh",
+                },
+                headers={"Authorization": "Bearer test_token"},
+            )
+
+            assert response.status_code == 200
+            body = response.text
+            assert "Opening story appears truncated" in body
+            assert "event: complete" not in body
+            with char_module._cache_lock:
+                cache_entry = char_module._opening_story_cache.get("TestTruncatedOpening")
+            assert cache_entry is not None
+            assert cache_entry["result"] is None
+
     def test_opening_story_wait_for_timeout_while_thread_alive_is_heartbeat_not_failure(self, mock_auth):
         """队列等待提前超时时，只要生成线程仍活跃，就应保持 SSE 而不是立刻报 Generation timeout。"""
         with patch("src.api.routers.character.CharacterCreator") as mock_creator_cls:
