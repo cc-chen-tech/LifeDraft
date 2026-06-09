@@ -231,6 +231,15 @@ class QuickValidator:
 
     @staticmethod
     def _infer_era_type(text: str) -> str:
+        cyberpunk_keywords = [
+            "赛博朋克",
+            "cyberpunk",
+            "高科技低生活",
+        ]
+        lowered_text = text.lower()
+        if any(keyword in lowered_text for keyword in cyberpunk_keywords):
+            return "cyberpunk"
+
         ancient_keywords = [
             "古代",
             "唐",
