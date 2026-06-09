@@ -219,6 +219,14 @@ PROMPT_LEAK_SONG_CUES = [
     "按照您的要求",
 ]
 
+GENERATED_PLACEHOLDER_SONG_CUES = [
+    "AI MiniMax",
+    "MiniMax",
+    "AI Generated",
+    "AI生成",
+    "生成音乐",
+]
+
 GENERIC_NO_VOCAL_NEGATIVE_CUES = {
     "人声",
     "歌词",
@@ -314,6 +322,14 @@ def _looks_like_prompt_leak_song(song: Song) -> bool:
     """Reject search results that are LLM prompt/response text, not song metadata."""
     text = " ".join([song.name, song.album, *song.artists])
     return any(cue in text for cue in PROMPT_LEAK_SONG_CUES)
+
+
+def _looks_like_generated_placeholder_song(song: "MusicTrack") -> bool:
+    """Reject generated-track placeholder names when they come from search results."""
+    if getattr(song, "source", "netease") == "ai_generated":
+        return False
+    text = " ".join([song.name, song.album, *song.artists]).casefold()
+    return any(cue.casefold() in text for cue in GENERATED_PLACEHOLDER_SONG_CUES)
 
 
 def _canonical_music_title(title: str) -> str:
@@ -781,6 +797,8 @@ class MusicResultRanker:
                 _scene_fit_profile_from_brief(brief),
             )
             if decision.rejected:
+                continue
+            if _looks_like_generated_placeholder_song(song):
                 continue
             if _matches_negative_music_cue(song, brief.negative_cues, strict_no_vocal):
                 continue
@@ -1285,6 +1303,13 @@ class MusicService:
                 if _looks_like_prompt_leak_song(song):
                     logger.info(
                         "[MusicService] Skipping prompt-leak music result: id=%s name=%s",
+                        song.id,
+                        song.name[:80],
+                    )
+                    continue
+                if _looks_like_generated_placeholder_song(song):
+                    logger.info(
+                        "[MusicService] Skipping generated-placeholder music result: id=%s name=%s",
                         song.id,
                         song.name[:80],
                     )

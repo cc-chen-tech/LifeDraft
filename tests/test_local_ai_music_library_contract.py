@@ -615,13 +615,18 @@ def test_music_generate_and_async_routes_reuse_local_library_tracks(
             else:
                 os.environ[name] = value
 
-    assert sync_response.status_code == 200
-    sync_track = sync_response.json()["track"]
-    assert sync_track["asset_id"] == source_asset_id
-    assert sync_track["library_reused"] is True
-    assert sync_track["match_reason"] == "scene_fit"
-    assert "source_game_id" not in sync_track
-    assert "prompt_text" not in sync_track
+    assert sync_response.status_code == 202
+    sync_body = sync_response.json()
+    assert sync_body["status"] == "queued"
+    assert sync_body["game_id"] == sync_game_id
+    sync_playlist_response = client.get(f"/api/music/playlist/{sync_game_id}")
+    assert sync_playlist_response.status_code == 200
+    sync_playlist = sync_playlist_response.json()
+    assert sync_playlist["current_song"]["asset_id"] == source_asset_id
+    assert sync_playlist["current_song"]["library_reused"] is True
+    assert sync_playlist["current_song"]["match_reason"] == "scene_fit"
+    assert "source_game_id" not in sync_playlist["current_song"]
+    assert "prompt_text" not in sync_playlist["current_song"]
 
     assert async_response.status_code == 202
     assert async_playlist.status_code == 200
