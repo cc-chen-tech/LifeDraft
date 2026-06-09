@@ -127,6 +127,48 @@ class TestMakeChoiceEndpoint:
 
         assert response.status_code == 400
 
+    @patch("src.api.routers.gameplay.choices.get_db")
+    @patch("src.api.routers.gameplay.choices._require_session")
+    def test_choice_sync_returns_latest_result_when_choice_already_processed(
+        self, mock_require, mock_get_db, client
+    ):
+        """重复 choice-sync 不应让已完成的选择卡在恢复/备用模式。"""
+        mock_session = MagicMock()
+        mock_game_loop = MagicMock()
+        mock_game_loop.current_event = None
+        mock_session.game_loop = mock_game_loop
+        mock_require.return_value = mock_session
+
+        mock_db = MagicMock()
+        mock_db.load_saved_game.return_value = {
+            "round_history": [
+                {
+                    "event_description": "李诗涵在咖啡馆里摊开渠道资料。",
+                    "story_continuation": "你决定给陈思颖打电话确认明天的安排。",
+                    "summary": "你确认了创业推进的下一步。",
+                    "effects": {"energy": -5, "mood": 3},
+                    "effects_requested": {"energy": -5, "mood": 3},
+                    "resource_warnings": [],
+                    "event_concluded": False,
+                }
+            ]
+        }
+        mock_get_db.return_value = mock_db
+
+        response = client.post("/games/1/choice-sync", json={"option_index": 2})
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "story_continuation": "你决定给陈思颖打电话确认明天的安排。",
+            "summary": "你确认了创业推进的下一步。",
+            "effects_applied": {"energy": -5, "mood": 3},
+            "effects_requested": {"energy": -5, "mood": 3},
+            "resource_warnings": [],
+            "need_weekly_summary": False,
+            "weekly_summary": None,
+            "game_over": False,
+        }
+
 
 class TestCustomChoiceEndpoint:
     """测试自定义选择端点"""

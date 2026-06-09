@@ -9,7 +9,7 @@ This module provides endpoints for processing player choices:
 
 import asyncio
 import logging
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -21,6 +21,60 @@ from src.api.services.session_service import session_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _is_choice_already_processed(exc: HTTPException) -> bool:
+    detail = exc.detail
+    if isinstance(detail, dict):
+        return detail.get("error") == "choice_already_processed"
+    return "choice_already_processed" in str(detail)
+
+
+def _latest_processed_choice_result(state_data: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Build an idempotent choice-sync response from the latest saved round."""
+    round_history = state_data.get("round_history", []) if state_data else []
+    if not isinstance(round_history, list) or not round_history:
+        return None
+
+    latest = round_history[-1]
+    if not isinstance(latest, dict):
+        return None
+
+    story_continuation = latest.get("story_continuation")
+    summary = latest.get("summary")
+    if not isinstance(story_continuation, str) and not isinstance(summary, str):
+        return None
+
+    effects = latest.get("effects")
+    effects_requested = latest.get("effects_requested")
+    resource_warnings = latest.get("resource_warnings")
+
+    return {
+        "story_continuation": story_continuation if isinstance(story_continuation, str) else "",
+        "summary": summary if isinstance(summary, str) else "",
+        "effects_applied": effects if isinstance(effects, dict) else {},
+        "effects_requested": effects_requested if isinstance(effects_requested, dict) else (
+            effects if isinstance(effects, dict) else {}
+        ),
+        "resource_warnings": resource_warnings if isinstance(resource_warnings, list) else [],
+        "need_weekly_summary": False,
+        "weekly_summary": None,
+        "game_over": bool(state_data.get("game_over", False)) if state_data else False,
+    }
+
+
+def _restore_latest_processed_choice_result(
+    game_id: int, user_id: Optional[int]
+) -> Optional[Dict[str, Any]]:
+    db = get_db()
+    state_data = db.load_saved_game(game_id, user_id)  # type: ignore[arg-type]
+    result = _latest_processed_choice_result(state_data)
+    if result is not None:
+        logger.info(
+            "Returning latest processed choice result for duplicate sync request: game_id=%s",
+            game_id,
+        )
+    return result
 
 
 def _require_session(game_id: int, user_id: Optional[int]):
@@ -185,6 +239,10 @@ async def make_choice_sync(
     try:
         _restore_current_event_if_needed(game_loop, game_id, user_id)
     except HTTPException as exc:
+        if _is_choice_already_processed(exc):
+            result = _restore_latest_processed_choice_result(game_id, user_id)
+            if result is not None:
+                return result
         if user_id is None and exc.status_code == 400:
             raise HTTPException(status_code=422, detail=exc.detail)
         raise
@@ -230,6 +288,10 @@ async def make_custom_choice_sync(
     try:
         _restore_current_event_if_needed(game_loop, game_id, user_id)
     except HTTPException as exc:
+        if _is_choice_already_processed(exc):
+            result = _restore_latest_processed_choice_result(game_id, user_id)
+            if result is not None:
+                return result
         if user_id is None and exc.status_code == 400:
             raise HTTPException(status_code=422, detail=exc.detail)
         raise
