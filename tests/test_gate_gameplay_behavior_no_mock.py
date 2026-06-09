@@ -622,3 +622,58 @@ def test_round_event_retries_when_modern_story_drifts_into_cyberpunk_ip_world() 
     assert "上海办公室" in story_for_options
     assert "夜之城" not in story_for_options
     assert "荒坂" not in story_for_options
+
+
+def test_round_event_does_not_return_drift_story_after_quick_validation_retry_fails() -> None:
+    class AlwaysDriftClient:
+        def __init__(self):
+            self.calls = []
+
+        def call(self, **kwargs):
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                return (
+                    "夜之城的雨落在荒坂集团楼下，Viktor让V准备植入新的神经接口。"
+                    "马老板、方蕾、赵子豪又在旁边逼林见微接手苏州贸易公司的债务。"
+                )
+            return (
+                "荒坂集团的安保继续追着V穿过夜之城，马老板把欠条拍在诊所桌上，"
+                "方蕾和赵子豪要求林见微立刻处理一笔陌生债务。"
+            )
+
+    class UnusedOptionGenerator:
+        def generate_options_only(self, **kwargs):
+            raise AssertionError("drift story should not be passed to option generation")
+
+    event = StoryGenerator(AlwaysDriftClient()).generate_round_event(
+        player_state={
+            "game_id": 10,
+            "player_name": "林见微",
+            "age": 25,
+            "week": 1,
+            "current_round": 0,
+        },
+        language="zh",
+        round_number=0,
+        round_context="现代上海互联网公司，产品经理新人的第一周。",
+        character_settings={
+            "era": {"year": 2024, "era_description": "2024年中国现代都市"},
+            "world": {"world_description": "现实中的上海互联网公司，普通产品经理成长线"},
+            "career": {"occupation": "产品经理"},
+            "relationships": {
+                "key_people": [
+                    {"name": "陆昊然", "role": "导师"},
+                    {"name": "陈晓雨", "role": "闺蜜"},
+                    {"name": "林一凡", "role": "同期"},
+                ]
+            },
+        },
+        option_generator=UnusedOptionGenerator(),
+    )
+
+    assert len(event.event_description) > 20
+    assert "夜之城" not in event.event_description
+    assert "荒坂" not in event.event_description
+    assert "Viktor" not in event.event_description
+    assert "马老板" not in event.event_description
+    assert "林见微" in event.event_description

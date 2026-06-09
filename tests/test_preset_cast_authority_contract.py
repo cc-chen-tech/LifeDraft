@@ -5,7 +5,11 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
-from config.prompts.story_prompts import get_round_event_prompt, get_story_only_prompt
+from config.prompts.story_prompts import (
+    get_result_generation_prompt,
+    get_round_event_prompt,
+    get_story_only_prompt,
+)
 from src.ai.models import EventOption, GameEvent
 from src.game.round.event_generator import RoundEventGenerator
 from src.game.world_model import WorldModel
@@ -120,6 +124,28 @@ def test_round_event_prompt_injects_required_cast_authority() -> None:
     assert "同期" in prompt
     assert "不得改名" in prompt
     assert "不得替换" in prompt
+
+
+def test_choice_result_prompt_injects_required_cast_authority_and_world_boundary() -> None:
+    prompt = get_result_generation_prompt(
+        event_description="林清刚结束需求评审，陆昊然在会议室门口等她复盘。",
+        chosen_option="和陆昊然复盘需求优先级",
+        effects={"knowledge": 5, "relationships": {"陆昊然": 3}},
+        language="zh",
+        character_settings=_modern_product_manager_settings(),
+    )
+
+    assert "预设关键人物" in prompt
+    assert "陆昊然" in prompt
+    assert "导师" in prompt
+    assert "陈晓雨" in prompt
+    assert "林一凡" in prompt
+    assert "不得改名" in prompt
+    assert "不得替换" in prompt
+    assert "现实主义世界边界" in prompt
+    assert "禁止赛博朋克" in prompt
+    assert "夜之城" in prompt
+    assert "荒坂集团" in prompt
 
 
 def test_scheduled_event_prompt_inherits_story_authority_constraints() -> None:
