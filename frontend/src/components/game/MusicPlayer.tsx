@@ -494,6 +494,7 @@ export function MusicPlayer({
 
   const displaySong = currentSong || recommendation?.songs[0] || null;
   const sourceLabel = getMusicSourceLabel(displaySong?.source);
+  const hasRecommendationSongs = Boolean(recommendation?.songs.length);
 
   // 格式化时间
   const formatTime = (seconds: number) => {
@@ -634,7 +635,7 @@ export function MusicPlayer({
       )}
 
       {/* 播放器 */}
-      {recommendation && recommendation.songs.length > 0 && (
+      {displaySong && (
         <div className="space-y-3">
           {/* 当前歌曲信息 */}
           <div className="text-sm">
@@ -680,7 +681,7 @@ export function MusicPlayer({
                 size="icon"
                 className="h-8 w-8"
                 onClick={playPrev}
-                disabled={!recommendation.songs.length}
+                disabled={!hasRecommendationSongs}
                 title="上一首"
                 aria-label="上一首"
               >
@@ -691,7 +692,7 @@ export function MusicPlayer({
                 size="icon"
                 className="h-10 w-10"
                 onClick={togglePlay}
-                disabled={!recommendation.songs.length}
+                disabled={!audioElement && !hasRecommendationSongs}
                 title={isPlaying ? "暂停" : "播放"}
                 aria-label={isPlaying ? "暂停" : "播放"}
               >
@@ -706,7 +707,7 @@ export function MusicPlayer({
                 size="icon"
                 className="h-8 w-8"
                 onClick={playNext}
-                disabled={!recommendation.songs.length}
+                disabled={!hasRecommendationSongs}
                 title="下一首"
                 aria-label="下一首"
               >
@@ -740,7 +741,7 @@ export function MusicPlayer({
           </div>
 
           {/* 歌曲列表 */}
-          {recommendation.songs.length > 1 && (
+          {recommendation && recommendation.songs.length > 1 && (
             <div className="mt-3 pt-3 border-t">
               <div className="text-xs text-muted-foreground mb-2 flex items-center justify-between">
                 <span>推荐歌曲 ({recommendation.songs.length}首)</span>

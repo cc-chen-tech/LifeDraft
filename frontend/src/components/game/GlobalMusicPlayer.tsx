@@ -79,7 +79,16 @@ export function GlobalMusicPlayer() {
   const songName = currentSong?.name || recommendation?.songs?.[0]?.name || "";
   const artistName = currentSong?.artists?.join(", ") || "";
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
-  const soundStatus = artistName || (readingState === "idle" ? "音乐与朗读" : "故事朗读中");
+  const soundTitle = songName || "声音";
+  const soundStatus =
+    artistName ||
+    (readingState === "loading"
+      ? "正在准备朗读"
+      : readingState === "playing"
+        ? "正在朗读故事"
+        : readingState === "paused"
+          ? "朗读已暂停"
+          : "音乐与朗读");
 
   // Handle play/pause from the mini bar.
   // If audioElement exists, use store.togglePlay (direct control).
@@ -118,9 +127,6 @@ export function GlobalMusicPlayer() {
             <div className="flex items-center gap-2 text-sm font-medium">
               <Volume2 className="h-4 w-4 text-primary" />
               声音
-            </div>
-            <div className="mt-0.5 text-xs text-muted-foreground">
-              场景音乐和故事朗读统一在这里控制
             </div>
           </div>
 
@@ -178,17 +184,21 @@ export function GlobalMusicPlayer() {
           }}
           className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-primary text-primary-foreground"
         >
-          {isPlaying ? (
-            <Pause className="w-4 h-4" />
+          {audioElement ? (
+            isPlaying ? (
+              <Pause className="w-4 h-4" />
+            ) : (
+              <Play className="w-4 h-4 ml-0.5" />
+            )
           ) : (
-            <Play className="w-4 h-4 ml-0.5" />
+            <Volume2 className="w-4 h-4" />
           )}
         </button>
 
         {/* Song info */}
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium truncate">
-          {songName || "等待音乐..."}
+            {soundTitle}
           </div>
           <div className="text-xs text-muted-foreground truncate">
             {soundStatus}

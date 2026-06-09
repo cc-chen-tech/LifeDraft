@@ -119,7 +119,7 @@ describe("GlobalMusicPlayer", () => {
       });
 
       render(<GlobalMusicPlayer />);
-      expect(screen.getByText("等待音乐...")).toBeInTheDocument();
+      expect(within(screen.getByTestId("global-music-mini-bar")).getByText("声音")).toBeInTheDocument();
     });
 
     it("renders when there is a persisted recommendation", () => {
@@ -156,7 +156,7 @@ describe("GlobalMusicPlayer", () => {
       });
 
       render(<GlobalMusicPlayer />);
-      expect(screen.getByText("等待音乐...")).toBeInTheDocument();
+      expect(within(screen.getByTestId("global-music-mini-bar")).getByText("声音")).toBeInTheDocument();
     });
   });
 
@@ -236,7 +236,7 @@ describe("GlobalMusicPlayer", () => {
       expect(screen.getByText("Artist A, Artist B")).toBeInTheDocument();
     });
 
-    it("shows waiting text when no song is selected", () => {
+    it("labels the collapsed control as sound instead of music-only waiting text", () => {
       setStoreState({
         activeStoryText: "story text",
         recommendation: {
@@ -246,7 +246,10 @@ describe("GlobalMusicPlayer", () => {
       });
 
       render(<GlobalMusicPlayer />);
-      expect(screen.getByText("等待音乐...")).toBeInTheDocument();
+      const miniBar = within(screen.getByTestId("global-music-mini-bar"));
+      expect(miniBar.getByText("声音")).toBeInTheDocument();
+      expect(miniBar.getByText("音乐与朗读")).toBeInTheDocument();
+      expect(screen.queryByText("等待音乐...")).not.toBeInTheDocument();
     });
 
     it("shows play button when not playing", () => {
@@ -271,6 +274,42 @@ describe("GlobalMusicPlayer", () => {
 
       expect(screen.getByRole("button", { name: "打开声音面板" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "展开声音面板" })).toBeInTheDocument();
+    });
+
+    it("does not use explanatory copy inside the sound panel", async () => {
+      const user = userEvent.setup();
+      setStoreState({ activeStoryText: "story text" });
+
+      render(<GlobalMusicPlayer />);
+
+      await user.click(screen.getByRole("button", { name: "展开声音面板" }));
+
+      expect(screen.getByRole("region", { name: "声音面板" })).toBeInTheDocument();
+      expect(screen.queryByText("场景音乐和故事朗读统一在这里控制")).not.toBeInTheDocument();
+    });
+
+    it("shows persisted current music inside the expanded music section", async () => {
+      const user = userEvent.setup();
+      setStoreState({
+        activeStoryText: null,
+        recommendation: null,
+        currentSong: {
+          id: 9101,
+          name: "全局音乐夹具",
+          artists: ["测试"],
+          album: "回归夹具",
+          duration: 120,
+          source: "netease",
+        },
+      });
+
+      render(<GlobalMusicPlayer />);
+
+      await user.click(screen.getByRole("button", { name: "展开声音面板" }));
+
+      const musicSection = screen.getByTestId("sound-music-section");
+      expect(within(musicSection).getByText("全局音乐夹具")).toBeInTheDocument();
+      expect(within(musicSection).getByText("测试 · 回归夹具")).toBeInTheDocument();
     });
 
     it("shows pause button when playing", () => {
@@ -339,8 +378,7 @@ describe("GlobalMusicPlayer", () => {
       setStoreState({ activeStoryText: "story text" });
 
       render(<GlobalMusicPlayer />);
-      // In collapsed state, there should be a chevron-up icon
-      expect(screen.getByText("等待音乐...")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "展开声音面板" })).toBeInTheDocument();
     });
 
     it("toggles expanded state when clicking mini bar", async () => {
@@ -349,7 +387,7 @@ describe("GlobalMusicPlayer", () => {
 
       render(<GlobalMusicPlayer />);
 
-      const miniBar = screen.getByText("等待音乐...").closest(".cursor-pointer");
+      const miniBar = screen.getByTestId("global-music-mini-bar");
       await user.click(miniBar!);
 
       // MusicPlayer always mounted, expanded after click
@@ -367,7 +405,7 @@ describe("GlobalMusicPlayer", () => {
 
       render(<GlobalMusicPlayer />);
       // Component should render without errors
-      expect(screen.getByText("等待音乐...")).toBeInTheDocument();
+      expect(within(screen.getByTestId("global-music-mini-bar")).getByText("声音")).toBeInTheDocument();
     });
 
     it("calculates progress percentage correctly", () => {
