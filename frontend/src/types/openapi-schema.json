@@ -4136,7 +4136,25 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MusicGenerationResponse"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MusicGenerationResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MusicGenerationEnqueueResponse"
+                    }
+                  ],
+                  "title": "Response Generate Music Api Music Generate Post"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MusicGenerationEnqueueResponse"
                 }
               }
             }

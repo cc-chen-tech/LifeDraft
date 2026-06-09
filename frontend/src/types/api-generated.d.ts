@@ -6001,7 +6001,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MusicGenerationResponse"];
+                    "application/json": components["schemas"]["MusicGenerationResponse"] | components["schemas"]["MusicGenerationEnqueueResponse"];
+                };
+            };
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MusicGenerationEnqueueResponse"];
                 };
             };
             /** @description Validation Error */
