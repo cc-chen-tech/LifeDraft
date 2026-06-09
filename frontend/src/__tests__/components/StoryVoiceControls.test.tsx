@@ -1,6 +1,6 @@
 import React from 'react';
 import { webcrypto } from 'node:crypto';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StoryVoiceControls } from '@/components/game/StoryVoiceControls';
 import type { ReadingContext } from '@/lib/types';
@@ -130,6 +130,24 @@ describe('StoryVoiceControls', () => {
     expect(screen.queryByText(/高质量 TTS 声音模型接入后可用/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Job:/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Audio:/)).not.toBeInTheDocument();
+  });
+
+  it('renders embedded narration controls as a grouped sound module', () => {
+    render(
+      <StoryVoiceControls
+        currentContext={currentContext}
+        enablePlaybackControls
+        compact
+        embedded
+      />
+    );
+
+    const module = screen.getByTestId('story-voice-embedded-module');
+    expect(within(module).getByTestId('voice-primary-controls')).toBeInTheDocument();
+    expect(within(module).getByTestId('voice-settings-row')).toBeInTheDocument();
+    expect(within(module).getByRole('button', { name: '朗读故事' })).toBeInTheDocument();
+    expect(within(module).getByRole('combobox', { name: '选择朗读声音' })).toBeInTheDocument();
+    expect(within(module).getByRole('checkbox', { name: '自动朗读' })).toBeInTheDocument();
   });
 
   it('disables reading while the current story is still generating', () => {

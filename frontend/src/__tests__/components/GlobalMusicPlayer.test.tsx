@@ -224,6 +224,33 @@ describe("GlobalMusicPlayer", () => {
       expect(readingSection).not.toHaveClass("border-t");
     });
 
+    it("uses one card-based sound mixer instead of stacked standalone toolbars", async () => {
+      const user = userEvent.setup();
+      setStoreState({
+        activeStoryText: "story text",
+        currentSong: { id: 2, name: "Playing Song", artists: ["Artist"], album: "", duration: 200 },
+      });
+      useStoryVoiceStore.setState({
+        activeReadingContext,
+        activeAutoReadText: activeReadingContext.text,
+        activeAutoReadReady: true,
+      } as never);
+
+      render(<GlobalMusicPlayer />);
+
+      await user.click(screen.getByRole("button", { name: "展开声音面板" }));
+
+      const panel = screen.getByTestId("unified-sound-panel");
+      const musicSection = within(panel).getByTestId("sound-music-section");
+      const readingSection = within(panel).getByTestId("sound-reading-section");
+
+      expect(panel).toHaveClass("space-y-3");
+      expect(panel).not.toHaveClass("divide-y");
+      expect(musicSection).toHaveClass("rounded-lg");
+      expect(readingSection).toHaveClass("rounded-lg");
+      expect(within(readingSection).getByTestId("story-voice-embedded-module")).toBeInTheDocument();
+    });
+
     it("stays below the app header on desktop so it cannot cover header controls or the chat launcher", () => {
       setStoreState({ activeStoryText: "story text" });
 
