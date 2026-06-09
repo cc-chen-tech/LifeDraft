@@ -385,11 +385,11 @@ export function usePlayGame() {
   // 当轮次变化时，获取当前轮次的场景插画
   // ★ 根据 phase 决定获取哪个 stage 的插画
   useEffect(() => {
-    const canFetchScene = phase === 'options' || phase === 'result';
+    const canFetchScene = phase === 'options' || phase === 'result' || phase === 'summary';
     const hasRenderableStory = Boolean(storyText || currentEvent?.story);
     if (gameId && currentRound >= 0 && canFetchScene && hasRenderableStory) {
       const stage = phase === 'options' ? 'event' : 'result';
-      const sceneRound = phase === 'result' ? Math.max(0, currentRound - 1) : currentRound;
+      const sceneRound = phase === 'result' || phase === 'summary' ? Math.max(0, currentRound - 1) : currentRound;
       fetchRoundSceneImage(sceneRound, stage);
     }
   }, [gameId, currentRound, phase, storyText, currentEvent, fetchRoundSceneImage]);
