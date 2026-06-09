@@ -448,11 +448,27 @@ def _matches_negative_cue(text: str, negative_cues: Sequence[str]) -> bool:
         normalized = str(cue).strip().casefold()
         if not normalized:
             continue
-        if normalized in text:
+        if normalized in text and not _cue_is_negated_in_candidate_text(normalized, text):
             return True
     if any(str(cue).casefold() in {"人声", "歌词", "流行人声", "no vocals", "no lyrics"} for cue in negative_cues):
         vocal_pop_cues = ["告白", "情歌", "甜蜜流行", "流行", "vocal", "lyrics", "dj"]
-        return any(cue in text for cue in vocal_pop_cues)
+        return any(
+            cue in text and not _cue_is_negated_in_candidate_text(cue, text)
+            for cue in vocal_pop_cues
+        )
+    return False
+
+
+def _cue_is_negated_in_candidate_text(cue: str, text: str) -> bool:
+    compact_text = re.sub(r"[\s\-—_·.。…!！?？,，、:：;；'\"“”‘’《》\[\]【】/\\]+", "", text)
+    if cue == "歌词":
+        return "无歌词" in compact_text or "没有歌词" in compact_text or "纯音乐" in compact_text
+    if cue == "人声":
+        return "无人声" in compact_text or "没有人声" in compact_text or "纯音乐" in compact_text
+    if cue in {"lyrics", "lyric"}:
+        return "nolyrics" in compact_text or "instrumental" in compact_text
+    if cue in {"vocal", "vocals"}:
+        return "novocal" in compact_text or "novocals" in compact_text or "instrumental" in compact_text
     return False
 
 

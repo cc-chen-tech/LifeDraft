@@ -9,6 +9,13 @@ The system SHALL remove NetEase search results whose title, artist, album, or kn
 - **WHEN** a gameplay background music brief requests no vocals or includes negative cues such as `人声`, `歌词`, `情歌`, or `流行人声`
 - **THEN** search results from reported vocal-pop title families such as `绅士`, `红尘客栈`, `非你莫属`, and `给我一首歌的时间` MUST NOT enter the verified recommendation pool
 
+#### Scenario: Anime opening metadata is rejected for no-vocal background briefs
+
+- **WHEN** a gameplay background music brief requests no vocals or no lyrics
+- **AND** search results contain Anime/ACG/J-pop opening metadata such as `TV动画 OP`, `Anime Opening`, or `J-POP`
+- **THEN** those vocal-opening results MUST NOT enter the verified recommendation pool
+- **AND** explicit instrumental metadata such as `无歌词`, `No Lyrics`, or `Instrumental` MUST remain eligible when it otherwise matches the scene.
+
 ### Requirement: Recommended playlists dedupe by title family
 
 The system SHALL dedupe music recommendations by both provider id and normalized title family before persisting the current/future queue.

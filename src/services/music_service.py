@@ -274,6 +274,21 @@ REPORTED_MEME_TITLE_CUES = {
     "功夫鸡",
 }
 
+GENERIC_VOCAL_CATEGORY_CUES = {
+    "动画op",
+    "动画片头",
+    "动漫op",
+    "动漫片头",
+    "日语动画",
+    "日语op",
+    "acg",
+    "anime",
+    "animeopening",
+    "jpop",
+    "j-pop",
+    "vocalopening",
+}
+
 
 def _dedupe_text(items: Sequence[str]) -> List[str]:
     deduped: List[str] = []
@@ -360,6 +375,19 @@ def _brief_requests_no_vocal(brief: "MusicBrief") -> bool:
     return any(cue.casefold() in text for cue in GENERIC_NO_VOCAL_NEGATIVE_CUES)
 
 
+def _cue_is_negated_in_music_text(cue: str, text: str) -> bool:
+    compact_text = re.sub(r"[\s\-—_·.。…!！?？,，、:：;；'\"“”‘’《》\[\]【】/\\]+", "", text)
+    if cue == "歌词":
+        return "无歌词" in compact_text or "没有歌词" in compact_text or "纯音乐" in compact_text
+    if cue == "人声":
+        return "无人声" in compact_text or "没有人声" in compact_text or "纯音乐" in compact_text
+    if cue in {"lyrics", "lyric"}:
+        return "nolyrics" in compact_text or "instrumental" in compact_text
+    if cue in {"vocal", "vocals"}:
+        return "novocal" in compact_text or "novocals" in compact_text or "instrumental" in compact_text
+    return False
+
+
 def _matches_negative_music_cue(
     song: "MusicTrack",
     negative_cues: Sequence[str],
@@ -367,8 +395,10 @@ def _matches_negative_music_cue(
 ) -> bool:
     """Reject playable search results that contradict the story's music brief."""
     text = " ".join([song.name, song.album, *song.artists]).casefold()
-    if any(cue and str(cue).casefold() in text for cue in negative_cues):
-        return True
+    for cue in negative_cues:
+        normalized = str(cue).strip().casefold()
+        if normalized and normalized in text and not _cue_is_negated_in_music_text(normalized, text):
+            return True
 
     if not strict_no_vocal and not any(
         str(cue).casefold() in GENERIC_NO_VOCAL_NEGATIVE_CUES for cue in negative_cues
@@ -380,6 +410,10 @@ def _matches_negative_music_cue(
         canonical_cue = _canonical_music_title(cue)
         if canonical_cue and (canonical_title == canonical_cue or canonical_cue in canonical_title):
             return True
+
+    compact_text = re.sub(r"[\s\-—_·.。…!！?？,，、:：;；'\"“”‘’《》\[\]【】/\\]+", "", text)
+    if any(cue in compact_text for cue in GENERIC_VOCAL_CATEGORY_CUES):
+        return True
 
     return any(cue.casefold() in text for cue in REPORTED_MEME_TITLE_CUES)
 
