@@ -56,6 +56,8 @@ function SheetContent({
   overlayClassName?: string
   showCloseButton?: boolean
 }) {
+  const needsFallbackDescription = !hasSheetDescription(children)
+
   return (
     <SheetPortal>
       <SheetOverlay className={overlayClassName} />
@@ -75,6 +77,11 @@ function SheetContent({
         )}
         {...props}
       >
+        {needsFallbackDescription && (
+          <SheetPrimitive.Description className="sr-only">
+            Sheet content
+          </SheetPrimitive.Description>
+        )}
         {children}
         {showCloseButton && (
           <SheetPrimitive.Close className="ring-offset-background focus:ring-ring data-[state=open]:bg-secondary absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none">
@@ -85,6 +92,28 @@ function SheetContent({
       </SheetPrimitive.Content>
     </SheetPortal>
   )
+}
+
+function hasSheetDescription(children: React.ReactNode): boolean {
+  let found = false
+
+  React.Children.forEach(children, (child) => {
+    if (found || !React.isValidElement(child)) {
+      return
+    }
+
+    if (child.type === SheetDescription) {
+      found = true
+      return
+    }
+
+    const props = child.props as { children?: React.ReactNode }
+    if (props.children && hasSheetDescription(props.children)) {
+      found = true
+    }
+  })
+
+  return found
 }
 
 function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
