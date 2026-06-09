@@ -294,6 +294,8 @@ export default function CreatePage() {
                   className="h-10 w-10"
                   onClick={handleRegenerate}
                   disabled={isGenerating}
+                  aria-label={`重新生成${STEP_LABELS[currentStepKey]}`}
+                  title={`重新生成${STEP_LABELS[currentStepKey]}`}
                 >
                   <RefreshCw className="w-4 h-4" />
                 </Button>

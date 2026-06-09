@@ -1034,4 +1034,22 @@ describe('CreatePage', () => {
       expect(buttons.length).toBeGreaterThan(0);
     });
   });
+
+  describe('Accessibility', () => {
+    it('gives the inline setting regenerate icon button an accessible name', () => {
+      useGameStore.setState({
+        creationStep: 1,
+        characterSettings: {
+          era: { era_name: '现代' },
+          age: { starting_age: 28 },
+        },
+        playerName: 'TestPlayer',
+        gameId: 1,
+      });
+
+      render(<CreatePage />);
+
+      expect(screen.getByRole('button', { name: '重新生成年龄阶段' })).toBeInTheDocument();
+    });
+  });
 });
