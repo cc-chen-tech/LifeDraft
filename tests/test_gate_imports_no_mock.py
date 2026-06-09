@@ -35,6 +35,8 @@ def test_gameplay_lazy_import_paths_are_reachable() -> None:
         ("src.ai.story_generator", "StoryGenerator"),
         ("src.game.round.event_generator", "RoundEventGenerator"),
         ("src.game.round.choice_processor", "RoundChoiceProcessor"),
+        ("src.game.relationship_authority", "build_required_cast_constraints"),
+        ("src.game.relationship_authority", "extract_required_key_people"),
         ("src.game.world_model", "WorldModel"),
         ("src.game.world_model_updater", "WorldModelUpdater"),
     ]

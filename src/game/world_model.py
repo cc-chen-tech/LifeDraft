@@ -10,6 +10,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from src.game.relationship_authority import build_required_cast_constraints, extract_required_key_people
+
 logger = logging.getLogger(__name__)
 
 
@@ -270,6 +272,7 @@ class WorldModel:
         # ★ 新增字段：位置图谱与角色知识集
         self.location_graph: Dict[str, Dict[str, int]] = {}  # {"城市A": {"城市B": 2, "城市C": 3}}
         self.character_knowledge_sets: Dict[str, set] = {}  # {"角色A": {"秘密1", "事件2"}}
+        self.required_cast: List[Dict[str, str]] = []
 
     # -------------------- Factory --------------------
 
@@ -288,6 +291,7 @@ class WorldModel:
         cs = player_state.character_settings or {}
         era_info = cs.get("era", {})
         wm.era = era_info.get("era_description", "modern")
+        wm.required_cast = extract_required_key_people(cs)
 
         # ---------- Read new structured data ----------
         wmd: Dict[str, Any] = getattr(player_state, "world_model_data", None) or {}
@@ -563,6 +567,11 @@ class WorldModel:
         if profile_lines:
             sections.append(profile_lines)
 
+        # --- Preset Key People Relationships ---
+        required_cast_lines = self._build_required_cast_constraints("zh" if zh else "en")
+        if required_cast_lines:
+            sections.append(required_cast_lines)
+
         if not sections:
             return ""
 
@@ -584,6 +593,14 @@ class WorldModel:
         )
 
         return header + "\n" + "\n".join(sections) + "\n" + footer
+
+    def _build_required_cast_constraints(self, language: str) -> str:
+        if not self.required_cast:
+            return ""
+        return build_required_cast_constraints(
+            {"relationships": {"key_people": self.required_cast}},
+            language,
+        )
 
     def _build_location_constraints(self, zh: bool) -> str:
         if not self.character_locations:
@@ -982,6 +999,7 @@ class WorldModel:
             "dynamic_facts": [df.to_dict() for df in self.dynamic_facts if hasattr(df, "to_dict")],
             "character_profiles": {n: cp.to_dict() for n, cp in self.character_profiles.items()},
             "location_graph": self.location_graph,
+            "required_cast": self.required_cast,
             "character_knowledge_sets": {
                 n: list(ks) for n, ks in self.character_knowledge_sets.items()
             },
