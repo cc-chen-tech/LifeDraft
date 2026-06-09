@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -141,18 +142,25 @@ export default function WelcomePage() {
         <Button
           variant={hasActiveGame ? "outline" : "default"}
           className="w-full h-14 text-base touch-target"
-          onClick={() => {
-            if (!isAuthenticated) {
-              setAuthMode("register");
-            } else {
-              // ★ 清空之前的角色创建数据
-              resetCreation();
-              router.push("/create");
-            }
-          }}
+          asChild={isAuthenticated}
+          onClick={isAuthenticated ? undefined : () => setAuthMode("register")}
         >
-          <Sparkles className="w-5 h-5 mr-2" />
-          新游戏
+          {isAuthenticated ? (
+            <Link
+              href="/create"
+              role="button"
+              aria-label="新游戏"
+              onClick={resetCreation}
+            >
+              <Sparkles className="w-5 h-5 mr-2" />
+              新游戏
+            </Link>
+          ) : (
+            <>
+              <Sparkles className="w-5 h-5 mr-2" />
+              新游戏
+            </>
+          )}
         </Button>
 
         <Button

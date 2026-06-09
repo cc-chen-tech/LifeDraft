@@ -330,7 +330,8 @@ describe('WelcomePage', () => {
       await user.click(screen.getByRole('button', { name: /新游戏/i }));
 
       expect(gameSpy.spies.resetCreation).toHaveBeenCalled();
-      expect(mockPush).toHaveBeenCalledWith('/create');
+      expect(screen.getByRole('button', { name: /新游戏/i })).toHaveAttribute('href', '/create');
+      expect(mockPush).not.toHaveBeenCalled();
     });
 
     it('navigates to /saves when clicking "加载存档"', async () => {
