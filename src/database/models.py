@@ -417,12 +417,81 @@ class GeneratedMusicAsset(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     game = relationship("Game")
+    library_entry = relationship(
+        "GeneratedMusicLibraryEntry",
+        back_populates="asset",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
 
     __table_args__ = (
         Index(
             "ix_generated_music_asset_brief_provider",
             "brief_hash",
             "provider",
+        ),
+    )
+
+
+class GeneratedMusicLibraryEntry(Base):
+    """Sanitized searchable profile for a ready AI-generated music asset."""
+
+    __tablename__ = "generated_music_library_entries"
+
+    entry_id = Column(Integer, primary_key=True, autoincrement=True)
+    asset_id = Column(
+        Integer,
+        ForeignKey("generated_music_assets.asset_id"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    source_game_id = Column(Integer, ForeignKey("games.game_id"), nullable=False, index=True)
+    provider = Column(String(80), nullable=False, index=True)
+    model = Column(String(120), nullable=False, index=True)
+    status = Column(String(30), nullable=False, index=True)
+    mood = Column(String(120), nullable=False, index=True)
+    scene_type = Column(String(160), nullable=False, index=True)
+    environment = Column(String(240), nullable=False, index=True)
+    pacing = Column(String(80), nullable=False)
+    energy = Column(String(80), nullable=False, index=True)
+    instruments_json = Column(JSON, nullable=False)
+    negative_cues_json = Column(JSON, nullable=False)
+    generation_settings_json = Column(JSON, nullable=False)
+    prompt_fingerprint = Column(String(128), nullable=False, index=True)
+    duration_ms = Column(Integer, nullable=False)
+    loopable = Column(Boolean, default=True, nullable=False, index=True)
+    usage_count = Column(Integer, default=0, nullable=False)
+    last_used_at = Column(DateTime, nullable=True)
+    last_used_game_id = Column(Integer, ForeignKey("games.game_id"), nullable=True, index=True)
+    last_match_score = Column(Integer, nullable=True)
+    last_match_reason = Column(String(120), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    asset = relationship("GeneratedMusicAsset", back_populates="library_entry")
+    source_game = relationship("Game", foreign_keys=[source_game_id])
+    last_used_game = relationship("Game", foreign_keys=[last_used_game_id])
+
+    __table_args__ = (
+        Index(
+            "ix_music_library_lookup",
+            "status",
+            "provider",
+            "model",
+            "scene_type",
+            "mood",
+            "energy",
+        ),
+        Index(
+            "ix_music_library_loopable_duration",
+            "loopable",
+            "duration_ms",
+        ),
+        Index(
+            "ix_music_library_status_updated",
+            "status",
+            "updated_at",
         ),
     )
 

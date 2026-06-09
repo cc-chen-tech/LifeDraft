@@ -18,6 +18,12 @@ export interface Song {
   provider?: string;
   model?: string;
   brief_hash?: string;
+  library_reused?: boolean;
+  match_score?: number;
+  match_reason?: string;
+  fit_score?: number;
+  prompt_version?: string;
+  scene_fit_diagnostics?: Record<string, unknown>;
 }
 
 export interface MusicRecommendation {
