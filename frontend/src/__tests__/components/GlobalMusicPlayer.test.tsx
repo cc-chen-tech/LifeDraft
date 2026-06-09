@@ -20,6 +20,7 @@ import { fetchMusicRecommendation, useMusicStore } from "@/stores/useMusicStore"
 import { useStoryVoiceStore } from "@/stores/useStoryVoiceStore";
 import { GlobalMusicPlayer } from "@/components/game/GlobalMusicPlayer";
 import type { ReadingContext } from "@/lib/types";
+import { jsonResponse } from "@/__tests__/helpers/fetch";
 
 const activeReadingContext: ReadingContext = {
   source_type: "current_story",
@@ -55,6 +56,15 @@ describe("GlobalMusicPlayer", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     localStorage.clear();
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.includes("/voice-reading/settings")) {
+        return Promise.resolve(jsonResponse({
+          auto_read_enabled: false,
+          selected_voice_color: "warm_female",
+        }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
     useMusicStore.setState({
       playlistGameId: null,
       currentSong: null as never,
@@ -274,6 +284,54 @@ describe("GlobalMusicPlayer", () => {
 
       expect(screen.getByRole("button", { name: "打开声音面板" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "展开声音面板" })).toBeInTheDocument();
+    });
+
+    it("exposes music and narration as sibling controls while collapsed", () => {
+      const fakeAudio = {
+        pause: jest.fn(),
+        play: jest.fn(),
+        ended: false,
+        src: "",
+        currentTime: 0,
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+      } as unknown as HTMLAudioElement;
+      setStoreState({
+        activeStoryText: "story text",
+        audioElement: fakeAudio,
+        isPlaying: false,
+      });
+      useStoryVoiceStore.setState({
+        activeReadingContext,
+        activeAutoReadText: activeReadingContext.text,
+        activeAutoReadReady: true,
+      } as never);
+
+      render(<GlobalMusicPlayer />);
+
+      const miniBar = within(screen.getByTestId("global-music-mini-bar"));
+      expect(miniBar.getByRole("button", { name: "播放音乐" })).toBeInTheDocument();
+      expect(miniBar.getByRole("button", { name: "朗读故事" })).toBeInTheDocument();
+      expect(miniBar.getByRole("button", { name: "展开声音面板" })).toBeInTheDocument();
+    });
+
+    it("starts narration from the collapsed sound bar without forcing the user to open settings", async () => {
+      const user = userEvent.setup();
+      const startReading = jest.fn().mockResolvedValue(undefined);
+      setStoreState({ activeStoryText: "story text" });
+      useStoryVoiceStore.setState({
+        activeReadingContext,
+        activeAutoReadText: activeReadingContext.text,
+        activeAutoReadReady: true,
+        startReading,
+      } as never);
+
+      render(<GlobalMusicPlayer />);
+
+      await user.click(screen.getByRole("button", { name: "朗读故事" }));
+
+      expect(startReading).toHaveBeenCalledWith(activeReadingContext);
+      expect(screen.queryByRole("region", { name: "声音面板" })).not.toBeInTheDocument();
     });
 
     it("does not use explanatory copy inside the sound panel", async () => {

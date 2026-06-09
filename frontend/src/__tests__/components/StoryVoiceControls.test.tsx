@@ -176,6 +176,25 @@ describe('StoryVoiceControls', () => {
     expect(screen.getByRole('button', { name: '停止' })).toBeInTheDocument();
   });
 
+  it('does not show a stop action when backend audio is only ready to play', async () => {
+    (window.HTMLMediaElement.prototype.play as jest.Mock).mockRejectedValue(
+      new DOMException('autoplay blocked', 'NotAllowedError')
+    );
+    useStoryVoiceStore.setState({
+      readingState: 'ready',
+      currentSource: 'current_story',
+      currentAudioUrl: '/api/voice-reading/audio/job-1.mp3',
+      playbackMode: 'audio',
+    });
+
+    render(<StoryVoiceControls currentContext={currentContext} enablePlaybackControls compact />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '播放语音' })).toBeEnabled();
+      expect(screen.queryByRole('button', { name: '停止' })).not.toBeInTheDocument();
+    });
+  });
+
   it('keeps retry available when a failed audio attempt later emits ended', () => {
     render(<StoryVoiceControls currentContext={currentContext} showTestControls />);
 

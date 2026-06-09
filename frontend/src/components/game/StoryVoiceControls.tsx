@@ -262,7 +262,7 @@ export function StoryVoiceControls({
               ? "重试朗读"
               : "朗读故事";
   const primaryReadDisabled = readingState === "loading" || !isStoryReady;
-  const showStopButton = ["loading", "ready", "playing", "paused"].includes(readingState);
+  const showStopButton = ["loading", "playing", "paused"].includes(readingState);
   const PrimaryIcon =
     readingState === "loading"
       ? Loader2
