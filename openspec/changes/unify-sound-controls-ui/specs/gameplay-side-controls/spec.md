@@ -14,12 +14,13 @@ The expanded global sound controls SHALL present scene music and story narration
 - **And** the embedded scene music controls SHALL not render their own outer card shell
 - **And** the embedded story narration controls SHALL not render as a separate region, bordered card, or separate top-divided control strip.
 
-#### Scenario: Expanded sound panel uses a mixer layout
+#### Scenario: Expanded sound panel uses a lightweight mixer layout
 - **Given** scene music and story narration are both available
 - **When** the user expands the global sound controls
-- **Then** the expanded surface SHALL use a single card-based sound mixer layout
-- **And** the scene music and story narration sections SHALL be visually grouped as sibling cards
-- **And** the panel SHALL NOT present music and narration as a `divide-y` stack of standalone toolbars.
+- **Then** the expanded surface SHALL use one sound mixer layout
+- **And** the scene music and story narration sections SHALL be visually grouped as sibling channel rows
+- **And** the channel rows SHALL use lightweight dividers instead of nested card borders or nested card backgrounds
+- **And** the panel SHALL NOT present music and narration as separate standalone toolbars.
 
 #### Scenario: Embedded narration controls are grouped
 - **Given** story narration controls are shown inside the expanded sound panel

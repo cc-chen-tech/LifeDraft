@@ -146,12 +146,12 @@ describe('StoryVoiceControls', () => {
       />
     );
 
-    const module = screen.getByTestId('story-voice-embedded-module');
-    expect(within(module).getByTestId('voice-primary-controls')).toBeInTheDocument();
-    expect(within(module).getByTestId('voice-settings-row')).toBeInTheDocument();
-    expect(within(module).getByRole('button', { name: '朗读故事' })).toBeInTheDocument();
-    expect(within(module).getByRole('combobox', { name: '选择朗读声音' })).toBeInTheDocument();
-    expect(within(module).getByRole('checkbox', { name: '自动朗读' })).toBeInTheDocument();
+    const embeddedModule = screen.getByTestId('story-voice-embedded-module');
+    expect(within(embeddedModule).getByTestId('voice-primary-controls')).toBeInTheDocument();
+    expect(within(embeddedModule).getByTestId('voice-settings-row')).toBeInTheDocument();
+    expect(within(embeddedModule).getByRole('button', { name: '朗读故事' })).toBeInTheDocument();
+    expect(within(embeddedModule).getByRole('combobox', { name: '选择朗读声音' })).toBeInTheDocument();
+    expect(within(embeddedModule).getByRole('checkbox', { name: '自动朗读' })).toBeInTheDocument();
   });
 
   it('disables reading while the current story is still generating', () => {

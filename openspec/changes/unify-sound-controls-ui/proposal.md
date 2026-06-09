@@ -7,8 +7,8 @@ Music playback and story narration are both sound features, but production UI ha
 ## What Changes
 
 - Present the expanded global sound panel as one unified surface.
-- Make music and narration peer sections inside that surface.
-- Render embedded story narration controls as a compact row inside the expanded sound panel instead of a standalone bordered card.
+- Make music and narration peer channel rows inside that surface, separated by lightweight dividers instead of nested cards.
+- Render embedded story narration controls as a compact channel inside the expanded sound panel instead of a standalone bordered card or toolbar.
 - Keep the collapsed sound bar simple: one primary sound control and one expand/collapse control. Manual narration controls live in the expanded panel.
 - Keep existing music playback, auto-read, voice selection, and provider-backed TTS behavior unchanged.
 

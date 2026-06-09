@@ -124,8 +124,8 @@ export function GlobalMusicPlayer() {
         role={isExpanded ? "region" : undefined}
         aria-label={isExpanded ? "声音面板" : undefined}
       >
-        <div data-testid="unified-sound-panel" className="space-y-3 p-3">
-          <div className="flex items-center justify-between gap-3 px-1">
+        <div data-testid="unified-sound-panel" className="divide-y divide-border/70 p-3">
+          <div className="flex items-center justify-between gap-3 pb-3 px-1">
             <div className="flex items-start gap-2">
               <Volume2 className="mt-0.5 h-4 w-4 text-primary" />
               <div className="min-w-0">
@@ -137,7 +137,7 @@ export function GlobalMusicPlayer() {
 
           <div
             data-testid="sound-music-section"
-            className="rounded-lg border border-border/70 bg-background/60 p-3"
+            className="py-3"
           >
             {storyText ? (
               <MusicPlayer
@@ -157,7 +157,7 @@ export function GlobalMusicPlayer() {
           {activeReadingContext && (
             <div
               data-testid="sound-reading-section"
-              className="rounded-lg border border-border/70 bg-background/60 p-3"
+              className="py-3"
             >
               <div data-testid="sound-reading-channel" className="space-y-3">
                 <StoryVoiceControls
