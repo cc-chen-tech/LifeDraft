@@ -525,6 +525,50 @@ def test_music_result_ranker_filters_reported_tail_mismatch_title_families():
     assert [song.name for song in filtered] == ["办公室 轻电子 氛围", "用户数据冷光"]
 
 
+def test_music_result_ranker_rejects_generated_placeholder_from_netease_only():
+    brief = MusicBrief(
+        mood="焦虑但专注",
+        scene_type="产品经理深夜复盘",
+        era_or_environment="2020年代互联网公司",
+        pacing="平稳",
+        energy="中",
+        instruments=["电子合成器", "钢琴"],
+        search_queries=["产品经理 工作配乐", "办公室 轻电子 氛围"],
+        negative_cues=["人声", "歌词", "情歌", "流行人声"],
+        generation_prompt="instrumental ambience loop, no vocals, no lyrics",
+    )
+    songs = [
+        Song(
+            id=4301,
+            name="AI MiniMax 现代职场危机",
+            artists=["MiniMax"],
+            album="AI Generated",
+            duration=180000,
+            source="netease",
+        ),
+        Song(
+            id=4302,
+            name="AI MiniMax 现代职场危机",
+            artists=["MiniMax"],
+            album="AI Generated",
+            duration=180000,
+            source="ai_generated",
+        ),
+        Song(
+            id=4303,
+            name="办公室 轻电子 氛围",
+            artists=["Focus Lab"],
+            album="现代职场 纯音乐",
+            duration=180000,
+        ),
+    ]
+
+    filtered = MusicResultRanker().filter_and_dedupe(songs, brief)
+
+    assert 4301 not in [song.id for song in filtered]
+    assert [song.id for song in filtered] == [4303, 4302]
+
+
 def test_music_service_pool_selection_applies_negative_filter_and_title_dedupe():
     brief = MusicBrief(
         mood="温馨",

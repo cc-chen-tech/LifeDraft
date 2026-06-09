@@ -18,3 +18,13 @@ The system SHALL dedupe music recommendations by both provider id and normalized
 - **WHEN** the music playlist receives multiple recommendation items from the same normalized title family but with different ids
 - **THEN** only the first non-current item from that title family MAY remain in the queue
 - **AND** the current song MUST NOT be replaced by a refresh
+
+### Requirement: Search recommendations do not expose generated-track placeholders
+
+The system SHALL reject search-backed music results that look like internal AI-generated track placeholders while still allowing real generated tracks to enter playback.
+
+#### Scenario: NetEase returns a generated-track placeholder title
+
+- **WHEN** NetEase search returns a result named like `AI MiniMax ...` or album/artist metadata like `AI Generated`
+- **THEN** that search-backed result MUST NOT enter the recommended song list or verified recommendation pool
+- **AND** a track with the same title and source `ai_generated` MUST remain eligible for playback insertion
