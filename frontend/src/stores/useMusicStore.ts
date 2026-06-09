@@ -21,6 +21,9 @@ export interface Song {
   library_reused?: boolean;
   match_score?: number;
   match_reason?: string;
+  fit_score?: number;
+  prompt_version?: string;
+  scene_fit_diagnostics?: Record<string, unknown>;
 }
 
 export interface MusicRecommendation {

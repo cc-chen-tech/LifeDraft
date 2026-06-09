@@ -13,6 +13,7 @@ from typing import Any, Dict, Iterable, Mapping, Optional
 from sqlalchemy.orm import Session
 
 from src.database.models import GeneratedMusicAsset, GeneratedMusicLibraryEntry
+from src.services.music_scene_matching import MusicSceneFitProfile, MusicSceneFitScorer
 from src.services.music_service import MusicBrief
 
 
@@ -242,7 +243,10 @@ class LocalAiMusicLibraryService:
             score += 5
         if entry.loopable:
             score += 5
-        return min(score, 100)
+        scene_score = _scene_fit_score_for_library_entry(entry, brief)
+        if scene_score < 0:
+            return 0
+        return min(max(score, scene_score), 100)
 
     def reuse_match(
         self,
@@ -265,7 +269,8 @@ class LocalAiMusicLibraryService:
         )
         db.flush()
         title_scene = current_brief.scene_type or "故事配乐"
-        return {
+        stored_brief = _brief_dict(asset.music_brief_json)
+        track: Dict[str, Any] = {
             "id": f"ai-generated-{int(asset.asset_id)}",
             "name": f"AI MiniMax {title_scene}",
             "artists": ["MiniMax"],
@@ -281,6 +286,16 @@ class LocalAiMusicLibraryService:
             "match_score": decision.score,
             "match_reason": decision.reason or "scene_fit",
         }
+        prompt_version = stored_brief.get("prompt_version") or current_brief.prompt_version
+        diagnostics = (
+            stored_brief.get("scene_fit_diagnostics")
+            or current_brief.scene_fit_diagnostics
+        )
+        if prompt_version:
+            track["prompt_version"] = prompt_version
+        if diagnostics:
+            track["scene_fit_diagnostics"] = diagnostics
+        return track
 
     def record_reuse(
         self,
@@ -342,6 +357,45 @@ def _field_score(candidate: str, target: str, *, exact: int, partial: int) -> in
     if candidate_norm in target_norm or target_norm in candidate_norm:
         return partial
     return 0
+
+
+@dataclass(frozen=True)
+class _LibrarySceneCandidate:
+    id: int
+    name: str
+    artists: list[str]
+    album: str
+
+
+def _scene_fit_score_for_library_entry(
+    entry: GeneratedMusicLibraryEntry,
+    brief: MusicBrief,
+) -> int:
+    profile = (
+        MusicSceneFitProfile.from_analysis(brief.scene_fit_profile)
+        if isinstance(brief.scene_fit_profile, Mapping)
+        else MusicSceneFitProfile.from_context(brief.to_analysis())
+    )
+    candidate = _LibrarySceneCandidate(
+        id=int(entry.asset_id),
+        name=" ".join(
+            [
+                str(entry.scene_type or ""),
+                str(entry.mood or ""),
+                str(entry.environment or ""),
+            ]
+        ),
+        artists=[str(item) for item in entry.instruments_json or [] if item],
+        album=" ".join(
+            [
+                str(entry.pacing or ""),
+                str(entry.energy or ""),
+                "纯音乐",
+            ]
+        ),
+    )
+    decision = MusicSceneFitScorer().score_candidate(candidate, profile)
+    return -1 if decision.rejected else decision.score
 
 
 def _asset_audio_exists(storage_path: str) -> bool:

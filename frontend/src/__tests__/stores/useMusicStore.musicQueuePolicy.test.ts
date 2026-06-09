@@ -137,6 +137,48 @@ describe("music queue policy", () => {
     expect(generated.match_reason).toBe("scene_fit");
   });
 
+  it("store loadPlaylist preserves scene-fit diagnostic metadata on generated tracks", async () => {
+    const diagnosticTrack: Song & {
+      fit_score: number;
+      prompt_version: string;
+      scene_fit_diagnostics: { selected_strategy: string };
+    } = {
+      id: "ai-generated-89",
+      name: "AI MiniMax 安静康复",
+      artists: ["MiniMax"],
+      album: "AI Generated",
+      duration: 1000,
+      source: "ai_generated",
+      url: "/api/music/generated/reused-89.mp3",
+      asset_id: 89,
+      provider: "minimax",
+      model: "music-2.6",
+      brief_hash: "brief-89",
+      fit_score: 91,
+      prompt_version: "music-scene-v1",
+      scene_fit_diagnostics: { selected_strategy: "quiet_recovery" },
+    };
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        game_id: 203,
+        current_song: song(1, "网易云 当前曲"),
+        queue: [diagnosticTrack],
+        played_songs: [],
+        is_playing: false,
+        volume: 0.5,
+        current_position_ms: 0,
+      }),
+    }) as jest.Mock;
+
+    await useMusicStore.getState().loadPlaylist(203);
+
+    const generated = useMusicStore.getState().queue[0] as typeof diagnosticTrack;
+    expect(generated.fit_score).toBe(91);
+    expect(generated.prompt_version).toBe("music-scene-v1");
+    expect(generated.scene_fit_diagnostics.selected_strategy).toBe("quiet_recovery");
+  });
+
   it("store mergePlaylist persists the Netease baseline queue before generated music arrives", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,

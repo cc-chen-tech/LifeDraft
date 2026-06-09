@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from src.database.models import GeneratedMusicAsset
 from src.services.local_ai_music_library import LocalAiMusicLibraryService
 from src.services.minimax_config import MiniMaxConfig, build_minimax_config
+from src.services.music_scene_matching import MiniMaxMusicPromptBuilder, MusicSceneFitProfile
 from src.services.music_service import MusicBrief
 
 logger = logging.getLogger(__name__)
@@ -148,18 +149,23 @@ class MiniMaxMusicGenerationProvider:
         analysis: Mapping[str, Any],
         max_prompt_chars: int,
     ) -> MusicBrief:
-        brief = MusicBrief.from_analysis(dict(analysis))
-        summary = _compact_story_summary(story_text, max(80, max_prompt_chars // 3))
-        prompt = (
-            "Create instrumental background music for narrative gameplay. "
-            f"Story summary: {summary}. "
-            f"Mood: {brief.mood}. Scene: {brief.scene_type}. "
-            f"Setting: {brief.era_or_environment}. Pacing: {brief.pacing}. "
-            f"Energy: {brief.energy}. Instruments: {', '.join(brief.instruments)}. "
-            "No vocals, no lyrics, no dominant pop singing."
+        analysis_dict = dict(analysis)
+        profile = MusicSceneFitProfile.from_context(
+            analysis=analysis_dict,
+            story_text=story_text,
         )
-        if len(prompt) > max_prompt_chars:
-            prompt = prompt[: max_prompt_chars - 1].rstrip() + "."
+        brief = MusicBrief.from_analysis(
+            {
+                **analysis_dict,
+                **profile.to_analysis(),
+            }
+        )
+        built_prompt = MiniMaxMusicPromptBuilder().build(
+            story_text=story_text,
+            brief=brief,
+            profile=profile,
+            max_chars=max_prompt_chars,
+        )
         return MusicBrief(
             mood=brief.mood,
             scene_type=brief.scene_type,
@@ -169,7 +175,10 @@ class MiniMaxMusicGenerationProvider:
             instruments=brief.instruments,
             search_queries=brief.search_queries,
             negative_cues=brief.negative_cues,
-            generation_prompt=prompt,
+            generation_prompt=built_prompt.prompt,
+            scene_fit_profile=profile.to_dict(),
+            scene_fit_diagnostics=built_prompt.diagnostics,
+            prompt_version=built_prompt.prompt_version,
         )
 
     @staticmethod
@@ -181,8 +190,10 @@ class MiniMaxMusicGenerationProvider:
         provider: str,
         model: str,
         brief_hash: str,
+        prompt_version: Optional[str] = None,
+        scene_fit_diagnostics: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        return {
+        track: Dict[str, Any] = {
             "id": f"ai-generated-{asset_id}",
             "name": title,
             "artists": ["MiniMax"],
@@ -195,6 +206,11 @@ class MiniMaxMusicGenerationProvider:
             "asset_id": asset_id,
             "brief_hash": brief_hash,
         }
+        if prompt_version:
+            track["prompt_version"] = prompt_version
+        if scene_fit_diagnostics:
+            track["scene_fit_diagnostics"] = scene_fit_diagnostics
+        return track
 
 
 class StoryMusicGenerationService:
@@ -272,6 +288,7 @@ class StoryMusicGenerationService:
 
         asset_id = int(ready_asset.asset_id)
         title_scene = brief.scene_type if brief.scene_type else "故事配乐"
+        stored_brief = dict(ready_asset.music_brief_json or {})
         return self.provider.to_playlist_track(
             asset_id=asset_id,
             title=f"AI MiniMax {title_scene}",
@@ -280,6 +297,9 @@ class StoryMusicGenerationService:
             provider=str(ready_asset.provider),
             model=str(ready_asset.model),
             brief_hash=str(ready_asset.brief_hash),
+            prompt_version=stored_brief.get("prompt_version") or brief.prompt_version,
+            scene_fit_diagnostics=stored_brief.get("scene_fit_diagnostics")
+            or brief.scene_fit_diagnostics,
         )
 
 
