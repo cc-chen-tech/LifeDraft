@@ -274,6 +274,20 @@ export function StoryVoiceControls({
               : "朗读故事";
   const primaryReadDisabled = readingState === "loading" || !isStoryReady;
   const showStopButton = ["loading", "playing", "paused"].includes(readingState);
+  const readingStatusText =
+    readingState === "loading"
+      ? "正在准备语音"
+      : readingState === "playing"
+        ? "正在朗读当前故事"
+        : readingState === "paused"
+          ? "朗读已暂停"
+          : readingState === "ready"
+            ? "语音已生成，可播放"
+            : readingState === "failed"
+              ? "朗读失败，可重试"
+              : autoReadEnabled
+                ? "故事生成完成后自动朗读"
+                : "手动朗读当前故事";
   const PrimaryIcon =
     readingState === "loading"
       ? Loader2
@@ -288,9 +302,10 @@ export function StoryVoiceControls({
   return (
     <section
       aria-label="故事朗读"
+      data-testid={embedded ? "story-voice-embedded-module" : undefined}
       className={
         embedded
-          ? "space-y-2"
+          ? "space-y-3"
           : "rounded border border-border bg-card/60 p-3 space-y-3"
       }
     >
@@ -301,27 +316,18 @@ export function StoryVoiceControls({
             <div className="min-w-0">
               <div className="text-sm font-medium leading-5 text-foreground">故事朗读</div>
               <div className="truncate text-xs text-muted-foreground">
-                {readingState === "loading"
-                  ? "正在准备语音"
-                  : readingState === "playing"
-                    ? "正在朗读当前故事"
-                    : readingState === "paused"
-                      ? "朗读已暂停"
-                      : readingState === "ready"
-                        ? "语音已生成，可播放"
-                        : readingState === "failed"
-                          ? "朗读失败，可重试"
-                          : autoReadEnabled
-                            ? "故事生成完成后自动朗读"
-                            : "手动朗读当前故事"}
+                {readingStatusText}
               </div>
             </div>
           </div>
         </div>
       )}
 
-      <div className={embedded ? "flex flex-col gap-2" : "flex flex-wrap items-center gap-2"}>
-        <div className="flex flex-wrap items-center gap-2">
+      <div className={embedded ? "space-y-2" : "flex flex-wrap items-center gap-2"}>
+        <div
+          data-testid={embedded ? "voice-primary-controls" : undefined}
+          className={embedded ? "grid grid-cols-[1fr_auto] gap-2" : "flex flex-wrap items-center gap-2"}
+        >
         <Button
           type="button"
           size="sm"
@@ -329,21 +335,42 @@ export function StoryVoiceControls({
           onClick={handlePrimaryAction}
           disabled={primaryReadDisabled}
           aria-label={primaryReadLabel}
+          className={embedded ? "justify-start" : undefined}
         >
           <PrimaryIcon
             className={`w-4 h-4 mr-1.5 ${readingState === "loading" ? "animate-spin" : ""}`}
           />
           {primaryReadLabel}
         </Button>
+        {showStopButton && (
+          <Button type="button" size="sm" variant="ghost" onClick={handleStop}>
+            <Square className="w-4 h-4 mr-1.5" />
+            停止
+          </Button>
+        )}
+        </div>
         {showProductionSettings && (
-          <>
-            <label className="flex items-center gap-2 text-xs text-muted-foreground">
-              声音
+          <div
+            data-testid={embedded ? "voice-settings-row" : undefined}
+            className={
+              embedded
+                ? "grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]"
+                : "contents"
+            }
+          >
+            <label
+              className={
+                embedded
+                  ? "grid grid-cols-[auto_1fr] items-center gap-2 text-xs text-muted-foreground"
+                  : "flex items-center gap-2 text-xs text-muted-foreground"
+              }
+            >
+              音色
               <select
                 aria-label="选择朗读声音"
                 value={selectedVoiceId || "warm_female"}
                 onChange={handleVoiceChange}
-                className="h-8 rounded border border-border bg-background px-2 text-sm text-foreground"
+                className="h-8 min-w-0 rounded border border-border bg-background px-2 text-sm text-foreground"
               >
                 <option value="warm_female">温柔女声</option>
                 <option value="calm_male">沉稳男声</option>
@@ -360,9 +387,8 @@ export function StoryVoiceControls({
               />
               自动朗读
             </label>
-          </>
+          </div>
         )}
-        </div>
         {historyContext && (
           <Button
             type="button"
@@ -373,12 +399,6 @@ export function StoryVoiceControls({
           >
             <Volume2 className="w-4 h-4 mr-1.5" />
             朗读历史故事
-          </Button>
-        )}
-        {showStopButton && (
-          <Button type="button" size="sm" variant="ghost" onClick={handleStop}>
-            <Square className="w-4 h-4 mr-1.5" />
-            停止
           </Button>
         )}
       </div>
