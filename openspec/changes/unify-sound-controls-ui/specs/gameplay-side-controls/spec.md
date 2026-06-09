@@ -11,3 +11,22 @@ The expanded global sound controls SHALL present scene music and story narration
 - **And** that panel SHALL contain a scene music section
 - **And** that panel SHALL contain a story narration section
 - **And** the embedded story narration controls SHALL not render as a separate bordered card or separate top-divided control strip.
+
+### Requirement: Collapsed sound controls expose music and narration actions
+
+The collapsed global sound controls SHALL expose scene music and story narration as sibling actions when both contexts are available.
+
+#### Scenario: Current story can play music and be narrated
+- **Given** the current story has music context and an active reading context
+- **When** the global sound controls are collapsed
+- **Then** the collapsed control bar SHALL expose a music play or pause action
+- **And** it SHALL expose a narration action without requiring the user to expand the panel first
+- **And** activating the narration action SHALL start, pause, resume, retry, or reveal ready narration according to the current reading state
+- **And** the expand action SHALL remain available for detailed voice and music settings.
+
+#### Scenario: Narration audio is ready but not playing
+- **Given** backend narration audio has been generated
+- **And** playback has not started yet
+- **When** the story narration controls are shown
+- **Then** the primary narration action SHALL be "play"
+- **And** the controls SHALL NOT show a stop action until narration is loading, playing, or paused.
