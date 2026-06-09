@@ -97,7 +97,7 @@ describe('ChatBar', () => {
       expect(screen.getByRole('button', { name: '改写故事' })).toBeInTheDocument();
     });
 
-    it('expands panel and calls summary API from collapsed quick action', async () => {
+    it('opens dedicated summary panel and calls summary API from collapsed quick action', async () => {
       (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         summary_text: 'Test summary content',
         start_week: 1,
@@ -116,7 +116,9 @@ describe('ChatBar', () => {
 
       await user.click(screen.getByRole('button', { name: '人生总结' }));
 
-      expect(await screen.findByTestId('chat-bar-panel')).toBeInTheDocument();
+      expect(await screen.findByTestId('life-summary-panel')).toBeInTheDocument();
+      expect(screen.queryByTestId('chat-bar-panel')).not.toBeInTheDocument();
+      expect(screen.queryByPlaceholderText(/向剧情助手提问/i)).not.toBeInTheDocument();
       expect(mockOnRegenerate).not.toHaveBeenCalled();
       await waitFor(() => {
         const calls = (global.fetch as jest.Mock).mock.calls;
@@ -432,7 +434,7 @@ describe('ChatBar', () => {
   });
 
   describe('Summary functionality', () => {
-    it('displays summary in chat history when clicking summary button', async () => {
+    it('displays summary in dedicated panel when clicking expanded summary button', async () => {
       (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         summary_text: 'Test summary content',
         start_week: 1,
@@ -455,11 +457,12 @@ describe('ChatBar', () => {
       await waitFor(() => {
         expect(screen.getByText(/Test summary content/)).toBeInTheDocument();
       });
+      expect(screen.getByTestId('life-summary-panel')).toBeInTheDocument();
       expect(screen.getAllByText(/人生总结/).length).toBeGreaterThan(0);
       expect(screen.queryByText('请总结我的人生故事')).not.toBeInTheDocument();
     });
 
-    it('presents summary as a dedicated action instead of a fake chat prompt', async () => {
+    it('presents collapsed summary as a dedicated action instead of opening story assistant', async () => {
       (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         summary_text: 'Dedicated summary content',
         start_week: 1,
@@ -477,7 +480,9 @@ describe('ChatBar', () => {
 
       await user.click(screen.getByRole('button', { name: '人生总结' }));
 
-      expect(await screen.findByTestId('chat-bar-panel')).toBeInTheDocument();
+      expect(await screen.findByTestId('life-summary-panel')).toBeInTheDocument();
+      expect(screen.queryByTestId('chat-bar-panel')).not.toBeInTheDocument();
+      expect(screen.queryByPlaceholderText(/向剧情助手提问/i)).not.toBeInTheDocument();
       await waitFor(() => {
         expect(screen.getByText(/Dedicated summary content/)).toBeInTheDocument();
       });
