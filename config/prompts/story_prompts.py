@@ -19,6 +19,7 @@ from config.prompts._helpers import (
     _build_world_model_constraints,
     _collect_available_people,
     _format_people_names,
+    build_realistic_modern_world_boundary,
 )
 from src.ai.prompt_sanitizer import sanitize_player_name, sanitize_user_choice
 from src.game.relationship_authority import build_required_cast_constraints
@@ -1307,6 +1308,7 @@ def get_story_only_prompt(
     # Build available people constraint string
     available_people_str = _build_available_people_constraint(available_people, "zh")
     required_cast_context = build_required_cast_constraints(character_settings or {}, language)
+    modern_world_boundary = build_realistic_modern_world_boundary(character_settings, language)
 
     # Build time context
     time_context = _build_time_context(game_date_info, language)
@@ -1404,7 +1406,7 @@ def get_story_only_prompt(
 
 【角色设定】
 {character_context if character_context else "标准现代青年"}{name_instruction}{available_people_str}
-{required_cast_context}{time_context}
+{required_cast_context}{modern_world_boundary}{time_context}
 
 【玩家当前状态】
 年龄：{age}岁 | 第{week}周
@@ -1594,6 +1596,7 @@ def get_round_event_prompt(
     character_context = ""
     available_people_str = ""
     required_cast_context = build_required_cast_constraints(character_settings or {}, language)
+    modern_world_boundary = build_realistic_modern_world_boundary(character_settings, language)
 
     if character_settings:
         char_parts = []
@@ -1772,7 +1775,7 @@ def get_round_event_prompt(
 
 【角色设定】
 {character_context if character_context else "标准现代青年"}{name_instruction}{available_people_str}
-{required_cast_context}{time_context}
+{required_cast_context}{modern_world_boundary}{time_context}
 
 【当前状态】
 年龄：{age}岁 | 第{week}周 - {round_name}

@@ -252,6 +252,76 @@ def test_opening_story_prompt_anchors_first_week_date_and_season() -> None:
     assert "禁止写成夏季" in prompt
 
 
+def test_realistic_modern_prompts_forbid_unrequested_cyberpunk_ip_drift() -> None:
+    character_settings = {
+        "era": {"year": 2024, "era_description": "2024年中国现代都市"},
+        "age": {"age": 28},
+        "gender": {"gender": "男"},
+        "world": {
+            "world_description": "现实中的上海互联网公司，普通产品经理成长线",
+            "technology_level": "2020年代常见办公软件、手机、电脑",
+            "social_system": "现代法治社会",
+        },
+        "career": {"occupation": "产品经理"},
+    }
+    player_state = {
+        "player_name": "张若虚",
+        "age": 28,
+        "week": 0,
+        "current_round": 0,
+        "rounds_per_week": 3,
+        "wealth": 50000,
+    }
+
+    prompts = [
+        get_opening_story_prompt(
+            character_settings=character_settings,
+            player_name="张若虚",
+            life_vision="在2020年代中国互联网公司成为成熟产品经理",
+            formatted_family_members="",
+            language="zh",
+        ),
+        get_story_only_prompt(
+            player_state=player_state,
+            language="zh",
+            character_settings=character_settings,
+        ),
+        get_round_event_prompt(
+            player_state=player_state,
+            language="zh",
+            round_number=0,
+            round_context="",
+            character_settings=character_settings,
+        ),
+    ]
+
+    for prompt in prompts:
+        assert "现实主义世界边界" in prompt
+        assert "禁止赛博朋克" in prompt
+        assert "夜之城" in prompt
+        assert "荒坂集团" in prompt
+        assert "Cyberpunk 2077" in prompt
+
+
+def test_explicit_cyberpunk_settings_do_not_get_realistic_modern_drift_block() -> None:
+    prompt = get_story_only_prompt(
+        player_state={
+            "player_name": "V",
+            "age": 28,
+            "week": 0,
+            "current_round": 0,
+            "rounds_per_week": 3,
+        },
+        language="zh",
+        character_settings={
+            "era": {"year": 2077, "era_description": "赛博朋克未来都市"},
+            "world": {"world_description": "高科技低生活的原创赛博朋克世界"},
+        },
+    )
+
+    assert "现实主义世界边界" not in prompt
+
+
 def test_weekly_summary_prompt_forbids_next_week_day_mismatch() -> None:
     prompt = get_weekly_summary_prompt(
         rounds=[

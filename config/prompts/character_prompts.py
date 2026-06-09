@@ -12,6 +12,7 @@ Contains:
 
 from typing import Any, Dict, List, Optional
 
+from config.prompts._helpers import build_realistic_modern_world_boundary
 from src.ai.prompt_sanitizer import sanitize_life_vision, sanitize_player_name
 
 
@@ -822,6 +823,7 @@ def get_opening_story_prompt(
 
     key_people_text = "\n".join(key_people_lines) if key_people_lines else "无"
     opening_time_anchor = _opening_time_anchor(era if isinstance(era, dict) else {}, language)
+    modern_world_boundary = build_realistic_modern_world_boundary(character_settings, language)
 
     if language == "zh":
         return f"""请基于以下角色设定，生成一个生动的开场故事（300-400字）。
@@ -840,6 +842,7 @@ def get_opening_story_prompt(
 开场故事必须围绕上述人生愿景展开，并保留其中明确的职业、时代、核心矛盾和叙事人称。
 如果人生愿景指定“调查记者”“科技公司”“城市系统黑幕”等主线，必须让这些元素成为开场冲突或调查动机。
 不得改写为无关的遗产、非遗、中医传承、古代探案或武侠押镖主线。
+{modern_world_boundary}
 
 【时代背景】
 {era.get('era_description', '')}，{era.get('year', '')}年

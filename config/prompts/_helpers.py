@@ -947,6 +947,77 @@ The character is set in a historical/pre-modern era. The following modern concep
         return "\n[Era Consistency] Character is set in a modern/contemporary era. Modern technology, transportation, and lifestyle are appropriate, but should match the specific time period."
 
 
+def build_realistic_modern_world_boundary(
+    character_settings: Optional[Dict[str, Any]], language: str
+) -> str:
+    """Build hard constraints that stop ordinary modern settings drifting into sci-fi/IP worlds."""
+    if not character_settings:
+        return ""
+
+    text = _flatten_setting_text(character_settings).lower()
+    modern_cues = [
+        "现代",
+        "当代",
+        "现实",
+        "写实",
+        "都市",
+        "职场",
+        "互联网",
+        "公司",
+        "产品经理",
+        "2020",
+        "2021",
+        "2022",
+        "2023",
+        "2024",
+        "modern",
+        "contemporary",
+        "realistic",
+        "office",
+        "company",
+    ]
+    speculative_cues = [
+        "赛博",
+        "cyberpunk",
+        "科幻",
+        "sci-fi",
+        "未来",
+        "2077",
+        "夜之城",
+        "荒坂",
+        "night city",
+        "arasaka",
+    ]
+
+    if not any(cue in text for cue in modern_cues):
+        return ""
+    if any(cue in text for cue in speculative_cues):
+        return ""
+
+    if language == "zh":
+        return """
+[MUST] 【现实主义世界边界 - 违反即重新生成】
+- 当前角色设定是现代/当代现实主义背景；必须保留现实城市、现实公司、现实社会制度和2020年代常识。
+- 禁止赛博朋克、未来都市、科幻黑帮、反乌托邦公司战争、黑客义体、霓虹废土等未被玩家明确要求的题材漂移。
+- 禁止引入外部游戏/IP世界或其专有名词，包括但不限于：夜之城、荒坂集团、Cyberpunk 2077、Night City、Arasaka。
+- 如果需要公司、导师、同事、投资人、债主等角色，必须使用角色设定和故事历史中已有的现实主义身份，不得套用知名游戏世界观。"""
+
+    return """
+[MUST] [Realistic Modern World Boundary - violation means regeneration]
+- The current character setting is modern/contemporary realism; preserve real-world cities, companies, social systems, and 2020s common sense.
+- Do not drift into cyberpunk, future-city, sci-fi gang, dystopian corporate war, hacker implant, or neon wasteland genres unless explicitly requested by the player.
+- Do not introduce external game/IP worlds or proper nouns, including: Night City, Arasaka, Cyberpunk 2077, 夜之城, 荒坂集团.
+- If the story needs companies, mentors, peers, investors, or creditors, use realistic identities from the character settings and established story history."""
+
+
+def _flatten_setting_text(value: object) -> str:
+    if isinstance(value, dict):
+        return " ".join(_flatten_setting_text(item) for item in value.values())
+    if isinstance(value, list):
+        return " ".join(_flatten_setting_text(item) for item in value)
+    return str(value) if value is not None else ""
+
+
 def _build_image_era_constraints(
     character_settings: Optional[Dict[str, Any]], language: str
 ) -> str:
