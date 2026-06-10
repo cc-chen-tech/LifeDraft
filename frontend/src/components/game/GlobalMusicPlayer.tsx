@@ -37,6 +37,7 @@ export function GlobalMusicPlayer() {
   const activeAutoReadText = useStoryVoiceStore((state) => state.activeAutoReadText);
   const activeAutoReadReady = useStoryVoiceStore((state) => state.activeAutoReadReady);
   const readingState = useStoryVoiceStore((state) => state.readingState);
+  const autoReadEnabled = useStoryVoiceStore((state) => state.autoReadEnabled);
 
   // On mount, try to restore the active game playlist from localStorage
   useEffect(() => {
@@ -103,6 +104,26 @@ export function GlobalMusicPlayer() {
   };
 
   const miniMusicLabel = audioElement ? (isPlaying ? "暂停音乐" : "播放音乐") : "打开声音";
+  const musicStatusLabel =
+    isPlaying
+      ? "音乐播放中"
+      : currentSong || recommendation || queue.length > 0
+        ? "音乐待播放"
+        : "音乐待推荐";
+  const readingStatusLabel =
+    readingState === "loading"
+      ? "朗读准备中"
+      : readingState === "playing"
+        ? "朗读中"
+        : readingState === "paused"
+          ? "朗读暂停"
+          : readingState === "ready"
+            ? "朗读待播放"
+            : readingState === "failed"
+              ? "朗读失败"
+              : activeReadingContext
+                ? "朗读待开始"
+                : "朗读待生成";
 
   return (
     <div
@@ -125,6 +146,24 @@ export function GlobalMusicPlayer() {
         aria-label={isExpanded ? "音乐和朗读" : undefined}
       >
         <div data-testid="unified-sound-panel" className="divide-y divide-border/70 p-3">
+          <div
+            data-testid="sound-mixer-overview"
+            className="flex flex-wrap items-center gap-2 pb-3 text-xs text-muted-foreground"
+          >
+            <div className="mr-auto flex min-w-0 items-center gap-2 text-foreground">
+              <Volume2 className="h-4 w-4 shrink-0 text-primary" />
+              <span className="text-sm font-medium">声音</span>
+            </div>
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary">
+              {musicStatusLabel}
+            </span>
+            <span className="rounded-full bg-secondary/60 px-2 py-0.5">
+              {readingStatusLabel}
+            </span>
+            <span className="rounded-full bg-secondary/60 px-2 py-0.5">
+              {autoReadEnabled ? "自动朗读" : "手动朗读"}
+            </span>
+          </div>
           <div
             data-testid="sound-music-section"
             className="py-3"
