@@ -216,6 +216,60 @@ def test_local_library_reuse_updates_usage_and_privacy_safe_track(
     assert entry.last_match_score == decision.score
 
 
+def test_local_library_reuse_titles_generic_narrative_scene_from_context(
+    db_session,
+    tmp_path,
+):
+    from src.services.local_ai_music_library import (
+        LocalAiMusicLibraryService,
+        LocalAiMusicMatchDecision,
+    )
+
+    Base.metadata.create_all(bind=db_session.get_bind())
+    source_game = _create_game(db_session)
+    target_game = _create_game(db_session)
+    asset = _create_asset(
+        db_session,
+        game_id=source_game.game_id,
+        storage_path=_write_audio(tmp_path, "generic-scene.mp3"),
+        mood="紧张",
+        scene_type="叙事",
+        environment="现代医院",
+        prompt_text="tense modern hospital instrumental ambience, no vocals",
+    )
+    service = LocalAiMusicLibraryService(match_threshold=70)
+    entry = service.upsert_ready_asset(db_session, asset)
+    assert entry is not None
+    brief = MusicBrief.from_analysis(
+        {
+            "mood": "紧张",
+            "scene_type": "叙事",
+            "environment": "现代医院",
+            "pacing": "紧凑",
+            "energy": "中高",
+            "instruments": ["电子合成器", "钢琴"],
+            "negative_cues": ["人声", "歌词"],
+        }
+    )
+
+    track = service.reuse_match(
+        db_session,
+        decision=LocalAiMusicMatchDecision(
+            hit=True,
+            asset_id=asset.asset_id,
+            entry_id=entry.entry_id,
+            score=88,
+            reason="scene_fit",
+            entry=entry,
+        ),
+        requesting_game_id=target_game.game_id,
+        current_brief=brief,
+    )
+
+    assert track["name"] == "AI MiniMax 现代医院 紧张"
+    assert track["name"] != "AI MiniMax 叙事"
+
+
 def test_local_library_rejects_conflicts_low_score_stale_audio_and_provider_mismatch(
     db_session,
     tmp_path,

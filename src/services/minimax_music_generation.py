@@ -16,6 +16,7 @@ from src.services.local_ai_music_library import LocalAiMusicLibraryService
 from src.services.minimax_config import MiniMaxConfig, build_minimax_config
 from src.services.music_scene_matching import MiniMaxMusicPromptBuilder, MusicSceneFitProfile
 from src.services.music_service import MusicBrief
+from src.services.music_track_title import generated_music_title
 
 logger = logging.getLogger(__name__)
 
@@ -287,11 +288,10 @@ class StoryMusicGenerationService:
             db.refresh(ready_asset)
 
         asset_id = int(ready_asset.asset_id)
-        title_scene = brief.scene_type if brief.scene_type else "故事配乐"
         stored_brief = dict(ready_asset.music_brief_json or {})
         return self.provider.to_playlist_track(
             asset_id=asset_id,
-            title=f"AI MiniMax {title_scene}",
+            title=generated_music_title(brief),
             audio_url=str(ready_asset.storage_path),
             duration_ms=int(ready_asset.duration_ms or 0),
             provider=str(ready_asset.provider),

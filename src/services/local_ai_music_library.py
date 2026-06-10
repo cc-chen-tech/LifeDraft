@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from src.database.models import GeneratedMusicAsset, GeneratedMusicLibraryEntry
 from src.services.music_scene_matching import MusicSceneFitProfile, MusicSceneFitScorer
 from src.services.music_service import MusicBrief
+from src.services.music_track_title import generated_music_title
 
 
 DEFAULT_LIBRARY_MATCH_THRESHOLD = 70
@@ -268,11 +269,10 @@ class LocalAiMusicLibraryService:
             reason=decision.reason or "scene_fit",
         )
         db.flush()
-        title_scene = current_brief.scene_type or "故事配乐"
         stored_brief = _brief_dict(asset.music_brief_json)
         track: Dict[str, Any] = {
             "id": f"ai-generated-{int(asset.asset_id)}",
-            "name": f"AI MiniMax {title_scene}",
+            "name": generated_music_title(current_brief),
             "artists": ["MiniMax"],
             "album": "AI Generated",
             "duration": int(asset.duration_ms or 0),

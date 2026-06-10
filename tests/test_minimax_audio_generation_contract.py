@@ -666,6 +666,59 @@ def test_music_generate_api_returns_ready_track_from_story_without_netease_block
     assert data["insert_policy"] == "future_queue"
 
 
+def test_music_generate_api_titles_generic_narrative_scene_from_context(
+    tmp_path: Path,
+) -> None:
+    from src.api.routers.music import router
+
+    init_db()
+    session = SessionLocal()
+    try:
+        game = Game(language="zh", initial_state={"name": "MiniMax Generic Title"})
+        session.add(game)
+        session.commit()
+        session.refresh(game)
+        game_id = int(game.game_id)
+    finally:
+        session.close()
+
+    previous_env = {
+        name: os.environ.get(name)
+        for name in ["MINIMAX_API_KEY", "MINIMAX_E2E_LOCAL_AUDIO", "STORY_MUSIC_ASSET_DIR"]
+    }
+    os.environ["MINIMAX_API_KEY"] = "test-key"
+    os.environ["MINIMAX_E2E_LOCAL_AUDIO"] = "1"
+    os.environ["STORY_MUSIC_ASSET_DIR"] = str(tmp_path / "music")
+    try:
+        app = FastAPI()
+        app.include_router(router, prefix="/api")
+        client = TestClient(app)
+
+        response = client.post(
+            "/api/music/generate",
+            json={
+                "game_id": game_id,
+                "story_text": "医院档案室里，主角发现审计报告和消失的病历编号。",
+                "analysis": {
+                    "mood": "紧张",
+                    "scene_type": "叙事",
+                    "environment": "现代医院",
+                },
+            },
+        )
+    finally:
+        for name, value in previous_env.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+    assert response.status_code == 200
+    track_name = response.json()["track"]["name"]
+    assert track_name == "AI MiniMax 现代医院 紧张"
+    assert track_name != "AI MiniMax 叙事"
+
+
 def test_music_generate_api_persists_generated_track_into_future_playlist_queue(
     tmp_path: Path,
 ) -> None:
