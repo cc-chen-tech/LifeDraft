@@ -102,6 +102,62 @@ class TestCharacterCreatorGenerateSetting:
         assert "现代" in combined
         assert "游戏" in combined or "叙事" in combined
 
+    def test_generate_era_feedback_still_aligns_with_modern_life_vision(self):
+        """有 feedback 重生成时也不能回退到古代时代。"""
+        creator = self._make_creator()
+        creator.ai_generator.generate_completion.return_value = json.dumps(
+            {
+                "year": 713,
+                "era_description": "唐代，长安城内，商业繁荣，科举与门第格局严谨。",
+                "world_context": "古代官僚与礼法主导的社会。",
+            },
+            ensure_ascii=False,
+        )
+
+        result = creator.generate_setting(
+            "era",
+            "顾晨曦",
+            "2020年代中国互联网公司，成为AI协作工具产品经理",
+            {},
+            feedback="不喜欢这个年代了，请重新生成。",
+        )
+
+        assert result["year"] >= 2020
+        combined = f"{result.get('era_description', '')} {result.get('world_context', '')}"
+        assert "唐" not in combined
+        assert "科举" not in combined
+        assert "古代" not in combined
+        assert "互联网" in combined
+        assert result.get("_aligned_to_life_vision") is True
+
+    def test_generate_era_prefers_historical_context_when_life_vision_forbids_modern(self):
+        """明确反对现代元素时，时代应纠偏为古代语境。"""
+        creator = self._make_creator()
+        creator.ai_generator.generate_completion.return_value = json.dumps(
+            {
+                "year": 2026,
+                "era_description": "2026年前后数字基础设施发达，互联网与AI协作成为生产核心。",
+                "world_context": "现代中国，企业化运营与高速更新。",
+            },
+            ensure_ascii=False,
+        )
+
+        result = creator.generate_setting(
+            "era",
+            "林清越",
+            "成为一名坚持古典世界观的医者，避免现代科技和赛博朋克元素，关注家庭、师承与乡里关系。",
+            {},
+        )
+
+        assert result["year"] < 1900
+        combined = f"{result.get('era_description', '')} {result.get('world_context', '')}"
+        assert "互联网" not in combined
+        assert "AI" not in combined
+        assert "公司" not in combined
+        assert "现代" not in combined
+        assert "古代" in combined or "古典" in combined
+        assert result.get("_aligned_to_life_vision") is True
+
     def test_generate_age_setting_corrects_birth_year(self):
         """Test age setting auto-corrects birth_year."""
         creator = self._make_creator()
