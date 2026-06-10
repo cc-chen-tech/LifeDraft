@@ -86,9 +86,6 @@ class MiniMaxMusicGenerationProvider:
         request: MiniMaxMusicGenerationRequest,
         brief_hash: str,
     ) -> GeneratedMusicFile:
-        if not self.config.api_key:
-            raise RuntimeError("MiniMax music generation requires MINIMAX_API_KEY")
-
         if self.config.local_audio_enabled:
             from src.services.story_voice_reading import build_deterministic_wav
 
@@ -106,6 +103,9 @@ class MiniMaxMusicGenerationProvider:
                 model=request.model,
                 media_type="audio/wav",
             )
+
+        if not self.config.api_key:
+            raise RuntimeError("MiniMax music generation requires MINIMAX_API_KEY")
 
         response = httpx.post(
             self.config.music_generation_url,
