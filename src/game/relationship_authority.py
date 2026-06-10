@@ -30,9 +30,11 @@ def extract_required_key_people(character_settings: Mapping[str, Any]) -> List[D
         people.append(
             {
                 "name": name,
-                "role": _text(item.get("role")),
-                "relationship": _text(item.get("relationship")),
-                "relationship_desc": _text(item.get("relationship_desc")),
+                "role": _text(item.get("role") or item.get("relation")),
+                "relationship": _text(item.get("relationship") or item.get("relation")),
+                "relationship_desc": _text(
+                    item.get("relationship_desc") or item.get("relationship_description")
+                ),
                 "description": _text(item.get("description")),
             }
         )
@@ -96,10 +98,13 @@ def _text(value: object) -> str:
 
 
 def _person_facts(person: Mapping[str, str]) -> str:
-    facts = [
+    facts: List[str] = []
+    for fact in [
         person.get("role", ""),
         person.get("relationship", ""),
         person.get("relationship_desc", ""),
         person.get("description", ""),
-    ]
+    ]:
+        if fact and fact not in facts:
+            facts.append(fact)
     return "；".join(fact for fact in facts if fact) or "关键人物"

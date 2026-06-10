@@ -62,6 +62,31 @@ def _modern_product_manager_settings_with_legacy_relationships_list() -> dict[st
     return settings
 
 
+def _modern_product_manager_settings_with_relation_field() -> dict[str, Any]:
+    settings = _modern_product_manager_settings()
+    settings["relationships"] = {
+        "relationships_description": "围绕产品经理成长的导师、闺蜜和同期网络。",
+        "key_people": [
+            {
+                "name": "陆昊然",
+                "relation": "导师",
+                "description": "资深产品负责人，负责指导主角复盘需求判断。",
+            },
+            {
+                "name": "陈晓雨",
+                "relation": "闺蜜",
+                "description": "大学好友，理解主角的职场压力。",
+            },
+            {
+                "name": "林一凡",
+                "relation": "同期",
+                "description": "同批入职的产品同事，与主角共同成长。",
+            },
+        ],
+    }
+    return settings
+
+
 def _modern_product_manager_settings_with_family() -> dict[str, Any]:
     settings = _modern_product_manager_settings()
     settings["family"] = {
@@ -181,6 +206,40 @@ def test_round_event_prompt_injects_required_cast_authority_from_relationships_l
     assert "不得替换" in prompt
     assert "至少使用1位预设关键人物" in prompt
     assert "陆昊然、陈晓雨、林一凡至少一位" in prompt
+
+
+def test_relation_field_is_treated_as_required_cast_role() -> None:
+    """Frontend and older DB payloads may use relation instead of role."""
+    from src.game.relationship_authority import build_required_cast_constraints
+
+    text = build_required_cast_constraints(
+        _modern_product_manager_settings_with_relation_field(),
+        "zh",
+    )
+
+    assert "陆昊然：导师" in text
+    assert "陈晓雨：闺蜜" in text
+    assert "林一凡：同期" in text
+    assert "：关键人物" not in text
+    assert "导师；导师" not in text
+
+
+def test_available_people_prompt_uses_relation_field_as_role_label() -> None:
+    """The prompt must not list relation-only people as empty-role names."""
+    prompt = get_round_event_prompt(
+        player_state=_player_state(),
+        language="zh",
+        round_number=0,
+        round_context="上一轮你决定向导师请教需求优先级。",
+        character_settings=_modern_product_manager_settings_with_relation_field(),
+    )
+
+    assert "陆昊然（导师）" in prompt
+    assert "陈晓雨（闺蜜）" in prompt
+    assert "林一凡（同期）" in prompt
+    assert "陆昊然（）" not in prompt
+    assert "陈晓雨（）" not in prompt
+    assert "林一凡（）" not in prompt
 
 
 def test_quick_validator_uses_relationships_list_for_required_cast() -> None:
