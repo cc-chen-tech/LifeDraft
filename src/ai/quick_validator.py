@@ -98,6 +98,20 @@ class QuickValidator:
         "邹喻柏水窦章云苏潘葛奚范彭郎鲁韦昌马苗凤花方俞任袁柳鲍史唐费廉"
         "岑薛雷贺倪汤滕殷罗毕郝邬安常乐于时傅皮卞齐康伍余元卜顾孟平黄"
     )
+    NON_PERSON_NAME_CANDIDATES = {
+        "周一",
+        "周初",
+        "周中",
+        "周末",
+        "周日",
+        "周六",
+        "周五",
+        "周四",
+        "周三",
+        "周二",
+        "周报",
+        "周会",
+    }
 
     def __init__(self):
         self._forbidden_pattern_zh = self._build_forbidden_pattern("zh")
@@ -211,10 +225,26 @@ class QuickValidator:
             ]
             if part
         )
+        era_type = cls._infer_era_type(combined)
+        if not era_type and cls._looks_like_plain_realistic_settings(character_settings):
+            era_type = "modern"
         return {
             "era": era_text or combined[:80],
-            "era_type": cls._infer_era_type(combined),
+            "era_type": era_type,
         }
+
+    @staticmethod
+    def _looks_like_plain_realistic_settings(character_settings: Dict[str, Any]) -> bool:
+        realistic_sections = {
+            "basic",
+            "career",
+            "wealth",
+            "education",
+            "family",
+            "relationships",
+            "occupation",
+        }
+        return any(section in character_settings for section in realistic_sections)
 
     @staticmethod
     def _first_text(value: Any, keys: List[str]) -> str:
@@ -251,14 +281,16 @@ class QuickValidator:
 
         ancient_keywords = [
             "古代",
-            "唐",
-            "宋",
-            "元",
-            "明",
-            "清",
-            "汉",
-            "秦",
-            "周",
+            "唐朝",
+            "宋朝",
+            "元朝",
+            "明朝",
+            "清朝",
+            "汉朝",
+            "秦朝",
+            "周朝",
+            "西周",
+            "东周",
             "长安",
             "洛阳",
             "南宋",
@@ -500,6 +532,8 @@ class QuickValidator:
         for match in pattern.findall(text):
             candidate = str(match).strip("，。！？、；：“”‘’（）()《》")
             if not candidate or candidate in allowed_names:
+                continue
+            if candidate in self.NON_PERSON_NAME_CANDIDATES:
                 continue
             if any(candidate in allowed or allowed in candidate for allowed in allowed_names):
                 continue

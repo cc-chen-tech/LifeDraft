@@ -48,6 +48,44 @@ def test_quick_validator_rejects_classical_chapter_title_for_modern_story() -> N
     assert any("现代时间线标题" in issue for issue in result.issues)
 
 
+def test_quick_validator_defaults_plain_realistic_settings_to_modern_title_rules() -> None:
+    """普通现实人设没有显式“现代/职场”关键词时，也不能通过章回体标题。"""
+    from src.ai.quick_validator import quick_validate_story
+
+    result = quick_validate_story(
+        story_text=(
+            "第三回 雪巷惊魂\n\n"
+            "林见微清晨整理家里的账本，母亲在厨房准备早饭。"
+            "她把今天要处理的三件事写在便签上，决定先去见大学同学。"
+        ),
+        character_settings={
+            "basic": {"age": 28, "gender": "女"},
+            "wealth": {"initial_wealth": 50000},
+            "family": {"mother": "王丽华"},
+        },
+        available_people=["林见微", "王丽华"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("现代时间线标题" in issue for issue in result.issues)
+
+
+def test_quick_validator_does_not_treat_timeline_title_as_invented_cast() -> None:
+    """现代时间线标题里的“周中”等词不应被误判成新人物。"""
+    from src.ai.quick_validator import quick_validate_story
+
+    result = quick_validate_story(
+        story_text="第2周·周中 会议室复盘\n\n林见微和陆昊然继续复盘需求。",
+        character_settings=_modern_product_manager_settings(),
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+
+
 def test_quick_validator_allows_classical_chapter_title_for_ancient_story() -> None:
     """Explicit ancient stories can still use classical chapter labels."""
     from src.ai.quick_validator import quick_validate_story
