@@ -344,7 +344,7 @@ describe('PlayPage', () => {
 
       await user.click(screen.getByRole('button', { name: '展开声音' }));
       expect(screen.getByRole('group', { name: '音乐和朗读' })).toBeInTheDocument();
-      expect(screen.getByTestId('sound-reading-section')).toBeInTheDocument();
+      expect(screen.getByTestId('sound-reading-row')).toBeInTheDocument();
       expect(screen.getByTestId('sound-reading-channel')).toBeInTheDocument();
       expect(screen.queryByRole('region', { name: '故事朗读' })).not.toBeInTheDocument();
     });
