@@ -19,6 +19,7 @@ interface StoryVoiceControlsProps {
   hideTitle?: boolean;
   showTestControls?: boolean;
   consoleControls?: boolean;
+  inlineConsole?: boolean;
 }
 
 export function StoryVoiceControls({
@@ -33,6 +34,7 @@ export function StoryVoiceControls({
   hideTitle = false,
   showTestControls = false,
   consoleControls = false,
+  inlineConsole = false,
 }: StoryVoiceControlsProps) {
   const readingState = useStoryVoiceStore((state) => state.readingState);
   const currentSource = useStoryVoiceStore((state) => state.currentSource);
@@ -371,6 +373,97 @@ export function StoryVoiceControls({
             : Volume2;
 
   if (consoleControls) {
+    if (inlineConsole) {
+      return (
+        <div
+          data-testid="story-voice-console"
+          className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
+        >
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={handlePrimaryAction}
+            disabled={primaryReadDisabled}
+            aria-label={primaryReadLabel}
+            className="h-9 shrink-0"
+          >
+            <PrimaryIcon
+              className={`mr-1.5 h-4 w-4 ${readingState === "loading" ? "animate-spin" : ""}`}
+            />
+            {primaryReadLabel}
+          </Button>
+          {showStopButton && (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              onClick={handleStop}
+              aria-label="停止朗读"
+              title="停止朗读"
+              className="h-9 w-9 shrink-0"
+            >
+              <Square className="h-4 w-4" />
+            </Button>
+          )}
+          {showProductionSettings && (
+            <>
+              <label className="grid min-w-[8.5rem] flex-1 grid-cols-[auto_1fr] items-center gap-2 text-xs text-muted-foreground">
+                音色
+                <select
+                  aria-label="选择朗读声音"
+                  value={selectedVoiceId || "warm_female"}
+                  onChange={handleVoiceChange}
+                  className="h-9 min-w-0 rounded border border-border bg-background px-2 text-sm text-foreground"
+                >
+                  <option value="warm_female">温柔女声</option>
+                  <option value="calm_male">沉稳男声</option>
+                  <option value="clear_neutral">清亮中性</option>
+                </select>
+              </label>
+              <label className="flex h-9 shrink-0 items-center gap-2 rounded border border-border bg-background px-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  aria-label="自动朗读"
+                  checked={Boolean(autoReadEnabled)}
+                  onChange={handleAutoReadToggle}
+                  className="h-4 w-4 accent-primary"
+                />
+                自动朗读
+              </label>
+            </>
+          )}
+          {historyContext && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => void startReading(historyContext)}
+              aria-label="朗读历史故事"
+            >
+              <Volume2 className="mr-1.5 h-4 w-4" />
+              朗读历史故事
+            </Button>
+          )}
+          <div
+            data-testid="voice-reading-inline-status"
+            className="min-w-[7rem] flex-1 truncate text-xs text-muted-foreground"
+          >
+            {readingStatusText}
+          </div>
+          <audio
+            ref={audioRef}
+            data-testid="voice-reading-audio-player"
+            src={currentAudioUrl || undefined}
+            preload="auto"
+            onPlaying={markAudioPlaying}
+            onError={failReading}
+            onEnded={completeReading}
+          />
+        </div>
+      );
+    }
+
     return (
       <div data-testid="story-voice-console" className="min-w-0 space-y-2">
         <div className="flex min-w-0 flex-wrap items-center gap-2">

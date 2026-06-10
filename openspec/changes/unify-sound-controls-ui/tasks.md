@@ -28,3 +28,5 @@
 - [x] Add regression coverage that active playable music uses a non-blocking refresh error message instead of "音乐服务暂不可用".
 - [x] Replace separate music/narration status pills with one combined sound status line in the expanded header.
 - [x] Add regression coverage that the expanded UI uses one "声音控制台" with music and narration rows instead of separate "背景音乐" / "故事朗读" groups or a standalone channel list.
+- [x] Add regression coverage that the expanded UI no longer renders separate music and narration slots.
+- [x] Embed narration playback, voice selection, and auto-read controls inside the music control strip so expanded audio controls appear as one unified sound console.
