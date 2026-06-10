@@ -15,7 +15,7 @@ import { MusicPlayer } from "./MusicPlayer";
 import { StoryVoiceControls } from "./StoryVoiceControls";
 import { useMusicStore } from "@/stores/useMusicStore";
 import { useStoryVoiceStore } from "@/stores/useStoryVoiceStore";
-import { ChevronUp, ChevronDown, Volume2 } from "lucide-react";
+import { ChevronUp, ChevronDown, Music, Volume2 } from "lucide-react";
 
 export function GlobalMusicPlayer() {
   const hasInitRef = useRef(false);
@@ -31,9 +31,15 @@ export function GlobalMusicPlayer() {
   const isPlaying = useMusicStore((state) => state.isPlaying);
   const currentTime = useMusicStore((state) => state.currentTime);
   const duration = useMusicStore((state) => state.duration);
-  const activeReadingContext = useStoryVoiceStore((state) => state.activeReadingContext);
-  const activeAutoReadText = useStoryVoiceStore((state) => state.activeAutoReadText);
-  const activeAutoReadReady = useStoryVoiceStore((state) => state.activeAutoReadReady);
+  const activeReadingContext = useStoryVoiceStore(
+    (state) => state.activeReadingContext,
+  );
+  const activeAutoReadText = useStoryVoiceStore(
+    (state) => state.activeAutoReadText,
+  );
+  const activeAutoReadReady = useStoryVoiceStore(
+    (state) => state.activeAutoReadReady,
+  );
   const readingState = useStoryVoiceStore((state) => state.readingState);
   const autoReadEnabled = useStoryVoiceStore((state) => state.autoReadEnabled);
 
@@ -56,8 +62,11 @@ export function GlobalMusicPlayer() {
 
   // Determine storyText: use activeStoryText from play page, or "persisted" if music already loaded
   const storyText =
-    activeStoryText || (recommendation || currentSong || queue.length > 0 ? "persisted" : "");
-  const shouldAutoFetchRecommendation = Boolean(activeStoryText && effectiveGameId);
+    activeStoryText ||
+    (recommendation || currentSong || queue.length > 0 ? "persisted" : "");
+  const shouldAutoFetchRecommendation = Boolean(
+    activeStoryText && effectiveGameId,
+  );
 
   useEffect(() => {
     if (!isExpanded) return;
@@ -89,12 +98,11 @@ export function GlobalMusicPlayer() {
           ? "朗读已暂停"
           : "音乐与朗读");
 
-  const musicStatusLabel =
-    isPlaying
-      ? "音乐播放中"
-      : currentSong || recommendation || queue.length > 0
-        ? "音乐待播放"
-        : "音乐待推荐";
+  const musicStatusLabel = isPlaying
+    ? "音乐播放中"
+    : currentSong || recommendation || queue.length > 0
+      ? "音乐待播放"
+      : "音乐待推荐";
   const readingStatusLabel =
     readingState === "loading"
       ? "朗读准备中"
@@ -130,7 +138,7 @@ export function GlobalMusicPlayer() {
         role={isExpanded ? "group" : undefined}
         aria-label={isExpanded ? "音乐和朗读" : undefined}
       >
-        <div data-testid="unified-sound-panel" className="divide-y divide-border/70 p-3">
+        <div data-testid="unified-sound-panel" className="p-3">
           <div
             data-testid="sound-mixer-overview"
             className="flex flex-wrap items-center gap-2 pb-3 text-xs text-muted-foreground"
@@ -158,42 +166,76 @@ export function GlobalMusicPlayer() {
               <ChevronUp className="h-4 w-4" />
             </button>
           </div>
+
           <div
-            data-testid="sound-music-section"
-            className="py-3"
+            data-testid="sound-mixer-grid"
+            className="grid gap-3 md:grid-cols-2"
           >
-            {storyText ? (
-              <MusicPlayer
-                storyText={storyText}
-                gameId={effectiveGameId}
-                className="rounded-none border-0 bg-transparent p-0 shadow-none"
-                autoFetchRecommendation={shouldAutoFetchRecommendation}
-                embedded
-              />
-            ) : (
-              <div className="text-sm text-muted-foreground">
-                故事生成完成后会自动推荐音乐。
+            <div
+              role="group"
+              aria-label="背景音乐"
+              data-testid="sound-music-section"
+              className="min-w-0 rounded-md border border-border/70 bg-background/35 p-3"
+            >
+              <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Music className="h-4 w-4 shrink-0 text-primary" />
+                  <span className="truncate text-sm font-medium text-foreground">
+                    背景音乐
+                  </span>
+                </div>
+                <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
+                  {musicStatusLabel}
+                </span>
+              </div>
+              {storyText ? (
+                <MusicPlayer
+                  storyText={storyText}
+                  gameId={effectiveGameId}
+                  className="rounded-none border-0 bg-transparent p-0 shadow-none"
+                  autoFetchRecommendation={shouldAutoFetchRecommendation}
+                  embedded
+                  hideTitle
+                />
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  故事生成完成后会自动推荐音乐。
+                </div>
+              )}
+            </div>
+
+            {activeReadingContext && (
+              <div
+                role="group"
+                aria-label="故事朗读"
+                data-testid="sound-reading-section"
+                className="min-w-0 rounded-md border border-border/70 bg-background/35 p-3"
+              >
+                <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Volume2 className="h-4 w-4 shrink-0 text-primary" />
+                    <span className="truncate text-sm font-medium text-foreground">
+                      故事朗读
+                    </span>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[11px] text-secondary-foreground">
+                    {readingStatusLabel}
+                  </span>
+                </div>
+                <div data-testid="sound-reading-channel" className="space-y-3">
+                  <StoryVoiceControls
+                    currentContext={activeReadingContext}
+                    autoReadText={activeAutoReadText}
+                    autoReadReady={activeAutoReadReady}
+                    compact
+                    embedded
+                    enablePlaybackControls
+                    hideTitle
+                  />
+                </div>
               </div>
             )}
           </div>
-
-          {activeReadingContext && (
-            <div
-              data-testid="sound-reading-section"
-              className="py-3"
-            >
-              <div data-testid="sound-reading-channel" className="space-y-3">
-                <StoryVoiceControls
-                  currentContext={activeReadingContext}
-                  autoReadText={activeAutoReadText}
-                  autoReadReady={activeAutoReadReady}
-                  compact
-                  embedded
-                  enablePlaybackControls
-                />
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
@@ -217,9 +259,7 @@ export function GlobalMusicPlayer() {
 
           {/* Song info */}
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium truncate">
-              {soundTitle}
-            </div>
+            <div className="text-sm font-medium truncate">{soundTitle}</div>
             <div className="text-xs text-muted-foreground truncate">
               {soundStatus}
             </div>

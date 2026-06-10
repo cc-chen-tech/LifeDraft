@@ -6,6 +6,15 @@ Date: 2026-06-10
 
 This evidence covers the frontend redesign that merges music and story narration into a single sound control surface.
 
+## 2026-06-10 Follow-up
+
+The expanded surface now renders as one two-channel sound mixer:
+
+- The shared overview row remains the only top-level "声音" header.
+- Background music is exposed as the peer channel group `背景音乐`.
+- Story narration is exposed as the peer channel group `故事朗读`.
+- Embedded `MusicPlayer` and `StoryVoiceControls` hide their own duplicate `音乐` / `朗读` headings inside this mixer.
+
 ## Browser Check
 
 - URL: `http://localhost:3210/e2e-regression`

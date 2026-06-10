@@ -34,6 +34,7 @@ interface MusicPlayerProps {
   className?: string;
   autoFetchRecommendation?: boolean;
   embedded?: boolean;
+  hideTitle?: boolean;
 }
 
 function hasMusicBrief(brief: Record<string, unknown> | undefined): brief is Record<string, unknown> {
@@ -46,6 +47,7 @@ export function MusicPlayer({
   className = "",
   autoFetchRecommendation = true,
   embedded = false,
+  hideTitle = false,
 }: MusicPlayerProps) {
   const {
     recommendation,
@@ -581,8 +583,12 @@ export function MusicPlayer({
       {/* 头部：标题和刷新按钮 */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 flex-wrap">
-          <Music className="w-4 h-4 text-primary" />
-          <h3 className="text-sm font-medium">{embedded ? "音乐" : "场景音乐"}</h3>
+          {!hideTitle && (
+            <>
+              <Music className="w-4 h-4 text-primary" />
+              <h3 className="text-sm font-medium">{embedded ? "音乐" : "场景音乐"}</h3>
+            </>
+          )}
           {recommendation && (
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-xs px-1.5 py-0.5 bg-primary/10 text-primary rounded">
