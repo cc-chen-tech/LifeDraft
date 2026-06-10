@@ -35,6 +35,7 @@ interface MusicPlayerProps {
   autoFetchRecommendation?: boolean;
   embedded?: boolean;
   hideTitle?: boolean;
+  compactControls?: boolean;
 }
 
 function hasMusicBrief(brief: Record<string, unknown> | undefined): brief is Record<string, unknown> {
@@ -48,6 +49,7 @@ export function MusicPlayer({
   autoFetchRecommendation = true,
   embedded = false,
   hideTitle = false,
+  compactControls = false,
 }: MusicPlayerProps) {
   const {
     recommendation,
@@ -581,6 +583,7 @@ export function MusicPlayer({
       className={`${embedded ? "space-y-3" : "bg-card border rounded-lg p-4 shadow-sm"} ${className}`}
     >
       {/* 头部：标题和刷新按钮 */}
+      {!compactControls && (
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 flex-wrap">
           {!hideTitle && (
@@ -622,6 +625,7 @@ export function MusicPlayer({
           )}
         </Button>
       </div>
+      )}
 
       {/* 加载状态 */}
       {isLoadingRecommendation && !recommendation && (
@@ -780,7 +784,7 @@ export function MusicPlayer({
           </div>
 
           {/* 歌曲列表 */}
-          {recommendation && recommendation.songs.length > 1 && (
+          {!compactControls && recommendation && recommendation.songs.length > 1 && (
             <div className="mt-3 pt-3 border-t">
               <div className="text-xs text-muted-foreground mb-2 flex items-center justify-between">
                 <span>推荐歌曲 ({recommendation.songs.length}首)</span>
