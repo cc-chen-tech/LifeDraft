@@ -15,3 +15,10 @@
 - [x] Run preset cast authority contract tests.
 - [x] Run related story continuation, era drift, and round-event retry tests.
 - [x] Run OpenSpec strict validation for this change.
+
+## 4. 2026-06-11 Single Substitute Follow-up
+
+- [x] Add a quick-validator regression where one preset person appears, two preset people are mentioned only as absent, and one invented strong-role character takes over mentor/investor/main-plot functions.
+- [x] Treat preset names in absent/non-participating phrases as not satisfying preset-cast usage.
+- [x] Reject a single invented strong-role substitute when the preset relationship network is underused.
+- [x] Run targeted preset-cast, round-event retry, and gameplay behavior gate tests.

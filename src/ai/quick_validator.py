@@ -353,7 +353,9 @@ class QuickValidator:
         if len(key_people_names) < 2:
             return []
 
-        present_key_people = [name for name in key_people_names if name in text]
+        present_key_people = [
+            name for name in key_people_names if self._key_person_has_active_presence(text, name)
+        ]
 
         if language != "zh":
             if present_key_people:
@@ -366,6 +368,19 @@ class QuickValidator:
         if present_key_people:
             key_people_ratio = len(present_key_people) / len(key_people_names)
             required_network_count = (len(key_people_names) * 4 + 4) // 5
+            if (
+                len(key_people_names) >= 3
+                and len(invented_names) >= 1
+                and len(present_key_people) < required_network_count
+                and self._invented_cast_has_role_transfer_cues(text, invented_names)
+            ):
+                return [
+                    "上一版故事预设关键人物使用不足，预设关系网使用不足，"
+                    "名单外关键角色替代预设关系网"
+                    f"（已使用{len(present_key_people)}/{len(key_people_names)}，"
+                    f"名单外关键角色：{ '、'.join(invented_names[:3]) }）；"
+                    "请不要让新人物接管导师、闺蜜、同期、投资人或主线推进功能。"
+                ]
             if (
                 len(key_people_names) >= 3
                 and len(invented_names) >= 3
@@ -393,6 +408,68 @@ class QuickValidator:
         return [
             "上一版故事完全没有使用预设关键人物；请至少使用一个可用人物列表中的关键人物，并避免凭空替换关系网络。"
         ]
+
+    def _key_person_has_active_presence(self, text: str, name: str) -> bool:
+        """Names mentioned only as absent/non-participating do not satisfy cast use."""
+        absence_cues = [
+            "没有参与",
+            "未参与",
+            "没参与",
+            "没有出现",
+            "未出现",
+            "没有出场",
+            "没有介入",
+            "没有加入",
+            "没有再出现",
+            "不在场",
+            "没有露面",
+        ]
+        start = 0
+        while True:
+            index = text.find(name, start)
+            if index == -1:
+                return False
+            window = text[max(0, index - 16): index + len(name) + 28]
+            if not any(cue in window for cue in absence_cues):
+                return True
+            start = index + len(name)
+
+    def _invented_cast_has_role_transfer_cues(
+        self,
+        text: str,
+        invented_names: List[str],
+    ) -> bool:
+        """Return True when a new name appears to inherit preset relationship functions."""
+        role_transfer_cues = [
+            "导师",
+            "闺蜜",
+            "同期",
+            "投资人",
+            "合伙人",
+            "负责人",
+            "产品负责人",
+            "同事",
+            "朋友",
+            "接管",
+            "主导",
+            "推进主线",
+            "决定下一步",
+            "陪她",
+            "陪他",
+            "复盘",
+            "安抚情绪",
+        ]
+        for name in invented_names:
+            start = 0
+            while True:
+                index = text.find(name, start)
+                if index == -1:
+                    break
+                window = text[max(0, index - 24): index + len(name) + 48]
+                if any(cue in window for cue in role_transfer_cues):
+                    return True
+                start = index + len(name)
+        return False
 
     def _extract_required_key_people_names(
         self,
