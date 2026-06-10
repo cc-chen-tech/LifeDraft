@@ -46,6 +46,24 @@ describe("music queue policy", () => {
     expect(result.queue[2].source).toBe("ai_generated");
   });
 
+  it("pure merge helper dedupes upcoming NetEase songs by title family", () => {
+    const current = song(1, "办公室 轻电子 氛围");
+
+    const result = mergeSongsPreservingCurrent(current, [], [
+      song(20, "绅士"),
+      song(21, "绅士 (Live)"),
+      song(22, "红尘客栈"),
+      song(23, "红尘客栈 - 古风翻唱"),
+      song(24, "用户数据冷光"),
+    ]);
+
+    expect(result.queue.map((item) => item.name)).toEqual([
+      "绅士",
+      "红尘客栈",
+      "用户数据冷光",
+    ]);
+  });
+
   it("store mergePlaylist keeps current playback stable when backend songs arrive", async () => {
     useMusicStore.setState({
       currentSong: song(1, "Current"),
