@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from src.api.deps import get_current_user_optional
 from src.database.models import SessionLocal
 from src.services.minimax_config import build_minimax_config
-from src.services.music_service import MusicBrief
+from src.services.music_service import MusicBrief, MusicResultRanker
 from src.services.music_playlist_service import get_music_playlist_service
 from src.services.music_service import get_music_service
 
@@ -125,6 +125,32 @@ def _fallback_music_recommendation_response() -> MusicRecommendationResponse:
     )
 
 
+def _filter_recommendation_songs_for_response(
+    songs: List[Any],
+    music_brief: Optional[Any],
+) -> List[Any]:
+    """Apply the story music brief as a final API response safety net."""
+    if music_brief is None:
+        return songs
+
+    brief = (
+        music_brief
+        if isinstance(music_brief, MusicBrief)
+        else MusicBrief.from_analysis(music_brief if isinstance(music_brief, dict) else {})
+    )
+    return MusicResultRanker().filter_and_dedupe(songs, brief)
+
+
+def _music_brief_response_payload(music_brief: Optional[Any]) -> Optional[dict]:
+    if music_brief is None:
+        return None
+    if isinstance(music_brief, MusicBrief):
+        return music_brief.to_analysis()
+    if isinstance(music_brief, dict):
+        return dict(music_brief)
+    return None
+
+
 class PlaylistUpdateRequest(BaseModel):
     """Request body for updating a game playlist with new recommendation songs."""
 
@@ -187,6 +213,12 @@ async def recommend_music(
             timeout=MUSIC_RECOMMEND_ROUTE_TIMEOUT_SECONDS,
         )
 
+        music_brief = getattr(recommendation, "music_brief", None)
+        response_songs = _filter_recommendation_songs_for_response(
+            list(recommendation.songs),
+            music_brief,
+        )
+
         async def get_song_url_with_id(song):
             """获取歌曲 URL 并返回 (id, url)"""
             try:
@@ -197,7 +229,7 @@ async def recommend_music(
                 return (song.id, None)
 
         # 并行获取所有歌曲的 URL
-        url_tasks = [get_song_url_with_id(song) for song in recommendation.songs]
+        url_tasks = [get_song_url_with_id(song) for song in response_songs]
         url_results = await asyncio.gather(*url_tasks, return_exceptions=True)
 
         # 构建 URL 映射
@@ -208,12 +240,12 @@ async def recommend_music(
                 if url:
                     url_map[song_id] = url
 
-        total_songs = len(recommendation.songs)
+        total_songs = len(response_songs)
         available_songs = len(url_map)
         logger.info(f"[MusicAPI] Fetched {available_songs}/{total_songs} song URLs")
 
         # 过滤掉没有有效 URL 的歌曲
-        filtered_out = [song for song in recommendation.songs if song.id not in url_map]
+        filtered_out = [song for song in response_songs if song.id not in url_map]
         if filtered_out:
             filtered_ids = [s.id for s in filtered_out]
             logger.info(
@@ -243,11 +275,9 @@ async def recommend_music(
                 url=url_map[song.id],
                 source=getattr(song, "source", "netease"),
             )
-            for song in recommendation.songs
+            for song in response_songs
             if song.id in url_map
         ]
-
-        music_brief = getattr(recommendation, "music_brief", None)
 
         return MusicRecommendationResponse(
             keywords=recommendation.keywords,
@@ -260,7 +290,7 @@ async def recommend_music(
             pacing=recommendation.pacing,
             time_weather=recommendation.time_weather,
             description=recommendation.description,
-            music_brief=music_brief.to_analysis() if music_brief is not None else None,
+            music_brief=_music_brief_response_payload(music_brief),
             songs=songs,
         )
 

@@ -1,7 +1,7 @@
 """Tests for music router endpoints."""
 
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Any, List, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from src.api.deps import get_current_user_optional
 from src.api.routers.music import router
+from src.services.music_service import MusicBrief
 
 pytestmark = pytest.mark.api
 
@@ -41,6 +42,7 @@ class FakeRecommendation:
     pacing: Optional[str] = None
     time_weather: Optional[str] = None
     description: Optional[str] = None
+    music_brief: Optional[Any] = None
 
 
 def _make_songs(n: int, with_url: bool = True) -> List[FakeSong]:
@@ -204,6 +206,78 @@ class TestRecommendMusic:
         assert "keywords" in data
         assert "scene_type" in data
         assert data["songs"] == []
+
+    @patch("src.api.routers.music.get_music_service")
+    def test_recommend_response_filters_negative_cue_title_families_before_url_lookup(
+        self, mock_get_svc, client
+    ):
+        """最终 API 响应也要兜底过滤与 music_brief 冲突的推荐。"""
+        brief = MusicBrief(
+            mood="压抑焦虑",
+            scene_type="雨夜追捕",
+            era_or_environment="现代城市",
+            pacing="紧凑",
+            energy="中高",
+            instruments=["低音弦乐", "电子合成器"],
+            search_queries=["追捕 悬疑 纯音乐", "无歌词 紧张氛围"],
+            negative_cues=["人声", "歌词", "情歌", "流行人声", "热门金曲"],
+            generation_prompt="instrumental suspense loop, no vocals, no lyrics",
+        )
+        rec = FakeRecommendation(
+            keywords=brief.search_queries,
+            mood=brief.mood,
+            scene_type=brief.scene_type,
+            songs=[
+                FakeSong(
+                    id=4101,
+                    name="绅士",
+                    artists=["薛之谦"],
+                    album="热门金曲",
+                    duration=180000,
+                ),
+                FakeSong(
+                    id=4102,
+                    name="红尘客栈 - 古风翻唱",
+                    artists=["Vocal"],
+                    album="翻唱合集",
+                    duration=180000,
+                ),
+                FakeSong(
+                    id=4103,
+                    name="Blue Bird",
+                    artists=["Ikimono-gakari"],
+                    album="Anime Opening Vocal",
+                    duration=180000,
+                ),
+                FakeSong(
+                    id=4201,
+                    name="午夜追捕低音弦乐",
+                    artists=["Score Lab"],
+                    album="现代悬疑 纯音乐",
+                    duration=180000,
+                ),
+            ],
+            environment=brief.era_or_environment,
+            music_brief=brief.to_analysis(),
+        )
+
+        svc = AsyncMock()
+        svc.analyze_story_for_music.return_value = rec
+        svc.get_song_play_url = AsyncMock(
+            side_effect=lambda sid: f"https://cdn.example.com/{sid}.mp3"
+        )
+        mock_get_svc.return_value = svc
+
+        resp = client.post(
+            "/api/music/recommend",
+            json={"story_text": "雨夜里，主角穿过巷口躲避追捕。"},
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert [song["name"] for song in data["songs"]] == ["午夜追捕低音弦乐"]
+        assert data["music_brief"]["negative_cues"] == brief.negative_cues
+        assert svc.get_song_play_url.await_count == 1
 
 
 # ============================================================
