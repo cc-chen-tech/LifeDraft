@@ -12,7 +12,7 @@ import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
-from src.api.deps import get_current_user_optional
+from src.api.deps import get_current_user, get_current_user_optional
 from src.database.models import SessionLocal
 from src.services.minimax_config import build_minimax_config
 from src.services.music_service import MusicBrief, MusicResultRanker
@@ -312,39 +312,42 @@ async def generate_music(
     request: MusicGenerationRequest,
     background_tasks: BackgroundTasks,
     response: Response,
+    user_id: int = Depends(get_current_user),
     sync: bool = Query(
         False,
         description="Debug/local verification only: wait for provider generation and return the ready track.",
     ),
 ):
     """Generate story-conditioned AI music without blocking recommendation search."""
-    from src.services.minimax_music_generation import StoryMusicGenerationService
-
-    config = build_minimax_config()
-    if not config.music_generation_enabled:
-        raise HTTPException(status_code=503, detail="AI music generation is disabled")
-    if not config.api_key and not config.local_audio_enabled:
-        raise HTTPException(
-            status_code=503,
-            detail="MiniMax music generation requires MINIMAX_API_KEY",
-        )
-
-    if not sync:
-        background_tasks.add_task(
-            _generate_music_in_background,
-            request.game_id,
-            request.story_text,
-            dict(request.analysis),
-        )
-        response.status_code = 202
-        return MusicGenerationEnqueueResponse(
-            status="queued",
-            game_id=request.game_id,
-            insert_policy="future_queue",
-        )
-
     db = SessionLocal()
     try:
+        _require_playlist_game_owner(db, request.game_id, user_id)
+
+        from src.services.minimax_music_generation import StoryMusicGenerationService
+
+        config = build_minimax_config()
+        if not config.music_generation_enabled:
+            raise HTTPException(status_code=503, detail="AI music generation is disabled")
+        if not config.api_key and not config.local_audio_enabled:
+            raise HTTPException(
+                status_code=503,
+                detail="MiniMax music generation requires MINIMAX_API_KEY",
+            )
+
+        if not sync:
+            background_tasks.add_task(
+                _generate_music_in_background,
+                request.game_id,
+                request.story_text,
+                dict(request.analysis),
+            )
+            response.status_code = 202
+            return MusicGenerationEnqueueResponse(
+                status="queued",
+                game_id=request.game_id,
+                insert_policy="future_queue",
+            )
+
         track = StoryMusicGenerationService().generate_ready_track(
             db=db,
             game_id=request.game_id,
@@ -360,6 +363,8 @@ async def generate_music(
     except RuntimeError as exc:
         logger.warning("[MusicAPI] Generated music unavailable: %s", exc)
         raise HTTPException(status_code=503, detail=str(exc))
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.exception("[MusicAPI] Generated music failed unexpectedly")
         raise HTTPException(status_code=503, detail=_music_generation_failure_detail(exc))
@@ -406,16 +411,22 @@ def _generate_music_in_background(game_id: int, story_text: str, analysis: Dict[
 async def enqueue_music_generation(
     request: MusicGenerationRequest,
     background_tasks: BackgroundTasks,
+    user_id: int = Depends(get_current_user),
 ):
     """Start AI music generation in the background and return immediately."""
-    config = build_minimax_config()
-    if not config.music_generation_enabled:
-        raise HTTPException(status_code=503, detail="AI music generation is disabled")
-    if not config.api_key and not config.local_audio_enabled:
-        raise HTTPException(
-            status_code=503,
-            detail="MiniMax music generation requires MINIMAX_API_KEY",
-        )
+    db = SessionLocal()
+    try:
+        _require_playlist_game_owner(db, request.game_id, user_id)
+        config = build_minimax_config()
+        if not config.music_generation_enabled:
+            raise HTTPException(status_code=503, detail="AI music generation is disabled")
+        if not config.api_key and not config.local_audio_enabled:
+            raise HTTPException(
+                status_code=503,
+                detail="MiniMax music generation requires MINIMAX_API_KEY",
+            )
+    finally:
+        db.close()
 
     background_tasks.add_task(
         _generate_music_in_background,
@@ -610,15 +621,11 @@ async def stream_song(song_id: int, request: Request):
 
 
 @router.get("/music/playlist/{game_id}")
-async def get_playlist(game_id: int):
+async def get_playlist(game_id: int, user_id: int = Depends(get_current_user)):
     """Get the current playlist state for a game."""
     db = SessionLocal()
     try:
-        from src.database.models import Game
-
-        game = db.query(Game).filter_by(game_id=game_id).first()
-        if game is None:
-            raise HTTPException(status_code=404, detail="Game not found")
+        _require_playlist_game_owner(db, game_id, user_id)
 
         service = get_music_playlist_service()
         state = service.get_state(db, game_id)
@@ -628,13 +635,18 @@ async def get_playlist(game_id: int):
 
 
 @router.put("/music/playlist/{game_id}")
-async def update_playlist(game_id: int, request: PlaylistUpdateRequest):
+async def update_playlist(
+    game_id: int,
+    request: PlaylistUpdateRequest,
+    user_id: int = Depends(get_current_user),
+):
     """Merge new recommendation songs into the playlist.
 
     Preserves the currently playing song; only the upcoming queue is replaced.
     """
     db = SessionLocal()
     try:
+        _require_playlist_game_owner(db, game_id, user_id)
         service = get_music_playlist_service()
         state = service.merge_songs(
             db=db,
@@ -649,10 +661,15 @@ async def update_playlist(game_id: int, request: PlaylistUpdateRequest):
 
 
 @router.post("/music/playlist/{game_id}/sync")
-async def sync_playlist_state(game_id: int, request: PlaylistSyncRequest):
+async def sync_playlist_state(
+    game_id: int,
+    request: PlaylistSyncRequest,
+    user_id: int = Depends(get_current_user),
+):
     """Sync current playback position and state."""
     db = SessionLocal()
     try:
+        _require_playlist_game_owner(db, game_id, user_id)
         service = get_music_playlist_service()
         result = service.sync_state(
             db=db,
@@ -667,12 +684,22 @@ async def sync_playlist_state(game_id: int, request: PlaylistSyncRequest):
 
 
 @router.post("/music/playlist/{game_id}/advance")
-async def advance_playlist(game_id: int):
+async def advance_playlist(game_id: int, user_id: int = Depends(get_current_user)):
     """Advance to the next song in the queue."""
     db = SessionLocal()
     try:
+        _require_playlist_game_owner(db, game_id, user_id)
         service = get_music_playlist_service()
         state = service.advance(db, game_id)
         return state.to_dict()
     finally:
         db.close()
+
+
+def _require_playlist_game_owner(db, game_id: int, user_id: int) -> None:
+    """Hide playlist state for games outside the authenticated user's saves."""
+    from src.database.models import Game
+
+    game = db.query(Game).filter_by(game_id=game_id, user_id=user_id).first()
+    if game is None:
+        raise HTTPException(status_code=404, detail="Game not found")
