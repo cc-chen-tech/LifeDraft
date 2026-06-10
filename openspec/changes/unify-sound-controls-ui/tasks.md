@@ -15,3 +15,5 @@
 - [x] Replace nested music/narration cards with lightweight divided channel rows to reduce redundant sound UI chrome.
 - [x] Remove the redundant expanded "声音控制" header and use concise embedded channel labels "音乐" / "朗读".
 - [x] Rename the global sound landmark and controls from "声音控制/声音面板" to one "声音" entry with a "音乐和朗读" expanded group.
+- [x] Add a compact sound overview row that combines music playback state, narration state, and auto-read mode inside the expanded sound mixer.
+- [x] Use semantic channel headings for the embedded "音乐" and "朗读" channel labels.

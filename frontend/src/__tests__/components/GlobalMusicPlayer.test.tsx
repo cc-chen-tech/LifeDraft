@@ -396,6 +396,45 @@ describe("GlobalMusicPlayer", () => {
       expect(within(panel).getByText("朗读")).toBeInTheDocument();
     });
 
+    it("presents the expanded controls as one sound mixer with semantic channel headings and combined status", async () => {
+      const user = userEvent.setup();
+      setStoreState({
+        activeStoryText: "story text",
+        currentSong: { id: 2, name: "Playing Song", artists: ["Artist"], album: "", duration: 200 },
+        isPlaying: true,
+      });
+      useStoryVoiceStore.setState({
+        activeReadingContext,
+        activeAutoReadText: activeReadingContext.text,
+        activeAutoReadReady: false,
+        readingState: "playing",
+        autoReadEnabled: true,
+      } as never);
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url.includes("/voice-reading/settings")) {
+          return Promise.resolve(jsonResponse({
+            auto_read_enabled: true,
+            selected_voice_color: "warm_female",
+          }));
+        }
+        return Promise.resolve(jsonResponse({}));
+      });
+
+      render(<GlobalMusicPlayer />);
+
+      await user.click(screen.getByRole("button", { name: "展开声音" }));
+
+      const panel = screen.getByTestId("unified-sound-panel");
+      const overview = within(panel).getByTestId("sound-mixer-overview");
+      expect(overview).toHaveTextContent("声音");
+      expect(overview).toHaveTextContent("音乐播放中");
+      expect(overview).toHaveTextContent("朗读中");
+      expect(overview).toHaveTextContent("自动朗读");
+
+      expect(within(panel).getByRole("heading", { name: "音乐", level: 3 })).toBeInTheDocument();
+      expect(within(panel).getByRole("heading", { name: "朗读", level: 3 })).toBeInTheDocument();
+    });
+
     it("shows persisted current music inside the expanded music section", async () => {
       const user = userEvent.setup();
       setStoreState({
