@@ -675,6 +675,38 @@ describe("GlobalMusicPlayer", () => {
       ).toBeInTheDocument();
     });
 
+    it("uses a single combined status line in the sound header instead of separate status pills", async () => {
+      const user = userEvent.setup();
+      setStoreState({
+        activeStoryText: "story text",
+        currentSong: {
+          id: 2,
+          name: "Playing Song",
+          artists: ["Artist"],
+          album: "",
+          duration: 200,
+        },
+        isPlaying: true,
+      });
+      useStoryVoiceStore.setState({
+        activeReadingContext,
+        activeAutoReadText: activeReadingContext.text,
+        activeAutoReadReady: true,
+        readingState: "playing",
+      } as never);
+
+      render(<GlobalMusicPlayer />);
+
+      await user.click(screen.getByRole("button", { name: "展开声音" }));
+
+      const panel = screen.getByTestId("unified-sound-panel");
+      const status = within(panel).getByTestId("sound-mixer-status");
+      expect(status).toHaveTextContent("音乐播放中");
+      expect(status).toHaveTextContent("朗读中");
+      expect(status).toHaveTextContent("·");
+      expect(within(panel).queryAllByTestId("sound-status-pill")).toHaveLength(0);
+    });
+
     it("does not duplicate music and narration status badges inside each channel", async () => {
       const user = userEvent.setup();
       setStoreState({
@@ -701,8 +733,10 @@ describe("GlobalMusicPlayer", () => {
       await user.click(screen.getByRole("button", { name: "展开声音" }));
 
       const panel = screen.getByTestId("unified-sound-panel");
-      expect(within(panel).getAllByText("音乐播放中")).toHaveLength(1);
-      expect(within(panel).getAllByText("朗读中")).toHaveLength(1);
+      const status = within(panel).getByTestId("sound-mixer-status");
+      expect(status).toHaveTextContent("音乐播放中");
+      expect(status).toHaveTextContent("朗读中");
+      expect(within(panel).queryAllByTestId("sound-status-pill")).toHaveLength(0);
       expect(within(panel).getAllByText("自动朗读")).toHaveLength(1);
       expect(within(panel).queryByText("手动朗读")).not.toBeInTheDocument();
       expect(

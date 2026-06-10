@@ -135,6 +135,7 @@ export function GlobalMusicPlayer() {
               : activeReadingContext
                 ? "朗读待开始"
                 : "朗读待生成";
+  const combinedSoundStatus = `${musicStatusLabel} · ${readingStatusLabel}`;
   const collapsedReadingStatus =
     readingState === "loading"
       ? "准备中"
@@ -173,18 +174,22 @@ export function GlobalMusicPlayer() {
         <div data-testid="unified-sound-panel" className="p-3">
           <div
             data-testid="sound-mixer-overview"
-            className="flex flex-wrap items-center gap-2 pb-3 text-xs text-muted-foreground"
+            className="flex items-start gap-2 pb-3 text-xs text-muted-foreground"
           >
-            <div className="mr-auto flex min-w-0 items-center gap-2 text-foreground">
+            <div className="mr-auto flex min-w-0 items-start gap-2">
               <Volume2 className="h-4 w-4 shrink-0 text-primary" />
-              <span className="text-sm font-medium">声音</span>
+              <div className="min-w-0">
+                <div className="text-sm font-medium leading-5 text-foreground">
+                  声音
+                </div>
+                <div
+                  data-testid="sound-mixer-status"
+                  className="truncate leading-5"
+                >
+                  {combinedSoundStatus}
+                </div>
+              </div>
             </div>
-            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary">
-              {musicStatusLabel}
-            </span>
-            <span className="rounded-full bg-secondary/60 px-2 py-0.5">
-              {readingStatusLabel}
-            </span>
             <button
               type="button"
               aria-label="收起声音"
