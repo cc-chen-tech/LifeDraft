@@ -117,6 +117,31 @@ def _generator(base_url: str) -> ImageGenerator:
     return gen
 
 
+def test_minimax_image_key_does_not_fall_back_to_openai_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    from config.settings import Settings
+
+    monkeypatch.setattr(Settings, "IMAGE_API_KEY", None)
+    monkeypatch.setattr(Settings, "OPENAI_API_KEY", "sk-openai-compatible-key")
+    monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
+
+    assert Settings.get_image_api_key() is None
+
+    monkeypatch.setenv("MINIMAX_API_KEY", "sk-minimax-key")
+    assert Settings.get_image_api_key() == "sk-minimax-key"
+
+
+def test_missing_minimax_image_key_error_points_to_minimax_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    from config.settings import Settings
+
+    monkeypatch.setattr(Settings, "IMAGE_API_KEY", None)
+    monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
+
+    generator = ImageGenerator(api_key=None, base_url="https://api.minimaxi.com/v1")
+
+    with pytest.raises(ValueError, match="IMAGE_API_KEY or MINIMAX_API_KEY"):
+        generator.require_generation_config()
+
+
 def test_text_to_image_posts_minimax_payload_and_downloads_url() -> None:
     with MiniMaxCaptureServer() as server:
         image_bytes, prompt_used = _generator(server.base_url).generate_image(

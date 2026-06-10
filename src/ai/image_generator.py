@@ -120,11 +120,11 @@ class ImageGenerator:
         """Fail only when a real image generation provider call is requested."""
         if not self.api_key:
             raise ValueError(
-                "Image API key is required. Set IMAGE_API_KEY or OPENAI_API_KEY in environment."
+                "Image API key is required. Set IMAGE_API_KEY or MINIMAX_API_KEY in environment."
             )
         if not self.base_url:
             raise ValueError(
-                "Image API base URL is required. Set IMAGE_API_BASE_URL or OPENAI_BASE_URL in environment."
+                "Image API base URL is required. Set IMAGE_API_BASE_URL in environment."
             )
 
     def _image_generation_url(self) -> str:

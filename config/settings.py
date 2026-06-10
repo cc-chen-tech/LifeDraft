@@ -117,8 +117,8 @@ class Settings:
 
     @classmethod
     def get_image_api_key(cls) -> Optional[str]:
-        """获取图像API密钥，优先使用 IMAGE_API_KEY，其次复用 MINIMAX_API_KEY/OpenAI 密钥。"""
-        return cls.IMAGE_API_KEY or os.getenv("MINIMAX_API_KEY") or cls.OPENAI_API_KEY
+        """获取 MiniMax 图像 API 密钥，优先使用 IMAGE_API_KEY，其次复用 MINIMAX_API_KEY。"""
+        return cls.IMAGE_API_KEY or os.getenv("MINIMAX_API_KEY")
 
     @classmethod
     def get_image_api_base_url(cls) -> Optional[str]:
