@@ -401,36 +401,39 @@ describe('StoryVoiceControls', () => {
     )).toBe(false);
   });
 
-  it('does not start a slow backend voice request before production voice settings load', async () => {
+  it('starts manual reading immediately even when production voice settings are still loading', async () => {
     let resolveSettings: (value: Response) => void = () => undefined;
     const settingsPromise = new Promise<Response>((resolve) => {
       resolveSettings = resolve;
     });
-    const { speech } = installSpeechSynthesisMock([
-      {
-        name: 'Chinese Xiaoxiao Female Natural',
-        voiceURI: 'xiaoxiao',
-        lang: 'zh-CN',
-      },
-    ]);
     (global.fetch as jest.Mock).mockImplementation((url: string) => {
       if (url.includes('/voice-reading/settings')) {
         return settingsPromise;
       }
       if (url.includes('/voice-reading/read')) {
-        throw new Error('should wait for voice settings before requesting backend audio');
+        return Promise.resolve(jsonResponse({
+          job_id: 11,
+          status: 'ready',
+          audio_url: '/api/voice-reading/audio/immediate-click.mp3',
+          playback_mode: 'audio',
+          provider: 'minimax',
+          media_type: 'audio/mpeg',
+        }));
       }
       return Promise.resolve(jsonResponse({}));
     });
 
     render(<StoryVoiceControls currentContext={currentContext} enablePlaybackControls compact />);
 
-    const pendingButton = screen.getByRole('button', { name: '正在加载朗读设置' });
-    expect(pendingButton).toBeDisabled();
-    fireEvent.click(pendingButton);
-    expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
-      String(url).includes('/voice-reading/read')
-    )).toBe(false);
+    const readButton = screen.getByRole('button', { name: '朗读故事' });
+    expect(readButton).toBeEnabled();
+    fireEvent.click(readButton);
+
+    await waitFor(() => {
+      expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
+        String(url).includes('/voice-reading/read')
+      )).toBe(true);
+    });
 
     resolveSettings(jsonResponse({
       auto_read_enabled: false,
@@ -440,37 +443,28 @@ describe('StoryVoiceControls', () => {
     }));
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: '朗读故事' })).toBeEnabled();
+      expect(useStoryVoiceStore.getState().currentAudioUrl).toBe('/api/voice-reading/audio/immediate-click.mp3');
     });
-
-    fireEvent.click(await screen.findByRole('button', { name: '朗读故事' }));
-
-    await waitFor(() => {
-      expect(speech.speak).toHaveBeenCalledTimes(1);
-    });
-    expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
-      String(url).includes('/voice-reading/read')
-    )).toBe(false);
   });
 
-  it('waits for production voice settings before auto-reading a completed story', async () => {
+  it('auto-reads a completed story using the current local toggle before voice settings finish loading', async () => {
     let resolveSettings: (value: Response) => void = () => undefined;
     const settingsPromise = new Promise<Response>((resolve) => {
       resolveSettings = resolve;
     });
-    const { speech } = installSpeechSynthesisMock([
-      {
-        name: 'Chinese Xiaoxiao Female Natural',
-        voiceURI: 'xiaoxiao',
-        lang: 'zh-CN',
-      },
-    ]);
     (global.fetch as jest.Mock).mockImplementation((url: string) => {
       if (url.includes('/voice-reading/settings')) {
         return settingsPromise;
       }
       if (url.includes('/voice-reading/read')) {
-        throw new Error('auto-read should wait for voice settings before backend audio');
+        return Promise.resolve(jsonResponse({
+          job_id: 12,
+          status: 'ready',
+          audio_url: '/api/voice-reading/audio/immediate-auto.mp3',
+          playback_mode: 'audio',
+          provider: 'minimax',
+          media_type: 'audio/mpeg',
+        }));
       }
       return Promise.resolve(jsonResponse({}));
     });
@@ -488,10 +482,11 @@ describe('StoryVoiceControls', () => {
       />
     );
 
-    expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
-      String(url).includes('/voice-reading/read')
-    )).toBe(false);
-    expect(speech.speak).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
+        String(url).includes('/voice-reading/read')
+      )).toBe(true);
+    });
 
     resolveSettings(jsonResponse({
       auto_read_enabled: true,
@@ -501,11 +496,8 @@ describe('StoryVoiceControls', () => {
     }));
 
     await waitFor(() => {
-      expect(speech.speak).toHaveBeenCalledTimes(1);
+      expect(useStoryVoiceStore.getState().currentAudioUrl).toBe('/api/voice-reading/audio/immediate-auto.mp3');
     });
-    expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
-      String(url).includes('/voice-reading/read')
-    )).toBe(false);
   });
 
   it('honors explicit provider override before browser-only runtime settings', async () => {

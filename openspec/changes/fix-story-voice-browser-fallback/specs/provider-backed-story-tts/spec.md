@@ -34,6 +34,23 @@ When production settings report browser speech as the active provider and backen
 - **THEN** the frontend MUST NOT call `/voice-reading/read`
 - **AND** the story voice store MUST enter browser speech playback.
 
+### Requirement: Voice settings loading does not block reading start
+
+Runtime voice settings loading SHALL NOT make the first manual read action or an already locally enabled auto-read action appear silent or unavailable.
+
+#### Scenario: Manual read while settings are still loading
+- **GIVEN** `/voice-reading/settings` has not returned yet
+- **WHEN** the user selects the story read action
+- **THEN** the read action MUST be enabled
+- **AND** the frontend MUST start story narration using the current local voice/provider state
+- **AND** the later settings response MUST update future voice runtime settings without cancelling the active narration.
+
+#### Scenario: Completed story auto-read while settings are still loading
+- **GIVEN** auto-read is already enabled in the local story voice state
+- **AND** `/voice-reading/settings` has not returned yet
+- **WHEN** a current-story result becomes complete and ready to read
+- **THEN** the frontend MUST start narration for the completed story without waiting for the settings response.
+
 ### Requirement: Browser voice switching uses the newly selected voice
 
 Changing the selected voice while browser speech is active SHALL restart speech with the new voice color immediately.
