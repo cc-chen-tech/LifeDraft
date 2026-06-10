@@ -21,6 +21,51 @@ def _modern_product_manager_settings() -> dict[str, Any]:
     }
 
 
+def test_quick_validator_rejects_classical_chapter_title_for_modern_story() -> None:
+    """Modern stories must not be accepted with legacy chapter-title openings."""
+    from config.prompts._helpers import _collect_available_people
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    available_people = [
+        person["name"]
+        for person in _collect_available_people(settings)
+        if person.get("name")
+    ]
+
+    result = quick_validate_story(
+        story_text=(
+            "第三回 雪巷惊魂\n\n"
+            "陆昊然把复盘文档递给林见微，陈晓雨陪她逐条整理用户反馈。"
+            "林一凡在会议记录里补充了上线风险，三个人把需求优先级重新排好。"
+        ),
+        character_settings=settings,
+        available_people=available_people,
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("现代时间线标题" in issue for issue in result.issues)
+
+
+def test_quick_validator_allows_classical_chapter_title_for_ancient_story() -> None:
+    """Explicit ancient stories can still use classical chapter labels."""
+    from src.ai.quick_validator import quick_validate_story
+
+    result = quick_validate_story(
+        story_text="第三回 雪巷惊魂\n\n沈青云踏过长安雪巷，听见更夫敲过三更。",
+        character_settings={
+            "era": {"year": 742, "era_description": "唐朝长安"},
+            "world": {"world_description": "古代中国江湖与市井"},
+        },
+        available_people=["沈青云"],
+        language="zh",
+    )
+
+    assert result.passed
+    assert result.issues == []
+
+
 def test_story_continuation_retries_when_choice_result_drifts_from_character_settings() -> None:
     class DriftThenValidGenerator:
         def __init__(self) -> None:

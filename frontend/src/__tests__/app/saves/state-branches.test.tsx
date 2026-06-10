@@ -5,7 +5,7 @@
  * Covers: Loading, Error, Empty, and Data states
  */
 import React from 'react';
-import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
+import { act, render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import type { GameListItem } from '@/lib/types';
 import { useGameStore } from '@/stores/useGameStore';
 import { useUserStore } from '@/stores/useUserStore';
@@ -28,11 +28,19 @@ jest.mock('next/navigation', () => ({
 // Import component after mocks
 import SavesPage from '@/app/saves/page';
 
-function setupStore(overrides: { savedGames?: GameListItem[]; isAuthenticated?: boolean } = {}) {
+function setupStore(overrides: { savedGames?: GameListItem[]; isAuthenticated?: boolean; userId?: number } = {}) {
   useGameStore.setState({
     savedGames: overrides.savedGames ?? [],
   });
   useUserStore.setState({
+    user: overrides.userId
+      ? {
+          user_id: overrides.userId,
+          public_id: `USER${overrides.userId}`,
+          display_name: `User ${overrides.userId}`,
+          private_id: `private-${overrides.userId}`,
+        }
+      : null,
     isAuthenticated: overrides.isAuthenticated ?? true,
   });
 }
@@ -82,6 +90,49 @@ describe('SavesPage - 4 State Rendering', () => {
 
       expect(screen.getByText('加载中...')).toBeInTheDocument();
       expect(document.querySelector('[class*="animate-spin"]')).toBeInTheDocument();
+    });
+
+    it('hides the previous user saves while a new user save list is loading', async () => {
+      setupStore({
+        isAuthenticated: true,
+        userId: 1,
+        savedGames: [
+          {
+            game_id: 101,
+            player_name: 'PreviousUserSave',
+            age: 28,
+            week: 0,
+            updated_at: '2026-06-10T10:00:00Z',
+          },
+        ],
+      });
+      fetchSavedGamesSpy
+        .mockResolvedValueOnce(undefined)
+        .mockImplementationOnce(() => new Promise(() => {}));
+
+      render(<SavesPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('PreviousUserSave')).toBeInTheDocument();
+      });
+
+      act(() => {
+        useUserStore.setState({
+          user: {
+            user_id: 2,
+            public_id: 'USER2',
+            display_name: 'User 2',
+            private_id: 'private-2',
+          },
+          isAuthenticated: true,
+        });
+      });
+
+      await waitFor(() => {
+        expect(fetchSavedGamesSpy).toHaveBeenCalledTimes(2);
+      });
+      expect(screen.getByText('加载中...')).toBeInTheDocument();
+      expect(screen.queryByText('PreviousUserSave')).not.toBeInTheDocument();
     });
   });
 

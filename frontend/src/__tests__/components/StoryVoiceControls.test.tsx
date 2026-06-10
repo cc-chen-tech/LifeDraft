@@ -601,6 +601,59 @@ describe('StoryVoiceControls', () => {
     expect(spoken.at(-1)?.voice?.name).toBe('Chinese Yunxi Male Natural');
   });
 
+  it('splits long browser speech into short chunks and advances without waiting for one giant utterance', async () => {
+    const { speech, spoken } = installSpeechSynthesisMock([
+      {
+        name: 'Chinese Xiaoxiao Female Natural',
+        voiceURI: 'xiaoxiao',
+        lang: 'zh-CN',
+      },
+    ]);
+    const longContext: ReadingContext = {
+      ...currentContext,
+      text: Array.from({ length: 12 }, (_, index) =>
+        `第${index + 1}段，主角在雨夜里听见远处的钟声，慢慢确认自己的选择已经改变了后续故事。`
+      ).join(''),
+    };
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.includes('/voice-reading/settings')) {
+        return Promise.resolve(jsonResponse({
+          auto_read_enabled: false,
+          selected_voice_color: 'warm_female',
+          tts_provider: 'browser',
+          backend_audio_enabled: false,
+        }));
+      }
+      if (url.includes('/voice-reading/read')) {
+        throw new Error('browser-mode should not request backend audio');
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    render(<StoryVoiceControls currentContext={longContext} enablePlaybackControls compact />);
+
+    await waitFor(() => {
+      expect(useStoryVoiceStore.getState().ttsProvider).toBe('browser');
+    });
+    fireEvent.click(await screen.findByRole('button', { name: '朗读故事' }));
+
+    await waitFor(() => {
+      expect(speech.speak).toHaveBeenCalledTimes(1);
+    });
+    expect(spoken[0].text.length).toBeLessThan(longContext.text.length);
+    expect(spoken[0].text.length).toBeLessThanOrEqual(220);
+
+    act(() => {
+      spoken[0].onend?.();
+    });
+
+    await waitFor(() => {
+      expect(speech.speak).toHaveBeenCalledTimes(2);
+    });
+    expect(spoken[1].text.length).toBeLessThanOrEqual(220);
+    expect(useStoryVoiceStore.getState().readingState).toBe('playing');
+  });
+
   it('coalesces duplicate read starts for the same story and voice while generation is in flight', async () => {
     let resolveRead: (value: Response) => void = () => undefined;
     const readPromise = new Promise<Response>((resolve) => {

@@ -51,15 +51,17 @@ export default function SavesPage() {
     setGameSession,
     resetCreation,
   } = useGameStore();
-  const { isAuthenticated } = useUserStore();
+  const { isAuthenticated, user } = useUserStore();
+  const currentUserId = user?.user_id ?? null;
 
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadedUserId, setLoadedUserId] = useState<number | null>(null);
   const [loadingGameId, setLoadingGameId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
-  const visibleSavedGames = isAuthenticated ? savedGames : [];
+  const visibleSavedGames = isAuthenticated && loadedUserId === currentUserId ? savedGames : [];
 
   const showToast = (type: "success" | "error", message: string) => {
     setToast({ type, message });
@@ -67,16 +69,30 @@ export default function SavesPage() {
   };
 
   useEffect(() => {
+    let cancelled = false;
+
     if (!isAuthenticated) {
+      setLoadedUserId(null);
+      setLoadError(null);
       setIsLoading(false);
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
+
+    setLoadedUserId(null);
+    setLoadError(null);
+    setIsLoading(true);
+
     const loadSaves = async () => {
       try {
         await fetchSavedGames();
+        if (cancelled) return;
+        setLoadedUserId(currentUserId);
         // 成功获取数据，重置 loading 状态
         setIsLoading(false);
       } catch (err: unknown) {
+        if (cancelled) return;
         const error = err as { status?: number; name?: string };
         // 401 错误会在 api.ts 中处理重定向，不需要重置 loading 状态
         // 其他错误（非 401、非 AbortError）记录日志并重置 loading
@@ -90,7 +106,10 @@ export default function SavesPage() {
     };
     
     loadSaves();
-  }, [isAuthenticated, fetchSavedGames]);
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, currentUserId, fetchSavedGames]);
 
   const handleLoad = async (gameId: number) => {
     setLoadingGameId(gameId);

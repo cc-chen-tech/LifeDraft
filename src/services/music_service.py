@@ -277,15 +277,22 @@ REPORTED_MEME_TITLE_CUES = {
 GENERIC_VOCAL_CATEGORY_CUES = {
     "动画op",
     "动画片头",
+    "动画主题曲",
+    "动画电影主题曲",
     "动漫op",
     "动漫片头",
+    "动漫主题曲",
     "日语动画",
     "日语op",
+    "日语主题曲",
     "acg",
     "anime",
     "animeopening",
+    "animetheme",
+    "animethemesong",
     "jpop",
     "j-pop",
+    "openingtheme",
     "vocalopening",
 }
 

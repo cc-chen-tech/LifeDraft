@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from src.ai.harness.era_validator import validate_era_consistency
+from src.game.relationship_authority import extract_required_key_people
 
 logger = logging.getLogger(__name__)
 
@@ -142,8 +143,12 @@ class QuickValidator:
         if available_people:
             name_issues = self._check_character_names(story_text, available_people, language)
             warnings.extend(name_issues)  # 作为警告，不阻止生成
+            required_key_people = self._extract_required_key_people_names(character_settings)
             cast_drift_issues = self._check_key_people_cast_drift(
-                story_text, available_people, language
+                story_text,
+                available_people,
+                language,
+                required_key_people=required_key_people,
             )
             issues.extend(cast_drift_issues)
 
@@ -157,6 +162,10 @@ class QuickValidator:
             era_passed, era_evidence, _ = validate_era_consistency(story_text, era_context)
             if not era_passed and era_evidence:
                 issues.append(era_evidence)
+
+        # 5. 检查现代故事标题是否回退到章回体。
+        title_issues = self._check_modern_chapter_title(story_text, era_context, language)
+        issues.extend(title_issues)
 
         passed = len(issues) == 0
         result = QuickValidationResult(passed=passed, issues=issues, warnings=warnings)
@@ -332,34 +341,58 @@ class QuickValidator:
         return warnings
 
     def _check_key_people_cast_drift(
-        self, text: str, available_people: List[str], language: str
+        self,
+        text: str,
+        available_people: List[str],
+        language: str,
+        required_key_people: Optional[List[str]] = None,
     ) -> List[str]:
         """Detect severe drift where key people disappear and a new named cast appears."""
         allowed_names = [name.strip() for name in available_people if name and name.strip()]
-        if len(allowed_names) < 2:
+        key_people_names = [
+            name.strip()
+            for name in (required_key_people or allowed_names)
+            if name and name.strip()
+        ]
+        if len(key_people_names) < 2:
             return []
 
-        present_allowed = [name for name in allowed_names if name in text]
+        present_key_people = [
+            name for name in key_people_names if self._key_person_has_active_presence(text, name)
+        ]
 
         if language != "zh":
-            if present_allowed:
+            if present_key_people:
                 return []
             return [
                 "上一版故事完全没有使用预设关键人物；请至少使用一个可用人物列表中的关键人物，并避免凭空替换关系网络。"
             ]
 
         invented_names = self._extract_likely_chinese_person_names(text, allowed_names)
-        if present_allowed:
-            key_people_ratio = len(present_allowed) / len(allowed_names)
-            required_network_count = (len(allowed_names) * 4 + 4) // 5
+        if present_key_people:
+            key_people_ratio = len(present_key_people) / len(key_people_names)
+            required_network_count = (len(key_people_names) * 4 + 4) // 5
             if (
-                len(allowed_names) >= 3
+                len(key_people_names) >= 3
+                and len(invented_names) >= 1
+                and len(present_key_people) < required_network_count
+                and self._invented_cast_has_role_transfer_cues(text, invented_names)
+            ):
+                return [
+                    "上一版故事预设关键人物使用不足，预设关系网使用不足，"
+                    "名单外关键角色替代预设关系网"
+                    f"（已使用{len(present_key_people)}/{len(key_people_names)}，"
+                    f"名单外关键角色：{ '、'.join(invented_names[:3]) }）；"
+                    "请不要让新人物接管导师、闺蜜、同期、投资人或主线推进功能。"
+                ]
+            if (
+                len(key_people_names) >= 3
                 and len(invented_names) >= 3
-                and len(present_allowed) < required_network_count
+                and len(present_key_people) < required_network_count
             ):
                 return [
                     "上一版故事预设关键人物使用不足，预设关系网使用不足"
-                    f"（已使用{len(present_allowed)}/{len(allowed_names)}，要求多人关系戏至少80%）"
+                    f"（已使用{len(present_key_people)}/{len(key_people_names)}，要求多人关系戏至少80%）"
                     "，反而让名单外人物主导剧情"
                     f"（{ '、'.join(invented_names[:5]) }）；请围绕预设关键人物关系网重写。"
                 ]
@@ -378,6 +411,81 @@ class QuickValidator:
 
         return [
             "上一版故事完全没有使用预设关键人物；请至少使用一个可用人物列表中的关键人物，并避免凭空替换关系网络。"
+        ]
+
+    def _key_person_has_active_presence(self, text: str, name: str) -> bool:
+        """Names mentioned only as absent/non-participating do not satisfy cast use."""
+        absence_cues = [
+            "没有参与",
+            "未参与",
+            "没参与",
+            "没有出现",
+            "未出现",
+            "没有出场",
+            "没有介入",
+            "没有加入",
+            "没有再出现",
+            "不在场",
+            "没有露面",
+        ]
+        start = 0
+        while True:
+            index = text.find(name, start)
+            if index == -1:
+                return False
+            window = text[max(0, index - 16): index + len(name) + 28]
+            if not any(cue in window for cue in absence_cues):
+                return True
+            start = index + len(name)
+
+    def _invented_cast_has_role_transfer_cues(
+        self,
+        text: str,
+        invented_names: List[str],
+    ) -> bool:
+        """Return True when a new name appears to inherit preset relationship functions."""
+        role_transfer_cues = [
+            "导师",
+            "闺蜜",
+            "同期",
+            "投资人",
+            "合伙人",
+            "负责人",
+            "产品负责人",
+            "同事",
+            "朋友",
+            "接管",
+            "主导",
+            "推进主线",
+            "决定下一步",
+            "陪她",
+            "陪他",
+            "复盘",
+            "安抚情绪",
+        ]
+        for name in invented_names:
+            start = 0
+            while True:
+                index = text.find(name, start)
+                if index == -1:
+                    break
+                window = text[max(0, index - 24): index + len(name) + 48]
+                if any(cue in window for cue in role_transfer_cues):
+                    return True
+                start = index + len(name)
+        return False
+
+    def _extract_required_key_people_names(
+        self,
+        character_settings: Optional[Dict[str, Any]],
+    ) -> List[str]:
+        """Return preset relationship key people, excluding family/background people."""
+        if not isinstance(character_settings, dict):
+            return []
+        return [
+            person["name"]
+            for person in extract_required_key_people(character_settings)
+            if person.get("name")
         ]
 
     def _extract_likely_chinese_person_names(
@@ -453,6 +561,27 @@ class QuickValidator:
                 issues.append("Story uses first-person 'I', should use third-person")
 
         return issues
+
+    def _check_modern_chapter_title(
+        self,
+        text: str,
+        era_context: Dict[str, str],
+        language: str,
+    ) -> List[str]:
+        """Reject classical chapter-title openings in modern Chinese stories."""
+        if language != "zh" or era_context.get("era_type") != "modern":
+            return []
+
+        opening = text.lstrip()[:80]
+        match = re.match(r"第[一二三四五六七八九十百千万两0-9]+回(?:\s|[，。！？：:、]|$)", opening)
+        if not match:
+            return []
+
+        return [
+            "现代故事开头使用了章回体标题"
+            f"「{match.group(0).strip()}」；请使用现代时间线标题"
+            "（如“第3周·周一 会议室复盘”），不要使用“第X回”。"
+        ]
 
 
 # 便捷函数
