@@ -167,17 +167,14 @@ export function GlobalMusicPlayer() {
             </button>
           </div>
 
-          <div
-            data-testid="sound-mixer-grid"
-            className="grid gap-3 md:grid-cols-2"
-          >
+          <div data-testid="sound-channel-list" className="space-y-3">
             <div
               role="group"
               aria-label="背景音乐"
               data-testid="sound-music-section"
-              className="min-w-0 rounded-md border border-border/70 bg-background/35 p-3"
+              className="min-w-0 border-t border-border/70 pt-3"
             >
-              <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
+              <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
                   <Music className="h-4 w-4 shrink-0 text-primary" />
                   <span className="truncate text-sm font-medium text-foreground">
@@ -196,6 +193,7 @@ export function GlobalMusicPlayer() {
                   autoFetchRecommendation={shouldAutoFetchRecommendation}
                   embedded
                   hideTitle
+                  compactControls
                 />
               ) : (
                 <div className="text-sm text-muted-foreground">
@@ -209,9 +207,9 @@ export function GlobalMusicPlayer() {
                 role="group"
                 aria-label="故事朗读"
                 data-testid="sound-reading-section"
-                className="min-w-0 rounded-md border border-border/70 bg-background/35 p-3"
+                className="min-w-0 border-t border-border/70 pt-3"
               >
-                <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
+                <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-2">
                     <Volume2 className="h-4 w-4 shrink-0 text-primary" />
                     <span className="truncate text-sm font-medium text-foreground">

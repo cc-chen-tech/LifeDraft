@@ -14,7 +14,7 @@ The global sound controls SHALL present scene music and story narration as peer 
 - **And** that group SHALL contain a peer channel group named "背景音乐"
 - **And** that group SHALL contain a peer channel group named "故事朗读"
 - **And** the UI SHALL NOT expose nested regions named "声音控制" or "声音面板"
-- **And** the embedded scene music controls SHALL not render their own outer card shell
+- **And** the embedded scene music controls SHALL not render their own outer card shell, recommendation list, or mood chips
 - **And** the embedded story narration controls SHALL not render as a separate region, bordered card, or separate top-divided control strip.
 
 #### Scenario: Expanded sound panel uses a lightweight mixer layout
@@ -22,13 +22,13 @@ The global sound controls SHALL present scene music and story narration as peer 
 - **When** the user expands the global sound controls
 - **Then** the expanded surface SHALL use one sound mixer layout
 - **And** the mixer SHALL expose one compact sound overview row with the current music state, current narration state, and auto-read mode
-- **And** the scene music and story narration sections SHALL be visually grouped as sibling mixer channels
+- **And** the scene music and story narration sections SHALL be visually grouped as compact sibling mixer channel rows
 - **And** the scene music and story narration channel labels SHALL be exposed as semantic channel group names
 - **And** the expanded UI SHALL NOT repeat the collapsed bar title as an extra "声音控制" header
 - **And** the expanded UI SHALL NOT introduce another "声音面板" landmark around the channel rows
 - **And** embedded channel labels SHALL use the explicit labels "背景音乐" and "故事朗读"
 - **And** duplicate child module headings such as "音乐" and "朗读" SHALL NOT appear inside the channel bodies
-- **And** the channel groups SHALL use a shared mixer grid instead of stacked standalone modules
+- **And** the channel groups SHALL use one shared vertical channel list instead of a two-column grid or stacked standalone modules
 - **And** the panel SHALL NOT present music and narration as separate standalone toolbars.
 
 #### Scenario: Embedded narration controls are grouped

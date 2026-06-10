@@ -286,7 +286,7 @@ describe("GlobalMusicPlayer", () => {
       ).not.toHaveClass("border");
     });
 
-    it("uses one sound mixer with channel rows instead of nested cards", async () => {
+    it("uses one sound mixer with compact vertical channel rows instead of nested cards", async () => {
       const user = userEvent.setup();
       setStoreState({
         activeStoryText: "story text",
@@ -309,16 +309,17 @@ describe("GlobalMusicPlayer", () => {
       await user.click(screen.getByRole("button", { name: "展开声音" }));
 
       const panel = screen.getByTestId("unified-sound-panel");
-      const mixer = within(panel).getByTestId("sound-mixer-grid");
+      const mixer = within(panel).getByTestId("sound-channel-list");
       const musicSection = within(panel).getByTestId("sound-music-section");
       const readingSection = within(panel).getByTestId("sound-reading-section");
 
-      expect(mixer).toHaveClass("grid");
-      expect(mixer).toHaveClass("md:grid-cols-2");
-      expect(musicSection).toHaveClass("rounded-md");
-      expect(readingSection).toHaveClass("rounded-md");
+      expect(mixer).toHaveClass("space-y-3");
+      expect(musicSection).toHaveClass("border-t");
+      expect(readingSection).toHaveClass("border-t");
       expect(musicSection).not.toHaveClass("rounded-lg");
       expect(readingSection).not.toHaveClass("rounded-lg");
+      expect(musicSection).not.toHaveClass("rounded-md");
+      expect(readingSection).not.toHaveClass("rounded-md");
       expect(
         within(readingSection).getByTestId("story-voice-embedded-module"),
       ).toBeInTheDocument();
@@ -611,7 +612,7 @@ describe("GlobalMusicPlayer", () => {
       ).toBeInTheDocument();
     });
 
-    it("merges music and read-aloud into one two-channel sound mixer without duplicate module headings", async () => {
+    it("merges music and read-aloud into one compact channel list without duplicate module headings", async () => {
       const user = userEvent.setup();
       setStoreState({
         activeStoryText: "story text",
@@ -637,8 +638,8 @@ describe("GlobalMusicPlayer", () => {
       await user.click(screen.getByRole("button", { name: "展开声音" }));
 
       const panel = screen.getByTestId("unified-sound-panel");
-      const mixer = within(panel).getByTestId("sound-mixer-grid");
-      expect(mixer).toHaveClass("md:grid-cols-2");
+      const mixer = within(panel).getByTestId("sound-channel-list");
+      expect(mixer).toHaveClass("space-y-3");
 
       const musicChannel = within(mixer).getByRole("group", {
         name: "背景音乐",
@@ -666,6 +667,65 @@ describe("GlobalMusicPlayer", () => {
       expect(
         within(panel).queryByRole("region", { name: "故事朗读" }),
       ).not.toBeInTheDocument();
+    });
+
+    it("uses one compact vertical sound panel instead of two nested audio cards", async () => {
+      const user = userEvent.setup();
+      setStoreState({
+        activeStoryText: "story text",
+        currentSong: {
+          id: 2,
+          name: "Playing Song",
+          artists: ["Artist"],
+          album: "",
+          duration: 200,
+        },
+        recommendation: {
+          mood: "平静",
+          environment: "城市",
+          story_style: "现代",
+          songs: [
+            {
+              id: 2,
+              name: "Playing Song",
+              artists: ["Artist"],
+              album: "",
+              duration: 200,
+            },
+            {
+              id: 3,
+              name: "Queued Song",
+              artists: ["Artist"],
+              album: "",
+              duration: 200,
+            },
+          ],
+        },
+      });
+      useStoryVoiceStore.setState({
+        activeReadingContext,
+        activeAutoReadText: activeReadingContext.text,
+        activeAutoReadReady: true,
+      } as never);
+
+      render(<GlobalMusicPlayer />);
+
+      await user.click(screen.getByRole("button", { name: "展开声音" }));
+
+      const panel = screen.getByTestId("unified-sound-panel");
+      expect(within(panel).getByTestId("sound-channel-list")).toBeInTheDocument();
+      expect(within(panel).queryByTestId("sound-mixer-grid")).not.toBeInTheDocument();
+
+      const musicSection = within(panel).getByTestId("sound-music-section");
+      const readingSection = within(panel).getByTestId("sound-reading-section");
+      expect(musicSection).not.toHaveClass("rounded-md");
+      expect(readingSection).not.toHaveClass("rounded-md");
+      expect(within(musicSection).queryByText(/推荐歌曲/)).not.toBeInTheDocument();
+      expect(within(musicSection).queryByText("平静")).not.toBeInTheDocument();
+      expect(within(musicSection).queryByText("城市")).not.toBeInTheDocument();
+      expect(within(readingSection).getByRole("button", { name: "朗读故事" })).toBeInTheDocument();
+      expect(within(readingSection).getByRole("combobox", { name: "选择朗读声音" })).toBeInTheDocument();
+      expect(within(readingSection).getByRole("checkbox", { name: "自动朗读" })).toBeInTheDocument();
     });
 
     it("shows persisted current music inside the expanded music section", async () => {

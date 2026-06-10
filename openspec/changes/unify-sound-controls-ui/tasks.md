@@ -11,7 +11,7 @@
 - [x] Simplify the collapsed sound bar to one primary sound control plus expand, with narration controls only inside the unified panel.
 - [x] Add PlayPage coverage proving the story body no longer renders a standalone narration bar.
 - [x] Run focused component tests for the global sound panel and story voice controls.
-- [x] Add regression coverage that the expanded panel has embedded music/narration channels instead of nested sound regions or card shells.
+- [x] Add regression coverage that the expanded panel has embedded music/narration channel rows instead of nested sound regions, cards, or grids.
 - [x] Replace nested music/narration cards with lightweight divided channel rows to reduce redundant sound UI chrome.
 - [x] Remove the redundant expanded "声音控制" header and use concise embedded channel labels "音乐" / "朗读".
 - [x] Rename the global sound landmark and controls from "声音控制/声音面板" to one "声音" entry with a "音乐和朗读" expanded group.
@@ -20,4 +20,4 @@
 - [x] Remove collapsed music play/pause behavior so the closed bar only opens the unified sound panel.
 - [x] Add regression coverage that the collapsed bar does not expose music or narration playback controls.
 - [x] Replace the collapsed mini bar with an expanded panel header and a single "收起声音" action while open.
-- [x] Redesign the expanded panel as one two-channel sound mixer with "背景音乐" and "故事朗读" peer groups, hiding duplicate child module headings.
+- [x] Redesign the expanded panel as one compact vertical sound mixer with "背景音乐" and "故事朗读" peer groups, hiding duplicate child module headings, music mood chips, and recommendation lists.
