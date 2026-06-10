@@ -351,6 +351,18 @@ class QuickValidator:
         invented_names = self._extract_likely_chinese_person_names(text, allowed_names)
         if present_allowed:
             key_people_ratio = len(present_allowed) / len(allowed_names)
+            required_network_count = (len(allowed_names) * 4 + 4) // 5
+            if (
+                len(allowed_names) >= 3
+                and len(invented_names) >= 3
+                and len(present_allowed) < required_network_count
+            ):
+                return [
+                    "上一版故事预设关系网使用不足"
+                    f"（已使用{len(present_allowed)}/{len(allowed_names)}，要求多人关系戏至少80%）"
+                    "，反而让名单外人物主导剧情"
+                    f"（{ '、'.join(invented_names[:5]) }）；请围绕预设关键人物关系网重写。"
+                ]
             if key_people_ratio < 0.5 and len(invented_names) >= 3:
                 return [
                     "上一版故事预设关键人物使用不足，反而引入了大量名单外人物"
