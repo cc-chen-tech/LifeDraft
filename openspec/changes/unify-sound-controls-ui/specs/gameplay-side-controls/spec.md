@@ -42,15 +42,17 @@ The global sound controls SHALL present scene music and story narration as peer 
 
 ### Requirement: Collapsed sound controls stay simple
 
-The collapsed global sound controls SHALL act as one sound-panel entry point. Detailed music playback, narration playback, voice selection, and auto-read settings SHALL live in the expanded sound panel.
+The collapsed global sound controls SHALL act as one sound-panel entry point while preserving a single direct music play/pause action when playable music is already available. Detailed music controls, narration playback, voice selection, and auto-read settings SHALL live in the expanded sound panel.
 
 #### Scenario: Current story can play music and be narrated
 - **Given** the current story has music context and an active reading context
 - **When** the global sound controls are collapsed
 - **Then** the collapsed control bar SHALL expose an action named "展开声音"
-- **And** the collapsed control bar SHALL NOT expose music play or pause actions
+- **And** the collapsed control bar SHALL expose at most one music play or pause action when a controllable audio element exists
+- **And** when music exists but a controllable audio element has not initialized, that music action SHALL open the expanded sound group instead of pretending to start playback
 - **And** the collapsed control bar SHALL NOT expose narration actions
 - **And** selecting the collapsed sound action SHALL expand the unified "音乐和朗读" group
+- **And** selecting the direct music action SHALL toggle music without opening the expanded group
 - **And** detailed voice, auto-read, and music playback settings SHALL remain available inside the expanded group.
 
 #### Scenario: Narration audio is ready but not playing

@@ -8,7 +8,7 @@
 - [x] Remove the redundant stop action while generated narration audio is merely ready to play.
 - [x] Add regression coverage for a single sound mixer with channel rows instead of nested cards.
 - [x] Group embedded narration primary controls separately from voice settings and auto-read.
-- [x] Simplify the collapsed sound bar to one primary sound control plus expand, with narration controls only inside the unified panel.
+- [x] Simplify the collapsed sound bar to one music playback control plus expand, with narration controls only inside the unified panel.
 - [x] Add PlayPage coverage proving the story body no longer renders a standalone narration bar.
 - [x] Run focused component tests for the global sound panel and story voice controls.
 - [x] Add regression coverage that the expanded panel has embedded music/narration channel rows instead of nested sound regions, cards, or grids.
@@ -17,8 +17,9 @@
 - [x] Rename the global sound landmark and controls from "声音控制/声音面板" to one "声音" entry with a "音乐和朗读" expanded group.
 - [x] Add a compact sound overview row that combines music playback state, narration state, and auto-read mode inside the expanded sound mixer.
 - [x] Use semantic channel headings for the embedded "音乐" and "朗读" channel labels.
-- [x] Remove collapsed music play/pause behavior so the closed bar only opens the unified sound panel.
-- [x] Add regression coverage that the collapsed bar does not expose music or narration playback controls.
+- [x] Restore collapsed music play/pause as the only direct sound action so users can resume audio without opening the panel.
+- [x] Add regression coverage that the collapsed bar exposes music playback without duplicating narration controls.
+- [x] Add regression coverage that persisted music without an audio element opens the sound panel instead of showing a dead playback control.
 - [x] Replace the collapsed mini bar with an expanded panel header and a single "收起声音" action while open.
 - [x] Redesign the expanded panel as one compact vertical sound mixer with "背景音乐" and "故事朗读" peer groups, hiding duplicate child module headings, music mood chips, and recommendation lists.
 - [x] Remove duplicate per-channel status badges so music/narration state appears once in the shared sound overview.
