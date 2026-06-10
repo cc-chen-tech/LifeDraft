@@ -14,7 +14,6 @@ def extract_required_key_people(character_settings: Mapping[str, Any]) -> List[D
         key_people = relationships.get("key_people")
     else:
         key_people = []
-
     if not isinstance(key_people, list):
         return []
 

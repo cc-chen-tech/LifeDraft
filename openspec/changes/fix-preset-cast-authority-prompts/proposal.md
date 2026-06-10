@@ -4,7 +4,7 @@ The 2026-06-08 UX report shows a P0 narrative quality failure: preset key people
 
 ## What Changes
 
-- Add a relationship authority helper that extracts canonical preset key people from character settings.
+- Add a relationship authority helper that extracts canonical preset key people from character settings, including both `relationships.key_people` and legacy `relationships: [...]` payloads.
 - Inject canonical names, roles, relationship labels, and a no-rename/no-substitute rule into story prompts.
 - Require each generated round to use at least one canonical preset key person, preventing the "0 出场" failure mode even when no invented substitute is detected.
 - Carry the same preset cast authority into WorldModel constraints so later rounds preserve the relationship network.
@@ -20,5 +20,6 @@ The 2026-06-08 UX report shows a P0 narrative quality failure: preset key people
 - Backend prompt construction for story-only and round-event generation.
 - Backend prompt construction and validation for choice-result continuations.
 - WorldModel constraints built from `PlayerState.character_settings`.
+- Legacy character creation payloads where `relationships` is already a list of key people.
 - Import validation and contract tests.
 - No database migration or frontend UI change is required.
