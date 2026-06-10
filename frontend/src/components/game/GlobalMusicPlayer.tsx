@@ -156,7 +156,7 @@ export function GlobalMusicPlayer() {
       role="region"
       aria-label="声音"
       data-testid="global-music-player"
-      className="fixed z-50 top-16 left-0 right-0 safe-area-pt mt-2 md:left-auto md:right-4 md:w-80"
+      className="fixed z-50 top-16 left-0 right-0 safe-area-pt mt-2 md:left-auto md:right-4 md:w-[28rem]"
     >
       {/* MusicPlayer always mounted to keep audio alive.
           Use opacity-0 + h-0 + overflow-hidden instead of display:none
@@ -201,54 +201,63 @@ export function GlobalMusicPlayer() {
             </button>
           </div>
 
-          <div data-testid="sound-channel-list" className="space-y-3">
+          <div
+            role="group"
+            aria-label="声音控制台"
+            data-testid="sound-control-console"
+            className="space-y-4 border-t border-border/70 pt-3"
+          >
             <div
-              role="group"
-              aria-label="背景音乐"
-              data-testid="sound-music-section"
-              className="min-w-0 border-t border-border/70 pt-3"
+              data-testid="sound-music-row"
+              className="grid min-w-0 gap-2 md:grid-cols-[6.5rem_minmax(0,1fr)] md:items-start"
             >
-              <div className="mb-2 flex min-w-0 items-center gap-2">
-                <div className="flex min-w-0 items-center gap-2">
-                  <Music className="h-4 w-4 shrink-0 text-primary" />
-                  <span className="truncate text-sm font-medium text-foreground">
+              <div className="flex min-w-0 items-start gap-2">
+                <Music className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium text-foreground">
                     背景音乐
-                  </span>
+                  </div>
+                  <div className="truncate text-xs text-muted-foreground">
+                    {musicStatusLabel}
+                  </div>
                 </div>
               </div>
-              {storyText ? (
-                <MusicPlayer
-                  storyText={storyText}
-                  gameId={effectiveGameId}
-                  className="rounded-none border-0 bg-transparent p-0 shadow-none"
-                  autoFetchRecommendation={shouldAutoFetchRecommendation}
-                  embedded
-                  hideTitle
-                  compactControls
-                />
-              ) : (
-                <div className="text-sm text-muted-foreground">
-                  故事生成完成后会自动推荐音乐。
-                </div>
-              )}
+              <div className="min-w-0">
+                {storyText ? (
+                  <MusicPlayer
+                    storyText={storyText}
+                    gameId={effectiveGameId}
+                    className="rounded-none border-0 bg-transparent p-0 shadow-none"
+                    autoFetchRecommendation={shouldAutoFetchRecommendation}
+                    embedded
+                    hideTitle
+                    compactControls
+                  />
+                ) : (
+                  <div className="text-sm text-muted-foreground">
+                    故事生成完成后会自动推荐音乐。
+                  </div>
+                )}
+              </div>
             </div>
 
             {activeReadingContext && (
               <div
-                role="group"
-                aria-label="故事朗读"
-                data-testid="sound-reading-section"
-                className="min-w-0 border-t border-border/70 pt-3"
+                data-testid="sound-reading-row"
+                className="grid min-w-0 gap-2 border-t border-border/70 pt-4 md:grid-cols-[6.5rem_minmax(0,1fr)] md:items-start"
               >
-                <div className="mb-2 flex min-w-0 items-center gap-2">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <Volume2 className="h-4 w-4 shrink-0 text-primary" />
-                    <span className="truncate text-sm font-medium text-foreground">
+                <div className="flex min-w-0 items-start gap-2">
+                  <Volume2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-foreground">
                       故事朗读
-                    </span>
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {readingStatusLabel}
+                    </div>
                   </div>
                 </div>
-                <div data-testid="sound-reading-channel" className="space-y-3">
+                <div data-testid="sound-reading-channel" className="min-w-0 space-y-3">
                   <StoryVoiceControls
                     currentContext={activeReadingContext}
                     autoReadText={activeAutoReadText}
