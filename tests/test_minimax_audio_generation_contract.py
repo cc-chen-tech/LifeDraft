@@ -10,13 +10,35 @@ from io import BytesIO
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
+from uuid import uuid4
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.database.models import Game, SessionLocal, init_db
+from src.api.deps import create_token
+from src.database.models import Game, SessionLocal, User, init_db
 from src.services.music_service import MusicBrief
 from src.services.story_tts_provider import BrowserSpeechTTSProvider
+
+
+def _create_owned_music_game(session, name: str) -> tuple[int, dict[str, str]]:
+    suffix = uuid4().hex[:10]
+    user = User(
+        private_id=f"music-route-{suffix}",
+        public_id=f"MR{suffix[:6]}",
+        display_name=f"Music Route {suffix}",
+    )
+    session.add(user)
+    session.flush()
+    game = Game(
+        user_id=user.user_id,
+        language="zh",
+        initial_state={"name": name},
+    )
+    session.add(game)
+    session.commit()
+    session.refresh(game)
+    return int(game.game_id), {"Authorization": f"Bearer {create_token(int(user.user_id))}"}
 
 
 def test_minimax_config_defaults_are_secret_free_and_provider_specific(tmp_path: Path) -> None:
@@ -655,11 +677,7 @@ def test_music_generate_api_returns_ready_track_from_story_without_netease_block
     init_db()
     session = SessionLocal()
     try:
-        game = Game(language="zh", initial_state={"name": "MiniMax API Music"})
-        session.add(game)
-        session.commit()
-        session.refresh(game)
-        game_id = int(game.game_id)
+        game_id, auth_headers = _create_owned_music_game(session, "MiniMax API Music")
     finally:
         session.close()
 
@@ -677,6 +695,7 @@ def test_music_generate_api_returns_ready_track_from_story_without_netease_block
 
         response = client.post(
             "/api/music/generate?sync=true",
+            headers=auth_headers,
             json={
                 "game_id": game_id,
                 "story_text": "雨夜码头的旧账册被风吹开，主角在汽笛声里追向江边。",
@@ -711,11 +730,7 @@ def test_music_generate_api_titles_generic_narrative_scene_from_context(
     init_db()
     session = SessionLocal()
     try:
-        game = Game(language="zh", initial_state={"name": "MiniMax Generic Title"})
-        session.add(game)
-        session.commit()
-        session.refresh(game)
-        game_id = int(game.game_id)
+        game_id, auth_headers = _create_owned_music_game(session, "MiniMax Generic Title")
     finally:
         session.close()
 
@@ -733,6 +748,7 @@ def test_music_generate_api_titles_generic_narrative_scene_from_context(
 
         response = client.post(
             "/api/music/generate?sync=true",
+            headers=auth_headers,
             json={
                 "game_id": game_id,
                 "story_text": "医院档案室里，主角发现审计报告和消失的病历编号。",
@@ -764,11 +780,7 @@ def test_music_generate_api_persists_generated_track_into_future_playlist_queue(
     init_db()
     session = SessionLocal()
     try:
-        game = Game(language="zh", initial_state={"name": "MiniMax API Playlist"})
-        session.add(game)
-        session.commit()
-        session.refresh(game)
-        game_id = int(game.game_id)
+        game_id, auth_headers = _create_owned_music_game(session, "MiniMax API Playlist")
     finally:
         session.close()
 
@@ -786,6 +798,7 @@ def test_music_generate_api_persists_generated_track_into_future_playlist_queue(
 
         playlist_response = client.put(
             f"/api/music/playlist/{game_id}",
+            headers=auth_headers,
             json={
                 "songs": [
                     {
@@ -822,6 +835,7 @@ def test_music_generate_api_persists_generated_track_into_future_playlist_queue(
 
         response = client.post(
             "/api/music/generate?sync=true",
+            headers=auth_headers,
             json={
                 "game_id": game_id,
                 "story_text": "雨夜码头的旧账册被风吹开，主角在汽笛声里追向江边。",
@@ -832,7 +846,7 @@ def test_music_generate_api_persists_generated_track_into_future_playlist_queue(
                 },
             },
         )
-        persisted = client.get(f"/api/music/playlist/{game_id}")
+        persisted = client.get(f"/api/music/playlist/{game_id}", headers=auth_headers)
     finally:
         for name, value in previous_env.items():
             if value is None:
@@ -861,11 +875,7 @@ def test_music_generate_api_fast_enqueues_real_provider_without_blocking(
     init_db()
     session = SessionLocal()
     try:
-        game = Game(language="zh", initial_state={"name": "MiniMax Fast Enqueue"})
-        session.add(game)
-        session.commit()
-        session.refresh(game)
-        game_id = int(game.game_id)
+        game_id, auth_headers = _create_owned_music_game(session, "MiniMax Fast Enqueue")
     finally:
         session.close()
 
@@ -906,6 +916,7 @@ def test_music_generate_api_fast_enqueues_real_provider_without_blocking(
 
         response = client.post(
             "/api/music/generate",
+            headers=auth_headers,
             json={
                 "game_id": game_id,
                 "story_text": "雨夜码头的旧账册被风吹开，主角在汽笛声里追向江边。",
@@ -953,11 +964,7 @@ def test_music_generate_api_defaults_to_enqueue_even_when_local_audio_is_enabled
     init_db()
     session = SessionLocal()
     try:
-        game = Game(language="zh", initial_state={"name": "MiniMax Default Async"})
-        session.add(game)
-        session.commit()
-        session.refresh(game)
-        game_id = int(game.game_id)
+        game_id, auth_headers = _create_owned_music_game(session, "MiniMax Default Async")
     finally:
         session.close()
 
@@ -998,6 +1005,7 @@ def test_music_generate_api_defaults_to_enqueue_even_when_local_audio_is_enabled
 
         response = client.post(
             "/api/music/generate",
+            headers=auth_headers,
             json={
                 "game_id": game_id,
                 "story_text": "长故事生成完毕后，音乐生成不应该让浏览器请求一直挂起。",
@@ -1042,11 +1050,7 @@ def test_music_generate_async_api_returns_quickly_and_persists_future_playlist_t
     init_db()
     session = SessionLocal()
     try:
-        game = Game(language="zh", initial_state={"name": "MiniMax Async Playlist"})
-        session.add(game)
-        session.commit()
-        session.refresh(game)
-        game_id = int(game.game_id)
+        game_id, auth_headers = _create_owned_music_game(session, "MiniMax Async Playlist")
     finally:
         session.close()
 
@@ -1064,6 +1068,7 @@ def test_music_generate_async_api_returns_quickly_and_persists_future_playlist_t
 
         playlist_response = client.put(
             f"/api/music/playlist/{game_id}",
+            headers=auth_headers,
             json={
                 "songs": [
                     {
@@ -1091,6 +1096,7 @@ def test_music_generate_async_api_returns_quickly_and_persists_future_playlist_t
 
         response = client.post(
             "/api/music/generate-async",
+            headers=auth_headers,
             json={
                 "game_id": game_id,
                 "story_text": "雨夜码头的旧账册被风吹开，主角在汽笛声里追向江边。",
@@ -1101,7 +1107,7 @@ def test_music_generate_async_api_returns_quickly_and_persists_future_playlist_t
                 },
             },
         )
-        persisted = client.get(f"/api/music/playlist/{game_id}")
+        persisted = client.get(f"/api/music/playlist/{game_id}", headers=auth_headers)
     finally:
         for name, value in previous_env.items():
             if value is None:
@@ -1130,11 +1136,7 @@ def test_music_generate_api_reports_unexpected_generation_failure_without_global
     init_db()
     session = SessionLocal()
     try:
-        game = Game(language="zh", initial_state={"name": "MiniMax API Music Failure"})
-        session.add(game)
-        session.commit()
-        session.refresh(game)
-        game_id = int(game.game_id)
+        game_id, auth_headers = _create_owned_music_game(session, "MiniMax API Music Failure")
     finally:
         session.close()
 
@@ -1160,6 +1162,7 @@ def test_music_generate_api_reports_unexpected_generation_failure_without_global
 
         response = client.post(
             "/api/music/generate?sync=true",
+            headers=auth_headers,
             json={
                 "game_id": game_id,
                 "story_text": "雨夜码头的旧账册被风吹开，主角在汽笛声里追向江边。",

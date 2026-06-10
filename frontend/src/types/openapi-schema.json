@@ -4120,6 +4120,11 @@
         "summary": "Generate Music",
         "description": "Generate story-conditioned AI music without blocking recommendation search.",
         "operationId": "generate_music_api_music_generate_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "sync",
@@ -4225,7 +4230,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/api/music/song-url": {
@@ -4430,6 +4440,11 @@
         "summary": "Get Playlist",
         "description": "Get the current playlist state for a game.",
         "operationId": "get_playlist_api_music_playlist__game_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "game_id",
@@ -4469,6 +4484,11 @@
         "summary": "Update Playlist",
         "description": "Merge new recommendation songs into the playlist.\n\nPreserves the currently playing song; only the upcoming queue is replaced.",
         "operationId": "update_playlist_api_music_playlist__game_id__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "game_id",
@@ -4520,6 +4540,11 @@
         "summary": "Sync Playlist State",
         "description": "Sync current playback position and state.",
         "operationId": "sync_playlist_state_api_music_playlist__game_id__sync_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "game_id",
@@ -4571,6 +4596,11 @@
         "summary": "Advance Playlist",
         "description": "Advance to the next song in the queue.",
         "operationId": "advance_playlist_api_music_playlist__game_id__advance_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "parameters": [
           {
             "name": "game_id",
