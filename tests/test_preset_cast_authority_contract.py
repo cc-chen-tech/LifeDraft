@@ -172,14 +172,17 @@ def test_quick_validator_uses_relationships_list_for_required_cast() -> None:
     ]
 
     result = quick_validate_story(
-        story_text="马老板把欠条摊在桌上，方蕾要求林清立刻接手苏州贸易公司的债务。",
+        story_text=(
+            "马老板把欠条摊在会议桌上，方蕾要求林清立刻接手苏州贸易公司的债务。"
+            "赵子豪在旁边翻出旧账，王丽华不断催促她签字。"
+        ),
         character_settings=settings,
         available_people=available_people,
         language="zh",
     )
 
     assert not result.passed
-    assert any("预设关键人物" in issue for issue in result.issues)
+    assert any("没有使用预设关键人物" in issue for issue in result.issues)
 
 
 def test_choice_result_prompt_injects_required_cast_authority_and_world_boundary() -> None:

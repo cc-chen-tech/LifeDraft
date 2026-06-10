@@ -47,4 +47,4 @@
 
 - [x] Add regression tests proving prompt injection and quick validation still work when `character_settings.relationships` is a legacy list payload.
 - [x] Normalize legacy relationship list payloads in the shared available-people and required-cast extractors.
-- [x] Run targeted preset-cast contract tests.
+- [x] Run targeted preset-cast and game creation contract tests.
