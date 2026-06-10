@@ -123,11 +123,11 @@ describe('StoryVoiceControls', () => {
     expect(screen.getByRole('button', { name: '朗读故事' })).toBeInTheDocument();
   });
 
-  it('renders production playback controls without raw diagnostics when enabled', () => {
+  it('renders production playback controls without raw diagnostics when enabled', async () => {
     render(<StoryVoiceControls currentContext={currentContext} enablePlaybackControls compact />);
 
     expect(screen.getByRole('region', { name: '故事朗读' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '朗读故事' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '朗读故事' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '停止朗读' })).not.toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: '自动朗读' })).toBeInTheDocument();
     expect(screen.queryByText('即将开放')).not.toBeInTheDocument();
@@ -136,7 +136,7 @@ describe('StoryVoiceControls', () => {
     expect(screen.queryByText(/Audio:/)).not.toBeInTheDocument();
   });
 
-  it('renders embedded narration controls as a grouped sound module', () => {
+  it('renders embedded narration controls as a grouped sound module', async () => {
     render(
       <StoryVoiceControls
         currentContext={currentContext}
@@ -149,7 +149,7 @@ describe('StoryVoiceControls', () => {
     const embeddedModule = screen.getByTestId('story-voice-embedded-module');
     expect(within(embeddedModule).getByTestId('voice-primary-controls')).toBeInTheDocument();
     expect(within(embeddedModule).getByTestId('voice-settings-row')).toBeInTheDocument();
-    expect(within(embeddedModule).getByRole('button', { name: '朗读故事' })).toBeInTheDocument();
+    expect(await within(embeddedModule).findByRole('button', { name: '朗读故事' })).toBeInTheDocument();
     expect(within(embeddedModule).getByRole('combobox', { name: '选择朗读声音' })).toBeInTheDocument();
     expect(within(embeddedModule).getByRole('checkbox', { name: '自动朗读' })).toBeInTheDocument();
   });
@@ -269,7 +269,7 @@ describe('StoryVoiceControls', () => {
 
     render(<StoryVoiceControls currentContext={currentContext} enablePlaybackControls compact />);
 
-    fireEvent.click(screen.getByRole('button', { name: '朗读故事' }));
+    fireEvent.click(await screen.findByRole('button', { name: '朗读故事' }));
 
     await waitFor(() => {
       expect(useStoryVoiceStore.getState().readingState).toBe('ready');
@@ -312,7 +312,7 @@ describe('StoryVoiceControls', () => {
 
     render(<StoryVoiceControls currentContext={currentContext} enablePlaybackControls compact />);
 
-    fireEvent.click(screen.getByRole('button', { name: '朗读故事' }));
+    fireEvent.click(await screen.findByRole('button', { name: '朗读故事' }));
 
     await waitFor(() => {
       expect(speech.speak).toHaveBeenCalledTimes(1);
@@ -342,7 +342,7 @@ describe('StoryVoiceControls', () => {
 
     render(<StoryVoiceControls currentContext={currentContext} enablePlaybackControls compact />);
 
-    await user.click(screen.getByRole('button', { name: '朗读故事' }));
+    await user.click(await screen.findByRole('button', { name: '朗读故事' }));
     await act(async () => {
       jest.advanceTimersByTime(1000);
       await Promise.resolve();
@@ -388,7 +388,7 @@ describe('StoryVoiceControls', () => {
     await waitFor(() => {
       expect(useStoryVoiceStore.getState().ttsProvider).toBe('browser');
     });
-    fireEvent.click(screen.getByRole('button', { name: '朗读故事' }));
+    fireEvent.click(await screen.findByRole('button', { name: '朗读故事' }));
 
     await waitFor(() => {
       expect(speech.speak).toHaveBeenCalledTimes(1);
@@ -396,6 +396,58 @@ describe('StoryVoiceControls', () => {
     expect(spoken[0].voice?.name).toBe('Chinese Xiaoxiao Female Natural');
     expect(useStoryVoiceStore.getState().readingState).toBe('playing');
     expect(useStoryVoiceStore.getState().currentProvider).toBe('browser');
+    expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
+      String(url).includes('/voice-reading/read')
+    )).toBe(false);
+  });
+
+  it('does not start a slow backend voice request before production voice settings load', async () => {
+    let resolveSettings: (value: Response) => void = () => undefined;
+    const settingsPromise = new Promise<Response>((resolve) => {
+      resolveSettings = resolve;
+    });
+    const { speech } = installSpeechSynthesisMock([
+      {
+        name: 'Chinese Xiaoxiao Female Natural',
+        voiceURI: 'xiaoxiao',
+        lang: 'zh-CN',
+      },
+    ]);
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.includes('/voice-reading/settings')) {
+        return settingsPromise;
+      }
+      if (url.includes('/voice-reading/read')) {
+        throw new Error('should wait for voice settings before requesting backend audio');
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+
+    render(<StoryVoiceControls currentContext={currentContext} enablePlaybackControls compact />);
+
+    const pendingButton = screen.getByRole('button', { name: '正在加载朗读设置' });
+    expect(pendingButton).toBeDisabled();
+    fireEvent.click(pendingButton);
+    expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
+      String(url).includes('/voice-reading/read')
+    )).toBe(false);
+
+    resolveSettings(jsonResponse({
+      auto_read_enabled: false,
+      selected_voice_color: 'warm_female',
+      tts_provider: 'browser',
+      backend_audio_enabled: false,
+    }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '朗读故事' })).toBeEnabled();
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: '朗读故事' }));
+
+    await waitFor(() => {
+      expect(speech.speak).toHaveBeenCalledTimes(1);
+    });
     expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
       String(url).includes('/voice-reading/read')
     )).toBe(false);
@@ -433,7 +485,7 @@ describe('StoryVoiceControls', () => {
     await waitFor(() => {
       expect(useStoryVoiceStore.getState().ttsProvider).toBe('browser');
     });
-    fireEvent.click(screen.getByRole('button', { name: '朗读故事' }));
+    fireEvent.click(await screen.findByRole('button', { name: '朗读故事' }));
 
     await waitFor(() => {
       expect(useStoryVoiceStore.getState().playbackMode).toBe('audio');
@@ -478,7 +530,7 @@ describe('StoryVoiceControls', () => {
     await waitFor(() => {
       expect(useStoryVoiceStore.getState().ttsProvider).toBe('browser');
     });
-    fireEvent.click(screen.getByRole('button', { name: '朗读故事' }));
+    fireEvent.click(await screen.findByRole('button', { name: '朗读故事' }));
     await waitFor(() => {
       expect(useStoryVoiceStore.getState().readingState).toBe('playing');
     });
@@ -567,7 +619,7 @@ describe('StoryVoiceControls', () => {
 
     render(<StoryVoiceControls currentContext={currentContext} enablePlaybackControls compact />);
 
-    fireEvent.click(screen.getByRole('button', { name: '朗读故事' }));
+    fireEvent.click(await screen.findByRole('button', { name: '朗读故事' }));
     await waitFor(() => {
       expect(useStoryVoiceStore.getState().readingState).toBe('playing');
     });
@@ -702,6 +754,12 @@ describe('StoryVoiceControls', () => {
     });
     (global.fetch as jest.Mock).mockImplementation((url: string, init?: RequestInit) => {
       if (url.includes('/voice-reading/settings')) {
+        if (init?.method === 'PATCH') {
+          return Promise.resolve(jsonResponse({
+            auto_read_enabled: false,
+            selected_voice_color: 'clear_neutral',
+          }));
+        }
         return settingsPromise;
       }
       if (url.includes('/voice-reading/read')) {
@@ -720,19 +778,28 @@ describe('StoryVoiceControls', () => {
 
     render(<StoryVoiceControls currentContext={currentContext} enablePlaybackControls compact />);
 
+    await waitFor(() => {
+      expect((global.fetch as jest.Mock).mock.calls.some(([url, init]) =>
+        String(url).includes('/voice-reading/settings') && (init as RequestInit | undefined)?.method !== 'PATCH'
+      )).toBe(true);
+    });
+
     fireEvent.change(screen.getByRole('combobox', { name: '选择朗读声音' }), {
       target: { value: 'clear_neutral' },
     });
-    resolveSettings(jsonResponse({
-      auto_read_enabled: false,
-      selected_voice_color: 'calm_male',
-    }));
+    await act(async () => {
+      resolveSettings(jsonResponse({
+        auto_read_enabled: false,
+        selected_voice_color: 'calm_male',
+      }));
+      await Promise.resolve();
+    });
 
     await waitFor(() => {
       expect(useStoryVoiceStore.getState().selectedVoiceId).toBe('clear_neutral');
     });
 
-    fireEvent.click(screen.getByRole('button', { name: '朗读故事' }));
+    fireEvent.click(await screen.findByRole('button', { name: '朗读故事' }));
 
     await waitFor(() => {
       const readCalls = (global.fetch as jest.Mock).mock.calls.filter(([url]) =>
