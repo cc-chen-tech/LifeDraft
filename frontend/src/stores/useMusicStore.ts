@@ -226,6 +226,29 @@ interface MusicState {
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api";
 const GENERATED_MUSIC_POLL_ATTEMPTS = 30;
 const GENERATED_MUSIC_POLL_INTERVAL_MS = 10_000;
+const GENERATION_IN_FLIGHT_KEY_PREFIX = "music-generation:";
+
+const inFlightMusicGenerations = new Set<string>();
+
+function stringifyMusicAnalysis(analysis: Record<string, unknown> | undefined): string {
+  if (!analysis) return "";
+  const keys = Object.keys(analysis).sort();
+  const normalized: Record<string, unknown> = {};
+  for (const key of keys) {
+    normalized[key] = analysis[key];
+  }
+  return JSON.stringify(normalized);
+}
+
+function buildMusicGenerationKey(
+  gameId: number,
+  storyText: string,
+  analysis: Record<string, unknown> | undefined
+): string {
+  return `${GENERATION_IN_FLIGHT_KEY_PREFIX}${gameId}:${storyText.slice(0, 120)}:${storyText.length}:${stringifyMusicAnalysis(
+    analysis
+  )}`;
+}
 
 function generatedTrackIdsFromSongs(songs: Array<Song | null | undefined>): Set<number | string> {
   return new Set(
@@ -540,6 +563,12 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       if (disabled === "1" || disabled === "true") return;
     }
 
+    const inFlightKey = buildMusicGenerationKey(gameId, storyText, analysis);
+    if (inFlightMusicGenerations.has(inFlightKey)) {
+      return;
+    }
+    inFlightMusicGenerations.add(inFlightKey);
+
     set({ isGeneratingAiMusic: true });
     try {
       const initialGeneratedIds = generatedTrackIds(get());
@@ -564,6 +593,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       console.warn("[MusicStore] AI music generation unavailable:", error);
     } finally {
       set({ isGeneratingAiMusic: false });
+      inFlightMusicGenerations.delete(inFlightKey);
     }
   },
 

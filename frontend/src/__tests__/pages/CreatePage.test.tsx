@@ -445,7 +445,7 @@ describe('CreatePage', () => {
 
       render(<CreatePage />);
 
-      const saveButton = screen.getByText('保存');
+      const saveButton = screen.getAllByRole('button', { name: '保存为预设' })[0];
       fireEvent.click(saveButton);
 
       await waitFor(() => {
@@ -808,7 +808,7 @@ describe('CreatePage', () => {
         render(<CreatePage />);
       });
 
-      const saveButton = screen.getByText('保存');
+      const saveButton = screen.getAllByRole('button', { name: '保存为预设' })[0];
       await act(async () => {
         fireEvent.click(saveButton);
       });
@@ -816,7 +816,7 @@ describe('CreatePage', () => {
       const input = screen.getByPlaceholderText('预设名称');
       fireEvent.change(input, { target: { value: 'Test Preset' } });
 
-      const saveInSheet = screen.getAllByText('保存')[1];
+      const saveInSheet = screen.getByRole('button', { name: '确认保存' });
       await act(async () => {
         fireEvent.click(saveInSheet);
       });
@@ -849,7 +849,7 @@ describe('CreatePage', () => {
         render(<CreatePage />);
       });
 
-      const saveButton = screen.getByText('保存');
+      const saveButton = screen.getAllByRole('button', { name: '保存为预设' })[0];
       await act(async () => {
         fireEvent.click(saveButton);
       });
@@ -857,7 +857,7 @@ describe('CreatePage', () => {
       const input = screen.getByPlaceholderText('预设名称');
       fireEvent.change(input, { target: { value: 'Test Preset' } });
 
-      const saveInSheet = screen.getAllByText('保存')[1];
+      const saveInSheet = screen.getByRole('button', { name: '确认保存' });
       await act(async () => {
         fireEvent.click(saveInSheet);
       });

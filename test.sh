@@ -273,11 +273,13 @@ run_preflight() {
         src/__tests__/components/StoryVoiceControls.test.tsx \
         src/__tests__/components/StatusBar.test.tsx \
         src/__tests__/components/DialogA11y.test.tsx \
+        src/__tests__/components/CompletionScreen.loading.test.tsx \
         src/__tests__/pages/PlayPage.test.tsx \
         src/__tests__/components/game/MusicPlayer.test.tsx \
         src/__tests__/components/MusicPlayer.test.tsx \
         src/__tests__/components/ChatBar.test.tsx \
         src/__tests__/components/GlobalMusicPlayer.escape.test.tsx \
+        src/__tests__/stores/useStoryVoiceStore.test.ts \
         src/__tests__/lib/apiRetryPolicy.test.ts \
         src/__tests__/app/api/route.test.ts \
         src/__tests__/components/game/CollectionPanelAutoCollect.test.tsx \

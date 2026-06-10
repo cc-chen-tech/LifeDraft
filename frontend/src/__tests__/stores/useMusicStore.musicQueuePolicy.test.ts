@@ -217,6 +217,76 @@ describe("music queue policy", () => {
     expect(state.queue.map((item) => item.id)).toEqual(["ai-generated-77", 2, 3]);
   });
 
+  it("store generateAiMusicForStory deduplicates concurrent duplicate generation requests", async () => {
+    const aiSong = {
+      ...song("ai-generated-77", "AI MiniMax 雨夜追逐", "ai_generated"),
+      url: "/api/music/generated/brief-77.wav",
+      provider: "minimax",
+    };
+
+    global.fetch = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/music/playlist/101") && init?.method === "PUT") {
+        return {
+          ok: true,
+          json: async () => ({
+            game_id: 101,
+            current_song: song(1, "网易云 当前曲"),
+            queue: [song(2, "网易云 下一曲"), song(3, "网易云 后续曲")],
+            played_songs: [],
+            is_playing: false,
+            volume: 0.5,
+            current_position_ms: 0,
+          }),
+        } as Response;
+      }
+      if (url.endsWith("/api/music/generate-async")) {
+        return {
+          ok: true,
+          json: async () => ({
+            status: "queued",
+            game_id: 101,
+            insert_policy: "future_queue",
+          }),
+        } as Response;
+      }
+      if (url.endsWith("/api/music/playlist/101")) {
+        return {
+          ok: true,
+          json: async () => ({
+            game_id: 101,
+            current_song: song(1, "网易云 当前曲"),
+            queue: [aiSong, song(2, "网易云 下一曲"), song(3, "网易云 后续曲")],
+            played_songs: [],
+            is_playing: false,
+            volume: 0.5,
+            current_position_ms: 0,
+          }),
+        } as Response;
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }) as jest.Mock;
+
+    useMusicStore.setState({
+      currentSong: song(1, "网易云 当前曲"),
+      queue: [song(2, "网易云 下一曲"), song(3, "网易云 后续曲")],
+    });
+
+    const generation = useMusicStore.getState().generateAiMusicForStory("雨夜码头的旧账册被风吹开。", 101, {
+      mood: "紧张",
+    });
+    const duplicate = useMusicStore.getState().generateAiMusicForStory("雨夜码头的旧账册被风吹开。", 101, {
+      mood: "紧张",
+    });
+
+    await Promise.all([generation, duplicate]);
+
+    const generateAsyncCalls = (global.fetch as jest.Mock).mock.calls.filter(([url]) =>
+      String(url).endsWith("/api/music/generate-async")
+    );
+    expect(generateAsyncCalls).toHaveLength(1);
+  });
+
   it("store insertGeneratedTrack places AI music as the next upcoming track", () => {
     useMusicStore.setState({
       currentSong: song(1, "Current"),

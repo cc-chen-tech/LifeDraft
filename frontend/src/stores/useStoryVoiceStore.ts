@@ -59,6 +59,7 @@ async function normalizeTextHash(text: string): Promise<string> {
 
 let activeUtterance: SpeechSynthesisUtterance | null = null;
 let activeReadingAttempt = 0;
+const inFlightReadingRequests = new Set<string>();
 
 function getSpeechSynthesis(): SpeechSynthesis | null {
   if (typeof window === "undefined") return null;
@@ -75,6 +76,26 @@ function restoredMusicDuckState(
   userChangedMusic: boolean
 ): MusicDuckState {
   return musicDuckState === "ducked" && !userChangedMusic ? "restored" : musicDuckState;
+}
+
+function buildReadingRequestKey(
+  context: ReadingContext,
+  voiceId: string,
+  preferredProvider: string | null,
+  textHash: string
+): string {
+  const requestTextHash = context.attempt_id ?? context.text_hash ?? textHash;
+  return `${context.game_id}:${context.source_type}:${context.week ?? ""}:${context.round_number ?? ""}:${context.stage ?? ""}:${requestTextHash}:${voiceId}:${preferredProvider ?? "auto"}`;
+}
+
+function hashTextForRequest(text: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+    hash >>>= 0;
+  }
+  return hash.toString(16);
 }
 
 export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
@@ -96,9 +117,18 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
   userChangedMusic: false,
 
   startReading: async (context) => {
+    const { musicWasPlaying } = get();
+    const preferredProvider =
+      typeof window !== "undefined" ? window.localStorage.getItem("story_voice_e2e_provider") : null;
+    const requestTextHash = hashTextForRequest(context.text);
+
+    const requestKey = buildReadingRequestKey(context, get().selectedVoiceId, preferredProvider, requestTextHash);
+    if (inFlightReadingRequests.has(requestKey)) return;
+
     const attemptId = activeReadingAttempt + 1;
     activeReadingAttempt = attemptId;
-    const { musicWasPlaying } = get();
+    inFlightReadingRequests.add(requestKey);
+    const textHash = await normalizeTextHash(context.text);
     getSpeechSynthesis()?.cancel();
     activeUtterance = null;
     set({
@@ -181,16 +211,12 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
     };
 
     try {
-      const textHash = await normalizeTextHash(context.text);
       const response = await api.voice_reading.requestReading({
         context: { ...context, text_hash: textHash },
         voice_id: get().selectedVoiceId,
         speed: 1,
         auto_play: true,
-        preferred_provider:
-          typeof window !== "undefined"
-            ? window.localStorage.getItem("story_voice_e2e_provider")
-            : null,
+        preferred_provider: preferredProvider,
       });
       if (attemptId !== activeReadingAttempt) {
         return;
@@ -246,6 +272,8 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
         errorMessage: error instanceof Error ? error.message : "Reading request failed",
         musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
       });
+    } finally {
+      inFlightReadingRequests.delete(requestKey);
     }
   },
   pauseReading: () => {

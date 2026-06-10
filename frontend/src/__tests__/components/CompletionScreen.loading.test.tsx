@@ -51,6 +51,19 @@ describe("CompletionScreen - Loading Feedback", () => {
     }, { timeout: 100 });
   });
 
+  test("header preset button uses disambiguated copy", () => {
+    render(<CompletionScreen {...defaultProps} />);
+
+    expect(screen.getAllByRole("button", { name: "保存为预设" })).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "确认保存" })).not.toBeInTheDocument();
+  });
+
+  test("sheet uses confirm save wording", () => {
+    render(<CompletionScreen {...defaultProps} showPresetSheet={true} />);
+
+    expect(screen.getByRole("button", { name: "确认保存" })).toBeInTheDocument();
+  });
+
   test("完全重生成按钮点击后进入加载状态", async () => {
     // 模拟一个慢速的重新生成
     const slowRegenerate = jest.fn().mockImplementation(
