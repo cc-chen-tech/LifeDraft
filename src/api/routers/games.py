@@ -21,7 +21,7 @@ from src.api.schemas import (CreateSavePointRequest, GameListItem,
 from src.api.services.session_service import session_service
 from src.api.session_store import session_store
 from src.database.models import Game, SessionLocal
-from src.game.game_initializer import GameInitializer
+from src.game.game_initializer import GameInitializer, extract_initial_wealth_from_settings
 from src.game.game_loop import GameLoop
 from src.game.state import PlayerState
 from src.utils.language import detect_language_from_state
@@ -40,18 +40,6 @@ def _deep_merge_dicts(existing: Dict[str, Any], updates: Dict[str, Any]) -> Dict
         else:
             merged[key] = value
     return merged
-
-
-def _extract_generated_initial_wealth(character_settings: Dict[str, Any]) -> Optional[int]:
-    wealth_setting = character_settings.get("wealth")
-    if not isinstance(wealth_setting, dict):
-        return None
-
-    wealth = wealth_setting.get("wealth")
-    if not isinstance(wealth, (int, float)):
-        return None
-
-    return max(0, min(1_000_000, int(wealth)))
 
 
 def _is_before_first_played_round(state_data: Dict[str, Any]) -> bool:
@@ -470,7 +458,7 @@ async def update_character_settings(
         updated_state["player_name"] = req.player_name.strip()
     if req.life_vision is not None:
         updated_state["life_vision"] = req.life_vision
-    late_initial_wealth = _extract_generated_initial_wealth(req.character_settings)
+    late_initial_wealth = extract_initial_wealth_from_settings(req.character_settings)
     should_sync_late_wealth = (
         late_initial_wealth is not None and _is_before_first_played_round(state_data)
     )

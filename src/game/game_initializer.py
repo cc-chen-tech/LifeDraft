@@ -10,16 +10,23 @@ from src.game.game_loop import GameLoop
 logger = logging.getLogger(__name__)
 
 
-def _initial_wealth_from_settings(character_settings: Dict[str, Any]) -> int:
+def extract_initial_wealth_from_settings(character_settings: Dict[str, Any]) -> Optional[int]:
+    """Return numeric initial wealth from character settings, if explicitly generated."""
     wealth_setting = character_settings.get("wealth")
     if not isinstance(wealth_setting, dict):
-        return settings.INITIAL_WEALTH
+        return None
 
-    wealth = wealth_setting.get("wealth")
-    if not isinstance(wealth, (int, float)):
-        return settings.INITIAL_WEALTH
+    for key in ("wealth", "starting_wealth", "initial_wealth_amount"):
+        wealth = wealth_setting.get(key)
+        if isinstance(wealth, (int, float)):
+            return max(0, min(1_000_000, int(wealth)))
 
-    return max(0, min(1_000_000, int(wealth)))
+    return None
+
+
+def _initial_wealth_from_settings(character_settings: Dict[str, Any]) -> int:
+    configured_wealth = extract_initial_wealth_from_settings(character_settings)
+    return configured_wealth if configured_wealth is not None else settings.INITIAL_WEALTH
 
 
 class GameInitializer:

@@ -139,6 +139,47 @@ class TestCharacterSettingsUpdateAPIContract:
         assert saved_state["character_settings"]["wealth"]["wealth"] == 60000
         assert saved_state["wealth"] == 60000
 
+    def test_update_character_settings_syncs_starting_wealth_before_play(self) -> None:
+        """Late generated wealth may arrive as starting_wealth from /api/character/setting."""
+        db = MagicMock()
+        existing_state = {
+            "player_name": "张若虚",
+            "life_vision": "成为可靠的产品经理",
+            "age": 28,
+            "week": 0,
+            "current_round": 0,
+            "wealth": 10000,
+            "character_settings": {
+                "era": {"era_name": "2024年上海"},
+                "age": {"age": 28, "birth_year": 1996},
+            },
+        }
+        db.load_saved_game.return_value = existing_state
+        db.save_game_progress.return_value = True
+
+        late_settings = {
+            "wealth": {
+                "wealth_level": "中等",
+                "starting_wealth": 50000,
+                "currency": "¥",
+                "currency_name": "元",
+            }
+        }
+
+        with patch("src.api.deps.decode_token", return_value=1), patch(
+            "src.api.routers.games.get_db", return_value=db
+        ):
+            response = client.patch(
+                "/api/games/109/character-settings",
+                json={"character_settings": late_settings},
+                headers={"Authorization": "Bearer test-token"},
+            )
+
+        assert response.status_code == 200
+        saved_state = db.save_game_progress.call_args.args[1].to_dict()
+        assert saved_state["character_settings"]["wealth"]["starting_wealth"] == 50000
+        assert saved_state["wealth"] == 50000
+
     def test_update_character_settings_can_replace_stale_identity_before_play(self) -> None:
         """已有 gameId 继续创建新角色时，应同步覆盖旧 player_name/life_vision。"""
         db = MagicMock()
