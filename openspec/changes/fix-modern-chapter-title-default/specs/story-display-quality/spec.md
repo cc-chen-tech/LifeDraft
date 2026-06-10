@@ -40,3 +40,11 @@ Chinese story prompts SHALL use modern week/round timeline titles for ordinary n
 - **GIVEN** character settings explicitly include ancient, wuxia, palace, or xianxia cues
 - **WHEN** a Chinese story prompt is built
 - **THEN** the prompt MAY require classical chapter labels
+
+#### Scenario: Generated modern story still uses a stale classical title
+
+- **GIVEN** a non-ancient Chinese save has modern timeline-title prompt constraints
+- **WHEN** the model output still starts with a classical chapter label such as "第三回"
+- **THEN** quick validation MUST reject the story before display or persistence
+- **AND** the retry instruction MUST require a modern timeline title such as "第N周·周一"
+- **AND** explicit ancient, wuxia, palace, or xianxia saves MUST NOT be rejected for using classical chapter labels
