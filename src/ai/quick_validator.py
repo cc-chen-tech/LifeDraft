@@ -163,6 +163,10 @@ class QuickValidator:
             if not era_passed and era_evidence:
                 issues.append(era_evidence)
 
+        # 5. 检查现代故事标题是否回退到章回体。
+        title_issues = self._check_modern_chapter_title(story_text, era_context, language)
+        issues.extend(title_issues)
+
         passed = len(issues) == 0
         result = QuickValidationResult(passed=passed, issues=issues, warnings=warnings)
 
@@ -557,6 +561,27 @@ class QuickValidator:
                 issues.append("Story uses first-person 'I', should use third-person")
 
         return issues
+
+    def _check_modern_chapter_title(
+        self,
+        text: str,
+        era_context: Dict[str, str],
+        language: str,
+    ) -> List[str]:
+        """Reject classical chapter-title openings in modern Chinese stories."""
+        if language != "zh" or era_context.get("era_type") != "modern":
+            return []
+
+        opening = text.lstrip()[:80]
+        match = re.match(r"第[一二三四五六七八九十百千万两0-9]+回(?:\s|[，。！？：:、]|$)", opening)
+        if not match:
+            return []
+
+        return [
+            "现代故事开头使用了章回体标题"
+            f"「{match.group(0).strip()}」；请使用现代时间线标题"
+            "（如“第3周·周一 会议室复盘”），不要使用“第X回”。"
+        ]
 
 
 # 便捷函数

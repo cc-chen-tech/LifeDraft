@@ -7,9 +7,10 @@ The 2026-06-08 UX report shows a regression where a new modern save started with
 - Treat non-ancient Chinese character settings as modern by default for chapter title constraints.
 - Keep explicit ancient/wuxia/xianxia settings on the classical chapter path.
 - Make inline/segment rewrite prompts inherit the same title constraint, so an existing bad "第X回" title is corrected instead of preserved.
+- Add runtime quick-validation so generated modern stories that still start with "第X回" are rejected and retried before being displayed or persisted.
 - Add a contract regression and wire it into `test.sh contract`.
 
 ## Impact
 
-- Prompt construction only.
+- Prompt construction and quick story validation only.
 - No API or database schema changes.
