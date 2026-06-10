@@ -67,6 +67,10 @@ jest.mock('@/hooks/usePlayGame', () => ({
   },
 }));
 
+jest.mock('@/components/game/CollectionPanel', () => ({
+  CollectionPanel: () => <div data-testid="collection-panel">Collection Panel</div>,
+}));
+
 describe('PlayPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -967,6 +971,28 @@ describe('PlayPage', () => {
       const historyButton = screen.getByRole('button', { name: '历史回顾' });
       fireEvent.click(historyButton);
 
+      expect(mockHandleOpenHistory).toHaveBeenCalled();
+    });
+
+    it('closes the collection sheet when opening history', async () => {
+      const mockHandleOpenHistory = jest.fn();
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        handleOpenHistory: mockHandleOpenHistory,
+      });
+
+      render(<PlayPage />);
+
+      fireEvent.click(screen.getByRole('button', { name: '收集' }));
+
+      expect(screen.getByRole('dialog', { name: '收集' })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: '历史回顾' }));
+
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog', { name: '收集' })).not.toBeInTheDocument();
+      });
       expect(mockHandleOpenHistory).toHaveBeenCalled();
     });
   });
