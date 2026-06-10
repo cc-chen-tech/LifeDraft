@@ -51,8 +51,12 @@ export default function E2ERegressionPage() {
     if (Number.isFinite(configuredGameId) && configuredGameId > 0) {
       setFixtureGameId(configuredGameId);
     }
-    setActiveStoryText(null);
-    setActiveGameId(null);
+    setActiveStoryText(
+      enableGlobalVoiceFixture
+        ? "雨夜码头的旧账册被风吹开，主角正在追查失踪亲人的线索。"
+        : null,
+    );
+    setActiveGameId(enableGlobalVoiceFixture ? configuredGameId || 101 : null);
     setCurrentSong({
       id: 9101,
       name: "全局音乐夹具",
