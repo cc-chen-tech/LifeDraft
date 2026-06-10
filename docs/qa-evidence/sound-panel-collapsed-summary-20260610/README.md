@@ -4,9 +4,9 @@ Scope: verify that the global sound UI presents music and narration as one combi
 
 ## Local Browser Verification
 
-- Worktree: `/Users/luicy/story2/.worktrees/redesign-sound-panel-20260610b`
-- URL: `http://127.0.0.1:3334/e2e-regression?globalVoice=1`
-- Desktop viewport: `1440x1000`
+- Worktree: `/Users/luicy/story2/.worktrees/unify-audio-ui-20260610`
+- URL: `http://localhost:3124/e2e-regression?globalVoice=1`
+- Desktop viewport: `1280x900`
 - Mobile viewport: `390x844`
 
 ## Verified Behavior
@@ -23,6 +23,8 @@ Scope: verify that the global sound UI presents music and narration as one combi
 - `desktop-expanded.png`
 - `mobile-collapsed.png`
 - `mobile-expanded.png`
+- `latest-desktop-collapsed.png`
+- `latest-desktop-expanded.png`
 
 ## Commands
 
