@@ -20,3 +20,4 @@
 - [x] Remove collapsed music play/pause behavior so the closed bar only opens the unified sound panel.
 - [x] Add regression coverage that the collapsed bar does not expose music or narration playback controls.
 - [x] Replace the collapsed mini bar with an expanded panel header and a single "收起声音" action while open.
+- [x] Redesign the expanded panel as one two-channel sound mixer with "背景音乐" and "故事朗读" peer groups, hiding duplicate child module headings.
