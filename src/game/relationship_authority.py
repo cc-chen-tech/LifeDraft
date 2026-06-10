@@ -9,7 +9,7 @@ def extract_required_key_people(character_settings: Mapping[str, Any]) -> List[D
     """Return canonical preset key people from character settings."""
     relationships = character_settings.get("relationships")
     if isinstance(relationships, list):
-        key_people = relationships
+        key_people: object = relationships
     elif isinstance(relationships, Mapping):
         key_people = relationships.get("key_people")
     else:
