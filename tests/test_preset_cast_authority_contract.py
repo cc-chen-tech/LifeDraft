@@ -372,6 +372,64 @@ def test_choice_result_prompt_injects_required_cast_authority_and_world_boundary
     assert "荒坂集团" in prompt
 
 
+def test_custom_choice_result_prompt_injects_required_cast_authority_and_world_boundary() -> None:
+    from config.prompts.story_prompts import get_custom_choice_result_prompt
+
+    prompt = get_custom_choice_result_prompt(
+        character_settings=_modern_product_manager_settings(),
+        current_state=_player_state(),
+        language="zh",
+    )
+
+    assert "预设关键人物" in prompt
+    assert "陆昊然" in prompt
+    assert "导师" in prompt
+    assert "陈晓雨" in prompt
+    assert "林一凡" in prompt
+    assert "不得改名" in prompt
+    assert "不得替换" in prompt
+    assert "至少使用1位预设关键人物" in prompt
+    assert "现实主义世界边界" in prompt
+    assert "禁止赛博朋克" in prompt
+    assert "夜之城" in prompt
+    assert "荒坂集团" in prompt
+
+
+def test_custom_choice_json_result_retries_when_story_violates_required_cast() -> None:
+    from unittest.mock import Mock
+
+    from src.game.story_service import StoryService
+
+    ai = Mock()
+    ai.generate_completion_json.side_effect = [
+        {
+            "story_continuation": (
+                "苏婉清以投资人兼导师的身份接管了林清的产品复盘，"
+                "陪她拆解路线并决定下一步融资节奏。陈晓雨和林一凡没有参与。"
+            ),
+            "effects": {"knowledge": 3},
+        },
+        {
+            "story_continuation": (
+                "林清决定按自己的方式复盘用户反馈。陆昊然在会议室白板前提醒她先确认需求优先级，"
+                "陈晓雨帮她整理访谈记录，林一凡则把同期项目的数据对照表发了过来。"
+            ),
+            "effects": {"knowledge": 5, "relationships": {"陆昊然": 2}},
+        },
+    ]
+
+    result = StoryService(ai_generator=ai, language="zh").generate_custom_choice_result(
+        event_description="林清刚结束需求评审，陆昊然在会议室门口等她复盘。",
+        custom_text="我想自己重新整理用户反馈。",
+        character_settings=_modern_product_manager_settings(),
+        current_state=_player_state(),
+    )
+
+    assert ai.generate_completion_json.call_count == 2
+    assert "陆昊然" in result["story_continuation"]
+    assert "苏婉清" not in result["story_continuation"]
+
+
 def test_scheduled_event_prompt_inherits_story_authority_constraints() -> None:
     generator = RoundEventGenerator(
         player_state_getter=lambda: None,
