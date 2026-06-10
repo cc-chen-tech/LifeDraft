@@ -8,7 +8,8 @@ Production can fall back to browser speech when backend TTS audio is unavailable
 - Do not retry voice-reading API 5xx responses; let the story voice store immediately fall back to browser speech.
 - Keep the first production read action disabled until runtime voice settings are loaded, so a browser-only runtime cannot accidentally start a slow backend TTS request before settings arrive.
 - Keep auto-reading completed choice-result stories working even while the unified sound panel remains collapsed.
+- Split long browser-speech fallback text into short utterances so generated stories start audibly and continue reliably instead of sending one giant `SpeechSynthesisUtterance`.
 
 ## Impact
 - Frontend story voice state machine and API retry policy.
-- Focused Jest coverage for browser speech voice selection, immediate fallback, and collapsed-panel auto-read.
+- Focused Jest coverage for browser speech voice selection, immediate fallback, collapsed-panel auto-read, and long-story browser speech chunking.
