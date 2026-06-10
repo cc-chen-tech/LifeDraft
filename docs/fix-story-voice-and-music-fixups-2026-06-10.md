@@ -86,10 +86,20 @@
 
 - 明确 `Request` 类型并补齐导入，修复 TypeScript 严格模式下 `request` 回调类型不匹配。
 
+### 6）SSE 完成事件不再用短摘要覆盖长前端正文
+
+文件：`frontend/src/hooks/game/eventUtils.ts`
+
+- 引入 `selectFinalStory` 的决策护栏：当前端已累计到较长正文（如真实流式正文）时，若 `event_description` 明显短于前端文本，则优先保留前端正文。
+- 仅在前端极短/无效、后端文本更完整时，或后端是前端前缀时才覆盖或补齐。
+- 删除 `handleEventComplete` 中的重复 `result.useBackend` 分支，减少同一条件的歧义路径。
+- 该修复直接解决“故事生成过程播放结束后正文被短摘要替换导致朗读链路错失正文”的根因之一。
+
 ## 结果
 
 - 文本朗读链路已从“单音效”回退到 story text 朗读语义：在 browser fallback 下，前端将使用完整 `context.text` 进行播放状态管理。
 - 重复点击去重覆盖 Story Voice 与 AI music 两条链路，减少重复请求与冗余生成。
+- 事件完成阶段新增保护：短 `event_description` 不会覆盖已成功流式输出的长正文，`/event` 最终展示文本保持稳定。
 - 长文段可分段渲染，`StreamingText` 可读性提升。
 - 文案歧义问题得到修复，测试基线已覆盖。
 

@@ -318,6 +318,8 @@ describe('useSceneImageStore', () => {
         store.fetchRoundSceneImage(1, 0, 0),
       ]);
 
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+
       // Verify scene images were loaded
       const state = useSceneImageStore.getState();
       expect(state.resultSceneImage).not.toBeNull();

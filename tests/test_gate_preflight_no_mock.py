@@ -131,6 +131,13 @@ def test_minimax_api_key_is_not_committed_to_repository_files() -> None:
     assert leaked_paths == []
 
 
+def test_e2e_backend_uses_dotenv_minimax_key_not_fake_override() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+
+    assert "MINIMAX_API_KEY=test-key" not in script
+    assert "MINIMAX_E2E_LOCAL_AUDIO=1 API_RELOAD=false" in script
+
+
 def _iter_scannable_files(
     root: Path, allowed_dirs: set[str], scanned_suffixes: set[str]
 ) -> list[Path]:
