@@ -271,7 +271,7 @@ describe("music queue policy", () => {
           }),
         } as Response;
       }
-      if (url.endsWith("/api/music/generate-async")) {
+      if (url.endsWith("/api/music/generate")) {
         return {
           ok: true,
           json: async () => ({
@@ -322,7 +322,7 @@ describe("music queue policy", () => {
     });
     expect(global.fetch).toHaveBeenNthCalledWith(
       2,
-      "/api/music/generate-async",
+      "/api/music/generate",
       expect.objectContaining({ method: "POST" })
     );
     const state = useMusicStore.getState();
@@ -353,7 +353,7 @@ describe("music queue policy", () => {
           }),
         } as Response;
       }
-      if (url.endsWith("/api/music/generate-async")) {
+      if (url.endsWith("/api/music/generate")) {
         return {
           ok: true,
           json: async () => ({
@@ -394,10 +394,10 @@ describe("music queue policy", () => {
 
     await Promise.all([generation, duplicate]);
 
-    const generateAsyncCalls = (global.fetch as jest.Mock).mock.calls.filter(([url]) =>
-      String(url).endsWith("/api/music/generate-async")
+    const generateCalls = (global.fetch as jest.Mock).mock.calls.filter(([url]) =>
+      String(url).endsWith("/api/music/generate")
     );
-    expect(generateAsyncCalls).toHaveLength(1);
+    expect(generateCalls).toHaveLength(1);
   });
 
   it("store keeps async AI music visibly queued when polling has not seen the generated track yet", async () => {
@@ -419,7 +419,7 @@ describe("music queue policy", () => {
             }),
           } as Response;
         }
-        if (url.endsWith("/api/music/generate-async")) {
+        if (url.endsWith("/api/music/generate")) {
           return {
             ok: true,
             json: async () => ({
