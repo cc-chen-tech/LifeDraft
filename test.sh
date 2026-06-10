@@ -12,7 +12,7 @@
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TEST_NAMESPACE="${TEST_NAMESPACE:-$(printf '%s' "$PROJECT_DIR" | tr '/ ' '__' | tr -c 'A-Za-z0-9._-' '_')}"
-TEST_RUN_ROOT="${TEST_RUN_ROOT:-$PROJECT_DIR/.test-runs}"
+TEST_RUN_ROOT="${TEST_RUN_ROOT:-${TMPDIR:-/tmp}/story2-test-runs}"
 TEST_RUN_DIR="${TEST_RUN_DIR:-$TEST_RUN_ROOT/$TEST_NAMESPACE}"
 TEST_LOCK_DIR="$TEST_RUN_ROOT/locks"
 

@@ -131,6 +131,13 @@ npm run test:e2e
 ./test.sh e2e
 ```
 
+多 worktree/并行验证建议使用隔离入口（默认写入 `/tmp/story2-test-runs`）：
+
+```bash
+./scripts/test-run-isolated.sh all
+./scripts/test-run-isolated.sh clean
+```
+
 ### API 类型同步（前后端契约）
 
 ```bash
