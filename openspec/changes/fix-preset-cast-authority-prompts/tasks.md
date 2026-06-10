@@ -54,3 +54,9 @@
 - [x] Add a regression test proving full story regeneration retries when the first regenerated story drops preset key people and drifts into invented cast/IP-world content.
 - [x] Run regenerated story text through quick validation before returning it when no WorldModel is available.
 - [x] Run targeted story continuation and preset-cast contract tests.
+
+## 10. 2026-06-10 Segment Rewrite Drift Follow-up
+
+- [x] Add a regression test proving segment-level rewrite retries when the first rewritten story drops preset key people and drifts into invented cast/IP-world content.
+- [x] Run rewritten story text through quick validation before returning it when no WorldModel is available.
+- [x] Run targeted story continuation and preset-cast contract tests.
