@@ -46,7 +46,7 @@ def create_retry_session(
 
 # ==================== 图片尺寸常量 ====================
 
-# DashScope 支持的尺寸
+# App 使用的尺寸；MiniMax provider 会映射到 aspect_ratio 或 width/height。
 SIZE_SQUARE = "1328*1328"  # 1:1 正方形
 SIZE_PORTRAIT = "928*1664"  # 9:16 竖版（适合人物全身像）
 SIZE_LANDSCAPE = "1664*928"  # 16:9 横版（适合场景）
