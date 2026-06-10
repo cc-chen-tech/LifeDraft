@@ -102,12 +102,12 @@ export function GlobalMusicPlayer() {
     }
   };
 
-  const miniMusicLabel = audioElement ? (isPlaying ? "暂停音乐" : "播放音乐") : "打开声音面板";
+  const miniMusicLabel = audioElement ? (isPlaying ? "暂停音乐" : "播放音乐") : "打开声音";
 
   return (
     <div
       role="region"
-      aria-label="声音控制"
+      aria-label="声音"
       data-testid="global-music-player"
       className="fixed z-50 top-16 left-0 right-0 safe-area-pt mt-2 md:left-auto md:right-4 md:w-80"
     >
@@ -121,20 +121,10 @@ export function GlobalMusicPlayer() {
             : "opacity-0 h-0 overflow-hidden pointer-events-none absolute top-full left-0 right-0"
         }
         aria-hidden={!isExpanded}
-        role={isExpanded ? "region" : undefined}
-        aria-label={isExpanded ? "声音面板" : undefined}
+        role={isExpanded ? "group" : undefined}
+        aria-label={isExpanded ? "音乐和朗读" : undefined}
       >
         <div data-testid="unified-sound-panel" className="divide-y divide-border/70 p-3">
-          <div className="flex items-center justify-between gap-3 pb-3 px-1">
-            <div className="flex items-start gap-2">
-              <Volume2 className="mt-0.5 h-4 w-4 text-primary" />
-              <div className="min-w-0">
-                <div className="text-sm font-medium">声音控制</div>
-                <div className="truncate text-xs text-muted-foreground">{soundStatus}</div>
-              </div>
-            </div>
-          </div>
-
           <div
             data-testid="sound-music-section"
             className="py-3"
@@ -221,8 +211,8 @@ export function GlobalMusicPlayer() {
 
         {/* Expand / Collapse */}
         <button
-          aria-label={isExpanded ? "收起声音面板" : "展开声音面板"}
-          title={isExpanded ? "收起声音面板" : "展开声音面板"}
+          aria-label={isExpanded ? "收起声音" : "展开声音"}
+          title={isExpanded ? "收起声音" : "展开声音"}
           onClick={(e) => {
             e.stopPropagation();
             setIsExpanded(!isExpanded);

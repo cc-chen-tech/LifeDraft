@@ -1,16 +1,17 @@
 ## ADDED Requirements
 
-### Requirement: Expanded sound controls use one unified panel
+### Requirement: Expanded sound controls use one unified sound group
 
-The expanded global sound controls SHALL present scene music and story narration as peer controls inside one sound panel.
+The global sound controls SHALL present scene music and story narration as peer controls from one "声音" entry point. Expanded detailed controls SHALL use a single "音乐和朗读" group rather than a nested standalone sound region.
 
 #### Scenario: Music and narration are available together
 - **Given** the current story has music context and an active reading context
 - **When** the user expands the global sound controls
-- **Then** the UI SHALL expose one expanded sound panel
-- **And** that panel SHALL contain a scene music section
-- **And** that panel SHALL contain a story narration section
-- **And** the panel SHALL be the only expanded sound region
+- **Then** the UI SHALL expose one global sound region named "声音"
+- **And** the expanded content SHALL expose one group named "音乐和朗读"
+- **And** that group SHALL contain a scene music section
+- **And** that group SHALL contain a story narration section
+- **And** the UI SHALL NOT expose nested regions named "声音控制" or "声音面板"
 - **And** the embedded scene music controls SHALL not render their own outer card shell
 - **And** the embedded story narration controls SHALL not render as a separate region, bordered card, or separate top-divided control strip.
 
@@ -19,6 +20,9 @@ The expanded global sound controls SHALL present scene music and story narration
 - **When** the user expands the global sound controls
 - **Then** the expanded surface SHALL use one sound mixer layout
 - **And** the scene music and story narration sections SHALL be visually grouped as sibling channel rows
+- **And** the expanded UI SHALL NOT repeat the collapsed bar title as an extra "声音控制" header
+- **And** the expanded UI SHALL NOT introduce another "声音面板" landmark around the channel rows
+- **And** embedded channel labels SHALL use the concise labels "音乐" and "朗读"
 - **And** the channel rows SHALL use lightweight dividers instead of nested card borders or nested card backgrounds
 - **And** the panel SHALL NOT present music and narration as separate standalone toolbars.
 
