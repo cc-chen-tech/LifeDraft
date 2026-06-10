@@ -282,6 +282,10 @@ async def generate_music(
     request: MusicGenerationRequest,
     background_tasks: BackgroundTasks,
     response: Response,
+    sync: bool = Query(
+        False,
+        description="Debug/local verification only: wait for provider generation and return the ready track.",
+    ),
 ):
     """Generate story-conditioned AI music without blocking recommendation search."""
     from src.services.minimax_music_generation import StoryMusicGenerationService
@@ -295,7 +299,7 @@ async def generate_music(
             detail="MiniMax music generation requires MINIMAX_API_KEY",
         )
 
-    if not config.local_audio_enabled:
+    if not sync:
         background_tasks.add_task(
             _generate_music_in_background,
             request.game_id,

@@ -4120,15 +4120,29 @@
         "summary": "Generate Music",
         "description": "Generate story-conditioned AI music without blocking recommendation search.",
         "operationId": "generate_music_api_music_generate_post",
+        "parameters": [
+          {
+            "name": "sync",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Debug/local verification only: wait for provider generation and return the ready track.",
+              "default": false,
+              "title": "Sync"
+            },
+            "description": "Debug/local verification only: wait for provider generation and return the ready track."
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/MusicGenerationRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -4150,14 +4164,14 @@
             }
           },
           "202": {
-            "description": "Accepted",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MusicGenerationEnqueueResponse"
                 }
               }
-            }
+            },
+            "description": "Accepted"
           },
           "422": {
             "description": "Validation Error",
