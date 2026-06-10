@@ -143,6 +143,7 @@ export function StoryVoiceControls({
   useEffect(() => {
     const finalText = autoReadText?.trim();
     if (
+      !voiceSettingsReady ||
       !autoReadReady ||
       !autoReadEnabled ||
       !finalText ||
@@ -172,6 +173,7 @@ export function StoryVoiceControls({
     autoReadText,
     currentContext,
     startReading,
+    voiceSettingsReady,
   ]);
 
   if (!shouldShowPlaybackControls) {

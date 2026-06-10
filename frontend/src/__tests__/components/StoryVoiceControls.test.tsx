@@ -453,6 +453,61 @@ describe('StoryVoiceControls', () => {
     )).toBe(false);
   });
 
+  it('waits for production voice settings before auto-reading a completed story', async () => {
+    let resolveSettings: (value: Response) => void = () => undefined;
+    const settingsPromise = new Promise<Response>((resolve) => {
+      resolveSettings = resolve;
+    });
+    const { speech } = installSpeechSynthesisMock([
+      {
+        name: 'Chinese Xiaoxiao Female Natural',
+        voiceURI: 'xiaoxiao',
+        lang: 'zh-CN',
+      },
+    ]);
+    (global.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (url.includes('/voice-reading/settings')) {
+        return settingsPromise;
+      }
+      if (url.includes('/voice-reading/read')) {
+        throw new Error('auto-read should wait for voice settings before backend audio');
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    useStoryVoiceStore.setState({
+      autoReadEnabled: true,
+    } as never);
+
+    render(
+      <StoryVoiceControls
+        currentContext={currentContext}
+        autoReadText="选择后的故事已经完整生成。"
+        autoReadReady
+        enablePlaybackControls
+        compact
+      />
+    );
+
+    expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
+      String(url).includes('/voice-reading/read')
+    )).toBe(false);
+    expect(speech.speak).not.toHaveBeenCalled();
+
+    resolveSettings(jsonResponse({
+      auto_read_enabled: true,
+      selected_voice_color: 'warm_female',
+      tts_provider: 'browser',
+      backend_audio_enabled: false,
+    }));
+
+    await waitFor(() => {
+      expect(speech.speak).toHaveBeenCalledTimes(1);
+    });
+    expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
+      String(url).includes('/voice-reading/read')
+    )).toBe(false);
+  });
+
   it('honors explicit provider override before browser-only runtime settings', async () => {
     window.localStorage.setItem('story_voice_e2e_provider', 'local');
     const playSpy = window.HTMLMediaElement.prototype.play as jest.Mock;
