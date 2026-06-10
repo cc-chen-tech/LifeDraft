@@ -48,6 +48,8 @@ The collapsed global sound controls SHALL act as one sound-panel entry point whi
 - **Given** the current story has music context and an active reading context
 - **When** the global sound controls are collapsed
 - **Then** the collapsed control bar SHALL expose an action named "展开声音"
+- **And** the collapsed control bar SHALL show a compact channel summary for "背景音乐"
+- **And** the collapsed control bar SHALL show a compact channel summary for "故事朗读"
 - **And** the collapsed control bar SHALL expose at most one music play or pause action when a controllable audio element exists
 - **And** when music exists but a controllable audio element has not initialized, that music action SHALL open the expanded sound group instead of pretending to start playback
 - **And** the collapsed control bar SHALL NOT expose narration actions
