@@ -4,9 +4,35 @@
 包含状态更新、时间推进、轮次管理和上下文构建等方法。
 """
 
+import re
 from typing import Any, Dict, List, Optional
 
 from config.settings import settings
+
+
+def _extract_start_year_from_era(era: Dict[str, Any]) -> int:
+    """Return the configured start year, including legacy text-only era settings."""
+    year = era.get("year")
+    if isinstance(year, bool):
+        year = None
+    if isinstance(year, (int, float)):
+        numeric_year = int(year)
+        if 1 <= numeric_year <= 3999:
+            return numeric_year
+    if isinstance(year, str):
+        match = re.search(r"\b([1-3][0-9]{3})\b", year)
+        if match:
+            return int(match.group(1))
+
+    text = " ".join(
+        str(era.get(key) or "")
+        for key in ("era_name", "era_description", "world_context")
+    )
+    match = re.search(r"(?<!\d)([1-3][0-9]{3})(?!\d)", text)
+    if match:
+        return int(match.group(1))
+
+    return 2024
 
 
 class PlayerLogicMixin:
@@ -120,7 +146,7 @@ class PlayerLogicMixin:
             包含年、月、周等时间信息的字典
         """
         era = self.character_settings.get("era", {})
-        start_year = era.get("year", 2024)
+        start_year = _extract_start_year_from_era(era) if isinstance(era, dict) else 2024
         years_passed = self.week // 52
         current_year = start_year + years_passed
         week_in_year = self.week % 52

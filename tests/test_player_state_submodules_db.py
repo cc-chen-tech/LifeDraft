@@ -1005,6 +1005,28 @@ class TestPlayerLogicDB:
         assert info["year"] == 2024  # 26 < 52, still year 1
         assert info["total_week"] == 27  # display week = 26 + 1
 
+    def test_get_game_date_info_uses_year_from_era_text_when_year_field_missing(
+        self, repo, sample_game
+    ):
+        """Modern 2026 settings without era.year should not summarize as 2024."""
+        state = PlayerState(
+            week=1,
+            age=28,
+            character_settings={
+                "era": {
+                    "era_name": "2026年中国AI创业浪潮",
+                    "era_description": "2026年的上海，AI工具和创业团队快速迭代。",
+                    "world_context": "主角在2026年加入一家AI产品团队。",
+                }
+            },
+        )
+
+        loaded = _save_and_load(repo, sample_game.game_id, state)
+
+        info = loaded.get_game_date_info()
+        assert info["year"] == 2026
+        assert info["date_string"].startswith("2026年")
+
     def test_is_game_over(self, repo, sample_game):
         """is_game_over should return True when week >= TOTAL_WEEKS."""
         from config.settings import settings
