@@ -17,3 +17,6 @@
 - [x] Rename the global sound landmark and controls from "声音控制/声音面板" to one "声音" entry with a "音乐和朗读" expanded group.
 - [x] Add a compact sound overview row that combines music playback state, narration state, and auto-read mode inside the expanded sound mixer.
 - [x] Use semantic channel headings for the embedded "音乐" and "朗读" channel labels.
+- [x] Remove collapsed music play/pause behavior so the closed bar only opens the unified sound panel.
+- [x] Add regression coverage that the collapsed bar does not expose music or narration playback controls.
+- [x] Replace the collapsed mini bar with an expanded panel header and a single "收起声音" action while open.

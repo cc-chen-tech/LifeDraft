@@ -15,7 +15,7 @@ import { MusicPlayer } from "./MusicPlayer";
 import { StoryVoiceControls } from "./StoryVoiceControls";
 import { useMusicStore } from "@/stores/useMusicStore";
 import { useStoryVoiceStore } from "@/stores/useStoryVoiceStore";
-import { Play, Pause, ChevronUp, ChevronDown, Volume2 } from "lucide-react";
+import { ChevronUp, ChevronDown, Volume2 } from "lucide-react";
 
 export function GlobalMusicPlayer() {
   const hasInitRef = useRef(false);
@@ -29,10 +29,8 @@ export function GlobalMusicPlayer() {
   const activeStoryText = useMusicStore((state) => state.activeStoryText);
   const activeGameId = useMusicStore((state) => state.activeGameId);
   const isPlaying = useMusicStore((state) => state.isPlaying);
-  const togglePlay = useMusicStore((state) => state.togglePlay);
   const currentTime = useMusicStore((state) => state.currentTime);
   const duration = useMusicStore((state) => state.duration);
-  const audioElement = useMusicStore((state) => state.audioElement);
   const activeReadingContext = useStoryVoiceStore((state) => state.activeReadingContext);
   const activeAutoReadText = useStoryVoiceStore((state) => state.activeAutoReadText);
   const activeAutoReadReady = useStoryVoiceStore((state) => state.activeAutoReadReady);
@@ -91,19 +89,6 @@ export function GlobalMusicPlayer() {
           ? "朗读已暂停"
           : "音乐与朗读");
 
-  // Handle play/pause from the mini bar.
-  // If audioElement exists, use store.togglePlay (direct control).
-  // If no audioElement but we have a recommendation, the MusicPlayer handles auto-play internally.
-  const handleMiniPlayPause = () => {
-    if (audioElement) {
-      togglePlay();
-    } else {
-      // No audio element — expand the sound panel so user can pick music or read story.
-      setIsExpanded(true);
-    }
-  };
-
-  const miniMusicLabel = audioElement ? (isPlaying ? "暂停音乐" : "播放音乐") : "打开声音";
   const musicStatusLabel =
     isPlaying
       ? "音乐播放中"
@@ -163,6 +148,15 @@ export function GlobalMusicPlayer() {
             <span className="rounded-full bg-secondary/60 px-2 py-0.5">
               {autoReadEnabled ? "自动朗读" : "手动朗读"}
             </span>
+            <button
+              type="button"
+              aria-label="收起声音"
+              title="收起声音"
+              onClick={() => setIsExpanded(false)}
+              className="ml-auto flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <ChevronUp className="h-4 w-4" />
+            </button>
           </div>
           <div
             data-testid="sound-music-section"
@@ -203,68 +197,47 @@ export function GlobalMusicPlayer() {
         </div>
       </div>
 
-      {/* Sound mini bar — always visible */}
-      <div
-        data-testid="global-music-mini-bar"
-        className="relative bg-card/95 backdrop-blur-sm border-b md:border md:rounded-lg flex items-center gap-2 px-3 py-2 cursor-pointer"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
-        {/* Progress bar - thin line at top */}
-        <div className="absolute top-0 left-0 right-0 h-0.5 bg-muted">
-          <div
-            className="h-full bg-primary transition-all"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-
-        {/* Play / Pause */}
-        <button
-          aria-label={miniMusicLabel}
-          title={miniMusicLabel}
-          onClick={(e) => {
-            e.stopPropagation();
-            handleMiniPlayPause();
-          }}
-          className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-primary text-primary-foreground"
+      {!isExpanded && (
+        <div
+          data-testid="global-music-mini-bar"
+          className="relative bg-card/95 backdrop-blur-sm border-b md:border md:rounded-lg flex items-center gap-2 px-3 py-2 cursor-pointer"
+          onClick={() => setIsExpanded(true)}
         >
-          {audioElement ? (
-            isPlaying ? (
-              <Pause className="w-4 h-4" />
-            ) : (
-              <Play className="w-4 h-4 ml-0.5" />
-            )
-          ) : (
+          {/* Progress bar - thin line at top */}
+          <div className="absolute top-0 left-0 right-0 h-0.5 bg-muted">
+            <div
+              className="h-full bg-primary transition-all"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+
+          <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-primary text-primary-foreground">
             <Volume2 className="w-4 h-4" />
-          )}
-        </button>
-
-        {/* Song info */}
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium truncate">
-            {soundTitle}
           </div>
-          <div className="text-xs text-muted-foreground truncate">
-            {soundStatus}
-          </div>
-        </div>
 
-        {/* Expand / Collapse */}
-        <button
-          aria-label={isExpanded ? "收起声音" : "展开声音"}
-          title={isExpanded ? "收起声音" : "展开声音"}
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsExpanded(!isExpanded);
-          }}
-          className="flex-shrink-0 w-6 h-6 flex items-center justify-center text-muted-foreground"
-        >
-          {isExpanded ? (
-            <ChevronUp className="w-4 h-4" />
-          ) : (
+          {/* Song info */}
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium truncate">
+              {soundTitle}
+            </div>
+            <div className="text-xs text-muted-foreground truncate">
+              {soundStatus}
+            </div>
+          </div>
+
+          <button
+            aria-label="展开声音"
+            title="展开声音"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsExpanded(true);
+            }}
+            className="flex-shrink-0 w-6 h-6 flex items-center justify-center text-muted-foreground"
+          >
             <ChevronDown className="w-4 h-4" />
-          )}
-        </button>
-      </div>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -11,8 +11,9 @@ Music playback and story narration are both sound features, but production UI ha
 - Remove redundant "声音控制" / "声音面板" naming so the mini bar remains the single sound entry point.
 - Make music and narration peer channel rows inside that surface, separated by lightweight dividers instead of nested cards.
 - Use concise embedded channel labels: "音乐" and "朗读".
+- Replace the collapsed mini bar with an expanded panel header while the panel is open, with "收起声音" as the single collapse action.
 - Render embedded story narration controls as a compact channel inside the expanded sound panel instead of a standalone bordered card or toolbar.
-- Keep the collapsed sound bar simple: one primary sound control and one expand/collapse control. Manual narration controls live in the expanded panel.
+- Keep the collapsed sound bar as a single sound-panel entry point. Music play/pause, manual narration, voice selection, and auto-read controls live in the expanded panel.
 - Keep existing music playback, auto-read, voice selection, and provider-backed TTS behavior unchanged.
 
 ## Impact

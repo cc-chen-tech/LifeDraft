@@ -9,6 +9,8 @@ The global sound controls SHALL present scene music and story narration as peer 
 - **When** the user expands the global sound controls
 - **Then** the UI SHALL expose one global sound region named "声音"
 - **And** the expanded content SHALL expose one group named "音乐和朗读"
+- **And** the collapsed mini bar SHALL be replaced by the expanded panel header while the group is open
+- **And** the expanded panel header SHALL expose an action named "收起声音"
 - **And** that group SHALL contain a scene music section
 - **And** that group SHALL contain a story narration section
 - **And** the UI SHALL NOT expose nested regions named "声音控制" or "声音面板"
@@ -37,14 +39,16 @@ The global sound controls SHALL present scene music and story narration as peer 
 
 ### Requirement: Collapsed sound controls stay simple
 
-The collapsed global sound controls SHALL expose a single primary sound action plus an expand or collapse action.
+The collapsed global sound controls SHALL act as one sound-panel entry point. Detailed music playback, narration playback, voice selection, and auto-read settings SHALL live in the expanded sound panel.
 
 #### Scenario: Current story can play music and be narrated
 - **Given** the current story has music context and an active reading context
 - **When** the global sound controls are collapsed
-- **Then** the collapsed control bar SHALL expose a music play or pause action
-- **And** the collapsed control bar SHALL NOT expose a separate narration action
-- **And** the expand action SHALL remain available for detailed voice, auto-read, and music settings.
+- **Then** the collapsed control bar SHALL expose an action named "展开声音"
+- **And** the collapsed control bar SHALL NOT expose music play or pause actions
+- **And** the collapsed control bar SHALL NOT expose narration actions
+- **And** selecting the collapsed sound action SHALL expand the unified "音乐和朗读" group
+- **And** detailed voice, auto-read, and music playback settings SHALL remain available inside the expanded group.
 
 #### Scenario: Narration audio is ready but not playing
 - **Given** backend narration audio has been generated
