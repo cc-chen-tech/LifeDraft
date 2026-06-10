@@ -70,6 +70,24 @@ function getSummaryWeekLabel(startWeek: number, endWeek: number): string {
   return `第${startWeek}-${endWeek}周`;
 }
 
+function getRewriteProgressMessage(status: { phase?: string; message?: string }): string {
+  const message = status.message?.trim();
+  if (message) return message;
+
+  switch (status.phase) {
+    case "analyzing":
+      return "正在理解改写要求";
+    case "rewriting":
+      return "正在生成改写文本";
+    case "validating":
+      return "正在检查故事一致性";
+    case "finalizing":
+      return "正在整理改写结果";
+    default:
+      return "正在改写中...";
+  }
+}
+
 interface ChatBarProps {
   gameId: number | null;
   onSave?: () => void;
@@ -110,6 +128,7 @@ export function ChatBar({
   const [isSending, setIsSending] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [isRewriting, setIsRewriting] = useState(false);
+  const [rewriteProgressMessage, setRewriteProgressMessage] = useState("");
   const [rewriteToast, setRewriteToast] = useState<{
     type: "success" | "error" | "loading";
     message: string;
@@ -221,7 +240,8 @@ export function ChatBar({
     setIsRewriting(true);
     accumulatedStoryRef.current = "";
     rewriteAbortRef.current = new AbortController();
-    showRewriteToast("loading", "正在改写中...");
+    setRewriteProgressMessage("正在准备改写...");
+    showRewriteToast("loading", "正在准备改写...");
 
     const submitRewrite = () => streamRewrite(
         gameId,
@@ -237,9 +257,9 @@ export function ChatBar({
             });
           },
           onStatus: (status) => {
-            if (status.phase === "rewriting") {
-              showRewriteToast("loading", "正在改写中...");
-            }
+            const message = getRewriteProgressMessage(status);
+            setRewriteProgressMessage(message);
+            showRewriteToast("loading", message);
           },
           onComplete: (data) => {
             const newStory =
@@ -254,7 +274,13 @@ export function ChatBar({
             setTimeout(() => setIsRewriteOpen(false), 500);
           },
           onError: (error) => {
+            setRewriteProgressMessage("");
             showRewriteToast("error", error.message || "改写失败，请重试");
+          },
+          onReconnecting: (attempt, maxRetries) => {
+            const message = `连接中断，正在重试 ${attempt}/${maxRetries}`;
+            setRewriteProgressMessage(message);
+            showRewriteToast("loading", message);
           },
         },
         { signal: rewriteAbortRef.current?.signal }
@@ -263,6 +289,7 @@ export function ChatBar({
     try {
       const result = await submitRewrite();
       if (!result.completed && !result.error) {
+        setRewriteProgressMessage("");
         showRewriteToast("error", "改写未完成，请重试");
       }
     } catch (err) {
@@ -284,6 +311,7 @@ export function ChatBar({
           await useGameStore.getState().syncState();
           const result = await submitRewrite();
           if (!result.completed && !result.error) {
+            setRewriteProgressMessage("");
             showRewriteToast("error", "改写未完成，请重试");
           }
           return;
@@ -292,6 +320,7 @@ export function ChatBar({
         }
       }
 
+      setRewriteProgressMessage("");
       showRewriteToast("error", "改写失败，请重试");
     } finally {
       setIsRewriting(false);
@@ -348,6 +377,15 @@ export function ChatBar({
             )}
             改写故事
           </Button>
+          {isRewriting && rewriteProgressMessage && (
+            <p
+              aria-live="polite"
+              className="text-xs text-muted-foreground"
+              data-testid="rewrite-progress-message"
+            >
+              {rewriteProgressMessage}
+            </p>
+          )}
         </div>
       </SheetContent>
     </Sheet>
