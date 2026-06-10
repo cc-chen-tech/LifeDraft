@@ -218,6 +218,37 @@ class TestCreateGame:
         saved_state = mock_db.create_game.call_args.kwargs["initial_state"]
         assert saved_state["wealth"] == 40000
 
+    def test_create_game_preserves_starting_wealth_field_from_character_generator(
+        self, client, mock_db
+    ):
+        """The character wealth generator returns starting_wealth, which must initialize state."""
+        mock_db.create_game.return_value = 89
+
+        response = client.post(
+            "/api/games",
+            json={
+                "character_settings": {
+                    "era": {"name": "2020年代中国互联网", "year": 2024},
+                    "age": {"age": 28},
+                    "wealth": {
+                        "wealth_level": "中等",
+                        "starting_wealth": 50000,
+                        "currency": "¥",
+                        "currency_name": "元",
+                    },
+                },
+                "player_name": "张若虚",
+                "life_vision": "成为可靠的产品经理",
+                "language": "zh",
+            },
+        )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["player_state"]["wealth"] == 50000
+        saved_state = mock_db.create_game.call_args.kwargs["initial_state"]
+        assert saved_state["wealth"] == 50000
+
 
 class TestListGames:
     """Tests for GET /api/games."""
