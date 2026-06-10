@@ -48,3 +48,9 @@
 - [x] Add regression tests proving prompt injection and quick validation still work when `character_settings.relationships` is a legacy list payload.
 - [x] Normalize legacy relationship list payloads in the shared available-people and required-cast extractors.
 - [x] Run targeted preset-cast and game creation contract tests.
+
+## 9. 2026-06-10 Regenerate Drift Follow-up
+
+- [x] Add a regression test proving full story regeneration retries when the first regenerated story drops preset key people and drifts into invented cast/IP-world content.
+- [x] Run regenerated story text through quick validation before returning it when no WorldModel is available.
+- [x] Run targeted story continuation and preset-cast contract tests.

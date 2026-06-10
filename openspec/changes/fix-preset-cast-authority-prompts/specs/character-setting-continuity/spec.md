@@ -48,6 +48,12 @@ Story generation SHALL treat preset key people in character settings as canonica
 - **THEN** the story service MUST retry with the validation failure included in the prompt
 - **AND** it MUST return the corrected continuation instead of the drifted response
 
+#### Scenario: Full story regeneration retries cast and setting drift before returning
+- **GIVEN** full story regeneration runs for a player with preset key people
+- **WHEN** the regenerated story omits every preset key person and introduces an unrelated named cast or external-IP world
+- **THEN** the story rewriter MUST retry with the validation failure included in the prompt
+- **AND** it MUST return the corrected regenerated story instead of the drifted response
+
 #### Scenario: Generic bystanders remain allowed
 - **GIVEN** a story scene needs non-recurring background people
 - **WHEN** the preset cast authority block is present

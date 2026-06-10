@@ -233,6 +233,65 @@ Please generate a brand new story based on the above context, ensuring logical c
                 presence_penalty=0.3,
             )
 
+            from config.prompts._helpers import _collect_available_people
+            from src.ai.quick_validator import quick_validate_story
+
+            available_people_names = [
+                person.get("name", "")
+                for person in _collect_available_people(character_settings)
+                if person.get("name")
+            ]
+            quick_result = quick_validate_story(
+                story_text=regenerated_story,
+                character_settings=character_settings,
+                available_people=available_people_names,
+                language=language,
+            )
+            if not quick_result.passed:
+                logger.warning(
+                    "[StoryRegenerate] Quick validation failed: %s",
+                    quick_result.issues,
+                )
+                if status_callback:
+                    status_callback("retry")
+                retry_lines = "\n".join(f"- {issue}" for issue in quick_result.issues)
+                if language == "zh":
+                    retry_prompt = (
+                        story_prompt
+                        + "\n\n【快速一致性修正 - 必须重写】\n"
+                        + "上一版重新生成故事存在以下问题：\n"
+                        + retry_lines
+                        + "\n请重新生成故事，严格遵守角色设定、现实主义世界边界和预设关键人物关系。"
+                    )
+                else:
+                    retry_prompt = (
+                        story_prompt
+                        + "\n\n[Quick Consistency Fix - Regenerate Required]\n"
+                        + "The previous regenerated story had these issues:\n"
+                        + retry_lines
+                        + "\nRegenerate the story while strictly following the character setup, realistic-world boundary, and preset key people relationships."
+                    )
+                regenerated_story = self.client.call(
+                    system_prompt=sys_prompt,
+                    user_prompt=retry_prompt,
+                    temperature=0.65,
+                    max_tokens=4096,
+                    stream_callback=stream_callback,
+                    frequency_penalty=0.3,
+                    presence_penalty=0.3,
+                )
+                retry_result = quick_validate_story(
+                    story_text=regenerated_story,
+                    character_settings=character_settings,
+                    available_people=available_people_names,
+                    language=language,
+                )
+                if not retry_result.passed:
+                    raise ValueError(
+                        "Story regenerate quick validation failed: "
+                        + "; ".join(retry_result.issues)
+                    )
+
             # ★ 一致性校验（如果有 world_model）- 复用 StoryGenerator 的方法
             if world_model and player_state:
                 from src.ai.story_generator import StoryGenerator
