@@ -161,10 +161,10 @@ class TestNeteaseMusicClientGetSongUrl:
         assert url == "https://music.example.com/song.mp3"
 
     async def test_get_song_url_5xx_retry_success(self):
-        """5xx 重试后成功。"""
+        """可恢复 5xx 重试后成功。503 应走快速降级测试覆盖。"""
         self.client.client.get = AsyncMock(
             side_effect=[
-                _make_response(503),
+                _make_response(500),
                 _make_response(200, SONG_URL_OK_JSON),
             ]
         )
