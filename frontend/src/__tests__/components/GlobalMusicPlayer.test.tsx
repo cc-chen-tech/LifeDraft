@@ -185,12 +185,14 @@ describe("GlobalMusicPlayer", () => {
 
       render(<GlobalMusicPlayer />);
 
-      expect(screen.getByRole("region", { name: "声音控制" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "展开声音面板" })).toBeInTheDocument();
+      expect(screen.getByRole("region", { name: "声音" })).toBeInTheDocument();
+      expect(screen.queryByRole("region", { name: "声音控制" })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "展开声音" })).toBeInTheDocument();
 
-      await user.click(screen.getByRole("button", { name: "展开声音面板" }));
+      await user.click(screen.getByRole("button", { name: "展开声音" }));
 
-      expect(screen.getByRole("region", { name: "声音面板" })).toBeInTheDocument();
+      expect(screen.getByRole("group", { name: "音乐和朗读" })).toBeInTheDocument();
+      expect(screen.queryByRole("region", { name: "声音面板" })).not.toBeInTheDocument();
       expect(screen.getByText("音乐")).toBeInTheDocument();
       expect(screen.queryByRole("region", { name: "故事朗读" })).not.toBeInTheDocument();
       expect(screen.getByRole("checkbox", { name: "自动朗读" })).toBeInTheDocument();
@@ -210,7 +212,7 @@ describe("GlobalMusicPlayer", () => {
 
       render(<GlobalMusicPlayer />);
 
-      await user.click(screen.getByRole("button", { name: "展开声音面板" }));
+      await user.click(screen.getByRole("button", { name: "展开声音" }));
 
       const panel = screen.getByTestId("unified-sound-panel");
       expect(within(panel).queryByText("声音控制")).not.toBeInTheDocument();
@@ -243,7 +245,7 @@ describe("GlobalMusicPlayer", () => {
 
       render(<GlobalMusicPlayer />);
 
-      await user.click(screen.getByRole("button", { name: "展开声音面板" }));
+      await user.click(screen.getByRole("button", { name: "展开声音" }));
 
       const panel = screen.getByTestId("unified-sound-panel");
       const musicSection = within(panel).getByTestId("sound-music-section");
@@ -319,8 +321,8 @@ describe("GlobalMusicPlayer", () => {
 
       render(<GlobalMusicPlayer />);
 
-      expect(screen.getByRole("button", { name: "打开声音面板" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "展开声音面板" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "打开声音" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "展开声音" })).toBeInTheDocument();
     });
 
     it("keeps collapsed controls simple and moves narration controls into the sound panel", async () => {
@@ -349,10 +351,10 @@ describe("GlobalMusicPlayer", () => {
 
       const miniBar = within(screen.getByTestId("global-music-mini-bar"));
       expect(miniBar.getByRole("button", { name: "播放音乐" })).toBeInTheDocument();
-      expect(miniBar.getByRole("button", { name: "展开声音面板" })).toBeInTheDocument();
+      expect(miniBar.getByRole("button", { name: "展开声音" })).toBeInTheDocument();
       expect(miniBar.queryByRole("button", { name: "朗读故事" })).not.toBeInTheDocument();
 
-      await user.click(miniBar.getByRole("button", { name: "展开声音面板" }));
+      await user.click(miniBar.getByRole("button", { name: "展开声音" }));
 
       const readingSection = screen.getByTestId("sound-reading-section");
       expect(within(readingSection).getByRole("button", { name: "朗读故事" })).toBeInTheDocument();
@@ -364,9 +366,9 @@ describe("GlobalMusicPlayer", () => {
 
       render(<GlobalMusicPlayer />);
 
-      await user.click(screen.getByRole("button", { name: "展开声音面板" }));
+      await user.click(screen.getByRole("button", { name: "展开声音" }));
 
-      expect(screen.getByRole("region", { name: "声音面板" })).toBeInTheDocument();
+      expect(screen.getByRole("group", { name: "音乐和朗读" })).toBeInTheDocument();
       expect(screen.queryByText("场景音乐和故事朗读统一在这里控制")).not.toBeInTheDocument();
     });
 
@@ -384,7 +386,7 @@ describe("GlobalMusicPlayer", () => {
 
       render(<GlobalMusicPlayer />);
 
-      await user.click(screen.getByRole("button", { name: "展开声音面板" }));
+      await user.click(screen.getByRole("button", { name: "展开声音" }));
 
       const panel = screen.getByTestId("unified-sound-panel");
       expect(within(panel).queryByText("声音控制")).not.toBeInTheDocument();
@@ -411,7 +413,7 @@ describe("GlobalMusicPlayer", () => {
 
       render(<GlobalMusicPlayer />);
 
-      await user.click(screen.getByRole("button", { name: "展开声音面板" }));
+      await user.click(screen.getByRole("button", { name: "展开声音" }));
 
       const musicSection = screen.getByTestId("sound-music-section");
       expect(within(musicSection).getByText("全局音乐夹具")).toBeInTheDocument();
@@ -467,7 +469,7 @@ describe("GlobalMusicPlayer", () => {
       await user.click(playPauseButton);
 
       // After click, the expanded MusicPlayer container should be visible
-      expect(screen.getByRole("region", { name: "声音面板" })).toBeInTheDocument();
+      expect(screen.getByRole("group", { name: "音乐和朗读" })).toBeInTheDocument();
     });
   });
 
@@ -484,7 +486,7 @@ describe("GlobalMusicPlayer", () => {
       setStoreState({ activeStoryText: "story text" });
 
       render(<GlobalMusicPlayer />);
-      expect(screen.getByRole("button", { name: "展开声音面板" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "展开声音" })).toBeInTheDocument();
     });
 
     it("toggles expanded state when clicking mini bar", async () => {
@@ -497,7 +499,7 @@ describe("GlobalMusicPlayer", () => {
       await user.click(miniBar!);
 
       // MusicPlayer always mounted, expanded after click
-      expect(screen.getByRole("region", { name: "声音面板" })).toBeInTheDocument();
+      expect(screen.getByRole("group", { name: "音乐和朗读" })).toBeInTheDocument();
     });
   });
 
