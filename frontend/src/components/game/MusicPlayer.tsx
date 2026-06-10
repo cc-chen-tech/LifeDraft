@@ -68,6 +68,7 @@ export function MusicPlayer({
     setDuration,
     setAudioElement,
     mergePlaylist,
+    advanceQueue,
     generateAiMusicForStory,
     play,
     pause,
@@ -87,6 +88,16 @@ export function MusicPlayer({
   const [isSwitchingSong, setIsSwitchingSong] = useState(false); // 切换歌曲时的加载状态
   const [preloadProgress, setPreloadProgress] = useState(0); // 预加载进度
   const songUrlMapRef = useRef<Map<number | string, string>>(new Map()); // 预加载的歌曲 URL 映射
+
+  const getFallbackNextSong = useCallback((song: Song) => {
+    const songs = useMusicStore.getState().recommendation?.songs || recommendation?.songs || [];
+    if (songs.length === 0) {
+      return null;
+    }
+    const currentIndex = songs.findIndex((candidate) => candidate.id === song.id);
+    const safeIndex = currentIndex >= 0 ? currentIndex : 0;
+    return songs[(safeIndex + 1) % songs.length] || null;
+  }, [recommendation]);
 
   // 获取音乐推荐
   const fetchRecommendation = useCallback(async (refresh: boolean = false) => {
@@ -265,15 +276,20 @@ export function MusicPlayer({
         setIsPlaying(false);
         setCurrentTime(0);
         activeAudioRef.current = null; // 清理活动音频引用
-        // 自动播放下一首 - 使用传入的 song 参数而不是 currentSong
-        if (recommendation?.songs.length) {
-          const currentIndex = recommendation.songs.findIndex(
-            (s) => s.id === song.id
-          );
-          const nextIndex = (currentIndex + 1) % recommendation.songs.length;
-          console.log(`[MusicPlayer] Song ended, playing next: ${recommendation.songs[nextIndex].name}`);
-          loadAndPlaySong(recommendation.songs[nextIndex]);
-        }
+        void (async () => {
+          await advanceQueue();
+          const nextSong = useMusicStore.getState().currentSong;
+          if (nextSong && nextSong.id !== song.id) {
+            console.log(`[MusicPlayer] Song ended, advancing playlist: ${nextSong.name}`);
+            await loadAndPlaySong(nextSong);
+            return;
+          }
+          const fallbackSong = getFallbackNextSong(song);
+          if (fallbackSong) {
+            console.log(`[MusicPlayer] Song ended, playing fallback next: ${fallbackSong.name}`);
+            await loadAndPlaySong(fallbackSong);
+          }
+        })();
       };
       audio.onerror = (e) => {
         const errorCode = audio.error?.code;
@@ -353,7 +369,7 @@ export function MusicPlayer({
         setIsSwitchingSong(false); // 隐藏切换加载状态
       }
     }
-  }, [audioElement, volume, recommendation, currentSong, setAudioElement, setCurrentSong, setIsPlaying, setCurrentTime, setDuration]);
+  }, [audioElement, volume, recommendation, currentSong, setAudioElement, setCurrentSong, setIsPlaying, setCurrentTime, setDuration, advanceQueue, getFallbackNextSong]);
 
   // 预加载下一首歌曲
   const preloadNextSong = useCallback(async () => {
@@ -427,11 +443,18 @@ export function MusicPlayer({
           audioElement.play().catch(() => {
             // 如果恢复失败，跳到下一首
             console.log('[MusicPlayer] Resume failed, switching to next song');
-            if (recommendation?.songs.length) {
-              const currentIndex = recommendation.songs.findIndex((s) => s.id === currentSong.id);
-              const nextIndex = (currentIndex + 1) % recommendation.songs.length;
-              loadAndPlaySong(recommendation.songs[nextIndex]);
-            }
+            void (async () => {
+              await advanceQueue();
+              const nextSong = useMusicStore.getState().currentSong;
+              if (nextSong && nextSong.id !== currentSong.id) {
+                await loadAndPlaySong(nextSong);
+                return;
+              }
+              const fallbackSong = getFallbackNextSong(currentSong);
+              if (fallbackSong) {
+                await loadAndPlaySong(fallbackSong);
+              }
+            })();
           });
           stuckCount = 0;
         }
@@ -443,7 +466,7 @@ export function MusicPlayer({
     }, 3000); // 每3秒检查一次
 
     return () => clearInterval(checkInterval);
-  }, [audioElement, isPlaying, currentSong, recommendation, loadAndPlaySong]);
+  }, [audioElement, isPlaying, currentSong, recommendation, loadAndPlaySong, advanceQueue, getFallbackNextSong]);
 
   // 播放控制
   const togglePlay = () => {
@@ -459,13 +482,20 @@ export function MusicPlayer({
   };
 
   const playNext = () => {
-    if (!recommendation?.songs.length || !currentSong) return;
+    if (!currentSong) return;
 
-    const currentIndex = recommendation.songs.findIndex(
-      (s) => s.id === currentSong.id
-    );
-    const nextIndex = (currentIndex + 1) % recommendation.songs.length;
-    loadAndPlaySong(recommendation.songs[nextIndex]);
+    void (async () => {
+      await advanceQueue();
+      const nextSong = useMusicStore.getState().currentSong;
+      if (nextSong && nextSong.id !== currentSong.id) {
+        await loadAndPlaySong(nextSong);
+        return;
+      }
+      const fallbackSong = getFallbackNextSong(currentSong);
+      if (fallbackSong) {
+        await loadAndPlaySong(fallbackSong);
+      }
+    })();
   };
 
   const playPrev = () => {
