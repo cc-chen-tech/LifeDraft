@@ -92,6 +92,8 @@ def test_required_cast_constraints_include_all_preset_people() -> None:
     assert "不得替换" in text
     assert "至少使用1位预设关键人物" in text
     assert "陆昊然、陈晓雨、林一凡至少一位" in text
+    assert "80%" in text
+    assert "预设关系网" in text
     assert "苏婉清" not in text
 
 
@@ -183,6 +185,33 @@ def test_quick_validator_uses_relationships_list_for_required_cast() -> None:
 
     assert not result.passed
     assert any("没有使用预设关键人物" in issue for issue in result.issues)
+
+
+def test_quick_validator_rejects_partial_cast_when_new_named_network_dominates() -> None:
+    """Two preset names are not enough if the scene is still led by a new cast."""
+    from config.prompts._helpers import _collect_available_people
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    available_people = [
+        person["name"]
+        for person in _collect_available_people(settings)
+        if person.get("name")
+    ]
+
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨刚提醒林清回到需求复盘，方蕾就带着马老板闯进会议室。"
+            "赵子豪翻出苏州贸易公司的旧账，王丽华要求林清立刻替家里签下债务协议。"
+            "接下来的冲突全由这些陌生债主推动，同期协作和产品经理成长线彻底消失。"
+        ),
+        character_settings=settings,
+        available_people=available_people,
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("预设关系网使用不足" in issue for issue in result.issues)
 
 
 def test_choice_result_prompt_injects_required_cast_authority_and_world_boundary() -> None:
