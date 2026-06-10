@@ -4,12 +4,14 @@
  * 包含：基础渲染 + 卡顿检测（stall detection）逻辑验证
  * 使用真实 Zustand store + global.fetch mock，不 mock store 模块。
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MusicPlayer } from '@/components/game/MusicPlayer';
 import { useMusicStore } from '@/stores/useMusicStore';
 import { jsonResponse } from '@/__tests__/helpers/fetch';
 
 // jsdom 不支持 Audio API，提供完整 mock
+const createdAudioInstances: MockAudioClass[] = [];
+
 class MockAudioClass {
   src = '';
   paused = true;
@@ -22,7 +24,18 @@ class MockAudioClass {
   play = jest.fn().mockResolvedValue(undefined);
   pause = jest.fn();
   load = jest.fn();
+  onplay: (() => void) | null = null;
+  onpause: (() => void) | null = null;
+  ontimeupdate: (() => void) | null = null;
+  onloadedmetadata: (() => void) | null = null;
+  onended: (() => void) | null = null;
+  onerror: (() => void) | null = null;
   private _listeners: Record<string, Array<() => void>> = {};
+
+  constructor(src?: string) {
+    this.src = src || '';
+    createdAudioInstances.push(this);
+  }
 
   addEventListener(event: string, fn: () => void) {
     if (!this._listeners[event]) this._listeners[event] = [];
@@ -56,6 +69,7 @@ const playlistResponse = (gameId: number, currentSong: unknown = null, queue: un
 
 describe('MusicPlayer', () => {
   beforeEach(() => {
+    createdAudioInstances.length = 0;
     global.fetch = jest
       .fn()
       .mockResolvedValueOnce(
@@ -416,6 +430,184 @@ describe('MusicPlayer', () => {
       '网易云 下一曲',
     ]);
     expect(screen.getByText('AI MiniMax 雨夜追逐')).toBeInTheDocument();
+  });
+
+  it('当前歌曲播完后优先推进持久化队列里的 AI 曲目', async () => {
+    (global.fetch as jest.Mock).mockReset();
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(
+        jsonResponse({
+          mood: '紧张',
+          scene_type: '雨夜追逐',
+          keywords: ['雨夜追逐', '悬疑配乐'],
+          music_brief: {
+            mood: '紧张',
+            scene_type: '雨夜追逐',
+            generation_prompt: '雨夜码头追逐，紧张悬疑，无歌词氛围配乐',
+          },
+          songs: [
+            {
+              id: 1,
+              name: '网易云 当前曲',
+              artists: ['Score'],
+              album: '影视配乐',
+              duration: 180000,
+              url: 'https://example.com/current.mp3',
+              source: 'netease',
+            },
+            {
+              id: 2,
+              name: '网易云 下一曲',
+              artists: ['Score'],
+              album: '影视配乐',
+              duration: 180000,
+              url: 'https://example.com/next.mp3',
+              source: 'netease',
+            },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        playlistResponse(
+          77,
+          {
+            id: 1,
+            name: '网易云 当前曲',
+            artists: ['Score'],
+            album: '影视配乐',
+            duration: 180000,
+            url: 'https://example.com/current.mp3',
+            source: 'netease',
+          },
+          [
+            {
+              id: 2,
+              name: '网易云 下一曲',
+              artists: ['Score'],
+              album: '影视配乐',
+              duration: 180000,
+              url: 'https://example.com/next.mp3',
+              source: 'netease',
+            },
+          ]
+        )
+      )
+      .mockResolvedValueOnce(
+        playlistResponse(
+          77,
+          {
+            id: 1,
+            name: '网易云 当前曲',
+            artists: ['Score'],
+            album: '影视配乐',
+            duration: 180000,
+            url: 'https://example.com/current.mp3',
+            source: 'netease',
+          },
+          [
+            {
+              id: 2,
+              name: '网易云 下一曲',
+              artists: ['Score'],
+              album: '影视配乐',
+              duration: 180000,
+              url: 'https://example.com/next.mp3',
+              source: 'netease',
+            },
+          ]
+        )
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          status: 'queued',
+          insert_policy: 'future_queue',
+          game_id: 77,
+        })
+      )
+      .mockResolvedValueOnce(
+        playlistResponse(
+          77,
+          {
+            id: 1,
+            name: '网易云 当前曲',
+            artists: ['Score'],
+            album: '影视配乐',
+            duration: 180000,
+            url: 'https://example.com/current.mp3',
+            source: 'netease',
+          },
+          [
+            {
+              id: 'ai-generated-77',
+              name: 'AI MiniMax 雨夜追逐',
+              artists: ['MiniMax'],
+              album: 'AI Generated',
+              duration: 120000,
+              url: '/api/music/generated/ai-generated-77.mp3',
+              source: 'ai_generated',
+              provider: 'minimax',
+              model: 'music-01',
+            },
+            {
+              id: 2,
+              name: '网易云 下一曲',
+              artists: ['Score'],
+              album: '影视配乐',
+              duration: 180000,
+              url: 'https://example.com/next.mp3',
+              source: 'netease',
+            },
+          ]
+        )
+      )
+      .mockResolvedValueOnce(
+        playlistResponse(
+          77,
+          {
+            id: 'ai-generated-77',
+            name: 'AI MiniMax 雨夜追逐',
+            artists: ['MiniMax'],
+            album: 'AI Generated',
+            duration: 120000,
+            url: '/api/music/generated/ai-generated-77.mp3',
+            source: 'ai_generated',
+            provider: 'minimax',
+            model: 'music-01',
+          },
+          [
+            {
+              id: 2,
+              name: '网易云 下一曲',
+              artists: ['Score'],
+              album: '影视配乐',
+              duration: 180000,
+              url: 'https://example.com/next.mp3',
+              source: 'netease',
+            },
+          ]
+        )
+      );
+
+    render(<MusicPlayer storyText="雨夜码头追逐，主角发现旧账册线索。" gameId={77} />);
+
+    await screen.findByText('AI MiniMax 雨夜追逐');
+    const firstAudio = createdAudioInstances.find((audio) =>
+      audio.src.includes('current.mp3')
+    );
+
+    expect(firstAudio).toBeDefined();
+    act(() => {
+      firstAudio?.onended?.();
+    });
+
+    await waitFor(() => {
+      expect(useMusicStore.getState().currentSong?.name).toBe('AI MiniMax 雨夜追逐');
+    });
+    expect(
+      (global.fetch as jest.Mock).mock.calls.some((call: unknown[]) =>
+        String(call[0]).includes('/api/music/playlist/77/advance')
+      )
+    ).toBe(true);
   });
 
   it('有基础歌曲时仍提示 MiniMax 原创音乐正在后台生成', () => {
