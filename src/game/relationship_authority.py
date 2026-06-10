@@ -8,10 +8,13 @@ from typing import Any, Dict, List, Mapping
 def extract_required_key_people(character_settings: Mapping[str, Any]) -> List[Dict[str, str]]:
     """Return canonical preset key people from character settings."""
     relationships = character_settings.get("relationships")
-    if not isinstance(relationships, Mapping):
-        return []
+    if isinstance(relationships, list):
+        key_people = relationships
+    elif isinstance(relationships, Mapping):
+        key_people = relationships.get("key_people")
+    else:
+        key_people = []
 
-    key_people = relationships.get("key_people")
     if not isinstance(key_people, list):
         return []
 

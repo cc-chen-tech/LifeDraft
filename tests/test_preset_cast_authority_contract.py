@@ -56,6 +56,12 @@ def _modern_product_manager_settings() -> dict[str, Any]:
     }
 
 
+def _modern_product_manager_settings_with_legacy_relationships_list() -> dict[str, Any]:
+    settings = _modern_product_manager_settings()
+    settings["relationships"] = settings["relationships"]["key_people"]
+    return settings
+
+
 def _player_state() -> dict[str, Any]:
     return {
         "age": 25,
@@ -130,6 +136,50 @@ def test_round_event_prompt_injects_required_cast_authority() -> None:
     assert "不得替换" in prompt
     assert "至少使用1位预设关键人物" in prompt
     assert "陆昊然、陈晓雨、林一凡至少一位" in prompt
+
+
+def test_round_event_prompt_injects_required_cast_authority_from_relationships_list() -> None:
+    prompt = get_round_event_prompt(
+        player_state=_player_state(),
+        language="zh",
+        round_number=0,
+        round_context="上一轮你决定向导师请教需求优先级。",
+        character_settings=_modern_product_manager_settings_with_legacy_relationships_list(),
+    )
+
+    assert "预设关键人物" in prompt
+    assert "陆昊然" in prompt
+    assert "导师" in prompt
+    assert "陈晓雨" in prompt
+    assert "闺蜜" in prompt
+    assert "林一凡" in prompt
+    assert "同期" in prompt
+    assert "不得改名" in prompt
+    assert "不得替换" in prompt
+    assert "至少使用1位预设关键人物" in prompt
+    assert "陆昊然、陈晓雨、林一凡至少一位" in prompt
+
+
+def test_quick_validator_uses_relationships_list_for_required_cast() -> None:
+    from config.prompts._helpers import _collect_available_people
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings_with_legacy_relationships_list()
+    available_people = [
+        person["name"]
+        for person in _collect_available_people(settings)
+        if person.get("name")
+    ]
+
+    result = quick_validate_story(
+        story_text="马老板把欠条摊在桌上，方蕾要求林清立刻接手苏州贸易公司的债务。",
+        character_settings=settings,
+        available_people=available_people,
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("预设关键人物" in issue for issue in result.issues)
 
 
 def test_choice_result_prompt_injects_required_cast_authority_and_world_boundary() -> None:
