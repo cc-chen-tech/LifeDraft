@@ -25,3 +25,6 @@
 - [x] Add a false-positive guard proving explicit ancient stories can still use classical chapter labels.
 - [x] Reject classical "第X回" openings during quick validation for modern Chinese character settings.
 - [x] Update the story-display-quality spec with runtime validation behavior.
+- [x] Add a regression proving plain realistic settings without explicit modern keywords are still validated as modern.
+- [x] Narrow ancient era inference so weekday/everyday single characters do not disable modern title validation.
+- [x] Add a regression proving timeline title terms such as "周中" are not treated as invented cast members.
