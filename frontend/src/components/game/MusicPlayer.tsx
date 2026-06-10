@@ -62,6 +62,7 @@ export function MusicPlayer({
     duration,
     audioElement,
     isGeneratingAiMusic,
+    aiMusicGenerationStatus,
     setRecommendation,
     setIsLoadingRecommendation,
     setRecommendationError,
@@ -92,6 +93,9 @@ export function MusicPlayer({
   const [isSwitchingSong, setIsSwitchingSong] = useState(false); // 切换歌曲时的加载状态
   const [preloadProgress, setPreloadProgress] = useState(0); // 预加载进度
   const songUrlMapRef = useRef<Map<number | string, string>>(new Map()); // 预加载的歌曲 URL 映射
+  const recommendationHasMusicBrief = recommendation ? hasMusicBrief(recommendation.music_brief) : false;
+  const isAiMusicDelayed = recommendationHasMusicBrief && aiMusicGenerationStatus === "delayed";
+  const isAiMusicFailed = recommendationHasMusicBrief && aiMusicGenerationStatus === "failed";
 
   const getFallbackNextSong = useCallback((song: Song) => {
     const songs = useMusicStore.getState().recommendation?.songs || recommendation?.songs || [];
@@ -670,10 +674,14 @@ export function MusicPlayer({
         </div>
       )}
 
-      {recommendation && recommendation.songs.length > 0 && isGeneratingAiMusic && (
+      {recommendation && recommendation.songs.length > 0 && (isGeneratingAiMusic || isAiMusicDelayed) && (
         <div className="flex items-center justify-center rounded bg-primary/5 px-2 py-2 text-primary">
-          <Loader2 className="w-3 h-3 animate-spin mr-2" />
-          <span className="text-xs">正在生成原创场景音乐，完成后加入下一首</span>
+          {isGeneratingAiMusic && <Loader2 className="w-3 h-3 animate-spin mr-2" />}
+          <span className="text-xs">
+            {isGeneratingAiMusic
+              ? "正在生成原创场景音乐，完成后加入下一首"
+              : "原创场景音乐已排队，完成后加入下一首"}
+          </span>
         </div>
       )}
 
@@ -823,9 +831,15 @@ export function MusicPlayer({
         </div>
       )}
 
-      {recommendation && recommendation.songs.length === 0 && !isGeneratingAiMusic && (
+      {recommendation && recommendation.songs.length === 0 && !isGeneratingAiMusic && isAiMusicDelayed && (
         <div className="text-sm text-muted-foreground text-center py-4">
-          音乐服务暂不可用，故事可继续进行
+          原创场景音乐已排队，完成后会自动加入播放列表
+        </div>
+      )}
+
+      {recommendation && recommendation.songs.length === 0 && !isGeneratingAiMusic && !isAiMusicDelayed && (
+        <div className="text-sm text-muted-foreground text-center py-4">
+          {isAiMusicFailed ? "原创音乐生成暂不可用，故事可继续进行" : "音乐服务暂不可用，故事可继续进行"}
         </div>
       )}
     </div>

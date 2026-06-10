@@ -95,6 +95,8 @@ describe('MusicPlayer', () => {
       currentTime: 0,
       duration: 0,
       audioElement: null,
+      isGeneratingAiMusic: false,
+      aiMusicGenerationStatus: 'idle',
     });
   });
 
@@ -655,6 +657,37 @@ describe('MusicPlayer', () => {
 
     expect(screen.getByText('正在生成原创场景音乐，完成后加入下一首')).toBeInTheDocument();
     expect(screen.getByText('网易云 当前曲')).toBeInTheDocument();
+  });
+
+  it('MiniMax 已排队但尚未插入播放列表时不误报音乐服务不可用', () => {
+    useMusicStore.setState({
+      recommendation: {
+        mood: '紧张',
+        scene_type: '现代职场危机',
+        keywords: ['办公室 轻电子 氛围'],
+        music_brief: {
+          mood: '紧张',
+          scene_type: '现代职场危机',
+          generation_prompt: 'tense modern workplace instrumental ambience, no vocals',
+        },
+        songs: [],
+      },
+      currentSong: null,
+      queue: [],
+      isGeneratingAiMusic: false,
+      aiMusicGenerationStatus: 'delayed',
+    });
+
+    render(
+      <MusicPlayer
+        storyText="产品经理发现数据异常，会议室气氛紧张。"
+        gameId={77}
+        autoFetchRecommendation={false}
+      />
+    );
+
+    expect(screen.getByText('原创场景音乐已排队，完成后会自动加入播放列表')).toBeInTheDocument();
+    expect(screen.queryByText('音乐服务暂不可用，故事可继续进行')).not.toBeInTheDocument();
   });
 });
 

@@ -69,6 +69,12 @@ The system SHALL treat AI-generated music as an additional member benefit, not a
 - **WHEN** a background-generated track is ready and still relevant to the current or recent music brief
 - **THEN** the system MUST add it to the future queue with `source` metadata identifying it as AI-generated
 
+#### Scenario: Generated track is accepted but not ready yet
+- **WHEN** the frontend successfully enqueues AI music generation
+- **AND** playlist polling does not see the generated track before the local polling window ends
+- **THEN** the player MUST continue to show that original scene music is queued
+- **AND** it MUST NOT mislabel the state as general music-service unavailability
+
 #### Scenario: Generated track is no longer relevant
 - **WHEN** a generated track completes after the story context has materially changed
 - **THEN** the system SHOULD persist the asset for reuse but MAY skip immediate queue insertion

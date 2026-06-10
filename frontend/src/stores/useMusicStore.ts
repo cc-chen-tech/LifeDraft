@@ -46,6 +46,14 @@ export interface MusicQueueMergeResult {
   queue: Song[];
 }
 
+export type AiMusicGenerationStatus =
+  | "idle"
+  | "queued"
+  | "polling"
+  | "ready"
+  | "delayed"
+  | "failed";
+
 interface PlaylistApiState {
   game_id: number;
   current_song: Song | null;
@@ -242,6 +250,7 @@ interface MusicState {
   playlistGameId: number | null;
   isLoadingPlaylist: boolean;
   isGeneratingAiMusic: boolean;
+  aiMusicGenerationStatus: AiMusicGenerationStatus;
 
   // Active story context (set by play page)
   activeStoryText: string | null;
@@ -380,7 +389,7 @@ async function pollPlaylistForGeneratedTrack(
   onPlaylist: (playlist: PlaylistApiState) => void,
   attempts: number = GENERATED_MUSIC_POLL_ATTEMPTS,
   intervalMs: number = GENERATED_MUSIC_POLL_INTERVAL_MS
-): Promise<void> {
+): Promise<boolean> {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     if (attempt > 0) {
       await sleep(intervalMs);
@@ -392,9 +401,10 @@ async function pollPlaylistForGeneratedTrack(
     onPlaylist(playlist);
     const generatedIds = playlistGeneratedTrackIds(playlist);
     if ([...generatedIds].some((id) => !initialGeneratedIds.has(id))) {
-      return;
+      return true;
     }
   }
+  return false;
 }
 
 export const useMusicStore = create<MusicState>((set, get) => ({
@@ -415,6 +425,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   playlistGameId: null,
   isLoadingPlaylist: false,
   isGeneratingAiMusic: false,
+  aiMusicGenerationStatus: "idle",
   activeStoryText: null,
   activeGameId: null,
 
@@ -614,7 +625,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       if (disabled === "1" || disabled === "true") return;
     }
 
-    set({ isGeneratingAiMusic: true });
+    set({ isGeneratingAiMusic: true, aiMusicGenerationStatus: "queued" });
     try {
       const initialGeneratedIds = generatedTrackIds(get());
       const snapshot = await persistPlaylistSnapshotBeforeGeneration(
@@ -629,13 +640,18 @@ export const useMusicStore = create<MusicState>((set, get) => ({
         );
       }
       await enqueueGeneratedMusic(storyText, gameId, analysis);
-      await pollPlaylistForGeneratedTrack(gameId, initialGeneratedIds, (playlist) => {
+      set({ aiMusicGenerationStatus: "polling" });
+      const generatedTrackReady = await pollPlaylistForGeneratedTrack(gameId, initialGeneratedIds, (playlist) => {
         set((state) =>
           playlistStateToStorePatchWithRecommendation(playlist, state.recommendation)
         );
       });
+      set({
+        aiMusicGenerationStatus: generatedTrackReady ? "ready" : "delayed",
+      });
     } catch (error) {
       console.warn("[MusicStore] AI music generation unavailable:", error);
+      set({ aiMusicGenerationStatus: "failed" });
     } finally {
       set({ isGeneratingAiMusic: false });
     }
@@ -714,6 +730,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       playlistGameId: null,
       isLoadingPlaylist: false,
       isGeneratingAiMusic: false,
+      aiMusicGenerationStatus: "idle",
     });
   },
 
