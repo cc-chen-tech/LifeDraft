@@ -23,3 +23,4 @@
 - [x] Redesign the expanded panel as one compact vertical sound mixer with "背景音乐" and "故事朗读" peer groups, hiding duplicate child module headings, music mood chips, and recommendation lists.
 - [x] Remove duplicate per-channel status badges so music/narration state appears once in the shared sound overview.
 - [x] Keep auto-read only as the narration channel switch instead of repeating it as a shared overview badge.
+- [x] Add regression coverage that active playable music uses a non-blocking refresh error message instead of "音乐服务暂不可用".

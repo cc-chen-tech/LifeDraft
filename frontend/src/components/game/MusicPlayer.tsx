@@ -531,6 +531,9 @@ export function MusicPlayer({
   const displaySong = currentSong || recommendation?.songs[0] || null;
   const sourceLabel = getMusicSourceLabel(displaySong?.source);
   const hasRecommendationSongs = Boolean(recommendation?.songs.length);
+  const hasPlayableMusic = Boolean(displaySong || hasRecommendationSongs || audioElement);
+  const showBlockingRecommendationError = Boolean(recommendationError && !hasPlayableMusic);
+  const showNonBlockingRecommendationWarning = Boolean(recommendationError && hasPlayableMusic);
 
   // 格式化时间
   const formatTime = (seconds: number) => {
@@ -644,9 +647,15 @@ export function MusicPlayer({
       )}
 
       {/* 错误状态 */}
-      {recommendationError && (
+      {showBlockingRecommendationError && (
         <div className="text-sm text-destructive text-center py-2">
           音乐服务暂不可用
+        </div>
+      )}
+
+      {showNonBlockingRecommendationWarning && (
+        <div className="text-xs text-muted-foreground text-center py-1">
+          新推荐暂不可用，继续播放当前音乐
         </div>
       )}
 

@@ -59,3 +59,15 @@ The collapsed global sound controls SHALL act as one sound-panel entry point. De
 - **When** the story narration controls are shown
 - **Then** the primary narration action SHALL be "play"
 - **And** the controls SHALL NOT show a stop action until narration is loading, playing, or paused.
+
+### Requirement: Music refresh errors do not contradict active playback
+
+Music recommendation refresh failures SHALL not present a blocking unavailable state when the current music channel still has a playable song.
+
+#### Scenario: Current music is playable while a new recommendation fails
+- **Given** the music channel has a current playable song
+- **And** a recommendation refresh reports an error
+- **When** the sound panel renders the embedded music channel
+- **Then** the UI SHALL continue to show the current playable song
+- **And** the UI SHALL NOT show the blocking text "音乐服务暂不可用"
+- **And** the UI SHALL show a non-blocking status that the new recommendation is unavailable and current music continues.

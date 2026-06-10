@@ -131,6 +131,51 @@ describe('MusicPlayer', () => {
     expect(await screen.findByText('音乐服务暂不可用，故事可继续进行')).toBeInTheDocument();
   });
 
+  it('已有可播放音乐时推荐失败不显示阻塞的服务不可用文案', () => {
+    useMusicStore.setState({
+      recommendation: {
+        mood: '紧张',
+        scene_type: '追捕逃亡',
+        keywords: ['悬疑'],
+        songs: [
+          {
+            id: 88,
+            name: '当前可播放曲目',
+            artists: ['AI MiniMax'],
+            album: '原创场景音乐',
+            duration: 120000,
+            url: 'https://example.com/current.mp3',
+            source: 'ai_generated',
+          },
+        ],
+      },
+      currentSong: {
+        id: 88,
+        name: '当前可播放曲目',
+        artists: ['AI MiniMax'],
+        album: '原创场景音乐',
+        duration: 120000,
+        url: 'https://example.com/current.mp3',
+        source: 'ai_generated',
+      },
+      recommendationError: '音乐服务暂不可用',
+      isLoadingRecommendation: false,
+    } as never);
+
+    render(
+      <MusicPlayer
+        storyText="雨夜追逐，主角发现旧账册线索。"
+        autoFetchRecommendation={false}
+        embedded
+        compactControls
+      />
+    );
+
+    expect(screen.getByText('当前可播放曲目')).toBeInTheDocument();
+    expect(screen.queryByText('音乐服务暂不可用')).not.toBeInTheDocument();
+    expect(screen.getByText('新推荐暂不可用，继续播放当前音乐')).toBeInTheDocument();
+  });
+
   it('网易云安全基线为空但有 music_brief 时显示 MiniMax 生成中而不是不可用', async () => {
     (global.fetch as jest.Mock).mockReset();
     (global.fetch as jest.Mock)
