@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/sheet";
 import { SettingDisplay } from "@/components/game/SettingDisplay";
 import { SettingFeedbackCard } from "./SettingFeedbackCard";
+import { PresetSaveInlineStatus } from "./PresetSaveInlineStatus";
+import type { PresetSaveStatus } from "@/hooks/useCharacterCreation";
 import { CREATION_STEPS } from "@/stores/useGameStore";
 import {
   ArrowLeft,
@@ -53,6 +55,8 @@ interface CompletionScreenProps {
   showPresetSheet: boolean;
   presetName: string;
   isSavingPreset: boolean;
+  presetSaveStatus: PresetSaveStatus;
+  presetSaveMessage: string;
   // Image regeneration
   isGeneratingImage: boolean;
   imageFeedback: string;
@@ -81,6 +85,8 @@ export function CompletionScreen({
   showPresetSheet,
   presetName,
   isSavingPreset,
+  presetSaveStatus,
+  presetSaveMessage,
   isGeneratingImage,
   imageFeedback,
   onImageFeedbackChange,
@@ -317,6 +323,10 @@ export function CompletionScreen({
               placeholder="预设名称"
               className="bg-secondary border-border h-12"
               autoFocus
+            />
+            <PresetSaveInlineStatus
+              status={presetSaveStatus}
+              message={presetSaveMessage}
             />
             <Button
               className="w-full touch-target"
