@@ -82,6 +82,7 @@ function GameIdSync() {
 export default function PlayPage() {
   // ★ 收集面板状态
   const [showCollection, setShowCollection] = useState(false);
+  const [activeSidePanel, setActiveSidePanel] = useState<"collection" | "history" | null>(null);
 
   // ★ 故事风格状态
   const [narrativeStyleId, setNarrativeStyleId] = useState<string>("");
@@ -294,6 +295,7 @@ export default function PlayPage() {
   }, [recoverEventGeneration, setOptions, setPhase]);
 
   const handleOpenCollection = useCallback(() => {
+    setActiveSidePanel("collection");
     setShowCollection(true);
     setShowHistory(false);
     if (isViewingHistory) {
@@ -302,9 +304,39 @@ export default function PlayPage() {
   }, [handleBackToCurrent, isViewingHistory, setShowHistory]);
 
   const handleOpenHistoryPanel = useCallback(() => {
+    setActiveSidePanel("history");
     setShowCollection(false);
     handleOpenHistory();
   }, [handleOpenHistory]);
+
+  const handleCollectionOpenChange = useCallback((open: boolean) => {
+    if (open) {
+      setActiveSidePanel("collection");
+      setShowCollection(true);
+      setShowHistory(false);
+      return;
+    }
+
+    setShowCollection(false);
+    setActiveSidePanel((current) => (current === "collection" ? null : current));
+  }, [setShowHistory]);
+
+  const handleHistoryOpenChange = useCallback((open: boolean) => {
+    if (open) {
+      setActiveSidePanel("history");
+      setShowCollection(false);
+      setShowHistory(true);
+      return;
+    }
+
+    setShowHistory(false);
+    setActiveSidePanel((current) => (current === "history" ? null : current));
+  }, [setShowHistory]);
+
+  const collectionPanelOpen =
+    showCollection && (!showHistory || activeSidePanel === "collection");
+  const historyPanelOpen =
+    showHistory && (!showCollection || activeSidePanel === "history");
 
   const handleRewriteComplete = useCallback((newStory: string) => {
     setStoryText(newStory);
@@ -819,20 +851,20 @@ export default function PlayPage() {
 
       {/* ★ 历史回顾抽屉 */}
       <RoundHistoryDrawer
-        open={showHistory}
-        onOpenChange={setShowHistory}
+        open={historyPanelOpen}
+        onOpenChange={handleHistoryOpenChange}
         roundHistory={roundHistory}
         selectedIndex={historyRoundIndex}
         onSelect={handleSelectHistoryRound}
         onBackToCurrent={() => {
           handleBackToCurrent();
-          setShowHistory(false);
+          handleHistoryOpenChange(false);
         }}
         isViewingHistory={isViewingHistory}
       />
 
       {/* ★ 收集面板 */}
-      <Sheet modal={false} open={showCollection} onOpenChange={setShowCollection}>
+      <Sheet modal={false} open={collectionPanelOpen} onOpenChange={handleCollectionOpenChange}>
         <SheetContent
           side="right"
           className="w-[400px] sm:w-[540px] p-0"

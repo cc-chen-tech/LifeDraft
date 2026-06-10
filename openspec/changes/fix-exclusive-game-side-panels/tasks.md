@@ -1,0 +1,6 @@
+- [x] Reproduce the collection/history overlapping panel state with a PlayPage test.
+- [x] Add a PlayPage side-panel coordinator so collection and history cannot render together.
+- [x] Document the side-panel exclusivity contract.
+- [x] Run focused frontend regression tests.
+- [x] Run OpenSpec validation.
+- [x] Run preflight validation.
