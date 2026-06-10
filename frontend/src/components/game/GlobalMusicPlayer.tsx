@@ -41,7 +41,6 @@ export function GlobalMusicPlayer() {
     (state) => state.activeAutoReadReady,
   );
   const readingState = useStoryVoiceStore((state) => state.readingState);
-  const autoReadEnabled = useStoryVoiceStore((state) => state.autoReadEnabled);
 
   // On mount, try to restore the active game playlist from localStorage
   useEffect(() => {
@@ -153,9 +152,6 @@ export function GlobalMusicPlayer() {
             <span className="rounded-full bg-secondary/60 px-2 py-0.5">
               {readingStatusLabel}
             </span>
-            <span className="rounded-full bg-secondary/60 px-2 py-0.5">
-              {autoReadEnabled ? "自动朗读" : "手动朗读"}
-            </span>
             <button
               type="button"
               aria-label="收起声音"
@@ -174,16 +170,13 @@ export function GlobalMusicPlayer() {
               data-testid="sound-music-section"
               className="min-w-0 border-t border-border/70 pt-3"
             >
-              <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
+              <div className="mb-2 flex min-w-0 items-center gap-2">
                 <div className="flex min-w-0 items-center gap-2">
                   <Music className="h-4 w-4 shrink-0 text-primary" />
                   <span className="truncate text-sm font-medium text-foreground">
                     背景音乐
                   </span>
                 </div>
-                <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
-                  {musicStatusLabel}
-                </span>
               </div>
               {storyText ? (
                 <MusicPlayer
@@ -209,16 +202,13 @@ export function GlobalMusicPlayer() {
                 data-testid="sound-reading-section"
                 className="min-w-0 border-t border-border/70 pt-3"
               >
-                <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
+                <div className="mb-2 flex min-w-0 items-center gap-2">
                   <div className="flex min-w-0 items-center gap-2">
                     <Volume2 className="h-4 w-4 shrink-0 text-primary" />
                     <span className="truncate text-sm font-medium text-foreground">
                       故事朗读
                     </span>
                   </div>
-                  <span className="shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[11px] text-secondary-foreground">
-                    {readingStatusLabel}
-                  </span>
                 </div>
                 <div data-testid="sound-reading-channel" className="space-y-3">
                   <StoryVoiceControls

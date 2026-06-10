@@ -21,3 +21,5 @@
 - [x] Add regression coverage that the collapsed bar does not expose music or narration playback controls.
 - [x] Replace the collapsed mini bar with an expanded panel header and a single "收起声音" action while open.
 - [x] Redesign the expanded panel as one compact vertical sound mixer with "背景音乐" and "故事朗读" peer groups, hiding duplicate child module headings, music mood chips, and recommendation lists.
+- [x] Remove duplicate per-channel status badges so music/narration state appears once in the shared sound overview.
+- [x] Keep auto-read only as the narration channel switch instead of repeating it as a shared overview badge.
