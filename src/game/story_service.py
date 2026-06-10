@@ -529,6 +529,18 @@ class StoryService:
                     max_tokens=4096,  # ★ 增加以避免截断
                 )
                 if result:
+                    validation_error = self._validate_custom_choice_result_story(
+                        result,
+                        character_settings or {},
+                    )
+                    if validation_error:
+                        last_error = validation_error
+                        logger.warning(
+                            "Attempt %s/2 custom choice result failed consistency: %s",
+                            attempt + 1,
+                            validation_error,
+                        )
+                        continue
                     return result
                 last_error = "JSON解析失败，未能提取有效结果"
                 logger.warning(f"Attempt {attempt + 1}/2: {last_error}")
@@ -544,3 +556,31 @@ class StoryService:
             "story_continuation": f"你决定{custom_text}。这是一个有趣的选择，让我们看看接下来会发生什么...",
             "effects": {"energy": -5, "mood": 5},
         }
+
+    def _validate_custom_choice_result_story(
+        self,
+        result: Dict[str, Any],
+        character_settings: Dict[str, Any],
+    ) -> str:
+        """Return a consistency error for generated custom-choice story JSON."""
+        story = str(result.get("story_continuation") or "").strip()
+        if not story:
+            return "story_continuation 为空"
+
+        from config.prompts._helpers import _collect_available_people
+        from src.ai.quick_validator import quick_validate_story
+
+        available_people_names = [
+            p.get("name", "")
+            for p in _collect_available_people(character_settings)
+            if p.get("name")
+        ]
+        validation = quick_validate_story(
+            story_text=story,
+            character_settings=character_settings,
+            available_people=available_people_names,
+            language=self.language,
+        )
+        if validation.passed:
+            return ""
+        return "; ".join(validation.issues)
