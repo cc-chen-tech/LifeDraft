@@ -21,7 +21,7 @@ The global sound controls SHALL present scene music and story narration as peer 
 - **Given** scene music and story narration are both available
 - **When** the user expands the global sound controls
 - **Then** the expanded surface SHALL use one sound mixer layout
-- **And** the mixer SHALL expose one compact sound overview row with the current music state, current narration state, and auto-read mode
+- **And** the mixer SHALL expose one compact sound overview row with the current music state and current narration state
 - **And** the scene music and story narration sections SHALL be visually grouped as compact sibling mixer channel rows
 - **And** the scene music and story narration channel labels SHALL be exposed as semantic channel group names
 - **And** the expanded UI SHALL NOT repeat the collapsed bar title as an extra "声音控制" header
@@ -30,6 +30,8 @@ The global sound controls SHALL present scene music and story narration as peer 
 - **And** duplicate child module headings such as "音乐" and "朗读" SHALL NOT appear inside the channel bodies
 - **And** the channel groups SHALL use one shared vertical channel list instead of a two-column grid or stacked standalone modules
 - **And** the panel SHALL NOT present music and narration as separate standalone toolbars.
+- **And** music and narration status text SHALL appear in the shared overview only, not be duplicated as per-channel status badges.
+- **And** auto-read mode SHALL be controlled only by the narration channel switch, not repeated in the shared overview.
 
 #### Scenario: Embedded narration controls are grouped
 - **Given** story narration controls are shown inside the expanded sound panel

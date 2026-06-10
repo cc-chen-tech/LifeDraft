@@ -602,8 +602,47 @@ describe("GlobalMusicPlayer", () => {
       expect(overview).toHaveTextContent("声音");
       expect(overview).toHaveTextContent("音乐播放中");
       expect(overview).toHaveTextContent("朗读中");
-      expect(overview).toHaveTextContent("自动朗读");
+      expect(overview).not.toHaveTextContent("自动朗读");
+      expect(overview).not.toHaveTextContent("手动朗读");
 
+      expect(
+        within(panel).getByRole("group", { name: "背景音乐" }),
+      ).toBeInTheDocument();
+      expect(
+        within(panel).getByRole("group", { name: "故事朗读" }),
+      ).toBeInTheDocument();
+    });
+
+    it("does not duplicate music and narration status badges inside each channel", async () => {
+      const user = userEvent.setup();
+      setStoreState({
+        activeStoryText: "story text",
+        currentSong: {
+          id: 2,
+          name: "Playing Song",
+          artists: ["Artist"],
+          album: "",
+          duration: 200,
+        },
+        isPlaying: true,
+      });
+      useStoryVoiceStore.setState({
+        activeReadingContext,
+        activeAutoReadText: activeReadingContext.text,
+        activeAutoReadReady: false,
+        readingState: "playing",
+        autoReadEnabled: true,
+      } as never);
+
+      render(<GlobalMusicPlayer />);
+
+      await user.click(screen.getByRole("button", { name: "展开声音" }));
+
+      const panel = screen.getByTestId("unified-sound-panel");
+      expect(within(panel).getAllByText("音乐播放中")).toHaveLength(1);
+      expect(within(panel).getAllByText("朗读中")).toHaveLength(1);
+      expect(within(panel).getAllByText("自动朗读")).toHaveLength(1);
+      expect(within(panel).queryByText("手动朗读")).not.toBeInTheDocument();
       expect(
         within(panel).getByRole("group", { name: "背景音乐" }),
       ).toBeInTheDocument();
