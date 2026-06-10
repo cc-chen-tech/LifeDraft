@@ -245,17 +245,27 @@ def _format_people_names(
     if not available_people:
         return "无" if language == "zh" else "None"
 
+    def role_label(person: dict) -> str:
+        return str(
+            person.get("role")
+            or person.get("relationship")
+            or person.get("relation")
+            or person.get("relationship_desc")
+            or person.get("relationship_description")
+            or ""
+        ).strip()
+
     sep = "、" if language == "zh" else ", "
     if include_role:
         if language == "zh":
             parts = [
-                f"{p.get('name', '')}（{p.get('role', '')}）"
+                f"{p.get('name', '')}（{role_label(p)}）"
                 for p in available_people
                 if p.get("name")
             ]
         else:
             parts = [
-                f"{p.get('name', '')} ({p.get('role', '')})"
+                f"{p.get('name', '')} ({role_label(p)})"
                 for p in available_people
                 if p.get("name")
             ]
