@@ -30,7 +30,7 @@ The global sound controls SHALL present scene music and story narration as peer 
 - **And** duplicate child module headings such as "音乐" and "朗读" SHALL NOT appear inside the channel bodies
 - **And** the channel groups SHALL use one shared vertical channel list instead of a two-column grid or stacked standalone modules
 - **And** the panel SHALL NOT present music and narration as separate standalone toolbars.
-- **And** music and narration status text SHALL appear in the shared overview only, not be duplicated as per-channel status badges.
+- **And** music and narration status text SHALL appear as one combined status line in the shared overview, not as separate status pills or per-channel status badges.
 - **And** auto-read mode SHALL be controlled only by the narration channel switch, not repeated in the shared overview.
 
 #### Scenario: Embedded narration controls are grouped

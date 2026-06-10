@@ -26,3 +26,4 @@
 - [x] Remove duplicate per-channel status badges so music/narration state appears once in the shared sound overview.
 - [x] Keep auto-read only as the narration channel switch instead of repeating it as a shared overview badge.
 - [x] Add regression coverage that active playable music uses a non-blocking refresh error message instead of "音乐服务暂不可用".
+- [x] Replace separate music/narration status pills with one combined sound status line in the expanded header.
