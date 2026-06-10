@@ -11,8 +11,10 @@ The global sound controls SHALL present scene music and story narration as peer 
 - **And** the expanded content SHALL expose one group named "音乐和朗读"
 - **And** the collapsed mini bar SHALL be replaced by the expanded panel header while the group is open
 - **And** the expanded panel header SHALL expose an action named "收起声音"
-- **And** that group SHALL contain a peer channel group named "背景音乐"
-- **And** that group SHALL contain a peer channel group named "故事朗读"
+- **And** that group SHALL contain one sound console named "声音控制台"
+- **And** that console SHALL contain a compact background music control row labeled "背景音乐"
+- **And** that console SHALL contain a compact story narration control row labeled "故事朗读"
+- **And** the UI SHALL NOT expose separate peer groups named "背景音乐" or "故事朗读"
 - **And** the UI SHALL NOT expose nested regions named "声音控制" or "声音面板"
 - **And** the embedded scene music controls SHALL not render their own outer card shell, recommendation list, or mood chips
 - **And** the embedded story narration controls SHALL not render as a separate region, bordered card, or separate top-divided control strip.
@@ -22,13 +24,13 @@ The global sound controls SHALL present scene music and story narration as peer 
 - **When** the user expands the global sound controls
 - **Then** the expanded surface SHALL use one sound mixer layout
 - **And** the mixer SHALL expose one compact sound overview row with the current music state and current narration state
-- **And** the scene music and story narration sections SHALL be visually grouped as compact sibling mixer channel rows
-- **And** the scene music and story narration channel labels SHALL be exposed as semantic channel group names
+- **And** the scene music and story narration controls SHALL be visually grouped as compact sibling rows inside one sound console
+- **And** the scene music and story narration labels SHALL be visible row labels, not separate section group names
 - **And** the expanded UI SHALL NOT repeat the collapsed bar title as an extra "声音控制" header
 - **And** the expanded UI SHALL NOT introduce another "声音面板" landmark around the channel rows
 - **And** embedded channel labels SHALL use the explicit labels "背景音乐" and "故事朗读"
 - **And** duplicate child module headings such as "音乐" and "朗读" SHALL NOT appear inside the channel bodies
-- **And** the channel groups SHALL use one shared vertical channel list instead of a two-column grid or stacked standalone modules
+- **And** the channel rows SHALL use one shared vertical sound console instead of a two-column grid, standalone channel list, or stacked standalone modules
 - **And** the panel SHALL NOT present music and narration as separate standalone toolbars.
 - **And** music and narration status text SHALL appear as one combined status line in the shared overview, not as separate status pills or per-channel status badges.
 - **And** auto-read mode SHALL be controlled only by the narration channel switch, not repeated in the shared overview.
