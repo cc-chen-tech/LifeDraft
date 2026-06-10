@@ -31,6 +31,7 @@ import { RoundHistoryDrawer } from "@/components/game/RoundHistoryDrawer";
 import { RoundSceneImageDisplay } from "@/components/game/RoundSceneImage";
 import { HistorySceneImage } from "@/components/game/HistorySceneImage";
 import { CollectionPanel } from "@/components/game/CollectionPanel";
+import { getSceneImageDisplayMode } from "@/components/game/sceneImageStagePolicy";
 
 import { usePlayGame, STATUS_MESSAGES } from "@/hooks/usePlayGame";
 import { useGameIdFromUrl } from "@/hooks/useGameIdFromUrl";
@@ -169,6 +170,13 @@ export default function PlayPage() {
   const storyReadyForCompletedMedia =
     phase === "options" || phase === "result" || phase === "summary";
   const isCurrentStoryBusy = phase === "loading" || phase === "generating" || phase === "choosing";
+  const sceneImageDisplayMode = getSceneImageDisplayMode({
+    phase,
+    hasEventSceneImage: Boolean(eventSceneImage),
+    hasResultSceneImage: Boolean(resultSceneImage),
+    hasCurrentRoundSceneImage: Boolean(currentRoundSceneImage),
+    isLoadingRoundSceneImage,
+  });
 
   // ★ 音乐 store：将当前故事文本和 gameId 传递给 GlobalMusicPlayer
   const setActiveStoryText = useMusicStore((state) => state.setActiveStoryText);
@@ -598,7 +606,7 @@ export default function PlayPage() {
           storyText && (
             <>
               {/* ★ 事件插画：只在 options 阶段显示 */}
-              {phase === "options" && eventSceneImage && (
+              {sceneImageDisplayMode === "event" && eventSceneImage && (
                 <RoundSceneImageDisplay
                   sceneImage={eventSceneImage}
                   isLoading={isLoadingRoundSceneImage && phase === "options"}
@@ -611,7 +619,7 @@ export default function PlayPage() {
               )}
 
               {/* ★ 结果插画：在 result/summary 阶段显示 */}
-              {(phase === "result" || phase === "summary") && resultSceneImage && (
+              {sceneImageDisplayMode === "result" && resultSceneImage && (
                 <RoundSceneImageDisplay
                   sceneImage={resultSceneImage}
                   isLoading={isLoadingRoundSceneImage}
@@ -623,8 +631,21 @@ export default function PlayPage() {
                 />
               )}
 
+              {/* ★ 结果插画加载中：不要回退显示上一阶段事件插画，避免视觉内容滞后 */}
+              {sceneImageDisplayMode === "result-loading" && (
+                <RoundSceneImageDisplay
+                  sceneImage={null}
+                  isLoading={isLoadingRoundSceneImage}
+                  isRegenerating={isRegeneratingRoundScene}
+                  currentRound={resultSceneRound}
+                  label="结果场景"
+                  onRefresh={() => fetchRoundSceneImage(resultSceneRound, "result")}
+                  onRegenerate={regenerateRoundSceneImage}
+                />
+              )}
+
               {/* ★ result/summary 阶段兜底：没有 result 插画时回退显示事件插画 */}
-              {(phase === "result" || phase === "summary") && !resultSceneImage && eventSceneImage && (
+              {sceneImageDisplayMode === "event-fallback" && eventSceneImage && (
                 <RoundSceneImageDisplay
                   sceneImage={eventSceneImage}
                   isLoading={isLoadingRoundSceneImage}
@@ -637,7 +658,7 @@ export default function PlayPage() {
               )}
 
               {/* ★ 兜底：其他阶段显示当前轮次插画 */}
-              {!eventSceneImage && !resultSceneImage && currentRoundSceneImage && (
+              {sceneImageDisplayMode === "current" && currentRoundSceneImage && (
                 <RoundSceneImageDisplay
                   sceneImage={currentRoundSceneImage}
                   isLoading={isLoadingRoundSceneImage}

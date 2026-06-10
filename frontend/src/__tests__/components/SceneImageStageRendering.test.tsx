@@ -8,9 +8,16 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import { useSceneImageStore } from "@/stores/useSceneImageStore";
+import { getSceneImageDisplayMode } from "@/components/game/sceneImageStagePolicy";
 
 // 最小化渲染组件，复刻 play/page.tsx 中的图片渲染条件
-function TestSceneImageSection({ phase }: { phase: "options" | "result" | "story" }) {
+function TestSceneImageSection({
+  phase,
+  isLoading = false,
+}: {
+  phase: "options" | "result" | "summary" | "story";
+  isLoading?: boolean;
+}) {
   const eventSceneImage = useSceneImageStore((s) => s.eventSceneImage);
   const resultSceneImage = useSceneImageStore((s) => s.resultSceneImage);
 
@@ -19,10 +26,13 @@ function TestSceneImageSection({ phase }: { phase: "options" | "result" | "story
       {phase === "options" && eventSceneImage && (
         <div data-testid="event-image">Event Scene</div>
       )}
-      {phase === "result" && resultSceneImage && (
+      {(phase === "result" || phase === "summary") && resultSceneImage && (
         <div data-testid="result-image">Result Scene</div>
       )}
-      {phase === "result" && !resultSceneImage && eventSceneImage && (
+      {(phase === "result" || phase === "summary") && !resultSceneImage && isLoading && (
+        <div data-testid="result-loading">Result Scene Loading</div>
+      )}
+      {(phase === "result" || phase === "summary") && !resultSceneImage && !isLoading && eventSceneImage && (
         <div data-testid="event-image-fallback">Event Scene (Fallback)</div>
       )}
     </div>
@@ -88,6 +98,35 @@ describe("SceneImage stage rendering", () => {
     render(<TestSceneImageSection phase="result" />);
     expect(screen.getByTestId("event-image-fallback")).toBeInTheDocument();
     expect(screen.queryByTestId("result-image")).not.toBeInTheDocument();
+  });
+
+  it("result 阶段正在加载结果插画时不回退显示旧事件插画", () => {
+    useSceneImageStore.setState({
+      eventSceneImage: {
+        scene_id: 1,
+        image_url: "http://example.com/event.png",
+        stage: "event",
+        round_number: 1,
+      } as any,
+      resultSceneImage: null,
+    });
+
+    render(<TestSceneImageSection phase="result" isLoading />);
+    expect(screen.getByTestId("result-loading")).toBeInTheDocument();
+    expect(screen.queryByTestId("event-image-fallback")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("event-image")).not.toBeInTheDocument();
+  });
+
+  it("result 阶段结果插画加载中时显示加载态而不是旧事件插画策略", () => {
+    expect(
+      getSceneImageDisplayMode({
+        phase: "result",
+        hasEventSceneImage: true,
+        hasResultSceneImage: false,
+        hasCurrentRoundSceneImage: false,
+        isLoadingRoundSceneImage: true,
+      })
+    ).toBe("result-loading");
   });
 
   it("story 阶段不显示任何场景图片", () => {
