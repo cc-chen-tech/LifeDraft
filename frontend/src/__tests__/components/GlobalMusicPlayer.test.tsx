@@ -182,6 +182,50 @@ describe("GlobalMusicPlayer", () => {
   });
 
   describe("Mini player bar", () => {
+    it("uses one compact sound console action bar instead of separate music and reading modules", async () => {
+      const user = userEvent.setup();
+      setStoreState({
+        activeStoryText: "story text",
+        currentSong: {
+          id: 2,
+          name: "Playing Song",
+          artists: ["Artist"],
+          album: "",
+          duration: 200,
+        },
+      });
+      useStoryVoiceStore.setState({
+        activeReadingContext,
+        activeAutoReadText: activeReadingContext.text,
+        activeAutoReadReady: true,
+      } as never);
+
+      render(<GlobalMusicPlayer />);
+
+      await user.click(screen.getByRole("button", { name: "展开声音" }));
+
+      const panel = screen.getByTestId("unified-sound-panel");
+      const console = within(panel).getByRole("group", { name: "声音控制台" });
+      const controls = within(console).getByTestId("sound-console-main-controls");
+
+      expect(within(controls).getByTestId("sound-music-console")).toBeInTheDocument();
+      expect(within(controls).getByTestId("story-voice-console")).toBeInTheDocument();
+      expect(within(controls).getByRole("button", { name: "播放" })).toBeInTheDocument();
+      expect(
+        within(controls).getByRole("button", { name: "朗读故事" }),
+      ).toBeInTheDocument();
+      expect(
+        within(controls).getByRole("combobox", { name: "选择朗读声音" }),
+      ).toBeInTheDocument();
+      expect(
+        within(controls).getByRole("checkbox", { name: "自动朗读" }),
+      ).toBeInTheDocument();
+      expect(within(console).queryByTestId("sound-music-row")).not.toBeInTheDocument();
+      expect(within(console).queryByTestId("sound-reading-row")).not.toBeInTheDocument();
+      expect(within(console).queryByText("背景音乐")).not.toBeInTheDocument();
+      expect(within(console).queryByText("故事朗读")).not.toBeInTheDocument();
+    });
+
     it("combines music and story reading into one expandable sound panel", async () => {
       const user = userEvent.setup();
       setStoreState({
@@ -219,8 +263,9 @@ describe("GlobalMusicPlayer", () => {
         screen.queryByRole("region", { name: "声音面板" }),
       ).not.toBeInTheDocument();
       expect(screen.getByTestId("sound-control-console")).toBeInTheDocument();
-      expect(screen.getByTestId("sound-music-row")).toBeInTheDocument();
-      expect(screen.getByTestId("sound-reading-row")).toBeInTheDocument();
+      expect(screen.getByTestId("sound-console-main-controls")).toBeInTheDocument();
+      expect(screen.getByTestId("sound-music-console")).toBeInTheDocument();
+      expect(screen.getByTestId("story-voice-console")).toBeInTheDocument();
       expect(
         screen.queryByRole("region", { name: "故事朗读" }),
       ).not.toBeInTheDocument();
@@ -254,36 +299,32 @@ describe("GlobalMusicPlayer", () => {
       const panel = screen.getByTestId("unified-sound-panel");
       expect(within(panel).queryByText("声音控制")).not.toBeInTheDocument();
       const console = within(panel).getByTestId("sound-control-console");
-      const musicRow = within(console).getByTestId("sound-music-row");
-      const readingRow = within(console).getByTestId("sound-reading-row");
+      const controls = within(console).getByTestId("sound-console-main-controls");
+      const musicConsole = within(controls).getByTestId("sound-music-console");
+      const readingConsole = within(controls).getByTestId("story-voice-console");
 
       expect(console).toHaveAccessibleName("声音控制台");
-      expect(within(musicRow).getByText("背景音乐")).toBeInTheDocument();
-      expect(within(readingRow).getByText("故事朗读")).toBeInTheDocument();
+      expect(within(musicConsole).getByText("Playing Song")).toBeInTheDocument();
       expect(
-        within(readingRow).getByRole("button", { name: "朗读故事" }),
+        within(readingConsole).getByRole("button", { name: "朗读故事" }),
       ).toBeInTheDocument();
       expect(
-        within(readingRow).getByRole("combobox", { name: "选择朗读声音" }),
+        within(readingConsole).getByRole("combobox", { name: "选择朗读声音" }),
       ).toBeInTheDocument();
       expect(
-        within(readingRow).getByRole("checkbox", { name: "自动朗读" }),
+        within(readingConsole).getByRole("checkbox", { name: "自动朗读" }),
       ).toBeInTheDocument();
       expect(
         within(panel).queryByRole("region", { name: "故事朗读" }),
       ).not.toBeInTheDocument();
-      expect(within(panel).getByTestId("sound-music-channel")).not.toHaveClass(
+      expect(musicConsole).not.toHaveClass(
         "bg-card",
       );
-      expect(within(panel).getByTestId("sound-music-channel")).not.toHaveClass(
+      expect(musicConsole).not.toHaveClass(
         "border",
       );
-      expect(
-        within(panel).getByTestId("sound-reading-channel"),
-      ).not.toHaveClass("bg-card");
-      expect(
-        within(panel).getByTestId("sound-reading-channel"),
-      ).not.toHaveClass("border");
+      expect(readingConsole).not.toHaveClass("bg-card");
+      expect(readingConsole).not.toHaveClass("border");
     });
 
     it("shows music and narration as peer sound channels before the panel is expanded", () => {
@@ -346,17 +387,15 @@ describe("GlobalMusicPlayer", () => {
 
       const panel = screen.getByTestId("unified-sound-panel");
       const console = within(panel).getByTestId("sound-control-console");
-      const musicRow = within(console).getByTestId("sound-music-row");
-      const readingRow = within(console).getByTestId("sound-reading-row");
+      const controls = within(console).getByTestId("sound-console-main-controls");
+      const musicConsole = within(controls).getByTestId("sound-music-console");
+      const readingConsole = within(controls).getByTestId("story-voice-console");
 
-      expect(console).toHaveClass("space-y-4");
-      expect(musicRow).not.toHaveClass("rounded-lg");
-      expect(readingRow).not.toHaveClass("rounded-lg");
-      expect(musicRow).not.toHaveClass("rounded-md");
-      expect(readingRow).not.toHaveClass("rounded-md");
-      expect(
-        within(readingRow).getByTestId("story-voice-embedded-module"),
-      ).toBeInTheDocument();
+      expect(controls).toHaveClass("gap-3");
+      expect(musicConsole).not.toHaveClass("rounded-lg");
+      expect(readingConsole).not.toHaveClass("rounded-lg");
+      expect(musicConsole).not.toHaveClass("rounded-md");
+      expect(readingConsole).not.toHaveClass("rounded-md");
     });
 
     it("combines music and narration into one sound console instead of two section groups", async () => {
@@ -385,10 +424,11 @@ describe("GlobalMusicPlayer", () => {
       const console = within(panel).getByTestId("sound-control-console");
 
       expect(console).toHaveAccessibleName("声音控制台");
-      expect(within(console).getByTestId("sound-music-row")).toBeInTheDocument();
-      expect(within(console).getByTestId("sound-reading-row")).toBeInTheDocument();
-      expect(within(console).getByText("背景音乐")).toBeInTheDocument();
-      expect(within(console).getByText("故事朗读")).toBeInTheDocument();
+      expect(within(console).getByTestId("sound-console-main-controls")).toBeInTheDocument();
+      expect(within(console).getByTestId("sound-music-console")).toBeInTheDocument();
+      expect(within(console).getByTestId("story-voice-console")).toBeInTheDocument();
+      expect(within(console).queryByText("背景音乐")).not.toBeInTheDocument();
+      expect(within(console).queryByText("故事朗读")).not.toBeInTheDocument();
       expect(
         within(console).getByRole("button", { name: "朗读故事" }),
       ).toBeInTheDocument();
@@ -576,7 +616,7 @@ describe("GlobalMusicPlayer", () => {
 
       await user.click(miniBar.getByRole("button", { name: "展开声音" }));
 
-      const readingSection = screen.getByTestId("sound-reading-row");
+      const readingSection = screen.getByTestId("story-voice-console");
       expect(
         within(readingSection).getByRole("button", { name: "朗读故事" }),
       ).toBeInTheDocument();
@@ -662,8 +702,9 @@ describe("GlobalMusicPlayer", () => {
         within(panel).queryByRole("heading", { name: "朗读", level: 3 }),
       ).not.toBeInTheDocument();
       expect(within(panel).getByTestId("sound-control-console")).toBeInTheDocument();
-      expect(within(panel).getByTestId("sound-music-row")).toBeInTheDocument();
-      expect(within(panel).getByTestId("sound-reading-row")).toBeInTheDocument();
+      expect(within(panel).getByTestId("sound-console-main-controls")).toBeInTheDocument();
+      expect(within(panel).getByTestId("sound-music-console")).toBeInTheDocument();
+      expect(within(panel).getByTestId("story-voice-console")).toBeInTheDocument();
     });
 
     it("presents the expanded controls as one sound mixer with semantic channel headings and combined status", async () => {
@@ -711,8 +752,9 @@ describe("GlobalMusicPlayer", () => {
       expect(overview).not.toHaveTextContent("手动朗读");
 
       expect(within(panel).getByTestId("sound-control-console")).toBeInTheDocument();
-      expect(within(panel).getByTestId("sound-music-row")).toBeInTheDocument();
-      expect(within(panel).getByTestId("sound-reading-row")).toBeInTheDocument();
+      expect(within(panel).getByTestId("sound-console-main-controls")).toBeInTheDocument();
+      expect(within(panel).getByTestId("sound-music-console")).toBeInTheDocument();
+      expect(within(panel).getByTestId("story-voice-console")).toBeInTheDocument();
     });
 
     it("uses a single combined status line in the sound header instead of separate status pills", async () => {
@@ -780,8 +822,8 @@ describe("GlobalMusicPlayer", () => {
       expect(within(panel).getAllByText("自动朗读")).toHaveLength(1);
       expect(within(panel).queryByText("手动朗读")).not.toBeInTheDocument();
       expect(within(panel).getByTestId("sound-control-console")).toBeInTheDocument();
-      expect(within(panel).getByTestId("sound-music-row")).toBeInTheDocument();
-      expect(within(panel).getByTestId("sound-reading-row")).toBeInTheDocument();
+      expect(within(panel).getByTestId("sound-music-console")).toBeInTheDocument();
+      expect(within(panel).getByTestId("story-voice-console")).toBeInTheDocument();
     });
 
     it("merges music and read-aloud into one compact sound console without duplicate module headings", async () => {
@@ -811,13 +853,14 @@ describe("GlobalMusicPlayer", () => {
 
       const panel = screen.getByTestId("unified-sound-panel");
       const console = within(panel).getByTestId("sound-control-console");
-      expect(console).toHaveClass("space-y-4");
+      const controls = within(console).getByTestId("sound-console-main-controls");
+      expect(controls).toHaveClass("gap-3");
 
-      const musicChannel = within(console).getByTestId("sound-music-row");
-      const readingChannel = within(console).getByTestId("sound-reading-row");
+      const musicChannel = within(console).getByTestId("sound-music-console");
+      const readingChannel = within(console).getByTestId("story-voice-console");
 
-      expect(within(musicChannel).getByText("背景音乐")).toBeInTheDocument();
-      expect(within(readingChannel).getByText("故事朗读")).toBeInTheDocument();
+      expect(within(musicChannel).getByText("Playing Song")).toBeInTheDocument();
+      expect(within(readingChannel).getByRole("button", { name: /朗读/ })).toBeInTheDocument();
       expect(
         within(panel).queryByRole("heading", { name: "音乐", level: 3 }),
       ).not.toBeInTheDocument();
@@ -877,8 +920,8 @@ describe("GlobalMusicPlayer", () => {
       expect(console).toBeInTheDocument();
       expect(within(panel).queryByTestId("sound-mixer-grid")).not.toBeInTheDocument();
 
-      const musicSection = within(console).getByTestId("sound-music-row");
-      const readingSection = within(console).getByTestId("sound-reading-row");
+      const musicSection = within(console).getByTestId("sound-music-console");
+      const readingSection = within(console).getByTestId("story-voice-console");
       expect(musicSection).not.toHaveClass("rounded-md");
       expect(readingSection).not.toHaveClass("rounded-md");
       expect(within(musicSection).queryByText(/推荐歌曲/)).not.toBeInTheDocument();
@@ -908,7 +951,7 @@ describe("GlobalMusicPlayer", () => {
 
       await user.click(screen.getByRole("button", { name: "展开声音" }));
 
-      const musicSection = screen.getByTestId("sound-music-row");
+      const musicSection = screen.getByTestId("sound-music-console");
       expect(
         within(musicSection).getByText("全局音乐夹具"),
       ).toBeInTheDocument();
@@ -1038,7 +1081,7 @@ describe("GlobalMusicPlayer", () => {
       });
 
       render(<GlobalMusicPlayer />);
-      const progressBar = document.querySelector(".bg-primary");
+      const progressBar = screen.getByTestId("global-sound-progress");
       expect(progressBar).toHaveStyle({ width: "25%" });
     });
   });
