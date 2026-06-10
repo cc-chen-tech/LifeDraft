@@ -34,6 +34,7 @@
 - [x] 5.1 Accept and preserve music item `source` metadata in frontend types/store.
 - [x] 5.2 Keep current playback stable when backend queue updates arrive.
 - [x] 5.3 Optionally surface generated-track source labels without making AI tracks feel mandatory.
+- [x] 5.4 Surface accepted-but-delayed AI music generation as queued instead of unavailable.
 
 ## 6. Verification
 
