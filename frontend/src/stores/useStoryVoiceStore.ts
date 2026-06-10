@@ -100,6 +100,44 @@ function detectSpeechLanguage(text: string): string {
   return /[\u3400-\u9fff]/.test(text) ? "zh-CN" : "en-US";
 }
 
+const BROWSER_SPEECH_CHUNK_MAX = 200;
+
+function splitBrowserSpeechText(text: string): string[] {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (!normalized) return [];
+
+  const chunks: string[] = [];
+  let current = "";
+  const sentences = normalized.match(/[^。！？!?；;]+[。！？!?；;]?/g) ?? [normalized];
+
+  for (const sentence of sentences) {
+    const trimmed = sentence.trim();
+    if (!trimmed) continue;
+
+    if (trimmed.length > BROWSER_SPEECH_CHUNK_MAX) {
+      if (current) {
+        chunks.push(current);
+        current = "";
+      }
+      for (let index = 0; index < trimmed.length; index += BROWSER_SPEECH_CHUNK_MAX) {
+        chunks.push(trimmed.slice(index, index + BROWSER_SPEECH_CHUNK_MAX));
+      }
+      continue;
+    }
+
+    const next = current ? `${current}${trimmed}` : trimmed;
+    if (next.length > BROWSER_SPEECH_CHUNK_MAX && current) {
+      chunks.push(current);
+      current = trimmed;
+    } else {
+      current = next;
+    }
+  }
+
+  if (current) chunks.push(current);
+  return chunks.length ? chunks : [normalized];
+}
+
 const BROWSER_VOICE_CUES: Record<string, string[]> = {
   warm_female: [
     "female",
@@ -269,35 +307,6 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
         return;
       }
 
-      const utterance = new SpeechSynthesisUtterance(context.text);
-      activeUtterance = utterance;
-      utterance.lang = detectSpeechLanguage(context.text);
-      utterance.voice = selectBrowserSpeechVoice(
-        speech,
-        selectedVoiceId,
-        utterance.lang
-      );
-      utterance.rate = 1;
-      utterance.onend = () => {
-        if (activeUtterance === utterance && attemptId === activeReadingAttempt) {
-          activeUtterance = null;
-          get().completeReading();
-        }
-      };
-      utterance.onerror = () => {
-        if (activeUtterance === utterance && attemptId === activeReadingAttempt) {
-          const { musicDuckState, userChangedMusic } = get();
-          activeUtterance = null;
-          set({
-            readingState: "failed",
-            currentAudioUrl: "",
-            errorMessage: "Browser speech synthesis failed",
-            playbackMode: "browser_speech",
-            musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
-          });
-          activeLoadingRequestKey = null;
-        }
-      };
       if (attemptId !== activeReadingAttempt) {
         return;
       }
@@ -313,7 +322,59 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       });
       activeLoadingRequestKey = null;
       speech.cancel();
-      speech.speak(utterance);
+      const chunks = splitBrowserSpeechText(context.text);
+      const language = detectSpeechLanguage(context.text);
+      const selectedVoice = selectBrowserSpeechVoice(
+        speech,
+        selectedVoiceId,
+        language
+      );
+      let chunkIndex = 0;
+
+      const failBrowserSpeech = () => {
+        if (attemptId !== activeReadingAttempt) return;
+        const { musicDuckState, userChangedMusic } = get();
+        activeUtterance = null;
+        set({
+          readingState: "failed",
+          currentAudioUrl: "",
+          errorMessage: "Browser speech synthesis failed",
+          playbackMode: "browser_speech",
+          musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
+        });
+        activeLoadingRequestKey = null;
+      };
+
+      const speakNextChunk = () => {
+        if (attemptId !== activeReadingAttempt) return;
+        const chunk = chunks[chunkIndex];
+        if (!chunk) {
+          activeUtterance = null;
+          get().completeReading();
+          return;
+        }
+
+        const utterance = new SpeechSynthesisUtterance(chunk);
+        activeUtterance = utterance;
+        utterance.lang = language;
+        utterance.voice = selectedVoice;
+        utterance.rate = 1;
+        utterance.onend = () => {
+          if (activeUtterance !== utterance || attemptId !== activeReadingAttempt) {
+            return;
+          }
+          chunkIndex += 1;
+          speakNextChunk();
+        };
+        utterance.onerror = () => {
+          if (activeUtterance === utterance) {
+            failBrowserSpeech();
+          }
+        };
+        speech.speak(utterance);
+      };
+
+      speakNextChunk();
     };
 
     try {
