@@ -144,6 +144,12 @@ def test_missing_minimax_image_key_error_points_to_minimax_env(monkeypatch: pyte
 
 def test_text_to_image_posts_minimax_payload_and_downloads_url() -> None:
     with MiniMaxCaptureServer() as server:
+        _MiniMaxCaptureHandler.image_response = {
+            "id": "test-task",
+            "data": {"image_urls": [server.image_url]},
+            "metadata": {"success_count": "1", "failed_count": "0"},
+            "base_resp": {"status_code": 0, "status_msg": "success"},
+        }
         image_bytes, prompt_used = _generator(server.base_url).generate_image(
             prompt="A realistic quiet library at dusk",
             size="1664*928",
@@ -178,6 +184,19 @@ def test_text_to_image_posts_minimax_payload_and_downloads_url() -> None:
     assert "input" not in body
     assert "parameters" not in body
     assert "negative_prompt" not in body
+
+
+def test_minimax_success_with_empty_image_sources_raises_generation_error() -> None:
+    response = {
+        "id": "empty-success-task",
+        "data": {"image_urls": ["", None]},
+        "metadata": {"success_count": "0", "failed_count": "0"},
+        "base_resp": {"status_code": 0, "status_msg": "success"},
+    }
+
+    with MiniMaxCaptureServer(response=response) as server:
+        with pytest.raises(ImageGenerationError, match="No image output"):
+            _generator(server.base_url).generate_image("empty image output")
 
 
 def test_image_to_image_posts_subject_reference_and_returns_variants() -> None:

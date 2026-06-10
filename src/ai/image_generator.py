@@ -251,11 +251,15 @@ class ImageGenerator:
 
         image_urls = data.get("image_urls")
         if isinstance(image_urls, list) and image_urls:
-            return "url", [str(url) for url in image_urls if url]
+            sources = [str(url) for url in image_urls if url]
+            if sources:
+                return "url", sources
 
         image_base64 = data.get("image_base64")
         if isinstance(image_base64, list) and image_base64:
-            return "base64", [str(encoded) for encoded in image_base64 if encoded]
+            sources = [str(encoded) for encoded in image_base64 if encoded]
+            if sources:
+                return "base64", sources
 
         raise ImageGenerationError("No image output in MiniMax response")
 
