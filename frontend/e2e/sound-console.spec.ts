@@ -10,7 +10,7 @@ test.describe("Unified sound console", () => {
 
     const panel = page.getByTestId("unified-sound-panel");
     await expect(panel).toBeVisible();
-    await expect(page.getByTestId("sound-console-main-controls")).toBeVisible();
+    await expect(page.getByTestId("sound-console-unified-controls")).toBeVisible();
     await expect(page.getByTestId("sound-music-console")).toBeVisible();
     await expect(page.getByTestId("story-voice-console")).toBeVisible();
 
