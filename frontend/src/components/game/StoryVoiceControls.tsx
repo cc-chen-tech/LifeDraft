@@ -95,8 +95,7 @@ export function StoryVoiceControls({
     if (loadedSettingsRef.current) return;
     loadedSettingsRef.current = true;
 
-    void api.voice_reading
-      .getSettings()
+    void api.voice_reading.getSettings()
       .then((settings) => {
         setVoiceRuntimeSettings({
           ttsProvider: settings.tts_provider,
