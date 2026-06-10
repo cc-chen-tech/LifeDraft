@@ -533,6 +533,33 @@ describe('SavesPage - Unauthenticated State', () => {
     // Should not call fetchSavedGames when not authenticated
     expect(fetchSavedGamesSpy).not.toHaveBeenCalled();
   });
+
+  it('does not render stale savedGames from a previous user when not authenticated', async () => {
+    fetchSavedGamesSpy.mockResolvedValue(undefined);
+    useGameStore.setState({
+      savedGames: [
+        {
+          game_id: 88,
+          player_name: 'PreviousUserSave',
+          age: 31,
+          week: 12,
+          updated_at: '2026-06-09T10:30:00Z',
+        },
+      ],
+    });
+
+    render(<SavesPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('暂无存档')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('PreviousUserSave')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /继续/ })).not.toBeInTheDocument();
+    expect(fetchSavedGamesSpy).not.toHaveBeenCalled();
+    expect(loadGameStateSpy).not.toHaveBeenCalled();
+    expect(deleteGameSpy).not.toHaveBeenCalled();
+  });
 });
 
 describe('SavesPage - Navigation', () => {
