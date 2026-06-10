@@ -8,6 +8,7 @@ import logging
 from typing import Any, Callable, Dict, Optional
 
 from config.prompts import get_story_only_prompt
+from config.prompts.story_prompts import _build_zh_chapter_constraint
 from src.ai.client import AIClient
 from src.ai.system_prompts import get_system_prompt
 
@@ -19,6 +20,33 @@ class StoryRewriter:
 
     def __init__(self, client: AIClient):
         self.client = client
+
+    @staticmethod
+    def _build_rewrite_title_constraint(
+        player_state: Optional[Dict[str, Any]],
+        character_settings: Optional[Dict[str, Any]],
+        language: str,
+    ) -> str:
+        """Keep rewrite output on the same title/timeline contract as generation."""
+        if language != "zh":
+            return ""
+
+        state = player_state or {}
+        raw_week = int(state.get("week", 0) or 0)
+        current_round = int(state.get("current_round", 0) or 0)
+        rounds_per_week = int(state.get("rounds_per_week", 3) or 3)
+        total_chapter = raw_week * rounds_per_week + current_round + 1
+        chapter_constraint = _build_zh_chapter_constraint(
+            total_chapter,
+            raw_week,
+            current_round,
+            character_settings,
+        )
+        return f"""{chapter_constraint}
+【改写标题同步要求】
+- 如果原故事标题与上述标题约束冲突，必须在改写后替换为正确标题。
+- 不要保留旧的章回体标题、古风对仗标题或与当前时间线不符的标题。
+"""
 
     # -------------------- Public API --------------------
 
@@ -54,6 +82,11 @@ class StoryRewriter:
             Rewritten complete story
         """
         logger.info(f"Rewriting story segment: {len(segment_to_replace)} chars")
+        title_constraint = self._build_rewrite_title_constraint(
+            player_state,
+            character_settings,
+            language,
+        )
 
         if language == "zh":
             prompt = f"""你是一位才华横溢的小说家。请改写以下故事中的指定段落，同时保持故事的连贯性和逻辑一致性。
@@ -73,12 +106,15 @@ class StoryRewriter:
 【之前的故事脉络】
 {story_context if story_context else '无'}
 
+{title_constraint}
+
 请根据用户的要求改写指定段落，要求：
 1. 满足用户的改写要求
 2. 保持与前后文的逻辑一致性
 3. 保持与角色设定的一致性
 4. 保持故事的文学性和流畅性
-5. 只返回改写后的完整故事，不要任何解释或JSON格式
+5. 保持或修正整篇故事的开头标题，使其符合上方标题/时间线约束
+6. 只返回改写后的完整故事，不要任何解释或JSON格式
 """
         else:
             prompt = f"""You are a talented novelist. Please rewrite the specified segment of the following story while maintaining narrative coherence and logical consistency.
