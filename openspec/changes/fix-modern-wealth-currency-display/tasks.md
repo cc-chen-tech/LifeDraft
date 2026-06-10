@@ -3,6 +3,7 @@
 - [x] 1.1 Add a StatusBar test proving modern wealth without explicit currency metadata renders in yuan, not `货币`.
 - [x] 1.2 Add StatusBar to the `test.sh` preflight Jest list.
 - [x] 1.3 Add API regressions proving generated `starting_wealth` initializes new games and late character settings before play.
+- [x] 1.4 Add API regressions proving formatted numeric `initial_wealth` initializes new games and late character settings before play.
 
 ## 2. Implementation
 
@@ -10,6 +11,7 @@
 - [x] 2.2 Update wealth formatting so explicit `currency_name` renders as a suffix.
 - [x] 2.3 Use `元` as the modern/default fallback instead of `货币`.
 - [x] 2.4 Normalize generated wealth numeric fields (`wealth`, `starting_wealth`, `initial_wealth_amount`) before creating or patching a game.
+- [x] 2.5 Parse formatted numeric `initial_wealth` values without treating qualitative labels as money.
 
 ## 3. Verification
 
