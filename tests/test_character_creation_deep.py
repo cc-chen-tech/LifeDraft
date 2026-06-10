@@ -103,7 +103,7 @@ class TestCharacterCreatorGenerateSetting:
         assert "游戏" in combined or "叙事" in combined
 
     def test_generate_era_feedback_still_aligns_with_modern_life_vision(self):
-        """有feedback重生成时也不能回退到古代时代。"""
+        """有 feedback 重生成时也不能回退到古代时代。"""
         creator = self._make_creator()
         creator.ai_generator.generate_completion.return_value = json.dumps(
             {

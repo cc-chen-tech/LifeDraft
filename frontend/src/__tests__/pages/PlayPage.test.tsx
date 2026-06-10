@@ -4,10 +4,14 @@
 import React from 'react';
 import { webcrypto } from 'node:crypto';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import PlayPage from '@/app/play/page';
+import { GlobalMusicPlayer } from '@/components/game/GlobalMusicPlayer';
+import { useGameStore } from '@/stores/useGameStore';
 import { useMusicStore } from '@/stores/useMusicStore';
 import { useStoryVoiceStore } from '@/stores/useStoryVoiceStore';
 import { jsonResponse } from '@/__tests__/helpers/fetch';
+import { createSSEMockResponse } from '@/__tests__/helpers/sse-mock';
 
 // Mock usePlayGame hook
 const mockUsePlayGame = {
@@ -63,6 +67,10 @@ jest.mock('@/hooks/usePlayGame', () => ({
   },
 }));
 
+jest.mock('@/components/game/CollectionPanel', () => ({
+  CollectionPanel: () => <div data-testid="collection-panel">Collection Panel</div>,
+}));
+
 describe('PlayPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -99,6 +107,9 @@ describe('PlayPage', () => {
       musicDuckState: 'idle',
       musicWasPlaying: false,
       userChangedMusic: false,
+      activeReadingContext: null,
+      activeAutoReadText: '',
+      activeAutoReadReady: false,
     });
   });
 
@@ -137,8 +148,35 @@ describe('PlayPage', () => {
       render(<PlayPage />);
 
       await waitFor(() => {
+        expect(useStoryVoiceStore.getState().activeReadingContext?.text).toBe(
+          '已完成并带选项的故事。'
+        );
+      });
+
+      await waitFor(() => {
         expect(useMusicStore.getState().activeStoryText).toBe('已完成并带选项的故事。');
       });
+    });
+
+    it('does not render a standalone narration bar inside the story page', async () => {
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'options',
+        storyText: '已完成并带选项的故事。',
+        displayText: '已完成并带选项的故事。',
+      });
+
+      render(<PlayPage />);
+
+      await waitFor(() => {
+        expect(useStoryVoiceStore.getState().activeReadingContext?.text).toBe(
+          '已完成并带选项的故事。'
+        );
+      });
+
+      expect(screen.queryByRole('region', { name: '故事朗读' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '朗读故事' })).not.toBeInTheDocument();
     });
   });
 
@@ -239,7 +277,8 @@ describe('PlayPage', () => {
       expect(mockContinue).toHaveBeenCalled();
     });
 
-    it('auto-reads the completed choice result story', async () => {
+    it('auto-reads the completed choice result story while the sound panel stays collapsed', async () => {
+      const user = userEvent.setup();
       useStoryVoiceStore.setState({ autoReadEnabled: true });
       (global.fetch as jest.Mock).mockImplementation((url: string) => {
         if (url.includes('/voice-reading/settings')) {
@@ -258,6 +297,14 @@ describe('PlayPage', () => {
             media_type: 'audio/mpeg',
           }));
         }
+        if (url.includes('/music/recommend')) {
+          return Promise.resolve(jsonResponse({
+            keywords: ['选择后的故事'],
+            mood: 'calm',
+            scene_type: 'story_result',
+            songs: [],
+          }));
+        }
         return Promise.resolve(jsonResponse({}));
       });
       const originalHook = jest.requireMock('@/hooks/usePlayGame');
@@ -269,18 +316,103 @@ describe('PlayPage', () => {
         displayText: '主角做出选择后的完整续写。',
       });
 
-      render(<PlayPage />);
+      render(
+        <>
+          <PlayPage />
+          <GlobalMusicPlayer />
+        </>
+      );
+
+      await waitFor(() => {
+        expect(useStoryVoiceStore.getState().activeReadingContext?.text).toBe(
+          '主角做出选择后的完整续写。'
+        );
+      });
+      expect(useStoryVoiceStore.getState().activeAutoReadReady).toBe(true);
 
       await waitFor(() => {
         expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
           String(url).includes('/voice-reading/read')
         )).toBe(true);
       });
+      expect(screen.queryByRole('group', { name: '音乐和朗读' })).not.toBeInTheDocument();
       const readCall = (global.fetch as jest.Mock).mock.calls.find(([url]) =>
         String(url).includes('/voice-reading/read')
       );
       const payload = JSON.parse(String(readCall?.[1]?.body ?? '{}'));
       expect(payload.context.text).toBe('主角做出选择后的完整续写。');
+
+      await user.click(screen.getByRole('button', { name: '展开声音' }));
+      expect(screen.getByRole('group', { name: '音乐和朗读' })).toBeInTheDocument();
+      expect(screen.getByTestId('sound-reading-section')).toBeInTheDocument();
+      expect(screen.getByTestId('sound-reading-channel')).toBeInTheDocument();
+      expect(screen.queryByRole('region', { name: '故事朗读' })).not.toBeInTheDocument();
+    });
+
+    it('auto-reads the completed choice story before showing weekly summary', async () => {
+      useStoryVoiceStore.setState({ autoReadEnabled: true });
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url.includes('/voice-reading/settings')) {
+          return Promise.resolve(jsonResponse({
+            auto_read_enabled: true,
+            selected_voice_color: 'warm_female',
+          }));
+        }
+        if (url.includes('/voice-reading/read')) {
+          return Promise.resolve(jsonResponse({
+            job_id: 10,
+            status: 'ready',
+            audio_url: '/api/voice-reading/audio/choice-before-summary.mp3',
+            playback_mode: 'audio',
+            provider: 'minimax',
+            media_type: 'audio/mpeg',
+          }));
+        }
+        if (url.includes('/music/recommend')) {
+          return Promise.resolve(jsonResponse({
+            keywords: ['周总结前的选择后续写'],
+            mood: 'calm',
+            scene_type: 'story_result',
+            songs: [],
+          }));
+        }
+        return Promise.resolve(jsonResponse({}));
+      });
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'summary',
+        options: [],
+        storyText: '主角做出选择后的完整续写，随后进入本周总结。',
+        displayText: '主角做出选择后的完整续写，随后进入本周总结。',
+        summaryText: '这一周的总结内容。',
+      });
+
+      render(
+        <>
+          <PlayPage />
+          <GlobalMusicPlayer />
+        </>
+      );
+
+      await waitFor(() => {
+        expect(useStoryVoiceStore.getState().activeReadingContext?.text).toBe(
+          '主角做出选择后的完整续写，随后进入本周总结。'
+        );
+      });
+      expect(useStoryVoiceStore.getState().activeAutoReadReady).toBe(true);
+
+      await waitFor(() => {
+        expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
+          String(url).includes('/voice-reading/read')
+        )).toBe(true);
+      });
+
+      const readCall = (global.fetch as jest.Mock).mock.calls.find(([url]) =>
+        String(url).includes('/voice-reading/read')
+      );
+      const payload = JSON.parse(String(readCall?.[1]?.body ?? '{}'));
+      expect(payload.context.text).toBe('主角做出选择后的完整续写，随后进入本周总结。');
     });
   });
 
@@ -384,6 +516,57 @@ describe('PlayPage', () => {
       
       render(<PlayPage />);
       expect(screen.getByText('保存失败')).toBeInTheDocument();
+    });
+  });
+
+  describe('Rewrite functionality', () => {
+    it('keeps currentEvent in sync when inline rewrite completes', async () => {
+      const user = userEvent.setup();
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      const originalStory = '原始故事。';
+      const rewrittenStory = '改写后的故事。';
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'options',
+        storyText: originalStory,
+        displayText: originalStory,
+      });
+      useGameStore.setState({
+        currentEvent: {
+          story: originalStory,
+          options: [{ text: '继续', brief_result: '继续推进' }],
+        },
+        storyText: originalStory,
+      });
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url.includes('/voice-reading/settings')) {
+          return Promise.resolve(jsonResponse({
+            auto_read_enabled: false,
+            selected_voice_color: 'warm_female',
+          }));
+        }
+        if (url.includes('/rewrite-stream')) {
+          return Promise.resolve(createSSEMockResponse([
+            `event: complete\ndata: {"new_story":"${rewrittenStory}","rewritten_story":"${rewrittenStory}"}\n\n`,
+          ]));
+        }
+        return Promise.resolve(jsonResponse({}));
+      });
+
+      render(<PlayPage />);
+
+      await user.click(screen.getByRole('button', { name: '改写' }));
+      fireEvent.change(screen.getByPlaceholderText(/描述你想要的修改/), {
+        target: { value: '让语气更温柔' },
+      });
+      await user.click(screen.getByRole('button', { name: '改写故事' }));
+
+      await waitFor(() => {
+        expect(mockUsePlayGame.setStoryText).toHaveBeenCalledWith(rewrittenStory);
+      });
+      await waitFor(() => {
+        expect(useGameStore.getState().currentEvent?.story).toBe(rewrittenStory);
+      });
     });
   });
 
@@ -790,6 +973,28 @@ describe('PlayPage', () => {
 
       expect(mockHandleOpenHistory).toHaveBeenCalled();
     });
+
+    it('closes the collection sheet when opening history', async () => {
+      const mockHandleOpenHistory = jest.fn();
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        handleOpenHistory: mockHandleOpenHistory,
+      });
+
+      render(<PlayPage />);
+
+      fireEvent.click(screen.getByRole('button', { name: '收集' }));
+
+      expect(screen.getByRole('dialog', { name: '收集' })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: '历史回顾' }));
+
+      await waitFor(() => {
+        expect(screen.queryByRole('dialog', { name: '收集' })).not.toBeInTheDocument();
+      });
+      expect(mockHandleOpenHistory).toHaveBeenCalled();
+    });
   });
 
   describe('Result phase button text', () => {
@@ -1010,11 +1215,15 @@ describe('PlayPage', () => {
   });
 
   describe('Settings button', () => {
-    it('toggles scene image setting', () => {
+    it('opens the settings menu without opening the story assistant', async () => {
+      const user = userEvent.setup();
       render(<PlayPage />);
 
-      const buttons = screen.getAllByRole('button');
-      expect(buttons.length).toBeGreaterThan(0);
+      await user.click(screen.getByRole('button', { name: '设置' }));
+
+      expect(await screen.findByText('叙事质量')).toBeInTheDocument();
+      expect(screen.getByText('叙事风格')).toBeInTheDocument();
+      expect(screen.queryByPlaceholderText(/向剧情助手提问/i)).not.toBeInTheDocument();
     });
   });
 

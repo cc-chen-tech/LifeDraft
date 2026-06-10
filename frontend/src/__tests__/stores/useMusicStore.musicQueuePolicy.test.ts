@@ -46,6 +46,24 @@ describe("music queue policy", () => {
     expect(result.queue[2].source).toBe("ai_generated");
   });
 
+  it("pure merge helper dedupes upcoming NetEase songs by title family", () => {
+    const current = song(1, "办公室 轻电子 氛围");
+
+    const result = mergeSongsPreservingCurrent(current, [], [
+      song(20, "绅士"),
+      song(21, "绅士 (Live)"),
+      song(22, "红尘客栈"),
+      song(23, "红尘客栈 - 古风翻唱"),
+      song(24, "用户数据冷光"),
+    ]);
+
+    expect(result.queue.map((item) => item.name)).toEqual([
+      "绅士",
+      "红尘客栈",
+      "用户数据冷光",
+    ]);
+  });
+
   it("store mergePlaylist keeps current playback stable when backend songs arrive", async () => {
     useMusicStore.setState({
       currentSong: song(1, "Current"),
@@ -63,6 +81,20 @@ describe("music queue policy", () => {
     expect(state.currentSong?.id).toBe(1);
     expect(state.queue.map((item) => item.id)).toEqual([2, 3, 9]);
     expect(state.queue[2].source).toBe("ai_generated");
+  });
+
+  it("store mergePlaylist tolerates empty recommendations after malformed playlist restore", async () => {
+    useMusicStore.setState({
+      currentSong: undefined,
+      queue: undefined,
+    } as Partial<ReturnType<typeof useMusicStore.getState>>);
+
+    await expect(useMusicStore.getState().mergePlaylist(101, [])).resolves.toBeUndefined();
+
+    const state = useMusicStore.getState();
+    expect(state.currentSong).toBeNull();
+    expect(state.queue).toEqual([]);
+    expect(state.playlistGameId).toBe(101);
   });
 
   it("store loadPlaylist restores persisted server playlist including generated tracks", async () => {
@@ -96,6 +128,87 @@ describe("music queue policy", () => {
     expect(state.isPlaying).toBe(true);
     expect(state.volume).toBe(0.8);
     expect(state.currentTime).toBe(42);
+  });
+
+  it("store loadPlaylist preserves local library reuse metadata on generated tracks", async () => {
+    const reusedTrack: Song = {
+      id: "ai-generated-88",
+      name: "AI MiniMax 现代职场危机",
+      artists: ["MiniMax"],
+      album: "AI Generated",
+      duration: 1000,
+      source: "ai_generated",
+      url: "/api/music/generated/reused-88.mp3",
+      asset_id: 88,
+      provider: "minimax",
+      model: "music-2.6",
+      brief_hash: "brief-88",
+      library_reused: true,
+      match_score: 94,
+      match_reason: "scene_fit",
+    };
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        game_id: 202,
+        current_song: song(1, "网易云 当前曲"),
+        queue: [reusedTrack],
+        played_songs: [],
+        is_playing: false,
+        volume: 0.5,
+        current_position_ms: 0,
+      }),
+    }) as jest.Mock;
+
+    await useMusicStore.getState().loadPlaylist(202);
+
+    const generated = useMusicStore.getState().queue[0];
+    expect(generated.source).toBe("ai_generated");
+    expect(generated.library_reused).toBe(true);
+    expect(generated.match_score).toBe(94);
+    expect(generated.match_reason).toBe("scene_fit");
+  });
+
+  it("store loadPlaylist preserves scene-fit diagnostic metadata on generated tracks", async () => {
+    const diagnosticTrack: Song & {
+      fit_score: number;
+      prompt_version: string;
+      scene_fit_diagnostics: { selected_strategy: string };
+    } = {
+      id: "ai-generated-89",
+      name: "AI MiniMax 安静康复",
+      artists: ["MiniMax"],
+      album: "AI Generated",
+      duration: 1000,
+      source: "ai_generated",
+      url: "/api/music/generated/reused-89.mp3",
+      asset_id: 89,
+      provider: "minimax",
+      model: "music-2.6",
+      brief_hash: "brief-89",
+      fit_score: 91,
+      prompt_version: "music-scene-v1",
+      scene_fit_diagnostics: { selected_strategy: "quiet_recovery" },
+    };
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        game_id: 203,
+        current_song: song(1, "网易云 当前曲"),
+        queue: [diagnosticTrack],
+        played_songs: [],
+        is_playing: false,
+        volume: 0.5,
+        current_position_ms: 0,
+      }),
+    }) as jest.Mock;
+
+    await useMusicStore.getState().loadPlaylist(203);
+
+    const generated = useMusicStore.getState().queue[0] as typeof diagnosticTrack;
+    expect(generated.fit_score).toBe(91);
+    expect(generated.prompt_version).toBe("music-scene-v1");
+    expect(generated.scene_fit_diagnostics.selected_strategy).toBe("quiet_recovery");
   });
 
   it("store mergePlaylist persists the Netease baseline queue before generated music arrives", async () => {
@@ -285,6 +398,70 @@ describe("music queue policy", () => {
       String(url).endsWith("/api/music/generate-async")
     );
     expect(generateAsyncCalls).toHaveLength(1);
+  });
+
+  it("store keeps async AI music visibly queued when polling has not seen the generated track yet", async () => {
+    jest.useFakeTimers();
+    try {
+      global.fetch = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/music/playlist/101") && init?.method === "PUT") {
+          return {
+            ok: true,
+            json: async () => ({
+              game_id: 101,
+              current_song: song(1, "网易云 当前曲"),
+              queue: [],
+              played_songs: [],
+              is_playing: false,
+              volume: 0.5,
+              current_position_ms: 0,
+            }),
+          } as Response;
+        }
+        if (url.endsWith("/api/music/generate-async")) {
+          return {
+            ok: true,
+            json: async () => ({
+              status: "queued",
+              game_id: 101,
+              insert_policy: "future_queue",
+            }),
+          } as Response;
+        }
+        if (url.endsWith("/api/music/playlist/101")) {
+          return {
+            ok: true,
+            json: async () => ({
+              game_id: 101,
+              current_song: song(1, "网易云 当前曲"),
+              queue: [],
+              played_songs: [],
+              is_playing: false,
+              volume: 0.5,
+              current_position_ms: 0,
+            }),
+          } as Response;
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      }) as jest.Mock;
+      useMusicStore.setState({
+        currentSong: song(1, "网易云 当前曲"),
+        queue: [],
+      });
+
+      const generation = useMusicStore.getState().generateAiMusicForStory("雨夜码头故事", 101, {
+        mood: "紧张",
+      });
+
+      await jest.runAllTimersAsync();
+      await generation;
+
+      expect(useMusicStore.getState().isGeneratingAiMusic).toBe(false);
+      expect(useMusicStore.getState().aiMusicGenerationStatus).toBe("delayed");
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("store insertGeneratedTrack places AI music as the next upcoming track", () => {

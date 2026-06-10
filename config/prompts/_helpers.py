@@ -216,9 +216,21 @@ def _collect_available_people(
             if isinstance(member, dict) and member.get("name"):
                 available_people.append(member)
 
-    # Collect key_people, avoid duplicates
-    if "relationships" in character_settings:
-        for person in character_settings["relationships"].get("key_people", []):
+    # Collect key_people, avoid duplicates. Accept both the canonical
+    # {"key_people": [...]} shape and legacy list payloads produced by older
+    # creation/preset flows.
+    relationships = character_settings.get("relationships")
+    if isinstance(relationships, list):
+        key_people = relationships
+    elif isinstance(relationships, dict):
+        key_people = relationships.get("key_people", [])
+    else:
+        key_people = []
+
+    if isinstance(key_people, list):
+        for person in key_people:
+            if not isinstance(person, dict):
+                continue
             name = person.get("name", "")
             if name and not any(p.get("name") == name for p in available_people):
                 available_people.append(person)

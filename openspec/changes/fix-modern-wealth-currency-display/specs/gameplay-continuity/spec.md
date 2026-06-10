@@ -16,3 +16,10 @@ Player resource values SHALL remain consistent and interpretable as gameplay adv
 - **When** the frontend renders the status bar
 - **Then** a `currency` symbol SHALL render before the formatted amount
 - **And** a `currency_name` value SHALL render after the formatted amount when no symbol is present.
+
+#### Scenario: Generated starting wealth initializes gameplay state
+- **Given** character creation generated a numeric starting wealth value
+- **And** that value is represented as `wealth.wealth`, `wealth.starting_wealth`, or `wealth.initial_wealth_amount`
+- **When** the game is created or late character settings are patched before the first played round
+- **Then** the player state's numeric wealth SHALL use that generated value
+- **And** the value SHALL NOT fall back to the global default merely because a different generated field name was used.

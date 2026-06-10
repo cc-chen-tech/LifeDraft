@@ -5,9 +5,11 @@ The UX report still shows tail music failures after the first negative-cue fix: 
 ## What Changes
 
 - Extend post-search rejection for reported modern vocal-pop and meme/title-family mismatches.
+- Reject Anime/ACG/J-pop opening metadata when the story brief asks for instrumental/no-vocal background music.
 - Normalize reported title families so cover/remix/acoustic/live/version variants dedupe as one recommendation.
 - Apply the same title-family dedupe when merging recommendations into the persistent music playlist, not only inside the NetEase search pool.
 - Preserve explicit playable instrumental/score candidates and existing current playback.
+- Preserve explicit no-vocal metadata such as `无歌词`, `No Lyrics`, and `Instrumental` instead of treating the embedded cue word as a conflict.
 
 ## Capabilities
 

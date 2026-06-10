@@ -8,10 +8,12 @@ from typing import Any, Dict, List, Mapping
 def extract_required_key_people(character_settings: Mapping[str, Any]) -> List[Dict[str, str]]:
     """Return canonical preset key people from character settings."""
     relationships = character_settings.get("relationships")
-    if not isinstance(relationships, Mapping):
-        return []
-
-    key_people = relationships.get("key_people")
+    if isinstance(relationships, list):
+        key_people: object = relationships
+    elif isinstance(relationships, Mapping):
+        key_people = relationships.get("key_people")
+    else:
+        key_people = []
     if not isinstance(key_people, list):
         return []
 
@@ -57,6 +59,13 @@ def build_required_cast_constraints(
         lines.append(
             "  ⚠️ 以上人物是玩家预设关系网；如需导师、闺蜜、同期等关系，必须使用对应 canonical name。"
         )
+        names = "、".join(person["name"] for person in people)
+        lines.append(f"  [MUST] 本轮必须至少使用1位预设关键人物：{names}至少一位。")
+        if len(people) >= 3:
+            lines.append(
+                "  [MUST] 如果本轮是多人关系戏或冲突戏，必须让至少80%的预设关系网参与推进，"
+                "不得只点名一两位预设人物后让名单外新人物主导主线。"
+            )
         lines.append("  ⚠️ 不得把这些人物的身份、关系或剧情功能转移给新命名人物。")
         lines.append("  ✅ 非关键背景人物只能使用「路人」「陌生人」「同事」等通用称谓。")
         return "\n".join(lines)
@@ -69,6 +78,14 @@ def build_required_cast_constraints(
     lines.append(
         "  These people are the player's preset relationship network; use the matching canonical name for mentor, friend, peer, or similar roles."
     )
+    names = ", ".join(person["name"] for person in people)
+    lines.append(f"  [MUST] Each round must use at least one preset key person: one of {names}.")
+    if len(people) >= 3:
+        lines.append(
+            "  [MUST] If the round is a multi-person relationship or conflict scene, "
+            "at least 80% of the preset relationship network must drive the scene; "
+            "do not merely name one or two preset people while new named characters lead the plot."
+        )
     lines.append("  Do not transfer these identities, relationships, or plot functions to new named people.")
     lines.append("  Generic background people may use labels such as passerby, stranger, or colleague.")
     return "\n".join(lines)

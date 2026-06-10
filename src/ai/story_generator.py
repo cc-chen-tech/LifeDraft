@@ -630,7 +630,11 @@ class StoryGenerator:
         language: str,
         round_number: int,
     ) -> str:
+        from src.game.relationship_authority import extract_required_key_people
+
         player_name = resolve_protagonist_name(player_state, character_settings, None) or "你"
+        required_people = extract_required_key_people(character_settings or {})
+        anchor_person = required_people[0] if required_people else {}
 
         if language == "zh":
             era = ""
@@ -651,11 +655,15 @@ class StoryGenerator:
             round_name = round_names[round_number] if 0 <= round_number < len(round_names) else "这一天"
             setting_clause = f"在{era}的背景下，" if era else ""
             trait_clause = f"你把{trait}放在心里，" if trait else "你把眼前的线索重新梳理，"
+            cast_clause = ""
+            if anchor_person.get("name"):
+                role = anchor_person.get("role") or anchor_person.get("relationship") or "关键人物"
+                cast_clause = f"{anchor_person['name']}这位{role}仍在你的关系网里，"
 
             return (
                 f"{setting_clause}{round_name}，{player_name}没有遇到突发的巨大转折，"
                 "但生活仍然留下了需要判断的细节。"
-                f"{trait_clause}一边确认身边人的态度，一边衡量接下来要投入多少精力。"
+                f"{trait_clause}{cast_clause}一边确认身边人的态度，一边衡量接下来要投入多少精力。"
                 "这段平静并不是停滞，而是一次调整节奏的机会；你可以先回应眼前的请求，"
                 "也可以暂时放慢脚步，把现场线索核对清楚后再行动。"
             )
@@ -664,10 +672,15 @@ class StoryGenerator:
         round_name_en = (
             round_names_en[round_number] if 0 <= round_number < len(round_names_en) else "today"
         )
+        cast_clause_en = (
+            f"{anchor_person['name']} still matters in your relationship network, "
+            if anchor_person.get("name")
+            else ""
+        )
         return (
             f"{round_name_en.title()}, {player_name} does not encounter a dramatic turn, "
             "but the day still leaves several details worth weighing. You take a moment "
-            "to read the mood around you, sort through the immediate clues, and decide "
+            f"to read the mood around you, {cast_clause_en}sort through the immediate clues, and decide "
             "whether to answer the request in front of you or slow down and verify the "
             "situation before acting."
         )

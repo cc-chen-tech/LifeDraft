@@ -31,12 +31,13 @@ import { RoundHistoryDrawer } from "@/components/game/RoundHistoryDrawer";
 import { RoundSceneImageDisplay } from "@/components/game/RoundSceneImage";
 import { HistorySceneImage } from "@/components/game/HistorySceneImage";
 import { CollectionPanel } from "@/components/game/CollectionPanel";
-import { StoryVoiceControls } from "@/components/game/StoryVoiceControls";
+import { getSceneImageDisplayMode } from "@/components/game/sceneImageStagePolicy";
 
 import { usePlayGame, STATUS_MESSAGES } from "@/hooks/usePlayGame";
 import { useGameIdFromUrl } from "@/hooks/useGameIdFromUrl";
 import { useGameStore } from "@/stores/useGameStore";
 import { useMusicStore } from "@/stores/useMusicStore";
+import { useStoryVoiceStore } from "@/stores/useStoryVoiceStore";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
@@ -166,18 +167,73 @@ export default function PlayPage() {
   } = usePlayGame();
 
   const resultSceneRound = Math.max(0, currentRound - 1);
-  const storyReadyForCompletedMedia = phase === "options" || phase === "result";
+  const storyReadyForCompletedMedia =
+    phase === "options" || phase === "result" || phase === "summary";
   const isCurrentStoryBusy = phase === "loading" || phase === "generating" || phase === "choosing";
+  const sceneImageDisplayMode = getSceneImageDisplayMode({
+    phase,
+    hasEventSceneImage: Boolean(eventSceneImage),
+    hasResultSceneImage: Boolean(resultSceneImage),
+    hasCurrentRoundSceneImage: Boolean(currentRoundSceneImage),
+    isLoadingRoundSceneImage,
+  });
 
   // ★ 音乐 store：将当前故事文本和 gameId 传递给 GlobalMusicPlayer
   const setActiveStoryText = useMusicStore((state) => state.setActiveStoryText);
   const setActiveGameId = useMusicStore((state) => state.setActiveGameId);
+  const setActiveReadingTarget = useStoryVoiceStore((state) => state.setActiveReadingTarget);
+  const clearActiveReadingTarget = useStoryVoiceStore((state) => state.clearActiveReadingTarget);
 
   useEffect(() => {
     if (storyText && !isViewingHistory && storyReadyForCompletedMedia) {
       setActiveStoryText(storyText);
     }
   }, [storyText, isViewingHistory, storyReadyForCompletedMedia, setActiveStoryText]);
+
+  useEffect(() => {
+    const numericGameId = Number(gameId);
+    if (!displayText || !Number.isFinite(numericGameId)) {
+      clearActiveReadingTarget();
+      return;
+    }
+
+    setActiveReadingTarget({
+      context: isViewingHistory
+        ? {
+            source_type: "history_round",
+            game_id: numericGameId,
+            week: currentHistoryRound?.week ?? null,
+            round_number: currentHistoryRound?.round ?? null,
+            stage: "event",
+            attempt_id: "history",
+            text_hash: "pending-client-hash",
+            text: displayText,
+          }
+        : {
+            source_type: "current_story",
+            game_id: numericGameId,
+            week: progress?.week ?? null,
+            round_number: currentRound ?? null,
+            stage: "event",
+            attempt_id: `${progress?.week ?? 0}-${currentRound ?? 0}`,
+            text_hash: "pending-client-hash",
+            text: displayText,
+          },
+      autoReadText: displayText,
+      autoReadReady: !isViewingHistory && storyReadyForCompletedMedia,
+    });
+  }, [
+    clearActiveReadingTarget,
+    currentHistoryRound?.round,
+    currentHistoryRound?.week,
+    currentRound,
+    displayText,
+    gameId,
+    isViewingHistory,
+    progress?.week,
+    setActiveReadingTarget,
+    storyReadyForCompletedMedia,
+  ]);
 
   useEffect(() => {
     if (gameId) {
@@ -249,6 +305,17 @@ export default function PlayPage() {
     setShowCollection(false);
     handleOpenHistory();
   }, [handleOpenHistory]);
+
+  const handleRewriteComplete = useCallback((newStory: string) => {
+    setStoryText(newStory);
+    const currentEvent = useGameStore.getState().currentEvent;
+    if (currentEvent) {
+      useGameStore.getState().setCurrentEvent({
+        ...currentEvent,
+        story: newStory,
+      });
+    }
+  }, [setStoryText]);
 
   // Don't render until hydrated
   if (!hydrated) {
@@ -472,24 +539,6 @@ export default function PlayPage() {
                   返回当前
                 </Button>
               </div>
-              <div className="mb-4">
-                <StoryVoiceControls
-                  currentContext={{
-                    source_type: "history_round",
-                    game_id: Number(gameId),
-                    week: currentHistoryRound?.week ?? null,
-                    round_number: currentHistoryRound?.round ?? null,
-                    stage: "event",
-                    attempt_id: "history",
-                    text_hash: "pending-client-hash",
-                    text: displayText,
-                  }}
-                  autoReadText={displayText}
-                  autoReadReady={false}
-                  compact
-                  enablePlaybackControls
-                />
-              </div>
               <StreamingText
                 text={displayText}
                 isStreaming={false}
@@ -499,25 +548,6 @@ export default function PlayPage() {
             </Card>
           ) : (
             <>
-              <div className="mb-4">
-              <StoryVoiceControls
-                currentContext={{
-                  source_type: "current_story",
-                  game_id: Number(gameId),
-                  week: progress?.week ?? null,
-                  round_number: currentRound ?? null,
-                  stage: "event",
-                  attempt_id: `${progress?.week ?? 0}-${currentRound ?? 0}`,
-                  text_hash: "pending-client-hash",
-                  text: displayText,
-                }}
-                autoReadText={displayText}
-                autoReadReady={!isViewingHistory && storyReadyForCompletedMedia}
-                isStoryReady={storyReadyForCompletedMedia}
-                compact
-                enablePlaybackControls
-              />
-              </div>
               <StreamingText
                 text={displayText}
                 isStreaming={phase === "generating" || phase === "choosing"}
@@ -576,7 +606,7 @@ export default function PlayPage() {
           storyText && (
             <>
               {/* ★ 事件插画：只在 options 阶段显示 */}
-              {phase === "options" && eventSceneImage && (
+              {sceneImageDisplayMode === "event" && eventSceneImage && (
                 <RoundSceneImageDisplay
                   sceneImage={eventSceneImage}
                   isLoading={isLoadingRoundSceneImage && phase === "options"}
@@ -588,8 +618,8 @@ export default function PlayPage() {
                 />
               )}
 
-              {/* ★ 结果插画：只在 result 阶段显示 */}
-              {phase === "result" && resultSceneImage && (
+              {/* ★ 结果插画：在 result/summary 阶段显示 */}
+              {sceneImageDisplayMode === "result" && resultSceneImage && (
                 <RoundSceneImageDisplay
                   sceneImage={resultSceneImage}
                   isLoading={isLoadingRoundSceneImage}
@@ -601,8 +631,21 @@ export default function PlayPage() {
                 />
               )}
 
-              {/* ★ result 阶段兜底：没有 result 插画时回退显示事件插画 */}
-              {phase === "result" && !resultSceneImage && eventSceneImage && (
+              {/* ★ 结果插画加载中：不要回退显示上一阶段事件插画，避免视觉内容滞后 */}
+              {sceneImageDisplayMode === "result-loading" && (
+                <RoundSceneImageDisplay
+                  sceneImage={null}
+                  isLoading={isLoadingRoundSceneImage}
+                  isRegenerating={isRegeneratingRoundScene}
+                  currentRound={resultSceneRound}
+                  label="结果场景"
+                  onRefresh={() => fetchRoundSceneImage(resultSceneRound, "result")}
+                  onRegenerate={regenerateRoundSceneImage}
+                />
+              )}
+
+              {/* ★ result/summary 阶段兜底：没有 result 插画时回退显示事件插画 */}
+              {sceneImageDisplayMode === "event-fallback" && eventSceneImage && (
                 <RoundSceneImageDisplay
                   sceneImage={eventSceneImage}
                   isLoading={isLoadingRoundSceneImage}
@@ -615,13 +658,13 @@ export default function PlayPage() {
               )}
 
               {/* ★ 兜底：其他阶段显示当前轮次插画 */}
-              {!eventSceneImage && !resultSceneImage && currentRoundSceneImage && (
+              {sceneImageDisplayMode === "current" && currentRoundSceneImage && (
                 <RoundSceneImageDisplay
                   sceneImage={currentRoundSceneImage}
                   isLoading={isLoadingRoundSceneImage}
                   isRegenerating={isRegeneratingRoundScene}
                   currentRound={currentRound}
-                  onRefresh={() => fetchRoundSceneImage(currentRound, phase === 'options' ? 'event' : phase === 'result' ? 'result' : undefined)}
+                  onRefresh={() => fetchRoundSceneImage(currentRound, phase === 'options' ? 'event' : (phase === 'result' || phase === 'summary') ? 'result' : undefined)}
                   onRegenerate={regenerateRoundSceneImage}
                 />
               )}
@@ -767,9 +810,7 @@ export default function PlayPage() {
           onSave={handleSave}
           onRegenerate={handleRegenerate}
           storyText={storyText}
-          onRewriteComplete={(newStory) => {
-            setStoryText(newStory);
-          }}
+          onRewriteComplete={handleRewriteComplete}
           isSaving={isSaving}
           isStoryBusy={isCurrentStoryBusy}
           isViewingHistory={isViewingHistory}

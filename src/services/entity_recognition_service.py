@@ -300,7 +300,7 @@ class EntityRecognitionService(BaseExtractionService):
             "landmarks": list(result.get("landmarks", [])),
         }
 
-        eligible_set = set(eligible_character_names) if eligible_character_names is not None else None
+        eligible_set = set(eligible_character_names) if eligible_character_names else None
         if eligible_set is None:
             character_candidates = self._extract_named_people(story_text)
         else:
@@ -419,7 +419,7 @@ class EntityRecognitionService(BaseExtractionService):
         name_boundary = r"(?:(?<![\u4e00-\u9fff])|(?<=[见与和向问对请找叫邀同]))"
         person_actions = (
             "说|问|答|道|提醒|递|交|带|走|来|去|把|将|在|从|与|和|向|看|笑|皱|捧|"
-            "提出|承认|否认|表示|解释|反驳|递来|打来|联系|签|站|沉默|扶|扶住|"
+            "提出|要求|承认|否认|表示|解释|反驳|递来|打来|联系|签|站|沉默|扶|扶住|"
             "握|握紧|赶|赶来|守|苦笑|又|、|，|。|：|:"
         )
         titles = (

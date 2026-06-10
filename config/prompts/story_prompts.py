@@ -188,7 +188,7 @@ def _settings_text(character_settings: Optional[Dict[str, Any]]) -> str:
 def _is_modern_story_setting(character_settings: Optional[Dict[str, Any]]) -> bool:
     text = _settings_text(character_settings)
     if not text:
-        return False
+        return True
     ancient_cues = ["古代", "唐朝", "宋朝", "元朝", "明朝", "清朝", "江湖", "宫廷", "修仙"]
     if any(cue in text for cue in ancient_cues):
         return False
@@ -946,12 +946,35 @@ def get_result_generation_prompt(
     # Build character context
     char_context = ""
     if character_settings:
+        full_character_context, available_people = _build_full_character_context(
+            character_settings, language
+        )
+        available_people_context = _build_available_people_constraint(
+            available_people, language
+        )
+        required_cast_context = build_required_cast_constraints(
+            character_settings, language
+        )
+        modern_world_boundary = build_realistic_modern_world_boundary(
+            character_settings, language
+        )
+        era_constraints = _build_era_anachronism_constraints(character_settings, language)
+        if full_character_context:
+            char_context += f"\n{full_character_context}"
         if "identity" in character_settings:
             identity = character_settings["identity"]
             char_context += f"\n主角：{identity.get('name', '未知')}"
         if "occupation" in character_settings:
             occupation = character_settings["occupation"]
             char_context += f"\n职业：{occupation.get('occupation', '未知')}"
+        if available_people_context:
+            char_context += available_people_context
+        if required_cast_context:
+            char_context += f"\n{required_cast_context}"
+        if modern_world_boundary:
+            char_context += f"\n{modern_world_boundary}"
+        if era_constraints:
+            char_context += f"\n{era_constraints}"
 
     # ★ Bug #26: 自定义选择需要更强的 prompt 约束，确保 AI 严格遵循
     custom_constraint_zh = ""

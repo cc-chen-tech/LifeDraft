@@ -238,6 +238,7 @@ def _align_era_setting_with_life_vision(
     feedback: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Keep explicit modern career visions from drifting into historical eras."""
+    _ = feedback
     if not _era_setting_conflicts_with_modern_life_vision(era_setting, life_vision):
         return era_setting
 

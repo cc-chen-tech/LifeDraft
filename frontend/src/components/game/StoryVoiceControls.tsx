@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, type ChangeEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Loader2, Pause, Play, RotateCcw, Square, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
@@ -14,7 +14,9 @@ interface StoryVoiceControlsProps {
   autoReadReady?: boolean;
   isStoryReady?: boolean;
   compact?: boolean;
+  embedded?: boolean;
   enablePlaybackControls?: boolean;
+  hideTitle?: boolean;
   showTestControls?: boolean;
 }
 
@@ -25,18 +27,26 @@ export function StoryVoiceControls({
   autoReadReady = false,
   isStoryReady = true,
   compact = false,
+  embedded = false,
   enablePlaybackControls = false,
+  hideTitle = false,
   showTestControls = false,
 }: StoryVoiceControlsProps) {
   const readingState = useStoryVoiceStore((state) => state.readingState);
   const currentSource = useStoryVoiceStore((state) => state.currentSource);
-  const currentContextLabel = useStoryVoiceStore((state) => state.currentContextLabel);
+  const currentContextLabel = useStoryVoiceStore(
+    (state) => state.currentContextLabel,
+  );
   const currentAudioUrl = useStoryVoiceStore((state) => state.currentAudioUrl);
   const currentJobId = useStoryVoiceStore((state) => state.currentJobId);
   const currentProvider = useStoryVoiceStore((state) => state.currentProvider);
   const playbackMode = useStoryVoiceStore((state) => state.playbackMode);
-  const spokenTextLength = useStoryVoiceStore((state) => state.spokenTextLength);
-  const currentSpeechText = useStoryVoiceStore((state) => state.currentSpeechText);
+  const spokenTextLength = useStoryVoiceStore(
+    (state) => state.spokenTextLength,
+  );
+  const currentSpeechText = useStoryVoiceStore(
+    (state) => state.currentSpeechText,
+  );
   const errorMessage = useStoryVoiceStore((state) => state.errorMessage);
   const queueText = useStoryVoiceStore((state) => state.queueText);
   const autoReadEnabled = useStoryVoiceStore((state) => state.autoReadEnabled);
@@ -47,24 +57,47 @@ export function StoryVoiceControls({
   const stopReading = useStoryVoiceStore((state) => state.stopReading);
   const completeReading = useStoryVoiceStore((state) => state.completeReading);
   const retryReading = useStoryVoiceStore((state) => state.retryReading);
-  const markAudioPlaying = useStoryVoiceStore((state) => state.markAudioPlaying);
+  const markAudioPlaying = useStoryVoiceStore(
+    (state) => state.markAudioPlaying,
+  );
   const markAudioReady = useStoryVoiceStore((state) => state.markAudioReady);
   const failReading = useStoryVoiceStore((state) => state.failReading);
-  const setAutoReadEnabled = useStoryVoiceStore((state) => state.setAutoReadEnabled);
-  const setSelectedVoiceId = useStoryVoiceStore((state) => state.setSelectedVoiceId);
-  const enqueueCompletedAttempt = useStoryVoiceStore((state) => state.enqueueCompletedAttempt);
-  const simulateMusicPlaying = useStoryVoiceStore((state) => state.simulateMusicPlaying);
+  const setAutoReadEnabled = useStoryVoiceStore(
+    (state) => state.setAutoReadEnabled,
+  );
+  const setSelectedVoiceId = useStoryVoiceStore(
+    (state) => state.setSelectedVoiceId,
+  );
+  const setVoiceRuntimeSettings = useStoryVoiceStore(
+    (state) => state.setVoiceRuntimeSettings,
+  );
+  const enqueueCompletedAttempt = useStoryVoiceStore(
+    (state) => state.enqueueCompletedAttempt,
+  );
+  const simulateMusicPlaying = useStoryVoiceStore(
+    (state) => state.simulateMusicPlaying,
+  );
   const userPauseMusicDuringReading = useStoryVoiceStore(
-    (state) => state.userPauseMusicDuringReading
+    (state) => state.userPauseMusicDuringReading,
   );
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const lastAutoReadKeyRef = useRef<string>("");
   const loadedSettingsRef = useRef(false);
+  const userSelectedVoiceRef = useRef(false);
+  const mountedRef = useRef(true);
   const textSize = compact ? "text-xs" : "text-sm";
-  const isHistoryReading = currentContext.source_type === "history_round" || Boolean(historyContext);
+  const isHistoryReading =
+    currentContext.source_type === "history_round" || Boolean(historyContext);
   const shouldShowPlaybackControls = enablePlaybackControls || showTestControls;
   const showProductionSettings = !showTestControls;
+  const [voiceSettingsReady, setVoiceSettingsReady] = useState(!showProductionSettings);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (loadedSettingsRef.current) return;
@@ -72,21 +105,45 @@ export function StoryVoiceControls({
 
     void api.voice_reading.getSettings()
       .then((settings) => {
+        if (!mountedRef.current) return;
+        setVoiceRuntimeSettings({
+          ttsProvider: settings.tts_provider,
+          backendAudioEnabled: settings.backend_audio_enabled,
+        });
         if (settings.auto_read_enabled !== autoReadEnabled) {
           setAutoReadEnabled(settings.auto_read_enabled);
         }
-        if (settings.selected_voice_color && settings.selected_voice_color !== selectedVoiceId) {
+        if (
+          !userSelectedVoiceRef.current &&
+          settings.selected_voice_color &&
+          settings.selected_voice_color !== selectedVoiceId
+        ) {
           setSelectedVoiceId(settings.selected_voice_color);
         }
       })
       .catch((error) => {
-        console.warn("[StoryVoiceControls] Voice settings load unavailable:", error);
+        console.warn(
+          "[StoryVoiceControls] Voice settings load unavailable:",
+          error,
+        );
+      })
+      .finally(() => {
+        if (mountedRef.current) {
+          setVoiceSettingsReady(true);
+        }
       });
-  }, [autoReadEnabled, selectedVoiceId, setAutoReadEnabled, setSelectedVoiceId]);
+  }, [
+    autoReadEnabled,
+    selectedVoiceId,
+    setAutoReadEnabled,
+    setSelectedVoiceId,
+    setVoiceRuntimeSettings,
+  ]);
 
   useEffect(() => {
     const finalText = autoReadText?.trim();
     if (
+      !voiceSettingsReady ||
       !autoReadReady ||
       !autoReadEnabled ||
       !finalText ||
@@ -110,7 +167,14 @@ export function StoryVoiceControls({
       text: finalText,
       text_hash: currentContext.text_hash || "pending-client-hash",
     });
-  }, [autoReadReady, autoReadEnabled, autoReadText, currentContext, startReading]);
+  }, [
+    autoReadReady,
+    autoReadEnabled,
+    autoReadText,
+    currentContext,
+    startReading,
+    voiceSettingsReady,
+  ]);
 
   if (!shouldShowPlaybackControls) {
     return (
@@ -131,7 +195,9 @@ export function StoryVoiceControls({
             </div>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
               高质量 TTS 声音模型接入后可用。当前先保留故事文本阅读体验，
-              {isHistoryReading ? "历史故事会优先保证可读和可回看。" : "不会启动不可用的朗读任务。"}
+              {isHistoryReading
+                ? "历史故事会优先保证可读和可回看。"
+                : "不会启动不可用的朗读任务。"}
             </p>
           </div>
         </div>
@@ -140,32 +206,47 @@ export function StoryVoiceControls({
   }
 
   const activeContext =
-    currentSource === "history_round" && historyContext ? historyContext : currentContext;
+    currentSource === "history_round" && historyContext
+      ? historyContext
+      : currentContext;
 
-  const playGeneratedAudio = useCallback((failOnUserGesture = false) => {
-    const audio = audioRef.current;
-    if (!audio || !currentAudioUrl || playbackMode !== "audio") {
-      return;
-    }
-    if (audio.ended) {
-      audio.currentTime = 0;
-    }
-    const playResult = audio.play();
-    if (!playResult || typeof playResult.then !== "function") {
-      markAudioReady("音频已生成，点击播放");
-      return;
-    }
-    void playResult.then(markAudioPlaying).catch((error) => {
-      if (failOnUserGesture) {
-        failReading(error);
+  const playGeneratedAudio = useCallback(
+    (failOnUserGesture = false) => {
+      const audio = audioRef.current;
+      if (!audio || !currentAudioUrl || playbackMode !== "audio") {
         return;
       }
-      markAudioReady("音频已生成，点击播放");
-    });
-  }, [currentAudioUrl, failReading, markAudioPlaying, markAudioReady, playbackMode]);
+      if (audio.ended) {
+        audio.currentTime = 0;
+      }
+      const playResult = audio.play();
+      if (!playResult || typeof playResult.then !== "function") {
+        markAudioReady("音频已生成，点击播放");
+        return;
+      }
+      void playResult.then(markAudioPlaying).catch((error) => {
+        if (failOnUserGesture) {
+          failReading(error);
+          return;
+        }
+        markAudioReady("音频已生成，点击播放");
+      });
+    },
+    [
+      currentAudioUrl,
+      failReading,
+      markAudioPlaying,
+      markAudioReady,
+      playbackMode,
+    ],
+  );
 
   useEffect(() => {
-    if (readingState !== "ready" || playbackMode !== "audio" || !currentAudioUrl) {
+    if (
+      readingState !== "ready" ||
+      playbackMode !== "audio" ||
+      !currentAudioUrl
+    ) {
       return;
     }
     playGeneratedAudio(false);
@@ -203,7 +284,10 @@ export function StoryVoiceControls({
     try {
       await api.voice_reading.updateSettings(settings);
     } catch (error) {
-      console.warn("[StoryVoiceControls] Voice settings persistence unavailable:", error);
+      console.warn(
+        "[StoryVoiceControls] Voice settings persistence unavailable:",
+        error,
+      );
     }
   };
 
@@ -215,6 +299,7 @@ export function StoryVoiceControls({
 
   const handleVoiceChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const nextVoiceId = event.target.value;
+    userSelectedVoiceRef.current = true;
     setSelectedVoiceId(nextVoiceId);
     void persistVoiceSettings({ selected_voice_color: nextVoiceId });
     if (["loading", "ready", "playing", "paused"].includes(readingState)) {
@@ -224,12 +309,14 @@ export function StoryVoiceControls({
         audio.currentTime = 0;
       }
       window.speechSynthesis?.cancel?.();
-      void startReading(activeContext);
+      void startReading(activeContext, { voiceId: nextVoiceId });
     }
   };
 
+  const voiceSettingsRequired = !voiceSettingsReady && readingState === "idle";
+
   const handlePrimaryAction = () => {
-    if (readingState === "loading" || !isStoryReady) return;
+    if (readingState === "loading" || !isStoryReady || voiceSettingsRequired) return;
     if (readingState === "ready") {
       playGeneratedAudio(true);
       return;
@@ -242,12 +329,17 @@ export function StoryVoiceControls({
       handleContinue();
       return;
     }
+    if (readingState === "failed" && playbackMode === "browser_speech") {
+      handleContinue();
+      return;
+    }
     void startReading(currentContext);
   };
 
-  const primaryReadLabel =
-    !isStoryReady
-      ? "故事生成完成后可朗读"
+  const primaryReadLabel = !isStoryReady
+    ? "故事生成完成后可朗读"
+    : voiceSettingsRequired
+      ? "正在加载朗读设置"
       : readingState === "loading"
       ? "正在生成语音"
       : readingState === "ready"
@@ -259,8 +351,24 @@ export function StoryVoiceControls({
             : readingState === "failed"
               ? "重试朗读"
               : "朗读故事";
-  const primaryReadDisabled = readingState === "loading" || !isStoryReady;
-  const showStopButton = ["loading", "ready", "playing", "paused"].includes(readingState);
+  const primaryReadDisabled = readingState === "loading" || !isStoryReady || voiceSettingsRequired;
+  const showStopButton = ["loading", "playing", "paused"].includes(
+    readingState,
+  );
+  const readingStatusText =
+    readingState === "loading"
+      ? "正在准备语音"
+      : readingState === "playing"
+        ? "正在朗读当前故事"
+        : readingState === "paused"
+          ? "朗读已暂停"
+          : readingState === "ready"
+            ? "语音已生成，可播放"
+            : readingState === "failed"
+              ? "朗读失败，可重试"
+              : autoReadEnabled
+                ? "故事生成完成后自动朗读"
+                : "手动朗读当前故事";
   const PrimaryIcon =
     readingState === "loading"
       ? Loader2
@@ -273,33 +381,91 @@ export function StoryVoiceControls({
             : Volume2;
 
   return (
-    <section
-      aria-label="故事朗读"
-      className="rounded border border-border bg-card/60 p-3 space-y-3"
+    <div
+      aria-label={embedded ? undefined : "故事朗读"}
+      data-testid={embedded ? "story-voice-embedded-module" : undefined}
+      role={embedded ? undefined : "region"}
+      className={
+        embedded
+          ? "space-y-3"
+          : "rounded border border-border bg-card/60 p-3 space-y-3"
+      }
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={handlePrimaryAction}
-          disabled={primaryReadDisabled}
-          aria-label={primaryReadLabel}
+      {embedded && showProductionSettings && !hideTitle && (
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <Volume2 className="h-4 w-4 shrink-0 text-primary" />
+            <div className="min-w-0">
+              <h3 className="text-sm font-medium leading-5 text-foreground">
+                {embedded ? "朗读" : "故事朗读"}
+              </h3>
+              <div className="truncate text-xs text-muted-foreground">
+                {readingStatusText}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div
+        className={embedded ? "space-y-2" : "flex flex-wrap items-center gap-2"}
+      >
+        <div
+          data-testid={embedded ? "voice-primary-controls" : undefined}
+          className={
+            embedded
+              ? "grid grid-cols-[1fr_auto] gap-2"
+              : "flex flex-wrap items-center gap-2"
+          }
         >
-          <PrimaryIcon
-            className={`w-4 h-4 mr-1.5 ${readingState === "loading" ? "animate-spin" : ""}`}
-          />
-          {primaryReadLabel}
-        </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={handlePrimaryAction}
+            disabled={primaryReadDisabled}
+            aria-label={primaryReadLabel}
+            className={embedded ? "justify-start" : undefined}
+          >
+            <PrimaryIcon
+              className={`w-4 h-4 mr-1.5 ${readingState === "loading" ? "animate-spin" : ""}`}
+            />
+            {primaryReadLabel}
+          </Button>
+          {showStopButton && (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={handleStop}
+            >
+              <Square className="w-4 h-4 mr-1.5" />
+              停止
+            </Button>
+          )}
+        </div>
         {showProductionSettings && (
-          <>
-            <label className="flex items-center gap-2 text-xs text-muted-foreground">
-              声音
+          <div
+            data-testid={embedded ? "voice-settings-row" : undefined}
+            className={
+              embedded
+                ? "grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]"
+                : "contents"
+            }
+          >
+            <label
+              className={
+                embedded
+                  ? "grid grid-cols-[auto_1fr] items-center gap-2 text-xs text-muted-foreground"
+                  : "flex items-center gap-2 text-xs text-muted-foreground"
+              }
+            >
+              音色
               <select
                 aria-label="选择朗读声音"
                 value={selectedVoiceId || "warm_female"}
                 onChange={handleVoiceChange}
-                className="h-8 rounded border border-border bg-background px-2 text-sm text-foreground"
+                className="h-8 min-w-0 rounded border border-border bg-background px-2 text-sm text-foreground"
               >
                 <option value="warm_female">温柔女声</option>
                 <option value="calm_male">沉稳男声</option>
@@ -316,7 +482,7 @@ export function StoryVoiceControls({
               />
               自动朗读
             </label>
-          </>
+          </div>
         )}
         {historyContext && (
           <Button
@@ -325,52 +491,60 @@ export function StoryVoiceControls({
             variant="outline"
             onClick={() => void startReading(historyContext)}
             aria-label="朗读历史故事"
+            disabled={!voiceSettingsReady}
           >
             <Volume2 className="w-4 h-4 mr-1.5" />
             朗读历史故事
           </Button>
         )}
-        {showStopButton && (
-          <Button type="button" size="sm" variant="ghost" onClick={handleStop}>
-            <Square className="w-4 h-4 mr-1.5" />
-            停止
-          </Button>
-        )}
       </div>
 
       {showTestControls && (
-        <div className={`${textSize} text-muted-foreground flex flex-wrap gap-3`}>
+        <div
+          className={`${textSize} text-muted-foreground flex flex-wrap gap-3`}
+        >
           <span>
             状态: <span data-testid="voice-reading-state">{readingState}</span>
           </span>
           <span>
-            来源: <span data-testid="voice-reading-source">{currentSource}</span>
+            来源:{" "}
+            <span data-testid="voice-reading-source">{currentSource}</span>
           </span>
           <span data-testid="voice-reading-context">{currentContextLabel}</span>
           <span>
-            Job: <span data-testid="voice-reading-job">{currentJobId ?? ""}</span>
+            Job:{" "}
+            <span data-testid="voice-reading-job">{currentJobId ?? ""}</span>
           </span>
           <span>
-            Provider: <span data-testid="voice-reading-provider">{currentProvider}</span>
+            Provider:{" "}
+            <span data-testid="voice-reading-provider">{currentProvider}</span>
           </span>
           <span>
-            Audio: <span data-testid="voice-reading-audio-url">{currentAudioUrl}</span>
+            Audio:{" "}
+            <span data-testid="voice-reading-audio-url">{currentAudioUrl}</span>
           </span>
           <span>
             Mode: <span data-testid="voice-reading-mode">{playbackMode}</span>
           </span>
           <span>
-            模式: <span data-testid="voice-reading-playback-mode">{playbackMode}</span>
+            模式:{" "}
+            <span data-testid="voice-reading-playback-mode">
+              {playbackMode}
+            </span>
           </span>
           <span>
-            Length: <span data-testid="voice-reading-spoken-length">{spokenTextLength}</span>
+            Length:{" "}
+            <span data-testid="voice-reading-spoken-length">
+              {spokenTextLength}
+            </span>
           </span>
           <span className="sr-only" data-testid="voice-reading-speech-text">
             {currentSpeechText}
           </span>
           {errorMessage && (
             <span>
-              错误: <span data-testid="voice-reading-error">{errorMessage}</span>
+              错误:{" "}
+              <span data-testid="voice-reading-error">{errorMessage}</span>
             </span>
           )}
         </div>
@@ -392,27 +566,51 @@ export function StoryVoiceControls({
             type="button"
             size="sm"
             variant="outline"
-            onClick={() => enqueueCompletedAttempt(autoReadText || currentContext.text)}
+            onClick={() =>
+              enqueueCompletedAttempt(autoReadText || currentContext.text)
+            }
           >
             完成自动朗读入队
           </Button>
-          <Button type="button" size="sm" variant="outline" onClick={simulateMusicPlaying}>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={simulateMusicPlaying}
+          >
             模拟音乐播放中
           </Button>
-          <Button type="button" size="sm" variant="outline" onClick={completeReading}>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={completeReading}
+          >
             模拟朗读结束
           </Button>
-          <Button type="button" size="sm" variant="outline" onClick={userPauseMusicDuringReading}>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={userPauseMusicDuringReading}
+          >
             用户手动暂停音乐
           </Button>
-          <Button type="button" size="sm" variant="outline" onClick={failReading}>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={failReading}
+          >
             模拟朗读失败
           </Button>
         </div>
       )}
 
       {showTestControls && (
-        <div className={`${textSize} text-muted-foreground flex flex-wrap gap-3`}>
+        <div
+          className={`${textSize} text-muted-foreground flex flex-wrap gap-3`}
+        >
           <span>
             队列: <span data-testid="voice-reading-queue">{queueText}</span>
           </span>
@@ -430,6 +628,6 @@ export function StoryVoiceControls({
         onError={failReading}
         onEnded={completeReading}
       />
-    </section>
+    </div>
   );
 }

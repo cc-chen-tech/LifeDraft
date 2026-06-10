@@ -144,6 +144,19 @@ class TestEraValidatorProductionContract:
         assert "found_historical" in info
         assert any(term in info["found_historical"] for term in ["长安", "铜钱", "郎君"])
 
+    def test_modern_era_rejects_unrequested_cyberpunk_ip_drift(self):
+        """现代现实主义背景故事漂移到外部赛博朋克 IP 时应被检测到。"""
+        from src.ai.harness.era_validator import validate_era_consistency
+
+        passed, evidence, info = validate_era_consistency(
+            "夜之城的霓虹灯照在张若虚脸上，荒坂集团的安全员追着V穿过Viktor的诊所，催他准备植入义体。",
+            {"era": "2024年现代上海互联网公司", "era_type": "modern"},
+        )
+
+        assert passed is False
+        assert "found_cyberpunk_ip" in info
+        assert any(term in info["found_cyberpunk_ip"] for term in ["夜之城", "荒坂集团", "Viktor", "义体"])
+
     def test_quick_validator_rejects_modern_story_historical_drift(self):
         """生产快速校验必须阻止现代角色故事漂移到古代叙事。"""
         from src.ai.quick_validator import quick_validate_story
@@ -160,6 +173,43 @@ class TestEraValidatorProductionContract:
         )
         assert result.passed is False
         assert any("现代背景检测到古代" in issue for issue in result.issues)
+
+    def test_quick_validator_rejects_modern_story_cyberpunk_ip_drift(self):
+        """生产快速校验必须阻止现代现实主义角色漂移到赛博朋克/IP世界。"""
+        from src.ai.quick_validator import quick_validate_story
+
+        result = quick_validate_story(
+            story_text=(
+                "夜之城的霓虹灯照在张若虚脸上，荒坂集团的安全员追着V穿过Viktor的诊所，"
+                "义体医生让他准备植入新的神经接口。"
+            ),
+            character_settings={
+                "era": {
+                    "era_description": "2024年现代上海",
+                    "world_context": "现代社会，互联网产品经理成长线",
+                },
+                "world": {"world_description": "现实中的上海互联网公司"},
+            },
+            language="zh",
+        )
+
+        assert result.passed is False
+        assert any("赛博朋克" in issue or "外部IP" in issue for issue in result.issues)
+
+    def test_quick_validator_allows_explicit_original_cyberpunk_without_external_ip(self):
+        """明确赛博朋克设定允许原创义体/神经接口元素，但仍由其他测试约束外部 IP 专名。"""
+        from src.ai.quick_validator import quick_validate_story
+
+        result = quick_validate_story(
+            story_text="原创海港城的赛博朋克雨夜里，张若虚调试神经接口，避开公司安保的电子眼。",
+            character_settings={
+                "era": {"year": 2077, "era_description": "原创赛博朋克未来都市"},
+                "world": {"world_description": "高科技低生活的原创赛博朋克世界"},
+            },
+            language="zh",
+        )
+
+        assert result.passed is True
 
     def test_era_validator_no_false_positive_network_substring(self):
         """'网络' 不应匹配 '网络' 作为其他词的组成部分"""

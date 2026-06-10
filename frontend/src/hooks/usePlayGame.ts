@@ -21,6 +21,12 @@ import { useHistoryViewer } from "./game/useHistoryViewer";
 export type { Phase, ConnectionStatus };
 export { STATUS_MESSAGES } from "./game/usePhaseManager";
 
+function isNotFoundError(err: unknown): boolean {
+  const error = err as { status?: number; message?: string } | null;
+  const message = String(error?.message || "");
+  return error?.status === 404 || message.includes("404") || message.toLowerCase().includes("not found");
+}
+
 /**
  * Custom hook that manages all game logic for the play page.
  * Composes multiple sub-hooks for better maintainability.
@@ -225,6 +231,10 @@ export function usePlayGame() {
 
     const attemptRecovery = async () => {
       if (!gameId) {
+        if (redirectCheckedRef.current) {
+          console.warn("[play] No gameId after a checked session, skipping active recovery");
+          return;
+        }
         console.warn("[play] No gameId in localStorage, attempting server-side recovery...");
 
         try {
@@ -339,6 +349,14 @@ export function usePlayGame() {
           generateEvent();
         }
       } catch (err) {
+        if (isNotFoundError(err)) {
+          console.warn("[play] Stored game no longer exists, clearing session and returning home");
+          useGameStore.getState().resetGame();
+          setProcessing(false);
+          setPhase("error");
+          router.replace("/");
+          return;
+        }
         console.error("[play] syncState failed:", err);
         generateEvent();
       }
@@ -367,11 +385,11 @@ export function usePlayGame() {
   // 当轮次变化时，获取当前轮次的场景插画
   // ★ 根据 phase 决定获取哪个 stage 的插画
   useEffect(() => {
-    const canFetchScene = phase === 'options' || phase === 'result';
+    const canFetchScene = phase === 'options' || phase === 'result' || phase === 'summary';
     const hasRenderableStory = Boolean(storyText || currentEvent?.story);
     if (gameId && currentRound >= 0 && canFetchScene && hasRenderableStory) {
       const stage = phase === 'options' ? 'event' : 'result';
-      const sceneRound = phase === 'result' ? Math.max(0, currentRound - 1) : currentRound;
+      const sceneRound = phase === 'result' || phase === 'summary' ? Math.max(0, currentRound - 1) : currentRound;
       fetchRoundSceneImage(sceneRound, stage);
     }
   }, [gameId, currentRound, phase, storyText, currentEvent, fetchRoundSceneImage]);

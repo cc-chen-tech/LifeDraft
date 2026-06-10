@@ -7,9 +7,25 @@ import logging
 import time
 from typing import Any, Callable, Optional
 
-from config.prompts.story_prompts import resolve_protagonist_name
+from config.prompts._helpers import (
+    _build_available_people_constraint,
+    _build_era_anachronism_constraints,
+    _build_full_character_context,
+    _collect_available_people,
+    build_realistic_modern_world_boundary,
+)
+from config.prompts.story_prompts import (
+    _build_zh_chapter_constraint,
+    _build_protagonist_identity_instruction,
+    _extract_gender_text,
+    resolve_protagonist_name,
+)
 from src.ai.models import GameEvent
 from src.game.narrative_manager import NarrativeManager
+from src.game.relationship_authority import (
+    build_required_cast_constraints,
+    extract_required_key_people,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +187,16 @@ class RoundEventGenerator:
                 logger.info(
                     "[Resume Check] Using last_round_full_story (no round_history match, round 0 with current_event)"
                 )
+
+            if existing_story and len(existing_story) > 100:
+                if not self._existing_story_satisfies_quick_constraints(
+                    existing_story=existing_story,
+                    character_settings=player_state.character_settings,
+                    language=self.language,
+                    resume_source=resume_source or "unknown",
+                ):
+                    existing_story = None
+                    resume_source = None
 
             if existing_story and len(existing_story) > 100:
                 # ★ Check options cache first
@@ -449,32 +475,173 @@ class RoundEventGenerator:
             self._generating_start_time = None
             return event
 
+    def _existing_story_satisfies_quick_constraints(
+        self,
+        *,
+        existing_story: str,
+        character_settings: dict[str, Any],
+        language: str,
+        resume_source: str,
+    ) -> bool:
+        """Do not resume a persisted story that already violates hard story constraints."""
+        if not existing_story:
+            return True
+
+        from src.ai.quick_validator import quick_validate_story
+
+        available_people_names = [
+            p.get("name", "")
+            for p in _collect_available_people(character_settings)
+            if p.get("name")
+        ]
+        quick_result = quick_validate_story(
+            story_text=existing_story,
+            character_settings=character_settings,
+            available_people=available_people_names,
+            language=language,
+        )
+        if quick_result.passed:
+            if quick_result.warnings:
+                logger.info(
+                    "[Resume Check] Existing story warnings from %s: %s",
+                    resume_source,
+                    quick_result.warnings,
+                )
+            return True
+
+        logger.warning(
+            "[Resume Check] Rejecting existing story from %s because it violates quick constraints: %s",
+            resume_source,
+            quick_result.issues,
+        )
+        return False
+
     def _generate_fallback_event(self, is_round: bool = True) -> GameEvent:
         """Generate a fallback event when AI generation fails."""
         from src.ai.models import EventOption
 
-        self.player_state
+        player_state = self.player_state
         language = self.language
+        character_settings = getattr(player_state, "character_settings", {}) or {}
+        player_dict = player_state.to_dict() if hasattr(player_state, "to_dict") else {}
+        protagonist_name = (
+            resolve_protagonist_name(player_dict, character_settings, None)
+            or getattr(player_state, "player_name", "")
+            or ("你" if language == "zh" else "You")
+        )
+        key_people = extract_required_key_people(character_settings)
+        anchor_person = key_people[0] if key_people else {}
+        occupation = self._extract_setting_text(
+            character_settings,
+            ["occupation", "job_title", "career", "profession", "identity"],
+        )
+        era = self._extract_setting_text(
+            character_settings,
+            ["era_description", "era_name", "world_context", "period", "year"],
+        )
+        role = anchor_person.get("role") or anchor_person.get("relationship") or ""
 
         if language == "zh":
-            description = "一个平静的日子，没有特别的事情发生。"
+            if anchor_person.get("name") or occupation or era:
+                era_clause = f"在{era}的背景下，" if era else ""
+                occupation_clause = f"作为{occupation}，" if occupation else ""
+                anchor_clause = ""
+                if anchor_person.get("name"):
+                    role_clause = f"这位{role}" if role else "这位预设关键人物"
+                    anchor_clause = (
+                        f"{anchor_person['name']}{role_clause}仍在{protagonist_name}的关系网里，"
+                        "提醒她先守住已确定的人物关系和现实处境。"
+                    )
+                description = (
+                    f"{era_clause}第{getattr(player_state, 'week', 0) + 1}周，"
+                    f"{protagonist_name}没有被新的陌生人物带离主线。"
+                    f"{occupation_clause}她把眼前的线索和上一轮选择重新整理，"
+                    f"{anchor_clause}"
+                    "这一次保底事件只推进一个小决策：是先稳住当前关系，"
+                    "还是把精力投入到下一步行动准备中。"
+                )
+            else:
+                description = "一个平静的日子，没有特别的事情发生。"
             options = [
                 EventOption(text="安静地度过", effects={}),
                 EventOption(text="主动寻找有趣的事", effects={"mood": 5}),
                 EventOption(text="专注于工作/学习", effects={"knowledge": 5}),
             ]
+            if anchor_person.get("name"):
+                options = [
+                    EventOption(
+                        text=f"联系{anchor_person['name']}确认下一步",
+                        effects={"knowledge": 3, "relationships": {anchor_person["name"]: 2}},
+                    ),
+                    EventOption(text="先独自整理当前线索", effects={"energy": -3, "knowledge": 2}),
+                    EventOption(text="放慢节奏恢复状态", effects={"mood": 3, "energy": 2}),
+                ]
         else:
-            description = "A quiet day with nothing special happening."
+            if anchor_person.get("name") or occupation or era:
+                era_clause = f"In the context of {era}, " if era else ""
+                occupation_clause = f"as {occupation}, " if occupation else ""
+                anchor_clause = ""
+                if anchor_person.get("name"):
+                    role_clause = f" as {role}" if role else ""
+                    anchor_clause = (
+                        f"{anchor_person['name']}{role_clause} remains part of "
+                        f"{protagonist_name}'s preset relationship network. "
+                    )
+                description = (
+                    f"{era_clause}week {getattr(player_state, 'week', 0) + 1} gives "
+                    f"{protagonist_name} a quieter fallback moment. {occupation_clause}"
+                    f"{anchor_clause}The scene stays inside the established character setup "
+                    "and asks only one small decision: preserve the current relationship thread "
+                    "or prepare the next concrete action."
+                )
+            else:
+                description = "A quiet day with nothing special happening."
             options = [
                 EventOption(text="Spend quietly", effects={}),
                 EventOption(text="Look for something interesting", effects={"mood": 5}),
                 EventOption(text="Focus on work/study", effects={"knowledge": 5}),
             ]
+            if anchor_person.get("name"):
+                options = [
+                    EventOption(
+                        text=f"Check in with {anchor_person['name']}",
+                        effects={"knowledge": 3, "relationships": {anchor_person["name"]: 2}},
+                    ),
+                    EventOption(text="Organize the current clues", effects={"energy": -3, "knowledge": 2}),
+                    EventOption(text="Slow down and recover", effects={"mood": 3, "energy": 2}),
+                ]
 
         return GameEvent(
             event_description=description,
             options=options,
         )
+
+    @staticmethod
+    def _extract_setting_text(character_settings: dict[str, Any], keys: list[str]) -> str:
+        """Extract a concise setting value from nested character settings."""
+        if not character_settings:
+            return ""
+
+        def walk(value: Any) -> str:
+            if isinstance(value, dict):
+                for key in keys:
+                    item = value.get(key)
+                    if item is not None and str(item).strip():
+                        return str(item).strip()
+                for item in value.values():
+                    found = walk(item)
+                    if found:
+                        return found
+            elif isinstance(value, list):
+                for item in value:
+                    found = walk(item)
+                    if found:
+                        return found
+            elif value is not None and str(value).strip():
+                return str(value).strip()
+            return ""
+
+        return walk(character_settings)
 
     def _generate_scheduled_event(
         self,
@@ -541,42 +708,80 @@ class RoundEventGenerator:
 
             sys_prompt = get_system_prompt("story_novelist", self.language)
 
-            # 调用AI生成
-            response = self.ai_generator.ai_client.call(
-                system_prompt=sys_prompt,
-                user_prompt=prompt,
-                temperature=0.85,
-                max_tokens=8192,
-                stream_callback=stream_callback,
-            )
-
-            # 解析响应
             from src.ai.utils import extract_json
+            from src.ai.quick_validator import quick_validate_story
 
-            data = extract_json(response)
+            available_people_names = [
+                p.get("name", "")
+                for p in _collect_available_people(character_settings)
+                if p.get("name")
+            ]
+            last_validation_error = ""
 
-            if data:
-                from src.ai.models import EventOption, GameEvent
-
-                event_desc = data.get("event_description", "")
-                options_data = data.get("options", [])
-
-                options = []
-                for opt in options_data:
-                    options.append(
-                        EventOption(
-                            text=opt.get("text", ""),
-                            effects=opt.get("effects", {}),
+            for attempt in range(2):
+                prompt_for_attempt = prompt
+                if attempt > 0 and last_validation_error:
+                    if self.language == "zh":
+                        prompt_for_attempt += (
+                            "\n\n【快速一致性修正 - 必须重写】\n"
+                            f"{last_validation_error}\n"
+                            "请重新生成这个预定事件，严格使用可用人物列表、预设关键人物和既有人设。"
                         )
-                    )
+                    else:
+                        prompt_for_attempt += (
+                            "\n\n[Quick Consistency Fix - Regenerate Required]\n"
+                            f"{last_validation_error}\n"
+                            "Regenerate this scheduled event using the available people, preset cast, and existing setting."
+                        )
+                    if status_callback:
+                        status_callback("retry")
 
-                if event_desc and options:
-                    event = GameEvent(
-                        event_description=event_desc,
-                        options=options,
-                    )
-                    logger.info(f"成功生成预定事件: {event_desc[:60]}...")
-                    return event
+                response = self.ai_generator.ai_client.call(
+                    system_prompt=sys_prompt,
+                    user_prompt=prompt_for_attempt,
+                    temperature=0.85 if attempt == 0 else 0.65,
+                    max_tokens=8192,
+                    stream_callback=stream_callback if attempt == 0 else None,
+                )
+
+                data = extract_json(response)
+
+                if data:
+                    from src.ai.models import EventOption, GameEvent
+
+                    event_desc = data.get("event_description", "")
+                    options_data = data.get("options", [])
+
+                    options = []
+                    for opt in options_data:
+                        options.append(
+                            EventOption(
+                                text=opt.get("text", ""),
+                                effects=opt.get("effects", {}),
+                            )
+                        )
+
+                    if event_desc and options:
+                        quick_result = quick_validate_story(
+                            story_text=event_desc,
+                            character_settings=character_settings,
+                            available_people=available_people_names,
+                            language=self.language,
+                        )
+                        if not quick_result.passed:
+                            last_validation_error = "; ".join(quick_result.issues)
+                            logger.warning(
+                                "Scheduled event quick validation failed: %s",
+                                quick_result.issues,
+                            )
+                            continue
+
+                        event = GameEvent(
+                            event_description=event_desc,
+                            options=options,
+                        )
+                        logger.info(f"成功生成预定事件: {event_desc[:60]}...")
+                        return event
 
             # 如果解析失败，生成一个简单的事件
             logger.warning("解析预定事件响应失败，使用简化版本")
@@ -611,8 +816,27 @@ class RoundEventGenerator:
         parties_str = "、".join(all_parties) if all_parties else ""
 
         player_name = resolve_protagonist_name(player_state, character_settings, None) or "主角"
-        week = player_state.get("week", 0)
-        current_round = player_state.get("current_round", 0)
+        protagonist_gender = _extract_gender_text(character_settings)
+        character_context, available_people = _build_full_character_context(
+            character_settings,
+            language,
+        )
+        available_people_str = _build_available_people_constraint(available_people, language)
+        name_instruction = _build_protagonist_identity_instruction(
+            player_name,
+            protagonist_gender,
+            language,
+        )
+        required_cast_context = build_required_cast_constraints(character_settings or {}, language)
+        modern_world_boundary = build_realistic_modern_world_boundary(
+            character_settings,
+            language,
+        )
+        era_constraints = _build_era_anachronism_constraints(character_settings, language)
+        week = int(player_state.get("week", 0) or 0)
+        current_round = int(player_state.get("current_round", 0) or 0)
+        rounds_per_week = player_state.get("rounds_per_week", 3) or 3
+        total_chapter = week * int(rounds_per_week) + current_round + 1
 
         round_names = (
             ["周一", "周中", "周末"] if language == "zh" else ["Monday", "Midweek", "Weekend"]
@@ -622,6 +846,17 @@ class RoundEventGenerator:
             if current_round < len(round_names)
             else f"Round {current_round}"
         )
+        zh_chapter_constraint = (
+            _build_zh_chapter_constraint(
+                total_chapter,
+                week,
+                current_round,
+                character_settings,
+            )
+            if language == "zh"
+            else ""
+        )
+        zh_timeline_title = f"第{week + 1}周·{round_name}" if language == "zh" else ""
 
         if language == "zh":
             return f"""【强制事件】角色之前做出的承诺必须在本轮兑现。
@@ -630,8 +865,14 @@ class RoundEventGenerator:
 涉及人物：{parties_str}
 事件提示：{combined_hint}
 
-当前时间：第{week}周，{round_name}
+当前时间：{zh_timeline_title}
 玩家姓名：{player_name}
+
+{zh_chapter_constraint}
+
+【角色设定硬约束】
+{character_context if character_context else "标准现代青年"}{name_instruction}{available_people_str}
+{required_cast_context}{modern_world_boundary}{era_constraints}
 
 【要求】
 1. 事件必须围绕兑现上述承诺展开
@@ -661,6 +902,10 @@ Event hints: {combined_hint}
 
 Current time: Week {week}, {round_name}
 Player name: {player_name}
+
+[Character Setting Hard Constraints]
+{character_context if character_context else "Standard modern young adult"}{name_instruction}{available_people_str}
+{required_cast_context}{modern_world_boundary}{era_constraints}
 
 [Requirements]
 1. The event must center on fulfilling the above commitment

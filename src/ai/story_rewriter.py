@@ -8,6 +8,7 @@ import logging
 from typing import Any, Callable, Dict, Optional
 
 from config.prompts import get_story_only_prompt
+from config.prompts.story_prompts import _build_zh_chapter_constraint
 from src.ai.client import AIClient
 from src.ai.system_prompts import get_system_prompt
 
@@ -19,6 +20,33 @@ class StoryRewriter:
 
     def __init__(self, client: AIClient):
         self.client = client
+
+    @staticmethod
+    def _build_rewrite_title_constraint(
+        player_state: Optional[Dict[str, Any]],
+        character_settings: Optional[Dict[str, Any]],
+        language: str,
+    ) -> str:
+        """Keep rewrite output on the same title/timeline contract as generation."""
+        if language != "zh":
+            return ""
+
+        state = player_state or {}
+        raw_week = int(state.get("week", 0) or 0)
+        current_round = int(state.get("current_round", 0) or 0)
+        rounds_per_week = int(state.get("rounds_per_week", 3) or 3)
+        total_chapter = raw_week * rounds_per_week + current_round + 1
+        chapter_constraint = _build_zh_chapter_constraint(
+            total_chapter,
+            raw_week,
+            current_round,
+            character_settings,
+        )
+        return f"""{chapter_constraint}
+【改写标题同步要求】
+- 如果原故事标题与上述标题约束冲突，必须在改写后替换为正确标题。
+- 不要保留旧的章回体标题、古风对仗标题或与当前时间线不符的标题。
+"""
 
     # -------------------- Public API --------------------
 
@@ -54,6 +82,11 @@ class StoryRewriter:
             Rewritten complete story
         """
         logger.info(f"Rewriting story segment: {len(segment_to_replace)} chars")
+        title_constraint = self._build_rewrite_title_constraint(
+            player_state,
+            character_settings,
+            language,
+        )
 
         if language == "zh":
             prompt = f"""你是一位才华横溢的小说家。请改写以下故事中的指定段落，同时保持故事的连贯性和逻辑一致性。
@@ -73,12 +106,15 @@ class StoryRewriter:
 【之前的故事脉络】
 {story_context if story_context else '无'}
 
+{title_constraint}
+
 请根据用户的要求改写指定段落，要求：
 1. 满足用户的改写要求
 2. 保持与前后文的逻辑一致性
 3. 保持与角色设定的一致性
 4. 保持故事的文学性和流畅性
-5. 只返回改写后的完整故事，不要任何解释或JSON格式
+5. 保持或修正整篇故事的开头标题，使其符合上方标题/时间线约束
+6. 只返回改写后的完整故事，不要任何解释或JSON格式
 """
         else:
             prompt = f"""You are a talented novelist. Please rewrite the specified segment of the following story while maintaining narrative coherence and logical consistency.
@@ -119,6 +155,16 @@ Please rewrite the specified segment according to the user's request:
                 presence_penalty=0.3,
             )
 
+            rewritten_story = self._quick_validate_and_retry_rewrite(
+                rewritten_story=rewritten_story,
+                character_settings=character_settings or {},
+                original_prompt=prompt,
+                sys_prompt=sys_prompt,
+                language=language,
+                stream_callback=stream_callback,
+                status_callback=status_callback,
+            )
+
             # ★ 一致性校验（如果有 world_model）- 复用 StoryGenerator 的方法
             if world_model and player_state:
                 from src.ai.story_generator import StoryGenerator
@@ -143,6 +189,87 @@ Please rewrite the specified segment according to the user's request:
             logger.error(f"Failed to rewrite story segment: {e}")
             # Return original story as fallback
             return full_story
+
+    def _quick_validate_and_retry_rewrite(
+        self,
+        rewritten_story: str,
+        character_settings: Dict[str, Any],
+        original_prompt: str,
+        sys_prompt: str,
+        language: str,
+        stream_callback: Optional[Callable[[str], None]] = None,
+        status_callback: Optional[Callable[[str], None]] = None,
+    ) -> str:
+        """Fast local validation for segment rewrite output."""
+        if not rewritten_story:
+            return rewritten_story
+
+        from config.prompts._helpers import _collect_available_people
+        from src.ai.quick_validator import quick_validate_story
+
+        available_people_names = [
+            person.get("name", "")
+            for person in _collect_available_people(character_settings)
+            if person.get("name")
+        ]
+        result = quick_validate_story(
+            story_text=rewritten_story,
+            character_settings=character_settings,
+            available_people=available_people_names,
+            language=language,
+        )
+        if result.passed:
+            return rewritten_story
+
+        logger.warning("[StoryRewrite] Quick validation failed: %s", result.issues)
+        if status_callback:
+            status_callback("retrying")
+            status_callback("retry")
+
+        retry_lines = "\n".join(f"- {issue}" for issue in result.issues)
+        if language == "zh":
+            retry_prompt = (
+                original_prompt
+                + "\n\n【改写一致性修正 - 必须重写】\n"
+                + "上一版改写故事存在以下问题：\n"
+                + retry_lines
+                + "\n请重新改写完整故事，严格遵守角色设定、现实主义世界边界和预设关键人物关系。"
+            )
+        else:
+            retry_prompt = (
+                original_prompt
+                + "\n\n[Rewrite Consistency Fix - Rewrite Required]\n"
+                + "The previous rewritten story had these issues:\n"
+                + retry_lines
+                + "\nRewrite the complete story while strictly following the character setup, world boundary, and preset key people relationships."
+            )
+
+        retry_story = self.client.call(
+            system_prompt=sys_prompt,
+            user_prompt=retry_prompt,
+            temperature=0.65,
+            max_tokens=4096,
+            stream_callback=stream_callback,
+            frequency_penalty=0.3,
+            presence_penalty=0.3,
+        )
+        retry_result = quick_validate_story(
+            story_text=retry_story,
+            character_settings=character_settings,
+            available_people=available_people_names,
+            language=language,
+        )
+        if retry_result.passed:
+            return retry_story
+
+        logger.warning(
+            "[StoryRewrite] Quick validation retry still failed: %s",
+            retry_result.issues,
+        )
+        raise ValueError(
+            "Story rewrite quick validation failed: "
+            + "; ".join(retry_result.issues)
+        )
 
     def regenerate_story(
         self,
@@ -232,6 +359,65 @@ Please generate a brand new story based on the above context, ensuring logical c
                 frequency_penalty=0.3,
                 presence_penalty=0.3,
             )
+
+            from config.prompts._helpers import _collect_available_people
+            from src.ai.quick_validator import quick_validate_story
+
+            available_people_names = [
+                person.get("name", "")
+                for person in _collect_available_people(character_settings)
+                if person.get("name")
+            ]
+            quick_result = quick_validate_story(
+                story_text=regenerated_story,
+                character_settings=character_settings,
+                available_people=available_people_names,
+                language=language,
+            )
+            if not quick_result.passed:
+                logger.warning(
+                    "[StoryRegenerate] Quick validation failed: %s",
+                    quick_result.issues,
+                )
+                if status_callback:
+                    status_callback("retry")
+                retry_lines = "\n".join(f"- {issue}" for issue in quick_result.issues)
+                if language == "zh":
+                    retry_prompt = (
+                        story_prompt
+                        + "\n\n【快速一致性修正 - 必须重写】\n"
+                        + "上一版重新生成故事存在以下问题：\n"
+                        + retry_lines
+                        + "\n请重新生成故事，严格遵守角色设定、现实主义世界边界和预设关键人物关系。"
+                    )
+                else:
+                    retry_prompt = (
+                        story_prompt
+                        + "\n\n[Quick Consistency Fix - Regenerate Required]\n"
+                        + "The previous regenerated story had these issues:\n"
+                        + retry_lines
+                        + "\nRegenerate the story while strictly following the character setup, realistic-world boundary, and preset key people relationships."
+                    )
+                regenerated_story = self.client.call(
+                    system_prompt=sys_prompt,
+                    user_prompt=retry_prompt,
+                    temperature=0.65,
+                    max_tokens=4096,
+                    stream_callback=stream_callback,
+                    frequency_penalty=0.3,
+                    presence_penalty=0.3,
+                )
+                retry_result = quick_validate_story(
+                    story_text=regenerated_story,
+                    character_settings=character_settings,
+                    available_people=available_people_names,
+                    language=language,
+                )
+                if not retry_result.passed:
+                    raise ValueError(
+                        "Story regenerate quick validation failed: "
+                        + "; ".join(retry_result.issues)
+                    )
 
             # ★ 一致性校验（如果有 world_model）- 复用 StoryGenerator 的方法
             if world_model and player_state:

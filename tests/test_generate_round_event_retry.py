@@ -110,3 +110,47 @@ def test_round_event_uses_fallback_when_quick_validation_retry_still_drifts():
     assert "长安" not in event.event_description
     assert "铜钱" not in event.event_description
     assert "2024年现代上海" in event.event_description
+
+
+def test_round_event_fallback_preserves_required_cast_after_validation_failures():
+    """AI 连续漂移后使用 fallback 时，也必须保留至少一个预设关键人物。"""
+    drifting_story = (
+        "夜之城的雨落在荒坂集团楼下，Viktor把神经接口推到林见微面前。"
+        "马老板和方蕾催她立刻处理陌生债务。"
+    )
+    mock_client = MagicMock()
+    mock_client.call.side_effect = [drifting_story, drifting_story]
+    gen = StoryGenerator(mock_client, quality_level=QualityLevel.EXPERT)
+    mock_option_gen = MagicMock()
+
+    event = gen.generate_round_event(
+        player_state={
+            "game_id": 1,
+            "current_week": 1,
+            "player_name": "林见微",
+            "relationships": {"陆昊然": 50, "陈晓雨": 80, "林一凡": 45},
+        },
+        language="zh",
+        round_number=0,
+        round_context="上一轮林见微准备找导师复盘需求优先级。",
+        character_settings={
+            "era": {
+                "era_description": "2024年现代上海互联网公司",
+                "world_context": "普通产品经理成长线",
+            },
+            "relationships": {
+                "key_people": [
+                    {"name": "陆昊然", "role": "导师", "relationship": "导师"},
+                    {"name": "陈晓雨", "role": "闺蜜", "relationship": "闺蜜"},
+                    {"name": "林一凡", "role": "同期", "relationship": "同期"},
+                ],
+            },
+        },
+        option_generator=mock_option_gen,
+    )
+
+    assert mock_client.call.call_count == 2
+    mock_option_gen.generate_options_only.assert_not_called()
+    assert any(name in event.event_description for name in ["陆昊然", "陈晓雨", "林一凡"])
+    assert "夜之城" not in event.event_description
+    assert "荒坂" not in event.event_description

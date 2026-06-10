@@ -69,6 +69,29 @@ describe('SavesPage', () => {
   });
 
   describe('Empty state', () => {
+    it('does not render stale saved games when the current user is not authenticated', async () => {
+      useUserStore.setState({ user: null, isAuthenticated: false });
+      useGameStore.setState({
+        savedGames: [
+          {
+            game_id: 99,
+            player_name: 'Other User Save',
+            age: 28,
+            week: 3,
+            updated_at: '2024-01-15T10:00:00Z',
+          },
+        ],
+      });
+
+      await act(async () => {
+        render(<SavesPage />);
+      });
+
+      expect(storeSpy.spies.fetchSavedGames).not.toHaveBeenCalled();
+      expect(screen.queryByText('Other User Save')).not.toBeInTheDocument();
+      expect(screen.getByText('暂无存档')).toBeInTheDocument();
+    });
+
     it('shows empty message when no saves', async () => {
       await act(async () => {
         render(<SavesPage />);

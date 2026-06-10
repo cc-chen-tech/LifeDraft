@@ -107,8 +107,8 @@ export function CollectionPanel({ gameId }: CollectionPanelProps) {
 
       const state = useCollectionStore.getState();
       const needsInitialRecognition =
-        state.items.length === 0 &&
-        state.landmarks.length === 0;
+        state.characters.length <= 1 ||
+        (state.items.length === 0 && state.landmarks.length === 0);
       if (needsInitialRecognition) {
         await autoCollectRecognizedEntities(gameId);
       }

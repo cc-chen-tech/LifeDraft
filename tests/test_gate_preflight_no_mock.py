@@ -500,6 +500,9 @@ def test_story_voice_test_controls_stay_out_of_real_play_page() -> None:
     play_page = (ROOT / "frontend" / "src" / "app" / "play" / "page.tsx").read_text(
         encoding="utf-8"
     )
+    global_music_player = (
+        ROOT / "frontend" / "src" / "components" / "game" / "GlobalMusicPlayer.tsx"
+    ).read_text(encoding="utf-8")
     regression_page = (
         ROOT / "frontend" / "src" / "app" / "e2e-regression" / "page.tsx"
     ).read_text(encoding="utf-8")
@@ -509,8 +512,11 @@ def test_story_voice_test_controls_stay_out_of_real_play_page() -> None:
     assert "enablePlaybackControls?: boolean" in component
     assert "enablePlaybackControls = false" in component
     assert "{showTestControls &&" in component
-    assert "enablePlaybackControls" in play_page
+    assert "setActiveReadingTarget" in play_page
+    assert "enablePlaybackControls" in global_music_player
+    assert "StoryVoiceControls" in global_music_player
     assert "showTestControls" not in play_page
+    assert "showTestControls" not in global_music_player
     assert "showTestControls" in regression_page
 
 
@@ -541,7 +547,9 @@ def test_story_voice_production_controls_expose_voice_selection() -> None:
     assert "clear_neutral" in component
     assert "selectedVoiceId" in store
     assert "settings.selected_voice_color" in component
-    assert 'voice_id: get().selectedVoiceId' in store
+    assert "options?.voiceId ?? get().selectedVoiceId" in store
+    assert "startReading(activeContext, { voiceId: nextVoiceId })" in component
+    assert "voice_id: selectedVoiceId" in store
     assert 'voice_id: "warm_female"' not in store
 
 
@@ -553,6 +561,13 @@ def test_story_voice_production_settings_do_not_duplicate_test_controls() -> Non
     assert "const showProductionSettings = !showTestControls;" in component
     assert "{showProductionSettings && (" in component
     assert component.index("{showProductionSettings && (") < component.index("{showTestControls &&")
+
+
+def test_preflight_runs_dialog_and_sheet_a11y_regressions() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+
+    assert "src/__tests__/components/DialogA11y.test.tsx" in script
+    assert "src/__tests__/components/SheetA11y.test.tsx" in script
 
 
 def test_global_music_player_autogenerates_music_from_completed_story_when_collapsed() -> None:

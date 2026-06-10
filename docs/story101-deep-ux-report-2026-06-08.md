@@ -159,13 +159,23 @@
 - quick validator 增加“关键人物稀释”规则：当预设关键人物使用比例过低，并出现大量名单外人物时，判定为 cast drift。
 - 普通 `generate_event` 路径也接入同一 quick validator，在生成选项前触发重试。
 - 普通事件的选项一致性校验现在也传入 `available_people`，避免选项继续引用名单外人物。
+- 2026-06-09 追加补洞：预定事件/承诺兑现路径会在 `RoundEventGenerator.generate_round_event()` 里提前返回 `_generate_scheduled_event()`，旧 prompt 没有继承普通故事 prompt 的主角身份、预设关键人物和现实主义世界边界约束，因此仍可能把承诺兑现写成名单外人物或设定漂移。本轮已让 scheduled event prompt 注入同一套 authority blocks。
+- 2026-06-09 继续补洞：scheduled event 解析到 JSON 后旧逻辑会直接返回，不经过 quick validator。现在 scheduled event 返回前也会校验预设人物使用情况；若第一次输出把导师/闺蜜/同期替换成“马老板/方蕾”等名单外人物，会带着失败原因重试一次，并只返回校验通过的故事。
 - 回归测试：
+  - `test_scheduled_event_prompt_inherits_story_authority_constraints`
+  - `test_scheduled_event_generation_retries_when_story_replaces_preset_cast`
   - `test_quick_validator_flags_key_people_dilution_with_invented_cast`
   - `test_event_generation_retries_when_story_dilutes_key_people_with_invented_cast`
 - 红灯复现：
+  - 旧 scheduled event prompt 只包含“玩家姓名”和承诺内容，不包含“主角名称是”、预设关键人物、不替换规则或“现实主义世界边界”。
+  - 旧 scheduled event 生成拿到第一版 JSON 后直接返回，`test_scheduled_event_generation_retries_when_story_replaces_preset_cast` 中 `client.calls == 1`，不会触发重试。
   - 旧 quick validator 返回 `passed=True`。
   - 旧普通 `generate_event` 只调用 1 次 AI，不会重试。
 - 本地验证：
+  - `pytest tests/test_preset_cast_authority_contract.py::test_scheduled_event_prompt_inherits_story_authority_constraints -q`
+  - `pytest tests/test_preset_cast_authority_contract.py::test_scheduled_event_generation_retries_when_story_replaces_preset_cast -q`
+  - `pytest tests/test_preset_cast_authority_contract.py -q`
+  - `openspec validate fix-preset-cast-authority-prompts --strict`
   - `pytest tests/test_gate_gameplay_behavior_no_mock.py::test_quick_validator_flags_key_people_dilution_with_invented_cast tests/test_gate_gameplay_behavior_no_mock.py::test_event_generation_retries_when_story_dilutes_key_people_with_invented_cast tests/test_gate_gameplay_behavior_no_mock.py::test_round_event_retries_when_story_ignores_all_key_people_and_fabricates_new_cast -q`
   - `pytest tests/test_gate_gameplay_behavior_no_mock.py -q`
   - `pytest tests/test_ai_extended.py::TestStoryGenerator -q`

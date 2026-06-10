@@ -19,6 +19,7 @@ import {
   AutoGenScreen,
   CompletionScreen,
 } from "@/components/create";
+import { PresetSaveInlineStatus } from "@/components/create/PresetSaveInlineStatus";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
@@ -70,6 +71,8 @@ export default function CreatePage() {
     presetName,
     setPresetName,
     isSavingPreset,
+    presetSaveStatus,
+    presetSaveMessage,
     generatedContent,
     toast,
     showToast,
@@ -137,6 +140,8 @@ export default function CreatePage() {
         showPresetSheet={showPresetSheet}
         presetName={presetName}
         isSavingPreset={isSavingPreset}
+        presetSaveStatus={presetSaveStatus}
+        presetSaveMessage={presetSaveMessage}
         isGeneratingImage={isGeneratingImage}
         imageFeedback={imageFeedback}
         onImageFeedbackChange={setImageFeedback}
@@ -372,6 +377,10 @@ export default function CreatePage() {
               placeholder="预设名称"
               className="bg-secondary border-border h-12"
               autoFocus
+            />
+            <PresetSaveInlineStatus
+              status={presetSaveStatus}
+              message={presetSaveMessage}
             />
             <Button
               className="w-full touch-target"

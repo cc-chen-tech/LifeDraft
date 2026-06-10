@@ -72,6 +72,7 @@ async function gotoRegressionPageForVoiceControls(page: Page): Promise<void> {
   await page.goto('/e2e-regression');
   await page.waitForLoadState('domcontentloaded');
   await expect(page.getByRole('button', { name: '朗读故事' })).toBeVisible();
+  await expect(page.getByTestId('voice-reading-audio-player')).toHaveCount(1);
 }
 
 test.describe('Story voice reading without login', () => {
@@ -247,9 +248,10 @@ test.describe('Story voice reading', () => {
     await expect(page.getByTestId('music-duck-state')).toHaveText('restored');
     await expect(page.getByRole('button', { name: '重试朗读' })).toBeVisible();
 
+    const requestsBeforeRetry = readingRequestCount;
     await page.getByRole('button', { name: '重试朗读' }).click();
     await expectBrowserSpeechAttempt(page);
-    await expect.poll(() => readingRequestCount).toBe(2);
+    await expect.poll(() => readingRequestCount).toBe(requestsBeforeRetry);
 
     await page.getByRole('button', { name: '收集' }).click();
     await expect(page.getByRole('heading', { name: '苏小二' })).toBeVisible();

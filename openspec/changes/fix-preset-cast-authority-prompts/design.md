@@ -5,10 +5,12 @@ Character settings can include structured key people with role and relationship 
 ## Design
 
 - Extract required preset cast entries from `character_settings.relationships.key_people`.
+- Treat legacy `character_settings.relationships` list payloads as the same canonical key-people list instead of dropping or crashing on them.
 - Preserve each entry's canonical `name`, `role`, `relationship`, and description fields.
 - Build a concise prompt block marked as mandatory:
   - all preset key people are canonical relationship facts;
   - names must be used exactly;
+  - at least one canonical preset key person must appear in each generated round;
   - roles/relationships must not be transferred to invented substitutes;
   - unspecified bystanders may only use generic labels.
 - Add the block to:
@@ -20,6 +22,6 @@ Character settings can include structured key people with role and relationship 
 ## Non-goals
 
 - Rewriting the full story quality validator.
-- Guaranteeing that every key person appears in every round.
+- Guaranteeing that every key person appears in every round; the required minimum is one canonical preset key person per generated round.
 - Changing frontend character creation UI.
 - Merging the broad older combined P0/music/wealth PR.

@@ -12,8 +12,17 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { MusicPlayer } from "./MusicPlayer";
+import { StoryVoiceControls } from "./StoryVoiceControls";
 import { useMusicStore } from "@/stores/useMusicStore";
-import { Play, Pause, ChevronUp, ChevronDown } from "lucide-react";
+import { useStoryVoiceStore } from "@/stores/useStoryVoiceStore";
+import {
+  ChevronUp,
+  ChevronDown,
+  Music,
+  Pause,
+  Play,
+  Volume2,
+} from "lucide-react";
 
 export function GlobalMusicPlayer() {
   const hasInitRef = useRef(false);
@@ -27,10 +36,20 @@ export function GlobalMusicPlayer() {
   const activeStoryText = useMusicStore((state) => state.activeStoryText);
   const activeGameId = useMusicStore((state) => state.activeGameId);
   const isPlaying = useMusicStore((state) => state.isPlaying);
+  const audioElement = useMusicStore((state) => state.audioElement);
   const togglePlay = useMusicStore((state) => state.togglePlay);
   const currentTime = useMusicStore((state) => state.currentTime);
   const duration = useMusicStore((state) => state.duration);
-  const audioElement = useMusicStore((state) => state.audioElement);
+  const activeReadingContext = useStoryVoiceStore(
+    (state) => state.activeReadingContext,
+  );
+  const activeAutoReadText = useStoryVoiceStore(
+    (state) => state.activeAutoReadText,
+  );
+  const activeAutoReadReady = useStoryVoiceStore(
+    (state) => state.activeAutoReadReady,
+  );
+  const readingState = useStoryVoiceStore((state) => state.readingState);
 
   // On mount, try to restore the active game playlist from localStorage
   useEffect(() => {
@@ -51,8 +70,11 @@ export function GlobalMusicPlayer() {
 
   // Determine storyText: use activeStoryText from play page, or "persisted" if music already loaded
   const storyText =
-    activeStoryText || (recommendation || currentSong || queue.length > 0 ? "persisted" : "");
-  const shouldAutoFetchRecommendation = Boolean(activeStoryText && effectiveGameId);
+    activeStoryText ||
+    (recommendation || currentSong || queue.length > 0 ? "persisted" : "");
+  const shouldAutoFetchRecommendation = Boolean(
+    activeStoryText && effectiveGameId,
+  );
 
   useEffect(() => {
     if (!isExpanded) return;
@@ -67,27 +89,71 @@ export function GlobalMusicPlayer() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isExpanded]);
 
-  // Only render if we have storyText (either from play page or persisted state)
-  if (!storyText) return null;
+  // Only render when at least one sound surface has context.
+  if (!storyText && !activeReadingContext) return null;
 
   const songName = currentSong?.name || recommendation?.songs?.[0]?.name || "";
   const artistName = currentSong?.artists?.join(", ") || "";
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const hasMusicCandidate = Boolean(
+    currentSong || recommendation?.songs?.length || queue.length,
+  );
+  const hasPlayableMusic = Boolean(audioElement);
+  const showCollapsedMusicAction = hasPlayableMusic || hasMusicCandidate;
+  const soundTitle = songName || "声音";
+  const soundStatus =
+    artistName ||
+    (readingState === "loading"
+      ? "正在准备朗读"
+      : readingState === "playing"
+        ? "正在朗读故事"
+        : readingState === "paused"
+          ? "朗读已暂停"
+          : "音乐与朗读");
 
-  // Handle play/pause from the mini bar.
-  // If audioElement exists, use store.togglePlay (direct control).
-  // If no audioElement but we have a recommendation, the MusicPlayer handles auto-play internally.
-  const handleMiniPlayPause = () => {
-    if (audioElement) {
-      togglePlay();
-    } else {
-      // No audio element — expand the player so user can pick a song
-      setIsExpanded(true);
-    }
-  };
+  const musicStatusLabel = isPlaying
+    ? "音乐播放中"
+    : currentSong || recommendation || queue.length > 0
+      ? "音乐待播放"
+      : "音乐待推荐";
+  const collapsedMusicStatus = isPlaying
+    ? "播放中"
+    : hasMusicCandidate
+      ? "待播放"
+      : "待推荐";
+  const readingStatusLabel =
+    readingState === "loading"
+      ? "朗读准备中"
+      : readingState === "playing"
+        ? "朗读中"
+        : readingState === "paused"
+          ? "朗读暂停"
+          : readingState === "ready"
+            ? "朗读待播放"
+            : readingState === "failed"
+              ? "朗读失败"
+              : activeReadingContext
+                ? "朗读待开始"
+                : "朗读待生成";
+  const collapsedReadingStatus =
+    readingState === "loading"
+      ? "准备中"
+      : readingState === "playing"
+        ? "朗读中"
+        : readingState === "paused"
+          ? "已暂停"
+          : readingState === "ready"
+            ? "待播放"
+            : readingState === "failed"
+              ? "失败"
+              : activeReadingContext
+                ? "待开始"
+                : "待生成";
 
   return (
     <div
+      role="region"
+      aria-label="声音"
       data-testid="global-music-player"
       className="fixed z-50 top-16 left-0 right-0 safe-area-pt mt-2 md:left-auto md:right-4 md:w-80"
     >
@@ -97,79 +163,194 @@ export function GlobalMusicPlayer() {
       <div
         className={
           isExpanded
-            ? "bg-card border rounded-b-lg md:rounded-lg shadow-lg max-h-[60vh] overflow-y-auto"
+            ? "bg-card border rounded-b-lg md:rounded-lg shadow-lg max-h-[68vh] overflow-y-auto"
             : "opacity-0 h-0 overflow-hidden pointer-events-none absolute top-full left-0 right-0"
         }
         aria-hidden={!isExpanded}
+        role={isExpanded ? "group" : undefined}
+        aria-label={isExpanded ? "音乐和朗读" : undefined}
       >
-        <MusicPlayer
-          storyText={storyText}
-          gameId={effectiveGameId}
-          className="rounded-none border-0 shadow-none"
-          autoFetchRecommendation={shouldAutoFetchRecommendation}
-        />
+        <div data-testid="unified-sound-panel" className="p-3">
+          <div
+            data-testid="sound-mixer-overview"
+            className="flex flex-wrap items-center gap-2 pb-3 text-xs text-muted-foreground"
+          >
+            <div className="mr-auto flex min-w-0 items-center gap-2 text-foreground">
+              <Volume2 className="h-4 w-4 shrink-0 text-primary" />
+              <span className="text-sm font-medium">声音</span>
+            </div>
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary">
+              {musicStatusLabel}
+            </span>
+            <span className="rounded-full bg-secondary/60 px-2 py-0.5">
+              {readingStatusLabel}
+            </span>
+            <button
+              type="button"
+              aria-label="收起声音"
+              title="收起声音"
+              onClick={() => setIsExpanded(false)}
+              className="ml-auto flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <ChevronUp className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div data-testid="sound-channel-list" className="space-y-3">
+            <div
+              role="group"
+              aria-label="背景音乐"
+              data-testid="sound-music-section"
+              className="min-w-0 border-t border-border/70 pt-3"
+            >
+              <div className="mb-2 flex min-w-0 items-center gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Music className="h-4 w-4 shrink-0 text-primary" />
+                  <span className="truncate text-sm font-medium text-foreground">
+                    背景音乐
+                  </span>
+                </div>
+              </div>
+              {storyText ? (
+                <MusicPlayer
+                  storyText={storyText}
+                  gameId={effectiveGameId}
+                  className="rounded-none border-0 bg-transparent p-0 shadow-none"
+                  autoFetchRecommendation={shouldAutoFetchRecommendation}
+                  embedded
+                  hideTitle
+                  compactControls
+                />
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  故事生成完成后会自动推荐音乐。
+                </div>
+              )}
+            </div>
+
+            {activeReadingContext && (
+              <div
+                role="group"
+                aria-label="故事朗读"
+                data-testid="sound-reading-section"
+                className="min-w-0 border-t border-border/70 pt-3"
+              >
+                <div className="mb-2 flex min-w-0 items-center gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Volume2 className="h-4 w-4 shrink-0 text-primary" />
+                    <span className="truncate text-sm font-medium text-foreground">
+                      故事朗读
+                    </span>
+                  </div>
+                </div>
+                <div data-testid="sound-reading-channel" className="space-y-3">
+                  <StoryVoiceControls
+                    currentContext={activeReadingContext}
+                    autoReadText={activeAutoReadText}
+                    autoReadReady={activeAutoReadReady}
+                    compact
+                    embedded
+                    enablePlaybackControls
+                    hideTitle
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* Mini player bar — always visible */}
-      <div
-        data-testid="global-music-mini-bar"
-        className="relative bg-card/95 backdrop-blur-sm border-b md:border md:rounded-lg flex items-center gap-2 px-3 py-2 cursor-pointer"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
-        {/* Progress bar - thin line at top */}
-        <div className="absolute top-0 left-0 right-0 h-0.5 bg-muted">
-          <div
-            className="h-full bg-primary transition-all"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-
-        {/* Play / Pause */}
-        <button
-          aria-label={audioElement ? (isPlaying ? "暂停音乐" : "播放音乐") : "打开音乐选择"}
-          title={audioElement ? (isPlaying ? "暂停音乐" : "播放音乐") : "打开音乐选择"}
-          onClick={(e) => {
-            e.stopPropagation();
-            handleMiniPlayPause();
-          }}
-          className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-primary text-primary-foreground"
+      {!isExpanded && (
+        <div
+          data-testid="global-music-mini-bar"
+          className="relative bg-card/95 backdrop-blur-sm border-b md:border md:rounded-lg flex items-center gap-2 px-3 py-2 cursor-pointer"
+          onClick={() => setIsExpanded(true)}
         >
-          {isPlaying ? (
-            <Pause className="w-4 h-4" />
-          ) : (
-            <Play className="w-4 h-4 ml-0.5" />
-          )}
-        </button>
-
-        {/* Song info */}
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium truncate">
-            {songName || "等待音乐..."}
+          {/* Progress bar - thin line at top */}
+          <div className="absolute top-0 left-0 right-0 h-0.5 bg-muted">
+            <div
+              className="h-full bg-primary transition-all"
+              style={{ width: `${progress}%` }}
+            />
           </div>
-          {artistName && (
-            <div className="text-xs text-muted-foreground truncate">
-              {artistName}
+
+          {showCollapsedMusicAction ? (
+            <button
+              type="button"
+              aria-label={
+                hasPlayableMusic
+                  ? isPlaying
+                    ? "暂停音乐"
+                    : "播放音乐"
+                  : "打开音乐"
+              }
+              title={
+                hasPlayableMusic
+                  ? isPlaying
+                    ? "暂停音乐"
+                    : "播放音乐"
+                  : "打开音乐"
+              }
+              onClick={(event) => {
+                event.stopPropagation();
+                if (hasPlayableMusic) {
+                  togglePlay();
+                  return;
+                }
+                setIsExpanded(true);
+              }}
+              className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              {isPlaying ? (
+                <Pause className="w-4 h-4" />
+              ) : (
+                <Play className="w-4 h-4 translate-x-px" />
+              )}
+            </button>
+          ) : (
+            <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-primary text-primary-foreground">
+              <Volume2 className="w-4 h-4" />
             </div>
           )}
-        </div>
 
-        {/* Expand / Collapse */}
-        <button
-          aria-label={isExpanded ? "收起音乐播放器" : "展开音乐播放器"}
-          title={isExpanded ? "收起音乐播放器" : "展开音乐播放器"}
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsExpanded(!isExpanded);
-          }}
-          className="flex-shrink-0 w-6 h-6 flex items-center justify-center text-muted-foreground"
-        >
-          {isExpanded ? (
-            <ChevronUp className="w-4 h-4" />
-          ) : (
+          {/* Song info */}
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium truncate">{soundTitle}</div>
+            <div className="text-xs text-muted-foreground truncate">
+              {soundStatus}
+            </div>
+            <div
+              data-testid="collapsed-sound-summary"
+              className="mt-1 grid grid-cols-2 gap-1 text-[11px] leading-4"
+            >
+              <span className="flex min-w-0 items-center justify-between gap-1 rounded bg-muted/60 px-1.5 py-0.5">
+                <span className="truncate text-muted-foreground">背景音乐</span>
+                <span className="shrink-0 text-foreground">
+                  {collapsedMusicStatus}
+                </span>
+              </span>
+              <span className="flex min-w-0 items-center justify-between gap-1 rounded bg-muted/60 px-1.5 py-0.5">
+                <span className="truncate text-muted-foreground">故事朗读</span>
+                <span className="shrink-0 text-foreground">
+                  {collapsedReadingStatus}
+                </span>
+              </span>
+            </div>
+          </div>
+
+          <button
+            aria-label="展开声音"
+            title="展开声音"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsExpanded(true);
+            }}
+            className="flex-shrink-0 w-6 h-6 flex items-center justify-center text-muted-foreground"
+          >
             <ChevronDown className="w-4 h-4" />
-          )}
-        </button>
-      </div>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

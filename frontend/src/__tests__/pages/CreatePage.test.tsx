@@ -866,6 +866,88 @@ describe('CreatePage', () => {
         expect(fetchCalled('/api/presets')).toBe(true);
       });
     });
+
+    it('shows inline saving feedback inside the preset sheet while the request is pending', async () => {
+      let resolveSave: (response: Response) => void = () => undefined;
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url === '/api/presets') {
+          return new Promise<Response>((resolve) => {
+            resolveSave = resolve;
+          });
+        }
+        return Promise.resolve(jsonResponse({}));
+      });
+
+      useGameStore.setState({
+        creationStep: 4,
+        characterSettings: {
+          era: { era_name: '现代' },
+          age: { starting_age: 22 },
+          gender: 'male',
+          world: { world_description: 'test' },
+          family: { family_background: 'test' },
+          relationships: { relationships_description: 'test' },
+          traits: { traits: 'test' },
+          wealth: { wealth_level: 'test' },
+        },
+        playerName: 'TestPlayer',
+        gameId: 1,
+      });
+
+      render(<CreatePage />);
+
+      fireEvent.click(screen.getByText('保存为预设'));
+      fireEvent.change(screen.getByPlaceholderText('预设名称'), {
+        target: { value: 'Test Preset' },
+      });
+      fireEvent.click(screen.getByText('确认保存'));
+
+      expect(await screen.findByRole('status')).toHaveTextContent('正在保存角色预设...');
+      const sheetSaveButton = screen.getAllByRole('button', { name: /保存/ }).at(-1);
+      expect(sheetSaveButton).toBeDisabled();
+
+      await act(async () => {
+        resolveSave(jsonResponse({ preset_id: 1 }));
+      });
+    });
+
+    it('shows inline retry feedback inside the preset sheet when save fails', async () => {
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url === '/api/presets') {
+          return Promise.resolve(errorResponse(400, 'Save failed'));
+        }
+        return Promise.resolve(jsonResponse({}));
+      });
+      jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      useGameStore.setState({
+        creationStep: 4,
+        characterSettings: {
+          era: { era_name: '现代' },
+          age: { starting_age: 22 },
+          gender: 'male',
+          world: { world_description: 'test' },
+          family: { family_background: 'test' },
+          relationships: { relationships_description: 'test' },
+          traits: { traits: 'test' },
+          wealth: { wealth_level: 'test' },
+        },
+        playerName: 'TestPlayer',
+        gameId: 1,
+      });
+
+      render(<CreatePage />);
+
+      fireEvent.click(screen.getByText('保存为预设'));
+      fireEvent.change(screen.getByPlaceholderText('预设名称'), {
+        target: { value: 'Test Preset' },
+      });
+      fireEvent.click(screen.getByText('确认保存'));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('保存失败，预设未保存，请重试。');
+      const sheetSaveButton = screen.getAllByRole('button', { name: /保存/ }).at(-1);
+      expect(sheetSaveButton).toBeEnabled();
+    });
   });
 
   describe('handleStartGame scenarios', () => {

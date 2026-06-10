@@ -67,10 +67,10 @@ describe("GlobalMusicPlayer keyboard dismissal", () => {
     render(<GlobalMusicPlayer />);
 
     fireEvent.click(screen.getByTestId("global-music-mini-bar"));
-    expect(screen.getByRole("button", { name: /雾港暗流/ })).toBeVisible();
+    expect(screen.getByRole("button", { name: "下一首" })).toBeVisible();
 
     fireEvent.keyDown(document, { key: "Escape", code: "Escape" });
 
-    expect(screen.queryByRole("button", { name: /雾港暗流/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "下一首" })).not.toBeInTheDocument();
   });
 });

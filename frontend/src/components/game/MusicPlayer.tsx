@@ -33,6 +33,9 @@ interface MusicPlayerProps {
   gameId?: number;
   className?: string;
   autoFetchRecommendation?: boolean;
+  embedded?: boolean;
+  hideTitle?: boolean;
+  compactControls?: boolean;
 }
 
 function hasMusicBrief(brief: Record<string, unknown> | undefined): brief is Record<string, unknown> {
@@ -44,6 +47,9 @@ export function MusicPlayer({
   gameId,
   className = "",
   autoFetchRecommendation = true,
+  embedded = false,
+  hideTitle = false,
+  compactControls = false,
 }: MusicPlayerProps) {
   const {
     recommendation,
@@ -56,6 +62,7 @@ export function MusicPlayer({
     duration,
     audioElement,
     isGeneratingAiMusic,
+    aiMusicGenerationStatus,
     setRecommendation,
     setIsLoadingRecommendation,
     setRecommendationError,
@@ -66,6 +73,7 @@ export function MusicPlayer({
     setDuration,
     setAudioElement,
     mergePlaylist,
+    advanceQueue,
     generateAiMusicForStory,
     play,
     pause,
@@ -85,6 +93,19 @@ export function MusicPlayer({
   const [isSwitchingSong, setIsSwitchingSong] = useState(false); // 切换歌曲时的加载状态
   const [preloadProgress, setPreloadProgress] = useState(0); // 预加载进度
   const songUrlMapRef = useRef<Map<number | string, string>>(new Map()); // 预加载的歌曲 URL 映射
+  const recommendationHasMusicBrief = recommendation ? hasMusicBrief(recommendation.music_brief) : false;
+  const isAiMusicDelayed = recommendationHasMusicBrief && aiMusicGenerationStatus === "delayed";
+  const isAiMusicFailed = recommendationHasMusicBrief && aiMusicGenerationStatus === "failed";
+
+  const getFallbackNextSong = useCallback((song: Song) => {
+    const songs = useMusicStore.getState().recommendation?.songs || recommendation?.songs || [];
+    if (songs.length === 0) {
+      return null;
+    }
+    const currentIndex = songs.findIndex((candidate) => candidate.id === song.id);
+    const safeIndex = currentIndex >= 0 ? currentIndex : 0;
+    return songs[(safeIndex + 1) % songs.length] || null;
+  }, [recommendation]);
 
   // 获取音乐推荐
   const fetchRecommendation = useCallback(async (refresh: boolean = false) => {
@@ -263,15 +284,20 @@ export function MusicPlayer({
         setIsPlaying(false);
         setCurrentTime(0);
         activeAudioRef.current = null; // 清理活动音频引用
-        // 自动播放下一首 - 使用传入的 song 参数而不是 currentSong
-        if (recommendation?.songs.length) {
-          const currentIndex = recommendation.songs.findIndex(
-            (s) => s.id === song.id
-          );
-          const nextIndex = (currentIndex + 1) % recommendation.songs.length;
-          console.log(`[MusicPlayer] Song ended, playing next: ${recommendation.songs[nextIndex].name}`);
-          loadAndPlaySong(recommendation.songs[nextIndex]);
-        }
+        void (async () => {
+          await advanceQueue();
+          const nextSong = useMusicStore.getState().currentSong;
+          if (nextSong && nextSong.id !== song.id) {
+            console.log(`[MusicPlayer] Song ended, advancing playlist: ${nextSong.name}`);
+            await loadAndPlaySong(nextSong);
+            return;
+          }
+          const fallbackSong = getFallbackNextSong(song);
+          if (fallbackSong) {
+            console.log(`[MusicPlayer] Song ended, playing fallback next: ${fallbackSong.name}`);
+            await loadAndPlaySong(fallbackSong);
+          }
+        })();
       };
       audio.onerror = (e) => {
         const errorCode = audio.error?.code;
@@ -351,7 +377,7 @@ export function MusicPlayer({
         setIsSwitchingSong(false); // 隐藏切换加载状态
       }
     }
-  }, [audioElement, volume, recommendation, currentSong, setAudioElement, setCurrentSong, setIsPlaying, setCurrentTime, setDuration]);
+  }, [audioElement, volume, recommendation, currentSong, setAudioElement, setCurrentSong, setIsPlaying, setCurrentTime, setDuration, advanceQueue, getFallbackNextSong]);
 
   // 预加载下一首歌曲
   const preloadNextSong = useCallback(async () => {
@@ -425,11 +451,18 @@ export function MusicPlayer({
           audioElement.play().catch(() => {
             // 如果恢复失败，跳到下一首
             console.log('[MusicPlayer] Resume failed, switching to next song');
-            if (recommendation?.songs.length) {
-              const currentIndex = recommendation.songs.findIndex((s) => s.id === currentSong.id);
-              const nextIndex = (currentIndex + 1) % recommendation.songs.length;
-              loadAndPlaySong(recommendation.songs[nextIndex]);
-            }
+            void (async () => {
+              await advanceQueue();
+              const nextSong = useMusicStore.getState().currentSong;
+              if (nextSong && nextSong.id !== currentSong.id) {
+                await loadAndPlaySong(nextSong);
+                return;
+              }
+              const fallbackSong = getFallbackNextSong(currentSong);
+              if (fallbackSong) {
+                await loadAndPlaySong(fallbackSong);
+              }
+            })();
           });
           stuckCount = 0;
         }
@@ -441,7 +474,7 @@ export function MusicPlayer({
     }, 3000); // 每3秒检查一次
 
     return () => clearInterval(checkInterval);
-  }, [audioElement, isPlaying, currentSong, recommendation, loadAndPlaySong]);
+  }, [audioElement, isPlaying, currentSong, recommendation, loadAndPlaySong, advanceQueue, getFallbackNextSong]);
 
   // 播放控制
   const togglePlay = () => {
@@ -457,13 +490,20 @@ export function MusicPlayer({
   };
 
   const playNext = () => {
-    if (!recommendation?.songs.length || !currentSong) return;
+    if (!currentSong) return;
 
-    const currentIndex = recommendation.songs.findIndex(
-      (s) => s.id === currentSong.id
-    );
-    const nextIndex = (currentIndex + 1) % recommendation.songs.length;
-    loadAndPlaySong(recommendation.songs[nextIndex]);
+    void (async () => {
+      await advanceQueue();
+      const nextSong = useMusicStore.getState().currentSong;
+      if (nextSong && nextSong.id !== currentSong.id) {
+        await loadAndPlaySong(nextSong);
+        return;
+      }
+      const fallbackSong = getFallbackNextSong(currentSong);
+      if (fallbackSong) {
+        await loadAndPlaySong(fallbackSong);
+      }
+    })();
   };
 
   const playPrev = () => {
@@ -494,6 +534,10 @@ export function MusicPlayer({
 
   const displaySong = currentSong || recommendation?.songs[0] || null;
   const sourceLabel = getMusicSourceLabel(displaySong?.source);
+  const hasRecommendationSongs = Boolean(recommendation?.songs.length);
+  const hasPlayableMusic = Boolean(displaySong || hasRecommendationSongs || audioElement);
+  const showBlockingRecommendationError = Boolean(recommendationError && !hasPlayableMusic);
+  const showNonBlockingRecommendationWarning = Boolean(recommendationError && hasPlayableMusic);
 
   // 格式化时间
   const formatTime = (seconds: number) => {
@@ -542,13 +586,19 @@ export function MusicPlayer({
 
   return (
     <div
-      className={`bg-card border rounded-lg p-4 shadow-sm ${className}`}
+      data-testid={embedded ? "sound-music-channel" : undefined}
+      className={`${embedded ? "space-y-3" : "bg-card border rounded-lg p-4 shadow-sm"} ${className}`}
     >
       {/* 头部：标题和刷新按钮 */}
+      {!compactControls && (
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 flex-wrap">
-          <Music className="w-4 h-4 text-primary" />
-          <span className="text-sm font-medium">场景音乐</span>
+          {!hideTitle && (
+            <>
+              <Music className="w-4 h-4 text-primary" />
+              <h3 className="text-sm font-medium">{embedded ? "音乐" : "场景音乐"}</h3>
+            </>
+          )}
           {recommendation && (
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-xs px-1.5 py-0.5 bg-primary/10 text-primary rounded">
@@ -582,6 +632,7 @@ export function MusicPlayer({
           )}
         </Button>
       </div>
+      )}
 
       {/* 加载状态 */}
       {isLoadingRecommendation && !recommendation && (
@@ -600,9 +651,15 @@ export function MusicPlayer({
       )}
 
       {/* 错误状态 */}
-      {recommendationError && (
+      {showBlockingRecommendationError && (
         <div className="text-sm text-destructive text-center py-2">
           音乐服务暂不可用
+        </div>
+      )}
+
+      {showNonBlockingRecommendationWarning && (
+        <div className="text-xs text-muted-foreground text-center py-1">
+          新推荐暂不可用，继续播放当前音乐
         </div>
       )}
 
@@ -626,15 +683,19 @@ export function MusicPlayer({
         </div>
       )}
 
-      {recommendation && recommendation.songs.length > 0 && isGeneratingAiMusic && (
+      {recommendation && recommendation.songs.length > 0 && (isGeneratingAiMusic || isAiMusicDelayed) && (
         <div className="flex items-center justify-center rounded bg-primary/5 px-2 py-2 text-primary">
-          <Loader2 className="w-3 h-3 animate-spin mr-2" />
-          <span className="text-xs">正在生成原创场景音乐，完成后加入下一首</span>
+          {isGeneratingAiMusic && <Loader2 className="w-3 h-3 animate-spin mr-2" />}
+          <span className="text-xs">
+            {isGeneratingAiMusic
+              ? "正在生成原创场景音乐，完成后加入下一首"
+              : "原创场景音乐已排队，完成后加入下一首"}
+          </span>
         </div>
       )}
 
       {/* 播放器 */}
-      {recommendation && recommendation.songs.length > 0 && (
+      {displaySong && (
         <div className="space-y-3">
           {/* 当前歌曲信息 */}
           <div className="text-sm">
@@ -680,7 +741,7 @@ export function MusicPlayer({
                 size="icon"
                 className="h-8 w-8"
                 onClick={playPrev}
-                disabled={!recommendation.songs.length}
+                disabled={!hasRecommendationSongs}
                 title="上一首"
                 aria-label="上一首"
               >
@@ -691,7 +752,7 @@ export function MusicPlayer({
                 size="icon"
                 className="h-10 w-10"
                 onClick={togglePlay}
-                disabled={!recommendation.songs.length}
+                disabled={!audioElement && !hasRecommendationSongs}
                 title={isPlaying ? "暂停" : "播放"}
                 aria-label={isPlaying ? "暂停" : "播放"}
               >
@@ -706,7 +767,7 @@ export function MusicPlayer({
                 size="icon"
                 className="h-8 w-8"
                 onClick={playNext}
-                disabled={!recommendation.songs.length}
+                disabled={!hasRecommendationSongs}
                 title="下一首"
                 aria-label="下一首"
               >
@@ -740,7 +801,7 @@ export function MusicPlayer({
           </div>
 
           {/* 歌曲列表 */}
-          {recommendation.songs.length > 1 && (
+          {!compactControls && recommendation && recommendation.songs.length > 1 && (
             <div className="mt-3 pt-3 border-t">
               <div className="text-xs text-muted-foreground mb-2 flex items-center justify-between">
                 <span>推荐歌曲 ({recommendation.songs.length}首)</span>
@@ -779,9 +840,15 @@ export function MusicPlayer({
         </div>
       )}
 
-      {recommendation && recommendation.songs.length === 0 && !isGeneratingAiMusic && (
+      {recommendation && recommendation.songs.length === 0 && !isGeneratingAiMusic && isAiMusicDelayed && (
         <div className="text-sm text-muted-foreground text-center py-4">
-          音乐服务暂不可用，故事可继续进行
+          原创场景音乐已排队，完成后会自动加入播放列表
+        </div>
+      )}
+
+      {recommendation && recommendation.songs.length === 0 && !isGeneratingAiMusic && !isAiMusicDelayed && (
+        <div className="text-sm text-muted-foreground text-center py-4">
+          {isAiMusicFailed ? "原创音乐生成暂不可用，故事可继续进行" : "音乐服务暂不可用，故事可继续进行"}
         </div>
       )}
     </div>

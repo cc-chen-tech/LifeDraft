@@ -52,6 +52,12 @@ The system SHALL keep background music playback smooth when new recommendations 
 - **WHEN** the queue already has at least one upcoming song
 - **THEN** generated tracks SHOULD be inserted after the first upcoming song unless user settings or explicit actions request stronger AI mixing
 
+#### Scenario: Empty recommendations after malformed restore
+- **GIVEN** playlist restore or a degraded API response left the frontend store with no valid current song
+- **WHEN** a recommendation refresh returns an empty song list
+- **THEN** playlist merge MUST normalize the missing current song to `null`
+- **AND** the future queue MUST remain an empty array instead of throwing during playback setup
+
 ### Requirement: AI-generated music is a premium queue supplement
 The system SHALL treat AI-generated music as an additional member benefit, not as the primary recommendation source.
 
@@ -62,6 +68,12 @@ The system SHALL treat AI-generated music as an additional member benefit, not a
 #### Scenario: Generated track is available
 - **WHEN** a background-generated track is ready and still relevant to the current or recent music brief
 - **THEN** the system MUST add it to the future queue with `source` metadata identifying it as AI-generated
+
+#### Scenario: Generated track is accepted but not ready yet
+- **WHEN** the frontend successfully enqueues AI music generation
+- **AND** playlist polling does not see the generated track before the local polling window ends
+- **THEN** the player MUST continue to show that original scene music is queued
+- **AND** it MUST NOT mislabel the state as general music-service unavailability
 
 #### Scenario: Generated track is no longer relevant
 - **WHEN** a generated track completes after the story context has materially changed

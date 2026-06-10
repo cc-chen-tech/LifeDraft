@@ -15,6 +15,11 @@ from urllib.parse import urlparse, urlunparse
 import httpx
 
 from src.ai.client import AIClient
+from src.services.music_scene_matching import (
+    MUSIC_SCENE_PROMPT_VERSION,
+    MusicSceneFitProfile,
+    MusicSceneFitScorer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +219,14 @@ PROMPT_LEAK_SONG_CUES = [
     "按照您的要求",
 ]
 
+GENERATED_PLACEHOLDER_SONG_CUES = [
+    "AI MiniMax",
+    "MiniMax",
+    "AI Generated",
+    "AI生成",
+    "生成音乐",
+]
+
 GENERIC_NO_VOCAL_NEGATIVE_CUES = {
     "人声",
     "歌词",
@@ -259,6 +272,21 @@ REPORTED_MEME_TITLE_CUES = {
     "只因你太美",
     "鸡如火",
     "功夫鸡",
+}
+
+GENERIC_VOCAL_CATEGORY_CUES = {
+    "动画op",
+    "动画片头",
+    "动漫op",
+    "动漫片头",
+    "日语动画",
+    "日语op",
+    "acg",
+    "anime",
+    "animeopening",
+    "jpop",
+    "j-pop",
+    "vocalopening",
 }
 
 
@@ -311,6 +339,14 @@ def _looks_like_prompt_leak_song(song: Song) -> bool:
     return any(cue in text for cue in PROMPT_LEAK_SONG_CUES)
 
 
+def _looks_like_generated_placeholder_song(song: "MusicTrack") -> bool:
+    """Reject generated-track placeholder names when they come from search results."""
+    if getattr(song, "source", "netease") == "ai_generated":
+        return False
+    text = " ".join([song.name, song.album, *song.artists]).casefold()
+    return any(cue.casefold() in text for cue in GENERATED_PLACEHOLDER_SONG_CUES)
+
+
 def _canonical_music_title(title: str) -> str:
     """Normalize title variants so covers/speed edits dedupe as one track."""
     text = str(title).casefold()
@@ -339,6 +375,19 @@ def _brief_requests_no_vocal(brief: "MusicBrief") -> bool:
     return any(cue.casefold() in text for cue in GENERIC_NO_VOCAL_NEGATIVE_CUES)
 
 
+def _cue_is_negated_in_music_text(cue: str, text: str) -> bool:
+    compact_text = re.sub(r"[\s\-—_·.。…!！?？,，、:：;；'\"“”‘’《》\[\]【】/\\]+", "", text)
+    if cue == "歌词":
+        return "无歌词" in compact_text or "没有歌词" in compact_text or "纯音乐" in compact_text
+    if cue == "人声":
+        return "无人声" in compact_text or "没有人声" in compact_text or "纯音乐" in compact_text
+    if cue in {"lyrics", "lyric"}:
+        return "nolyrics" in compact_text or "instrumental" in compact_text
+    if cue in {"vocal", "vocals"}:
+        return "novocal" in compact_text or "novocals" in compact_text or "instrumental" in compact_text
+    return False
+
+
 def _matches_negative_music_cue(
     song: "MusicTrack",
     negative_cues: Sequence[str],
@@ -346,8 +395,10 @@ def _matches_negative_music_cue(
 ) -> bool:
     """Reject playable search results that contradict the story's music brief."""
     text = " ".join([song.name, song.album, *song.artists]).casefold()
-    if any(cue and str(cue).casefold() in text for cue in negative_cues):
-        return True
+    for cue in negative_cues:
+        normalized = str(cue).strip().casefold()
+        if normalized and normalized in text and not _cue_is_negated_in_music_text(normalized, text):
+            return True
 
     if not strict_no_vocal and not any(
         str(cue).casefold() in GENERIC_NO_VOCAL_NEGATIVE_CUES for cue in negative_cues
@@ -359,6 +410,10 @@ def _matches_negative_music_cue(
         canonical_cue = _canonical_music_title(cue)
         if canonical_cue and (canonical_title == canonical_cue or canonical_cue in canonical_title):
             return True
+
+    compact_text = re.sub(r"[\s\-—_·.。…!！?？,，、:：;；'\"“”‘’《》\[\]【】/\\]+", "", text)
+    if any(cue in compact_text for cue in GENERIC_VOCAL_CATEGORY_CUES):
+        return True
 
     return any(cue.casefold() in text for cue in REPORTED_MEME_TITLE_CUES)
 
@@ -430,6 +485,9 @@ class MusicBrief:
     search_queries: List[str]
     negative_cues: List[str] = field(default_factory=list)
     generation_prompt: str = ""
+    scene_fit_profile: Optional[Dict[str, Any]] = None
+    scene_fit_diagnostics: Optional[Dict[str, Any]] = None
+    prompt_version: Optional[str] = None
 
     @classmethod
     def default(cls) -> "MusicBrief":
@@ -446,6 +504,15 @@ class MusicBrief:
                 "Create a seamless instrumental ambience loop for narrative gameplay, "
                 "45-90 seconds, no vocals, no lyrics, gentle background presence."
             ),
+            scene_fit_profile=MusicSceneFitProfile.from_context(
+                analysis={},
+                story_text="",
+            ).to_dict(),
+            scene_fit_diagnostics={
+                "selected_strategy": "generic_fallback",
+                "prompt_version": MUSIC_SCENE_PROMPT_VERSION,
+            },
+            prompt_version=MUSIC_SCENE_PROMPT_VERSION,
         )
 
     @classmethod
@@ -529,6 +596,58 @@ class MusicBrief:
                 "No vocals, no lyrics."
             )
 
+        profile = MusicSceneFitProfile.from_context(
+            analysis=analysis,
+            story_text=str(analysis.get("story") or analysis.get("story_text") or ""),
+        )
+        if scene_type in {"", "未知", "通用", "叙事", "场景"}:
+            scene_type = profile.scene_type
+        if era_or_environment in {"", "未知", "通用"}:
+            era_or_environment = profile.setting
+        if pacing in {"", "未知"}:
+            pacing = profile.pacing
+        if energy in {"", "未知"}:
+            energy = profile.energy
+        if not normalized_instruments or profile.selected_strategy != "generic_fallback":
+            normalized_instruments = _dedupe_text(
+                [*normalized_instruments, *profile.instruments]
+            )
+        normalized_negative = _dedupe_text(
+            [*normalized_negative, *profile.negative_cues]
+        )
+        if not normalized_queries or profile.selected_strategy != "generic_fallback":
+            normalized_queries = _dedupe_text(
+                [*profile.search_queries, *normalized_queries]
+            )
+        profile = MusicSceneFitProfile.from_context(
+            analysis={
+                **analysis,
+                "mood": mood,
+                "scene_type": scene_type,
+                "environment": era_or_environment,
+                "pacing": pacing,
+                "energy": energy,
+                "instruments": normalized_instruments,
+                "negative_cues": normalized_negative,
+                "search_queries": normalized_queries,
+            },
+            story_text=str(analysis.get("story") or analysis.get("story_text") or ""),
+        )
+        raw_scene_fit_profile = analysis.get("scene_fit_profile")
+        scene_fit_profile = (
+            dict(raw_scene_fit_profile)
+            if isinstance(raw_scene_fit_profile, dict)
+            else profile.to_dict()
+        )
+        scene_fit_diagnostics = dict(
+            analysis.get("scene_fit_diagnostics")
+            or {
+                "selected_strategy": profile.selected_strategy,
+                "prompt_version": MUSIC_SCENE_PROMPT_VERSION,
+            }
+        )
+        prompt_version = str(analysis.get("prompt_version") or MUSIC_SCENE_PROMPT_VERSION)
+
         return cls(
             mood=mood,
             scene_type=scene_type,
@@ -539,10 +658,13 @@ class MusicBrief:
             search_queries=normalized_queries or cls.default().search_queries,
             negative_cues=normalized_negative,
             generation_prompt=prompt,
+            scene_fit_profile=scene_fit_profile,
+            scene_fit_diagnostics=scene_fit_diagnostics,
+            prompt_version=prompt_version,
         )
 
     def to_analysis(self) -> Dict[str, Any]:
-        return {
+        analysis: Dict[str, Any] = {
             "mood": self.mood,
             "scene_type": self.scene_type,
             "environment": self.era_or_environment,
@@ -555,6 +677,13 @@ class MusicBrief:
             "negative_cues": self.negative_cues,
             "generation_prompt": self.generation_prompt,
         }
+        if self.scene_fit_profile is not None:
+            analysis["scene_fit_profile"] = self.scene_fit_profile
+        if self.scene_fit_diagnostics is not None:
+            analysis["scene_fit_diagnostics"] = self.scene_fit_diagnostics
+        if self.prompt_version is not None:
+            analysis["prompt_version"] = self.prompt_version
+        return analysis
 
 
 @dataclass(frozen=True)
@@ -584,6 +713,18 @@ class MusicContextBuilder:
 
     def build_brief(self, analysis: Dict[str, Any]) -> MusicBrief:
         return MusicBrief.from_analysis(analysis)
+
+    def build_scene_fit_profile(
+        self,
+        analysis: Dict[str, Any],
+        story_text: str = "",
+        character_settings: Optional[Dict[str, Any]] = None,
+    ) -> MusicSceneFitProfile:
+        return MusicSceneFitProfile.from_context(
+            analysis=analysis,
+            story_text=story_text,
+            character_settings=character_settings,
+        )
 
     def build_search_queries(
         self,
@@ -633,6 +774,8 @@ class MusicResultRanker:
     """Rank Netease results against a structured music brief."""
 
     def rank(self, songs: Sequence[TMusicTrack], brief: MusicBrief) -> List[TMusicTrack]:
+        profile = _scene_fit_profile_from_brief(brief)
+        scorer = MusicSceneFitScorer()
         positive_terms = [
             brief.mood,
             brief.scene_type,
@@ -647,6 +790,9 @@ class MusicResultRanker:
 
         def score(song: MusicTrack) -> int:
             haystack = " ".join([song.name, song.album, *song.artists])
+            scene_decision = scorer.score_candidate(song, profile)
+            if scene_decision.rejected:
+                return scene_decision.score
             value = 0
             for term in positive_terms:
                 if term and term in haystack:
@@ -654,12 +800,20 @@ class MusicResultRanker:
             for cue in brief.negative_cues:
                 if cue and cue in haystack:
                     value -= 100
-            return value
+            return value + scene_decision.score
 
         scored = [(score(song), index, song) for index, song in enumerate(songs)]
         if not any(value > 0 for value, _, _ in scored):
             return list(songs)
         return [song for _, _, song in sorted(scored, key=lambda item: item[0], reverse=True)]
+
+    def diagnose(
+        self,
+        songs: Sequence[MusicTrack],
+        brief: MusicBrief,
+    ) -> Dict[str, Any]:
+        profile = _scene_fit_profile_from_brief(brief)
+        return MusicSceneFitScorer().diagnose(songs, profile)
 
     def filter_and_dedupe(
         self,
@@ -672,6 +826,14 @@ class MusicResultRanker:
         filtered: List[TMusicTrack] = []
 
         for song in ranked:
+            decision = MusicSceneFitScorer().score_candidate(
+                song,
+                _scene_fit_profile_from_brief(brief),
+            )
+            if decision.rejected:
+                continue
+            if _looks_like_generated_placeholder_song(song):
+                continue
             if _matches_negative_music_cue(song, brief.negative_cues, strict_no_vocal):
                 continue
             canonical_title = _music_title_family_key(song.name)
@@ -682,6 +844,12 @@ class MusicResultRanker:
             filtered.append(song)
 
         return filtered
+
+
+def _scene_fit_profile_from_brief(brief: MusicBrief) -> MusicSceneFitProfile:
+    if isinstance(brief.scene_fit_profile, dict):
+        return MusicSceneFitProfile.from_analysis(brief.scene_fit_profile)
+    return MusicSceneFitProfile.from_context(brief.to_analysis())
 
 
 @dataclass(frozen=True)
@@ -1079,6 +1247,47 @@ class MusicService:
             elif not any("电子" in str(item) or "合成器" in str(item) for item in instruments):
                 enriched["instruments"] = ["电子合成器", *[str(item) for item in instruments]]
 
+        profile = self.context_builder.build_scene_fit_profile(
+            analysis=enriched,
+            story_text=story_text,
+            character_settings=character_settings,
+        )
+        if profile.selected_strategy != "generic_fallback":
+            if str(enriched.get("mood") or "") in {"", "未知", "平静"}:
+                enriched["mood"] = profile.primary_emotion
+            if str(enriched.get("scene_type") or "") in {"", "未知", "通用", "叙事"}:
+                enriched["scene_type"] = profile.scene_type
+            if str(enriched.get("environment") or "") in {"", "未知", "通用"}:
+                enriched["environment"] = profile.setting
+            if str(enriched.get("pacing") or "") in {"", "未知"}:
+                enriched["pacing"] = profile.pacing
+            if str(enriched.get("energy") or "") in {"", "未知"}:
+                enriched["energy"] = profile.energy
+            enriched["instruments"] = _dedupe_text(
+                [
+                    *[str(item) for item in enriched.get("instruments") or [] if item],
+                    *profile.instruments,
+                ]
+            )
+            enriched["search_queries"] = _dedupe_text(
+                [
+                    *profile.search_queries,
+                    *[str(item) for item in enriched.get("search_queries") or [] if item],
+                ]
+            )
+            enriched["negative_cues"] = _dedupe_text(
+                [
+                    *[str(item) for item in enriched.get("negative_cues") or [] if item],
+                    *profile.negative_cues,
+                ]
+            )
+        enriched["scene_fit_profile"] = profile.to_dict()
+        enriched["scene_fit_diagnostics"] = {
+            "selected_strategy": profile.selected_strategy,
+            "prompt_version": MUSIC_SCENE_PROMPT_VERSION,
+        }
+        enriched["prompt_version"] = MUSIC_SCENE_PROMPT_VERSION
+
         return enriched
 
     async def _refresh_pool_urls(self, pool: CachedMusicPool, supplement: bool = True) -> None:
@@ -1128,6 +1337,13 @@ class MusicService:
                 if _looks_like_prompt_leak_song(song):
                     logger.info(
                         "[MusicService] Skipping prompt-leak music result: id=%s name=%s",
+                        song.id,
+                        song.name[:80],
+                    )
+                    continue
+                if _looks_like_generated_placeholder_song(song):
+                    logger.info(
+                        "[MusicService] Skipping generated-placeholder music result: id=%s name=%s",
                         song.id,
                         song.name[:80],
                     )

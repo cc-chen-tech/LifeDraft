@@ -54,7 +54,8 @@ describe("CompletionScreen - Loading Feedback", () => {
   test("header preset button uses disambiguated copy", () => {
     render(<CompletionScreen {...defaultProps} />);
 
-    expect(screen.getAllByRole("button", { name: "保存为预设" })).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "快速保存" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存为预设" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "确认保存" })).not.toBeInTheDocument();
   });
 

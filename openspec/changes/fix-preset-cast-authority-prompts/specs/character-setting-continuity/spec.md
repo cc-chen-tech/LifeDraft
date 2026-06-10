@@ -8,14 +8,66 @@ Story generation SHALL treat preset key people in character settings as canonica
 - **WHEN** story-only or round-event prompts are built
 - **THEN** the prompt MUST include each canonical name with its role or relationship label
 - **AND** it MUST instruct the model not to rename these people or transfer their roles to invented substitutes
+- **AND** it MUST require each generated round to use at least one canonical preset key person
+
+#### Scenario: Legacy relationship list payloads preserve preset cast authority
+- **GIVEN** character settings store preset key people as a legacy `relationships` list instead of `relationships.key_people`
+- **WHEN** story prompts are built or quick validation collects available people
+- **THEN** the same canonical key people MUST be extracted
+- **AND** the prompt MUST include the no-rename/no-substitute authority block
+- **AND** quick validation MUST reject generated stories that replace all preset key people with invented named substitutes
 
 #### Scenario: World model carries preset relationship authority
 - **GIVEN** a saved player state includes preset key people in character settings
 - **WHEN** the WorldModel is built from that player state
 - **THEN** its constraint text MUST include the canonical preset cast and no-substitution rule
+- **AND** it MUST require at least one canonical preset key person to anchor each generated round
+
+#### Scenario: Scheduled commitment events inherit preset relationship authority
+- **GIVEN** a scheduled event is due for a player with preset key people
+- **WHEN** the scheduled event prompt is built
+- **THEN** the prompt MUST include the canonical preset cast and no-substitution rule
+- **AND** it MUST require at least one canonical preset key person to appear in the event
+- **AND** it MUST include the protagonist identity constraint and setting boundary constraints used by ordinary story prompts
+
+#### Scenario: Scheduled commitment events retry cast drift before returning
+- **GIVEN** a scheduled event generation response replaces the preset cast with invented named substitutes
+- **WHEN** quick validation flags that story as not using preset key people
+- **THEN** the scheduled event generator MUST retry with the validation failure included in the prompt
+- **AND** it MUST return the corrected event instead of the drifted response
+
+#### Scenario: Choice result continuations inherit preset relationship authority
+- **GIVEN** a player chooses an option after a story involving preset key people
+- **WHEN** the post-choice continuation prompt is built
+- **THEN** the prompt MUST include the canonical preset cast and no-substitution rule
+- **AND** it MUST include the realistic-world boundary and era constraints used by ordinary story prompts
+
+#### Scenario: Choice result continuations retry cast and setting drift before returning
+- **GIVEN** a post-choice continuation generation response drifts into an unrelated external IP world or invented named substitutes
+- **WHEN** quick validation flags that continuation
+- **THEN** the story service MUST retry with the validation failure included in the prompt
+- **AND** it MUST return the corrected continuation instead of the drifted response
+
+#### Scenario: Full story regeneration retries cast and setting drift before returning
+- **GIVEN** full story regeneration runs for a player with preset key people
+- **WHEN** the regenerated story omits every preset key person and introduces an unrelated named cast or external-IP world
+- **THEN** the story rewriter MUST retry with the validation failure included in the prompt
+- **AND** it MUST return the corrected regenerated story instead of the drifted response
+
+#### Scenario: Segment rewrite retries cast and setting drift before returning
+- **GIVEN** segment-level story rewrite runs for a player with preset key people
+- **WHEN** the rewritten full story omits every preset key person and introduces an unrelated named cast or external-IP world
+- **THEN** the story rewriter MUST retry with the validation failure included in the prompt
+- **AND** it MUST return the corrected rewritten story instead of the drifted response even when no WorldModel validator is provided
 
 #### Scenario: Generic bystanders remain allowed
 - **GIVEN** a story scene needs non-recurring background people
 - **WHEN** the preset cast authority block is present
 - **THEN** the story MAY use generic labels such as 路人 or 陌生人
 - **AND** it MUST NOT introduce a named substitute for an existing preset relationship role
+
+#### Scenario: Story character sync ignores invented substitutes for preset roles
+- **GIVEN** character settings define a canonical preset person for a role such as 导师
+- **WHEN** a generated story introduces a new named person in the local context of that same role
+- **THEN** story-character synchronization MUST NOT promote that new name into `relationships.key_people`
+- **AND** it MUST NOT add that new name to the relationship affinity map

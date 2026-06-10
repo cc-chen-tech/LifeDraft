@@ -4,12 +4,14 @@
  * 包含：基础渲染 + 卡顿检测（stall detection）逻辑验证
  * 使用真实 Zustand store + global.fetch mock，不 mock store 模块。
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MusicPlayer } from '@/components/game/MusicPlayer';
 import { useMusicStore } from '@/stores/useMusicStore';
 import { jsonResponse } from '@/__tests__/helpers/fetch';
 
 // jsdom 不支持 Audio API，提供完整 mock
+const createdAudioInstances: MockAudioClass[] = [];
+
 class MockAudioClass {
   src = '';
   paused = true;
@@ -22,7 +24,18 @@ class MockAudioClass {
   play = jest.fn().mockResolvedValue(undefined);
   pause = jest.fn();
   load = jest.fn();
+  onplay: (() => void) | null = null;
+  onpause: (() => void) | null = null;
+  ontimeupdate: (() => void) | null = null;
+  onloadedmetadata: (() => void) | null = null;
+  onended: (() => void) | null = null;
+  onerror: (() => void) | null = null;
   private _listeners: Record<string, Array<() => void>> = {};
+
+  constructor(src?: string) {
+    this.src = src || '';
+    createdAudioInstances.push(this);
+  }
 
   addEventListener(event: string, fn: () => void) {
     if (!this._listeners[event]) this._listeners[event] = [];
@@ -56,6 +69,7 @@ const playlistResponse = (gameId: number, currentSong: unknown = null, queue: un
 
 describe('MusicPlayer', () => {
   beforeEach(() => {
+    createdAudioInstances.length = 0;
     global.fetch = jest
       .fn()
       .mockResolvedValueOnce(
@@ -81,6 +95,8 @@ describe('MusicPlayer', () => {
       currentTime: 0,
       duration: 0,
       audioElement: null,
+      isGeneratingAiMusic: false,
+      aiMusicGenerationStatus: 'idle',
     });
   });
 
@@ -115,6 +131,51 @@ describe('MusicPlayer', () => {
     render(<MusicPlayer storyText="Test story" />);
 
     expect(await screen.findByText('音乐服务暂不可用，故事可继续进行')).toBeInTheDocument();
+  });
+
+  it('已有可播放音乐时推荐失败不显示阻塞的服务不可用文案', () => {
+    useMusicStore.setState({
+      recommendation: {
+        mood: '紧张',
+        scene_type: '追捕逃亡',
+        keywords: ['悬疑'],
+        songs: [
+          {
+            id: 88,
+            name: '当前可播放曲目',
+            artists: ['AI MiniMax'],
+            album: '原创场景音乐',
+            duration: 120000,
+            url: 'https://example.com/current.mp3',
+            source: 'ai_generated',
+          },
+        ],
+      },
+      currentSong: {
+        id: 88,
+        name: '当前可播放曲目',
+        artists: ['AI MiniMax'],
+        album: '原创场景音乐',
+        duration: 120000,
+        url: 'https://example.com/current.mp3',
+        source: 'ai_generated',
+      },
+      recommendationError: '音乐服务暂不可用',
+      isLoadingRecommendation: false,
+    } as never);
+
+    render(
+      <MusicPlayer
+        storyText="雨夜追逐，主角发现旧账册线索。"
+        autoFetchRecommendation={false}
+        embedded
+        compactControls
+      />
+    );
+
+    expect(screen.getByText('当前可播放曲目')).toBeInTheDocument();
+    expect(screen.queryByText('音乐服务暂不可用')).not.toBeInTheDocument();
+    expect(screen.getByText('新推荐暂不可用，继续播放当前音乐')).toBeInTheDocument();
   });
 
   it('网易云安全基线为空但有 music_brief 时显示 MiniMax 生成中而不是不可用', async () => {
@@ -418,6 +479,184 @@ describe('MusicPlayer', () => {
     expect(screen.getByText('AI MiniMax 雨夜追逐')).toBeInTheDocument();
   });
 
+  it('当前歌曲播完后优先推进持久化队列里的 AI 曲目', async () => {
+    (global.fetch as jest.Mock).mockReset();
+    (global.fetch as jest.Mock)
+      .mockResolvedValueOnce(
+        jsonResponse({
+          mood: '紧张',
+          scene_type: '雨夜追逐',
+          keywords: ['雨夜追逐', '悬疑配乐'],
+          music_brief: {
+            mood: '紧张',
+            scene_type: '雨夜追逐',
+            generation_prompt: '雨夜码头追逐，紧张悬疑，无歌词氛围配乐',
+          },
+          songs: [
+            {
+              id: 1,
+              name: '网易云 当前曲',
+              artists: ['Score'],
+              album: '影视配乐',
+              duration: 180000,
+              url: 'https://example.com/current.mp3',
+              source: 'netease',
+            },
+            {
+              id: 2,
+              name: '网易云 下一曲',
+              artists: ['Score'],
+              album: '影视配乐',
+              duration: 180000,
+              url: 'https://example.com/next.mp3',
+              source: 'netease',
+            },
+          ],
+        })
+      )
+      .mockResolvedValueOnce(
+        playlistResponse(
+          77,
+          {
+            id: 1,
+            name: '网易云 当前曲',
+            artists: ['Score'],
+            album: '影视配乐',
+            duration: 180000,
+            url: 'https://example.com/current.mp3',
+            source: 'netease',
+          },
+          [
+            {
+              id: 2,
+              name: '网易云 下一曲',
+              artists: ['Score'],
+              album: '影视配乐',
+              duration: 180000,
+              url: 'https://example.com/next.mp3',
+              source: 'netease',
+            },
+          ]
+        )
+      )
+      .mockResolvedValueOnce(
+        playlistResponse(
+          77,
+          {
+            id: 1,
+            name: '网易云 当前曲',
+            artists: ['Score'],
+            album: '影视配乐',
+            duration: 180000,
+            url: 'https://example.com/current.mp3',
+            source: 'netease',
+          },
+          [
+            {
+              id: 2,
+              name: '网易云 下一曲',
+              artists: ['Score'],
+              album: '影视配乐',
+              duration: 180000,
+              url: 'https://example.com/next.mp3',
+              source: 'netease',
+            },
+          ]
+        )
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          status: 'queued',
+          insert_policy: 'future_queue',
+          game_id: 77,
+        })
+      )
+      .mockResolvedValueOnce(
+        playlistResponse(
+          77,
+          {
+            id: 1,
+            name: '网易云 当前曲',
+            artists: ['Score'],
+            album: '影视配乐',
+            duration: 180000,
+            url: 'https://example.com/current.mp3',
+            source: 'netease',
+          },
+          [
+            {
+              id: 'ai-generated-77',
+              name: 'AI MiniMax 雨夜追逐',
+              artists: ['MiniMax'],
+              album: 'AI Generated',
+              duration: 120000,
+              url: '/api/music/generated/ai-generated-77.mp3',
+              source: 'ai_generated',
+              provider: 'minimax',
+              model: 'music-01',
+            },
+            {
+              id: 2,
+              name: '网易云 下一曲',
+              artists: ['Score'],
+              album: '影视配乐',
+              duration: 180000,
+              url: 'https://example.com/next.mp3',
+              source: 'netease',
+            },
+          ]
+        )
+      )
+      .mockResolvedValueOnce(
+        playlistResponse(
+          77,
+          {
+            id: 'ai-generated-77',
+            name: 'AI MiniMax 雨夜追逐',
+            artists: ['MiniMax'],
+            album: 'AI Generated',
+            duration: 120000,
+            url: '/api/music/generated/ai-generated-77.mp3',
+            source: 'ai_generated',
+            provider: 'minimax',
+            model: 'music-01',
+          },
+          [
+            {
+              id: 2,
+              name: '网易云 下一曲',
+              artists: ['Score'],
+              album: '影视配乐',
+              duration: 180000,
+              url: 'https://example.com/next.mp3',
+              source: 'netease',
+            },
+          ]
+        )
+      );
+
+    render(<MusicPlayer storyText="雨夜码头追逐，主角发现旧账册线索。" gameId={77} />);
+
+    await screen.findByText('AI MiniMax 雨夜追逐');
+    const firstAudio = createdAudioInstances.find((audio) =>
+      audio.src.includes('current.mp3')
+    );
+
+    expect(firstAudio).toBeDefined();
+    act(() => {
+      firstAudio?.onended?.();
+    });
+
+    await waitFor(() => {
+      expect(useMusicStore.getState().currentSong?.name).toBe('AI MiniMax 雨夜追逐');
+    });
+    expect(
+      (global.fetch as jest.Mock).mock.calls.some((call: unknown[]) =>
+        String(call[0]).includes('/api/music/playlist/77/advance')
+      )
+    ).toBe(true);
+  });
+
   it('有基础歌曲时仍提示 MiniMax 原创音乐正在后台生成', () => {
     useMusicStore.setState({
       recommendation: {
@@ -463,6 +702,37 @@ describe('MusicPlayer', () => {
 
     expect(screen.getByText('正在生成原创场景音乐，完成后加入下一首')).toBeInTheDocument();
     expect(screen.getByText('网易云 当前曲')).toBeInTheDocument();
+  });
+
+  it('MiniMax 已排队但尚未插入播放列表时不误报音乐服务不可用', () => {
+    useMusicStore.setState({
+      recommendation: {
+        mood: '紧张',
+        scene_type: '现代职场危机',
+        keywords: ['办公室 轻电子 氛围'],
+        music_brief: {
+          mood: '紧张',
+          scene_type: '现代职场危机',
+          generation_prompt: 'tense modern workplace instrumental ambience, no vocals',
+        },
+        songs: [],
+      },
+      currentSong: null,
+      queue: [],
+      isGeneratingAiMusic: false,
+      aiMusicGenerationStatus: 'delayed',
+    });
+
+    render(
+      <MusicPlayer
+        storyText="产品经理发现数据异常，会议室气氛紧张。"
+        gameId={77}
+        autoFetchRecommendation={false}
+      />
+    );
+
+    expect(screen.getByText('原创场景音乐已排队，完成后会自动加入播放列表')).toBeInTheDocument();
+    expect(screen.queryByText('音乐服务暂不可用，故事可继续进行')).not.toBeInTheDocument();
   });
 });
 

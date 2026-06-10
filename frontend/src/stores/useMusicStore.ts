@@ -18,6 +18,12 @@ export interface Song {
   provider?: string;
   model?: string;
   brief_hash?: string;
+  library_reused?: boolean;
+  match_score?: number;
+  match_reason?: string;
+  fit_score?: number;
+  prompt_version?: string;
+  scene_fit_diagnostics?: Record<string, unknown>;
 }
 
 export interface MusicRecommendation {
@@ -40,6 +46,14 @@ export interface MusicQueueMergeResult {
   queue: Song[];
 }
 
+export type AiMusicGenerationStatus =
+  | "idle"
+  | "queued"
+  | "polling"
+  | "ready"
+  | "delayed"
+  | "failed";
+
 interface PlaylistApiState {
   game_id: number;
   current_song: Song | null;
@@ -52,6 +66,52 @@ interface PlaylistApiState {
 
 function songKey(song: Song): number | string {
   return song.id;
+}
+
+const REPORTED_TITLE_FAMILY_CUES = [
+  "小幸运",
+  "断了的弦",
+  "绅士",
+  "红尘客栈",
+  "非你莫属",
+  "给我一首歌的时间",
+  "等你下课",
+  "不再联系",
+  "说散就散",
+  "匆匆那年",
+  "告白气球",
+  "喜欢你",
+  "夜曲",
+  "一直很安静",
+  "平凡之路",
+  "岁月神偷",
+  "都选C",
+  "她说",
+  "童话",
+  "丑八怪",
+  "可爱女人",
+];
+
+function canonicalSongTitle(title: unknown): string {
+  return String(title || "")
+    .toLowerCase()
+    .replace(/[（(][^）)]*[）)]/g, "")
+    .replace(
+      /(心动版|加速版|降速版|抖音版|翻唱版|古风翻唱|翻唱|cover|伴奏|纯音乐版|剪辑版|完整版|live|remix|remaster|0\.\d+x|\d+(?:\.\d+)?x|版)/gi,
+      ""
+    )
+    .replace(/[\s\-—_·.。…!！?？,，、:：;；'"“”‘’《》[\]【】/\\]+/g, "");
+}
+
+function titleFamilyKey(song: Song): string {
+  const canonicalTitle = canonicalSongTitle(song.name);
+  for (const cue of REPORTED_TITLE_FAMILY_CUES) {
+    const canonicalCue = canonicalSongTitle(cue);
+    if (canonicalCue && (canonicalTitle === canonicalCue || canonicalTitle.includes(canonicalCue))) {
+      return canonicalCue;
+    }
+  }
+  return canonicalTitle;
 }
 
 export function mergeSongsPreservingCurrent(
@@ -70,19 +130,30 @@ export function mergeSongsPreservingCurrent(
   }
 
   const currentId = songKey(currentSong);
+  const currentTitleKey = titleFamilyKey(currentSong);
   const queue: Song[] = [];
   if (existingQueue.length > 0 && songKey(existingQueue[0]) !== currentId) {
     queue.push(existingQueue[0]);
   }
 
   const seenIds = new Set(queue.map(songKey));
+  const seenTitleKeys = new Set(
+    [currentTitleKey, ...queue.map(titleFamilyKey)].filter(Boolean)
+  );
   for (const song of incomingSongs) {
     const id = songKey(song);
+    const familyKey = titleFamilyKey(song);
     if (id === currentId || seenIds.has(id)) {
+      continue;
+    }
+    if (familyKey && seenTitleKeys.has(familyKey)) {
       continue;
     }
     queue.push(song);
     seenIds.add(id);
+    if (familyKey) {
+      seenTitleKeys.add(familyKey);
+    }
   }
 
   return { currentSong, queue };
@@ -94,14 +165,22 @@ export function getMusicSourceLabel(source: Song["source"] | undefined): string 
 
 function dedupeSongs(songs: Song[], excludedId: number | string | undefined): Song[] {
   const seenIds = new Set<number | string>();
+  const seenTitleKeys = new Set<string>();
   const result: Song[] = [];
   for (const song of songs) {
     const id = songKey(song);
+    const familyKey = titleFamilyKey(song);
     if (id === excludedId || seenIds.has(id)) {
+      continue;
+    }
+    if (familyKey && seenTitleKeys.has(familyKey)) {
       continue;
     }
     result.push(song);
     seenIds.add(id);
+    if (familyKey) {
+      seenTitleKeys.add(familyKey);
+    }
   }
   return result;
 }
@@ -109,7 +188,7 @@ function dedupeSongs(songs: Song[], excludedId: number | string | undefined): So
 function playlistStateToStorePatch(playlist: PlaylistApiState): Partial<MusicState> {
   return {
     playlistGameId: playlist.game_id,
-    currentSong: playlist.current_song,
+    currentSong: playlist.current_song ?? null,
     queue: playlist.queue || [],
     playedSongs: playlist.played_songs || [],
     isPlaying: playlist.is_playing,
@@ -171,6 +250,7 @@ interface MusicState {
   playlistGameId: number | null;
   isLoadingPlaylist: boolean;
   isGeneratingAiMusic: boolean;
+  aiMusicGenerationStatus: AiMusicGenerationStatus;
 
   // Active story context (set by play page)
   activeStoryText: string | null;
@@ -332,7 +412,7 @@ async function pollPlaylistForGeneratedTrack(
   onPlaylist: (playlist: PlaylistApiState) => void,
   attempts: number = GENERATED_MUSIC_POLL_ATTEMPTS,
   intervalMs: number = GENERATED_MUSIC_POLL_INTERVAL_MS
-): Promise<void> {
+): Promise<boolean> {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     if (attempt > 0) {
       await sleep(intervalMs);
@@ -344,9 +424,10 @@ async function pollPlaylistForGeneratedTrack(
     onPlaylist(playlist);
     const generatedIds = playlistGeneratedTrackIds(playlist);
     if ([...generatedIds].some((id) => !initialGeneratedIds.has(id))) {
-      return;
+      return true;
     }
   }
+  return false;
 }
 
 export const useMusicStore = create<MusicState>((set, get) => ({
@@ -367,6 +448,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   playlistGameId: null,
   isLoadingPlaylist: false,
   isGeneratingAiMusic: false,
+  aiMusicGenerationStatus: "idle",
   activeStoryText: null,
   activeGameId: null,
 
@@ -504,7 +586,10 @@ export const useMusicStore = create<MusicState>((set, get) => ({
 
   mergePlaylist: async (gameId: number, songs: Song[], mood?: string, keywords?: string[]) => {
     const { currentSong, queue } = get();
-    const merged = mergeSongsPreservingCurrent(currentSong, queue, songs);
+    const safeCurrentSong = currentSong ?? null;
+    const safeQueue = queue || [];
+    const safeSongs = songs || [];
+    const merged = mergeSongsPreservingCurrent(safeCurrentSong, safeQueue, safeSongs);
     if (typeof fetch !== "undefined") {
       try {
         const response = await fetch(`${API_BASE}/music/playlist/${gameId}`, {
@@ -512,7 +597,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({
-            songs,
+            songs: safeSongs,
             mood,
             keywords,
           }),
@@ -569,7 +654,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
     }
     inFlightMusicGenerations.add(inFlightKey);
 
-    set({ isGeneratingAiMusic: true });
+    set({ isGeneratingAiMusic: true, aiMusicGenerationStatus: "queued" });
     try {
       const initialGeneratedIds = generatedTrackIds(get());
       const snapshot = await persistPlaylistSnapshotBeforeGeneration(
@@ -584,13 +669,18 @@ export const useMusicStore = create<MusicState>((set, get) => ({
         );
       }
       await enqueueGeneratedMusic(storyText, gameId, analysis);
-      await pollPlaylistForGeneratedTrack(gameId, initialGeneratedIds, (playlist) => {
+      set({ aiMusicGenerationStatus: "polling" });
+      const generatedTrackReady = await pollPlaylistForGeneratedTrack(gameId, initialGeneratedIds, (playlist) => {
         set((state) =>
           playlistStateToStorePatchWithRecommendation(playlist, state.recommendation)
         );
       });
+      set({
+        aiMusicGenerationStatus: generatedTrackReady ? "ready" : "delayed",
+      });
     } catch (error) {
       console.warn("[MusicStore] AI music generation unavailable:", error);
+      set({ aiMusicGenerationStatus: "failed" });
     } finally {
       set({ isGeneratingAiMusic: false });
       inFlightMusicGenerations.delete(inFlightKey);
@@ -670,6 +760,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       playlistGameId: null,
       isLoadingPlaylist: false,
       isGeneratingAiMusic: false,
+      aiMusicGenerationStatus: "idle",
     });
   },
 

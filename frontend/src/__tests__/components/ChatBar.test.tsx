@@ -3,7 +3,8 @@
  * Tests all interactive elements of the chat bar component
  */
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { ReadableStream } from 'node:stream/web';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChatBar } from '@/components/game/ChatBar';
 import { useGameStore } from '@/stores/useGameStore';
@@ -13,6 +14,26 @@ import { spyOnStoreMethods } from '@/__tests__/helpers/store-spy';
 const STORE_METHODS = ['syncState'] as const;
 
 type StoreSpy = ReturnType<typeof spyOnStoreMethods<typeof useGameStore, (typeof STORE_METHODS)[number]>>;
+
+function createControlledSSEStream() {
+  const encoder = new TextEncoder();
+  let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controllerRef = controller;
+    },
+  });
+
+  return {
+    stream,
+    enqueue(chunk: string) {
+      controllerRef?.enqueue(encoder.encode(chunk));
+    },
+    close() {
+      controllerRef?.close();
+    },
+  };
+}
 
 function setupDefaultState() {
   useGameStore.setState({
@@ -123,6 +144,44 @@ describe('ChatBar', () => {
 
       expect(await screen.findByTestId('inline-rewrite-sheet')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: '改写故事' })).toBeInTheDocument();
+    });
+
+    it('surfaces rewrite stream progress messages instead of a static loading toast', async () => {
+      const rewriteStream = createControlledSSEStream();
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        body: rewriteStream.stream,
+      });
+
+      const user = userEvent.setup();
+      render(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+          storyText="原始故事。"
+        />
+      );
+
+      await user.click(screen.getByRole('button', { name: '改写' }));
+      await user.type(
+        await screen.findByPlaceholderText(/描述你想要的修改/),
+        '增加对话'
+      );
+      await user.click(screen.getByRole('button', { name: '改写故事' }));
+
+      act(() => {
+        rewriteStream.enqueue(
+          'data: {"type":"status","status":{"phase":"analyzing","message":"正在理解改写要求"}}\n\n'
+        );
+      });
+      expect((await screen.findAllByText('正在理解改写要求')).length).toBeGreaterThan(0);
+      act(() => {
+        rewriteStream.enqueue(
+          'data: {"type":"status","status":{"phase":"rewriting","message":"正在生成改写文本"}}\n\n'
+        );
+      });
+      expect((await screen.findAllByText('正在生成改写文本')).length).toBeGreaterThan(0);
     });
 
     it('opens dedicated summary panel and calls summary API from collapsed quick action', async () => {
