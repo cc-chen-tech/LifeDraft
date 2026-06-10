@@ -62,6 +62,21 @@ MODERN_LIFE_VISION_CUES = (
     "不要古代",
     "不要穿越",
 )
+ANTI_MODERN_LIFE_VISION_CUES = (
+    "古典",
+    "传统",
+    "古风",
+    "中医",
+    "医者",
+    "师承",
+    "乡土",
+    "乡里",
+    "村落",
+    "不想现代",
+    "不要现代",
+    "避免现代",
+    "避开现代",
+)
 
 
 def assign_sexual_orientation() -> str:
@@ -134,13 +149,11 @@ def _life_vision_requires_modern_context(life_vision: str) -> bool:
     return any(cue in life_vision for cue in MODERN_LIFE_VISION_CUES)
 
 
-def _era_setting_conflicts_with_modern_life_vision(
-    era_setting: Dict[str, Any],
-    life_vision: str,
-) -> bool:
-    if not _life_vision_requires_modern_context(life_vision):
-        return False
+def _life_vision_prefers_classical_context(life_vision: str) -> bool:
+    return any(cue in life_vision for cue in ANTI_MODERN_LIFE_VISION_CUES)
 
+
+def _era_setting_is_historical_conflict(era_setting: Dict[str, Any]) -> bool:
     year = era_setting.get("year")
     if isinstance(year, int) and year < 1900:
         return True
@@ -150,6 +163,45 @@ def _era_setting_conflicts_with_modern_life_vision(
         for key in ["era_name", "era_description", "world_context"]
     )
     return any(cue in text for cue in ANCIENT_ERA_CUES)
+
+
+def _era_setting_has_modern_markers(era_setting: Dict[str, Any]) -> bool:
+    year = era_setting.get("year")
+    if isinstance(year, int) and year >= 1900:
+        return True
+
+    text = " ".join(
+        str(era_setting.get(key) or "")
+        for key in ["era_name", "era_description", "world_context"]
+    )
+    return any(cue in text for cue in ("现代", "当代", "互联网", "AI", "产品经理", "公司", "创业", "科技"))
+
+
+def _era_setting_conflicts_with_modern_life_vision(
+    era_setting: Dict[str, Any],
+    life_vision: str,
+) -> bool:
+    if _life_vision_prefers_classical_context(life_vision):
+        return _era_setting_has_modern_markers(era_setting)
+
+    if not _life_vision_requires_modern_context(life_vision):
+        return False
+
+    return _era_setting_is_historical_conflict(era_setting)
+
+
+def _classical_alignment_profile(year: int) -> Dict[str, str]:
+    return {
+        "era_name": f"{max(year, 800)}年前后的古代中国",
+        "era_description": (
+            "古代中国，围绕家族、师承与乡土关系展开，"
+            "人物在秩序、道德与责任中成长。"
+        ),
+        "world_context": (
+            "乡里结构、行会网络与家族责任主导的社会环境。"
+            "日常生活依赖人工劳动与口耳相传的经验体系。"
+        ),
+    }
 
 
 def _modern_alignment_profile(life_vision: str, year: int) -> Dict[str, str]:
@@ -186,10 +238,22 @@ def _align_era_setting_with_life_vision(
     feedback: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Keep explicit modern career visions from drifting into historical eras."""
-    if feedback:
-        return era_setting
     if not _era_setting_conflicts_with_modern_life_vision(era_setting, life_vision):
         return era_setting
+
+    if _life_vision_prefers_classical_context(life_vision):
+        year = era_setting.get("year", 900)
+        if isinstance(year, int):
+            year = min(max(year, 800), 1899)
+        else:
+            year = 900
+
+        profile = _classical_alignment_profile(year)
+        aligned = dict(era_setting)
+        aligned["year"] = year
+        aligned.update(profile)
+        aligned["_aligned_to_life_vision"] = True
+        return aligned
 
     year = _extract_explicit_modern_year(life_vision)
     profile = _modern_alignment_profile(life_vision, year)
