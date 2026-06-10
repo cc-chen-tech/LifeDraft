@@ -19,6 +19,7 @@
 - [x] Use semantic channel headings for the embedded "音乐" and "朗读" channel labels.
 - [x] Restore collapsed music play/pause as the only direct sound action so users can resume audio without opening the panel.
 - [x] Add regression coverage that the collapsed bar exposes music playback without duplicating narration controls.
+- [x] Add regression coverage that the collapsed bar summarizes both background music and story narration as peer sound channels.
 - [x] Add regression coverage that persisted music without an audio element opens the sound panel instead of showing a dead playback control.
 - [x] Replace the collapsed mini bar with an expanded panel header and a single "收起声音" action while open.
 - [x] Redesign the expanded panel as one compact vertical sound mixer with "背景音乐" and "故事朗读" peer groups, hiding duplicate child module headings, music mood chips, and recommendation lists.

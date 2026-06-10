@@ -286,6 +286,42 @@ describe("GlobalMusicPlayer", () => {
       ).not.toHaveClass("border");
     });
 
+    it("shows music and narration as peer sound channels before the panel is expanded", () => {
+      setStoreState({
+        activeStoryText: "story text",
+        isPlaying: true,
+        audioElement: {
+          pause: jest.fn(),
+          play: jest.fn(),
+          ended: false,
+          currentTime: 0,
+        } as unknown as HTMLAudioElement,
+        currentSong: {
+          id: 2,
+          name: "Playing Song",
+          artists: ["Artist"],
+          album: "",
+          duration: 200,
+        },
+      });
+      useStoryVoiceStore.setState({
+        activeReadingContext,
+        activeAutoReadText: activeReadingContext.text,
+        activeAutoReadReady: true,
+        readingState: "playing",
+      } as never);
+
+      render(<GlobalMusicPlayer />);
+
+      const miniBar = within(screen.getByTestId("global-music-mini-bar"));
+      const summary = miniBar.getByTestId("collapsed-sound-summary");
+      expect(within(summary).getByText("背景音乐")).toBeInTheDocument();
+      expect(within(summary).getByText("故事朗读")).toBeInTheDocument();
+      expect(within(summary).getByText("播放中")).toBeInTheDocument();
+      expect(within(summary).getByText("朗读中")).toBeInTheDocument();
+      expect(miniBar.queryByRole("button", { name: "朗读故事" })).not.toBeInTheDocument();
+    });
+
     it("uses one sound mixer with compact vertical channel rows instead of nested cards", async () => {
       const user = userEvent.setup();
       setStoreState({

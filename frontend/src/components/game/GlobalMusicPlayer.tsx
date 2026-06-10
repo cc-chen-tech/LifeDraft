@@ -116,6 +116,11 @@ export function GlobalMusicPlayer() {
     : currentSong || recommendation || queue.length > 0
       ? "音乐待播放"
       : "音乐待推荐";
+  const collapsedMusicStatus = isPlaying
+    ? "播放中"
+    : hasMusicCandidate
+      ? "待播放"
+      : "待推荐";
   const readingStatusLabel =
     readingState === "loading"
       ? "朗读准备中"
@@ -130,6 +135,20 @@ export function GlobalMusicPlayer() {
               : activeReadingContext
                 ? "朗读待开始"
                 : "朗读待生成";
+  const collapsedReadingStatus =
+    readingState === "loading"
+      ? "准备中"
+      : readingState === "playing"
+        ? "朗读中"
+        : readingState === "paused"
+          ? "已暂停"
+          : readingState === "ready"
+            ? "待播放"
+            : readingState === "failed"
+              ? "失败"
+              : activeReadingContext
+                ? "待开始"
+                : "待生成";
 
   return (
     <div
@@ -299,6 +318,23 @@ export function GlobalMusicPlayer() {
             <div className="text-sm font-medium truncate">{soundTitle}</div>
             <div className="text-xs text-muted-foreground truncate">
               {soundStatus}
+            </div>
+            <div
+              data-testid="collapsed-sound-summary"
+              className="mt-1 grid grid-cols-2 gap-1 text-[11px] leading-4"
+            >
+              <span className="flex min-w-0 items-center justify-between gap-1 rounded bg-muted/60 px-1.5 py-0.5">
+                <span className="truncate text-muted-foreground">背景音乐</span>
+                <span className="shrink-0 text-foreground">
+                  {collapsedMusicStatus}
+                </span>
+              </span>
+              <span className="flex min-w-0 items-center justify-between gap-1 rounded bg-muted/60 px-1.5 py-0.5">
+                <span className="truncate text-muted-foreground">故事朗读</span>
+                <span className="shrink-0 text-foreground">
+                  {collapsedReadingStatus}
+                </span>
+              </span>
             </div>
           </div>
 
