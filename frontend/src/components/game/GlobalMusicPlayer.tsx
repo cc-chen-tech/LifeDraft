@@ -15,7 +15,14 @@ import { MusicPlayer } from "./MusicPlayer";
 import { StoryVoiceControls } from "./StoryVoiceControls";
 import { useMusicStore } from "@/stores/useMusicStore";
 import { useStoryVoiceStore } from "@/stores/useStoryVoiceStore";
-import { ChevronUp, ChevronDown, Music, Volume2 } from "lucide-react";
+import {
+  ChevronUp,
+  ChevronDown,
+  Music,
+  Pause,
+  Play,
+  Volume2,
+} from "lucide-react";
 
 export function GlobalMusicPlayer() {
   const hasInitRef = useRef(false);
@@ -29,6 +36,8 @@ export function GlobalMusicPlayer() {
   const activeStoryText = useMusicStore((state) => state.activeStoryText);
   const activeGameId = useMusicStore((state) => state.activeGameId);
   const isPlaying = useMusicStore((state) => state.isPlaying);
+  const audioElement = useMusicStore((state) => state.audioElement);
+  const togglePlay = useMusicStore((state) => state.togglePlay);
   const currentTime = useMusicStore((state) => state.currentTime);
   const duration = useMusicStore((state) => state.duration);
   const activeReadingContext = useStoryVoiceStore(
@@ -86,6 +95,11 @@ export function GlobalMusicPlayer() {
   const songName = currentSong?.name || recommendation?.songs?.[0]?.name || "";
   const artistName = currentSong?.artists?.join(", ") || "";
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const hasMusicCandidate = Boolean(
+    currentSong || recommendation?.songs?.length || queue.length,
+  );
+  const hasPlayableMusic = Boolean(audioElement);
+  const showCollapsedMusicAction = hasPlayableMusic || hasMusicCandidate;
   const soundTitle = songName || "声音";
   const soundStatus =
     artistName ||
@@ -241,9 +255,44 @@ export function GlobalMusicPlayer() {
             />
           </div>
 
-          <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-primary text-primary-foreground">
-            <Volume2 className="w-4 h-4" />
-          </div>
+          {showCollapsedMusicAction ? (
+            <button
+              type="button"
+              aria-label={
+                hasPlayableMusic
+                  ? isPlaying
+                    ? "暂停音乐"
+                    : "播放音乐"
+                  : "打开音乐"
+              }
+              title={
+                hasPlayableMusic
+                  ? isPlaying
+                    ? "暂停音乐"
+                    : "播放音乐"
+                  : "打开音乐"
+              }
+              onClick={(event) => {
+                event.stopPropagation();
+                if (hasPlayableMusic) {
+                  togglePlay();
+                  return;
+                }
+                setIsExpanded(true);
+              }}
+              className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              {isPlaying ? (
+                <Pause className="w-4 h-4" />
+              ) : (
+                <Play className="w-4 h-4 translate-x-px" />
+              )}
+            </button>
+          ) : (
+            <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-primary text-primary-foreground">
+              <Volume2 className="w-4 h-4" />
+            </div>
+          )}
 
           {/* Song info */}
           <div className="flex-1 min-w-0">
