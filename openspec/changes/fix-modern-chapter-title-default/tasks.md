@@ -2,11 +2,13 @@
 
 - [x] Add a contract test for ordinary modern age/career settings that lack explicit modern keywords.
 - [x] Add a contract test for missing character settings using the default modern protagonist context.
+- [x] Add a contract test for scheduled-event prompts so commitment events cannot bypass modern timeline titles.
 - [x] Add the contract test file to `test.sh contract`.
 
 ## 2. Fix
 
 - [x] Update Chinese chapter-title classification so non-ancient settings use modern timeline titles.
+- [x] Route scheduled-event prompt construction through the same Chinese timeline-title constraint.
 
 ## 3. Verify
 
