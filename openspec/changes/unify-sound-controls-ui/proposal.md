@@ -12,6 +12,7 @@ Music playback and story narration are both sound features, but production UI ha
 - Make music and narration compact peer controls inside one "声音控制台" so they read as one sound console, not two separate modules.
 - Do not expose "背景音乐" and "故事朗读" as separate section groups or row labels in the expanded control surface; music playback, current track, narration, voice selection, and auto-read should share one control strip.
 - Replace the collapsed mini bar with an expanded panel header while the panel is open, with "收起声音" as the single collapse action.
+- Keep collapsed interactions explicit: play/pause controls music, "展开声音" opens details, and passive title/status text does not expand the panel.
 - Render embedded music and story narration controls as one compact strip inside the expanded sound panel instead of standalone bordered cards, recommendation panels, channel rows, or toolbars.
 - Keep the collapsed sound bar as a single sound-panel entry point. Music play/pause, manual narration, voice selection, and auto-read controls live in the expanded panel.
 - Keep existing music playback, auto-read, voice selection, and provider-backed TTS behavior unchanged.
