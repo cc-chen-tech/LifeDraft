@@ -20,6 +20,8 @@ from src.database.models import Game, SessionLocal, User, init_db
 from src.services.music_service import MusicBrief
 from src.services.story_tts_provider import BrowserSpeechTTSProvider
 
+os.environ.setdefault("JWT_SECRET", "minimax-audio-generation-contract-test-secret")
+
 
 def _create_owned_music_game(session, name: str) -> tuple[int, dict[str, str]]:
     suffix = uuid4().hex[:10]
