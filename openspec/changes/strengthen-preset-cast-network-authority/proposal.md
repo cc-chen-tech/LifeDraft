@@ -14,6 +14,11 @@ of being replaced by debtors, investors, or unrelated genre templates.
   network rule for multi-person relationship or conflict scenes.
 - Tighten the quick validator so generated stories are rejected when they name
   several outside characters while using too little of the preset cast network.
+- Tighten the quick validator so a single invented strong-role character cannot
+  inherit mentor, friend, peer, investor, or main-plot-driving functions from
+  the preset relationship network.
+- Treat preset names mentioned only as absent or non-participating as not
+  satisfying preset-cast usage.
 - Treat `relationships.key_people` as the authoritative required cast even when
   family members also appear in the broader available-people list.
 - Preserve the existing allowance for focused one-on-one scenes that do not

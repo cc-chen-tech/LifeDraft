@@ -235,6 +235,34 @@ def test_quick_validator_rejects_partial_cast_when_new_named_network_dominates()
     assert any("预设关系网使用不足" in issue for issue in result.issues)
 
 
+def test_quick_validator_rejects_single_new_role_substitute_for_preset_network() -> None:
+    """A single invented strong-role character can still replace the preset network."""
+    from config.prompts._helpers import _collect_available_people
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    available_people = [
+        person["name"]
+        for person in _collect_available_people(settings)
+        if person.get("name")
+    ]
+
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然在会议室门口提醒林清先看用户反馈。"
+            "苏婉清推开会议室的门，以投资人兼导师的身份接管了林清的产品复盘，"
+            "陪她拆解路线、安抚情绪，并决定下一步融资节奏。"
+            "整个下午，林清都跟着苏婉清推进主线，陈晓雨和林一凡没有参与。"
+        ),
+        character_settings=settings,
+        available_people=available_people,
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外关键角色替代预设关系网" in issue for issue in result.issues)
+
+
 def test_quick_validator_rejects_family_only_story_when_key_people_are_missing() -> None:
     """Family members are available people, but they do not replace preset key people."""
     from config.prompts._helpers import _collect_available_people
