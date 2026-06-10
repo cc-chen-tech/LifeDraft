@@ -32,6 +32,7 @@ const STEP_DESCRIPTIONS: Record<string, string> = {
 };
 
 export type ToastType = { type: "success" | "error"; message: string } | null;
+export type PresetSaveStatus = "idle" | "saving" | "error";
 
 export interface UseCharacterCreationReturn {
   // Router
@@ -80,6 +81,8 @@ export interface UseCharacterCreationReturn {
   presetName: string;
   setPresetName: (name: string) => void;
   isSavingPreset: boolean;
+  presetSaveStatus: PresetSaveStatus;
+  presetSaveMessage: string;
   generatedContent: Record<string, unknown> | null;
   toast: ToastType;
   showToast: (type: "success" | "error", message: string) => void;
@@ -158,6 +161,8 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
   const [showPresetSheet, setShowPresetSheet] = useState(false);
   const [presetName, setPresetName] = useState("");
   const [isSavingPreset, setIsSavingPreset] = useState(false);
+  const [presetSaveStatus, setPresetSaveStatus] = useState<PresetSaveStatus>("idle");
+  const [presetSaveMessage, setPresetSaveMessage] = useState("");
   const [generatedContent, setGeneratedContent] = useState<Record<string, unknown> | null>(null);
   const [toast, setToast] = useState<ToastType>(null);
 
@@ -211,6 +216,22 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     },
     [invalidateEraGeneration, storeSetLifeVision]
   );
+
+  const handleSetPresetName = useCallback((name: string) => {
+    setPresetName(name);
+    if (presetSaveStatus === "error") {
+      setPresetSaveStatus("idle");
+      setPresetSaveMessage("");
+    }
+  }, [presetSaveStatus]);
+
+  const handleSetShowPresetSheet = useCallback((show: boolean) => {
+    setShowPresetSheet(show);
+    if (!show) {
+      setPresetSaveStatus("idle");
+      setPresetSaveMessage("");
+    }
+  }, []);
 
   // Retry wrapper
   const withRetry = async <T,>(
@@ -605,6 +626,8 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
   const handleSavePreset = useCallback(async () => {
     if (!presetName.trim()) return;
     setIsSavingPreset(true);
+    setPresetSaveStatus("saving");
+    setPresetSaveMessage("正在保存角色预设...");
     try {
       await api.presets.create({
         preset_name: presetName.trim(),
@@ -612,16 +635,20 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
         life_vision: lifeVision,
         character_settings: characterSettings,
       });
-      setShowPresetSheet(false);
+      handleSetShowPresetSheet(false);
       setPresetName("");
+      setPresetSaveStatus("idle");
+      setPresetSaveMessage("");
       showToast("success", "预设保存成功");
     } catch (err) {
       console.error("Save preset failed:", err);
+      setPresetSaveStatus("error");
+      setPresetSaveMessage("保存失败，预设未保存，请重试。");
       showToast("error", "保存失败，请重试");
     } finally {
       setIsSavingPreset(false);
     }
-  }, [presetName, playerName, lifeVision, characterSettings, showToast]);
+  }, [presetName, playerName, lifeVision, characterSettings, handleSetShowPresetSheet, showToast]);
 
   const handleStartGame = useCallback(async () => {
     if (isGenerating) {
@@ -734,10 +761,12 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     feedback,
     setFeedback,
     showPresetSheet,
-    setShowPresetSheet,
+    setShowPresetSheet: handleSetShowPresetSheet,
     presetName,
-    setPresetName,
+    setPresetName: handleSetPresetName,
     isSavingPreset,
+    presetSaveStatus,
+    presetSaveMessage,
     generatedContent,
     toast,
     showToast,

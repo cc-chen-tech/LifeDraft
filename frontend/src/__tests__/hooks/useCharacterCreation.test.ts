@@ -586,6 +586,45 @@ describe('useCharacterCreation', () => {
       });
     });
 
+    it('exposes inline preset save progress and error states for the modal', async () => {
+      let resolveSave: (response: Response) => void = () => undefined;
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url === '/api/presets') {
+          return new Promise<Response>((resolve) => {
+            resolveSave = resolve;
+          });
+        }
+        return Promise.resolve(jsonResponse({}));
+      });
+      jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      const { result } = renderHook(() => useCharacterCreation());
+
+      act(() => {
+        result.current.setPresetName('My Preset');
+      });
+
+      let savePromise!: Promise<void>;
+      act(() => {
+        savePromise = result.current.handleSavePreset();
+      });
+
+      await waitFor(() => {
+        expect(result.current.isSavingPreset).toBe(true);
+      });
+      expect((result.current as unknown as { presetSaveStatus?: string }).presetSaveStatus).toBe('saving');
+      expect((result.current as unknown as { presetSaveMessage?: string }).presetSaveMessage).toBe('正在保存角色预设...');
+
+      await act(async () => {
+        resolveSave(errorResponse(400, 'Save error'));
+        await savePromise;
+      });
+
+      expect(result.current.isSavingPreset).toBe(false);
+      expect((result.current as unknown as { presetSaveStatus?: string }).presetSaveStatus).toBe('error');
+      expect((result.current as unknown as { presetSaveMessage?: string }).presetSaveMessage).toBe('保存失败，预设未保存，请重试。');
+    });
+
     it('does not save preset when presetName is empty', async () => {
       const { result } = renderHook(() => useCharacterCreation());
 
@@ -874,9 +913,15 @@ describe('useCharacterCreation', () => {
       const { result } = renderHook(() => useCharacterCreation());
 
       // Call handleGenerate first to set isGenerating = true
-      (global.fetch as jest.Mock).mockImplementation(() => new Promise<Response>(() => {})); // never resolves
+      let resolveGeneration!: (value: Response) => void;
+      (global.fetch as jest.Mock).mockImplementation(
+        () => new Promise<Response>((resolve) => {
+          resolveGeneration = resolve;
+        })
+      );
+      let generationPromise!: Promise<void>;
       await act(async () => {
-        void result.current.handleGenerate();
+        generationPromise = result.current.handleGenerate();
       });
 
       expect(result.current.isGenerating).toBe(true);
@@ -887,6 +932,11 @@ describe('useCharacterCreation', () => {
       });
 
       expect(fetchCalled('/api/games')).toBe(false);
+
+      await act(async () => {
+        resolveGeneration(jsonResponse({ era_name: '古代', era_description: 'Ancient times' }));
+        await generationPromise;
+      });
     });
 
     it('navigates to /story/opening when gameId already exists', async () => {
@@ -1196,9 +1246,7 @@ describe('useCharacterCreation', () => {
       const { result } = renderHook(() => useCharacterCreation());
 
       await expect(
-        act(async () => {
-          await result.current.regenerateSetting('era', 'Change it');
-        })
+        result.current.regenerateSetting('era', 'Change it')
       ).rejects.toThrow('游戏未创建');
     });
 
