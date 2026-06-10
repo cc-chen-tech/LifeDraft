@@ -27,3 +27,10 @@ The saves page SHALL only render save cards for the currently authenticated sess
 - **WHEN** the user opens `/saves`
 - **THEN** the page MUST NOT render those stale save cards
 - **AND** the page MUST NOT request authenticated save loading actions for that stale list.
+
+#### Scenario: Authenticated user changes while saves page is mounted
+- **GIVEN** the `/saves` page has rendered save cards loaded for user A
+- **WHEN** the current authenticated user changes to user B
+- **THEN** the page MUST hide user A's save cards immediately
+- **AND** the page MUST enter a loading state until user B's save list has loaded
+- **AND** user A's save cards MUST NOT be rendered as user B's saves.
