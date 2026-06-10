@@ -4,8 +4,8 @@ The 2026-06-08/2026-06-09 UX report observed `/api/music/generate` taking 8s+ an
 
 ## What Changes
 
-- Keep deterministic local-audio mode synchronous so existing contract and E2E tests can still verify ready generated tracks.
-- Make the real MiniMax provider path for `/api/music/generate` enqueue generation in the background and return HTTP 202 immediately.
+- Make `/api/music/generate` enqueue generation in the background and return HTTP 202 by default, even when deterministic local-audio storage is enabled.
+- Keep deterministic local-audio ready-track verification available through explicit `/api/music/generate?sync=true`.
 - Preserve the existing `/api/music/generate-async` behavior and future-queue insertion policy.
 - Update generated OpenAPI types so frontend consumers can see that `/api/music/generate` may return either a ready track or a queued response.
 

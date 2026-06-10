@@ -639,7 +639,7 @@ def test_music_generate_api_returns_ready_track_from_story_without_netease_block
         client = TestClient(app)
 
         response = client.post(
-            "/api/music/generate",
+            "/api/music/generate?sync=true",
             json={
                 "game_id": game_id,
                 "story_text": "雨夜码头的旧账册被风吹开，主角在汽笛声里追向江边。",
@@ -695,7 +695,7 @@ def test_music_generate_api_titles_generic_narrative_scene_from_context(
         client = TestClient(app)
 
         response = client.post(
-            "/api/music/generate",
+            "/api/music/generate?sync=true",
             json={
                 "game_id": game_id,
                 "story_text": "医院档案室里，主角发现审计报告和消失的病历编号。",
@@ -784,7 +784,7 @@ def test_music_generate_api_persists_generated_track_into_future_playlist_queue(
         assert playlist_response.status_code == 200
 
         response = client.post(
-            "/api/music/generate",
+            "/api/music/generate?sync=true",
             json={
                 "game_id": game_id,
                 "story_text": "雨夜码头的旧账册被风吹开，主角在汽笛声里追向江边。",
@@ -900,6 +900,98 @@ def test_music_generate_api_fast_enqueues_real_provider_without_blocking(
                 "mood": "紧张",
                 "scene_type": "雨夜追逐",
                 "environment": "民国码头",
+            },
+        )
+    ]
+
+
+def test_music_generate_api_defaults_to_enqueue_even_when_local_audio_is_enabled(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from src.api.routers import music as music_router
+    from src.api.routers.music import router
+    from src.services.minimax_music_generation import StoryMusicGenerationService
+
+    init_db()
+    session = SessionLocal()
+    try:
+        game = Game(language="zh", initial_state={"name": "MiniMax Default Async"})
+        session.add(game)
+        session.commit()
+        session.refresh(game)
+        game_id = int(game.game_id)
+    finally:
+        session.close()
+
+    def fail_if_sync_generation_runs(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        raise AssertionError("default /music/generate should enqueue instead of blocking")
+
+    background_calls: list[tuple[int, str, dict[str, Any]]] = []
+
+    def record_background_generation(
+        game_id: int,
+        story_text: str,
+        analysis: dict[str, Any],
+    ) -> None:
+        background_calls.append((game_id, story_text, analysis))
+
+    monkeypatch.setattr(
+        StoryMusicGenerationService,
+        "generate_ready_track",
+        fail_if_sync_generation_runs,
+    )
+    monkeypatch.setattr(
+        music_router,
+        "_generate_music_in_background",
+        record_background_generation,
+    )
+
+    previous_env = {
+        name: os.environ.get(name)
+        for name in ["MINIMAX_API_KEY", "MINIMAX_E2E_LOCAL_AUDIO", "STORY_MUSIC_ASSET_DIR"]
+    }
+    os.environ["MINIMAX_API_KEY"] = "test-key"
+    os.environ["MINIMAX_E2E_LOCAL_AUDIO"] = "1"
+    os.environ["STORY_MUSIC_ASSET_DIR"] = str(tmp_path / "music")
+    try:
+        app = FastAPI()
+        app.include_router(router, prefix="/api")
+        client = TestClient(app)
+
+        response = client.post(
+            "/api/music/generate",
+            json={
+                "game_id": game_id,
+                "story_text": "长故事生成完毕后，音乐生成不应该让浏览器请求一直挂起。",
+                "analysis": {
+                    "mood": "悬疑",
+                    "scene_type": "医院夜谈",
+                    "environment": "现代医院",
+                },
+            },
+        )
+    finally:
+        for name, value in previous_env.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+    assert response.status_code == 202
+    assert response.json() == {
+        "status": "queued",
+        "game_id": game_id,
+        "insert_policy": "future_queue",
+    }
+    assert background_calls == [
+        (
+            game_id,
+            "长故事生成完毕后，音乐生成不应该让浏览器请求一直挂起。",
+            {
+                "mood": "悬疑",
+                "scene_type": "医院夜谈",
+                "environment": "现代医院",
             },
         )
     ]
@@ -1030,7 +1122,7 @@ def test_music_generate_api_reports_unexpected_generation_failure_without_global
         client = TestClient(app)
 
         response = client.post(
-            "/api/music/generate",
+            "/api/music/generate?sync=true",
             json={
                 "game_id": game_id,
                 "story_text": "雨夜码头的旧账册被风吹开，主角在汽笛声里追向江边。",

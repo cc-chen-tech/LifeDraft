@@ -5984,7 +5984,10 @@ export interface operations {
     };
     generate_music_api_music_generate_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Debug/local verification only: wait for provider generation and return the ready track. */
+                sync?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
