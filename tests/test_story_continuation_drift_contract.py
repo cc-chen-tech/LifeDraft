@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.game.story_service import StoryService
+from src.ai.story_rewriter import StoryRewriter
 
 
 def _modern_product_manager_settings() -> dict[str, Any]:
@@ -51,3 +52,36 @@ def test_story_continuation_retries_when_choice_result_drifts_from_character_set
     assert "夜之城" not in continuation
     assert "荒坂" not in continuation
     assert "马老板" not in continuation
+
+
+def test_regenerate_story_retries_when_story_drifts_from_character_settings() -> None:
+    class DriftThenValidClient:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        def call(self, **kwargs: Any) -> str:
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                return (
+                    "夜之城的雨落在荒坂集团楼下，Viktor把神经接口推到林见微面前。"
+                    "马老板和方蕾催她立刻处理陌生债务。"
+                )
+            return "陆昊然把复盘文档递给林见微，陈晓雨陪她逐条整理用户反馈。"
+
+    client = DriftThenValidClient()
+    rewriter = StoryRewriter(client)  # type: ignore[arg-type]
+
+    regenerated = rewriter.regenerate_story(
+        player_state={"player_name": "林见微", "week": 1, "current_round": 1},
+        character_settings=_modern_product_manager_settings(),
+        story_context="上一轮林见微刚结束需求评审。",
+        language="zh",
+    )
+
+    assert len(client.calls) == 2
+    assert "快速一致性修正" in client.calls[1]["user_prompt"]
+    assert "陆昊然" in regenerated
+    assert "陈晓雨" in regenerated
+    assert "夜之城" not in regenerated
+    assert "荒坂" not in regenerated
+    assert "马老板" not in regenerated
