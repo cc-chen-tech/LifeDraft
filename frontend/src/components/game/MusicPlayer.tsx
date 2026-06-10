@@ -5,7 +5,7 @@
  *
  * 根据故事内容推荐并播放匹配的音乐
  */
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Play,
   Pause,
@@ -51,39 +51,39 @@ export function MusicPlayer({
   hideTitle = false,
   compactControls = false,
 }: MusicPlayerProps) {
-  const {
-    recommendation,
-    isLoadingRecommendation,
-    recommendationError,
-    currentSong,
-    isPlaying,
-    volume,
-    currentTime,
-    duration,
-    audioElement,
-    isGeneratingAiMusic,
-    aiMusicGenerationStatus,
-    setRecommendation,
-    setIsLoadingRecommendation,
-    setRecommendationError,
-    setCurrentSong,
-    setIsPlaying,
-    setVolume,
-    setCurrentTime,
-    setDuration,
-    setAudioElement,
-    mergePlaylist,
-    advanceQueue,
-    generateAiMusicForStory,
-    play,
-    pause,
-    cleanup,
-    fadeVolume,
-  } = useMusicStore();
+  const recommendation = useMusicStore((state) => state.recommendation);
+  const isLoadingRecommendation = useMusicStore((state) => state.isLoadingRecommendation);
+  const recommendationError = useMusicStore((state) => state.recommendationError);
+  const currentSong = useMusicStore((state) => state.currentSong);
+  const isPlaying = useMusicStore((state) => state.isPlaying);
+  const volume = useMusicStore((state) => state.volume);
+  const currentTime = useMusicStore((state) => state.currentTime);
+  const duration = useMusicStore((state) => state.duration);
+  const audioElement = useMusicStore((state) => state.audioElement);
+  const isGeneratingAiMusic = useMusicStore((state) => state.isGeneratingAiMusic);
+  const aiMusicGenerationStatus = useMusicStore((state) => state.aiMusicGenerationStatus);
+  const setRecommendation = useMusicStore((state) => state.setRecommendation);
+  const setIsLoadingRecommendation = useMusicStore((state) => state.setIsLoadingRecommendation);
+  const setRecommendationError = useMusicStore((state) => state.setRecommendationError);
+  const setCurrentSong = useMusicStore((state) => state.setCurrentSong);
+  const setIsPlaying = useMusicStore((state) => state.setIsPlaying);
+  const setVolume = useMusicStore((state) => state.setVolume);
+  const setCurrentTime = useMusicStore((state) => state.setCurrentTime);
+  const setDuration = useMusicStore((state) => state.setDuration);
+  const setAudioElement = useMusicStore((state) => state.setAudioElement);
+  const mergePlaylist = useMusicStore((state) => state.mergePlaylist);
+  const advanceQueue = useMusicStore((state) => state.advanceQueue);
+  const generateAiMusicForStory = useMusicStore((state) => state.generateAiMusicForStory);
+  const play = useMusicStore((state) => state.play);
+  const pause = useMusicStore((state) => state.pause);
+  const cleanup = useMusicStore((state) => state.cleanup);
+  const fadeVolume = useMusicStore((state) => state.fadeVolume);
 
   const fetchedRecommendationKeyRef = useRef<string | null>(null);
   const generatedMusicStoryKeyRef = useRef<string | null>(null);
   const isLoadingSongRef = useRef(false);
+  const [displayCurrentTime, setDisplayCurrentTime] = useState(currentTime);
+  const lastCurrentTimeStoreSyncRef = useRef(0);
   const [playError, setPlayError] = useState<string | null>(null);
   const [skippedSongs, setSkippedSongs] = useState<Set<number | string>>(new Set());
   const skippedSongsRef = useRef<Set<number | string>>(new Set()); // 同步跟踪跳过的歌曲
@@ -278,10 +278,19 @@ export function MusicPlayer({
       // 绑定事件
       audio.onplay = () => setIsPlaying(true);
       audio.onpause = () => setIsPlaying(false);
-      audio.ontimeupdate = () => setCurrentTime(audio.currentTime);
+      audio.ontimeupdate = () => {
+        const nextTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+        setDisplayCurrentTime(nextTime);
+        const now = Date.now();
+        if (now - lastCurrentTimeStoreSyncRef.current >= 250) {
+          lastCurrentTimeStoreSyncRef.current = now;
+          setCurrentTime(nextTime);
+        }
+      };
       audio.onloadedmetadata = () => setDuration(audio.duration || 0);
       audio.onended = () => {
         setIsPlaying(false);
+        setDisplayCurrentTime(0);
         setCurrentTime(0);
         activeAudioRef.current = null; // 清理活动音频引用
         void (async () => {
@@ -522,6 +531,7 @@ export function MusicPlayer({
     const time = value[0];
     if (audioElement) {
       audioElement.currentTime = time;
+      setDisplayCurrentTime(time);
       setCurrentTime(time);
     }
   };
@@ -560,6 +570,11 @@ export function MusicPlayer({
       fetchRecommendation();
     }
   }, [autoFetchRecommendation, storyText, gameId, fetchRecommendation]);
+
+  useEffect(() => {
+    setDisplayCurrentTime(currentTime);
+    lastCurrentTimeStoreSyncRef.current = Date.now();
+  }, [currentTime]);
 
   // 清理
   useEffect(() => {
@@ -719,10 +734,10 @@ export function MusicPlayer({
           {/* 进度条 */}
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground w-10 text-right">
-              {formatTime(currentTime)}
+              {formatTime(displayCurrentTime)}
             </span>
             <Slider
-              value={[currentTime]}
+              value={[displayCurrentTime]}
               max={duration || 100}
               step={1}
               onValueChange={handleSeek}
