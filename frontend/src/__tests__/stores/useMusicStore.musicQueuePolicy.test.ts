@@ -330,6 +330,70 @@ describe("music queue policy", () => {
     expect(state.queue.map((item) => item.id)).toEqual(["ai-generated-77", 2, 3]);
   });
 
+  it("store keeps async AI music visibly queued when polling has not seen the generated track yet", async () => {
+    jest.useFakeTimers();
+    try {
+      global.fetch = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/music/playlist/101") && init?.method === "PUT") {
+          return {
+            ok: true,
+            json: async () => ({
+              game_id: 101,
+              current_song: song(1, "网易云 当前曲"),
+              queue: [],
+              played_songs: [],
+              is_playing: false,
+              volume: 0.5,
+              current_position_ms: 0,
+            }),
+          } as Response;
+        }
+        if (url.endsWith("/api/music/generate-async")) {
+          return {
+            ok: true,
+            json: async () => ({
+              status: "queued",
+              game_id: 101,
+              insert_policy: "future_queue",
+            }),
+          } as Response;
+        }
+        if (url.endsWith("/api/music/playlist/101")) {
+          return {
+            ok: true,
+            json: async () => ({
+              game_id: 101,
+              current_song: song(1, "网易云 当前曲"),
+              queue: [],
+              played_songs: [],
+              is_playing: false,
+              volume: 0.5,
+              current_position_ms: 0,
+            }),
+          } as Response;
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      }) as jest.Mock;
+      useMusicStore.setState({
+        currentSong: song(1, "网易云 当前曲"),
+        queue: [],
+      });
+
+      const generation = useMusicStore.getState().generateAiMusicForStory("雨夜码头故事", 101, {
+        mood: "紧张",
+      });
+
+      await jest.runAllTimersAsync();
+      await generation;
+
+      expect(useMusicStore.getState().isGeneratingAiMusic).toBe(false);
+      expect(useMusicStore.getState().aiMusicGenerationStatus).toBe("delayed");
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("store insertGeneratedTrack places AI music as the next upcoming track", () => {
     useMusicStore.setState({
       currentSong: song(1, "Current"),
