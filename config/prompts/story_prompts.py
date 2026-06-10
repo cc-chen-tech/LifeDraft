@@ -553,6 +553,7 @@ def _get_english_prompt(
     # Build character context and available people
     character_context, available_people = _build_full_character_context(character_settings, "en")
     available_people_str = _build_available_people_constraint(available_people, "en")
+    required_cast_context = build_required_cast_constraints(character_settings or {}, "en")
 
     # Build time context
     time_context = _build_time_context(game_date_info, "en")
@@ -609,7 +610,8 @@ MOST IMPORTANT REQUIREMENTS:
 2. The story should be 800-1200 words, with dialogue, scene descriptions, and key moments. Write it with depth and engagement.
 
 【Complete Character Settings - MUST STRICTLY FOLLOW】
-{character_context if character_context else "Standard modern young adult"}{available_people_str}{time_context}
+{character_context if character_context else "Standard modern young adult"}{available_people_str}
+{required_cast_context}{time_context}
 
 【近期历史 - 禁止重复相似情节】
 {history_str}{older_history_section_en}
@@ -745,6 +747,7 @@ def _get_chinese_prompt(
     # Build character context and available people
     character_context, available_people = _build_full_character_context(character_settings, "zh")
     available_people_str = _build_available_people_constraint(available_people, "zh")
+    required_cast_context = build_required_cast_constraints(character_settings or {}, "zh")
 
     # Build time context
     time_context = _build_time_context(game_date_info, "zh")
@@ -839,7 +842,8 @@ def _get_chinese_prompt(
 {chapter_constraint}
 
 【角色完整设定 - 必须严格遵守】
-{character_context if character_context else "标准现代青年"}{available_people_str}{time_context}
+{character_context if character_context else "标准现代青年"}{available_people_str}
+{required_cast_context}{time_context}
 
 **人物约束（严格禁止创造新人物）**：
 - 所有出现在事件中的人物名字必须且只能来自上方"可用人物列表"

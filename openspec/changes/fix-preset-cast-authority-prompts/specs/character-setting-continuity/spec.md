@@ -5,7 +5,7 @@ Story generation SHALL treat preset key people in character settings as canonica
 
 #### Scenario: Product manager growth story has preset mentor friend and peer
 - **GIVEN** character settings define 陆昊然 as 导师, 陈晓雨 as 闺蜜, and 林一凡 as 同期
-- **WHEN** story-only or round-event prompts are built
+- **WHEN** main event, story-only, or round-event prompts are built
 - **THEN** the prompt MUST include each canonical name with its role or relationship label
 - **AND** it MUST instruct the model not to rename these people or transfer their roles to invented substitutes
 - **AND** it MUST require each generated round to use at least one canonical preset key person
