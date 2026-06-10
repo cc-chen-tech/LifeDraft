@@ -91,6 +91,50 @@ class TestRewriteStory:
         assert "rewritten_story" in data
         assert "event" in data
 
+    def test_rewrite_story_updates_current_event_data(
+        self, client, auth_headers, mock_auth, mock_session_service, mock_session
+    ):
+        """Non-streaming rewrite should update persisted current_event_data."""
+        mock_session.game_loop.player_state.current_event_data = {
+            "event_description": "Original story",
+            "story_text": "Original story",
+            "options": [{"text": "Continue"}],
+        }
+        mock_session.game_loop.ai_generator.rewrite_story_segment.return_value = (
+            "Rewritten story content"
+        )
+        mock_session.game_loop.current_event.model_dump.return_value = {
+            "event_description": "Rewritten story content",
+            "story_text": "Rewritten story content",
+            "options": [{"text": "Continue"}],
+        }
+        mock_session.game_loop.get_state.return_value = mock_session.game_loop.player_state
+        mock_session_service.get_or_restore.return_value = mock_session
+
+        mock_db = MagicMock()
+        with patch("src.api.routers.gameplay.sse_helpers.get_db", return_value=mock_db):
+            response = client.post(
+                "/api/games/1/rewrite",
+                json={
+                    "full_story": "Original story",
+                    "segment_to_replace": "Original",
+                    "user_instruction": "Make it warmer",
+                    "language": "zh",
+                },
+                headers=auth_headers,
+            )
+
+        assert response.status_code == 200
+        assert (
+            mock_session.game_loop.player_state.current_event_data["event_description"]
+            == "Rewritten story content"
+        )
+        assert (
+            mock_session.game_loop.player_state.current_event_data["story_text"]
+            == "Rewritten story content"
+        )
+        mock_db.save_game_progress.assert_called_once_with(1, mock_session.game_loop.player_state)
+
     def test_rewrite_story_no_event(
         self, client, auth_headers, mock_auth, mock_session_service, mock_session
     ):

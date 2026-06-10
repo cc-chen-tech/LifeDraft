@@ -35,6 +35,42 @@ def _get_sse_thread_pool() -> ThreadPoolExecutor:
 get_sse_thread_pool = _get_sse_thread_pool
 
 
+def persist_rewritten_current_event(game_loop, game_id: int, rewritten_story: str) -> None:
+    """Persist a rewritten current story so refresh/save/load use the new text."""
+    if not rewritten_story or not getattr(game_loop, "current_event", None):
+        return
+
+    game_loop.current_event.event_description = rewritten_story
+
+    player_state = getattr(game_loop, "player_state", None)
+    if player_state is not None:
+        current_event_data = getattr(player_state, "current_event_data", None)
+        event_data = game_loop.current_event.model_dump()
+        if not isinstance(event_data, dict):
+            event_data = {}
+        if isinstance(current_event_data, dict):
+            event_data = {**current_event_data, **event_data}
+        event_data["event_description"] = rewritten_story
+        if isinstance(current_event_data, dict) and "story_text" in current_event_data:
+            event_data["story_text"] = rewritten_story
+        elif "story_text" in event_data:
+            event_data["story_text"] = rewritten_story
+        player_state.current_event_data = event_data
+
+    try:
+        db = get_db()
+        state = player_state
+        if state is None and hasattr(game_loop, "get_state"):
+            state = game_loop.get_state()
+        if state is not None:
+            db.save_game_progress(game_id, state)
+            logger.info(f"Auto-saved game state after rewrite: game_id={game_id}")
+    except (OSError, IOError) as e:
+        logger.warning(f"Auto-save IO error after rewrite: {e}")
+    except Exception as e:
+        logger.exception(f"Auto-save unexpected error after rewrite: {e}")
+
+
 def shutdown_sse_thread_pool(wait: bool = True) -> None:
     """关闭 SSE 线程池（用于应用退出时清理）。"""
     global _sse_thread_pool
@@ -1230,9 +1266,7 @@ async def stream_rewrite(
     # Send complete event with rewritten story
     rewritten_story = result_holder[0]
     if rewritten_story is not None:
-        # Update the current event description if exists
-        if game_loop.current_event:
-            game_loop.current_event.event_description = rewritten_story
+        persist_rewritten_current_event(game_loop, game_id, rewritten_story)
 
         yield make_sse_event(
             "complete",

@@ -3,7 +3,7 @@
 使用 Mock 隔离数据库和外部服务依赖
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -459,6 +459,58 @@ class TestStreamRewrite:
 
         # 验证 current_event 被更新
         assert game_loop.current_event.event_description == "新的事件描述"
+
+    @pytest.mark.asyncio
+    async def test_stream_rewrite_persists_current_event_data(self):
+        """流式改写完成后必须持久化当前事件，避免刷新后回到旧故事。"""
+        game_loop = MagicMock()
+        game_loop.player_state = MagicMock()
+        game_loop.player_state.round_history = []
+        game_loop.player_state.character_settings = {}
+        game_loop.player_state.current_event_data = {
+            "event_description": "原始事件描述",
+            "options": [{"text": "继续"}],
+        }
+        game_loop.player_state.to_dict = MagicMock(
+            return_value={
+                "current_event_data": {
+                    "event_description": "新的事件描述",
+                    "options": [{"text": "继续"}],
+                }
+            }
+        )
+
+        mock_event = MagicMock()
+        mock_event.event_description = "原始事件描述"
+        mock_event.model_dump = MagicMock(
+            return_value={
+                "event_description": "新的事件描述",
+                "options": [{"text": "继续"}],
+            }
+        )
+        game_loop.current_event = mock_event
+
+        game_loop.ai_generator = MagicMock()
+        game_loop.ai_generator.rewrite_story_segment = MagicMock(return_value="新的事件描述")
+        game_loop.get_state = MagicMock(return_value=game_loop.player_state)
+
+        mock_db = MagicMock()
+        with patch("src.api.routers.gameplay.sse_helpers.get_db", return_value=mock_db):
+            results = []
+            async for event in stream_rewrite(
+                game_loop=game_loop,
+                game_id=1,
+                full_story="原始事件描述",
+                segment_to_replace="原始",
+                user_instruction="修改",
+                language="zh",
+            ):
+                results.append(event)
+                if len(results) > 10:
+                    break
+
+        assert game_loop.player_state.current_event_data["event_description"] == "新的事件描述"
+        mock_db.save_game_progress.assert_called_once_with(1, game_loop.player_state)
 
     @pytest.mark.asyncio
     async def test_stream_rewrite_with_world_model(self):

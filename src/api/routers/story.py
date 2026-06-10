@@ -8,8 +8,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from src.api.deps import get_current_user_optional
-from src.api.routers.gameplay.sse_helpers import (stream_regenerate,
-                                                  stream_rewrite)
+from src.api.routers.gameplay.sse_helpers import (
+    persist_rewritten_current_event,
+    stream_regenerate,
+    stream_rewrite,
+)
 from src.api.schemas import (RegenerateStoryRequest, RewriteStoryRequest,
                              StoryChatRequest, StoryChatResponse)
 from src.api.services.session_service import session_service
@@ -62,9 +65,7 @@ async def rewrite_story(
             language=req.language,
         )
 
-        # Update the current event description if exists
-        if game_loop.current_event:
-            game_loop.current_event.event_description = rewritten_story
+        persist_rewritten_current_event(game_loop, game_id, rewritten_story)
 
         return {
             "new_story": rewritten_story,
