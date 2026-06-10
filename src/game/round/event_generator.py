@@ -22,7 +22,10 @@ from config.prompts.story_prompts import (
 )
 from src.ai.models import GameEvent
 from src.game.narrative_manager import NarrativeManager
-from src.game.relationship_authority import build_required_cast_constraints
+from src.game.relationship_authority import (
+    build_required_cast_constraints,
+    extract_required_key_people,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -517,28 +520,128 @@ class RoundEventGenerator:
         """Generate a fallback event when AI generation fails."""
         from src.ai.models import EventOption
 
-        self.player_state
+        player_state = self.player_state
         language = self.language
+        character_settings = getattr(player_state, "character_settings", {}) or {}
+        player_dict = player_state.to_dict() if hasattr(player_state, "to_dict") else {}
+        protagonist_name = (
+            resolve_protagonist_name(player_dict, character_settings, None)
+            or getattr(player_state, "player_name", "")
+            or ("你" if language == "zh" else "You")
+        )
+        key_people = extract_required_key_people(character_settings)
+        anchor_person = key_people[0] if key_people else {}
+        occupation = self._extract_setting_text(
+            character_settings,
+            ["occupation", "job_title", "career", "profession", "identity"],
+        )
+        era = self._extract_setting_text(
+            character_settings,
+            ["era_description", "era_name", "world_context", "period", "year"],
+        )
+        role = anchor_person.get("role") or anchor_person.get("relationship") or ""
 
         if language == "zh":
-            description = "一个平静的日子，没有特别的事情发生。"
+            if anchor_person.get("name") or occupation or era:
+                era_clause = f"在{era}的背景下，" if era else ""
+                occupation_clause = f"作为{occupation}，" if occupation else ""
+                anchor_clause = ""
+                if anchor_person.get("name"):
+                    role_clause = f"这位{role}" if role else "这位预设关键人物"
+                    anchor_clause = (
+                        f"{anchor_person['name']}{role_clause}仍在{protagonist_name}的关系网里，"
+                        "提醒她先守住已确定的人物关系和现实处境。"
+                    )
+                description = (
+                    f"{era_clause}第{getattr(player_state, 'week', 0) + 1}周，"
+                    f"{protagonist_name}没有被新的陌生人物带离主线。"
+                    f"{occupation_clause}她把眼前的线索和上一轮选择重新整理，"
+                    f"{anchor_clause}"
+                    "这一次保底事件只推进一个小决策：是先稳住当前关系，"
+                    "还是把精力投入到下一步行动准备中。"
+                )
+            else:
+                description = "一个平静的日子，没有特别的事情发生。"
             options = [
                 EventOption(text="安静地度过", effects={}),
                 EventOption(text="主动寻找有趣的事", effects={"mood": 5}),
                 EventOption(text="专注于工作/学习", effects={"knowledge": 5}),
             ]
+            if anchor_person.get("name"):
+                options = [
+                    EventOption(
+                        text=f"联系{anchor_person['name']}确认下一步",
+                        effects={"knowledge": 3, "relationships": {anchor_person["name"]: 2}},
+                    ),
+                    EventOption(text="先独自整理当前线索", effects={"energy": -3, "knowledge": 2}),
+                    EventOption(text="放慢节奏恢复状态", effects={"mood": 3, "energy": 2}),
+                ]
         else:
-            description = "A quiet day with nothing special happening."
+            if anchor_person.get("name") or occupation or era:
+                era_clause = f"In the context of {era}, " if era else ""
+                occupation_clause = f"as {occupation}, " if occupation else ""
+                anchor_clause = ""
+                if anchor_person.get("name"):
+                    role_clause = f" as {role}" if role else ""
+                    anchor_clause = (
+                        f"{anchor_person['name']}{role_clause} remains part of "
+                        f"{protagonist_name}'s preset relationship network. "
+                    )
+                description = (
+                    f"{era_clause}week {getattr(player_state, 'week', 0) + 1} gives "
+                    f"{protagonist_name} a quieter fallback moment. {occupation_clause}"
+                    f"{anchor_clause}The scene stays inside the established character setup "
+                    "and asks only one small decision: preserve the current relationship thread "
+                    "or prepare the next concrete action."
+                )
+            else:
+                description = "A quiet day with nothing special happening."
             options = [
                 EventOption(text="Spend quietly", effects={}),
                 EventOption(text="Look for something interesting", effects={"mood": 5}),
                 EventOption(text="Focus on work/study", effects={"knowledge": 5}),
             ]
+            if anchor_person.get("name"):
+                options = [
+                    EventOption(
+                        text=f"Check in with {anchor_person['name']}",
+                        effects={"knowledge": 3, "relationships": {anchor_person["name"]: 2}},
+                    ),
+                    EventOption(text="Organize the current clues", effects={"energy": -3, "knowledge": 2}),
+                    EventOption(text="Slow down and recover", effects={"mood": 3, "energy": 2}),
+                ]
 
         return GameEvent(
             event_description=description,
             options=options,
         )
+
+    @staticmethod
+    def _extract_setting_text(character_settings: dict[str, Any], keys: list[str]) -> str:
+        """Extract a concise setting value from nested character settings."""
+        if not character_settings:
+            return ""
+
+        def walk(value: Any) -> str:
+            if isinstance(value, dict):
+                for key in keys:
+                    item = value.get(key)
+                    if item is not None and str(item).strip():
+                        return str(item).strip()
+                for item in value.values():
+                    found = walk(item)
+                    if found:
+                        return found
+            elif isinstance(value, list):
+                for item in value:
+                    found = walk(item)
+                    if found:
+                        return found
+            elif value is not None and str(value).strip():
+                return str(value).strip()
+            return ""
+
+        return walk(character_settings)
 
     def _generate_scheduled_event(
         self,

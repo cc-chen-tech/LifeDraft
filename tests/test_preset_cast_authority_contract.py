@@ -480,6 +480,70 @@ def test_resume_existing_round_story_rejects_preset_cast_drift_before_options_on
     assert "马老板" not in event.event_description
 
 
+def test_round_generation_fallback_preserves_character_authority() -> None:
+    """If normal generation fails, fallback must not discard the preset cast."""
+
+    class FailingAI:
+        def generate_round_event(self, **_kwargs: Any) -> GameEvent:
+            raise RuntimeError("upstream model unavailable")
+
+    class PlayerState:
+        player_name = "林清"
+        week = 2
+        current_round = 0
+        last_round_full_story = ""
+        current_event_data: dict[str, Any] = {}
+        pending_storylines: list[Any] = []
+        established_facts: list[Any] = []
+        last_event_concluded = True
+        character_habits: list[Any] = []
+        foreshadowing_seeds: list[Any] = []
+        round_history: list[Any] = []
+        character_settings = _modern_product_manager_settings()
+
+        def to_dict(self) -> dict[str, Any]:
+            return {
+                "player_name": self.player_name,
+                "week": self.week,
+                "current_round": self.current_round,
+                "character_settings": self.character_settings,
+            }
+
+        def get_pending_scheduled_events(self, *_args: Any) -> list[Any]:
+            return []
+
+        def get_round_context(self) -> str:
+            return "上一轮你开始适应产品经理工作。"
+
+        def get_game_date_info(self) -> dict[str, Any]:
+            return {}
+
+    player_state = PlayerState()
+    generator = RoundEventGenerator(
+        player_state_getter=lambda: player_state,
+        ai_generator=FailingAI(),
+        language_getter=lambda: "zh",
+        character_introduction_service=SimpleNamespace(
+            maybe_generate_new_character=lambda probability=0.0: None,
+            check_introduction_opportunity=lambda: None,
+        ),
+        summary_selector=SimpleNamespace(
+            select_relevant_historical_summary=lambda _player_state: (None, None)
+        ),
+        relationship_service=SimpleNamespace(
+            get_triggered_events=lambda *_args, **_kwargs: [],
+            mark_event_triggered=lambda *_args, **_kwargs: None,
+        ),
+    )
+
+    event = generator.generate_round_event()
+
+    assert event is not None
+    assert "陆昊然" in event.event_description
+    assert "产品经理" in event.event_description
+    assert "一个平静的日子" not in event.event_description
+
+
 def test_world_model_constraints_include_required_cast_from_character_settings() -> None:
     player_state = SimpleNamespace(
         week=2,
