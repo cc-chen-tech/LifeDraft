@@ -60,3 +60,9 @@
 - [x] Add a regression test proving segment-level rewrite retries when the first rewritten story drops preset key people and drifts into invented cast/IP-world content.
 - [x] Run rewritten story text through quick validation before returning it when no WorldModel is available.
 - [x] Run targeted story continuation and preset-cast contract tests.
+
+## 11. 2026-06-11 Main Event Prompt Follow-up
+
+- [x] Add a regression test proving the main event prompt injects the required preset-cast authority block, not only the loose available-people list.
+- [x] Inject required cast constraints into the Chinese and English main event prompt paths.
+- [x] Run targeted prompt contract and adjacent narrative drift tests.

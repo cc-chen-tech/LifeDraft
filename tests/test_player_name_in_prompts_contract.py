@@ -142,6 +142,47 @@ class TestPlayerNameInPrompts:
         assert "7字对仗标题" in prompt
         assert "第3周·周一" not in prompt
 
+    def test_main_event_prompt_injects_required_cast_authority(self):
+        """主事件 prompt 必须注入预设关键人物关系网硬约束，不能只给松散名单。"""
+        player_state = {
+            "player_name": "林小夏",
+            "age": 22,
+            "week": 1,
+            "current_round": 0,
+            "rounds_per_week": 3,
+            "energy": 70,
+            "mood": 60,
+            "knowledge": 50,
+            "wealth": 50000,
+            "relationships": {"陆昊然": 50, "陈晓雨": 70, "林一凡": 45},
+        }
+        character_settings = {
+            "era": {"year": 2024, "era_description": "2020年代中国互联网职场"},
+            "world": {"world_description": "现代都市产品经理成长故事"},
+            "relationships": {
+                "key_people": [
+                    {"name": "陆昊然", "role": "导师", "relationship": "产品负责人导师"},
+                    {"name": "陈晓雨", "role": "闺蜜", "relationship": "大学闺蜜"},
+                    {"name": "林一凡", "role": "同期", "relationship": "同届入职的产品新人"},
+                ]
+            },
+        }
+
+        prompt = get_event_generation_prompt(
+            player_state=player_state,
+            language="zh",
+            character_settings=character_settings,
+        )
+
+        assert "预设关键人物关系" in prompt
+        assert "canonical name 必须严格使用" in prompt
+        assert "本轮必须至少使用1位预设关键人物" in prompt
+        assert "至少80%的预设关系网参与推进" in prompt
+        assert "不得把这些人物的身份、关系或剧情功能转移给新命名人物" in prompt
+        assert "陆昊然：导师" in prompt
+        assert "陈晓雨：闺蜜" in prompt
+        assert "林一凡：同期" in prompt
+
     def test_story_only_prompt_includes_player_name(self):
         """get_story_only_prompt 输出必须包含传入的 player_name"""
         player_state = {
