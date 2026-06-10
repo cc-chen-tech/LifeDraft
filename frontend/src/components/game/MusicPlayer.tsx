@@ -36,6 +36,7 @@ interface MusicPlayerProps {
   embedded?: boolean;
   hideTitle?: boolean;
   compactControls?: boolean;
+  consoleControls?: boolean;
 }
 
 function hasMusicBrief(brief: Record<string, unknown> | undefined): brief is Record<string, unknown> {
@@ -50,6 +51,7 @@ export function MusicPlayer({
   embedded = false,
   hideTitle = false,
   compactControls = false,
+  consoleControls = false,
 }: MusicPlayerProps) {
   const recommendation = useMusicStore((state) => state.recommendation);
   const isLoadingRecommendation = useMusicStore((state) => state.isLoadingRecommendation);
@@ -77,7 +79,6 @@ export function MusicPlayer({
   const play = useMusicStore((state) => state.play);
   const pause = useMusicStore((state) => state.pause);
   const cleanup = useMusicStore((state) => state.cleanup);
-  const fadeVolume = useMusicStore((state) => state.fadeVolume);
 
   const fetchedRecommendationKeyRef = useRef<string | null>(null);
   const generatedMusicStoryKeyRef = useRef<string | null>(null);
@@ -386,7 +387,7 @@ export function MusicPlayer({
         setIsSwitchingSong(false); // 隐藏切换加载状态
       }
     }
-  }, [audioElement, volume, recommendation, currentSong, setAudioElement, setCurrentSong, setIsPlaying, setCurrentTime, setDuration, advanceQueue, getFallbackNextSong]);
+  }, [audioElement, volume, recommendation, setAudioElement, setCurrentSong, setIsPlaying, setCurrentTime, setDuration, advanceQueue, getFallbackNextSong]);
 
   // 预加载下一首歌曲
   const preloadNextSong = useCallback(async () => {
@@ -597,6 +598,151 @@ export function MusicPlayer({
   // 如果没有故事文本，不显示
   if (!storyText) {
     return null;
+  }
+
+  if (consoleControls) {
+    const artists = displaySong?.artists?.join(" / ") || "";
+    const subtitle = displaySong
+      ? [artists, displaySong.album].filter(Boolean).join(" · ") || sourceLabel || "当前音乐"
+      : isLoadingRecommendation
+        ? "正在匹配故事氛围"
+        : recommendationError
+          ? "音乐服务暂不可用"
+          : "故事生成后自动匹配";
+    const playDisabled = !audioElement && !hasRecommendationSongs;
+
+    return (
+      <div
+        data-testid="sound-music-console"
+        className={`min-w-0 space-y-2 ${className}`}
+      >
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <Button
+            variant="default"
+            size="icon"
+            className="h-9 w-9 shrink-0"
+            onClick={togglePlay}
+            disabled={playDisabled}
+            title={isPlaying ? "暂停" : "播放"}
+            aria-label={isPlaying ? "暂停" : "播放"}
+          >
+            {isLoadingRecommendation && !displaySong ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : isPlaying ? (
+              <Pause className="h-4 w-4" />
+            ) : (
+              <Play className="h-4 w-4 translate-x-px" />
+            )}
+          </Button>
+
+          <div className="min-w-[8rem] flex-1">
+            <div className="truncate text-sm font-medium leading-5">
+              {displaySong?.name || "音乐"}
+            </div>
+            <div
+              data-testid="sound-music-console-status"
+              className="truncate text-xs text-muted-foreground"
+            >
+              {subtitle}
+              {sourceLabel ? ` · ${sourceLabel}` : ""}
+            </div>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={playPrev}
+              disabled={!hasRecommendationSongs}
+              title="上一首"
+              aria-label="上一首"
+            >
+              <SkipBack className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={playNext}
+              disabled={!hasRecommendationSongs}
+              title="下一首"
+              aria-label="下一首"
+            >
+              <SkipForward className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => fetchRecommendation(true)}
+              disabled={isLoadingRecommendation}
+              title="换一批"
+              aria-label="换一批"
+            >
+              {isLoadingRecommendation ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+        </div>
+
+        {displaySong && (
+          <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem_auto] items-center gap-2">
+            <span className="text-right text-xs text-muted-foreground">
+              {formatTime(displayCurrentTime)}
+            </span>
+            <Slider
+              value={[displayCurrentTime]}
+              max={duration || 100}
+              step={1}
+              onValueChange={handleSeek}
+              className="min-w-0"
+            />
+            <span className="text-xs text-muted-foreground">
+              {formatTime(duration)}
+            </span>
+            <div className="flex w-24 items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => handleVolumeChange([volume === 0 ? 0.5 : 0])}
+                title={volume === 0 ? "取消静音" : "静音"}
+                aria-label={volume === 0 ? "取消静音" : "静音"}
+              >
+                {volume === 0 ? (
+                  <VolumeX className="h-3.5 w-3.5" />
+                ) : (
+                  <Volume2 className="h-3.5 w-3.5" />
+                )}
+              </Button>
+              <Slider
+                value={[volume]}
+                max={1}
+                step={0.1}
+                onValueChange={handleVolumeChange}
+              />
+            </div>
+          </div>
+        )}
+
+        {(isGeneratingAiMusic || isAiMusicDelayed || playError || showBlockingRecommendationError || showNonBlockingRecommendationWarning) && (
+          <div className="truncate text-xs text-muted-foreground">
+            {playError ||
+              (isGeneratingAiMusic
+                ? "正在生成原创场景音乐，完成后加入下一首"
+                : isAiMusicDelayed
+                  ? "原创场景音乐已排队，完成后加入下一首"
+                  : showNonBlockingRecommendationWarning
+                    ? "新推荐暂不可用，继续播放当前音乐"
+                    : "音乐服务暂不可用")}
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (

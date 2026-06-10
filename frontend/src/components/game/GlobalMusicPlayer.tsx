@@ -18,7 +18,6 @@ import { useStoryVoiceStore } from "@/stores/useStoryVoiceStore";
 import {
   ChevronUp,
   ChevronDown,
-  Music,
   Pause,
   Play,
   Volume2,
@@ -205,24 +204,13 @@ export function GlobalMusicPlayer() {
             role="group"
             aria-label="声音控制台"
             data-testid="sound-control-console"
-            className="space-y-4 border-t border-border/70 pt-3"
+            className="border-t border-border/70 pt-3"
           >
             <div
-              data-testid="sound-music-row"
-              className="grid min-w-0 gap-2 md:grid-cols-[6.5rem_minmax(0,1fr)] md:items-start"
+              data-testid="sound-console-main-controls"
+              className="grid min-w-0 gap-3"
             >
-              <div className="flex min-w-0 items-start gap-2">
-                <Music className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-medium text-foreground">
-                    背景音乐
-                  </div>
-                  <div className="truncate text-xs text-muted-foreground">
-                    {musicStatusLabel}
-                  </div>
-                </div>
-              </div>
-              <div className="min-w-0">
+              <div data-testid="sound-console-music-slot" className="min-w-0">
                 {storyText ? (
                   <MusicPlayer
                     storyText={storyText}
@@ -231,7 +219,7 @@ export function GlobalMusicPlayer() {
                     autoFetchRecommendation={shouldAutoFetchRecommendation}
                     embedded
                     hideTitle
-                    compactControls
+                    consoleControls
                   />
                 ) : (
                   <div className="text-sm text-muted-foreground">
@@ -239,25 +227,12 @@ export function GlobalMusicPlayer() {
                   </div>
                 )}
               </div>
-            </div>
 
-            {activeReadingContext && (
-              <div
-                data-testid="sound-reading-row"
-                className="grid min-w-0 gap-2 border-t border-border/70 pt-4 md:grid-cols-[6.5rem_minmax(0,1fr)] md:items-start"
-              >
-                <div className="flex min-w-0 items-start gap-2">
-                  <Volume2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium text-foreground">
-                      故事朗读
-                    </div>
-                    <div className="truncate text-xs text-muted-foreground">
-                      {readingStatusLabel}
-                    </div>
-                  </div>
-                </div>
-                <div data-testid="sound-reading-channel" className="min-w-0 space-y-3">
+              {activeReadingContext && (
+                <div
+                  data-testid="sound-console-reading-slot"
+                  className="min-w-0 border-t border-border/70 pt-3"
+                >
                   <StoryVoiceControls
                     currentContext={activeReadingContext}
                     autoReadText={activeAutoReadText}
@@ -266,10 +241,11 @@ export function GlobalMusicPlayer() {
                     embedded
                     enablePlaybackControls
                     hideTitle
+                    consoleControls
                   />
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -283,6 +259,7 @@ export function GlobalMusicPlayer() {
           {/* Progress bar - thin line at top */}
           <div className="absolute top-0 left-0 right-0 h-0.5 bg-muted">
             <div
+              data-testid="global-sound-progress"
               className="h-full bg-primary transition-all"
               style={{ width: `${progress}%` }}
             />
