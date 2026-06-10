@@ -74,6 +74,44 @@ def test_minimax_tts_without_credentials_reports_browser_fallback(tmp_path: Path
     )
 
 
+def test_minimax_tts_local_audio_mode_works_without_credentials(tmp_path: Path) -> None:
+    from src.services.minimax_config import MiniMaxConfig
+    from src.services.minimax_story_tts_provider import MiniMaxTTSProvider
+
+    provider = MiniMaxTTSProvider(
+        config=MiniMaxConfig.from_env(
+            env={"MINIMAX_E2E_LOCAL_AUDIO": "1"},
+            voice_asset_dir=tmp_path / "voice",
+            music_asset_dir=tmp_path / "music",
+        )
+    )
+
+    metadata = provider.metadata()
+    speech = provider.synthesize(
+        {
+            "text_hash": "story-local-audio",
+            "text": "本地确定性音频模式不能依赖真实 MiniMax 凭据。",
+        },
+        "warm_female",
+        1.0,
+    )
+
+    assert metadata.provider == "minimax"
+    assert metadata.available is True
+    assert metadata.backend_audio_enabled is True
+    assert metadata.playback_mode == "audio"
+    assert speech.provider == "minimax"
+    assert speech.playback_mode == "audio"
+    assert speech.storage_path is not None
+    assert speech.storage_path.endswith(".wav")
+    assert (
+        (tmp_path / "voice")
+        .joinpath(Path(speech.storage_path).name)
+        .read_bytes()
+        .startswith(b"RIFF")
+    )
+
+
 def test_minimax_tts_request_payload_uses_story_text_voice_speed_and_model(tmp_path: Path) -> None:
     from src.services.minimax_config import MiniMaxConfig
     from src.services.minimax_story_tts_provider import MiniMaxTTSProvider
@@ -561,7 +599,7 @@ def test_minimax_music_provider_saves_hex_audio_response_from_real_local_http_bo
     assert generated.local_path.read_bytes() == audio
 
 
-def test_minimax_music_provider_local_audio_mode_writes_decodable_wav(tmp_path: Path) -> None:
+def test_minimax_music_provider_local_audio_mode_works_without_credentials(tmp_path: Path) -> None:
     from src.services.minimax_config import MiniMaxConfig
     from src.services.minimax_music_generation import (
         MiniMaxMusicGenerationProvider,
@@ -570,7 +608,6 @@ def test_minimax_music_provider_local_audio_mode_writes_decodable_wav(tmp_path: 
 
     config = MiniMaxConfig.from_env(
         env={
-            "MINIMAX_API_KEY": "test-key",
             "MINIMAX_E2E_LOCAL_AUDIO": "1",
         },
         voice_asset_dir=tmp_path / "voice",
@@ -630,7 +667,7 @@ def test_music_generate_api_returns_ready_track_from_story_without_netease_block
         name: os.environ.get(name)
         for name in ["MINIMAX_API_KEY", "MINIMAX_E2E_LOCAL_AUDIO", "STORY_MUSIC_ASSET_DIR"]
     }
-    os.environ["MINIMAX_API_KEY"] = "test-key"
+    os.environ.pop("MINIMAX_API_KEY", None)
     os.environ["MINIMAX_E2E_LOCAL_AUDIO"] = "1"
     os.environ["STORY_MUSIC_ASSET_DIR"] = str(tmp_path / "music")
     try:
@@ -686,7 +723,7 @@ def test_music_generate_api_titles_generic_narrative_scene_from_context(
         name: os.environ.get(name)
         for name in ["MINIMAX_API_KEY", "MINIMAX_E2E_LOCAL_AUDIO", "STORY_MUSIC_ASSET_DIR"]
     }
-    os.environ["MINIMAX_API_KEY"] = "test-key"
+    os.environ.pop("MINIMAX_API_KEY", None)
     os.environ["MINIMAX_E2E_LOCAL_AUDIO"] = "1"
     os.environ["STORY_MUSIC_ASSET_DIR"] = str(tmp_path / "music")
     try:
@@ -739,7 +776,7 @@ def test_music_generate_api_persists_generated_track_into_future_playlist_queue(
         name: os.environ.get(name)
         for name in ["MINIMAX_API_KEY", "MINIMAX_E2E_LOCAL_AUDIO", "STORY_MUSIC_ASSET_DIR"]
     }
-    os.environ["MINIMAX_API_KEY"] = "test-key"
+    os.environ.pop("MINIMAX_API_KEY", None)
     os.environ["MINIMAX_E2E_LOCAL_AUDIO"] = "1"
     os.environ["STORY_MUSIC_ASSET_DIR"] = str(tmp_path / "music")
     try:

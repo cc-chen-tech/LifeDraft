@@ -159,6 +159,28 @@ describe('SSE Streaming', () => {
       expect(onComplete).not.toHaveBeenCalled();
     });
 
+    it('keeps collected stream chunks and fails with missing complete event', async () => {
+      const onChunk = jest.fn();
+      const onComplete = jest.fn();
+      const onError = jest.fn();
+      const callbacks: StreamCallbacks = { onChunk, onComplete, onError };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: createMockStream([
+          'data: {"content":"这是部分故事"}\n\n',
+        ]),
+      });
+
+      await expect(streamGameEvent(123, callbacks)).rejects.toThrow('Stream ended without complete event');
+
+      expect(onChunk).toHaveBeenCalledWith('这是部分故事');
+      expect(onError).toHaveBeenCalledWith(expect.objectContaining({
+        message: 'Stream ended without complete event',
+      }));
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
     it('throws on client HTTP errors without retrying', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,

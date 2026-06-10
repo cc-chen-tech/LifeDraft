@@ -210,21 +210,9 @@ export function handleEventComplete(
     return;
   }
 
-  if (backendStory.trim()) {
-    console.log(`[onComplete] Replacing streamed story with backend complete story (${backendStory.length} chars)`);
-    setStoryText(backendStory);
-    setOptions(receivedOptions);
-    setCurrentEvent({ story: backendStory, options: receivedOptions });
-    setPhase("options");
-    setRoundSummary(null);
-    return;
-  }
-  
   const result = selectFinalStory(backendStory, frontendStory);
-
   if (result.useBackend) {
-    // 直接使用后端故事
-    console.log(`[onComplete] Using backend story (${backendStory.length} chars)`);
+    console.log(`[onComplete] Replacing streamed story with backend complete story (${result.finalStory.length} chars)`);
     setStoryText(result.finalStory);
     setOptions(receivedOptions);
     setCurrentEvent({ story: result.finalStory, options: receivedOptions });

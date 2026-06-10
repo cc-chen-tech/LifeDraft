@@ -293,7 +293,7 @@ async def generate_music(
     config = build_minimax_config()
     if not config.music_generation_enabled:
         raise HTTPException(status_code=503, detail="AI music generation is disabled")
-    if not config.api_key:
+    if not config.api_key and not config.local_audio_enabled:
         raise HTTPException(
             status_code=503,
             detail="MiniMax music generation requires MINIMAX_API_KEY",
@@ -381,7 +381,7 @@ async def enqueue_music_generation(
     config = build_minimax_config()
     if not config.music_generation_enabled:
         raise HTTPException(status_code=503, detail="AI music generation is disabled")
-    if not config.api_key:
+    if not config.api_key and not config.local_audio_enabled:
         raise HTTPException(
             status_code=503,
             detail="MiniMax music generation requires MINIMAX_API_KEY",

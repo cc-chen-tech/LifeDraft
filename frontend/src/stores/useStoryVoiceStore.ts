@@ -88,6 +88,7 @@ async function normalizeTextHash(text: string): Promise<string> {
 
 let activeUtterance: SpeechSynthesisUtterance | null = null;
 let activeReadingAttempt = 0;
+const inFlightReadingRequests = new Set<string>();
 let activeLoadingRequestKey: string | null = null;
 
 function getSpeechSynthesis(): SpeechSynthesis | null {
@@ -216,6 +217,26 @@ function restoredMusicDuckState(
   return musicDuckState === "ducked" && !userChangedMusic ? "restored" : musicDuckState;
 }
 
+function buildReadingRequestKey(
+  context: ReadingContext,
+  voiceId: string,
+  preferredProvider: string | null,
+  textHash: string
+): string {
+  const requestTextHash = context.attempt_id ?? context.text_hash ?? textHash;
+  return `${context.game_id}:${context.source_type}:${context.week ?? ""}:${context.round_number ?? ""}:${context.stage ?? ""}:${requestTextHash}:${voiceId}:${preferredProvider ?? "auto"}`;
+}
+
+function hashTextForRequest(text: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+    hash >>>= 0;
+  }
+  return hash.toString(16);
+}
+
 export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
   readingState: "idle",
   currentSource: "",
@@ -254,13 +275,26 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
 
   startReading: async (context, options) => {
     const selectedVoiceId = options?.voiceId ?? get().selectedVoiceId;
-    const requestKey = readingRequestKey(context, selectedVoiceId);
-    if (get().readingState === "loading" && activeLoadingRequestKey === requestKey) {
+    const preferredProvider =
+      typeof window !== "undefined" ? window.localStorage.getItem("story_voice_e2e_provider") : null;
+    const requestTextHash = hashTextForRequest(context.text);
+
+    const requestKey = buildReadingRequestKey(
+      context,
+      selectedVoiceId,
+      preferredProvider,
+      requestTextHash
+    );
+    if (
+      inFlightReadingRequests.has(requestKey) ||
+      (get().readingState === "loading" && activeLoadingRequestKey === requestKey)
+    ) {
       return;
     }
 
     const attemptId = activeReadingAttempt + 1;
     activeReadingAttempt = attemptId;
+    inFlightReadingRequests.add(requestKey);
     activeLoadingRequestKey = requestKey;
     const { musicWasPlaying } = get();
     const browserSpeech = getSpeechSynthesis();
@@ -378,14 +412,10 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
     };
 
     try {
-      const preferredProvider =
-        typeof window !== "undefined"
-          ? window.localStorage.getItem("story_voice_e2e_provider")
-          : null;
       const { ttsProvider, backendAudioEnabled } = get();
       const browserOnlyRuntime =
         !preferredProvider && (ttsProvider === "browser" || backendAudioEnabled === false);
-      if (preferredProvider === "browser" || browserOnlyRuntime) {
+      if (browserOnlyRuntime) {
         startBrowserSpeech(null);
         return;
       }
@@ -455,6 +485,8 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
         errorMessage: error instanceof Error ? error.message : "Reading request failed",
         musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
       });
+    } finally {
+      inFlightReadingRequests.delete(requestKey);
     }
   },
   pauseReading: () => {
@@ -519,7 +551,16 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
     });
   },
   failReading: (error) => {
-    const { musicDuckState, userChangedMusic } = get();
+    const {
+      currentProvider,
+      currentSpeechText,
+      musicDuckState,
+      playbackMode,
+      spokenTextLength,
+      userChangedMusic,
+    } = get();
+    const canRetryBrowserSpeech =
+      playbackMode === "browser_speech" && currentSpeechText.length > 0;
     activeReadingAttempt += 1;
     activeLoadingRequestKey = null;
     getSpeechSynthesis()?.cancel();
@@ -534,7 +575,10 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       readingState: "failed",
       currentAudioUrl: "",
       currentJobId: null,
-      playbackMode: "none",
+      currentProvider: canRetryBrowserSpeech ? currentProvider || "browser" : currentProvider,
+      playbackMode: canRetryBrowserSpeech ? "browser_speech" : "none",
+      spokenTextLength: canRetryBrowserSpeech ? spokenTextLength : 0,
+      currentSpeechText: canRetryBrowserSpeech ? currentSpeechText : "",
       errorMessage,
       musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
     });

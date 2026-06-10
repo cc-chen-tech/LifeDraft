@@ -181,21 +181,39 @@ export function formatNarrativeMarkdownForDisplay(text: string): string {
   if (/\n/.test(text)) return text;
 
   const trimmed = text.trim();
-  if (trimmed.length < 120) return text;
+  if (trimmed.length < 100) return text;
 
   const sentences = extractChineseSentences(trimmed);
-  if (sentences.length < 4) return text;
+  if (sentences.length < 4) {
+    const groupedByLength = splitLongSingleLine(trimmed, 70);
+    if (groupedByLength.length >= 2) {
+      return groupedByLength.join("\n\n");
+    }
+    return text;
+  }
 
   const paragraphs: string[] = [];
   for (let i = 0; i < sentences.length; i += 2) {
     paragraphs.push(sentences.slice(i, i + 2).join("").trim());
   }
-
   return paragraphs.join("\n\n");
 }
 
+function splitLongSingleLine(text: string, maxLen: number): string[] {
+  if (text.length <= maxLen) return [text];
+
+  const parts: string[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    parts.push(text.slice(cursor, Math.min(cursor + maxLen, text.length)).trim());
+    cursor += maxLen;
+  }
+
+  return parts.filter(Boolean);
+}
+
 function extractChineseSentences(text: string): string[] {
-  const sentencePattern = /[^。！？!?；;]+[。！？!?；;]+[”’」』）】》]?/g;
+  const sentencePattern = /[^。！？!?；;,，、！？，。、?]+[。！？!?；;,，、！？，。、][”’」』）】》]?/g;
   const matches: string[] = text.match(sentencePattern) || [];
   const consumedLength = matches.join("").length;
   const tail = text.slice(consumedLength).trim();

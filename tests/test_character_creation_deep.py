@@ -130,6 +130,32 @@ class TestCharacterCreatorGenerateSetting:
         assert "互联网" in combined
         assert result.get("_aligned_to_life_vision") is True
 
+    def test_generate_era_prefers_modern_on_classical_wording_conflict(self):
+        """仅含“现代”语义时，仍可纠偏到现代时代。"""
+        creator = self._make_creator()
+        creator.ai_generator.generate_completion.return_value = json.dumps(
+            {
+                "year": 700,
+                "era_description": "秦汉以前，战车与田猎的边缘社会。",
+                "world_context": "古代帝国官僚与城邦竞争。",
+            },
+            ensure_ascii=False,
+        )
+
+        result = creator.generate_setting(
+            "era",
+            "陈书言",
+            "故事背景设定在现代",
+            {},
+        )
+
+        assert result["year"] >= 2020
+        combined = f"{result.get('era_description', '')} {result.get('world_context', '')}"
+        assert "秦汉" not in combined
+        assert "古代" not in combined
+        assert "互联网" in combined or "现代" in combined
+        assert result.get("_aligned_to_life_vision") is True
+
     def test_generate_era_prefers_historical_context_when_life_vision_forbids_modern(self):
         """明确反对现代元素时，时代应纠偏为古代语境。"""
         creator = self._make_creator()

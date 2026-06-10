@@ -25,6 +25,7 @@ npm run test:e2e
 
 - `./start.sh`：一键启停前后端 + 音乐服务
 - `./test.sh`：五层测试架构统一入口
+- `./scripts/test-run-isolated.sh`：测试隔离运行入口（测试产物默认写入 `/tmp/story2-test-runs`，避免污染仓库）
 
 ## 五层测试架构（`test.sh`）
 
@@ -42,6 +43,17 @@ npm run test:e2e
 ./test.sh db
 ./test.sh frontend
 ```
+
+环境噪音治理（推荐）：
+
+```bash
+./scripts/test-run-isolated.sh all                 # 使用独立 TEST_RUN_ROOT 运行完整链路
+./scripts/test-run-isolated.sh --namespace fix_20260610 preflight
+./scripts/test-run-isolated.sh clean               # 清理 7 天前旧测试运行目录
+TEST_RUN_ROOT=/tmp/story2-codex-test-runs ./scripts/test-run-isolated.sh e2e
+```
+
+如果你在一台机器跑多个 worktree，建议把生产验证放在固定测试运行目录（例如 `/tmp/story2-test-runs`）里，并给每次执行带上显式 `TEST_NAMESPACE`。
 
 ## 代码质量与规范
 

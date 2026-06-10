@@ -329,6 +329,10 @@ export function StoryVoiceControls({
       handleContinue();
       return;
     }
+    if (readingState === "failed" && playbackMode === "browser_speech") {
+      handleContinue();
+      return;
+    }
     void startReading(currentContext);
   };
 

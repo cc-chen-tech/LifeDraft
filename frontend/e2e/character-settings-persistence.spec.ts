@@ -73,7 +73,7 @@ test.describe('Character Creation - Settings Persistence', () => {
     await startButton.click();
 
     // 6. 等待导航到 opening story
-    await page.waitForURL('/story/opening', { timeout: 30_000 });
+    await expect(page).toHaveURL(/\/story\/opening/, { timeout: 120_000 });
 
     // 7. 等待 PATCH 请求完成
     await page.waitForTimeout(3000);

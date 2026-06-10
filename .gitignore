@@ -69,6 +69,8 @@ htmlcov/
 .tox/
 .nox/
 test-results/
+.test-runs/
+docs/qa-evidence/
 
 # MyPy
 .mypy_cache/

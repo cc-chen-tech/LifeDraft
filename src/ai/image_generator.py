@@ -3,18 +3,19 @@
 负责图像生成的核心功能，包括文生图和图生图。
 """
 
+import base64
+import binascii
 import hashlib
 import logging
 import time
+from math import gcd
 from typing import Any, Dict, List, Optional, Tuple
 
-import requests  # type: ignore[import-untyped]
-from cachetools import TTLCache  # type: ignore[import-untyped]
+import requests
+from cachetools import TTLCache
 
 from config.settings import settings
-from src.ai.image_config import (CHARACTER_VARIANTS,
-                                 DEFAULT_EDIT_NEGATIVE_PROMPT,
-                                 DEFAULT_NEGATIVE_PROMPT, create_retry_session,
+from src.ai.image_config import (CHARACTER_VARIANTS, create_retry_session,
                                  get_image_edit_models,
                                  get_text_to_image_models)
 from src.ai.image_exceptions import (ContentInspectionError,
@@ -24,13 +25,56 @@ logger = logging.getLogger(__name__)
 
 # M-09: 图片生成结果缓存 - 模块级别 TTL 缓存
 # 缓存最多 100 个图片，TTL 1 小时
-_image_cache: TTLCache = TTLCache(maxsize=100, ttl=3600)
+_image_cache: TTLCache[str, Tuple[bytes, str]] = TTLCache(maxsize=100, ttl=3600)
+
+_MINIMAX_ASPECT_RATIOS: Tuple[Tuple[str, int, int], ...] = (
+    ("1:1", 1, 1),
+    ("16:9", 16, 9),
+    ("4:3", 4, 3),
+    ("3:2", 3, 2),
+    ("2:3", 2, 3),
+    ("3:4", 3, 4),
+    ("9:16", 9, 16),
+    ("21:9", 21, 9),
+)
 
 
-def _get_prompt_hash(prompt: str, size: str, extra_params: Optional[Dict] = None) -> str:
+def _get_prompt_hash(
+    prompt: str,
+    size: str,
+    extra_params: Optional[Dict[str, Any]] = None,
+) -> str:
     """生成 prompt 的哈希值作为缓存 key"""
     cache_key = f"{prompt}|{size}|{extra_params}"
     return hashlib.md5(cache_key.encode(), usedforsecurity=False).hexdigest()
+
+
+def _parse_size(size: str) -> Optional[Tuple[int, int]]:
+    normalized = size.lower().replace("x", "*")
+    parts = normalized.split("*")
+    if len(parts) != 2:
+        return None
+    try:
+        width = int(parts[0])
+        height = int(parts[1])
+    except ValueError:
+        return None
+    if width <= 0 or height <= 0:
+        return None
+    return width, height
+
+
+def _closest_aspect_ratio(width: int, height: int) -> str:
+    simplified = (width // gcd(width, height), height // gcd(width, height))
+    for label, ratio_width, ratio_height in _MINIMAX_ASPECT_RATIOS:
+        if simplified == (ratio_width, ratio_height):
+            return label
+
+    actual = width / height
+    return min(
+        _MINIMAX_ASPECT_RATIOS,
+        key=lambda item: abs(actual - (item[1] / item[2])),
+    )[0]
 
 
 class ImageGenerator:
@@ -76,12 +120,162 @@ class ImageGenerator:
         """Fail only when a real image generation provider call is requested."""
         if not self.api_key:
             raise ValueError(
-                "Image API key is required. Set IMAGE_API_KEY or OPENAI_API_KEY in environment."
+                "Image API key is required. Set IMAGE_API_KEY or MINIMAX_API_KEY in environment."
             )
         if not self.base_url:
             raise ValueError(
-                "Image API base URL is required. Set IMAGE_API_BASE_URL or OPENAI_BASE_URL in environment."
+                "Image API base URL is required. Set IMAGE_API_BASE_URL in environment."
             )
+
+    def _image_generation_url(self) -> str:
+        """Return the MiniMax image generation endpoint for flexible base URLs."""
+        base_url = (self.base_url or "").rstrip("/")
+        if base_url.endswith("/v1/image_generation") or base_url.endswith("/image_generation"):
+            return base_url
+        if base_url.endswith("/v1"):
+            return f"{base_url}/image_generation"
+        return f"{base_url}/v1/image_generation"
+
+    def _response_format_for_minimax(
+        self,
+        response_format: str,
+        extra_params: Optional[Dict[str, Any]],
+    ) -> str:
+        if extra_params and extra_params.get("response_format") in {"url", "base64"}:
+            return str(extra_params["response_format"])
+        if response_format in {"url", "base64"}:
+            return response_format
+        return "url"
+
+    def _prompt_for_minimax(
+        self,
+        prompt: str,
+        extra_params: Optional[Dict[str, Any]],
+    ) -> str:
+        negative_prompt = (extra_params or {}).get("negative_prompt")
+        if not negative_prompt:
+            return prompt[:1500]
+
+        suffix = f"\nAvoid: {negative_prompt}"
+        max_prompt_length = 1500
+        if len(prompt) + len(suffix) <= max_prompt_length:
+            return f"{prompt}{suffix}"
+
+        remaining = max_prompt_length - len(prompt) - len("\nAvoid: ")
+        if remaining <= 0:
+            return prompt[:max_prompt_length]
+        return f"{prompt}\nAvoid: {str(negative_prompt)[:remaining]}"
+
+    def _minimax_size_fields(self, size: str, model: str) -> Dict[str, Any]:
+        parsed = _parse_size(size)
+        if parsed is None:
+            return {"aspect_ratio": "1:1"}
+
+        width, height = parsed
+        aspect_ratio = _closest_aspect_ratio(width, height)
+
+        if model == "image-01-live":
+            return {"aspect_ratio": aspect_ratio}
+
+        exact_dimensions_supported = (
+            512 <= width <= 2048
+            and 512 <= height <= 2048
+            and width % 8 == 0
+            and height % 8 == 0
+        )
+        if exact_dimensions_supported and aspect_ratio == "1:1" and width != height:
+            return {"width": width, "height": height}
+        return {"aspect_ratio": aspect_ratio}
+
+    def _build_minimax_payload(
+        self,
+        prompt: str,
+        size: str,
+        n: int,
+        response_format: str,
+        model: str,
+        extra_params: Optional[Dict[str, Any]],
+        subject_reference: Optional[List[Dict[str, str]]] = None,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "model": model,
+            "prompt": self._prompt_for_minimax(prompt, extra_params),
+            "response_format": self._response_format_for_minimax(response_format, extra_params),
+            "n": min(max(1, n), 9),
+            "prompt_optimizer": bool((extra_params or {}).get("prompt_optimizer", True)),
+            "aigc_watermark": bool((extra_params or {}).get("aigc_watermark", False)),
+        }
+        payload.update(self._minimax_size_fields(size, model))
+
+        if subject_reference:
+            payload["subject_reference"] = subject_reference
+
+        if extra_params:
+            for key in ("seed", "style"):
+                if key in extra_params:
+                    payload[key] = extra_params[key]
+            for key in ("aspect_ratio", "width", "height"):
+                if key in extra_params:
+                    payload.pop("aspect_ratio", None)
+                    payload[key] = extra_params[key]
+
+        return payload
+
+    def _raise_for_minimax_error(self, result: Dict[str, Any], prompt: str) -> None:
+        base_resp = result.get("base_resp")
+        if not isinstance(base_resp, dict):
+            return
+
+        raw_status = base_resp.get("status_code", 0)
+        try:
+            status_code = int(raw_status)
+        except (TypeError, ValueError):
+            status_code = -1
+        if status_code == 0:
+            return
+
+        status_msg = str(base_resp.get("status_msg", ""))
+        full_error = f"{status_code}: {status_msg}"
+        if status_code == 1026:
+            raise ContentInspectionError(
+                "您的图片请求触发了内容安全审核，请尝试使用其他描述方式",
+                original_prompt=prompt,
+                api_error_message=full_error,
+            )
+        raise ImageGenerationError(f"MiniMax image API returned {full_error}")
+
+    def _minimax_image_sources(self, result: Dict[str, Any]) -> Tuple[str, List[str]]:
+        data = result.get("data")
+        if not isinstance(data, dict):
+            raise ImageGenerationError("No data in MiniMax response")
+
+        image_urls = data.get("image_urls")
+        if isinstance(image_urls, list) and image_urls:
+            sources = [str(url) for url in image_urls if url]
+            if sources:
+                return "url", sources
+
+        image_base64 = data.get("image_base64")
+        if isinstance(image_base64, list) and image_base64:
+            sources = [str(encoded) for encoded in image_base64 if encoded]
+            if sources:
+                return "base64", sources
+
+        raise ImageGenerationError("No image output in MiniMax response")
+
+    def _decode_base64_image(self, encoded: str) -> bytes:
+        payload = encoded.split(",", 1)[1] if encoded.startswith("data:") and "," in encoded else encoded
+        try:
+            return base64.b64decode(payload, validate=True)
+        except binascii.Error as exc:
+            raise ImageGenerationError("Invalid base64 image in MiniMax response") from exc
+
+    def _resolve_minimax_image_source(self, kind: str, source: str) -> bytes:
+        if kind == "url":
+            return self._download_image(source)
+        if kind == "base64":
+            return self._decode_base64_image(source)
+        raise ImageGenerationError(f"Unsupported MiniMax image source type: {kind}")
 
     def generate_image(
         self,
@@ -96,16 +290,16 @@ class ImageGenerator:
         """
         生成图片
 
-        支持 DashScope API（阿里云千问图像模型），支持模型降级
+        支持 MiniMax 图片生成 API，支持模型降级
         M-09: 支持基于 prompt 的缓存，避免重复调用 API
 
         Args:
             prompt: 图片描述prompt
-            size: 图片尺寸 (DashScope支持: 1664*928, 1472*1104, 1328*1328, 1104*1472, 928*1664)
-            style: 风格（DashScope不支持）
-            quality: 质量（DashScope不支持）
-            n: 生成数量 - DashScope固定为1
-            response_format: 返回格式 - DashScope返回URL
+            size: 图片尺寸，会映射为 MiniMax aspect_ratio 或 width/height
+            style: 保留兼容参数
+            quality: 保留兼容参数
+            n: 生成数量
+            response_format: 返回格式，MiniMax 支持 url/base64，默认保持 URL 下载链路
             extra_params: 额外参数（如 negative_prompt, seed）
 
         Returns:
@@ -119,7 +313,7 @@ class ImageGenerator:
         cached_result = _image_cache.get(cache_key)
         if cached_result is not None:
             logger.info(f"[ImageCache] Cache hit for prompt hash: {cache_key[:8]}...")
-            return cached_result  # type: ignore[no-any-return]
+            return cached_result
 
         last_error = None
 
@@ -144,26 +338,8 @@ class ImageGenerator:
                         model=fallback_model,
                     )
 
-                    # 解析 DashScope API 响应
-                    output = result.get("output", {})
-                    choices = output.get("choices", [])
-
-                    if not choices:
-                        raise ImageGenerationError("No choices in response")
-
-                    content = choices[0].get("message", {}).get("content", [])
-                    if not content:
-                        raise ImageGenerationError("No content in response")
-
-                    image_url = content[0].get("image")
-                    if not image_url:
-                        raise ImageGenerationError("No image URL in response")
-
-                    # 从 URL 下载图片
-                    logger.info(
-                        f"Got image URL from DashScope (model={fallback_model}), downloading..."
-                    )
-                    image_bytes = self._download_image(image_url)
+                    kind, sources = self._minimax_image_sources(result)
+                    image_bytes = self._resolve_minimax_image_source(kind, sources[0])
                     logger.info(f"Successfully downloaded image: {len(image_bytes)} bytes")
 
                     # M-09: 存入缓存
@@ -173,6 +349,8 @@ class ImageGenerator:
 
                     return cached_result
 
+                except ContentInspectionError:
+                    raise
                 except (
                     requests.exceptions.RequestException,
                     requests.exceptions.Timeout,
@@ -245,21 +423,13 @@ class ImageGenerator:
             prompt=prompt,
             size=size,
             extra_params=extra_params,
+            response_format="url",
         )
 
-        output = result.get("output", {})
-        choices = output.get("choices", [])
-
-        if not choices:
-            raise ImageGenerationError("No choices in response")
-
-        content = choices[0].get("message", {}).get("content", [])
-        if not content:
-            raise ImageGenerationError("No content in response")
-
-        image_url = content[0].get("image")
-        if not image_url:
-            raise ImageGenerationError("No image URL in response")
+        kind, sources = self._minimax_image_sources(result)
+        if kind != "url":
+            raise ImageGenerationError("MiniMax response did not include an image URL")
+        image_url = sources[0]
 
         # 下载图片
         logger.info(f"Got image URL: {image_url}")
@@ -296,39 +466,18 @@ class ImageGenerator:
         """
         self.require_generation_config()
 
-        # 构建请求URL
-        url = f"{(self.base_url or '').rstrip('/')}/generation"
-
-        # DashScope API 格式 - 尺寸格式确保是 "W*H"
-        dashscope_size = size if "*" in size else size.replace("x", "*")
-
         # 使用传入的模型或默认模型
         use_model = model or self.model
 
-        # 构建请求体 (DashScope 格式)
-        payload = {
-            "model": use_model,
-            "input": {"messages": [{"role": "user", "content": [{"text": prompt}]}]},
-            "parameters": {
-                "size": dashscope_size,
-                "n": n,
-                "prompt_extend": True,  # 开启智能改写
-                "watermark": False,
-            },
-        }
-
-        # 添加反向提示词
-        params: Dict[str, Any] = payload["parameters"]  # type: ignore[assignment]
-        if extra_params and extra_params.get("negative_prompt"):
-            params["negative_prompt"] = extra_params["negative_prompt"]
-        else:
-            params["negative_prompt"] = DEFAULT_NEGATIVE_PROMPT
-
-        # 合并额外参数
-        if extra_params:
-            for key in ["seed", "prompt_extend"]:
-                if key in extra_params:
-                    params[key] = extra_params[key]
+        provider_params = dict(extra_params or {})
+        payload = self._build_minimax_payload(
+            prompt=prompt,
+            size=size,
+            n=n,
+            response_format=response_format,
+            model=use_model,
+            extra_params=provider_params,
+        )
 
         # 构建请求头
         headers = {
@@ -336,9 +485,9 @@ class ImageGenerator:
             "Content-Type": "application/json",
         }
 
-        logger.debug(
-            f"Calling DashScope image API: {url}, model: {self.model}, size: {dashscope_size}"
-        )
+        url = self._image_generation_url()
+
+        logger.debug(f"Calling MiniMax image API: {url}, model: {use_model}, size: {size}")
 
         response = self.session.post(
             url,
@@ -352,7 +501,9 @@ class ImageGenerator:
             logger.error(error_msg)
             raise ImageGenerationError(error_msg)
 
-        return response.json()  # type: ignore[no-any-return]
+        result = response.json()
+        self._raise_for_minimax_error(result, str(payload["prompt"]))
+        return result  # type: ignore[no-any-return]
 
     def _download_image(self, url: str) -> bytes:
         """下载图片"""
@@ -412,24 +563,12 @@ class ImageGenerator:
                         extra_params=extra_params,
                     )
 
-                    # 解析响应
-                    output = result.get("output", {})
-                    choices = output.get("choices", [])
-
-                    if not choices:
-                        raise ImageGenerationError("No choices in response")
-
-                    content = choices[0].get("message", {}).get("content", [])
-                    if not content:
-                        raise ImageGenerationError("No content in response")
-
+                    kind, sources = self._minimax_image_sources(result)
                     results = []
-                    for i, item in enumerate(content):
-                        image_url = item.get("image")
-                        if image_url:
-                            image_bytes = self._download_image(image_url)
-                            results.append((image_bytes, f"{prompt} (variant {i+1})"))
-                            logger.info(f"Downloaded edited image {i+1}/{len(content)}")
+                    for i, source in enumerate(sources):
+                        image_bytes = self._resolve_minimax_image_source(kind, source)
+                        results.append((image_bytes, f"{prompt} (variant {i+1})"))
+                        logger.info(f"Downloaded edited image {i+1}/{len(sources)}")
 
                     return results
 
@@ -510,48 +649,28 @@ class ImageGenerator:
         """
         self.require_generation_config()
 
-        url = f"{(self.base_url or '').rstrip('/')}/generation"
-
-        # 尺寸格式
-        dashscope_size = size if "*" in size else size.replace("x", "*")
-
         # 使用传入的模型或默认模型
         use_model = model or self.image_edit_models[0]
 
-        # 构建请求体 - 图生图格式
-        payload = {
-            "model": use_model,
-            "input": {
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"image": reference_image},  # 参考图片
-                            {"text": prompt},  # 编辑指令
-                        ],
-                    }
-                ]
-            },
-            "parameters": {
-                "n": min(max(1, num_images), 6),  # 1-6张
-                "size": dashscope_size,
-                "negative_prompt": DEFAULT_EDIT_NEGATIVE_PROMPT,
-                "prompt_extend": True,
-                "watermark": False,
-            },
-        }
-
-        # 合并 extra_params（允许覆盖默认参数如 negative_prompt）
-        params: Dict[str, Any] = payload["parameters"]  # type: ignore[assignment]
-        if extra_params:
-            params.update(extra_params)
+        provider_params = dict(extra_params or {})
+        payload = self._build_minimax_payload(
+            prompt=prompt,
+            size=size,
+            n=num_images,
+            response_format="url",
+            model=use_model,
+            extra_params=provider_params,
+            subject_reference=[{"type": "character", "image_file": reference_image}],
+        )
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
 
-        logger.debug(f"Calling image edit API: model={use_model}, size={dashscope_size}")
+        url = self._image_generation_url()
+
+        logger.debug(f"Calling MiniMax image edit API: model={use_model}, size={size}")
 
         response = self.session.post(
             url,
@@ -588,7 +707,9 @@ class ImageGenerator:
 
             raise ImageGenerationError(error_msg)
 
-        return response.json()  # type: ignore[no-any-return]
+        result = response.json()
+        self._raise_for_minimax_error(result, str(payload["prompt"]))
+        return result  # type: ignore[no-any-return]
 
     def generate_character_images(
         self,
@@ -600,7 +721,7 @@ class ImageGenerator:
         size: str = "928*1664",
         reference_image_url: Optional[str] = None,
         feedback: Optional[str] = None,
-        prompt_builder=None,  # 注入 prompt builder
+        prompt_builder: Any = None,  # 注入 prompt builder
         extra_params: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[Tuple[bytes, str]], Optional[str]]:
         """

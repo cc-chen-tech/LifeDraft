@@ -167,7 +167,7 @@ export function CompletionScreen({
             onClick={() => onSetShowPresetSheet(true)}
           >
             <Save className="w-4 h-4 mr-1" />
-            保存
+            快速保存
           </Button>
         </div>
       </header>
@@ -336,7 +336,7 @@ export function CompletionScreen({
               {isSavingPreset && (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               )}
-              保存
+              确认保存
             </Button>
           </div>
         </SheetContent>
