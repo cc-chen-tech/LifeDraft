@@ -19,7 +19,9 @@ Player resource values SHALL remain consistent and interpretable as gameplay adv
 
 #### Scenario: Generated starting wealth initializes gameplay state
 - **Given** character creation generated a numeric starting wealth value
-- **And** that value is represented as `wealth.wealth`, `wealth.starting_wealth`, or `wealth.initial_wealth_amount`
+- **And** that value is represented as `wealth.wealth`, `wealth.starting_wealth`, `wealth.initial_wealth_amount`, or a formatted numeric `wealth.initial_wealth`
 - **When** the game is created or late character settings are patched before the first played round
 - **Then** the player state's numeric wealth SHALL use that generated value
 - **And** the value SHALL NOT fall back to the global default merely because a different generated field name was used.
+- **And** formatted currency text such as `¥50,000`, `50,000元`, or `5万元` SHALL be parsed as the corresponding numeric yuan amount
+- **And** qualitative labels such as `middle` SHALL NOT be treated as numeric starting wealth.
