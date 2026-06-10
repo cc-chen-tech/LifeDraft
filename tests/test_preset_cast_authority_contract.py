@@ -62,6 +62,27 @@ def _modern_product_manager_settings_with_legacy_relationships_list() -> dict[st
     return settings
 
 
+def _modern_product_manager_settings_with_family() -> dict[str, Any]:
+    settings = _modern_product_manager_settings()
+    settings["family"] = {
+        "family_members": [
+            {
+                "name": "林建国",
+                "role": "父亲",
+                "relationship": "父亲",
+                "description": "支持主角职业选择的父亲。",
+            },
+            {
+                "name": "王丽华",
+                "role": "母亲",
+                "relationship": "母亲",
+                "description": "关心主角生活节奏的母亲。",
+            },
+        ]
+    }
+    return settings
+
+
 def _player_state() -> dict[str, Any]:
     return {
         "age": 25,
@@ -212,6 +233,32 @@ def test_quick_validator_rejects_partial_cast_when_new_named_network_dominates()
 
     assert not result.passed
     assert any("预设关系网使用不足" in issue for issue in result.issues)
+
+
+def test_quick_validator_rejects_family_only_story_when_key_people_are_missing() -> None:
+    """Family members are available people, but they do not replace preset key people."""
+    from config.prompts._helpers import _collect_available_people
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings_with_family()
+    available_people = [
+        person["name"]
+        for person in _collect_available_people(settings)
+        if person.get("name")
+    ]
+
+    result = quick_validate_story(
+        story_text=(
+            "林建国在早餐桌边提醒林清注意身体，王丽华把热粥推到她手边。"
+            "这一整天都围绕父母对职业选择的担心展开，没有导师复盘、闺蜜支持或同期协作。"
+        ),
+        character_settings=settings,
+        available_people=available_people,
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("没有使用预设关键人物" in issue for issue in result.issues)
 
 
 def test_choice_result_prompt_injects_required_cast_authority_and_world_boundary() -> None:
