@@ -358,7 +358,7 @@ class QuickValidator:
                 and len(present_allowed) < required_network_count
             ):
                 return [
-                    "上一版故事预设关系网使用不足"
+                    "上一版故事预设关键人物使用不足，预设关系网使用不足"
                     f"（已使用{len(present_allowed)}/{len(allowed_names)}，要求多人关系戏至少80%）"
                     "，反而让名单外人物主导剧情"
                     f"（{ '、'.join(invented_names[:5]) }）；请围绕预设关键人物关系网重写。"
