@@ -321,7 +321,9 @@ export function StoryVoiceControls({
           <div className="flex min-w-0 items-center gap-2">
             <Volume2 className="h-4 w-4 shrink-0 text-primary" />
             <div className="min-w-0">
-              <div className="text-sm font-medium leading-5 text-foreground">故事朗读</div>
+              <div className="text-sm font-medium leading-5 text-foreground">
+                {embedded ? "朗读" : "故事朗读"}
+              </div>
               <div className="truncate text-xs text-muted-foreground">
                 {readingStatusText}
               </div>

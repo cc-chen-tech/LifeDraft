@@ -125,16 +125,6 @@ export function GlobalMusicPlayer() {
         aria-label={isExpanded ? "声音面板" : undefined}
       >
         <div data-testid="unified-sound-panel" className="divide-y divide-border/70 p-3">
-          <div className="flex items-center justify-between gap-3 pb-3 px-1">
-            <div className="flex items-start gap-2">
-              <Volume2 className="mt-0.5 h-4 w-4 text-primary" />
-              <div className="min-w-0">
-                <div className="text-sm font-medium">声音控制</div>
-                <div className="truncate text-xs text-muted-foreground">{soundStatus}</div>
-              </div>
-            </div>
-          </div>
-
           <div
             data-testid="sound-music-section"
             className="py-3"

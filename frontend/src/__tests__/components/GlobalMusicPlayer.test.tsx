@@ -191,7 +191,7 @@ describe("GlobalMusicPlayer", () => {
       await user.click(screen.getByRole("button", { name: "展开声音面板" }));
 
       expect(screen.getByRole("region", { name: "声音面板" })).toBeInTheDocument();
-      expect(screen.getByText("场景音乐")).toBeInTheDocument();
+      expect(screen.getByText("音乐")).toBeInTheDocument();
       expect(screen.queryByRole("region", { name: "故事朗读" })).not.toBeInTheDocument();
       expect(screen.getByRole("checkbox", { name: "自动朗读" })).toBeInTheDocument();
     });
@@ -213,12 +213,12 @@ describe("GlobalMusicPlayer", () => {
       await user.click(screen.getByRole("button", { name: "展开声音面板" }));
 
       const panel = screen.getByTestId("unified-sound-panel");
-      expect(within(panel).getByText("声音控制")).toBeInTheDocument();
+      expect(within(panel).queryByText("声音控制")).not.toBeInTheDocument();
       const musicSection = within(panel).getByTestId("sound-music-section");
       const readingSection = within(panel).getByTestId("sound-reading-section");
 
-      expect(within(musicSection).getByText("场景音乐")).toBeInTheDocument();
-      expect(within(readingSection).getByText("故事朗读")).toBeInTheDocument();
+      expect(within(musicSection).getByText("音乐")).toBeInTheDocument();
+      expect(within(readingSection).getByText("朗读")).toBeInTheDocument();
       expect(within(readingSection).getByRole("button", { name: "朗读故事" })).toBeInTheDocument();
       expect(within(readingSection).getByRole("combobox", { name: "选择朗读声音" })).toBeInTheDocument();
       expect(within(readingSection).getByRole("checkbox", { name: "自动朗读" })).toBeInTheDocument();
@@ -368,6 +368,30 @@ describe("GlobalMusicPlayer", () => {
 
       expect(screen.getByRole("region", { name: "声音面板" })).toBeInTheDocument();
       expect(screen.queryByText("场景音乐和故事朗读统一在这里控制")).not.toBeInTheDocument();
+    });
+
+    it("uses concise sound channel labels without a redundant expanded header", async () => {
+      const user = userEvent.setup();
+      setStoreState({
+        activeStoryText: "story text",
+        currentSong: { id: 2, name: "Playing Song", artists: ["Artist"], album: "", duration: 200 },
+      });
+      useStoryVoiceStore.setState({
+        activeReadingContext,
+        activeAutoReadText: activeReadingContext.text,
+        activeAutoReadReady: true,
+      } as never);
+
+      render(<GlobalMusicPlayer />);
+
+      await user.click(screen.getByRole("button", { name: "展开声音面板" }));
+
+      const panel = screen.getByTestId("unified-sound-panel");
+      expect(within(panel).queryByText("声音控制")).not.toBeInTheDocument();
+      expect(within(panel).queryByText("场景音乐")).not.toBeInTheDocument();
+      expect(within(panel).queryByText("故事朗读")).not.toBeInTheDocument();
+      expect(within(panel).getByText("音乐")).toBeInTheDocument();
+      expect(within(panel).getByText("朗读")).toBeInTheDocument();
     });
 
     it("shows persisted current music inside the expanded music section", async () => {

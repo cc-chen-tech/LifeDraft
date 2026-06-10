@@ -552,7 +552,7 @@ export function MusicPlayer({
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 flex-wrap">
           <Music className="w-4 h-4 text-primary" />
-          <span className="text-sm font-medium">场景音乐</span>
+          <span className="text-sm font-medium">{embedded ? "音乐" : "场景音乐"}</span>
           {recommendation && (
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-xs px-1.5 py-0.5 bg-primary/10 text-primary rounded">

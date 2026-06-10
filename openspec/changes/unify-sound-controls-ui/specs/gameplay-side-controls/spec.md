@@ -19,6 +19,8 @@ The expanded global sound controls SHALL present scene music and story narration
 - **When** the user expands the global sound controls
 - **Then** the expanded surface SHALL use one sound mixer layout
 - **And** the scene music and story narration sections SHALL be visually grouped as sibling channel rows
+- **And** the expanded panel SHALL NOT repeat the collapsed bar title as an extra "声音控制" header
+- **And** embedded channel labels SHALL use the concise labels "音乐" and "朗读"
 - **And** the channel rows SHALL use lightweight dividers instead of nested card borders or nested card backgrounds
 - **And** the panel SHALL NOT present music and narration as separate standalone toolbars.
 

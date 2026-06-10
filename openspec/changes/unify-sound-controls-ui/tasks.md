@@ -13,3 +13,4 @@
 - [x] Run focused component tests for the global sound panel and story voice controls.
 - [x] Add regression coverage that the expanded panel has embedded music/narration channels instead of nested sound regions or card shells.
 - [x] Replace nested music/narration cards with lightweight divided channel rows to reduce redundant sound UI chrome.
+- [x] Remove the redundant expanded "声音控制" header and use concise embedded channel labels "音乐" / "朗读".
