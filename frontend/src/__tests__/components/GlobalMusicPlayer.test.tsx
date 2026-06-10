@@ -263,6 +263,27 @@ describe("GlobalMusicPlayer", () => {
       expect(within(readingSection).getByTestId("story-voice-embedded-module")).toBeInTheDocument();
     });
 
+    it("replaces the collapsed mini bar with a panel header while expanded", async () => {
+      const user = userEvent.setup();
+      setStoreState({
+        activeStoryText: "story text",
+        currentSong: { id: 2, name: "Playing Song", artists: ["Artist"], album: "", duration: 200 },
+      });
+      useStoryVoiceStore.setState({
+        activeReadingContext,
+        activeAutoReadText: activeReadingContext.text,
+        activeAutoReadReady: true,
+      } as never);
+
+      render(<GlobalMusicPlayer />);
+
+      await user.click(screen.getByRole("button", { name: "展开声音" }));
+
+      const panel = screen.getByTestId("unified-sound-panel");
+      expect(screen.queryByTestId("global-music-mini-bar")).not.toBeInTheDocument();
+      expect(within(panel).getByRole("button", { name: "收起声音" })).toBeInTheDocument();
+    });
+
     it("stays below the app header on desktop so it cannot cover header controls or the chat launcher", () => {
       setStoreState({ activeStoryText: "story text" });
 
@@ -312,7 +333,7 @@ describe("GlobalMusicPlayer", () => {
       expect(playButton).toBeInTheDocument();
     });
 
-    it("labels icon-only mini-player controls for reliable browser automation", () => {
+    it("labels the collapsed sound-panel entry for reliable browser automation", () => {
       setStoreState({
         activeStoryText: "story text",
         isPlaying: false,
@@ -321,8 +342,34 @@ describe("GlobalMusicPlayer", () => {
 
       render(<GlobalMusicPlayer />);
 
-      expect(screen.getByRole("button", { name: "打开声音" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "展开声音" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "打开声音" })).not.toBeInTheDocument();
+    });
+
+    it("uses the collapsed bar only as a sound-panel entry point, not separate playback controls", () => {
+      setStoreState({
+        activeStoryText: "story text",
+        isPlaying: true,
+        audioElement: {
+          pause: jest.fn(),
+          play: jest.fn(),
+          ended: false,
+          currentTime: 0,
+        } as unknown as HTMLAudioElement,
+      });
+      useStoryVoiceStore.setState({
+        activeReadingContext,
+        activeAutoReadText: activeReadingContext.text,
+        activeAutoReadReady: true,
+      } as never);
+
+      render(<GlobalMusicPlayer />);
+
+      const miniBar = within(screen.getByTestId("global-music-mini-bar"));
+      expect(miniBar.getByRole("button", { name: "展开声音" })).toBeInTheDocument();
+      expect(miniBar.queryByRole("button", { name: "暂停音乐" })).not.toBeInTheDocument();
+      expect(miniBar.queryByRole("button", { name: "播放音乐" })).not.toBeInTheDocument();
+      expect(miniBar.queryByRole("button", { name: "朗读故事" })).not.toBeInTheDocument();
     });
 
     it("keeps collapsed controls simple and moves narration controls into the sound panel", async () => {
@@ -350,8 +397,9 @@ describe("GlobalMusicPlayer", () => {
       render(<GlobalMusicPlayer />);
 
       const miniBar = within(screen.getByTestId("global-music-mini-bar"));
-      expect(miniBar.getByRole("button", { name: "播放音乐" })).toBeInTheDocument();
       expect(miniBar.getByRole("button", { name: "展开声音" })).toBeInTheDocument();
+      expect(miniBar.queryByRole("button", { name: "播放音乐" })).not.toBeInTheDocument();
+      expect(miniBar.queryByRole("button", { name: "暂停音乐" })).not.toBeInTheDocument();
       expect(miniBar.queryByRole("button", { name: "朗读故事" })).not.toBeInTheDocument();
 
       await user.click(miniBar.getByRole("button", { name: "展开声音" }));
@@ -471,8 +519,8 @@ describe("GlobalMusicPlayer", () => {
     });
   });
 
-  describe("Play/Pause interaction", () => {
-    it("calls togglePlay when clicking play/pause button with audio element", async () => {
+  describe("Collapsed sound panel interaction", () => {
+    it("opens the unified panel instead of toggling music directly", async () => {
       const user = userEvent.setup();
       const fakeAudio = { pause: jest.fn(), play: jest.fn(), ended: false, src: '', currentTime: 0, addEventListener: jest.fn(), removeEventListener: jest.fn() } as unknown as HTMLAudioElement;
       setStoreState({
@@ -483,13 +531,13 @@ describe("GlobalMusicPlayer", () => {
 
       render(<GlobalMusicPlayer />);
 
-      const playPauseButton = screen.getAllByRole("button")[0];
-      await user.click(playPauseButton);
+      await user.click(screen.getByRole("button", { name: "展开声音" }));
 
-      expect(togglePlaySpy).toHaveBeenCalled();
+      expect(togglePlaySpy).not.toHaveBeenCalled();
+      expect(screen.getByRole("group", { name: "音乐和朗读" })).toBeInTheDocument();
     });
 
-    it("expands player when clicking play/pause without audio element", async () => {
+    it("expands the unified panel when no audio element exists", async () => {
       const user = userEvent.setup();
       setStoreState({
         activeStoryText: "story text",
@@ -504,8 +552,7 @@ describe("GlobalMusicPlayer", () => {
       const wrapper = document.querySelector('.fixed.z-50');
       expect(wrapper).toBeInTheDocument();
 
-      const playPauseButton = screen.getAllByRole("button")[0];
-      await user.click(playPauseButton);
+      await user.click(screen.getByRole("button", { name: "展开声音" }));
 
       // After click, the expanded MusicPlayer container should be visible
       expect(screen.getByRole("group", { name: "音乐和朗读" })).toBeInTheDocument();
