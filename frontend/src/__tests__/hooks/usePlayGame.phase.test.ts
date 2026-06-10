@@ -62,6 +62,12 @@ function makeChoiceResponse(story = 'Choice result...', options = [{ text: 'Next
   ]);
 }
 
+function makeChoiceCompleteOnlyResponse(story = 'Choice result...', options = [{ text: 'Next Option' }]) {
+  return createSSEMockResponse([
+    `event: complete\ndata: ${JSON.stringify({ event_description: story, options })}\n\n`,
+  ]);
+}
+
 /** SSE response for regenerate endpoint */
 function makeRegenerateResponse(story = 'New regenerated story') {
   return createSSEMockResponse([
@@ -722,6 +728,39 @@ describe('usePlayGame - Phase State Machine', () => {
       await waitFor(() => {
         expect(result.current.storyText).toContain('Custom choice result');
       });
+    });
+
+    it('should keep choice result text when choice SSE only sends a complete event', async () => {
+      setupGameStore({
+        gameId: 1,
+        storyText: 'Initial story',
+        currentEvent: {
+          story: 'Initial story',
+          options: [{ text: 'Option' }],
+        },
+      });
+
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (typeof url === 'string' && url.includes('/choice')) {
+          return Promise.resolve(makeChoiceCompleteOnlyResponse('Complete-only choice result'));
+        }
+        return Promise.resolve(makeEventResponse());
+      });
+
+      const { result } = renderHook(() => usePlayGame());
+
+      act(() => {
+        result.current.setPhase('options');
+      });
+
+      await act(async () => {
+        await result.current.handleChoice(0);
+      });
+
+      await waitFor(() => {
+        expect(result.current.storyText).toContain('Complete-only choice result');
+      });
+      expect(result.current.phase).toBe('result');
     });
 
     it('should handle regenerate flow', async () => {
