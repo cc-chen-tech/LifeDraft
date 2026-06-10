@@ -15,6 +15,7 @@ from config.prompts._helpers import (
     build_realistic_modern_world_boundary,
 )
 from config.prompts.story_prompts import (
+    _build_zh_chapter_constraint,
     _build_protagonist_identity_instruction,
     _extract_gender_text,
     resolve_protagonist_name,
@@ -729,8 +730,10 @@ class RoundEventGenerator:
             language,
         )
         era_constraints = _build_era_anachronism_constraints(character_settings, language)
-        week = player_state.get("week", 0)
-        current_round = player_state.get("current_round", 0)
+        week = int(player_state.get("week", 0) or 0)
+        current_round = int(player_state.get("current_round", 0) or 0)
+        rounds_per_week = player_state.get("rounds_per_week", 3) or 3
+        total_chapter = week * int(rounds_per_week) + current_round + 1
 
         round_names = (
             ["周一", "周中", "周末"] if language == "zh" else ["Monday", "Midweek", "Weekend"]
@@ -740,6 +743,17 @@ class RoundEventGenerator:
             if current_round < len(round_names)
             else f"Round {current_round}"
         )
+        zh_chapter_constraint = (
+            _build_zh_chapter_constraint(
+                total_chapter,
+                week,
+                current_round,
+                character_settings,
+            )
+            if language == "zh"
+            else ""
+        )
+        zh_timeline_title = f"第{week + 1}周·{round_name}" if language == "zh" else ""
 
         if language == "zh":
             return f"""【强制事件】角色之前做出的承诺必须在本轮兑现。
@@ -748,8 +762,10 @@ class RoundEventGenerator:
 涉及人物：{parties_str}
 事件提示：{combined_hint}
 
-当前时间：第{week}周，{round_name}
+当前时间：{zh_timeline_title}
 玩家姓名：{player_name}
+
+{zh_chapter_constraint}
 
 【角色设定硬约束】
 {character_context if character_context else "标准现代青年"}{name_instruction}{available_people_str}

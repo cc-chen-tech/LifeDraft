@@ -19,6 +19,14 @@ Chinese story prompts SHALL use modern week/round timeline titles for ordinary n
 - **THEN** the prompt MUST require a title such as "第N周·周一"
 - **AND** the prompt MUST NOT require "第X回" chapter labels or seven-character couplet titles
 
+#### Scenario: Scheduled commitment events use the same timeline title
+
+- **GIVEN** a pending scheduled event or commitment event in a non-ancient Chinese save
+- **WHEN** the scheduled-event prompt is built for a week and round
+- **THEN** the prompt MUST use the display week and round title such as "第N周·周一"
+- **AND** the prompt MUST include the same modern title constraint as ordinary story generation
+- **AND** the prompt MUST NOT expose zero-based internal week values or require classical chapter labels
+
 #### Scenario: Explicit ancient settings keep classical titles
 
 - **GIVEN** character settings explicitly include ancient, wuxia, palace, or xianxia cues

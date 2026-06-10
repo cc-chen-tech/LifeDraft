@@ -196,6 +196,46 @@ def test_scheduled_event_prompt_inherits_story_authority_constraints() -> None:
     assert "禁止赛博朋克" in prompt
 
 
+def test_scheduled_event_prompt_uses_modern_timeline_title_constraints() -> None:
+    """预定事件路径也必须沿用现代时间线标题，不能回退到原始 week 或章回体。"""
+    generator = RoundEventGenerator(
+        player_state_getter=lambda: None,
+        ai_generator=None,
+        language_getter=lambda: "zh",
+        character_introduction_service=None,
+        summary_selector=None,
+        relationship_service=None,
+    )
+
+    prompt = generator._build_scheduled_event_prompt(
+        scheduled_events=[
+            {
+                "description": "周一和导师复盘需求优先级",
+                "parties": ["陆昊然"],
+                "event_hint": "围绕产品经理成长线推进",
+            }
+        ],
+        player_state={
+            "player_name": "林清",
+            "week": 2,
+            "current_round": 0,
+        },
+        character_settings={
+            "basic": {"name": "林清", "age": 28},
+            "career": {"job_title": "产品经理", "company": "创业公司"},
+            "wealth": {"currency": "¥", "currency_name": "元"},
+        },
+        language="zh",
+    )
+
+    assert "第3周·周一" in prompt
+    assert "第2周，周一" not in prompt
+    assert "时间线标题约束" in prompt
+    assert "禁止使用章回体" in prompt
+    assert "7字对仗标题" not in prompt
+    assert "故事开头必须使用\"第" not in prompt
+
+
 def test_scheduled_event_generation_retries_when_story_replaces_preset_cast() -> None:
     class DriftClient:
         def __init__(self) -> None:
