@@ -10,6 +10,13 @@ Story generation SHALL treat preset key people in character settings as canonica
 - **AND** it MUST instruct the model not to rename these people or transfer their roles to invented substitutes
 - **AND** it MUST require each generated round to use at least one canonical preset key person
 
+#### Scenario: Legacy relationship list payloads preserve preset cast authority
+- **GIVEN** character settings store preset key people as a legacy `relationships` list instead of `relationships.key_people`
+- **WHEN** story prompts are built or quick validation collects available people
+- **THEN** the same canonical key people MUST be extracted
+- **AND** the prompt MUST include the no-rename/no-substitute authority block
+- **AND** quick validation MUST reject generated stories that replace all preset key people with invented named substitutes
+
 #### Scenario: World model carries preset relationship authority
 - **GIVEN** a saved player state includes preset key people in character settings
 - **WHEN** the WorldModel is built from that player state

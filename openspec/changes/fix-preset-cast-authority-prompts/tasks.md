@@ -42,3 +42,9 @@
 - [x] Add a regression test proving story-character sync does not promote a named substitute for a preset role.
 - [x] Skip automatic key_people promotion when a new name appears in the local context of an existing preset role/relationship token.
 - [x] Run the targeted world model updater character-sync tests.
+
+## 8. 2026-06-10 Legacy Relationships Payload Follow-up
+
+- [x] Add regression tests proving prompt injection and quick validation still work when `character_settings.relationships` is a legacy list payload.
+- [x] Normalize legacy relationship list payloads in the shared available-people and required-cast extractors.
+- [x] Run targeted preset-cast contract tests.
