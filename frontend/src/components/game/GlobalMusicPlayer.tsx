@@ -207,42 +207,37 @@ export function GlobalMusicPlayer() {
             className="border-t border-border/70 pt-3"
           >
             <div
-              data-testid="sound-console-main-controls"
-              className="grid min-w-0 gap-3"
+              data-testid="sound-console-unified-controls"
+              className="min-w-0"
             >
-              <div data-testid="sound-console-music-slot" className="min-w-0">
-                {storyText ? (
-                  <MusicPlayer
-                    storyText={storyText}
-                    gameId={effectiveGameId}
-                    className="rounded-none border-0 bg-transparent p-0 shadow-none"
-                    autoFetchRecommendation={shouldAutoFetchRecommendation}
-                    embedded
-                    hideTitle
-                    consoleControls
-                  />
-                ) : (
-                  <div className="text-sm text-muted-foreground">
-                    故事生成完成后会自动推荐音乐。
-                  </div>
-                )}
-              </div>
-
-              {activeReadingContext && (
-                <div
-                  data-testid="sound-console-reading-slot"
-                  className="min-w-0 border-t border-border/70 pt-3"
-                >
-                  <StoryVoiceControls
-                    currentContext={activeReadingContext}
-                    autoReadText={activeAutoReadText}
-                    autoReadReady={activeAutoReadReady}
-                    compact
-                    embedded
-                    enablePlaybackControls
-                    hideTitle
-                    consoleControls
-                  />
+              {storyText ? (
+                <MusicPlayer
+                  storyText={storyText}
+                  gameId={effectiveGameId}
+                  className="rounded-none border-0 bg-transparent p-0 shadow-none"
+                  autoFetchRecommendation={shouldAutoFetchRecommendation}
+                  embedded
+                  hideTitle
+                  consoleControls
+                  inlineControls={
+                    activeReadingContext ? (
+                      <StoryVoiceControls
+                        currentContext={activeReadingContext}
+                        autoReadText={activeAutoReadText}
+                        autoReadReady={activeAutoReadReady}
+                        compact
+                        embedded
+                        enablePlaybackControls
+                        hideTitle
+                        consoleControls
+                        inlineConsole
+                      />
+                    ) : null
+                  }
+                />
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  故事生成完成后会自动推荐音乐。
                 </div>
               )}
             </div>

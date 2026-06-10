@@ -5,7 +5,7 @@
  *
  * 根据故事内容推荐并播放匹配的音乐
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Play,
   Pause,
@@ -37,6 +37,7 @@ interface MusicPlayerProps {
   hideTitle?: boolean;
   compactControls?: boolean;
   consoleControls?: boolean;
+  inlineControls?: ReactNode;
 }
 
 function hasMusicBrief(brief: Record<string, unknown> | undefined): brief is Record<string, unknown> {
@@ -52,6 +53,7 @@ export function MusicPlayer({
   hideTitle = false,
   compactControls = false,
   consoleControls = false,
+  inlineControls,
 }: MusicPlayerProps) {
   const recommendation = useMusicStore((state) => state.recommendation);
   const isLoadingRecommendation = useMusicStore((state) => state.isLoadingRecommendation);
@@ -687,6 +689,14 @@ export function MusicPlayer({
               )}
             </Button>
           </div>
+          {inlineControls && (
+            <div
+              data-testid="sound-inline-reading-controls"
+              className="flex min-w-0 flex-1 flex-wrap items-center gap-2 border-t border-border/70 pt-2 sm:border-l sm:border-t-0 sm:pl-2 sm:pt-0"
+            >
+              {inlineControls}
+            </div>
+          )}
         </div>
 
         {displaySong && (
