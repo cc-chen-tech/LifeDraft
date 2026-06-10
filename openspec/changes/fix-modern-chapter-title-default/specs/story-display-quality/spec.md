@@ -27,6 +27,14 @@ Chinese story prompts SHALL use modern week/round timeline titles for ordinary n
 - **AND** the prompt MUST include the same modern title constraint as ordinary story generation
 - **AND** the prompt MUST NOT expose zero-based internal week values or require classical chapter labels
 
+#### Scenario: Inline rewrite keeps modern timeline title authority
+
+- **GIVEN** a non-ancient Chinese save whose current story text contains a stale classical title such as "第X回"
+- **WHEN** the player rewrites a segment of that story
+- **THEN** the rewrite prompt MUST include the current display week and round title such as "第N周·周一"
+- **AND** the prompt MUST instruct the model to replace stale classical or conflicting titles
+- **AND** the prompt MUST NOT preserve seven-character couplet title requirements for the modern save
+
 #### Scenario: Explicit ancient settings keep classical titles
 
 - **GIVEN** character settings explicitly include ancient, wuxia, palace, or xianxia cues
