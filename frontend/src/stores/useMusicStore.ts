@@ -115,7 +115,7 @@ function dedupeSongs(songs: Song[], excludedId: number | string | undefined): So
 function playlistStateToStorePatch(playlist: PlaylistApiState): Partial<MusicState> {
   return {
     playlistGameId: playlist.game_id,
-    currentSong: playlist.current_song,
+    currentSong: playlist.current_song ?? null,
     queue: playlist.queue || [],
     playedSongs: playlist.played_songs || [],
     isPlaying: playlist.is_playing,
@@ -487,7 +487,10 @@ export const useMusicStore = create<MusicState>((set, get) => ({
 
   mergePlaylist: async (gameId: number, songs: Song[], mood?: string, keywords?: string[]) => {
     const { currentSong, queue } = get();
-    const merged = mergeSongsPreservingCurrent(currentSong, queue, songs);
+    const safeCurrentSong = currentSong ?? null;
+    const safeQueue = queue || [];
+    const safeSongs = songs || [];
+    const merged = mergeSongsPreservingCurrent(safeCurrentSong, safeQueue, safeSongs);
     if (typeof fetch !== "undefined") {
       try {
         const response = await fetch(`${API_BASE}/music/playlist/${gameId}`, {
@@ -495,7 +498,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({
-            songs,
+            songs: safeSongs,
             mood,
             keywords,
           }),

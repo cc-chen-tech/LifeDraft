@@ -65,6 +65,20 @@ describe("music queue policy", () => {
     expect(state.queue[2].source).toBe("ai_generated");
   });
 
+  it("store mergePlaylist tolerates empty recommendations after malformed playlist restore", async () => {
+    useMusicStore.setState({
+      currentSong: undefined,
+      queue: undefined,
+    } as Partial<ReturnType<typeof useMusicStore.getState>>);
+
+    await expect(useMusicStore.getState().mergePlaylist(101, [])).resolves.toBeUndefined();
+
+    const state = useMusicStore.getState();
+    expect(state.currentSong).toBeNull();
+    expect(state.queue).toEqual([]);
+    expect(state.playlistGameId).toBe(101);
+  });
+
   it("store loadPlaylist restores persisted server playlist including generated tracks", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
