@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useRef, type ChangeEvent } from "react";
 import { Loader2, Pause, Play, RotateCcw, Square, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
@@ -91,7 +91,6 @@ export function StoryVoiceControls({
     currentContext.source_type === "history_round" || Boolean(historyContext);
   const shouldShowPlaybackControls = enablePlaybackControls || showTestControls;
   const showProductionSettings = !showTestControls;
-  const [voiceSettingsReady, setVoiceSettingsReady] = useState(!showProductionSettings);
 
   useEffect(() => {
     return () => {
@@ -127,11 +126,6 @@ export function StoryVoiceControls({
           error,
         );
       })
-      .finally(() => {
-        if (mountedRef.current) {
-          setVoiceSettingsReady(true);
-        }
-      });
   }, [
     autoReadEnabled,
     selectedVoiceId,
@@ -143,7 +137,6 @@ export function StoryVoiceControls({
   useEffect(() => {
     const finalText = autoReadText?.trim();
     if (
-      !voiceSettingsReady ||
       !autoReadReady ||
       !autoReadEnabled ||
       !finalText ||
@@ -173,7 +166,6 @@ export function StoryVoiceControls({
     autoReadText,
     currentContext,
     startReading,
-    voiceSettingsReady,
   ]);
 
   if (!shouldShowPlaybackControls) {
@@ -313,10 +305,8 @@ export function StoryVoiceControls({
     }
   };
 
-  const voiceSettingsRequired = !voiceSettingsReady && readingState === "idle";
-
   const handlePrimaryAction = () => {
-    if (readingState === "loading" || !isStoryReady || voiceSettingsRequired) return;
+    if (readingState === "loading" || !isStoryReady) return;
     if (readingState === "ready") {
       playGeneratedAudio(true);
       return;
@@ -338,9 +328,7 @@ export function StoryVoiceControls({
 
   const primaryReadLabel = !isStoryReady
     ? "故事生成完成后可朗读"
-    : voiceSettingsRequired
-      ? "正在加载朗读设置"
-      : readingState === "loading"
+    : readingState === "loading"
       ? "正在生成语音"
       : readingState === "ready"
         ? "播放语音"
@@ -351,7 +339,7 @@ export function StoryVoiceControls({
             : readingState === "failed"
               ? "重试朗读"
               : "朗读故事";
-  const primaryReadDisabled = readingState === "loading" || !isStoryReady || voiceSettingsRequired;
+  const primaryReadDisabled = readingState === "loading" || !isStoryReady;
   const showStopButton = ["loading", "playing", "paused"].includes(
     readingState,
   );
@@ -491,7 +479,6 @@ export function StoryVoiceControls({
             variant="outline"
             onClick={() => void startReading(historyContext)}
             aria-label="朗读历史故事"
-            disabled={!voiceSettingsReady}
           >
             <Volume2 className="w-4 h-4 mr-1.5" />
             朗读历史故事
