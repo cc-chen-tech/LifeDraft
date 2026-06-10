@@ -116,3 +116,43 @@ def test_rewrite_story_prompt_preserves_modern_timeline_title_constraints() -> N
     assert "时间线标题约束" in prompt
     assert "禁止使用章回体" in prompt
     assert "7字对仗标题" not in prompt
+
+
+def test_rewrite_story_retries_when_rewritten_story_drifts_from_character_settings() -> None:
+    class DriftThenValidClient:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        def call(self, **kwargs: Any) -> str:
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                return (
+                    "第三回 雪巷惊魂\n\n"
+                    "夜之城的雨落在荒坂集团楼下，Viktor把神经接口推到林见微面前。"
+                    "马老板和方蕾催她立刻处理陌生债务。"
+                )
+            return (
+                "第2周·周中 会议室复盘\n\n"
+                "陆昊然把复盘文档递给林见微，陈晓雨陪她逐条整理用户反馈。"
+            )
+
+    client = DriftThenValidClient()
+    rewriter = StoryRewriter(client)  # type: ignore[arg-type]
+
+    rewritten = rewriter.rewrite_story_segment(
+        full_story="第2周·周中 会议室复盘\n\n林见微在会议室里意识到需求排序出了问题。",
+        segment_to_replace="林见微在会议室里意识到需求排序出了问题。",
+        user_instruction="把场景改得更写实，贴近互联网公司复盘。",
+        character_settings=_modern_product_manager_settings(),
+        story_context="上一轮林见微结束需求评审，准备和陆昊然复盘。",
+        language="zh",
+        player_state={"player_name": "林见微", "week": 1, "current_round": 1},
+    )
+
+    assert len(client.calls) == 2
+    assert "改写一致性修正" in client.calls[1]["user_prompt"]
+    assert "陆昊然" in rewritten
+    assert "陈晓雨" in rewritten
+    assert "夜之城" not in rewritten
+    assert "荒坂" not in rewritten
+    assert "马老板" not in rewritten
