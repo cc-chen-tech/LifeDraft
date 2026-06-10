@@ -2,7 +2,7 @@
 
 ### Requirement: Round fallback preserves preset key people
 
-When round-event generation falls back after validation failures, the fallback story SHALL still preserve the player's preset relationship network.
+Round-event generation fallback stories SHALL preserve the player's preset relationship network and role context after validation failures or model exceptions.
 
 #### Scenario: AI output repeatedly drifts away from required cast
 
@@ -14,3 +14,12 @@ When round-event generation falls back after validation failures, the fallback s
 - **THEN** the fallback story MUST include at least one canonical preset key
   person
 - **AND** it MUST NOT reuse the rejected drifted story text
+
+#### Scenario: Round service fallback after model exception
+
+- **GIVEN** character settings define a modern occupation and preset key people
+- **WHEN** the model raises before returning a round event
+- **THEN** the service-level fallback story MUST include at least one canonical
+  preset key person
+- **AND** it MUST preserve the character's role or occupation context
+- **AND** it MUST NOT return a generic fallback unrelated to the player's setup
