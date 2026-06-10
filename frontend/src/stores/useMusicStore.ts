@@ -60,6 +60,52 @@ function songKey(song: Song): number | string {
   return song.id;
 }
 
+const REPORTED_TITLE_FAMILY_CUES = [
+  "小幸运",
+  "断了的弦",
+  "绅士",
+  "红尘客栈",
+  "非你莫属",
+  "给我一首歌的时间",
+  "等你下课",
+  "不再联系",
+  "说散就散",
+  "匆匆那年",
+  "告白气球",
+  "喜欢你",
+  "夜曲",
+  "一直很安静",
+  "平凡之路",
+  "岁月神偷",
+  "都选C",
+  "她说",
+  "童话",
+  "丑八怪",
+  "可爱女人",
+];
+
+function canonicalSongTitle(title: unknown): string {
+  return String(title || "")
+    .toLowerCase()
+    .replace(/[（(][^）)]*[）)]/g, "")
+    .replace(
+      /(心动版|加速版|降速版|抖音版|翻唱版|古风翻唱|翻唱|cover|伴奏|纯音乐版|剪辑版|完整版|live|remix|remaster|0\.\d+x|\d+(?:\.\d+)?x|版)/gi,
+      ""
+    )
+    .replace(/[\s\-—_·.。…!！?？,，、:：;；'"“”‘’《》[\]【】/\\]+/g, "");
+}
+
+function titleFamilyKey(song: Song): string {
+  const canonicalTitle = canonicalSongTitle(song.name);
+  for (const cue of REPORTED_TITLE_FAMILY_CUES) {
+    const canonicalCue = canonicalSongTitle(cue);
+    if (canonicalCue && (canonicalTitle === canonicalCue || canonicalTitle.includes(canonicalCue))) {
+      return canonicalCue;
+    }
+  }
+  return canonicalTitle;
+}
+
 export function mergeSongsPreservingCurrent(
   currentSong: Song | null,
   existingQueue: Song[],
@@ -76,19 +122,30 @@ export function mergeSongsPreservingCurrent(
   }
 
   const currentId = songKey(currentSong);
+  const currentTitleKey = titleFamilyKey(currentSong);
   const queue: Song[] = [];
   if (existingQueue.length > 0 && songKey(existingQueue[0]) !== currentId) {
     queue.push(existingQueue[0]);
   }
 
   const seenIds = new Set(queue.map(songKey));
+  const seenTitleKeys = new Set(
+    [currentTitleKey, ...queue.map(titleFamilyKey)].filter(Boolean)
+  );
   for (const song of incomingSongs) {
     const id = songKey(song);
+    const familyKey = titleFamilyKey(song);
     if (id === currentId || seenIds.has(id)) {
+      continue;
+    }
+    if (familyKey && seenTitleKeys.has(familyKey)) {
       continue;
     }
     queue.push(song);
     seenIds.add(id);
+    if (familyKey) {
+      seenTitleKeys.add(familyKey);
+    }
   }
 
   return { currentSong, queue };
@@ -100,14 +157,22 @@ export function getMusicSourceLabel(source: Song["source"] | undefined): string 
 
 function dedupeSongs(songs: Song[], excludedId: number | string | undefined): Song[] {
   const seenIds = new Set<number | string>();
+  const seenTitleKeys = new Set<string>();
   const result: Song[] = [];
   for (const song of songs) {
     const id = songKey(song);
+    const familyKey = titleFamilyKey(song);
     if (id === excludedId || seenIds.has(id)) {
+      continue;
+    }
+    if (familyKey && seenTitleKeys.has(familyKey)) {
       continue;
     }
     result.push(song);
     seenIds.add(id);
+    if (familyKey) {
+      seenTitleKeys.add(familyKey);
+    }
   }
   return result;
 }
