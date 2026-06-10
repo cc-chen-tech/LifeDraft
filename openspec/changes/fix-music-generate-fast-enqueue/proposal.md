@@ -5,6 +5,7 @@ The 2026-06-08/2026-06-09 UX report observed `/api/music/generate` taking 8s+ an
 ## What Changes
 
 - Make `/api/music/generate` enqueue generation in the background and return HTTP 202 by default, even when deterministic local-audio storage is enabled.
+- Route the frontend story-complete AI music enqueue path through `/api/music/generate` so the browser uses the primary non-blocking contract.
 - Keep deterministic local-audio ready-track verification available through explicit `/api/music/generate?sync=true`.
 - Preserve the existing `/api/music/generate-async` behavior and future-queue insertion policy.
 - Update generated OpenAPI types so frontend consumers can see that `/api/music/generate` may return either a ready track or a queued response.
@@ -12,5 +13,6 @@ The 2026-06-08/2026-06-09 UX report observed `/api/music/generate` taking 8s+ an
 ## Impact
 
 - Backend music API route: `src/api/routers/music.py`.
+- Frontend music store and player tests for automatic story-complete AI music generation.
 - MiniMax music contract tests: `tests/test_minimax_audio_generation_contract.py`.
 - Generated OpenAPI schema/types: `frontend/src/types/openapi-schema.json`, `frontend/src/types/api-generated.d.ts`.

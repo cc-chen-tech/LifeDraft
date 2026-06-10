@@ -10,6 +10,13 @@ The system SHALL treat MiniMax generated music as a non-blocking supplement to e
 - **AND** the route SHALL NOT call the blocking ready-track generation path before returning
 - **AND** generated music SHALL still be inserted into the future playlist queue by background generation when it becomes ready.
 
+#### Scenario: Story-complete playback uses the primary non-blocking music generation route
+- **GIVEN** a story recommendation includes a `music_brief`
+- **WHEN** the frontend starts AI music generation for the completed story
+- **THEN** the frontend SHALL enqueue generation through `/api/music/generate`
+- **AND** the frontend SHALL NOT depend on `/api/music/generate-async` for the normal story-complete playback path
+- **AND** the current NetEase baseline song SHALL remain current while generated music is inserted into the future queue when ready.
+
 #### Scenario: Local deterministic generated music remains explicitly synchronously verifiable
 - **GIVEN** MiniMax local-audio mode is enabled for deterministic tests
 - **WHEN** the client requests `/api/music/generate?sync=true`

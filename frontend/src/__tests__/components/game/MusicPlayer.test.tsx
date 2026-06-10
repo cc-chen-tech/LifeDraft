@@ -210,7 +210,7 @@ describe('MusicPlayer', () => {
     expect(screen.queryByText('音乐服务暂不可用，故事可继续进行')).not.toBeInTheDocument();
     expect(
       (global.fetch as jest.Mock).mock.calls.some((call: unknown[]) =>
-        String(call[0]).includes('/api/music/generate-async')
+        String(call[0]).includes('/api/music/generate')
       )
     ).toBe(true);
   });
@@ -450,13 +450,13 @@ describe('MusicPlayer', () => {
     await waitFor(() => {
       expect(
         (global.fetch as jest.Mock).mock.calls.some((call: unknown[]) =>
-          String(call[0]).includes('/api/music/generate-async')
+          String(call[0]).includes('/api/music/generate')
         )
       ).toBe(true);
     });
 
     const generateCall = (global.fetch as jest.Mock).mock.calls.find((call: unknown[]) =>
-      String(call[0]).includes('/api/music/generate-async')
+      String(call[0]).includes('/api/music/generate')
     );
     expect(JSON.parse(generateCall[1].body)).toMatchObject({
       story_text: '雨夜码头追逐，主角发现旧账册线索。',
@@ -468,7 +468,7 @@ describe('MusicPlayer', () => {
     });
     expect(
       (global.fetch as jest.Mock).mock.calls.some((call: unknown[]) =>
-        String(call[0]).endsWith('/api/music/generate')
+        String(call[0]).endsWith('/api/music/generate-async')
       )
     ).toBe(false);
     expect(useMusicStore.getState().currentSong?.name).toBe('网易云 当前曲');
