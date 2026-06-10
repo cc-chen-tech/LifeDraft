@@ -847,7 +847,7 @@ export async function enqueueGeneratedMusic(
   gameId: number,
   analysis?: Record<string, unknown>
 ): Promise<{ status: "queued"; game_id: number; insert_policy: "future_queue" }> {
-  const response = await fetch(`${API_BASE}/music/generate-async`, {
+  const response = await fetch(`${API_BASE}/music/generate`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

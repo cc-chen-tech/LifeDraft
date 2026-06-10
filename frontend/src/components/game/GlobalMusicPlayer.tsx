@@ -4,7 +4,7 @@
  * GlobalMusicPlayer — compact mini player wrapper.
  *
  * Mounted in RootLayout so it survives page navigation.
- * Shows a slim bottom bar by default; expands to full MusicPlayer on click.
+ * Shows a slim bottom bar by default with explicit playback and expand actions.
  *
  * IMPORTANT: MusicPlayer must always stay mounted to keep the Audio element alive.
  * We use opacity-0 + h-0 + overflow-hidden (NOT display:none / hidden) so the
@@ -248,8 +248,7 @@ export function GlobalMusicPlayer() {
       {!isExpanded && (
         <div
           data-testid="global-music-mini-bar"
-          className="relative bg-card/95 backdrop-blur-sm border-b md:border md:rounded-lg flex items-center gap-2 px-3 py-2 cursor-pointer"
-          onClick={() => setIsExpanded(true)}
+          className="relative bg-card/95 backdrop-blur-sm border-b md:border md:rounded-lg flex items-center gap-2 px-3 py-2"
         >
           {/* Progress bar - thin line at top */}
           <div className="absolute top-0 left-0 right-0 h-0.5 bg-muted">

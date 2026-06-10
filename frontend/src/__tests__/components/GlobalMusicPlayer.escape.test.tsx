@@ -1,5 +1,6 @@
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { GlobalMusicPlayer } from "@/components/game/GlobalMusicPlayer";
 import { useMusicStore } from "@/stores/useMusicStore";
@@ -29,7 +30,8 @@ describe("GlobalMusicPlayer keyboard dismissal", () => {
     resetMusicStore();
   });
 
-  it("collapses the expanded playlist on Escape so song buttons cannot intercept story choices", () => {
+  it("collapses the expanded playlist on Escape so song buttons cannot intercept story choices", async () => {
+    const user = userEvent.setup();
     useMusicStore.setState({
       activeStoryText: "雨夜码头的旧账册被风吹开。",
       recommendation: {
@@ -66,7 +68,12 @@ describe("GlobalMusicPlayer keyboard dismissal", () => {
 
     render(<GlobalMusicPlayer />);
 
-    fireEvent.click(screen.getByTestId("global-music-mini-bar"));
+    await user.click(
+      within(screen.getByTestId("global-music-mini-bar")).getByText("雨夜码头"),
+    );
+    expect(screen.queryByRole("button", { name: "下一首" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "展开声音" }));
     expect(screen.getByRole("button", { name: "下一首" })).toBeVisible();
 
     fireEvent.keyDown(document, { key: "Escape", code: "Escape" });

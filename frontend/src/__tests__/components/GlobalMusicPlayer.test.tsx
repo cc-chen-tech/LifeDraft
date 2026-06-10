@@ -335,7 +335,7 @@ describe("GlobalMusicPlayer", () => {
         isPlaying: true,
         audioElement: {
           pause: jest.fn(),
-          play: jest.fn(),
+          play: jest.fn().mockResolvedValue(undefined),
           ended: false,
           currentTime: 0,
         } as unknown as HTMLAudioElement,
@@ -556,7 +556,7 @@ describe("GlobalMusicPlayer", () => {
         isPlaying: true,
         audioElement: {
           pause: jest.fn(),
-          play: jest.fn(),
+          play: jest.fn().mockResolvedValue(undefined),
           ended: false,
           currentTime: 0,
         } as unknown as HTMLAudioElement,
@@ -585,7 +585,7 @@ describe("GlobalMusicPlayer", () => {
       const user = userEvent.setup();
       const fakeAudio = {
         pause: jest.fn(),
-        play: jest.fn(),
+        play: jest.fn().mockResolvedValue(undefined),
         ended: false,
         src: "",
         currentTime: 0,
@@ -979,7 +979,7 @@ describe("GlobalMusicPlayer", () => {
       const user = userEvent.setup();
       const fakeAudio = {
         pause: jest.fn(),
-        play: jest.fn(),
+        play: jest.fn().mockResolvedValue(undefined),
         ended: false,
         src: "",
         currentTime: 0,
@@ -1002,7 +1002,7 @@ describe("GlobalMusicPlayer", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("opens the unified panel when the collapsed bar itself is selected", async () => {
+    it("does not treat collapsed song text as an implicit expand target", async () => {
       const user = userEvent.setup();
       setStoreState({
         activeStoryText: "story text",
@@ -1013,13 +1013,16 @@ describe("GlobalMusicPlayer", () => {
 
       render(<GlobalMusicPlayer />);
 
-      // MusicPlayer always mounted, initially collapsed with opacity-0 h-0
-      const wrapper = document.querySelector(".fixed.z-50");
-      expect(wrapper).toBeInTheDocument();
+      await user.click(
+        within(screen.getByTestId("global-music-mini-bar")).getByText("Song"),
+      );
 
-      await user.click(screen.getByTestId("global-music-mini-bar"));
+      expect(
+        screen.queryByRole("group", { name: "音乐和朗读" }),
+      ).not.toBeInTheDocument();
 
-      // After click, the expanded MusicPlayer container should be visible
+      await user.click(screen.getByRole("button", { name: "展开声音" }));
+
       expect(
         screen.getByRole("group", { name: "音乐和朗读" }),
       ).toBeInTheDocument();
@@ -1044,16 +1047,14 @@ describe("GlobalMusicPlayer", () => {
       ).toBeInTheDocument();
     });
 
-    it("toggles expanded state when clicking mini bar", async () => {
+    it("toggles expanded state from the explicit sound expand button", async () => {
       const user = userEvent.setup();
       setStoreState({ activeStoryText: "story text" });
 
       render(<GlobalMusicPlayer />);
 
-      const miniBar = screen.getByTestId("global-music-mini-bar");
-      await user.click(miniBar!);
+      await user.click(screen.getByRole("button", { name: "展开声音" }));
 
-      // MusicPlayer always mounted, expanded after click
       expect(
         screen.getByRole("group", { name: "音乐和朗读" }),
       ).toBeInTheDocument();
