@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from src.ai.harness.era_validator import validate_era_consistency
+from src.game.relationship_authority import extract_required_key_people
 
 logger = logging.getLogger(__name__)
 
@@ -142,8 +143,12 @@ class QuickValidator:
         if available_people:
             name_issues = self._check_character_names(story_text, available_people, language)
             warnings.extend(name_issues)  # 作为警告，不阻止生成
+            required_key_people = self._extract_required_key_people_names(character_settings)
             cast_drift_issues = self._check_key_people_cast_drift(
-                story_text, available_people, language
+                story_text,
+                available_people,
+                language,
+                required_key_people=required_key_people,
             )
             issues.extend(cast_drift_issues)
 
@@ -332,34 +337,43 @@ class QuickValidator:
         return warnings
 
     def _check_key_people_cast_drift(
-        self, text: str, available_people: List[str], language: str
+        self,
+        text: str,
+        available_people: List[str],
+        language: str,
+        required_key_people: Optional[List[str]] = None,
     ) -> List[str]:
         """Detect severe drift where key people disappear and a new named cast appears."""
         allowed_names = [name.strip() for name in available_people if name and name.strip()]
-        if len(allowed_names) < 2:
+        key_people_names = [
+            name.strip()
+            for name in (required_key_people or allowed_names)
+            if name and name.strip()
+        ]
+        if len(key_people_names) < 2:
             return []
 
-        present_allowed = [name for name in allowed_names if name in text]
+        present_key_people = [name for name in key_people_names if name in text]
 
         if language != "zh":
-            if present_allowed:
+            if present_key_people:
                 return []
             return [
                 "上一版故事完全没有使用预设关键人物；请至少使用一个可用人物列表中的关键人物，并避免凭空替换关系网络。"
             ]
 
         invented_names = self._extract_likely_chinese_person_names(text, allowed_names)
-        if present_allowed:
-            key_people_ratio = len(present_allowed) / len(allowed_names)
-            required_network_count = (len(allowed_names) * 4 + 4) // 5
+        if present_key_people:
+            key_people_ratio = len(present_key_people) / len(key_people_names)
+            required_network_count = (len(key_people_names) * 4 + 4) // 5
             if (
-                len(allowed_names) >= 3
+                len(key_people_names) >= 3
                 and len(invented_names) >= 3
-                and len(present_allowed) < required_network_count
+                and len(present_key_people) < required_network_count
             ):
                 return [
                     "上一版故事预设关键人物使用不足，预设关系网使用不足"
-                    f"（已使用{len(present_allowed)}/{len(allowed_names)}，要求多人关系戏至少80%）"
+                    f"（已使用{len(present_key_people)}/{len(key_people_names)}，要求多人关系戏至少80%）"
                     "，反而让名单外人物主导剧情"
                     f"（{ '、'.join(invented_names[:5]) }）；请围绕预设关键人物关系网重写。"
                 ]
@@ -378,6 +392,19 @@ class QuickValidator:
 
         return [
             "上一版故事完全没有使用预设关键人物；请至少使用一个可用人物列表中的关键人物，并避免凭空替换关系网络。"
+        ]
+
+    def _extract_required_key_people_names(
+        self,
+        character_settings: Optional[Dict[str, Any]],
+    ) -> List[str]:
+        """Return preset relationship key people, excluding family/background people."""
+        if not isinstance(character_settings, dict):
+            return []
+        return [
+            person["name"]
+            for person in extract_required_key_people(character_settings)
+            if person.get("name")
         ]
 
     def _extract_likely_chinese_person_names(

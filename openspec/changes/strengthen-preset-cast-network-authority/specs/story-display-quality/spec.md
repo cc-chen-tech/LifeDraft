@@ -18,3 +18,11 @@ relationship networks from taking over a story that has an explicit preset cast.
 - **GIVEN** character settings define preset key people
 - **WHEN** a focused scene uses one relevant preset person and does not introduce a competing named cast
 - **THEN** validation SHALL allow the scene to continue.
+
+#### Scenario: Family members do not replace preset key people
+
+- **GIVEN** character settings define family members and preset key people
+- **AND** the available people list includes both groups
+- **WHEN** generated story text uses family members but none of the preset key people
+- **THEN** quick validation SHALL reject the story as missing preset key people
+- **AND** the retry instruction SHALL require the model to use the preset relationship network.
