@@ -22,7 +22,12 @@
 - [x] Add regression coverage that the collapsed bar summarizes both background music and story narration as peer sound channels.
 - [x] Add regression coverage that persisted music without an audio element opens the sound panel instead of showing a dead playback control.
 - [x] Replace the collapsed mini bar with an expanded panel header and a single "收起声音" action while open.
-- [x] Redesign the expanded panel as one compact vertical sound mixer with "背景音乐" and "故事朗读" peer groups, hiding duplicate child module headings, music mood chips, and recommendation lists.
+- [x] Redesign the expanded panel as one compact vertical sound console with "背景音乐" and "故事朗读" control rows, hiding duplicate child module headings, music mood chips, and recommendation lists.
 - [x] Remove duplicate per-channel status badges so music/narration state appears once in the shared sound overview.
 - [x] Keep auto-read only as the narration channel switch instead of repeating it as a shared overview badge.
 - [x] Add regression coverage that active playable music uses a non-blocking refresh error message instead of "音乐服务暂不可用".
+- [x] Replace separate music/narration status pills with one combined sound status line in the expanded header.
+- [x] Add regression coverage that the expanded UI uses one "声音控制台" with music and narration rows instead of separate "背景音乐" / "故事朗读" groups or a standalone channel list.
+- [x] Add regression coverage that the expanded UI no longer renders separate music and narration slots.
+- [x] Embed narration playback, voice selection, and auto-read controls inside the music control strip so expanded audio controls appear as one unified sound console.
+- [x] Remove the collapsed bar's implicit text-click expand behavior so only explicit sound actions change playback or panel state.

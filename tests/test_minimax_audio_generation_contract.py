@@ -10,13 +10,37 @@ from io import BytesIO
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
+from uuid import uuid4
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.database.models import Game, SessionLocal, init_db
+from src.api.deps import create_token
+from src.database.models import Game, SessionLocal, User, init_db
 from src.services.music_service import MusicBrief
 from src.services.story_tts_provider import BrowserSpeechTTSProvider
+
+os.environ.setdefault("JWT_SECRET", "minimax-audio-generation-contract-test-secret")
+
+
+def _create_owned_music_game(session, name: str) -> tuple[int, dict[str, str]]:
+    suffix = uuid4().hex[:10]
+    user = User(
+        private_id=f"music-route-{suffix}",
+        public_id=f"MR{suffix[:6]}",
+        display_name=f"Music Route {suffix}",
+    )
+    session.add(user)
+    session.flush()
+    game = Game(
+        user_id=user.user_id,
+        language="zh",
+        initial_state={"name": name},
+    )
+    session.add(game)
+    session.commit()
+    session.refresh(game)
+    return int(game.game_id), {"Authorization": f"Bearer {create_token(int(user.user_id))}"}
 
 
 def test_minimax_config_defaults_are_secret_free_and_provider_specific(tmp_path: Path) -> None:
@@ -71,6 +95,44 @@ def test_minimax_tts_without_credentials_reports_browser_fallback(tmp_path: Path
         {"text_hash": "story-hash", "text": "这段故事应该在无凭证时走浏览器朗读。"},
         "warm_female",
         1.0,
+    )
+
+
+def test_minimax_tts_local_audio_mode_works_without_credentials(tmp_path: Path) -> None:
+    from src.services.minimax_config import MiniMaxConfig
+    from src.services.minimax_story_tts_provider import MiniMaxTTSProvider
+
+    provider = MiniMaxTTSProvider(
+        config=MiniMaxConfig.from_env(
+            env={"MINIMAX_E2E_LOCAL_AUDIO": "1"},
+            voice_asset_dir=tmp_path / "voice",
+            music_asset_dir=tmp_path / "music",
+        )
+    )
+
+    metadata = provider.metadata()
+    speech = provider.synthesize(
+        {
+            "text_hash": "story-local-audio",
+            "text": "本地确定性音频模式不能依赖真实 MiniMax 凭据。",
+        },
+        "warm_female",
+        1.0,
+    )
+
+    assert metadata.provider == "minimax"
+    assert metadata.available is True
+    assert metadata.backend_audio_enabled is True
+    assert metadata.playback_mode == "audio"
+    assert speech.provider == "minimax"
+    assert speech.playback_mode == "audio"
+    assert speech.storage_path is not None
+    assert speech.storage_path.endswith(".wav")
+    assert (
+        (tmp_path / "voice")
+        .joinpath(Path(speech.storage_path).name)
+        .read_bytes()
+        .startswith(b"RIFF")
     )
 
 
@@ -561,7 +623,7 @@ def test_minimax_music_provider_saves_hex_audio_response_from_real_local_http_bo
     assert generated.local_path.read_bytes() == audio
 
 
-def test_minimax_music_provider_local_audio_mode_writes_decodable_wav(tmp_path: Path) -> None:
+def test_minimax_music_provider_local_audio_mode_works_without_credentials(tmp_path: Path) -> None:
     from src.services.minimax_config import MiniMaxConfig
     from src.services.minimax_music_generation import (
         MiniMaxMusicGenerationProvider,
@@ -570,7 +632,6 @@ def test_minimax_music_provider_local_audio_mode_writes_decodable_wav(tmp_path: 
 
     config = MiniMaxConfig.from_env(
         env={
-            "MINIMAX_API_KEY": "test-key",
             "MINIMAX_E2E_LOCAL_AUDIO": "1",
         },
         voice_asset_dir=tmp_path / "voice",
@@ -618,11 +679,7 @@ def test_music_generate_api_returns_ready_track_from_story_without_netease_block
     init_db()
     session = SessionLocal()
     try:
-        game = Game(language="zh", initial_state={"name": "MiniMax API Music"})
-        session.add(game)
-        session.commit()
-        session.refresh(game)
-        game_id = int(game.game_id)
+        game_id, auth_headers = _create_owned_music_game(session, "MiniMax API Music")
     finally:
         session.close()
 
@@ -630,7 +687,7 @@ def test_music_generate_api_returns_ready_track_from_story_without_netease_block
         name: os.environ.get(name)
         for name in ["MINIMAX_API_KEY", "MINIMAX_E2E_LOCAL_AUDIO", "STORY_MUSIC_ASSET_DIR"]
     }
-    os.environ["MINIMAX_API_KEY"] = "test-key"
+    os.environ.pop("MINIMAX_API_KEY", None)
     os.environ["MINIMAX_E2E_LOCAL_AUDIO"] = "1"
     os.environ["STORY_MUSIC_ASSET_DIR"] = str(tmp_path / "music")
     try:
@@ -640,6 +697,7 @@ def test_music_generate_api_returns_ready_track_from_story_without_netease_block
 
         response = client.post(
             "/api/music/generate?sync=true",
+            headers=auth_headers,
             json={
                 "game_id": game_id,
                 "story_text": "雨夜码头的旧账册被风吹开，主角在汽笛声里追向江边。",
@@ -674,11 +732,7 @@ def test_music_generate_api_titles_generic_narrative_scene_from_context(
     init_db()
     session = SessionLocal()
     try:
-        game = Game(language="zh", initial_state={"name": "MiniMax Generic Title"})
-        session.add(game)
-        session.commit()
-        session.refresh(game)
-        game_id = int(game.game_id)
+        game_id, auth_headers = _create_owned_music_game(session, "MiniMax Generic Title")
     finally:
         session.close()
 
@@ -686,7 +740,7 @@ def test_music_generate_api_titles_generic_narrative_scene_from_context(
         name: os.environ.get(name)
         for name in ["MINIMAX_API_KEY", "MINIMAX_E2E_LOCAL_AUDIO", "STORY_MUSIC_ASSET_DIR"]
     }
-    os.environ["MINIMAX_API_KEY"] = "test-key"
+    os.environ.pop("MINIMAX_API_KEY", None)
     os.environ["MINIMAX_E2E_LOCAL_AUDIO"] = "1"
     os.environ["STORY_MUSIC_ASSET_DIR"] = str(tmp_path / "music")
     try:
@@ -696,6 +750,7 @@ def test_music_generate_api_titles_generic_narrative_scene_from_context(
 
         response = client.post(
             "/api/music/generate?sync=true",
+            headers=auth_headers,
             json={
                 "game_id": game_id,
                 "story_text": "医院档案室里，主角发现审计报告和消失的病历编号。",
@@ -727,11 +782,7 @@ def test_music_generate_api_persists_generated_track_into_future_playlist_queue(
     init_db()
     session = SessionLocal()
     try:
-        game = Game(language="zh", initial_state={"name": "MiniMax API Playlist"})
-        session.add(game)
-        session.commit()
-        session.refresh(game)
-        game_id = int(game.game_id)
+        game_id, auth_headers = _create_owned_music_game(session, "MiniMax API Playlist")
     finally:
         session.close()
 
@@ -739,7 +790,7 @@ def test_music_generate_api_persists_generated_track_into_future_playlist_queue(
         name: os.environ.get(name)
         for name in ["MINIMAX_API_KEY", "MINIMAX_E2E_LOCAL_AUDIO", "STORY_MUSIC_ASSET_DIR"]
     }
-    os.environ["MINIMAX_API_KEY"] = "test-key"
+    os.environ.pop("MINIMAX_API_KEY", None)
     os.environ["MINIMAX_E2E_LOCAL_AUDIO"] = "1"
     os.environ["STORY_MUSIC_ASSET_DIR"] = str(tmp_path / "music")
     try:
@@ -749,6 +800,7 @@ def test_music_generate_api_persists_generated_track_into_future_playlist_queue(
 
         playlist_response = client.put(
             f"/api/music/playlist/{game_id}",
+            headers=auth_headers,
             json={
                 "songs": [
                     {
@@ -785,6 +837,7 @@ def test_music_generate_api_persists_generated_track_into_future_playlist_queue(
 
         response = client.post(
             "/api/music/generate?sync=true",
+            headers=auth_headers,
             json={
                 "game_id": game_id,
                 "story_text": "雨夜码头的旧账册被风吹开，主角在汽笛声里追向江边。",
@@ -795,7 +848,7 @@ def test_music_generate_api_persists_generated_track_into_future_playlist_queue(
                 },
             },
         )
-        persisted = client.get(f"/api/music/playlist/{game_id}")
+        persisted = client.get(f"/api/music/playlist/{game_id}", headers=auth_headers)
     finally:
         for name, value in previous_env.items():
             if value is None:
@@ -824,11 +877,7 @@ def test_music_generate_api_fast_enqueues_real_provider_without_blocking(
     init_db()
     session = SessionLocal()
     try:
-        game = Game(language="zh", initial_state={"name": "MiniMax Fast Enqueue"})
-        session.add(game)
-        session.commit()
-        session.refresh(game)
-        game_id = int(game.game_id)
+        game_id, auth_headers = _create_owned_music_game(session, "MiniMax Fast Enqueue")
     finally:
         session.close()
 
@@ -869,6 +918,7 @@ def test_music_generate_api_fast_enqueues_real_provider_without_blocking(
 
         response = client.post(
             "/api/music/generate",
+            headers=auth_headers,
             json={
                 "game_id": game_id,
                 "story_text": "雨夜码头的旧账册被风吹开，主角在汽笛声里追向江边。",
@@ -916,11 +966,7 @@ def test_music_generate_api_defaults_to_enqueue_even_when_local_audio_is_enabled
     init_db()
     session = SessionLocal()
     try:
-        game = Game(language="zh", initial_state={"name": "MiniMax Default Async"})
-        session.add(game)
-        session.commit()
-        session.refresh(game)
-        game_id = int(game.game_id)
+        game_id, auth_headers = _create_owned_music_game(session, "MiniMax Default Async")
     finally:
         session.close()
 
@@ -961,6 +1007,7 @@ def test_music_generate_api_defaults_to_enqueue_even_when_local_audio_is_enabled
 
         response = client.post(
             "/api/music/generate",
+            headers=auth_headers,
             json={
                 "game_id": game_id,
                 "story_text": "长故事生成完毕后，音乐生成不应该让浏览器请求一直挂起。",
@@ -1005,11 +1052,7 @@ def test_music_generate_async_api_returns_quickly_and_persists_future_playlist_t
     init_db()
     session = SessionLocal()
     try:
-        game = Game(language="zh", initial_state={"name": "MiniMax Async Playlist"})
-        session.add(game)
-        session.commit()
-        session.refresh(game)
-        game_id = int(game.game_id)
+        game_id, auth_headers = _create_owned_music_game(session, "MiniMax Async Playlist")
     finally:
         session.close()
 
@@ -1027,6 +1070,7 @@ def test_music_generate_async_api_returns_quickly_and_persists_future_playlist_t
 
         playlist_response = client.put(
             f"/api/music/playlist/{game_id}",
+            headers=auth_headers,
             json={
                 "songs": [
                     {
@@ -1054,6 +1098,7 @@ def test_music_generate_async_api_returns_quickly_and_persists_future_playlist_t
 
         response = client.post(
             "/api/music/generate-async",
+            headers=auth_headers,
             json={
                 "game_id": game_id,
                 "story_text": "雨夜码头的旧账册被风吹开，主角在汽笛声里追向江边。",
@@ -1064,7 +1109,7 @@ def test_music_generate_async_api_returns_quickly_and_persists_future_playlist_t
                 },
             },
         )
-        persisted = client.get(f"/api/music/playlist/{game_id}")
+        persisted = client.get(f"/api/music/playlist/{game_id}", headers=auth_headers)
     finally:
         for name, value in previous_env.items():
             if value is None:
@@ -1093,11 +1138,7 @@ def test_music_generate_api_reports_unexpected_generation_failure_without_global
     init_db()
     session = SessionLocal()
     try:
-        game = Game(language="zh", initial_state={"name": "MiniMax API Music Failure"})
-        session.add(game)
-        session.commit()
-        session.refresh(game)
-        game_id = int(game.game_id)
+        game_id, auth_headers = _create_owned_music_game(session, "MiniMax API Music Failure")
     finally:
         session.close()
 
@@ -1123,6 +1164,7 @@ def test_music_generate_api_reports_unexpected_generation_failure_without_global
 
         response = client.post(
             "/api/music/generate?sync=true",
+            headers=auth_headers,
             json={
                 "game_id": game_id,
                 "story_text": "雨夜码头的旧账册被风吹开，主角在汽笛声里追向江边。",

@@ -17,6 +17,12 @@ function makeChoiceResponse() {
   ]);
 }
 
+function makeChoiceCompleteOnlyResponse() {
+  return createSSEMockResponse([
+    'event: complete\ndata: {"event_description":"Choice result story from complete","options":[{"text":"Next Option"}]}\n\n',
+  ]);
+}
+
 function makeBrokenChoiceResponse() {
   const reader: ReadableStreamDefaultReader<Uint8Array> = {
     read(): Promise<ReadableStreamReadResult<Uint8Array>> {
@@ -122,6 +128,25 @@ describe('useChoiceHandler', () => {
       const { result } = renderHook(() => useChoiceHandler(defaultParams));
       await act(async () => { await result.current.handleChoice(0); });
       expect(mockSetters.setPhase).toHaveBeenCalledWith('choosing');
+    });
+
+    it('uses complete event story when the choice stream has no story chunks', async () => {
+      useGameStore.setState({
+        storyText: 'Base story before choice.',
+        currentEvent: { options: [{ text: 'Option 1' }] },
+      } as never);
+      (global.fetch as jest.Mock).mockResolvedValue(makeChoiceCompleteOnlyResponse());
+
+      const { result } = renderHook(() => useChoiceHandler(defaultParams));
+
+      await act(async () => { await result.current.handleChoice(0); });
+
+      await waitFor(() => {
+        expect(mockSetters.setPhase).toHaveBeenCalledWith('result');
+      });
+      expect(mockSetters.setStoryText).toHaveBeenCalledWith(
+        expect.stringContaining('Choice result story from complete')
+      );
     });
 
     it('aborts previous request when handling new choice', async () => {

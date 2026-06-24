@@ -9,6 +9,12 @@ The system SHALL remove incompatible NetEase tracks after search when their titl
 - **THEN** those tracks MUST be removed before recommendations are returned
 - **AND** compatible instrumental or background tracks MUST remain eligible
 
+#### Scenario: Generic no-vocal cues reject anime theme-song metadata
+- **GIVEN** a music brief requests instrumental or no-vocal background music
+- **WHEN** NetEase results include vocal anime theme-song metadata such as `动画电影主题曲`, `动画主题曲`, `日语主题曲`, or equivalent English `anime theme` / `opening theme` labels
+- **THEN** those tracks MUST be removed before recommendations are returned
+- **AND** compatible instrumental or workplace/background tracks MUST remain eligible
+
 #### Scenario: Cover and version variants are de-duplicated
 - **GIVEN** NetEase results include several ids whose title normalizes to the same base song title
 - **WHEN** the recommendation pool is selected for playback

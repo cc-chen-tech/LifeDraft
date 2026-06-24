@@ -1,5 +1,6 @@
 """Early no-mock checks that should fail before slower DB/E2E layers."""
 
+import os
 from pathlib import Path
 import re
 
@@ -118,17 +119,38 @@ def test_minimax_api_key_is_not_committed_to_repository_files() -> None:
     allowed_dirs = {".git", ".next", "node_modules", "venv", "test-results", "playwright-report"}
     leaked_paths: list[str] = []
 
-    for path in ROOT.rglob("*"):
-        if not path.is_file() or path.suffix not in scanned_suffixes:
-            continue
-        if any(part in allowed_dirs for part in path.relative_to(ROOT).parts):
-            continue
-        text = path.read_text(encoding="utf-8", errors="ignore")
+    for path in _iter_scannable_files(ROOT, allowed_dirs, scanned_suffixes):
         token_prefix = "sk-" + "cp-"
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
         if token_prefix in text:
             leaked_paths.append(str(path.relative_to(ROOT)))
 
     assert leaked_paths == []
+
+
+def test_e2e_backend_uses_dotenv_minimax_key_not_fake_override() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+
+    assert "MINIMAX_API_KEY=test-key" not in script
+    assert "MINIMAX_E2E_LOCAL_AUDIO=1 API_RELOAD=false" in script
+
+
+def _iter_scannable_files(
+    root: Path, allowed_dirs: set[str], scanned_suffixes: set[str]
+) -> list[Path]:
+    files: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [name for name in dirnames if name not in allowed_dirs]
+        for filename in filenames:
+            path = Path(dirpath) / filename
+            if not path.is_file() or path.suffix not in scanned_suffixes:
+                continue
+            files.append(path)
+
+    return files
 
 
 def test_generated_minimax_audio_assets_are_gitignored() -> None:
@@ -157,7 +179,7 @@ def test_e2e_gate_does_not_reuse_frontend_from_other_worktree() -> None:
     config = (ROOT / "frontend" / "playwright.config.ts").read_text(encoding="utf-8")
 
     assert 'TEST_NAMESPACE="${TEST_NAMESPACE:-$(printf' in script
-    assert 'TEST_RUN_ROOT="${TEST_RUN_ROOT:-$PROJECT_DIR/.test-runs}"' in script
+    assert 'TEST_RUN_ROOT="${TEST_RUN_ROOT:-${TMPDIR:-/tmp}/story2-test-runs}"' in script
     assert 'TEST_RUN_DIR="${TEST_RUN_DIR:-$TEST_RUN_ROOT/$TEST_NAMESPACE}"' in script
     assert 'TEST_LOCK_DIR="$TEST_RUN_ROOT/locks"' in script
     assert 'mkdir -p "$TEST_LOCK_DIR"' in script

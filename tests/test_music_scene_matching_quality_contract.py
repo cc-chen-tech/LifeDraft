@@ -236,3 +236,26 @@ def test_music_result_ranker_emits_fit_diagnostics_without_field_breakage() -> N
     assert analysis["scene_fit_profile"]["scene_action"] == "quiet_recovery"
     assert "mood" in analysis
     assert "scene_type" in analysis
+
+
+def test_instrumental_prompt_rejects_anime_theme_song_candidates() -> None:
+    """Instrumental-only story background should reject anime theme-song results."""
+    brief = MusicBrief.from_analysis(
+        {
+            "mood": "专注",
+            "scene_type": "现代职场",
+            "environment": "办公室",
+            "instruments": ["电子合成器"],
+            "search_queries": ["办公室 轻电子 氛围"],
+            "negative_cues": [],
+            "generation_prompt": "instrumental ambience loop for focused workplace scene",
+        }
+    )
+    songs = [
+        Song(id=41, name="打上花火", artists=["DAOKO"], album="动画电影主题曲", duration=180000),
+        Song(id=42, name="办公室 轻电子 氛围", artists=["Focus Lab"], album="现代职场 纯音乐", duration=180000),
+    ]
+
+    filtered = MusicResultRanker().filter_and_dedupe(songs, brief)
+
+    assert [song.id for song in filtered] == [42]

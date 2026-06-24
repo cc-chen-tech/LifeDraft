@@ -344,8 +344,8 @@ describe('PlayPage', () => {
 
       await user.click(screen.getByRole('button', { name: '展开声音' }));
       expect(screen.getByRole('group', { name: '音乐和朗读' })).toBeInTheDocument();
-      expect(screen.getByTestId('sound-reading-section')).toBeInTheDocument();
-      expect(screen.getByTestId('sound-reading-channel')).toBeInTheDocument();
+      expect(screen.getByTestId('sound-console-unified-controls')).toBeInTheDocument();
+      expect(screen.getByTestId('story-voice-console')).toBeInTheDocument();
       expect(screen.queryByRole('region', { name: '故事朗读' })).not.toBeInTheDocument();
     });
 
@@ -607,6 +607,33 @@ describe('PlayPage', () => {
       // Verify the page renders without error
       const buttons = screen.getAllByRole('button');
       expect(buttons.length).toBeGreaterThan(0);
+    });
+
+    it('keeps collection and history panels mutually exclusive when both states can be true', async () => {
+      const user = userEvent.setup();
+      const mockSetShowHistory = jest.fn();
+      const mockBackToCurrent = jest.fn();
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        showHistory: true,
+        setShowHistory: mockSetShowHistory,
+        isViewingHistory: true,
+        handleBackToCurrent: mockBackToCurrent,
+        displayText: 'Historical story text',
+        roundHistory: [],
+      });
+
+      render(<PlayPage />);
+
+      expect(screen.getByText('暂无历史记录')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: '收集' }));
+
+      expect(mockSetShowHistory).toHaveBeenCalledWith(false);
+      expect(mockBackToCurrent).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('collection-panel')).toBeInTheDocument();
+      expect(screen.queryByText('暂无历史记录')).not.toBeInTheDocument();
     });
 
     it('displays history indicator when viewing history', () => {

@@ -7,13 +7,18 @@ Verify producer/consumer field names are consistent across:
 - POST /api/music/playlist/{game_id}/advance response
 """
 
+import os
+from uuid import uuid4
+
 import pytest
 from fastapi.testclient import TestClient
 
+from src.api.deps import create_token
 from src.api.main import app
-from src.database.models import Base, Game, GamePlaylist, SessionLocal, engine
+from src.database.models import Base, Game, GamePlaylist, SessionLocal, User, engine
 
 client = TestClient(app)
+os.environ.setdefault("JWT_SECRET", "music-playlist-contract-test-secret")
 
 
 class TestMusicPlaylistContract:
@@ -24,25 +29,34 @@ class TestMusicPlaylistContract:
         yield
         Base.metadata.drop_all(engine)
 
-    def _create_game(self) -> int:
+    def _create_game(self) -> tuple[int, dict[str, str]]:
         db = SessionLocal()
-        game = Game(language="zh", initial_state={})
+        suffix = uuid4().hex[:10]
+        user = User(
+            private_id=f"playlist-contract-{suffix}",
+            public_id=f"PC{suffix[:6]}",
+            display_name=f"Playlist Contract {suffix}",
+        )
+        db.add(user)
+        db.flush()
+        game = Game(user_id=user.user_id, language="zh", initial_state={})
         db.add(game)
         db.commit()
         game_id = game.game_id  # type: ignore[attr-defined]
+        user_id = user.user_id  # type: ignore[attr-defined]
         db.close()
-        return game_id
+        return int(game_id), {"Authorization": f"Bearer {create_token(int(user_id))}"}
 
     def test_get_playlist_response_fields(self):
         """GET response must contain all expected consumer fields."""
-        game_id = self._create_game()
+        game_id, headers = self._create_game()
         # Seed a playlist row
         db = SessionLocal()
         db.add(GamePlaylist(game_id=game_id, queue_json=[{"id": 1, "name": "A"}]))
         db.commit()
         db.close()
 
-        resp = client.get(f"/api/music/playlist/{game_id}")
+        resp = client.get(f"/api/music/playlist/{game_id}", headers=headers)
         assert resp.status_code == 200
         data = resp.json()
         assert "game_id" in data
@@ -60,7 +74,7 @@ class TestMusicPlaylistContract:
 
     def test_put_playlist_merge_preserves_current(self):
         """PUT with new songs must preserve existing current_song."""
-        game_id = self._create_game()
+        game_id, headers = self._create_game()
         db = SessionLocal()
         db.add(
             GamePlaylist(
@@ -74,6 +88,7 @@ class TestMusicPlaylistContract:
 
         resp = client.put(
             f"/api/music/playlist/{game_id}",
+            headers=headers,
             json={
                 "songs": [
                     {
@@ -108,10 +123,11 @@ class TestMusicPlaylistContract:
 
     def test_put_playlist_sets_first_song_when_empty(self):
         """PUT on empty playlist must set first new song as current."""
-        game_id = self._create_game()
+        game_id, headers = self._create_game()
 
         resp = client.put(
             f"/api/music/playlist/{game_id}",
+            headers=headers,
             json={
                 "songs": [
                     {
@@ -139,7 +155,7 @@ class TestMusicPlaylistContract:
 
     def test_put_playlist_dedupes_future_queue_by_title_family_save_read(self):
         """PUT must persist a queue deduped by title family, not only by id."""
-        game_id = self._create_game()
+        game_id, headers = self._create_game()
         db = SessionLocal()
         db.add(
             GamePlaylist(
@@ -153,6 +169,7 @@ class TestMusicPlaylistContract:
 
         resp = client.put(
             f"/api/music/playlist/{game_id}",
+            headers=headers,
             json={
                 "songs": [
                     {"id": 10, "name": "网易云 当前曲", "artists": ["A"], "album": "X", "duration": 200},
@@ -175,7 +192,7 @@ class TestMusicPlaylistContract:
             "办公室 轻电子 氛围",
         ]
 
-        persisted = client.get(f"/api/music/playlist/{game_id}")
+        persisted = client.get(f"/api/music/playlist/{game_id}", headers=headers)
         assert persisted.status_code == 200
         persisted_data = persisted.json()
         assert persisted_data["current_song"]["id"] == 10
@@ -187,7 +204,7 @@ class TestMusicPlaylistContract:
 
     def test_sync_playlist_state(self):
         """POST /sync must update position, is_playing, volume."""
-        game_id = self._create_game()
+        game_id, headers = self._create_game()
         db = SessionLocal()
         db.add(GamePlaylist(game_id=game_id, current_song_json={"id": 1}))
         db.commit()
@@ -195,6 +212,7 @@ class TestMusicPlaylistContract:
 
         resp = client.post(
             f"/api/music/playlist/{game_id}/sync",
+            headers=headers,
             json={"current_position_ms": 45000, "is_playing": True, "volume": 0.8},
         )
         assert resp.status_code == 200
@@ -213,7 +231,7 @@ class TestMusicPlaylistContract:
 
     def test_advance_playlist_moves_to_next(self):
         """POST /advance must move current to played_songs and pop queue head."""
-        game_id = self._create_game()
+        game_id, headers = self._create_game()
         db = SessionLocal()
         db.add(
             GamePlaylist(
@@ -225,7 +243,7 @@ class TestMusicPlaylistContract:
         db.commit()
         db.close()
 
-        resp = client.post(f"/api/music/playlist/{game_id}/advance")
+        resp = client.post(f"/api/music/playlist/{game_id}/advance", headers=headers)
         assert resp.status_code == 200
         data = resp.json()
         assert data["current_song"]["id"] == 2
@@ -236,7 +254,7 @@ class TestMusicPlaylistContract:
 
     def test_advance_empty_queue_wraps_to_played(self):
         """When queue is empty, advance should rotate played_songs back into queue."""
-        game_id = self._create_game()
+        game_id, headers = self._create_game()
         db = SessionLocal()
         db.add(
             GamePlaylist(
@@ -249,12 +267,13 @@ class TestMusicPlaylistContract:
         db.commit()
         db.close()
 
-        resp = client.post(f"/api/music/playlist/{game_id}/advance")
+        resp = client.post(f"/api/music/playlist/{game_id}/advance", headers=headers)
         assert resp.status_code == 200
         data = resp.json()
         # Should have wrapped around somehow — at minimum queue should not crash
         assert "current_song" in data
 
     def test_get_playlist_404_for_missing_game(self):
-        resp = client.get("/api/music/playlist/99999")
+        _, headers = self._create_game()
+        resp = client.get("/api/music/playlist/99999", headers=headers)
         assert resp.status_code == 404

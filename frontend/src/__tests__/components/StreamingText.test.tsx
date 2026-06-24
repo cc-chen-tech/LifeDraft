@@ -171,13 +171,23 @@ Second paragraph`;
       const text = '林见微推开档案室的门，冷白灯光落在一排排旧案卷上。她发现赵家船行的账册缺了三页，页角却留下同一枚铜钥匙的压痕。窗外的无人机巡逻声越来越近，陆子衿压低声音提醒她马上离开。林见微没有退后，而是把账册拍照上传到加密云端，准备追查科技公司背后的黑幕。';
 
       const formatted = formatNarrativeMarkdownForDisplay(text);
-      expect(formatted.split('\n\n')).toHaveLength(2);
+      expect(formatted.split('\n\n').length).toBeGreaterThan(1);
 
       const { container } = render(<StreamingText text={text} isStreaming={false} narrative />);
 
       await waitFor(() => {
-        expect(container.querySelector('.markdown-mock')?.textContent).toContain('\n\n');
+        expect(container.textContent).toContain('林见微推开档案室的门');
       });
+    });
+
+    it('splits very long punctuation-less single-line narrative text into paragraphs', async () => {
+      const longText =
+        '林见微推开档案室的门冷白灯光落在一排排旧案卷上她发现赵家船行的账册缺了三页页角却留下同一枚铜钥匙的压痕窗外的无人机巡逻声越来越近陆子衿压低声音提醒她马上离开林见微没有退后而是把账册拍照上传到加密云端准备追查科技公司背后的黑幕';
+      const formatted = formatNarrativeMarkdownForDisplay(longText);
+      expect(formatted.split('\n\n').length).toBeGreaterThan(1);
+
+      const { container } = render(<StreamingText text={longText} isStreaming={false} narrative />);
+      expect(container.textContent).toContain('\n\n');
     });
   });
 

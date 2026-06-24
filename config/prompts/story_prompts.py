@@ -341,6 +341,26 @@ def get_custom_choice_result_prompt(
     """
     import json
 
+    required_cast_context = build_required_cast_constraints(character_settings or {}, language)
+    modern_world_boundary = build_realistic_modern_world_boundary(character_settings or {}, language)
+    era_constraints = _build_era_anachronism_constraints(character_settings or {}, language)
+    authority_context_parts = [
+        part for part in [required_cast_context, modern_world_boundary, era_constraints] if part
+    ]
+    if language == "zh":
+        authority_context = (
+            "\n【人设与世界边界硬约束】\n" + "\n".join(authority_context_parts)
+            if authority_context_parts
+            else ""
+        )
+    else:
+        authority_context = (
+            "\n[Character and World Boundary Hard Constraints]\n"
+            + "\n".join(authority_context_parts)
+            if authority_context_parts
+            else ""
+        )
+
     if language == "zh":
         return f"""你是一个人生模拟游戏的叙事引擎。玩家选择了一个自定义的行动，你需要：
 1. 根据当前情境和玩家的选择，生成合理的故事续写（200-400字）
@@ -348,6 +368,7 @@ def get_custom_choice_result_prompt(
 
 角色设定：{json.dumps(character_settings or {}, ensure_ascii=False)}
 当前状态：精力={current_state.get('energy', 50)}, 情绪={current_state.get('mood', 50)}, 学识={current_state.get('knowledge', 50)}, 财富={current_state.get('wealth', 1000)}
+{authority_context}
 
 属性变化范围说明：
 - energy(精力): -20到20，负值表示累了，正值表示休息恢复
@@ -374,6 +395,7 @@ def get_custom_choice_result_prompt(
 
 Character settings: {json.dumps(character_settings or {}, ensure_ascii=False)}
 Current state: Energy={current_state.get('energy', 50)}, Mood={current_state.get('mood', 50)}, Knowledge={current_state.get('knowledge', 50)}, Wealth={current_state.get('wealth', 1000)}
+{authority_context}
 
 Attribute change ranges:
 - energy: -20 to 20, negative means tired, positive means rested

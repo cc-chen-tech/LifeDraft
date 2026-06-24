@@ -4,7 +4,7 @@
  * GlobalMusicPlayer — compact mini player wrapper.
  *
  * Mounted in RootLayout so it survives page navigation.
- * Shows a slim bottom bar by default; expands to full MusicPlayer on click.
+ * Shows a slim bottom bar by default with explicit playback and expand actions.
  *
  * IMPORTANT: MusicPlayer must always stay mounted to keep the Audio element alive.
  * We use opacity-0 + h-0 + overflow-hidden (NOT display:none / hidden) so the
@@ -18,7 +18,6 @@ import { useStoryVoiceStore } from "@/stores/useStoryVoiceStore";
 import {
   ChevronUp,
   ChevronDown,
-  Music,
   Pause,
   Play,
   Volume2,
@@ -135,6 +134,7 @@ export function GlobalMusicPlayer() {
               : activeReadingContext
                 ? "朗读待开始"
                 : "朗读待生成";
+  const combinedSoundStatus = `${musicStatusLabel} · ${readingStatusLabel}`;
   const collapsedReadingStatus =
     readingState === "loading"
       ? "准备中"
@@ -155,7 +155,7 @@ export function GlobalMusicPlayer() {
       role="region"
       aria-label="声音"
       data-testid="global-music-player"
-      className="fixed z-50 top-16 left-0 right-0 safe-area-pt mt-2 md:left-auto md:right-4 md:w-80"
+      className="fixed z-50 top-16 left-0 right-0 safe-area-pt mt-2 md:left-auto md:right-4 md:w-[28rem]"
     >
       {/* MusicPlayer always mounted to keep audio alive.
           Use opacity-0 + h-0 + overflow-hidden instead of display:none
@@ -173,18 +173,22 @@ export function GlobalMusicPlayer() {
         <div data-testid="unified-sound-panel" className="p-3">
           <div
             data-testid="sound-mixer-overview"
-            className="flex flex-wrap items-center gap-2 pb-3 text-xs text-muted-foreground"
+            className="flex items-start gap-2 pb-3 text-xs text-muted-foreground"
           >
-            <div className="mr-auto flex min-w-0 items-center gap-2 text-foreground">
+            <div className="mr-auto flex min-w-0 items-start gap-2">
               <Volume2 className="h-4 w-4 shrink-0 text-primary" />
-              <span className="text-sm font-medium">声音</span>
+              <div className="min-w-0">
+                <div className="text-sm font-medium leading-5 text-foreground">
+                  声音
+                </div>
+                <div
+                  data-testid="sound-mixer-status"
+                  className="truncate leading-5"
+                >
+                  {combinedSoundStatus}
+                </div>
+              </div>
             </div>
-            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary">
-              {musicStatusLabel}
-            </span>
-            <span className="rounded-full bg-secondary/60 px-2 py-0.5">
-              {readingStatusLabel}
-            </span>
             <button
               type="button"
               aria-label="收起声音"
@@ -196,21 +200,16 @@ export function GlobalMusicPlayer() {
             </button>
           </div>
 
-          <div data-testid="sound-channel-list" className="space-y-3">
+          <div
+            role="group"
+            aria-label="声音控制台"
+            data-testid="sound-control-console"
+            className="border-t border-border/70 pt-3"
+          >
             <div
-              role="group"
-              aria-label="背景音乐"
-              data-testid="sound-music-section"
-              className="min-w-0 border-t border-border/70 pt-3"
+              data-testid="sound-console-unified-controls"
+              className="min-w-0"
             >
-              <div className="mb-2 flex min-w-0 items-center gap-2">
-                <div className="flex min-w-0 items-center gap-2">
-                  <Music className="h-4 w-4 shrink-0 text-primary" />
-                  <span className="truncate text-sm font-medium text-foreground">
-                    背景音乐
-                  </span>
-                </div>
-              </div>
               {storyText ? (
                 <MusicPlayer
                   storyText={storyText}
@@ -219,7 +218,22 @@ export function GlobalMusicPlayer() {
                   autoFetchRecommendation={shouldAutoFetchRecommendation}
                   embedded
                   hideTitle
-                  compactControls
+                  consoleControls
+                  inlineControls={
+                    activeReadingContext ? (
+                      <StoryVoiceControls
+                        currentContext={activeReadingContext}
+                        autoReadText={activeAutoReadText}
+                        autoReadReady={activeAutoReadReady}
+                        compact
+                        embedded
+                        enablePlaybackControls
+                        hideTitle
+                        consoleControls
+                        inlineConsole
+                      />
+                    ) : null
+                  }
                 />
               ) : (
                 <div className="text-sm text-muted-foreground">
@@ -227,35 +241,6 @@ export function GlobalMusicPlayer() {
                 </div>
               )}
             </div>
-
-            {activeReadingContext && (
-              <div
-                role="group"
-                aria-label="故事朗读"
-                data-testid="sound-reading-section"
-                className="min-w-0 border-t border-border/70 pt-3"
-              >
-                <div className="mb-2 flex min-w-0 items-center gap-2">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <Volume2 className="h-4 w-4 shrink-0 text-primary" />
-                    <span className="truncate text-sm font-medium text-foreground">
-                      故事朗读
-                    </span>
-                  </div>
-                </div>
-                <div data-testid="sound-reading-channel" className="space-y-3">
-                  <StoryVoiceControls
-                    currentContext={activeReadingContext}
-                    autoReadText={activeAutoReadText}
-                    autoReadReady={activeAutoReadReady}
-                    compact
-                    embedded
-                    enablePlaybackControls
-                    hideTitle
-                  />
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -263,12 +248,12 @@ export function GlobalMusicPlayer() {
       {!isExpanded && (
         <div
           data-testid="global-music-mini-bar"
-          className="relative bg-card/95 backdrop-blur-sm border-b md:border md:rounded-lg flex items-center gap-2 px-3 py-2 cursor-pointer"
-          onClick={() => setIsExpanded(true)}
+          className="relative bg-card/95 backdrop-blur-sm border-b md:border md:rounded-lg flex items-center gap-2 px-3 py-2"
         >
           {/* Progress bar - thin line at top */}
           <div className="absolute top-0 left-0 right-0 h-0.5 bg-muted">
             <div
+              data-testid="global-sound-progress"
               className="h-full bg-primary transition-all"
               style={{ width: `${progress}%` }}
             />

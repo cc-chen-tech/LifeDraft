@@ -50,8 +50,8 @@ test.describe('Music Playlist Persistence', () => {
     await expect(page.locator('[data-testid="global-music-player"]')).not.toHaveClass(/md:bottom-4/);
     await miniBar.click();
 
-    // Wait for the expanded music player content (either "场景音乐" or "播放列表")
-    const fullPlayer = page.locator('text=/场景音乐|播放列表/').first();
+    // Wait for the expanded sound console music controls.
+    const fullPlayer = page.locator('[data-testid="sound-music-console"]').first();
     await fullPlayer.waitFor({ state: 'visible', timeout: 30000 });
 
     // Song name should be visible (current song from seeded playlist)
@@ -74,8 +74,8 @@ test.describe('Music Playlist Persistence', () => {
     await miniBar2.waitFor({ state: 'visible', timeout: 30000 });
     await miniBar2.click();
 
-    // Music player expanded content should still be present
-    const fullPlayer2 = page.locator('text=/场景音乐|播放列表/').first();
+    // Music player expanded content should still be present.
+    const fullPlayer2 = page.locator('[data-testid="sound-music-console"]').first();
     await fullPlayer2.waitFor({ state: 'visible', timeout: 30000 });
 
     const restoredSongName = page.locator('.font-medium.truncate').first();

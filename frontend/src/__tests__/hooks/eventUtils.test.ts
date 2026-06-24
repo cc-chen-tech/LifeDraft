@@ -202,24 +202,54 @@ describe('eventUtils', () => {
       expect(mockHandlers.setStoryText).toHaveBeenCalledWith('Event description');
     });
 
-    it('replaces raw streamed frontend text with normalized backend complete story', () => {
+    it('keeps long streamed frontend text when complete payload is short summary', () => {
       const data: EventData = {
         event_description: '你推开门。雨声停了。',
         options: [{ text: '继续追查' }],
       };
 
       setupDefaultState({
-        storyText: '【内部状态】energy -5\n你推开门 . 雨声停了',
+        storyText: '【内部状态】energy -5\n你推开门 . 雨声停了\n窗外阴云低压，街灯发出的黄光在墙上拉出细长阴影。你站在原地回想那晚听到的最后一句。',
         currentEvent: null,
       });
 
       handleEventComplete(data as Record<string, unknown>, mockHandlers);
 
-      expect(mockHandlers.setStoryText).toHaveBeenCalledWith('你推开门。雨声停了。');
+      expect(mockHandlers.setStoryText).not.toHaveBeenCalledWith('你推开门。雨声停了。');
       expect(mockHandlers.setCurrentEvent).toHaveBeenCalledWith({
-        story: '你推开门。雨声停了。',
+        story: '【内部状态】energy -5\n你推开门 . 雨声停了\n窗外阴云低压，街灯发出的黄光在墙上拉出细长阴影。你站在原地回想那晚听到的最后一句。',
         options: [{ text: '继续追查' }],
       });
+      expect(mockHandlers.setPhase).not.toHaveBeenCalledWith('options');
+      expect(mockHandlers.setOptions).toHaveBeenCalledWith([{ text: '继续追查' }]);
+      act(() => {
+        jest.advanceTimersByTime(600);
+      });
+      expect(mockHandlers.setPhase).toHaveBeenCalledWith('options');
+    });
+
+    it('does not replace long accumulated story with short retry fallback unless required', () => {
+      setupDefaultState({
+        storyText: '这是一次完整且较长的生成片段，已经有超过一百字符，足以覆盖后端重试时可能返回的简短汇总文本。',
+        currentEvent: { story: '旧事件', options: [{ text: '旧选项' }] },
+      });
+
+      const data: EventData = {
+        event_description: '事件简报：角色做出了关键决策。',
+        options: [{ text: '继续前行' }, { text: '停下来回想' }],
+      };
+
+      handleEventComplete(data as Record<string, unknown>, mockHandlers);
+
+      expect(mockHandlers.setStoryText).not.toHaveBeenCalledWith('事件简报：角色做出了关键决策。');
+      expect(mockHandlers.setCurrentEvent).toHaveBeenCalledWith({
+        story: '这是一次完整且较长的生成片段，已经有超过一百字符，足以覆盖后端重试时可能返回的简短汇总文本。',
+        options: [{ text: '继续前行' }, { text: '停下来回想' }],
+      });
+      act(() => {
+        jest.advanceTimersByTime(600);
+      });
+      expect(mockHandlers.setPhase).toHaveBeenCalledWith('options');
     });
   });
 

@@ -177,12 +177,13 @@ class MiniMaxTTSProvider:
         self.client = client or MiniMaxAsyncTTSClient(self.config)
 
     def metadata(self) -> StoryTTSProviderMetadata:
-        available = bool(self.config.api_key)
+        available = bool(self.config.api_key) or self.config.local_audio_enabled
+        media_type = "audio/wav" if self.config.local_audio_enabled else "audio/mpeg"
         return StoryTTSProviderMetadata(
             provider=self.provider,
             model=self.model,
             playback_mode="audio" if available else "browser_speech",
-            media_type="audio/mpeg" if available else None,
+            media_type=media_type if available else None,
             available=available,
             backend_audio_enabled=available,
         )
@@ -223,14 +224,14 @@ class MiniMaxTTSProvider:
         return payload
 
     def synthesize(self, context: Dict[str, Any], voice_id: str, speed: float) -> GeneratedSpeech:
-        if not self.config.api_key:
+        if not self.config.api_key and not self.config.local_audio_enabled:
             return BrowserSpeechTTSProvider().synthesize(context, voice_id, speed)
 
         text = str(context["text"])
         if len(text) > self.config.tts_max_chars:
             return BrowserSpeechTTSProvider().synthesize(context, voice_id, speed)
         text_hash = str(context["text_hash"])
-        extension = "wav" if os.getenv("MINIMAX_E2E_LOCAL_AUDIO", "0") == "1" else "mp3"
+        extension = "wav" if self.config.local_audio_enabled else "mp3"
         media_type = "audio/wav" if extension == "wav" else "audio/mpeg"
         file_name = (
             f"{_safe_token(text_hash)}-{_safe_token(voice_id)}-"

@@ -1,4 +1,4 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect, Page, Request } from '@playwright/test';
 import { registerUser } from './helpers/auth';
 
 async function expectBrowserSpeechAttempt(page: Page): Promise<string> {
@@ -10,6 +10,25 @@ async function expectBrowserSpeechAttempt(page: Page): Promise<string> {
   const state = await page.getByTestId('voice-reading-state').textContent();
   expect(state).toMatch(/^(playing|failed)$/);
   return state ?? '';
+}
+
+async function captureVoiceReadRequests(
+  page: Page
+): Promise<{ readRequests: Array<Record<string, unknown>>; detach: () => void }> {
+  const readRequests: Array<Record<string, unknown>> = [];
+  const listener = (request: Request) => {
+    if (request.method() === 'POST' && request.url().includes('/api/voice-reading/read')) {
+      const postData = request.postDataJSON();
+      if (postData) {
+        readRequests.push(postData as Record<string, unknown>);
+      }
+    }
+  };
+  page.on('request', listener);
+  return {
+    readRequests,
+    detach: () => page.off('request', listener),
+  };
 }
 
 async function expectBackendAudioAttempt(page: Page): Promise<void> {
@@ -100,6 +119,8 @@ test.describe('Story voice reading', () => {
   });
 
   test('uses browser speech fallback with the actual story text when backend audio is unavailable', async ({ page }) => {
+    const { readRequests, detach } = await captureVoiceReadRequests(page);
+
     await page.addInitScript(() => {
       window.localStorage.setItem('story_voice_e2e_provider', 'browser');
     });
@@ -111,6 +132,11 @@ test.describe('Story voice reading', () => {
     const fallbackState = await expectBrowserSpeechAttempt(page);
     await expect(page.getByTestId('voice-reading-playback-mode')).toHaveText('browser_speech');
     await expect(page.getByTestId('voice-reading-speech-text')).toHaveText('雨夜码头的旧账册被风吹开。');
+    await expect.poll(async () => readRequests.length).toBe(1);
+    const readPayload = readRequests.at(-1) as Record<string, unknown> | undefined;
+    expect(readPayload).toBeDefined();
+    expect((readPayload as { context: { text: string } }).context.text).toBe('雨夜码头的旧账册被风吹开。');
+    detach();
     if (fallbackState === 'playing') {
       await expect
         .poll(async () =>
@@ -222,9 +248,10 @@ test.describe('Story voice reading', () => {
     await expect(page.getByTestId('music-duck-state')).toHaveText('restored');
     await expect(page.getByRole('button', { name: '重试朗读' })).toBeVisible();
 
+    const requestsBeforeRetry = readingRequestCount;
     await page.getByRole('button', { name: '重试朗读' }).click();
     await expectBrowserSpeechAttempt(page);
-    await expect.poll(() => readingRequestCount).toBe(0);
+    await expect.poll(() => readingRequestCount).toBe(requestsBeforeRetry);
 
     await page.getByRole('button', { name: '收集' }).click();
     await expect(page.getByRole('heading', { name: '苏小二' })).toBeVisible();

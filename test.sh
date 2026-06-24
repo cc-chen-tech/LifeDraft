@@ -12,7 +12,7 @@
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TEST_NAMESPACE="${TEST_NAMESPACE:-$(printf '%s' "$PROJECT_DIR" | tr '/ ' '__' | tr -c 'A-Za-z0-9._-' '_')}"
-TEST_RUN_ROOT="${TEST_RUN_ROOT:-$PROJECT_DIR/.test-runs}"
+TEST_RUN_ROOT="${TEST_RUN_ROOT:-${TMPDIR:-/tmp}/story2-test-runs}"
 TEST_RUN_DIR="${TEST_RUN_DIR:-$TEST_RUN_ROOT/$TEST_NAMESPACE}"
 TEST_LOCK_DIR="$TEST_RUN_ROOT/locks"
 
@@ -235,6 +235,7 @@ run_preflight() {
         tests/test_gate_gameplay_behavior_no_mock.py \
         tests/test_gate_contracts_no_mock.py \
         tests/test_opening_story_contract.py \
+        tests/test_character_creation_deep.py::TestCharacterCreatorGenerateSetting::test_generate_era_feedback_still_aligns_with_modern_life_vision \
         tests/test_api_games.py::TestCreateGame::test_create_game_preserves_generated_initial_wealth \
         tests/test_music_degradation_no_mock.py \
         tests/test_minimax_audio_generation_contract.py \
@@ -273,12 +274,14 @@ run_preflight() {
         src/__tests__/components/StoryVoiceControls.test.tsx \
         src/__tests__/components/StatusBar.test.tsx \
         src/__tests__/components/DialogA11y.test.tsx \
+        src/__tests__/components/CompletionScreen.loading.test.tsx \
         src/__tests__/components/SheetA11y.test.tsx \
         src/__tests__/pages/PlayPage.test.tsx \
         src/__tests__/components/game/MusicPlayer.test.tsx \
         src/__tests__/components/MusicPlayer.test.tsx \
         src/__tests__/components/ChatBar.test.tsx \
         src/__tests__/components/GlobalMusicPlayer.escape.test.tsx \
+        src/__tests__/stores/useStoryVoiceStore.test.ts \
         src/__tests__/lib/apiRetryPolicy.test.ts \
         src/__tests__/app/api/route.test.ts \
         src/__tests__/components/game/CollectionPanelAutoCollect.test.tsx \
@@ -368,6 +371,7 @@ run_contract() {
         tests/test_music_playlist_contract.py \
         tests/test_music_recommend_api_degradation_contract.py \
         tests/test_minimax_audio_generation_contract.py \
+        tests/test_minimax_image_generation_contract.py \
         tests/test_character_settings_api_contract.py \
         tests/test_shift_left_e2e_contract_no_mock.py \
         tests/test_story_music_recommendation_contract.py \
@@ -506,7 +510,7 @@ run_e2e_browser_impl() {
     E2E_BACKEND_HOST=127.0.0.1 E2E_BACKEND_PORT="$E2E_BACKEND_PORT" \
     DATABASE_URL="$LOCAL_E2E_DB_URL" \
     E2E_CONTRACT_PROBE_FAST=1 STORY_TTS_ALLOW_REQUEST_PROVIDER=1 \
-    MINIMAX_API_KEY=test-key MINIMAX_E2E_LOCAL_AUDIO=1 API_RELOAD=false \
+    MINIMAX_E2E_LOCAL_AUDIO=1 API_RELOAD=false \
     python run_api.py > "$BACKEND_LOG" 2>&1 &
     BACKEND_PID=$!
     echo "$BACKEND_PID" > "$BACKEND_PID_FILE"

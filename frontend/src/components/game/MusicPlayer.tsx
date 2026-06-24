@@ -5,7 +5,7 @@
  *
  * 根据故事内容推荐并播放匹配的音乐
  */
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Play,
   Pause,
@@ -36,6 +36,8 @@ interface MusicPlayerProps {
   embedded?: boolean;
   hideTitle?: boolean;
   compactControls?: boolean;
+  consoleControls?: boolean;
+  inlineControls?: ReactNode;
 }
 
 function hasMusicBrief(brief: Record<string, unknown> | undefined): brief is Record<string, unknown> {
@@ -50,40 +52,41 @@ export function MusicPlayer({
   embedded = false,
   hideTitle = false,
   compactControls = false,
+  consoleControls = false,
+  inlineControls,
 }: MusicPlayerProps) {
-  const {
-    recommendation,
-    isLoadingRecommendation,
-    recommendationError,
-    currentSong,
-    isPlaying,
-    volume,
-    currentTime,
-    duration,
-    audioElement,
-    isGeneratingAiMusic,
-    aiMusicGenerationStatus,
-    setRecommendation,
-    setIsLoadingRecommendation,
-    setRecommendationError,
-    setCurrentSong,
-    setIsPlaying,
-    setVolume,
-    setCurrentTime,
-    setDuration,
-    setAudioElement,
-    mergePlaylist,
-    advanceQueue,
-    generateAiMusicForStory,
-    play,
-    pause,
-    cleanup,
-    fadeVolume,
-  } = useMusicStore();
+  const recommendation = useMusicStore((state) => state.recommendation);
+  const isLoadingRecommendation = useMusicStore((state) => state.isLoadingRecommendation);
+  const recommendationError = useMusicStore((state) => state.recommendationError);
+  const currentSong = useMusicStore((state) => state.currentSong);
+  const isPlaying = useMusicStore((state) => state.isPlaying);
+  const volume = useMusicStore((state) => state.volume);
+  const currentTime = useMusicStore((state) => state.currentTime);
+  const duration = useMusicStore((state) => state.duration);
+  const audioElement = useMusicStore((state) => state.audioElement);
+  const isGeneratingAiMusic = useMusicStore((state) => state.isGeneratingAiMusic);
+  const aiMusicGenerationStatus = useMusicStore((state) => state.aiMusicGenerationStatus);
+  const setRecommendation = useMusicStore((state) => state.setRecommendation);
+  const setIsLoadingRecommendation = useMusicStore((state) => state.setIsLoadingRecommendation);
+  const setRecommendationError = useMusicStore((state) => state.setRecommendationError);
+  const setCurrentSong = useMusicStore((state) => state.setCurrentSong);
+  const setIsPlaying = useMusicStore((state) => state.setIsPlaying);
+  const setVolume = useMusicStore((state) => state.setVolume);
+  const setCurrentTime = useMusicStore((state) => state.setCurrentTime);
+  const setDuration = useMusicStore((state) => state.setDuration);
+  const setAudioElement = useMusicStore((state) => state.setAudioElement);
+  const mergePlaylist = useMusicStore((state) => state.mergePlaylist);
+  const advanceQueue = useMusicStore((state) => state.advanceQueue);
+  const generateAiMusicForStory = useMusicStore((state) => state.generateAiMusicForStory);
+  const play = useMusicStore((state) => state.play);
+  const pause = useMusicStore((state) => state.pause);
+  const cleanup = useMusicStore((state) => state.cleanup);
 
   const fetchedRecommendationKeyRef = useRef<string | null>(null);
   const generatedMusicStoryKeyRef = useRef<string | null>(null);
   const isLoadingSongRef = useRef(false);
+  const [displayCurrentTime, setDisplayCurrentTime] = useState(currentTime);
+  const lastCurrentTimeStoreSyncRef = useRef(0);
   const [playError, setPlayError] = useState<string | null>(null);
   const [skippedSongs, setSkippedSongs] = useState<Set<number | string>>(new Set());
   const skippedSongsRef = useRef<Set<number | string>>(new Set()); // 同步跟踪跳过的歌曲
@@ -278,10 +281,19 @@ export function MusicPlayer({
       // 绑定事件
       audio.onplay = () => setIsPlaying(true);
       audio.onpause = () => setIsPlaying(false);
-      audio.ontimeupdate = () => setCurrentTime(audio.currentTime);
+      audio.ontimeupdate = () => {
+        const nextTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+        setDisplayCurrentTime(nextTime);
+        const now = Date.now();
+        if (now - lastCurrentTimeStoreSyncRef.current >= 250) {
+          lastCurrentTimeStoreSyncRef.current = now;
+          setCurrentTime(nextTime);
+        }
+      };
       audio.onloadedmetadata = () => setDuration(audio.duration || 0);
       audio.onended = () => {
         setIsPlaying(false);
+        setDisplayCurrentTime(0);
         setCurrentTime(0);
         activeAudioRef.current = null; // 清理活动音频引用
         void (async () => {
@@ -377,7 +389,7 @@ export function MusicPlayer({
         setIsSwitchingSong(false); // 隐藏切换加载状态
       }
     }
-  }, [audioElement, volume, recommendation, currentSong, setAudioElement, setCurrentSong, setIsPlaying, setCurrentTime, setDuration, advanceQueue, getFallbackNextSong]);
+  }, [audioElement, volume, recommendation, setAudioElement, setCurrentSong, setIsPlaying, setCurrentTime, setDuration, advanceQueue, getFallbackNextSong]);
 
   // 预加载下一首歌曲
   const preloadNextSong = useCallback(async () => {
@@ -522,6 +534,7 @@ export function MusicPlayer({
     const time = value[0];
     if (audioElement) {
       audioElement.currentTime = time;
+      setDisplayCurrentTime(time);
       setCurrentTime(time);
     }
   };
@@ -561,6 +574,11 @@ export function MusicPlayer({
     }
   }, [autoFetchRecommendation, storyText, gameId, fetchRecommendation]);
 
+  useEffect(() => {
+    setDisplayCurrentTime(currentTime);
+    lastCurrentTimeStoreSyncRef.current = Date.now();
+  }, [currentTime]);
+
   // 清理
   useEffect(() => {
     return () => {
@@ -582,6 +600,159 @@ export function MusicPlayer({
   // 如果没有故事文本，不显示
   if (!storyText) {
     return null;
+  }
+
+  if (consoleControls) {
+    const artists = displaySong?.artists?.join(" / ") || "";
+    const subtitle = displaySong
+      ? [artists, displaySong.album].filter(Boolean).join(" · ") || sourceLabel || "当前音乐"
+      : isLoadingRecommendation
+        ? "正在匹配故事氛围"
+        : recommendationError
+          ? "音乐服务暂不可用"
+          : "故事生成后自动匹配";
+    const playDisabled = !audioElement && !hasRecommendationSongs;
+
+    return (
+      <div
+        data-testid="sound-music-console"
+        className={`min-w-0 space-y-2 ${className}`}
+      >
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <Button
+            variant="default"
+            size="icon"
+            className="h-9 w-9 shrink-0"
+            onClick={togglePlay}
+            disabled={playDisabled}
+            title={isPlaying ? "暂停" : "播放"}
+            aria-label={isPlaying ? "暂停" : "播放"}
+          >
+            {isLoadingRecommendation && !displaySong ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : isPlaying ? (
+              <Pause className="h-4 w-4" />
+            ) : (
+              <Play className="h-4 w-4 translate-x-px" />
+            )}
+          </Button>
+
+          <div className="min-w-[8rem] flex-1">
+            <div className="truncate text-sm font-medium leading-5">
+              {displaySong?.name || "音乐"}
+            </div>
+            <div
+              data-testid="sound-music-console-status"
+              className="truncate text-xs text-muted-foreground"
+            >
+              {subtitle}
+              {sourceLabel ? ` · ${sourceLabel}` : ""}
+            </div>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={playPrev}
+              disabled={!hasRecommendationSongs}
+              title="上一首"
+              aria-label="上一首"
+            >
+              <SkipBack className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={playNext}
+              disabled={!hasRecommendationSongs}
+              title="下一首"
+              aria-label="下一首"
+            >
+              <SkipForward className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => fetchRecommendation(true)}
+              disabled={isLoadingRecommendation}
+              title="换一批"
+              aria-label="换一批"
+            >
+              {isLoadingRecommendation ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+          {inlineControls && (
+            <div
+              data-testid="sound-inline-reading-controls"
+              className="flex min-w-0 flex-1 flex-wrap items-center gap-2 border-t border-border/70 pt-2 sm:border-l sm:border-t-0 sm:pl-2 sm:pt-0"
+            >
+              {inlineControls}
+            </div>
+          )}
+        </div>
+
+        {displaySong && (
+          <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem_auto] items-center gap-2">
+            <span className="text-right text-xs text-muted-foreground">
+              {formatTime(displayCurrentTime)}
+            </span>
+            <Slider
+              value={[displayCurrentTime]}
+              max={duration || 100}
+              step={1}
+              onValueChange={handleSeek}
+              className="min-w-0"
+            />
+            <span className="text-xs text-muted-foreground">
+              {formatTime(duration)}
+            </span>
+            <div className="flex w-24 items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => handleVolumeChange([volume === 0 ? 0.5 : 0])}
+                title={volume === 0 ? "取消静音" : "静音"}
+                aria-label={volume === 0 ? "取消静音" : "静音"}
+              >
+                {volume === 0 ? (
+                  <VolumeX className="h-3.5 w-3.5" />
+                ) : (
+                  <Volume2 className="h-3.5 w-3.5" />
+                )}
+              </Button>
+              <Slider
+                value={[volume]}
+                max={1}
+                step={0.1}
+                onValueChange={handleVolumeChange}
+              />
+            </div>
+          </div>
+        )}
+
+        {(isGeneratingAiMusic || isAiMusicDelayed || playError || showBlockingRecommendationError || showNonBlockingRecommendationWarning) && (
+          <div className="truncate text-xs text-muted-foreground">
+            {playError ||
+              (isGeneratingAiMusic
+                ? "正在生成原创场景音乐，完成后加入下一首"
+                : isAiMusicDelayed
+                  ? "原创场景音乐已排队，完成后加入下一首"
+                  : showNonBlockingRecommendationWarning
+                    ? "新推荐暂不可用，继续播放当前音乐"
+                    : "音乐服务暂不可用")}
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -719,10 +890,10 @@ export function MusicPlayer({
           {/* 进度条 */}
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground w-10 text-right">
-              {formatTime(currentTime)}
+              {formatTime(displayCurrentTime)}
             </span>
             <Slider
-              value={[currentTime]}
+              value={[displayCurrentTime]}
               max={duration || 100}
               step={1}
               onValueChange={handleSeek}

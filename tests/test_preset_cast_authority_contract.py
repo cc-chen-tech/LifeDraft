@@ -62,6 +62,52 @@ def _modern_product_manager_settings_with_legacy_relationships_list() -> dict[st
     return settings
 
 
+def _modern_product_manager_settings_with_relation_field() -> dict[str, Any]:
+    settings = _modern_product_manager_settings()
+    settings["relationships"] = {
+        "relationships_description": "围绕产品经理成长的导师、闺蜜和同期网络。",
+        "key_people": [
+            {
+                "name": "陆昊然",
+                "relation": "导师",
+                "description": "资深产品负责人，负责指导主角复盘需求判断。",
+            },
+            {
+                "name": "陈晓雨",
+                "relation": "闺蜜",
+                "description": "大学好友，理解主角的职场压力。",
+            },
+            {
+                "name": "林一凡",
+                "relation": "同期",
+                "description": "同批入职的产品同事，与主角共同成长。",
+            },
+        ],
+    }
+    return settings
+
+
+def _modern_product_manager_settings_with_family() -> dict[str, Any]:
+    settings = _modern_product_manager_settings()
+    settings["family"] = {
+        "family_members": [
+            {
+                "name": "林建国",
+                "role": "父亲",
+                "relationship": "父亲",
+                "description": "支持主角职业选择的父亲。",
+            },
+            {
+                "name": "王丽华",
+                "role": "母亲",
+                "relationship": "母亲",
+                "description": "关心主角生活节奏的母亲。",
+            },
+        ]
+    }
+    return settings
+
+
 def _player_state() -> dict[str, Any]:
     return {
         "age": 25,
@@ -162,6 +208,40 @@ def test_round_event_prompt_injects_required_cast_authority_from_relationships_l
     assert "陆昊然、陈晓雨、林一凡至少一位" in prompt
 
 
+def test_relation_field_is_treated_as_required_cast_role() -> None:
+    """Frontend and older DB payloads may use relation instead of role."""
+    from src.game.relationship_authority import build_required_cast_constraints
+
+    text = build_required_cast_constraints(
+        _modern_product_manager_settings_with_relation_field(),
+        "zh",
+    )
+
+    assert "陆昊然：导师" in text
+    assert "陈晓雨：闺蜜" in text
+    assert "林一凡：同期" in text
+    assert "：关键人物" not in text
+    assert "导师；导师" not in text
+
+
+def test_available_people_prompt_uses_relation_field_as_role_label() -> None:
+    """The prompt must not list relation-only people as empty-role names."""
+    prompt = get_round_event_prompt(
+        player_state=_player_state(),
+        language="zh",
+        round_number=0,
+        round_context="上一轮你决定向导师请教需求优先级。",
+        character_settings=_modern_product_manager_settings_with_relation_field(),
+    )
+
+    assert "陆昊然（导师）" in prompt
+    assert "陈晓雨（闺蜜）" in prompt
+    assert "林一凡（同期）" in prompt
+    assert "陆昊然（）" not in prompt
+    assert "陈晓雨（）" not in prompt
+    assert "林一凡（）" not in prompt
+
+
 def test_quick_validator_uses_relationships_list_for_required_cast() -> None:
     from config.prompts._helpers import _collect_available_people
     from src.ai.quick_validator import quick_validate_story
@@ -214,6 +294,60 @@ def test_quick_validator_rejects_partial_cast_when_new_named_network_dominates()
     assert any("预设关系网使用不足" in issue for issue in result.issues)
 
 
+def test_quick_validator_rejects_single_new_role_substitute_for_preset_network() -> None:
+    """A single invented strong-role character can still replace the preset network."""
+    from config.prompts._helpers import _collect_available_people
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    available_people = [
+        person["name"]
+        for person in _collect_available_people(settings)
+        if person.get("name")
+    ]
+
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然在会议室门口提醒林清先看用户反馈。"
+            "苏婉清推开会议室的门，以投资人兼导师的身份接管了林清的产品复盘，"
+            "陪她拆解路线、安抚情绪，并决定下一步融资节奏。"
+            "整个下午，林清都跟着苏婉清推进主线，陈晓雨和林一凡没有参与。"
+        ),
+        character_settings=settings,
+        available_people=available_people,
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外关键角色替代预设关系网" in issue for issue in result.issues)
+
+
+def test_quick_validator_rejects_family_only_story_when_key_people_are_missing() -> None:
+    """Family members are available people, but they do not replace preset key people."""
+    from config.prompts._helpers import _collect_available_people
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings_with_family()
+    available_people = [
+        person["name"]
+        for person in _collect_available_people(settings)
+        if person.get("name")
+    ]
+
+    result = quick_validate_story(
+        story_text=(
+            "林建国在早餐桌边提醒林清注意身体，王丽华把热粥推到她手边。"
+            "这一整天都围绕父母对职业选择的担心展开，没有导师复盘、闺蜜支持或同期协作。"
+        ),
+        character_settings=settings,
+        available_people=available_people,
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("没有使用预设关键人物" in issue for issue in result.issues)
+
+
 def test_choice_result_prompt_injects_required_cast_authority_and_world_boundary() -> None:
     prompt = get_result_generation_prompt(
         event_description="林清刚结束需求评审，陆昊然在会议室门口等她复盘。",
@@ -236,6 +370,64 @@ def test_choice_result_prompt_injects_required_cast_authority_and_world_boundary
     assert "禁止赛博朋克" in prompt
     assert "夜之城" in prompt
     assert "荒坂集团" in prompt
+
+
+def test_custom_choice_result_prompt_injects_required_cast_authority_and_world_boundary() -> None:
+    from config.prompts.story_prompts import get_custom_choice_result_prompt
+
+    prompt = get_custom_choice_result_prompt(
+        character_settings=_modern_product_manager_settings(),
+        current_state=_player_state(),
+        language="zh",
+    )
+
+    assert "预设关键人物" in prompt
+    assert "陆昊然" in prompt
+    assert "导师" in prompt
+    assert "陈晓雨" in prompt
+    assert "林一凡" in prompt
+    assert "不得改名" in prompt
+    assert "不得替换" in prompt
+    assert "至少使用1位预设关键人物" in prompt
+    assert "现实主义世界边界" in prompt
+    assert "禁止赛博朋克" in prompt
+    assert "夜之城" in prompt
+    assert "荒坂集团" in prompt
+
+
+def test_custom_choice_json_result_retries_when_story_violates_required_cast() -> None:
+    from unittest.mock import Mock
+
+    from src.game.story_service import StoryService
+
+    ai = Mock()
+    ai.generate_completion_json.side_effect = [
+        {
+            "story_continuation": (
+                "苏婉清以投资人兼导师的身份接管了林清的产品复盘，"
+                "陪她拆解路线并决定下一步融资节奏。陈晓雨和林一凡没有参与。"
+            ),
+            "effects": {"knowledge": 3},
+        },
+        {
+            "story_continuation": (
+                "林清决定按自己的方式复盘用户反馈。陆昊然在会议室白板前提醒她先确认需求优先级，"
+                "陈晓雨帮她整理访谈记录，林一凡则把同期项目的数据对照表发了过来。"
+            ),
+            "effects": {"knowledge": 5, "relationships": {"陆昊然": 2}},
+        },
+    ]
+
+    result = StoryService(ai_generator=ai, language="zh").generate_custom_choice_result(
+        event_description="林清刚结束需求评审，陆昊然在会议室门口等她复盘。",
+        custom_text="我想自己重新整理用户反馈。",
+        character_settings=_modern_product_manager_settings(),
+        current_state=_player_state(),
+    )
+
+    assert ai.generate_completion_json.call_count == 2
+    assert "陆昊然" in result["story_continuation"]
+    assert "苏婉清" not in result["story_continuation"]
 
 
 def test_scheduled_event_prompt_inherits_story_authority_constraints() -> None:

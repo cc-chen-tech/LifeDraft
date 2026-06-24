@@ -95,6 +95,31 @@ function formatResourceWarnings(result: Record<string, unknown>): string {
   return lines.length ? `\n\n**资源提示**\n${lines.join("\n")}` : "";
 }
 
+function applyCompleteChoiceStoryText(
+  result: Record<string, unknown>,
+  handlers: ChoiceHandlers
+): void {
+  const completeStory =
+    typeof result.event_description === "string"
+      ? result.event_description.trim()
+      : typeof result.story_continuation === "string"
+        ? result.story_continuation.trim()
+        : "";
+  if (!completeStory) return;
+
+  const currentStory = useGameStore.getState().storyText || "";
+  if (currentStory.includes(completeStory)) return;
+
+  if (completeStory.includes(currentStory) && currentStory.trim()) {
+    handlers.setStoryText(completeStory);
+    return;
+  }
+
+  handlers.setStoryText(
+    currentStory.trim() ? `${currentStory}\n\n${completeStory}` : completeStory
+  );
+}
+
 // ==================== Choice Completion ====================
 
 /**
@@ -123,6 +148,8 @@ export function handleChoiceComplete(
   } else {
     setRoundSummary(null);
   }
+
+  applyCompleteChoiceStoryText(result, handlers);
 
   setCurrentEvent(null);
 

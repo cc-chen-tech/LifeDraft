@@ -44,7 +44,12 @@ test.describe('User Journey - Landing Page', () => {
     await expect(loginButton).not.toBeVisible({ timeout: 5000 });
 
     const newGameButton = page.getByRole('button', { name: /新游戏|New Game/i });
+    await expect(newGameButton).toHaveAttribute('href', '/create');
+
+    const clickStart = Date.now();
     await newGameButton.click();
+    const clickDuration = Date.now() - clickStart;
+    expect(clickDuration).toBeLessThan(5000);
 
     await expect(page).toHaveURL('/create', { timeout: 10000 });
   });

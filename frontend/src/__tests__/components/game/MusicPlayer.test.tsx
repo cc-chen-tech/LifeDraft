@@ -210,7 +210,7 @@ describe('MusicPlayer', () => {
     expect(screen.queryByText('音乐服务暂不可用，故事可继续进行')).not.toBeInTheDocument();
     expect(
       (global.fetch as jest.Mock).mock.calls.some((call: unknown[]) =>
-        String(call[0]).includes('/api/music/generate-async')
+        String(call[0]).includes('/api/music/generate')
       )
     ).toBe(true);
   });
@@ -450,13 +450,13 @@ describe('MusicPlayer', () => {
     await waitFor(() => {
       expect(
         (global.fetch as jest.Mock).mock.calls.some((call: unknown[]) =>
-          String(call[0]).includes('/api/music/generate-async')
+          String(call[0]).includes('/api/music/generate')
         )
       ).toBe(true);
     });
 
     const generateCall = (global.fetch as jest.Mock).mock.calls.find((call: unknown[]) =>
-      String(call[0]).includes('/api/music/generate-async')
+      String(call[0]).includes('/api/music/generate')
     );
     expect(JSON.parse(generateCall[1].body)).toMatchObject({
       story_text: '雨夜码头追逐，主角发现旧账册线索。',
@@ -468,7 +468,7 @@ describe('MusicPlayer', () => {
     });
     expect(
       (global.fetch as jest.Mock).mock.calls.some((call: unknown[]) =>
-        String(call[0]).endsWith('/api/music/generate')
+        String(call[0]).endsWith('/api/music/generate-async')
       )
     ).toBe(false);
     expect(useMusicStore.getState().currentSong?.name).toBe('网易云 当前曲');
@@ -733,6 +733,86 @@ describe('MusicPlayer', () => {
 
     expect(screen.getByText('原创场景音乐已排队，完成后会自动加入播放列表')).toBeInTheDocument();
     expect(screen.queryByText('音乐服务暂不可用，故事可继续进行')).not.toBeInTheDocument();
+  });
+
+  it('高频 timeupdate 只同步有限次数到全局 currentTime，但即时展示依然响应', async () => {
+    jest.useFakeTimers();
+    const now = new Date('2024-01-01T00:00:00.000Z');
+    jest.setSystemTime(now);
+
+    const originalSetCurrentTime = useMusicStore.getState().setCurrentTime;
+    const setCurrentTimeSpy = jest.fn();
+
+    try {
+      useMusicStore.setState({
+        setCurrentTime: setCurrentTimeSpy,
+        recommendation: {
+          mood: '宁静',
+          scene_type: '独处',
+          keywords: ['古风', '钢琴'],
+          songs: [
+            {
+              id: 1,
+              name: '测试歌曲',
+              artists: ['测试艺术家'],
+              album: '测试专辑',
+              duration: 180000,
+              url: 'https://example.com/test.mp3',
+            },
+          ],
+        },
+        isLoadingRecommendation: false,
+        recommendationError: null,
+        currentSong: null,
+        isPlaying: false,
+        volume: 0.5,
+        currentTime: 0,
+        duration: 180,
+        audioElement: null,
+        isGeneratingAiMusic: false,
+        aiMusicGenerationStatus: 'idle',
+      });
+
+      render(
+        <MusicPlayer
+          storyText="高频进度回报测试"
+          autoFetchRecommendation={false}
+        />
+      );
+
+      await waitFor(() => {
+        expect(createdAudioInstances.length).toBeGreaterThan(0);
+      });
+
+      const audio = createdAudioInstances.at(-1);
+      expect(audio).toBeDefined();
+      expect(screen.getByText('0:00')).toBeInTheDocument();
+
+      act(() => {
+        expect(audio?.ontimeupdate).toBeInstanceOf(Function);
+        for (let idx = 1; idx <= 10; idx += 1) {
+          if (audio) {
+            audio.currentTime = idx;
+            audio.ontimeupdate?.();
+          }
+          jest.advanceTimersByTime(40);
+        }
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('0:10')).toBeInTheDocument();
+      });
+
+      expect(setCurrentTimeSpy).toHaveBeenCalled();
+      expect(setCurrentTimeSpy.mock.calls.length).toBeLessThan(5);
+    } finally {
+      act(() => {
+        useMusicStore.setState({
+          setCurrentTime: originalSetCurrentTime,
+        } as Partial<ReturnType<typeof useMusicStore.getState>>);
+      });
+      jest.useRealTimers();
+    }
   });
 });
 

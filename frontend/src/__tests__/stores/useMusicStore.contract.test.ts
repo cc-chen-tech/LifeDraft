@@ -47,24 +47,34 @@ describe("useMusicStore fadeVolume contract", () => {
     expect(typeof store.fadeVolume).toBe("function");
   });
 
-  it("fadeVolume 不应在渐变期间高频更新 store.volume", async () => {
-    useMusicStore.setState({ volume: 0.5 });
-    const store = useMusicStore.getState();
+  it("fadeVolume 不应在渐变期间高频更新 store.volume", () => {
+    jest.useFakeTimers();
 
-    // 用一个带 volume 属性的伪音频元素
-    const fakeAudio = { volume: 0.5 } as unknown as HTMLAudioElement;
-    store.setAudioElement(fakeAudio);
+    try {
+      useMusicStore.setState({ volume: 0.5, fadeInterval: null });
+      const store = useMusicStore.getState();
 
-    store.fadeVolume(0.9, 150);
+      // 用一个带 volume 属性的伪音频元素
+      const fakeAudio = { volume: 0.5 } as unknown as HTMLAudioElement;
+      store.setAudioElement(fakeAudio);
 
-    // 渐变中点 store.volume 应保持不变
-    await new Promise((r) => setTimeout(r, 75));
-    expect(useMusicStore.getState().volume).toBe(0.5);
+      store.fadeVolume(0.9, 150);
 
-    // 渐变结束后 store.volume 应同步为最终值
-    await new Promise((r) => setTimeout(r, 100));
-    await new Promise((r) => setTimeout(r, 50));
-    expect(useMusicStore.getState().volume).toBe(0.9);
+      // 精确推进到渐变中点；真实定时器在全量测试负载下可能延迟并误过终点。
+      jest.advanceTimersByTime(75);
+      expect(useMusicStore.getState().volume).toBe(0.5);
+
+      // 渐变结束后 store.volume 应同步为最终值
+      jest.advanceTimersByTime(75);
+      expect(useMusicStore.getState().volume).toBe(0.9);
+    } finally {
+      const fadeInterval = useMusicStore.getState().fadeInterval;
+      if (fadeInterval) {
+        clearInterval(fadeInterval);
+      }
+      useMusicStore.setState({ fadeInterval: null });
+      jest.useRealTimers();
+    }
   });
 });
 
