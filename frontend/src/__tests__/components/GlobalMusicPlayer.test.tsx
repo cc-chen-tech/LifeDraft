@@ -926,6 +926,7 @@ describe("GlobalMusicPlayer", () => {
       const readingSection = within(console).getByTestId("story-voice-console");
       expect(musicSection).not.toHaveClass("rounded-md");
       expect(readingSection).not.toHaveClass("rounded-md");
+      expect(within(console).queryByTestId("sound-inline-reading-controls")).not.toBeInTheDocument();
       expect(within(musicSection).queryByText(/推荐歌曲/)).not.toBeInTheDocument();
       expect(within(musicSection).queryByText("平静")).not.toBeInTheDocument();
       expect(within(musicSection).queryByText("城市")).not.toBeInTheDocument();
