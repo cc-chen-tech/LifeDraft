@@ -80,10 +80,13 @@ describe('useStoryVoiceStore', () => {
       queueText: '',
       autoReadEnabled: false,
       selectedVoiceId: 'warm_female',
+      ttsProvider: '',
+      backendAudioEnabled: true,
       musicDuckState: 'idle',
       musicWasPlaying: false,
       userChangedMusic: false,
     }));
+    window.localStorage.removeItem('story_voice_e2e_provider');
     delete (global as typeof globalThis & { fetch?: unknown }).fetch;
     restoreSpeechMocks = prepareSpeechMocks();
   });
@@ -156,5 +159,51 @@ describe('useStoryVoiceStore', () => {
     expect(playbackMode).toBe('browser_speech');
     expect(currentAudioUrl).toBe('');
     expect(currentSpeechText).toBe(baseContext.text);
+  });
+
+  it('loads runtime settings before first read so browser fallback starts without a backend read roundtrip', async () => {
+    const fetchMock = jest.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/voice-reading/settings')) {
+        return Promise.resolve(
+          jsonResponse({
+            tts_provider: 'browser',
+            backend_audio_enabled: false,
+            auto_read_enabled: false,
+            selected_voice_color: 'warm_female',
+            uploaded_voice_available: false,
+            available_voice_colors: ['warm_female', 'calm_male', 'clear_neutral'],
+          })
+        ) as Response;
+      }
+      if (url.includes('/voice-reading/read')) {
+        return Promise.resolve(
+          jsonResponse({
+            job_id: 99,
+            status: 'ready',
+            audio_url: '/api/voice-reading/audio/should-not-be-used.mp3',
+            playback_mode: 'audio',
+            provider: 'minimax',
+          })
+        ) as Response;
+      }
+      return Promise.resolve(jsonResponse({}));
+    }) as jest.Mock;
+
+    global.fetch = fetchMock;
+
+    await act(async () => {
+      await useStoryVoiceStore.getState().startReading(baseContext);
+    });
+
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/voice-reading/settings'))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/voice-reading/read'))).toBe(false);
+    expect(window.speechSynthesis.speak).toHaveBeenCalled();
+    expect(useStoryVoiceStore.getState()).toMatchObject({
+      readingState: 'playing',
+      currentProvider: 'browser',
+      playbackMode: 'browser_speech',
+      currentSpeechText: baseContext.text,
+    });
   });
 });
