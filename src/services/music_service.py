@@ -205,7 +205,7 @@ WORKPLACE_SCORE_METADATA_CUES = {
     "ost",
 }
 
-PROMPT_LEAK_SONG_CUES = [
+PROMPT_MATCH_SONG_MARKERS = [
     "请提供需要分析的文本",
     "请补充文本",
     "未提供具体文本",
@@ -344,7 +344,7 @@ def _workplace_search_queries(context_text: str) -> List[str]:
 def _looks_like_prompt_leak_song(song: Song) -> bool:
     """Reject search results that are LLM prompt/response text, not song metadata."""
     text = " ".join([song.name, song.album, *song.artists])
-    return any(cue in text for cue in PROMPT_LEAK_SONG_CUES)
+    return any(cue in text for cue in PROMPT_MATCH_SONG_MARKERS)
 
 
 def _looks_like_generated_placeholder_song(song: "MusicTrack") -> bool:
