@@ -20,7 +20,7 @@ from src.ai.harness.quality_level import PROFILES, QualityLevel
 from src.ai.models import EventOption, GameEvent
 from src.ai.option_generator import OptionGenerator
 from src.ai.system_prompts import get_system_prompt
-from src.ai.text_quality import normalize_generated_story
+from src.ai.text_quality import normalize_chinese_punctuation, normalize_generated_story
 from src.ai.vector_store import get_vector_store, is_vector_search_enabled
 
 logger = logging.getLogger(__name__)
@@ -43,6 +43,12 @@ class StoryGenerator:
         self._style_manifest = None
         self._prompt_builder = None
         self._style_validator = None
+
+    @staticmethod
+    def _normalize_punctuation(text: Optional[str], language: str = "zh") -> Optional[str]:
+        if language != "zh" or not text:
+            return text
+        return normalize_chinese_punctuation(text)
 
     # -------------------- Public API --------------------
 

@@ -3,30 +3,49 @@
 from __future__ import annotations
 
 import re
+from typing import Optional
 
 
-def normalize_chinese_punctuation(text: str) -> str:
+def normalize_chinese_punctuation(text: Optional[str]) -> Optional[str]:
     """Normalize obvious English punctuation artifacts in Chinese prose."""
-    replacements = {
-        '："': "：“",
-        ': "': "：“",
-        ':"': "：“",
-        '",': "”，",
-        '."': "。”",
-        '?"': "？”",
-        '!"': "！”",
-        '"': "”",
-        ",": "，",
-        "?": "？",
-        "!": "！",
-    }
+    if text is None:
+        return None
+    if not text:
+        return text
 
-    normalized = text
-    for old, new in replacements.items():
-        normalized = normalized.replace(old, new)
+    normalized: str = text
 
-    normalized = re.sub(r"([\u4e00-\u9fff])[:：]", r"\1：", normalized)
-    normalized = re.sub(r"([，。！？；：])\s+([\u4e00-\u9fff“])", r"\1\2", normalized)
+    # 英文括号、引号与句点类统一
+    normalized = normalized.replace("(", "（").replace(")", "）")
+
+    quote_char_count = 0
+    quote_converted_chars: list[str] = []
+    for char in normalized:
+        if char == '"':
+            quote_char_count += 1
+            quote_converted_chars.append("“" if quote_char_count % 2 == 1 else "”")
+        else:
+            quote_converted_chars.append(char)
+    normalized = "".join(quote_converted_chars)
+
+    normalized = re.sub(r"\.{2,}", lambda m: "。" * len(m.group(0)), normalized)
+    normalized = normalized.replace(".", "。")
+    normalized = normalized.replace(",", "，")
+    normalized = normalized.replace("?", "？")
+    normalized = normalized.replace("!", "！")
+    normalized = normalized.replace(";", "；")
+    normalized = normalized.replace(":", "：")
+
+    # 典型对话片段兼容
+    normalized = normalized.replace("：\"", "：“")
+    normalized = normalized.replace(':"', "：“")
+    normalized = normalized.replace('",', "”，")
+    normalized = normalized.replace('."', "。”")
+    normalized = normalized.replace('?"', "？”")
+    normalized = normalized.replace('!"', "！”")
+
+    # 清理标点后多余空格
+    normalized = re.sub(r"([：，。！？；])\s+([^\n])", r"\1\2", normalized)
     return normalized
 
 
@@ -105,7 +124,7 @@ def normalize_generated_story(
     """Normalize generated prose before it is shown or persisted."""
     normalized = text.strip()
     if language == "zh":
-        normalized = normalize_chinese_punctuation(normalized)
+        normalized = normalize_chinese_punctuation(normalized) or normalized
     normalized = _remove_internal_state_leaks(normalized)
 
     issues = validate_narrative_quality(normalized, language=language, perspective=perspective)

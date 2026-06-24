@@ -2,6 +2,12 @@ name: Deploy Production
 
 on:
   workflow_dispatch:
+    inputs:
+      force_after_local_preflight:
+        description: "Local preflight passed and GitHub checks are unavailable; bypass the CI gate for this manual deployment."
+        required: false
+        default: false
+        type: boolean
   workflow_run:
     workflows: ["E2E Tests"]
     types: [completed]
@@ -48,6 +54,14 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            if (
+              '${{ github.event_name }}' === 'workflow_dispatch' &&
+              '${{ inputs.force_after_local_preflight }}' === 'true'
+            ) {
+              core.warning('Manual production deployment is bypassing GitHub CI after local preflight.');
+              return;
+            }
+
             const requiredWorkflows = [
               'Backend Tests',
               'Python Code Quality',
