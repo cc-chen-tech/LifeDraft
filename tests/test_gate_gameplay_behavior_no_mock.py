@@ -65,6 +65,25 @@ def test_chinese_punctuation_normalizer_cleans_dialogue_artifacts() -> None:
     )
 
 
+def test_chinese_punctuation_normalizer_handles_parenthesis_endings_and_closes_quotes() -> None:
+    raw = "A)开始. B)结束."
+
+    cleaned = normalize_chinese_punctuation(raw)
+
+    assert "（" not in cleaned
+    assert "." not in cleaned
+    assert "A）开始。B）结束。" == cleaned
+
+
+def test_normalized_story_closes_unbalanced_dialogue_quote() -> None:
+    raw = '他说:"你会来吗?'
+
+    cleaned = normalize_generated_story(raw, language="zh", perspective="second")
+
+    assert cleaned.startswith("他说：“你会来吗？")
+    assert cleaned.endswith("”")
+
+
 def test_generated_story_normalizer_removes_internal_state_leaks_and_over_fragmentation() -> None:
     raw = (
         "【状态】energy -5, mood +3\n"
