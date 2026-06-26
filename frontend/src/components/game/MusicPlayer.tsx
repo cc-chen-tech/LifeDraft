@@ -23,6 +23,7 @@ import {
   useMusicStore,
   fetchMusicRecommendation,
   fetchSongUrl,
+  getMusicProvenanceLabel,
   getMusicSourceLabel,
   Song,
 } from "@/stores/useMusicStore";
@@ -568,6 +569,7 @@ export function MusicPlayer({
 
   const displaySong = currentSong || recommendation?.songs[0] || null;
   const sourceLabel = getMusicSourceLabel(displaySong?.source);
+  const provenanceLabel = getMusicProvenanceLabel(displaySong);
   const hasRecommendationSongs = Boolean(recommendation?.songs.length);
   const hasPlayableMusic = Boolean(displaySong || hasRecommendationSongs || audioElement);
   const showBlockingRecommendationError = Boolean(recommendationError && !hasPlayableMusic);
@@ -626,7 +628,7 @@ export function MusicPlayer({
   if (consoleControls) {
     const artists = displaySong?.artists?.join(" / ") || "";
     const subtitle = displaySong
-      ? [artists, displaySong.album].filter(Boolean).join(" · ") || sourceLabel || "当前音乐"
+      ? [artists, displaySong.album, provenanceLabel].filter(Boolean).join(" · ") || sourceLabel || "当前音乐"
       : isLoadingRecommendation
         ? "正在匹配故事氛围"
         : recommendationError
@@ -667,7 +669,6 @@ export function MusicPlayer({
               className="truncate text-xs text-muted-foreground"
             >
               {subtitle}
-              {sourceLabel ? ` · ${sourceLabel}` : ""}
             </div>
           </div>
 

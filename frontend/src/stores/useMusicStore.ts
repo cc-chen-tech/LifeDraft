@@ -163,6 +163,17 @@ export function getMusicSourceLabel(source: Song["source"] | undefined): string 
   return source === "ai_generated" ? "AI" : "";
 }
 
+export function getMusicProvenanceLabel(song: Song | null | undefined): string {
+  if (!song || song.source !== "ai_generated") {
+    return "";
+  }
+  const labelParts = [song.library_reused ? "AI 本地库" : "AI"];
+  if (typeof song.match_score === "number" && Number.isFinite(song.match_score)) {
+    labelParts.push(`匹配 ${Math.round(song.match_score)}`);
+  }
+  return labelParts.join(" · ");
+}
+
 function dedupeSongs(songs: Song[], excludedId: number | string | undefined): Song[] {
   const seenIds = new Set<number | string>();
   const seenTitleKeys = new Set<string>();

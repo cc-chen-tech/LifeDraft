@@ -735,6 +735,45 @@ describe('MusicPlayer', () => {
     expect(screen.queryByText('音乐服务暂不可用，故事可继续进行')).not.toBeInTheDocument();
   });
 
+  it('在音频控制台显示 AI 本地库复用和匹配分', () => {
+    useMusicStore.setState({
+      recommendation: {
+        mood: '悬疑',
+        scene_type: '都市调查悬疑',
+        keywords: ['都市调查 悬疑配乐'],
+        songs: [],
+      },
+      currentSong: {
+        id: 'ai-generated-88',
+        name: 'AI MiniMax 都市调查悬疑',
+        artists: ['MiniMax'],
+        album: 'AI Generated',
+        duration: 180000,
+        url: '/api/music/generated/reused.mp3',
+        source: 'ai_generated',
+        library_reused: true,
+        match_score: 88,
+      },
+      isLoadingRecommendation: false,
+      recommendationError: null,
+      isGeneratingAiMusic: false,
+      aiMusicGenerationStatus: 'idle',
+    });
+
+    render(
+      <MusicPlayer
+        storyText="调查记者发现科技公司数据隐私旧案。"
+        gameId={77}
+        autoFetchRecommendation={false}
+        consoleControls
+      />
+    );
+
+    expect(screen.getByTestId('sound-music-console-status')).toHaveTextContent(
+      'MiniMax · AI Generated · AI 本地库 · 匹配 88'
+    );
+  });
+
   it('高频 timeupdate 只同步有限次数到全局 currentTime，但即时展示依然响应', async () => {
     jest.useFakeTimers();
     const now = new Date('2024-01-01T00:00:00.000Z');
