@@ -432,6 +432,7 @@ def _positive_terms(profile: MusicSceneFitProfile) -> List[str]:
 
 def _strategy_cues(strategy: str) -> List[str]:
     return {
+        "investigative_suspense": ["调查", "悬疑", "旧案", "档案", "数据隐私", "科技公司", "证据", "冷色"],
         "modern_workplace": ["办公室", "职场", "产品", "数据", "科技", "电子", "专注"],
         "suspense_chase": ["悬疑", "追逐", "追捕", "紧张", "低音", "鼓", "影视配乐"],
         "quiet_recovery": ["康复", "病房", "清晨", "钢琴", "治愈", "安静"],
@@ -547,6 +548,32 @@ GENERIC_TEMPLATE: Mapping[str, Any] = {
 
 
 SCENE_TEMPLATES: Sequence[Mapping[str, Any]] = [
+    {
+        "selected_strategy": "investigative_suspense",
+        "cues": [
+            "调查记者",
+            "数据隐私",
+            "科技公司",
+            "数据黑幕",
+            "旧案卷",
+            "旧案",
+            "档案室",
+            "无人机巡逻",
+            "加密云端",
+            "数据泄露",
+        ],
+        "primary_emotion": "悬疑",
+        "secondary_emotion": "克制紧张",
+        "scene_action": "investigative_suspense",
+        "scene_type": "都市调查悬疑",
+        "setting": "现代都市调查现场",
+        "pacing": "紧凑",
+        "energy": "中",
+        "tension": "中高",
+        "instruments": ["冷色合成器", "低音脉冲", "弦乐纹理", "钢琴"],
+        "negative_cues": ["治愈轻音乐", "甜蜜流行", "人声", "歌词", "轻快民谣"],
+        "search_queries": ["都市调查 悬疑配乐", "科技公司 数据隐私 纯音乐", "旧案档案室 冷色氛围"],
+    },
     {
         "selected_strategy": "modern_workplace",
         "cues": ["互联网公司", "会议室", "用户数据", "AI 协作", "AI协作", "白板", "产品经理"],
