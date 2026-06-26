@@ -31,3 +31,4 @@
 - [x] Add regression coverage that the expanded UI no longer renders separate music and narration slots.
 - [x] Embed narration playback, voice selection, and auto-read controls inside the music control strip so expanded audio controls appear as one unified sound console.
 - [x] Remove the collapsed bar's implicit text-click expand behavior so only explicit sound actions change playback or panel state.
+- [x] Simplify the collapsed sound bar to one "声音" entry plus one combined music-and-narration status line, without separate channel summaries.
