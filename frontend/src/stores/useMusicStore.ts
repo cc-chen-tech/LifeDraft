@@ -243,6 +243,8 @@ interface MusicState {
 
   // fadeVolume interval 引用，防止多个渐变冲突
   fadeInterval: ReturnType<typeof setInterval> | null;
+  voiceDuckActive: boolean;
+  voiceDuckRestoreVolume: number | null;
 
   // Playlist queue state
   queue: Song[];
@@ -276,6 +278,8 @@ interface MusicState {
   seek: (time: number) => void;
   changeVolume: (volume: number) => void;
   fadeVolume: (targetVolume: number, duration?: number) => void;  // 音量渐变
+  duckForVoiceReading: (targetVolume?: number, duration?: number) => boolean;
+  restoreAfterVoiceReading: (duration?: number) => void;
 
   // Playlist actions
   setQueue: (queue: Song[]) => void;
@@ -443,6 +447,8 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   duration: 0,
   audioElement: null,
   fadeInterval: null,
+  voiceDuckActive: false,
+  voiceDuckRestoreVolume: null,
   queue: [],
   playedSongs: [],
   playlistGameId: null,
@@ -461,7 +467,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   setCurrentSong: (currentSong) => set({ currentSong }),
   setIsPlaying: (isPlaying) => set({ isPlaying }),
   setVolume: (volume) => {
-    set({ volume });
+    set({ volume, voiceDuckActive: false, voiceDuckRestoreVolume: null });
     const { audioElement } = get();
     if (audioElement) {
       audioElement.volume = volume;
@@ -519,7 +525,7 @@ export const useMusicStore = create<MusicState>((set, get) => ({
 
   changeVolume: (volume: number) => {
     const clampedVolume = Math.max(0, Math.min(1, volume));
-    set({ volume: clampedVolume });
+    set({ volume: clampedVolume, voiceDuckActive: false, voiceDuckRestoreVolume: null });
     const { audioElement } = get();
     if (audioElement) {
       audioElement.volume = clampedVolume;
@@ -557,6 +563,50 @@ export const useMusicStore = create<MusicState>((set, get) => ({
     }, 50);
 
     set({ fadeInterval: newFadeInterval });
+  },
+
+  duckForVoiceReading: (targetVolume: number = 0.2, duration: number = 250) => {
+    const {
+      audioElement,
+      fadeVolume,
+      isPlaying,
+      volume,
+      voiceDuckActive,
+      voiceDuckRestoreVolume,
+    } = get();
+    if (!audioElement || !isPlaying) {
+      return false;
+    }
+    if (voiceDuckActive) {
+      return true;
+    }
+
+    const restoreVolume = voiceDuckRestoreVolume ?? volume;
+    const duckedVolume = Math.min(restoreVolume, targetVolume);
+    set({
+      voiceDuckActive: true,
+      voiceDuckRestoreVolume: restoreVolume,
+    });
+    fadeVolume(duckedVolume, duration);
+    return true;
+  },
+
+  restoreAfterVoiceReading: (duration: number = 250) => {
+    const { audioElement, fadeVolume, voiceDuckActive, voiceDuckRestoreVolume } = get();
+    if (!voiceDuckActive || voiceDuckRestoreVolume === null) {
+      return;
+    }
+
+    const restoreVolume = voiceDuckRestoreVolume;
+    set({
+      voiceDuckActive: false,
+      voiceDuckRestoreVolume: null,
+    });
+    if (audioElement) {
+      fadeVolume(restoreVolume, duration);
+    } else {
+      set({ volume: restoreVolume });
+    }
   },
 
   // Playlist actions
@@ -755,6 +805,8 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       duration: 0,
       audioElement: null,
       fadeInterval: null,
+      voiceDuckActive: false,
+      voiceDuckRestoreVolume: null,
       queue: [],
       playedSongs: [],
       playlistGameId: null,
@@ -780,7 +832,13 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       audioElement.onloadedmetadata = null;
       audioElement.onerror = null;
     }
-    set({ audioElement: null, isPlaying: false, fadeInterval: null });
+    set({
+      audioElement: null,
+      isPlaying: false,
+      fadeInterval: null,
+      voiceDuckActive: false,
+      voiceDuckRestoreVolume: null,
+    });
   },
 }));
 
