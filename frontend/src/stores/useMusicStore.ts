@@ -737,8 +737,24 @@ export const useMusicStore = create<MusicState>((set, get) => ({
     }
   },
 
-  syncPlaylistState: async (_gameId: number, _positionMs: number, _isPlaying: boolean, _volume: number) => {
-    // Local-only: state is managed client-side
+  syncPlaylistState: async (gameId: number, positionMs: number, isPlaying: boolean, volume: number) => {
+    if (typeof fetch === "undefined") {
+      return;
+    }
+    try {
+      await fetch(`${API_BASE}/music/playlist/${gameId}/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          current_position_ms: Math.max(0, Math.round(positionMs)),
+          is_playing: isPlaying,
+          volume: Math.max(0, Math.min(1, volume)),
+        }),
+      });
+    } catch (error) {
+      console.warn("[MusicStore] Failed to sync playlist state:", error);
+    }
   },
 
   advanceQueue: async () => {

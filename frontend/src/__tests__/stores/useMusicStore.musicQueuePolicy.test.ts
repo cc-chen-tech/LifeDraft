@@ -211,6 +211,48 @@ describe("music queue policy", () => {
     expect(generated.scene_fit_diagnostics.selected_strategy).toBe("quiet_recovery");
   });
 
+  it("store syncPlaylistState persists playback position and volume without mutating playback", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    }) as jest.Mock;
+    useMusicStore.setState({
+      currentSong: song(1, "网易云 当前曲"),
+      isPlaying: true,
+      currentTime: 12,
+      volume: 0.7,
+    });
+
+    await useMusicStore.getState().syncPlaylistState(101, 12345, true, 0.7);
+
+    expect(global.fetch).toHaveBeenCalledWith("/api/music/playlist/101/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        current_position_ms: 12345,
+        is_playing: true,
+        volume: 0.7,
+      }),
+    });
+    expect(useMusicStore.getState().isPlaying).toBe(true);
+    expect(useMusicStore.getState().currentTime).toBe(12);
+  });
+
+  it("store syncPlaylistState tolerates backend sync failures", async () => {
+    const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+    global.fetch = jest.fn().mockRejectedValue(new Error("network unavailable")) as jest.Mock;
+
+    await expect(
+      useMusicStore.getState().syncPlaylistState(101, 5000, false, 0.4)
+    ).resolves.toBeUndefined();
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[MusicStore] Failed to sync playlist state:",
+      expect.any(Error)
+    );
+  });
+
   it("store mergePlaylist persists the Netease baseline queue before generated music arrives", async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,

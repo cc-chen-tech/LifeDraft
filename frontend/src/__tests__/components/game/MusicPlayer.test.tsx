@@ -814,6 +814,93 @@ describe('MusicPlayer', () => {
       jest.useRealTimers();
     }
   });
+
+  it('同步播放、暂停和节流后的播放进度到持久化播放列表', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+    const originalSyncPlaylistState = useMusicStore.getState().syncPlaylistState;
+    const syncPlaylistStateSpy = jest.fn().mockResolvedValue(undefined);
+
+    try {
+      useMusicStore.setState({
+        syncPlaylistState: syncPlaylistStateSpy,
+        recommendation: {
+          mood: '宁静',
+          scene_type: '独处',
+          keywords: ['古风', '钢琴'],
+          songs: [
+            {
+              id: 1,
+              name: '测试歌曲',
+              artists: ['测试艺术家'],
+              album: '测试专辑',
+              duration: 180000,
+              url: 'https://example.com/test.mp3',
+            },
+          ],
+        },
+        isLoadingRecommendation: false,
+        recommendationError: null,
+        currentSong: null,
+        isPlaying: false,
+        volume: 0.5,
+        currentTime: 0,
+        duration: 180,
+        audioElement: null,
+        isGeneratingAiMusic: false,
+        aiMusicGenerationStatus: 'idle',
+      });
+
+      render(
+        <MusicPlayer
+          storyText="播放状态同步测试"
+          gameId={77}
+          autoFetchRecommendation={false}
+        />
+      );
+
+      await waitFor(() => {
+        expect(createdAudioInstances.length).toBeGreaterThan(0);
+      });
+
+      const audio = createdAudioInstances.at(-1);
+      expect(audio).toBeDefined();
+
+      act(() => {
+        if (!audio) return;
+        audio.currentTime = 3;
+        audio.onplay?.();
+      });
+
+      expect(syncPlaylistStateSpy).toHaveBeenCalledWith(77, 3000, true, 0.5);
+
+      act(() => {
+        if (!audio) return;
+        audio.currentTime = 4;
+        audio.ontimeupdate?.();
+        jest.advanceTimersByTime(260);
+        audio.currentTime = 5;
+        audio.ontimeupdate?.();
+      });
+
+      expect(syncPlaylistStateSpy).toHaveBeenCalledWith(77, 5000, true, 0.5);
+
+      act(() => {
+        if (!audio) return;
+        audio.currentTime = 6;
+        audio.onpause?.();
+      });
+
+      expect(syncPlaylistStateSpy).toHaveBeenCalledWith(77, 6000, false, 0.5);
+    } finally {
+      act(() => {
+        useMusicStore.setState({
+          syncPlaylistState: originalSyncPlaylistState,
+        } as Partial<ReturnType<typeof useMusicStore.getState>>);
+      });
+      jest.useRealTimers();
+    }
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════
