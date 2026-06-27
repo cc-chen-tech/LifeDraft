@@ -689,14 +689,7 @@ export function MusicPlayer({
               )}
             </Button>
           </div>
-          {inlineControls && (
-            <div
-              data-testid="sound-inline-reading-controls"
-              className="flex min-w-0 flex-1 flex-wrap items-center gap-2 border-t border-border/70 pt-2 sm:border-l sm:border-t-0 sm:pl-2 sm:pt-0"
-            >
-              {inlineControls}
-            </div>
-          )}
+          {inlineControls}
         </div>
 
         {displaySong && (
