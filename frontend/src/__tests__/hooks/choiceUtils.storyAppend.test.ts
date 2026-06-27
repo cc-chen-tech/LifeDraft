@@ -76,6 +76,34 @@ describe("handleChoiceComplete — story text append on retry", () => {
     expect(handlers.setStoryText).not.toHaveBeenCalled();
   });
 
+  it("complete payload 带 event_description 时也不应覆盖 SSE 已显示的故事", () => {
+    useEventStore.setState({ storyText: "第一章：开局。\n\n你选择了继续前进。" });
+
+    const handlers = {
+      setProcessing: jest.fn(),
+      setConnectionStatus: jest.fn(),
+      setReconnectAttempt: jest.fn(),
+      setRoundSummary: jest.fn(),
+      setSummaryText: jest.fn(),
+      setCurrentEvent: jest.fn(),
+      setGameOver: jest.fn(),
+      setOptions: jest.fn(),
+      setStoryText: jest.fn(),
+      setPhase: jest.fn(),
+      generatingRef: { current: false },
+    };
+
+    handleChoiceComplete(
+      {
+        event_description: "你选择了继续前进。",
+      },
+      handlers
+    );
+
+    expect(handlers.setStoryText).not.toHaveBeenCalled();
+    expect(handlers.setPhase).toHaveBeenCalledWith("result");
+  });
+
   it("retry 但 continuation 为空时不应改变现有文本", () => {
     useEventStore.setState({ storyText: "第一章：开局。" });
     markRetry();

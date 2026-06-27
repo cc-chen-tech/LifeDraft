@@ -47,6 +47,19 @@ export function useChoiceHandler({
 }: UseChoiceHandlerParams) {
   const choiceBaseStoryRef = useRef("");
 
+  const applyCompleteOnlyStoryFallback = (data: Record<string, unknown>) => {
+    const completeStory =
+      typeof data.event_description === "string"
+        ? data.event_description.trim()
+        : typeof data.story_continuation === "string"
+          ? data.story_continuation.trim()
+          : "";
+    if (!completeStory) return;
+
+    const baseStory = choiceBaseStoryRef.current.trim();
+    setStoryText(baseStory ? `${baseStory}\n\n${completeStory}` : completeStory);
+  };
+
   // Shared handlers object
   const handlers: ChoiceHandlers = {
     setProcessing,
@@ -102,11 +115,13 @@ export function useChoiceHandler({
     let sseSucceeded = false;
     let choiceCompleted = false;
     let errorHandled = false;
+    let storyChunkReceived = false;
 
     const callbacks = {
       ...createSSECallbacks("handleChoice"),
       onStory: (text: string) => {
         sseSucceeded = true;
+        storyChunkReceived = true;
         appendStoryText(text);
       },
       onStatus: (status: { phase: string }) => {
@@ -129,6 +144,9 @@ export function useChoiceHandler({
       onComplete: (data: Record<string, unknown>) => {
         sseSucceeded = true;
         choiceCompleted = true;
+        if (!storyChunkReceived) {
+          applyCompleteOnlyStoryFallback(data);
+        }
         handleChoiceComplete(data, handlers);
       },
       onError: async (err: unknown) => {
@@ -185,11 +203,13 @@ export function useChoiceHandler({
     let sseSucceeded = false;
     let choiceCompleted = false;
     let errorHandled = false;
+    let storyChunkReceived = false;
 
     const callbacks = {
       ...createSSECallbacks("handleCustomChoice"),
       onStory: (text: string) => {
         sseSucceeded = true;
+        storyChunkReceived = true;
         appendStoryText(text);
       },
       onStatus: (status: { phase: string }) => {
@@ -212,6 +232,9 @@ export function useChoiceHandler({
       onComplete: (data: Record<string, unknown>) => {
         sseSucceeded = true;
         choiceCompleted = true;
+        if (!storyChunkReceived) {
+          applyCompleteOnlyStoryFallback(data);
+        }
         handleChoiceComplete(data, handlers);
       },
       onError: async (err: unknown) => {
