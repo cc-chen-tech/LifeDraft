@@ -153,4 +153,193 @@ test.describe('收集面板缓存优化', () => {
     await expect(historyDialog).toBeVisible({ timeout: 10000 });
     await expect(collectionDialog).not.toBeVisible();
   });
+
+});
+
+test.describe('真实游戏页收集自动识别', () => {
+  test('打开收集面板会自动补入当前故事识别出的人物', async ({ page }) => {
+    const gameId = 777001;
+    let collectionDetailsCalls = 0;
+    let recognizeCalled = false;
+    let addEntitiesCalled = false;
+    const gameState = {
+      game_id: gameId,
+      player_state: {
+        player_name: '自动收集测试角色',
+        age: 28,
+        week: 1,
+        current_round: 1,
+        energy: 70,
+        mood: 60,
+        knowledge: 50,
+        wealth: 10000,
+        character_settings: {
+          era: { name: '现代', period: '2020年代' },
+          age: { age: 28, stage: '青年' },
+          background: { occupation: '产品经理' },
+          personality: { traits: ['谨慎', '敏锐'] },
+        },
+      },
+      progress: { week: 1, current_round: 1, total_rounds: 3 },
+      round_info: { week: 1, current_round: 1, total_rounds: 3 },
+      current_event: {
+        event_description: '赵掌柜递来账册，要求主角立刻核对。',
+        options: [{ text: '追问账册来源' }],
+      },
+      constraint_level: 'expert',
+    };
+
+    const initialCollection = {
+      game_id: gameId,
+      characters: [
+        {
+          name: '自动收集测试角色',
+          role: '主角',
+          description: '当前游戏主角。',
+          affinity: 100,
+          age: null,
+          gender: null,
+          occupation: '产品经理',
+          personality_traits: [],
+          image_url: null,
+          image_generated: false,
+          description_generated: true,
+        },
+      ],
+      items: [],
+      landmarks: [],
+      total_characters: 1,
+      total_items: 0,
+      total_landmarks: 0,
+    };
+    const refreshedCollection = {
+      ...initialCollection,
+      characters: [
+        ...initialCollection.characters,
+        {
+          name: '赵掌柜',
+          role: '故事人物',
+          description: '刚刚在当前故事中出现并推动剧情的人物。',
+          affinity: 50,
+          age: null,
+          gender: null,
+          occupation: '账房',
+          personality_traits: [],
+          image_url: null,
+          image_generated: false,
+          description_generated: true,
+        },
+      ],
+      total_characters: 2,
+    };
+
+    await page.route('**/api/auth/me', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          user_id: 1,
+          public_id: 'AUTOE2E',
+          display_name: 'Auto Collection E2E',
+          private_id: 'AUTO-COLLECTION-E2E',
+        }),
+      });
+    });
+    await page.route('**/api/games/active', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(gameState) });
+    });
+    await page.route(`**/api/games/${gameId}`, async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(gameState) });
+    });
+    await page.route(`**/api/images/scenes/${gameId}`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ scenes: [] }),
+      });
+    });
+    await page.route(`**/api/images/scene/${gameId}/1**`, async (route) => {
+      await route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'No scene image in this fixture' }),
+      });
+    });
+    await page.route('**/api/voice-reading/settings', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          tts_provider: 'browser',
+          backend_audio_enabled: false,
+          available_voices: [],
+        }),
+      });
+    });
+    await page.route('**/api/music/recommend', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ songs: [] }),
+      });
+    });
+    await page.route(`**/api/collection/${gameId}/details`, async (route) => {
+      collectionDetailsCalls += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(collectionDetailsCalls === 1 ? initialCollection : refreshedCollection),
+      });
+    });
+    await page.route(`**/api/collection/${gameId}/recognize-entities`, async (route) => {
+      recognizeCalled = true;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          characters: [
+            {
+              name: '赵掌柜',
+              description: '刚刚在当前故事中出现并推动剧情的人物。',
+              role: '故事人物',
+              importance: 'normal',
+              appear_count: 1,
+              appear_contexts: ['赵掌柜递来账册，要求主角立刻核对。'],
+            },
+          ],
+          items: [],
+          landmarks: [],
+        }),
+      });
+    });
+    await page.route(`**/api/collection/${gameId}/add-entities`, async (route) => {
+      addEntitiesCalled = true;
+      const requestBody = route.request().postData() || '';
+      expect(requestBody).toContain('赵掌柜');
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          message: '成功添加 0 个物品, 1 个人物, 0 个地点',
+          added_items: [],
+          added_characters: ['赵掌柜'],
+          added_landmarks: [],
+        }),
+      });
+    });
+
+    await page.goto(`/play?gameId=${gameId}`);
+    await page.waitForLoadState('domcontentloaded');
+
+    await openCollectionPanel(page);
+
+    const collection = collectionDialog(page);
+    await expect(collection.getByRole('button', { name: /赵掌柜.*故事人物/ })).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(collection.getByText(/人物 \(2\)/)).toBeVisible();
+    expect(recognizeCalled).toBe(true);
+    expect(addEntitiesCalled).toBe(true);
+    expect(collectionDetailsCalls).toBeGreaterThanOrEqual(2);
+  });
 });
