@@ -17,7 +17,7 @@ from config.prompts._helpers import extract_overused_phrases
 from config.prompts.story_prompts import resolve_protagonist_name
 from src.ai.client import AIClient
 from src.ai.harness.quality_level import PROFILES, QualityLevel
-from src.ai.models import EventOption, GameEvent
+from src.ai.models import GameEvent
 from src.ai.option_generator import OptionGenerator
 from src.ai.system_prompts import get_system_prompt
 from src.ai.text_quality import normalize_generated_story
@@ -43,6 +43,45 @@ class StoryGenerator:
         self._style_manifest = None
         self._prompt_builder = None
         self._style_validator = None
+
+    @staticmethod
+    def _normalize_punctuation(text: Optional[str], language: str = "zh") -> Optional[str]:
+        """Backward-compatible punctuation normalization helper used by contract tests."""
+        if text is None or language != "zh":
+            return text
+        if not text:
+            return text
+
+        converted_quotes = []
+        quote_open = True
+        for char in text:
+            if char == '"':
+                converted_quotes.append("“" if quote_open else "”")
+                quote_open = not quote_open
+            else:
+                converted_quotes.append(char)
+
+        normalized = normalize_generated_story("".join(converted_quotes), language=language)
+
+        # Convert remaining ASCII punctuation artifacts used by legacy contract expectations.
+        # Keep this implementation in this class so existing callers are unaffected elsewhere.
+        normalized = normalized.replace("(", "（").replace(")", "）")
+
+        converted_chars = []
+        quote_open = True
+        for char in normalized:
+            if char == '"':
+                converted_chars.append("“" if quote_open else "”")
+                quote_open = not quote_open
+            else:
+                converted_chars.append(char)
+        normalized = "".join(converted_chars)
+
+        # Preserve existing conversion semantics for commas, periods, question marks and spaces.
+        normalized = normalized.replace(".", "。").replace("?", "？").replace("!", "！").replace(",", "，")
+        normalized = normalized.replace("；", "；").replace(":", "：").replace(";", "；")
+
+        return normalized
 
     # -------------------- Public API --------------------
 
