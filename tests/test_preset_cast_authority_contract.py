@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from config.prompts.story_prompts import (
+    get_event_generation_prompt,
     get_result_generation_prompt,
     get_round_event_prompt,
     get_story_only_prompt,
@@ -171,6 +172,29 @@ def test_round_event_prompt_injects_required_cast_authority() -> None:
         round_number=0,
         round_context="上一轮你决定向导师请教需求优先级。",
         character_settings=_modern_product_manager_settings(),
+    )
+
+    assert "预设关键人物" in prompt
+    assert "陆昊然" in prompt
+    assert "导师" in prompt
+    assert "陈晓雨" in prompt
+    assert "闺蜜" in prompt
+    assert "林一凡" in prompt
+    assert "同期" in prompt
+    assert "不得改名" in prompt
+    assert "不得替换" in prompt
+    assert "至少使用1位预设关键人物" in prompt
+    assert "陆昊然、陈晓雨、林一凡至少一位" in prompt
+
+
+def test_weekly_event_prompt_injects_required_cast_authority() -> None:
+    """The legacy weekly event path must not be weaker than round events."""
+    prompt = get_event_generation_prompt(
+        player_state=_player_state(),
+        language="zh",
+        current_phase="early_career",
+        character_settings=_modern_product_manager_settings(),
+        last_event_description="陈晓雨陪你复盘了昨天的需求评审。",
     )
 
     assert "预设关键人物" in prompt
