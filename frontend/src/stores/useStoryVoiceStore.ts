@@ -90,6 +90,7 @@ let activeUtterance: SpeechSynthesisUtterance | null = null;
 let activeReadingAttempt = 0;
 const inFlightReadingRequests = new Set<string>();
 let activeLoadingRequestKey: string | null = null;
+let runtimeSettingsRequest: Promise<void> | null = null;
 
 function getSpeechSynthesis(): SpeechSynthesis | null {
   if (typeof window === "undefined") return null;
@@ -235,6 +236,38 @@ function hashTextForRequest(text: string): string {
     hash >>>= 0;
   }
   return hash.toString(16);
+}
+
+async function ensureRuntimeSettingsLoaded(
+  get: () => StoryVoiceState,
+  set: (
+    partial:
+      | Partial<StoryVoiceState>
+      | ((state: StoryVoiceState) => Partial<StoryVoiceState>)
+  ) => void
+): Promise<void> {
+  if (get().ttsProvider) return;
+
+  runtimeSettingsRequest ??= api.voice_reading
+    .getSettings()
+    .then((settings) => {
+      set((state) => ({
+        ttsProvider: settings.tts_provider ?? state.ttsProvider,
+        backendAudioEnabled:
+          settings.backend_audio_enabled ?? state.backendAudioEnabled,
+      }));
+    })
+    .catch((error) => {
+      console.warn(
+        "[StoryVoiceStore] Voice runtime settings unavailable before reading:",
+        error
+      );
+    })
+    .finally(() => {
+      runtimeSettingsRequest = null;
+    });
+
+  await runtimeSettingsRequest;
 }
 
 export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
@@ -410,6 +443,13 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
 
       speakNextChunk();
     };
+
+    if (!preferredProvider && !get().ttsProvider) {
+      await ensureRuntimeSettingsLoaded(get, set);
+      if (attemptId !== activeReadingAttempt) {
+        return;
+      }
+    }
 
     try {
       const { ttsProvider, backendAudioEnabled } = get();

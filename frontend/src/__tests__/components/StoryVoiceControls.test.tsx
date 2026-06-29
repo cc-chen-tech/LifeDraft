@@ -401,7 +401,14 @@ describe('StoryVoiceControls', () => {
     )).toBe(false);
   });
 
-  it('starts manual reading immediately even when production voice settings are still loading', async () => {
+  it('resolves first-read runtime settings before manual browser fallback starts', async () => {
+    const { speech } = installSpeechSynthesisMock([
+      {
+        name: 'Chinese Xiaoxiao Female Natural',
+        voiceURI: 'xiaoxiao',
+        lang: 'zh-CN',
+      },
+    ]);
     let resolveSettings: (value: Response) => void = () => undefined;
     const settingsPromise = new Promise<Response>((resolve) => {
       resolveSettings = resolve;
@@ -411,14 +418,7 @@ describe('StoryVoiceControls', () => {
         return settingsPromise;
       }
       if (url.includes('/voice-reading/read')) {
-        return Promise.resolve(jsonResponse({
-          job_id: 11,
-          status: 'ready',
-          audio_url: '/api/voice-reading/audio/immediate-click.mp3',
-          playback_mode: 'audio',
-          provider: 'minimax',
-          media_type: 'audio/mpeg',
-        }));
+        throw new Error('browser fallback should not request backend audio');
       }
       return Promise.resolve(jsonResponse({}));
     });
@@ -430,9 +430,7 @@ describe('StoryVoiceControls', () => {
     fireEvent.click(readButton);
 
     await waitFor(() => {
-      expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
-        String(url).includes('/voice-reading/read')
-      )).toBe(true);
+      expect(useStoryVoiceStore.getState().readingState).toBe('loading');
     });
 
     resolveSettings(jsonResponse({
@@ -443,11 +441,26 @@ describe('StoryVoiceControls', () => {
     }));
 
     await waitFor(() => {
-      expect(useStoryVoiceStore.getState().currentAudioUrl).toBe('/api/voice-reading/audio/immediate-click.mp3');
+      expect(speech.speak).toHaveBeenCalledTimes(1);
+    });
+    expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
+      String(url).includes('/voice-reading/read')
+    )).toBe(false);
+    expect(useStoryVoiceStore.getState()).toMatchObject({
+      readingState: 'playing',
+      currentProvider: 'browser',
+      playbackMode: 'browser_speech',
     });
   });
 
-  it('auto-reads a completed story using the current local toggle before voice settings finish loading', async () => {
+  it('auto-reads a completed story after resolving first-read browser fallback settings', async () => {
+    const { speech } = installSpeechSynthesisMock([
+      {
+        name: 'Chinese Xiaoxiao Female Natural',
+        voiceURI: 'xiaoxiao',
+        lang: 'zh-CN',
+      },
+    ]);
     let resolveSettings: (value: Response) => void = () => undefined;
     const settingsPromise = new Promise<Response>((resolve) => {
       resolveSettings = resolve;
@@ -457,14 +470,7 @@ describe('StoryVoiceControls', () => {
         return settingsPromise;
       }
       if (url.includes('/voice-reading/read')) {
-        return Promise.resolve(jsonResponse({
-          job_id: 12,
-          status: 'ready',
-          audio_url: '/api/voice-reading/audio/immediate-auto.mp3',
-          playback_mode: 'audio',
-          provider: 'minimax',
-          media_type: 'audio/mpeg',
-        }));
+        throw new Error('browser fallback should not request backend audio');
       }
       return Promise.resolve(jsonResponse({}));
     });
@@ -483,9 +489,7 @@ describe('StoryVoiceControls', () => {
     );
 
     await waitFor(() => {
-      expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
-        String(url).includes('/voice-reading/read')
-      )).toBe(true);
+      expect(useStoryVoiceStore.getState().readingState).toBe('loading');
     });
 
     resolveSettings(jsonResponse({
@@ -496,7 +500,16 @@ describe('StoryVoiceControls', () => {
     }));
 
     await waitFor(() => {
-      expect(useStoryVoiceStore.getState().currentAudioUrl).toBe('/api/voice-reading/audio/immediate-auto.mp3');
+      expect(speech.speak).toHaveBeenCalledTimes(1);
+    });
+    expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
+      String(url).includes('/voice-reading/read')
+    )).toBe(false);
+    expect(useStoryVoiceStore.getState()).toMatchObject({
+      readingState: 'playing',
+      currentProvider: 'browser',
+      playbackMode: 'browser_speech',
+      currentSpeechText: '选择后的故事已经完整生成。',
     });
   });
 
