@@ -735,6 +735,45 @@ describe('MusicPlayer', () => {
     expect(screen.queryByText('音乐服务暂不可用，故事可继续进行')).not.toBeInTheDocument();
   });
 
+  it('在音频控制台显示 AI 本地库复用和匹配分', () => {
+    useMusicStore.setState({
+      recommendation: {
+        mood: '悬疑',
+        scene_type: '都市调查悬疑',
+        keywords: ['都市调查 悬疑配乐'],
+        songs: [],
+      },
+      currentSong: {
+        id: 'ai-generated-88',
+        name: 'AI MiniMax 都市调查悬疑',
+        artists: ['MiniMax'],
+        album: 'AI Generated',
+        duration: 180000,
+        url: '/api/music/generated/reused.mp3',
+        source: 'ai_generated',
+        library_reused: true,
+        match_score: 88,
+      },
+      isLoadingRecommendation: false,
+      recommendationError: null,
+      isGeneratingAiMusic: false,
+      aiMusicGenerationStatus: 'idle',
+    });
+
+    render(
+      <MusicPlayer
+        storyText="调查记者发现科技公司数据隐私旧案。"
+        gameId={77}
+        autoFetchRecommendation={false}
+        consoleControls
+      />
+    );
+
+    expect(screen.getByTestId('sound-music-console-status')).toHaveTextContent(
+      'MiniMax · AI Generated · AI 本地库 · 匹配 88'
+    );
+  });
+
   it('高频 timeupdate 只同步有限次数到全局 currentTime，但即时展示依然响应', async () => {
     jest.useFakeTimers();
     const now = new Date('2024-01-01T00:00:00.000Z');
@@ -809,6 +848,93 @@ describe('MusicPlayer', () => {
       act(() => {
         useMusicStore.setState({
           setCurrentTime: originalSetCurrentTime,
+        } as Partial<ReturnType<typeof useMusicStore.getState>>);
+      });
+      jest.useRealTimers();
+    }
+  });
+
+  it('同步播放、暂停和节流后的播放进度到持久化播放列表', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+    const originalSyncPlaylistState = useMusicStore.getState().syncPlaylistState;
+    const syncPlaylistStateSpy = jest.fn().mockResolvedValue(undefined);
+
+    try {
+      useMusicStore.setState({
+        syncPlaylistState: syncPlaylistStateSpy,
+        recommendation: {
+          mood: '宁静',
+          scene_type: '独处',
+          keywords: ['古风', '钢琴'],
+          songs: [
+            {
+              id: 1,
+              name: '测试歌曲',
+              artists: ['测试艺术家'],
+              album: '测试专辑',
+              duration: 180000,
+              url: 'https://example.com/test.mp3',
+            },
+          ],
+        },
+        isLoadingRecommendation: false,
+        recommendationError: null,
+        currentSong: null,
+        isPlaying: false,
+        volume: 0.5,
+        currentTime: 0,
+        duration: 180,
+        audioElement: null,
+        isGeneratingAiMusic: false,
+        aiMusicGenerationStatus: 'idle',
+      });
+
+      render(
+        <MusicPlayer
+          storyText="播放状态同步测试"
+          gameId={77}
+          autoFetchRecommendation={false}
+        />
+      );
+
+      await waitFor(() => {
+        expect(createdAudioInstances.length).toBeGreaterThan(0);
+      });
+
+      const audio = createdAudioInstances.at(-1);
+      expect(audio).toBeDefined();
+
+      act(() => {
+        if (!audio) return;
+        audio.currentTime = 3;
+        audio.onplay?.();
+      });
+
+      expect(syncPlaylistStateSpy).toHaveBeenCalledWith(77, 3000, true, 0.5);
+
+      act(() => {
+        if (!audio) return;
+        audio.currentTime = 4;
+        audio.ontimeupdate?.();
+        jest.advanceTimersByTime(260);
+        audio.currentTime = 5;
+        audio.ontimeupdate?.();
+      });
+
+      expect(syncPlaylistStateSpy).toHaveBeenCalledWith(77, 5000, true, 0.5);
+
+      act(() => {
+        if (!audio) return;
+        audio.currentTime = 6;
+        audio.onpause?.();
+      });
+
+      expect(syncPlaylistStateSpy).toHaveBeenCalledWith(77, 6000, false, 0.5);
+    } finally {
+      act(() => {
+        useMusicStore.setState({
+          syncPlaylistState: originalSyncPlaylistState,
         } as Partial<ReturnType<typeof useMusicStore.getState>>);
       });
       jest.useRealTimers();

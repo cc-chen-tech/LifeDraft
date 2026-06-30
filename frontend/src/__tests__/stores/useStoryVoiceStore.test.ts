@@ -1,5 +1,6 @@
 import { act } from '@testing-library/react';
 import { webcrypto } from 'node:crypto';
+import { useMusicStore } from '@/stores/useMusicStore';
 import { useStoryVoiceStore } from '@/stores/useStoryVoiceStore';
 import { jsonResponse } from '@/__tests__/helpers/fetch';
 
@@ -86,6 +87,8 @@ describe('useStoryVoiceStore', () => {
       musicWasPlaying: false,
       userChangedMusic: false,
     }));
+
+    useMusicStore.getState().reset();
     window.localStorage.removeItem('story_voice_e2e_provider');
     delete (global as typeof globalThis & { fetch?: unknown }).fetch;
     restoreSpeechMocks = prepareSpeechMocks();
@@ -93,6 +96,8 @@ describe('useStoryVoiceStore', () => {
 
   afterEach(() => {
     restoreSpeechMocks?.();
+    jest.useRealTimers();
+    useMusicStore.getState().reset();
   });
 
   it('dedupes repeated startReading calls for the same context while request is in flight', async () => {
@@ -205,5 +210,62 @@ describe('useStoryVoiceStore', () => {
       playbackMode: 'browser_speech',
       currentSpeechText: baseContext.text,
     });
+  });
+
+  it('ducks active music while voice reading is active and restores it when stopped', async () => {
+    jest.useFakeTimers();
+    const audio = {
+      currentTime: 0,
+      volume: 0.5,
+      play: jest.fn().mockResolvedValue(undefined),
+      pause: jest.fn(),
+      src: '',
+    } as unknown as HTMLAudioElement;
+
+    useMusicStore.setState({
+      audioElement: audio,
+      isPlaying: true,
+      volume: 0.5,
+    });
+
+    const fetchMock = jest.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('/voice-reading/read')) {
+        return Promise.resolve(
+          jsonResponse({
+            job_id: 9,
+            status: 'ready',
+            audio_url: '/api/voice-reading/audio/test.mp3',
+            playback_mode: 'audio',
+            provider: 'minimax',
+            media_type: 'audio/mpeg',
+          })
+        ) as Response;
+      }
+      return Promise.resolve(jsonResponse({}));
+    }) as jest.Mock;
+
+    global.fetch = fetchMock;
+
+    await act(async () => {
+      await useStoryVoiceStore.getState().startReading(baseContext);
+    });
+
+    expect(useStoryVoiceStore.getState().musicDuckState).toBe('ducked');
+
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
+
+    expect(audio.volume).toBeCloseTo(0.2);
+    expect(useMusicStore.getState().volume).toBeCloseTo(0.2);
+
+    act(() => {
+      useStoryVoiceStore.getState().stopReading();
+      jest.advanceTimersByTime(300);
+    });
+
+    expect(useStoryVoiceStore.getState().musicDuckState).toBe('restored');
+    expect(audio.volume).toBeCloseTo(0.5);
+    expect(useMusicStore.getState().volume).toBeCloseTo(0.5);
   });
 });

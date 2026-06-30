@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { api } from "@/lib/api";
 import { storyVoiceTextToHash } from "@/lib/storyVoiceTextHash";
+import { useMusicStore } from "@/stores/useMusicStore";
 import type { ReadingContext } from "@/lib/types";
 
 export type VoiceReadingState = "idle" | "loading" | "ready" | "playing" | "paused" | "failed";
@@ -218,6 +219,17 @@ function restoredMusicDuckState(
   return musicDuckState === "ducked" && !userChangedMusic ? "restored" : musicDuckState;
 }
 
+function duckMusicForReading(): boolean {
+  return useMusicStore.getState().duckForVoiceReading();
+}
+
+function restoreMusicAfterReading(userChangedMusic: boolean): void {
+  if (userChangedMusic) {
+    return;
+  }
+  useMusicStore.getState().restoreAfterVoiceReading();
+}
+
 function buildReadingRequestKey(
   context: ReadingContext,
   voiceId: string,
@@ -329,7 +341,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
     activeReadingAttempt = attemptId;
     inFlightReadingRequests.add(requestKey);
     activeLoadingRequestKey = requestKey;
-    const { musicWasPlaying } = get();
+    const musicWasPlaying = duckMusicForReading() || get().musicWasPlaying;
     const browserSpeech = getSpeechSynthesis();
     browserSpeech?.getVoices?.();
     browserSpeech?.cancel();
@@ -356,6 +368,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       const speech = getSpeechSynthesis();
       if (!speech) {
         const { musicDuckState, userChangedMusic } = get();
+        restoreMusicAfterReading(userChangedMusic);
         if (attemptId !== activeReadingAttempt) {
           return;
         }
@@ -401,6 +414,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       const failBrowserSpeech = () => {
         if (attemptId !== activeReadingAttempt) return;
         const { musicDuckState, userChangedMusic } = get();
+        restoreMusicAfterReading(userChangedMusic);
         activeUtterance = null;
         set({
           readingState: "failed",
@@ -474,6 +488,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       const shouldPlayAudio = response.playback_mode === "audio" && Boolean(response.audio_url);
       if (response.status === "failed") {
         const { musicDuckState, userChangedMusic } = get();
+        restoreMusicAfterReading(userChangedMusic);
         set({
           readingState: "failed",
           currentJobId: response.job_id,
@@ -515,6 +530,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
         return;
       }
       const { musicDuckState, userChangedMusic } = get();
+      restoreMusicAfterReading(userChangedMusic);
       activeLoadingRequestKey = null;
       set({
         readingState: "failed",
@@ -535,6 +551,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
   },
   stopReading: () => {
     const { musicDuckState, userChangedMusic } = get();
+    restoreMusicAfterReading(userChangedMusic);
     activeReadingAttempt += 1;
     activeLoadingRequestKey = null;
     getSpeechSynthesis()?.cancel();
@@ -555,6 +572,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
     if (readingState === "failed") {
       return;
     }
+    restoreMusicAfterReading(userChangedMusic);
     activeReadingAttempt += 1;
     activeLoadingRequestKey = null;
     if (activeUtterance) {
@@ -611,6 +629,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
         : typeof error === "string"
           ? error
           : "Story voice playback failed";
+    restoreMusicAfterReading(userChangedMusic);
     set({
       readingState: "failed",
       currentAudioUrl: "",

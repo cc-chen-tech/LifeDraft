@@ -29,6 +29,16 @@ SCENE_FIXTURES: Dict[str, SceneFixture] = {
         expected_instrument="电子合成器",
         expected_negative="流行人声",
     ),
+    "investigative_suspense": SceneFixture(
+        story=(
+            "林见微推开档案室的门，冷白灯光落在旧案卷上。她发现科技公司数据隐私案件"
+            "缺失了三页证据，窗外的无人机巡逻声越来越近，线人提醒她马上离开。"
+        ),
+        expected_scene_type="都市调查悬疑",
+        expected_action="investigative_suspense",
+        expected_instrument="冷色合成器",
+        expected_negative="治愈轻音乐",
+    ),
     "suspense_chase": SceneFixture(
         story="雨夜码头的旧账册被风吹开，主角在汽笛声里躲避追捕，沿着仓库一路冲向江边。",
         expected_scene_type="悬疑追逐",

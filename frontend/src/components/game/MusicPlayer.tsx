@@ -23,6 +23,7 @@ import {
   useMusicStore,
   fetchMusicRecommendation,
   fetchSongUrl,
+  getMusicProvenanceLabel,
   getMusicSourceLabel,
   Song,
 } from "@/stores/useMusicStore";
@@ -78,6 +79,7 @@ export function MusicPlayer({
   const mergePlaylist = useMusicStore((state) => state.mergePlaylist);
   const advanceQueue = useMusicStore((state) => state.advanceQueue);
   const generateAiMusicForStory = useMusicStore((state) => state.generateAiMusicForStory);
+  const syncPlaylistState = useMusicStore((state) => state.syncPlaylistState);
   const play = useMusicStore((state) => state.play);
   const pause = useMusicStore((state) => state.pause);
   const cleanup = useMusicStore((state) => state.cleanup);
@@ -99,6 +101,13 @@ export function MusicPlayer({
   const recommendationHasMusicBrief = recommendation ? hasMusicBrief(recommendation.music_brief) : false;
   const isAiMusicDelayed = recommendationHasMusicBrief && aiMusicGenerationStatus === "delayed";
   const isAiMusicFailed = recommendationHasMusicBrief && aiMusicGenerationStatus === "failed";
+
+  const syncAudioPlaybackState = useCallback((audio: HTMLAudioElement, playing: boolean) => {
+    if (!gameId) return;
+    const positionMs = Math.max(0, Math.round((audio.currentTime || 0) * 1000));
+    const latestVolume = useMusicStore.getState().volume;
+    void syncPlaylistState(gameId, positionMs, playing, latestVolume);
+  }, [gameId, syncPlaylistState]);
 
   const getFallbackNextSong = useCallback((song: Song) => {
     const songs = useMusicStore.getState().recommendation?.songs || recommendation?.songs || [];
@@ -279,8 +288,14 @@ export function MusicPlayer({
       audio.volume = volume;
 
       // 绑定事件
-      audio.onplay = () => setIsPlaying(true);
-      audio.onpause = () => setIsPlaying(false);
+      audio.onplay = () => {
+        setIsPlaying(true);
+        syncAudioPlaybackState(audio, true);
+      };
+      audio.onpause = () => {
+        setIsPlaying(false);
+        syncAudioPlaybackState(audio, false);
+      };
       audio.ontimeupdate = () => {
         const nextTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
         setDisplayCurrentTime(nextTime);
@@ -288,6 +303,7 @@ export function MusicPlayer({
         if (now - lastCurrentTimeStoreSyncRef.current >= 250) {
           lastCurrentTimeStoreSyncRef.current = now;
           setCurrentTime(nextTime);
+          syncAudioPlaybackState(audio, useMusicStore.getState().isPlaying);
         }
       };
       audio.onloadedmetadata = () => setDuration(audio.duration || 0);
@@ -295,6 +311,7 @@ export function MusicPlayer({
         setIsPlaying(false);
         setDisplayCurrentTime(0);
         setCurrentTime(0);
+        syncAudioPlaybackState(audio, false);
         activeAudioRef.current = null; // 清理活动音频引用
         void (async () => {
           await advanceQueue();
@@ -389,7 +406,7 @@ export function MusicPlayer({
         setIsSwitchingSong(false); // 隐藏切换加载状态
       }
     }
-  }, [audioElement, volume, recommendation, setAudioElement, setCurrentSong, setIsPlaying, setCurrentTime, setDuration, advanceQueue, getFallbackNextSong]);
+  }, [audioElement, volume, recommendation, setAudioElement, setCurrentSong, setIsPlaying, setCurrentTime, setDuration, advanceQueue, getFallbackNextSong, syncAudioPlaybackState]);
 
   // 预加载下一首歌曲
   const preloadNextSong = useCallback(async () => {
@@ -536,17 +553,23 @@ export function MusicPlayer({
       audioElement.currentTime = time;
       setDisplayCurrentTime(time);
       setCurrentTime(time);
+      syncAudioPlaybackState(audioElement, isPlaying);
     }
   };
 
   const handleVolumeChange = (value: number[]) => {
     const vol = value[0];
     setVolume(vol);
+    if (audioElement && gameId) {
+      const positionMs = Math.max(0, Math.round((audioElement.currentTime || 0) * 1000));
+      void syncPlaylistState(gameId, positionMs, isPlaying, vol);
+    }
     // 注意：store 中的 setVolume 会自动同步 audioElement.volume
   };
 
   const displaySong = currentSong || recommendation?.songs[0] || null;
   const sourceLabel = getMusicSourceLabel(displaySong?.source);
+  const provenanceLabel = getMusicProvenanceLabel(displaySong);
   const hasRecommendationSongs = Boolean(recommendation?.songs.length);
   const hasPlayableMusic = Boolean(displaySong || hasRecommendationSongs || audioElement);
   const showBlockingRecommendationError = Boolean(recommendationError && !hasPlayableMusic);
@@ -605,7 +628,7 @@ export function MusicPlayer({
   if (consoleControls) {
     const artists = displaySong?.artists?.join(" / ") || "";
     const subtitle = displaySong
-      ? [artists, displaySong.album].filter(Boolean).join(" · ") || sourceLabel || "当前音乐"
+      ? [artists, displaySong.album, provenanceLabel].filter(Boolean).join(" · ") || sourceLabel || "当前音乐"
       : isLoadingRecommendation
         ? "正在匹配故事氛围"
         : recommendationError
@@ -646,7 +669,6 @@ export function MusicPlayer({
               className="truncate text-xs text-muted-foreground"
             >
               {subtitle}
-              {sourceLabel ? ` · ${sourceLabel}` : ""}
             </div>
           </div>
 
