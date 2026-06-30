@@ -329,7 +329,7 @@ describe("GlobalMusicPlayer", () => {
       expect(readingConsole).not.toHaveClass("border");
     });
 
-    it("shows music and narration as peer sound channels before the panel is expanded", () => {
+    it("keeps the collapsed sound bar to one entry and one combined status", () => {
       setStoreState({
         activeStoryText: "story text",
         isPlaying: true,
@@ -357,11 +357,15 @@ describe("GlobalMusicPlayer", () => {
       render(<GlobalMusicPlayer />);
 
       const miniBar = within(screen.getByTestId("global-music-mini-bar"));
-      const summary = miniBar.getByTestId("collapsed-sound-summary");
-      expect(within(summary).getByText("背景音乐")).toBeInTheDocument();
-      expect(within(summary).getByText("故事朗读")).toBeInTheDocument();
-      expect(within(summary).getByText("播放中")).toBeInTheDocument();
-      expect(within(summary).getByText("朗读中")).toBeInTheDocument();
+      expect(miniBar.getByText("声音")).toBeInTheDocument();
+      expect(miniBar.getByTestId("collapsed-sound-status")).toHaveTextContent(
+        "音乐播放中 · 朗读中",
+      );
+      expect(miniBar.queryByTestId("collapsed-sound-summary")).not.toBeInTheDocument();
+      expect(miniBar.queryByText("背景音乐")).not.toBeInTheDocument();
+      expect(miniBar.queryByText("故事朗读")).not.toBeInTheDocument();
+      expect(miniBar.getByRole("button", { name: "暂停音乐" })).toBeInTheDocument();
+      expect(miniBar.getByRole("button", { name: "展开声音" })).toBeInTheDocument();
       expect(miniBar.queryByRole("button", { name: "朗读故事" })).not.toBeInTheDocument();
     });
 
@@ -501,7 +505,7 @@ describe("GlobalMusicPlayer", () => {
       expect(screen.getAllByText("My Song")[0]).toBeInTheDocument();
       expect(
         within(screen.getByTestId("global-music-mini-bar")).getByText(
-          "Artist A, Artist B",
+          "My Song · Artist A, Artist B",
         ),
       ).toBeInTheDocument();
     });
@@ -518,7 +522,7 @@ describe("GlobalMusicPlayer", () => {
       render(<GlobalMusicPlayer />);
       const miniBar = within(screen.getByTestId("global-music-mini-bar"));
       expect(miniBar.getByText("声音")).toBeInTheDocument();
-      expect(miniBar.getByText("音乐与朗读")).toBeInTheDocument();
+      expect(miniBar.getByText("音乐和朗读")).toBeInTheDocument();
       expect(screen.queryByText("等待音乐...")).not.toBeInTheDocument();
     });
 

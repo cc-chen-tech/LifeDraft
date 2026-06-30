@@ -69,7 +69,9 @@ describe("GlobalMusicPlayer keyboard dismissal", () => {
     render(<GlobalMusicPlayer />);
 
     await user.click(
-      within(screen.getByTestId("global-music-mini-bar")).getByText("雨夜码头"),
+      within(screen.getByTestId("global-music-mini-bar")).getByText(
+        "雨夜码头 · 测试歌手",
+      ),
     );
     expect(screen.queryByRole("button", { name: "下一首" })).not.toBeInTheDocument();
 
