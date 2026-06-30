@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import re
-def normalize_chinese_punctuation(text: str) -> str:
+from typing import Optional
+
+
+def normalize_chinese_punctuation(text: Optional[str]) -> Optional[str]:
     """Normalize obvious English punctuation artifacts in Chinese prose."""
+    if text is None:
+        return None
     if not text:
         return text
 
@@ -41,9 +46,6 @@ def normalize_chinese_punctuation(text: str) -> str:
 
     # 清理标点后多余空格
     normalized = re.sub(r"([：，。！？；])\s+([^\n])", r"\1\2", normalized)
-
-    normalized = re.sub(r"([\u4e00-\u9fff])[:：]", r"\1：", normalized)
-    normalized = re.sub(r"([，。！？；：])\s+([\u4e00-\u9fff“])", r"\1\2", normalized)
     return normalized
 
 
@@ -122,7 +124,7 @@ def normalize_generated_story(
     """Normalize generated prose before it is shown or persisted."""
     normalized = text.strip()
     if language == "zh":
-        normalized = normalize_chinese_punctuation(normalized)
+        normalized = normalize_chinese_punctuation(normalized) or normalized
     normalized = _remove_internal_state_leaks(normalized)
 
     issues = validate_narrative_quality(normalized, language=language, perspective=perspective)

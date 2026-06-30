@@ -115,6 +115,35 @@ export function handleChoiceComplete(
     console.log("[handleChoiceComplete] Retry detected, keeping replacement stream text");
   }
 
+  const _effectsApplied = result.effects_applied;
+  const _bonusEffects = (result as Record<string, unknown>).bonus_effects;
+  if (
+    _effectsApplied &&
+    typeof _effectsApplied === "object" &&
+    !Array.isArray(_effectsApplied)
+  ) {
+    const entries = Object.entries(_effectsApplied as Record<string, unknown>);
+    if (entries.length) {
+      const effectSummary = entries
+        .map(([key, value]) => {
+          if (typeof value !== "number") {
+            return `${key}:n/a`;
+          }
+          return `${key}:${value >= 0 ? "+" : ""}${value}`;
+        })
+        .join(", ");
+      console.log("[handleChoiceComplete] effects_applied:", effectSummary);
+    }
+  }
+
+  if (
+    _bonusEffects &&
+    typeof _bonusEffects === "object" &&
+    !Array.isArray(_bonusEffects)
+  ) {
+    console.log("[handleChoiceComplete] bonus_effects:", _bonusEffects);
+  }
+
   const resourceWarningText = formatResourceWarnings(result);
   if (result.summary && typeof result.summary === "string") {
     setRoundSummary(`${result.summary}${resourceWarningText}`);

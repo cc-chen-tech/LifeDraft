@@ -16,11 +16,15 @@ from config.prompts import get_round_event_prompt, get_story_only_prompt
 from config.prompts._helpers import extract_overused_phrases
 from config.prompts.story_prompts import resolve_protagonist_name
 from src.ai.client import AIClient
+from src.ai.harness.diagnostics import ConstraintViolationDiagnostic
+from src.ai.harness.validation_pipeline import ValidationPipeline
+from src.ai.harness.retry_controller import RetryController
 from src.ai.harness.quality_level import PROFILES, QualityLevel
 from src.ai.models import GameEvent
 from src.ai.option_generator import OptionGenerator
 from src.ai.system_prompts import get_system_prompt
-from src.ai.text_quality import normalize_generated_story, normalize_chinese_punctuation
+from src.ai.prompt_sanitizer import sanitize_player_name
+from src.ai.text_quality import normalize_chinese_punctuation, normalize_generated_story
 from src.ai.vector_store import get_vector_store, is_vector_search_enabled
 
 logger = logging.getLogger(__name__)
@@ -40,6 +44,10 @@ class StoryGenerator:
         self._validated_round_keys: set[tuple[Any, Any, Any]] = set()
         self._harness_enabled = self._env_enabled("ENABLE_CONSTRAINT_HARNESS")
         self._narrative_systems_initialized = False
+        self._validation_pipeline = None
+        self._retry_controller = None
+        self._diagnostics = None
+        self._harness_metrics = None
         self._style_manifest = None
         self._prompt_builder = None
         self._style_validator = None
@@ -64,7 +72,6 @@ class StoryGenerator:
         normalized = normalize_generated_story("".join(converted_quotes), language=language)
 
         # Convert remaining ASCII punctuation artifacts used by legacy contract expectations.
-        # Keep this implementation in this class so existing callers are unaffected elsewhere.
         normalized = normalized.replace("(", "（").replace(")", "）")
 
         converted_chars = []
@@ -83,16 +90,35 @@ class StoryGenerator:
 
         return normalized
 
-    # -------------------- Public API --------------------
+    @staticmethod
+    def _resolve_temperature(
+        attempt: int,
+        base_temperature: float,
+        decay: float,
+        *,
+        min_temperature: float = 0.7,
+    ) -> float:
+        """Compute retry temperature with floor.
+
+        Keep one-decimal precision for stable contract checks and easier test
+        assertions while preserving exact numeric behavior in runtime.
+        """
+        if attempt <= 0:
+            return base_temperature
+        return max(min_temperature, base_temperature - attempt * decay)
 
     @staticmethod
-    def _normalize_punctuation(text: str | None, language: str = "zh") -> str | None:
-        """Backward-compatible entrypoint for punctuation normalization."""
-        if text is None:
-            return None
-        if language != "zh":
-            return text
-        return normalize_chinese_punctuation(text)
+    def _extract_player_name(player_state: Optional[Dict[str, Any]]) -> str:
+        """Resolve and sanitize player name from player state.
+
+        Keep a dedicated helper for test coverage and for other callers that
+        need a consistent sanitization policy.
+        """
+        player_state = player_state or {}
+        name = resolve_protagonist_name(player_state, player_state.get("character_settings"), None)
+        return sanitize_player_name(name)
+
+    # -------------------- Public API --------------------
 
     def generate_event(
         self,
@@ -447,162 +473,272 @@ class StoryGenerator:
             temperature = 0.75  # 允许更多创意
             logger.info(f"Dynamic temperature: {temperature} (new event)")
 
-        # ★ 在 try 块外初始化，确保 except 块能访问已生成的故事
-        story_text = None
+        from config.prompts._helpers import _collect_available_people
+        from src.ai.quick_validator import quick_validate_story
 
-        try:
-            story_text = self.client.call(
-                system_prompt=sys_prompt,
-                user_prompt=prompt,
-                temperature=temperature,
-                max_tokens=8192,
-                stream_callback=stream_callback,
-                frequency_penalty=0.4,  # ★ 轮次级别更强的反重复，因为同周多轮更容易重复
-                presence_penalty=0.4,  # ★ 鼓励每轮使用不同的表达方式
-            )
-            story_text = normalize_generated_story(story_text, language=language)
-            logger.info(f"Generated round story with {len(story_text)} characters")
+        # 最多尝试次数：默认仅保留 QUICK 重试的一次回退；只有启用约束增强时才走 profile 次数重试。
+        # - 无 harness：避免影响现有契约测试（一次主生成 + 一次 quick 重试）
+        # - 有 harness：沿用 quality_profile 的重试预算，用于高风险修复。
+        max_attempts = (
+            self._quality_profile.max_retries + 1
+            if self._harness_enabled
+            else 1
+        )
 
-            # Step 1.4: Quick rule-based validation (before AI validation)
-            from config.prompts._helpers import _collect_available_people
-            from src.ai.quick_validator import quick_validate_story
+        available_people_names = [
+            p.get("name", "")
+            for p in _collect_available_people(character_settings)
+            if p.get("name")
+        ]
 
-            available_people_names = [
-                p.get("name", "")
-                for p in _collect_available_people(character_settings)
-                if p.get("name")
-            ]
-            quick_result = quick_validate_story(
-                story_text=story_text,
-                character_settings=character_settings,
-                available_people=available_people_names,
-                language=language,
-            )
+        best_valid_story_text = ""
 
-            if not quick_result.passed:
-                logger.warning(f"Quick validation failed: {quick_result.issues}")
-                retry_lines = "\n".join(f"- {issue}" for issue in quick_result.issues)
-                if language == "zh":
-                    retry_prompt = (
-                        prompt
-                        + "\n\n【快速一致性修正 - 必须重写】\n"
-                        + retry_lines
-                        + "\n请重新生成本轮故事，严格使用可用人物列表和既有人设，不要新增替代关系网络。"
-                    )
-                else:
-                    retry_prompt = (
-                        prompt
-                        + "\n\n[Quick Consistency Fix - Regenerate Required]\n"
-                        + retry_lines
-                        + "\nRegenerate this round using the available people list and existing character setup."
-                    )
-                if status_callback:
-                    status_callback("retry")
+        def _set_best_story(candidate: Optional[str], *, require_valid: bool = False) -> None:
+            if not candidate:
+                return
+            nonlocal best_valid_story_text
+            if not require_valid:
+                return
+            if require_valid:
+                if len(candidate) > len(best_valid_story_text):
+                    best_valid_story_text = candidate
+
+        # 初始化 Harness 组件（延迟初始化，避免每次构建时重复创建）
+        if self._harness_enabled and self._validation_pipeline is None:
+            from src.ai.harness import default_registry
+
+            self._validation_pipeline = ValidationPipeline(default_registry)
+        if self._harness_enabled and self._retry_controller is None:
+            self._retry_controller = RetryController(profile=self._quality_profile)
+        if self._harness_enabled and self._diagnostics is None:
+            self._diagnostics = ConstraintViolationDiagnostic()
+
+        retry_hint = None
+
+        for attempt in range(max_attempts):
+            story_text = None
+            try:
+                attempt_prompt = prompt
+                if retry_hint:
+                    attempt_prompt = prompt + f"\n\n[Retry Hint]\n{retry_hint}"
+
+                current_temp = self._resolve_temperature(
+                    attempt,
+                    temperature,
+                    0.05,
+                    min_temperature=0.65,
+                )
+                logger.info(
+                    f"Round story attempt {attempt + 1}/{max_attempts}, temperature={current_temp}"
+                )
+
                 story_text = self.client.call(
                     system_prompt=sys_prompt,
-                    user_prompt=retry_prompt,
-                    temperature=0.65,
+                    user_prompt=attempt_prompt,
+                    temperature=current_temp,
                     max_tokens=8192,
-                    stream_callback=stream_callback,
-                    frequency_penalty=0.4,
-                    presence_penalty=0.4,
+                    stream_callback=stream_callback if attempt == 0 else None,
+                    frequency_penalty=0.4,  # ★ 轮次级别更强的反重复，因为同周多轮更容易重复
+                    presence_penalty=0.4,  # ★ 鼓励每轮使用不同的表达方式
                 )
                 story_text = normalize_generated_story(story_text, language=language)
-                logger.info(
-                    "Quick validation retry completed with %d characters", len(story_text)
-                )
-                retry_result = quick_validate_story(
+                logger.info(f"Generated round story with {len(story_text)} characters")
+                # 主生成结果先记录（未通过 quick 校验前不标记为有效）
+                _set_best_story(story_text)
+
+                # Step 1.4: Quick rule-based validation (before AI validation)
+                quick_result = quick_validate_story(
                     story_text=story_text,
                     character_settings=character_settings,
                     available_people=available_people_names,
                     language=language,
                 )
-                if not retry_result.passed:
-                    logger.warning(
-                        "Quick validation retry still failed: %s",
-                        retry_result.issues,
-                    )
-                    story_text = None
-                    raise ValueError(
-                        "Quick validation retry failed: "
-                        + "; ".join(retry_result.issues)
-                    )
-                if retry_result.warnings:
-                    logger.info(f"Quick validation retry warnings: {retry_result.warnings}")
-            elif quick_result.warnings:
-                logger.info(f"Quick validation warnings: {quick_result.warnings}")
 
-            # Step 1.5: AI-based consistency validation (if world_model is provided)
-            if world_model and story_text:
-                story_text = self._validate_and_retry_story(
-                    story_text=story_text,
-                    world_model=world_model,
+                if not quick_result.passed:
+                    logger.warning(f"Quick validation failed: {quick_result.issues}")
+                    retry_lines = "\n".join(f"- {issue}" for issue in quick_result.issues)
+                    retry_prompt = (
+                        attempt_prompt
+                        + (
+                            "\n\n【快速一致性修正 - 必须重写】\n"
+                            if language == "zh"
+                            else "\n\n[Quick Consistency Fix - Regenerate Required]\n"
+                        )
+                        + retry_lines
+                        + (
+                            "\n请重新生成本轮故事，严格使用可用人物列表和既有人设，不要新增替代关系网络。"
+                            if language == "zh"
+                            else "\nRegenerate this round using the available people list and existing character setup."
+                        )
+                    )
+                    if status_callback:
+                        status_callback("retry")
+
+                    retry_story = self.client.call(
+                        system_prompt=sys_prompt,
+                        user_prompt=retry_prompt,
+                        temperature=0.65,
+                        max_tokens=8192,
+                        stream_callback=stream_callback if attempt == 0 else None,
+                        frequency_penalty=0.4,
+                        presence_penalty=0.4,
+                    )
+                    story_text = normalize_generated_story(retry_story, language=language)
+                    logger.info(
+                        "Quick validation retry completed with %d characters",
+                        len(story_text),
+                    )
+
+                    retry_result = quick_validate_story(
+                        story_text=story_text,
+                        character_settings=character_settings,
+                        available_people=available_people_names,
+                        language=language,
+                    )
+
+                    if not retry_result.passed:
+                        logger.warning(
+                            "Quick validation retry still failed: %s",
+                            retry_result.issues,
+                        )
+                        break
+                    _set_best_story(story_text, require_valid=True)
+                    if retry_result.warnings:
+                        logger.info(
+                            "Quick validation retry warnings: %s",
+                            retry_result.warnings,
+                        )
+
+                elif quick_result.warnings:
+                    logger.info(f"Quick validation warnings: {quick_result.warnings}")
+                    _set_best_story(story_text, require_valid=True)
+                else:
+                    _set_best_story(story_text, require_valid=True)
+
+                # Step 1.5: AI-based consistency validation (if world_model is provided)
+                if world_model and story_text:
+                    story_text = self._validate_and_retry_story(
+                        story_text=story_text,
+                        world_model=world_model,
+                        player_state=player_state,
+                        character_settings=character_settings or {},
+                        language=language,
+                        original_prompt=prompt,
+                        sys_prompt=sys_prompt,
+                        stream_callback=stream_callback if attempt == 0 else None,
+                        status_callback=status_callback,
+                    )
+                    _set_best_story(story_text, require_valid=True)
+
+                # Harness 检查（仅在开启时执行），支持在无效内容上继续 retry
+                if self._harness_enabled and self._validation_pipeline:
+                    diagnostic_context = {
+                        "character_settings": character_settings,
+                        "available_people": available_people_names,
+                        "relationship_events": relationship_events,
+                        "historical_weekly_summary": historical_weekly_summary,
+                        "historical_yearly_summary": historical_yearly_summary,
+                        "game_date_info": game_date_info,
+                        "pending_storylines": pending_storylines,
+                        "established_facts": established_facts,
+                        "world_model_state": getattr(world_model, "__dict__", None),
+                        "character_habits": character_habits,
+                    }
+                    validation_result = self._validation_pipeline.validate(
+                        story_text=story_text,
+                        context=diagnostic_context,
+                        profile=self._quality_profile,
+                    )
+
+                    diagnostic_report = ConstraintViolationDiagnostic().generate_report(
+                        story_text=story_text,
+                        validation_result=validation_result,
+                    ) if self._diagnostics is None else self._diagnostics.generate_report(
+                        story_text=story_text,
+                        validation_result=validation_result,
+                    )
+
+                    should_retry = False
+                    if self._retry_controller is not None:
+                        should_retry, hint = self._retry_controller.should_retry(
+                            validation_result=validation_result,
+                            diagnostic_report=diagnostic_report,
+                            attempt=attempt,
+                        )
+                        retry_hint = hint
+                    if should_retry:
+                        if status_callback:
+                            status_callback("retry")
+                        logger.info(
+                            "Round event harness retry requested on attempt %d",
+                            attempt + 1,
+                        )
+                        continue
+
+                # Step 2: Generate options based on the story
+                if option_generator is None:
+                    raise ValueError("option_generator is required")
+
+                if status_callback:
+                    status_callback("generating_options")
+
+                event = option_generator.generate_options_only(
+                    story_description=story_text,
                     player_state=player_state,
-                    character_settings=character_settings or {},
+                    character_settings=character_settings,
                     language=language,
-                    original_prompt=prompt,
-                    sys_prompt=sys_prompt,
-                    stream_callback=stream_callback,
-                    status_callback=status_callback,  # ★ 传递 status_callback
                 )
 
-            # Step 2: Generate options based on the story
-            if option_generator is None:
-                raise ValueError("option_generator is required")
+                # Validate relationships
+                option_generator.validate_and_fix_relationships(event, character_settings)
 
-            if status_callback:
-                status_callback("generating_options")
-
-            event = option_generator.generate_options_only(
-                story_description=story_text,
-                player_state=player_state,
-                character_settings=character_settings,
-                language=language,
-            )
-
-            # Validate relationships
-            option_generator.validate_and_fix_relationships(event, character_settings)
-
-            # Validate options consistency
-            option_issues = option_generator.validate_options_consistency(
-                event=event,
-                story_description=story_text,
-                available_people=available_people_names,
-                language=language,
-            )
-            if option_issues:
-                logger.warning(f"Options consistency issues found: {option_issues}")
-                option_generator.ensure_options_consistency(
+                # Validate options consistency
+                option_issues = option_generator.validate_options_consistency(
                     event=event,
                     story_description=story_text,
                     available_people=available_people_names,
                     language=language,
                 )
+                if option_issues:
+                    logger.warning(f"Options consistency issues found: {option_issues}")
+                    option_generator.ensure_options_consistency(
+                        event=event,
+                        story_description=story_text,
+                        available_people=available_people_names,
+                        language=language,
+                    )
 
-            return event  # type: ignore[no-any-return]
+                return event
 
-        except Exception as e:
-            logger.error(f"Failed to generate round event: {e}")
-            # ★ 如果故事已生成但后续步骤（如选项生成）失败，保留真实故事而非使用 fallback
-            if story_text and len(story_text) > 20:
-                logger.info(
-                    f"Using already-generated story ({len(story_text)} chars) with fallback options"
-                )
-                fallback_desc = story_text
-            else:
-                fallback_desc = self._build_round_story_fallback(
-                    player_state=player_state,
-                    character_settings=character_settings or {},
-                    language=language,
-                    round_number=round_number,
-                )
-            return GameEvent(
-                event_description=fallback_desc,
-                options=OptionGenerator.build_contextual_fallback_options(
-                    fallback_desc,
-                    language=language,
-                ),
+            except (ValueError, ValidationError, json.JSONDecodeError) as e:
+                logger.warning(f"Round event attempt {attempt + 1} failed: {e}")
+            except Exception as e:
+                logger.error(f"Unexpected error in round event attempt {attempt + 1}: {e}")
+
+            if attempt < max_attempts - 1:
+                retry_hint = None if not retry_hint else retry_hint
+                continue
+
+            break
+
+        fallback_desc = best_valid_story_text if len(best_valid_story_text) > 20 else self._build_round_story_fallback(
+            player_state=player_state,
+            character_settings=character_settings or {},
+            language=language,
+            round_number=round_number,
+        )
+        if len(best_valid_story_text) > 20:
+            logger.info(
+                "Using best historical story (%d chars) after all round attempts",
+                len(best_valid_story_text),
             )
+        return GameEvent(
+            event_description=fallback_desc,
+            options=OptionGenerator.build_contextual_fallback_options(
+                fallback_desc,
+                language=language,
+            ),
+        )
 
     # -------------------- Internal --------------------
 

@@ -674,6 +674,20 @@ def test_production_deploy_fetches_private_repo_without_persisting_github_token(
     )
 
 
+def test_production_deploy_has_explicit_manual_local_preflight_override() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "deploy-production.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "force_after_local_preflight" in workflow
+    assert "Local preflight passed and GitHub checks are unavailable" in workflow
+    assert "'${{ github.event_name }}' === 'workflow_dispatch'" in workflow
+    assert "core.warning('Manual production deployment is bypassing GitHub CI after local preflight.')" in workflow
+    assert "return;" in workflow.split("Manual production deployment is bypassing GitHub CI", 1)[1].split(
+        "const requiredWorkflows", 1
+    )[0]
+
+
 def test_env_example_documents_minimax_production_audio_settings() -> None:
     env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
 

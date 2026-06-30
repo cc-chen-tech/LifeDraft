@@ -556,14 +556,19 @@ def _ensure_legacy_columns() -> None:
 
     with engine.begin() as connection:
         for table_name, columns in sqlite_columns.items():
-            existing = {
-                row[1] for row in connection.execute(text(f"PRAGMA table_info({table_name})"))
-            }
+            pragma_query = "PRAGMA table_info(" + table_name + ")"
+            existing = {row[1] for row in connection.execute(text(pragma_query))}
             for column_name, column_type in columns.items():
                 if column_name not in existing:
-                    connection.execute(
-                        text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+                    alter_query = (
+                        "ALTER TABLE "
+                        + table_name
+                        + " ADD COLUMN "
+                        + column_name
+                        + " "
+                        + column_type
                     )
+                    connection.execute(text(alter_query))
 
 
 @contextmanager

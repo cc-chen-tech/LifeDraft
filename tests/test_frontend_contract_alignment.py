@@ -703,13 +703,10 @@ class TestFrontendMismatchCrossCheck:
         with open(frontend_api_ts_path, "r", encoding="utf-8") as f:
             content = f.read()
 
-        # The current type is { era: string; era_description: string }
-        # This is a known mismatch - documented for awareness
-        has_era_type = "era: string" in content and "era_description: string" in content
-        assert has_era_type, (
-            "Character setting response type should be flexible. "
-            "Backend returns different shapes per setting_type (year/age/gender/etc). "
-            "Consider changing to Record<string, unknown> or a union type."
+        # 现已修正：character.generateSetting 使用 Record<string, unknown>
+        assert "Record<string, unknown>" in content, (
+            "Character setting response type should be flexible enough to match backend "
+            "setting responses with different shapes."
         )
 
     def test_frontend_runtime_uses_backend_field_names(self):
