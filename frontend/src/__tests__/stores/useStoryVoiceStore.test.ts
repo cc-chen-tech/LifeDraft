@@ -95,6 +95,9 @@ describe('useStoryVoiceStore', () => {
   });
 
   afterEach(() => {
+    act(() => {
+      useStoryVoiceStore.getState().stopReading();
+    });
     restoreSpeechMocks?.();
     jest.useRealTimers();
     useMusicStore.getState().reset();
@@ -209,6 +212,69 @@ describe('useStoryVoiceStore', () => {
       currentProvider: 'browser',
       playbackMode: 'browser_speech',
       currentSpeechText: baseContext.text,
+    });
+  });
+
+  it('falls back to browser speech when runtime settings are unavailable before first read', async () => {
+    const fetchMock = jest.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/voice-reading/settings')) {
+        return Promise.resolve(jsonResponse({ detail: 'Authentication required' }, 401)) as Response;
+      }
+      if (url.includes('/voice-reading/read')) {
+        return Promise.resolve(
+          jsonResponse({
+            job_id: 99,
+            status: 'ready',
+            audio_url: '/api/voice-reading/audio/should-not-be-used.mp3',
+            playback_mode: 'audio',
+            provider: 'minimax',
+          })
+        ) as Response;
+      }
+      return Promise.resolve(jsonResponse({}));
+    }) as jest.Mock;
+
+    global.fetch = fetchMock;
+
+    await act(async () => {
+      await useStoryVoiceStore.getState().startReading(baseContext);
+    });
+
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/voice-reading/settings'))).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/voice-reading/read'))).toBe(false);
+    expect(window.speechSynthesis.speak).toHaveBeenCalled();
+    expect(useStoryVoiceStore.getState()).toMatchObject({
+      readingState: 'playing',
+      currentProvider: 'browser',
+      playbackMode: 'browser_speech',
+      currentSpeechText: baseContext.text,
+    });
+
+    act(() => {
+      useStoryVoiceStore.getState().stopReading();
+    });
+  });
+
+  it('keeps browser fallback diagnostics visible if speech completes immediately', () => {
+    useStoryVoiceStore.setState({
+      readingState: 'playing',
+      currentProvider: 'browser',
+      playbackMode: 'browser_speech',
+      currentSpeechText: baseContext.text,
+      spokenTextLength: baseContext.text.length,
+    });
+
+    act(() => {
+      useStoryVoiceStore.getState().completeReading();
+    });
+
+    expect(useStoryVoiceStore.getState()).toMatchObject({
+      readingState: 'idle',
+      currentProvider: 'browser',
+      playbackMode: 'browser_speech',
+      currentSpeechText: baseContext.text,
+      spokenTextLength: baseContext.text.length,
     });
   });
 

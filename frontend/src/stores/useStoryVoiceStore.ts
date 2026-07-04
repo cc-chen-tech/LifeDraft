@@ -257,8 +257,8 @@ async function ensureRuntimeSettingsLoaded(
       | Partial<StoryVoiceState>
       | ((state: StoryVoiceState) => Partial<StoryVoiceState>)
   ) => void
-): Promise<void> {
-  if (get().ttsProvider) return;
+): Promise<boolean> {
+  if (get().ttsProvider) return true;
 
   runtimeSettingsRequest ??= api.voice_reading
     .getSettings()
@@ -274,12 +274,18 @@ async function ensureRuntimeSettingsLoaded(
         "[StoryVoiceStore] Voice runtime settings unavailable before reading:",
         error
       );
+      throw error;
     })
     .finally(() => {
       runtimeSettingsRequest = null;
     });
 
-  await runtimeSettingsRequest;
+  try {
+    await runtimeSettingsRequest;
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
@@ -330,12 +336,12 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       preferredProvider,
       requestTextHash
     );
-    if (
-      inFlightReadingRequests.has(requestKey) ||
-      (get().readingState === "loading" && activeLoadingRequestKey === requestKey)
-    ) {
+    const matchingRequestIsLoading =
+      get().readingState === "loading" && activeLoadingRequestKey === requestKey;
+    if (matchingRequestIsLoading) {
       return;
     }
+    inFlightReadingRequests.delete(requestKey);
 
     const attemptId = activeReadingAttempt + 1;
     activeReadingAttempt = attemptId;
@@ -459,8 +465,14 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
     };
 
     if (!preferredProvider && !get().ttsProvider) {
-      await ensureRuntimeSettingsLoaded(get, set);
+      const settingsLoaded = await ensureRuntimeSettingsLoaded(get, set);
       if (attemptId !== activeReadingAttempt) {
+        inFlightReadingRequests.delete(requestKey);
+        return;
+      }
+      if (!settingsLoaded) {
+        inFlightReadingRequests.delete(requestKey);
+        startBrowserSpeech(null);
         return;
       }
     }
@@ -568,10 +580,19 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
     });
   },
   completeReading: () => {
-    const { musicDuckState, readingState, userChangedMusic } = get();
+    const {
+      currentSpeechText,
+      musicDuckState,
+      playbackMode,
+      readingState,
+      spokenTextLength,
+      userChangedMusic,
+    } = get();
     if (readingState === "failed") {
       return;
     }
+    const completedBrowserSpeech =
+      playbackMode === "browser_speech" && currentSpeechText.length > 0;
     restoreMusicAfterReading(userChangedMusic);
     activeReadingAttempt += 1;
     activeLoadingRequestKey = null;
@@ -581,9 +602,9 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
     }
     set({
       readingState: "idle",
-      playbackMode: "none",
-      spokenTextLength: 0,
-      currentSpeechText: "",
+      playbackMode: completedBrowserSpeech ? "browser_speech" : "none",
+      spokenTextLength: completedBrowserSpeech ? spokenTextLength : 0,
+      currentSpeechText: completedBrowserSpeech ? currentSpeechText : "",
       musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
     });
   },
