@@ -244,6 +244,24 @@ describe('StoryVoiceControls', () => {
     expect(screen.getByRole('button', { name: '重试朗读' })).toBeVisible();
   });
 
+  it('ignores hidden audio errors while browser fallback is still preparing', () => {
+    render(<StoryVoiceControls currentContext={currentContext} showTestControls />);
+
+    act(() => {
+      useStoryVoiceStore.setState({
+        readingState: 'loading',
+        currentAudioUrl: '',
+        playbackMode: 'none',
+        currentSource: 'current_story',
+      });
+    });
+
+    fireEvent.error(screen.getByTestId('voice-reading-audio-player'));
+
+    expect(screen.getByTestId('voice-reading-state')).toHaveTextContent('loading');
+    expect(screen.getByTestId('voice-reading-playback-mode')).toHaveTextContent('none');
+  });
+
   it('keeps generated backend audio ready when autoplay is blocked', async () => {
     const playSpy = window.HTMLMediaElement.prototype.play as jest.Mock;
     playSpy.mockRejectedValue(new DOMException('autoplay blocked', 'NotAllowedError'));

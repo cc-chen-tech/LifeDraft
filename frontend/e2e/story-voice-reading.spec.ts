@@ -73,6 +73,7 @@ async function gotoRegressionPageForVoiceControls(page: Page): Promise<void> {
   await page.waitForLoadState('domcontentloaded');
   await expect(page.getByRole('button', { name: '朗读故事' })).toBeVisible();
   await expect(page.getByTestId('voice-reading-audio-player')).toHaveCount(1);
+  await expect(page.getByTestId('voice-reading-hydrated')).toHaveText('ready');
 }
 
 async function clickReadStoryAfterHydration(page: Page): Promise<void> {
@@ -112,29 +113,45 @@ async function useDeterministicBrowserSpeech(page: Page): Promise<void> {
       }
     }
 
-    const speech = {
+    const speechState = {
       speaking: false,
       pending: false,
       paused: false,
+    };
+
+    const speech: SpeechSynthesis = {
+      get speaking() {
+        return speechState.speaking;
+      },
+      get pending() {
+        return speechState.pending;
+      },
+      get paused() {
+        return speechState.paused;
+      },
+      onvoiceschanged: null,
       getVoices: () => [],
       speak() {
-        this.speaking = true;
-        this.pending = false;
-        this.paused = false;
+        speechState.speaking = true;
+        speechState.pending = false;
+        speechState.paused = false;
       },
       cancel() {
-        this.speaking = false;
-        this.pending = false;
-        this.paused = false;
+        speechState.speaking = false;
+        speechState.pending = false;
+        speechState.paused = false;
       },
       pause() {
-        this.paused = true;
+        speechState.paused = true;
       },
       resume() {
-        this.speaking = true;
-        this.paused = false;
+        speechState.speaking = true;
+        speechState.paused = false;
       },
-    } as SpeechSynthesis;
+      addEventListener() {},
+      removeEventListener() {},
+      dispatchEvent: () => true,
+    };
 
     Object.defineProperty(window, 'SpeechSynthesisUtterance', {
       configurable: true,
@@ -150,6 +167,13 @@ async function useDeterministicBrowserSpeech(page: Page): Promise<void> {
 test.describe('Story voice reading without login', () => {
   test('unauthenticated reading stays on the story page and falls back to browser speech', async ({ page }) => {
     await useDeterministicBrowserSpeech(page);
+    await page.route('**/api/voice-reading/read', async (route) => {
+      await route.fulfill({
+        status: 401,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'Authentication required' }),
+      });
+    });
     await gotoRegressionPageForVoiceControls(page);
 
     await clickReadStoryAfterHydration(page);

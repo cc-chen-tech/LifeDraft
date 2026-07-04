@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, type ChangeEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Loader2, Pause, Play, RotateCcw, Square, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
@@ -90,6 +90,7 @@ export function StoryVoiceControls({
   const loadedSettingsRef = useRef(false);
   const userSelectedVoiceRef = useRef(false);
   const mountedRef = useRef(true);
+  const [controlsHydrated, setControlsHydrated] = useState(false);
   const textSize = compact ? "text-xs" : "text-sm";
   const isHistoryReading =
     currentContext.source_type === "history_round" || Boolean(historyContext);
@@ -97,6 +98,7 @@ export function StoryVoiceControls({
   const showProductionSettings = !showTestControls;
 
   useEffect(() => {
+    setControlsHydrated(true);
     return () => {
       mountedRef.current = false;
     };
@@ -271,6 +273,13 @@ export function StoryVoiceControls({
     }
     window.speechSynthesis?.cancel?.();
     stopReading();
+  };
+
+  const handleAudioError = (error: unknown) => {
+    if (playbackMode !== "audio" || !currentAudioUrl) {
+      return;
+    }
+    failReading(error);
   };
 
   const persistVoiceSettings = async (settings: {
@@ -457,7 +466,7 @@ export function StoryVoiceControls({
             src={currentAudioUrl || undefined}
             preload="auto"
             onPlaying={markAudioPlaying}
-            onError={failReading}
+            onError={handleAudioError}
             onEnded={completeReading}
           />
         </div>
@@ -543,7 +552,7 @@ export function StoryVoiceControls({
           src={currentAudioUrl || undefined}
           preload="auto"
           onPlaying={markAudioPlaying}
-          onError={failReading}
+          onError={handleAudioError}
           onEnded={completeReading}
         />
       </div>
@@ -675,6 +684,9 @@ export function StoryVoiceControls({
           <span>
             状态: <span data-testid="voice-reading-state">{readingState}</span>
           </span>
+          <span data-testid="voice-reading-hydrated">
+            {controlsHydrated ? "ready" : "pending"}
+          </span>
           <span>
             来源:{" "}
             <span data-testid="voice-reading-source">{currentSource}</span>
@@ -794,7 +806,7 @@ export function StoryVoiceControls({
         src={currentAudioUrl || undefined}
         preload="auto"
         onPlaying={markAudioPlaying}
-        onError={failReading}
+        onError={handleAudioError}
         onEnded={completeReading}
       />
     </div>

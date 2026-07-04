@@ -20,6 +20,7 @@ export function CollectionTabs({
         variant={activeTab === "characters" ? "default" : "outline"}
         size="sm"
         onClick={() => onTabChange("characters")}
+        data-testid="collection-tab-characters"
         className="flex-1"
       >
         <User className="w-4 h-4 mr-1" />
@@ -29,6 +30,7 @@ export function CollectionTabs({
         variant={activeTab === "items" ? "default" : "outline"}
         size="sm"
         onClick={() => onTabChange("items")}
+        data-testid="collection-tab-items"
         className="flex-1"
       >
         <Package className="w-4 h-4 mr-1" />
@@ -38,6 +40,7 @@ export function CollectionTabs({
         variant={activeTab === "landmarks" ? "default" : "outline"}
         size="sm"
         onClick={() => onTabChange("landmarks")}
+        data-testid="collection-tab-landmarks"
         className="flex-1"
       >
         <MapPin className="w-4 h-4 mr-1" />

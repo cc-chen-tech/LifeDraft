@@ -99,7 +99,8 @@ test.describe('收集面板缓存优化', () => {
     await openCollectionPanel(page);
 
     // 获取物品标签
-    const itemsTab = page.getByText(/物品.*\(/);
+    const collection = collectionDialog(page);
+    const itemsTab = collection.getByTestId('collection-tab-items');
     await expect(itemsTab).toBeVisible();
 
     // 记录网络请求
@@ -116,12 +117,12 @@ test.describe('收集面板缓存优化', () => {
     await page.waitForTimeout(300);
 
     // 点击标志物标签
-    const landmarksTab = page.getByText(/标志物.*\(/);
+    const landmarksTab = collection.getByTestId('collection-tab-landmarks');
     await landmarksTab.click();
     await page.waitForTimeout(300);
 
     // 切回人物标签
-    const charactersTab = page.getByText(/人物.*\(/);
+    const charactersTab = collection.getByTestId('collection-tab-characters');
     await charactersTab.click();
     await page.waitForTimeout(300);
 
