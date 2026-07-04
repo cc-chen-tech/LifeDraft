@@ -337,10 +337,11 @@ test.describe('Story101.live Deep Exploration', () => {
     await shot(page, '03_step4_portrait');
     await scanAllButtons(page, 'step 4 (portrait)');
 
-    // Step 4 (5/5): Portrait - wait for image generation, then next
-    nextEnabled = await waitForEnabled(page, nextBtn, 180_000, '下一步 (step 4 portrait)');
+    // Step 4 (5/5): Portrait can continue while portrait generation finishes in the background.
+    const portraitContinueBtn = page.getByRole('button', { name: /下一步|继续生成角色/ });
+    nextEnabled = await waitForEnabled(page, portraitContinueBtn, 180_000, '继续生成角色/下一步 (step 4 portrait)');
     if (nextEnabled) {
-      await clickEnabled(page, nextBtn, '下一步 (portrait→autoGen)');
+      await clickEnabled(page, portraitContinueBtn, '继续生成角色/下一步 (portrait→autoGen)');
       await page.waitForTimeout(5000);
     }
     await shot(page, '03_autogen');
