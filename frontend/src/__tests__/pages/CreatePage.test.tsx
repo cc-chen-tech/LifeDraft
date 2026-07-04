@@ -174,18 +174,21 @@ describe('CreatePage', () => {
       expect(screen.getByText('上一步')).toBeInTheDocument();
     });
 
-    it('shows next step button on portrait step (last step)', () => {
+    it('allows continuing from portrait step before player images finish', () => {
       useGameStore.setState({
         creationStep: 4,
         characterSettings: { era: { era_name: '现代' }, age: { starting_age: 22 }, gender: 'male', world: {} },
         playerName: 'TestPlayer',
         gameId: 1,
       });
+      useImageStore.setState({
+        playerImages: [],
+        isGeneratingImage: true,
+      });
 
       render(<CreatePage />);
-      // Step 4 is the portrait step — button says "下一步" when images available
-      // or "等待形象生成" when no images. Test that the button exists.
-      expect(screen.getByRole('button', { name: /等待形象生成/i })).toBeInTheDocument();
+      const continueButton = screen.getByRole('button', { name: /继续生成角色/i });
+      expect(continueButton).toBeEnabled();
     });
   });
 

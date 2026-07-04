@@ -121,6 +121,13 @@ export default function CreatePage() {
     return () => window.clearTimeout(timer);
   }, [currentStepKey, isGenerating]);
 
+  const canContinuePortrait = isPortraitStep && hasBasicInfo && gameId != null;
+  const isContinueDisabled =
+    isGenerating ||
+    (isPortraitStep
+      ? !canContinuePortrait
+      : !generatedContent && characterSettings[currentStepKey] == null);
+
   // ==================== Auto-generation full-screen UI ====================
   if (autoGenPhase === "generating") {
     return <AutoGenScreen autoGenLabel={autoGenLabel} autoGenProgress={autoGenProgress} />;
@@ -330,16 +337,17 @@ export default function CreatePage() {
           <Button
             className="touch-target"
             onClick={handleAcceptAndNext}
-            disabled={
-              isGenerating ||
-              isGeneratingImage ||
-              (isPortraitStep ? playerImages.length === 0 : (!generatedContent && characterSettings[currentStepKey] == null))
-            }
+            disabled={isContinueDisabled}
           >
-            {isPortraitStep && (isGeneratingImage || playerImages.length === 0) ? (
+            {isPortraitStep && !canContinuePortrait ? (
               <>
                 <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                等待形象生成
+                正在准备
+              </>
+            ) : isPortraitStep && playerImages.length === 0 ? (
+              <>
+                继续生成角色
+                <ArrowRight className="w-4 h-4 ml-1" />
               </>
             ) : isPortraitStep ? (
               <>
