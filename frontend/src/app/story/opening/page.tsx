@@ -41,7 +41,6 @@ export default function OpeningStoryPage() {
   const [storyText, setStoryText] = useState("");
   const [error, setError] = useState("");
   const [illustrationPrompt, setIllustrationPrompt] = useState("");
-  const [hasQueuedOpeningIllustration, setHasQueuedOpeningIllustration] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const hydrated = useHydration();
   const illustrationGeneratedRef = useRef(false);
@@ -52,11 +51,7 @@ export default function OpeningStoryPage() {
   // ★ 添加渲染计数器来诊断问题
   const renderCountRef = useRef(0);
   // Note: ref access moved to useEffect to avoid React warning
-  const openingIllustrationSettled = Boolean(openingIllustration) || Boolean(illustrationError);
-  const openingIllustrationQueued =
-    isComplete && hasQueuedOpeningIllustration && !openingIllustrationSettled;
-  const openingReadyToStart = isComplete && !isGeneratingIllustration && !openingIllustrationQueued;
-  
+
   useEffect(() => {
     console.log(`[OpeningStory] Render #${renderCountRef.current}, hydrated=${hydrated}, initialized=${initializedRef.current}`);
   });
@@ -116,7 +111,6 @@ export default function OpeningStoryPage() {
       if (state.openingStory) {
         console.log("[OpeningStory] Using existing story");
         setStoryText(state.openingStory);
-        setHasQueuedOpeningIllustration(false);
         setIsComplete(true);
         return;
       }
@@ -133,7 +127,6 @@ export default function OpeningStoryPage() {
 
       // 开始生成故事
       console.log("[OpeningStory] Starting generation...");
-      setHasQueuedOpeningIllustration(false);
       setIsStreaming(true);
       abortRef.current = new AbortController();
 
@@ -160,7 +153,6 @@ export default function OpeningStoryPage() {
               setOpeningStory(finalText);
             }
             setIsStreaming(false);
-            setHasQueuedOpeningIllustration(true);
 
             // ★ 故事生成完成后，触发插画生成
             const currentGameId = useGameStore.getState().gameId;
@@ -202,7 +194,6 @@ export default function OpeningStoryPage() {
     setStoryText("");
     setIsStreaming(true);
     setIsComplete(false);
-    setHasQueuedOpeningIllustration(false);
     
     const state = useGameStore.getState();
     abortRef.current = new AbortController();
@@ -245,7 +236,7 @@ export default function OpeningStoryPage() {
   };
 
   const handleStart = () => {
-    if (!openingReadyToStart) return;
+    if (!isComplete) return;
 
     const currentGameId = useGameStore.getState().gameId;
     
@@ -396,16 +387,12 @@ export default function OpeningStoryPage() {
             size="lg"
             className="h-14 px-8 text-base touch-target animate-fade-in-word"
             onClick={handleStart}
-            disabled={!openingReadyToStart}
-            aria-label={openingReadyToStart ? "开始我的人生" : "开场插画生成完成后可开始"}
-            title={openingReadyToStart ? "开始我的人生" : "开场插画生成完成后可开始"}
+            disabled={!isComplete}
+            aria-label="开始我的人生"
+            title="开始我的人生"
           >
-            {openingReadyToStart ? (
-              <Play className="w-5 h-5 mr-2" />
-            ) : (
-              <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-            )}
-            {openingReadyToStart ? "开始我的人生" : "插画生成中..."}
+            <Play className="w-5 h-5 mr-2" />
+            开始我的人生
           </Button>
         ) : isStreaming ? (
           <div className="text-sm text-muted-foreground animate-pulse">
