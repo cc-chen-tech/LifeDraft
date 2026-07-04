@@ -256,19 +256,19 @@ describe('OpeningStoryPage', () => {
       expect(screen.getByText('开始我的人生')).toBeInTheDocument();
     });
 
-    it('disables start game button while opening illustration is still generating', async () => {
+    it('allows starting the game while opening illustration is still generating', async () => {
       useImageStore.setState({ isGeneratingIllustration: true });
       const user = userEvent.setup();
       render(<OpeningStoryPage />);
 
-      const startButton = screen.getByRole('button', { name: '开场插画生成完成后可开始' });
-      expect(startButton).toBeDisabled();
+      const startButton = screen.getByRole('button', { name: '开始我的人生' });
+      expect(startButton).toBeEnabled();
 
       await user.click(startButton);
-      expect(mockPush).not.toHaveBeenCalled();
+      expect(mockPush).toHaveBeenCalledWith('/play');
     });
 
-    it('keeps start game disabled immediately after a newly generated story while illustration is queued', async () => {
+    it('allows starting immediately after a newly generated story while illustration is queued', async () => {
       useGameStore.setState({
         gameId: 123,
         openingStory: '',
@@ -292,9 +292,8 @@ describe('OpeningStoryPage', () => {
       render(<OpeningStoryPage />);
 
       expect(await screen.findByText('新生成的开场故事。')).toBeInTheDocument();
-      expect(
-        screen.getByRole('button', { name: '开场插画生成完成后可开始' })
-      ).toBeDisabled();
+      const startButton = screen.getByRole('button', { name: '开始我的人生' });
+      expect(startButton).toBeEnabled();
     });
 
     it('navigates to play page when clicking start', async () => {
