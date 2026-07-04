@@ -278,6 +278,27 @@ describe('useStoryVoiceStore', () => {
     });
   });
 
+  it('ignores stale media completion events while a reading request is still loading', () => {
+    useStoryVoiceStore.setState({
+      readingState: 'loading',
+      currentProvider: '',
+      playbackMode: 'none',
+      currentSpeechText: '',
+      spokenTextLength: 0,
+    });
+
+    act(() => {
+      useStoryVoiceStore.getState().completeReading();
+    });
+
+    expect(useStoryVoiceStore.getState()).toMatchObject({
+      readingState: 'loading',
+      playbackMode: 'none',
+      currentSpeechText: '',
+      spokenTextLength: 0,
+    });
+  });
+
   it('ducks active music while voice reading is active and restores it when stopped', async () => {
     jest.useFakeTimers();
     const audio = {

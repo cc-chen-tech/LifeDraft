@@ -91,7 +91,9 @@ let activeUtterance: SpeechSynthesisUtterance | null = null;
 let activeReadingAttempt = 0;
 const inFlightReadingRequests = new Set<string>();
 let activeLoadingRequestKey: string | null = null;
+let activeLoadingStartedAt = 0;
 let runtimeSettingsRequest: Promise<void> | null = null;
+const ACTIVE_READING_DEDUPE_MS = 10_000;
 
 function getSpeechSynthesis(): SpeechSynthesis | null {
   if (typeof window === "undefined") return null;
@@ -336,9 +338,14 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       preferredProvider,
       requestTextHash
     );
+    const now = Date.now();
     const matchingRequestIsLoading =
       get().readingState === "loading" && activeLoadingRequestKey === requestKey;
-    if (matchingRequestIsLoading) {
+    if (
+      matchingRequestIsLoading &&
+      inFlightReadingRequests.has(requestKey) &&
+      now - activeLoadingStartedAt < ACTIVE_READING_DEDUPE_MS
+    ) {
       return;
     }
     inFlightReadingRequests.delete(requestKey);
@@ -347,6 +354,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
     activeReadingAttempt = attemptId;
     inFlightReadingRequests.add(requestKey);
     activeLoadingRequestKey = requestKey;
+    activeLoadingStartedAt = now;
     const musicWasPlaying = duckMusicForReading() || get().musicWasPlaying;
     const browserSpeech = getSpeechSynthesis();
     browserSpeech?.getVoices?.();
@@ -390,6 +398,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
           musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
         });
         activeLoadingRequestKey = null;
+        activeLoadingStartedAt = 0;
         return;
       }
 
@@ -407,6 +416,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
         errorMessage: "",
       });
       activeLoadingRequestKey = null;
+      activeLoadingStartedAt = 0;
       speech.cancel();
       const chunks = splitBrowserSpeechText(context.text);
       const language = detectSpeechLanguage(context.text);
@@ -430,6 +440,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
           musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
         });
         activeLoadingRequestKey = null;
+        activeLoadingStartedAt = 0;
       };
 
       const speakNextChunk = () => {
@@ -511,6 +522,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
           musicDuckState: restoredMusicDuckState(musicDuckState, userChangedMusic),
         });
         activeLoadingRequestKey = null;
+        activeLoadingStartedAt = 0;
         return;
       }
 
@@ -519,6 +531,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
           return;
         }
         activeLoadingRequestKey = null;
+        activeLoadingStartedAt = 0;
         set({
           readingState: "ready",
           currentAudioUrl: response.audio_url ?? "",
@@ -544,6 +557,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       const { musicDuckState, userChangedMusic } = get();
       restoreMusicAfterReading(userChangedMusic);
       activeLoadingRequestKey = null;
+      activeLoadingStartedAt = 0;
       set({
         readingState: "failed",
         currentAudioUrl: "",
@@ -566,6 +580,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
     restoreMusicAfterReading(userChangedMusic);
     activeReadingAttempt += 1;
     activeLoadingRequestKey = null;
+    activeLoadingStartedAt = 0;
     getSpeechSynthesis()?.cancel();
     activeUtterance = null;
     set({
@@ -591,11 +606,15 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
     if (readingState === "failed") {
       return;
     }
+    if (!["ready", "playing", "paused"].includes(readingState)) {
+      return;
+    }
     const completedBrowserSpeech =
       playbackMode === "browser_speech" && currentSpeechText.length > 0;
     restoreMusicAfterReading(userChangedMusic);
     activeReadingAttempt += 1;
     activeLoadingRequestKey = null;
+    activeLoadingStartedAt = 0;
     if (activeUtterance) {
       getSpeechSynthesis()?.cancel();
       activeUtterance = null;
@@ -642,6 +661,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       playbackMode === "browser_speech" && currentSpeechText.length > 0;
     activeReadingAttempt += 1;
     activeLoadingRequestKey = null;
+    activeLoadingStartedAt = 0;
     getSpeechSynthesis()?.cancel();
     activeUtterance = null;
     const errorMessage =
