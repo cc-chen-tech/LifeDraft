@@ -73,13 +73,110 @@ async function gotoRegressionPageForVoiceControls(page: Page): Promise<void> {
   await page.waitForLoadState('domcontentloaded');
   await expect(page.getByRole('button', { name: '朗读故事' })).toBeVisible();
   await expect(page.getByTestId('voice-reading-audio-player')).toHaveCount(1);
+  await expect(page.getByTestId('voice-reading-hydrated')).toHaveText('ready');
+}
+
+async function clickReadStoryAfterHydration(page: Page): Promise<void> {
+  const readButton = page.getByRole('button', { name: '朗读故事' });
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await readButton.click();
+    const started = await page
+      .waitForFunction(
+        () => {
+          const state = document.querySelector('[data-testid="voice-reading-state"]')?.textContent;
+          const mode = document.querySelector('[data-testid="voice-reading-playback-mode"]')?.textContent;
+          return state !== 'idle' || mode !== 'none';
+        },
+        undefined,
+        { timeout: 1_000 }
+      )
+      .then(() => true)
+      .catch(() => false);
+    if (started) return;
+  }
+}
+
+async function useDeterministicBrowserSpeech(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    window.localStorage.setItem('story_voice_e2e_provider', 'browser');
+
+    class E2ESpeechSynthesisUtterance {
+      text: string;
+      lang = '';
+      voice: SpeechSynthesisVoice | null = null;
+      rate = 1;
+      onend: ((this: SpeechSynthesisUtterance, event: SpeechSynthesisEvent) => void) | null = null;
+      onerror: ((this: SpeechSynthesisUtterance, event: SpeechSynthesisErrorEvent) => void) | null = null;
+
+      constructor(text: string) {
+        this.text = text;
+      }
+    }
+
+    const speechState = {
+      speaking: false,
+      pending: false,
+      paused: false,
+    };
+
+    const speech: SpeechSynthesis = {
+      get speaking() {
+        return speechState.speaking;
+      },
+      get pending() {
+        return speechState.pending;
+      },
+      get paused() {
+        return speechState.paused;
+      },
+      onvoiceschanged: null,
+      getVoices: () => [],
+      speak() {
+        speechState.speaking = true;
+        speechState.pending = false;
+        speechState.paused = false;
+      },
+      cancel() {
+        speechState.speaking = false;
+        speechState.pending = false;
+        speechState.paused = false;
+      },
+      pause() {
+        speechState.paused = true;
+      },
+      resume() {
+        speechState.speaking = true;
+        speechState.paused = false;
+      },
+      addEventListener() {},
+      removeEventListener() {},
+      dispatchEvent: () => true,
+    };
+
+    Object.defineProperty(window, 'SpeechSynthesisUtterance', {
+      configurable: true,
+      value: E2ESpeechSynthesisUtterance,
+    });
+    Object.defineProperty(window, 'speechSynthesis', {
+      configurable: true,
+      value: speech,
+    });
+  });
 }
 
 test.describe('Story voice reading without login', () => {
   test('unauthenticated reading stays on the story page and falls back to browser speech', async ({ page }) => {
+    await useDeterministicBrowserSpeech(page);
+    await page.route('**/api/voice-reading/read', async (route) => {
+      await route.fulfill({
+        status: 401,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'Authentication required' }),
+      });
+    });
     await gotoRegressionPageForVoiceControls(page);
 
-    await page.getByRole('button', { name: '朗读故事' }).click();
+    await clickReadStoryAfterHydration(page);
 
     await expect(page).toHaveURL(/\/e2e-regression$/);
     await expect(page.getByTestId('voice-reading-source')).toHaveText('current_story');
@@ -121,9 +218,7 @@ test.describe('Story voice reading', () => {
   test('uses browser speech fallback with the actual story text when backend audio is unavailable', async ({ page }) => {
     const { readRequests, detach } = await captureVoiceReadRequests(page);
 
-    await page.addInitScript(() => {
-      window.localStorage.setItem('story_voice_e2e_provider', 'browser');
-    });
+    await useDeterministicBrowserSpeech(page);
     await gotoRegressionPageAfterMusicSettles(page);
 
     await page.getByRole('button', { name: '朗读故事' }).click();
@@ -226,9 +321,7 @@ test.describe('Story voice reading', () => {
   });
 
   test('failure state is retryable without blocking other panels', async ({ page }) => {
-    await page.addInitScript(() => {
-      window.localStorage.setItem('story_voice_e2e_provider', 'browser');
-    });
+    await useDeterministicBrowserSpeech(page);
     await gotoRegressionPageAfterMusicSettles(page);
 
     let readingRequestCount = 0;

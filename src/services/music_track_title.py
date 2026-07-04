@@ -8,15 +8,18 @@ from typing import Protocol
 class MusicTitleBrief(Protocol):
     @property
     def mood(self) -> str:
-        ...
+        """Music mood from story analysis."""
+        raise NotImplementedError
 
     @property
     def scene_type(self) -> str:
-        ...
+        """Scene type from story analysis."""
+        raise NotImplementedError
 
     @property
     def era_or_environment(self) -> str:
-        ...
+        """Era or environment context from story analysis."""
+        raise NotImplementedError
 
 
 GENERIC_SCENE_TITLE_CUES = {

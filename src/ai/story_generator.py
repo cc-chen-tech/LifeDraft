@@ -24,7 +24,7 @@ from src.ai.models import GameEvent
 from src.ai.option_generator import OptionGenerator
 from src.ai.system_prompts import get_system_prompt
 from src.ai.prompt_sanitizer import sanitize_player_name
-from src.ai.text_quality import normalize_chinese_punctuation, normalize_generated_story
+from src.ai.text_quality import normalize_generated_story
 from src.ai.vector_store import get_vector_store, is_vector_search_enabled
 
 logger = logging.getLogger(__name__)

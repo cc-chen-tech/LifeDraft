@@ -1,25 +1,42 @@
 """Shift-left contract tests for failures that should not wait for Playwright."""
 
+import json
+import os
 from pathlib import Path
-
-from src.api.main import app
+import subprocess
+import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def _registered_routes() -> set[tuple[str, str]]:
-    routes: set[tuple[str, str]] = set()
-    for route in app.routes:
-        path = getattr(route, "path", "")
-        methods = getattr(route, "methods", set()) or set()
-        if not path.startswith("/api/"):
+    script = """
+import json
+from src.api.main import app
+
+routes = []
+for route in app.routes:
+    path = getattr(route, "path", "")
+    methods = getattr(route, "methods", set()) or set()
+    if not path.startswith("/api/"):
+        continue
+    for method in methods:
+        if method in {"HEAD", "OPTIONS"}:
             continue
-        for method in methods:
-            if method in {"HEAD", "OPTIONS"}:
-                continue
-            routes.add((method, path))
-    return routes
+        routes.append([method, path])
+print(json.dumps(routes, sort_keys=True))
+"""
+    env = {**os.environ, "PYTHONPATH": str(ROOT)}
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    return {tuple(route) for route in json.loads(result.stdout)}
 
 
 REQUIRED_BROWSER_API_ROUTES = {
