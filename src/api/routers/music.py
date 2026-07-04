@@ -12,7 +12,7 @@ import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
-from src.api.deps import get_current_user, get_current_user_optional
+from src.api.deps import get_current_user_optional
 from src.database.models import SessionLocal
 from src.services.minimax_config import build_minimax_config
 from src.services.music_service import MusicBrief, MusicResultRanker
@@ -312,7 +312,7 @@ async def generate_music(
     request: MusicGenerationRequest,
     background_tasks: BackgroundTasks,
     response: Response,
-    user_id: int = Depends(get_current_user),
+    user_id: Optional[int] = Depends(get_current_user_optional),
     sync: bool = Query(
         False,
         description="Debug/local verification only: wait for provider generation and return the ready track.",
@@ -411,7 +411,7 @@ def _generate_music_in_background(game_id: int, story_text: str, analysis: Dict[
 async def enqueue_music_generation(
     request: MusicGenerationRequest,
     background_tasks: BackgroundTasks,
-    user_id: int = Depends(get_current_user),
+    user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """Start AI music generation in the background and return immediately."""
     db = SessionLocal()
@@ -621,7 +621,7 @@ async def stream_song(song_id: int, request: Request):
 
 
 @router.get("/music/playlist/{game_id}")
-async def get_playlist(game_id: int, user_id: int = Depends(get_current_user)):
+async def get_playlist(game_id: int, user_id: Optional[int] = Depends(get_current_user_optional)):
     """Get the current playlist state for a game."""
     db = SessionLocal()
     try:
@@ -638,7 +638,7 @@ async def get_playlist(game_id: int, user_id: int = Depends(get_current_user)):
 async def update_playlist(
     game_id: int,
     request: PlaylistUpdateRequest,
-    user_id: int = Depends(get_current_user),
+    user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """Merge new recommendation songs into the playlist.
 
@@ -664,7 +664,7 @@ async def update_playlist(
 async def sync_playlist_state(
     game_id: int,
     request: PlaylistSyncRequest,
-    user_id: int = Depends(get_current_user),
+    user_id: Optional[int] = Depends(get_current_user_optional),
 ):
     """Sync current playback position and state."""
     db = SessionLocal()
@@ -684,7 +684,7 @@ async def sync_playlist_state(
 
 
 @router.post("/music/playlist/{game_id}/advance")
-async def advance_playlist(game_id: int, user_id: int = Depends(get_current_user)):
+async def advance_playlist(game_id: int, user_id: Optional[int] = Depends(get_current_user_optional)):
     """Advance to the next song in the queue."""
     db = SessionLocal()
     try:
@@ -696,10 +696,17 @@ async def advance_playlist(game_id: int, user_id: int = Depends(get_current_user
         db.close()
 
 
-def _require_playlist_game_owner(db, game_id: int, user_id: int) -> None:
-    """Hide playlist state for games outside the authenticated user's saves."""
+def _require_playlist_game_owner(db, game_id: int, user_id: Optional[int]) -> None:
+    """Hide owned playlist state while preserving legacy unowned games."""
     from src.database.models import Game
 
-    game = db.query(Game).filter_by(game_id=game_id, user_id=user_id).first()
+    game = db.query(Game).filter_by(game_id=game_id).first()
     if game is None:
+        raise HTTPException(status_code=404, detail="Game not found")
+    owner_id = getattr(game, "user_id", None)
+    if owner_id is None:
+        return
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    if int(owner_id) != int(user_id):
         raise HTTPException(status_code=404, detail="Game not found")

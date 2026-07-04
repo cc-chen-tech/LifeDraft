@@ -350,11 +350,10 @@ export function usePlayGame() {
         }
       } catch (err) {
         if (isNotFoundError(err)) {
-          console.warn("[play] Stored game no longer exists, clearing session and returning home");
+          console.warn("[play] Stored game no longer exists, clearing session; retry recovery remains available");
           useGameStore.getState().resetGame();
           setProcessing(false);
           setPhase("error");
-          router.replace("/");
           return;
         }
         console.error("[play] syncState failed:", err);

@@ -203,7 +203,14 @@ class LocalAiMusicLibraryService:
             if score < self.match_threshold:
                 rejection_reasons.add("low_scene_fit")
                 continue
-            if best_entry is None or score > best_score:
+            if (
+                best_entry is None
+                or score > best_score
+                or (
+                    score == best_score
+                    and _entry_recency_key(entry) > _entry_recency_key(best_entry)
+                )
+            ):
                 best_entry = entry
                 best_score = score
 
@@ -345,6 +352,14 @@ def _profile_list(
 
 def _casefold_all(values: Iterable[Any]) -> list[str]:
     return [str(value).strip().casefold() for value in values if str(value).strip()]
+
+
+def _entry_recency_key(entry: GeneratedMusicLibraryEntry) -> tuple[datetime, int]:
+    asset = entry.asset
+    created_at = asset.created_at if asset is not None else entry.created_at
+    if not isinstance(created_at, datetime):
+        created_at = datetime.min
+    return created_at, int(entry.asset_id or 0)
 
 
 def _field_score(candidate: str, target: str, *, exact: int, partial: int) -> int:
