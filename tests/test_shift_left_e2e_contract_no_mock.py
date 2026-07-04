@@ -2,15 +2,44 @@
 
 from pathlib import Path
 
-from src.api.main import app
+from fastapi import FastAPI
+from src.api.routers import (
+    auth,
+    character,
+    collection,
+    friends,
+    gameplay,
+    games,
+    images,
+    music,
+    presets,
+    story,
+    voice_reading,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _build_route_contract_app() -> FastAPI:
+    app = FastAPI()
+    app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
+    app.include_router(friends.router, prefix="/api/friends", tags=["Friends"])
+    app.include_router(games.router, prefix="/api/games", tags=["Games"])
+    app.include_router(character.router, prefix="/api/character", tags=["Character"])
+    app.include_router(presets.router, prefix="/api/presets", tags=["Presets"])
+    app.include_router(gameplay.router, prefix="/api/games", tags=["Gameplay"])
+    app.include_router(story.router, prefix="/api/games", tags=["Story"])
+    app.include_router(images.router, prefix="/api/images", tags=["Images"])
+    app.include_router(collection.router, prefix="/api/collection", tags=["Collection"])
+    app.include_router(music.router, prefix="/api", tags=["Music"])
+    app.include_router(voice_reading.router, prefix="/api/voice-reading", tags=["VoiceReading"])
+    return app
+
+
 def _registered_routes() -> set[tuple[str, str]]:
     routes: set[tuple[str, str]] = set()
-    for route in app.routes:
+    for route in _build_route_contract_app().routes:
         path = getattr(route, "path", "")
         methods = getattr(route, "methods", set()) or set()
         if not path.startswith("/api/"):
