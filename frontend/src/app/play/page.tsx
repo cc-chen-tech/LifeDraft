@@ -867,7 +867,7 @@ export default function PlayPage() {
       <Sheet modal={false} open={collectionPanelOpen} onOpenChange={handleCollectionOpenChange}>
         <SheetContent
           side="right"
-          className="w-[400px] sm:w-[540px] p-0"
+          className="z-[60] w-[400px] sm:w-[540px] p-0"
           overlayClassName="pointer-events-none bg-transparent"
         >
           <SheetTitle className="sr-only">收集</SheetTitle>

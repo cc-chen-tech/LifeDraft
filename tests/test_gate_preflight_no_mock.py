@@ -174,6 +174,25 @@ def test_frontend_layout_does_not_depend_on_google_font_network() -> None:
     assert "--font-serif-sc" in globals_css
 
 
+def test_collection_sheet_stacks_above_global_music_player() -> None:
+    play_page = (ROOT / "frontend" / "src" / "app" / "play" / "page.tsx").read_text(
+        encoding="utf-8"
+    )
+    music_player = (
+        ROOT / "frontend" / "src" / "components" / "game" / "GlobalMusicPlayer.tsx"
+    ).read_text(encoding="utf-8")
+
+    collection_sheet = re.search(
+        r"<Sheet modal=\{false\} open=\{collectionPanelOpen\}.*?<CollectionPanel",
+        play_page,
+        re.DOTALL,
+    )
+
+    assert collection_sheet is not None
+    assert 'className="z-[60] w-[400px] sm:w-[540px] p-0"' in collection_sheet.group(0)
+    assert 'className="fixed z-50 top-16 left-0 right-0 safe-area-pt mt-2' in music_player
+
+
 def test_e2e_gate_does_not_reuse_frontend_from_other_worktree() -> None:
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
     config = (ROOT / "frontend" / "playwright.config.ts").read_text(encoding="utf-8")
