@@ -2896,6 +2896,16 @@
               ],
               "title": "Stage"
             }
+          },
+          {
+            "name": "retry",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Retry"
+            }
           }
         ],
         "responses": {
