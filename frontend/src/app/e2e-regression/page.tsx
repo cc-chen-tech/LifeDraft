@@ -5,11 +5,44 @@ import { ChatBar } from "@/components/game/ChatBar";
 import { MusicPlayer } from "@/components/game/MusicPlayer";
 import { OptionCards } from "@/components/game/OptionCards";
 import { StoryVoiceControls } from "@/components/game/StoryVoiceControls";
+import { SettingFeedbackCard } from "@/components/create/SettingFeedbackCard";
+import { useCharacterCreation } from "@/hooks/useCharacterCreation";
+import { useGameStore } from "@/stores/useGameStore";
+import { useImageStore } from "@/stores/useImageStore";
 import { useMusicStore } from "@/stores/useMusicStore";
 import { useStoryVoiceStore } from "@/stores/useStoryVoiceStore";
 
 const transparentPixel =
   "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+
+const relationshipFixtureSettings = {
+  family: { family_description: "测试家庭" },
+  relationships: {
+    relationships_description: "旧关系摘要：陈晓峰仍在原公司任职，周丽持续提供咨询。",
+    key_people: [
+      { name: "陈晓峰", role: "前同事", relationship: "仍在原公司任职" },
+      { name: "周丽", role: "律师", relationship: "持续提供法律咨询" },
+    ],
+  },
+  traits: { traits_description: "谨慎务实" },
+  wealth: { wealth: 200000, currency: "¥" },
+};
+
+function RelationshipRegenerationFixture() {
+  const { characterSettings, regenerateSetting } = useCharacterCreation();
+  const relationships = characterSettings.relationships as Record<string, unknown>;
+
+  return (
+    <main className="min-h-screen p-6">
+      <SettingFeedbackCard
+        stepKey="relationships"
+        stepLabel="人际关系"
+        data={relationships}
+        onRegenerate={(feedback) => regenerateSetting("relationships", feedback)}
+      />
+    </main>
+  );
+}
 
 export default function E2ERegressionPage() {
   const setActiveStoryText = useMusicStore((state) => state.setActiveStoryText);
@@ -31,6 +64,7 @@ export default function E2ERegressionPage() {
   >("empty");
   const [normalClickChoice, setNormalClickChoice] = useState("none");
   const [collectionRefreshState, setCollectionRefreshState] = useState<"idle" | "refreshing">("idle");
+  const [showRelationshipRegenerationFixture, setShowRelationshipRegenerationFixture] = useState(false);
   const [fixtureGameId, setFixtureGameId] = useState(101);
   const [musicQueueFixture, setMusicQueueFixture] = useState<{
     current: { title: string; source: string };
@@ -48,6 +82,24 @@ export default function E2ERegressionPage() {
     const searchParams = new URLSearchParams(window.location.search);
     const configuredGameId = Number(searchParams.get("gameId"));
     const enableGlobalVoiceFixture = searchParams.get("globalVoice") === "1";
+    const enableRelationshipRegenerationFixture =
+      searchParams.get("relationshipRegeneration") === "1";
+    if (enableRelationshipRegenerationFixture) {
+      useGameStore.setState({
+        creationStep: 4,
+        characterSettings: relationshipFixtureSettings,
+        playerName: "林见微",
+        lifeVision: "现实主义创业故事",
+        gameId: 901,
+        sessionId: "901",
+      });
+      useImageStore.setState({
+        playerImages: [{ image_id: 1, image_url: transparentPixel }],
+        selectedImageIndex: 0,
+        isGeneratingImage: false,
+      });
+      setShowRelationshipRegenerationFixture(true);
+    }
     if (Number.isFinite(configuredGameId) && configuredGameId > 0) {
       setFixtureGameId(configuredGameId);
     }
@@ -108,6 +160,10 @@ export default function E2ERegressionPage() {
   const replaceAfterRetry = () => {
     setStreamedStory("苏小二按住账册，低声提醒陆明先核对暗号。");
   };
+
+  if (showRelationshipRegenerationFixture) {
+    return <RelationshipRegenerationFixture />;
+  }
 
   return (
     <main className="min-h-screen p-6 space-y-8">
