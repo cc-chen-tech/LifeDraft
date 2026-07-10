@@ -18,6 +18,11 @@ from src.api.schemas import GameStateResponse, GenerateSummaryRequest
 from src.api.services.session_service import session_service
 from src.api.session_store import session_store
 from src.game.endings import EndingEvaluator
+from src.services.life_summary_grounding import (
+    build_grounded_fallback,
+    build_life_summary_prompt,
+    validate_or_fallback_life_summary,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -185,63 +190,12 @@ async def generate_summary(
                     item for item in story_history if item.get("week", 0) in recent_weeks
                 ]
 
-        # Build story text
-        story_parts = []
-        for item in story_history:
-            week = item.get("week", 0)
-            round_num = item.get("round", None)
-            story_text = item.get("story_text", "")
-            choice_text = item.get("choice_text", "")
-
-            if story_text:
-                # week 是 0-based，显示时 +1
-                display_week = week + 1
-                # 包含轮次信息（如果有）
-                if round_num is not None:
-                    round_names = ["周一", "周中", "周末"]
-                    round_name = (
-                        round_names[round_num]
-                        if round_num < len(round_names)
-                        else f"第{round_num+1}轮"
-                    )
-                    story_parts.append(f"【第{display_week}周·{round_name}】{story_text}")
-                else:
-                    story_parts.append(f"【第{display_week}周】{story_text}")
-                if choice_text:
-                    story_parts.append(f"→ 选择：{choice_text}")
-
-        full_story = "\n\n".join(story_parts)
-
-        # Get current state
-        current_state = ""
-        if player:
-            current_state = f"""
-当前状态：
-- 姓名：{player.player_name}
-- 年龄：{player.age}岁
-- 精力：{player.energy}/100
-- 情绪：{player.mood}/100
-- 学识：{player.knowledge}/100
-- 财富：¥{player.wealth:,}
-"""
-
-        # Use AI to generate rich summary
-        # ★ 不再截断故事，将所有历史传给模型进行完整总结
-        prompt = f"""请为这段人生故事生成一段精彩的总结（300-500字）。
-
-故事经历：
-{full_story}
-
-{current_state}
-
-请生成一段生动的人生总结，包括：
-1. 主要的人生经历和重要事件
-2. 关键的决定和选择
-3. 人物关系的变化
-4. 成长和变化的轨迹
-5. 当前的人生状态
-
-请用第三人称叙述，语言生动有文学性，但不要过于浮夸。"""
+        all_week_values = [item.get("week", 0) for item in story_history]
+        min_week = min(all_week_values)
+        max_week = max(all_week_values)
+        start_week = min_week + 1
+        end_week = max_week + 1
+        prompt = build_life_summary_prompt(story_history, start_week, end_week)
 
         try:
             summary_text = game_loop.ai_generator.generate_completion(
@@ -252,18 +206,18 @@ async def generate_summary(
             )
         except Exception as e:
             logger.warning(f"AI summary generation failed: {e}")
-            # Fallback: generate simple summary based on story
-            summary_text = _generate_fallback_summary(story_history, player)
+            summary_text = build_grounded_fallback(story_history, start_week, end_week)
 
-        # ★ 遍历所有记录找 min/max week，而非依赖首尾元素（数据可能未排序）
-        # week 在内部是 0-based，显示给用户时 +1 变成 1-based
-        all_week_values = [item.get("week", 0) for item in story_history]
-        min_week = min(all_week_values)
-        max_week = max(all_week_values)
+        summary_text = validate_or_fallback_life_summary(
+            summary_text,
+            story_history,
+            start_week,
+            end_week,
+        )
 
         return {
-            "start_week": min_week + 1,
-            "end_week": max_week + 1,
+            "start_week": start_week,
+            "end_week": end_week,
             "summary_text": summary_text,
             "story_count": len(story_history),
         }
@@ -277,29 +231,9 @@ def _generate_fallback_summary(story_history: list, player) -> str:
     """Generate fallback summary when AI call fails."""
     if not story_history:
         return "您的人生故事刚刚开始。"
-
-    # Extract key events
-    events = []
-    for item in story_history[-5:]:  # Last 5 events
-        story = item.get("story_text", "")
-        if story and len(story) > 50:
-            # Take first sentence as summary
-            first_sentence = story.split("。")[0] + "。" if "。" in story else story[:100]
-            events.append(first_sentence)
-
-    summary_parts = []
-    if player:
-        summary_parts.append(
-            f"{player.player_name}的人生旅程已经走过了{len(story_history)}段故事。"
-        )
-        summary_parts.append(
-            f"当前{player.age}岁，拥有{player.wealth:,}的财富，学识水平{player.knowledge}/100。"
-        )
-
-    if events:
-        summary_parts.append("近期经历：" + " ".join(events))
-
-    return "\n".join(summary_parts)
+    _ = player
+    weeks = [item.get("week", 0) for item in story_history]
+    return build_grounded_fallback(story_history, min(weeks) + 1, max(weeks) + 1)
 
 
 @router.get("/{game_id}/ending")

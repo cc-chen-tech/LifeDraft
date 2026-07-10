@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { streamRewrite } from "@/lib/sse";
 import { useGameStore } from "@/stores/useGameStore";
+import { LifeSummaryPanel, type LifeSummaryData } from "./LifeSummaryPanel";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -33,12 +34,6 @@ import {
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
-}
-
-interface LifeSummary {
-  text: string;
-  startWeek: number;
-  endWeek: number;
 }
 
 function normalizeSummaryWeek(value: number | undefined, fallback: number): number {
@@ -60,14 +55,6 @@ function normalizeSummaryWeeks(startWeek: number | undefined, endWeek: number | 
     startWeek: normalizedStart,
     endWeek: Math.max(normalizedStart, normalizedEnd),
   };
-}
-
-function getSummaryWeekLabel(startWeek: number, endWeek: number): string {
-  if (startWeek === endWeek) {
-    return `第${startWeek}周`;
-  }
-
-  return `第${startWeek}-${endWeek}周`;
 }
 
 function getRewriteProgressMessage(status: { phase?: string; message?: string }): string {
@@ -123,7 +110,7 @@ export function ChatBar({
   const [message, setMessage] = useState("");
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [isSummaryOpen, setIsSummaryOpen] = useState(false);
-  const [lifeSummary, setLifeSummary] = useState<LifeSummary | null>(null);
+  const [lifeSummary, setLifeSummary] = useState<LifeSummaryData | null>(null);
   const [lifeSummaryError, setLifeSummaryError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
@@ -414,58 +401,13 @@ export function ChatBar({
   );
 
   const lifeSummaryPanel = isSummaryOpen && (
-    <section
-      data-testid="life-summary-panel"
-      aria-label="人生总结"
-      className={cn(
-        "fixed bottom-20 left-4 right-4 sm:left-auto sm:w-[min(28rem,calc(100vw-2rem))] max-w-md z-50",
-        "bg-card/95 backdrop-blur-sm border border-border shadow-xl rounded-lg",
-        "p-4 safe-area-pb",
-        className
-      )}
-    >
-      <div className="flex items-center gap-2 mb-3">
-        <FileText className="w-4 h-4 text-primary" />
-        <h2 className="text-sm font-semibold text-foreground">人生总结</h2>
-        <div className="flex-1" />
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-8 w-8"
-          onClick={() => setIsSummaryOpen(false)}
-          aria-label="关闭人生总结"
-          title="关闭人生总结"
-        >
-          <X className="w-4 h-4" />
-        </Button>
-      </div>
-
-      <div className="max-h-[320px] overflow-y-auto text-sm text-muted-foreground">
-        {isGeneratingSummary ? (
-          <div className="flex items-center gap-2 rounded-lg bg-secondary px-3 py-2">
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            正在生成总结...
-          </div>
-        ) : lifeSummaryError ? (
-          <div className="rounded-lg bg-destructive/10 px-3 py-2 text-destructive">
-            {lifeSummaryError}
-          </div>
-        ) : lifeSummary ? (
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">
-              {getSummaryWeekLabel(lifeSummary.startWeek, lifeSummary.endWeek)}
-            </p>
-            <div className="prose prose-sm prose-invert max-w-none text-muted-foreground">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {lifeSummary.text}
-              </ReactMarkdown>
-            </div>
-          </div>
-        ) : (
-          <div className="rounded-lg bg-secondary px-3 py-2">暂无总结内容</div>
-        )}
-      </div>
-    </section>
+    <LifeSummaryPanel
+      summary={lifeSummary}
+      isLoading={isGeneratingSummary}
+      error={lifeSummaryError}
+      onClose={() => setIsSummaryOpen(false)}
+      className={className}
+    />
   );
 
   if (!isExpanded) {

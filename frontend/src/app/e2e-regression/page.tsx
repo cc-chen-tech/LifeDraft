@@ -8,6 +8,7 @@ import { StoryVoiceControls } from "@/components/game/StoryVoiceControls";
 import { SettingDisplay } from "@/components/game/SettingDisplay";
 import { api } from "@/lib/api";
 import { OpeningCompletionGate } from "@/components/game/OpeningCompletionGate";
+import { LifeSummaryPanel } from "@/components/game/LifeSummaryPanel";
 import { useMusicStore } from "@/stores/useMusicStore";
 import { useStoryVoiceStore } from "@/stores/useStoryVoiceStore";
 
@@ -37,6 +38,8 @@ export default function E2ERegressionPage() {
   const [openingVisibleComplete, setOpeningVisibleComplete] = useState(false);
   const [collectionRefreshState, setCollectionRefreshState] = useState<"idle" | "refreshing">("idle");
   const [fixtureGameId, setFixtureGameId] = useState(101);
+  const [lifeSummaryFixtureEnabled, setLifeSummaryFixtureEnabled] = useState(false);
+  const [showLifeSummaryFixture, setShowLifeSummaryFixture] = useState(false);
   const [worldFactSetting, setWorldFactSetting] = useState<Record<string, unknown> | null>(null);
   const [musicQueueFixture, setMusicQueueFixture] = useState<{
     current: { title: string; source: string };
@@ -54,6 +57,7 @@ export default function E2ERegressionPage() {
     const searchParams = new URLSearchParams(window.location.search);
     const configuredGameId = Number(searchParams.get("gameId"));
     const enableGlobalVoiceFixture = searchParams.get("globalVoice") === "1";
+    setLifeSummaryFixtureEnabled(searchParams.get("lifeSummary") === "1");
     if (Number.isFinite(configuredGameId) && configuredGameId > 0) {
       setFixtureGameId(configuredGameId);
     }
@@ -128,6 +132,29 @@ export default function E2ERegressionPage() {
 
   return (
     <main className="min-h-screen p-6 space-y-8">
+      {lifeSummaryFixtureEnabled && (
+        <section aria-label="人生总结事实边界回归夹具">
+          <button
+            type="button"
+            className="rounded border px-3 py-2"
+            onClick={() => setShowLifeSummaryFixture(true)}
+          >
+            打开已校验人生总结
+          </button>
+          {showLifeSummaryFixture && (
+            <LifeSummaryPanel
+              summary={{
+                startWeek: 1,
+                endWeek: 4,
+                text: "林晓围绕隐私风险、注册材料和招标安排持续查证，冲突信息仍保持未决。",
+              }}
+              isLoading={false}
+              error={null}
+              onClose={() => setShowLifeSummaryFixture(false)}
+            />
+          )}
+        </section>
+      )}
       {worldFactSetting && (
         <section aria-label="世界事实边界回归夹具">
           <SettingDisplay stepKey="world" data={worldFactSetting} />
