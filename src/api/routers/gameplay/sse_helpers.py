@@ -12,6 +12,10 @@ from typing import Optional
 
 from config.settings import settings
 from src.api.deps import get_db
+from src.api.services.event_generation_operation import (
+    EventGenerationConflict,
+    EventGenerationKey,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -500,175 +504,112 @@ def _persist_choice_state(game_loop, game_id: int) -> None:
         logger.exception(f"Auto-save unexpected error after choice: {e}")
 
 
+def build_event_generation_key(game_id: int, game_loop) -> EventGenerationKey:
+    """Build the stable identity for the current round event."""
+    player_state = game_loop.player_state
+    return EventGenerationKey(
+        game_id=game_id,
+        week=int(player_state.week),
+        round_number=int(player_state.current_round),
+        stage="event",
+    )
+
+
+def _run_event_generation_operation(operation, game_loop, game_id: int, session) -> None:
+    """Run one event generation job independently of all SSE subscribers."""
+    try:
+        event = game_loop.generate_round_event(
+            stream_callback=operation.publish_story,
+            status_callback=operation.publish_phase,
+            session=session,
+        )
+        if event is None:
+            raise RuntimeError("No event returned from event generation")
+        _persist_generated_event_state(game_loop, game_id)
+        operation.complete(event)
+        try:
+            _trigger_round_illustration_generation(game_loop, game_id, event, stage="event")
+        except Exception as exc:
+            logger.exception("Failed to trigger round illustration: %s", exc)
+    except Exception as exc:
+        logger.exception("Event generation operation failed: %s", exc)
+        operation.fail(str(exc))
+
+
+def get_or_start_round_event_generation(game_loop, game_id: int, session):
+    """Return the current operation and start its worker exactly once."""
+    key = build_event_generation_key(game_id, game_loop)
+    operation, should_start = session.event_generation.get_or_create(key)
+    if should_start:
+        _get_sse_thread_pool().submit(
+            _run_event_generation_operation,
+            operation,
+            game_loop,
+            game_id,
+            session,
+        )
+    return operation, should_start
+
+
+async def wait_for_event_generation(operation, timeout: float = SSE_STREAM_TIMEOUT):
+    """Wait for a terminal snapshot without cancelling the background job."""
+    deadline = asyncio.get_running_loop().time() + timeout
+    while operation.status == "running":
+        if asyncio.get_running_loop().time() >= deadline:
+            raise asyncio.TimeoutError
+        await asyncio.sleep(0.1)
+    return operation.snapshot_after(-1)
+
+
 async def stream_round_event(
     game_loop, game_id: int, session=None, last_event_id: Optional[int] = None
 ):
-    """
-    Async generator that streams round event generation via SSE.
-    Uses asyncio.Queue for zero-latency event forwarding from worker thread.
-    Yields SSE events: status, story (chunks), complete (final event).
-    Includes heartbeat mechanism to keep connection alive.
-    Auto-saves game state after event generation to enable resume.
+    """Subscribe to one durable round-event generation operation."""
+    if session is None:
+        from src.api.session_store import GameLoopSession
 
-    Reconnection support:
-    - session: GameLoopSession for caching story chunks
-    - last_event_id: If provided, replay cached chunks first (断点续传)
-    """
-    loop = asyncio.get_running_loop()
-    q: asyncio.Queue = asyncio.Queue()
+        session = GameLoopSession(game_loop=game_loop, game_id=game_id)
 
-    # ★ 标记连接是否已关闭，避免向已关闭的事件循环发送回调
-    closed = [False]
-
-    def stream_cb(text):
-        if closed[0] or loop.is_closed():
-            logger.warning(
-                f"[stream_cb] Skipping chunk (closed={closed[0]}, loop_closed={loop.is_closed()})"
-            )
-            return
-        try:
-            loop.call_soon_threadsafe(q.put_nowait, ("story", text))
-        except RuntimeError as e:
-            logger.error(f"[stream_cb] RuntimeError: {e}")
-            closed[0] = True  # 事件循环已关闭
-
-    def status_cb(status):
-        if closed[0] or loop.is_closed():
-            return
-        try:
-            loop.call_soon_threadsafe(q.put_nowait, ("status", {"phase": status}))
-        except RuntimeError:
-            closed[0] = True  # 事件循环已关闭
-
-    result_holder = [None]
-    error_holder = [None]
-
-    def run():
-        try:
-            result_holder[0] = game_loop.generate_round_event(
-                stream_callback=stream_cb,
-                status_callback=status_cb,
-                session=session,
-            )
-            if result_holder[0] is not None:
-                _persist_generated_event_state(game_loop, game_id)
-        except (ValueError, TypeError, KeyError) as e:
-            logger.warning(f"[stream_round_event] Data error in run(): {e}")
-            error_holder[0] = e
-        except Exception as e:
-            logger.exception(f"[stream_round_event] Unexpected error in run(): {e}")
-            error_holder[0] = e
-        finally:
-            if not closed[0] and not loop.is_closed():
-                try:
-                    loop.call_soon_threadsafe(q.put_nowait, ("__done__", None))
-                except RuntimeError:
-                    pass
-
-    # ---- Reconnection: just continue from where we left off ----
-    # Frontend already has the content up to last_event_id, no need to replay
-    if last_event_id is not None and session is not None:
-        cached_count = len(session.sse_cache)
-        if cached_count > 0:
-            logger.info(
-                f"Reconnection detected, last_event_id={last_event_id}, cached={cached_count} chunks"
-            )
-            # If generation was already complete, just send complete event
-            if not session._is_generating and session.sse_cache:
-                event = game_loop.current_event
-                if event and event.options:
-                    logger.info("Generation already complete, sending complete event directly")
-                    yield make_sse_event("status", {"phase": "resuming"})
-                    yield make_sse_event("complete", event.model_dump())
-                    return
-
-    # Immediately tell the client we're alive and processing
-    yield make_sse_event("status", {"phase": "preparing"})
-
-    _get_sse_thread_pool().submit(run)
-
-    # Heartbeat + timeout: use module-level constants
-    last_event_time = asyncio.get_event_loop().time()
-
-    # Yield SSE events as they arrive — fully async, no thread pool overhead
-    while True:
-        try:
-            # Use shorter timeout for heartbeat check
-            event_type, data = await asyncio.wait_for(q.get(), timeout=HEARTBEAT_INTERVAL)
-            last_event_time = asyncio.get_event_loop().time()
-        except asyncio.TimeoutError:
-            # Check if overall timeout exceeded
-            elapsed = asyncio.get_event_loop().time() - last_event_time
-            if elapsed > SSE_STREAM_TIMEOUT:
-                yield make_sse_event("error", {"error": "Timeout waiting for event generation"})
-                break
-            # Send heartbeat to keep connection alive
-            yield make_sse_event("status", {"phase": "processing", "heartbeat": True})
-            continue
-
-        if event_type == "__done__":
-            break
-
-        # ★ Handle retry status: clear cache before sending
-        if event_type == "status" and isinstance(data, dict):
-            clear_sse_cache_if_retry(data, session)
-
-        # Cache story chunks for reconnection support
-        if event_type == "story" and session is not None:
-            event_id = session.cache_sse_chunk(data)
-            yield make_sse_event(event_type, data, event_id=event_id)
-        else:
-            yield make_sse_event(event_type, data)
-
-    # Check for errors
-    if error_holder[0] is not None:
-        yield make_sse_event("error", {"error": str(error_holder[0])})
-        # Clear cache on error
-        if session is not None:
-            session.clear_sse_cache()
+    try:
+        operation, should_start = get_or_start_round_event_generation(
+            game_loop, game_id, session
+        )
+    except EventGenerationConflict as exc:
+        yield make_sse_event("error", {"error": str(exc)})
         return
 
-    # Send complete event with full event data
-    event = result_holder[0]
-    if event is not None:
-        # Debug log: check if event_description is complete
-        desc = event.event_description
-        opts = getattr(event, "options", None)
-        logger.info(
-            f"[SSE Complete] event_description length: {len(desc)} chars, options count: {len(opts) if opts else 0}"
-        )
-        logger.info(f"[SSE Complete] Last 100 chars: ...{desc[-100:] if len(desc) > 100 else desc}")
+    cursor = -1 if last_event_id is None else last_event_id
+    last_phase = ""
+    last_heartbeat = asyncio.get_running_loop().time()
+    yield make_sse_event(
+        "status", {"phase": "preparing" if should_start else "resuming"}
+    )
 
-        event_data = event.model_dump()
-        logger.info(
-            f"[SSE Complete] model_dump options count: {len(event_data.get('options', []))}"
-        )
+    while True:
+        snapshot = operation.snapshot_after(cursor)
+        if snapshot.phase != last_phase:
+            last_phase = snapshot.phase
+            yield make_sse_event("status", {"phase": snapshot.phase})
+        for event_id, chunk in snapshot.chunks:
+            cursor = event_id
+            yield make_sse_event("story", chunk, event_id=event_id)
 
-        yield make_sse_event("complete", event_data)
+        if snapshot.status == "completed":
+            yield make_sse_event("complete", snapshot.result.model_dump())
+            return
+        if snapshot.status == "failed":
+            yield make_sse_event(
+                "error", {"error": snapshot.error or "Event generation failed"}
+            )
+            return
 
-        # ★ 异步触发每轮场景插画生成（不阻塞游戏流程）
-        # event 阶段的插画在事件生成完成后触发
-        try:
-            _trigger_round_illustration_generation(game_loop, game_id, event, stage="event")
-        except (ValueError, TypeError) as e:
-            logger.warning(f"Invalid data for round illustration generation: {e}")
-        except Exception as e:
-            logger.exception(f"Unexpected error triggering round illustration generation: {e}")
-
-        # ★ 异步触发选项预生成（如果故事已生成但选项未生成）
-        # 这优化了断点续传场景：下次加载时选项已缓存，实现零等待
-        if event and event.event_description and not event.options:
-            try:
-                _prefetch_options(game_loop, game_id, session, event)
-            except (ValueError, TypeError) as e:
-                logger.warning(f"Invalid data for prefetch options: {e}")
-            except Exception as e:
-                logger.exception(f"Unexpected error prefetching options: {e}")
-    else:
-        yield make_sse_event("complete", {"event_description": "", "options": []})
-
-    # Note: Don't clear cache immediately - keep for potential reconnects
-    # Cache will be cleared when new generation starts
+        now = asyncio.get_running_loop().time()
+        if now - last_heartbeat >= HEARTBEAT_INTERVAL:
+            last_heartbeat = now
+            yield make_sse_event(
+                "status", {"phase": snapshot.phase, "heartbeat": True}
+            )
+        await asyncio.sleep(0.1)
 
 
 async def stream_choice(
@@ -827,66 +768,6 @@ async def replay_cached_then_complete(session, last_event_id: int, event):
     )
     yield make_sse_event("status", {"phase": "resuming"})
     yield make_sse_event("complete", event.model_dump())
-
-
-async def replay_cached_and_wait(session, last_event_id: int):
-    """Continue streaming for reconnection during ongoing generation.
-
-    Frontend already has content up to last_event_id, just wait for new chunks.
-    """
-    logger.info(
-        f"Reconnection during generation, waiting for new content (last_event_id={last_event_id})"
-    )
-    current_id = last_event_id
-
-    # Tell frontend we're resuming
-    yield make_sse_event("status", {"phase": "resuming"})
-
-    poll_count = 0
-    max_polls = 120  # Max 2 minutes of polling (120 * 1s)
-
-    while session._is_generating and poll_count < max_polls:
-        await asyncio.sleep(1)  # Poll every 1 second
-        poll_count += 1
-
-        # Check for new chunks
-        new_chunks = session.get_cached_chunks_after(current_id)
-        if new_chunks:
-            for event_id, chunk in new_chunks:
-                yield make_sse_event("story", chunk, event_id=event_id)
-                current_id = event_id
-
-        # Send heartbeat every 5 seconds
-        if poll_count % 5 == 0:
-            yield make_sse_event("status", {"phase": "processing", "heartbeat": True})
-
-    # Generation finished, check if we have the complete event
-    game_loop = session.game_loop
-    if game_loop.current_event and game_loop.current_event.options:
-        # Replay any remaining chunks
-        final_chunks = session.get_cached_chunks_after(current_id)
-        for event_id, chunk in final_chunks:
-            yield make_sse_event("story", chunk, event_id=event_id)
-        # Send complete event
-        yield make_sse_event("complete", game_loop.current_event.model_dump())
-    else:
-        # Generation timed out or failed
-        yield make_sse_event("error", {"error": "Generation timed out, please try again"})
-
-
-async def stream_round_event_with_asyncio_lock(
-    game_loop,
-    game_id: int,
-    lock: asyncio.Lock,
-    session=None,
-    last_event_id: Optional[int] = None,
-):
-    """Wrapper that ensures asyncio lock is released after streaming completes."""
-    try:
-        async for event in stream_round_event(game_loop, game_id, session, last_event_id):
-            yield event
-    finally:
-        lock.release()
 
 
 async def stream_regenerate(
