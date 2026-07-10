@@ -5,6 +5,8 @@ import { ChatBar } from "@/components/game/ChatBar";
 import { MusicPlayer } from "@/components/game/MusicPlayer";
 import { OptionCards } from "@/components/game/OptionCards";
 import { StoryVoiceControls } from "@/components/game/StoryVoiceControls";
+import { SettingDisplay } from "@/components/game/SettingDisplay";
+import { api } from "@/lib/api";
 import { OpeningCompletionGate } from "@/components/game/OpeningCompletionGate";
 import { LifeSummaryPanel } from "@/components/game/LifeSummaryPanel";
 import { useMusicStore } from "@/stores/useMusicStore";
@@ -38,6 +40,7 @@ export default function E2ERegressionPage() {
   const [fixtureGameId, setFixtureGameId] = useState(101);
   const [lifeSummaryFixtureEnabled, setLifeSummaryFixtureEnabled] = useState(false);
   const [showLifeSummaryFixture, setShowLifeSummaryFixture] = useState(false);
+  const [worldFactSetting, setWorldFactSetting] = useState<Record<string, unknown> | null>(null);
   const [musicQueueFixture, setMusicQueueFixture] = useState<{
     current: { title: string; source: string };
     queue: string[];
@@ -57,6 +60,17 @@ export default function E2ERegressionPage() {
     setLifeSummaryFixtureEnabled(searchParams.get("lifeSummary") === "1");
     if (Number.isFinite(configuredGameId) && configuredGameId > 0) {
       setFixtureGameId(configuredGameId);
+    }
+    if (
+      searchParams.get("worldFact") === "1" &&
+      Number.isFinite(configuredGameId) &&
+      configuredGameId > 0
+    ) {
+      void api.games.load(configuredGameId).then((game) => {
+        setWorldFactSetting(
+          (game.player_state.character_settings.world as Record<string, unknown>) ?? null,
+        );
+      });
     }
     setActiveStoryText(
       enableGlobalVoiceFixture
@@ -141,6 +155,11 @@ export default function E2ERegressionPage() {
           )}
         </section>
       )}
+      {worldFactSetting && (
+        <section aria-label="世界事实边界回归夹具">
+          <SettingDisplay stepKey="world" data={worldFactSetting} />
+        </section>
+      )}
       <section aria-label="开场完成门控回归夹具" className="space-y-3">
         <div className="flex gap-3">
           <button
@@ -167,7 +186,6 @@ export default function E2ERegressionPage() {
           onStart={() => undefined}
         />
       </section>
-
       <section aria-label="选项可访问名称回归夹具">
         <OptionCards
           options={[

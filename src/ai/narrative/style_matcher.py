@@ -9,9 +9,12 @@ import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Mapping, Optional
 
 logger = logging.getLogger(__name__)
+
+Settings = Mapping[str, object]
+MatchingKeywords = Dict[str, List[str]]
 
 # 项目根目录（style_matcher.py 位于 src/ai/narrative/）
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -20,6 +23,26 @@ _STYLES_DIR = _PROJECT_ROOT / "config" / "styles"
 # 默认回退风格
 # ★ Bug #12 修复：默认风格与前端显示一致（魔幻现实主义），避免未指定风格时默认使用章回体
 _DEFAULT_STYLE_ID = "magical_realism"
+_REALISTIC_BOUNDARY_MARKERS = (
+    "现实主义",
+    "写实主义",
+    "写实风格",
+    "现实世界一致",
+    "与现实世界一致",
+    "真实世界",
+    "无超自然",
+    "不要超自然",
+    "禁止超自然",
+    "禁止赛博朋克",
+    "不要赛博朋克",
+    "不使用未来科技",
+)
+_NEGATED_CYBERPUNK_MARKERS = (
+    "禁止赛博朋克",
+    "不要赛博朋克",
+    "不使用赛博朋克",
+    "无赛博朋克",
+)
 
 
 # ==================== 匹配结果 ====================
@@ -64,7 +87,7 @@ class StyleMatcher:
 
     def __init__(self, styles_dir: Optional[Path] = None):
         self._styles_dir = styles_dir or _STYLES_DIR
-        self._keywords: Dict[str, dict] = {}  # style_id -> matching_keywords
+        self._keywords: Dict[str, MatchingKeywords] = {}
         self._load_keywords()
 
     # -------------------- 加载 --------------------
@@ -94,7 +117,7 @@ class StyleMatcher:
             style_id = raw.get("style_id")
             matching_keywords = raw.get("matching_keywords")
 
-            if not style_id:
+            if not isinstance(style_id, str) or not style_id:
                 logger.warning("Style file %s missing style_id, skipping.", file_path.name)
                 continue
 
@@ -105,7 +128,11 @@ class StyleMatcher:
                 )
                 continue
 
-            self._keywords[style_id] = matching_keywords
+            self._keywords[style_id] = {
+                key: [value for value in values if isinstance(value, str)]
+                for key, values in matching_keywords.items()
+                if isinstance(key, str) and isinstance(values, list)
+            }
             count += 1
 
         logger.info(
@@ -116,7 +143,7 @@ class StyleMatcher:
 
     # -------------------- 公开接口 --------------------
 
-    def match(self, character_settings: dict) -> StyleMatchResult:
+    def match(self, character_settings: Settings) -> StyleMatchResult:
         """返回最佳匹配风格及置信度。
 
         Args:
@@ -128,6 +155,14 @@ class StyleMatcher:
         """
         if not character_settings:
             return StyleMatchResult(style_id=_DEFAULT_STYLE_ID, confidence=0.0)
+
+        all_text = self._extract_all_text(character_settings)
+        if self._has_authoritative_realistic_boundary(all_text):
+            return StyleMatchResult(
+                style_id="nonfiction_novel",
+                confidence=1.0,
+                all_scores={"nonfiction_novel": 1.0},
+            )
 
         scores: Dict[str, float] = {}
         for style_id, keywords in self._keywords.items():
@@ -144,7 +179,7 @@ class StyleMatcher:
         best = max(scores, key=scores.get)  # type: ignore[arg-type]
         return StyleMatchResult(style_id=best, confidence=scores[best], all_scores=scores)
 
-    def match_top_n(self, character_settings: dict, n: int = 3) -> List[StyleMatchResult]:
+    def match_top_n(self, character_settings: Settings, n: int = 3) -> List[StyleMatchResult]:
         """返回 Top N 候选风格。
 
         Args:
@@ -163,7 +198,7 @@ class StyleMatcher:
 
     # -------------------- L1: 时代年份匹配 --------------------
 
-    def _score_era(self, settings: dict, keywords: dict) -> float:
+    def _score_era(self, settings: Settings, keywords: MatchingKeywords) -> float:
         """从 settings.era 中提取时代文本，与 era_hints 关键词匹配。
 
         提取字段：era.year, era.era_description, era.world_context
@@ -194,7 +229,7 @@ class StyleMatcher:
 
     # -------------------- L2: 世界观/主题匹配 --------------------
 
-    def _score_world(self, settings: dict, keywords: dict) -> float:
+    def _score_world(self, settings: Settings, keywords: MatchingKeywords) -> float:
         """从 settings.world 中提取世界观文本，与 theme_hints + technology_hints 匹配。
 
         提取字段：world.world_description, technology_level, social_system, economy
@@ -230,7 +265,7 @@ class StyleMatcher:
 
     # -------------------- L3: 人物特质匹配 --------------------
 
-    def _score_traits(self, settings: dict, keywords: dict) -> float:
+    def _score_traits(self, settings: Settings, keywords: MatchingKeywords) -> float:
         """从 settings.traits 中提取人物特质文本，与 personality_hints 匹配。
 
         提取字段：traits.personality, traits_description, abilities, interests
@@ -267,7 +302,7 @@ class StyleMatcher:
 
     # -------------------- L4: 文化倾向检测 --------------------
 
-    def _score_culture(self, settings: dict, keywords: dict) -> float:
+    def _score_culture(self, settings: Settings, keywords: MatchingKeywords) -> float:
         """综合所有文本字段，检测文化倾向。
 
         将 settings 中所有字符串值扁平提取，与所有 hints 进行全文匹配。
@@ -295,7 +330,7 @@ class StyleMatcher:
         return min(hits / max(len(all_hints) * 0.2, 1), 1.0)
 
     @staticmethod
-    def _extract_all_text(settings: dict) -> str:
+    def _extract_all_text(settings: Settings) -> str:
         """递归提取 settings 中所有字符串值，拼接为单一文本。
 
         Args:
@@ -319,13 +354,29 @@ class StyleMatcher:
         _extract(settings)
         return " ".join(texts)
 
+    @staticmethod
+    def _has_authoritative_realistic_boundary(text: str) -> bool:
+        """Return true when explicit realism excludes incidental genre matching."""
+        if not any(marker in text for marker in _REALISTIC_BOUNDARY_MARKERS):
+            return False
+
+        positive_intent_text = text
+        for marker in _NEGATED_CYBERPUNK_MARKERS:
+            positive_intent_text = positive_intent_text.replace(marker, "")
+
+        explicitly_cyberpunk = any(
+            marker in positive_intent_text
+            for marker in ("赛博朋克世界", "赛博朋克未来", "原创赛博朋克", "cyberpunk")
+        )
+        return not explicitly_cyberpunk
+
 
 # ==================== 模块级便捷函数 ====================
 
 _matcher_instance: Optional[StyleMatcher] = None
 
 
-def auto_match_style(character_settings: dict) -> StyleMatchResult:
+def auto_match_style(character_settings: Settings) -> StyleMatchResult:
     """便捷函数：自动匹配风格。
 
     使用模块级单例 StyleMatcher，首次调用时自动初始化。
