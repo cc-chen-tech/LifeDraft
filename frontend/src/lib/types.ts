@@ -104,18 +104,6 @@ export interface StoryVoiceErrorResponse {
   field?: string | null;
 }
 
-export interface FriendInfo {
-  user_id: number;
-  public_id: string;
-  display_name: string;
-}
-
-export interface FriendRequestInfo {
-  request_id: number;
-  from_user: FriendInfo;
-  created_at: string;
-}
-
 // ==================== Core Game Types ====================
 
 /**

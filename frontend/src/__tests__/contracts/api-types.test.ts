@@ -53,24 +53,6 @@ export const UserInfoSchema = z.object({
 });
 
 /**
- * FriendInfo schema
- */
-export const FriendInfoSchema = z.object({
-  user_id: z.number(),
-  public_id: z.string(),
-  display_name: z.string(),
-});
-
-/**
- * FriendRequestInfo schema
- */
-export const FriendRequestInfoSchema = z.object({
-  request_id: z.number(),
-  from_user: FriendInfoSchema,
-  created_at: z.string(),
-});
-
-/**
  * EventOption schema
  * Using passthrough for effects to allow flexible effect values
  */
@@ -401,18 +383,6 @@ describe('API Types Contract Tests', () => {
         };
         const result = UserInfoSchema.safeParse(invalid);
         expect(result.success).toBe(false);
-      });
-    });
-
-    describe('FriendInfo', () => {
-      it('validates valid FriendInfo', () => {
-        const valid = {
-          user_id: 1,
-          public_id: 'abc123',
-          display_name: 'Friend Name',
-        };
-        const result = FriendInfoSchema.safeParse(valid);
-        expect(result.success).toBe(true);
       });
     });
 

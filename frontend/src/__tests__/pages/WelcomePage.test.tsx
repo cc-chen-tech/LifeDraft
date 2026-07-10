@@ -20,7 +20,7 @@ jest.mock('next/navigation', () => ({
   }),
 }));
 
-const USER_METHODS = ['register', 'login', 'logout', 'fetchMe', 'fetchFriends', 'fetchPendingRequests', 'sendFriendRequest', 'respondToRequest', 'removeFriend'] as const;
+const USER_METHODS = ['register', 'login', 'logout', 'fetchMe'] as const;
 const GAME_METHODS = ['resetCreation', 'fetchSavedGames', 'fetchPresets', 'setGameSession', 'setCreationStep', 'nextCreationStep', 'prevCreationStep', 'updateCharacterSetting', 'setPlayerName', 'setLifeVision', 'loadGameState', 'setOpeningStory'] as const;
 
 type UserStoreSpy = ReturnType<typeof spyOnStoreMethods<typeof useUserStore, (typeof USER_METHODS)[number]>>;
@@ -31,8 +31,6 @@ function setupDefaultState() {
     user: null,
     token: null,
     isAuthenticated: false,
-    friends: [],
-    pendingRequests: [],
   });
   useGameStore.setState({
     gameId: null,

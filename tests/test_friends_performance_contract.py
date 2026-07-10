@@ -1,8 +1,7 @@
-"""契约测试：好友系统性能优化。
+"""Retirement boundary for historical friendship persistence helpers.
 
-验证：
-1. 后端好友查询使用批量加载避免 N+1
-2. 前端好友列表有缓存机制
+The database helper is intentionally retained for historical data compatibility,
+but no frontend cache or runtime API is allowed to remain.
 """
 
 import os
@@ -33,32 +32,24 @@ def test_friends_api_uses_joined_loading():
     )
 
 
-def test_friends_store_has_cache_mechanism():
-    """useUserStore 应有好友列表缓存机制。"""
+def test_retired_friends_store_has_no_cache_or_fetch_action():
+    """The auth store must not retain dormant friend fetching behavior."""
     store_path = "frontend/src/stores/useUserStore.ts"
     assert os.path.exists(store_path), f"{store_path} 不存在"
 
     with open(store_path, "r") as f:
         content = f.read()
 
-    assert any(
-        kw in content
-        for kw in [
-            "friendsCacheTime",
-            "FRIENDS_CACHE_TTL",
-            "lastFriendsRefresh",
-        ]
-    ), "useUserStore 缺少好友列表缓存机制（需要缓存时间戳字段）"
+    assert "FRIENDS_CACHE_TTL" not in content
+    assert "lastFriendsRefresh" not in content
+    assert "fetchFriends" not in content
 
 
-def test_friends_store_checks_cache_before_fetch():
-    """fetchFriends 应在请求前检查缓存有效性。"""
-    store_path = "frontend/src/stores/useUserStore.ts"
-    assert os.path.exists(store_path), f"{store_path} 不存在"
-
-    with open(store_path, "r") as f:
+def test_retired_friends_router_is_not_registered():
+    """The historical helper must not make the product API reachable."""
+    main_path = "src/api/main.py"
+    with open(main_path, "r") as f:
         content = f.read()
 
-    assert (
-        "Date.now()" in content
-    ), "fetchFriends 缺少缓存时间检查——应使用 Date.now() 判断缓存是否过期"
+    assert "friends.router" not in content
+    assert 'prefix="/api/friends"' not in content

@@ -51,7 +51,6 @@ import {
   History,
   Settings,
   BookOpen,
-  Users,
   ArrowRight,
   Palette,
   RotateCcw,
@@ -414,18 +413,6 @@ export default function PlayPage() {
             >
               <BookOpen className="w-4 h-4 md:mr-1.5" />
               <span className="hidden md:inline text-xs">收集</span>
-            </Button>
-            {/* ★ 好友按钮 */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 px-2"
-              onClick={() => router.push("/profile")}
-              title="好友"
-              aria-label="好友"
-            >
-              <Users className="w-4 h-4 md:mr-1.5" />
-              <span className="hidden md:inline text-xs">好友</span>
             </Button>
             {/* ★ 历史回顾按钮 */}
             <Button

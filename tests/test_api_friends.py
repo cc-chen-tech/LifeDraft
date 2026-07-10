@@ -54,3 +54,23 @@ def test_app_does_not_import_or_register_friends_router() -> None:
     main_source = (ROOT / "src" / "api" / "main.py").read_text(encoding="utf-8")
 
     assert "friends" not in main_source
+
+
+def test_frontend_has_no_friend_runtime_surface() -> None:
+    frontend = ROOT / "frontend" / "src"
+    api_source = (frontend / "lib" / "api.ts").read_text(encoding="utf-8")
+    store_source = (frontend / "stores" / "useUserStore.ts").read_text(
+        encoding="utf-8"
+    )
+    types_source = (frontend / "lib" / "types.ts").read_text(encoding="utf-8")
+    play_source = (frontend / "app" / "play" / "page.tsx").read_text(
+        encoding="utf-8"
+    )
+
+    assert not (frontend / "app" / "profile" / "page.tsx").exists()
+    assert "friends:" not in api_source
+    assert "'/friends" not in api_source
+    assert "fetchFriends" not in store_source
+    assert "sendFriendRequest" not in store_source
+    assert "FriendInfo" not in types_source
+    assert 'aria-label="好友"' not in play_source

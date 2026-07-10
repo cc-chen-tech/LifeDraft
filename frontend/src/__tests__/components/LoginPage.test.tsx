@@ -10,7 +10,7 @@ import { useUserStore } from "@/stores/useUserStore";
 import { useGameStore } from "@/stores/useGameStore";
 import { spyOnStoreMethods } from "@/__tests__/helpers/store-spy";
 
-const USER_METHODS = ['register', 'login', 'logout', 'fetchMe', 'fetchFriends', 'fetchPendingRequests', 'sendFriendRequest', 'respondToRequest', 'removeFriend'] as const;
+const USER_METHODS = ['register', 'login', 'logout', 'fetchMe'] as const;
 const GAME_METHODS = ['fetchSavedGames', 'fetchPresets', 'resetCreation', 'setGameSession', 'setCreationStep', 'nextCreationStep', 'prevCreationStep', 'updateCharacterSetting', 'setPlayerName', 'setLifeVision', 'loadGameState', 'setOpeningStory'] as const;
 
 type UserStoreSpy = ReturnType<typeof spyOnStoreMethods<typeof useUserStore, (typeof USER_METHODS)[number]>>;
