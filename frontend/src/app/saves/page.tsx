@@ -12,7 +12,8 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useGameStore } from "@/stores/useGameStore";
-import { useUserStore } from "@/stores/useUserStore";
+import { hasAuthSessionHint, useUserStore } from "@/stores/useUserStore";
+import { useHydration } from "@/hooks/useHydration";
 import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
@@ -51,10 +52,12 @@ export default function SavesPage() {
     setGameSession,
     resetCreation,
   } = useGameStore();
-  const { isAuthenticated, user } = useUserStore();
+  const { isAuthenticated, user, fetchMe } = useUserStore();
   const currentUserId = user?.user_id ?? null;
+  const hydrated = useHydration();
 
   const [isLoading, setIsLoading] = useState(true);
+  const [authChecked, setAuthChecked] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadedUserId, setLoadedUserId] = useState<number | null>(null);
   const [loadingGameId, setLoadingGameId] = useState<number | null>(null);
@@ -69,7 +72,35 @@ export default function SavesPage() {
   };
 
   useEffect(() => {
+    if (!hydrated) return;
+
+    if (isAuthenticated) {
+      setAuthChecked(true);
+      return;
+    }
+
+    if (!hasAuthSessionHint()) {
+      setAuthChecked(true);
+      return;
+    }
+
     let cancelled = false;
+    fetchMe().finally(() => {
+      if (!cancelled) setAuthChecked(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, isAuthenticated, fetchMe]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!authChecked) {
+      return () => {
+        cancelled = true;
+      };
+    }
 
     if (!isAuthenticated) {
       setLoadedUserId(null);
@@ -109,7 +140,7 @@ export default function SavesPage() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, currentUserId, fetchSavedGames]);
+  }, [authChecked, isAuthenticated, currentUserId, fetchSavedGames]);
 
   const handleLoad = async (gameId: number) => {
     setLoadingGameId(gameId);
@@ -238,6 +269,7 @@ export default function SavesPage() {
                       variant="ghost"
                       className="h-8 text-muted-foreground hover:text-destructive"
                       onClick={() => setDeleteTarget(save.game_id)}
+                      aria-label={`删除存档 ${save.player_name?.trim() || "未知角色"}（存档 ${save.game_id}）`}
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>

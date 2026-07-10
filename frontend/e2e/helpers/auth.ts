@@ -9,7 +9,8 @@ import { Page, BrowserContext, expect, APIResponse } from '@playwright/test';
 
 export const API_HOST = process.env.E2E_BACKEND_HOST || '127.0.0.1';
 export const API_PORT = process.env.E2E_BACKEND_PORT || '8000';
-export const API_URL = `http://${API_HOST}:${API_PORT}`;
+const BROWSER_API_HOST = process.env.E2E_BROWSER_API_HOST || API_HOST;
+export const API_URL = `http://${BROWSER_API_HOST}:${API_PORT}`;
 
 const API_HOSTS = ['localhost', '127.0.0.1', API_HOST, 'localhost.localdomain'];
 

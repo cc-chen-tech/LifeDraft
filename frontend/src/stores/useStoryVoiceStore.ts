@@ -367,9 +367,9 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       currentAudioUrl: "",
       currentJobId: null,
       currentProvider: "",
-      currentSpeechText: "",
-      playbackMode: "none",
-      spokenTextLength: 0,
+      currentSpeechText: browserSpeech ? context.text : "",
+      playbackMode: browserSpeech ? "browser_speech" : "none",
+      spokenTextLength: browserSpeech ? context.text.length : 0,
       errorMessage: "",
       musicDuckState: musicWasPlaying ? "ducked" : get().musicDuckState,
       userChangedMusic: false,
@@ -498,14 +498,22 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       }
 
       const textHash = await normalizeTextHash(context.text);
-      const response = await api.voice_reading.requestReading({
+      const readingRequest = api.voice_reading.requestReading({
         context: { ...context, text_hash: textHash },
         voice_id: selectedVoiceId,
         speed: 1,
         auto_play: true,
         preferred_provider: preferredProvider,
       });
+      const explicitBrowserProvider = preferredProvider === "browser";
+      if (explicitBrowserProvider) {
+        startBrowserSpeech(null);
+      }
+      const response = await readingRequest;
       if (attemptId !== activeReadingAttempt) {
+        return;
+      }
+      if (explicitBrowserProvider) {
         return;
       }
       const shouldPlayAudio = response.playback_mode === "audio" && Boolean(response.audio_url);
@@ -548,6 +556,9 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       startBrowserSpeech(response.job_id);
     } catch (error) {
       if (attemptId !== activeReadingAttempt) {
+        return;
+      }
+      if (preferredProvider === "browser" && get().playbackMode === "browser_speech") {
         return;
       }
       if ((error as ApiError).status === 401 || getSpeechSynthesis()) {
