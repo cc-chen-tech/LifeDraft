@@ -243,7 +243,7 @@ async def story_assistant_chat(
     req: StoryChatRequest,
     user_id: Optional[int] = Depends(get_current_user_optional),
 ):
-    """Answer from structured authority without mutating game state."""
+    """Ask the story assistant a question about the game world, characters, etc."""
     session = _require_session(game_id, user_id)
     game_loop = session.game_loop
 
