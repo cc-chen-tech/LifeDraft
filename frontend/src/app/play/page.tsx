@@ -712,10 +712,11 @@ export default function PlayPage() {
                 />
               )}
 
-              {sceneImageDisplayMode === "none" && roundSceneError && (
+              {sceneImageDisplayMode === "none" &&
+                (roundSceneError || isLoadingRoundSceneImage) && (
                 <RoundSceneImageDisplay
                   sceneImage={null}
-                  isLoading={false}
+                  isLoading={isLoadingRoundSceneImage}
                   error={roundSceneError}
                   isRegenerating={isRegeneratingRoundScene}
                   currentRound={phase === "options" ? currentRound : resultSceneRound}
