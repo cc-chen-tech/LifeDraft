@@ -1676,6 +1676,10 @@ def get_round_event_prompt(
     Returns:
         Formatted prompt string for story generation
     """
+    from src.ai.generation_budget import get_generation_budget
+
+    generation_budget = get_generation_budget(quality_level)
+    length_requirement = generation_budget.length_requirement(language)
     age = player_state.get("age", 22)
     week = player_state.get("week", 0) + 1  # ★ week 从0开始，显示时+1，与前端一致
     energy = player_state.get("energy", 70)
@@ -1914,7 +1918,7 @@ def get_round_event_prompt(
 {common_constraints}
 
 【写作要求】
-1. **故事应该1500-2000字**，包含4-6轮对话交流，对话用""包裹
+1. **{length_requirement}**，包含自然、必要的对话交流，对话用""包裹
 2. 包含环境描写、表情动作、内心独白等细节，事件必须符合角色设定
 3. 人物必须来自可用人物列表，标点禁止中英混用
 4. **场景连贯性**：开头前3句明确当前地点，禁止无故跳跃场景
@@ -2058,7 +2062,7 @@ Wealth: ${wealth:,} | Relationships: {rel_str}{context_section}{rel_events_conte
 {common_constraints}
 
 [Writing Requirements]
-1. **Story should be 1500-2000 words**, include 4-6 dialogue exchanges using quotation marks
+1. **{length_requirement}**, include natural, necessary dialogue using quotation marks
 2. Include environment descriptions, expressions, actions, inner thoughts; must match character settings
 3. Characters must come from available people list
 4. **Scene continuity**: First 3 sentences must establish location. No unexplained scene jumps

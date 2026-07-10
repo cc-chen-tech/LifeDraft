@@ -6,6 +6,7 @@ import { MusicPlayer } from "@/components/game/MusicPlayer";
 import { OptionCards } from "@/components/game/OptionCards";
 import { StoryVoiceControls } from "@/components/game/StoryVoiceControls";
 import { OpeningCompletionGate } from "@/components/game/OpeningCompletionGate";
+import { GenerationBudgetProgress } from "@/components/game/GenerationBudgetProgress";
 import { useMusicStore } from "@/stores/useMusicStore";
 import { useStoryVoiceStore } from "@/stores/useStoryVoiceStore";
 
@@ -35,6 +36,7 @@ export default function E2ERegressionPage() {
   const [openingVisibleComplete, setOpeningVisibleComplete] = useState(false);
   const [collectionRefreshState, setCollectionRefreshState] = useState<"idle" | "refreshing">("idle");
   const [fixtureGameId, setFixtureGameId] = useState(101);
+  const [fastProgressFixtureEnabled, setFastProgressFixtureEnabled] = useState(false);
   const [musicQueueFixture, setMusicQueueFixture] = useState<{
     current: { title: string; source: string };
     queue: string[];
@@ -51,6 +53,7 @@ export default function E2ERegressionPage() {
     const searchParams = new URLSearchParams(window.location.search);
     const configuredGameId = Number(searchParams.get("gameId"));
     const enableGlobalVoiceFixture = searchParams.get("globalVoice") === "1";
+    setFastProgressFixtureEnabled(searchParams.get("fastProgress") === "1");
     if (Number.isFinite(configuredGameId) && configuredGameId > 0) {
       setFixtureGameId(configuredGameId);
     }
@@ -114,6 +117,9 @@ export default function E2ERegressionPage() {
 
   return (
     <main className="min-h-screen p-6 space-y-8">
+      {fastProgressFixtureEnabled && (
+        <GenerationBudgetProgress qualityLevel="fast" elapsedSeconds={12} />
+      )}
       <section aria-label="开场完成门控回归夹具" className="space-y-3">
         <div className="flex gap-3">
           <button
