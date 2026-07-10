@@ -15,6 +15,7 @@ TEST_NAMESPACE="${TEST_NAMESPACE:-$(printf '%s' "$PROJECT_DIR" | tr '/ ' '__' | 
 TEST_RUN_ROOT="${TEST_RUN_ROOT:-${TMPDIR:-/tmp}/story2-test-runs}"
 TEST_RUN_DIR="${TEST_RUN_DIR:-$TEST_RUN_ROOT/$TEST_NAMESPACE}"
 TEST_LOCK_DIR="$TEST_RUN_ROOT/locks"
+E2E_ACTIVE_LOCK_DIR=""
 
 BACKEND_PID_FILE="$TEST_RUN_DIR/backend.pid"
 FRONTEND_PID_FILE="$TEST_RUN_DIR/frontend.pid"
@@ -87,24 +88,106 @@ cleanup_e2e_runtimes() {
 }
 
 with_e2e_lock() {
-    if [ "${TEST_ALLOW_PARALLEL_E2E:-0}" = "1" ]; then
-        "$@"
-        return $?
-    fi
-
     mkdir -p "$TEST_LOCK_DIR"
-    local lock_dir="$TEST_LOCK_DIR/e2e.lock"
-    mkdir -p "$TEST_LOCK_DIR"
-    if ! mkdir "$lock_dir" 2>/dev/null; then
-        echo -e "${RED}另一个 E2E 运行已持有锁，当前运行将退出：${lock_dir}${NC}"
+    if ! acquire_e2e_lock; then
         E2E_RESULT=1
         return 1
     fi
 
+    trap 'e2e_status=$?; trap - EXIT INT TERM; cleanup_e2e_session; exit "$e2e_status"' EXIT
+    trap 'trap - EXIT INT TERM; cleanup_e2e_session; exit 130' INT
+    trap 'trap - EXIT INT TERM; cleanup_e2e_session; exit 143' TERM
+
     "$@"
     local status=$?
-    rmdir "$lock_dir" 2>/dev/null || true
+    trap - EXIT INT TERM
+    cleanup_e2e_session
     return $status
+}
+
+read_e2e_lock_owner_value() {
+    local owner_file="$1"
+    local key="$2"
+    if [ ! -f "$owner_file" ]; then
+        return 0
+    fi
+    sed -n "s/^${key}=//p" "$owner_file" | head -n 1
+}
+
+acquire_e2e_lock() {
+    if [ "${TEST_ALLOW_PARALLEL_E2E:-0}" = "1" ]; then
+        echo -e "${RED}TEST_ALLOW_PARALLEL_E2E=1 已禁用：E2E 必须跨 worktree 串行运行。${NC}" >&2
+        return 2
+    fi
+
+    local lock_dir="$TEST_LOCK_DIR/e2e.lock"
+    local owner_file="$lock_dir/owner"
+    local attempt=0
+    mkdir -p "$TEST_LOCK_DIR"
+
+    while [ "$attempt" -lt 2 ]; do
+        if ! mkdir "$lock_dir" 2>/dev/null; then
+            E2E_RESULT=1
+            local owner_pid
+            owner_pid="$(read_e2e_lock_owner_value "$owner_file" "pid")"
+            if [ -n "$owner_pid" ] && kill -0 "$owner_pid" 2>/dev/null; then
+                echo -e "${RED}另一个 E2E 运行已持有锁，当前运行将退出：${lock_dir}${NC}" >&2
+                cat "$owner_file" >&2
+                return 1
+            fi
+            if [ -z "$owner_pid" ] && ! find "$lock_dir" -maxdepth 0 -mmin +1 -print -quit | grep -q .; then
+                echo -e "${RED}E2E 锁 owner 正在发布，当前运行将退出：${lock_dir}${NC}" >&2
+                return 1
+            fi
+
+            local stale_dir="${lock_dir}.stale.$$"
+            if mv "$lock_dir" "$stale_dir" 2>/dev/null; then
+                echo -e "${YELLOW}回收已失效的 E2E 锁：${lock_dir}${NC}" >&2
+                rm -rf "$stale_dir"
+                attempt=$((attempt + 1))
+                continue
+            fi
+
+            echo -e "${RED}E2E 锁状态在检查期间发生变化，请重试：${lock_dir}${NC}" >&2
+            return 1
+        fi
+
+        local owner_tmp="$lock_dir/owner.$$"
+        {
+            echo "pid=$$"
+            echo "namespace=$TEST_NAMESPACE"
+            echo "project=$PROJECT_DIR"
+        } > "$owner_tmp"
+        mv "$owner_tmp" "$owner_file"
+        E2E_ACTIVE_LOCK_DIR="$lock_dir"
+        return 0
+    done
+
+    echo -e "${RED}无法获取 E2E 锁：${lock_dir}${NC}" >&2
+    return 1
+}
+
+release_e2e_lock() {
+    local lock_dir="$E2E_ACTIVE_LOCK_DIR"
+    if [ -z "$lock_dir" ]; then
+        return 0
+    fi
+
+    local owner_file="$lock_dir/owner"
+    local owner_pid
+    owner_pid="$(read_e2e_lock_owner_value "$owner_file" "pid")"
+    if [ "$owner_pid" = "$$" ]; then
+        rm -f "$owner_file"
+        rmdir "$lock_dir" 2>/dev/null || true
+    else
+        echo -e "${YELLOW}E2E 锁所有者已变化，保留当前锁：${lock_dir}${NC}" >&2
+    fi
+    E2E_ACTIVE_LOCK_DIR=""
+}
+
+cleanup_e2e_session() {
+    cleanup_e2e_runtimes
+    release_e2e_lock
 }
 
 is_port_listening() {
@@ -232,6 +315,8 @@ run_preflight() {
     echo -e "${YELLOW}运行前置 gate 测试...${NC}"
     python -m pytest \
         tests/test_gate_preflight_no_mock.py \
+        tests/test_e2e_runtime_isolation_no_mock.py \
+        tests/test_e2e_lock_owner_publication_no_mock.py \
         tests/test_gate_gameplay_behavior_no_mock.py \
         tests/test_gate_contracts_no_mock.py \
         tests/test_opening_story_contract.py \
@@ -431,7 +516,6 @@ run_e2e_browser_impl() {
     print_layer_header "5" "E2E 浏览器测试" "前端页面渲染、用户交互、前后端联调"
     ensure_test_dirs
     cleanup_e2e_runtimes
-    trap cleanup_e2e_runtimes EXIT
 
     cd "$PROJECT_DIR"
     activate_python_env
@@ -443,7 +527,6 @@ run_e2e_browser_impl() {
     if [ -z "$E2E_BACKEND_PORT" ]; then
         print_layer_result "e2e" 1
         E2E_RESULT=1
-        trap - EXIT
         cleanup_e2e_runtimes
         return 1
     fi
@@ -454,7 +537,6 @@ run_e2e_browser_impl() {
     if [ -z "$E2E_FRONTEND_PORT" ]; then
         print_layer_result "e2e" 1
         E2E_RESULT=1
-        trap - EXIT
         cleanup_e2e_runtimes
         return 1
     fi
@@ -474,7 +556,6 @@ run_e2e_browser_impl() {
     if [ $init_result -ne 0 ]; then
         print_layer_result "e2e" $init_result
         E2E_RESULT=$init_result
-        trap - EXIT
         cleanup_e2e_runtimes
         return $init_result
     fi
@@ -530,7 +611,6 @@ run_e2e_browser_impl() {
         echo -e "${RED}日志: $BACKEND_LOG${NC}"
         cat "$BACKEND_LOG" 2>/dev/null || true
         E2E_RESULT=1
-        trap - EXIT
         cleanup_e2e_runtimes
         return 1
     fi
@@ -555,7 +635,6 @@ run_e2e_browser_impl() {
         if [ $? -ne 0 ]; then
             echo -e "${RED}前端构建失败，跳过 E2E 测试${NC}"
             E2E_RESULT=1
-            trap - EXIT
             cleanup_e2e_runtimes
             return 1
         fi
@@ -585,7 +664,6 @@ run_e2e_browser_impl() {
             echo -e "${RED}日志: $FRONTEND_LOG${NC}"
             cat "$FRONTEND_LOG" 2>/dev/null || true
             E2E_RESULT=1
-            trap - EXIT
             cleanup_e2e_runtimes
             return 1
         fi
@@ -649,7 +727,6 @@ run_e2e_browser_impl() {
         result=1
     fi
 
-    trap - EXIT
     cleanup_e2e_runtimes
 
     print_layer_result "e2e" $result
@@ -949,8 +1026,12 @@ show_help() {
     echo "  ./test.sh frontend     # 运行前端 tsc + Jest"
 }
 
-# 主逻辑
-case "$1" in
+# 主逻辑。被测试子 shell source 时只加载函数，不执行测试命令。
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+    return 0
+fi
+
+case "${1:-}" in
     preflight)
         run_preflight
         ;;
