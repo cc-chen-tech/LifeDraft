@@ -20,6 +20,7 @@ from src.ai.harness.diagnostics import ConstraintViolationDiagnostic
 from src.ai.harness.validation_pipeline import ValidationPipeline
 from src.ai.harness.retry_controller import RetryController
 from src.ai.harness.quality_level import PROFILES, QualityLevel
+from src.ai.generation_budget import get_generation_budget
 from src.ai.models import GameEvent
 from src.ai.option_generator import OptionGenerator
 from src.ai.system_prompts import get_system_prompt
@@ -454,7 +455,9 @@ class StoryGenerator:
             new_character=new_character,
             vector_context=vector_context,  # ★ 注入向量检索上下文
             overused_phrases=overused_phrases,  # ★ 注入动态禁用列表
+            quality_level=self.quality_level.value,
         )
+        generation_budget = get_generation_budget(self.quality_level.value)
 
         # Step 1: Generate story text (with optional streaming)
         sys_prompt = get_system_prompt("story_novelist", language)
@@ -536,7 +539,7 @@ class StoryGenerator:
                     system_prompt=sys_prompt,
                     user_prompt=attempt_prompt,
                     temperature=current_temp,
-                    max_tokens=8192,
+                    max_tokens=generation_budget.max_tokens,
                     stream_callback=stream_callback if attempt == 0 else None,
                     frequency_penalty=0.4,  # ★ 轮次级别更强的反重复，因为同周多轮更容易重复
                     presence_penalty=0.4,  # ★ 鼓励每轮使用不同的表达方式
@@ -554,7 +557,7 @@ class StoryGenerator:
                     language=language,
                 )
 
-                if not quick_result.passed:
+                if not quick_result.passed and generation_budget.allow_quick_regeneration:
                     logger.warning(f"Quick validation failed: {quick_result.issues}")
                     retry_lines = "\n".join(f"- {issue}" for issue in quick_result.issues)
                     retry_prompt = (
@@ -578,7 +581,7 @@ class StoryGenerator:
                         system_prompt=sys_prompt,
                         user_prompt=retry_prompt,
                         temperature=0.65,
-                        max_tokens=8192,
+                        max_tokens=generation_budget.max_tokens,
                         stream_callback=stream_callback if attempt == 0 else None,
                         frequency_penalty=0.4,
                         presence_penalty=0.4,
@@ -609,6 +612,12 @@ class StoryGenerator:
                             retry_result.warnings,
                         )
 
+                elif not quick_result.passed:
+                    logger.warning(
+                        "Fast generation records local validation issues without a second provider call: %s",
+                        quick_result.issues,
+                    )
+                    _set_best_story(story_text, require_valid=True)
                 elif quick_result.warnings:
                     logger.info(f"Quick validation warnings: {quick_result.warnings}")
                     _set_best_story(story_text, require_valid=True)
@@ -616,7 +625,7 @@ class StoryGenerator:
                     _set_best_story(story_text, require_valid=True)
 
                 # Step 1.5: AI-based consistency validation (if world_model is provided)
-                if world_model and story_text:
+                if world_model and story_text and generation_budget.allow_ai_consistency:
                     story_text = self._validate_and_retry_story(
                         story_text=story_text,
                         world_model=world_model,

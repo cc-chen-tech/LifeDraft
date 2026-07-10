@@ -10,6 +10,7 @@ import { api } from "@/lib/api";
 import { OpeningCompletionGate } from "@/components/game/OpeningCompletionGate";
 import { CompletedStoryMediaGate } from "@/components/game/CompletedStoryMediaGate";
 import { LifeSummaryPanel } from "@/components/game/LifeSummaryPanel";
+import { GenerationBudgetProgress } from "@/components/game/GenerationBudgetProgress";
 import { useMusicStore } from "@/stores/useMusicStore";
 import { useStoryVoiceStore } from "@/stores/useStoryVoiceStore";
 
@@ -47,6 +48,7 @@ export default function E2ERegressionPage() {
   const [audioStoryBusy, setAudioStoryBusy] = useState(false);
   const [lifeSummaryFixtureEnabled, setLifeSummaryFixtureEnabled] = useState(false);
   const [showLifeSummaryFixture, setShowLifeSummaryFixture] = useState(false);
+  const [fastProgressFixtureEnabled, setFastProgressFixtureEnabled] = useState(false);
   const [worldFactSetting, setWorldFactSetting] = useState<Record<string, unknown> | null>(null);
   const [musicQueueFixture, setMusicQueueFixture] = useState<{
     current: { title: string; source: string };
@@ -66,6 +68,7 @@ export default function E2ERegressionPage() {
     const enableGlobalVoiceFixture = searchParams.get("globalVoice") === "1";
     setAudioRegenerationFixtureEnabled(searchParams.get("audioRegeneration") === "1");
     setLifeSummaryFixtureEnabled(searchParams.get("lifeSummary") === "1");
+    setFastProgressFixtureEnabled(searchParams.get("fastProgress") === "1");
     if (Number.isFinite(configuredGameId) && configuredGameId > 0) {
       setFixtureGameId(configuredGameId);
     }
@@ -210,6 +213,9 @@ export default function E2ERegressionPage() {
            )}
          </section>
        )}
+      {fastProgressFixtureEnabled && (
+        <GenerationBudgetProgress qualityLevel="fast" elapsedSeconds={12} />
+      )}
       {worldFactSetting && (
         <section aria-label="世界事实边界回归夹具">
           <SettingDisplay stepKey="world" data={worldFactSetting} />
