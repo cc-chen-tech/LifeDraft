@@ -24,4 +24,4 @@
 - [x] 3.2 Run mypy strict, import validation, contract, and real DB integration layers through `test.sh` with the repository `.env` exported to the process.
 - [x] 3.3 Run repeated clean voice-reading E2E and the full browser gate through `test.sh` with isolated runtime state.
 - [x] 3.4 Run `./test.sh all`, inspect the final diff, and confirm no tests are skipped or mocked.
-- [ ] 3.5 Commit the verified change, push the branch, open a ready PR, and inspect all PR checks.
+- [x] 3.5 Commit the verified change, push the branch, open a ready PR, and inspect all PR checks.
