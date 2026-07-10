@@ -67,6 +67,7 @@ class ConsistencyValidator:
         character_settings: Dict[str, Any],
         language: str,
         story_history: Optional[List[Dict[str, Any]]] = None,
+        run_ai_validation: bool = True,
     ) -> ValidationResult:
         """
         Validate a generated story for consistency with the world model.
@@ -86,6 +87,56 @@ class ConsistencyValidator:
             return ValidationResult(passed=True)
 
         try:
+            # P1-7 deterministic authority runs before any model-based judge.
+            # It also runs in fast mode, where the optional AI judge is skipped.
+            ledger = getattr(world_model, "continuity_ledger", None)
+            if ledger is not None:
+                from src.game.state import PlayerState
+
+                state = PlayerState.from_dict(player_state_dict)
+                authoritative = ledger.validate_story(
+                    story_text,
+                    date_info=state.get_game_date_info(),
+                    week=state.week,
+                    round_number=state.current_round,
+                )
+                if not authoritative.passed:
+                    ledger.record_validation_conflicts(
+                        authoritative.issues,
+                        week=state.week,
+                        round_number=state.current_round,
+                        story_text=story_text,
+                    )
+                    source_state = getattr(world_model, "continuity_source_state", None)
+                    if source_state is not None:
+                        ledger.persist(source_state)
+                    logger.warning(
+                        "Authoritative continuity ledger rejected candidate: codes=%s week=%s round=%s",
+                        [issue.code for issue in authoritative.issues],
+                        state.week,
+                        state.current_round,
+                    )
+                    issues = [
+                        ConsistencyIssue(
+                            dimension=issue.category,
+                            severity="CRITICAL",
+                            description=issue.message,
+                            fix_suggestion=(
+                                f"保持 {issue.subject} 的权威事实：{issue.expected}；"
+                                f"删除或明确过渡冲突内容：{issue.observed}"
+                            ),
+                        )
+                        for issue in authoritative.issues
+                    ]
+                    return ValidationResult(
+                        passed=False,
+                        issues=issues,
+                        fix_instructions=authoritative.fix_instructions,
+                    )
+
+            if not run_ai_validation:
+                return ValidationResult(passed=True)
+
             # Build the validation prompt
             from config.prompts import get_consistency_validation_prompt
 

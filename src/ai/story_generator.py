@@ -896,9 +896,6 @@ class StoryGenerator:
             f"[_validate_and_retry_story] Entered with stream_callback={stream_callback is not None}"
         )
 
-        if self._quality_profile.skip_ai_consistency_check:
-            return story_text
-
         round_key = (
             player_state.get("game_id"),
             player_state.get("week", player_state.get("current_week")),
@@ -924,6 +921,7 @@ class StoryGenerator:
                 player_state_dict=player_state,
                 character_settings=character_settings,
                 language=language,
+                run_ai_validation=not self._quality_profile.skip_ai_consistency_check,
             )
 
             if validation.passed:
@@ -1019,12 +1017,17 @@ class StoryGenerator:
             character_settings = player_state.get("character_settings", {})
             state_obj = SimpleNamespace(
                 week=player_state.get("week", 0),
+                current_round=player_state.get("current_round", 0),
+                age=player_state.get("age"),
                 player_name=resolve_protagonist_name(player_state, character_settings, None) or "主角",
                 character_settings=character_settings,
                 established_facts=player_state.get("established_facts", []),
                 world_model_data=player_state.get("world_model_data", {}),
+                continuity_ledger=player_state.get("continuity_ledger", {}),
             )
-            return WorldModel.from_player_state(state_obj)
+            world_model = WorldModel.from_player_state(state_obj)
+            world_model.continuity_source_state = player_state
+            return world_model
         except Exception as exc:
             logger.warning(f"Failed to build world model from player_state dict: {exc}")
             return None
