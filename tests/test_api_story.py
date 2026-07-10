@@ -419,6 +419,29 @@ class TestStoryChat:
         data = response.json()
         assert "reply" in data
 
+    def test_story_chat_qualifies_unsafe_professional_guarantee(
+        self, client, auth_headers, mock_auth, mock_session_service, mock_session
+    ):
+        mock_session.game_loop.ai_generator.generate_completion.return_value = (
+            "律师说用母亲名义注册公司规避竞业是合法合规的路径，风险几乎为零。"
+        )
+        mock_session_service.get_or_restore.return_value = mock_session
+
+        response = client.post(
+            "/api/games/1/chat",
+            json={"message": "这个做法安全吗？", "language": "zh"},
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        reply = response.json()["reply"]
+        assert "风险几乎为零" not in reply
+        assert "有资质的法律专业人士" in reply
+        prompt = mock_session.game_loop.ai_generator.generate_completion.call_args.kwargs[
+            "system_prompt"
+        ]
+        assert "不得声称零风险" in prompt
+
     def test_story_chat_empty_message(
         self, client, auth_headers, mock_auth, mock_session_service, mock_session
     ):

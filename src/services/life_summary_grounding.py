@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import List, Mapping, Sequence
 
+from src.ai.professional_risk import apply_professional_risk_guardrail
+
 
 StoryItem = Mapping[str, object]
 _NUMBER_PATTERN = re.compile(r"\d+(?:\.\d+)?")
@@ -98,4 +100,4 @@ def validate_or_fallback_life_summary(
     )
     if unsafe:
         return build_grounded_fallback(story_history, start_week, end_week)
-    return summary.strip()
+    return apply_professional_risk_guardrail(summary.strip(), language="zh")

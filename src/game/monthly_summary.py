@@ -4,6 +4,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from src.ai.generator import EventGenerator
+from src.ai.professional_risk import apply_professional_risk_guardrail
 from src.ai.system_prompts import get_system_prompt
 from src.game.state import PlayerState
 
@@ -132,12 +133,13 @@ Current state: Energy {current_state.energy}/100, Mood {current_state.mood}/100,
 
 Generate a vivid monthly summary describing the main changes, important events, and feelings of this month."""
 
-            return self.ai_generator.generate_completion(
+            summary = self.ai_generator.generate_completion(
                 prompt=prompt,
                 system_prompt=get_system_prompt("narrative_summary", self.language),
                 temperature=0.7,
                 max_tokens=4096,
             )
+            return apply_professional_risk_guardrail(summary, language=language)
         except Exception as e:
             logger.warning(f"Failed to generate AI summary: {e}")
             return self._get_fallback_summary(month, changes, language)

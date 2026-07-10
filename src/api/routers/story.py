@@ -7,6 +7,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from src.ai.professional_risk import apply_professional_risk_guardrail
 from src.api.deps import get_current_user_optional
 from src.api.routers.gameplay.sse_helpers import (
     persist_rewritten_current_event,
@@ -258,7 +259,8 @@ async def story_assistant_chat(
 当前故事：{current_story}
 最近经历：{recent_context or '无'}
 
-要求：简洁、有帮助、不剧透未来发展。用中文回答。"""
+要求：简洁、有帮助、不剧透未来发展。用中文回答。涉及法律、竞业、监管、政策或医疗事项时，
+不得声称零风险、绝对安全、保证合法或已经合规；保留现实不确定性，并提示由有资质的专业人士结合具体事实复核。"""
     else:
         system_prompt = f"""You are a story assistant. Answer player questions based on character settings and current story.
 
@@ -266,7 +268,9 @@ Character Settings: {character_settings}
 Current Story: {current_story}
 Recent History: {recent_context or 'None'}
 
-Requirements: Be concise, helpful, and don't spoil future developments."""
+Requirements: Be concise, helpful, and don't spoil future developments. For legal, non-compete,
+regulatory, policy, or medical matters, never claim zero risk, absolute safety, guaranteed legality,
+or settled compliance; preserve uncertainty and recommend review by a qualified professional."""
 
     try:
         reply = game_loop.ai_generator.generate_completion(
@@ -275,7 +279,9 @@ Requirements: Be concise, helpful, and don't spoil future developments."""
             temperature=0.7,
             max_tokens=4096,
         )
-        return StoryChatResponse(reply=reply)
+        return StoryChatResponse(
+            reply=apply_professional_risk_guardrail(reply, language=req.language)
+        )
     except Exception as e:
         logger.error(f"Story chat failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
