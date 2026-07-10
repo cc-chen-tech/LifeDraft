@@ -12,6 +12,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user, get_current_user_optional
+from src.api.routers.image_failures import image_failure_http_exception
 from src.api.schemas import (BatchGenerateCharactersRequest,
                              GenerateImageRequest,
                              GenerateOpeningIllustrationRequest,
@@ -25,7 +26,8 @@ from src.api.schemas import (BatchGenerateCharactersRequest,
 from src.database.models import Game
 from src.database.models import Image as ImageModel
 from src.database.models import SessionLocal, User
-from src.services.image_service import (ImageContentError, ImageService,
+from src.services.image_service import (ImageContentError,
+                                        ImageProviderServiceError, ImageService,
                                         ImageServiceError)
 from src.services.image_storage import ImageStorageError, ImageStorageService
 
@@ -281,6 +283,14 @@ async def generate_image(
         else:
             raise HTTPException(status_code=400, detail=f"不支持的图片类型: {req.image_type}")
 
+    except ImageProviderServiceError as e:
+        logger.warning(
+            "Image provider failure: route=generate code=%s category=%s trace_id=%s",
+            e.code,
+            e.category,
+            e.provider_trace_id,
+        )
+        raise image_failure_http_exception(e)
     except ImageContentError as e:
         # ★ 内容审核错误 - 返回 400 而不是 500，让用户知道是输入问题
         logger.warning(f"Content inspection failed: {e}")
@@ -426,6 +436,14 @@ async def batch_generate_character_images(
                     )
                 )
 
+        except ImageProviderServiceError as e:
+            logger.warning(
+                "Image provider failure: route=batch-characters code=%s category=%s trace_id=%s",
+                e.code,
+                e.category,
+                e.provider_trace_id,
+            )
+            raise image_failure_http_exception(e)
         except ImageContentError as e:
             logger.warning(f"Content inspection failed for {char['name']}: {e}")
             # 跳过这个人物，继续生成其他人物
@@ -528,6 +546,14 @@ async def generate_opening_illustration(
             created_at=(image_model.created_at.isoformat() if image_model.created_at else None),
         )
 
+    except ImageProviderServiceError as e:
+        logger.warning(
+            "Image provider failure: route=opening-illustration code=%s category=%s trace_id=%s",
+            e.code,
+            e.category,
+            e.provider_trace_id,
+        )
+        raise image_failure_http_exception(e)
     except ImageContentError as e:
         logger.warning(f"Content inspection failed for opening illustration: {e}")
         raise HTTPException(
@@ -587,6 +613,14 @@ async def regenerate_opening_illustration(
             created_at=(image_model.created_at.isoformat() if image_model.created_at else None),
         )
 
+    except ImageProviderServiceError as e:
+        logger.warning(
+            "Image provider failure: route=opening-illustration-regenerate code=%s category=%s trace_id=%s",
+            e.code,
+            e.category,
+            e.provider_trace_id,
+        )
+        raise image_failure_http_exception(e)
     except ImageContentError as e:
         logger.warning(f"Content inspection failed for opening illustration: {e}")
         raise HTTPException(
@@ -650,6 +684,14 @@ async def regenerate_image(
             total=len(image_models),
         )
 
+    except ImageProviderServiceError as e:
+        logger.warning(
+            "Image provider failure: route=regenerate code=%s category=%s trace_id=%s",
+            e.code,
+            e.category,
+            e.provider_trace_id,
+        )
+        raise image_failure_http_exception(e)
     except ImageContentError as e:
         # ★ 内容审核错误
         logger.warning(f"Content inspection failed in regenerate: {e}")
@@ -716,6 +758,14 @@ async def regenerate_fresh_image(
             total=len(image_models),
         )
 
+    except ImageProviderServiceError as e:
+        logger.warning(
+            "Image provider failure: route=regenerate-fresh code=%s category=%s trace_id=%s",
+            e.code,
+            e.category,
+            e.provider_trace_id,
+        )
+        raise image_failure_http_exception(e)
     except ImageContentError as e:
         # ★ 内容审核错误
         logger.warning(f"Content inspection failed in regenerate_fresh: {e}")
@@ -1116,6 +1166,14 @@ async def generate_round_scene_image(
             created_at=(scene_model.created_at.isoformat() if scene_model.created_at else None),
         )
 
+    except ImageProviderServiceError as e:
+        logger.warning(
+            "Image provider failure: route=scene-generate code=%s category=%s trace_id=%s",
+            e.code,
+            e.category,
+            e.provider_trace_id,
+        )
+        raise image_failure_http_exception(e)
     except ImageContentError as e:
         logger.warning(f"Content inspection failed: {e}")
         raise HTTPException(status_code=400, detail=f"内容审核未通过: {e}")
@@ -1184,6 +1242,14 @@ async def regenerate_round_scene_image(
             created_at=(scene_model.created_at.isoformat() if scene_model.created_at else None),
         )
 
+    except ImageProviderServiceError as e:
+        logger.warning(
+            "Image provider failure: route=scene-regenerate code=%s category=%s trace_id=%s",
+            e.code,
+            e.category,
+            e.provider_trace_id,
+        )
+        raise image_failure_http_exception(e)
     except ImageContentError as e:
         logger.warning(f"Content inspection failed: {e}")
         raise HTTPException(status_code=400, detail=f"内容审核未通过: {e}")

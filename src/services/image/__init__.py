@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from src.ai.image_client import ImageClient
+from src.ai.image_exceptions import ImageProviderError
 from src.database.models import Image as ImageModel
 from src.services.image_storage import ImageStorageService
 
@@ -25,6 +26,22 @@ class ImageContentError(ImageServiceError):
     def __init__(self, message: str, original_prompt: Optional[str] = None):
         super().__init__(message)
         self.original_prompt = original_prompt
+
+
+class ImageProviderServiceError(ImageServiceError):
+    """Safe provider failure preserved across the service boundary."""
+
+    def __init__(self, provider_error: ImageProviderError) -> None:
+        super().__init__(provider_error.public_message)
+        self.code = provider_error.code
+        self.category = provider_error.category
+        self.retryable = provider_error.retryable
+        self.public_message = provider_error.public_message
+        self.provider_trace_id = provider_error.provider_trace_id
+
+    @classmethod
+    def from_provider(cls, error: ImageProviderError) -> "ImageProviderServiceError":
+        return cls(error)
 
 
 class ImageService:

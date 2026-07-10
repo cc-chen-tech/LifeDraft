@@ -270,6 +270,7 @@ git commit -m "fix(images): classify permanent provider failures"
 - Modify: `src/services/image_service.py`
 - Modify: `src/services/image/character_service.py`
 - Modify: `src/services/image/scene_service.py`
+- Modify: `src/services/collection_service.py`
 - Create: `src/api/routers/image_failures.py`
 - Modify: `src/api/routers/images.py`
 - Modify: `src/api/routers/collection.py`
@@ -281,7 +282,7 @@ git commit -m "fix(images): classify permanent provider failures"
 - Produces `image_failure_http_exception()` and `public_image_failure()`.
 - Produces safe HTTP detail `{code, message, retryable, provider_trace_id?}`.
 
-- [ ] **Step 1: Write service identity and route RED tests**
+- [x] **Step 1: Write service identity and route RED tests**
 
 Add assertions:
 
@@ -333,7 +334,7 @@ def test_collection_character_capacity_failure_returns_same_503(client):
     assert response.json()["detail"]["code"] == "minimax_2056"
 ```
 
-- [ ] **Step 2: Run route tests and verify RED**
+- [x] **Step 2: Run route tests and verify RED**
 
 Run:
 
@@ -345,7 +346,7 @@ python -m pytest \
 
 Expected: exception identity differs and provider failures return 500.
 
-- [ ] **Step 3: Unify service exceptions and add safe router mapper**
+- [x] **Step 3: Unify service exceptions and add safe router mapper**
 
 Define only once in `src/services/image/__init__.py`:
 
@@ -387,7 +388,7 @@ def image_failure_http_exception(error: ImageProviderServiceError) -> HTTPExcept
 
 Use this helper in all `/images` and `/collection/*generate-image` routes before generic `ImageServiceError`. Log only correlation fields (`provider=minimax`, `code`, `category`, `trace_id`, route/stage), not raw prompts or credentials.
 
-- [ ] **Step 4: Run route and service tests GREEN**
+- [x] **Step 4: Run route and service tests GREEN**
 
 Run:
 
@@ -401,7 +402,7 @@ python -m pytest \
 
 Expected: all tests pass; provider failures are structured 503/422 and generic programming errors remain 500.
 
-- [ ] **Step 5: Commit service/API mapping**
+- [x] **Step 5: Commit service/API mapping**
 
 ```bash
 git add src/services/image src/services/image_service.py src/api/routers/image_failures.py src/api/routers/images.py src/api/routers/collection.py tests/test_images_router.py tests/test_collection_image_failure_contract.py
