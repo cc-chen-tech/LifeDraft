@@ -15,7 +15,7 @@ from typing import Any, ClassVar
 
 import pytest
 
-from src.ai.image_exceptions import ContentInspectionError, ImageGenerationError
+from src.ai.image_exceptions import ContentInspectionError, ImageProviderError
 from src.ai.image_generator import ImageGenerator
 
 
@@ -130,7 +130,9 @@ def test_minimax_image_key_does_not_fall_back_to_openai_key(monkeypatch: pytest.
     assert Settings.get_image_api_key() == "sk-minimax-key"
 
 
-def test_missing_minimax_image_key_error_points_to_minimax_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_missing_minimax_image_key_is_safe_typed_configuration_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from config.settings import Settings
 
     monkeypatch.setattr(Settings, "IMAGE_API_KEY", None)
@@ -138,8 +140,13 @@ def test_missing_minimax_image_key_error_points_to_minimax_env(monkeypatch: pyte
 
     generator = ImageGenerator(api_key=None, base_url="https://api.minimaxi.com/v1")
 
-    with pytest.raises(ValueError, match="IMAGE_API_KEY or MINIMAX_API_KEY"):
+    with pytest.raises(ImageProviderError) as raised:
         generator.require_generation_config()
+
+    assert raised.value.code == "image_provider_not_configured"
+    assert raised.value.category == "configuration"
+    assert raised.value.retryable is False
+    assert "API_KEY" not in raised.value.public_message
 
 
 def test_text_to_image_posts_minimax_payload_and_downloads_url() -> None:
@@ -195,8 +202,12 @@ def test_minimax_success_with_empty_image_sources_raises_generation_error() -> N
     }
 
     with MiniMaxCaptureServer(response=response) as server:
-        with pytest.raises(ImageGenerationError, match="No image output"):
+        with pytest.raises(ImageProviderError) as raised:
             _generator(server.base_url).generate_image("empty image output")
+
+    assert raised.value.code == "image_provider_invalid_response"
+    assert raised.value.category == "invalid_response"
+    assert raised.value.retryable is False
 
 
 def test_image_to_image_posts_subject_reference_and_returns_variants() -> None:
@@ -258,5 +269,9 @@ def test_minimax_nonzero_base_resp_raises_generation_error() -> None:
     }
 
     with MiniMaxCaptureServer(response=response) as server:
-        with pytest.raises(ImageGenerationError, match="1008"):
+        with pytest.raises(ImageProviderError) as raised:
             _generator(server.base_url).generate_image("city at night")
+
+    assert raised.value.code == "minimax_1008"
+    assert raised.value.category == "capacity"
+    assert raised.value.retryable is False

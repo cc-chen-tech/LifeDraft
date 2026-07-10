@@ -79,7 +79,7 @@ Official references:
 - Produces a MiniMax policy mapping for `1001`, `1002`, `1004`, `1008`, `1024`, `1026`, `1027`, `1033`, `2013`, `2049`, and `2056`.
 - Consumed by Task 2 service exceptions.
 
-- [ ] **Step 1: Write provider-boundary RED tests**
+- [x] **Step 1: Write provider-boundary RED tests**
 
 Add real-code tests with a counting fake `requests.Session`:
 
@@ -130,7 +130,9 @@ def test_minimax_2056_is_typed_capacity_failure_and_is_not_retried():
 
 
 def test_missing_image_provider_config_is_typed_and_safe():
-    generator = ImageGenerator(api_key="", base_url="")
+    generator = ImageGenerator(api_key="test-key", base_url="https://example.invalid/v1")
+    generator.api_key = None
+    generator.base_url = None
 
     with pytest.raises(ImageProviderError) as raised:
         generator._call_api(prompt="safe", model="image-01")
@@ -187,7 +189,7 @@ def test_success_status_without_image_output_is_invalid_response():
     assert raised.value.retryable is False
 ```
 
-- [ ] **Step 2: Run provider tests and verify RED**
+- [x] **Step 2: Run provider tests and verify RED**
 
 Run:
 
@@ -197,7 +199,7 @@ python -m pytest tests/test_image_provider_failure_contract.py -q
 
 Expected: collection or assertions fail because `ImageProviderError` and classification fields do not exist, and `2056` currently causes more than one call.
 
-- [ ] **Step 3: Implement typed provider policy**
+- [x] **Step 3: Implement typed provider policy**
 
 Add this public shape to `src/ai/image_exceptions.py`:
 
@@ -238,7 +240,7 @@ In `image_generator.py`, map provider codes at `_raise_for_minimax_error()`. Kee
 
 Catch `ImageProviderError` before every broad `ImageGenerationError` or `Exception` retry/fallback block. Re-raise immediately when `retryable is False`; retry transient failures only up to `IMAGE_MAX_RETRIES`, and never multiply account-wide failures across fallback models or character variants.
 
-- [ ] **Step 4: Run provider tests and existing image client tests GREEN**
+- [x] **Step 4: Run provider tests and existing image client tests GREEN**
 
 Run:
 
@@ -252,7 +254,7 @@ python -m pytest \
 
 Expected: all tests pass and the `2056` counter is exactly one.
 
-- [ ] **Step 5: Commit provider classification**
+- [x] **Step 5: Commit provider classification**
 
 ```bash
 git add src/ai/image_exceptions.py src/ai/image_generator.py tests/test_image_provider_failure_contract.py
@@ -537,6 +539,7 @@ Add these behaviors:
 it("does not retry image generation mutations on 503", () => {
   expect(shouldRetryApiResponse(503, "/images/generate", 0)).toBe(false);
   expect(shouldRetryApiResponse(503, "/collection/1/characters/A/generate-image", 0)).toBe(false);
+  expect(shouldRetryApiError("/images/generate", 0, 3)).toBe(false);
 });
 
 it("retains structured image failure metadata", async () => {
