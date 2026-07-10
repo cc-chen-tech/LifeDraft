@@ -424,7 +424,7 @@ git commit -m "fix(images): preserve provider failures through APIs"
 - Optional `retry=true` is the only GET path that clears a cached terminal failure and starts a new background attempt.
 - SSE `scene_image_failed` carries the same safe structured failure fields as HTTP.
 
-- [ ] **Step 1: Write terminal-failure RED tests**
+- [x] **Step 1: Write terminal-failure RED tests**
 
 ```python
 def test_scene_get_does_not_restart_cached_terminal_failure(client, monkeypatch):
@@ -476,7 +476,7 @@ def test_explicit_scene_retry_clears_failure_and_starts_once(client, monkeypatch
     assert len(starts) == 1
 ```
 
-- [ ] **Step 2: Run scene tests and verify RED**
+- [x] **Step 2: Run scene tests and verify RED**
 
 Run:
 
@@ -489,17 +489,17 @@ python -m pytest \
 
 Expected: repeated GET starts generation again and `retry` is not supported.
 
-- [ ] **Step 3: Cache safe failure and require explicit retry**
+- [x] **Step 3: Cache safe failure and require explicit retry**
 
 Before auto-triggering a missing scene, read `_scene_image_latest[key]`. If it is `scene_image_failed` and `retry` is false, return its safe status/detail without starting a thread. If `retry` is true, remove the failed entry atomically before using `_scene_image_inflight` deduplication.
 
 In the background exception handler, serialize `ImageProviderServiceError` with `public_image_failure()` and never publish `str(error)` for provider failures. Always discard the in-flight key in `finally`, while leaving the terminal failure cached.
 
-- [ ] **Step 4: Run scene tests GREEN**
+- [x] **Step 4: Run scene tests GREEN**
 
 Run the same command from Step 2. Expected: all tests pass and the start counter remains zero until explicit retry.
 
-- [ ] **Step 5: Commit scene failure state**
+- [x] **Step 5: Commit scene failure state**
 
 ```bash
 git add src/api/routers/images.py tests/test_scene_image_sse_integration.py tests/test_scene_image_imports.py tests/test_gate_real_db_no_mock.py
