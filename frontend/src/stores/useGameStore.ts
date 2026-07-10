@@ -80,6 +80,7 @@ interface GameState {
   eventSceneImage: RoundSceneImage | null;
   resultSceneImage: RoundSceneImage | null;
   isLoadingRoundSceneImage: boolean;
+  roundSceneError: string | null;
   isRegeneratingRoundScene: boolean;
   roundSceneRegenerateError: string | null;
 
@@ -130,7 +131,11 @@ interface GameState {
   generateRoundSceneImage: (roundNumber: number, storyText: string, stage?: string) => Promise<void>;
 
   // Actions — Scene Images
-  fetchRoundSceneImage: (roundNumber: number, stage?: string) => Promise<void>;
+  fetchRoundSceneImage: (
+    roundNumber: number,
+    stage?: string,
+    options?: { retry?: boolean }
+  ) => Promise<void>;
   fetchAllRoundSceneImages: () => Promise<void>;
   setCurrentRoundSceneImage: (image: RoundSceneImage | null) => void;
   setEventSceneImage: (image: RoundSceneImage | null) => void;
@@ -185,6 +190,7 @@ export const useGameStore = create<GameState>()(
     eventSceneImage: null,
     resultSceneImage: null,
     isLoadingRoundSceneImage: false,
+    roundSceneError: null,
     isRegeneratingRoundScene: false,
     roundSceneRegenerateError: null,
 
@@ -232,6 +238,7 @@ export const useGameStore = create<GameState>()(
         eventSceneImage: sceneState.eventSceneImage,
         resultSceneImage: sceneState.resultSceneImage,
         isLoadingRoundSceneImage: sceneState.isLoadingRoundSceneImage,
+        roundSceneError: sceneState.roundSceneError,
         isRegeneratingRoundScene: sceneState.isRegeneratingRoundScene,
         roundSceneRegenerateError: sceneState.roundSceneRegenerateError,
         historySceneImage: sceneState.historySceneImage,
@@ -522,11 +529,13 @@ export const useGameStore = create<GameState>()(
       set({ roundSceneImages: useSceneImageStore.getState().roundSceneImages });
     },
 
-    fetchRoundSceneImage: async (roundNumber, stage) => {
+    fetchRoundSceneImage: async (roundNumber, stage, options) => {
       const { gameId, progress } = useSessionStore.getState();
       if (!gameId) return;
       const week = (progress?.week as number) ?? 0;
-      await useSceneImageStore.getState().fetchRoundSceneImage(gameId, roundNumber, week, stage);
+      await useSceneImageStore
+        .getState()
+        .fetchRoundSceneImage(gameId, roundNumber, week, stage, options);
       get()._syncFromSubStores();
     },
 

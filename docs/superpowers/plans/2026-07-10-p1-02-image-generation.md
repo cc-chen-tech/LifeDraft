@@ -518,11 +518,14 @@ git commit -m "fix(images): cache terminal scene failures"
 - Modify: `frontend/src/__tests__/stores/useImageStore.test.ts`
 - Modify: `frontend/src/stores/useSceneImageStore.ts`
 - Modify: `frontend/src/__tests__/stores/useSceneImageStore.test.ts`
+- Modify: `frontend/src/stores/useGameStore.ts`
+- Modify: `frontend/src/hooks/usePlayGame.ts`
 - Modify: `frontend/src/components/create/StepPortrait.tsx`
 - Modify: `frontend/src/__tests__/components/StepPortrait.test.tsx`
 - Modify: `frontend/src/app/create/page.tsx`
 - Modify: `frontend/src/hooks/useCharacterCreation.ts`
 - Modify: `frontend/src/components/game/RoundSceneImage.tsx`
+- Modify: `frontend/src/__tests__/components/RoundSceneImage.test.tsx`
 - Modify: `frontend/src/__tests__/components/HistorySceneImage.test.tsx`
 - Modify: `frontend/src/app/play/page.tsx`
 
@@ -532,7 +535,7 @@ git commit -m "fix(images): cache terminal scene failures"
 - `useSceneImageStore.roundSceneError` owns current scene failure text.
 - `fetchRoundSceneImage(..., {retry: true})` is used only by explicit UI actions.
 
-- [ ] **Step 1: Write frontend RED tests**
+- [x] **Step 1: Write frontend RED tests**
 
 Add these behaviors:
 
@@ -587,7 +590,7 @@ it("stops scene loading and requires explicit retry after 503", async () => {
 });
 ```
 
-- [ ] **Step 2: Run frontend tests and verify RED**
+- [x] **Step 2: Run frontend tests and verify RED**
 
 Run:
 
@@ -603,7 +606,7 @@ npx jest \
 
 Expected: image 503 retries three times, metadata is absent, and the stores/components lack failure state.
 
-- [ ] **Step 3: Implement API and store failure state**
+- [x] **Step 3: Implement API and store failure state**
 
 In `api.ts`, identify non-idempotent image generation/regeneration paths and return `false` from retry policy for every response status. When parsing object detail, attach metadata:
 
@@ -617,11 +620,11 @@ throw Object.assign(new Error(errorMessage), {
 
 Add `imageGenerationError` and `roundSceneError`, clear them only when an explicit new attempt begins or succeeds, and set them on terminal API/SSE failure. Initial scene fetch uses no retry query; buttons call `fetchRoundSceneImage(..., { retry: true })`.
 
-- [ ] **Step 4: Implement actionable placeholders**
+- [x] **Step 4: Implement actionable placeholders**
 
 `StepPortrait` renders the provider message instead of an indefinite spinner when `imageGenerationError` is set and calls a supplied `onRetryGeneration`. `RoundSceneImageDisplay` renders `roundSceneError`, keeps existing images visible when present, and labels the explicit action “重试生成场景插画”. Collection keeps its existing error panel, now backed by the safe structured message and a single network request.
 
-- [ ] **Step 5: Run focused frontend tests and typecheck GREEN**
+- [x] **Step 5: Run focused frontend tests and typecheck GREEN**
 
 Run:
 
@@ -640,7 +643,7 @@ npx tsc --noEmit --strict
 
 Expected: all commands exit 0.
 
-- [ ] **Step 6: Commit frontend failure UX**
+- [x] **Step 6: Commit frontend failure UX**
 
 ```bash
 git add frontend/src/lib/api.ts frontend/src/stores/useImageStore.ts frontend/src/stores/useSceneImageStore.ts frontend/src/components/create/StepPortrait.tsx frontend/src/app/create/page.tsx frontend/src/hooks/useCharacterCreation.ts frontend/src/components/game/RoundSceneImage.tsx frontend/src/app/play/page.tsx frontend/src/__tests__

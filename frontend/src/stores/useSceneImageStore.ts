@@ -25,7 +25,10 @@ interface SceneImageSSEEvent {
   image_url?: string;
   scene_description?: string;
   scene_id?: number;
-  error?: string;
+  code?: string;
+  message?: string;
+  retryable?: boolean;
+  provider_trace_id?: string;
   timestamp: string;
 }
 
@@ -36,6 +39,7 @@ interface SceneImageState {
   eventSceneImage: RoundSceneImage | null;
   resultSceneImage: RoundSceneImage | null;
   isLoadingRoundSceneImage: boolean;
+  roundSceneError: string | null;
   isRegeneratingRoundScene: boolean;
   roundSceneRegenerateError: string | null;
 
@@ -63,7 +67,13 @@ interface SceneImageState {
     week: number;
     stage?: string;
   }) => Promise<void>;
-  fetchRoundSceneImage: (gameId: number, roundNumber: number, week: number, stage?: string) => Promise<void>;
+  fetchRoundSceneImage: (
+    gameId: number,
+    roundNumber: number,
+    week: number,
+    stage?: string,
+    options?: { retry?: boolean }
+  ) => Promise<void>;
   fetchAllRoundSceneImages: (gameId: number, currentRound: number, currentWeek: number) => Promise<void>;
   regenerateRoundSceneImage: (params: {
     gameId: number;
@@ -112,8 +122,13 @@ export const useSceneImageStore = create<SceneImageState>()(
     // ★ 请求去重：跟踪进行中的 fetchRoundSceneImage 请求
     const pendingRequests = new Map<string, Promise<void>>();
 
-    const makeRequestKey = (gameId: number, roundNumber: number, week: number, stage?: string) =>
-      `${gameId}-${roundNumber}-${week}-${stage || 'default'}`;
+    const makeRequestKey = (
+      gameId: number,
+      roundNumber: number,
+      week: number,
+      stage?: string,
+      retry = false
+    ) => `${gameId}-${roundNumber}-${week}-${stage || 'default'}-${retry ? 'retry' : 'read'}`;
 
     const matchesSceneKey = (
       image: RoundSceneImage | null | undefined,
@@ -134,6 +149,7 @@ export const useSceneImageStore = create<SceneImageState>()(
     eventSceneImage: null,
     resultSceneImage: null,
     isLoadingRoundSceneImage: false,
+    roundSceneError: null,
     isRegeneratingRoundScene: false,
     roundSceneRegenerateError: null,
 
@@ -147,9 +163,18 @@ export const useSceneImageStore = create<SceneImageState>()(
     sseConnection: null,
 
     // ==================== Current Round Scene Actions ====================
-    setCurrentRoundSceneImage: (image) => set({ currentRoundSceneImage: image }),
-    setEventSceneImage: (image) => set({ eventSceneImage: image }),
-    setResultSceneImage: (image) => set({ resultSceneImage: image }),
+    setCurrentRoundSceneImage: (image) => set({
+      currentRoundSceneImage: image,
+      roundSceneError: image ? null : get().roundSceneError,
+    }),
+    setEventSceneImage: (image) => set({
+      eventSceneImage: image,
+      roundSceneError: image ? null : get().roundSceneError,
+    }),
+    setResultSceneImage: (image) => set({
+      resultSceneImage: image,
+      roundSceneError: image ? null : get().roundSceneError,
+    }),
     addRoundSceneImage: (image) => set((state) => ({
       // ★ 如果存在相同 week/round/stage 的图片，更新它；否则添加新条目
       roundSceneImages: state.roundSceneImages.some(
@@ -219,10 +244,10 @@ export const useSceneImageStore = create<SceneImageState>()(
       }
     },
 
-    fetchRoundSceneImage: async (gameId, roundNumber, week, stage) => {
+    fetchRoundSceneImage: async (gameId, roundNumber, week, stage, options) => {
       if (!gameId) return;
 
-      const key = makeRequestKey(gameId, roundNumber, week, stage);
+      const key = makeRequestKey(gameId, roundNumber, week, stage, options?.retry);
       const existing = pendingRequests.get(key);
       if (existing) {
         return existing;
@@ -263,12 +288,24 @@ export const useSceneImageStore = create<SceneImageState>()(
               ? state.roundSceneImages.map(s => s.week === sceneWithStage.week && s.round_number === roundNumber && s.stage === sceneWithStage.stage ? sceneWithStage : s)
               : [...state.roundSceneImages, sceneWithStage],
             isLoadingRoundSceneImage: false,
+            roundSceneError: null,
           }));
         };
 
-        const fetchRoundSceneOnce = async () => stage
-          ? await api.images.getRoundSceneImageByStage(gameId, roundNumber, stage, week)
-          : await api.images.getRoundSceneImage(gameId, roundNumber, week);
+        const fetchRoundSceneOnce = async (retry = false) => stage
+          ? await api.images.getRoundSceneImageByStage(
+              gameId,
+              roundNumber,
+              stage,
+              week,
+              retry ? { retry: true } : undefined
+            )
+          : await api.images.getRoundSceneImage(
+              gameId,
+              roundNumber,
+              week,
+              retry ? { retry: true } : undefined
+            );
 
         const pollForSceneImage = async () => {
           const maxAttempts = 12;
@@ -303,6 +340,7 @@ export const useSceneImageStore = create<SceneImageState>()(
 
         set((state) => ({
           isLoadingRoundSceneImage: true,
+          roundSceneError: options?.retry ? null : state.roundSceneError,
           eventSceneImage: stage === 'event' && !matchesSceneKey(state.eventSceneImage, roundNumber, week, stage)
             ? null
             : state.eventSceneImage,
@@ -315,7 +353,7 @@ export const useSceneImageStore = create<SceneImageState>()(
         }));
 
         try {
-          const scene = await fetchRoundSceneOnce();
+          const scene = await fetchRoundSceneOnce(Boolean(options?.retry));
 
           if (scene && 'scene_id' in scene) {
             applyRoundScene(scene);
@@ -335,7 +373,10 @@ export const useSceneImageStore = create<SceneImageState>()(
             // 保持 isLoadingRoundSceneImage = true，前端会继续轮询
           } else if (error.status !== 404) {
             console.error(`[fetchRoundSceneImage] Failed:`, err);
-            set({ isLoadingRoundSceneImage: false });
+            set({
+              isLoadingRoundSceneImage: false,
+              roundSceneError: error.message || "场景插画生成失败，请稍后重试",
+            });
           } else {
             // 404 - 未找到且无法生成，停止加载
             set({ isLoadingRoundSceneImage: false });
@@ -377,6 +418,7 @@ export const useSceneImageStore = create<SceneImageState>()(
           eventSceneImage: currentEventScene,
           resultSceneImage: currentResultScene,
           isLoadingRoundSceneImage: false,
+          roundSceneError: null,
         });
       } catch (err) {
         console.error("[fetchAllRoundSceneImages] Failed:", err);
@@ -615,6 +657,7 @@ export const useSceneImageStore = create<SceneImageState>()(
         eventSceneImage: null,
         resultSceneImage: null,
         isLoadingRoundSceneImage: false,
+        roundSceneError: null,
         isRegeneratingRoundScene: false,
         roundSceneRegenerateError: null,
         historySceneImage: null,
@@ -632,6 +675,7 @@ export const useSceneImageStore = create<SceneImageState>()(
         currentRoundSceneImage: null,
         eventSceneImage: null,
         resultSceneImage: null,
+        roundSceneError: null,
       });
     },
 
@@ -665,8 +709,11 @@ export const useSceneImageStore = create<SceneImageState>()(
           }
 
           if (data.type === "scene_image_failed") {
-            console.warn(`[SSE] Scene generation failed: ${data.error}`);
-            set({ isLoadingRoundSceneImage: false });
+            console.warn(`[SSE] Scene generation failed: code=${data.code}`);
+            set({
+              isLoadingRoundSceneImage: false,
+              roundSceneError: data.message || "场景插画生成失败，请稍后重试",
+            });
             return;
           }
 
@@ -685,6 +732,7 @@ export const useSceneImageStore = create<SceneImageState>()(
             set((state) => {
               const updates: Partial<SceneImageState> = {
                 isLoadingRoundSceneImage: false,
+                roundSceneError: null,
                 roundSceneImages: state.roundSceneImages.some(
                   (s) => s.week === newScene.week && s.round_number === newScene.round_number && s.stage === newScene.stage
                 )

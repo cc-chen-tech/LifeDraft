@@ -15,6 +15,7 @@ describe('RoundSceneImageDisplay', () => {
   const defaultProps = {
     sceneImage: null,
     isLoading: false,
+    error: null as string | null,
     isRegenerating: false,
     currentRound: 1,
     onRefresh: mockOnRefresh,
@@ -49,6 +50,19 @@ describe('RoundSceneImageDisplay', () => {
 
       expect(screen.getByText('暂无场景插画')).toBeInTheDocument();
       expect(screen.getByText('生成场景插画')).toBeInTheDocument();
+    });
+
+    it('shows a terminal error with an explicit retry action', () => {
+      render(
+        <RoundSceneImageDisplay
+          {...defaultProps}
+          error="图片生成额度暂时不可用，请稍后再试"
+        />
+      );
+
+      expect(screen.getByText('图片生成额度暂时不可用，请稍后再试')).toBeVisible();
+      fireEvent.click(screen.getByRole('button', { name: '重试生成场景插画' }));
+      expect(mockOnRefresh).toHaveBeenCalledTimes(1);
     });
 
     it('calls onRefresh when generate button clicked', () => {

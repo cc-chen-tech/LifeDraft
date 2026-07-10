@@ -10,6 +10,7 @@ interface StepPortraitProps {
   playerImages: Array<{ image_id: number; image_url: string }>;
   selectedImageIndex: number;
   isGeneratingImage: boolean;
+  imageGenerationError?: string | null;
   playerName: string;
   imageFeedback: string;
   gameId: number | null;
@@ -18,6 +19,7 @@ interface StepPortraitProps {
   onFeedbackChange: (feedback: string) => void;
   onRegenerate: () => Promise<void>;
   onRegenerateFresh: () => Promise<void>;
+  onRetryGeneration?: () => Promise<void>;
   onRecover?: () => void;
   showToast: (type: "success" | "error", message: string) => void;
 }
@@ -26,6 +28,7 @@ export function StepPortrait({
   playerImages,
   selectedImageIndex,
   isGeneratingImage,
+  imageGenerationError,
   playerName,
   imageFeedback,
   gameId,
@@ -34,6 +37,7 @@ export function StepPortrait({
   onFeedbackChange,
   onRegenerate,
   onRegenerateFresh,
+  onRetryGeneration,
   onRecover,
   showToast,
 }: StepPortraitProps) {
@@ -83,6 +87,31 @@ export function StepPortrait({
               {isLongRunning && onRecover && (
                 <Button type="button" variant="outline" size="sm" onClick={onRecover}>
                   刷新状态
+                </Button>
+              )}
+            </div>
+          </div>
+        ) : imageGenerationError ? (
+          <div className="w-full aspect-[9/17] max-w-sm mx-auto bg-secondary rounded-lg overflow-hidden flex items-center justify-center px-5">
+            <div className="flex max-w-xs flex-col items-center gap-3 text-center text-muted-foreground">
+              <User className="h-10 w-10 opacity-60" />
+              <p className="text-sm leading-relaxed">{imageGenerationError}</p>
+              {onRetryGeneration && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      await onRetryGeneration();
+                    } catch (err) {
+                      console.error("[portrait] Failed to retry generation:", err);
+                      showToast("error", err instanceof Error ? err.message : "人物形象生成失败");
+                    }
+                  }}
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  重试生成人物形象
                 </Button>
               )}
             </div>

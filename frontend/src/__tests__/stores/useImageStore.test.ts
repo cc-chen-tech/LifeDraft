@@ -14,6 +14,7 @@ describe('useImageStore', () => {
       playerImages: [],
       selectedImageIndex: 0,
       isGeneratingImage: false,
+      imageGenerationError: null,
       imageFeedback: '',
       openingIllustration: null,
       isGeneratingIllustration: false,
@@ -109,6 +110,25 @@ describe('useImageStore', () => {
         ).rejects.toThrow('API Error');
 
         expect(useImageStore.getState().isGeneratingImage).toBe(false);
+      });
+
+      it('stores a safe provider failure and stops loading', async () => {
+        (global.fetch as jest.Mock).mockResolvedValue(
+          errorResponse(503, {
+            code: 'minimax_2056',
+            message: '图片生成额度暂时不可用，请稍后再试',
+            retryable: false,
+          })
+        );
+
+        await expect(
+          useImageStore.getState().generatePlayerImage(1, '林见微', {})
+        ).rejects.toThrow('图片生成额度暂时不可用，请稍后再试');
+
+        expect(useImageStore.getState()).toMatchObject({
+          isGeneratingImage: false,
+          imageGenerationError: '图片生成额度暂时不可用，请稍后再试',
+        });
       });
     });
 

@@ -12,6 +12,7 @@ describe("StepPortrait", () => {
     playerImages: [] as Array<{ image_id: number; image_url: string }>,
     selectedImageIndex: 0,
     isGeneratingImage: false,
+    imageGenerationError: null as string | null,
     playerName: "TestPlayer",
     imageFeedback: "",
     gameId: 1,
@@ -20,6 +21,7 @@ describe("StepPortrait", () => {
     onFeedbackChange: jest.fn(),
     onRegenerate: jest.fn().mockResolvedValue(undefined),
     onRegenerateFresh: jest.fn().mockResolvedValue(undefined),
+    onRetryGeneration: jest.fn().mockResolvedValue(undefined),
     showToast: jest.fn(),
   };
 
@@ -59,6 +61,24 @@ describe("StepPortrait", () => {
       } finally {
         jest.useRealTimers();
       }
+    });
+  });
+
+  describe("Provider failure", () => {
+    it("shows an actionable portrait placeholder", async () => {
+      const onRetryGeneration = jest.fn().mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      render(
+        <StepPortrait
+          {...baseProps}
+          imageGenerationError="图片生成额度暂时不可用，请稍后再试"
+          onRetryGeneration={onRetryGeneration}
+        />
+      );
+
+      expect(screen.getByText("图片生成额度暂时不可用，请稍后再试")).toBeVisible();
+      await user.click(screen.getByRole("button", { name: "重试生成人物形象" }));
+      expect(onRetryGeneration).toHaveBeenCalledTimes(1);
     });
   });
 

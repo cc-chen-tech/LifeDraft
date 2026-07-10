@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useGameStore, CREATION_STEPS, MANUAL_STEPS, AUTO_ADVANCE_STEPS } from "@/stores/useGameStore";
 import { useUIStore } from "@/stores/useUIStore";
 import { useImageStore } from "@/stores/useImageStore";
+import type { CharacterSettings } from "@/lib/types";
 import api from "@/lib/api";
 
 const STEP_LABELS: Record<string, string> = {
@@ -60,12 +61,19 @@ export interface UseCharacterCreationReturn {
   playerImages: Array<{ image_id: number; image_url: string }>;
   selectedImageIndex: number;
   isGeneratingImage: boolean;
+  imageGenerationError: string | null;
   imageFeedback: string;
   playerImage: { image_id: number; image_url: string } | null;
   
   // Image store actions
   setSelectedImageIndex: (index: number) => void;
   setImageFeedback: (feedback: string) => void;
+  generatePlayerImage: (
+    gameId: number,
+    playerName: string,
+    characterSettings: CharacterSettings,
+    feedback?: string
+  ) => Promise<void>;
   regeneratePlayerImage: (feedback: string) => Promise<void>;
   regenerateFreshPlayerImage: () => Promise<void>;
   
@@ -144,6 +152,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     playerImages,
     selectedImageIndex,
     isGeneratingImage,
+    imageGenerationError,
     imageFeedback,
     setSelectedImageIndex,
     generatePlayerImage,
@@ -342,15 +351,30 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
   }, [gameId]);
   
   useEffect(() => {
-    if (isPortraitStep && gameId && playerImages.length === 0 && !isGeneratingImage && !hasGeneratedImage.current) {
+    if (
+      isPortraitStep &&
+      gameId &&
+      playerImages.length === 0 &&
+      !isGeneratingImage &&
+      !imageGenerationError &&
+      !hasGeneratedImage.current
+    ) {
       console.log("[portrait] Auto-generating player image...");
       hasGeneratedImage.current = true;
       generatePlayerImage(gameId, playerName, characterSettings).catch((err) => {
         console.error("[portrait] Auto-generate failed:", err);
-        hasGeneratedImage.current = false;
       });
     }
-  }, [isPortraitStep, gameId, playerImages.length, isGeneratingImage, generatePlayerImage, playerName, characterSettings]);
+  }, [
+    isPortraitStep,
+    gameId,
+    playerImages.length,
+    isGeneratingImage,
+    imageGenerationError,
+    generatePlayerImage,
+    playerName,
+    characterSettings,
+  ]);
 
   // Background generation for auto-advance steps
   const runAutoGeneration = useCallback(async () => {
@@ -744,12 +768,14 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     playerImages,
     selectedImageIndex,
     isGeneratingImage,
+    imageGenerationError,
     imageFeedback,
     playerImage,
     
     // Image store actions
     setSelectedImageIndex,
     setImageFeedback,
+    generatePlayerImage,
     regeneratePlayerImage,
     regenerateFreshPlayerImage,
     

@@ -17,6 +17,7 @@ describe('useSceneImageStore', () => {
       eventSceneImage: null,
       resultSceneImage: null,
       isLoadingRoundSceneImage: false,
+      roundSceneError: null,
       isRegeneratingRoundScene: false,
       roundSceneRegenerateError: null,
       historySceneImage: null,
@@ -210,6 +211,46 @@ describe('useSceneImageStore', () => {
 
       const state = useSceneImageStore.getState();
       expect(state.isLoadingRoundSceneImage).toBe(false);
+    });
+
+    it('stops loading and stores a terminal provider failure', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(
+        errorResponse(503, {
+          code: 'minimax_2056',
+          message: '图片生成额度暂时不可用，请稍后再试',
+          retryable: false,
+        })
+      );
+
+      await useSceneImageStore.getState().fetchRoundSceneImage(1, 0, 0, 'event');
+
+      expect(useSceneImageStore.getState()).toMatchObject({
+        isLoadingRoundSceneImage: false,
+        roundSceneError: '图片生成额度暂时不可用，请稍后再试',
+      });
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('adds retry=true only for an explicit scene retry', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        scene_id: 2,
+        week: 0,
+        round_number: 0,
+        stage: 'event',
+        image_url: 'http://example.com/retried.png',
+        scene_description: '重试后的场景',
+        referenced_images: [],
+        created_at: '2024-01-01T00:00:00Z',
+      }));
+
+      await useSceneImageStore
+        .getState()
+        .fetchRoundSceneImage(1, 0, 0, 'event', { retry: true });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/images/scene/1/0?stage=event&week=0&retry=true',
+        expect.objectContaining({ credentials: 'include' })
+      );
     });
 
     it('polls after 202 generation until the generated scene is available', async () => {
