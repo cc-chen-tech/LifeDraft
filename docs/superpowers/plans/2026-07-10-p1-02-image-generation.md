@@ -660,7 +660,7 @@ git commit -m "fix(frontend): expose actionable image failures"
 **Interfaces:**
 - Verifies every P1-2 invariant and produces PR evidence.
 
-- [ ] **Step 1: Run obsolete-contract and secret scans**
+- [x] **Step 1: Run obsolete-contract and secret scans**
 
 ```bash
 rg -n "except ImageServiceError.*status_code=500|MiniMax image API returned|Server error: 500" src/api src/services frontend/src
@@ -669,11 +669,19 @@ git grep -nE "MINIMAX_API_KEY=.+|IMAGE_API_KEY=.+" -- ':!*.example'
 
 Expected: no provider/service availability path maps to generic 500; no secret value is tracked.
 
-- [ ] **Step 2: Run focused backend and frontend suites**
+Result: classified hits were limited to dummy CI values, runtime secret decoding,
+the diagnostic command in this plan, and a generic test assertion. No real key,
+authorization header, full prompt, or obsolete generic-500 image path is tracked.
+
+- [x] **Step 2: Run focused backend and frontend suites**
 
 Run all commands from Tasks 1-4. Expected: all exit 0.
 
-- [ ] **Step 3: Run repository gates**
+Result: the final focused backend run passed 123 tests. The focused frontend run
+passed 8 suites / 249 tests, the PlayPage regression suite passed 72 tests after
+the retry-loading fix, and strict TypeScript checking passed.
+
+- [x] **Step 3: Run repository gates**
 
 ```bash
 git diff --check
@@ -682,20 +690,35 @@ git diff --check
 
 Expected: all layers pass. If the global E2E lock is held, record the owner and rerun `./test.sh e2e` after release.
 
-- [ ] **Step 4: Run one real provider smoke without blind retry**
+Result: `./test.sh all` passed preflight and all five layers on 2026-07-10.
+The browser layer passed the 305-test main suite plus 1 membership-music, 1
+character-settings, 8 story-voice, 4 MiniMax-audio, and 28 collection/entity tests.
+
+- [x] **Step 4: Run one real provider smoke without blind retry**
 
 Use the configured local `.env` without printing it and call `ImageGenerator.generate_image()` once. Record one of two honest outcomes:
 
 - Success: valid image bytes are returned and the local API/UI path displays the image.
 - Provider unavailable: a typed `ImageProviderError` is returned with one provider HTTP call, a safe public code/message, and no secret/prompt leak. Do not call mock success a production success.
 
-- [ ] **Step 5: Browser-smoke three user paths**
+Result: the configured provider returned typed `minimax_2056` (`capacity`,
+`retryable=false`) with the safe public message and exactly one POST / zero download
+GETs. The trace log contained neither the key nor the prompt.
+
+- [x] **Step 5: Browser-smoke three user paths**
 
 1. Character creation portrait: failure stops loading and shows placeholder plus retry.
 2. Collection character generation: one request, safe message, button becomes usable again.
 3. Scene generation: automatic fetch does not restart cached failure; explicit retry starts exactly one new attempt.
 
-- [ ] **Step 6: Final audit and PR preparation**
+Result: an authenticated local browser session verified portrait and collection
+mutations each made one request and returned the structured safe 503. The collection
+button left its generating state. On the real play page, repeated ordinary scene
+GETs returned the same cached provider trace ID, the actionable placeholder was
+visible, and its explicit retry produced one new 202 task. A regression test also
+locks the visible loading placeholder during that retry.
+
+- [x] **Step 6: Final audit and PR preparation**
 
 ```bash
 git status --short
