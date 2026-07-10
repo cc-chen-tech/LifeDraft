@@ -4,7 +4,7 @@
 
 **Goal:** Ensure one event-generation job exists per `(game_id, week, round, stage)`, and make refresh/recovery attach to that job instead of cancelling or restarting it.
 
-**Architecture:** Introduce a thread-safe per-session event operation whose lifetime is independent of any SSE response. The background worker writes phases, story chunks, result, and error into the operation; every SSE connection is only a subscriber that replays from `Last-Event-ID` and waits for the same result. The frontend records SSE event IDs and reconnects in resume mode without clearing state or using `force`.
+**Architecture:** Introduce a thread-safe per-session event operation whose lifetime is independent of any SSE response. The background worker writes phases, story chunks, result, and error into the operation; every SSE connection is only a subscriber that replays from `Last-Event-ID` and waits for the same result. The frontend records SSE event IDs together with the already-rendered story snapshot and reconnects in resume mode without clearing state or using `force`; an orphaned cursor without its matching story snapshot falls back to replay from the beginning.
 
 **Tech Stack:** Python 3.11, FastAPI, asyncio, `ThreadPoolExecutor`, threading locks, React 19, TypeScript, Jest, Testing Library.
 
@@ -61,7 +61,7 @@ The single hypothesis to test is: decoupling one operation from SSE subscriber l
 - Raises: `EventGenerationConflict` if a different operation key is still running.
 - Consumed by: Task 2 backend worker and both gameplay endpoints.
 
-- [ ] **Step 1: Replace the obsolete lock/timeout contract tests with failing operation tests**
+- [x] **Step 1: Replace the obsolete lock/timeout contract tests with failing operation tests**
 
 Add these cases to `tests/test_event_generation_contract.py` and remove imports/assertions for `_get_game_lock`, `game_loop._generating_start_time`, and forced timeout reset:
 
@@ -118,7 +118,7 @@ def test_snapshot_replays_only_chunks_after_last_event_id():
     assert snapshot.chunks == ((1, "B"),)
 ```
 
-- [ ] **Step 2: Run the new contract tests and verify RED**
+- [x] **Step 2: Run the new contract tests and verify RED**
 
 Run:
 
@@ -128,7 +128,7 @@ python -m pytest tests/test_event_generation_contract.py -q
 
 Expected: collection fails because `src.api.services.event_generation_operation` does not exist.
 
-- [ ] **Step 3: Implement the operation and coordinator**
+- [x] **Step 3: Implement the operation and coordinator**
 
 Create `src/api/services/event_generation_operation.py` with these public types and semantics:
 
@@ -248,7 +248,7 @@ class EventGenerationCoordinator:
 
 In `GameLoopSession.__slots__`, replace the unused `_is_generating` slot with `event_generation`, initialize it with `EventGenerationCoordinator()`, and remove `try_start_generating()` / `finish_generating()`. Do not change `sse_cache`; choice and regenerate streams still use it.
 
-- [ ] **Step 4: Run the operation tests and verify GREEN**
+- [x] **Step 4: Run the operation tests and verify GREEN**
 
 Run:
 
@@ -258,7 +258,7 @@ python -m pytest tests/test_event_generation_contract.py -q
 
 Expected: all operation ownership, conflict, retry, and replay tests pass.
 
-- [ ] **Step 5: Commit the operation state unit**
+- [x] **Step 5: Commit the operation state unit**
 
 ```bash
 git add src/api/services/event_generation_operation.py src/api/session_store.py tests/test_event_generation_contract.py
@@ -284,7 +284,7 @@ git commit -m "feat(gameplay): add durable event generation operation"
 - Produces: `stream_round_event()` as a subscriber over the durable operation.
 - Produces: `wait_for_event_generation(operation, timeout)` for the sync endpoint; timeout disconnects the waiter but does not cancel the job.
 
-- [ ] **Step 1: Write a failing disconnect/reconnect integration test**
+- [x] **Step 1: Write a failing disconnect/reconnect integration test**
 
 Replace the timeout-reset tests in `tests/test_event_generation_race_db.py` with a real operation-lifetime test. Use a `threading.Event` to keep the generator running, close the first async generator, then attach a second subscriber:
 
@@ -337,7 +337,7 @@ async def test_disconnect_does_not_start_a_second_generation():
 
 Add a second test proving two simultaneous subscribers call `generate_round_event` once. Update `tests/test_events_router.py` to assert the router delegates to `stream_round_event` without `_get_game_lock`. Update `tests/test_api_gameplay.py::test_event_sync_generation_in_progress` to expect the sync request to wait for and reuse the current operation rather than relying on stale `game_loop._generating`.
 
-- [ ] **Step 2: Run backend generation tests and verify RED**
+- [x] **Step 2: Run backend generation tests and verify RED**
 
 Run:
 
@@ -350,7 +350,7 @@ python -m pytest \
 
 Expected: disconnect/reconnect test fails because closing the first stream releases ownership and no durable operation is used.
 
-- [ ] **Step 3: Implement one durable worker and subscriber streaming**
+- [x] **Step 3: Implement one durable worker and subscriber streaming**
 
 In `src/api/routers/gameplay/sse_helpers.py`, replace the response-local queue ownership in `stream_round_event()` with these functions:
 
@@ -473,7 +473,7 @@ if self._generating:
 
 Keep explicit cleanup on every success/error return. Do not use elapsed time to clear ownership.
 
-- [ ] **Step 4: Run backend generation tests and verify GREEN**
+- [x] **Step 4: Run backend generation tests and verify GREEN**
 
 Run:
 
@@ -488,7 +488,7 @@ python -m pytest \
 
 Expected: all tests pass; the disconnect test reports exactly one generator call.
 
-- [ ] **Step 5: Commit the durable backend worker**
+- [x] **Step 5: Commit the durable backend worker**
 
 ```bash
 git add \
@@ -515,7 +515,7 @@ git commit -m "fix(gameplay): keep event generation alive across reconnects"
 - Produces: `streamGameEvent(..., { signal, lastEventId })` and a conditional `Last-Event-ID` header.
 - Consumed by: Task 4 `useEventGenerator` recovery path.
 
-- [ ] **Step 1: Add failing event-ID parsing and request-header tests**
+- [x] **Step 1: Add failing event-ID parsing and request-header tests**
 
 Add focused tests to `frontend/src/__tests__/lib/sse.test.ts`:
 
@@ -551,7 +551,7 @@ it('sends Last-Event-ID only for a resume request', async () => {
 });
 ```
 
-- [ ] **Step 2: Run the SSE tests and verify RED**
+- [x] **Step 2: Run the SSE tests and verify RED**
 
 Run:
 
@@ -562,7 +562,7 @@ npx jest src/__tests__/lib/sse.test.ts --runInBand
 
 Expected: TypeScript/Jest fails because `onEventId` and `lastEventId` do not exist.
 
-- [ ] **Step 3: Parse IDs and set the resume header**
+- [x] **Step 3: Parse IDs and set the resume header**
 
 In `StreamCallbacks`, add:
 
@@ -599,7 +599,7 @@ const response = await fetchSSEWithRetry(`/api/games/${gameId}/event`, {
 }, callbacks);
 ```
 
-- [ ] **Step 4: Run SSE tests and type checking**
+- [x] **Step 4: Run SSE tests and type checking**
 
 Run:
 
@@ -611,7 +611,9 @@ npx tsc --noEmit --strict
 
 Expected: both commands exit 0.
 
-- [ ] **Step 5: Commit event-ID transport**
+Hard-refresh review added a second invariant after the initial transport commit: a saved cursor must always have a matching rendered-story snapshot. Two additional hook tests prove paired restore and safe full replay when only an orphaned cursor exists.
+
+- [x] **Step 5: Commit event-ID transport**
 
 ```bash
 git add frontend/src/lib/sse.ts frontend/src/__tests__/lib/sse.test.ts
@@ -631,7 +633,7 @@ git commit -m "feat(frontend): resume event streams by SSE id"
 - Changes: `generateEvent(options?: { resume?: boolean })`; removes `force`.
 - Guarantees: `recoverEventGeneration()` reopens the subscriber without clearing story/options or creating a new backend operation.
 
-- [ ] **Step 1: Replace the bad recovery test with a failing read-only recovery test**
+- [x] **Step 1: Replace the bad recovery test with a failing read-only recovery test**
 
 Replace `recovers from a stuck generation by aborting stale work and forcing a new stream` with:
 
@@ -666,7 +668,7 @@ it('recovers by resuming the current stream without clearing visible progress', 
 
 Add a second test that first receives `id: 4`, triggers recovery, and asserts the second request contains `{ headers: { 'Last-Event-ID': '4' } }`.
 
-- [ ] **Step 2: Run the hook test and verify RED**
+- [x] **Step 2: Run the hook test and verify RED**
 
 Run:
 
@@ -677,7 +679,7 @@ npx jest src/__tests__/hooks/useEventGenerator.test.ts --runInBand
 
 Expected: the test fails because current recovery clears options/story state and uses forced generation.
 
-- [ ] **Step 3: Implement resume semantics**
+- [x] **Step 3: Implement resume semantics**
 
 In `useEventGenerator`, persist the last received cursor so a full browser refresh can resume the same operation. Add:
 
@@ -756,7 +758,7 @@ await generateEvent({ resume: true });
 
 Do not call `setOptions([])`, do not set phase to `loading`, and do not introduce another timeout that converts a running backend operation into a new attempt.
 
-- [ ] **Step 4: Run hook, page, SSE, and type tests**
+- [x] **Step 4: Run hook, page, SSE, and type tests**
 
 Run:
 
@@ -771,7 +773,7 @@ npx tsc --noEmit --strict
 
 Expected: all focused Jest suites and strict type checking pass.
 
-- [ ] **Step 5: Commit read-only recovery**
+- [x] **Step 5: Commit read-only recovery**
 
 ```bash
 git add \
@@ -792,7 +794,7 @@ git commit -m "fix(frontend): attach recovery to active event generation"
 - Verifies all interfaces and invariants introduced in Tasks 1-4.
 - Produces the evidence used in the P1-1 PR description.
 
-- [ ] **Step 1: Scan for obsolete forced-restart contracts**
+- [x] **Step 1: Scan for obsolete forced-restart contracts**
 
 Run:
 
@@ -808,7 +810,7 @@ rg -n "force: true|elapsed > 60|auto-resetting flag|_get_game_lock|timeout_auto_
 
 Expected: no production or test contract remains that force-restarts recovery or clears generation ownership based only on 60 seconds.
 
-- [ ] **Step 2: Run the complete focused backend and frontend suites**
+- [x] **Step 2: Run the complete focused backend and frontend suites**
 
 Run:
 
@@ -842,7 +844,13 @@ git diff --check
 
 Expected: both commands exit 0. If an environment prerequisite blocks `./test.sh all`, record the exact command and error separately from the focused code evidence.
 
-- [ ] **Step 4: Browser-smoke the exact production failure path**
+Recorded 2026-07-10:
+
+- `git diff --check`: passed.
+- `./test.sh preflight`: passed (74 OpenSpec validations, 129 backend gates, and 494 frontend tests).
+- `./test.sh e2e`: production build, TypeScript, health checks, 304/305 core tests, AI music, character settings, story voice, and MiniMax audio passed. The command exited 1 only because `e2e/collection-panel-cache.spec.ts:95` timed out in all three attempts: the unrelated fixed global “音乐和朗读” player intercepted clicks on the collection tabs. The same failure repeated in the dedicated 28-test collection group (27 passed). Neither the overlay nor the collection test is changed by P1-1, so this branch does not mask or mix that separate UI defect.
+
+- [x] **Step 4: Browser-smoke the exact production failure path**
 
 Using a local server or an authorized production test account:
 
@@ -854,6 +862,8 @@ Using a local server or an authorized production test account:
 6. Refresh the page during another generation and confirm the same invariant.
 
 Expected evidence: one worker-start log for the operation key, at least two subscriber connections, one final event, no duplicated story chunks, and no second 80-120 second restart.
+
+Recorded 2026-07-10: a real local game reached a long-running second event at 1m36s with cursor `2535`. Clicking “恢复当前进度” preserved the visible partial story, opened a resumed subscriber, delivered the remaining story and all three options in 4.6s, and cleared the stored cursor on completion. The original subscriber had run for 106s, so recovery did not incur another full generation. Browser evidence is stored locally at `docs/qa-evidence/2026-07-10-p1-01/recovery-completed.png` (the evidence directory is intentionally ignored by Git).
 
 - [ ] **Step 5: Final commit and PR preparation**
 
