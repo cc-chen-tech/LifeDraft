@@ -833,7 +833,7 @@ npx tsc --noEmit --strict
 
 Expected: all commands exit 0 without unhandled stream rejections.
 
-- [ ] **Step 3: Run repository quality gates**
+- [x] **Step 3: Run repository quality gates**
 
 Run from the repository root:
 
@@ -848,7 +848,11 @@ Recorded 2026-07-10:
 
 - `git diff --check`: passed.
 - `./test.sh preflight`: passed (74 OpenSpec validations, 129 backend gates, and 494 frontend tests).
-- `./test.sh e2e`: production build, TypeScript, health checks, 304/305 core tests, AI music, character settings, story voice, and MiniMax audio passed. The command exited 1 only because `e2e/collection-panel-cache.spec.ts:95` timed out in all three attempts: the unrelated fixed global “音乐和朗读” player intercepted clicks on the collection tabs. The same failure repeated in the dedicated 28-test collection group (27 passed). Neither the overlay nor the collection test is changed by P1-1, so this branch does not mask or mix that separate UI defect.
+- The initial `./test.sh e2e` run exposed an unrelated collection-tab click interception
+  by the fixed global “音乐和朗读” player. After that external lock/run cleared, the
+  fresh required rerun passed completely: 305 core browser tests, 1 membership AI
+  music test, 1 character-settings persistence test, 8 story-voice tests, 4 MiniMax
+  audio tests, and 28 collection/entity tests. The final Layer e2e result was PASS.
 
 - [x] **Step 4: Browser-smoke the exact production failure path**
 
@@ -865,7 +869,7 @@ Expected evidence: one worker-start log for the operation key, at least two subs
 
 Recorded 2026-07-10: a real local game reached a long-running second event at 1m36s with cursor `2535`. Clicking “恢复当前进度” preserved the visible partial story, opened a resumed subscriber, delivered the remaining story and all three options in 4.6s, and cleared the stored cursor on completion. The original subscriber had run for 106s, so recovery did not incur another full generation. Browser evidence is stored locally at `docs/qa-evidence/2026-07-10-p1-01/recovery-completed.png` (the evidence directory is intentionally ignored by Git).
 
-- [ ] **Step 5: Final commit and PR preparation**
+- [x] **Step 5: Final commit and PR preparation**
 
 ```bash
 git status --short
