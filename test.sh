@@ -405,6 +405,7 @@ run_mypy() {
         src/services/story_voice_reading.py
         src/services/story_voice_repository.py
         src/database/models.py
+        src/services/life_summary_grounding.py
     )
     python -m mypy "${MYPY_STRICT_TARGETS[@]}" --strict
     local mypy_code=$?
@@ -433,6 +434,7 @@ run_imports() {
     python -m pytest \
         tests/test_imports.py \
         tests/test_gate_imports_no_mock.py \
+        tests/test_life_summary_grounding_imports_no_mock.py \
         tests/test_collection_imports.py \
         -v
     local result=$?
@@ -467,6 +469,7 @@ run_contract() {
         tests/test_collection_recognition_current_event.py \
         tests/test_live_gameplay_recovery_collection_contract.py \
         tests/test_ui_bottom_layout_contract_no_mock.py \
+        tests/test_life_summary_grounding_no_mock.py \
         -v
     local result=$?
     
@@ -499,6 +502,7 @@ run_db() {
         tests/test_story_music_recommendation_db.py \
         tests/test_story_voice_reading_db.py \
         tests/test_collection_cache_db.py \
+        tests/test_life_summary_grounding_db_no_mock.py \
         -v
     local result=$?
     
@@ -695,6 +699,14 @@ run_e2e_browser_impl() {
         --no-deps
     local opening_visible_completion_result=$?
 
+    echo -e "${YELLOW}运行人生总结事实边界 E2E 浏览器测试...${NC}"
+    run_playwright_command "life-summary-grounding" npx playwright test e2e/life-summary-grounding.spec.ts \
+        --project=core \
+        --reporter=list \
+        --workers=1 \
+        --no-deps
+    local life_summary_grounding_result=$?
+
     echo -e "${YELLOW}运行会员 AI 音乐队列补充 E2E 测试...${NC}"
     run_playwright_command "music-player" npx playwright test e2e/music-player.spec.ts \
         --project=ai-heavy \
@@ -740,7 +752,7 @@ run_e2e_browser_impl() {
     local collection_recognition_result=$?
 
     local result=0
-    if [ $core_result -ne 0 ] || [ $accessible_control_names_result -ne 0 ] || [ $opening_visible_completion_result -ne 0 ] || [ $music_ai_result -ne 0 ] || [ $character_settings_result -ne 0 ] || [ $story_voice_result -ne 0 ] || [ $minimax_audio_result -ne 0 ] || [ $collection_recognition_result -ne 0 ]; then
+    if [ $core_result -ne 0 ] || [ $accessible_control_names_result -ne 0 ] || [ $opening_visible_completion_result -ne 0 ] || [ $life_summary_grounding_result -ne 0 ] || [ $music_ai_result -ne 0 ] || [ $character_settings_result -ne 0 ] || [ $story_voice_result -ne 0 ] || [ $minimax_audio_result -ne 0 ] || [ $collection_recognition_result -ne 0 ]; then
         result=1
     fi
 
