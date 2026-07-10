@@ -13,5 +13,5 @@
 ## 3. Verification and Delivery
 
 - [x] 3.1 Run focused tests with the repository `.env`
-- [ ] 3.2 Run strict OpenSpec validation and all five `test.sh` layers without skips
+- [x] 3.2 Run strict OpenSpec validation and all five `test.sh` layers without skips
 - [ ] 3.3 Commit, push, open a ready PR, and resolve CI failures
