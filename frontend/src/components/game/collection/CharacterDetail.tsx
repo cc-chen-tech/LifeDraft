@@ -47,7 +47,10 @@ export function CharacterDetail({
 
   return (
     <Dialog open={!!character} onOpenChange={onClose}>
-      <DialogContent className="max-w-md h-[85vh] flex flex-col p-0 gap-0">
+      <DialogContent
+        className="max-w-md h-[85vh] flex flex-col p-0 gap-0"
+        closeButtonLabel={`关闭${character.name}人物详情`}
+      >
         <DialogHeader className="px-6 pt-6 pb-2 flex-shrink-0">
           <div className="flex items-start justify-between">
             <div>
@@ -67,6 +70,7 @@ export function CharacterDetail({
                 className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
                 onClick={() => onOpenDeleteConfirm(character.name)}
                 disabled={isDeleting}
+                aria-label={`删除人物${character.name}`}
               >
                 <Trash2 className="w-4 h-4" />
               </Button>

@@ -672,11 +672,20 @@ run_e2e_browser_impl() {
 
     export CI=1
     export E2E_BACKEND_HOST=127.0.0.1
+    export E2E_BROWSER_API_HOST="${E2E_BROWSER_API_HOST:-localhost}"
     export E2E_BACKEND_PORT
 
     echo -e "${YELLOW}运行完整 Playwright E2E 测试 (chromium)...${NC}"
     run_playwright_command "core" npx playwright test --project=core --reporter=dot --workers=1
     local core_result=$?
+
+    echo -e "${YELLOW}运行无障碍交互名称 E2E 浏览器测试...${NC}"
+    run_playwright_command "accessible-control-names" npx playwright test e2e/accessible-control-names.spec.ts \
+        --project=core \
+        --reporter=list \
+        --workers=1 \
+        --no-deps
+    local accessible_control_names_result=$?
 
     echo -e "${YELLOW}运行会员 AI 音乐队列补充 E2E 测试...${NC}"
     run_playwright_command "music-player" npx playwright test e2e/music-player.spec.ts \
@@ -723,7 +732,7 @@ run_e2e_browser_impl() {
     local collection_recognition_result=$?
 
     local result=0
-    if [ $core_result -ne 0 ] || [ $music_ai_result -ne 0 ] || [ $character_settings_result -ne 0 ] || [ $story_voice_result -ne 0 ] || [ $minimax_audio_result -ne 0 ] || [ $collection_recognition_result -ne 0 ]; then
+    if [ $core_result -ne 0 ] || [ $accessible_control_names_result -ne 0 ] || [ $music_ai_result -ne 0 ] || [ $character_settings_result -ne 0 ] || [ $story_voice_result -ne 0 ] || [ $minimax_audio_result -ne 0 ] || [ $collection_recognition_result -ne 0 ]; then
         result=1
     fi
 
