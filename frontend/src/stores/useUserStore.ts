@@ -12,6 +12,20 @@ import api from "@/lib/api";
 
 /** 好友列表缓存有效期：60 秒 */
 const FRIENDS_CACHE_TTL = 60 * 1000;
+const AUTH_SESSION_HINT = "story2-auth-session";
+
+export function hasAuthSessionHint(): boolean {
+  return typeof window !== "undefined" && window.sessionStorage.getItem(AUTH_SESSION_HINT) === "1";
+}
+
+function setAuthSessionHint(authenticated: boolean): void {
+  if (typeof window === "undefined") return;
+  if (authenticated) {
+    window.sessionStorage.setItem(AUTH_SESSION_HINT, "1");
+  } else {
+    window.sessionStorage.removeItem(AUTH_SESSION_HINT);
+  }
+}
 
 interface UserState {
   // Auth
@@ -46,6 +60,7 @@ export const useUserStore = create<UserState>((set, get) => ({
 
   register: async (displayName) => {
     const res = await api.auth.register({ display_name: displayName });
+    setAuthSessionHint(true);
     set({
       user: res.user,
       isAuthenticated: true,
@@ -55,6 +70,7 @@ export const useUserStore = create<UserState>((set, get) => ({
 
   login: async (privateId) => {
     const res = await api.auth.login({ private_id: privateId });
+    setAuthSessionHint(true);
     set({
       user: res.user,
       isAuthenticated: true,
@@ -64,6 +80,7 @@ export const useUserStore = create<UserState>((set, get) => ({
 
   logout: () => {
     api.auth.logout().catch(() => {});
+    setAuthSessionHint(false);
     set({
       user: null,
       isAuthenticated: false,
@@ -76,12 +93,14 @@ export const useUserStore = create<UserState>((set, get) => ({
   fetchMe: async () => {
     try {
       const user = await api.auth.me();
+      setAuthSessionHint(true);
       set({ user, isAuthenticated: true });
     } catch (err: unknown) {
       // 仅在 401（token 无效/过期）时清除认证状态
       // 网络错误等其他异常不应清除已有的登录状态
       const status = (err as { status?: number })?.status;
       if (status === 401) {
+        setAuthSessionHint(false);
         set({ user: null, isAuthenticated: false });
       }
       // 其他错误（网络异常等）保持当前状态不变
@@ -129,6 +148,7 @@ export const useUserStore = create<UserState>((set, get) => ({
   },
 
   clearAuth: () => {
+    setAuthSessionHint(false);
     set({
       user: null,
       isAuthenticated: false,

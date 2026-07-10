@@ -346,6 +346,7 @@ export default function WelcomePage() {
                 variant="ghost"
                 className="flex-shrink-0"
                 onClick={handleCopyPrivateId}
+                aria-label={copied ? "已复制私有密钥" : "复制私有密钥"}
               >
                 {copied ? (
                   <Check className="w-4 h-4 text-success" />
