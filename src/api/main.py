@@ -17,8 +17,8 @@ from starlette.requests import Request as StarletteRequest
 
 from config.settings import (SENTRY_DSN, SENTRY_ENVIRONMENT,
                              SENTRY_TRACES_SAMPLE_RATE)
-from src.api.routers import (auth, character, collection, friends, gameplay,
-                             games, images, music, presets, story,
+from src.api.routers import (auth, character, collection, gameplay, games,
+                             images, music, presets, story,
                              voice_reading)
 from src.database.models import init_db
 
@@ -178,7 +178,6 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # ---- Register routers ----
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
-app.include_router(friends.router, prefix="/api/friends", tags=["Friends"])
 app.include_router(games.router, prefix="/api/games", tags=["Games"])
 app.include_router(character.router, prefix="/api/character", tags=["Character"])
 app.include_router(presets.router, prefix="/api/presets", tags=["Presets"])
