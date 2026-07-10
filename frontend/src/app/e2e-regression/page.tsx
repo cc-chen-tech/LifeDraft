@@ -8,6 +8,7 @@ import { StoryVoiceControls } from "@/components/game/StoryVoiceControls";
 import { SettingDisplay } from "@/components/game/SettingDisplay";
 import { api } from "@/lib/api";
 import { OpeningCompletionGate } from "@/components/game/OpeningCompletionGate";
+import { CompletedStoryMediaGate } from "@/components/game/CompletedStoryMediaGate";
 import { LifeSummaryPanel } from "@/components/game/LifeSummaryPanel";
 import { useMusicStore } from "@/stores/useMusicStore";
 import { useStoryVoiceStore } from "@/stores/useStoryVoiceStore";
@@ -22,9 +23,13 @@ export default function E2ERegressionPage() {
   const setQueue = useMusicStore((state) => state.setQueue);
   const currentSong = useMusicStore((state) => state.currentSong);
   const queue = useMusicStore((state) => state.queue);
+  const activeStoryText = useMusicStore((state) => state.activeStoryText);
   const generateAiMusicForStory = useMusicStore((state) => state.generateAiMusicForStory);
   const setActiveReadingTarget = useStoryVoiceStore((state) => state.setActiveReadingTarget);
   const clearActiveReadingTarget = useStoryVoiceStore((state) => state.clearActiveReadingTarget);
+  const readingState = useStoryVoiceStore((state) => state.readingState);
+  const currentAudioUrl = useStoryVoiceStore((state) => state.currentAudioUrl);
+  const activeAutoReadReady = useStoryVoiceStore((state) => state.activeAutoReadReady);
   const [showHistory, setShowHistory] = useState(false);
   const [historySelected, setHistorySelected] = useState(false);
   const [currentStory, setCurrentStory] = useState("当前故事尚未更新");
@@ -38,6 +43,8 @@ export default function E2ERegressionPage() {
   const [openingVisibleComplete, setOpeningVisibleComplete] = useState(false);
   const [collectionRefreshState, setCollectionRefreshState] = useState<"idle" | "refreshing">("idle");
   const [fixtureGameId, setFixtureGameId] = useState(101);
+  const [audioRegenerationFixtureEnabled, setAudioRegenerationFixtureEnabled] = useState(false);
+  const [audioStoryBusy, setAudioStoryBusy] = useState(false);
   const [lifeSummaryFixtureEnabled, setLifeSummaryFixtureEnabled] = useState(false);
   const [showLifeSummaryFixture, setShowLifeSummaryFixture] = useState(false);
   const [worldFactSetting, setWorldFactSetting] = useState<Record<string, unknown> | null>(null);
@@ -57,6 +64,7 @@ export default function E2ERegressionPage() {
     const searchParams = new URLSearchParams(window.location.search);
     const configuredGameId = Number(searchParams.get("gameId"));
     const enableGlobalVoiceFixture = searchParams.get("globalVoice") === "1";
+    setAudioRegenerationFixtureEnabled(searchParams.get("audioRegeneration") === "1");
     setLifeSummaryFixtureEnabled(searchParams.get("lifeSummary") === "1");
     if (Number.isFinite(configuredGameId) && configuredGameId > 0) {
       setFixtureGameId(configuredGameId);
@@ -132,6 +140,53 @@ export default function E2ERegressionPage() {
 
   return (
     <main className="min-h-screen p-6 space-y-8">
+      {audioRegenerationFixtureEnabled && (
+        <section aria-label="音频重新生成状态回归夹具" className="space-y-3">
+          <CompletedStoryMediaGate
+            text={audioStoryBusy ? "尚未完成的替换文本" : "旧故事文本"}
+            context={{
+              source_type: "current_story",
+              game_id: 101,
+              week: 2,
+              round_number: 1,
+              stage: "event",
+              attempt_id: audioStoryBusy ? "replacement" : "old",
+              text_hash: audioStoryBusy ? "partial" : "old-hash",
+              text: audioStoryBusy ? "尚未完成的替换文本" : "旧故事文本",
+            }}
+            storyReady={!audioStoryBusy}
+            storyBusy={audioStoryBusy}
+            isViewingHistory={false}
+          />
+          <div className="flex gap-3">
+            <button
+              type="button"
+              className="rounded border px-3 py-2"
+              onClick={() => {
+                useStoryVoiceStore.setState({
+                  readingState: "playing",
+                  currentSource: "current_story",
+                  currentAudioUrl: "/api/voice-reading/audio/old.mp3",
+                });
+                setActiveStoryText("旧故事文本");
+              }}
+            >
+              模拟旧故事朗读
+            </button>
+            <button
+              type="button"
+              className="rounded border px-3 py-2"
+              onClick={() => setAudioStoryBusy(true)}
+            >
+              开始重新生成
+            </button>
+          </div>
+          <p data-testid="audio-regeneration-reading-state">{readingState}</p>
+          <p data-testid="audio-regeneration-audio-url">{currentAudioUrl || "none"}</p>
+          <p data-testid="audio-regeneration-music-target">{activeStoryText || "none"}</p>
+          <p data-testid="audio-regeneration-auto-ready">{String(activeAutoReadReady)}</p>
+        </section>
+      )}
       {lifeSummaryFixtureEnabled && (
         <section aria-label="人生总结事实边界回归夹具">
           <button
@@ -151,10 +206,10 @@ export default function E2ERegressionPage() {
               isLoading={false}
               error={null}
               onClose={() => setShowLifeSummaryFixture(false)}
-            />
-          )}
-        </section>
-      )}
+             />
+           )}
+         </section>
+       )}
       {worldFactSetting && (
         <section aria-label="世界事实边界回归夹具">
           <SettingDisplay stepKey="world" data={worldFactSetting} />
