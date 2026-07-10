@@ -59,15 +59,23 @@ test('loading a result save preserves the result until explicit continuation', a
     }
   });
 
-  await page.goto('/saves');
+  // Follow the real authenticated entry point. A hard navigation to /saves
+  // resets the current in-memory auth bootstrap before that page can list saves.
+  await page.getByRole('button', { name: '加载存档' }).click();
+  await expect(page).toHaveURL(/\/saves$/, { timeout: 15_000 });
   await expect(page.getByText(playerName)).toBeVisible({ timeout: 15_000 });
-  await page.getByRole('button', { name: '继续' }).first().click();
+  const saveCard = page.getByText(playerName).locator('xpath=ancestor::*[.//button][1]');
+  await saveCard.getByRole('button', { name: '继续' }).click();
   await expect(page).toHaveURL(/\/play$/, { timeout: 15_000 });
 
   await expect(page.getByRole('button', { name: '进入周中' })).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page.getByText(choice.story_continuation.slice(0, 20))).toBeVisible();
+  const visibleContinuation = choice.story_continuation
+    .replace(/\\([\\`*{}\[\]()#+\-.!_>])/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+  await expect(page.locator('main')).toContainText(visibleContinuation.slice(0, 40));
   expect(eventRequests).toHaveLength(0);
 
   const stateAfterLoad = await (

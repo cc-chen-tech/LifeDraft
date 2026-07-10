@@ -556,11 +556,11 @@ async def update_game_settings(
             db_session.close()
 
         # 同步更新会话中的 GameLoop
-        game_session = session_store.get(game_id)
+        game_session = session_store.get(game_id, user_id=user_id)
         if game_session and game_session.game_loop:
             game_session.game_loop.quality_level = req.constraint_level
             from src.ai.generator import EventGenerator
-            from src.game.character_creator import CharacterCreator
+            from src.game.character_creation import CharacterCreator
             from src.game.story_service import StoryService
             from src.game.yearly_summary import YearlySummaryGenerator
 

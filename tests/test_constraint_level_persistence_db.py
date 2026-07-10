@@ -125,6 +125,6 @@ class TestConstraintLevelPersistence:
         # 通过内部检查验证
         from src.api.session_store import session_store
 
-        session = session_store.get(game_id)
-        if session and session.game_loop:
-            assert session.game_loop.quality_level == "master"
+        session = session_store.get(game_id, user_id=1)
+        assert session is not None
+        assert session.game_loop.quality_level == "master"
