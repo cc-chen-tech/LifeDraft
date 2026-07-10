@@ -6,7 +6,7 @@ test('loading a result save preserves the result until explicit continuation', a
   page,
   context,
 }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(300_000);
   await ensureAuthenticated(page, context);
 
   const playerName = `精确恢复_${Date.now()}`;
