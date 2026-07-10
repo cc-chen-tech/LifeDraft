@@ -1,195 +1,100 @@
-"""事件生成并发控制契约测试 (Layer 3)
+"""Durable event-generation ownership contracts (Layer 3)."""
 
-验证并发控制相关的接口契约：锁行为、标志位、超时清理等。
-"""
-
-import asyncio
-from unittest.mock import MagicMock, patch
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from fastapi.testclient import TestClient
 
-from src.api.routers.gameplay.events import _get_game_lock
-
-
-class TestGameLockContract:
-    """验证 per-game asyncio.Lock 契约。"""
-
-    @pytest.mark.asyncio
-    async def test_get_game_lock_creates_new(self):
-        """_get_game_lock 应创建新的 asyncio.Lock。"""
-        lock = await _get_game_lock(9999)
-        assert lock is not None
-        assert isinstance(lock, asyncio.Lock)
-
-    @pytest.mark.asyncio
-    async def test_get_game_lock_returns_same_instance(self):
-        """相同 game_id 应返回同一 lock 实例。"""
-        lock1 = await _get_game_lock(8888)
-        lock2 = await _get_game_lock(8888)
-        assert lock1 is lock2, "相同 game_id 必须返回同一 lock 实例，否则并发控制失效"
-
-    @pytest.mark.asyncio
-    async def test_get_game_lock_different_games(self):
-        """不同 game_id 应返回不同 lock 实例。"""
-        lock1 = await _get_game_lock(7777)
-        lock2 = await _get_game_lock(7776)
-        assert lock1 is not lock2, "不同 game_id 应使用不同 lock，避免不必要的串行化"
-
-    @pytest.mark.asyncio
-    async def test_lock_can_be_acquired_and_released(self):
-        """lock 应可正常获取和释放。"""
-        lock = await _get_game_lock(6666)
-        assert not lock.locked()
-
-        await lock.acquire()
-        assert lock.locked()
-
-        lock.release()
-        assert not lock.locked()
+from src.api.services.event_generation_operation import (
+    EventGenerationConflict,
+    EventGenerationCoordinator,
+    EventGenerationKey,
+)
 
 
-class TestGameLoopGeneratingFlagContract:
-    """验证 game_loop._generating 标志位契约。"""
+class TestEventGenerationCoordinator:
+    """One operation key has one producer and any number of subscribers."""
 
-    def test_game_loop_has_generating_flag(self):
-        """game_loop 实例应有 _generating 属性。"""
-        from src.game.game_loop import GameLoop
+    def test_same_operation_key_has_exactly_one_starter(self):
+        coordinator = EventGenerationCoordinator()
+        key = EventGenerationKey(7, 3, 1, "event")
 
-        loop = GameLoop(language="zh")
-        assert hasattr(loop, "_generating"), "GameLoop 必须有 _generating 标志位用于并发控制"
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(lambda _: coordinator.get_or_create(key), range(8)))
 
-    def test_game_loop_has_generating_start_time(self):
-        """game_loop 实例应有 _generating_start_time 属性。"""
-        from src.game.game_loop import GameLoop
+        assert sum(1 for _, should_start in results if should_start) == 1
+        assert len({id(operation) for operation, _ in results}) == 1
 
-        loop = GameLoop(language="zh")
-        assert hasattr(
-            loop, "_generating_start_time"
-        ), "GameLoop 必须有 _generating_start_time 用于超时检测"
+    def test_different_key_cannot_replace_running_operation(self):
+        coordinator = EventGenerationCoordinator()
+        coordinator.get_or_create(EventGenerationKey(7, 3, 1, "event"))
 
-    def test_generating_flag_defaults_to_false(self):
-        """_generating 初始值应为 False。"""
-        from src.game.game_loop import GameLoop
+        with pytest.raises(EventGenerationConflict):
+            coordinator.get_or_create(EventGenerationKey(7, 3, 2, "event"))
 
-        loop = GameLoop(language="zh")
-        assert loop._generating is False, "_generating 初始值必须为 False，否则新游戏无法开始生成"
+    def test_failed_operation_can_start_a_new_attempt_for_same_key(self):
+        coordinator = EventGenerationCoordinator()
+        key = EventGenerationKey(7, 3, 1, "event")
+        first, first_should_start = coordinator.get_or_create(key)
+        first.fail("provider unavailable")
 
+        second, second_should_start = coordinator.get_or_create(key)
 
-class TestConcurrentRequestHandlingContract:
-    """验证并发请求处理契约。"""
+        assert first_should_start is True
+        assert second_should_start is True
+        assert second is not first
 
-    @pytest.fixture
-    def _event_client(self):
-        """Create a test client with events router mounted at /games."""
-        from fastapi import FastAPI
-        from fastapi.testclient import TestClient
+    def test_completed_operation_is_reused_for_same_key(self):
+        coordinator = EventGenerationCoordinator()
+        key = EventGenerationKey(7, 3, 1, "event")
+        first, _ = coordinator.get_or_create(key)
+        first.complete({"event_description": "done"})
 
-        from src.api.routers.gameplay.events import router
+        second, should_start = coordinator.get_or_create(key)
 
-        app = FastAPI()
-        app.include_router(router, prefix="/games")
-        return TestClient(app)
-
-    def test_concurrent_request_returns_sse_error(self, _event_client: TestClient):
-        """当 generation 正在进行时，第二个请求应返回 SSE error 事件而非 HTTP 409。
-
-        这是关键契约：SSE 端点必须始终返回 SSE 流，即使出错。
-        """
-        import time
-
-        with patch("src.api.routers.gameplay.events._require_session") as mock_require:
-            mock_session = MagicMock()
-            mock_game_loop = MagicMock()
-            mock_game_loop.is_game_over.return_value = False
-            mock_game_loop.current_event = None
-            # 模拟 generation 正在进行（刚启动 5 秒，不会触发超时）
-            mock_game_loop._generating = True
-            mock_game_loop._generating_start_time = time.time() - 5
-            mock_session.game_loop = mock_game_loop
-            mock_session.sse_cache = []
-            mock_require.return_value = mock_session
-
-            response = _event_client.get("/games/1/event")
-
-            # 必须返回 200 StreamingResponse，而不是 409
-            assert response.status_code == 200, (
-                "SSE 端点在并发情况下必须返回 200 + SSE error 事件，"
-                "不能返回 HTTP 409（会破坏前端 SSE 解析逻辑）"
-            )
-            content = response.content.decode("utf-8")
-            assert "event: error" in content, "并发请求的响应中必须包含 'event: error'"
-
-    def test_generating_flag_timeout_reset(self, _event_client: TestClient):
-        """_generating 标志超过 60 秒应被强制重置。"""
-        import time
-
-        from src.ai.models import EventOption, GameEvent
-
-        with patch("src.api.routers.gameplay.events._require_session") as mock_require:
-            mock_session = MagicMock()
-            mock_game_loop = MagicMock()
-            mock_game_loop.is_game_over.return_value = False
-            mock_game_loop.current_event = None
-            # 模拟 generation 已卡住 70 秒
-            mock_game_loop._generating = True
-            mock_game_loop._generating_start_time = time.time() - 70
-            mock_session.game_loop = mock_game_loop
-            mock_session.sse_cache = []
-            mock_require.return_value = mock_session
-
-            # 使用真实的 GameEvent 作为 generate_round_event 的返回值
-            # 避免 MagicMock 的 model_dump() 产生不可 JSON 序列化的数据
-            real_event = GameEvent(
-                event_description="Test story for timeout reset",
-                options=[
-                    EventOption(text="Option 1", effects={"energy": -5}, likely_choice=False),
-                    EventOption(text="Option 2", effects={"energy": -3}, likely_choice=True),
-                ],
-            )
-            mock_game_loop.generate_round_event.return_value = real_event
-
-            response = _event_client.get("/games/1/event")
-
-            # 70s > 60s 阈值，_generating 应被重置，请求应继续（返回 200）
-            assert response.status_code == 200
-            # 验证 _generating 被重置
-            assert (
-                mock_game_loop._generating is False
-            ), "_generating 超过 60s 必须被强制重置，否则卡死状态无法恢复"
+        assert second is first
+        assert should_start is False
 
 
-class TestLockReleaseContract:
-    """验证锁释放契约。"""
+class TestEventGenerationOperation:
+    """Subscribers can replay exactly the chunks they have not seen."""
 
-    @pytest.mark.asyncio
-    async def test_lock_release_after_streaming(self):
-        """StreamingResponse 结束后 lock 必须被释放。
+    def test_snapshot_replays_only_chunks_after_last_event_id(self):
+        coordinator = EventGenerationCoordinator()
+        operation, _ = coordinator.get_or_create(
+            EventGenerationKey(7, 3, 1, "event")
+        )
+        assert operation.publish_story("A") == 0
+        assert operation.publish_story("B") == 1
 
-        这是防止死锁的关键契约。
-        """
-        lock = await _get_game_lock(5555)
-        assert not lock.locked()
+        snapshot = operation.snapshot_after(0)
 
-        await lock.acquire()
-        assert lock.locked()
+        assert snapshot.chunks == ((1, "B"),)
 
-        # 模拟 streaming 结束后的 finally 释放
-        lock.release()
-        assert not lock.locked(), "lock 必须在 streaming 结束后释放，否则后续请求会永远阻塞"
+    def test_snapshot_reports_phase_result_and_error(self):
+        coordinator = EventGenerationCoordinator()
+        operation, _ = coordinator.get_or_create(
+            EventGenerationKey(7, 3, 1, "event")
+        )
+        operation.publish_phase("generating_story")
+
+        assert operation.snapshot_after(-1).phase == "generating_story"
+
+        operation.fail("upstream failed")
+        failed = operation.snapshot_after(-1)
+        assert failed.status == "failed"
+        assert failed.error == "upstream failed"
 
 
 class TestSSEErrorFormatContract:
-    """验证 SSE error 格式契约。"""
+    """Existing SSE error framing remains stable."""
 
     @pytest.mark.asyncio
     async def test_return_sse_error_format(self):
-        """return_sse_error 应生成标准 SSE error 事件。"""
         from src.api.routers.gameplay.sse_helpers import return_sse_error
 
         chunks = []
-        async for chunk in return_sse_error("Event generation in progress, please wait"):
+        async for chunk in return_sse_error("Event generation failed"):
             chunks.append(chunk)
         assert len(chunks) == 1
         assert "event: error" in chunks[0]
-        assert "Event generation in progress, please wait" in chunks[0]
+        assert "Event generation failed" in chunks[0]
