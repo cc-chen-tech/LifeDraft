@@ -520,7 +520,7 @@ git commit -m "fix(gameplay): keep event generation alive across reconnects"
 Add focused tests to `frontend/src/__tests__/lib/sse.test.ts`:
 
 ```typescript
-it('reports numeric SSE ids before their story chunks', async () => {
+it('commits numeric SSE ids after delivering their story chunks', async () => {
   const onEventId = jest.fn();
   const onStory = jest.fn();
   mockFetchSSE([
@@ -531,6 +531,9 @@ it('reports numeric SSE ids before their story chunks', async () => {
   await streamGameEvent(3, { onEventId, onStory });
 
   expect(onEventId).toHaveBeenCalledWith(4);
+  expect(onStory.mock.invocationCallOrder[0]).toBeLessThan(
+    onEventId.mock.invocationCallOrder[0]
+  );
   expect(onStory).toHaveBeenCalledWith('后续片段');
 });
 
@@ -567,15 +570,17 @@ In `StreamCallbacks`, add:
 onEventId?: (eventId: number) => void;
 ```
 
-In the SSE line loop, before the `event:` branch, add:
+Keep a pending event ID while parsing the SSE event:
 
 ```typescript
 if (trimmed.startsWith('id: ')) {
   const eventId = Number.parseInt(trimmed.slice(4), 10);
-  if (Number.isFinite(eventId)) callbacks.onEventId?.(eventId);
+  pendingEventId = Number.isFinite(eventId) ? eventId : null;
   continue;
 }
 ```
+
+After the associated story `data:` line has been delivered to `onStory`, call `onEventId(pendingEventId)` and clear it. Persisting the cursor after story delivery prevents a hard refresh from skipping a chunk that had not yet reached application state.
 
 Change `streamGameEvent` options and request headers to:
 

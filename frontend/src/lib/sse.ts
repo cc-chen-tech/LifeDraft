@@ -23,6 +23,7 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
   let isCompleteReceived = false;
   let isErrorReceived = false;
   let isResolved = false;
+  let pendingEventId: number | null = null;
 
   return new Promise((resolve, reject) => {
     function safeResolve() {
@@ -58,7 +59,7 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
           const trimmed = line.trim();
           if (trimmed.startsWith('id: ')) {
             const eventId = Number.parseInt(trimmed.slice(4), 10);
-            if (Number.isFinite(eventId)) callbacks.onEventId?.(eventId);
+            pendingEventId = Number.isFinite(eventId) ? eventId : null;
             continue;
           }
           // Parse event type from event: line
@@ -131,6 +132,10 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
                 callbacks.onChunk?.(data);
                 callbacks.onStory?.(data);
               }
+            }
+            if (pendingEventId !== null) {
+              callbacks.onEventId?.(pendingEventId);
+              pendingEventId = null;
             }
             // Reset event type after processing data line
             currentEventType = null;

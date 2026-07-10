@@ -93,7 +93,7 @@ describe('SSE Streaming', () => {
       expect(onChunk).toHaveBeenCalledWith('Hello World');
     });
 
-    it('reports numeric SSE ids before their story chunks', async () => {
+    it('commits numeric SSE ids after delivering their story chunks', async () => {
       const onEventId = jest.fn();
       const onStory = jest.fn();
       const callbacks: StreamCallbacks = { onEventId, onStory };
@@ -109,8 +109,8 @@ describe('SSE Streaming', () => {
       await streamGameEvent(3, callbacks);
 
       expect(onEventId).toHaveBeenCalledWith(4);
-      expect(onEventId.mock.invocationCallOrder[0]).toBeLessThan(
-        onStory.mock.invocationCallOrder[0]
+      expect(onStory.mock.invocationCallOrder[0]).toBeLessThan(
+        onEventId.mock.invocationCallOrder[0]
       );
       expect(onStory).toHaveBeenCalledWith('后续片段');
     });
