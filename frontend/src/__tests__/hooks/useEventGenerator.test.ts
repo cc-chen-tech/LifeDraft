@@ -194,6 +194,7 @@ describe('useEventGenerator', () => {
 
     it('restores the saved SSE cursor when recovery follows a page refresh', async () => {
       window.sessionStorage.setItem('story101:event-cursor:1', '4');
+      window.sessionStorage.setItem('story101:event-story:1', '刷新前已经显示的故事');
       mockGeneratingRef.current = true;
       mockPhaseRef.current = 'generating' as Phase;
       (global.fetch as jest.Mock).mockResolvedValue(
@@ -205,6 +206,10 @@ describe('useEventGenerator', () => {
 
       const { result } = renderHook(() => useEventGenerator(defaultParams));
 
+      await waitFor(() => {
+        expect(mockSetters.setStoryText).toHaveBeenCalledWith('刷新前已经显示的故事');
+      });
+
       await act(async () => { await result.current.recoverEventGeneration(); });
 
       expect(global.fetch).toHaveBeenCalledWith(
@@ -214,6 +219,28 @@ describe('useEventGenerator', () => {
           signal: expect.any(AbortSignal),
         })
       );
+    });
+
+    it('replays from the beginning when a saved cursor has no matching story snapshot', async () => {
+      window.sessionStorage.setItem('story101:event-cursor:1', '4');
+      mockGeneratingRef.current = true;
+      mockPhaseRef.current = 'generating' as Phase;
+      (global.fetch as jest.Mock).mockResolvedValue(
+        createSSEMockResponse([
+          'id: 0\nevent: story\ndata: "完整重放"\n\n',
+          'event: complete\ndata: {"event_description":"完整重放","options":[{"text":"继续","effects":{}}]}\n\n',
+        ])
+      );
+
+      const { result } = renderHook(() => useEventGenerator(defaultParams));
+
+      await act(async () => { await result.current.recoverEventGeneration(); });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/games/1/event',
+        expect.objectContaining({ headers: undefined })
+      );
+      expect(window.sessionStorage.getItem('story101:event-cursor:1')).toBeNull();
     });
 
     it('enters retryable error when event stream completes without options', async () => {

@@ -68,17 +68,30 @@ export function useEventGenerator({
   const eventCursorStorageKey = gameId === null
     ? null
     : `story101:event-cursor:${gameId}`;
+  const eventStoryStorageKey = gameId === null
+    ? null
+    : `story101:event-story:${gameId}`;
   const lastEventIdRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!eventCursorStorageKey) {
+    if (!eventCursorStorageKey || !eventStoryStorageKey) {
       lastEventIdRef.current = null;
       return;
     }
     const stored = window.sessionStorage.getItem(eventCursorStorageKey);
     const parsed = stored === null ? Number.NaN : Number.parseInt(stored, 10);
-    lastEventIdRef.current = Number.isFinite(parsed) ? parsed : null;
-  }, [eventCursorStorageKey]);
+    const storedStory = window.sessionStorage.getItem(eventStoryStorageKey) || "";
+    if (Number.isFinite(parsed) && storedStory) {
+      lastEventIdRef.current = parsed;
+      if (!useGameStore.getState().storyText) {
+        setStoryText(storedStory);
+      }
+      return;
+    }
+    lastEventIdRef.current = null;
+    window.sessionStorage.removeItem(eventCursorStorageKey);
+    window.sessionStorage.removeItem(eventStoryStorageKey);
+  }, [eventCursorStorageKey, eventStoryStorageKey, setStoryText]);
 
   const clearRetryStatusTimer = useCallback(() => {
     if (retryStatusTimerRef.current) {
@@ -168,6 +181,9 @@ export function useEventGenerator({
       if (eventCursorStorageKey) {
         window.sessionStorage.removeItem(eventCursorStorageKey);
       }
+      if (eventStoryStorageKey) {
+        window.sessionStorage.removeItem(eventStoryStorageKey);
+      }
       if (currentPhase === "error" || !currentEvent?.options?.length) {
         console.log("[generateEvent] Clearing story for a new generation attempt");
         setStoryText("");
@@ -188,6 +204,12 @@ export function useEventGenerator({
           lastEventIdRef.current = eventId;
           if (eventCursorStorageKey) {
             window.sessionStorage.setItem(eventCursorStorageKey, String(eventId));
+          }
+          if (eventStoryStorageKey) {
+            window.sessionStorage.setItem(
+              eventStoryStorageKey,
+              useGameStore.getState().storyText
+            );
           }
         },
         onStatus: (status) => {
@@ -213,6 +235,9 @@ export function useEventGenerator({
           lastEventIdRef.current = null;
           if (eventCursorStorageKey) {
             window.sessionStorage.removeItem(eventCursorStorageKey);
+          }
+          if (eventStoryStorageKey) {
+            window.sessionStorage.removeItem(eventStoryStorageKey);
           }
         },
         onError: async (err) => {
@@ -347,7 +372,7 @@ export function useEventGenerator({
         throw err; // Re-throw other errors
       }
     }
-  }, [gameId, eventCursorStorageKey, setStoryText, appendStoryText, setProcessing, setCurrentEvent, setGameOver, setPhase, phaseRef, setConnectionStatus, setReconnectAttempt, setOptions, setRoundSummary, armRetryStatusTimeout, clearRetryStatusTimer]);
+  }, [gameId, eventCursorStorageKey, eventStoryStorageKey, setStoryText, appendStoryText, setProcessing, setCurrentEvent, setGameOver, setPhase, phaseRef, setConnectionStatus, setReconnectAttempt, setOptions, setRoundSummary, armRetryStatusTimeout, clearRetryStatusTimer]);
 
   const recoverEventGeneration = useCallback(async () => {
     abortRef.current?.abort();
