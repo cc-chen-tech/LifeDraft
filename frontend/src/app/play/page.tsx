@@ -31,13 +31,13 @@ import { RoundHistoryDrawer } from "@/components/game/RoundHistoryDrawer";
 import { RoundSceneImageDisplay } from "@/components/game/RoundSceneImage";
 import { HistorySceneImage } from "@/components/game/HistorySceneImage";
 import { CollectionPanel } from "@/components/game/CollectionPanel";
+import { CompletedStoryMediaGate } from "@/components/game/CompletedStoryMediaGate";
 import { getSceneImageDisplayMode } from "@/components/game/sceneImageStagePolicy";
 
 import { usePlayGame, STATUS_MESSAGES } from "@/hooks/usePlayGame";
 import { useGameIdFromUrl } from "@/hooks/useGameIdFromUrl";
 import { useGameStore } from "@/stores/useGameStore";
 import { useMusicStore } from "@/stores/useMusicStore";
-import { useStoryVoiceStore } from "@/stores/useStoryVoiceStore";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
@@ -182,60 +182,6 @@ export default function PlayPage() {
   // ★ 音乐 store：将当前故事文本和 gameId 传递给 GlobalMusicPlayer
   const setActiveStoryText = useMusicStore((state) => state.setActiveStoryText);
   const setActiveGameId = useMusicStore((state) => state.setActiveGameId);
-  const setActiveReadingTarget = useStoryVoiceStore((state) => state.setActiveReadingTarget);
-  const clearActiveReadingTarget = useStoryVoiceStore((state) => state.clearActiveReadingTarget);
-
-  useEffect(() => {
-    if (storyText && !isViewingHistory && storyReadyForCompletedMedia) {
-      setActiveStoryText(storyText);
-    }
-  }, [storyText, isViewingHistory, storyReadyForCompletedMedia, setActiveStoryText]);
-
-  useEffect(() => {
-    const numericGameId = Number(gameId);
-    if (!displayText || !Number.isFinite(numericGameId)) {
-      clearActiveReadingTarget();
-      return;
-    }
-
-    setActiveReadingTarget({
-      context: isViewingHistory
-        ? {
-            source_type: "history_round",
-            game_id: numericGameId,
-            week: currentHistoryRound?.week ?? null,
-            round_number: currentHistoryRound?.round ?? null,
-            stage: "event",
-            attempt_id: "history",
-            text_hash: "pending-client-hash",
-            text: displayText,
-          }
-        : {
-            source_type: "current_story",
-            game_id: numericGameId,
-            week: progress?.week ?? null,
-            round_number: currentRound ?? null,
-            stage: "event",
-            attempt_id: `${progress?.week ?? 0}-${currentRound ?? 0}`,
-            text_hash: "pending-client-hash",
-            text: displayText,
-          },
-      autoReadText: displayText,
-      autoReadReady: !isViewingHistory && storyReadyForCompletedMedia,
-    });
-  }, [
-    clearActiveReadingTarget,
-    currentHistoryRound?.round,
-    currentHistoryRound?.week,
-    currentRound,
-    displayText,
-    gameId,
-    isViewingHistory,
-    progress?.week,
-    setActiveReadingTarget,
-    storyReadyForCompletedMedia,
-  ]);
-
   useEffect(() => {
     if (gameId) {
       setActiveGameId(Number(gameId));
@@ -391,6 +337,31 @@ export default function PlayPage() {
       <Suspense fallback={null}>
         <GameIdSync />
       </Suspense>
+      {/* CompletedStoryMediaGate owns setActiveReadingTarget and media cancellation. */}
+      <CompletedStoryMediaGate
+        text={displayText}
+        context={
+          Number.isFinite(Number(gameId))
+            ? {
+                source_type: isViewingHistory ? "history_round" : "current_story",
+                game_id: Number(gameId),
+                week: isViewingHistory ? currentHistoryRound?.week ?? null : progress?.week ?? null,
+                round_number: isViewingHistory
+                  ? currentHistoryRound?.round ?? null
+                  : currentRound ?? null,
+                stage: "event",
+                attempt_id: isViewingHistory
+                  ? "history"
+                  : `${progress?.week ?? 0}-${currentRound ?? 0}`,
+                text_hash: "pending-client-hash",
+                text: displayText,
+              }
+            : null
+        }
+        storyReady={storyReadyForCompletedMedia}
+        storyBusy={isCurrentStoryBusy}
+        isViewingHistory={isViewingHistory}
+      />
       {/* Header */}
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
