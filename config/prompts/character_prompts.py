@@ -257,6 +257,11 @@ def get_character_setting_prompt(
 """,
             "world": f"""{base_context}
 请生成社会和世界情况的详细设定。包括科技水平、社会制度、经济状况等。
+
+事实边界（硬性规则）：
+- 不得虚构或臆造现实中存在的法规、认证名称、官方备案/审批流程、统计数据或固定办理周期，并把它们写成已核实事实。
+- 如果为了故事需要加入示例性的合规规则、认证、百分比或周期，必须在对应字段开头明确写“故事设定假设，不代表现实法规或统计：”。
+- 不得把生成内容描述成现实法律、合规或经济建议；生成内容不构成现实法律、合规或经济建议。
 返回JSON格式：
 {{
     "world_description": "社会和世界情况的详细描述（100-150字）",
@@ -372,6 +377,11 @@ Return JSON format:
 """,
             "world": f"""{base_context}
 Generate detailed world and society setting. Include technology level, social system, economy, etc.
+
+Factual boundary (mandatory):
+- Do not invent real-world laws, certification names, official filing or approval procedures, statistics, or fixed processing times and present them as verified facts.
+- Any illustrative compliance rule, certification, percentage, or timeline created for the story must begin with "Fictional story assumption, not real legal or statistical guidance: ".
+- The generated setting is not real legal, compliance, or economic advice.
 Return JSON format:
 {{
     "world_description": "Detailed description of world and society (100-150 words)",

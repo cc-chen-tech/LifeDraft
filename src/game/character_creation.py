@@ -14,6 +14,7 @@ from config.prompts import (get_character_setting_prompt,
 from src.ai.generator import EventGenerator
 from src.ai.system_prompts import get_system_prompt
 from src.ai.utils import extract_json
+from src.game.world_fact_safety import qualify_generated_world_facts
 
 logger = logging.getLogger(__name__)
 
@@ -333,6 +334,9 @@ class CharacterCreator:
                         life_vision,
                         feedback=feedback,
                     )
+
+                if setting_type == "world":
+                    result = qualify_generated_world_facts(result, language=self.language)
 
                 # Validate wealth if it's the wealth setting
                 if setting_type == "wealth":
