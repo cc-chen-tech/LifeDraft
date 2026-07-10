@@ -653,9 +653,7 @@ export interface paths {
         };
         /**
          * Generate Event
-         * @description Generate a round event via SSE streaming.
-         *
-         *     Supports reconnection via Last-Event-ID header for mobile network resilience.
+         * @description Subscribe to the current round's durable event-generation operation.
          */
         get: operations["generate_event_api_games__game_id__event_get"];
         put?: never;
@@ -677,7 +675,7 @@ export interface paths {
         put?: never;
         /**
          * Generate Event Sync
-         * @description Generate a round event (non-streaming fallback for mobile).
+         * @description Wait for the same durable operation used by SSE subscribers.
          */
         post: operations["generate_event_sync_api_games__game_id__event_sync_post"];
         delete?: never;
