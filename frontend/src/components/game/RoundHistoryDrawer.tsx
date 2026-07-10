@@ -147,6 +147,7 @@ export function RoundHistoryDrawer({
                           className="space-y-2"
                         >
                           <button
+                            aria-label={`第 ${item.week + 1} 周 ${roundName}：${hasStory ? "阅读正文" : "查看摘要"}`}
                             onClick={() => {
                               onSelect(item.originalIndex);
                               onOpenChange(false);

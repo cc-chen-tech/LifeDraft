@@ -134,6 +134,7 @@ export default function ProfilePage() {
                   variant="ghost"
                   className="h-6 w-6"
                   onClick={handleCopyPublicId}
+                  aria-label={copied ? "已复制公开 ID" : "复制公开 ID"}
                 >
                   {copied ? (
                     <Check className="w-3 h-3 text-success" />
@@ -241,6 +242,7 @@ export default function ProfilePage() {
                     variant="ghost"
                     className="h-8 w-8 text-muted-foreground hover:text-destructive"
                     onClick={() => removeFriend(friend.user_id)}
+                    aria-label={`删除好友${friend.display_name || friend.public_id}`}
                   >
                     <X className="w-4 h-4" />
                   </Button>
