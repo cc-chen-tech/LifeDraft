@@ -21,6 +21,7 @@ interface StreamingTextProps {
    * Milliseconds between frames (default: 30)
    */
   frameInterval?: number;
+  onDisplayComplete?: (text: string) => void;
 }
 
 /**
@@ -36,6 +37,7 @@ export function StreamingText({
   narrative = true,
   charsPerFrame = 2,
   frameInterval = 30,
+  onDisplayComplete,
 }: StreamingTextProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [displayedText, setDisplayedText] = useState("");
@@ -43,6 +45,7 @@ export function StreamingText({
   const userScrollingRef = useRef(false);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const prevIsStreamingRef = useRef(isStreaming);
+  const lastCompletedTextRef = useRef("");
 
   // ★ 逐字显示效果
   // 关键修复：isStreaming 从 true 变为 false 时，如果打字机还没打完，
@@ -91,6 +94,17 @@ export function StreamingText({
 
     return () => clearInterval(timer);
   }, [text, isStreaming, charsPerFrame, frameInterval]);
+
+  useEffect(() => {
+    if (!text) {
+      lastCompletedTextRef.current = "";
+      return;
+    }
+    if (displayedText !== text || lastCompletedTextRef.current === text) return;
+
+    lastCompletedTextRef.current = text;
+    onDisplayComplete?.(text);
+  }, [displayedText, text, onDisplayComplete]);
 
   // ★ 智能自动滚动：只在用户没有手动滚动时自动滚到底部
   useEffect(() => {

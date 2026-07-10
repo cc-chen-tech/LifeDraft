@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { StreamingText } from "@/components/game/StreamingText";
+import { OpeningCompletionGate } from "@/components/game/OpeningCompletionGate";
 import { SkeletonStory } from "@/components/game/SkeletonStory";
 import { useGameStore } from "@/stores/useGameStore";
 import { useUIStore } from "@/stores/useUIStore";
@@ -18,7 +19,7 @@ import { useImageStore } from "@/stores/useImageStore";
 import { useHydration } from "@/hooks/useHydration";
 import { games } from "@/lib/api";
 import { streamOpeningStory } from "@/lib/sse";
-import { Play, Loader2, Home, ImageIcon, RefreshCw } from "lucide-react";
+import { Loader2, Home, ImageIcon, RefreshCw } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
 export default function OpeningStoryPage() {
@@ -39,6 +40,7 @@ export default function OpeningStoryPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   const [storyText, setStoryText] = useState("");
+  const [displayedCompleteText, setDisplayedCompleteText] = useState("");
   const [error, setError] = useState("");
   const [illustrationPrompt, setIllustrationPrompt] = useState("");
   const abortRef = useRef<AbortController | null>(null);
@@ -139,6 +141,7 @@ export default function OpeningStoryPage() {
         language,
         {
           onStory: (text) => {
+            setDisplayedCompleteText("");
             streamedText += text;
             setStoryText((prev) => prev + text);
           },
@@ -192,6 +195,7 @@ export default function OpeningStoryPage() {
     console.log("[OpeningStory] Retrying generation...");
     setError("");
     setStoryText("");
+    setDisplayedCompleteText("");
     setIsStreaming(true);
     setIsComplete(false);
     
@@ -207,6 +211,7 @@ export default function OpeningStoryPage() {
       language,
       {
         onStory: (text) => {
+          setDisplayedCompleteText("");
           streamedText += text;
           setStoryText((prev) => prev + text);
         },
@@ -236,7 +241,7 @@ export default function OpeningStoryPage() {
   };
 
   const handleStart = () => {
-    if (!isComplete) return;
+    if (!isComplete || displayedCompleteText !== storyText) return;
 
     const currentGameId = useGameStore.getState().gameId;
     
@@ -290,6 +295,7 @@ export default function OpeningStoryPage() {
               text={storyText}
               isStreaming={isStreaming}
               narrative
+              onDisplayComplete={setDisplayedCompleteText}
             />
           )}
           
@@ -382,22 +388,12 @@ export default function OpeningStoryPage() {
       </div>
 
       <div className="p-6 flex justify-center">
-        {isComplete ? (
-          <Button
-            size="lg"
-            className="h-14 px-8 text-base touch-target animate-fade-in-word"
-            onClick={handleStart}
-            disabled={!isComplete}
-            aria-label="开始我的人生"
-            title="开始我的人生"
-          >
-            <Play className="w-5 h-5 mr-2" />
-            开始我的人生
-          </Button>
-        ) : isStreaming ? (
-          <div className="text-sm text-muted-foreground animate-pulse">
-            故事正在展开...
-          </div>
+        {isComplete || isStreaming ? (
+          <OpeningCompletionGate
+            backendComplete={isComplete}
+            visibleComplete={Boolean(storyText) && displayedCompleteText === storyText}
+            onStart={handleStart}
+          />
         ) : (
           <Button
             variant="outline"
