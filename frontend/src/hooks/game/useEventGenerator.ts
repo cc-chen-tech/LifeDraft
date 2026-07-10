@@ -21,7 +21,6 @@ interface UseEventGeneratorParams {
   setCurrentEvent: (event: { story: string; options: EventOption[] } | null) => void;
   setGameOver: (gameOver: boolean) => void;
   setRoundSummary: (summary: string | null) => void;
-  isGameOver: boolean;
   setIsPrefetching: (prefetching: boolean) => void;
   // Refs passed from parent
   abortRef: React.MutableRefObject<AbortController | null>;
@@ -54,7 +53,6 @@ export function useEventGenerator({
   setCurrentEvent,
   setGameOver,
   setRoundSummary,
-  isGameOver,
   setIsPrefetching,
   abortRef,
   generatingRef,
@@ -468,17 +466,6 @@ export function useEventGenerator({
       setIsPrefetching(false);
     }
   }, [gameId, setIsPrefetching]);
-
-  // Effect: prefetch when entering result phase
-  useEffect(() => {
-    if (phaseRef.current === "result" && !isGameOver && gameId) {
-      console.log("[prefetch] Entered result phase, starting prefetch...");
-      const timer = setTimeout(() => {
-        prefetchNextEvent();
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [phaseRef, isGameOver, gameId, prefetchNextEvent]);
 
   // Cleanup effect
   useEffect(() => {

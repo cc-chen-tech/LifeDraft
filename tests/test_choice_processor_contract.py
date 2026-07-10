@@ -321,6 +321,48 @@ class TestMakeRoundChoiceContract:
         result = proc.make_round_choice(option_index=0)
         assert result["need_weekly_summary"] is False
 
+    def test_choice_persists_exact_result_view_after_authoritative_round_advances(self):
+        state = _make_state(week=3, current_round=0, rounds_per_week=3)
+        event = _make_event()
+        proc = _make_processor(player_state=state, current_event=event)
+
+        result = proc.make_round_choice(option_index=0)
+
+        assert state.current_round == 1
+        assert state.week == 3
+        assert state.resume_view == {
+            "phase": "result",
+            "story_text": (
+                "You arrive at the bustling marketplace.\n\n"
+                "The story continues in an interesting way."
+            ),
+            "round_summary": result["summary"],
+            "summary_text": "",
+            "resource_warnings": [],
+            "completed_week": 3,
+            "completed_round": 0,
+        }
+
+    def test_last_round_persists_summary_view_instead_of_next_week_event(self):
+        state = _make_state(week=3, current_round=2, rounds_per_week=3)
+        event = _make_event()
+        proc = _make_processor(player_state=state, current_event=event)
+
+        def finalize_week(result, status_callback=None):
+            del status_callback
+            result["weekly_summary"] = "第4周完整总结"
+
+        proc.make_round_choice(option_index=0, finalize_week_callback=finalize_week)
+
+        # The lightweight processor advances the round; the full GameLoop's
+        # finalize callback performs the week rollover after this point.
+        assert state.week == 3
+        assert state.current_round == 3
+        assert state.resume_view["phase"] == "summary"
+        assert state.resume_view["summary_text"] == "第4周完整总结"
+        assert state.resume_view["completed_week"] == 3
+        assert state.resume_view["completed_round"] == 2
+
     def test_option_index_zero_valid(self):
         """Option index 0 should be valid (first option)."""
         state = _make_state()

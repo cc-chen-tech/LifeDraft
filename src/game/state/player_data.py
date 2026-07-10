@@ -81,6 +81,12 @@ class PlayerDataMixin:
     # Structure: {"event_description": "...", "options": [{"text": "...", "effects": {...}}], "story_text": "..."}
     current_event_data: Optional[Dict[str, Any]] = Field(default=None)
 
+    # Exact user-visible phase for states that are not represented by an
+    # unchosen current_event_data object. This prevents save/load from treating
+    # a committed result or weekly summary as permission to generate the next
+    # round automatically.
+    resume_view: Optional[Dict[str, Any]] = Field(default=None)
+
     # 未完结的重要剧情线
     # Structure: [{"description": "...", "created_week": 0, "importance": "high/medium",
     #              "status": "active/deferred", "related_characters": [], "last_mentioned_week": 0}]
