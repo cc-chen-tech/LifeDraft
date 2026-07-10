@@ -5,6 +5,7 @@ import { ChatBar } from "@/components/game/ChatBar";
 import { MusicPlayer } from "@/components/game/MusicPlayer";
 import { OptionCards } from "@/components/game/OptionCards";
 import { StoryVoiceControls } from "@/components/game/StoryVoiceControls";
+import { OpeningCompletionGate } from "@/components/game/OpeningCompletionGate";
 import { useMusicStore } from "@/stores/useMusicStore";
 import { useStoryVoiceStore } from "@/stores/useStoryVoiceStore";
 
@@ -30,6 +31,8 @@ export default function E2ERegressionPage() {
     "empty" | "recognizing" | "collected"
   >("empty");
   const [normalClickChoice, setNormalClickChoice] = useState("none");
+  const [openingBackendComplete, setOpeningBackendComplete] = useState(false);
+  const [openingVisibleComplete, setOpeningVisibleComplete] = useState(false);
   const [collectionRefreshState, setCollectionRefreshState] = useState<"idle" | "refreshing">("idle");
   const [fixtureGameId, setFixtureGameId] = useState(101);
   const [musicQueueFixture, setMusicQueueFixture] = useState<{
@@ -111,6 +114,33 @@ export default function E2ERegressionPage() {
 
   return (
     <main className="min-h-screen p-6 space-y-8">
+      <section aria-label="开场完成门控回归夹具" className="space-y-3">
+        <div className="flex gap-3">
+          <button
+            type="button"
+            className="rounded border px-3 py-2"
+            onClick={() => setOpeningBackendComplete(true)}
+          >
+            模拟后端完成
+          </button>
+          <button
+            type="button"
+            className="rounded border px-3 py-2"
+            onClick={() => setOpeningVisibleComplete(true)}
+          >
+            模拟显示完成
+          </button>
+        </div>
+        <p data-testid="opening-visible-text">
+          {openingVisibleComplete ? "最终句子已经完整显示。" : "正在显示最终句子"}
+        </p>
+        <OpeningCompletionGate
+          backendComplete={openingBackendComplete}
+          visibleComplete={openingVisibleComplete}
+          onStart={() => undefined}
+        />
+      </section>
+
       <section aria-label="选项可访问名称回归夹具">
         <OptionCards
           options={[

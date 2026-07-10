@@ -600,6 +600,14 @@ run_e2e_browser_impl() {
     run_playwright_command "core" npx playwright test --project=core --reporter=dot --workers=1
     local core_result=$?
 
+    echo -e "${YELLOW}运行开场可见完成门控 E2E 浏览器测试...${NC}"
+    run_playwright_command "opening-visible-completion" npx playwright test e2e/opening-visible-completion.spec.ts \
+        --project=core \
+        --reporter=list \
+        --workers=1 \
+        --no-deps
+    local opening_visible_completion_result=$?
+
     echo -e "${YELLOW}运行会员 AI 音乐队列补充 E2E 测试...${NC}"
     run_playwright_command "music-player" npx playwright test e2e/music-player.spec.ts \
         --project=ai-heavy \
@@ -645,7 +653,7 @@ run_e2e_browser_impl() {
     local collection_recognition_result=$?
 
     local result=0
-    if [ $core_result -ne 0 ] || [ $music_ai_result -ne 0 ] || [ $character_settings_result -ne 0 ] || [ $story_voice_result -ne 0 ] || [ $minimax_audio_result -ne 0 ] || [ $collection_recognition_result -ne 0 ]; then
+    if [ $core_result -ne 0 ] || [ $opening_visible_completion_result -ne 0 ] || [ $music_ai_result -ne 0 ] || [ $character_settings_result -ne 0 ] || [ $story_voice_result -ne 0 ] || [ $minimax_audio_result -ne 0 ] || [ $collection_recognition_result -ne 0 ]; then
         result=1
     fi
 
