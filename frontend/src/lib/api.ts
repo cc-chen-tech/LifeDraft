@@ -46,6 +46,7 @@ function handle401Redirect() {
 
 export function shouldRetryApiResponse(status: number, url: string, attemptIndex: number): boolean {
   if (url.includes('/voice-reading/')) return false;
+  if (isImageGenerationMutation(url)) return false;
   if (status === 502 || status === 504) return true;
   if (status >= 500) return true;
   if (status !== 401) return false;
@@ -54,7 +55,27 @@ export function shouldRetryApiResponse(status: number, url: string, attemptIndex
 
 export function shouldRetryApiError(url: string, attemptIndex: number, retries: number): boolean {
   if (url.includes('/voice-reading/')) return false;
+  if (isImageGenerationMutation(url)) return false;
   return attemptIndex < retries - 1;
+}
+
+function isImageGenerationMutation(url: string): boolean {
+  if (url.includes('/collection/')) {
+    return url.includes('/generate-image') || url.includes('/regenerate-image');
+  }
+
+  if (!url.includes('/images/')) return false;
+  if (url.includes('/images/scene/')) return true;
+
+  return [
+    '/images/generate',
+    '/images/player',
+    '/images/regenerate',
+    '/images/regenerate-fresh',
+    '/images/opening-illustration',
+    '/images/scene/generate',
+    '/images/scene/regenerate',
+  ].some((path) => url === path || url.startsWith(`${path}?`) || url.startsWith(`${path}/`));
 }
 
 /**
@@ -124,10 +145,14 @@ async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: num
     const error = await response.json().catch(() => ({ message: response.statusText }));
     const detail = error.detail;
     let errorMessage = error.message || response.statusText || 'Request failed';
+    let errorCode: string | undefined;
+    let retryable: boolean | undefined;
     if (typeof detail === 'string') {
       errorMessage = detail;
     } else if (detail && typeof detail === 'object') {
       const detailRecord = detail as Record<string, unknown>;
+      errorCode = typeof detailRecord.code === 'string' ? detailRecord.code : undefined;
+      retryable = typeof detailRecord.retryable === 'boolean' ? detailRecord.retryable : undefined;
       const detailParts = [detailRecord.error, detailRecord.message]
         .filter((part): part is string => typeof part === 'string' && part.trim().length > 0);
       if (detailParts.length > 0) {
@@ -138,24 +163,40 @@ async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: num
     // ★ 401 未授权 - 对于 /auth/me 这是正常的未登录状态，不显示错误日志
     if (response.status === 401 && url === '/auth/me') {
       // 静默处理，不显示错误日志
-      throw Object.assign(new Error(errorMessage), { status: response.status });
+      throw Object.assign(new Error(errorMessage), {
+        status: response.status,
+        code: errorCode,
+        retryable,
+      });
     }
 
     // ★ 401 未授权 - 收集面板请求静默处理，不触发重定向
     if (response.status === 401 && url.includes('/collection/')) {
       console.warn(`[API] Collection API 401 — cookie may not have been forwarded: ${url}`);
-      throw Object.assign(new Error(errorMessage || 'Authentication required'), { status: response.status });
+      throw Object.assign(new Error(errorMessage || 'Authentication required'), {
+        status: response.status,
+        code: errorCode,
+        retryable,
+      });
     }
 
     if (response.status === 401 && url.includes('/voice-reading/')) {
       console.warn(`[API] Voice reading API 401 — falling back without redirect: ${url}`);
-      throw Object.assign(new Error(error.message || 'Authentication required'), { status: response.status });
+      throw Object.assign(new Error(error.message || 'Authentication required'), {
+        status: response.status,
+        code: errorCode,
+        retryable,
+      });
     }
 
     // ★ 404 未找到 - 对于场景图片查询，这是正常的未生成状态，不显示错误日志
     if (response.status === 404 && url.includes('/images/scene/')) {
       // 静默处理，前端会轮询直到图片生成完成
-      throw Object.assign(new Error(errorMessage), { status: response.status });
+      throw Object.assign(new Error(errorMessage), {
+        status: response.status,
+        code: errorCode,
+        retryable,
+      });
     }
 
     console.error(`[API Error] ${url} failed with ${response.status}:`, errorMessage);
@@ -165,7 +206,11 @@ async function fetchJson<T>(url: string, options?: RequestInit & { timeout?: num
       handle401Redirect();
     }
     
-    throw Object.assign(new Error(errorMessage), { status: response.status });
+    throw Object.assign(new Error(errorMessage), {
+      status: response.status,
+      code: errorCode,
+      retryable,
+    });
   }
 
   return response.json();
@@ -537,7 +582,12 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
-    getRoundSceneImage: (gameId: number, roundNumber: number, week?: number) =>
+    getRoundSceneImage: (
+      gameId: number,
+      roundNumber: number,
+      week?: number,
+      options?: { retry?: boolean }
+    ) =>
       fetchJson<{
         scene_id: number;
         week: number;
@@ -547,8 +597,18 @@ export const api = {
         scene_description: string;
         referenced_images?: number[];
         created_at: string;
-      }>(`/images/scene/${gameId}/${roundNumber}${week !== undefined ? `?week=${week}` : ''}`),
-    getRoundSceneImageByStage: (gameId: number, roundNumber: number, stage: string, week?: number) =>
+      }>(
+        `/images/scene/${gameId}/${roundNumber}` +
+        `${week !== undefined ? `?week=${week}` : ''}` +
+        `${options?.retry ? `${week !== undefined ? '&' : '?'}retry=true` : ''}`
+      ),
+    getRoundSceneImageByStage: (
+      gameId: number,
+      roundNumber: number,
+      stage: string,
+      week?: number,
+      options?: { retry?: boolean }
+    ) =>
       fetchJson<{
         scene_id: number;
         week: number;
@@ -558,7 +618,11 @@ export const api = {
         scene_description: string;
         referenced_images?: number[];
         created_at: string;
-      }>(`/images/scene/${gameId}/${roundNumber}?stage=${encodeURIComponent(stage)}${week !== undefined ? `&week=${week}` : ''}`),
+      }>(
+        `/images/scene/${gameId}/${roundNumber}?stage=${encodeURIComponent(stage)}` +
+        `${week !== undefined ? `&week=${week}` : ''}` +
+        `${options?.retry ? '&retry=true' : ''}`
+      ),
     getAllRoundSceneImages: (gameId: number) =>
       fetchJson<{
         scenes: Array<{

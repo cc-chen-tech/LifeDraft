@@ -11,10 +11,13 @@ from config.prompts._helpers import _build_image_era_constraints
 from src.ai.image_client import ImageClient
 from src.ai.image_config import DEFAULT_EDIT_NEGATIVE_PROMPT
 from src.ai.image_exceptions import (ContentInspectionError,
-                                     ImageGenerationError)
+                                     ImageGenerationError,
+                                     ImageProviderError)
 from src.database.models import Image as ImageModel
 from src.database.models import SceneImage
-from src.services.image import ImageContentError, ImageServiceError
+from src.services.image import (ImageContentError,
+                                ImageProviderServiceError,
+                                ImageServiceError)
 from src.services.image.appearance_anchor import CharacterAppearanceAnchor
 from src.services.image.style_manager import style_manager
 from src.services.image_storage import ImageStorageService
@@ -356,6 +359,8 @@ class SceneImageService:
             # ★ 如果edit_image无法保持面部一致性，回退到generate_image使用详细面部描述
             try:
                 image_data, used_prompt = generate_image()
+            except ImageProviderError:
+                raise
             except ImageGenerationError as e:
                 # edit_image可能无法保持面部特征，回退到generate_image
                 if reference_url and appearance_anchor:
@@ -459,6 +464,9 @@ class SceneImageService:
         except ContentInspectionError as e:
             logger.warning(f"Content inspection failed for round scene: {e}")
             raise ImageContentError(str(e), e.original_prompt or "")
+        except ImageProviderError as e:
+            self.db.rollback()
+            raise ImageProviderServiceError.from_provider(e) from e
         except ImageGenerationError as e:
             logger.error(f"Image generation failed: {e}")
             raise ImageServiceError(f"场景插画生成失败: {e}")
@@ -554,6 +562,9 @@ class SceneImageService:
         except ContentInspectionError as e:
             logger.warning(f"Content inspection failed for illustration: {e}")
             raise ImageContentError(str(e), e.original_prompt or "")
+        except ImageProviderError as e:
+            self.db.rollback()
+            raise ImageProviderServiceError.from_provider(e) from e
         except ImageGenerationError as e:
             logger.error(f"Image generation failed: {e}")
             raise ImageServiceError(f"插画生成失败: {e}")
@@ -702,6 +713,9 @@ class SceneImageService:
         except ContentInspectionError as e:
             logger.warning(f"Content inspection failed for illustration: {e}")
             raise ImageContentError(str(e), e.original_prompt or "")
+        except ImageProviderError as e:
+            self.db.rollback()
+            raise ImageProviderServiceError.from_provider(e) from e
         except ImageGenerationError as e:
             logger.error(f"Image generation failed: {e}")
             raise ImageServiceError(f"插画重新生成失败: {e}")

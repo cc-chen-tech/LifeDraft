@@ -13,7 +13,9 @@ from src.api.deps import get_current_user  # noqa: E402
 from config.settings import Settings  # noqa: E402
 from src.api.routers.images import get_session, verify_game_ownership  # noqa: E402
 from src.api.routers.images import router, verify_image_ownership
-from src.services.image_service import ImageContentError  # noqa: E402
+from src.ai.image_exceptions import ImageProviderError  # noqa: E402
+from src.services.image_service import (ImageContentError,  # noqa: E402
+                                        ImageProviderServiceError)
 from src.services.image_storage import ImageStorageError  # noqa: E402
 
 
@@ -330,6 +332,54 @@ class TestGenerateImageEndpoint:
             )
 
         assert response.status_code == 401
+
+    @patch("src.api.routers.images.ImageService")
+    @patch("src.api.routers.images.verify_game_ownership")
+    def test_generate_image_capacity_failure_returns_structured_503(
+        self,
+        mock_verify,
+        mock_service_class,
+        app,
+        client,
+    ):
+        from src.api.deps import get_current_user_optional
+
+        mock_user = MagicMock()
+        mock_user.user_id = 1
+        app.dependency_overrides[get_current_user_optional] = lambda: mock_user
+        mock_verify.return_value = MagicMock()
+        mock_service_class.return_value.generate_character_image.side_effect = (
+            ImageProviderServiceError.from_provider(
+                ImageProviderError(
+                    code="minimax_2056",
+                    category="capacity",
+                    retryable=False,
+                    public_message="图片生成额度暂时不可用，请稍后再试",
+                )
+            )
+        )
+
+        try:
+            with patch("src.api.routers.images.get_session") as mock_session_gen:
+                mock_session_gen.return_value = iter([MagicMock()])
+                response = client.post(
+                    "/images/generate",
+                    json={
+                        "game_id": 1,
+                        "image_type": "character",
+                        "entity_name": "林见微",
+                        "description": "现代职场人物",
+                    },
+                )
+
+            assert response.status_code == 503
+            assert response.json()["detail"] == {
+                "code": "minimax_2056",
+                "message": "图片生成额度暂时不可用，请稍后再试",
+                "retryable": False,
+            }
+        finally:
+            app.dependency_overrides.clear()
 
     @patch("src.api.routers.images.ImageService")
     @patch("src.api.routers.images.verify_game_ownership")

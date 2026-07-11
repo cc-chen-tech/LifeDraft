@@ -55,6 +55,7 @@ export function usePlayGame() {
     eventSceneImage,  // ★ 事件插画
     resultSceneImage,  // ★ 结果插画
     isLoadingRoundSceneImage,
+    roundSceneError,
     isRegeneratingRoundScene,
     roundSceneRegenerateError,
     fetchRoundSceneImage,
@@ -474,6 +475,7 @@ export function usePlayGame() {
     resultSceneImage,
     historySceneImage,
     isLoadingRoundSceneImage,
+    roundSceneError,
     isLoadingHistoryImage,
     isGeneratingHistoryImage,
     isRegeneratingRoundScene,
@@ -572,6 +574,7 @@ export function usePlayGame() {
     eventSceneImage,
     resultSceneImage,
     isLoadingRoundSceneImage,
+    roundSceneError,
     isRegeneratingRoundScene,
     roundSceneRegenerateError,
     fetchRoundSceneImage,

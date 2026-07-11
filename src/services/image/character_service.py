@@ -9,9 +9,12 @@ from sqlalchemy.orm import Session
 from config.prompts._helpers import _build_image_era_constraints
 from src.ai.image_client import ImageClient
 from src.ai.image_exceptions import (ContentInspectionError,
-                                     ImageGenerationError)
+                                     ImageGenerationError,
+                                     ImageProviderError)
 from src.database.models import Image as ImageModel
-from src.services.image import ImageContentError, ImageServiceError
+from src.services.image import (ImageContentError,
+                                ImageProviderServiceError,
+                                ImageServiceError)
 from src.services.image_storage import ImageStorageService
 
 logger = logging.getLogger(__name__)
@@ -181,6 +184,9 @@ class CharacterImageService:
         except ContentInspectionError as e:
             logger.warning(f"Content inspection failed: {e}")
             raise ImageContentError(str(e), e.original_prompt or "")
+        except ImageProviderError as e:
+            self.db.rollback()
+            raise ImageProviderServiceError.from_provider(e) from e
         except ImageGenerationError as e:
             logger.error(f"Image generation failed: {e}")
             raise ImageServiceError(f"图像生成失败: {e}")
@@ -280,6 +286,8 @@ class CharacterImageService:
             return new_images
 
         except ImageContentError:
+            raise
+        except ImageProviderServiceError:
             raise
         except Exception as e:
             logger.error(f"Failed to regenerate image: {e}")
@@ -381,6 +389,8 @@ class CharacterImageService:
             logger.info(f"Fresh images regenerated: {len(new_images)} new images")
             return new_images
 
+        except ImageProviderServiceError:
+            raise
         except Exception as e:
             logger.error(f"Failed to fresh regenerate image: {e}")
             self.db.rollback()

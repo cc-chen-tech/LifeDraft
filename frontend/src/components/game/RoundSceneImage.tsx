@@ -12,20 +12,24 @@ import { useGameStore } from "@/stores/useGameStore";
 interface RoundSceneImageProps {
   sceneImage: RoundSceneImage | null;
   isLoading: boolean;
+  error?: string | null;
   isRegenerating?: boolean;
   currentRound: number;
   label?: string;  // ★ 可选标签：事件场景 | 结果场景
   onRefresh: () => void;
+  onRetryGeneration?: () => void;
   onRegenerate?: (roundNumber: number, userPrompt: string) => Promise<void>;
 }
 
 export function RoundSceneImageDisplay({
   sceneImage,
   isLoading,
+  error,
   isRegenerating = false,
   currentRound,
   label,
   onRefresh,
+  onRetryGeneration,
   onRegenerate,
 }: RoundSceneImageProps) {
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -68,6 +72,28 @@ export function RoundSceneImageDisplay({
     return null;
   }
 
+  const handleExplicitGenerationRetry = onRetryGeneration || onRefresh;
+
+  if (error && !sceneImage) {
+    return (
+      <Card className="p-4 mb-4 bg-card/50 border-dashed">
+        <div className="flex flex-col items-center justify-center gap-3 py-6 text-center text-muted-foreground">
+          <ImageIcon className="w-8 h-8 opacity-50" />
+          <span className="max-w-md text-sm leading-relaxed">{error}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExplicitGenerationRetry}
+            disabled={isLoading}
+          >
+            <RefreshCw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />
+            重试生成场景插画
+          </Button>
+        </div>
+      </Card>
+    );
+  }
+
   // 加载中状态
   if (isLoading && !sceneImage) {
     return (
@@ -90,7 +116,7 @@ export function RoundSceneImageDisplay({
           <Button
             variant="outline"
             size="sm"
-            onClick={onRefresh}
+            onClick={handleExplicitGenerationRetry}
             disabled={isLoading}
           >
             <RefreshCw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />
@@ -166,6 +192,22 @@ export function RoundSceneImageDisplay({
           {sceneImage.scene_description}
         </p>
 
+        {error && (
+          <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <p>{error}</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2 h-7 text-xs"
+              onClick={handleExplicitGenerationRetry}
+              disabled={isLoading || isRegenerating}
+            >
+              <RefreshCw className="mr-1 h-3 w-3" />
+              重试生成场景插画
+            </Button>
+          </div>
+        )}
+
         {isLoading && (
           <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
             <Loader2 className="w-3 h-3 animate-spin" />
@@ -229,7 +271,7 @@ export function RoundSceneImageDisplay({
               variant="ghost"
               size="sm"
               className="h-7 text-xs"
-              onClick={onRefresh}
+              onClick={handleExplicitGenerationRetry}
               disabled={isLoading || isRegenerating}
             >
               <RefreshCw className={cn("w-3 h-3 mr-1", isLoading && "animate-spin")} />

@@ -1329,7 +1329,49 @@ describe('PlayPage', () => {
       render(<PlayPage />);
       fireEvent.click(screen.getByText('刷新'));
 
-      expect(mockFetch).toHaveBeenCalledWith(3, 'result');
+      expect(mockFetch).toHaveBeenCalledWith(3, 'result', { retry: true });
+    });
+
+    it('shows a scene provider failure and retries only from the explicit button', () => {
+      const mockFetch = jest.fn();
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'options',
+        storyText: 'Event story waiting for an image',
+        eventSceneImage: null,
+        resultSceneImage: null,
+        currentRoundSceneImage: null,
+        isLoadingRoundSceneImage: false,
+        roundSceneError: '图片生成额度暂时不可用，请稍后再试',
+        currentRound: 2,
+        fetchRoundSceneImage: mockFetch,
+      });
+
+      render(<PlayPage />);
+
+      expect(screen.getByText('图片生成额度暂时不可用，请稍后再试')).toBeVisible();
+      fireEvent.click(screen.getByRole('button', { name: '重试生成场景插画' }));
+      expect(mockFetch).toHaveBeenCalledWith(2, 'event', { retry: true });
+    });
+
+    it('keeps a visible loading placeholder while an event scene retry is running', () => {
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'options',
+        storyText: 'Event story waiting for a retried image',
+        eventSceneImage: null,
+        resultSceneImage: null,
+        currentRoundSceneImage: null,
+        isLoadingRoundSceneImage: true,
+        roundSceneError: null,
+        currentRound: 2,
+      });
+
+      render(<PlayPage />);
+
+      expect(screen.getByText('正在生成场景插画...')).toBeVisible();
     });
   });
 

@@ -5225,6 +5225,7 @@ export interface operations {
             query: {
                 week: number;
                 stage?: string | null;
+                retry?: boolean;
             };
             header?: never;
             path: {

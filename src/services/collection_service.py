@@ -14,12 +14,14 @@ from sqlalchemy.orm import Session
 
 from src.api.schemas import (CharacterCollectionItem, CollectionResponse,
                              ItemCollectionItem, LandmarkCollectionItem)
+from src.ai.image_exceptions import ImageProviderError
 from src.database.models import Game
 from src.database.models import Image as ImageModel
 from src.game.state import CharacterState, PlayerState
 from src.game.state.item_state import ItemState
 from src.game.state.landmark_state import LandmarkState
-from src.services.image_service import ImageService
+from src.services.image_service import (ImageProviderServiceError,
+                                        ImageService)
 from src.services.image_storage import ImageStorageService
 
 logger = logging.getLogger(__name__)
@@ -723,12 +725,15 @@ class CollectionService:
 用户修改意见：{feedback}
 保持物品的基本特征，根据修改意见调整外观。"""
 
-        results = image_client.edit_image(
-            reference_image=reference_url,
-            prompt=edit_prompt,
-            size="1024*1024",
-            num_images=1,
-        )
+        try:
+            results = image_client.edit_image(
+                reference_image=reference_url,
+                prompt=edit_prompt,
+                size="1024*1024",
+                num_images=1,
+            )
+        except ImageProviderError as error:
+            raise ImageProviderServiceError.from_provider(error) from error
 
         if not results:
             raise ImageGenerationError("图片生成失败")

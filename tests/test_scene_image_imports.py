@@ -154,3 +154,71 @@ class TestSceneImageImports:
             assert images._scene_image_inflight == {"7:2:1:result"}
         finally:
             images._scene_image_inflight.clear()
+
+    def test_background_provider_failure_is_cached_safely(self, monkeypatch):
+        """供应商失败应缓存结构化字段，并释放 in-flight key。"""
+        from src.ai.image_exceptions import ImageProviderError
+        from src.api.routers import images
+        from src.database import models
+        from src.services.image_service import ImageProviderServiceError
+
+        class InlineThread:
+            def __init__(self, target, name=None, daemon=None):
+                self.target = target
+
+            def start(self):
+                self.target()
+
+        class FakeDB:
+            def close(self):
+                pass
+
+        class FailingImageService:
+            def __init__(self, db):
+                self.db = db
+
+            def generate_round_scene_image(self, **kwargs):
+                raise ImageProviderServiceError.from_provider(
+                    ImageProviderError(
+                        code="minimax_2056",
+                        category="capacity",
+                        retryable=False,
+                        public_message="图片生成额度暂时不可用，请稍后再试",
+                        provider_trace_id="trace-safe-1",
+                    )
+                )
+
+        monkeypatch.setattr(threading, "Thread", InlineThread)
+        monkeypatch.setattr(models, "SessionLocal", lambda: FakeDB())
+        monkeypatch.setattr(images, "ImageService", FailingImageService)
+        images._scene_image_inflight.clear()
+        key = images._get_event_key(7, 2, 1, "event")
+        images._scene_image_latest.pop(key, None)
+
+        try:
+            images._trigger_scene_generation_in_background(
+                game_id=7,
+                week=2,
+                round_number=1,
+                stage="event",
+                story_text="林见微沿着线索追查。",
+                character_settings={"identity": {"name": "林见微"}},
+                player_name="林见微",
+            )
+
+            assert images._scene_image_latest[key] == {
+                "type": "scene_image_failed",
+                "game_id": 7,
+                "round_number": 1,
+                "week": 2,
+                "stage": "event",
+                "code": "minimax_2056",
+                "message": "图片生成额度暂时不可用，请稍后再试",
+                "retryable": False,
+                "provider_trace_id": "trace-safe-1",
+                "timestamp": images._scene_image_latest[key]["timestamp"],
+            }
+            assert key not in images._scene_image_inflight
+        finally:
+            images._scene_image_latest.pop(key, None)
+            images._scene_image_inflight.clear()

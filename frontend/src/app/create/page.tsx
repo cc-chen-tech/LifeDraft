@@ -53,11 +53,13 @@ export default function CreatePage() {
     playerImages,
     selectedImageIndex,
     isGeneratingImage,
+    imageGenerationError,
     imageFeedback,
     
     // Image store actions
     setSelectedImageIndex,
     setImageFeedback,
+    generatePlayerImage,
     regeneratePlayerImage,
     regenerateFreshPlayerImage,
     regenerateSetting,
@@ -249,6 +251,7 @@ export default function CreatePage() {
               playerImages={playerImages}
               selectedImageIndex={selectedImageIndex}
               isGeneratingImage={isGeneratingImage}
+              imageGenerationError={imageGenerationError}
               playerName={playerName}
               imageFeedback={imageFeedback}
               gameId={gameId}
@@ -257,6 +260,10 @@ export default function CreatePage() {
               onFeedbackChange={setImageFeedback}
               onRegenerate={() => regeneratePlayerImage(imageFeedback)}
               onRegenerateFresh={regenerateFreshPlayerImage}
+              onRetryGeneration={() => {
+                if (!gameId) return Promise.resolve();
+                return generatePlayerImage(gameId, playerName, characterSettings);
+              }}
               onRecover={() => window.location.reload()}
               showToast={showToast}
             />

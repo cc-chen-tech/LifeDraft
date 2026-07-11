@@ -45,6 +45,38 @@ afterEach(() => {
 });
 
 describe('API Error Handling', () => {
+  it('retains structured image failure metadata', async () => {
+    global.fetch = jest.fn(() =>
+      mockFetchResponse(
+        {
+          detail: {
+            code: 'minimax_2056',
+            message: '图片生成额度暂时不可用，请稍后再试',
+            retryable: false,
+          },
+        },
+        503,
+        false
+      )
+    );
+
+    await expect(
+      api.images.generate({
+        game_id: 1,
+        image_type: 'character',
+        entity_name: '林见微',
+        description: '现代职场人物',
+      })
+    ).rejects.toMatchObject({
+      status: 503,
+      code: 'minimax_2056',
+      retryable: false,
+      message: '图片生成额度暂时不可用，请稍后再试',
+    });
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
   describe('Special Error Code Handling - 401', () => {
     it('uses FastAPI detail text instead of generic Request failed for auth login errors', async () => {
       global.fetch = jest.fn(() =>
