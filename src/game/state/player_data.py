@@ -145,6 +145,21 @@ class PlayerDataMixin:
         }
     )
 
+    # P1-7 authoritative continuity ledger. Narrative prose is never the
+    # authority for identity, chronology, committed events, health, or
+    # relationships; every mutable entry carries its source event.
+    continuity_ledger: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            "version": 1,
+            "immutable_identities": {},
+            "timeline": [],
+            "completed_events": {},
+            "mutable_states": {"health": {}, "relationships": {}, "facts": {}},
+            "corrections": [],
+            "conflicts": [],
+        }
+    )
+
     # 伏笔系统生命周期指标（用于评估伏笔系统健康度）
     # Structure: {"total_planted": 0, "total_activated": 0, "total_expired": 0,
     #             "avg_recovery_distance": 0, "recovery_distances": []}

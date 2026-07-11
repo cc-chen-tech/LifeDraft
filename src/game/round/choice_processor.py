@@ -11,6 +11,7 @@ from config.settings import settings
 from src.ai.models import GameEvent
 from src.ai.vector_store import get_vector_store, is_vector_search_enabled
 from src.game.narrative_manager import NarrativeManager
+from src.game.continuity_ledger import ContinuityLedger
 from src.game.world_model_updater import WorldModelUpdater
 
 if TYPE_CHECKING:
@@ -404,6 +405,78 @@ class RoundChoiceProcessor:
         if is_custom:
             decision_record["is_custom"] = True
         player_state.decision_history.append(decision_record)
+
+        # P1-7: commit the accepted round to the authoritative ledger only
+        # after the result and its source records exist. The stable event ID
+        # makes repeated choice delivery idempotent.
+        ledger_fact_updates = list(compression_result.get("fact_updates", []))
+        for update in compression_result.get("career_updates", []):
+            subject = str(update.get("character") or "").strip()
+            role = str(update.get("new_role") or "").strip()
+            if subject and role:
+                employer = str(update.get("employer") or "").strip()
+                ledger_fact_updates.append(
+                    {
+                        "action": "update",
+                        "subject": subject,
+                        "category": "career",
+                        "fact": f"{role}{f'（{employer}）' if employer else ''}",
+                    }
+                )
+        for update in compression_result.get("location_updates", []):
+            subject = str(update.get("character") or "").strip()
+            location = str(update.get("to") or update.get("location") or "").strip()
+            if subject and location:
+                ledger_fact_updates.append(
+                    {
+                        "action": "update",
+                        "subject": subject,
+                        "category": "location",
+                        "fact": location,
+                    }
+                )
+        for update in compression_result.get("commitment_updates", []):
+            description = str(update.get("description") or "").strip()
+            action = str(update.get("action") or "").strip()
+            if not description:
+                continue
+            ledger_fact_updates.append(
+                {
+                    "action": "update" if action != "new" else "new",
+                    "subject": description,
+                    "category": "completed_event" if action == "fulfilled" else "commitment",
+                    "fact": (
+                        f"承诺已完成：{description}"
+                        if action == "fulfilled"
+                        else f"承诺状态 {action or 'pending'}：{description}"
+                    ),
+                }
+            )
+        for name, change in (effects.get("relationships") or {}).items():
+            ledger_fact_updates.append(
+                {
+                    "action": "update",
+                    "subject": str(name),
+                    "category": "relationship",
+                    "fact": (
+                        f"与主角的关系变动 {int(change):+d}，"
+                        f"当前亲密度 {player_state.relationships.get(str(name), 50)}"
+                    ),
+                }
+            )
+
+        ledger = ContinuityLedger.from_player_state(player_state)
+        ledger.record_committed_event(
+            event_id=f"w{completed_week}-r{completed_round}",
+            week=completed_week,
+            round_number=completed_round,
+            date_info=date_info,
+            summary=summary,
+            choice=choice_text,
+            story_text=full_story,
+            fact_updates=ledger_fact_updates,
+        )
+        ledger.persist(player_state)
 
         # ★ 显示用周数（人类可读，从1开始）
         week_display = f"第{player_state.week + 1}周" if player_state.week is not None else "未知周"

@@ -36,6 +36,7 @@ class FakeStoryService:
 
     def __init__(self, language: str = "zh"):
         self.language = language
+        self.fact_updates = []
 
     # -- methods called by _generate_story_continuation --
     def generate_story_continuation(
@@ -59,7 +60,7 @@ class FakeStoryService:
             "summary": "A brief summary of events.",
             "event_concluded": True,
             "storyline_updates": [],
-            "fact_updates": [],
+            "fact_updates": self.fact_updates,
             "foreshadowing_seeds": [],
             "habit_updates": [],
             "location_updates": [],
@@ -73,7 +74,7 @@ class FakeStoryService:
     ) -> Dict[str, Any]:
         return {
             "summary": "",  # merged with compress_narrative above
-            "fact_updates": [],
+            "fact_updates": self.fact_updates,
             "location_updates": [],
             "career_updates": [],
             "commitment_updates": [],
@@ -242,6 +243,10 @@ class TestMakeRoundChoiceContract:
         }
         for key in required_keys:
             assert key in result, f"Missing key '{key}' in result: {list(result.keys())}"
+        timeline = state.continuity_ledger["timeline"]
+        assert len(timeline) == 1
+        assert timeline[0]["event_id"] == "w0-r0"
+        assert timeline[0]["status"] == "committed"
 
     def test_story_continuation_is_string(self):
         state = _make_state()
@@ -249,7 +254,32 @@ class TestMakeRoundChoiceContract:
         proc = _make_processor(player_state=state, current_event=event)
 
         result = proc.make_round_choice(option_index=0)
+
         assert isinstance(result["story_continuation"], str)
+
+    def test_committed_fact_updates_keep_source_event(self):
+        state = _make_state(character_settings={"era": {"year": 2026}})
+        event = _make_event()
+        service = FakeStoryService()
+        service.fact_updates = [
+            {
+                "action": "new",
+                "subject": "TestHero",
+                "category": "health",
+                "fact": "右手轻度扭伤",
+            }
+        ]
+        proc = _make_processor(
+            player_state=state,
+            current_event=event,
+            story_service=service,
+        )
+
+        proc.make_round_choice(option_index=0)
+
+        health = state.continuity_ledger["mutable_states"]["health"]["TestHero"]
+        assert health["fact"] == "右手轻度扭伤"
+        assert health["source_event_id"] == "w0-r0"
 
     def test_summary_is_string(self):
         state = _make_state()

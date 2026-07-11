@@ -69,6 +69,13 @@ def test_preflight_script_runs_before_expensive_layers() -> None:
     )
 
 
+def test_preflight_runs_authoritative_continuity_ledger_regressions() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+
+    assert "tests/test_continuity_ledger.py" in script
+    assert "tests/test_continuity_ledger_integration.py" in script
+
+
 def test_playwright_log_tempfile_template_has_enough_random_suffix() -> None:
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
 
