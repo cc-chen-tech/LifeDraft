@@ -724,17 +724,30 @@ describe('usePlayGame - Phase State Machine', () => {
     });
 
     it('should handle custom choice flow', async () => {
+      const currentEvent = {
+        event_description: 'Initial story',
+        options: [{ text: 'Option' }],
+      };
       setupGameStore({
         gameId: 1,
         storyText: 'Initial story',
         currentEvent: {
-          story: 'Initial story',
-          options: [{ text: 'Option' }],
+          story: currentEvent.event_description,
+          options: currentEvent.options,
         },
       });
 
       let completeCustomChoice: ((r: Response) => void) | null = null;
       (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (typeof url === 'string' && url === '/api/games/1') {
+          return Promise.resolve(jsonResponse({
+            player_state: null,
+            progress: null,
+            round_info: null,
+            current_event: currentEvent,
+            constraint_level: 'expert',
+          }));
+        }
         if (typeof url === 'string' && url.includes('/custom-choice')) {
           return new Promise<Response>((resolve) => {
             completeCustomChoice = resolve;
@@ -746,8 +759,8 @@ describe('usePlayGame - Phase State Machine', () => {
 
       const { result } = renderHook(() => usePlayGame());
 
-      act(() => {
-        result.current.setPhase('options');
+      await waitFor(() => {
+        expect(result.current.phase).toBe('options');
       });
 
       // Start custom choice
