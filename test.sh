@@ -357,6 +357,7 @@ run_preflight() {
         src/__tests__/pages/CreatePage.test.tsx \
         src/__tests__/hooks/eventUtils.test.ts \
         src/__tests__/components/StoryVoiceControls.test.tsx \
+        src/__tests__/components/CompletedStoryMediaGate.test.tsx \
         src/__tests__/components/StatusBar.test.tsx \
         src/__tests__/components/DialogA11y.test.tsx \
         src/__tests__/components/CompletionScreen.loading.test.tsx \
@@ -407,6 +408,8 @@ run_mypy() {
         src/services/entity_recognition_service.py
         src/ai/narrative/style_matcher.py
         src/database/models.py
+        src/services/life_summary_grounding.py
+        src/ai/generation_budget.py
         src/game/world_fact_safety.py
     )
     python -m mypy "${MYPY_STRICT_TARGETS[@]}" --strict
@@ -436,6 +439,9 @@ run_imports() {
     python -m pytest \
         tests/test_imports.py \
         tests/test_gate_imports_no_mock.py \
+        tests/test_audio_regeneration_state_imports_no_mock.py \
+        tests/test_life_summary_grounding_imports_no_mock.py \
+        tests/test_fast_generation_budget_imports_no_mock.py \
         tests/test_world_fact_safety_imports_no_mock.py \
         tests/test_entity_collection_reliability_imports_no_mock.py \
         tests/test_collection_imports.py \
@@ -472,6 +478,9 @@ run_contract() {
         tests/test_collection_recognition_current_event.py \
         tests/test_live_gameplay_recovery_collection_contract.py \
         tests/test_ui_bottom_layout_contract_no_mock.py \
+        tests/test_audio_regeneration_state_contract_no_mock.py \
+        tests/test_life_summary_grounding_no_mock.py \
+        tests/test_fast_generation_budget_no_mock.py \
         tests/test_world_fact_safety_contract_no_mock.py \
         tests/test_entity_collection_reliability_no_mock.py \
         tests/test_realistic_style_alignment_no_mock.py \
@@ -507,6 +516,9 @@ run_db() {
         tests/test_story_music_recommendation_db.py \
         tests/test_story_voice_reading_db.py \
         tests/test_collection_cache_db.py \
+        tests/test_audio_regeneration_state_db_no_mock.py \
+        tests/test_life_summary_grounding_db_no_mock.py \
+        tests/test_fast_generation_budget_db_no_mock.py \
         tests/test_world_fact_safety_db_no_mock.py \
         tests/test_entity_collection_reliability_db_no_mock.py \
         tests/test_realistic_style_alignment_no_mock.py \
@@ -730,6 +742,30 @@ run_e2e_browser_impl() {
         --no-deps
     local entity_collection_reliability_result=$?
 
+    echo -e "${YELLOW}运行音频重新生成状态 E2E 浏览器测试...${NC}"
+    run_playwright_command "audio-regeneration-state" npx playwright test e2e/audio-regeneration-state.spec.ts \
+        --project=core \
+        --reporter=list \
+        --workers=1 \
+        --no-deps
+    local audio_regeneration_state_result=$?
+
+    echo -e "${YELLOW}运行人生总结事实边界 E2E 浏览器测试...${NC}"
+    run_playwright_command "life-summary-grounding" npx playwright test e2e/life-summary-grounding.spec.ts \
+        --project=core \
+        --reporter=list \
+        --workers=1 \
+        --no-deps
+    local life_summary_grounding_result=$?
+
+    echo -e "${YELLOW}运行快速生成预算 E2E 浏览器测试...${NC}"
+    run_playwright_command "fast-generation-budget" npx playwright test e2e/fast-generation-budget.spec.ts \
+        --project=core \
+        --reporter=list \
+        --workers=1 \
+        --no-deps
+    local fast_generation_budget_result=$?
+
     echo -e "${YELLOW}运行会员 AI 音乐队列补充 E2E 测试...${NC}"
     run_playwright_command "music-player" npx playwright test e2e/music-player.spec.ts \
         --project=ai-heavy \
@@ -775,7 +811,7 @@ run_e2e_browser_impl() {
     local collection_recognition_result=$?
 
     local result=0
-    if [ $core_result -ne 0 ] || [ $realistic_style_alignment_result -ne 0 ] || [ $accessible_control_names_result -ne 0 ] || [ $world_fact_safety_result -ne 0 ] || [ $opening_visible_completion_result -ne 0 ] || [ $entity_collection_reliability_result -ne 0 ] || [ $music_ai_result -ne 0 ] || [ $character_settings_result -ne 0 ] || [ $story_voice_result -ne 0 ] || [ $minimax_audio_result -ne 0 ] || [ $collection_recognition_result -ne 0 ]; then
+    if [ $core_result -ne 0 ] || [ $realistic_style_alignment_result -ne 0 ] || [ $accessible_control_names_result -ne 0 ] || [ $world_fact_safety_result -ne 0 ] || [ $opening_visible_completion_result -ne 0 ] || [ $entity_collection_reliability_result -ne 0 ] || [ $audio_regeneration_state_result -ne 0 ] || [ $life_summary_grounding_result -ne 0 ] || [ $fast_generation_budget_result -ne 0 ] || [ $music_ai_result -ne 0 ] || [ $character_settings_result -ne 0 ] || [ $story_voice_result -ne 0 ] || [ $minimax_audio_result -ne 0 ] || [ $collection_recognition_result -ne 0 ]; then
         result=1
     fi
 

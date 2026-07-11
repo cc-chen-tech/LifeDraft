@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { GenerationBudgetProgress } from "@/components/game/GenerationBudgetProgress";
 
 interface SkeletonStoryProps {
   className?: string;
@@ -17,6 +18,7 @@ interface SkeletonStoryProps {
   onRecover?: () => void;
   /** 恢复按钮文案 */
   recoverLabel?: string;
+  qualityLevel?: string;
 }
 
 /**
@@ -33,6 +35,7 @@ export const SkeletonStory = memo(function SkeletonStory({
   phase,
   onRecover,
   recoverLabel = "恢复当前进度",
+  qualityLevel,
 }: SkeletonStoryProps) {
   // 格式化时间
   const formatTime = (seconds: number) => {
@@ -85,11 +88,16 @@ export const SkeletonStory = memo(function SkeletonStory({
         )}
 
         {/* 已等待时间 */}
-        {elapsedSeconds !== undefined && elapsedSeconds > 0 && (
+        {qualityLevel && elapsedSeconds !== undefined && elapsedSeconds > 0 ? (
+          <GenerationBudgetProgress
+            qualityLevel={qualityLevel}
+            elapsedSeconds={elapsedSeconds}
+          />
+        ) : elapsedSeconds !== undefined && elapsedSeconds > 0 ? (
           <div className="text-xs text-muted-foreground/40 tabular-nums">
             已等待 {formatTime(elapsedSeconds)}
           </div>
-        )}
+        ) : null}
 
         {isLongRunning && (
           <div className="max-w-sm rounded-md border border-border/60 bg-muted/40 px-4 py-3 text-center text-xs text-muted-foreground leading-relaxed">
