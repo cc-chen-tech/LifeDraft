@@ -187,7 +187,7 @@ def test_text_to_image_posts_minimax_payload_and_downloads_url() -> None:
     assert body["n"] == 2
     assert body["seed"] == 123
     assert body["prompt_optimizer"] is True
-    assert body["aigc_watermark"] is False
+    assert "aigc_watermark" not in body
     assert "input" not in body
     assert "parameters" not in body
     assert "negative_prompt" not in body
@@ -239,6 +239,7 @@ def test_image_to_image_posts_subject_reference_and_returns_variants() -> None:
     assert body["subject_reference"] == [
         {"type": "character", "image_file": "data:image/png;base64,abc123"}
     ]
+    assert "aigc_watermark" not in body
     assert "input" not in body
     assert "parameters" not in body
 

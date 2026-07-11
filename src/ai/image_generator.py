@@ -216,7 +216,6 @@ class ImageGenerator:
             "response_format": self._response_format_for_minimax(response_format, extra_params),
             "n": min(max(1, n), 9),
             "prompt_optimizer": bool((extra_params or {}).get("prompt_optimizer", True)),
-            "aigc_watermark": bool((extra_params or {}).get("aigc_watermark", False)),
         }
         payload.update(self._minimax_size_fields(size, model))
 
