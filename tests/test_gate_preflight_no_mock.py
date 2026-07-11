@@ -76,6 +76,13 @@ def test_preflight_runs_authoritative_continuity_ledger_regressions() -> None:
     assert "tests/test_continuity_ledger_integration.py" in script
 
 
+def test_preflight_runs_read_only_assistant_grounding_regressions() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+
+    assert "tests/test_assistant_grounding.py" in script
+    assert "src/game/assistant_grounding.py" in script
+
+
 def test_playwright_log_tempfile_template_has_enough_random_suffix() -> None:
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
 

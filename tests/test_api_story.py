@@ -1,5 +1,6 @@
 """Tests for story API routes."""
 
+import copy
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -385,10 +386,12 @@ class TestStoryChat:
     def test_story_chat_success(
         self, client, auth_headers, mock_auth, mock_session_service, mock_session
     ):
-        """Test chatting with story assistant."""
-        mock_session.game_loop.ai_generator.generate_completion.return_value = (
-            "The character is brave."
-        )
+        """Test a cited answer from authoritative character settings."""
+        mock_session.game_loop.ai_generator.generate_completion_json.return_value = {
+            "reply": "故事时代是现代。",
+            "citations": ["setting:era.era_name"],
+            "uncertain": False,
+        }
         mock_session_service.get_or_restore.return_value = mock_session
 
         response = client.post(
@@ -400,13 +403,30 @@ class TestStoryChat:
         assert response.status_code == 200
         data = response.json()
         assert "reply" in data
-        assert data["reply"] == "The character is brave."
+        assert data["reply"] == "故事时代是现代。"
 
     def test_story_chat_english(
         self, client, auth_headers, mock_auth, mock_session_service, mock_session
     ):
-        """Test chatting in English."""
-        mock_session.game_loop.ai_generator.generate_completion.return_value = "The hero is brave."
+        """Test chatting in English with a cited identity."""
+        mock_session.game_loop.player_state.continuity_ledger = {
+            "immutable_identities": {
+                "Hero": {
+                    "canonical_name": "Hero",
+                    "roles": ["architect"],
+                    "relationships": ["protagonist"],
+                    "life_status": "alive",
+                }
+            },
+            "timeline": [],
+            "completed_events": {},
+            "mutable_states": {"health": {}, "relationships": {}, "facts": {}},
+        }
+        mock_session.game_loop.ai_generator.generate_completion_json.return_value = {
+            "reply": "The Hero is an architect.",
+            "citations": ["identity:Hero"],
+            "uncertain": False,
+        }
         mock_session_service.get_or_restore.return_value = mock_session
 
         response = client.post(
@@ -455,7 +475,9 @@ class TestStoryChat:
 
         assert response.status_code == 422
 
-    def test_story_chat_no_session(self, client, auth_headers, mock_auth, mock_session_service):
+    def test_story_chat_no_session(
+        self, client, auth_headers, mock_auth, mock_session_service
+    ):
         """Test chatting without session."""
         from fastapi import HTTPException
 
@@ -474,7 +496,9 @@ class TestStoryChat:
         self, client, auth_headers, mock_auth, mock_session_service, mock_session
     ):
         """Test chat error handling."""
-        mock_session.game_loop.ai_generator.generate_completion.side_effect = Exception("AI error")
+        mock_session.game_loop.ai_generator.generate_completion_json.side_effect = (
+            Exception("AI error")
+        )
         mock_session_service.get_or_restore.return_value = mock_session
 
         response = client.post(
@@ -488,13 +512,31 @@ class TestStoryChat:
     def test_story_chat_with_history(
         self, client, auth_headers, mock_auth, mock_session_service, mock_session
     ):
-        """Test chatting with round history context."""
+        """Free-form round history is not used as assistant authority."""
         mock_session.game_loop.player_state.round_history = [
             {"summary": "Started the journey"},
             {"summary": "Met a stranger"},
             {"summary": "Found a treasure"},
         ]
-        mock_session.game_loop.ai_generator.generate_completion.return_value = "Based on history..."
+        mock_session.game_loop.player_state.continuity_ledger = {
+            "immutable_identities": {},
+            "timeline": [
+                {
+                    "event_id": "w1-r1",
+                    "week": 1,
+                    "round": 1,
+                    "status": "committed",
+                    "summary": "Started the journey",
+                }
+            ],
+            "completed_events": {},
+            "mutable_states": {"health": {}, "relationships": {}, "facts": {}},
+        }
+        mock_session.game_loop.ai_generator.generate_completion_json.return_value = {
+            "reply": "Started the journey.",
+            "citations": ["event:w1-r1"],
+            "uncertain": False,
+        }
         mock_session_service.get_or_restore.return_value = mock_session
 
         response = client.post(
@@ -504,6 +546,93 @@ class TestStoryChat:
         )
 
         assert response.status_code == 200
+        prompt = mock_session.game_loop.ai_generator.generate_completion_json.call_args.kwargs[
+            "system_prompt"
+        ]
+        assert "Met a stranger" not in prompt
+        assert "Found a treasure" not in prompt
+
+    def test_story_chat_uses_only_authoritative_structured_evidence(
+        self, client, auth_headers, mock_auth, mock_session_service, mock_session
+    ):
+        """Draft prose and free-form history must never ground assistant facts."""
+        mock_session.game_loop.player_state.player_name = "林岚"
+        mock_session.game_loop.player_state.age = 31
+        mock_session.game_loop.player_state.week = 2
+        mock_session.game_loop.player_state.current_round = 1
+        mock_session.game_loop.player_state.current_event_data = {
+            "event_description": "未提交草稿称林岚获得五百万元。"
+        }
+        mock_session.game_loop.player_state.round_history = [
+            {"summary": "自由故事文本称林岚已经搬到火星。"}
+        ]
+        mock_session.game_loop.player_state.continuity_ledger = {
+            "version": 1,
+            "immutable_identities": {
+                "林岚": {
+                    "canonical_name": "林岚",
+                    "roles": ["建筑师"],
+                    "relationships": ["主角"],
+                    "life_status": "alive",
+                    "age_baseline": 31,
+                }
+            },
+            "timeline": [],
+            "completed_events": {},
+            "mutable_states": {"health": {}, "relationships": {}, "facts": {}},
+        }
+        mock_session.game_loop.ai_generator.generate_completion_json.return_value = {
+            "reply": "林岚是建筑师。",
+            "citations": ["identity:林岚"],
+            "uncertain": False,
+        }
+        mock_session_service.get_or_restore.return_value = mock_session
+
+        response = client.post(
+            "/api/games/1/chat",
+            json={"message": "林岚的职业是什么？", "language": "zh"},
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"reply": "林岚是建筑师。"}
+        call = mock_session.game_loop.ai_generator.generate_completion_json.call_args
+        evidence_prompt = call.kwargs["system_prompt"]
+        assert "identity:林岚" in evidence_prompt
+        assert "未提交草稿" not in evidence_prompt
+        assert "自由故事文本" not in evidence_prompt
+
+    def test_story_chat_unknown_person_is_read_only_and_skips_ai(
+        self, client, auth_headers, mock_auth, mock_session_service, mock_session
+    ):
+        mock_session.game_loop.player_state.player_name = "林岚"
+        mock_session.game_loop.player_state.continuity_ledger = {
+            "version": 1,
+            "immutable_identities": {
+                "林岚": {
+                    "canonical_name": "林岚",
+                    "roles": ["建筑师"],
+                    "relationships": ["主角"],
+                    "life_status": "alive",
+                }
+            },
+            "timeline": [],
+            "completed_events": {},
+            "mutable_states": {"health": {}, "relationships": {}, "facts": {}},
+        }
+        before = copy.deepcopy(mock_session.game_loop.player_state.continuity_ledger)
+        mock_session_service.get_or_restore.return_value = mock_session
+
+        response = client.post(
+            "/api/games/1/chat",
+            json={"message": "李华是谁？", "language": "zh"},
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        assert "没有找到" in response.json()["reply"]
+        assert mock_session.game_loop.player_state.continuity_ledger == before
+        mock_session.game_loop.ai_generator.generate_completion_json.assert_not_called()
 
 
 class TestRegenerateStreamSSE:

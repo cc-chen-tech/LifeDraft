@@ -2,7 +2,7 @@
 
 import logging
 import os
-from typing import Any, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -14,9 +14,14 @@ from src.api.routers.gameplay.sse_helpers import (
     stream_regenerate,
     stream_rewrite,
 )
-from src.api.schemas import (RegenerateStoryRequest, RewriteStoryRequest,
-                             StoryChatRequest, StoryChatResponse)
+from src.api.schemas import (
+    RegenerateStoryRequest,
+    RewriteStoryRequest,
+    StoryChatRequest,
+    StoryChatResponse,
+)
 from src.api.services.session_service import session_service
+from src.game.assistant_grounding import AssistantGroundingService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -57,10 +62,13 @@ async def rewrite_story(
 
         rewritten_story = game_loop.ai_generator.rewrite_story_segment(
             full_story=req.full_story,
-            segment_to_replace=req.segment_to_replace or req.full_story,  # 未选择段落时改写整个故事
+            segment_to_replace=req.segment_to_replace
+            or req.full_story,  # 未选择段落时改写整个故事
             user_instruction=req.user_instruction,
             character_settings=(
-                game_loop.player_state.character_settings if game_loop.player_state else {}
+                game_loop.player_state.character_settings
+                if game_loop.player_state
+                else {}
             ),
             story_context=story_context,
             language=req.language,
@@ -71,7 +79,11 @@ async def rewrite_story(
         return {
             "new_story": rewritten_story,
             "rewritten_story": rewritten_story,
-            "event": (game_loop.current_event.model_dump() if game_loop.current_event else None),
+            "event": (
+                game_loop.current_event.model_dump()
+                if game_loop.current_event
+                else None
+            ),
         }
     except Exception as e:
         logger.error(f"Story rewrite failed: {e}")
@@ -236,52 +248,19 @@ async def story_assistant_chat(
     session = _require_session(game_id, user_id)
     game_loop = session.game_loop
 
-    # Build context
-    character_settings: dict[str, Any] = {}
-    current_story = "暂无"
-    if game_loop.player_state:
-        character_settings = game_loop.player_state.character_settings or {}
-    if game_loop.current_event and game_loop.current_event.event_description:
-        current_story = game_loop.current_event.event_description
-
-    # Include recent history for context
-    recent_context = ""
-    if game_loop.player_state and game_loop.player_state.round_history:
-        recent_rounds = game_loop.player_state.round_history[-3:]
-        recent_context = "\n".join(
-            [r.get("summary", "") for r in recent_rounds if r.get("summary")]
-        )
-
-    if req.language == "zh":
-        system_prompt = f"""你是一个游戏剧情助手。基于以下角色设定和当前故事，回答玩家的问题。
-
-角色设定：{character_settings}
-当前故事：{current_story}
-最近经历：{recent_context or '无'}
-
-要求：简洁、有帮助、不剧透未来发展。用中文回答。涉及法律、竞业、监管、政策或医疗事项时，
-不得声称零风险、绝对安全、保证合法或已经合规；保留现实不确定性，并提示由有资质的专业人士结合具体事实复核。"""
-    else:
-        system_prompt = f"""You are a story assistant. Answer player questions based on character settings and current story.
-
-Character Settings: {character_settings}
-Current Story: {current_story}
-Recent History: {recent_context or 'None'}
-
-Requirements: Be concise, helpful, and don't spoil future developments. For legal, non-compete,
-regulatory, policy, or medical matters, never claim zero risk, absolute safety, guaranteed legality,
-or settled compliance; preserve uncertainty and recommend review by a qualified professional."""
-
     try:
-        reply = game_loop.ai_generator.generate_completion(
-            prompt=req.message,
-            system_prompt=system_prompt,
-            temperature=0.7,
-            max_tokens=4096,
+        if game_loop.player_state is None:
+            raise HTTPException(status_code=409, detail="Game state is unavailable")
+        answer = AssistantGroundingService(game_loop.ai_generator).answer(
+            req.message,
+            game_loop.player_state,
+            language=req.language,
         )
         return StoryChatResponse(
-            reply=apply_professional_risk_guardrail(reply, language=req.language)
+            reply=apply_professional_risk_guardrail(answer.reply, language=req.language)
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Story chat failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
