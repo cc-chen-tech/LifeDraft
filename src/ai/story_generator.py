@@ -976,6 +976,23 @@ class StoryGenerator:
 
             if retry_story:
                 logger.info(f"重试生成完成，故事长度: {len(retry_story)}")
+                wealth_ledger = getattr(world_model, "wealth_ledger", None)
+                if wealth_ledger is not None:
+                    current_balance = max(0, int(player_state.get("wealth", 0)))
+                    wealth_validation = wealth_ledger.validate_narrative(
+                        retry_story,
+                        current_balance=current_balance,
+                    )
+                    if not wealth_validation.passed:
+                        logger.warning(
+                            "Wealth claims remained invalid after story retry; "
+                            "applying deterministic correction"
+                        )
+                        retry_story = wealth_ledger.sanitize_narrative(
+                            retry_story,
+                            wealth_validation,
+                            current_balance=current_balance,
+                        )
                 return retry_story
 
             return story_text
@@ -1024,6 +1041,8 @@ class StoryGenerator:
                 established_facts=player_state.get("established_facts", []),
                 world_model_data=player_state.get("world_model_data", {}),
                 continuity_ledger=player_state.get("continuity_ledger", {}),
+                wealth=player_state.get("wealth", 0),
+                wealth_ledger=player_state.get("wealth_ledger", {}),
             )
             world_model = WorldModel.from_player_state(state_obj)
             world_model.continuity_source_state = player_state

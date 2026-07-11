@@ -1,5 +1,6 @@
 """Decision processing and result generation."""
 
+import hashlib
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -183,11 +184,30 @@ def process_decision(
     wealth_change = effects.get("wealth", 0)
     relationships_change = effects.get("relationships", {})
 
+    from src.game.wealth_ledger import WealthLedger
+
+    wealth_ledger = WealthLedger.from_player_state(player_state)
+    if isinstance(wealth_change, int) and not isinstance(wealth_change, bool) and wealth_change:
+        choice_text = str(chosen_option.get("text", ""))
+        digest = hashlib.sha256(
+            f"{player_state.week}|{event_description}|{choice_text}".encode("utf-8")
+        ).hexdigest()[:16]
+        wealth_ledger.apply_transaction(
+            player_state,
+            transaction_id=f"legacy-choice:{digest}",
+            requested_delta=wealth_change,
+            reason=choice_text,
+            source_event_id=f"legacy-decision:{digest}",
+            week=player_state.week,
+            round_number=getattr(player_state, "current_round", 0),
+        )
+    else:
+        wealth_ledger.persist(player_state)
+
     player_state.update(
         energy=energy_change,
         mood=mood_change,
         knowledge=knowledge_change,
-        wealth=wealth_change,
         relationships=relationships_change,
     )
 

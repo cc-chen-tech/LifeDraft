@@ -385,6 +385,7 @@ class EventGenerator:
         character_settings: Optional[Dict[str, Any]],
         language: str,
         game_date_info: Optional[Dict[str, Any]] = None,
+        wealth_context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Generate weekly summary and bonus effects."""
         return self.summary_gen.generate_weekly_summary(
@@ -392,6 +393,7 @@ class EventGenerator:
             character_settings=character_settings,
             language=language,
             game_date_info=game_date_info,
+            wealth_context=wealth_context,
         )
 
     def generate_four_week_summary(

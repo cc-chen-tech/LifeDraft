@@ -508,6 +508,10 @@ async def update_character_settings(
     )
     if should_sync_late_wealth:
         updated_state["wealth"] = late_initial_wealth
+        from src.game.wealth_ledger import WealthLedger
+
+        setup_ledger = WealthLedger.from_player_state(updated_state)
+        setup_ledger.reset_opening_balance(updated_state, late_initial_wealth)
     player_state = PlayerState.from_dict(updated_state)
 
     if not db.save_game_progress(game_id, player_state):
@@ -521,7 +525,14 @@ async def update_character_settings(
         if req.life_vision is not None:
             game_session.game_loop.player_state.life_vision = req.life_vision
         if should_sync_late_wealth:
-            game_session.game_loop.player_state.wealth = late_initial_wealth
+            from src.game.wealth_ledger import WealthLedger
+
+            live_ledger = WealthLedger.from_player_state(
+                game_session.game_loop.player_state
+            )
+            live_ledger.reset_opening_balance(
+                game_session.game_loop.player_state, late_initial_wealth
+            )
 
     return MessageResponse(success=True, message="Character settings updated")
 

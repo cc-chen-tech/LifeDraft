@@ -147,6 +147,11 @@ class GameInitializer:
         ledger = ContinuityLedger.from_state(initial_state)
         ledger.persist(initial_state)
 
+        from src.game.wealth_ledger import WealthLedger
+
+        wealth_ledger = WealthLedger.from_player_state(initial_state)
+        wealth_ledger.persist(initial_state)
+
         # 提取 narrative_style_id（从 character_settings 中获取，默认 None）
         style_id = character_settings.get("narrative_style_id") if character_settings else None
 
