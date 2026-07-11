@@ -5,6 +5,7 @@ Handles the generation of events for each round in the game.
 
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from typing import Any, Callable, Optional
 
 from config.prompts._helpers import (
@@ -21,6 +22,7 @@ from config.prompts.story_prompts import (
     resolve_protagonist_name,
 )
 from src.ai.models import GameEvent
+from src.ai.option_generator import OptionGenerator
 from src.game.narrative_manager import NarrativeManager
 from src.game.relationship_authority import (
     build_required_cast_constraints,
@@ -71,6 +73,7 @@ class RoundEventGenerator:
         self._generating: bool = False
         self._generating_start_time: Optional[float] = None
         self._GENERATION_TIMEOUT: float = 120.0  # seconds
+        self._OPTIONS_ONLY_TIMEOUT: float = 75.0  # seconds
         self._current_event: Optional[GameEvent] = None
 
     @property
@@ -246,12 +249,9 @@ class RoundEventGenerator:
                     if status_callback:
                         status_callback("generating_options")
 
-                    # Generate options only for existing story
-                    generated_event: GameEvent = self.ai_generator.generate_options_only(
-                        story_description=existing_story,
-                        player_state=player_state.to_dict(),
-                        character_settings=player_state.character_settings,
-                        language=self.language,
+                    generated_event: GameEvent = self._generate_options_only_with_timeout(
+                        existing_story=existing_story,
+                        player_state=player_state,
                     )
 
                     # ★ Cache the generated options
@@ -458,6 +458,40 @@ class RoundEventGenerator:
             self._generating = False  # Reset flag on error
             self._generating_start_time = None
             return event
+
+    def _generate_options_only_with_timeout(
+        self,
+        *,
+        existing_story: str,
+        player_state: Any,
+    ) -> GameEvent:
+        """Bound resume-only option generation so recovery never strands the player."""
+
+        def call_options_generator() -> GameEvent:
+            return self.ai_generator.generate_options_only(
+                story_description=existing_story,
+                player_state=player_state.to_dict(),
+                character_settings=player_state.character_settings,
+                language=self.language,
+            )
+
+        executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="options-resume")
+        future = executor.submit(call_options_generator)
+        try:
+            return future.result(timeout=self._OPTIONS_ONLY_TIMEOUT)
+        except FutureTimeoutError:
+            future.cancel()
+            logger.warning(
+                "Options-only generation timed out after %.1fs; using contextual fallback options",
+                self._OPTIONS_ONLY_TIMEOUT,
+            )
+            fallback_options = OptionGenerator.build_contextual_fallback_options(
+                story_description=existing_story,
+                language=self.language,
+            )
+            return GameEvent(event_description=existing_story, options=fallback_options)
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
 
     def _existing_story_satisfies_quick_constraints(
         self,
