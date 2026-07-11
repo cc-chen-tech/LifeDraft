@@ -7,6 +7,7 @@ export type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "er
 export interface StreamCallbacks {
   onStory?: (text: string) => void;
   onChunk?: (chunk: string) => void;
+  onEventId?: (eventId: number) => void;
   onStatus?: (status: { phase: string; heartbeat?: boolean; cached_count?: number; message?: string }) => void;
   onComplete?: (data: Record<string, unknown>) => void;
   onError?: (error: Error | { message: string }) => void;
@@ -22,6 +23,7 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
   let isCompleteReceived = false;
   let isErrorReceived = false;
   let isResolved = false;
+  let pendingEventId: number | null = null;
 
   return new Promise((resolve, reject) => {
     function safeResolve() {
@@ -55,6 +57,11 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
 
         for (const line of lines) {
           const trimmed = line.trim();
+          if (trimmed.startsWith('id: ')) {
+            const eventId = Number.parseInt(trimmed.slice(4), 10);
+            pendingEventId = Number.isFinite(eventId) ? eventId : null;
+            continue;
+          }
           // Parse event type from event: line
           if (trimmed.startsWith('event: ')) {
             currentEventType = trimmed.slice(7);
@@ -125,6 +132,10 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
                 callbacks.onChunk?.(data);
                 callbacks.onStory?.(data);
               }
+            }
+            if (pendingEventId !== null) {
+              callbacks.onEventId?.(pendingEventId);
+              pendingEventId = null;
             }
             // Reset event type after processing data line
             currentEventType = null;
@@ -261,11 +272,15 @@ export async function streamCustomChoice(
 export async function streamGameEvent(
   gameId: number,
   callbacks: StreamCallbacks,
-  options?: { signal?: AbortSignal }
+  options?: { signal?: AbortSignal; lastEventId?: number }
 ): Promise<void> {
+  const headers = options?.lastEventId === undefined
+    ? undefined
+    : { 'Last-Event-ID': String(options.lastEventId) };
   const response = await fetchSSEWithRetry(`/api/games/${gameId}/event`, {
     method: 'GET',
     credentials: 'include',
+    headers,
     signal: options?.signal,
   }, callbacks);
 

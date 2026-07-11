@@ -666,7 +666,7 @@ describe('PlayPage', () => {
       expect(buttons.length).toBeGreaterThan(0);
     });
 
-    it('keeps recovery controls visible and uses the forced recovery action when loading has no story or options', async () => {
+    it('keeps recovery controls visible and resumes the active generation when loading has no story or options', async () => {
       const mockRecoverEventGeneration = jest.fn();
       const originalHook = jest.requireMock('@/hooks/usePlayGame');
       originalHook.usePlayGame = () => ({

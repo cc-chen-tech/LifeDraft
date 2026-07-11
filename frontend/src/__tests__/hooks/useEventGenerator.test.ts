@@ -138,6 +138,7 @@ describe('useEventGenerator', () => {
     mockAbortRef.current = null;
     mockPrefetchAbortRef.current = null;
     mockPrefetchResultRef.current = null;
+    window.sessionStorage.clear();
     setupDefaultState();
   });
 
@@ -161,18 +162,21 @@ describe('useEventGenerator', () => {
       expect((global.fetch as jest.Mock).mock.calls.length).toBe(fetchCallsBefore);
     });
 
-    it('recovers from a stuck generation by aborting stale work and forcing a new stream', async () => {
+    it('recovers by resuming the current stream without clearing visible progress', async () => {
       const abort = jest.fn();
       mockAbortRef.current = { abort } as unknown as AbortController;
       mockGeneratingRef.current = true;
       mockPollingRef.current = true;
-      mockIsRetryingRef.current = true;
       mockPhaseRef.current = 'generating' as Phase;
+      useGameStore.setState({
+        storyText: '已经显示的故事',
+        currentEvent: { story: '已经显示的故事', options: [] },
+      } as never);
 
       (global.fetch as jest.Mock).mockResolvedValue(
         createSSEMockResponse([
-          'data: {"type":"story","content":"恢复后的故事"}\n\n',
-          'event: complete\ndata: {"event_description":"恢复后的故事","options":[{"text":"继续","effects":{}}]}\n\n',
+          'id: 8\nevent: story\ndata: "后续片段"\n\n',
+          'event: complete\ndata: {"event_description":"已经显示的故事后续片段","options":[{"text":"继续","effects":{}}]}\n\n',
         ])
       );
 
@@ -183,10 +187,60 @@ describe('useEventGenerator', () => {
       expect(abort).toHaveBeenCalled();
       expect(mockPollingRef.current).toBe(false);
       expect(mockIsRetryingRef.current).toBe(false);
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/games/1/event'),
-        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      expect(mockSetters.setStoryText).not.toHaveBeenCalledWith('');
+      expect(mockSetters.setOptions).not.toHaveBeenCalledWith([]);
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('restores the saved SSE cursor when recovery follows a page refresh', async () => {
+      window.sessionStorage.setItem('story101:event-cursor:1', '4');
+      window.sessionStorage.setItem('story101:event-story:1', '刷新前已经显示的故事');
+      mockGeneratingRef.current = true;
+      mockPhaseRef.current = 'generating' as Phase;
+      (global.fetch as jest.Mock).mockResolvedValue(
+        createSSEMockResponse([
+          'id: 5\nevent: story\ndata: "刷新后的片段"\n\n',
+          'event: complete\ndata: {"event_description":"完整故事","options":[{"text":"继续","effects":{}}]}\n\n',
+        ])
       );
+
+      const { result } = renderHook(() => useEventGenerator(defaultParams));
+
+      await waitFor(() => {
+        expect(mockSetters.setStoryText).toHaveBeenCalledWith('刷新前已经显示的故事');
+      });
+
+      await act(async () => { await result.current.recoverEventGeneration(); });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/games/1/event',
+        expect.objectContaining({
+          headers: { 'Last-Event-ID': '4' },
+          signal: expect.any(AbortSignal),
+        })
+      );
+    });
+
+    it('replays from the beginning when a saved cursor has no matching story snapshot', async () => {
+      window.sessionStorage.setItem('story101:event-cursor:1', '4');
+      mockGeneratingRef.current = true;
+      mockPhaseRef.current = 'generating' as Phase;
+      (global.fetch as jest.Mock).mockResolvedValue(
+        createSSEMockResponse([
+          'id: 0\nevent: story\ndata: "完整重放"\n\n',
+          'event: complete\ndata: {"event_description":"完整重放","options":[{"text":"继续","effects":{}}]}\n\n',
+        ])
+      );
+
+      const { result } = renderHook(() => useEventGenerator(defaultParams));
+
+      await act(async () => { await result.current.recoverEventGeneration(); });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/games/1/event',
+        expect.objectContaining({ headers: undefined })
+      );
+      expect(window.sessionStorage.getItem('story101:event-cursor:1')).toBeNull();
     });
 
     it('enters retryable error when event stream completes without options', async () => {

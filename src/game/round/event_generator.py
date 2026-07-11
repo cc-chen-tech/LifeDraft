@@ -285,27 +285,11 @@ class RoundEventGenerator:
                     self._generating = False
                     self._generating_start_time = None
 
-        # ★ CRITICAL: Prevent concurrent generation with timeout auto-reset
-        # 注意：并发控制主要由路由层的 asyncio.Lock 负责
-        # 这里的 _generating 标志仅用于状态跟踪和超时检测
+        # The session-level durable operation owns normal request concurrency.
+        # Keep this guard for direct callers, but never infer stale ownership
+        # from elapsed wall time: a valid model call can exceed two minutes.
         if self._generating:
-            # Check if generation has timed out
-            if self._generating_start_time:
-                elapsed = time.time() - self._generating_start_time
-                if elapsed > self._GENERATION_TIMEOUT:
-                    logger.warning(
-                        f"Generation timeout ({elapsed:.1f}s > {self._GENERATION_TIMEOUT}s), auto-resetting flag"
-                    )
-                    self._generating = False
-                    self._generating_start_time = None
-                else:
-                    logger.warning(
-                        f"Event generation in progress ({elapsed:.1f}s elapsed), raising error"
-                    )
-                    raise ValueError("Event generation in progress, please wait")
-            else:
-                logger.warning("Event generation in progress (no timestamp), raising error")
-                raise ValueError("Event generation in progress, please wait")
+            raise ValueError("Event generation in progress, please wait")
 
         # 设置生成标志 - 路由层应已确保并发安全
         self._generating = True
