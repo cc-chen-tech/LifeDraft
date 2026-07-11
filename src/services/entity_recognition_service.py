@@ -5,7 +5,7 @@
 
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from src.services.base_extraction import BaseExtractionService
 
@@ -88,10 +88,14 @@ class EntityRecognitionService(BaseExtractionService):
             logger.info(f"AI raw response (first 500 chars): {response[:500]}")
 
             result = self._parse_recognition_response(response)
+            story_character_names = self._extract_named_people(story_text)
+            effective_character_names = self._ordered_unique(
+                [*(eligible_character_names or []), *story_character_names]
+            )
             if eligible_character_names is not None:
                 result["characters"] = self._filter_character_entities_by_metadata(
                     result.get("characters", []),
-                    eligible_character_names=eligible_character_names,
+                    eligible_character_names=effective_character_names,
                     existing_characters=existing_characters,
                 )
             result = self._supplement_with_story_entities(
@@ -101,7 +105,7 @@ class EntityRecognitionService(BaseExtractionService):
                 existing_characters=existing_characters,
                 existing_landmarks=existing_landmarks,
                 min_appearances=min_appearances,
-                eligible_character_names=eligible_character_names,
+                eligible_character_names=effective_character_names,
             )
             result = self._normalize_recognized_entities(
                 result,
@@ -300,13 +304,13 @@ class EntityRecognitionService(BaseExtractionService):
             "landmarks": list(result.get("landmarks", [])),
         }
 
-        eligible_set = set(eligible_character_names) if eligible_character_names else None
-        if eligible_set is None:
-            character_candidates = self._extract_named_people(story_text)
-        else:
-            character_candidates = [
-                name for name in self._extract_named_people(story_text) if name in eligible_set
-            ]
+        story_character_names = self._extract_named_people(story_text)
+        character_candidates = self._ordered_unique(
+            [*(eligible_character_names or []), *story_character_names]
+        )
+        character_candidates = [
+            name for name in character_candidates if name in story_character_names
+        ]
         if character_candidates:
             self._append_missing_entities(
                 supplemented["characters"],
@@ -393,7 +397,7 @@ class EntityRecognitionService(BaseExtractionService):
         entities: List[Dict[str, Any]],
         names: List[str],
         existing_names: set[str],
-        build_entity,
+        build_entity: Callable[[str, str, int], Dict[str, Any]],
         story_text: str,
         min_appearances: int,
     ) -> None:
@@ -435,7 +439,10 @@ class EntityRecognitionService(BaseExtractionService):
                 rf"(?=(?:的|当年|一直|曾经|已经|正|也|都|从|在|把|将|说|问|提醒|低声|缓缓|"
                 rf"提出|承认|否认|表示|解释|反驳|联系|沉默|扶|握|赶|留下|，|。|、|：|:))"
             ),
-            rf"{name_boundary}{surname}[\u4e00-\u9fff]{{1,2}}?(?=(?:{person_actions}))",
+            (
+                rf"{name_boundary}{surname}[\u4e00-\u9fff]{{1,2}}?"
+                rf"(?=(?:随后|接着|立即|马上|{person_actions}))"
+            ),
         ]
         names = []
         for pattern in patterns:
@@ -580,7 +587,7 @@ class EntityRecognitionService(BaseExtractionService):
             names.append(name)
         return self._ordered_unique(self._clean_entity_name(name) for name in names)
 
-    def _ordered_unique(self, names) -> List[str]:
+    def _ordered_unique(self, names: Iterable[str]) -> List[str]:
         seen: set[str] = set()
         result = []
         for name in names:
@@ -633,12 +640,35 @@ class EntityRecognitionService(BaseExtractionService):
         }
 
     def _first_context(self, name: str, story_text: str) -> str:
-        index = story_text.find(name)
+        normalized_story = re.sub(r"\s+", " ", story_text).strip()
+        index = normalized_story.find(name)
         if index < 0:
             return ""
-        start = max(0, index - 35)
-        end = min(len(story_text), index + len(name) + 45)
-        return story_text[start:end].replace("\n", " ").strip()
+
+        sentence_delimiters = "。！？!?；;\n"
+        start = max(
+            (normalized_story.rfind(mark, 0, index) for mark in sentence_delimiters),
+            default=-1,
+        ) + 1
+        ends = [
+            position
+            for mark in sentence_delimiters
+            if (position := normalized_story.find(mark, index + len(name))) >= 0
+        ]
+        end = min(ends) + 1 if ends else len(normalized_story)
+        sentence = normalized_story[start:end].strip()
+        if len(sentence) <= 120:
+            return sentence
+
+        name_index = sentence.find(name)
+        excerpt_start = max(0, name_index - 45)
+        excerpt_end = min(len(sentence), name_index + len(name) + 65)
+        excerpt = sentence[excerpt_start:excerpt_end].strip(" ，,。；;")
+        if excerpt_start > 0:
+            excerpt = f"…{excerpt}"
+        if excerpt_end < len(sentence):
+            excerpt = f"{excerpt}…"
+        return excerpt
 
     def _guess_item_category(self, name: str) -> str:
         if any(token in name for token in ("账册", "账本", "信件", "书信", "契约", "地图")):

@@ -14,4 +14,4 @@
 
 - [x] 3.1 Run focused tests with the repository `.env`
 - [x] 3.2 Run strict OpenSpec validation and all five `test.sh` layers without skips
-- [ ] 3.3 Commit, push, open a ready PR, and resolve CI failures
+- [x] 3.3 Commit, push, open a ready PR, and resolve CI failures

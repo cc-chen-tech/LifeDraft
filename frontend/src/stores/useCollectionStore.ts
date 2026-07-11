@@ -26,6 +26,72 @@ function mergeVisibleEntityData<T extends CollectionEntity>(nextItems: T[], curr
   });
 }
 
+function appendUniqueEntities<T extends CollectionEntity>(current: T[], additions: T[]): T[] {
+  const knownNames = new Set(current.map((entity) => entity.name));
+  return [...current, ...additions.filter((entity) => !knownNames.has(entity.name))];
+}
+
+function recognizedItemToCollection(entity: RecognizedEntity): ItemCollectionItem {
+  const allowedCategories: ItemCollectionItem["category"][] = [
+    "weapon", "tool", "keepsake", "treasure", "document", "other",
+  ];
+  const category = allowedCategories.includes(entity.category as ItemCollectionItem["category"])
+    ? entity.category as ItemCollectionItem["category"]
+    : "other";
+  return {
+    name: entity.name,
+    description: entity.description,
+    importance: entity.importance,
+    category,
+    acquired_week: 0,
+    acquired_context: entity.appear_contexts[0] || "",
+    is_key_item: entity.importance === "critical",
+    image_url: null,
+    image_generated: false,
+    description_generated: true,
+    metadata: {},
+  };
+}
+
+function recognizedCharacterToCollection(entity: RecognizedEntity): CharacterCollectionItem {
+  return {
+    name: entity.name,
+    role: "故事人物",
+    description: entity.description,
+    affinity: 50,
+    age: null,
+    gender: null,
+    occupation: null,
+    personality_traits: [],
+    image_url: null,
+    image_generated: false,
+    description_generated: true,
+  };
+}
+
+function recognizedLandmarkToCollection(entity: RecognizedEntity): LandmarkCollectionItem {
+  const allowedCategories: LandmarkCollectionItem["category"][] = [
+    "building", "nature", "room", "area", "other",
+  ];
+  const category = allowedCategories.includes(entity.category as LandmarkCollectionItem["category"])
+    ? entity.category as LandmarkCollectionItem["category"]
+    : "other";
+  return {
+    name: entity.name,
+    description: entity.description,
+    category,
+    importance: entity.importance,
+    first_appear_week: 0,
+    appear_count: entity.appear_count,
+    last_appear_week: 0,
+    context: entity.appear_contexts[0] || "",
+    is_key_location: entity.importance === "critical",
+    image_url: null,
+    image_generated: false,
+    metadata: {},
+  };
+}
+
 // Request de-dupe and short-lived cache keep the collection panel responsive.
 let _fetchInFlight: { gameId: number; promise: Promise<void> } | null = null;
 let _collectionCache: { gameId: number; timestamp: number } | null = null;
@@ -463,11 +529,26 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
     try {
       await api.collection.addEntities(gameId, entities);
 
-      // 刷新收集数据
-      await get().fetchCollection(gameId, true);
-
-      // 清除识别结果
-      set({ recognizedEntities: null, isLoading: false });
+      // The durable POST completes the blocking action. Detail hydration can be slow,
+      // so keep it in the existing non-blocking refresh state.
+      const current = get();
+      set({
+        characters: appendUniqueEntities(
+          current.characters,
+          entities.characters.map(recognizedCharacterToCollection),
+        ),
+        items: appendUniqueEntities(
+          current.items,
+          entities.items.map(recognizedItemToCollection),
+        ),
+        landmarks: appendUniqueEntities(
+          current.landmarks,
+          entities.landmarks.map(recognizedLandmarkToCollection),
+        ),
+        recognizedEntities: null,
+        isLoading: false,
+      });
+      void get().fetchCollection(gameId, true);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "添加实体失败";
       console.error("[addRecognizedEntities] 错误:", errorMsg);
