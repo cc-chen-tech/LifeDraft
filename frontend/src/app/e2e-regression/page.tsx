@@ -8,6 +8,7 @@ import { StoryVoiceControls } from "@/components/game/StoryVoiceControls";
 import { SettingDisplay } from "@/components/game/SettingDisplay";
 import { api } from "@/lib/api";
 import { OpeningCompletionGate } from "@/components/game/OpeningCompletionGate";
+import { useCollectionStore } from "@/stores/useCollectionStore";
 import { useMusicStore } from "@/stores/useMusicStore";
 import { useStoryVoiceStore } from "@/stores/useStoryVoiceStore";
 
@@ -22,6 +23,8 @@ export default function E2ERegressionPage() {
   const currentSong = useMusicStore((state) => state.currentSong);
   const queue = useMusicStore((state) => state.queue);
   const generateAiMusicForStory = useMusicStore((state) => state.generateAiMusicForStory);
+  const addRecognizedEntities = useCollectionStore((state) => state.addRecognizedEntities);
+  const entityAddLoading = useCollectionStore((state) => state.isLoading);
   const setActiveReadingTarget = useStoryVoiceStore((state) => state.setActiveReadingTarget);
   const clearActiveReadingTarget = useStoryVoiceStore((state) => state.clearActiveReadingTarget);
   const [showHistory, setShowHistory] = useState(false);
@@ -38,6 +41,8 @@ export default function E2ERegressionPage() {
   const [collectionRefreshState, setCollectionRefreshState] = useState<"idle" | "refreshing">("idle");
   const [fixtureGameId, setFixtureGameId] = useState(101);
   const [worldFactSetting, setWorldFactSetting] = useState<Record<string, unknown> | null>(null);
+  const [entityCollectionAddEnabled, setEntityCollectionAddEnabled] = useState(false);
+  const [entityAddState, setEntityAddState] = useState<"idle" | "adding" | "saved" | "error">("idle");
   const [musicQueueFixture, setMusicQueueFixture] = useState<{
     current: { title: string; source: string };
     queue: string[];
@@ -54,6 +59,7 @@ export default function E2ERegressionPage() {
     const searchParams = new URLSearchParams(window.location.search);
     const configuredGameId = Number(searchParams.get("gameId"));
     const enableGlobalVoiceFixture = searchParams.get("globalVoice") === "1";
+    setEntityCollectionAddEnabled(searchParams.get("entityCollectionAdd") === "1");
     if (Number.isFinite(configuredGameId) && configuredGameId > 0) {
       setFixtureGameId(configuredGameId);
     }
@@ -126,8 +132,49 @@ export default function E2ERegressionPage() {
     setStreamedStory("苏小二按住账册，低声提醒陆明先核对暗号。");
   };
 
+  const addEntityCollectionFixture = async () => {
+    setEntityAddState("adding");
+    await addRecognizedEntities(fixtureGameId, {
+      items: [
+        {
+          name: "银色戒指",
+          description: "沈砚秋在故事中确认的一枚旧戒指。",
+          category: "other",
+          importance: "normal",
+          appear_count: 1,
+          appear_contexts: ["沈砚秋收起银色戒指。"],
+        },
+      ],
+      characters: [
+        {
+          name: "陈远",
+          description: "陈远带来了审计材料。",
+          category: "person",
+          importance: "important",
+          appear_count: 1,
+          appear_contexts: ["陈远走进会议室。"],
+        },
+      ],
+      landmarks: [],
+    });
+    setEntityAddState(useCollectionStore.getState().error ? "error" : "saved");
+  };
+
   return (
     <main className="min-h-screen p-6 space-y-8">
+      {entityCollectionAddEnabled && (
+        <section aria-label="实体添加可靠性回归夹具" className="space-y-3">
+          <button
+            type="button"
+            className="rounded border px-3 py-2"
+            onClick={() => void addEntityCollectionFixture()}
+            disabled={entityAddLoading}
+          >
+            {entityAddLoading ? "添加中..." : "添加识别实体"}
+          </button>
+          <p data-testid="entity-add-state">{entityAddState}</p>
+        </section>
+      )}
       {worldFactSetting && (
         <section aria-label="世界事实边界回归夹具">
           <SettingDisplay stepKey="world" data={worldFactSetting} />

@@ -463,11 +463,10 @@ export const useCollectionStore = create<CollectionState>((set, get) => ({
     try {
       await api.collection.addEntities(gameId, entities);
 
-      // 刷新收集数据
-      await get().fetchCollection(gameId, true);
-
-      // 清除识别结果
+      // The durable POST completes the blocking action. Detail hydration can be slow,
+      // so keep it in the existing non-blocking refresh state.
       set({ recognizedEntities: null, isLoading: false });
+      void get().fetchCollection(gameId, true);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "添加实体失败";
       console.error("[addRecognizedEntities] 错误:", errorMsg);
