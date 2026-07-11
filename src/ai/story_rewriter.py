@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, Optional
 from config.prompts import get_story_only_prompt
 from config.prompts.story_prompts import _build_zh_chapter_constraint
 from src.ai.client import AIClient
+from src.ai.professional_risk import apply_professional_risk_guardrail
 from src.ai.system_prompts import get_system_prompt
 
 logger = logging.getLogger(__name__)
@@ -183,12 +184,12 @@ Please rewrite the specified segment according to the user's request:
                     status_callback=status_callback,
                 )
 
-            return rewritten_story
+            return apply_professional_risk_guardrail(rewritten_story, language=language)
 
         except Exception as e:
             logger.error(f"Failed to rewrite story segment: {e}")
             # Return original story as fallback
-            return full_story
+            return apply_professional_risk_guardrail(full_story, language=language)
 
     def _quick_validate_and_retry_rewrite(
         self,
@@ -261,6 +262,9 @@ Please rewrite the specified segment according to the user's request:
         )
         if retry_result.passed:
             return retry_story
+
+        if retry_result.issues == ["unsafe_professional_guarantee"]:
+            return apply_professional_risk_guardrail(retry_story, language=language)
 
         logger.warning(
             "[StoryRewrite] Quick validation retry still failed: %s",
@@ -414,10 +418,16 @@ Please generate a brand new story based on the above context, ensuring logical c
                     language=language,
                 )
                 if not retry_result.passed:
-                    raise ValueError(
-                        "Story regenerate quick validation failed: "
-                        + "; ".join(retry_result.issues)
-                    )
+                    if retry_result.issues == ["unsafe_professional_guarantee"]:
+                        regenerated_story = apply_professional_risk_guardrail(
+                            regenerated_story,
+                            language=language,
+                        )
+                    else:
+                        raise ValueError(
+                            "Story regenerate quick validation failed: "
+                            + "; ".join(retry_result.issues)
+                        )
 
             # ★ 一致性校验（如果有 world_model）- 复用 StoryGenerator 的方法
             if world_model and player_state:
@@ -437,7 +447,7 @@ Please generate a brand new story based on the above context, ensuring logical c
                     status_callback=status_callback,
                 )
 
-            return regenerated_story
+            return apply_professional_risk_guardrail(regenerated_story, language=language)
 
         except Exception as e:
             logger.error(f"Failed to regenerate story: {e}")

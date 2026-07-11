@@ -9,6 +9,7 @@ import re as _re
 from typing import Any, Dict, List, Optional
 
 from src.ai.client import AIClient
+from src.ai.professional_risk import apply_professional_risk_guardrail
 from src.ai.system_prompts import get_system_prompt
 from src.ai.utils import extract_json
 
@@ -535,7 +536,7 @@ class SummaryGenerator:
         if len(cleaned) >= 2 and cleaned[0] == '"' and cleaned[-1] == '"':
             cleaned = cleaned[1:-1]
 
-        return cleaned.strip()
+        return apply_professional_risk_guardrail(cleaned.strip(), language="auto")
 
     @staticmethod
     def _extract_summary_from_raw(content: str, original_story: str, language: str) -> str:
