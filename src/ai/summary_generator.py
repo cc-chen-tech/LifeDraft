@@ -330,6 +330,7 @@ class SummaryGenerator:
         character_settings: Optional[Dict[str, Any]],
         language: str,
         game_date_info: Optional[Dict[str, Any]] = None,
+        wealth_context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Generate weekly summary and bonus effects.
@@ -348,6 +349,21 @@ class SummaryGenerator:
         logger.info(f"Generating weekly summary for {len(rounds)} rounds")
 
         prompt = get_weekly_summary_prompt(rounds, character_settings, language, game_date_info)
+        wealth_ledger = None
+        current_balance = 0
+        allowed_transaction_ids: List[str] = []
+        if wealth_context:
+            from src.game.wealth_ledger import WealthLedger
+
+            current_balance = max(0, int(wealth_context.get("current_balance", 0)))
+            raw_ledger = wealth_context.get("wealth_ledger")
+            wealth_ledger = WealthLedger(
+                raw_ledger if isinstance(raw_ledger, dict) else {}
+            )
+            allowed_transaction_ids = [
+                transaction.transaction_id for transaction in wealth_ledger.transactions
+            ]
+            prompt += wealth_ledger.build_constraints_text(current_balance, language)
         sys_prompt = get_system_prompt("weekly_summary", language)
 
         last_error: Optional[str] = None
@@ -378,6 +394,24 @@ class SummaryGenerator:
                         ("本周平静地度过了。" if language == "zh" else "This week passed quietly."),
                     )
                     bonus_effects = data.get("bonus_effects", {})
+
+                    if wealth_ledger is not None:
+                        wealth_validation = wealth_ledger.validate_narrative(
+                            str(summary),
+                            current_balance=current_balance,
+                            allowed_transaction_ids=allowed_transaction_ids,
+                        )
+                        if not wealth_validation.passed:
+                            if attempt == 0:
+                                last_error = "; ".join(
+                                    issue.message for issue in wealth_validation.issues
+                                )
+                                continue
+                            summary = wealth_ledger.sanitize_narrative(
+                                str(summary),
+                                wealth_validation,
+                                current_balance=current_balance,
+                            )
 
                     # Validate bonus_effects
                     valid_bonus = {}

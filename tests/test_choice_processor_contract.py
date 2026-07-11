@@ -49,6 +49,7 @@ class FakeStoryService:
         stream_callback=None,
         status_callback=None,
         is_custom=False,
+        active_wealth_transaction_id=None,
     ) -> str:
         return "The story continues in an interesting way."
 
@@ -323,6 +324,44 @@ class TestMakeRoundChoiceContract:
 
         result = proc.make_round_choice(option_index=0)
         assert isinstance(result["game_over"], bool)
+
+    def test_wealth_effect_creates_source_linked_transaction(self):
+        state = _make_state(wealth=10_000)
+        event = _make_event()
+        service = FakeStoryService()
+        proc = _make_processor(
+            player_state=state,
+            current_event=event,
+            story_service=service,
+        )
+
+        result = proc.make_round_choice(option_index=2)
+
+        assert state.wealth == 9_800
+        assert result["effects_applied"]["wealth"] == -200
+        transactions = state.wealth_ledger["transactions"]
+        assert len(transactions) == 1
+        assert transactions[0] == {
+            "transaction_id": "choice:w0-r0",
+            "opening_balance": 10_000,
+            "requested_delta": -200,
+            "applied_delta": -200,
+            "reason": "Visit the blacksmith",
+            "source_event_id": "w0-r0",
+            "week": 0,
+            "round": 0,
+            "closing_balance": 9_800,
+        }
+
+    def test_zero_wealth_effect_does_not_create_fake_transaction(self):
+        state = _make_state(wealth=10_000)
+        event = _make_event()
+        proc = _make_processor(player_state=state, current_event=event)
+
+        proc.make_round_choice(option_index=0)
+
+        assert state.wealth == 10_000
+        assert state.wealth_ledger["transactions"] == []
 
     def test_game_over_false_early_game(self):
         """game_over should be False when week < TOTAL_WEEKS."""

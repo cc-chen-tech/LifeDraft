@@ -160,6 +160,20 @@ class PlayerDataMixin:
         }
     )
 
+    # P1-8 source-linked audit for the authoritative numeric ``wealth`` field.
+    # The ledger never replaces ``wealth`` as a spendable balance; it explains
+    # each gameplay mutation and rejects unsupported exact narrative claims.
+    wealth_ledger: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            "version": 1,
+            "opening_balance": 0,
+            "balance_snapshot": 0,
+            "currency_name": "元",
+            "transactions": [],
+            "conflicts": [],
+        }
+    )
+
     # 伏笔系统生命周期指标（用于评估伏笔系统健康度）
     # Structure: {"total_planted": 0, "total_activated": 0, "total_expired": 0,
     #             "avg_recovery_distance": 0, "recovery_distances": []}

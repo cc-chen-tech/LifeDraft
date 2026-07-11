@@ -32,7 +32,9 @@ def normalize_chinese_punctuation(text: Optional[str]) -> Optional[str]:
 
     normalized = re.sub(r"\.{2,}", lambda m: "。" * len(m.group(0)), normalized)
     normalized = normalized.replace(".", "。")
-    normalized = normalized.replace(",", "，")
+    numeric_comma = "\uFFF0"
+    normalized = re.sub(r"(?<=\d),(?=\d{3}(?:\D|$))", numeric_comma, normalized)
+    normalized = normalized.replace(",", "，").replace(numeric_comma, ",")
     normalized = normalized.replace("?", "？")
     normalized = normalized.replace("!", "！")
     normalized = normalized.replace(";", "；")

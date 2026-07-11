@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Dict, Optional
 
 from src.game.world_model_updater import WorldModelUpdater
+from src.game.wealth_ledger import WealthLedger
 
 logger = logging.getLogger(__name__)
 
@@ -74,12 +75,46 @@ class RoundFinalizer:
         # Apply bonus effects if any
         bonus_effects = weekly_result.get("bonus_effects", {})
         if bonus_effects:
+            wealth_ledger = WealthLedger.from_player_state(player_state)
+            requested_wealth = bonus_effects.get("wealth", 0)
+            if (
+                isinstance(requested_wealth, int)
+                and not isinstance(requested_wealth, bool)
+                and requested_wealth != 0
+            ):
+                wealth_ledger.apply_transaction(
+                    player_state,
+                    transaction_id=f"weekly-bonus:w{player_state.week}",
+                    requested_delta=requested_wealth,
+                    reason="周总结奖励",
+                    source_event_id=f"weekly-summary:w{player_state.week}",
+                    week=player_state.week,
+                    round_number=player_state.current_round,
+                )
+            else:
+                wealth_ledger.persist(player_state)
             player_state.update(
                 energy=bonus_effects.get("energy", 0),
                 mood=bonus_effects.get("mood", 0),
                 knowledge=bonus_effects.get("knowledge", 0),
-                wealth=bonus_effects.get("wealth", 0),
             )
+            allowed_ids = [
+                transaction.transaction_id
+                for transaction in wealth_ledger.transactions
+                if transaction.week == player_state.week
+            ]
+            wealth_validation = wealth_ledger.validate_narrative(
+                str(weekly_result.get("summary", "")),
+                current_balance=player_state.wealth,
+                allowed_transaction_ids=allowed_ids,
+            )
+            if not wealth_validation.passed:
+                weekly_result["summary"] = wealth_ledger.sanitize_narrative(
+                    str(weekly_result.get("summary", "")),
+                    wealth_validation,
+                    current_balance=player_state.wealth,
+                )
+                result["weekly_summary"] = weekly_result["summary"]
             result["bonus_effects"] = bonus_effects
             logger.info(f"Applied bonus effects: {bonus_effects}")
 
@@ -129,12 +164,18 @@ class RoundFinalizer:
                 )
             )
             # Extract items from this week's stories
-            parallel_tasks.append(executor.submit(self._extract_items_from_week, new_week))
+            parallel_tasks.append(
+                executor.submit(self._extract_items_from_week, new_week)
+            )
             # Extract landmarks from this week's stories
-            parallel_tasks.append(executor.submit(self._extract_landmarks_from_week, new_week))
+            parallel_tasks.append(
+                executor.submit(self._extract_landmarks_from_week, new_week)
+            )
             # 4-week summary (every 4 weeks)
             if new_week > 0 and new_week % 4 == 0:
-                parallel_tasks.append(executor.submit(self._generate_four_week_summary, new_week))
+                parallel_tasks.append(
+                    executor.submit(self._generate_four_week_summary, new_week)
+                )
             # Wait for all parallel tasks
             for future in as_completed(parallel_tasks):
                 try:
@@ -161,7 +202,9 @@ class RoundFinalizer:
         if not week_rounds:
             return {
                 "summary": (
-                    "本周平静地度过了。" if self.language == "zh" else "This week passed quietly."
+                    "本周平静地度过了。"
+                    if self.language == "zh"
+                    else "This week passed quietly."
                 ),
                 "bonus_effects": {},
             }
@@ -172,12 +215,18 @@ class RoundFinalizer:
                 character_settings=player_state.character_settings,
                 language=self.language,
                 game_date_info=player_state.get_game_date_info(),
+                wealth_context={
+                    "current_balance": player_state.wealth,
+                    "wealth_ledger": player_state.wealth_ledger,
+                },
             )
         except Exception as e:
             logger.error(f"Failed to generate weekly summary: {e}")
             return {
                 "summary": (
-                    "本周充实而忙碌。" if self.language == "zh" else "This week was full and busy."
+                    "本周充实而忙碌。"
+                    if self.language == "zh"
+                    else "This week was full and busy."
                 ),
                 "bonus_effects": {},
             }
@@ -203,7 +252,8 @@ class RoundFinalizer:
             "current_round": player_state.current_round,
             "rounds_per_week": player_state.rounds_per_week,
             "round_name": player_state.get_round_name(self.language),
-            "is_last_round": player_state.current_round == player_state.rounds_per_week - 1,
+            "is_last_round": player_state.current_round
+            == player_state.rounds_per_week - 1,
             "week_rounds_completed": len(player_state.get_current_week_rounds()),
         }
 
@@ -269,7 +319,9 @@ class RoundFinalizer:
 
         try:
             # Get all 4-week summaries for the year
-            four_week_summaries = player_state.four_week_summaries[-12:]  # 48 weeks = 12 periods
+            four_week_summaries = player_state.four_week_summaries[
+                -12:
+            ]  # 48 weeks = 12 periods
             if len(four_week_summaries) < 12:
                 return
 
@@ -353,8 +405,7 @@ class RoundFinalizer:
         Args:
             week: 当前周数
         """
-        from src.services.landmark_extraction_service import \
-            LandmarkExtractionService
+        from src.services.landmark_extraction_service import LandmarkExtractionService
 
         player_state = self.player_state
         if not player_state:
@@ -413,7 +464,9 @@ class RoundFinalizer:
                     if name and name in player_state.landmarks:
                         # 更新出现次数和最近出现周数
                         current_data = player_state.landmarks[name]
-                        current_data["appear_count"] = current_data.get("appear_count", 1) + 1
+                        current_data["appear_count"] = (
+                            current_data.get("appear_count", 1) + 1
+                        )
                         current_data["last_appear_week"] = week
                         player_state.landmarks[name] = current_data
                         logger.debug(

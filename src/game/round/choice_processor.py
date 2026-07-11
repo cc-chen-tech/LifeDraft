@@ -13,6 +13,7 @@ from src.ai.vector_store import get_vector_store, is_vector_search_enabled
 from src.game.narrative_manager import NarrativeManager
 from src.game.continuity_ledger import ContinuityLedger
 from src.game.world_model_updater import WorldModelUpdater
+from src.game.wealth_ledger import WealthLedger
 
 if TYPE_CHECKING:
     from src.ai.generator import EventGenerator
@@ -108,12 +109,17 @@ class RoundChoiceProcessor:
         effects_requested = chosen_option.effects
         effects, resource_warnings = self._normalize_effects_for_current_state(effects_requested)
 
+        wealth_transaction_id = self._apply_wealth_transaction(
+            player_state,
+            requested_delta=effects_requested.get("wealth", effects.get("wealth", 0)),
+            reason=chosen_option.text,
+        )
+
         # 1. Apply effects immediately (real-time update)
         player_state.update(
             energy=effects.get("energy", 0),
             mood=effects.get("mood", 0),
             knowledge=effects.get("knowledge", 0),
-            wealth=effects.get("wealth", 0),
             relationships=effects.get("relationships"),
         )
 
@@ -126,6 +132,7 @@ class RoundChoiceProcessor:
             effects,
             stream_callback=stream_callback,
             status_callback=status_callback,
+            active_wealth_transaction_id=wealth_transaction_id,
         )
 
         # 3. Build full story and delegate to shared pipeline
@@ -181,12 +188,17 @@ class RoundChoiceProcessor:
         )
         effects, resource_warnings = self._normalize_effects_for_current_state(effects_requested)
 
+        wealth_transaction_id = self._apply_wealth_transaction(
+            player_state,
+            requested_delta=effects_requested.get("wealth", effects.get("wealth", 0)),
+            reason=custom_text,
+        )
+
         # 2. 应用属性变化
         player_state.update(
             energy=effects.get("energy", 0),
             mood=effects.get("mood", 0),
             knowledge=effects.get("knowledge", 0),
-            wealth=effects.get("wealth", 0),
             relationships=effects.get("relationships"),
         )
 
@@ -201,6 +213,7 @@ class RoundChoiceProcessor:
             stream_callback=stream_callback,
             status_callback=status_callback,
             is_custom=True,
+            active_wealth_transaction_id=wealth_transaction_id,
         )
 
         # 4. Build full story and delegate to shared pipeline
@@ -633,11 +646,16 @@ class RoundChoiceProcessor:
         stream_callback: Optional[Callable[[str], None]] = None,
         status_callback: Optional[Callable[[str], None]] = None,
         is_custom: bool = False,
+        active_wealth_transaction_id: Optional[str] = None,
     ) -> str:
         """Generate a detailed story continuation. Delegates to StoryService."""
         player_state = self.player_state
         character_settings = player_state.character_settings if player_state else {}
         player_state_dict = player_state.to_dict() if player_state else {}
+        if active_wealth_transaction_id:
+            player_state_dict["_active_wealth_transaction_id"] = (
+                active_wealth_transaction_id
+            )
         return self.story_service.generate_story_continuation(
             event_description,
             chosen_option,
@@ -647,4 +665,31 @@ class RoundChoiceProcessor:
             stream_callback=stream_callback,
             status_callback=status_callback,
             is_custom=is_custom,
+            active_wealth_transaction_id=active_wealth_transaction_id,
         )
+
+    def _apply_wealth_transaction(
+        self,
+        player_state: "PlayerState",
+        *,
+        requested_delta: Any,
+        reason: str,
+    ) -> Optional[str]:
+        if not isinstance(requested_delta, int) or isinstance(requested_delta, bool):
+            requested_delta = 0
+        ledger = WealthLedger.from_player_state(player_state)
+        if requested_delta == 0:
+            ledger.persist(player_state)
+            return None
+        source_event_id = f"w{player_state.week}-r{player_state.current_round}"
+        transaction_id = f"choice:{source_event_id}"
+        ledger.apply_transaction(
+            player_state,
+            transaction_id=transaction_id,
+            requested_delta=requested_delta,
+            reason=reason,
+            source_event_id=source_event_id,
+            week=player_state.week,
+            round_number=player_state.current_round,
+        )
+        return transaction_id
