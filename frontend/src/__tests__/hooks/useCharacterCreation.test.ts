@@ -1276,6 +1276,205 @@ describe('useCharacterCreation', () => {
 
       expect(gameSpy.spies.updateCharacterSetting).toHaveBeenCalledWith('era', newContent);
     });
+
+    it('builds and persists a complete relationship candidate before one store update', async () => {
+      const oldRelationships = {
+        relationships_description: '旧关系摘要',
+        key_people: [
+          { name: '陈晓峰', role: '前同事', relationship: '仍在原公司任职' },
+          { name: '周丽', role: '律师', relationship: '提供法律咨询' },
+        ],
+      };
+      useGameStore.setState({
+        gameId: 10,
+        playerName: '林见微',
+        lifeVision: '现实主义创业故事',
+        characterSettings: { relationships: oldRelationships },
+      } as never);
+      const people = [
+        { name: '陈晓峰', role: '前同事', relationship: '仍在原公司任职' },
+        { name: '周丽', role: '律师', relationship: '持续提供法律咨询' },
+      ];
+      let personIndex = 0;
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url === '/api/character/relationship') {
+          return Promise.resolve(jsonResponse(people[personIndex++]));
+        }
+        if (url === '/api/character/relationships-summary') {
+          return Promise.resolve(jsonResponse({ relationships_description: '新的完整关系摘要' }));
+        }
+        if (url === '/api/games/10/character-settings') {
+          return Promise.resolve(jsonResponse({ success: true, message: 'saved' }));
+        }
+        return Promise.resolve(jsonResponse({}));
+      });
+
+      const { result } = renderHook(() => useCharacterCreation());
+
+      await act(async () => {
+        await result.current.regenerateSetting(
+          'relationships',
+          '陈晓峰仍是前同事，不要改变职业',
+        );
+      });
+
+      const genericSettingBodies = (global.fetch as jest.Mock).mock.calls
+        .filter((call: unknown[]) => call[0] === '/api/character/setting')
+        .map((call: unknown[]) => JSON.parse((call[1] as RequestInit).body as string));
+      expect(genericSettingBodies).not.toContainEqual(
+        expect.objectContaining({ setting_type: 'relationships' }),
+      );
+      const relationshipCalls = (global.fetch as jest.Mock).mock.calls.filter(
+        (call: unknown[]) => call[0] === '/api/character/relationship',
+      );
+      expect(relationshipCalls).toHaveLength(2);
+      expect(JSON.parse(relationshipCalls[0][1].body)).toMatchObject({
+        feedback: '陈晓峰仍是前同事，不要改变职业',
+        existing_people: [],
+        person_index: 0,
+        total_needed: 2,
+      });
+      expect(JSON.parse(relationshipCalls[1][1].body)).toMatchObject({
+        existing_people: [people[0]],
+        person_index: 1,
+        total_needed: 2,
+      });
+      const candidate = {
+        relationships_description: '新的完整关系摘要',
+        key_people: people,
+      };
+      expect(fetchBody('/api/games/10/character-settings')).toEqual({
+        character_settings: { relationships: candidate },
+      });
+      expect(gameSpy.spies.updateCharacterSetting).toHaveBeenCalledTimes(1);
+      expect(gameSpy.spies.updateCharacterSetting).toHaveBeenCalledWith(
+        'relationships',
+        candidate,
+      );
+      const patchCallIndex = (global.fetch as jest.Mock).mock.calls.findIndex(
+        (call: unknown[]) => call[0] === '/api/games/10/character-settings',
+      );
+      expect(gameSpy.spies.updateCharacterSetting.mock.invocationCallOrder[0]).toBeGreaterThan(
+        (global.fetch as jest.Mock).mock.invocationCallOrder[patchCallIndex],
+      );
+    });
+
+    it('rejects an incomplete relationship person without replacing old data', async () => {
+      const oldRelationships = {
+        relationships_description: '旧关系摘要',
+        key_people: [{ name: '陈晓峰', role: '前同事', relationship: '仍在职' }],
+      };
+      useGameStore.setState({
+        gameId: 10,
+        playerName: '林见微',
+        characterSettings: { relationships: oldRelationships },
+      } as never);
+      (global.fetch as jest.Mock).mockResolvedValue(
+        jsonResponse({ name: '', role: '', relationship: '' }),
+      );
+
+      const { result } = renderHook(() => useCharacterCreation());
+
+      await expect(
+        result.current.regenerateSetting('relationships', '保留原职业'),
+      ).rejects.toThrow('人际关系生成结果不完整');
+
+      expect(fetchCalled('/api/character/relationships-summary')).toBe(false);
+      expect(fetchCalled('/api/games/10/character-settings')).toBe(false);
+      expect(gameSpy.spies.updateCharacterSetting).not.toHaveBeenCalled();
+      expect(useGameStore.getState().characterSettings.relationships).toEqual(
+        oldRelationships,
+      );
+    });
+
+    it('rejects an empty relationship summary without committing the candidate', async () => {
+      const oldRelationships = {
+        relationships_description: '旧关系摘要',
+        key_people: [{ name: '陈晓峰', role: '前同事', relationship: '仍在职' }],
+      };
+      useGameStore.setState({
+        gameId: 10,
+        playerName: '林见微',
+        characterSettings: { relationships: oldRelationships },
+      } as never);
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url === '/api/character/relationship') {
+          return Promise.resolve(jsonResponse({ name: '陈晓峰', role: '前同事', relationship: '仍在职' }));
+        }
+        return Promise.resolve(jsonResponse({ relationships_description: '  ' }));
+      });
+
+      const { result } = renderHook(() => useCharacterCreation());
+
+      await expect(
+        result.current.regenerateSetting('relationships', '保留原职业'),
+      ).rejects.toThrow('人际关系生成结果不完整');
+
+      expect(fetchCalled('/api/games/10/character-settings')).toBe(false);
+      expect(gameSpy.spies.updateCharacterSetting).not.toHaveBeenCalled();
+    });
+
+    it('rejects duplicate relationship names without persisting partial data', async () => {
+      const oldRelationships = {
+        relationships_description: '旧关系摘要',
+        key_people: [
+          { name: '陈晓峰', role: '前同事', relationship: '仍在职' },
+          { name: '周丽', role: '律师', relationship: '提供咨询' },
+        ],
+      };
+      useGameStore.setState({
+        gameId: 10,
+        playerName: '林见微',
+        characterSettings: { relationships: oldRelationships },
+      } as never);
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url === '/api/character/relationship') {
+          return Promise.resolve(jsonResponse({ name: '陈晓峰', role: '前同事', relationship: '仍在职' }));
+        }
+        return Promise.resolve(jsonResponse({ relationships_description: '重复人物摘要' }));
+      });
+
+      const { result } = renderHook(() => useCharacterCreation());
+
+      await expect(
+        result.current.regenerateSetting('relationships', '保留原职业'),
+      ).rejects.toThrow('人际关系生成结果不完整');
+
+      expect(fetchCalled('/api/games/10/character-settings')).toBe(false);
+      expect(gameSpy.spies.updateCharacterSetting).not.toHaveBeenCalled();
+    });
+
+    it('keeps old relationship data when server persistence fails', async () => {
+      const oldRelationships = {
+        relationships_description: '旧关系摘要',
+        key_people: [{ name: '陈晓峰', role: '前同事', relationship: '仍在职' }],
+      };
+      useGameStore.setState({
+        gameId: 10,
+        playerName: '林见微',
+        characterSettings: { relationships: oldRelationships },
+      } as never);
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url === '/api/character/relationship') {
+          return Promise.resolve(jsonResponse({ name: '陈晓峰', role: '前同事', relationship: '仍在职' }));
+        }
+        if (url === '/api/character/relationships-summary') {
+          return Promise.resolve(jsonResponse({ relationships_description: '新摘要' }));
+        }
+        return Promise.resolve(errorResponse(422, 'save failed'));
+      });
+
+      const { result } = renderHook(() => useCharacterCreation());
+
+      await expect(
+        result.current.regenerateSetting('relationships', '保留原职业'),
+      ).rejects.toThrow('人际关系重新生成失败，已保留原设定，请重试');
+
+      expect(gameSpy.spies.updateCharacterSetting).not.toHaveBeenCalled();
+      expect(useGameStore.getState().characterSettings.relationships).toEqual(
+        oldRelationships,
+      );
+    });
   });
 
   // ===================== Image Store Actions =====================

@@ -32,6 +32,68 @@ const STEP_DESCRIPTIONS: Record<string, string> = {
   wealth: "AI将确定你的初始财富水平",
 };
 
+type RelationshipPerson = Record<string, unknown> & {
+  name: string;
+  role: string;
+  relationship: string;
+};
+
+type RelationshipCandidate = {
+  relationships_description: string;
+  key_people: RelationshipPerson[];
+};
+
+const RELATIONSHIP_RESULT_ERROR = "人际关系生成结果不完整，已保留原设定";
+const RELATIONSHIP_REQUEST_ERROR = "人际关系重新生成失败，已保留原设定，请重试";
+
+function nonEmptyText(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
+function validateRelationshipPerson(value: unknown): RelationshipPerson {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(RELATIONSHIP_RESULT_ERROR);
+  }
+  const record = value as Record<string, unknown>;
+  const name = nonEmptyText(record.name);
+  const role = nonEmptyText(record.role);
+  const relationship =
+    nonEmptyText(record.relationship) ?? nonEmptyText(record.relationship_desc);
+  if (!name || !role || !relationship) {
+    throw new Error(RELATIONSHIP_RESULT_ERROR);
+  }
+  return {
+    ...record,
+    name,
+    role,
+    relationship,
+  };
+}
+
+function validateRelationshipCandidate(
+  people: RelationshipPerson[],
+  summary: unknown,
+  expectedCount: number,
+): RelationshipCandidate {
+  const relationshipsDescription = nonEmptyText(summary);
+  const uniqueNames = new Set(
+    people.map((person) => person.name.toLocaleLowerCase()),
+  );
+  if (
+    people.length !== expectedCount ||
+    uniqueNames.size !== expectedCount ||
+    !relationshipsDescription
+  ) {
+    throw new Error(RELATIONSHIP_RESULT_ERROR);
+  }
+  return {
+    relationships_description: relationshipsDescription,
+    key_people: people,
+  };
+}
+
 export type ToastType = { type: "success" | "error"; message: string } | null;
 export type PresetSaveStatus = "idle" | "saving" | "error";
 
@@ -625,7 +687,56 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
 
     setIsGenerating(true);
     try {
-      console.log(`[regenerateSetting] Regenerating ${stepKey} with feedback:`, feedback);
+      console.log(`[regenerateSetting] Regenerating ${stepKey}`);
+
+      if (stepKey === "relationships") {
+        const relationshipState = characterSettings.relationships;
+        const rawExistingPeople =
+          relationshipState &&
+          typeof relationshipState === "object" &&
+          !Array.isArray(relationshipState)
+            ? (relationshipState as Record<string, unknown>).key_people
+            : undefined;
+        const existingPeople = Array.isArray(rawExistingPeople)
+          ? rawExistingPeople
+          : [];
+        const totalNeeded = existingPeople.length > 0 ? existingPeople.length : 3;
+        const candidatePeople: RelationshipPerson[] = [];
+
+        for (let personIndex = 0; personIndex < totalNeeded; personIndex += 1) {
+          const generatedPerson = await api.character.generateRelationship({
+            player_name: playerName,
+            life_vision: lifeVision,
+            previous_settings: characterSettings,
+            existing_people: candidatePeople,
+            person_index: personIndex,
+            total_needed: totalNeeded,
+            feedback: feedback || null,
+            language,
+          });
+          candidatePeople.push(validateRelationshipPerson(generatedPerson));
+        }
+
+        const summaryResult = await api.character.generateRelationshipsSummary({
+          player_name: playerName,
+          life_vision: lifeVision,
+          previous_settings: characterSettings,
+          key_people: candidatePeople,
+          language,
+        });
+        const candidate = validateRelationshipCandidate(
+          candidatePeople,
+          summaryResult.relationships_description,
+          totalNeeded,
+        );
+
+        await api.games.patchCharacterSettings(gameId, {
+          relationships: candidate,
+        });
+        updateCharacterSetting(stepKey, candidate);
+        console.log("[regenerateSetting] relationships committed successfully");
+        return;
+      }
 
       const result = await api.character.generateSetting({
         setting_type: stepKey,
@@ -641,6 +752,12 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
       console.log(`[regenerateSetting] ${stepKey} regenerated successfully`);
     } catch (err) {
       console.error(`[regenerateSetting] Failed to regenerate ${stepKey}:`, err);
+      if (
+        stepKey === "relationships" &&
+        (!(err instanceof Error) || !err.message.startsWith("人际关系"))
+      ) {
+        throw new Error(RELATIONSHIP_REQUEST_ERROR);
+      }
       throw err;
     } finally {
       setIsGenerating(false);
