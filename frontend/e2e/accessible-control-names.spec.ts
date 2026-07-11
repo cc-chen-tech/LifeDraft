@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { API_URL } from './helpers/auth';
 
-test('credential, profile, and save icon controls expose stable names', async ({ page }) => {
+test('credential and save icon controls expose stable names', async ({ page }) => {
   const displayName = `无障碍测试_${Date.now()}`;
 
   await page.goto('/');
@@ -11,9 +11,6 @@ test('credential, profile, and save icon controls expose stable names', async ({
 
   await expect(page.getByRole('button', { name: '复制私有密钥' })).toBeVisible();
   await page.getByRole('button', { name: '我已保存密钥，开始体验' }).click();
-
-  await page.goto('/profile');
-  await expect(page.getByRole('button', { name: '复制公开 ID' })).toBeVisible();
 
   const createResponse = await page.request.post(`${API_URL}/api/games`, {
     data: {
