@@ -339,6 +339,10 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data || {}),
       }),
+    acknowledgeResumeView: (gameId: number) =>
+      fetchJson<{ acknowledged: boolean }>(`/games/${gameId}/resume-view/acknowledge`, {
+        method: 'POST',
+      }),
     submitChoice: (gameId: number, data: { choice_index: number; custom_choice?: string }) =>
       fetchJson<{
         result: string;

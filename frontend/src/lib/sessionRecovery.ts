@@ -1,10 +1,71 @@
-import type { PlayerState, GameProgress, RoundInfo } from "@/lib/types";
+import type { EventOption, PlayerState, GameProgress, RoundInfo } from "@/lib/types";
 
 export interface RecoveryContext {
   eventStory?: string | null;
+  eventOptions?: EventOption[] | null;
   playerState?: PlayerState | null;
   progress?: GameProgress | Partial<GameProgress> | null;
   roundInfo?: RoundInfo | Partial<RoundInfo> | null;
+}
+
+export interface RecoveredView {
+  phase: "loading" | "options" | "result" | "summary" | "ending" | "generating" | "failed";
+  story: string;
+  roundSummary: string;
+  summaryText: string;
+  error: string;
+}
+
+export function resolveRecoveredView({
+  eventStory,
+  eventOptions,
+  playerState,
+  progress,
+  roundInfo,
+}: RecoveryContext): RecoveredView {
+  if (eventOptions?.length) {
+    return {
+      phase: "options",
+      story: eventStory || "",
+      roundSummary: "",
+      summaryText: "",
+      error: "",
+    };
+  }
+
+  const saved = playerState?.resume_view;
+  if (saved?.phase) {
+    return {
+      phase: saved.phase,
+      story: saved.story_text || "",
+      roundSummary: saved.round_summary || "",
+      summaryText: saved.summary_text || "",
+      error: saved.error || "",
+    };
+  }
+
+  if (playerState) {
+    const roundState =
+      getCurrentRoundState(progress, roundInfo) || getPlayerRoundState(playerState);
+    const previous = findImmediatePreviousRound(playerState, roundState);
+    if (previous?.story) {
+      return {
+        phase: "result",
+        story: previous.story,
+        roundSummary: previous.summary,
+        summaryText: "",
+        error: "",
+      };
+    }
+  }
+
+  return {
+    phase: "loading",
+    story: eventStory || "",
+    roundSummary: "",
+    summaryText: "",
+    error: "",
+  };
 }
 
 export interface StoryRecoveryOptions {
@@ -97,6 +158,47 @@ function getLastRoundHistoryText(playerState: PlayerState): string | null {
   return historyText || null;
 }
 
+function getPlayerRoundState(playerState: PlayerState): RoundState {
+  return {
+    week: toNumber(playerState.week) ?? 0,
+    round: toNumber(playerState.current_round) ?? 0,
+    roundsPerWeek: toNumber(playerState.rounds_per_week),
+  };
+}
+
+function findImmediatePreviousRound(
+  playerState: PlayerState,
+  currentRoundState: RoundState
+): { story: string; summary: string } | null {
+  const entries = playerState.round_history;
+  if (!Array.isArray(entries) || entries.length === 0) return null;
+
+  const lastEntry = entries[entries.length - 1] as {
+    week?: unknown;
+    round?: unknown;
+    summary?: unknown;
+    event_description?: unknown;
+    story_continuation?: unknown;
+  };
+  const lastWeek = toNumber(lastEntry.week);
+  const lastRound = toNumber(lastEntry.round);
+  const roundsPerWeek = currentRoundState.roundsPerWeek ?? toNumber(playerState.rounds_per_week);
+  const isPreviousRound =
+    (currentRoundState.round > 0 &&
+      lastWeek === currentRoundState.week &&
+      lastRound === currentRoundState.round - 1) ||
+    (currentRoundState.round === 0 &&
+      roundsPerWeek !== null &&
+      lastWeek === currentRoundState.week - 1 &&
+      lastRound === roundsPerWeek - 1);
+
+  if (!isPreviousRound) return null;
+  return {
+    story: buildHistoryText(lastEntry),
+    summary: typeof lastEntry.summary === "string" ? lastEntry.summary : "",
+  };
+}
+
 function canUseLastRoundFullStory(playerState: PlayerState, currentRoundState: RoundState): boolean {
   const entries = playerState.round_history;
   const hasCurrentEventData = Boolean((playerState as Record<string, unknown>).current_event_data);
@@ -143,7 +245,18 @@ export function resolveRecoveredStoryText({
     return "";
   }
 
+  const savedStory = playerState.resume_view?.story_text;
+  if (savedStory?.trim()) {
+    return savedStory;
+  }
+
   const currentRoundState = getCurrentRoundState(progress, roundInfo);
+  const inferenceRoundState = currentRoundState || getPlayerRoundState(playerState);
+
+  const previous = findImmediatePreviousRound(playerState, inferenceRoundState);
+  if (previous?.story && !playerState.current_event_data) {
+    return previous.story;
+  }
 
   if (currentRoundState) {
     const currentRoundHistoryText = findCurrentRoundHistoryText(playerState, currentRoundState);
@@ -188,7 +301,18 @@ export function resolveRecoveredStoryMeta({
     return { story: "", source: "fallback" };
   }
 
+  const savedStory = playerState.resume_view?.story_text;
+  if (savedStory?.trim()) {
+    return { story: savedStory, source: "fallback" };
+  }
+
   const currentRoundState = getCurrentRoundState(progress, roundInfo);
+  const inferenceRoundState = currentRoundState || getPlayerRoundState(playerState);
+
+  const previous = findImmediatePreviousRound(playerState, inferenceRoundState);
+  if (previous?.story && !playerState.current_event_data) {
+    return { story: previous.story, source: "round_history" };
+  }
 
   if (currentRoundState) {
     const currentRoundHistoryText = findCurrentRoundHistoryText(playerState, currentRoundState);

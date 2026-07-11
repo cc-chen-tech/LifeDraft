@@ -1,5 +1,9 @@
 import type { PlayerState, GameProgress, RoundInfo } from "@/lib/types";
-import { resolveRecoveredStoryMeta, resolveRecoveredStoryText } from "@/lib/sessionRecovery";
+import {
+  resolveRecoveredStoryMeta,
+  resolveRecoveredStoryText,
+  resolveRecoveredView,
+} from "@/lib/sessionRecovery";
 
 const basePlayerState: PlayerState = {
   player_name: "Test Player",
@@ -16,6 +20,86 @@ const basePlayerState: PlayerState = {
 };
 
 describe("sessionRecovery", () => {
+  it("restores a saved result view without treating the advanced round as a new event", () => {
+    const playerState: PlayerState = {
+      ...basePlayerState,
+      week: 3,
+      current_round: 1,
+      resume_view: {
+        phase: "result",
+        story_text: "第4周周一原故事\n\n选择后的完整结果",
+        round_summary: "本轮总结",
+        summary_text: "",
+        completed_week: 3,
+        completed_round: 0,
+      },
+    };
+
+    expect(resolveRecoveredStoryText({ playerState })).toBe(
+      "第4周周一原故事\n\n选择后的完整结果"
+    );
+    expect(resolveRecoveredView({ playerState })).toEqual({
+      phase: "result",
+      story: "第4周周一原故事\n\n选择后的完整结果",
+      roundSummary: "本轮总结",
+      summaryText: "",
+      error: "",
+    });
+  });
+
+  it("restores options, generating, summary, and failed as distinct phases", () => {
+    expect(
+      resolveRecoveredView({
+        eventStory: "待选择故事",
+        eventOptions: [{ text: "选择一" }],
+        playerState: basePlayerState,
+      }).phase
+    ).toBe("options");
+
+    for (const phase of ["generating", "summary", "failed"] as const) {
+      const playerState: PlayerState = {
+        ...basePlayerState,
+        resume_view: {
+          phase,
+          story_text: "保存时可见正文",
+          round_summary: "",
+          summary_text: phase === "summary" ? "保存时周总结" : "",
+          error: phase === "failed" ? "生成中断" : "",
+          completed_week: 2,
+          completed_round: 1,
+        },
+      };
+      expect(resolveRecoveredView({ playerState }).phase).toBe(phase);
+    }
+  });
+
+  it("safely restores a legacy completed result that predates resume_view", () => {
+    const playerState: PlayerState = {
+      ...basePlayerState,
+      week: 3,
+      current_round: 1,
+      rounds_per_week: 3,
+      current_event_data: null,
+      round_history: [
+        {
+          week: 3,
+          round: 0,
+          event_description: "旧存档周一事件",
+          story_continuation: "旧存档选择结果",
+          summary: "旧存档轮次总结",
+        },
+      ],
+    };
+
+    expect(resolveRecoveredView({ playerState })).toEqual({
+      phase: "result",
+      story: "旧存档周一事件\n\n旧存档选择结果",
+      roundSummary: "旧存档轮次总结",
+      summaryText: "",
+      error: "",
+    });
+  });
+
   it("uses event story when it is available", () => {
     const playerState: PlayerState = {
       ...basePlayerState,

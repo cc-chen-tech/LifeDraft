@@ -89,6 +89,32 @@ async def create_game(
     )
 
 
+def _response_from_live_session(game_id: int, game_loop) -> GameStateResponse:
+    state = game_loop.get_state()
+    quality_level = getattr(game_loop, "quality_level", "expert")
+    return GameStateResponse(
+        game_id=game_id,
+        player_state=state.to_dict() if state else {},
+        progress=game_loop.get_progress(),
+        round_info=game_loop.get_round_info(),
+        current_event=(game_loop.current_event.model_dump() if game_loop.current_event else None),
+        constraint_level=quality_level if isinstance(quality_level, str) else "expert",
+    )
+
+
+def _mark_orphaned_generation_interrupted(game_loop) -> None:
+    """A persisted running marker without a live session has no attachable worker."""
+    player_state = game_loop.get_state()
+    resume_view = getattr(player_state, "resume_view", None) if player_state else None
+    if not isinstance(resume_view, dict) or resume_view.get("phase") != "generating":
+        return
+    player_state.resume_view = {
+        **resume_view,
+        "phase": "failed",
+        "error": "上次生成会话已中断，请点击恢复当前进度后重试。",
+    }
+
+
 @router.get("", response_model=List[GameListItem])
 async def list_games(
     limit: int = 50,
@@ -135,6 +161,11 @@ async def get_active_game(
 
     logger.info(f"[get_active_game] Found active game for user {user_id}: game_id={active_game_id}")
 
+    live_session = session_service.get(active_game_id, user_id)
+    if live_session is not None:
+        logger.info("[get_active_game] Reusing live session for exact phase recovery")
+        return _response_from_live_session(active_game_id, live_session.game_loop)
+
     # 加载游戏状态
     state_data = db.load_saved_game(active_game_id, user_id)
     if state_data is None:
@@ -152,6 +183,9 @@ async def get_active_game(
         constraint_level = state_data.get("constraint_level", "expert") if state_data else "expert"
         game_loop = GameLoop(language=language, quality_level=constraint_level)
         game_loop.load_game(state_data)
+        _mark_orphaned_generation_interrupted(game_loop)
+        if game_loop.player_state and game_loop.player_state.resume_view:
+            db.save_game_progress(active_game_id, game_loop.player_state)
         logger.info("[get_active_game] GameLoop loaded successfully")
     except Exception as e:
         logger.exception(f"[get_active_game] Failed to load game: {e}")
@@ -185,6 +219,12 @@ async def load_game(
 ):
     """Load a saved game and create a GameLoop session."""
     db = get_db()
+    live_session = session_service.get(game_id, user_id)
+    if live_session is not None:
+        db.set_active_game(user_id, game_id)
+        logger.info("[load_game] Reusing live session for exact phase recovery")
+        return _response_from_live_session(game_id, live_session.game_loop)
+
     state_data = db.load_saved_game(game_id, user_id)
     if state_data is None:
         raise HTTPException(status_code=404, detail="Game not found or not owned by user")
@@ -196,6 +236,10 @@ async def load_game(
     constraint_level = state_data.get("constraint_level", "expert") if state_data else "expert"
     game_loop = GameLoop(language=language, quality_level=constraint_level)
     game_loop.load_game(state_data)
+    _mark_orphaned_generation_interrupted(game_loop)
+
+    if game_loop.player_state and game_loop.player_state.resume_view:
+        db.save_game_progress(game_id, game_loop.player_state)
 
     # Store in session
     session_store.put(game_id, game_loop, user_id=user_id, language=language)
@@ -512,11 +556,11 @@ async def update_game_settings(
             db_session.close()
 
         # 同步更新会话中的 GameLoop
-        game_session = session_store.get(game_id)
+        game_session = session_store.get(game_id, user_id=user_id)
         if game_session and game_session.game_loop:
             game_session.game_loop.quality_level = req.constraint_level
             from src.ai.generator import EventGenerator
-            from src.game.character_creator import CharacterCreator
+            from src.game.character_creation import CharacterCreator
             from src.game.story_service import StoryService
             from src.game.yearly_summary import YearlySummaryGenerator
 

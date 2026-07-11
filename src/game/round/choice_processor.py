@@ -338,6 +338,8 @@ class RoundChoiceProcessor:
 
         # 5. Save records
         date_info = player_state.get_game_date_info()
+        completed_week = player_state.week
+        completed_round = player_state.current_round
 
         round_record = {
             "week": player_state.week,
@@ -446,6 +448,25 @@ class RoundChoiceProcessor:
             f"[ChoiceProcessor] Final cleanup - current_event_data after: {player_state.current_event_data is not None}"
         )
         result["game_over"] = player_state.is_game_over()
+
+        visible_phase = (
+            "ending"
+            if result["game_over"]
+            else "summary"
+            if need_weekly_summary and result.get("weekly_summary")
+            else "result"
+        )
+        player_state.resume_view = {
+            "phase": visible_phase,
+            "story_text": full_story,
+            "round_summary": summary,
+            "summary_text": (
+                result.get("weekly_summary", "") if visible_phase == "summary" else ""
+            ),
+            "resource_warnings": list(resource_warnings or []),
+            "completed_week": completed_week,
+            "completed_round": completed_round,
+        }
 
         if self.result_callback:
             self.result_callback(result, player_state)

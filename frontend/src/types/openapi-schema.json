@@ -1384,6 +1384,52 @@
         }
       }
     },
+    "/api/games/{game_id}/resume-view/acknowledge": {
+      "post": {
+        "tags": [
+          "Gameplay"
+        ],
+        "summary": "Acknowledge Resume View",
+        "description": "Clear an exact saved result only after the user explicitly continues.",
+        "operationId": "acknowledge_resume_view_api_games__game_id__resume_view_acknowledge_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/games/{game_id}/event": {
       "get": {
         "tags": [

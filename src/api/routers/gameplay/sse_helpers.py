@@ -490,6 +490,31 @@ def _persist_generated_event_state(game_loop, game_id: int) -> None:
         logger.exception(f"Auto-save unexpected error after event generation: {e}")
 
 
+def _set_generation_resume_view(
+    game_loop,
+    game_id: int,
+    phase: str,
+    error: str = "",
+) -> None:
+    """Persist a recoverable visible phase around the durable worker."""
+    player_state = getattr(game_loop, "player_state", None)
+    if player_state is None:
+        return
+    if phase == "options":
+        player_state.resume_view = None
+    else:
+        player_state.resume_view = {
+            "phase": phase,
+            "story_text": "",
+            "round_summary": "",
+            "summary_text": "",
+            "error": error,
+            "completed_week": int(player_state.week),
+            "completed_round": int(player_state.current_round),
+        }
+    _persist_generated_event_state(game_loop, game_id)
+
+
 def _persist_choice_state(game_loop, game_id: int) -> None:
     """Persist choice result state immediately after worker choice processing returns."""
     try:
@@ -525,7 +550,7 @@ def _run_event_generation_operation(operation, game_loop, game_id: int, session)
         )
         if event is None:
             raise RuntimeError("No event returned from event generation")
-        _persist_generated_event_state(game_loop, game_id)
+        _set_generation_resume_view(game_loop, game_id, "options")
         operation.complete(event)
         try:
             _trigger_round_illustration_generation(game_loop, game_id, event, stage="event")
@@ -533,6 +558,7 @@ def _run_event_generation_operation(operation, game_loop, game_id: int, session)
             logger.exception("Failed to trigger round illustration: %s", exc)
     except Exception as exc:
         logger.exception("Event generation operation failed: %s", exc)
+        _set_generation_resume_view(game_loop, game_id, "failed", str(exc))
         operation.fail(str(exc))
 
 
@@ -541,6 +567,7 @@ def get_or_start_round_event_generation(game_loop, game_id: int, session):
     key = build_event_generation_key(game_id, game_loop)
     operation, should_start = session.event_generation.get_or_create(key)
     if should_start:
+        _set_generation_resume_view(game_loop, game_id, "generating")
         _get_sse_thread_pool().submit(
             _run_event_generation_operation,
             operation,

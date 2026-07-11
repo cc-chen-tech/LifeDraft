@@ -268,6 +268,8 @@ export const useGameStore = create<GameState>()(
           ...result.event,
           story: result.event.story || result.storyText,
         });
+      } else {
+        useEventStore.getState().setCurrentEvent(null);
       }
       if (result.storyText) {
         useEventStore.getState().setStoryText(result.storyText);
@@ -277,6 +279,8 @@ export const useGameStore = create<GameState>()(
             story: result.storyText,
           });
         }
+      } else {
+        useEventStore.getState().setStoryText("");
       }
 
       // Update character store

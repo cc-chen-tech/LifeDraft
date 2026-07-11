@@ -9,7 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from src.api.deps import get_current_user_optional
+from src.api.deps import get_current_user_optional, get_db
 from src.api.routers.gameplay.sse_helpers import (
     get_or_start_round_event_generation,
     replay_cached_then_complete,
@@ -22,6 +22,41 @@ from src.api.services.session_service import session_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _require_resume_view_acknowledged(game_loop) -> None:
+    resume_view = getattr(game_loop.player_state, "resume_view", None)
+    phase = resume_view.get("phase") if isinstance(resume_view, dict) else None
+    if phase in {"result", "summary", "ending"}:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "saved_view_pending",
+                "message": "A saved result is still awaiting explicit continuation.",
+            },
+        )
+
+
+@router.post("/{game_id}/resume-view/acknowledge")
+async def acknowledge_resume_view(
+    game_id: int,
+    user_id: Optional[int] = Depends(get_current_user_optional),
+):
+    """Clear an exact saved result only after the user explicitly continues."""
+    session = _require_session(game_id, user_id)
+    player_state = session.game_loop.player_state
+    resume_view = getattr(player_state, "resume_view", None)
+    phase = resume_view.get("phase") if isinstance(resume_view, dict) else None
+    if phase not in {None, "result", "summary"}:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot acknowledge resume view in phase: {phase}",
+        )
+
+    player_state.resume_view = None
+    db = get_db()
+    db.save_game_progress(game_id, player_state)
+    return {"acknowledged": True}
 
 
 class SSEConnectionManager:
@@ -109,6 +144,7 @@ async def generate_event(
     try:
         session = _require_session(game_id, user_id)
         game_loop = session.game_loop
+        _require_resume_view_acknowledged(game_loop)
         last_event_id = _parse_last_event_id(request)
 
         if game_loop.is_game_over():
@@ -158,6 +194,7 @@ async def generate_event_sync(
 
     session = _require_session(game_id, user_id)
     game_loop = session.game_loop
+    _require_resume_view_acknowledged(game_loop)
 
     if game_loop.is_game_over():
         raise HTTPException(status_code=400, detail="Game is already over")
