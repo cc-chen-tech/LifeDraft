@@ -109,11 +109,6 @@ REQUIRED_BROWSER_API_ROUTES = {
     ("POST", "/api/presets"),
     ("GET", "/api/presets/{preset_id}"),
     ("DELETE", "/api/presets/{preset_id}"),
-    ("GET", "/api/friends"),
-    ("GET", "/api/friends/requests"),
-    ("POST", "/api/friends/request"),
-    ("POST", "/api/friends/respond"),
-    ("DELETE", "/api/friends/{friend_user_id}"),
     ("POST", "/api/music/recommend"),
     ("GET", "/api/music/song-url"),
     ("GET", "/api/music/search"),
@@ -122,6 +117,11 @@ REQUIRED_BROWSER_API_ROUTES = {
 
 
 DEPRECATED_BROWSER_API_ROUTES = {
+    ("GET", "/api/friends"),
+    ("GET", "/api/friends/requests"),
+    ("POST", "/api/friends/request"),
+    ("POST", "/api/friends/respond"),
+    ("DELETE", "/api/friends/{friend_user_id}"),
     ("GET", "/api/games/{game_id}/round-scenes/{round_number}"),
     ("POST", "/api/games/{game_id}/regenerate/stream"),
     ("POST", "/api/games/{game_id}/rewrite/stream"),

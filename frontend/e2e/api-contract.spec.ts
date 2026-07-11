@@ -509,38 +509,6 @@ test.describe('API Contract - Preset Endpoints', () => {
   });
 });
 
-test.describe('API Contract - Friends Endpoints', () => {
-  test('GET /api/friends should exist', async ({ request }) => {
-    const result = await testEndpoint(request, 'GET', '/api/friends');
-    expect(result.exists).toBe(true);
-    expect(result.error).toBeNull();
-  });
-
-  test('GET /api/friends/requests should exist', async ({ request }) => {
-    const result = await testEndpoint(request, 'GET', '/api/friends/requests');
-    expect(result.exists).toBe(true);
-    expect(result.error).toBeNull();
-  });
-
-  test('POST /api/friends/request should exist', async ({ request }) => {
-    const result = await testEndpoint(request, 'POST', '/api/friends/request', [200, 400, 401, 422, 429], { to_public_id: 'test-nonexistent-id' });
-    expect(result.exists).toBe(true);
-    expect(result.error).toBeNull();
-  });
-
-  test('POST /api/friends/respond should exist', async ({ request }) => {
-    const result = await testEndpoint(request, 'POST', '/api/friends/respond', [200, 400, 401, 422, 429], { request_id: 999999, accept: false });
-    expect(result.exists).toBe(true);
-    expect(result.error).toBeNull();
-  });
-
-  test('DELETE /api/friends/:userId should exist', async ({ request }) => {
-    const result = await testEndpoint(request, 'DELETE', '/api/friends/999999');
-    expect(result.exists).toBe(true);
-    expect(result.error).toBeNull();
-  });
-});
-
 test.describe('API Contract - Music Endpoints', () => {
   // 音乐 API 依赖外部网易云服务，响应可能较慢，给更长的超时
   const MUSIC_API_TIMEOUT = 30000;
@@ -681,46 +649,6 @@ test.describe('API Contract - Schema Validation', () => {
         expect(typeof preset.preset_name).toBe('string');
         expect(preset).toHaveProperty('player_name');
         expect(typeof preset.player_name).toBe('string');
-      }
-    } else {
-      expect([401]).toContain(status);
-    }
-  });
-
-  test('GET /api/friends should return array or 401', async ({ request }) => {
-    const url = `${API_URL}/api/friends`;
-    const response = await request.get(url);
-    const status = response.status();
-
-    if (status === 200) {
-      const body = await response.json();
-      expect(Array.isArray(body)).toBe(true);
-      if (body.length > 0) {
-        const friend = body[0];
-        expect(friend).toHaveProperty('user_id');
-        expect(typeof friend.user_id).toBe('number');
-        expect(friend).toHaveProperty('public_id');
-        expect(typeof friend.public_id).toBe('string');
-      }
-    } else {
-      expect([401]).toContain(status);
-    }
-  });
-
-  test('GET /api/friends/requests should return array or 401', async ({ request }) => {
-    const url = `${API_URL}/api/friends/requests`;
-    const response = await request.get(url);
-    const status = response.status();
-
-    if (status === 200) {
-      const body = await response.json();
-      expect(Array.isArray(body)).toBe(true);
-      if (body.length > 0) {
-        const req = body[0];
-        expect(req).toHaveProperty('request_id');
-        expect(typeof req.request_id).toBe('number');
-        expect(req).toHaveProperty('from_user');
-        expect(typeof req.from_user).toBe('object');
       }
     } else {
       expect([401]).toContain(status);

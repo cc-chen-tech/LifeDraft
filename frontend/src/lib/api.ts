@@ -489,30 +489,6 @@ export const api = {
       }),
   },
 
-  // Friends
-  friends: {
-    list: () =>
-      fetchJson<Array<{ user_id: number; display_name: string; public_id: string }>>('/friends'),
-    pendingRequests: () =>
-      fetchJson<Array<{
-        request_id: number;
-        from_user: { user_id: number; public_id: string; display_name: string };
-        created_at: string;
-      }>>('/friends/requests'),
-    sendRequest: (data: { to_public_id: string }) =>
-      fetchJson<{ success: boolean }>('/friends/requests', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
-    respond: (data: { request_id: number; accept: boolean }) =>
-      fetchJson<{ success: boolean }>(`/friends/requests/${data.request_id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ accept: data.accept }),
-      }),
-    remove: (userId: number) =>
-      fetchJson<{ success: boolean }>(`/friends/${userId}`, { method: 'DELETE' }),
-  },
-
   // Images
   images: {
     listByGame: (gameId: number, imageType?: string) =>

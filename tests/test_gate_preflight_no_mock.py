@@ -445,7 +445,7 @@ def test_frontend_image_generation_path_is_checked_before_e2e() -> None:
 
 
 def test_api_runtime_files_remain_python39_import_compatible() -> None:
-    router_source = (ROOT / "src" / "api" / "routers" / "friends.py").read_text(
+    router_source = (ROOT / "src" / "api" / "routers" / "auth.py").read_text(
         encoding="utf-8"
     )
 

@@ -571,19 +571,12 @@ describe('PlayPage', () => {
   });
 
   describe('Navigation buttons', () => {
-    it('shows friends button that navigates to profile', () => {
-      const mockRouter = { push: jest.fn() };
-      const originalHook = jest.requireMock('@/hooks/usePlayGame');
-      originalHook.usePlayGame = () => ({
-        ...mockUsePlayGame,
-        router: mockRouter,
-      });
-
+    it('does not expose the retired friends feature', () => {
       render(<PlayPage />);
-      const friendsButton = screen.getByRole('button', { name: /好友|社交|friends/i });
-      expect(friendsButton).toBeInTheDocument();
-      fireEvent.click(friendsButton);
-      expect(mockRouter.push).toHaveBeenCalledWith('/profile');
+
+      expect(
+        screen.queryByRole('button', { name: /好友|社交|friends/i }),
+      ).not.toBeInTheDocument();
     });
   });
 
