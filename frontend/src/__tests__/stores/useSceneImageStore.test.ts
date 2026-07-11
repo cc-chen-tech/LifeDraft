@@ -10,6 +10,8 @@ import { jsonResponse, errorResponse } from '@/__tests__/helpers/fetch';
 
 describe('useSceneImageStore', () => {
   beforeEach(() => {
+    global.fetch = jest.fn();
+    useSceneImageStore.getState().clearImageCache();
     // Reset store to initial state
     useSceneImageStore.setState({
       roundSceneImages: [],
@@ -26,7 +28,6 @@ describe('useSceneImageStore', () => {
       isRegeneratingHistoryImage: false,
     });
     jest.clearAllMocks();
-    global.fetch = jest.fn();
   });
 
   describe('fetchAllRoundSceneImages - 跨周次场景测试', () => {
@@ -229,6 +230,43 @@ describe('useSceneImageStore', () => {
         roundSceneError: '图片生成额度暂时不可用，请稍后再试',
       });
       expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not repeat a failed automatic scene fetch until explicit retry', async () => {
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(errorResponse(503, {
+          code: 'minimax_2013',
+          message: '图片生成参数无效，请调整后重试',
+          retryable: false,
+        }))
+        .mockResolvedValueOnce(jsonResponse({
+          scene_id: 3,
+          week: 0,
+          round_number: 0,
+          stage: 'event',
+          image_url: 'http://example.com/recovered.png',
+          scene_description: '显式重试后的场景',
+          referenced_images: [],
+          created_at: '2024-01-01T00:00:00Z',
+        }));
+
+      const store = useSceneImageStore.getState();
+
+      await store.fetchRoundSceneImage(1, 0, 0, 'event');
+      await store.fetchRoundSceneImage(1, 0, 0, 'event');
+
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(useSceneImageStore.getState().roundSceneError).toBe('图片生成参数无效，请调整后重试');
+
+      await store.fetchRoundSceneImage(1, 0, 0, 'event', { retry: true });
+
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+      expect(global.fetch).toHaveBeenLastCalledWith(
+        '/api/images/scene/1/0?stage=event&week=0&retry=true',
+        expect.objectContaining({ credentials: 'include' })
+      );
+      expect(useSceneImageStore.getState().roundSceneError).toBeNull();
+      expect(useSceneImageStore.getState().eventSceneImage?.scene_id).toBe(3);
     });
 
     it('adds retry=true only for an explicit scene retry', async () => {
