@@ -93,6 +93,44 @@ describe('SSE Streaming', () => {
       expect(onChunk).toHaveBeenCalledWith('Hello World');
     });
 
+    it('commits numeric SSE ids after delivering their story chunks', async () => {
+      const onEventId = jest.fn();
+      const onStory = jest.fn();
+      const callbacks: StreamCallbacks = { onEventId, onStory };
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: createMockStream([
+          'id: 4\nevent: story\ndata: "后续片段"\n\n',
+          'event: complete\ndata: {"event_description":"完成","options":[{"text":"继续"}]}\n\n',
+        ]),
+      });
+
+      await streamGameEvent(3, callbacks);
+
+      expect(onEventId).toHaveBeenCalledWith(4);
+      expect(onStory.mock.invocationCallOrder[0]).toBeLessThan(
+        onEventId.mock.invocationCallOrder[0]
+      );
+      expect(onStory).toHaveBeenCalledWith('后续片段');
+    });
+
+    it('sends Last-Event-ID only for a resume request', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: createMockStream([
+          'event: complete\ndata: {"event_description":"完成","options":[{"text":"继续"}]}\n\n',
+        ]),
+      });
+
+      await streamGameEvent(3, {}, { lastEventId: 7 });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/games/3/event',
+        expect.objectContaining({ headers: { 'Last-Event-ID': '7' } })
+      );
+    });
+
     it('handles text field in data', async () => {
       const onChunk = jest.fn();
       const callbacks: StreamCallbacks = { onChunk };

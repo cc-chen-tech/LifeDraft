@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from src.ai.harness.era_validator import validate_era_consistency
+from src.ai.professional_risk import find_unsafe_professional_claims
 from src.game.relationship_authority import extract_required_key_people
 
 logger = logging.getLogger(__name__)
@@ -152,6 +153,9 @@ class QuickValidator:
         # 1. 检查违禁词
         forbidden_issues = self._check_forbidden_words(story_text, language)
         issues.extend(forbidden_issues)
+
+        if find_unsafe_professional_claims(story_text, language=language):
+            issues.append("unsafe_professional_guarantee")
 
         # 2. 检查人物名是否在允许列表中
         if available_people:

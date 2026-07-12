@@ -12,8 +12,12 @@ from sqlalchemy.orm import Session
 
 from src.ai.image_client import ImageClient
 from src.ai.image_exceptions import (ContentInspectionError,
-                                     ImageGenerationError)
+                                     ImageGenerationError,
+                                     ImageProviderError)
 from src.database.models import Image as ImageModel
+from src.services.image import ImageContentError as ImageContentError
+from src.services.image import ImageProviderServiceError as ImageProviderServiceError
+from src.services.image import ImageServiceError as ImageServiceError
 from src.services.image.character_service import CharacterImageService
 from src.services.image.scene_service import SceneImageService
 from src.services.image_storage import ImageStorageService
@@ -40,18 +44,6 @@ def shutdown_image_thread_pool(wait: bool = True) -> None:
     if _image_thread_pool is not None:
         _image_thread_pool.shutdown(wait=wait)
         _image_thread_pool = None
-
-
-class ImageServiceError(Exception):
-    """图像服务错误"""
-
-
-class ImageContentError(ImageServiceError):
-    """图像内容审核错误"""
-
-    def __init__(self, message: str, original_prompt: Optional[str] = None):
-        super().__init__(message)
-        self.original_prompt = original_prompt
 
 
 class ImageService:
@@ -395,6 +387,9 @@ class ImageService:
         except ContentInspectionError as e:
             logger.warning(f"Content inspection failed for round scene: {e}")
             raise ImageContentError(str(e), e.original_prompt)
+        except ImageProviderError as e:
+            self.db.rollback()
+            raise ImageProviderServiceError.from_provider(e) from e
         except ImageGenerationError as e:
             logger.error(f"Image generation failed: {e}")
             raise ImageServiceError(f"场景插画重新生成失败: {e}")
@@ -506,6 +501,9 @@ class ImageService:
 
             return image_model
 
+        except ImageProviderError as e:
+            self.db.rollback()
+            raise ImageProviderServiceError.from_provider(e) from e
         except (ValueError, TypeError, KeyError) as e:
             logger.warning(f"Invalid data in generate_location_image: {e}")
             self.db.rollback()
@@ -557,6 +555,9 @@ class ImageService:
 
             return image_model
 
+        except ImageProviderError as e:
+            self.db.rollback()
+            raise ImageProviderServiceError.from_provider(e) from e
         except (ValueError, TypeError, KeyError) as e:
             logger.warning(f"Invalid data in generate_item_image: {e}")
             self.db.rollback()

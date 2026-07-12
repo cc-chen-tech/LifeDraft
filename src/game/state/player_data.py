@@ -81,6 +81,12 @@ class PlayerDataMixin:
     # Structure: {"event_description": "...", "options": [{"text": "...", "effects": {...}}], "story_text": "..."}
     current_event_data: Optional[Dict[str, Any]] = Field(default=None)
 
+    # Exact user-visible phase for states that are not represented by an
+    # unchosen current_event_data object. This prevents save/load from treating
+    # a committed result or weekly summary as permission to generate the next
+    # round automatically.
+    resume_view: Optional[Dict[str, Any]] = Field(default=None)
+
     # 未完结的重要剧情线
     # Structure: [{"description": "...", "created_week": 0, "importance": "high/medium",
     #              "status": "active/deferred", "related_characters": [], "last_mentioned_week": 0}]
@@ -136,6 +142,35 @@ class PlayerDataMixin:
             "physical_states": {},
             "dynamic_facts": [],
             "character_profiles": {},
+        }
+    )
+
+    # P1-7 authoritative continuity ledger. Narrative prose is never the
+    # authority for identity, chronology, committed events, health, or
+    # relationships; every mutable entry carries its source event.
+    continuity_ledger: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            "version": 1,
+            "immutable_identities": {},
+            "timeline": [],
+            "completed_events": {},
+            "mutable_states": {"health": {}, "relationships": {}, "facts": {}},
+            "corrections": [],
+            "conflicts": [],
+        }
+    )
+
+    # P1-8 source-linked audit for the authoritative numeric ``wealth`` field.
+    # The ledger never replaces ``wealth`` as a spendable balance; it explains
+    # each gameplay mutation and rejects unsupported exact narrative claims.
+    wealth_ledger: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            "version": 1,
+            "opening_balance": 0,
+            "balance_snapshot": 0,
+            "currency_name": "元",
+            "transactions": [],
+            "conflicts": [],
         }
     )
 

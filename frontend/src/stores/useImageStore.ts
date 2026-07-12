@@ -29,6 +29,7 @@ interface ImageState {
   playerImages: ImageResponse[];
   selectedImageIndex: number;
   isGeneratingImage: boolean;
+  imageGenerationError: string | null;
   isLoadingPlayerImages: boolean;  // ★ 加载玩家图片中
   imageFeedback: string;
 
@@ -67,6 +68,7 @@ export const useImageStore = create<ImageState>()(
     playerImages: [],
     selectedImageIndex: 0,
     isGeneratingImage: false,
+    imageGenerationError: null,
     isLoadingPlayerImages: false,  // ★ 初始不处于加载状态
     imageFeedback: "",
 
@@ -76,8 +78,18 @@ export const useImageStore = create<ImageState>()(
     illustrationError: null,
 
     // Player Image Actions
-    setPlayerImage: (image) => set({ playerImage: image, playerImages: image ? [image] : [], selectedImageIndex: 0 }),
-    setPlayerImages: (images) => set({ playerImages: images, selectedImageIndex: 0, playerImage: images[0] || null }),
+    setPlayerImage: (image) => set({
+      playerImage: image,
+      playerImages: image ? [image] : [],
+      selectedImageIndex: 0,
+      imageGenerationError: image ? null : get().imageGenerationError,
+    }),
+    setPlayerImages: (images) => set({
+      playerImages: images,
+      selectedImageIndex: 0,
+      playerImage: images[0] || null,
+      imageGenerationError: images.length > 0 ? null : get().imageGenerationError,
+    }),
     setSelectedImageIndex: (index) => set((state) => ({ selectedImageIndex: index, playerImage: state.playerImages[index] || null })),
     setIsGeneratingImage: (isGenerating) => set({ isGeneratingImage: isGenerating }),
     setImageFeedback: (feedback) => set({ imageFeedback: feedback }),
@@ -90,7 +102,11 @@ export const useImageStore = create<ImageState>()(
         throw new Error("请先输入角色姓名");
       }
 
-      set({ isGeneratingImage: true, imageFeedback: feedback || "" });
+      set({
+        isGeneratingImage: true,
+        imageGenerationError: null,
+        imageFeedback: feedback || "",
+      });
 
       try {
         const era = characterSettings.era as EraSetting | undefined;
@@ -140,11 +156,15 @@ export const useImageStore = create<ImageState>()(
           playerImage: images[0] || null,
           selectedImageIndex: 0,
           isGeneratingImage: false,
+          imageGenerationError: null,
           imageFeedback: "",
         });
       } catch (err) {
         console.error("[generatePlayerImage] Failed:", err);
-        set({ isGeneratingImage: false });
+        set({
+          isGeneratingImage: false,
+          imageGenerationError: err instanceof Error ? err.message : "人物形象生成失败",
+        });
         throw err;
       }
     },
@@ -157,7 +177,7 @@ export const useImageStore = create<ImageState>()(
         throw new Error("没有可重新生成的图片");
       }
 
-      set({ isGeneratingImage: true, imageFeedback: feedback });
+      set({ isGeneratingImage: true, imageGenerationError: null, imageFeedback: feedback });
 
       try {
         const result = await api.images.regenerate(selectedImage.image_id, {
@@ -170,11 +190,15 @@ export const useImageStore = create<ImageState>()(
           playerImage: newImages[0] || null,
           selectedImageIndex: 0,
           isGeneratingImage: false,
+          imageGenerationError: null,
           imageFeedback: "",
         });
       } catch (err) {
         console.error("[regeneratePlayerImage] Failed:", err);
-        set({ isGeneratingImage: false });
+        set({
+          isGeneratingImage: false,
+          imageGenerationError: err instanceof Error ? err.message : "人物形象重新生成失败",
+        });
         throw err;
       }
     },
@@ -187,7 +211,7 @@ export const useImageStore = create<ImageState>()(
         throw new Error("没有可重新生成的图片");
       }
 
-      set({ isGeneratingImage: true });
+      set({ isGeneratingImage: true, imageGenerationError: null });
 
       try {
         const result = await api.images.regenerateFresh(selectedImage.image_id);
@@ -197,11 +221,15 @@ export const useImageStore = create<ImageState>()(
           playerImage: newImages[0] || null,
           selectedImageIndex: 0,
           isGeneratingImage: false,
+          imageGenerationError: null,
           imageFeedback: "",
         });
       } catch (err) {
         console.error("[regenerateFreshPlayerImage] Failed:", err);
-        set({ isGeneratingImage: false });
+        set({
+          isGeneratingImage: false,
+          imageGenerationError: err instanceof Error ? err.message : "人物形象重新生成失败",
+        });
         throw err;
       }
     },
@@ -228,6 +256,7 @@ export const useImageStore = create<ImageState>()(
               playerImage: playerImages[0],
               selectedImageIndex: 0,
               isLoadingPlayerImages: false,
+              imageGenerationError: null,
             });
             console.log("[loadPlayerImages] Loaded", playerImages.length, "player images");
           } else {
@@ -315,6 +344,7 @@ export const useImageStore = create<ImageState>()(
         playerImages: [],
         selectedImageIndex: 0,
         isGeneratingImage: false,
+        imageGenerationError: null,
         imageFeedback: "",
         openingIllustration: null,
         isGeneratingIllustration: false,

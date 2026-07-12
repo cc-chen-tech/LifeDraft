@@ -4,6 +4,7 @@ import logging
 from typing import Any, Dict, Optional
 
 from src.ai.generator import EventGenerator
+from src.ai.professional_risk import apply_professional_risk_guardrail
 from src.ai.system_prompts import get_system_prompt
 from src.game.achievements import AchievementEngine
 from src.game.life_review import LifeReviewGenerator
@@ -213,12 +214,13 @@ Generate a complete life summary reviewing the character's entire life journey, 
 
 Be vivid and specific, reflecting the character's uniqueness."""
 
-                return self.ai_generator.generate_completion(
+                summary = self.ai_generator.generate_completion(
                     prompt=prompt,
                     system_prompt=get_system_prompt("narrative_summary", language),
                     temperature=0.8,
                     max_tokens=4096,
                 )
+                return apply_professional_risk_guardrail(summary, language=language)
             except Exception as e:
                 logger.warning(f"Failed to generate AI summary: {e}")
 

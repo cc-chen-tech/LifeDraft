@@ -27,4 +27,15 @@ describe("api retry policy", () => {
     expect(shouldRetryApiError("/games/1/event", 0, 3)).toBe(true);
     expect(shouldRetryApiError("/games/1/event", 2, 3)).toBe(false);
   });
+
+  it("does not retry image generation mutations", () => {
+    expect(shouldRetryApiResponse(503, "/images/generate", 0)).toBe(false);
+    expect(
+      shouldRetryApiResponse(503, "/collection/1/characters/A/generate-image", 0)
+    ).toBe(false);
+    expect(shouldRetryApiError("/images/generate", 0, 3)).toBe(false);
+    expect(
+      shouldRetryApiError("/images/opening-illustration/regenerate", 0, 3)
+    ).toBe(false);
+  });
 });

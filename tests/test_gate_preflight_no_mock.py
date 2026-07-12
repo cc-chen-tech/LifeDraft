@@ -69,6 +69,20 @@ def test_preflight_script_runs_before_expensive_layers() -> None:
     )
 
 
+def test_preflight_runs_authoritative_continuity_ledger_regressions() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+
+    assert "tests/test_continuity_ledger.py" in script
+    assert "tests/test_continuity_ledger_integration.py" in script
+
+
+def test_preflight_runs_read_only_assistant_grounding_regressions() -> None:
+    script = (ROOT / "test.sh").read_text(encoding="utf-8")
+
+    assert "tests/test_assistant_grounding.py" in script
+    assert "src/game/assistant_grounding.py" in script
+
+
 def test_playwright_log_tempfile_template_has_enough_random_suffix() -> None:
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
 
@@ -445,7 +459,7 @@ def test_frontend_image_generation_path_is_checked_before_e2e() -> None:
 
 
 def test_api_runtime_files_remain_python39_import_compatible() -> None:
-    router_source = (ROOT / "src" / "api" / "routers" / "friends.py").read_text(
+    router_source = (ROOT / "src" / "api" / "routers" / "auth.py").read_text(
         encoding="utf-8"
     )
 
@@ -671,6 +685,11 @@ def test_production_deploy_syncs_minimax_secret_to_ecs_env_without_committing_ke
     assert "STORY_TTS_ALLOW_REQUEST_PROVIDER=1" in workflow
     assert "STORY_MUSIC_AI_GENERATION_ENABLED=true" in workflow
     assert "MINIMAX_TIMEOUT_SECONDS=180" in workflow
+    assert "IMAGE_API_KEY" in workflow
+    assert "IMAGE_API_BASE_URL=https://api.minimaxi.com/v1" in workflow
+    assert "IMAGE_MODEL=image-01" in workflow
+    assert "TEXT_TO_IMAGE_MODELS=image-01" in workflow
+    assert "IMAGE_EDIT_MODELS=image-01,image-01-live" in workflow
     assert "sk-" not in workflow
 
 

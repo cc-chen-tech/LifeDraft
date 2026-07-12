@@ -11,7 +11,9 @@ from config.settings import settings
 from src.ai.models import GameEvent
 from src.ai.vector_store import get_vector_store, is_vector_search_enabled
 from src.game.narrative_manager import NarrativeManager
+from src.game.continuity_ledger import ContinuityLedger
 from src.game.world_model_updater import WorldModelUpdater
+from src.game.wealth_ledger import WealthLedger
 
 if TYPE_CHECKING:
     from src.ai.generator import EventGenerator
@@ -107,12 +109,17 @@ class RoundChoiceProcessor:
         effects_requested = chosen_option.effects
         effects, resource_warnings = self._normalize_effects_for_current_state(effects_requested)
 
+        wealth_transaction_id = self._apply_wealth_transaction(
+            player_state,
+            requested_delta=effects_requested.get("wealth", effects.get("wealth", 0)),
+            reason=chosen_option.text,
+        )
+
         # 1. Apply effects immediately (real-time update)
         player_state.update(
             energy=effects.get("energy", 0),
             mood=effects.get("mood", 0),
             knowledge=effects.get("knowledge", 0),
-            wealth=effects.get("wealth", 0),
             relationships=effects.get("relationships"),
         )
 
@@ -125,6 +132,7 @@ class RoundChoiceProcessor:
             effects,
             stream_callback=stream_callback,
             status_callback=status_callback,
+            active_wealth_transaction_id=wealth_transaction_id,
         )
 
         # 3. Build full story and delegate to shared pipeline
@@ -180,12 +188,17 @@ class RoundChoiceProcessor:
         )
         effects, resource_warnings = self._normalize_effects_for_current_state(effects_requested)
 
+        wealth_transaction_id = self._apply_wealth_transaction(
+            player_state,
+            requested_delta=effects_requested.get("wealth", effects.get("wealth", 0)),
+            reason=custom_text,
+        )
+
         # 2. 应用属性变化
         player_state.update(
             energy=effects.get("energy", 0),
             mood=effects.get("mood", 0),
             knowledge=effects.get("knowledge", 0),
-            wealth=effects.get("wealth", 0),
             relationships=effects.get("relationships"),
         )
 
@@ -200,6 +213,7 @@ class RoundChoiceProcessor:
             stream_callback=stream_callback,
             status_callback=status_callback,
             is_custom=True,
+            active_wealth_transaction_id=wealth_transaction_id,
         )
 
         # 4. Build full story and delegate to shared pipeline
@@ -338,6 +352,8 @@ class RoundChoiceProcessor:
 
         # 5. Save records
         date_info = player_state.get_game_date_info()
+        completed_week = player_state.week
+        completed_round = player_state.current_round
 
         round_record = {
             "week": player_state.week,
@@ -403,6 +419,78 @@ class RoundChoiceProcessor:
             decision_record["is_custom"] = True
         player_state.decision_history.append(decision_record)
 
+        # P1-7: commit the accepted round to the authoritative ledger only
+        # after the result and its source records exist. The stable event ID
+        # makes repeated choice delivery idempotent.
+        ledger_fact_updates = list(compression_result.get("fact_updates", []))
+        for update in compression_result.get("career_updates", []):
+            subject = str(update.get("character") or "").strip()
+            role = str(update.get("new_role") or "").strip()
+            if subject and role:
+                employer = str(update.get("employer") or "").strip()
+                ledger_fact_updates.append(
+                    {
+                        "action": "update",
+                        "subject": subject,
+                        "category": "career",
+                        "fact": f"{role}{f'（{employer}）' if employer else ''}",
+                    }
+                )
+        for update in compression_result.get("location_updates", []):
+            subject = str(update.get("character") or "").strip()
+            location = str(update.get("to") or update.get("location") or "").strip()
+            if subject and location:
+                ledger_fact_updates.append(
+                    {
+                        "action": "update",
+                        "subject": subject,
+                        "category": "location",
+                        "fact": location,
+                    }
+                )
+        for update in compression_result.get("commitment_updates", []):
+            description = str(update.get("description") or "").strip()
+            action = str(update.get("action") or "").strip()
+            if not description:
+                continue
+            ledger_fact_updates.append(
+                {
+                    "action": "update" if action != "new" else "new",
+                    "subject": description,
+                    "category": "completed_event" if action == "fulfilled" else "commitment",
+                    "fact": (
+                        f"承诺已完成：{description}"
+                        if action == "fulfilled"
+                        else f"承诺状态 {action or 'pending'}：{description}"
+                    ),
+                }
+            )
+        for name, change in (effects.get("relationships") or {}).items():
+            ledger_fact_updates.append(
+                {
+                    "action": "update",
+                    "subject": str(name),
+                    "category": "relationship",
+                    "fact": (
+                        f"与主角的关系变动 {int(change):+d}，"
+                        f"当前亲密度 {player_state.relationships.get(str(name), 50)}"
+                    ),
+                }
+            )
+
+        ledger = ContinuityLedger.from_player_state(player_state)
+        ledger.record_committed_event(
+            event_id=f"w{completed_week}-r{completed_round}",
+            week=completed_week,
+            round_number=completed_round,
+            date_info=date_info,
+            summary=summary,
+            choice=choice_text,
+            story_text=full_story,
+            fact_updates=ledger_fact_updates,
+        )
+        ledger.persist(player_state)
+
         # ★ 显示用周数（人类可读，从1开始）
         week_display = f"第{player_state.week + 1}周" if player_state.week is not None else "未知周"
         logger.info(
@@ -446,6 +534,25 @@ class RoundChoiceProcessor:
             f"[ChoiceProcessor] Final cleanup - current_event_data after: {player_state.current_event_data is not None}"
         )
         result["game_over"] = player_state.is_game_over()
+
+        visible_phase = (
+            "ending"
+            if result["game_over"]
+            else "summary"
+            if need_weekly_summary and result.get("weekly_summary")
+            else "result"
+        )
+        player_state.resume_view = {
+            "phase": visible_phase,
+            "story_text": full_story,
+            "round_summary": summary,
+            "summary_text": (
+                result.get("weekly_summary", "") if visible_phase == "summary" else ""
+            ),
+            "resource_warnings": list(resource_warnings or []),
+            "completed_week": completed_week,
+            "completed_round": completed_round,
+        }
 
         if self.result_callback:
             self.result_callback(result, player_state)
@@ -539,11 +646,16 @@ class RoundChoiceProcessor:
         stream_callback: Optional[Callable[[str], None]] = None,
         status_callback: Optional[Callable[[str], None]] = None,
         is_custom: bool = False,
+        active_wealth_transaction_id: Optional[str] = None,
     ) -> str:
         """Generate a detailed story continuation. Delegates to StoryService."""
         player_state = self.player_state
         character_settings = player_state.character_settings if player_state else {}
         player_state_dict = player_state.to_dict() if player_state else {}
+        if active_wealth_transaction_id:
+            player_state_dict["_active_wealth_transaction_id"] = (
+                active_wealth_transaction_id
+            )
         return self.story_service.generate_story_continuation(
             event_description,
             chosen_option,
@@ -553,4 +665,31 @@ class RoundChoiceProcessor:
             stream_callback=stream_callback,
             status_callback=status_callback,
             is_custom=is_custom,
+            active_wealth_transaction_id=active_wealth_transaction_id,
         )
+
+    def _apply_wealth_transaction(
+        self,
+        player_state: "PlayerState",
+        *,
+        requested_delta: Any,
+        reason: str,
+    ) -> Optional[str]:
+        if not isinstance(requested_delta, int) or isinstance(requested_delta, bool):
+            requested_delta = 0
+        ledger = WealthLedger.from_player_state(player_state)
+        if requested_delta == 0:
+            ledger.persist(player_state)
+            return None
+        source_event_id = f"w{player_state.week}-r{player_state.current_round}"
+        transaction_id = f"choice:{source_event_id}"
+        ledger.apply_transaction(
+            player_state,
+            transaction_id=transaction_id,
+            requested_delta=requested_delta,
+            reason=reason,
+            source_event_id=source_event_id,
+            week=player_state.week,
+            round_number=player_state.current_round,
+        )
+        return transaction_id

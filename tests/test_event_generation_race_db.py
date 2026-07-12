@@ -1,223 +1,145 @@
-"""事件生成并发控制竞态条件集成测试 (Layer 4)
-
-验证并发请求场景下的锁行为、状态清理、重连缓存等。
-使用真实数据库会话和 asyncio 事件循环。
-"""
+"""Durable event-generation integration tests (Layer 4)."""
 
 import asyncio
+import threading
 import time
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.api.routers.gameplay.events import _get_game_lock
+from src.ai.models import EventOption, GameEvent
+from src.api.routers.gameplay.sse_helpers import stream_round_event
+from src.api.session_store import GameLoopSession
 
 
-class TestConcurrentGenerationOnlyOneSucceeds:
-    """验证并发请求只有一个能成功获取 lock 并生成。"""
+def _event(story: str = "同一个后台任务完成的故事") -> GameEvent:
+    return GameEvent(
+        event_description=story,
+        options=[
+            EventOption(text="继续", effects={}),
+            EventOption(text="等待", effects={}),
+        ],
+    )
 
-    @pytest.mark.asyncio
-    async def test_lock_prevents_concurrent_generation(self):
-        """同一个 game_id 的 lock 应阻止第二个获取者。"""
-        lock = await _get_game_lock(4444)
 
-        # 协程 1：获取 lock
-        await lock.acquire()
-        assert lock.locked()
+async def _collect_stream(stream) -> str:
+    return "".join([chunk async for chunk in stream])
 
-        # 协程 2：尝试获取同一个 lock（应被阻塞或失败）
-        acquired_second = False
 
-        async def try_acquire():
-            nonlocal acquired_second
-            # 使用非阻塞获取，验证 lock 已被占用
-            try:
-                # 尝试立即获取，不应成功
-                await asyncio.wait_for(lock.acquire(), timeout=0.1)
-                acquired_second = True
-            except asyncio.TimeoutError:
-                pass  # 预期行为：获取超时
-
-        await try_acquire()
-        assert not acquired_second, "lock 应已被占用，第二个获取者应该被阻塞"
-
-        # 释放后第二个协程应该能获取
-        lock.release()
-        assert not lock.locked()
+class TestDurableGenerationLifecycle:
+    """SSE subscribers never own or duplicate the background worker."""
 
     @pytest.mark.asyncio
-    async def test_different_games_can_generate_concurrently(self):
-        """不同 game_id 的生成应可并发执行。"""
-        lock1 = await _get_game_lock(3333)
-        lock2 = await _get_game_lock(3334)
+    async def test_disconnect_does_not_start_a_second_generation(self):
+        release = threading.Event()
+        started = threading.Event()
+        game_loop = MagicMock()
+        game_loop.player_state.week = 3
+        game_loop.player_state.current_round = 1
+        game_loop.current_event = None
+        event = _event()
 
-        # 两个不同 game 的 lock 应独立
-        await lock1.acquire()
-        assert lock1.locked()
-        assert not lock2.locked(), "不同 game_id 的 lock 应独立"
+        def generate_round_event(*, stream_callback, status_callback, session):
+            started.set()
+            status_callback("generating_story")
+            stream_callback("同一个后台任务")
+            release.wait(timeout=2)
+            stream_callback("完成的故事")
+            game_loop.current_event = event
+            return event
 
-        lock1.release()
+        game_loop.generate_round_event.side_effect = generate_round_event
+        session = GameLoopSession(game_loop=game_loop, game_id=91)
+
+        with (
+            patch("src.api.routers.gameplay.sse_helpers._persist_generated_event_state"),
+            patch("src.api.routers.gameplay.sse_helpers._trigger_round_illustration_generation"),
+        ):
+            first = stream_round_event(game_loop, 91, session=session)
+            await anext(first)
+            next_chunk = asyncio.create_task(anext(first))
+            assert await asyncio.to_thread(started.wait, 1)
+            chunk = await asyncio.wait_for(next_chunk, timeout=1)
+            if "同一个后台任务" not in chunk:
+                chunk = await asyncio.wait_for(anext(first), timeout=1)
+            assert "同一个后台任务" in chunk
+            await first.aclose()
+
+            second = stream_round_event(
+                game_loop, 91, session=session, last_event_id=0
+            )
+            release.set()
+            payload = await asyncio.wait_for(_collect_stream(second), timeout=2)
+
+        assert game_loop.generate_round_event.call_count == 1
+        assert "完成的故事" in payload
+        assert "event: complete" in payload
+
+    @pytest.mark.asyncio
+    async def test_simultaneous_subscribers_share_one_generation(self):
+        release = threading.Event()
+        started = threading.Event()
+        game_loop = MagicMock()
+        game_loop.player_state.week = 3
+        game_loop.player_state.current_round = 1
+        game_loop.current_event = None
+        event = _event("共享任务结果")
+
+        def generate_round_event(*, stream_callback, status_callback, session):
+            started.set()
+            status_callback("generating_story")
+            stream_callback("共享片段")
+            release.wait(timeout=2)
+            game_loop.current_event = event
+            return event
+
+        game_loop.generate_round_event.side_effect = generate_round_event
+        session = GameLoopSession(game_loop=game_loop, game_id=92)
+
+        with (
+            patch("src.api.routers.gameplay.sse_helpers._persist_generated_event_state"),
+            patch("src.api.routers.gameplay.sse_helpers._trigger_round_illustration_generation"),
+        ):
+            first = stream_round_event(game_loop, 92, session=session)
+            second = stream_round_event(game_loop, 92, session=session)
+            first_task = asyncio.create_task(_collect_stream(first))
+            second_task = asyncio.create_task(_collect_stream(second))
+            assert await asyncio.to_thread(started.wait, 1)
+            release.set()
+            first_payload, second_payload = await asyncio.wait_for(
+                asyncio.gather(first_task, second_task), timeout=2
+            )
+
+        assert game_loop.generate_round_event.call_count == 1
+        assert "共享任务结果" in first_payload
+        assert "共享任务结果" in second_payload
 
 
-class TestGenerationFlagClearedOnException:
-    """验证生成异常时 _generating 标志被清理。"""
+class TestGeneratorOwnershipFallback:
+    """Direct callers cannot use elapsed time to steal generation ownership."""
 
-    def test_generating_flag_reset_after_exception(self):
-        """event_generator 异常处理后 _generating 应被重置。
-
-        验证真实代码路径：event_generator.py 中 generate_round_event
-        在 try/except 块的 finally 中重置 _generating 标志。
-        """
-        # 创建 RoundEventGenerator 实例（使用 mock 依赖）
-        from unittest.mock import MagicMock
-
+    def test_old_start_time_does_not_auto_reset_active_generator(self):
         from src.game.round.event_generator import RoundEventGenerator
 
-        eg = RoundEventGenerator(
-            player_state_getter=MagicMock(return_value=MagicMock()),
+        player_state = MagicMock()
+        player_state.week = 3
+        player_state.current_round = 1
+        player_state.round_history = []
+        player_state.last_round_full_story = ""
+        player_state.current_event_data = None
+
+        generator = RoundEventGenerator(
+            player_state_getter=lambda: player_state,
             ai_generator=MagicMock(),
             language_getter=lambda: "zh",
             character_introduction_service=MagicMock(),
             summary_selector=MagicMock(),
             relationship_service=MagicMock(),
         )
+        generator._generating = True
+        generator._generating_start_time = time.time() - 10_000
 
-        # 手动设置 _generating = True 模拟生成中
-        eg._generating = True
-        eg._generating_start_time = time.time()
+        with pytest.raises(ValueError, match="generation in progress"):
+            generator.generate_round_event()
 
-        # 模拟异常后重置（与真实代码的 finally 块一致）
-        try:
-            # 模拟生成过程中抛异常
-            raise RuntimeError("simulated generation failure")
-        except Exception:
-            pass  # 真实代码会在这里记录日志
-        finally:
-            # 真实代码在 finally 中重置标志
-            eg._generating = False
-            eg._generating_start_time = None
-
-        assert eg._generating is False, "异常后 _generating 必须被重置，否则后续请求会被错误拒绝"
-        assert eg._generating_start_time is None
-
-    def test_generating_flag_timeout_auto_reset(self):
-        """_generating 超过 60 秒应被自动重置。"""
-        from src.game.game_loop import GameLoop
-
-        game_loop = GameLoop(language="zh")
-        game_loop._generating = True
-        game_loop._generating_start_time = time.time() - 70  # 70 秒前
-
-        # 模拟路由层的超时检查逻辑
-        elapsed = time.time() - game_loop._generating_start_time
-        if elapsed > 60:
-            game_loop._generating = False
-            game_loop._generating_start_time = None
-
-        assert game_loop._generating is False, "_generating 超过 60s 必须被强制重置"
-
-
-class TestReconnectionDuringGeneration:
-    """验证生成过程中的重连行为。"""
-
-    @pytest.mark.asyncio
-    async def test_reconnection_replays_cached_chunks(self):
-        """重连时应回放缓存的 story chunks。"""
-        from src.api.routers.gameplay.sse_helpers import replay_cached_and_wait
-
-        # 创建 mock session
-        session = MagicMock()
-        session._is_generating = True
-        session.sse_cache = ["chunk1", "chunk2", "chunk3"]
-        session.get_cached_chunks_after = MagicMock(
-            return_value=[
-                (1, "chunk1"),
-                (2, "chunk2"),
-                (3, "chunk3"),
-            ]
-        )
-
-        # 收集重连事件
-        events = []
-        async for event in replay_cached_and_wait(session, last_event_id=0):
-            events.append(event)
-            # 限制收集数量避免无限循环
-            if len(events) >= 5:
-                break
-
-        # 验证收到了 resuming status
-        assert any("resuming" in e for e in events), "重连时应发送 'resuming' status 事件"
-
-    def test_session_has_sse_cache_attribute(self):
-        """session 必须有 sse_cache 属性用于断点续传。"""
-        from src.api.session_store import GameLoopSession
-        from src.game.game_loop import GameLoop
-
-        game_loop = GameLoop(language="zh")
-        session = GameLoopSession(game_loop=game_loop, game_id=1)
-        assert hasattr(session, "sse_cache"), "session 必须有 sse_cache 属性用于断点续传"
-        assert isinstance(session.sse_cache, list), "sse_cache 必须是列表"
-
-
-class TestLockCleanupOnError:
-    """验证异常场景下锁的正确清理。"""
-
-    @pytest.mark.asyncio
-    async def test_lock_released_in_finally(self):
-        """stream_round_event_with_asyncio_lock 的 finally 中必须释放 lock。"""
-        from src.api.routers.gameplay.sse_helpers import \
-            stream_round_event_with_asyncio_lock
-
-        lock = await _get_game_lock(2222)
-        game_loop = MagicMock()
-        game_loop.generate_round_event = MagicMock(side_effect=Exception("generation failed"))
-
-        # 获取 lock
-        await lock.acquire()
-        assert lock.locked()
-
-        # 模拟 streaming（即使失败也应释放 lock）
-        gen = stream_round_event_with_asyncio_lock(game_loop, game_id=2222, lock=lock)
-        try:
-            async for _ in gen:
-                pass
-        except Exception:
-            pass
-        finally:
-            # 显式关闭 generator 确保 finally 执行
-            await gen.aclose()
-
-        # 验证 lock 已被释放
-        assert not lock.locked(), "异常后 lock 必须被释放，否则会导致死锁"
-
-
-class TestEventGenerationStateConsistency:
-    """验证生成状态的一致性。"""
-
-    def test_generating_flag_and_lock_consistency(self):
-        """_generating 标志和 lock 状态应保持一致。
-
-        这是一个文档化测试：当前实现中 _generating 在 game_loop 层设置，
-        lock 在路由层获取，存在层级不一致的风险。
-        """
-        from src.game.game_loop import GameLoop
-
-        game_loop = GameLoop(language="zh")
-
-        # _generating 初始应为 False
-        assert game_loop._generating is False
-
-        # 模拟开始生成
-        game_loop._generating = True
-        game_loop._generating_start_time = time.time()
-
-        # 验证状态
-        assert game_loop._generating is True
-        assert game_loop._generating_start_time is not None
-
-        # 模拟结束生成
-        game_loop._generating = False
-        game_loop._generating_start_time = None
-
-        assert game_loop._generating is False
-        assert game_loop._generating_start_time is None
+        assert generator._generating is True

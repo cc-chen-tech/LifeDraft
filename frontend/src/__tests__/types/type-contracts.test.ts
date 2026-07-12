@@ -10,8 +10,6 @@
 
 import type {
   UserInfo,
-  FriendInfo,
-  FriendRequestInfo,
   GameListItem,
   PresetInfo,
   GameEvent,

@@ -84,8 +84,15 @@ function setupGameStore(options: {
   storyText?: string;
   currentEvent?: { story: string; options: Array<{ text: string }> } | null;
   isGameOver?: boolean;
+  playerState?: Record<string, unknown> | null;
 } = {}) {
-  const { gameId = 1, storyText = '', currentEvent = null, isGameOver = false } = options;
+  const {
+    gameId = 1,
+    storyText = '',
+    currentEvent = null,
+    isGameOver = false,
+    playerState = null,
+  } = options;
 
   act(() => {
     useGameStore.setState({
@@ -93,6 +100,7 @@ function setupGameStore(options: {
       storyText,
       currentEvent,
       isGameOver,
+      playerState: playerState as never,
     });
   });
 }
@@ -137,6 +145,36 @@ describe('usePlayGame - Phase State Machine', () => {
   // ==================== Phase Transition Logic ====================
 
   describe('Phase Transition Logic', () => {
+    it('restores a saved result without requesting the next event', async () => {
+      const savedStory = '第4周周一原故事\n\n选择后的完整结果';
+      setupGameStore({
+        gameId: 1,
+        storyText: savedStory,
+        playerState: {
+          week: 3,
+          current_round: 1,
+          resume_view: {
+            phase: 'result',
+            story_text: savedStory,
+            round_summary: '本轮总结',
+            summary_text: '',
+            completed_week: 3,
+            completed_round: 0,
+          },
+        },
+      });
+      jest.spyOn(useGameStore.getState(), 'syncState').mockResolvedValue(undefined);
+
+      const { result } = renderHook(() => usePlayGame());
+
+      await waitFor(() => {
+        expect(result.current.phase).toBe('result');
+      });
+      expect(result.current.storyText).toBe(savedStory);
+      expect(result.current.roundSummary).toBe('本轮总结');
+      expect(fetchCallCount('/event')).toBe(0);
+    });
+
     it('should start in loading phase when gameId exists', async () => {
       setupGameStore({ gameId: 1 });
 
@@ -686,17 +724,30 @@ describe('usePlayGame - Phase State Machine', () => {
     });
 
     it('should handle custom choice flow', async () => {
+      const currentEvent = {
+        event_description: 'Initial story',
+        options: [{ text: 'Option' }],
+      };
       setupGameStore({
         gameId: 1,
         storyText: 'Initial story',
         currentEvent: {
-          story: 'Initial story',
-          options: [{ text: 'Option' }],
+          story: currentEvent.event_description,
+          options: currentEvent.options,
         },
       });
 
       let completeCustomChoice: ((r: Response) => void) | null = null;
       (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (typeof url === 'string' && url === '/api/games/1') {
+          return Promise.resolve(jsonResponse({
+            player_state: null,
+            progress: null,
+            round_info: null,
+            current_event: currentEvent,
+            constraint_level: 'expert',
+          }));
+        }
         if (typeof url === 'string' && url.includes('/custom-choice')) {
           return new Promise<Response>((resolve) => {
             completeCustomChoice = resolve;
@@ -708,8 +759,8 @@ describe('usePlayGame - Phase State Machine', () => {
 
       const { result } = renderHook(() => usePlayGame());
 
-      act(() => {
-        result.current.setPhase('options');
+      await waitFor(() => {
+        expect(result.current.phase).toBe('options');
       });
 
       // Start custom choice

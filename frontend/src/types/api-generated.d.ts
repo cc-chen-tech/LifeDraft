@@ -87,106 +87,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/friends/request": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Send Friend Request
-         * @description Send a friend request to another user by public_id.
-         */
-        post: operations["send_friend_request_api_friends_request_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/friends/respond": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Respond To Friend Request
-         * @description Accept or reject a friend request.
-         */
-        post: operations["respond_to_friend_request_api_friends_respond_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/friends": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Friends
-         * @description Get current user's friend list.
-         */
-        get: operations["get_friends_api_friends_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/friends/requests": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Pending Requests
-         * @description Get pending friend requests for current user.
-         */
-        get: operations["get_pending_requests_api_friends_requests_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/friends/{friend_user_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Remove Friend
-         * @description Remove a friend.
-         */
-        delete: operations["remove_friend_api_friends__friend_user_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/games": {
         parameters: {
             query?: never;
@@ -644,6 +544,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/games/{game_id}/resume-view/acknowledge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Acknowledge Resume View
+         * @description Clear an exact saved result only after the user explicitly continues.
+         */
+        post: operations["acknowledge_resume_view_api_games__game_id__resume_view_acknowledge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/games/{game_id}/event": {
         parameters: {
             query?: never;
@@ -653,9 +573,7 @@ export interface paths {
         };
         /**
          * Generate Event
-         * @description Generate a round event via SSE streaming.
-         *
-         *     Supports reconnection via Last-Event-ID header for mobile network resilience.
+         * @description Subscribe to the current round's durable event-generation operation.
          */
         get: operations["generate_event_api_games__game_id__event_get"];
         put?: never;
@@ -677,7 +595,7 @@ export interface paths {
         put?: never;
         /**
          * Generate Event Sync
-         * @description Generate a round event (non-streaming fallback for mobile).
+         * @description Wait for the same durable operation used by SSE subscribers.
          */
         post: operations["generate_event_sync_api_games__game_id__event_sync_post"];
         delete?: never;
@@ -2124,35 +2042,6 @@ export interface components {
             /** Custom Text */
             custom_text: string;
         };
-        /** FriendInfo */
-        FriendInfo: {
-            /** User Id */
-            user_id: number;
-            /** Public Id */
-            public_id: string;
-            /** Display Name */
-            display_name?: string | null;
-        };
-        /** FriendRequestCreate */
-        FriendRequestCreate: {
-            /** To Public Id */
-            to_public_id: string;
-        };
-        /** FriendRequestInfo */
-        FriendRequestInfo: {
-            /** Request Id */
-            request_id: number;
-            from_user: components["schemas"]["FriendInfo"];
-            /** Created At */
-            created_at?: string | null;
-        };
-        /** FriendRequestRespond */
-        FriendRequestRespond: {
-            /** Request Id */
-            request_id: number;
-            /** Accept */
-            accept: boolean;
-        };
         /** GameListItem */
         GameListItem: {
             /** Game Id */
@@ -3459,143 +3348,6 @@ export interface operations {
             };
         };
     };
-    send_friend_request_api_friends_request_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["FriendRequestCreate"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MessageResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    respond_to_friend_request_api_friends_respond_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["FriendRequestRespond"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MessageResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_friends_api_friends_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FriendInfo"][];
-                };
-            };
-        };
-    };
-    get_pending_requests_api_friends_requests_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FriendRequestInfo"][];
-                };
-            };
-        };
-    };
-    remove_friend_api_friends__friend_user_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                friend_user_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MessageResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     list_games_api_games_get: {
         parameters: {
             query?: {
@@ -4423,6 +4175,37 @@ export interface operations {
             };
         };
     };
+    acknowledge_resume_view_api_games__game_id__resume_view_acknowledge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                game_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     generate_event_api_games__game_id__event_get: {
         parameters: {
             query?: never;
@@ -5227,6 +5010,7 @@ export interface operations {
             query: {
                 week: number;
                 stage?: string | null;
+                retry?: boolean;
             };
             header?: never;
             path: {

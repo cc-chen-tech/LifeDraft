@@ -94,7 +94,7 @@ class TestEditImageExtraParamsPropagation:
         assert "Avoid:" not in captured_payloads[0]["prompt"]
 
     def test_edit_image_payload_structure(self):
-        """edit_image API 请求体应包含正确的参数结构"""
+        """edit_image API 请求体应包含 MiniMax 支持的参数结构"""
         from src.ai.image_generator import ImageGenerator
 
         gen = ImageGenerator.__new__(ImageGenerator)
@@ -131,7 +131,7 @@ class TestEditImageExtraParamsPropagation:
         assert "aspect_ratio" in body
         assert "response_format" in body
         assert "prompt_optimizer" in body
-        assert "aigc_watermark" in body
+        assert "aigc_watermark" not in body
         assert "subject_reference" in body
 
     def test_edit_image_extra_params_negative_prompt_is_folded_into_prompt(self):

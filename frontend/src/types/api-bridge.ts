@@ -54,10 +54,6 @@ export type ApiCharacterCollectionItem = Schemas['CharacterCollectionItem'];
 export type ApiItemCollectionItem = Schemas['ItemCollectionItem'];
 export type ApiLandmarkCollectionItem = Schemas['LandmarkCollectionItem'];
 
-// ─── Friends ─────────────────────────────────────────────────────────
-export type ApiFriendInfo = Schemas['FriendInfo'];
-export type ApiFriendRequestInfo = Schemas['FriendRequestInfo'];
-
 // ─── Music ───────────────────────────────────────────────────────────
 export type ApiMusicRecommendationRequest = Schemas['MusicRecommendationRequest'];
 export type ApiMusicRecommendationResponse = Schemas['MusicRecommendationResponse'];

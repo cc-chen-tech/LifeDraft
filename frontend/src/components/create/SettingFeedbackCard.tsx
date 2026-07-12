@@ -23,14 +23,22 @@ export function SettingFeedbackCard({
   const [isEditing, setIsEditing] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [regenerationError, setRegenerationError] = useState("");
 
   const handleRegenerate = async () => {
     if (!feedback.trim()) return;
     setIsGenerating(true);
+    setRegenerationError("");
     try {
       await onRegenerate(feedback.trim());
       setFeedback("");
       setIsEditing(false);
+    } catch (error) {
+      setRegenerationError(
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : "重新生成失败，已保留原设定，请重试",
+      );
     } finally {
       setIsGenerating(false);
     }
@@ -43,7 +51,10 @@ export function SettingFeedbackCard({
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => setIsEditing(!isEditing)}
+          onClick={() => {
+            setIsEditing(!isEditing);
+            setRegenerationError("");
+          }}
           disabled={isGenerating}
           aria-label={isEditing ? `取消${stepLabel}反馈编辑` : `给${stepLabel}反馈重新生成`}
           data-testid={`${stepKey}-feedback-button`}
@@ -66,6 +77,11 @@ export function SettingFeedbackCard({
             disabled={isGenerating}
             data-testid={`${stepKey}-feedback-input`}
           />
+          {regenerationError && (
+            <p className="text-xs text-destructive" role="alert">
+              {regenerationError}
+            </p>
+          )}
           <div className="flex gap-2">
             <Button
               size="sm"
@@ -86,6 +102,7 @@ export function SettingFeedbackCard({
               onClick={() => {
                 setIsEditing(false);
                 setFeedback("");
+                setRegenerationError("");
               }}
               disabled={isGenerating}
             >

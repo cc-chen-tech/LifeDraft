@@ -144,210 +144,6 @@
         ]
       }
     },
-    "/api/friends/request": {
-      "post": {
-        "tags": [
-          "Friends"
-        ],
-        "summary": "Send Friend Request",
-        "description": "Send a friend request to another user by public_id.",
-        "operationId": "send_friend_request_api_friends_request_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/FriendRequestCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MessageResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
-      }
-    },
-    "/api/friends/respond": {
-      "post": {
-        "tags": [
-          "Friends"
-        ],
-        "summary": "Respond To Friend Request",
-        "description": "Accept or reject a friend request.",
-        "operationId": "respond_to_friend_request_api_friends_respond_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/FriendRequestRespond"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MessageResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
-      }
-    },
-    "/api/friends": {
-      "get": {
-        "tags": [
-          "Friends"
-        ],
-        "summary": "Get Friends",
-        "description": "Get current user's friend list.",
-        "operationId": "get_friends_api_friends_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/FriendInfo"
-                  },
-                  "type": "array",
-                  "title": "Response Get Friends Api Friends Get"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
-      }
-    },
-    "/api/friends/requests": {
-      "get": {
-        "tags": [
-          "Friends"
-        ],
-        "summary": "Get Pending Requests",
-        "description": "Get pending friend requests for current user.",
-        "operationId": "get_pending_requests_api_friends_requests_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/FriendRequestInfo"
-                  },
-                  "type": "array",
-                  "title": "Response Get Pending Requests Api Friends Requests Get"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
-      }
-    },
-    "/api/friends/{friend_user_id}": {
-      "delete": {
-        "tags": [
-          "Friends"
-        ],
-        "summary": "Remove Friend",
-        "description": "Remove a friend.",
-        "operationId": "remove_friend_api_friends__friend_user_id__delete",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "friend_user_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "title": "Friend User Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MessageResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/games": {
       "post": {
         "tags": [
@@ -1588,13 +1384,59 @@
         }
       }
     },
+    "/api/games/{game_id}/resume-view/acknowledge": {
+      "post": {
+        "tags": [
+          "Gameplay"
+        ],
+        "summary": "Acknowledge Resume View",
+        "description": "Clear an exact saved result only after the user explicitly continues.",
+        "operationId": "acknowledge_resume_view_api_games__game_id__resume_view_acknowledge_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "game_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/games/{game_id}/event": {
       "get": {
         "tags": [
           "Gameplay"
         ],
         "summary": "Generate Event",
-        "description": "Generate a round event via SSE streaming.\n\nSupports reconnection via Last-Event-ID header for mobile network resilience.",
+        "description": "Subscribe to the current round's durable event-generation operation.",
         "operationId": "generate_event_api_games__game_id__event_get",
         "security": [
           {
@@ -1640,7 +1482,7 @@
           "Gameplay"
         ],
         "summary": "Generate Event Sync",
-        "description": "Generate a round event (non-streaming fallback for mobile).",
+        "description": "Wait for the same durable operation used by SSE subscribers.",
         "operationId": "generate_event_sync_api_games__game_id__event_sync_post",
         "security": [
           {
@@ -2895,6 +2737,16 @@
                 }
               ],
               "title": "Stage"
+            }
+          },
+          {
+            "name": "retry",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Retry"
             }
           }
         ],
@@ -5273,95 +5125,6 @@
           "custom_text"
         ],
         "title": "CustomChoiceRequest"
-      },
-      "FriendInfo": {
-        "properties": {
-          "user_id": {
-            "type": "integer",
-            "title": "User Id"
-          },
-          "public_id": {
-            "type": "string",
-            "title": "Public Id"
-          },
-          "display_name": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Display Name"
-          }
-        },
-        "type": "object",
-        "required": [
-          "user_id",
-          "public_id"
-        ],
-        "title": "FriendInfo"
-      },
-      "FriendRequestCreate": {
-        "properties": {
-          "to_public_id": {
-            "type": "string",
-            "minLength": 1,
-            "title": "To Public Id"
-          }
-        },
-        "type": "object",
-        "required": [
-          "to_public_id"
-        ],
-        "title": "FriendRequestCreate"
-      },
-      "FriendRequestInfo": {
-        "properties": {
-          "request_id": {
-            "type": "integer",
-            "title": "Request Id"
-          },
-          "from_user": {
-            "$ref": "#/components/schemas/FriendInfo"
-          },
-          "created_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Created At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "request_id",
-          "from_user"
-        ],
-        "title": "FriendRequestInfo"
-      },
-      "FriendRequestRespond": {
-        "properties": {
-          "request_id": {
-            "type": "integer",
-            "title": "Request Id"
-          },
-          "accept": {
-            "type": "boolean",
-            "title": "Accept"
-          }
-        },
-        "type": "object",
-        "required": [
-          "request_id",
-          "accept"
-        ],
-        "title": "FriendRequestRespond"
       },
       "GameListItem": {
         "properties": {

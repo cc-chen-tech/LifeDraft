@@ -21,7 +21,6 @@ interface UseEventGeneratorParams {
   setCurrentEvent: (event: { story: string; options: EventOption[] } | null) => void;
   setGameOver: (gameOver: boolean) => void;
   setRoundSummary: (summary: string | null) => void;
-  isGameOver: boolean;
   setIsPrefetching: (prefetching: boolean) => void;
   // Refs passed from parent
   abortRef: React.MutableRefObject<AbortController | null>;
@@ -54,7 +53,6 @@ export function useEventGenerator({
   setCurrentEvent,
   setGameOver,
   setRoundSummary,
-  isGameOver,
   setIsPrefetching,
   abortRef,
   generatingRef,
@@ -65,6 +63,33 @@ export function useEventGenerator({
   isRetryingRef,
 }: UseEventGeneratorParams) {
   const retryStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const eventCursorStorageKey = gameId === null
+    ? null
+    : `story101:event-cursor:${gameId}`;
+  const eventStoryStorageKey = gameId === null
+    ? null
+    : `story101:event-story:${gameId}`;
+  const lastEventIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!eventCursorStorageKey || !eventStoryStorageKey) {
+      lastEventIdRef.current = null;
+      return;
+    }
+    const stored = window.sessionStorage.getItem(eventCursorStorageKey);
+    const parsed = stored === null ? Number.NaN : Number.parseInt(stored, 10);
+    const storedStory = window.sessionStorage.getItem(eventStoryStorageKey) || "";
+    if (Number.isFinite(parsed) && storedStory) {
+      lastEventIdRef.current = parsed;
+      if (!useGameStore.getState().storyText) {
+        setStoryText(storedStory);
+      }
+      return;
+    }
+    lastEventIdRef.current = null;
+    window.sessionStorage.removeItem(eventCursorStorageKey);
+    window.sessionStorage.removeItem(eventStoryStorageKey);
+  }, [eventCursorStorageKey, eventStoryStorageKey, setStoryText]);
 
   const clearRetryStatusTimer = useCallback(() => {
     if (retryStatusTimerRef.current) {
@@ -116,8 +141,8 @@ export function useEventGenerator({
   };
 
   // Generate event function
-  const generateEvent = useCallback(async (options?: { force?: boolean }) => {
-    const force = Boolean(options?.force);
+  const generateEvent = useCallback(async (options?: { resume?: boolean }) => {
+    const resume = Boolean(options?.resume);
     const caller = new Error().stack?.split('\n')[2]?.trim() || 'unknown';
     const state = useGameStore.getState();
     const storyLen = state?.storyText?.length ?? 0;
@@ -128,17 +153,17 @@ export function useEventGenerator({
       console.warn("[generateEvent] Blocked: no gameId");
       return;
     }
-    if (generatingRef.current && !force) {
+    if (generatingRef.current && !resume) {
       console.warn("[generateEvent] Blocked: already generating");
       return;
     }
-    if (isRetryingRef.current && !force) {
+    if (isRetryingRef.current && !resume) {
       console.warn("[generateEvent] Blocked: retry in progress within existing SSE stream");
       return;
     }
 
     const currentPhase = phaseRef.current;
-    if (currentPhase !== "loading" && currentPhase !== "error" && !force) {
+    if (currentPhase !== "loading" && currentPhase !== "error" && !resume) {
       console.warn(`[generateEvent] Blocked: current phase is ${currentPhase}`);
       return;
     }
@@ -148,19 +173,19 @@ export function useEventGenerator({
 
     abortRef.current?.abort();
     const storeState = useGameStore.getState();
-    const existingStory = storeState?.storyText;
     const currentEvent = storeState?.currentEvent;
-    const shouldClearExistingStory = force ||
-      currentPhase === "error" ||
-      (!currentEvent?.options?.length);
-
-    if (shouldClearExistingStory) {
-      console.log("[generateEvent] Clearing existing story for retry/recovery flow");
-      setStoryText("");
-    } else if (existingStory && existingStory.length > 0) {
-      console.log(`[generateEvent] Preserving existing story (${existingStory.length} chars), will append new content`);
-    } else {
-      setStoryText("");
+    if (!resume) {
+      lastEventIdRef.current = null;
+      if (eventCursorStorageKey) {
+        window.sessionStorage.removeItem(eventCursorStorageKey);
+      }
+      if (eventStoryStorageKey) {
+        window.sessionStorage.removeItem(eventStoryStorageKey);
+      }
+      if (currentPhase === "error" || !currentEvent?.options?.length) {
+        console.log("[generateEvent] Clearing story for a new generation attempt");
+        setStoryText("");
+      }
     }
     setPhase("generating");
     setConnectionStatus(null);
@@ -173,6 +198,18 @@ export function useEventGenerator({
       gameId,
       {
         onStory: appendStoryText,
+        onEventId: (eventId) => {
+          lastEventIdRef.current = eventId;
+          if (eventCursorStorageKey) {
+            window.sessionStorage.setItem(eventCursorStorageKey, String(eventId));
+          }
+          if (eventStoryStorageKey) {
+            window.sessionStorage.setItem(
+              eventStoryStorageKey,
+              useGameStore.getState().storyText
+            );
+          }
+        },
         onStatus: (status) => {
           handleStatusUpdate(status, setProcessing, isRetryingRef);
           if (status.phase === "retry" || status.phase === "retrying") {
@@ -193,6 +230,13 @@ export function useEventGenerator({
         onComplete: (data) => {
           clearRetryStatusTimer();
           handleEventComplete(data, eventHandlers);
+          lastEventIdRef.current = null;
+          if (eventCursorStorageKey) {
+            window.sessionStorage.removeItem(eventCursorStorageKey);
+          }
+          if (eventStoryStorageKey) {
+            window.sessionStorage.removeItem(eventStoryStorageKey);
+          }
         },
         onError: async (err) => {
           streamErrorHandled = true;
@@ -309,7 +353,12 @@ export function useEventGenerator({
           setPhase("error");
         },
       },
-      { signal: abortRef.current.signal }
+      {
+        signal: abortRef.current.signal,
+        lastEventId: resume && lastEventIdRef.current !== null
+          ? lastEventIdRef.current
+          : undefined,
+      }
     );
     } catch (err) {
       // Ignore AbortError - it's expected when component unmounts or user navigates away
@@ -321,7 +370,7 @@ export function useEventGenerator({
         throw err; // Re-throw other errors
       }
     }
-  }, [gameId, setStoryText, appendStoryText, setProcessing, setCurrentEvent, setGameOver, setPhase, phaseRef, setConnectionStatus, setReconnectAttempt, setOptions, setRoundSummary, armRetryStatusTimeout, clearRetryStatusTimer]);
+  }, [gameId, eventCursorStorageKey, eventStoryStorageKey, setStoryText, appendStoryText, setProcessing, setCurrentEvent, setGameOver, setPhase, phaseRef, setConnectionStatus, setReconnectAttempt, setOptions, setRoundSummary, armRetryStatusTimeout, clearRetryStatusTimer]);
 
   const recoverEventGeneration = useCallback(async () => {
     abortRef.current?.abort();
@@ -336,10 +385,9 @@ export function useEventGenerator({
     setProcessing(false);
     setConnectionStatus(null);
     setReconnectAttempt(null);
-    setOptions([]);
-    phaseRef.current = "loading";
-    setPhase("loading");
-    await generateEvent({ force: true });
+    phaseRef.current = "generating";
+    setPhase("generating");
+    await generateEvent({ resume: true });
   }, [
     abortRef,
     prefetchAbortRef,
@@ -352,7 +400,6 @@ export function useEventGenerator({
     setProcessing,
     setConnectionStatus,
     setReconnectAttempt,
-    setOptions,
     phaseRef,
     setPhase,
     clearRetryStatusTimer,
@@ -419,17 +466,6 @@ export function useEventGenerator({
       setIsPrefetching(false);
     }
   }, [gameId, setIsPrefetching]);
-
-  // Effect: prefetch when entering result phase
-  useEffect(() => {
-    if (phaseRef.current === "result" && !isGameOver && gameId) {
-      console.log("[prefetch] Entered result phase, starting prefetch...");
-      const timer = setTimeout(() => {
-        prefetchNextEvent();
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [phaseRef, isGameOver, gameId, prefetchNextEvent]);
 
   // Cleanup effect
   useEffect(() => {

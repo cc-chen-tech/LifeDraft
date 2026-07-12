@@ -6,17 +6,50 @@ import { MusicPlayer } from "@/components/game/MusicPlayer";
 import { OptionCards } from "@/components/game/OptionCards";
 import { StoryVoiceControls } from "@/components/game/StoryVoiceControls";
 import { SettingDisplay } from "@/components/game/SettingDisplay";
-import { api } from "@/lib/api";
+import { SettingFeedbackCard } from "@/components/create/SettingFeedbackCard";
 import { OpeningCompletionGate } from "@/components/game/OpeningCompletionGate";
-import { useCollectionStore } from "@/stores/useCollectionStore";
 import { CompletedStoryMediaGate } from "@/components/game/CompletedStoryMediaGate";
 import { LifeSummaryPanel } from "@/components/game/LifeSummaryPanel";
 import { GenerationBudgetProgress } from "@/components/game/GenerationBudgetProgress";
+import { useCharacterCreation } from "@/hooks/useCharacterCreation";
+import { api } from "@/lib/api";
+import { useCollectionStore } from "@/stores/useCollectionStore";
+import { useGameStore } from "@/stores/useGameStore";
+import { useImageStore } from "@/stores/useImageStore";
 import { useMusicStore } from "@/stores/useMusicStore";
 import { useStoryVoiceStore } from "@/stores/useStoryVoiceStore";
 
 const transparentPixel =
   "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+
+const relationshipFixtureSettings = {
+  family: { family_description: "测试家庭" },
+  relationships: {
+    relationships_description: "旧关系摘要：陈晓峰仍在原公司任职，周丽持续提供咨询。",
+    key_people: [
+      { name: "陈晓峰", role: "前同事", relationship: "仍在原公司任职" },
+      { name: "周丽", role: "律师", relationship: "持续提供法律咨询" },
+    ],
+  },
+  traits: { traits_description: "谨慎务实" },
+  wealth: { wealth: 200000, currency: "¥" },
+};
+
+function RelationshipRegenerationFixture() {
+  const { characterSettings, regenerateSetting } = useCharacterCreation();
+  const relationships = characterSettings.relationships as Record<string, unknown>;
+
+  return (
+    <main className="min-h-screen p-6">
+      <SettingFeedbackCard
+        stepKey="relationships"
+        stepLabel="人际关系"
+        data={relationships}
+        onRegenerate={(feedback) => regenerateSetting("relationships", feedback)}
+      />
+    </main>
+  );
+}
 
 export default function E2ERegressionPage() {
   const setActiveStoryText = useMusicStore((state) => state.setActiveStoryText);
@@ -46,6 +79,7 @@ export default function E2ERegressionPage() {
   const [openingBackendComplete, setOpeningBackendComplete] = useState(false);
   const [openingVisibleComplete, setOpeningVisibleComplete] = useState(false);
   const [collectionRefreshState, setCollectionRefreshState] = useState<"idle" | "refreshing">("idle");
+  const [showRelationshipRegenerationFixture, setShowRelationshipRegenerationFixture] = useState(false);
   const [fixtureGameId, setFixtureGameId] = useState(101);
   const [audioRegenerationFixtureEnabled, setAudioRegenerationFixtureEnabled] = useState(false);
   const [audioStoryBusy, setAudioStoryBusy] = useState(false);
@@ -75,6 +109,24 @@ export default function E2ERegressionPage() {
     setAudioRegenerationFixtureEnabled(searchParams.get("audioRegeneration") === "1");
     setLifeSummaryFixtureEnabled(searchParams.get("lifeSummary") === "1");
     setFastProgressFixtureEnabled(searchParams.get("fastProgress") === "1");
+    const enableRelationshipRegenerationFixture =
+      searchParams.get("relationshipRegeneration") === "1";
+    if (enableRelationshipRegenerationFixture) {
+      useGameStore.setState({
+        creationStep: 4,
+        characterSettings: relationshipFixtureSettings,
+        playerName: "林见微",
+        lifeVision: "现实主义创业故事",
+        gameId: 901,
+        sessionId: "901",
+      });
+      useImageStore.setState({
+        playerImages: [{ image_id: 1, image_url: transparentPixel }],
+        selectedImageIndex: 0,
+        isGeneratingImage: false,
+      });
+      setShowRelationshipRegenerationFixture(true);
+    }
     if (Number.isFinite(configuredGameId) && configuredGameId > 0) {
       setFixtureGameId(configuredGameId);
     }
@@ -174,6 +226,10 @@ export default function E2ERegressionPage() {
     });
     setEntityAddState(useCollectionStore.getState().error ? "error" : "saved");
   };
+
+  if (showRelationshipRegenerationFixture) {
+    return <RelationshipRegenerationFixture />;
+  }
 
   return (
     <main className="min-h-screen p-6 space-y-8">

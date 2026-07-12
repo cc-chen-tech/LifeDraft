@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Optional
 
+from src.ai.professional_risk import apply_professional_risk_guardrail
+
 
 def normalize_chinese_punctuation(text: Optional[str]) -> Optional[str]:
     """Normalize obvious English punctuation artifacts in Chinese prose."""
@@ -30,7 +32,9 @@ def normalize_chinese_punctuation(text: Optional[str]) -> Optional[str]:
 
     normalized = re.sub(r"\.{2,}", lambda m: "。" * len(m.group(0)), normalized)
     normalized = normalized.replace(".", "。")
-    normalized = normalized.replace(",", "，")
+    numeric_comma = "\uFFF0"
+    normalized = re.sub(r"(?<=\d),(?=\d{3}(?:\D|$))", numeric_comma, normalized)
+    normalized = normalized.replace(",", "，").replace(numeric_comma, ",")
     normalized = normalized.replace("?", "？")
     normalized = normalized.replace("!", "！")
     normalized = normalized.replace(";", "；")
@@ -145,4 +149,5 @@ def normalize_generated_story(
     normalized = re.sub(r"\n{3,}", "\n\n", normalized)
     if language == "zh":
         normalized = _close_unbalanced_chinese_quotes(normalized)
+    normalized = apply_professional_risk_guardrail(normalized, language=language)
     return normalized.strip()

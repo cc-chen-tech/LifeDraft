@@ -51,7 +51,6 @@ import {
   History,
   Settings,
   BookOpen,
-  Users,
   ArrowRight,
   Palette,
   RotateCcw,
@@ -154,8 +153,8 @@ export default function PlayPage() {
     eventSceneImage,  // ★ 事件插画
     resultSceneImage,  // ★ 结果插画
     isLoadingRoundSceneImage,
+    roundSceneError,
     isRegeneratingRoundScene,
-    roundSceneImageError,
     fetchRoundSceneImage,
     regenerateRoundSceneImage,
     setEventSceneImage,  // ★ 设置事件插画
@@ -387,18 +386,6 @@ export default function PlayPage() {
               <BookOpen className="w-4 h-4 md:mr-1.5" />
               <span className="hidden md:inline text-xs">收集</span>
             </Button>
-            {/* ★ 好友按钮 */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 px-2"
-              onClick={() => router.push("/profile")}
-              title="好友"
-              aria-label="好友"
-            >
-              <Users className="w-4 h-4 md:mr-1.5" />
-              <span className="hidden md:inline text-xs">好友</span>
-            </Button>
             {/* ★ 历史回顾按钮 */}
             <Button
               variant="ghost"
@@ -615,11 +602,12 @@ export default function PlayPage() {
                 <RoundSceneImageDisplay
                   sceneImage={eventSceneImage}
                   isLoading={isLoadingRoundSceneImage && phase === "options"}
-                  error={roundSceneImageError}
+                  error={roundSceneError}
                   isRegenerating={isRegeneratingRoundScene}
                   currentRound={currentRound}
                   label="事件场景"
                   onRefresh={() => fetchRoundSceneImage(currentRound, "event")}
+                  onRetryGeneration={() => fetchRoundSceneImage(currentRound, "event", { retry: true })}
                   onRegenerate={regenerateRoundSceneImage}
                 />
               )}
@@ -629,11 +617,12 @@ export default function PlayPage() {
                 <RoundSceneImageDisplay
                   sceneImage={resultSceneImage}
                   isLoading={isLoadingRoundSceneImage}
-                  error={roundSceneImageError}
+                  error={roundSceneError}
                   isRegenerating={isRegeneratingRoundScene}
                   currentRound={resultSceneRound}
                   label="结果场景"
                   onRefresh={() => fetchRoundSceneImage(resultSceneRound, "result")}
+                  onRetryGeneration={() => fetchRoundSceneImage(resultSceneRound, "result", { retry: true })}
                   onRegenerate={regenerateRoundSceneImage}
                 />
               )}
@@ -643,11 +632,12 @@ export default function PlayPage() {
                 <RoundSceneImageDisplay
                   sceneImage={null}
                   isLoading={isLoadingRoundSceneImage}
-                  error={roundSceneImageError}
+                  error={roundSceneError}
                   isRegenerating={isRegeneratingRoundScene}
                   currentRound={resultSceneRound}
                   label="结果场景"
                   onRefresh={() => fetchRoundSceneImage(resultSceneRound, "result")}
+                  onRetryGeneration={() => fetchRoundSceneImage(resultSceneRound, "result", { retry: true })}
                   onRegenerate={regenerateRoundSceneImage}
                 />
               )}
@@ -657,11 +647,12 @@ export default function PlayPage() {
                 <RoundSceneImageDisplay
                   sceneImage={eventSceneImage}
                   isLoading={isLoadingRoundSceneImage}
-                  error={roundSceneImageError}
+                  error={roundSceneError}
                   isRegenerating={isRegeneratingRoundScene}
                   currentRound={resultSceneRound}
                   label="事件场景"
                   onRefresh={() => fetchRoundSceneImage(resultSceneRound, "event")}
+                  onRetryGeneration={() => fetchRoundSceneImage(resultSceneRound, "event", { retry: true })}
                   onRegenerate={regenerateRoundSceneImage}
                 />
               )}
@@ -671,25 +662,32 @@ export default function PlayPage() {
                 <RoundSceneImageDisplay
                   sceneImage={currentRoundSceneImage}
                   isLoading={isLoadingRoundSceneImage}
-                  error={roundSceneImageError}
+                  error={roundSceneError}
                   isRegenerating={isRegeneratingRoundScene}
                   currentRound={currentRound}
                   onRefresh={() => fetchRoundSceneImage(currentRound, phase === 'options' ? 'event' : (phase === 'result' || phase === 'summary') ? 'result' : undefined)}
+                  onRetryGeneration={() => fetchRoundSceneImage(currentRound, phase === 'options' ? 'event' : (phase === 'result' || phase === 'summary') ? 'result' : undefined, { retry: true })}
                   onRegenerate={regenerateRoundSceneImage}
                 />
               )}
 
-              {sceneImageDisplayMode === "none" && roundSceneImageError && storyReadyForCompletedMedia && (
+              {sceneImageDisplayMode === "none" &&
+                (roundSceneError || isLoadingRoundSceneImage) && (
                 <RoundSceneImageDisplay
                   sceneImage={null}
-                  isLoading={false}
-                  error={roundSceneImageError}
+                  isLoading={isLoadingRoundSceneImage}
+                  error={roundSceneError}
                   isRegenerating={isRegeneratingRoundScene}
                   currentRound={phase === "options" ? currentRound : resultSceneRound}
                   label={phase === "options" ? "事件场景" : "结果场景"}
                   onRefresh={() => fetchRoundSceneImage(
                     phase === "options" ? currentRound : resultSceneRound,
                     phase === "options" ? "event" : "result"
+                  )}
+                  onRetryGeneration={() => fetchRoundSceneImage(
+                    phase === "options" ? currentRound : resultSceneRound,
+                    phase === "options" ? "event" : "result",
+                    { retry: true }
                   )}
                   onRegenerate={regenerateRoundSceneImage}
                 />

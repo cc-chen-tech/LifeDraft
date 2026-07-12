@@ -5,8 +5,7 @@ import logging
 from typing import Any, Callable, Dict, List, Optional
 
 from src.ai.generator import EventGenerator
-from src.ai.prompt_sanitizer import (sanitize_custom_action,
-                                     sanitize_user_choice)
+from src.ai.prompt_sanitizer import sanitize_custom_action, sanitize_user_choice
 from src.ai.system_prompts import get_system_prompt
 from src.ai.text_quality import normalize_generated_story
 
@@ -30,6 +29,7 @@ class StoryService:
         stream_callback: Optional[Callable[[str], None]] = None,
         status_callback: Optional[Callable[[str], None]] = None,
         is_custom: bool = False,
+        active_wealth_transaction_id: Optional[str] = None,
     ) -> str:
         """
         Generate a detailed story continuation after the player's choice.
@@ -68,6 +68,17 @@ class StoryService:
                 is_custom=is_custom,
             )
 
+            wealth_ledger = None
+            current_balance = 0
+            if player_state:
+                from src.game.wealth_ledger import WealthLedger
+
+                wealth_ledger = WealthLedger.from_player_state(player_state)
+                current_balance = max(0, int(player_state.get("wealth", 0)))
+                prompt += wealth_ledger.build_constraints_text(
+                    current_balance, self.language
+                )
+
             sys_prompt = get_system_prompt("story_continuation", self.language)
             continuation = self.ai_generator.generate_completion(
                 prompt=prompt,
@@ -89,6 +100,17 @@ class StoryService:
                 status_callback=status_callback,
             )
 
+            if wealth_ledger is not None:
+                continuation = self._validate_and_retry_wealth_narrative(
+                    continuation=continuation,
+                    ledger=wealth_ledger,
+                    current_balance=current_balance,
+                    active_transaction_id=active_wealth_transaction_id,
+                    original_prompt=prompt,
+                    sys_prompt=sys_prompt,
+                    status_callback=status_callback,
+                )
+
             # ★ 一致性校验：检查结果故事是否与世界模型一致
             if player_state and continuation:
                 continuation = self._validate_and_retry_continuation(
@@ -105,17 +127,67 @@ class StoryService:
 
         except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
             logger.warning(f"Failed to generate story continuation: {e}")
-            fallback = self.generate_fallback_continuation(sanitized_chosen_option, effects)
+            fallback = self.generate_fallback_continuation(
+                sanitized_chosen_option, effects
+            )
             # If streaming was requested, emit fallback text as a single chunk
             if stream_callback:
                 stream_callback(fallback)
             return fallback
         except Exception as e:
             logger.exception(f"Unexpected error generating story continuation: {e}")
-            fallback = self.generate_fallback_continuation(sanitized_chosen_option, effects)
+            fallback = self.generate_fallback_continuation(
+                sanitized_chosen_option, effects
+            )
             if stream_callback:
                 stream_callback(fallback)
             return fallback
+
+    def _validate_and_retry_wealth_narrative(
+        self,
+        *,
+        continuation: str,
+        ledger: Any,
+        current_balance: int,
+        active_transaction_id: Optional[str],
+        original_prompt: str,
+        sys_prompt: str,
+        status_callback: Optional[Callable[[str], None]],
+    ) -> str:
+        validation = ledger.validate_narrative(
+            continuation,
+            current_balance=current_balance,
+            active_transaction_id=active_transaction_id,
+        )
+        if validation.passed:
+            return continuation
+        if status_callback:
+            status_callback("retrying")
+            status_callback("retry")
+        retry = self.ai_generator.generate_completion(
+            prompt=original_prompt + validation.fix_instructions,
+            system_prompt=sys_prompt,
+            temperature=0.6,
+            max_tokens=4096,
+            retry_count=1,
+            language=self.language,
+        )
+        retry_validation = ledger.validate_narrative(
+            retry,
+            current_balance=current_balance,
+            active_transaction_id=active_transaction_id,
+        )
+        if retry_validation.passed:
+            return retry
+        logger.warning(
+            "Wealth claims remained unsupported after retry; applying deterministic correction: %s",
+            [issue.code for issue in retry_validation.issues],
+        )
+        return ledger.sanitize_narrative(
+            retry,
+            retry_validation,
+            current_balance=current_balance,
+        )
 
     def _quick_validate_and_retry_continuation(
         self,
@@ -197,7 +269,9 @@ class StoryService:
             + "; ".join(retry_result.issues)
         )
 
-    def generate_fallback_continuation(self, chosen_option: str, effects: Dict[str, Any]) -> str:
+    def generate_fallback_continuation(
+        self, chosen_option: str, effects: Dict[str, Any]
+    ) -> str:
         """
         Generate a simple fallback continuation when AI generation fails.
 
@@ -287,7 +361,9 @@ class StoryService:
                 logger.warning(f"[StoryContinuation] Failed to build WorldModel: {e}")
                 return continuation
             except Exception as e:
-                logger.exception(f"[StoryContinuation] Unexpected error building WorldModel: {e}")
+                logger.exception(
+                    f"[StoryContinuation] Unexpected error building WorldModel: {e}"
+                )
                 return continuation
 
             if not world_model:
@@ -298,7 +374,9 @@ class StoryService:
                 story_text=continuation,
                 world_model=world_model,
                 player_state_dict=(
-                    player_state if isinstance(player_state, dict) else player_state.to_dict()
+                    player_state
+                    if isinstance(player_state, dict)
+                    else player_state.to_dict()
                 ),
                 character_settings=character_settings,
                 language=self.language,
@@ -350,7 +428,9 @@ class StoryService:
             logger.warning(f"[StoryContinuation] Validation/retry failed: {e}")
             return continuation
         except Exception as e:
-            logger.exception(f"[StoryContinuation] Unexpected error during validation/retry: {e}")
+            logger.exception(
+                f"[StoryContinuation] Unexpected error during validation/retry: {e}"
+            )
             return continuation
 
     def compress_story(
@@ -425,7 +505,9 @@ class StoryService:
             Dictionary with effects: {"energy": int, "mood": int, "knowledge": int, "wealth": int}
         """
         from config.prompts.story_prompts import (
-            get_custom_choice_effects_prompt, get_custom_choice_user_prompt)
+            get_custom_choice_effects_prompt,
+            get_custom_choice_user_prompt,
+        )
 
         current_state = current_state or {}
 
@@ -474,7 +556,9 @@ class StoryService:
                 last_error = str(e)
                 logger.warning(f"Attempt {attempt + 1}/2 failed (unexpected): {e}")
 
-        logger.error("Failed to generate custom choice effects after 2 attempts, using fallback")
+        logger.error(
+            "Failed to generate custom choice effects after 2 attempts, using fallback"
+        )
         return {"energy": -5, "mood": 5, "knowledge": 0, "wealth": 0}
 
     def generate_custom_choice_result(
@@ -497,7 +581,9 @@ class StoryService:
             Dictionary with 'effects' and 'story_continuation'
         """
         from config.prompts.story_prompts import (
-            get_custom_choice_result_prompt, get_custom_choice_user_prompt)
+            get_custom_choice_result_prompt,
+            get_custom_choice_user_prompt,
+        )
 
         current_state = current_state or {}
 
@@ -551,7 +637,9 @@ class StoryService:
                 last_error = str(e)
                 logger.warning(f"Attempt {attempt + 1}/2 failed (unexpected): {e}")
 
-        logger.error("Failed to generate custom choice result after 2 attempts, using fallback")
+        logger.error(
+            "Failed to generate custom choice result after 2 attempts, using fallback"
+        )
         return {
             "story_continuation": f"你决定{custom_text}。这是一个有趣的选择，让我们看看接下来会发生什么...",
             "effects": {"energy": -5, "mood": 5},

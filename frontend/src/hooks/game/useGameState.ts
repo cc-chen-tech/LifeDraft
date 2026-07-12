@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useGameStore } from "@/stores/useGameStore";
 import { useSceneImageStore } from "@/stores/useSceneImageStore";
 import { streamRegenerate } from "@/lib/sse";
+import api from "@/lib/api";
 import type { EventOption } from "@/lib/types";
 import type { Phase } from "./usePhaseManager";
 
@@ -30,7 +31,7 @@ interface UseGameStateParams {
   } | null>;
   prefetchingRef: React.MutableRefObject<boolean>;
   setIsPrefetching: (prefetching: boolean) => void;
-  generateEventRef: React.MutableRefObject<(options?: { force?: boolean }) => Promise<void>>;
+  generateEventRef: React.MutableRefObject<(options?: { resume?: boolean }) => Promise<void>>;
   syncPlayerState: () => Promise<unknown>;
 }
 
@@ -72,24 +73,18 @@ export function useGameState({
   // Regenerate abort controller
   const regenerateAbortRef = useRef<AbortController | null>(null);
 
-  const startGenerationAfterSync = useCallback(() => {
-    let started = false;
-    const startGeneration = () => {
-      if (started) return;
-      started = true;
-      generateEventRef.current({ force: true });
-    };
-
-    const fallbackTimer = setTimeout(startGeneration, 1500);
-    syncPlayerState()
-      .catch((err) => {
-        console.error("[continue] syncPlayerState failed before generation:", err);
-      })
-      .finally(() => {
-        clearTimeout(fallbackTimer);
-        startGeneration();
-      });
-  }, [syncPlayerState, generateEventRef]);
+  const startGenerationAfterSync = useCallback(async () => {
+    if (!gameId) return;
+    try {
+      await api.gameplay.acknowledgeResumeView(gameId);
+      await syncPlayerState();
+      await generateEventRef.current();
+    } catch (err) {
+      console.error("[continue] Failed to acknowledge saved view:", err);
+      setProcessing(false);
+      setPhase("error");
+    }
+  }, [gameId, syncPlayerState, generateEventRef, setProcessing, setPhase]);
 
   // Save game
   const handleSave = async () => {
@@ -118,7 +113,7 @@ export function useGameState({
       setStoryText("");
       generatingRef.current = false;
       setPhase("loading");
-      startGenerationAfterSync();
+      void startGenerationAfterSync();
     }
   }, [isGameOver, setPhase, setCurrentEvent, setStoryText, generatingRef, startGenerationAfterSync]);
 
@@ -127,24 +122,11 @@ export function useGameState({
     console.log(`[handleContinueToNextRound] User clicked continue button`);
     setRoundSummary(null);
 
-    // Check for prefetched result
-    const prefetchResult = prefetchResultRef.current;
-    if (prefetchResult?.event?.options?.length) {
-      console.log("[handleContinueToNextRound] Using prefetched result!");
-      prefetchResultRef.current = null;
-
-      setStoryText(prefetchResult.story);
-      setOptions(prefetchResult.options);
-      setCurrentEvent({
-        story: prefetchResult.story,
-        options: prefetchResult.options,
-      });
-      setPhase("options");
-      return;
-    }
-
-    // No prefetch result, generate normally
-    console.log("[handleContinueToNextRound] No prefetch result, generating normally...");
+    // Exact resume semantics require the user acknowledgement to reach the
+    // backend before the next event can exist. Discard any legacy prefetched
+    // value created by older clients.
+    prefetchResultRef.current = null;
+    console.log("[handleContinueToNextRound] Acknowledging result before generation...");
     setCurrentEvent(null);
     setStoryText("");
     generatingRef.current = false;
@@ -156,7 +138,7 @@ export function useGameState({
     }
 
     setPhase("loading");
-    startGenerationAfterSync();
+    void startGenerationAfterSync();
   }, [setRoundSummary, prefetchResultRef, setStoryText, setOptions, setCurrentEvent, setPhase, generatingRef, prefetchingRef, prefetchAbortRef, startGenerationAfterSync]);
 
   // Regenerate - now uses SSE streaming

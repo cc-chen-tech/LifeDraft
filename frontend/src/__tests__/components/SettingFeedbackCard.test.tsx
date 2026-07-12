@@ -148,6 +148,36 @@ describe("SettingFeedbackCard", () => {
         expect(onRegenerate).toHaveBeenCalled();
       });
     });
+
+    it("keeps old content and shows an error when regeneration fails", async () => {
+      const onRegenerate = jest
+        .fn()
+        .mockRejectedValue(new Error("人际关系生成结果不完整，已保留原设定"));
+      const user = userEvent.setup();
+      render(
+        <SettingFeedbackCard
+          stepKey="relationships"
+          stepLabel="人际关系"
+          data={{ relationships_description: "旧关系摘要" }}
+          onRegenerate={onRegenerate}
+        />
+      );
+
+      await user.click(screen.getByTestId("relationships-feedback-button"));
+      await user.type(
+        screen.getByTestId("relationships-feedback-input"),
+        "保留原职业"
+      );
+      await user.click(screen.getByRole("button", { name: "重新生成人际关系" }));
+
+      expect(
+        await screen.findByText("人际关系生成结果不完整，已保留原设定")
+      ).toBeVisible();
+      expect(screen.getByText("旧关系摘要")).toBeVisible();
+      expect(screen.getByTestId("relationships-feedback-input")).toHaveValue(
+        "保留原职业"
+      );
+    });
   });
 
   describe("Different step keys", () => {

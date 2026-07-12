@@ -36,30 +36,6 @@ class UserInfo(BaseModel):
     private_id: Optional[str] = None  # Only returned on register
 
 
-# ==================== Friends ====================
-
-
-class FriendRequestCreate(BaseModel):
-    to_public_id: str = Field(..., min_length=1)
-
-
-class FriendRequestRespond(BaseModel):
-    request_id: int
-    accept: bool
-
-
-class FriendInfo(BaseModel):
-    user_id: int
-    public_id: str
-    display_name: Optional[str] = None
-
-
-class FriendRequestInfo(BaseModel):
-    request_id: int
-    from_user: FriendInfo
-    created_at: Optional[str] = None
-
-
 # ==================== Games ====================
 
 

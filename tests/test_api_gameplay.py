@@ -9,6 +9,10 @@ from fastapi.testclient import TestClient
 pytestmark = pytest.mark.api
 
 from src.api.main import app  # noqa: E402
+from src.api.services.event_generation_operation import (  # noqa: E402
+    EventGenerationCoordinator,
+    EventGenerationKey,
+)
 
 
 @pytest.fixture
@@ -40,10 +44,12 @@ def mock_session():
     session.game_loop.current_event = None
     session.game_loop._generating = False
     session.game_loop.player_state = MagicMock()
+    session.game_loop.player_state.week = 0
+    session.game_loop.player_state.current_round = 0
     session.game_loop.player_state.to_dict.return_value = {}
     session.game_loop.current_round = 0
     session.sse_cache = []
-    session._is_generating = False
+    session.event_generation = EventGenerationCoordinator()
     session.language = "zh"
     return session
 
@@ -333,17 +339,31 @@ class TestEventSync:
         response = client.post("/api/games/1/event-sync", headers=auth_headers)
         assert response.status_code == 400
 
-    def test_event_sync_generation_in_progress(
+    def test_event_sync_reuses_completed_generation_operation(
         self, client, auth_headers, mock_auth, mock_session_service, mock_session
     ):
-        """Test sync endpoint during generation."""
+        """Sync fallback reuses the durable operation instead of starting another."""
+        from src.ai.models import EventOption, GameEvent
+
         mock_session.game_loop.is_game_over.return_value = False
         mock_session.game_loop.current_event = None
-        mock_session.game_loop._generating = True
+        event = GameEvent(
+            event_description="Shared completed event",
+            options=[
+                EventOption(text="Option 1", effects={}),
+                EventOption(text="Option 2", effects={}),
+            ],
+        )
+        operation, _ = mock_session.event_generation.get_or_create(
+            EventGenerationKey(1, 0, 0, "event")
+        )
+        operation.complete(event)
         mock_session_service.return_value = mock_session
 
         response = client.post("/api/games/1/event-sync", headers=auth_headers)
-        assert response.status_code == 409
+        assert response.status_code == 200
+        assert response.json()["event_description"] == "Shared completed event"
+        mock_session.game_loop.generate_round_event.assert_not_called()
 
 
 class TestChoiceSync:

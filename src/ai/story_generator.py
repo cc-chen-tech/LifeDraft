@@ -985,9 +985,6 @@ class StoryGenerator:
             f"[_validate_and_retry_story] Entered with stream_callback={stream_callback is not None}"
         )
 
-        if self._quality_profile.skip_ai_consistency_check:
-            return story_text
-
         round_key = (
             player_state.get("game_id"),
             player_state.get("week", player_state.get("current_week")),
@@ -1013,6 +1010,7 @@ class StoryGenerator:
                 player_state_dict=player_state,
                 character_settings=character_settings,
                 language=language,
+                run_ai_validation=not self._quality_profile.skip_ai_consistency_check,
             )
 
             if validation.passed:
@@ -1067,6 +1065,23 @@ class StoryGenerator:
 
             if retry_story:
                 logger.info(f"重试生成完成，故事长度: {len(retry_story)}")
+                wealth_ledger = getattr(world_model, "wealth_ledger", None)
+                if wealth_ledger is not None:
+                    current_balance = max(0, int(player_state.get("wealth", 0)))
+                    wealth_validation = wealth_ledger.validate_narrative(
+                        retry_story,
+                        current_balance=current_balance,
+                    )
+                    if not wealth_validation.passed:
+                        logger.warning(
+                            "Wealth claims remained invalid after story retry; "
+                            "applying deterministic correction"
+                        )
+                        retry_story = wealth_ledger.sanitize_narrative(
+                            retry_story,
+                            wealth_validation,
+                            current_balance=current_balance,
+                        )
                 return retry_story
 
             return story_text
@@ -1108,12 +1123,19 @@ class StoryGenerator:
             character_settings = player_state.get("character_settings", {})
             state_obj = SimpleNamespace(
                 week=player_state.get("week", 0),
+                current_round=player_state.get("current_round", 0),
+                age=player_state.get("age"),
                 player_name=resolve_protagonist_name(player_state, character_settings, None) or "主角",
                 character_settings=character_settings,
                 established_facts=player_state.get("established_facts", []),
                 world_model_data=player_state.get("world_model_data", {}),
+                continuity_ledger=player_state.get("continuity_ledger", {}),
+                wealth=player_state.get("wealth", 0),
+                wealth_ledger=player_state.get("wealth_ledger", {}),
             )
-            return WorldModel.from_player_state(state_obj)
+            world_model = WorldModel.from_player_state(state_obj)
+            world_model.continuity_source_state = player_state
+            return world_model
         except Exception as exc:
             logger.warning(f"Failed to build world model from player_state dict: {exc}")
             return None

@@ -31,7 +31,11 @@ def _auth_headers(user_id: int = 1) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _create_game(game_id: int, user_id: int = 1) -> None:
+def _create_game(
+    game_id: int,
+    user_id: int = 1,
+    initial_state: dict | None = None,
+) -> None:
     init_db()
     db = SessionLocal()
     try:
@@ -39,7 +43,14 @@ def _create_game(game_id: int, user_id: int = 1) -> None:
         if existing:
             existing.user_id = user_id
         else:
-            db.add(Game(game_id=game_id, user_id=user_id, language="zh", initial_state={}))
+            db.add(
+                Game(
+                    game_id=game_id,
+                    user_id=user_id,
+                    language="zh",
+                    initial_state=initial_state or {},
+                )
+            )
         db.commit()
     finally:
         db.close()
@@ -133,7 +144,9 @@ class TestSceneImageSSEIntegration:
             "round_number": 0,
             "week": 0,
             "stage": "result",
-            "error": "Image generation timeout after 180s",
+            "code": "image_provider_timeout",
+            "message": "图片生成服务响应超时，请稍后再试",
+            "retryable": True,
             "timestamp": "2026-04-19T10:00:00",
         }
         _publish_scene_image_event(event)
@@ -142,7 +155,7 @@ class TestSceneImageSSEIntegration:
         key = f"{game_id}:0:0:result"
         try:
             assert key in _scene_image_latest
-            assert _scene_image_latest[key]["error"] == "Image generation timeout after 180s"
+            assert _scene_image_latest[key]["code"] == "image_provider_timeout"
 
             with TestClient(app) as client:
                 with client.get(
@@ -151,9 +164,99 @@ class TestSceneImageSSEIntegration:
                     line = response.iter_lines().__next__()
                     data = json.loads(line[6:].decode())
                     assert data["type"] == "scene_image_failed"
-                    assert "error" in data
+                    assert data["message"] == "图片生成服务响应超时，请稍后再试"
+                    assert data["retryable"] is True
         finally:
             _scene_image_latest.pop(key, None)
+            _delete_game(game_id)
+
+    def test_scene_get_does_not_restart_cached_terminal_failure(self, monkeypatch):
+        from src.api.routers import images
+
+        game_id = 999986
+        key = images._get_event_key(game_id, 2, 1, "event")
+        images._scene_image_latest[key] = {
+            "type": "scene_image_failed",
+            "game_id": game_id,
+            "week": 2,
+            "round_number": 1,
+            "stage": "event",
+            "code": "minimax_2056",
+            "message": "图片生成额度暂时不可用，请稍后再试",
+            "retryable": False,
+        }
+        starts: list[dict[str, object]] = []
+        monkeypatch.setattr(
+            images,
+            "_trigger_scene_generation_in_background",
+            lambda **kwargs: starts.append(kwargs),
+        )
+        _create_game(game_id)
+
+        try:
+            with TestClient(app) as client:
+                first = client.get(
+                    f"/api/images/scene/{game_id}/1?week=2&stage=event",
+                    headers=_auth_headers(),
+                )
+                second = client.get(
+                    f"/api/images/scene/{game_id}/1?week=2&stage=event",
+                    headers=_auth_headers(),
+                )
+
+            assert first.status_code == second.status_code == 503
+            assert first.json()["detail"] == {
+                "code": "minimax_2056",
+                "message": "图片生成额度暂时不可用，请稍后再试",
+                "retryable": False,
+            }
+            assert starts == []
+        finally:
+            images._scene_image_latest.pop(key, None)
+            _delete_game(game_id)
+
+    def test_explicit_scene_retry_clears_failure_and_starts_once(self, monkeypatch):
+        from src.api.routers import images
+
+        game_id = 999985
+        key = images._get_event_key(game_id, 2, 1, "event")
+        images._scene_image_latest[key] = {
+            "type": "scene_image_failed",
+            "game_id": game_id,
+            "week": 2,
+            "round_number": 1,
+            "stage": "event",
+            "code": "minimax_2056",
+            "message": "图片生成额度暂时不可用，请稍后再试",
+            "retryable": False,
+        }
+        starts: list[dict[str, object]] = []
+        monkeypatch.setattr(
+            images,
+            "_trigger_scene_generation_in_background",
+            lambda **kwargs: starts.append(kwargs),
+        )
+        _create_game(
+            game_id,
+            initial_state={
+                "player_name": "林见微",
+                "current_event_data": {"event_description": "林见微在雨夜追查线索。"},
+                "character_settings": {"identity": {"name": "林见微"}},
+            },
+        )
+
+        try:
+            with TestClient(app) as client:
+                response = client.get(
+                    f"/api/images/scene/{game_id}/1?week=2&stage=event&retry=true",
+                    headers=_auth_headers(),
+                )
+
+            assert response.status_code == 202
+            assert len(starts) == 1
+            assert key not in images._scene_image_latest
+        finally:
+            images._scene_image_latest.pop(key, None)
             _delete_game(game_id)
 
     def test_publish_from_thread_reaches_sse(self):

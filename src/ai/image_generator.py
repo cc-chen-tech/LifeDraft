@@ -19,7 +19,9 @@ from src.ai.image_config import (CHARACTER_VARIANTS, create_retry_session,
                                  get_image_edit_models,
                                  get_text_to_image_models)
 from src.ai.image_exceptions import (ContentInspectionError,
-                                     ImageGenerationError)
+                                     ImageGenerationError,
+                                     ImageProviderCategory,
+                                     ImageProviderError)
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +39,18 @@ _MINIMAX_ASPECT_RATIOS: Tuple[Tuple[str, int, int], ...] = (
     ("9:16", 9, 16),
     ("21:9", 21, 9),
 )
+
+_MINIMAX_ERROR_POLICIES: Dict[int, Tuple[ImageProviderCategory, bool, str]] = {
+    1001: ("timeout", True, "图片生成服务响应超时，请稍后再试"),
+    1002: ("rate_limit", True, "图片生成请求较多，请稍后再试"),
+    1004: ("authentication", False, "图片生成服务暂时不可用，请联系管理员"),
+    1008: ("capacity", False, "图片生成额度暂时不可用，请稍后再试"),
+    1024: ("upstream", True, "图片生成服务暂时不可用，请稍后再试"),
+    1033: ("upstream", True, "图片生成服务暂时不可用，请稍后再试"),
+    2013: ("invalid_request", False, "图片生成参数无效，请调整后重试"),
+    2049: ("authentication", False, "图片生成服务暂时不可用，请联系管理员"),
+    2056: ("capacity", False, "图片生成额度暂时不可用，请稍后再试"),
+}
 
 
 def _get_prompt_hash(
@@ -118,13 +132,12 @@ class ImageGenerator:
 
     def require_generation_config(self) -> None:
         """Fail only when a real image generation provider call is requested."""
-        if not self.api_key:
-            raise ValueError(
-                "Image API key is required. Set IMAGE_API_KEY or MINIMAX_API_KEY in environment."
-            )
-        if not self.base_url:
-            raise ValueError(
-                "Image API base URL is required. Set IMAGE_API_BASE_URL in environment."
+        if not self.api_key or not self.base_url:
+            raise ImageProviderError(
+                code="image_provider_not_configured",
+                category="configuration",
+                retryable=False,
+                public_message="图片生成服务尚未配置，请联系管理员",
             )
 
     def _image_generation_url(self) -> str:
@@ -203,7 +216,6 @@ class ImageGenerator:
             "response_format": self._response_format_for_minimax(response_format, extra_params),
             "n": min(max(1, n), 9),
             "prompt_optimizer": bool((extra_params or {}).get("prompt_optimizer", True)),
-            "aigc_watermark": bool((extra_params or {}).get("aigc_watermark", False)),
         }
         payload.update(self._minimax_size_fields(size, model))
 
@@ -242,12 +254,90 @@ class ImageGenerator:
                 original_prompt=prompt,
                 api_error_message=full_error,
             )
-        raise ImageGenerationError(f"MiniMax image API returned {full_error}")
+        if status_code == 1027:
+            raise ContentInspectionError(
+                "图片生成结果触发了内容安全审核，请尝试使用其他描述方式",
+                original_prompt=prompt,
+                api_error_message=full_error,
+            )
+
+        category, retryable, public_message = _MINIMAX_ERROR_POLICIES.get(
+            status_code,
+            ("upstream", True, "图片生成服务暂时不可用，请稍后再试"),
+        )
+        trace_id = result.get("trace_id") or result.get("id")
+        raise ImageProviderError(
+            code=f"minimax_{status_code}",
+            category=category,
+            retryable=retryable,
+            public_message=public_message,
+            provider_trace_id=str(trace_id) if trace_id else None,
+        )
+
+    def _provider_error_for_http(
+        self,
+        status_code: int,
+        *,
+        operation: str,
+    ) -> ImageProviderError:
+        """Translate transport status codes into safe provider failures."""
+        if status_code in {401, 403}:
+            category: ImageProviderCategory = "authentication"
+            retryable = False
+            public_message = "图片生成服务暂时不可用，请联系管理员"
+        elif status_code == 429:
+            category = "rate_limit"
+            retryable = True
+            public_message = "图片生成请求较多，请稍后再试"
+        elif status_code >= 500:
+            category = "upstream"
+            retryable = True
+            public_message = "图片生成服务暂时不可用，请稍后再试"
+        else:
+            category = "invalid_request"
+            retryable = False
+            public_message = "图片生成参数无效，请调整后重试"
+
+        return ImageProviderError(
+            code=f"image_provider_http_{status_code}_{operation}",
+            category=category,
+            retryable=retryable,
+            public_message=public_message,
+        )
+
+    def _provider_timeout_error(self) -> ImageProviderError:
+        return ImageProviderError(
+            code="image_provider_timeout",
+            category="timeout",
+            retryable=True,
+            public_message="图片生成服务响应超时，请稍后再试",
+        )
+
+    def _provider_network_error(self) -> ImageProviderError:
+        return ImageProviderError(
+            code="image_provider_network_error",
+            category="upstream",
+            retryable=True,
+            public_message="图片生成服务暂时不可用，请稍后再试",
+        )
+
+    def _provider_invalid_response_error(self) -> ImageProviderError:
+        return ImageProviderError(
+            code="image_provider_invalid_response",
+            category="invalid_response",
+            retryable=False,
+            public_message="图片生成服务返回了无效结果，请稍后再试",
+        )
 
     def _minimax_image_sources(self, result: Dict[str, Any]) -> Tuple[str, List[str]]:
         data = result.get("data")
         if not isinstance(data, dict):
-            raise ImageGenerationError("No data in MiniMax response")
+            raise ImageProviderError(
+                code="image_provider_invalid_response",
+                category="invalid_response",
+                retryable=False,
+                public_message="图片生成服务返回了无效结果，请稍后再试",
+            )
 
         image_urls = data.get("image_urls")
         if isinstance(image_urls, list) and image_urls:
@@ -261,21 +351,36 @@ class ImageGenerator:
             if sources:
                 return "base64", sources
 
-        raise ImageGenerationError("No image output in MiniMax response")
+        raise ImageProviderError(
+            code="image_provider_invalid_response",
+            category="invalid_response",
+            retryable=False,
+            public_message="图片生成服务返回了无效结果，请稍后再试",
+        )
 
     def _decode_base64_image(self, encoded: str) -> bytes:
         payload = encoded.split(",", 1)[1] if encoded.startswith("data:") and "," in encoded else encoded
         try:
             return base64.b64decode(payload, validate=True)
         except binascii.Error as exc:
-            raise ImageGenerationError("Invalid base64 image in MiniMax response") from exc
+            raise ImageProviderError(
+                code="image_provider_invalid_response",
+                category="invalid_response",
+                retryable=False,
+                public_message="图片生成服务返回了无效结果，请稍后再试",
+            ) from exc
 
     def _resolve_minimax_image_source(self, kind: str, source: str) -> bytes:
         if kind == "url":
             return self._download_image(source)
         if kind == "base64":
             return self._decode_base64_image(source)
-        raise ImageGenerationError(f"Unsupported MiniMax image source type: {kind}")
+        raise ImageProviderError(
+            code="image_provider_invalid_response",
+            category="invalid_response",
+            retryable=False,
+            public_message="图片生成服务返回了无效结果，请稍后再试",
+        )
 
     def generate_image(
         self,
@@ -315,7 +420,7 @@ class ImageGenerator:
             logger.info(f"[ImageCache] Cache hit for prompt hash: {cache_key[:8]}...")
             return cached_result
 
-        last_error = None
+        last_error: Optional[Exception] = None
 
         # 支持模型降级：尝试每个模型
         is_last_model = False
@@ -351,6 +456,25 @@ class ImageGenerator:
 
                 except ContentInspectionError:
                     raise
+                except ImageProviderError as e:
+                    last_error = e
+                    logger.warning(
+                        "Image provider failure: provider=minimax code=%s category=%s "
+                        "retryable=%s trace_id=%s model=%s attempt=%s/%s",
+                        e.code,
+                        e.category,
+                        e.retryable,
+                        e.provider_trace_id,
+                        fallback_model,
+                        attempt + 1,
+                        self.max_retries,
+                    )
+                    if not e.retryable:
+                        raise
+                    if attempt < self.max_retries - 1:
+                        time.sleep(2**attempt)
+                    else:
+                        break
                 except (
                     requests.exceptions.RequestException,
                     requests.exceptions.Timeout,
@@ -398,9 +522,9 @@ class ImageGenerator:
                     else:
                         break
 
-        raise ImageGenerationError(
-            f"Failed to generate image after trying all models: {last_error}"
-        )
+        if isinstance(last_error, ImageProviderError):
+            raise last_error
+        raise ImageGenerationError(f"Failed to generate image after trying all models: {last_error}")
 
     def generate_image_with_url(
         self,
@@ -489,27 +613,50 @@ class ImageGenerator:
 
         logger.debug(f"Calling MiniMax image API: {url}, model: {use_model}, size: {size}")
 
-        response = self.session.post(
-            url,
-            json=payload,
-            headers=headers,
-            timeout=self.timeout,
-        )
+        try:
+            response = self.session.post(
+                url,
+                json=payload,
+                headers=headers,
+                timeout=self.timeout,
+            )
+        except requests.exceptions.Timeout as exc:
+            raise self._provider_timeout_error() from exc
+        except requests.exceptions.RequestException as exc:
+            raise self._provider_network_error() from exc
 
         if response.status_code != 200:
-            error_msg = f"API returned {response.status_code}: {response.text}"
-            logger.error(error_msg)
-            raise ImageGenerationError(error_msg)
+            logger.error(
+                "MiniMax image API HTTP failure: status=%s operation=generate",
+                response.status_code,
+            )
+            raise self._provider_error_for_http(
+                response.status_code,
+                operation="generate",
+            )
 
-        result = response.json()
+        try:
+            result = response.json()
+        except (TypeError, ValueError) as exc:
+            raise self._provider_invalid_response_error() from exc
+        if not isinstance(result, dict):
+            raise self._provider_invalid_response_error()
         self._raise_for_minimax_error(result, str(payload["prompt"]))
-        return result  # type: ignore[no-any-return]
+        return result
 
     def _download_image(self, url: str) -> bytes:
         """下载图片"""
-        response = self.session.get(url, timeout=self.timeout)
+        try:
+            response = self.session.get(url, timeout=self.timeout)
+        except requests.exceptions.Timeout as exc:
+            raise self._provider_timeout_error() from exc
+        except requests.exceptions.RequestException as exc:
+            raise self._provider_network_error() from exc
         if response.status_code != 200:
-            raise ImageGenerationError(f"Failed to download image: {response.status_code}")
+            raise self._provider_error_for_http(
+                response.status_code,
+                operation="download",
+            )
         return response.content  # type: ignore[no-any-return]
 
     def edit_image(
@@ -540,7 +687,7 @@ class ImageGenerator:
         """
         logger.debug(f"Editing image with prompt: {prompt}")
 
-        last_error = None
+        last_error: Optional[Exception] = None
 
         # 支持模型降级：尝试每个图生图模型
         is_last_model = False
@@ -575,6 +722,25 @@ class ImageGenerator:
                 except ContentInspectionError:
                     # 内容审核错误不重试，直接抛出
                     raise
+                except ImageProviderError as e:
+                    last_error = e
+                    logger.warning(
+                        "Image edit provider failure: provider=minimax code=%s category=%s "
+                        "retryable=%s trace_id=%s model=%s attempt=%s/%s",
+                        e.code,
+                        e.category,
+                        e.retryable,
+                        e.provider_trace_id,
+                        fallback_model,
+                        attempt + 1,
+                        self.max_retries,
+                    )
+                    if not e.retryable:
+                        raise
+                    if attempt < self.max_retries - 1:
+                        time.sleep(2**attempt)
+                    else:
+                        break
                 except (
                     requests.exceptions.RequestException,
                     requests.exceptions.Timeout,
@@ -622,6 +788,8 @@ class ImageGenerator:
                     else:
                         break
 
+        if isinstance(last_error, ImageProviderError):
+            raise last_error
         raise ImageGenerationError(f"Failed to edit image after trying all models: {last_error}")
 
     def _call_edit_api(
@@ -672,16 +840,23 @@ class ImageGenerator:
 
         logger.debug(f"Calling MiniMax image edit API: model={use_model}, size={size}")
 
-        response = self.session.post(
-            url,
-            json=payload,
-            headers=headers,
-            timeout=self.timeout,
-        )
+        try:
+            response = self.session.post(
+                url,
+                json=payload,
+                headers=headers,
+                timeout=self.timeout,
+            )
+        except requests.exceptions.Timeout as exc:
+            raise self._provider_timeout_error() from exc
+        except requests.exceptions.RequestException as exc:
+            raise self._provider_network_error() from exc
 
         if response.status_code != 200:
-            error_msg = f"Edit API returned {response.status_code}: {response.text}"
-            logger.error(error_msg)
+            logger.error(
+                "MiniMax image API HTTP failure: status=%s operation=edit",
+                response.status_code,
+            )
 
             # 检测内容审核错误
             if response.status_code == 400:
@@ -705,11 +880,19 @@ class ImageGenerator:
                 except Exception as e:
                     logger.exception(f"Unexpected error parsing API error response: {e}")
 
-            raise ImageGenerationError(error_msg)
+            raise self._provider_error_for_http(
+                response.status_code,
+                operation="edit",
+            )
 
-        result = response.json()
+        try:
+            result = response.json()
+        except (TypeError, ValueError) as exc:
+            raise self._provider_invalid_response_error() from exc
+        if not isinstance(result, dict):
+            raise self._provider_invalid_response_error()
         self._raise_for_minimax_error(result, str(payload["prompt"]))
-        return result  # type: ignore[no-any-return]
+        return result
 
     def generate_character_images(
         self,
@@ -786,6 +969,8 @@ class ImageGenerator:
                     )
                     results.extend(edited)
                     logger.info(f"Generated variant {i + 1}/{num_images}")
+                except ImageProviderError:
+                    raise
                 except (
                     requests.exceptions.RequestException,
                     ImageGenerationError,
@@ -837,6 +1022,8 @@ class ImageGenerator:
                             )
                             results.extend(edited)
                             logger.info(f"Generated variant {i + 1}/{num_variants}")
+                        except ImageProviderError:
+                            raise
                         except (
                             requests.exceptions.RequestException,
                             ImageGenerationError,
@@ -845,6 +1032,8 @@ class ImageGenerator:
                         except Exception as e:
                             logger.exception(f"Unexpected error generating variant {i + 1}: {e}")
 
+            except ImageProviderError:
+                raise
             except (requests.exceptions.RequestException, ImageGenerationError) as e:
                 logger.error(f"Failed to generate primary image: {e}")
                 raise
@@ -907,6 +1096,8 @@ class ImageGenerator:
                 )
                 results.extend(edited)
                 logger.info(f"Generated character variant {i + 1}/{num_variants}")
+            except ImageProviderError:
+                raise
             except (requests.exceptions.RequestException, ImageGenerationError) as e:
                 logger.warning(f"Failed to generate variant {i + 1}: {e}")
             except Exception as e:

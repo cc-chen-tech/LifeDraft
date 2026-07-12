@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import threading
 from datetime import datetime, timedelta
 from typing import Any, Dict, Generator, Optional
 
@@ -12,6 +13,8 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user, get_current_user_optional
+from src.api.routers.image_failures import (image_failure_http_exception,
+                                            public_image_failure)
 from src.api.schemas import (BatchGenerateCharactersRequest,
                              GenerateImageRequest,
                              GenerateOpeningIllustrationRequest,
@@ -25,7 +28,8 @@ from src.api.schemas import (BatchGenerateCharactersRequest,
 from src.database.models import Game
 from src.database.models import Image as ImageModel
 from src.database.models import SessionLocal, User
-from src.services.image_service import (ImageContentError, ImageService,
+from src.services.image_service import (ImageContentError,
+                                        ImageProviderServiceError, ImageService,
                                         ImageServiceError)
 from src.services.image_storage import ImageStorageError, ImageStorageService
 
@@ -34,6 +38,7 @@ router = APIRouter()
 
 _scene_image_latest: Dict[str, Dict[str, Any]] = {}
 _scene_image_inflight: set[str] = set()
+_scene_image_state_lock = threading.Lock()
 
 
 def _get_event_key(game_id: int, week: int, round_number: int, stage: str) -> str:
@@ -49,7 +54,20 @@ def _publish_scene_image_event(event: Dict[str, Any]) -> None:
         int(event.get("round_number") or 0),
         str(event.get("stage") or "result"),
     )
-    _scene_image_latest[key] = event
+    with _scene_image_state_lock:
+        _scene_image_latest[key] = event
+
+
+def _scene_failure_detail(event: Dict[str, Any]) -> Dict[str, object]:
+    """Return only the safe public fields from a cached terminal event."""
+    detail: Dict[str, object] = {
+        "code": str(event.get("code") or "image_generation_failed"),
+        "message": str(event.get("message") or "场景插画生成失败，请稍后重试"),
+        "retryable": bool(event.get("retryable", True)),
+    }
+    if event.get("provider_trace_id"):
+        detail["provider_trace_id"] = str(event["provider_trace_id"])
+    return detail
 
 
 async def _drain_pending_events() -> None:
@@ -281,6 +299,14 @@ async def generate_image(
         else:
             raise HTTPException(status_code=400, detail=f"不支持的图片类型: {req.image_type}")
 
+    except ImageProviderServiceError as e:
+        logger.warning(
+            "Image provider failure: route=generate code=%s category=%s trace_id=%s",
+            e.code,
+            e.category,
+            e.provider_trace_id,
+        )
+        raise image_failure_http_exception(e)
     except ImageContentError as e:
         # ★ 内容审核错误 - 返回 400 而不是 500，让用户知道是输入问题
         logger.warning(f"Content inspection failed: {e}")
@@ -426,6 +452,14 @@ async def batch_generate_character_images(
                     )
                 )
 
+        except ImageProviderServiceError as e:
+            logger.warning(
+                "Image provider failure: route=batch-characters code=%s category=%s trace_id=%s",
+                e.code,
+                e.category,
+                e.provider_trace_id,
+            )
+            raise image_failure_http_exception(e)
         except ImageContentError as e:
             logger.warning(f"Content inspection failed for {char['name']}: {e}")
             # 跳过这个人物，继续生成其他人物
@@ -528,6 +562,14 @@ async def generate_opening_illustration(
             created_at=(image_model.created_at.isoformat() if image_model.created_at else None),
         )
 
+    except ImageProviderServiceError as e:
+        logger.warning(
+            "Image provider failure: route=opening-illustration code=%s category=%s trace_id=%s",
+            e.code,
+            e.category,
+            e.provider_trace_id,
+        )
+        raise image_failure_http_exception(e)
     except ImageContentError as e:
         logger.warning(f"Content inspection failed for opening illustration: {e}")
         raise HTTPException(
@@ -587,6 +629,14 @@ async def regenerate_opening_illustration(
             created_at=(image_model.created_at.isoformat() if image_model.created_at else None),
         )
 
+    except ImageProviderServiceError as e:
+        logger.warning(
+            "Image provider failure: route=opening-illustration-regenerate code=%s category=%s trace_id=%s",
+            e.code,
+            e.category,
+            e.provider_trace_id,
+        )
+        raise image_failure_http_exception(e)
     except ImageContentError as e:
         logger.warning(f"Content inspection failed for opening illustration: {e}")
         raise HTTPException(
@@ -650,6 +700,14 @@ async def regenerate_image(
             total=len(image_models),
         )
 
+    except ImageProviderServiceError as e:
+        logger.warning(
+            "Image provider failure: route=regenerate code=%s category=%s trace_id=%s",
+            e.code,
+            e.category,
+            e.provider_trace_id,
+        )
+        raise image_failure_http_exception(e)
     except ImageContentError as e:
         # ★ 内容审核错误
         logger.warning(f"Content inspection failed in regenerate: {e}")
@@ -716,6 +774,14 @@ async def regenerate_fresh_image(
             total=len(image_models),
         )
 
+    except ImageProviderServiceError as e:
+        logger.warning(
+            "Image provider failure: route=regenerate-fresh code=%s category=%s trace_id=%s",
+            e.code,
+            e.category,
+            e.provider_trace_id,
+        )
+        raise image_failure_http_exception(e)
     except ImageContentError as e:
         # ★ 内容审核错误
         logger.warning(f"Content inspection failed in regenerate_fresh: {e}")
@@ -851,6 +917,7 @@ async def get_round_scene_image(
     round_number: int,
     week: int,  # ★ 必需：周数，防止返回错误的图片
     stage: Optional[str] = None,  # ★ 可选：指定阶段 (event/result)
+    retry: bool = False,  # 仅显式用户操作可清除终态失败并重试
     db: Session = Depends(get_session),
     user: Optional[User] = Depends(get_current_user_optional),
 ):
@@ -910,6 +977,20 @@ async def get_round_scene_image(
             "referenced_images": scene_image.referenced_images,
             "created_at": (scene_image.created_at.isoformat() if scene_image.created_at else None),
         }
+
+    event_stage = stage or "result"
+    event_key = _get_event_key(game_id, week, round_number, event_stage)
+    cached_failure: Optional[Dict[str, Any]] = None
+    with _scene_image_state_lock:
+        cached_event = _scene_image_latest.get(event_key)
+        if cached_event and cached_event.get("type") == "scene_image_failed":
+            if retry:
+                _scene_image_latest.pop(event_key, None)
+            else:
+                cached_failure = dict(cached_event)
+
+    if cached_failure is not None:
+        raise HTTPException(status_code=503, detail=_scene_failure_detail(cached_failure))
 
     # ★ 场景插画不存在，尝试自动触发生成
     logger.info(
@@ -971,14 +1052,14 @@ async def get_round_scene_image(
             game_id=game_id,
             week=week,
             round_number=round_number,
-            stage=stage or "result",
+            stage=event_stage,
             story_text=story_text,
             character_settings=character_settings,
             player_name=player_name,
         )
         logger.info(
             f"[get_round_scene_image] Background generation triggered for "
-            f"game={game_id}, week={week}, round={round_number}, stage={stage or 'result'}"
+            f"game={game_id}, week={week}, round={round_number}, stage={event_stage}"
         )
     except Exception as e:
         logger.error(f"[get_round_scene_image] Failed to trigger generation: {e}")
@@ -1116,6 +1197,14 @@ async def generate_round_scene_image(
             created_at=(scene_model.created_at.isoformat() if scene_model.created_at else None),
         )
 
+    except ImageProviderServiceError as e:
+        logger.warning(
+            "Image provider failure: route=scene-generate code=%s category=%s trace_id=%s",
+            e.code,
+            e.category,
+            e.provider_trace_id,
+        )
+        raise image_failure_http_exception(e)
     except ImageContentError as e:
         logger.warning(f"Content inspection failed: {e}")
         raise HTTPException(status_code=400, detail=f"内容审核未通过: {e}")
@@ -1184,6 +1273,14 @@ async def regenerate_round_scene_image(
             created_at=(scene_model.created_at.isoformat() if scene_model.created_at else None),
         )
 
+    except ImageProviderServiceError as e:
+        logger.warning(
+            "Image provider failure: route=scene-regenerate code=%s category=%s trace_id=%s",
+            e.code,
+            e.category,
+            e.provider_trace_id,
+        )
+        raise image_failure_http_exception(e)
     except ImageContentError as e:
         logger.warning(f"Content inspection failed: {e}")
         raise HTTPException(status_code=400, detail=f"内容审核未通过: {e}")
@@ -1269,7 +1366,6 @@ def _trigger_scene_generation_in_background(
         character_settings: 角色设定
         player_name: 玩家名称
     """
-    import threading
     key = _get_event_key(game_id, week, round_number, stage)
 
     if key in _scene_image_inflight:
@@ -1333,7 +1429,8 @@ def _trigger_scene_generation_in_background(
                         f"game={game_id}, {week_display}, round={round_number}, stage={stage}"
                     )
 
-            except Exception as e:
+            except ImageProviderServiceError as e:
+                failure = public_image_failure(e)
                 _publish_scene_image_event(
                     {
                         "type": "scene_image_failed",
@@ -1341,14 +1438,48 @@ def _trigger_scene_generation_in_background(
                         "round_number": round_number,
                         "week": week,
                         "stage": stage,
-                        "error": str(e),
+                        **failure,
                         "timestamp": datetime.utcnow().isoformat(),
                     }
                 )
-                logger.exception(f"[Background Generation] Error in thread: {e}")
+                logger.warning(
+                    "[Background Generation] Provider failure: code=%s category=%s "
+                    "trace_id=%s game=%s week=%s round=%s stage=%s",
+                    e.code,
+                    e.category,
+                    e.provider_trace_id,
+                    game_id,
+                    week,
+                    round_number,
+                    stage,
+                )
+            except Exception:
+                _publish_scene_image_event(
+                    {
+                        "type": "scene_image_failed",
+                        "game_id": game_id,
+                        "round_number": round_number,
+                        "week": week,
+                        "stage": stage,
+                        "code": "image_generation_failed",
+                        "message": "场景插画生成失败，请稍后重试",
+                        "retryable": True,
+                        "timestamp": datetime.utcnow().isoformat(),
+                    }
+                )
+                logger.exception(
+                    "[Background Generation] Unexpected error in thread: "
+                    "game=%s week=%s round=%s stage=%s",
+                    game_id,
+                    week,
+                    round_number,
+                    stage,
+                )
             finally:
-                db.close()
-            _scene_image_inflight.discard(key)
+                try:
+                    db.close()
+                finally:
+                    _scene_image_inflight.discard(key)
 
         except Exception as e:
             logger.exception(f"[Background Generation] Failed to setup generation: {e}")

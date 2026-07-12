@@ -36,6 +36,7 @@ class FakeStoryService:
 
     def __init__(self, language: str = "zh"):
         self.language = language
+        self.fact_updates = []
 
     # -- methods called by _generate_story_continuation --
     def generate_story_continuation(
@@ -48,6 +49,7 @@ class FakeStoryService:
         stream_callback=None,
         status_callback=None,
         is_custom=False,
+        active_wealth_transaction_id=None,
     ) -> str:
         return "The story continues in an interesting way."
 
@@ -59,7 +61,7 @@ class FakeStoryService:
             "summary": "A brief summary of events.",
             "event_concluded": True,
             "storyline_updates": [],
-            "fact_updates": [],
+            "fact_updates": self.fact_updates,
             "foreshadowing_seeds": [],
             "habit_updates": [],
             "location_updates": [],
@@ -73,7 +75,7 @@ class FakeStoryService:
     ) -> Dict[str, Any]:
         return {
             "summary": "",  # merged with compress_narrative above
-            "fact_updates": [],
+            "fact_updates": self.fact_updates,
             "location_updates": [],
             "career_updates": [],
             "commitment_updates": [],
@@ -242,6 +244,10 @@ class TestMakeRoundChoiceContract:
         }
         for key in required_keys:
             assert key in result, f"Missing key '{key}' in result: {list(result.keys())}"
+        timeline = state.continuity_ledger["timeline"]
+        assert len(timeline) == 1
+        assert timeline[0]["event_id"] == "w0-r0"
+        assert timeline[0]["status"] == "committed"
 
     def test_story_continuation_is_string(self):
         state = _make_state()
@@ -249,7 +255,32 @@ class TestMakeRoundChoiceContract:
         proc = _make_processor(player_state=state, current_event=event)
 
         result = proc.make_round_choice(option_index=0)
+
         assert isinstance(result["story_continuation"], str)
+
+    def test_committed_fact_updates_keep_source_event(self):
+        state = _make_state(character_settings={"era": {"year": 2026}})
+        event = _make_event()
+        service = FakeStoryService()
+        service.fact_updates = [
+            {
+                "action": "new",
+                "subject": "TestHero",
+                "category": "health",
+                "fact": "右手轻度扭伤",
+            }
+        ]
+        proc = _make_processor(
+            player_state=state,
+            current_event=event,
+            story_service=service,
+        )
+
+        proc.make_round_choice(option_index=0)
+
+        health = state.continuity_ledger["mutable_states"]["health"]["TestHero"]
+        assert health["fact"] == "右手轻度扭伤"
+        assert health["source_event_id"] == "w0-r0"
 
     def test_summary_is_string(self):
         state = _make_state()
@@ -294,6 +325,44 @@ class TestMakeRoundChoiceContract:
         result = proc.make_round_choice(option_index=0)
         assert isinstance(result["game_over"], bool)
 
+    def test_wealth_effect_creates_source_linked_transaction(self):
+        state = _make_state(wealth=10_000)
+        event = _make_event()
+        service = FakeStoryService()
+        proc = _make_processor(
+            player_state=state,
+            current_event=event,
+            story_service=service,
+        )
+
+        result = proc.make_round_choice(option_index=2)
+
+        assert state.wealth == 9_800
+        assert result["effects_applied"]["wealth"] == -200
+        transactions = state.wealth_ledger["transactions"]
+        assert len(transactions) == 1
+        assert transactions[0] == {
+            "transaction_id": "choice:w0-r0",
+            "opening_balance": 10_000,
+            "requested_delta": -200,
+            "applied_delta": -200,
+            "reason": "Visit the blacksmith",
+            "source_event_id": "w0-r0",
+            "week": 0,
+            "round": 0,
+            "closing_balance": 9_800,
+        }
+
+    def test_zero_wealth_effect_does_not_create_fake_transaction(self):
+        state = _make_state(wealth=10_000)
+        event = _make_event()
+        proc = _make_processor(player_state=state, current_event=event)
+
+        proc.make_round_choice(option_index=0)
+
+        assert state.wealth == 10_000
+        assert state.wealth_ledger["transactions"] == []
+
     def test_game_over_false_early_game(self):
         """game_over should be False when week < TOTAL_WEEKS."""
         state = _make_state(week=0)
@@ -320,6 +389,48 @@ class TestMakeRoundChoiceContract:
 
         result = proc.make_round_choice(option_index=0)
         assert result["need_weekly_summary"] is False
+
+    def test_choice_persists_exact_result_view_after_authoritative_round_advances(self):
+        state = _make_state(week=3, current_round=0, rounds_per_week=3)
+        event = _make_event()
+        proc = _make_processor(player_state=state, current_event=event)
+
+        result = proc.make_round_choice(option_index=0)
+
+        assert state.current_round == 1
+        assert state.week == 3
+        assert state.resume_view == {
+            "phase": "result",
+            "story_text": (
+                "You arrive at the bustling marketplace.\n\n"
+                "The story continues in an interesting way."
+            ),
+            "round_summary": result["summary"],
+            "summary_text": "",
+            "resource_warnings": [],
+            "completed_week": 3,
+            "completed_round": 0,
+        }
+
+    def test_last_round_persists_summary_view_instead_of_next_week_event(self):
+        state = _make_state(week=3, current_round=2, rounds_per_week=3)
+        event = _make_event()
+        proc = _make_processor(player_state=state, current_event=event)
+
+        def finalize_week(result, status_callback=None):
+            del status_callback
+            result["weekly_summary"] = "第4周完整总结"
+
+        proc.make_round_choice(option_index=0, finalize_week_callback=finalize_week)
+
+        # The lightweight processor advances the round; the full GameLoop's
+        # finalize callback performs the week rollover after this point.
+        assert state.week == 3
+        assert state.current_round == 3
+        assert state.resume_view["phase"] == "summary"
+        assert state.resume_view["summary_text"] == "第4周完整总结"
+        assert state.resume_view["completed_week"] == 3
+        assert state.resume_view["completed_round"] == 2
 
     def test_option_index_zero_valid(self):
         """Option index 0 should be valid (first option)."""

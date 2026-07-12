@@ -8,31 +8,10 @@
 import { useSceneImageStore } from '@/stores/useSceneImageStore';
 import { jsonResponse, errorResponse } from '@/__tests__/helpers/fetch';
 
-class MockEventSource {
-  static instances: MockEventSource[] = [];
-
-  onopen: (() => void) | null = null;
-  onmessage: ((event: { data: string }) => void) | null = null;
-  onerror: ((event: unknown) => void) | null = null;
-  close = jest.fn();
-
-  constructor(public url: string) {
-    MockEventSource.instances.push(this);
-  }
-
-  emit(data: unknown) {
-    this.onmessage?.({ data: JSON.stringify(data) });
-  }
-}
-
 describe('useSceneImageStore', () => {
-  const originalEventSource = global.EventSource;
-
-  afterAll(() => {
-    (global as unknown as { EventSource: typeof EventSource }).EventSource = originalEventSource;
-  });
-
   beforeEach(() => {
+    global.fetch = jest.fn();
+    useSceneImageStore.getState().clearImageCache();
     // Reset store to initial state
     useSceneImageStore.setState({
       roundSceneImages: [],
@@ -40,19 +19,15 @@ describe('useSceneImageStore', () => {
       eventSceneImage: null,
       resultSceneImage: null,
       isLoadingRoundSceneImage: false,
+      roundSceneError: null,
       isRegeneratingRoundScene: false,
       roundSceneRegenerateError: null,
-      roundSceneImageError: null,
       historySceneImage: null,
       isLoadingHistoryImage: false,
       isGeneratingHistoryImage: false,
       isRegeneratingHistoryImage: false,
-      sseConnection: null,
     });
     jest.clearAllMocks();
-    global.fetch = jest.fn();
-    MockEventSource.instances = [];
-    (global as unknown as { EventSource: typeof MockEventSource }).EventSource = MockEventSource;
   });
 
   describe('fetchAllRoundSceneImages - 跨周次场景测试', () => {
@@ -239,6 +214,83 @@ describe('useSceneImageStore', () => {
       expect(state.isLoadingRoundSceneImage).toBe(false);
     });
 
+    it('stops loading and stores a terminal provider failure', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(
+        errorResponse(503, {
+          code: 'minimax_2056',
+          message: '图片生成额度暂时不可用，请稍后再试',
+          retryable: false,
+        })
+      );
+
+      await useSceneImageStore.getState().fetchRoundSceneImage(1, 0, 0, 'event');
+
+      expect(useSceneImageStore.getState()).toMatchObject({
+        isLoadingRoundSceneImage: false,
+        roundSceneError: '图片生成额度暂时不可用，请稍后再试',
+      });
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not repeat a failed automatic scene fetch until explicit retry', async () => {
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(errorResponse(503, {
+          code: 'minimax_2013',
+          message: '图片生成参数无效，请调整后重试',
+          retryable: false,
+        }))
+        .mockResolvedValueOnce(jsonResponse({
+          scene_id: 3,
+          week: 0,
+          round_number: 0,
+          stage: 'event',
+          image_url: 'http://example.com/recovered.png',
+          scene_description: '显式重试后的场景',
+          referenced_images: [],
+          created_at: '2024-01-01T00:00:00Z',
+        }));
+
+      const store = useSceneImageStore.getState();
+
+      await store.fetchRoundSceneImage(1, 0, 0, 'event');
+      await store.fetchRoundSceneImage(1, 0, 0, 'event');
+
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(useSceneImageStore.getState().roundSceneError).toBe('图片生成参数无效，请调整后重试');
+
+      await store.fetchRoundSceneImage(1, 0, 0, 'event', { retry: true });
+
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+      expect(global.fetch).toHaveBeenLastCalledWith(
+        '/api/images/scene/1/0?stage=event&week=0&retry=true',
+        expect.objectContaining({ credentials: 'include' })
+      );
+      expect(useSceneImageStore.getState().roundSceneError).toBeNull();
+      expect(useSceneImageStore.getState().eventSceneImage?.scene_id).toBe(3);
+    });
+
+    it('adds retry=true only for an explicit scene retry', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        scene_id: 2,
+        week: 0,
+        round_number: 0,
+        stage: 'event',
+        image_url: 'http://example.com/retried.png',
+        scene_description: '重试后的场景',
+        referenced_images: [],
+        created_at: '2024-01-01T00:00:00Z',
+      }));
+
+      await useSceneImageStore
+        .getState()
+        .fetchRoundSceneImage(1, 0, 0, 'event', { retry: true });
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/images/scene/1/0?stage=event&week=0&retry=true',
+        expect.objectContaining({ credentials: 'include' })
+      );
+    });
+
     it('polls after 202 generation until the generated scene is available', async () => {
       jest.useFakeTimers();
       (global.fetch as jest.Mock)
@@ -379,67 +431,6 @@ describe('useSceneImageStore', () => {
       // Each call fetches the correct scene
       const state = useSceneImageStore.getState();
       expect(state.roundSceneImages.length).toBeGreaterThanOrEqual(1);
-    });
-  });
-
-  describe('subscribeToSceneImageEvents', () => {
-    it('surfaces scene generation failures without dropping existing images', () => {
-      const existingScene = {
-        scene_id: 7,
-        week: 0,
-        round_number: 0,
-        stage: 'result',
-        image_url: 'http://example.com/existing.png',
-        scene_description: '已有结果插画',
-        referenced_images: [],
-        created_at: '2024-01-01T00:00:00Z',
-      };
-      useSceneImageStore.setState({
-        isLoadingRoundSceneImage: true,
-        resultSceneImage: existingScene,
-        roundSceneImages: [existingScene],
-      });
-
-      useSceneImageStore.getState().subscribeToSceneImageEvents(1);
-      MockEventSource.instances[0].emit({
-        type: 'scene_image_failed',
-        game_id: 1,
-        round_number: 0,
-        week: 0,
-        stage: 'result',
-        error: 'MiniMax 图片服务暂时不可用',
-        timestamp: '2024-01-01T00:00:30Z',
-      });
-
-      const state = useSceneImageStore.getState();
-      expect(state.isLoadingRoundSceneImage).toBe(false);
-      expect(state.roundSceneImageError).toBe('MiniMax 图片服务暂时不可用');
-      expect(state.resultSceneImage).toEqual(existingScene);
-      expect(state.roundSceneImages).toEqual([existingScene]);
-    });
-
-    it('clears the visible generation error when a scene arrives later', () => {
-      useSceneImageStore.setState({
-        isLoadingRoundSceneImage: true,
-        roundSceneImageError: 'MiniMax 图片服务暂时不可用',
-      });
-
-      useSceneImageStore.getState().subscribeToSceneImageEvents(1);
-      MockEventSource.instances[0].emit({
-        type: 'scene_image_ready',
-        game_id: 1,
-        round_number: 0,
-        week: 0,
-        stage: 'result',
-        scene_id: 9,
-        image_url: 'http://example.com/new.png',
-        scene_description: '新插画',
-        timestamp: '2024-01-01T00:01:00Z',
-      });
-
-      const state = useSceneImageStore.getState();
-      expect(state.roundSceneImageError).toBeNull();
-      expect(state.resultSceneImage?.scene_id).toBe(9);
     });
   });
 

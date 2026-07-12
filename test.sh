@@ -319,6 +319,11 @@ run_preflight() {
         tests/test_e2e_lock_owner_publication_no_mock.py \
         tests/test_gate_gameplay_behavior_no_mock.py \
         tests/test_gate_contracts_no_mock.py \
+        tests/test_continuity_ledger.py \
+        tests/test_continuity_ledger_integration.py \
+        tests/test_assistant_grounding.py \
+        tests/test_wealth_ledger.py \
+        tests/test_wealth_ledger_integration.py \
         tests/test_opening_story_contract.py \
         tests/test_character_creation_deep.py::TestCharacterCreatorGenerateSetting::test_generate_era_feedback_still_aligns_with_modern_life_vision \
         tests/test_api_games.py::TestCreateGame::test_create_game_preserves_generated_initial_wealth \
@@ -402,6 +407,8 @@ run_mypy() {
         src/services/minimax_story_tts_provider.py
         src/services/minimax_music_generation.py
         src/game/relationship_authority.py
+        src/game/assistant_grounding.py
+        src/game/wealth_ledger.py
         src/services/story_tts_provider.py
         src/services/story_voice_reading.py
         src/services/story_voice_repository.py

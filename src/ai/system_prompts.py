@@ -283,6 +283,28 @@ _PROMPT_REGISTRY = {
     "narrative_summary": (NARRATIVE_SUMMARY_ZH, NARRATIVE_SUMMARY_EN),
 }
 
+_PROFESSIONAL_RISK_GUARDRAIL_ZH = (
+    "\n\n【专业风险表达红线】涉及法律、竞业、监管、政策或医疗等专业事项时，"
+    "不得把方案描述为零风险、绝对安全、保证合法或已经合规；必须保留现实不确定性，"
+    "不得把借用亲属名义、代持或规避义务写成合规路径，并提示应由有资质的专业人士结合具体事实复核。"
+)
+_PROFESSIONAL_RISK_GUARDRAIL_EN = (
+    "\n\n[PROFESSIONAL-RISK RED LINE] When legal, non-compete, regulatory, policy, or medical matters "
+    "appear, never present a course of action as zero-risk, absolutely safe, guaranteed legal, or already "
+    "compliant. Preserve real-world uncertainty, never endorse evasion through a relative or nominee, and "
+    "state that a qualified professional must review the specific facts."
+)
+_PROFESSIONAL_RISK_PROMPTS = {
+    "story_novelist",
+    "story_continuation",
+    "story_rewriter",
+    "story_compressor",
+    "weekly_summary",
+    "four_week_summary",
+    "yearly_summary",
+    "narrative_summary",
+}
+
 
 def get_system_prompt(key: str, language: str = "zh") -> str:
     """Get system prompt by key and language.
@@ -298,4 +320,11 @@ def get_system_prompt(key: str, language: str = "zh") -> str:
         KeyError: If the key is not found in the registry
     """
     pair = _PROMPT_REGISTRY[key]
-    return pair[0] if language == "zh" else pair[1]
+    prompt = pair[0] if language == "zh" else pair[1]
+    if key in _PROFESSIONAL_RISK_PROMPTS:
+        prompt += (
+            _PROFESSIONAL_RISK_GUARDRAIL_ZH
+            if language == "zh"
+            else _PROFESSIONAL_RISK_GUARDRAIL_EN
+        )
+    return prompt

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from src.api.deps import get_current_user_optional
+from src.api.routers.image_failures import image_failure_http_exception
 from src.api.schemas import (CollectionResponse, MessageResponse,
                              RegenerateCharacterImageRequest,
                              RegenerateItemImageRequest)
@@ -19,7 +20,9 @@ from src.services.collection_service import (CollectionService,
                                              EntityNotFoundError,
                                              ImageGenerationError,
                                              PermissionDeniedError)
-from src.services.image_service import ImageContentError, ImageServiceError
+from src.services.image_service import (ImageContentError,
+                                        ImageProviderServiceError,
+                                        ImageServiceError)
 from src.services.item_extraction_service import ItemExtractionService
 from src.services.landmark_extraction_service import LandmarkExtractionService
 
@@ -264,6 +267,14 @@ async def generate_character_image(  # type: ignore
         )
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except ImageProviderServiceError as e:
+        logger.warning(
+            "Image provider failure: route=collection-character-generate code=%s category=%s trace_id=%s",
+            e.code,
+            e.category,
+            e.provider_trace_id,
+        )
+        raise image_failure_http_exception(e)
     except ImageContentError:
         raise HTTPException(status_code=400, detail="生成图片时触发了内容安全审核，请稍后重试")
     except ImageServiceError as e:
@@ -310,6 +321,14 @@ async def generate_item_image(  # type: ignore
         )
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except ImageProviderServiceError as e:
+        logger.warning(
+            "Image provider failure: route=collection-item-generate code=%s category=%s trace_id=%s",
+            e.code,
+            e.category,
+            e.provider_trace_id,
+        )
+        raise image_failure_http_exception(e)
     except ImageContentError:
         raise HTTPException(status_code=400, detail="生成图片时触发了内容安全审核，请稍后重试")
     except ImageServiceError as e:
@@ -399,6 +418,14 @@ async def generate_landmark_image(  # type: ignore
         )
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except ImageProviderServiceError as e:
+        logger.warning(
+            "Image provider failure: route=collection-landmark-generate code=%s category=%s trace_id=%s",
+            e.code,
+            e.category,
+            e.provider_trace_id,
+        )
+        raise image_failure_http_exception(e)
     except ImageContentError:
         raise HTTPException(status_code=400, detail="生成图片时触发了内容安全审核，请稍后重试")
     except ImageServiceError as e:
@@ -489,6 +516,14 @@ async def regenerate_character_image(  # type: ignore
         raise HTTPException(status_code=404, detail=str(e))
     except PermissionDeniedError as e:
         raise HTTPException(status_code=403, detail=str(e))
+    except ImageProviderServiceError as e:
+        logger.warning(
+            "Image provider failure: route=collection-character-regenerate code=%s category=%s trace_id=%s",
+            e.code,
+            e.category,
+            e.provider_trace_id,
+        )
+        raise image_failure_http_exception(e)
     except ImageContentError:
         raise HTTPException(status_code=400, detail="生成图片时触发了内容安全审核，请稍后重试")
     except ImageServiceError as e:
@@ -522,6 +557,14 @@ async def regenerate_item_image(  # type: ignore
         )
     except EntityNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except ImageProviderServiceError as e:
+        logger.warning(
+            "Image provider failure: route=collection-item-regenerate code=%s category=%s trace_id=%s",
+            e.code,
+            e.category,
+            e.provider_trace_id,
+        )
+        raise image_failure_http_exception(e)
     except ImageGenerationError as e:
         raise HTTPException(status_code=500, detail=str(e))
     except ImageContentError:

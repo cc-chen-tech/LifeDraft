@@ -273,6 +273,10 @@ class WorldModel:
         self.location_graph: Dict[str, Dict[str, int]] = {}  # {"城市A": {"城市B": 2, "城市C": 3}}
         self.character_knowledge_sets: Dict[str, set] = {}  # {"角色A": {"秘密1", "事件2"}}
         self.required_cast: List[Dict[str, str]] = []
+        self.continuity_ledger = None
+        self.continuity_source_state = None
+        self.wealth_ledger = None
+        self.authoritative_wealth: int = 0
 
     # -------------------- Factory --------------------
 
@@ -292,6 +296,24 @@ class WorldModel:
         era_info = cs.get("era", {})
         wm.era = era_info.get("era_description", "modern")
         wm.required_cast = extract_required_key_people(cs)
+        wm.continuity_source_state = player_state
+
+        try:
+            from src.game.continuity_ledger import ContinuityLedger
+
+            wm.continuity_ledger = ContinuityLedger.from_player_state(player_state)
+            wm.continuity_ledger.persist(player_state)
+        except (TypeError, ValueError, KeyError) as exc:
+            logger.warning("Skipping invalid continuity ledger: %s", exc)
+
+        try:
+            from src.game.wealth_ledger import WealthLedger
+
+            wm.authoritative_wealth = max(0, int(getattr(player_state, "wealth", 0)))
+            wm.wealth_ledger = WealthLedger.from_player_state(player_state)
+            wm.wealth_ledger.persist(player_state)
+        except (TypeError, ValueError, KeyError) as exc:
+            logger.warning("Skipping invalid wealth ledger: %s", exc)
 
         # ---------- Read new structured data ----------
         wmd: Dict[str, Any] = getattr(player_state, "world_model_data", None) or {}
@@ -571,6 +593,22 @@ class WorldModel:
         required_cast_lines = self._build_required_cast_constraints("zh" if zh else "en")
         if required_cast_lines:
             sections.append(required_cast_lines)
+
+        # Keep the authoritative ledger last so it has explicit precedence
+        # over legacy summaries and extracted prose facts.
+        if self.continuity_ledger is not None:
+            ledger_lines = self.continuity_ledger.build_constraints_text("zh" if zh else "en")
+            if ledger_lines:
+                sections.append(ledger_lines)
+
+        # Wealth authority is intentionally last: extracted prose and legacy
+        # summaries cannot override the numeric balance or transaction audit.
+        if self.wealth_ledger is not None:
+            wealth_lines = self.wealth_ledger.build_constraints_text(
+                self.authoritative_wealth, "zh" if zh else "en"
+            )
+            if wealth_lines:
+                sections.append(wealth_lines)
 
         if not sections:
             return ""

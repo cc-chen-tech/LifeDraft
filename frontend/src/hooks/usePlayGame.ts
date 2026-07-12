@@ -8,7 +8,7 @@ import { useSessionStore } from "@/stores/useSessionStore";
 import { useHydration } from "@/hooks/useHydration";
 import { games } from "@/lib/api";
 import type { EventOption } from "@/lib/types";
-import { resolveRecoveredStoryText } from "@/lib/sessionRecovery";
+import { resolveRecoveredStoryText, resolveRecoveredView } from "@/lib/sessionRecovery";
 
 // Import sub-hooks
 import { usePhaseManager, Phase, ConnectionStatus } from "./game/usePhaseManager";
@@ -55,9 +55,9 @@ export function usePlayGame() {
     eventSceneImage,  // ★ 事件插画
     resultSceneImage,  // ★ 结果插画
     isLoadingRoundSceneImage,
+    roundSceneError,
     isRegeneratingRoundScene,
     roundSceneRegenerateError,
-    roundSceneImageError,
     fetchRoundSceneImage,
     fetchAllRoundSceneImages,
     regenerateRoundSceneImage,
@@ -95,7 +95,7 @@ export function usePlayGame() {
     event: { story: string; options: EventOption[] } | null;
   } | null>(null);
   const prefetchingRef = useRef(false);
-  const generateEventRef = useRef<(options?: { force?: boolean }) => Promise<void>>(async () => {});
+  const generateEventRef = useRef<(options?: { resume?: boolean }) => Promise<void>>(async () => {});
 
   // ===== Phase Manager =====
   const {
@@ -147,7 +147,6 @@ export function usePlayGame() {
   const {
     generateEvent,
     recoverEventGeneration,
-    prefetchNextEvent,
   } = useEventGenerator({
     gameId,
     phaseRef,
@@ -161,7 +160,6 @@ export function usePlayGame() {
     setCurrentEvent,
     setGameOver,
     setRoundSummary,
-    isGameOver,
     setIsPrefetching,
     abortRef,
     generatingRef,
@@ -332,22 +330,47 @@ export function usePlayGame() {
       try {
         await useGameStore.getState().syncState();
         const state = useGameStore.getState();
-        if (state.currentEvent?.options?.length) {
+        const recoveredView = resolveRecoveredView({
+          eventStory: state.currentEvent?.story,
+          eventOptions: state.currentEvent?.options,
+          playerState: state.playerState,
+          progress: state.progress,
+          roundInfo: state.roundInfo,
+        });
+
+        if (recoveredView.phase === "options" && state.currentEvent?.options?.length) {
           // 有选项，直接展示
           setOptions(state.currentEvent.options);
           if (!state.storyText && state.currentEvent.story) {
             setStoryText(state.currentEvent.story);
           }
           setPhase("options");
-        } else if (state.storyText) {
-          // ★ 有故事但无选项（存档加载常见情况）：展示已有故事，然后调用 generateEvent 生成选项
-          // generateEvent 内部已有保护：如果 storyText 非空则保留内容不清空
-          // phase 保持在 "loading"，直接调用 generateEvent 即可
-          console.log(`[play] Has story (${state.storyText.length} chars) but no options, generating options via SSE...`);
-          generateEvent();
+        } else if (
+          recoveredView.phase === "result" ||
+          recoveredView.phase === "summary" ||
+          recoveredView.phase === "ending"
+        ) {
+          setStoryText(recoveredView.story);
+          setRoundSummary(recoveredView.roundSummary || null);
+          setSummaryText(recoveredView.summaryText);
+          setOptions([]);
+          setPhase(recoveredView.phase);
+        } else if (recoveredView.phase === "generating") {
+          if (recoveredView.story) {
+            setStoryText(recoveredView.story);
+          }
+          phaseRef.current = "generating";
+          setPhase("generating");
+          await generateEvent({ resume: true });
+        } else if (recoveredView.phase === "failed") {
+          if (recoveredView.story) {
+            setStoryText(recoveredView.story);
+          }
+          setOptions([]);
+          setProcessing(false);
+          setPhase("error");
         } else {
-          // 真正没有故事，生成新事件
-          generateEvent();
+          await generateEvent();
         }
       } catch (err) {
         if (isNotFoundError(err)) {
@@ -358,7 +381,7 @@ export function usePlayGame() {
           return;
         }
         console.error("[play] syncState failed:", err);
-        generateEvent();
+        await generateEvent();
       }
     };
 
@@ -475,12 +498,12 @@ export function usePlayGame() {
     resultSceneImage,
     historySceneImage,
     isLoadingRoundSceneImage,
+    roundSceneError,
     isLoadingHistoryImage,
     isGeneratingHistoryImage,
     isRegeneratingRoundScene,
     isRegeneratingHistoryImage,
     roundSceneRegenerateError,
-    roundSceneImageError,
     fetchRoundSceneImage,
     fetchAllRoundSceneImages,
     regenerateRoundSceneImage,
@@ -574,9 +597,9 @@ export function usePlayGame() {
     eventSceneImage,
     resultSceneImage,
     isLoadingRoundSceneImage,
+    roundSceneError,
     isRegeneratingRoundScene,
     roundSceneRegenerateError,
-    roundSceneImageError,
     fetchRoundSceneImage,
     fetchAllRoundSceneImages,
     regenerateRoundSceneImage,

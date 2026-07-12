@@ -6,6 +6,7 @@ import threading
 import time
 from typing import Any, Dict, List, Optional
 
+from src.api.services.event_generation_operation import EventGenerationCoordinator
 from src.game.game_loop import GameLoop
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ class GameLoopSession:
         "user_id",
         "last_access",
         "language",
-        "_is_generating",
+        "event_generation",
         "sse_cache",
         "_sse_event_id",
         # ★ Options cache for fast resume
@@ -48,7 +49,7 @@ class GameLoopSession:
         self.user_id = user_id
         self.last_access = time.time()
         self.language = language
-        self._is_generating = False
+        self.event_generation = EventGenerationCoordinator()
         # SSE reconnection support: cache story chunks with event IDs
         self.sse_cache: list[str] = []
         self._sse_event_id: int = 0
@@ -64,21 +65,6 @@ class GameLoopSession:
     @property
     def is_expired(self) -> bool:
         return (time.time() - self.last_access) > SESSION_TIMEOUT
-
-    def try_start_generating(self) -> bool:
-        """Try to acquire generating lock. Returns True if successful, False if already generating.
-
-        Note: This is safe in asyncio single-threaded model because Python operations
-        between await points are atomic. No threading.Lock needed.
-        """
-        if self._is_generating:
-            return False
-        self._is_generating = True
-        return True
-
-    def finish_generating(self):
-        """Release generating lock."""
-        self._is_generating = False
 
     # ---- SSE cache methods for reconnection support ----
 

@@ -99,7 +99,7 @@ describe('useGameState', () => {
       expect(mockSetters.setCurrentEvent).toHaveBeenCalledWith(null);
     });
 
-    it('starts next event even if player-state sync hangs', async () => {
+    it('does not start the next event while player-state sync is unresolved', async () => {
       jest.useFakeTimers();
       mockSetters.syncPlayerState.mockImplementationOnce(() => new Promise(() => {}));
       const { result } = renderHook(() => useGameState(defaultParams));
@@ -111,11 +111,11 @@ describe('useGameState', () => {
         jest.advanceTimersByTime(1500);
       });
 
-      expect(mockGenerateEventRef.current).toHaveBeenCalledTimes(1);
+      expect(mockGenerateEventRef.current).not.toHaveBeenCalled();
       jest.useRealTimers();
     });
 
-    it('forces next event generation after weekly summary so stale phase cannot block it', async () => {
+    it('starts one next event generation after weekly summary', async () => {
       const { result } = renderHook(() => useGameState(defaultParams));
 
       await act(async () => {
@@ -123,7 +123,7 @@ describe('useGameState', () => {
         await Promise.resolve();
       });
 
-      expect(mockGenerateEventRef.current).toHaveBeenCalledWith({ force: true });
+      expect(mockGenerateEventRef.current).toHaveBeenCalledWith();
     });
 
     it('sets phase to ending when game over', async () => {
@@ -155,7 +155,7 @@ describe('useGameState', () => {
   });
 
   describe('handleContinueToNextRound', () => {
-    it('uses prefetched result when available', async () => {
+    it('discards legacy prefetched data until explicit acknowledgement completes', async () => {
       mockPrefetchResultRef.current = {
         story: 'Prefetched story',
         options: [{ text: 'Option 1' }, { text: 'Option 2' }],
@@ -163,10 +163,9 @@ describe('useGameState', () => {
       };
       const { result } = renderHook(() => useGameState(defaultParams));
       act(() => { result.current.handleContinueToNextRound(); });
-      expect(mockSetters.setStoryText).toHaveBeenCalledWith('Prefetched story');
-      expect(mockSetters.setOptions).toHaveBeenCalled();
-      expect(mockSetters.setPhase).toHaveBeenCalledWith('options');
-      expect(mockSetters.syncPlayerState).not.toHaveBeenCalled();
+      expect(mockPrefetchResultRef.current).toBeNull();
+      expect(mockSetters.setStoryText).toHaveBeenCalledWith('');
+      expect(mockSetters.setPhase).toHaveBeenCalledWith('loading');
     });
 
     it('generates normally when no prefetch result', async () => {
@@ -178,7 +177,7 @@ describe('useGameState', () => {
       expect(mockSetters.setPhase).toHaveBeenCalledWith('loading');
     });
 
-    it('starts next round even if player-state sync hangs', async () => {
+    it('does not start the next round while player-state sync is unresolved', async () => {
       jest.useFakeTimers();
       mockPrefetchResultRef.current = null;
       mockSetters.syncPlayerState.mockImplementationOnce(() => new Promise(() => {}));
@@ -191,11 +190,11 @@ describe('useGameState', () => {
         jest.advanceTimersByTime(1500);
       });
 
-      expect(mockGenerateEventRef.current).toHaveBeenCalledTimes(1);
+      expect(mockGenerateEventRef.current).not.toHaveBeenCalled();
       jest.useRealTimers();
     });
 
-    it('forces next round generation after sync so stale phase cannot leave a blank play page', async () => {
+    it('starts one next round generation after sync', async () => {
       mockPrefetchResultRef.current = null;
       const { result } = renderHook(() => useGameState(defaultParams));
 
@@ -204,7 +203,7 @@ describe('useGameState', () => {
         await Promise.resolve();
       });
 
-      expect(mockGenerateEventRef.current).toHaveBeenCalledWith({ force: true });
+      expect(mockGenerateEventRef.current).toHaveBeenCalledWith();
     });
 
     it('cancels ongoing prefetch', async () => {

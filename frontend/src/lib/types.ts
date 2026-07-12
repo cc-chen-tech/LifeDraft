@@ -104,18 +104,6 @@ export interface StoryVoiceErrorResponse {
   field?: string | null;
 }
 
-export interface FriendInfo {
-  user_id: number;
-  public_id: string;
-  display_name: string;
-}
-
-export interface FriendRequestInfo {
-  request_id: number;
-  from_user: FriendInfo;
-  created_at: string;
-}
-
 // ==================== Core Game Types ====================
 
 /**
@@ -179,6 +167,7 @@ export interface PlayerState {
   last_round_full_story?: string;
   last_event_concluded?: boolean;
   current_event_data?: CurrentEventData | null;
+  resume_view?: SavedResumeView | null;
   
   // History
   round_history?: RoundHistoryEntry[];
@@ -194,6 +183,17 @@ export interface PlayerState {
   
   // Additional fields
   [key: string]: unknown;
+}
+
+export interface SavedResumeView {
+  phase: "result" | "summary" | "ending" | "generating" | "failed";
+  story_text?: string;
+  round_summary?: string;
+  summary_text?: string;
+  resource_warnings?: Array<Record<string, unknown>>;
+  error?: string;
+  completed_week?: number;
+  completed_round?: number;
 }
 
 /**

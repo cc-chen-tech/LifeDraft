@@ -139,6 +139,19 @@ class GameInitializer:
         # Initialize relationships from character settings
         self._initialize_relationships(initial_state, character_settings)
 
+        # Seed the P1-7 continuity authority before the initial state is
+        # persisted. This makes the first generation subject to the same
+        # canonical identity rules as every later round.
+        from src.game.continuity_ledger import ContinuityLedger
+
+        ledger = ContinuityLedger.from_state(initial_state)
+        ledger.persist(initial_state)
+
+        from src.game.wealth_ledger import WealthLedger
+
+        wealth_ledger = WealthLedger.from_player_state(initial_state)
+        wealth_ledger.persist(initial_state)
+
         # 提取 narrative_style_id（从 character_settings 中获取，默认 None）
         style_id = character_settings.get("narrative_style_id") if character_settings else None
 
