@@ -181,6 +181,11 @@ jobs:
           export STORY_TTS_ALLOW_REQUEST_PROVIDER=1
           export STORY_MUSIC_AI_GENERATION_ENABLED=true
           export MINIMAX_TIMEOUT_SECONDS=180
+          export IMAGE_API_KEY="${MINIMAX_API_KEY}"
+          export IMAGE_API_BASE_URL=https://api.minimaxi.com/v1
+          export IMAGE_MODEL=image-01
+          export TEXT_TO_IMAGE_MODELS=image-01
+          export IMAGE_EDIT_MODELS=image-01,image-01-live
           python3 - <<'PY'
           import os
           from pathlib import Path
@@ -192,6 +197,11 @@ jobs:
               "STORY_TTS_ALLOW_REQUEST_PROVIDER": os.environ["STORY_TTS_ALLOW_REQUEST_PROVIDER"],
               "STORY_MUSIC_AI_GENERATION_ENABLED": os.environ["STORY_MUSIC_AI_GENERATION_ENABLED"],
               "MINIMAX_TIMEOUT_SECONDS": os.environ["MINIMAX_TIMEOUT_SECONDS"],
+              "IMAGE_API_KEY": os.environ["IMAGE_API_KEY"],
+              "IMAGE_API_BASE_URL": os.environ["IMAGE_API_BASE_URL"],
+              "IMAGE_MODEL": os.environ["IMAGE_MODEL"],
+              "TEXT_TO_IMAGE_MODELS": os.environ["TEXT_TO_IMAGE_MODELS"],
+              "IMAGE_EDIT_MODELS": os.environ["IMAGE_EDIT_MODELS"],
           }
 
           existing_lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []

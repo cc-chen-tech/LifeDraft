@@ -685,6 +685,11 @@ def test_production_deploy_syncs_minimax_secret_to_ecs_env_without_committing_ke
     assert "STORY_TTS_ALLOW_REQUEST_PROVIDER=1" in workflow
     assert "STORY_MUSIC_AI_GENERATION_ENABLED=true" in workflow
     assert "MINIMAX_TIMEOUT_SECONDS=180" in workflow
+    assert "IMAGE_API_KEY" in workflow
+    assert "IMAGE_API_BASE_URL=https://api.minimaxi.com/v1" in workflow
+    assert "IMAGE_MODEL=image-01" in workflow
+    assert "TEXT_TO_IMAGE_MODELS=image-01" in workflow
+    assert "IMAGE_EDIT_MODELS=image-01,image-01-live" in workflow
     assert "sk-" not in workflow
 
 
