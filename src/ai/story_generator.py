@@ -25,7 +25,7 @@ from src.ai.models import GameEvent
 from src.ai.option_generator import OptionGenerator
 from src.ai.system_prompts import get_system_prompt
 from src.ai.prompt_sanitizer import sanitize_player_name
-from src.ai.text_quality import normalize_generated_story
+from src.ai.text_quality import normalize_generated_story, validate_narrative_quality
 from src.ai.vector_store import get_vector_store, is_vector_search_enabled
 
 logger = logging.getLogger(__name__)
@@ -506,6 +506,44 @@ class StoryGenerator:
                 if len(candidate) > len(best_valid_story_text):
                     best_valid_story_text = candidate
 
+        def _hard_shape_issues(candidate: str) -> list[str]:
+            shape_issues = validate_narrative_quality(
+                candidate,
+                language=language,
+                perspective="third",
+                min_chars=generation_budget.min_length,
+                max_chars=generation_budget.max_length,
+            )
+            return [
+                issue
+                for issue in shape_issues
+                if issue in {"story_too_short", "story_too_long", "over_fragmented_paragraphs"}
+            ]
+
+        def _build_shape_retry_instruction(hard_shape_issues: list[str]) -> str:
+            if language == "zh":
+                issue_text = "；".join(
+                    {
+                        "story_too_short": "故事太短",
+                        "story_too_long": "故事太长",
+                        "over_fragmented_paragraphs": "段落过碎",
+                    }.get(issue, issue)
+                    for issue in hard_shape_issues
+                )
+                return (
+                    "\n\n【篇幅与分段修正 - 必须重写】\n"
+                    f"{issue_text}。请重新生成本轮故事，严格控制在"
+                    f"{generation_budget.min_length}-{generation_budget.max_length}字，"
+                    "使用2-5个自然段，每段有完整场景推进，禁止拆成大量短句碎片。"
+                )
+            issue_text = "; ".join(hard_shape_issues)
+            return (
+                "\n\n[Length and Paragraph Fix - Regenerate Required]\n"
+                f"{issue_text}. Regenerate this round within "
+                f"{generation_budget.min_length}-{generation_budget.max_length} words, "
+                "using 2-5 coherent paragraphs."
+            )
+
         # 初始化 Harness 组件（延迟初始化，避免每次构建时重复创建）
         if self._harness_enabled and self._validation_pipeline is None:
             from src.ai.harness import default_registry
@@ -556,6 +594,7 @@ class StoryGenerator:
                     available_people=available_people_names,
                     language=language,
                 )
+                quick_retry_used = False
 
                 if not quick_result.passed and generation_budget.allow_quick_regeneration:
                     logger.warning(f"Quick validation failed: {quick_result.issues}")
@@ -587,6 +626,7 @@ class StoryGenerator:
                         presence_penalty=0.4,
                     )
                     story_text = normalize_generated_story(retry_story, language=language)
+                    quick_retry_used = True
                     logger.info(
                         "Quick validation retry completed with %d characters",
                         len(story_text),
@@ -623,6 +663,46 @@ class StoryGenerator:
                     _set_best_story(story_text, require_valid=True)
                 else:
                     _set_best_story(story_text, require_valid=True)
+
+                hard_shape_issues = _hard_shape_issues(story_text)
+                if (
+                    hard_shape_issues
+                    and generation_budget.allow_quick_regeneration
+                    and not quick_retry_used
+                    and max_attempts == 1
+                ):
+                    logger.warning("Story shape validation failed: %s", hard_shape_issues)
+                    if status_callback:
+                        status_callback("retry")
+                    retry_story = self.client.call(
+                        system_prompt=sys_prompt,
+                        user_prompt=attempt_prompt + _build_shape_retry_instruction(hard_shape_issues),
+                        temperature=0.65,
+                        max_tokens=generation_budget.max_tokens,
+                        stream_callback=stream_callback if attempt == 0 else None,
+                        frequency_penalty=0.4,
+                        presence_penalty=0.4,
+                    )
+                    story_text = normalize_generated_story(retry_story, language=language)
+                    logger.info(
+                        "Story shape retry completed with %d characters",
+                        len(story_text),
+                    )
+                    retry_shape_issues = _hard_shape_issues(story_text)
+                    if retry_shape_issues:
+                        logger.warning(
+                            "Story shape retry still failed: %s",
+                            retry_shape_issues,
+                        )
+                        raise ValueError(
+                            "Story shape validation failed: " + "; ".join(retry_shape_issues)
+                        )
+                    _set_best_story(story_text, require_valid=True)
+                elif hard_shape_issues:
+                    logger.warning(
+                        "Story shape issues recorded without another provider retry: %s",
+                        hard_shape_issues,
+                    )
 
                 # Step 1.5: AI-based consistency validation (if world_model is provided)
                 if world_model and story_text and generation_budget.allow_ai_consistency:
