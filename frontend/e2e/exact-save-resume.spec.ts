@@ -72,6 +72,7 @@ test('loading a result save preserves the result until explicit continuation', a
     timeout: 15_000,
   });
   const visibleContinuation = choice.story_continuation
+    .replace(/^#{1,6}\s+/gm, '')
     .replace(/\\([\\`*{}\[\]()#+\-.!_>])/g, '$1')
     .replace(/\s+/g, ' ')
     .trim();
