@@ -51,7 +51,11 @@ class MusicSceneFitProfile:
         context_text = _context_text(analysis, story_text, character_settings)
         template = _select_template(context_text)
 
-        primary_emotion = str(analysis.get("mood") or template["primary_emotion"])
+        primary_emotion = str(analysis.get("mood") or "")
+        if _is_generic_emotion(primary_emotion) and template["selected_strategy"] != "generic_fallback":
+            primary_emotion = str(template["primary_emotion"])
+        if not primary_emotion:
+            primary_emotion = str(template["primary_emotion"])
         scene_type = str(analysis.get("scene_type") or "")
         if _is_generic_scene(scene_type):
             scene_type = str(template["scene_type"])
@@ -373,6 +377,11 @@ def _select_template(context_text: str) -> Mapping[str, Any]:
 def _is_generic_scene(value: str) -> bool:
     normalized = str(value or "").strip()
     return normalized in {"", "未知", "通用", "叙事", "场景", "日常"}
+
+
+def _is_generic_emotion(value: str) -> bool:
+    normalized = str(value or "").strip().casefold()
+    return normalized in {"", "未知", "通用", "平静", "普通", "中性", "neutral"}
 
 
 def _derive_era(
