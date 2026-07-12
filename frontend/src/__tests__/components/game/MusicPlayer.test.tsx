@@ -854,7 +854,7 @@ describe('MusicPlayer', () => {
     }
   });
 
-  it('同步播放、暂停和节流后的播放进度到持久化播放列表', async () => {
+  it('同步播放、暂停和检查点播放进度到持久化播放列表', async () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
     const originalSyncPlaylistState = useMusicStore.getState().syncPlaylistState;
@@ -917,12 +917,12 @@ describe('MusicPlayer', () => {
         if (!audio) return;
         audio.currentTime = 4;
         audio.ontimeupdate?.();
-        jest.advanceTimersByTime(260);
-        audio.currentTime = 5;
+        jest.advanceTimersByTime(250);
+        audio.currentTime = 15;
         audio.ontimeupdate?.();
       });
 
-      expect(syncPlaylistStateSpy).toHaveBeenCalledWith(77, 5000, true, 0.5);
+      expect(syncPlaylistStateSpy).toHaveBeenCalledWith(77, 15000, true, 0.5);
 
       act(() => {
         if (!audio) return;
@@ -931,6 +931,87 @@ describe('MusicPlayer', () => {
       });
 
       expect(syncPlaylistStateSpy).toHaveBeenCalledWith(77, 6000, false, 0.5);
+    } finally {
+      act(() => {
+        useMusicStore.setState({
+          syncPlaylistState: originalSyncPlaylistState,
+        } as Partial<ReturnType<typeof useMusicStore.getState>>);
+      });
+      jest.useRealTimers();
+    }
+  });
+
+  it('持续播放时按检查点同步进度，避免 timeupdate 请求风暴', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+    const originalSyncPlaylistState = useMusicStore.getState().syncPlaylistState;
+    const syncPlaylistStateSpy = jest.fn().mockResolvedValue(undefined);
+
+    try {
+      useMusicStore.setState({
+        syncPlaylistState: syncPlaylistStateSpy,
+        recommendation: {
+          mood: '紧张',
+          scene_type: '追逐',
+          keywords: ['悬疑', '节奏'],
+          songs: [
+            {
+              id: 1,
+              name: '压力测试曲目',
+              artists: ['测试艺术家'],
+              album: '测试专辑',
+              duration: 180000,
+              url: 'https://example.com/stress.mp3',
+            },
+          ],
+        },
+        isLoadingRecommendation: false,
+        recommendationError: null,
+        currentSong: null,
+        isPlaying: false,
+        volume: 0.5,
+        currentTime: 0,
+        duration: 180,
+        audioElement: null,
+        isGeneratingAiMusic: false,
+        aiMusicGenerationStatus: 'idle',
+      });
+
+      render(
+        <MusicPlayer
+          storyText="持续播放同步压力测试"
+          gameId={77}
+          autoFetchRecommendation={false}
+        />
+      );
+
+      await waitFor(() => {
+        expect(createdAudioInstances.length).toBeGreaterThan(0);
+      });
+
+      const audio = createdAudioInstances.at(-1);
+      expect(audio).toBeDefined();
+
+      act(() => {
+        if (!audio) return;
+        audio.currentTime = 0;
+        audio.onplay?.();
+      });
+
+      act(() => {
+        if (!audio) return;
+        for (let idx = 1; idx <= 240; idx += 1) {
+          audio.currentTime = idx * 0.25;
+          audio.ontimeupdate?.();
+          jest.advanceTimersByTime(250);
+        }
+      });
+
+      const syncCalls = syncPlaylistStateSpy.mock.calls.filter(
+        ([gameId]) => gameId === 77
+      );
+      expect(syncCalls.length).toBeLessThanOrEqual(6);
+      expect(syncCalls.at(-1)).toEqual([77, 60000, true, 0.5]);
     } finally {
       act(() => {
         useMusicStore.setState({
