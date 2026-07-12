@@ -193,6 +193,35 @@ def test_text_to_image_posts_minimax_payload_and_downloads_url() -> None:
     assert "negative_prompt" not in body
 
 
+def test_e2e_local_image_mode_returns_deterministic_png_without_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("MINIMAX_E2E_LOCAL_IMAGE", "1")
+
+    with MiniMaxCaptureServer() as server:
+        generator = _generator(server.base_url)
+        image_bytes, prompt_used = generator.generate_image("local e2e prompt")
+        url_image_bytes, url_prompt_used, image_url = generator.generate_image_with_url(
+            "local e2e prompt with url"
+        )
+        edited_images = generator.edit_image(
+            "http://example.invalid/reference.png",
+            "local e2e edit prompt",
+            num_images=2,
+        )
+
+    assert image_bytes == PNG_BYTES
+    assert prompt_used == "local e2e prompt"
+    assert url_image_bytes == PNG_BYTES
+    assert url_prompt_used == "local e2e prompt with url"
+    assert image_url.startswith("data:image/png;base64,")
+    assert edited_images == [
+        (PNG_BYTES, "local e2e edit prompt"),
+        (PNG_BYTES, "local e2e edit prompt"),
+    ]
+    assert server.requests_seen == []
+
+
 def test_minimax_success_with_empty_image_sources_raises_generation_error() -> None:
     response = {
         "id": "empty-success-task",

@@ -4,6 +4,7 @@
 """
 
 import asyncio
+import base64
 import logging
 import os
 import re
@@ -21,8 +22,44 @@ from src.services.music_scene_matching import (
     MusicSceneFitProfile,
     MusicSceneFitScorer,
 )
+from src.services.story_tts_provider import build_deterministic_wav
 
 logger = logging.getLogger(__name__)
+
+
+def _truthy_env(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _e2e_local_music_enabled() -> bool:
+    return _truthy_env("NETEASE_E2E_LOCAL_MUSIC")
+
+
+def _local_e2e_music_url(song_id: int) -> str:
+    audio = build_deterministic_wav(f"netease-e2e-{song_id}", "music")
+    return f"data:audio/wav;base64,{base64.b64encode(audio).decode('ascii')}"
+
+
+def _local_e2e_music_songs(limit: int) -> List["Song"]:
+    fixtures = [
+        (900001, "E2E 现代职场纯音乐", "本地确定性音乐"),
+        (900002, "E2E 悬疑氛围配乐", "本地确定性音乐"),
+        (900003, "E2E 叙事钢琴背景", "本地确定性音乐"),
+        (900004, "E2E 科技轻电子", "本地确定性音乐"),
+        (900005, "E2E 温和弦乐氛围", "本地确定性音乐"),
+        (900006, "E2E 夜间城市配乐", "本地确定性音乐"),
+    ]
+    return [
+        Song(
+            id=song_id,
+            name=name,
+            artists=["Story101 E2E"],
+            album=album,
+            duration=60000,
+            url=_local_e2e_music_url(song_id),
+        )
+        for song_id, name, album in fixtures[: max(1, limit)]
+    ]
 
 
 @dataclass
@@ -938,6 +975,9 @@ class NeteaseMusicClient:
 
     async def check_availability(self) -> bool:
         """Return whether the Netease API appears reachable, with per-instance caching."""
+        if _e2e_local_music_enabled():
+            self._available = True
+            return True
         if self._available is not None:
             return self._available
         try:
@@ -957,6 +997,9 @@ class NeteaseMusicClient:
         Returns:
             歌曲列表
         """
+        if _e2e_local_music_enabled():
+            return _local_e2e_music_songs(limit)
+
         if self._available is False:
             return []
 
@@ -1026,6 +1069,9 @@ class NeteaseMusicClient:
         Returns:
             播放 URL
         """
+        if _e2e_local_music_enabled():
+            return _local_e2e_music_url(song_id)
+
         now = time.time()
         cached = self._url_cache.get(song_id)
         if cached is not None:

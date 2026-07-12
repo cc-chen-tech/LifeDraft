@@ -136,6 +136,19 @@ class TestNeteaseMusicClientSearch:
         # 只调用了一次，说明没有重试
         assert self.client.client.get.call_count == 1
 
+    async def test_search_uses_local_e2e_music_without_http(self, monkeypatch):
+        """E2E 本地音乐模式不依赖外部 music-api。"""
+        monkeypatch.setenv("NETEASE_E2E_LOCAL_MUSIC", "1")
+        self.client.client.get = AsyncMock(side_effect=AssertionError("unexpected HTTP call"))
+
+        songs = await self.client.search("轻音乐", limit=3)
+
+        assert [song.source for song in songs] == ["netease", "netease", "netease"]
+        assert songs[0].name.startswith("E2E ")
+        assert songs[0].url is not None
+        assert songs[0].url.startswith("data:audio/wav;base64,")
+        self.client.client.get.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # get_song_url() tests
@@ -182,3 +195,14 @@ class TestNeteaseMusicClientGetSongUrl:
         url = await self.client.get_song_url(1001)
 
         assert url is None
+
+    async def test_get_song_url_uses_local_e2e_music_without_http(self, monkeypatch):
+        """E2E 本地音乐 URL 不依赖外部 music-api。"""
+        monkeypatch.setenv("NETEASE_E2E_LOCAL_MUSIC", "1")
+        self.client.client.get = AsyncMock(side_effect=AssertionError("unexpected HTTP call"))
+
+        url = await self.client.get_song_url(1001)
+
+        assert url is not None
+        assert url.startswith("data:audio/wav;base64,")
+        self.client.client.get.assert_not_called()

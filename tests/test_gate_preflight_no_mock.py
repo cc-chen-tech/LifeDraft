@@ -149,7 +149,10 @@ def test_e2e_backend_uses_dotenv_minimax_key_not_fake_override() -> None:
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
 
     assert "MINIMAX_API_KEY=test-key" not in script
-    assert "MINIMAX_E2E_LOCAL_AUDIO=1 API_RELOAD=false" in script
+    assert (
+        "MINIMAX_E2E_LOCAL_AUDIO=1 MINIMAX_E2E_LOCAL_IMAGE=1 "
+        "NETEASE_E2E_LOCAL_MUSIC=1 API_RELOAD=false"
+    ) in script
 
 
 def _iter_scannable_files(
@@ -302,6 +305,7 @@ def test_e2e_local_backend_and_browser_launch_are_configurable() -> None:
     assert 'DATABASE_URL="$LOCAL_E2E_DB_URL"' in script
     assert 'cleanup_pid_file "$BACKEND_PID_FILE" "后端"' in script
     assert "MINIMAX_E2E_LOCAL_AUDIO=1" in script
+    assert "MINIMAX_E2E_LOCAL_IMAGE=1" in script
     assert "E2E_FRONTEND_MODE:-prod" in script
     assert 'local backend_url="http://127.0.0.1:$E2E_BACKEND_PORT"' in script
     assert 'BACKEND_URL="$backend_url"' in script
@@ -659,6 +663,8 @@ def test_story_voice_e2e_workflow_enables_deterministic_backend_audio() -> None:
     assert "STORY_TTS_PROVIDER=local" in workflow
     assert "STORY_TTS_ALLOW_REQUEST_PROVIDER=1" in workflow
     assert "MINIMAX_E2E_LOCAL_AUDIO=1" in workflow
+    assert "MINIMAX_E2E_LOCAL_IMAGE=1" in workflow
+    assert "NETEASE_E2E_LOCAL_MUSIC=1" in workflow
     assert "MINIMAX_API_KEY=test-key" in workflow
 
 

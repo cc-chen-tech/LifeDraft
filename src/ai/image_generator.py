@@ -7,6 +7,7 @@ import base64
 import binascii
 import hashlib
 import logging
+import os
 import time
 from math import gcd
 from typing import Any, Dict, List, Optional, Tuple
@@ -28,6 +29,17 @@ logger = logging.getLogger(__name__)
 # M-09: 图片生成结果缓存 - 模块级别 TTL 缓存
 # 缓存最多 100 个图片，TTL 1 小时
 _image_cache: TTLCache[str, Tuple[bytes, str]] = TTLCache(maxsize=100, ttl=3600)
+
+_LOCAL_E2E_IMAGE_BYTES = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
+    b"\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde"
+    b"\x00\x00\x00\x0cIDATx\x9cc```\x00\x00\x00\x04"
+    b"\x00\x01\xf6\x178U\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
+
+def _truthy_env(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 _MINIMAX_ASPECT_RATIOS: Tuple[Tuple[str, int, int], ...] = (
     ("1:1", 1, 1),
@@ -139,6 +151,13 @@ class ImageGenerator:
                 retryable=False,
                 public_message="图片生成服务尚未配置，请联系管理员",
             )
+
+    def _e2e_local_image_enabled(self) -> bool:
+        return _truthy_env("MINIMAX_E2E_LOCAL_IMAGE")
+
+    def _local_e2e_image_url(self) -> str:
+        encoded = base64.b64encode(_LOCAL_E2E_IMAGE_BYTES).decode("ascii")
+        return f"data:image/png;base64,{encoded}"
 
     def _image_generation_url(self) -> str:
         """Return the MiniMax image generation endpoint for flexible base URLs."""
@@ -413,6 +432,10 @@ class ImageGenerator:
         Raises:
             ImageGenerationError: 生成失败
         """
+        if self._e2e_local_image_enabled():
+            logger.info("MINIMAX_E2E_LOCAL_IMAGE enabled; returning deterministic local image")
+            return _LOCAL_E2E_IMAGE_BYTES, prompt
+
         # M-09: 检查缓存
         cache_key = _get_prompt_hash(prompt, size, extra_params)
         cached_result = _image_cache.get(cache_key)
@@ -543,6 +566,10 @@ class ImageGenerator:
         Returns:
             Tuple[bytes, str, str]: (图片二进制数据, prompt, 图片URL)
         """
+        if self._e2e_local_image_enabled():
+            logger.info("MINIMAX_E2E_LOCAL_IMAGE enabled; returning deterministic local image URL")
+            return _LOCAL_E2E_IMAGE_BYTES, prompt, self._local_e2e_image_url()
+
         result = self._call_api(
             prompt=prompt,
             size=size,
@@ -685,6 +712,10 @@ class ImageGenerator:
             ContentInspectionError: 内容审核失败
             ImageGenerationError: 其他生成错误
         """
+        if self._e2e_local_image_enabled():
+            logger.info("MINIMAX_E2E_LOCAL_IMAGE enabled; returning deterministic local edit image")
+            return [(_LOCAL_E2E_IMAGE_BYTES, prompt) for _ in range(max(1, num_images))]
+
         logger.debug(f"Editing image with prompt: {prompt}")
 
         last_error: Optional[Exception] = None

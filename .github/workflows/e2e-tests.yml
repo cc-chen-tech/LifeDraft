@@ -53,6 +53,8 @@ jobs:
           echo "STORY_TTS_ALLOW_REQUEST_PROVIDER=1" >> .env
           echo "MINIMAX_API_KEY=test-key" >> .env
           echo "MINIMAX_E2E_LOCAL_AUDIO=1" >> .env
+          echo "MINIMAX_E2E_LOCAL_IMAGE=1" >> .env
+          echo "NETEASE_E2E_LOCAL_MUSIC=1" >> .env
 
       - name: Run E2E tests
         run: ./test.sh e2e

@@ -76,8 +76,8 @@ test.describe('MusicPlayer 音乐播放器', () => {
       return;
     }
 
-    // 找到播放/暂停按钮（通常是第一个带有 svg 的按钮）
-    const playButton = fixture.locator('button').filter({ has: fixture.locator('svg') }).nth(1);
+    // 找到播放/暂停按钮
+    const playButton = fixture.getByRole('button', { name: /^(播放|暂停)$/ });
     await expect(playButton).toBeVisible();
 
     // 点击播放
