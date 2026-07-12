@@ -155,6 +155,7 @@ export default function PlayPage() {
     resultSceneImage,  // ★ 结果插画
     isLoadingRoundSceneImage,
     isRegeneratingRoundScene,
+    roundSceneImageError,
     fetchRoundSceneImage,
     regenerateRoundSceneImage,
     setEventSceneImage,  // ★ 设置事件插画
@@ -614,6 +615,7 @@ export default function PlayPage() {
                 <RoundSceneImageDisplay
                   sceneImage={eventSceneImage}
                   isLoading={isLoadingRoundSceneImage && phase === "options"}
+                  error={roundSceneImageError}
                   isRegenerating={isRegeneratingRoundScene}
                   currentRound={currentRound}
                   label="事件场景"
@@ -627,6 +629,7 @@ export default function PlayPage() {
                 <RoundSceneImageDisplay
                   sceneImage={resultSceneImage}
                   isLoading={isLoadingRoundSceneImage}
+                  error={roundSceneImageError}
                   isRegenerating={isRegeneratingRoundScene}
                   currentRound={resultSceneRound}
                   label="结果场景"
@@ -640,6 +643,7 @@ export default function PlayPage() {
                 <RoundSceneImageDisplay
                   sceneImage={null}
                   isLoading={isLoadingRoundSceneImage}
+                  error={roundSceneImageError}
                   isRegenerating={isRegeneratingRoundScene}
                   currentRound={resultSceneRound}
                   label="结果场景"
@@ -653,6 +657,7 @@ export default function PlayPage() {
                 <RoundSceneImageDisplay
                   sceneImage={eventSceneImage}
                   isLoading={isLoadingRoundSceneImage}
+                  error={roundSceneImageError}
                   isRegenerating={isRegeneratingRoundScene}
                   currentRound={resultSceneRound}
                   label="事件场景"
@@ -666,9 +671,26 @@ export default function PlayPage() {
                 <RoundSceneImageDisplay
                   sceneImage={currentRoundSceneImage}
                   isLoading={isLoadingRoundSceneImage}
+                  error={roundSceneImageError}
                   isRegenerating={isRegeneratingRoundScene}
                   currentRound={currentRound}
                   onRefresh={() => fetchRoundSceneImage(currentRound, phase === 'options' ? 'event' : (phase === 'result' || phase === 'summary') ? 'result' : undefined)}
+                  onRegenerate={regenerateRoundSceneImage}
+                />
+              )}
+
+              {sceneImageDisplayMode === "none" && roundSceneImageError && storyReadyForCompletedMedia && (
+                <RoundSceneImageDisplay
+                  sceneImage={null}
+                  isLoading={false}
+                  error={roundSceneImageError}
+                  isRegenerating={isRegeneratingRoundScene}
+                  currentRound={phase === "options" ? currentRound : resultSceneRound}
+                  label={phase === "options" ? "事件场景" : "结果场景"}
+                  onRefresh={() => fetchRoundSceneImage(
+                    phase === "options" ? currentRound : resultSceneRound,
+                    phase === "options" ? "event" : "result"
+                  )}
                   onRegenerate={regenerateRoundSceneImage}
                 />
               )}

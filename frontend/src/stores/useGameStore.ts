@@ -82,6 +82,7 @@ interface GameState {
   isLoadingRoundSceneImage: boolean;
   isRegeneratingRoundScene: boolean;
   roundSceneRegenerateError: string | null;
+  roundSceneImageError: string | null;
 
   // ★ 历史场景插画状态
   historySceneImage: RoundSceneImage | null;
@@ -187,6 +188,7 @@ export const useGameStore = create<GameState>()(
     isLoadingRoundSceneImage: false,
     isRegeneratingRoundScene: false,
     roundSceneRegenerateError: null,
+    roundSceneImageError: null,
 
     // History Images
     historySceneImage: null,
@@ -234,6 +236,7 @@ export const useGameStore = create<GameState>()(
         isLoadingRoundSceneImage: sceneState.isLoadingRoundSceneImage,
         isRegeneratingRoundScene: sceneState.isRegeneratingRoundScene,
         roundSceneRegenerateError: sceneState.roundSceneRegenerateError,
+        roundSceneImageError: sceneState.roundSceneImageError,
         historySceneImage: sceneState.historySceneImage,
         isLoadingHistoryImage: sceneState.isLoadingHistoryImage,
         isGeneratingHistoryImage: sceneState.isGeneratingHistoryImage,

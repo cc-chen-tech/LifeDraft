@@ -38,6 +38,7 @@ interface SceneImageState {
   isLoadingRoundSceneImage: boolean;
   isRegeneratingRoundScene: boolean;
   roundSceneRegenerateError: string | null;
+  roundSceneImageError: string | null;
 
   // ★ 历史场景插画状态
   historySceneImage: RoundSceneImage | null;
@@ -136,6 +137,7 @@ export const useSceneImageStore = create<SceneImageState>()(
     isLoadingRoundSceneImage: false,
     isRegeneratingRoundScene: false,
     roundSceneRegenerateError: null,
+    roundSceneImageError: null,
 
     // History
     historySceneImage: null,
@@ -177,6 +179,7 @@ export const useSceneImageStore = create<SceneImageState>()(
       }
 
       console.log(`[generateRoundSceneImage] Generating scene for week ${week}, round ${roundNumber}, stage=${stage}...`);
+      set({ roundSceneImageError: null });
 
       try {
         const selectedImage = playerImages[selectedImageIndex] || playerImages[0];
@@ -208,6 +211,7 @@ export const useSceneImageStore = create<SceneImageState>()(
           currentRoundSceneImage: newScene,
           eventSceneImage: newScene.stage === 'event' ? newScene : state.eventSceneImage,
           resultSceneImage: newScene.stage === 'result' ? newScene : state.resultSceneImage,
+          roundSceneImageError: null,
           roundSceneImages: state.roundSceneImages.some(s => s.week === newScene.week && s.round_number === roundNumber && s.stage === newScene.stage)
             ? state.roundSceneImages.map(s => s.week === newScene.week && s.round_number === roundNumber && s.stage === newScene.stage ? newScene : s)
             : [...state.roundSceneImages, newScene],
@@ -216,6 +220,8 @@ export const useSceneImageStore = create<SceneImageState>()(
         console.log(`[generateRoundSceneImage] Scene generated: scene_id=${result.scene_id}`);
       } catch (err) {
         console.error(`[generateRoundSceneImage] Failed:`, err);
+        const errorMsg = err instanceof Error ? err.message : "场景插画生成失败，故事可继续进行";
+        set({ roundSceneImageError: errorMsg });
       }
     },
 
@@ -263,6 +269,7 @@ export const useSceneImageStore = create<SceneImageState>()(
               ? state.roundSceneImages.map(s => s.week === sceneWithStage.week && s.round_number === roundNumber && s.stage === sceneWithStage.stage ? sceneWithStage : s)
               : [...state.roundSceneImages, sceneWithStage],
             isLoadingRoundSceneImage: false,
+            roundSceneImageError: null,
           }));
         };
 
@@ -298,11 +305,15 @@ export const useSceneImageStore = create<SceneImageState>()(
             }
           }
 
-          set({ isLoadingRoundSceneImage: false });
+          set({
+            isLoadingRoundSceneImage: false,
+            roundSceneImageError: "场景插画生成超时，故事可继续进行",
+          });
         };
 
         set((state) => ({
           isLoadingRoundSceneImage: true,
+          roundSceneImageError: null,
           eventSceneImage: stage === 'event' && !matchesSceneKey(state.eventSceneImage, roundNumber, week, stage)
             ? null
             : state.eventSceneImage,
@@ -335,7 +346,8 @@ export const useSceneImageStore = create<SceneImageState>()(
             // 保持 isLoadingRoundSceneImage = true，前端会继续轮询
           } else if (error.status !== 404) {
             console.error(`[fetchRoundSceneImage] Failed:`, err);
-            set({ isLoadingRoundSceneImage: false });
+            const errorMsg = error.message || "场景插画获取失败，故事可继续进行";
+            set({ isLoadingRoundSceneImage: false, roundSceneImageError: errorMsg });
           } else {
             // 404 - 未找到且无法生成，停止加载
             set({ isLoadingRoundSceneImage: false });
@@ -377,10 +389,12 @@ export const useSceneImageStore = create<SceneImageState>()(
           eventSceneImage: currentEventScene,
           resultSceneImage: currentResultScene,
           isLoadingRoundSceneImage: false,
+          roundSceneImageError: null,
         });
       } catch (err) {
         console.error("[fetchAllRoundSceneImages] Failed:", err);
-        set({ isLoadingRoundSceneImage: false });
+        const errorMsg = err instanceof Error ? err.message : "场景插画列表获取失败，故事可继续进行";
+        set({ isLoadingRoundSceneImage: false, roundSceneImageError: errorMsg });
       }
     },
 
@@ -436,6 +450,7 @@ export const useSceneImageStore = create<SceneImageState>()(
           eventSceneImage: updatedScene.stage === 'event' ? updatedScene : state.eventSceneImage,
           resultSceneImage: updatedScene.stage === 'result' ? updatedScene : state.resultSceneImage,
           isRegeneratingRoundScene: false,
+          roundSceneImageError: null,
         }));
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : "场景插画重新生成失败";
@@ -617,6 +632,7 @@ export const useSceneImageStore = create<SceneImageState>()(
         isLoadingRoundSceneImage: false,
         isRegeneratingRoundScene: false,
         roundSceneRegenerateError: null,
+        roundSceneImageError: null,
         historySceneImage: null,
         isLoadingHistoryImage: false,
         isGeneratingHistoryImage: false,
@@ -632,6 +648,7 @@ export const useSceneImageStore = create<SceneImageState>()(
         currentRoundSceneImage: null,
         eventSceneImage: null,
         resultSceneImage: null,
+        roundSceneImageError: null,
       });
     },
 
@@ -666,7 +683,10 @@ export const useSceneImageStore = create<SceneImageState>()(
 
           if (data.type === "scene_image_failed") {
             console.warn(`[SSE] Scene generation failed: ${data.error}`);
-            set({ isLoadingRoundSceneImage: false });
+            set({
+              isLoadingRoundSceneImage: false,
+              roundSceneImageError: data.error || "场景插画生成失败，故事可继续进行",
+            });
             return;
           }
 
@@ -685,6 +705,7 @@ export const useSceneImageStore = create<SceneImageState>()(
             set((state) => {
               const updates: Partial<SceneImageState> = {
                 isLoadingRoundSceneImage: false,
+                roundSceneImageError: null,
                 roundSceneImages: state.roundSceneImages.some(
                   (s) => s.week === newScene.week && s.round_number === newScene.round_number && s.stage === newScene.stage
                 )

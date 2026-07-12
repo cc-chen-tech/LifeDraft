@@ -51,6 +51,21 @@ describe('RoundSceneImageDisplay', () => {
       expect(screen.getByText('生成场景插画')).toBeInTheDocument();
     });
 
+    it('shows generation failure feedback and keeps retry available', () => {
+      render(
+        <RoundSceneImageDisplay
+          {...defaultProps}
+          error="场景插画生成失败，故事可继续进行"
+        />
+      );
+
+      expect(screen.getByText('场景插画生成失败，故事可继续进行')).toBeInTheDocument();
+      expect(screen.queryByText('暂无场景插画')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('重试生成插画'));
+      expect(mockOnRefresh).toHaveBeenCalled();
+    });
+
     it('calls onRefresh when generate button clicked', () => {
       render(<RoundSceneImageDisplay {...defaultProps} />);
 
