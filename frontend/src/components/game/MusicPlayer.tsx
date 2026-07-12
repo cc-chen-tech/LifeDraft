@@ -45,6 +45,8 @@ function hasMusicBrief(brief: Record<string, unknown> | undefined): brief is Rec
   return brief !== undefined && Object.keys(brief).length > 0;
 }
 
+const PLAYLIST_PROGRESS_SYNC_INTERVAL_MS = 15_000;
+
 export function MusicPlayer({
   storyText,
   gameId,
@@ -95,6 +97,8 @@ export function MusicPlayer({
   const preloadedAudioRef = useRef<HTMLAudioElement | null>(null);
   const preloadedSongRef = useRef<Song | null>(null);
   const activeAudioRef = useRef<HTMLAudioElement | null>(null); // 当前正在播放的音频
+  const lastPlaylistSyncKeyRef = useRef<string | null>(null);
+  const lastPlaylistProgressCheckpointRef = useRef<string | null>(null);
   const [isSwitchingSong, setIsSwitchingSong] = useState(false); // 切换歌曲时的加载状态
   const [preloadProgress, setPreloadProgress] = useState(0); // 预加载进度
   const songUrlMapRef = useRef<Map<number | string, string>>(new Map()); // 预加载的歌曲 URL 映射
@@ -102,10 +106,37 @@ export function MusicPlayer({
   const isAiMusicDelayed = recommendationHasMusicBrief && aiMusicGenerationStatus === "delayed";
   const isAiMusicFailed = recommendationHasMusicBrief && aiMusicGenerationStatus === "failed";
 
-  const syncAudioPlaybackState = useCallback((audio: HTMLAudioElement, playing: boolean) => {
+  const syncAudioPlaybackState = useCallback((
+    audio: HTMLAudioElement,
+    playing: boolean,
+    reason: "event" | "progress" = "event",
+    volumeOverride?: number
+  ) => {
     if (!gameId) return;
     const positionMs = Math.max(0, Math.round((audio.currentTime || 0) * 1000));
-    const latestVolume = useMusicStore.getState().volume;
+    const state = useMusicStore.getState();
+    const latestVolume = volumeOverride ?? state.volume;
+    const songId = state.currentSong?.id ?? "unknown";
+    const normalizedVolume = Math.max(0, Math.min(1, latestVolume));
+
+    if (reason === "progress") {
+      if (positionMs < PLAYLIST_PROGRESS_SYNC_INTERVAL_MS) {
+        return;
+      }
+      const checkpoint = Math.floor(positionMs / PLAYLIST_PROGRESS_SYNC_INTERVAL_MS);
+      const checkpointKey = `${gameId}:${songId}:${checkpoint}`;
+      if (lastPlaylistProgressCheckpointRef.current === checkpointKey) {
+        return;
+      }
+      lastPlaylistProgressCheckpointRef.current = checkpointKey;
+    }
+
+    const syncKey = `${gameId}:${songId}:${positionMs}:${playing ? "1" : "0"}:${normalizedVolume}`;
+    if (lastPlaylistSyncKeyRef.current === syncKey) {
+      return;
+    }
+    lastPlaylistSyncKeyRef.current = syncKey;
+
     void syncPlaylistState(gameId, positionMs, playing, latestVolume);
   }, [gameId, syncPlaylistState]);
 
@@ -290,11 +321,11 @@ export function MusicPlayer({
       // 绑定事件
       audio.onplay = () => {
         setIsPlaying(true);
-        syncAudioPlaybackState(audio, true);
+        syncAudioPlaybackState(audio, true, "event");
       };
       audio.onpause = () => {
         setIsPlaying(false);
-        syncAudioPlaybackState(audio, false);
+        syncAudioPlaybackState(audio, false, "event");
       };
       audio.ontimeupdate = () => {
         const nextTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
@@ -303,7 +334,7 @@ export function MusicPlayer({
         if (now - lastCurrentTimeStoreSyncRef.current >= 250) {
           lastCurrentTimeStoreSyncRef.current = now;
           setCurrentTime(nextTime);
-          syncAudioPlaybackState(audio, useMusicStore.getState().isPlaying);
+          syncAudioPlaybackState(audio, useMusicStore.getState().isPlaying, "progress");
         }
       };
       audio.onloadedmetadata = () => setDuration(audio.duration || 0);
@@ -311,7 +342,7 @@ export function MusicPlayer({
         setIsPlaying(false);
         setDisplayCurrentTime(0);
         setCurrentTime(0);
-        syncAudioPlaybackState(audio, false);
+        syncAudioPlaybackState(audio, false, "event");
         activeAudioRef.current = null; // 清理活动音频引用
         void (async () => {
           await advanceQueue();
@@ -553,7 +584,7 @@ export function MusicPlayer({
       audioElement.currentTime = time;
       setDisplayCurrentTime(time);
       setCurrentTime(time);
-      syncAudioPlaybackState(audioElement, isPlaying);
+      syncAudioPlaybackState(audioElement, isPlaying, "event");
     }
   };
 
@@ -561,8 +592,7 @@ export function MusicPlayer({
     const vol = value[0];
     setVolume(vol);
     if (audioElement && gameId) {
-      const positionMs = Math.max(0, Math.round((audioElement.currentTime || 0) * 1000));
-      void syncPlaylistState(gameId, positionMs, isPlaying, vol);
+      syncAudioPlaybackState(audioElement, isPlaying, "event", vol);
     }
     // 注意：store 中的 setVolume 会自动同步 audioElement.volume
   };

@@ -112,7 +112,13 @@ export function RoundSceneImageDisplay({
       <Card className="p-4 mb-4 bg-card/50 border-dashed">
         <div className="flex flex-col items-center justify-center gap-3 text-muted-foreground py-6">
           <ImageIcon className="w-8 h-8 opacity-50" />
-          <span className="text-sm">暂无场景插画</span>
+          {error ? (
+            <span className="text-sm text-destructive text-center" role="status" aria-live="polite">
+              {error}
+            </span>
+          ) : (
+            <span className="text-sm">暂无场景插画</span>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -120,7 +126,7 @@ export function RoundSceneImageDisplay({
             disabled={isLoading}
           >
             <RefreshCw className={cn("w-4 h-4 mr-2", isLoading && "animate-spin")} />
-            生成场景插画
+            {error ? "重试生成插画" : "生成场景插画"}
           </Button>
         </div>
       </Card>
@@ -212,6 +218,12 @@ export function RoundSceneImageDisplay({
           <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
             <Loader2 className="w-3 h-3 animate-spin" />
             <span>正在获取或生成最新场景插画...</span>
+          </div>
+        )}
+
+        {error && !isLoading && (
+          <div className="mt-2 text-xs text-destructive" role="status" aria-live="polite">
+            {error}
           </div>
         )}
 

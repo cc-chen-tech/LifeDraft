@@ -94,7 +94,7 @@ SCENE_FIXTURES: Dict[str, SceneFixture] = {
 def test_scene_fit_profile_extracts_offline_fixture_contexts() -> None:
     from src.services.music_scene_matching import MusicSceneFitProfile
 
-    for fixture in SCENE_FIXTURES.values():
+    for key, fixture in SCENE_FIXTURES.items():
         profile = MusicSceneFitProfile.from_context(
             analysis={"mood": "平静", "scene_type": "叙事", "environment": "通用"},
             story_text=fixture.story,
@@ -109,6 +109,8 @@ def test_scene_fit_profile_extracts_offline_fixture_contexts() -> None:
         assert fixture.expected_instrument in profile.instruments
         assert fixture.expected_negative in profile.negative_cues
         assert profile.selected_strategy
+        if key != "generic_fallback":
+            assert profile.primary_emotion != "平静"
 
 
 def test_context_builder_exposes_scene_fit_profile_without_breaking_brief() -> None:

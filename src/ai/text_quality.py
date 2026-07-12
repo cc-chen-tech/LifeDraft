@@ -61,10 +61,20 @@ INTERNAL_STATE_PATTERNS = [
 
 
 def validate_narrative_quality(
-    text: str, language: str = "zh", perspective: str = "second"
+    text: str,
+    language: str = "zh",
+    perspective: str = "second",
+    min_chars: Optional[int] = None,
+    max_chars: Optional[int] = None,
 ) -> list[str]:
     """Return deterministic quality issues that should never leak into narrative."""
     issues: list[str] = []
+    stripped = text.strip()
+    if min_chars is not None and min_chars > 0 and len(stripped) < min_chars:
+        issues.append("story_too_short")
+    if max_chars is not None and max_chars > 0 and len(stripped) > max_chars:
+        issues.append("story_too_long")
+
     if any(pattern.search(text) for pattern in INTERNAL_STATE_PATTERNS):
         issues.append("internal_state_leak")
 

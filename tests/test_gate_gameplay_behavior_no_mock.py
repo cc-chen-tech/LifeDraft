@@ -123,6 +123,34 @@ def test_narrative_quality_rejects_mixed_perspective_and_internal_leaks() -> Non
     assert "internal_state_leak" in issues
 
 
+def test_narrative_quality_can_enforce_story_shape_bounds() -> None:
+    too_short = "她推开会议室的门，发现白板上还留着昨晚的需求优先级。"
+    too_long = "她把用户反馈重新贴到白板上。" * 260
+    fragmented = "\n".join(["她停下。", "灯亮着。", "风很冷。", "门开了。", "他没说话。", "她抬头。"])
+
+    assert "story_too_short" in validate_narrative_quality(
+        too_short,
+        language="zh",
+        perspective="third",
+        min_chars=800,
+        max_chars=1200,
+    )
+    assert "story_too_long" in validate_narrative_quality(
+        too_long,
+        language="zh",
+        perspective="third",
+        min_chars=800,
+        max_chars=1200,
+    )
+    assert "over_fragmented_paragraphs" in validate_narrative_quality(
+        fragmented,
+        language="zh",
+        perspective="third",
+        min_chars=10,
+        max_chars=1200,
+    )
+
+
 def test_story_prompt_includes_world_model_location_career_and_repetition_constraints() -> None:
     player_state = {
         "player_name": "林舟",
@@ -400,6 +428,105 @@ def test_round_event_fallback_remains_substantial_story_when_generation_fails() 
     assert event.event_description.endswith("。")
     assert "林见微" in event.event_description
     assert len(event.options) == 3
+
+
+def test_round_event_retries_when_ai_story_is_too_short_for_quality_budget() -> None:
+    short_story = (
+        "顾晨曦推开会议室的门，发现陆昊然已经把访谈记录贴在白板上。"
+        "陈晓雨递来一杯咖啡，提醒她今天必须先决定需求优先级。"
+    )
+    repaired_story = (
+        "第2周·周中，顾晨曦走进会议室时，投影幕还停在昨晚的用户访谈表。"
+        "雨水沿着玻璃往下滑，屏幕上的红色标记把她没处理完的问题照得格外刺眼。"
+        "陆昊然没有立刻催她汇报，只把三份打印稿推到桌边，让她先看最上面那一页。"
+        "那是一个老用户凌晨两点发来的长反馈，语气克制，却把试用流程里最卡人的步骤逐条列了出来。"
+        "顾晨曦越看越沉默，她原本准备在评审会上强调增长入口，现在却发现基础体验还没有站稳。"
+        "陈晓雨坐在她旁边，低声提醒她别急着把所有责任揽到自己身上，先把问题拆成今天能处理的部分。"
+        "窗外的雨声压住了走廊里的脚步声，会议室里只剩白板笔划过纸面的细响。"
+        "陆昊然问她，如果只能在今天推进一件事，是先说服团队暂停新入口，还是先补一轮用户复盘。"
+        "顾晨曦捏着那份反馈，意识到这不是一次普通汇报，而是她第一次要为自己的判断承担节奏。"
+        "她抬头看向白板，等着自己把答案说出口。"
+        "她先把所有反馈按影响范围分成三列，又把昨晚临时写下的增长方案折到笔记本后页。"
+        "这个动作让她心里稳了一点，因为她终于承认，真正的问题不是入口不够显眼，而是新用户还没有被顺利带到核心流程。"
+        "陈晓雨帮她把几条最刺眼的评论圈出来，提醒她不要只看数字下降，也要看用户在哪一步开始失去耐心。"
+        "陆昊然则把会议日程往后推了十分钟，给她留出一小段重新组织表达的时间。"
+        "顾晨曦听见自己的呼吸慢下来，开始把原本准备好的汇报顺序一项项划掉。"
+        "她知道这样会让今天的评审变得更难看，却也明白如果继续粉饰问题，明天只会在更大的会上被迫解释。"
+        "当研发负责人推门进来时，她没有急着展示新入口草图，而是把那页用户反馈递了过去。"
+        "她说自己想先暂停增长入口一天，用这一天补齐用户复盘和流程修正，再决定下个版本是否继续推进。"
+        "会议室安静下来，所有人的目光都落在她手里的笔上。"
+        "陆昊然问她：\"如果团队要求你今天就给出上线结论，你准备坚持这个判断吗？\""
+        "顾晨曦没有立刻回答，她先看了看陈晓雨递来的圈注，又看向还没擦掉的流程图。"
+        "这一刻，她必须决定是守住刚刚形成的判断，还是重新回到更稳妥的汇报稿。"
+    )
+
+    class ShortThenValidClient:
+        def __init__(self):
+            self.calls = []
+
+        def call(self, **kwargs):
+            self.calls.append(kwargs)
+            return short_story if len(self.calls) == 1 else repaired_story
+
+    class RecordingOptionGenerator:
+        def __init__(self):
+            self.generate_options_only_kwargs = None
+
+        def generate_options_only(self, **kwargs):
+            self.generate_options_only_kwargs = kwargs
+            return GameEvent(
+                event_description=kwargs["story_description"],
+                options=[
+                    EventOption(text="暂停新入口", effects={"knowledge": 5}),
+                    EventOption(text="补用户复盘", effects={"energy": -4}),
+                ],
+            )
+
+        def validate_and_fix_relationships(self, *args, **kwargs):
+            return None
+
+        def validate_event_quality(self, *args, **kwargs):
+            return None
+
+        def validate_options_consistency(self, *args, **kwargs):
+            return []
+
+        def ensure_options_consistency(self, *args, **kwargs):
+            return None
+
+    client = ShortThenValidClient()
+    option_generator = RecordingOptionGenerator()
+
+    event = StoryGenerator(client).generate_round_event(
+        player_state={
+            "game_id": 10,
+            "player_name": "顾晨曦",
+            "age": 25,
+            "week": 1,
+            "current_round": 1,
+        },
+        language="zh",
+        round_number=1,
+        round_context="周初她收到了导师的评审反馈。",
+        character_settings={
+            "relationships": {
+                "key_people": [
+                    {"name": "陆昊然", "role": "导师"},
+                    {"name": "陈晓雨", "role": "闺蜜"},
+                ]
+            }
+        },
+        option_generator=option_generator,
+    )
+
+    assert len(client.calls) == 2
+    retry_prompt = client.calls[1]["user_prompt"]
+    assert "故事太短" in retry_prompt
+    assert option_generator.generate_options_only_kwargs is not None
+    expected_story = normalize_generated_story(repaired_story, language="zh", perspective="third")
+    story_for_options = option_generator.generate_options_only_kwargs["story_description"]
+    assert story_for_options == expected_story
+    assert event.event_description == expected_story
 
 
 def test_round_event_retries_when_story_ignores_all_key_people_and_fabricates_new_cast() -> None:

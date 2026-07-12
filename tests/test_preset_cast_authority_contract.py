@@ -372,6 +372,96 @@ def test_quick_validator_rejects_family_only_story_when_key_people_are_missing()
     assert any("没有使用预设关键人物" in issue for issue in result.issues)
 
 
+def test_quick_validator_rejects_active_action_from_deceased_family_member() -> None:
+    from config.prompts._helpers import _collect_available_people
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = {
+        "family": {
+            "family_members": [
+                {
+                    "name": "顾建国",
+                    "role": "父亲",
+                    "relationship": "已故父亲",
+                    "description": "三年前因病去世，只能作为回忆、遗物或旧照片出现。",
+                },
+                {
+                    "name": "周梅",
+                    "role": "母亲",
+                    "relationship": "母亲",
+                    "description": "仍与主角一起生活。",
+                },
+            ]
+        },
+        "relationships": {
+            "key_people": [
+                {"name": "陆昊然", "role": "导师", "relationship": "导师"},
+                {"name": "陈晓雨", "role": "闺蜜", "relationship": "闺蜜"},
+            ]
+        },
+    }
+    available_people = [
+        person["name"]
+        for person in _collect_available_people(settings)
+        if person.get("name")
+    ]
+
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然刚把复盘表放到桌上，顾建国推门进来，把一份病历递给顾晨曦，"
+            "低声说自己这几年一直在等她回家。陈晓雨惊讶地站起身。"
+        ),
+        character_settings=settings,
+        available_people=available_people,
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("已故家庭成员" in issue and "顾建国" in issue for issue in result.issues)
+
+
+def test_quick_validator_allows_deceased_family_member_as_memory_or_photo() -> None:
+    from config.prompts._helpers import _collect_available_people
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = {
+        "family": {
+            "family_members": [
+                {
+                    "name": "顾建国",
+                    "role": "父亲",
+                    "relationship": "已故父亲",
+                    "description": "三年前因病去世，只能作为回忆、遗物或旧照片出现。",
+                }
+            ]
+        },
+        "relationships": {
+            "key_people": [
+                {"name": "陆昊然", "role": "导师", "relationship": "导师"},
+                {"name": "陈晓雨", "role": "闺蜜", "relationship": "闺蜜"},
+            ]
+        },
+    }
+    available_people = [
+        person["name"]
+        for person in _collect_available_people(settings)
+        if person.get("name")
+    ]
+
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然把用户反馈贴到白板上，提醒顾晨曦先确认需求优先级。"
+            "她看见桌角压着顾建国的旧照片，想起父亲去世前叮嘱她要把事情讲清楚。"
+            "陈晓雨陪她把访谈记录重新排了一遍。"
+        ),
+        character_settings=settings,
+        available_people=available_people,
+        language="zh",
+    )
+
+    assert result.passed
+
+
 def test_choice_result_prompt_injects_required_cast_authority_and_world_boundary() -> None:
     prompt = get_result_generation_prompt(
         event_description="林清刚结束需求评审，陆昊然在会议室门口等她复盘。",
