@@ -181,6 +181,14 @@ class QuickValidator:
         title_issues = self._check_modern_chapter_title(story_text, era_context, language)
         issues.extend(title_issues)
 
+        # 6. 检查家庭设定中的已故成员是否被写成现实主动出场。
+        deceased_family_issues = self._check_deceased_family_members(
+            story_text,
+            character_settings,
+            language,
+        )
+        issues.extend(deceased_family_issues)
+
         passed = len(issues) == 0
         result = QuickValidationResult(passed=passed, issues=issues, warnings=warnings)
 
@@ -519,6 +527,115 @@ class QuickValidator:
             for person in extract_required_key_people(character_settings)
             if person.get("name")
         ]
+
+    def _check_deceased_family_members(
+        self,
+        text: str,
+        character_settings: Optional[Dict[str, Any]],
+        language: str,
+    ) -> List[str]:
+        if not isinstance(character_settings, dict):
+            return []
+        family = character_settings.get("family")
+        if not isinstance(family, dict):
+            return []
+        members = family.get("family_members")
+        if not isinstance(members, list):
+            return []
+
+        deceased_members: list[tuple[str, str]] = []
+        for member in members:
+            if not isinstance(member, dict):
+                continue
+            name = str(member.get("name") or "").strip()
+            if not name:
+                continue
+            status_text = " ".join(
+                str(member.get(key) or "")
+                for key in ("role", "relationship", "relationship_desc", "description", "status")
+            )
+            if self._looks_deceased(status_text):
+                deceased_members.append((name, status_text.strip()))
+
+        if not deceased_members:
+            return []
+
+        issues: list[str] = []
+        for name, status_text in deceased_members:
+            if self._deceased_member_has_active_action(text, name):
+                if language == "zh":
+                    issues.append(
+                        f"已故家庭成员「{name}」出现现实主动行为；设定为{status_text or '已故'}，"
+                        "只能作为回忆、照片、遗物或梦境出现。"
+                    )
+                else:
+                    issues.append(
+                        f"Deceased family member '{name}' appears with active present action; "
+                        "use memory, photo, keepsake, or dream context instead."
+                    )
+        return issues
+
+    @staticmethod
+    def _looks_deceased(text: str) -> bool:
+        return any(
+            cue in text
+            for cue in ("已故", "去世", "过世", "病逝", "离世", "身亡", "亡故", "死亡", "已死", "deceased", "dead")
+        )
+
+    def _deceased_member_has_active_action(self, text: str, name: str) -> bool:
+        memory_cues = [
+            "照片",
+            "旧照片",
+            "遗照",
+            "回忆",
+            "想起",
+            "梦",
+            "梦见",
+            "遗物",
+            "日记",
+            "书信",
+            "信里",
+            "录音",
+            "墓",
+            "忌日",
+            "去世前",
+            "生前",
+            "留下",
+        ]
+        active_cues = [
+            "推门",
+            "进来",
+            "走进",
+            "递给",
+            "递来",
+            "说",
+            "开口",
+            "问",
+            "提醒",
+            "催促",
+            "站起",
+            "坐下",
+            "拿起",
+            "握住",
+            "敲门",
+            "打来",
+            "发来",
+            "陪她",
+            "陪他",
+        ]
+
+        start = 0
+        while True:
+            index = text.find(name, start)
+            if index == -1:
+                return False
+            window = text[max(0, index - 24): index + len(name) + 56]
+            if any(cue in window for cue in memory_cues):
+                start = index + len(name)
+                continue
+            if any(cue in window for cue in active_cues):
+                return True
+            start = index + len(name)
 
     def _extract_likely_chinese_person_names(
         self, text: str, allowed_names: List[str]
