@@ -125,6 +125,29 @@ describe('eventUtils', () => {
       expect(onComplete).toHaveBeenCalled();
       expect(appendStoryText).not.toHaveBeenCalled();
     });
+
+    it('stops streaming remaining text when a newer generation takes over', () => {
+      let shouldContinue = true;
+      const appendStoryText = jest.fn();
+      const onComplete = jest.fn();
+
+      streamRemainingText(
+        'abcdef',
+        appendStoryText,
+        onComplete,
+        2,
+        10,
+        () => shouldContinue
+      );
+
+      expect(appendStoryText).toHaveBeenCalledWith('ab');
+      shouldContinue = false;
+
+      act(() => { jest.advanceTimersByTime(50); });
+
+      expect(appendStoryText).toHaveBeenCalledTimes(1);
+      expect(onComplete).not.toHaveBeenCalled();
+    });
   });
 
   describe('handleEventComplete', () => {
@@ -226,6 +249,36 @@ describe('eventUtils', () => {
         jest.advanceTimersByTime(600);
       });
       expect(mockHandlers.setPhase).toHaveBeenCalledWith('options');
+    });
+
+    it('does not let a delayed completion phase override a newly started generation', () => {
+      setupDefaultState({
+        storyText: '同一段稳定的前端故事文本，complete 只需要稍后切换到选项阶段。',
+        currentEvent: {
+          story: '同一段稳定的前端故事文本，complete 只需要稍后切换到选项阶段。',
+          options: [{ text: '旧选项' }],
+        },
+      });
+
+      const localHandlers: EventHandlers = {
+        ...mockHandlers,
+        setPhase: jest.fn(),
+        generatingRef: { current: true },
+      };
+
+      handleEventComplete({
+        event_description: '同一段稳定的前端故事文本，complete 只需要稍后切换到选项阶段。',
+        options: [{ text: '新选项' }],
+      } as Record<string, unknown>, localHandlers);
+
+      expect(localHandlers.generatingRef.current).toBe(false);
+      localHandlers.generatingRef.current = true;
+
+      act(() => {
+        jest.advanceTimersByTime(600);
+      });
+
+      expect(localHandlers.setPhase).not.toHaveBeenCalledWith('options');
     });
 
     it('does not replace long accumulated story with short retry fallback unless required', () => {

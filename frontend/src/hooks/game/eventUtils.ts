@@ -117,11 +117,17 @@ export function streamRemainingText(
   appendStoryText: (text: string) => void,
   onComplete: () => void,
   chunkSize = 3,
-  interval = 20
+  interval = 20,
+  shouldContinue: () => boolean = () => true
 ): void {
   let charIndex = 0;
   
   const stream = () => {
+    if (!shouldContinue()) {
+      console.warn("[streamRemainingText] Cancelled stale remaining-text stream");
+      return;
+    }
+
     if (charIndex < text.length) {
       const chunk = text.slice(charIndex, charIndex + chunkSize);
       appendStoryText(chunk);
@@ -226,9 +232,13 @@ export function handleEventComplete(
     setOptions(receivedOptions);
     // 保持 generating 阶段以维持流式显示效果
     streamRemainingText(result.remainingText, appendStoryText, () => {
+      if (generatingRef.current) {
+        console.warn("[onComplete] Skipping stale remaining-text completion because a new generation is active");
+        return;
+      }
       setCurrentEvent({ story: backendStory, options: receivedOptions });
       setPhase("options");
-    });
+    }, 3, 20, () => !generatingRef.current);
     return;
   }
 
@@ -245,6 +255,10 @@ export function handleEventComplete(
   }
   // 延迟切换到 options 阶段，让用户看到完整故事后再选择
   setTimeout(() => {
+    if (generatingRef.current) {
+      console.warn("[onComplete] Skipping stale delayed options transition because a new generation is active");
+      return;
+    }
     setPhase("options");
   }, 500);
   setRoundSummary(null);
