@@ -571,25 +571,22 @@ class TestStoryGenerator:
 
     @patch("src.ai.story_generator.get_round_event_prompt", return_value="prompt")
     @patch("src.ai.story_generator.get_system_prompt", return_value="sys")
-    def test_generate_round_event_fallback(self, mock_sys, mock_prompt):
-        """Test round event falls back on error."""
+    def test_generate_round_event_surfaces_provider_failure(self, mock_sys, mock_prompt):
+        """Provider failure must not be persisted as a playable fallback event."""
         from src.ai.story_generator import StoryGenerator
+        from src.ai.story_exceptions import StoryGenerationFailure
 
         mock_client = Mock()
         mock_client.call.side_effect = Exception("API error")
         gen = StoryGenerator(mock_client)
-        event = gen.generate_round_event(
-            player_state={"week": 0, "age": 22, "decision_history": []},
-            language="zh",
-            round_number=0,
-            round_context="",
-            option_generator=Mock(),
-        )
-        assert len(event.options) == 3
-        assert "平静" in event.event_description
-        assert {opt.text for opt in event.options}.isdisjoint(
-            {"回应眼前的请求", "先核对现场线索", "积极面对新的一天", "保持平常心继续前进"}
-        )
+        with pytest.raises(StoryGenerationFailure, match="API error"):
+            gen.generate_round_event(
+                player_state={"week": 0, "age": 22, "decision_history": []},
+                language="zh",
+                round_number=0,
+                round_context="",
+                option_generator=Mock(),
+            )
 
     @patch("src.ai.story_generator.get_round_event_prompt", return_value="prompt")
     @patch("src.ai.story_generator.get_system_prompt", return_value="sys")
@@ -621,22 +618,22 @@ class TestStoryGenerator:
 
     @patch("src.ai.story_generator.get_round_event_prompt", return_value="prompt")
     @patch("src.ai.story_generator.get_system_prompt", return_value="sys")
-    def test_generate_round_event_en_fallback(self, mock_sys, mock_prompt):
-        """Test English round event fallback."""
+    def test_generate_round_event_en_surfaces_provider_failure(self, mock_sys, mock_prompt):
+        """English provider failure must not be turned into a fake event."""
         from src.ai.story_generator import StoryGenerator
+        from src.ai.story_exceptions import StoryGenerationFailure
 
         mock_client = Mock()
         mock_client.call.side_effect = Exception("fail")
         gen = StoryGenerator(mock_client)
-        event = gen.generate_round_event(
-            player_state={"week": 0},
-            language="en",
-            round_number=0,
-            round_context="",
-            option_generator=Mock(),
-        )
-        assert len(event.options) == 3
-        assert "dramatic turn" in event.event_description.lower()
+        with pytest.raises(StoryGenerationFailure, match="fail"):
+            gen.generate_round_event(
+                player_state={"week": 0},
+                language="en",
+                round_number=0,
+                round_context="",
+                option_generator=Mock(),
+            )
 
 
 # ==================== StoryRewriter Tests ====================
@@ -663,12 +660,13 @@ class TestStoryRewriter:
 
     def test_rewrite_segment_failure(self):
         from src.ai.story_rewriter import StoryRewriter
+        from src.ai.story_exceptions import StoryRewriteFailure
 
         mock_client = Mock()
         mock_client.call.side_effect = Exception("fail")
         rewriter = StoryRewriter(mock_client)
-        result = rewriter.rewrite_story_segment("Original", "segment", "instruction", None, "")
-        assert result == "Original"
+        with pytest.raises(StoryRewriteFailure, match="fail"):
+            rewriter.rewrite_story_segment("Original", "segment", "instruction", None, "")
 
     @patch("src.ai.story_rewriter.get_story_only_prompt", return_value="prompt")
     def test_regenerate_story_success(self, mock_prompt):

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from src.ai.professional_risk import apply_professional_risk_guardrail
+from src.ai.story_exceptions import StoryRewriteFailure
 from src.api.deps import get_current_user_optional
 from src.api.routers.gameplay.sse_helpers import (
     persist_rewritten_current_event,
@@ -85,6 +86,12 @@ async def rewrite_story(
                 else None
             ),
         }
+    except StoryRewriteFailure as e:
+        logger.warning(f"Story rewrite unavailable: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="Story rewrite is temporarily unavailable. Your original story was not changed.",
+        ) from e
     except Exception as e:
         logger.error(f"Story rewrite failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))

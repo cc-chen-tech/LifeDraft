@@ -25,6 +25,7 @@ from src.ai.models import GameEvent
 from src.ai.option_generator import OptionGenerator
 from src.ai.system_prompts import get_system_prompt
 from src.ai.prompt_sanitizer import sanitize_player_name
+from src.ai.story_exceptions import StoryGenerationFailure
 from src.ai.text_quality import normalize_generated_story, validate_narrative_quality
 from src.ai.vector_store import get_vector_store, is_vector_search_enabled
 
@@ -495,6 +496,7 @@ class StoryGenerator:
         ]
 
         best_valid_story_text = ""
+        last_generation_error: Optional[Exception] = None
 
         def _set_best_story(candidate: Optional[str], *, require_valid: bool = False) -> None:
             if not candidate:
@@ -801,8 +803,10 @@ class StoryGenerator:
 
             except (ValueError, ValidationError, json.JSONDecodeError) as e:
                 logger.warning(f"Round event attempt {attempt + 1} failed: {e}")
+                last_generation_error = e
             except Exception as e:
                 logger.error(f"Unexpected error in round event attempt {attempt + 1}: {e}")
+                last_generation_error = e
 
             if attempt < max_attempts - 1:
                 retry_hint = None if not retry_hint else retry_hint
@@ -810,24 +814,23 @@ class StoryGenerator:
 
             break
 
-        fallback_desc = best_valid_story_text if len(best_valid_story_text) > 20 else self._build_round_story_fallback(
-            player_state=player_state,
-            character_settings=character_settings or {},
-            language=language,
-            round_number=round_number,
-        )
         if len(best_valid_story_text) > 20:
             logger.info(
                 "Using best historical story (%d chars) after all round attempts",
                 len(best_valid_story_text),
             )
-        return GameEvent(
-            event_description=fallback_desc,
-            options=OptionGenerator.build_contextual_fallback_options(
-                fallback_desc,
-                language=language,
-            ),
-        )
+            return GameEvent(
+                event_description=best_valid_story_text,
+                options=OptionGenerator.build_contextual_fallback_options(
+                    best_valid_story_text,
+                    language=language,
+                ),
+            )
+
+        message = "Story generation failed before producing a valid event"
+        if last_generation_error is not None:
+            message = f"{message}: {last_generation_error}"
+        raise StoryGenerationFailure(message) from last_generation_error
 
     # -------------------- Internal --------------------
 

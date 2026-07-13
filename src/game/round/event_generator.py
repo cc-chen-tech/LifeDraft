@@ -23,6 +23,7 @@ from config.prompts.story_prompts import (
 )
 from src.ai.models import GameEvent
 from src.ai.option_generator import OptionGenerator
+from src.ai.story_exceptions import StoryGenerationFailure
 from src.game.narrative_manager import NarrativeManager
 from src.game.relationship_authority import (
     build_required_cast_constraints,
@@ -450,6 +451,10 @@ class RoundEventGenerator:
             self._generating_start_time = None
             return event
 
+        except StoryGenerationFailure:
+            self._generating = False
+            self._generating_start_time = None
+            raise
         except Exception as e:
             logger.error(f"Failed to generate round event: {str(e)}", exc_info=True)
             event = self._generate_fallback_event(is_round=True)
