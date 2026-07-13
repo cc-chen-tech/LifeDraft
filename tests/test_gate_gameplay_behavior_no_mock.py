@@ -402,32 +402,30 @@ def test_weekly_summary_prompt_forbids_next_week_day_mismatch() -> None:
     assert "不得把下一周" in prompt
 
 
-def test_round_event_fallback_remains_substantial_story_when_generation_fails() -> None:
+def test_round_event_generation_surfaces_failure_when_provider_is_unavailable() -> None:
+    from src.ai.story_exceptions import StoryGenerationFailure
+
     class FailingClient:
         def call(self, **_kwargs):
             raise RuntimeError("AI unavailable")
 
-    event = StoryGenerator(FailingClient()).generate_round_event(
-        player_state={
-            "player_name": "林见微",
-            "age": 22,
-            "week": 1,
-            "current_round": 0,
-        },
-        language="zh",
-        round_number=0,
-        round_context="",
-        character_settings={
-            "era": {"era_description": "唐代神都洛阳"},
-            "traits": {"traits_description": "谨慎敏锐"},
-        },
-        option_generator=OptionGenerator(FailingClient()),
-    )
-
-    assert len(event.event_description) > 100
-    assert event.event_description.endswith("。")
-    assert "林见微" in event.event_description
-    assert len(event.options) == 3
+    with pytest.raises(StoryGenerationFailure, match="AI unavailable"):
+        StoryGenerator(FailingClient()).generate_round_event(
+            player_state={
+                "player_name": "林见微",
+                "age": 22,
+                "week": 1,
+                "current_round": 0,
+            },
+            language="zh",
+            round_number=0,
+            round_context="",
+            character_settings={
+                "era": {"era_description": "唐代神都洛阳"},
+                "traits": {"traits_description": "谨慎敏锐"},
+            },
+            option_generator=OptionGenerator(FailingClient()),
+        )
 
 
 def test_round_event_retries_when_ai_story_is_too_short_for_quality_budget() -> None:
@@ -771,6 +769,8 @@ def test_round_event_retries_when_modern_story_drifts_into_cyberpunk_ip_world() 
 
 
 def test_round_event_does_not_return_drift_story_after_quick_validation_retry_fails() -> None:
+    from src.ai.story_exceptions import StoryGenerationFailure
+
     class AlwaysDriftClient:
         def __init__(self):
             self.calls = []
@@ -791,35 +791,29 @@ def test_round_event_does_not_return_drift_story_after_quick_validation_retry_fa
         def generate_options_only(self, **kwargs):
             raise AssertionError("drift story should not be passed to option generation")
 
-    event = StoryGenerator(AlwaysDriftClient()).generate_round_event(
-        player_state={
-            "game_id": 10,
-            "player_name": "林见微",
-            "age": 25,
-            "week": 1,
-            "current_round": 0,
-        },
-        language="zh",
-        round_number=0,
-        round_context="现代上海互联网公司，产品经理新人的第一周。",
-        character_settings={
-            "era": {"year": 2024, "era_description": "2024年中国现代都市"},
-            "world": {"world_description": "现实中的上海互联网公司，普通产品经理成长线"},
-            "career": {"occupation": "产品经理"},
-            "relationships": {
-                "key_people": [
-                    {"name": "陆昊然", "role": "导师"},
-                    {"name": "陈晓雨", "role": "闺蜜"},
-                    {"name": "林一凡", "role": "同期"},
-                ]
+    with pytest.raises(StoryGenerationFailure):
+        StoryGenerator(AlwaysDriftClient()).generate_round_event(
+            player_state={
+                "game_id": 10,
+                "player_name": "林见微",
+                "age": 25,
+                "week": 1,
+                "current_round": 0,
             },
-        },
-        option_generator=UnusedOptionGenerator(),
-    )
-
-    assert len(event.event_description) > 20
-    assert "夜之城" not in event.event_description
-    assert "荒坂" not in event.event_description
-    assert "Viktor" not in event.event_description
-    assert "马老板" not in event.event_description
-    assert "林见微" in event.event_description
+            language="zh",
+            round_number=0,
+            round_context="现代上海互联网公司，产品经理新人的第一周。",
+            character_settings={
+                "era": {"year": 2024, "era_description": "2024年中国现代都市"},
+                "world": {"world_description": "现实中的上海互联网公司，普通产品经理成长线"},
+                "career": {"occupation": "产品经理"},
+                "relationships": {
+                    "key_people": [
+                        {"name": "陆昊然", "role": "导师"},
+                        {"name": "陈晓雨", "role": "闺蜜"},
+                        {"name": "林一凡", "role": "同期"},
+                    ]
+                },
+            },
+            option_generator=UnusedOptionGenerator(),
+        )

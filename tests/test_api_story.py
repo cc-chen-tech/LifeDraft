@@ -204,6 +204,37 @@ class TestRewriteStory:
 
         assert response.status_code == 500
 
+    def test_rewrite_story_provider_failure_preserves_original_story(
+        self, client, auth_headers, mock_auth, mock_session_service, mock_session
+    ):
+        """Provider failure must be visible and must not persist a fake rewrite."""
+        from src.ai.story_exceptions import StoryRewriteFailure
+
+        original_story = "原始故事"
+        mock_session.game_loop.player_state.current_event_data = {
+            "event_description": original_story,
+            "story_text": original_story,
+        }
+        mock_session.game_loop.ai_generator.rewrite_story_segment.side_effect = (
+            StoryRewriteFailure("provider unavailable")
+        )
+        mock_session_service.get_or_restore.return_value = mock_session
+
+        response = client.post(
+            "/api/games/1/rewrite",
+            json={
+                "full_story": original_story,
+                "segment_to_replace": original_story,
+                "user_instruction": "改写成八个自然段",
+                "language": "zh",
+            },
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 503
+        assert "original story was not changed" in response.json()["detail"]
+        assert mock_session.game_loop.player_state.current_event_data["story_text"] == original_story
+
 
 class TestRegenerateStory:
     """Tests for POST /api/story/{game_id}/regenerate.
