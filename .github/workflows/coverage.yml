@@ -90,6 +90,7 @@ jobs:
             tests/test_security_prompt_injection_contract.py \
             tests/test_world_model_updater_state_contracts.py \
             tests/test_choice_processor_state_contracts.py \
+            tests/test_sse_completed_replay_contracts.py \
             --cov=src --cov-report=xml --cov-report=term --cov-fail-under=43
         env:
           PYTHONPATH: ${{ github.workspace }}
