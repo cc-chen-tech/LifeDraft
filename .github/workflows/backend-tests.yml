@@ -77,6 +77,7 @@ jobs:
             tests/test_narrative_state_contracts.py \
             tests/test_character_creation_pure_contracts.py \
             tests/test_decision_state_contracts.py \
+            tests/test_npc_attribute_contracts.py \
             -v --tb=short
         env:
           PYTHONPATH: ${{ github.workspace }}
