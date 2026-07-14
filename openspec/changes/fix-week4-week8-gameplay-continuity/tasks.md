@@ -8,12 +8,12 @@
 
 ## 2. Make Choice Generation Atomic
 
-- [ ] 2.1 Add failing tests proving standard and custom choice failures preserve the
+- [x] 2.1 Add failing tests proving standard and custom choice failures preserve the
   current event, resources, wealth ledger, histories, and round index.
-- [ ] 2.2 Replace fabricated continuation/custom-effect fallbacks with typed retryable
+- [x] 2.2 Replace fabricated continuation/custom-effect fallbacks with typed retryable
   errors and stage all choice mutations on a deep working state before commit.
-- [ ] 2.3 Reject contextual fallback option sets that duplicate recent committed choices.
-- [ ] 2.4 Run focused story, choice, and SSE tests and commit the atomic-choice fix.
+- [x] 2.3 Reject contextual fallback option sets that duplicate recent committed choices.
+- [x] 2.4 Run focused story, choice, and SSE tests and commit the atomic-choice fix.
 
 ## 3. Bound Life Summary and Media Context
 

@@ -7,3 +7,7 @@ class StoryGenerationFailure(RuntimeError):
 
 class StoryRewriteFailure(RuntimeError):
     """Raised when a requested rewrite cannot be completed."""
+
+
+class StoryContinuationFailure(RuntimeError):
+    """Raised when a selected choice cannot produce a valid narrative outcome."""

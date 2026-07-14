@@ -225,6 +225,24 @@ class OptionGenerator:
             ),
         ]
 
+    @staticmethod
+    def fallback_options_repeat_recent_history(
+        options: List[EventOption], decision_history: Any
+    ) -> bool:
+        """Return whether every fallback option repeats a recent committed choice."""
+        if not isinstance(decision_history, list) or not options:
+            return False
+
+        recent_choices = {
+            _normalize_option_text(str(entry.get("choice") or ""))
+            for entry in decision_history[-12:]
+            if isinstance(entry, dict) and entry.get("choice")
+        }
+        fallback_choices = {
+            _normalize_option_text(option.text) for option in options if option.text
+        }
+        return bool(fallback_choices) and fallback_choices.issubset(recent_choices)
+
     # -------------------- Validation --------------------
 
     def validate_and_fix_relationships(

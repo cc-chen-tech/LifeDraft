@@ -819,12 +819,19 @@ class StoryGenerator:
                 "Using best historical story (%d chars) after all round attempts",
                 len(best_valid_story_text),
             )
+            fallback_options = OptionGenerator.build_contextual_fallback_options(
+                best_valid_story_text,
+                language=language,
+            )
+            if OptionGenerator.fallback_options_repeat_recent_history(
+                fallback_options, player_state.get("decision_history", [])
+            ):
+                raise StoryGenerationFailure(
+                    "Option generation failed and the contextual fallback repeats recent choices"
+                )
             return GameEvent(
                 event_description=best_valid_story_text,
-                options=OptionGenerator.build_contextual_fallback_options(
-                    best_valid_story_text,
-                    language=language,
-                ),
+                options=fallback_options,
             )
 
         message = "Story generation failed before producing a valid event"
