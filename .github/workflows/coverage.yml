@@ -85,6 +85,7 @@ jobs:
             tests/test_diagnostics_contracts.py \
             tests/test_quality_level_contract.py \
             tests/test_quality_level_master_retries_contract.py \
+            tests/test_consistency_parser_contracts.py \
             --cov=src --cov-report=xml --cov-report=term --cov-fail-under=42
         env:
           PYTHONPATH: ${{ github.workspace }}
