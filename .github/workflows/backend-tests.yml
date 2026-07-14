@@ -158,6 +158,10 @@ jobs:
             tests/test_style_prompt_builder_contracts.py \
             tests/test_style_validator_contracts.py \
             tests/test_narrative_style_restore_contract.py \
+            tests/test_creative_emotional_arc.py \
+            tests/test_creative_foreshadowing.py \
+            tests/test_creative_novelty.py \
+            tests/test_creative_preference.py \
             -v --tb=short
         env:
           PYTHONPATH: ${{ github.workspace }}
