@@ -117,6 +117,7 @@ jobs:
             tests/test_music_scene_matching_quality_contract.py \
             tests/test_music_era_recommendation_contract.py \
             tests/test_game_loop_current_event_restore.py \
+            tests/test_achievement_life_review_db.py \
             tests/test_life_summary_grounding_no_mock.py \
             tests/test_life_summary_grounding_db_no_mock.py \
             tests/test_life_summary_grounding_imports_no_mock.py \
