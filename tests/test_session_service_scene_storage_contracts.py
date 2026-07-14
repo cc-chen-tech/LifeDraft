@@ -8,6 +8,14 @@ from src.game.state import PlayerState
 from src.services.image_storage import ImageStorageService
 
 
+class RecordingSessionService(SessionService):
+    def __init__(self) -> None:
+        self.requests: list[dict[str, object]] = []
+
+    def _trigger_illustration_generation(self, **kwargs: object) -> None:
+        self.requests.append(kwargs)
+
+
 def _scene(game_id: int, storage_path: str) -> SceneImage:
     return SceneImage(
         game_id=game_id,
@@ -92,3 +100,39 @@ def test_existing_valid_scene_skips_illustration_regeneration(db_session, tmp_pa
         player_name="Test",
         image_storage=ImageStorageService(storage_type="local", local_path=tmp_path),
     )
+
+
+def test_missing_existing_scene_is_marked_and_requests_regeneration(db_session, tmp_path: Path) -> None:
+    game = Game(language="zh")
+    db_session.add(game)
+    db_session.flush()
+    scene = _scene(int(game.game_id), "missing-event-scene.png")
+    db_session.add(scene)
+    db_session.commit()
+    service = RecordingSessionService()
+
+    service._check_and_generate_illustration(
+        db=db_session,
+        game_id=int(game.game_id),
+        week=2,
+        round_number=1,
+        stage="event",
+        story_text="A missing saved scene.",
+        character_settings={"era": "modern"},
+        player_name="Test",
+        image_storage=ImageStorageService(storage_type="local", local_path=tmp_path),
+    )
+
+    db_session.refresh(scene)
+    assert scene.importance_score == "missing"
+    assert service.requests == [
+        {
+            "game_id": int(game.game_id),
+            "week": 2,
+            "round_number": 1,
+            "stage": "event",
+            "story_text": "A missing saved scene.",
+            "character_settings": {"era": "modern"},
+            "player_name": "Test",
+        }
+    ]
