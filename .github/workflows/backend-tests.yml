@@ -80,6 +80,7 @@ jobs:
             tests/test_npc_attribute_contracts.py \
             tests/test_temporal_validator_contract.py \
             tests/test_harness_consistency_contracts.py \
+            tests/test_harness_state_contracts.py \
             -v --tb=short
         env:
           PYTHONPATH: ${{ github.workspace }}
