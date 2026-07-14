@@ -117,6 +117,7 @@ jobs:
             tests/test_sse_thread_pool_contract.py \
             tests/test_scene_image_constraint_contract.py \
             tests/test_image_thread_pool_contract.py \
+            tests/test_local_minimax_provider_contracts.py \
             -v --tb=short
         env:
           PYTHONPATH: ${{ github.workspace }}
