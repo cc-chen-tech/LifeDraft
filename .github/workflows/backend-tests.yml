@@ -118,6 +118,7 @@ jobs:
             tests/test_scene_image_constraint_contract.py \
             tests/test_image_thread_pool_contract.py \
             tests/test_local_minimax_provider_contracts.py \
+            tests/test_live_gameplay_recovery_collection_contract.py \
             -v --tb=short
         env:
           PYTHONPATH: ${{ github.workspace }}
