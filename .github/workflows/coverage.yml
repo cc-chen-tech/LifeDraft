@@ -121,6 +121,7 @@ jobs:
             tests/test_system_mixin_contract.py \
             tests/test_relationship_events_contract.py \
             tests/test_session_service_scene_storage_contracts.py \
+            tests/test_game_loop_load_recovery_contracts.py \
             --cov=src --cov-report=xml --cov-report=term --cov-fail-under=49
         env:
           PYTHONPATH: ${{ github.workspace }}
