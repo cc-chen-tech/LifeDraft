@@ -114,7 +114,8 @@ jobs:
             tests/test_image_thread_pool_contract.py \
             tests/test_local_minimax_provider_contracts.py \
             tests/test_live_gameplay_recovery_collection_contract.py \
-            --cov=src --cov-report=xml --cov-report=term --cov-fail-under=47
+            tests/test_collection_recognition_current_event.py \
+            --cov=src --cov-report=xml --cov-report=term --cov-fail-under=48
         env:
           PYTHONPATH: ${{ github.workspace }}
           TESTING: 'true'
