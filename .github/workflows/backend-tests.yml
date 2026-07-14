@@ -143,6 +143,7 @@ jobs:
             tests/test_narrative_character_arc.py \
             tests/test_narrative_style_manifest.py \
             tests/test_style_prompt_builder_contracts.py \
+            tests/test_style_validator_contracts.py \
             tests/test_narrative_style_restore_contract.py \
             -v --tb=short
         env:
