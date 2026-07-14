@@ -128,6 +128,7 @@ jobs:
             tests/test_narrative_world_breathing.py \
             tests/test_narrative_conflict_tower.py \
             tests/test_narrative_character_arc.py \
+            tests/test_narrative_style_manifest.py \
             --cov=src --cov-report=xml --cov-report=term --cov-fail-under=50
         env:
           PYTHONPATH: ${{ github.workspace }}
