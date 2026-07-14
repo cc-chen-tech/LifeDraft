@@ -32,4 +32,4 @@
   migration idempotency, and CI compatibility.
 - [x] 4.2 Run static/type checks, `openspec validate fix-week4-week8-gameplay-continuity --strict`,
   targeted tests, and the complete local test suite.
-- [ ] 4.3 Run browser/E2E recovery coverage, open a PR, and observe all PR checks.
+- [x] 4.3 Run browser/E2E recovery coverage, open a PR, and observe all PR checks.
