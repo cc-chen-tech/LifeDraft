@@ -161,3 +161,46 @@ def test_start_new_game_initializes_characters_from_relationship_settings() -> N
     )
 
     assert "Wei" in state.characters
+
+
+def test_load_game_initializes_relationship_characters_and_style_id() -> None:
+    loop = _loop()
+
+    state = loop.load_game(
+        {
+            "player_name": "Lin",
+            "week": 1,
+            "current_round": 0,
+            "current_event_data": None,
+            "round_history": [],
+            "decision_history": [],
+            "yearly_summaries": [],
+            "narrative_style_id": "chinese_classic_saga",
+            "character_settings": {
+                "relationships": {
+                    "key_people": [{"name": "Wei", "role": "friend", "relationship": "ally"}]
+                }
+            },
+        }
+    )
+
+    assert "Wei" in state.characters
+    assert loop.narrative_style_id == "chinese_classic_saga"
+
+
+def test_load_game_drops_saved_event_without_description() -> None:
+    loop = _loop()
+
+    loop.load_game(
+        {
+            "player_name": "Lin",
+            "week": 1,
+            "current_round": 0,
+            "current_event_data": {"options": []},
+            "round_history": [],
+            "decision_history": [],
+            "yearly_summaries": [],
+        }
+    )
+
+    assert loop.current_event is None
