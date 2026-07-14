@@ -97,6 +97,7 @@ jobs:
             tests/test_choice_processor_state_contracts.py \
             tests/test_sse_completed_replay_contracts.py \
             tests/test_entity_collection_reliability_no_mock.py \
+            tests/test_character_service_contract.py \
             -v --tb=short
         env:
           PYTHONPATH: ${{ github.workspace }}
