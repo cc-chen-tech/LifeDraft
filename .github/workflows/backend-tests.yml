@@ -103,6 +103,7 @@ jobs:
             tests/test_yearly_summary_contract.py \
             tests/test_event_generation_contract.py \
             tests/test_scene_image_sse_contract.py \
+            tests/test_image_generator_pure_contracts.py \
             -v --tb=short
         env:
           PYTHONPATH: ${{ github.workspace }}
