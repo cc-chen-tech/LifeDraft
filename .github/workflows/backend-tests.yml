@@ -120,6 +120,7 @@ jobs:
             tests/test_local_minimax_provider_contracts.py \
             tests/test_live_gameplay_recovery_collection_contract.py \
             tests/test_collection_recognition_current_event.py \
+            tests/test_gameplay_event_protocol_contracts.py \
             -v --tb=short
         env:
           PYTHONPATH: ${{ github.workspace }}
