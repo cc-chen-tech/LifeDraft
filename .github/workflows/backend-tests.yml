@@ -134,6 +134,7 @@ jobs:
             tests/test_narrative_conflict_tower.py \
             tests/test_narrative_character_arc.py \
             tests/test_narrative_style_manifest.py \
+            tests/test_narrative_style_restore_contract.py \
             -v --tb=short
         env:
           PYTHONPATH: ${{ github.workspace }}
