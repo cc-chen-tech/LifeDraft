@@ -119,6 +119,9 @@ jobs:
             tests/test_music_scene_matching_quality_contract.py \
             tests/test_music_era_recommendation_contract.py \
             tests/test_game_loop_current_event_restore.py \
+            tests/test_entity_recognition_task.py \
+            tests/test_character_introduction_contract.py \
+            tests/test_mcp_service.py \
             tests/test_continuity_ledger.py \
             tests/test_wealth_ledger.py \
             tests/test_wealth_ledger_integration.py \
