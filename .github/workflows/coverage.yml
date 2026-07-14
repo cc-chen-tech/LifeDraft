@@ -157,6 +157,7 @@ jobs:
             tests/test_creative_foreshadowing.py \
             tests/test_creative_novelty.py \
             tests/test_creative_preference.py \
+            tests/test_style_matching_contract.py \
             tests/test_quick_validator.py \
             tests/test_harness_logic_validators.py \
             tests/test_era_validator_production_contract.py \
