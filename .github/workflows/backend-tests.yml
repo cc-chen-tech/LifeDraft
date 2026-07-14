@@ -113,6 +113,8 @@ jobs:
             tests/test_life_summary_grounding_no_mock.py \
             tests/test_life_summary_grounding_db_no_mock.py \
             tests/test_life_summary_grounding_imports_no_mock.py \
+            tests/test_sse_terminal_state_contracts.py \
+            tests/test_sse_thread_pool_contract.py \
             -v --tb=short
         env:
           PYTHONPATH: ${{ github.workspace }}

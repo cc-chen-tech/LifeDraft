@@ -108,6 +108,8 @@ jobs:
             tests/test_life_summary_grounding_no_mock.py \
             tests/test_life_summary_grounding_db_no_mock.py \
             tests/test_life_summary_grounding_imports_no_mock.py \
+            tests/test_sse_terminal_state_contracts.py \
+            tests/test_sse_thread_pool_contract.py \
             --cov=src --cov-report=xml --cov-report=term --cov-fail-under=46
         env:
           PYTHONPATH: ${{ github.workspace }}
