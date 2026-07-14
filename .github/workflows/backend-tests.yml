@@ -70,6 +70,7 @@ jobs:
             tests/test_round_illustration_contracts.py \
             tests/test_sse_helper_state_contracts.py \
             tests/test_sse_protocol_pure_contracts.py \
+            tests/test_sse_terminal_stream_contracts.py \
             tests/test_image_prompt_builder_contracts.py \
             tests/test_event_fallback_context_contracts.py \
             tests/test_gameplay_event_protocol_contracts.py \
