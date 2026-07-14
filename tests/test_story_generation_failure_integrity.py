@@ -8,11 +8,29 @@ from src.ai.story_exceptions import StoryGenerationFailure, StoryRewriteFailure
 from src.ai.story_generator import StoryGenerator
 from src.ai.story_rewriter import StoryRewriter
 from src.game.round.event_generator import RoundEventGenerator
+from src.game.story_service import StoryService
 
 
 class FailingClient:
     def call(self, **_kwargs):
         raise RuntimeError("provider unavailable")
+
+
+class FailingStoryGenerator:
+    ai_client = FailingClient()
+
+    def generate_completion(self, **_kwargs):
+        raise RuntimeError("provider unavailable")
+
+    def generate_completion_json(self, **_kwargs):
+        raise RuntimeError("provider unavailable")
+
+
+class InvalidEffectsStoryGenerator:
+    ai_client = FailingClient()
+
+    def generate_completion_json(self, **_kwargs):
+        return {"energy": "-5", "mood": 3, "knowledge": 0, "wealth": 0}
 
 
 def test_round_story_generation_surfaces_provider_failure() -> None:
@@ -36,6 +54,37 @@ def test_rewrite_surfaces_provider_failure_instead_of_returning_original_story()
             {},
             "",
             language="zh",
+        )
+
+
+def test_choice_continuation_surfaces_provider_failure_instead_of_fake_prose() -> None:
+    service = StoryService(FailingStoryGenerator(), language="zh")
+
+    with pytest.raises(RuntimeError, match="provider unavailable"):
+        service.generate_story_continuation(
+            event_description="林岚正在准备活动。",
+            chosen_option="按计划举办活动",
+            effects={"mood": 5},
+        )
+
+
+def test_custom_choice_effects_surface_provider_failure_instead_of_fake_effects() -> None:
+    service = StoryService(FailingStoryGenerator(), language="zh")
+
+    with pytest.raises(RuntimeError, match="provider unavailable"):
+        service.generate_custom_choice_effects(
+            event_description="林岚正在准备活动。",
+            custom_text="邀请陈越安排放映。",
+        )
+
+
+def test_custom_choice_effects_reject_non_integer_provider_payload() -> None:
+    service = StoryService(InvalidEffectsStoryGenerator(), language="zh")
+
+    with pytest.raises(RuntimeError, match="invalid effect payload"):
+        service.generate_custom_choice_effects(
+            event_description="林岚正在准备活动。",
+            custom_text="邀请陈越安排放映。",
         )
 
 

@@ -19,6 +19,7 @@ import type {
 } from './types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
+export const LIFE_SUMMARY_REQUEST_TIMEOUT_MS = 30_000;
 
 /**
  * 401 重定向防抖：防止并发请求竞态导致多次重定向
@@ -366,6 +367,7 @@ export const api = {
       }>(`/games/${gameId}/summary`, {
         method: 'POST',
         body: JSON.stringify(data),
+        timeout: LIFE_SUMMARY_REQUEST_TIMEOUT_MS,
       }),
     // Synchronous choice methods (non-streaming)
     makeChoiceSync: (gameId: number, data: { option_index: number }) =>

@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from src.ai.generator import EventGenerator
 from src.ai.prompt_sanitizer import sanitize_custom_action, sanitize_user_choice
+from src.ai.story_exceptions import StoryContinuationFailure
 from src.ai.system_prompts import get_system_prompt
 from src.ai.text_quality import normalize_generated_story
 
@@ -125,23 +126,18 @@ class StoryService:
 
             return normalize_generated_story(continuation, language=self.language)
 
+        except StoryContinuationFailure:
+            raise
         except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
             logger.warning(f"Failed to generate story continuation: {e}")
-            fallback = self.generate_fallback_continuation(
-                sanitized_chosen_option, effects
-            )
-            # If streaming was requested, emit fallback text as a single chunk
-            if stream_callback:
-                stream_callback(fallback)
-            return fallback
+            raise StoryContinuationFailure(
+                f"Story continuation generation failed: {e}"
+            ) from e
         except Exception as e:
             logger.exception(f"Unexpected error generating story continuation: {e}")
-            fallback = self.generate_fallback_continuation(
-                sanitized_chosen_option, effects
-            )
-            if stream_callback:
-                stream_callback(fallback)
-            return fallback
+            raise StoryContinuationFailure(
+                f"Story continuation generation failed: {e}"
+            ) from e
 
     def _validate_and_retry_wealth_narrative(
         self,
@@ -539,15 +535,19 @@ class StoryService:
                     max_tokens=4096,
                 )
                 if result and isinstance(result, dict):
-                    # Ensure we have valid effect keys
-                    effects = {
-                        "energy": result.get("energy", 0),
-                        "mood": result.get("mood", 0),
-                        "knowledge": result.get("knowledge", 0),
-                        "wealth": result.get("wealth", 0),
-                    }
-                    return effects
-                last_error = f"JSON解析失败或缺少属性字段，返回keys: {list(result.keys()) if result else 'None'}"
+                    effect_keys = ("energy", "mood", "knowledge", "wealth")
+                    effects = {key: result.get(key) for key in effect_keys}
+                    if all(
+                        isinstance(value, int) and not isinstance(value, bool)
+                        for value in effects.values()
+                    ):
+                        return effects
+                    last_error = "invalid effect payload: all resource effects must be integers"
+                else:
+                    last_error = (
+                        "JSON解析失败或缺少属性字段，"
+                        f"返回keys: {list(result.keys()) if result else 'None'}"
+                    )
                 logger.warning(f"Attempt {attempt + 1}/2: {last_error}")
             except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
                 last_error = str(e)
@@ -556,10 +556,9 @@ class StoryService:
                 last_error = str(e)
                 logger.warning(f"Attempt {attempt + 1}/2 failed (unexpected): {e}")
 
-        logger.error(
-            "Failed to generate custom choice effects after 2 attempts, using fallback"
-        )
-        return {"energy": -5, "mood": 5, "knowledge": 0, "wealth": 0}
+        message = "Failed to generate custom choice effects after 2 attempts"
+        logger.error("%s: %s", message, last_error)
+        raise StoryContinuationFailure(f"{message}: {last_error}")
 
     def generate_custom_choice_result(
         self,
@@ -637,13 +636,9 @@ class StoryService:
                 last_error = str(e)
                 logger.warning(f"Attempt {attempt + 1}/2 failed (unexpected): {e}")
 
-        logger.error(
-            "Failed to generate custom choice result after 2 attempts, using fallback"
-        )
-        return {
-            "story_continuation": f"你决定{custom_text}。这是一个有趣的选择，让我们看看接下来会发生什么...",
-            "effects": {"energy": -5, "mood": 5},
-        }
+        message = "Failed to generate custom choice result after 2 attempts"
+        logger.error("%s: %s", message, last_error)
+        raise StoryContinuationFailure(f"{message}: {last_error}")
 
     def _validate_custom_choice_result_story(
         self,

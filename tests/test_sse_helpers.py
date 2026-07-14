@@ -322,6 +322,28 @@ class TestSSEAsyncFunctions:
                 assert saved["state"] == state
                 break
 
+    @pytest.mark.asyncio
+    async def test_stream_choice_failure_emits_no_complete_or_persistence(self, monkeypatch):
+        """A rejected choice must not publish a new story for media consumers."""
+        from src.ai.story_exceptions import StoryContinuationFailure
+        from src.api.routers.gameplay import sse_helpers
+
+        class ImmediateExecutor:
+            def submit(self, callback):
+                callback()
+
+        game_loop = MagicMock()
+        game_loop.make_round_choice.side_effect = StoryContinuationFailure("provider unavailable")
+        persist = MagicMock()
+        monkeypatch.setattr(sse_helpers, "_get_sse_thread_pool", lambda: ImmediateExecutor())
+        monkeypatch.setattr(sse_helpers, "_persist_choice_state", persist)
+
+        events = [event async for event in stream_choice(game_loop, 0, 456)]
+
+        assert any("event: error" in event for event in events)
+        assert not any("event: complete" in event for event in events)
+        persist.assert_not_called()
+
 
 class TestSSEFunctionsExist:
     """SSE函数存在性测试"""

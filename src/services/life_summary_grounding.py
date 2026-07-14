@@ -13,6 +13,9 @@ _NUMBER_PATTERN = re.compile(r"\d+(?:\.\d+)?")
 _REMOVED_METRICS = ("精力", "情绪", "学识", "财富", "energy", "mood", "knowledge", "wealth")
 _LEGAL_ENDORSEMENTS = ("合规路径", "合法合规", "完全合法", "符合法律规定", "compliant path")
 _INFLATED_DURATION = ("半年", "一年", "数年", "half a year", "one year", "several years")
+_LIFE_SUMMARY_EVIDENCE_MAX_CHARS = 24_000
+_COMPACT_STORY_MAX_CHARS = 360
+_COMPACT_CHOICE_MAX_CHARS = 120
 
 
 def _as_text(item: StoryItem, key: str) -> str:
@@ -29,7 +32,49 @@ def _source_text(story_history: Sequence[StoryItem]) -> str:
             parts.append(story)
         if choice:
             parts.append(choice)
-    return "\n".join(parts)
+    source = "\n".join(parts)
+    if len(source) <= _LIFE_SUMMARY_EVIDENCE_MAX_CHARS:
+        return source
+
+    entries = [
+        item
+        for item in story_history
+        if _as_text(item, "story_text").strip() or _as_text(item, "choice_text").strip()
+    ]
+    if not entries:
+        return source[:_LIFE_SUMMARY_EVIDENCE_MAX_CHARS]
+
+    max_entries = max(1, _LIFE_SUMMARY_EVIDENCE_MAX_CHARS // 520)
+    selected_count = min(len(entries), max_entries)
+    if selected_count == 1:
+        selected_entries = [entries[0]]
+    else:
+        selected_entries = [
+            entries[round(index * (len(entries) - 1) / (selected_count - 1))]
+            for index in range(selected_count)
+        ]
+
+    compact_entries: List[str] = []
+    for item in selected_entries:
+        week = item.get("week")
+        week_label = f"第{int(week) + 1}周" if isinstance(week, int) else "未标注周次"
+        story = _truncate_evidence(_as_text(item, "story_text"), _COMPACT_STORY_MAX_CHARS)
+        choice = _truncate_evidence(_as_text(item, "choice_text"), _COMPACT_CHOICE_MAX_CHARS)
+        entry_parts = [week_label]
+        if story:
+            entry_parts.append(f"事件：{story}")
+        if choice:
+            entry_parts.append(f"选择：{choice}")
+        compact_entries.append("；".join(entry_parts))
+
+    return "\n".join(compact_entries)[:_LIFE_SUMMARY_EVIDENCE_MAX_CHARS]
+
+
+def _truncate_evidence(text: str, limit: int) -> str:
+    normalized = text.strip()
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: limit - 3].rstrip() + "..."
 
 
 def _range_label(start_week: int, end_week: int) -> str:

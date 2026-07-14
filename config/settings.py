@@ -109,6 +109,9 @@ class Settings:
 
     # AI Generation Timeout
     GENERATION_TIMEOUT: float = 60.0  # Max seconds before auto-reset
+    LIFE_SUMMARY_TIMEOUT_SECONDS: float = float(
+        os.getenv("LIFE_SUMMARY_TIMEOUT_SECONDS", "25")
+    )
 
     # Database Configuration
     # Priority: DATABASE_URL (cloud) > DATABASE_PATH (local SQLite)
