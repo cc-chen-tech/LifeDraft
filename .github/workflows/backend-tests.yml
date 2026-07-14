@@ -88,6 +88,8 @@ jobs:
             tests/test_preflight_prompt_contracts.py \
             tests/test_retry_controller_contract.py \
             tests/test_diagnostics_contracts.py \
+            tests/test_quality_level_contract.py \
+            tests/test_quality_level_master_retries_contract.py \
             -v --tb=short
         env:
           PYTHONPATH: ${{ github.workspace }}
