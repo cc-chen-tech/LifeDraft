@@ -75,6 +75,7 @@ jobs:
             tests/test_multi_character_scene_contract.py \
             tests/test_historical_summary_selection_contracts.py \
             tests/test_narrative_state_contracts.py \
+            tests/test_character_creation_pure_contracts.py \
             -v --tb=short
         env:
           PYTHONPATH: ${{ github.workspace }}
