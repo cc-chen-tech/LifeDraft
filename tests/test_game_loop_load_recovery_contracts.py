@@ -115,3 +115,49 @@ def test_load_game_restores_year_boundary_from_latest_summary() -> None:
 
     assert loop.last_year_start_week == 52
     assert loop.last_event_week == 54
+
+
+def test_start_new_game_resets_event_tracking_for_default_state() -> None:
+    loop = _loop()
+    loop.current_event = object()  # type: ignore[assignment]
+    loop.last_event_week = 99
+
+    state = loop.start_new_game()
+
+    assert state.current_event_data is None
+    assert loop.current_event is None
+    assert loop.last_event_week == -1
+
+
+def test_start_new_game_uses_supplied_state_and_clears_saved_event() -> None:
+    loop = _loop()
+
+    state = loop.start_new_game(
+        {
+            "player_name": "Lin",
+            "week": 5,
+            "current_round": 2,
+            "current_event_data": _event_data(
+                [{"text": "Continue", "effects": {}}, {"text": "Wait", "effects": {}}]
+            ),
+        }
+    )
+
+    assert state.player_name == "Lin"
+    assert state.week == 5
+    assert state.current_event_data is None
+
+
+def test_start_new_game_initializes_characters_from_relationship_settings() -> None:
+    state = _loop().start_new_game(
+        {
+            "player_name": "Lin",
+            "character_settings": {
+                "relationships": {
+                    "key_people": [{"name": "Wei", "role": "friend", "relationship": "ally"}]
+                }
+            },
+        }
+    )
+
+    assert "Wei" in state.characters
