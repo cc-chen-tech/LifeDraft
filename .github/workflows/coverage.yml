@@ -81,7 +81,9 @@ jobs:
             tests/test_validation_pipeline_contract.py \
             tests/test_preflight_context.py \
             tests/test_preflight_prompt_contracts.py \
-            --cov=src --cov-report=xml --cov-report=term --cov-fail-under=41
+            tests/test_retry_controller_contract.py \
+            tests/test_diagnostics_contracts.py \
+            --cov=src --cov-report=xml --cov-report=term --cov-fail-under=42
         env:
           PYTHONPATH: ${{ github.workspace }}
           TESTING: 'true'

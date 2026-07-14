@@ -86,6 +86,8 @@ jobs:
             tests/test_validation_pipeline_contract.py \
             tests/test_preflight_context.py \
             tests/test_preflight_prompt_contracts.py \
+            tests/test_retry_controller_contract.py \
+            tests/test_diagnostics_contracts.py \
             -v --tb=short
         env:
           PYTHONPATH: ${{ github.workspace }}
