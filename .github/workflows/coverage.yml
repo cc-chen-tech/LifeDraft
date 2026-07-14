@@ -102,7 +102,9 @@ jobs:
             tests/test_fallback_events_contract.py \
             tests/test_scheduled_events_contract.py \
             tests/test_scheduled_events.py \
-            --cov=src --cov-report=xml --cov-report=term --cov-fail-under=45
+            tests/test_music_scene_matching_quality_contract.py \
+            tests/test_music_era_recommendation_contract.py \
+            --cov=src --cov-report=xml --cov-report=term --cov-fail-under=46
         env:
           PYTHONPATH: ${{ github.workspace }}
           TESTING: 'true'

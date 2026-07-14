@@ -107,6 +107,8 @@ jobs:
             tests/test_fallback_events_contract.py \
             tests/test_scheduled_events_contract.py \
             tests/test_scheduled_events.py \
+            tests/test_music_scene_matching_quality_contract.py \
+            tests/test_music_era_recommendation_contract.py \
             -v --tb=short
         env:
           PYTHONPATH: ${{ github.workspace }}
