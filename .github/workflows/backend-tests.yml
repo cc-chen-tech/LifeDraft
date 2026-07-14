@@ -129,6 +129,7 @@ jobs:
             tests/test_game_loop_load_recovery_contracts.py \
             tests/test_image_compressor_db.py \
             tests/test_language_contract.py \
+            tests/test_narrative_fate_echo.py \
             -v --tb=short
         env:
           PYTHONPATH: ${{ github.workspace }}
