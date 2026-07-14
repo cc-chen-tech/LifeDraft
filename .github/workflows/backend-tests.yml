@@ -125,6 +125,7 @@ jobs:
             tests/test_choice_processor_contract.py \
             tests/test_system_mixin_contract.py \
             tests/test_relationship_events_contract.py \
+            tests/test_session_service_scene_storage_contracts.py \
             -v --tb=short
         env:
           PYTHONPATH: ${{ github.workspace }}
