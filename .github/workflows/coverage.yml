@@ -100,6 +100,7 @@ jobs:
             tests/test_entity_collection_reliability_no_mock.py \
             tests/test_character_service_contract.py \
             tests/test_story_continuation_drift_contract.py \
+            tests/test_story_fallback_continuation_contracts.py \
             tests/test_monthly_summary_contract.py \
             tests/test_yearly_summary_contract.py \
             tests/test_event_generation_contract.py \
