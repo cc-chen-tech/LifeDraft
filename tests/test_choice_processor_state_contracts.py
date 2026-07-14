@@ -4,6 +4,23 @@ from src.game.round.choice_processor import RoundChoiceProcessor
 from src.game.state import PlayerState
 
 
+class RecordingEffectsService:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, dict[object, object], dict[object, object]]] = []
+
+    def generate_custom_choice_effects(
+        self,
+        event_description: str,
+        custom_text: str,
+        character_settings: dict[object, object],
+        current_state: dict[object, object],
+    ) -> dict[str, int]:
+        self.calls.append(
+            (event_description, custom_text, character_settings, current_state)
+        )
+        return {"knowledge": 1}
+
+
 def _processor(state: PlayerState) -> RoundChoiceProcessor:
     return RoundChoiceProcessor(
         player_state_getter=lambda: state,
@@ -47,6 +64,42 @@ def test_effect_normalization_clamps_resources_and_reports_applied_deltas() -> N
     assert by_resource["mood"]["applied_delta"] == 1
     assert by_resource["knowledge"]["applied_delta"] == 0
     assert by_resource["wealth"]["applied_delta"] == -50
+
+
+def test_effect_normalization_without_state_returns_independent_input() -> None:
+    requested = {"energy": -4, "mood": 3, "relationships": {"陈晓雨": 2}}
+    processor = RoundChoiceProcessor(
+        player_state_getter=lambda: None,
+        ai_generator=object(),
+        language_getter=lambda: "zh",
+        story_service=object(),
+        current_event_getter=lambda: None,
+        current_event_setter=lambda event: None,
+    )
+
+    effects, warnings = processor._normalize_effects_for_current_state(requested)
+    effects["energy"] = 0
+
+    assert requested["energy"] == -4
+    assert effects["mood"] == 3
+    assert warnings == []
+
+
+def test_custom_effects_without_state_delegate_empty_context() -> None:
+    service = RecordingEffectsService()
+    processor = RoundChoiceProcessor(
+        player_state_getter=lambda: None,
+        ai_generator=object(),
+        language_getter=lambda: "zh",
+        story_service=service,
+        current_event_getter=lambda: None,
+        current_event_setter=lambda event: None,
+    )
+
+    effects = processor._generate_custom_choice_effects("面试结束", "整理复盘")
+
+    assert effects == {"knowledge": 1}
+    assert service.calls == [("面试结束", "整理复盘", {}, {})]
 
 
 def test_choice_wealth_transaction_is_idempotent_and_rejects_boolean_delta() -> None:
