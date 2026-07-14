@@ -28,8 +28,8 @@
 
 ## 4. Final Verification and Delivery
 
-- [ ] 4.1 Review the complete diff for unrelated changes, state-mutation ordering,
+- [x] 4.1 Review the complete diff for unrelated changes, state-mutation ordering,
   migration idempotency, and CI compatibility.
-- [ ] 4.2 Run static/type checks, `openspec validate fix-week4-week8-gameplay-continuity --strict`,
+- [x] 4.2 Run static/type checks, `openspec validate fix-week4-week8-gameplay-continuity --strict`,
   targeted tests, and the complete local test suite.
 - [ ] 4.3 Run browser/E2E recovery coverage, open a PR, and observe all PR checks.
