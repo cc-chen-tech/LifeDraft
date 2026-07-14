@@ -12,6 +12,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from config.settings import settings
 from src.ai.narrative.style_manifest import get_style
 from src.api.deps import get_current_user_optional, get_db
 from src.api.schemas import GameStateResponse, GenerateSummaryRequest
@@ -202,7 +203,8 @@ async def generate_summary(
                 prompt=prompt,
                 system_prompt="你是一位优秀的人生故事记录者。请为这段人生经历生成一段贴切、真实的总结。只返回总结文本，不要标题。",
                 temperature=0.8,
-                max_tokens=4096,
+                max_tokens=1200,
+                request_timeout=settings.LIFE_SUMMARY_TIMEOUT_SECONDS,
             )
         except Exception as e:
             logger.warning(f"AI summary generation failed: {e}")

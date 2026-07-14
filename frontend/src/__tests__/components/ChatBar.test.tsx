@@ -213,6 +213,28 @@ describe('ChatBar', () => {
         expect(summaryCall).toBeDefined();
       });
     });
+
+    it('clears summary loading and displays a retryable error when the request aborts', async () => {
+      const abortError = new Error('The operation was aborted.');
+      abortError.name = 'AbortError';
+      (global.fetch as jest.Mock).mockRejectedValue(abortError);
+
+      const user = userEvent.setup();
+      render(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+          storyText="Test story"
+        />
+      );
+
+      await user.click(screen.getByRole('button', { name: '人生总结' }));
+
+      expect(await screen.findByText('生成总结时出了点问题，请稍后再试。')).toBeInTheDocument();
+      expect(screen.queryByText('正在生成总结...')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '人生总结' })).toBeEnabled();
+    });
   });
 
   describe('Expanded state', () => {

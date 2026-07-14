@@ -17,13 +17,13 @@
 
 ## 3. Bound Life Summary and Media Context
 
-- [ ] 3.1 Add API tests for a provider timeout returning an evidence-only summary
+- [x] 3.1 Add API tests for a provider timeout returning an evidence-only summary
   without gameplay mutation.
-- [ ] 3.2 Add frontend tests for client timeout clearing loading and displaying a
+- [x] 3.2 Add frontend tests for client timeout clearing loading and displaying a
   retryable summary error.
-- [ ] 3.3 Implement bounded server/client deadlines and preserve valid media context
+- [x] 3.3 Implement bounded server/client deadlines and preserve valid media context
   when a choice result is rejected.
-- [ ] 3.4 Run focused backend/frontend tests, strict OpenSpec validation, and commit
+- [x] 3.4 Run focused backend/frontend tests, strict OpenSpec validation, and commit
   the summary-recovery fix.
 
 ## 4. Final Verification and Delivery

@@ -12,7 +12,7 @@ const mockLocalStorage = {
 Object.defineProperty(global, 'localStorage', { value: mockLocalStorage, writable: true });
 
 // Import api after mocking
-import api from '@/lib/api';
+import api, { LIFE_SUMMARY_REQUEST_TIMEOUT_MS } from '@/lib/api';
 
 // Helper: create a mock Response-like object
 function mockFetchResponse(body: unknown = {}, status = 200, ok?: boolean) {
@@ -40,6 +40,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  jest.useRealTimers();
   consoleWarnSpy?.mockRestore();
   consoleErrorSpy?.mockRestore();
 });
@@ -294,6 +295,24 @@ describe('API Error Handling', () => {
   });
 
   describe('Timeout Handling', () => {
+    it('aborts a stalled life-summary request instead of waiting indefinitely', async () => {
+      jest.useFakeTimers();
+      global.fetch = jest.fn((_url: string, options?: RequestInit) => new Promise((_resolve, reject) => {
+        options?.signal?.addEventListener('abort', () => {
+          const error = new Error('The operation was aborted.');
+          error.name = 'AbortError';
+          reject(error);
+        });
+      }));
+
+      const request = api.gameplay.generateSummary(123, { weeks: 52 });
+      const abortedRequest = expect(request).rejects.toMatchObject({ name: 'AbortError' });
+      await jest.advanceTimersByTimeAsync(LIFE_SUMMARY_REQUEST_TIMEOUT_MS);
+
+      await abortedRequest;
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
     it('cleans up timeout after successful response', async () => {
       const clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
       global.fetch = jest.fn(() =>
