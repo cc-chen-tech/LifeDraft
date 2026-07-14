@@ -116,6 +116,7 @@ jobs:
             tests/test_sse_terminal_state_contracts.py \
             tests/test_sse_thread_pool_contract.py \
             tests/test_scene_image_constraint_contract.py \
+            tests/test_image_thread_pool_contract.py \
             -v --tb=short
         env:
           PYTHONPATH: ${{ github.workspace }}
