@@ -76,3 +76,42 @@ def test_load_game_recovers_partial_event_when_saved_options_are_invalid() -> No
     assert loop.current_event is not None
     assert loop.current_event.event_description == "Saved event."
     assert [option.text for option in loop.current_event.options] == ["Only option"]
+
+
+def test_load_game_without_saved_event_allows_current_week_generation() -> None:
+    loop = _loop()
+
+    loop.load_game(
+        {
+            "player_name": "Lin",
+            "week": 4,
+            "current_round": 0,
+            "current_event_data": None,
+            "round_history": [],
+            "decision_history": [],
+            "yearly_summaries": [],
+        }
+    )
+
+    assert loop.current_event is None
+    assert loop.last_event_week == 3
+    assert loop.last_year_start_week == 0
+
+
+def test_load_game_restores_year_boundary_from_latest_summary() -> None:
+    loop = _loop()
+
+    loop.load_game(
+        {
+            "player_name": "Lin",
+            "week": 54,
+            "current_round": 0,
+            "current_event_data": None,
+            "round_history": [],
+            "decision_history": [{"week": 54}],
+            "yearly_summaries": [{"end_week": 51, "summary": "Year one."}],
+        }
+    )
+
+    assert loop.last_year_start_week == 52
+    assert loop.last_event_week == 54
