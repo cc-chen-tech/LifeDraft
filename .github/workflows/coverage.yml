@@ -103,6 +103,7 @@ jobs:
             tests/test_scene_image_sse_contract.py \
             tests/test_image_generator_pure_contracts.py \
             tests/test_image_service_data_helper_contracts.py \
+            tests/test_image_storage_local_path_contracts.py \
             tests/test_character_image_extra_params.py \
             tests/test_fallback_events_contract.py \
             tests/test_scheduled_events_contract.py \
