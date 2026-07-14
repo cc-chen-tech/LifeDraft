@@ -61,6 +61,8 @@ jobs:
             tests/test_world_model_updater_contracts.py \
             tests/test_collection_shape_contracts.py \
             tests/test_round_illustration_contracts.py \
+            tests/test_sse_helper_state_contracts.py \
+            tests/test_image_prompt_builder_contracts.py \
             --cov=src --cov-report=xml --cov-report=term
         env:
           PYTHONPATH: ${{ github.workspace }}

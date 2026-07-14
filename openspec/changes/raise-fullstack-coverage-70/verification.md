@@ -38,3 +38,25 @@ continue to target high-risk modules while retaining `--cov=src`.
 
 The frontend global threshold is now set to 70% for every metric and the full
 Jest coverage command passes at the recorded baseline values.
+
+## Second Backend Batch
+
+The SSE helper state and image prompt builder suites were each run twice in the
+maintained environment: 6 passed on each run. They were promoted to both
+workflow selections in the same order.
+
+The expanded maintained selection was measured twice:
+
+- 258 passed, 3 existing SQLAlchemy warnings, 7,945 / 23,293 covered
+  statements (34.11%).
+- 258 passed, 3 existing SQLAlchemy warnings, 7,945 / 23,293 covered
+  statements (34.11%).
+
+| Module | Before second batch | Current |
+| --- | ---: | ---: |
+| `src/api/routers/gameplay/sse_helpers.py` | 5.88% | 7.06% |
+| `src/ai/image_prompt_builder.py` | 9.33% | 40.67% |
+
+The remaining distance to 70% is now 8,361 statements. The next worthwhile
+batches are `sse_helpers` durable-operation paths, `scene_service` local data
+paths, and gameplay state transitions, each as a separate test-only change.
