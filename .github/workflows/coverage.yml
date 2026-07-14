@@ -88,6 +88,7 @@ jobs:
             tests/test_consistency_parser_contracts.py \
             tests/test_era_sanitization.py \
             tests/test_security_prompt_injection_contract.py \
+            tests/test_world_model_updater_state_contracts.py \
             --cov=src --cov-report=xml --cov-report=term --cov-fail-under=42
         env:
           PYTHONPATH: ${{ github.workspace }}
