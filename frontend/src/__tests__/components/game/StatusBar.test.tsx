@@ -8,6 +8,8 @@ describe('StatusBar', () => {
         playerState={{
           age: 22,
           week: 0,
+          current_round: 0,
+          rounds_per_week: 3,
           energy: 80,
           mood: 70,
           knowledge: 20,
@@ -19,13 +21,13 @@ describe('StatusBar', () => {
             },
           },
         }}
-        progress={{ current_round: 1, total_rounds: 3 }}
+        progress={{ week: 0, total_weeks: 52 }}
         compact
       />,
     );
 
     expect(screen.getByText('22岁 第1周')).toBeInTheDocument();
-    expect(screen.getByText('1/3')).toBeInTheDocument();
+    expect(screen.getByText('第1轮/3')).toBeInTheDocument();
     expect(screen.queryByText('财富: ¥50,000')).not.toBeInTheDocument();
     expect(screen.queryByText('财富: 50,000人民币')).not.toBeInTheDocument();
     expect(screen.queryByText(/精力|情绪|学识|财富/)).not.toBeInTheDocument();
