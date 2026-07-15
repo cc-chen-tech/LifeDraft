@@ -100,6 +100,45 @@ def test_legacy_save_is_seeded_and_persisted_when_world_model_is_built() -> None
     assert identities["苏晚晴"]["roles"] == ["摄影师"]
 
 
+def test_legacy_save_backfills_committed_rounds_before_next_generation() -> None:
+    state = PlayerState(
+        player_name="林岚",
+        age=29,
+        week=6,
+        current_round=0,
+        character_settings=_settings(),
+        continuity_ledger={},
+        round_history=[
+            {
+                "week": 3,
+                "round": 0,
+                "date_info": {"year": 2026, "month": 1, "week_in_month": 4},
+                "summary": "影院改造第一阶段已经验收。",
+                "choice": "验收改造并购买书架",
+                "event_description": "林岚和陈越验收了改造第一阶段。",
+                "story_continuation": "她支出二千元购买书架，空间开始投入使用。",
+            },
+            {
+                "week": 5,
+                "round": 0,
+                "date_info": {"year": 2026, "month": 2, "week_in_month": 2},
+                "summary": "第一场电影阅读活动已经举办。",
+                "choice": "举办首场电影阅读活动",
+                "event_description": "陈越负责放映，林涛负责书架区。",
+                "story_continuation": "活动顺利结束，观众留下了反馈。",
+            },
+        ],
+    )
+
+    constraints = WorldModel.from_player_state(state).build_constraints_text("zh")
+
+    timeline = state.continuity_ledger["timeline"]
+    assert [entry["event_id"] for entry in timeline] == ["w3-r0", "w5-r0"]
+    assert timeline[0]["choice"] == "验收改造并购买书架"
+    assert "验收改造并购买书架" in constraints
+    assert "举办首场电影阅读活动" in constraints
+
+
 def test_consistency_validator_rejects_ledger_conflict_without_ai_call() -> None:
     class FailIfCalled:
         def call(self, **kwargs):

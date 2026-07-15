@@ -494,6 +494,23 @@ class TestAIClient:
         assert result == "Hello World"
 
     @patch("src.ai.client.openai.OpenAI")
+    def test_call_method_passes_per_request_timeout_to_provider(self, mock_openai_cls):
+        """Short interactive calls can override the general five-minute client timeout."""
+        from src.ai.client import AIClient
+
+        mock_response = Mock()
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message.content = "summary"
+        mock_client = Mock()
+        mock_client.chat.completions.create.return_value = mock_response
+        mock_openai_cls.return_value = mock_client
+
+        client = AIClient(api_key="test-key")
+        client.call("sys prompt", "user prompt", request_timeout=25.0)
+
+        assert mock_client.chat.completions.create.call_args.kwargs["timeout"] == 25.0
+
+    @patch("src.ai.client.openai.OpenAI")
     def test_call_json_method(self, mock_openai_cls):
         """Test AIClient.call_json method."""
         from src.ai.client import AIClient

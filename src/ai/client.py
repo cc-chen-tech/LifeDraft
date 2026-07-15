@@ -98,6 +98,7 @@ class AIClient:
         model: Optional[str] = None,
         frequency_penalty: float = 0.0,
         presence_penalty: float = 0.0,
+        request_timeout: Optional[float] = None,
     ) -> str:
         """
         Unified AI call method.
@@ -128,6 +129,7 @@ class AIClient:
                     model=model,
                     frequency_penalty=frequency_penalty,
                     presence_penalty=presence_penalty,
+                    request_timeout=request_timeout,
                 )
             return self._call_impl(
                 system_prompt=system_prompt,
@@ -138,6 +140,7 @@ class AIClient:
                 model=model,
                 frequency_penalty=frequency_penalty,
                 presence_penalty=presence_penalty,
+                request_timeout=request_timeout,
             )
 
     def _call_with_model_fallback(
@@ -150,6 +153,7 @@ class AIClient:
         model: Optional[str] = None,
         frequency_penalty: float = 0.0,
         presence_penalty: float = 0.0,
+        request_timeout: Optional[float] = None,
     ) -> str:
         """Call AI with automatic model fallback using FallbackChain config.
 
@@ -180,6 +184,7 @@ class AIClient:
                     model=current_model,
                     frequency_penalty=frequency_penalty,
                     presence_penalty=presence_penalty,
+                    request_timeout=request_timeout,
                 )
             except Exception as e:
                 last_error = e
@@ -214,6 +219,7 @@ class AIClient:
         model: Optional[str] = None,
         frequency_penalty: float = 0.0,
         presence_penalty: float = 0.0,
+        request_timeout: Optional[float] = None,
     ) -> str:
         """Internal implementation of AI call."""
         messages = [
@@ -241,6 +247,8 @@ class AIClient:
                         extra_params["frequency_penalty"] = frequency_penalty
                     if presence_penalty > 0:
                         extra_params["presence_penalty"] = presence_penalty
+                    if request_timeout is not None:
+                        extra_params["timeout"] = request_timeout
                     stream = client.chat.completions.create(
                         model=use_model,
                         messages=messages,  # type: ignore[arg-type]
@@ -293,6 +301,8 @@ class AIClient:
                         extra_params_sync["frequency_penalty"] = frequency_penalty
                     if presence_penalty > 0:
                         extra_params_sync["presence_penalty"] = presence_penalty
+                    if request_timeout is not None:
+                        extra_params_sync["timeout"] = request_timeout
                     response = client.chat.completions.create(
                         model=use_model,
                         messages=messages,  # type: ignore[arg-type]
@@ -395,6 +405,7 @@ class AIClient:
         stream_callback: Optional[Callable[[str], None]] = None,
         model: Optional[str] = None,
         language: str = "zh",
+        request_timeout: Optional[float] = None,
     ) -> str:
         """
         Call AI with retry and error feedback injection.
@@ -446,6 +457,7 @@ class AIClient:
                     max_tokens=max_tokens,
                     stream_callback=cb,
                     model=model,
+                    request_timeout=request_timeout,
                 )
 
             except openai.APIError as e:

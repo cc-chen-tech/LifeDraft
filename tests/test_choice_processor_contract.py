@@ -104,6 +104,18 @@ class FakeStoryService:
         return {"energy": -3, "mood": 2, "knowledge": 1, "wealth": 0}
 
 
+class FailingContinuationStoryService(FakeStoryService):
+    def generate_story_continuation(self, *args, **kwargs) -> str:
+        del args, kwargs
+        raise RuntimeError("continuation provider unavailable")
+
+
+class FailingCustomContinuationStoryService(FailingContinuationStoryService):
+    def generate_custom_choice_effects(self, *args, **kwargs) -> Dict[str, Any]:
+        del args, kwargs
+        return {"energy": -3, "mood": 2, "knowledge": 1, "wealth": -200}
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -484,6 +496,21 @@ class TestMakeRoundChoiceContract:
         with pytest.raises(ValueError, match="No current event"):
             proc.make_round_choice(option_index=0)
 
+    def test_failed_continuation_does_not_mutate_standard_choice_state(self):
+        state = _make_state()
+        event = _make_event()
+        original = state.model_dump()
+        proc = _make_processor(
+            player_state=state,
+            current_event=event,
+            story_service=FailingContinuationStoryService(),
+        )
+
+        with pytest.raises(RuntimeError, match="continuation provider unavailable"):
+            proc.make_round_choice(option_index=2)
+
+        assert state.model_dump() == original
+
 
 class TestMakeCustomChoiceContract:
     """Contract tests for make_custom_choice."""
@@ -546,6 +573,21 @@ class TestMakeCustomChoiceContract:
 
         with pytest.raises(ValueError, match="No current event"):
             proc.make_custom_choice(custom_text="Do something.")
+
+    def test_failed_continuation_does_not_mutate_custom_choice_state(self):
+        state = _make_state()
+        event = _make_event()
+        original = state.model_dump()
+        proc = _make_processor(
+            player_state=state,
+            current_event=event,
+            story_service=FailingCustomContinuationStoryService(),
+        )
+
+        with pytest.raises(RuntimeError, match="continuation provider unavailable"):
+            proc.make_custom_choice(custom_text="Use 200 to test the new projector.")
+
+        assert state.model_dump() == original
 
 
 class TestGenerateCustomChoiceEffectsContract:

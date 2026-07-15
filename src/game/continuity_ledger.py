@@ -170,6 +170,7 @@ class ContinuityLedger:
         stored = _value(player_state, "continuity_ledger", {})
         ledger = cls(stored if isinstance(stored, Mapping) else {})
         ledger.seed_authoritative_identities(player_state)
+        ledger.rebuild_timeline_from_round_history(player_state)
         return ledger
 
     @classmethod
@@ -240,6 +241,61 @@ class ContinuityLedger:
                     life_status=_life_status(member),
                     source_path="character_settings.family.family_members",
                 )
+
+    def rebuild_timeline_from_round_history(self, player_state: Any) -> None:
+        """Seed legacy saves from durable completed-round records once.
+
+        Historical prose is evidence, not a newly extracted fact. Rebuilding only the
+        committed timeline retains the exact player choice without inventing semantic
+        facts from old generated text.
+        """
+        if self.timeline:
+            return
+
+        round_history = _value(player_state, "round_history", [])
+        if not isinstance(round_history, list):
+            return
+
+        current_week = _int_or_none(_value(player_state, "week", None))
+        current_round = _int_or_none(_value(player_state, "current_round", None))
+        current_position = (
+            (current_week, current_round)
+            if current_week is not None and current_round is not None
+            else None
+        )
+
+        records: List[tuple[int, int, Mapping[str, Any]]] = []
+        for item in round_history:
+            if not isinstance(item, Mapping):
+                continue
+            week = _int_or_none(item.get("week"))
+            round_number = _int_or_none(item.get("round"))
+            if week is None or round_number is None or week < 0 or round_number < 0:
+                continue
+            if current_position is not None and (week, round_number) >= current_position:
+                continue
+            records.append((week, round_number, item))
+
+        for week, round_number, record in sorted(records, key=lambda item: item[:2]):
+            event_description = _text(record.get("event_description"))
+            continuation = _text(record.get("story_continuation"))
+            story_text = "\n\n".join(
+                part for part in (event_description, continuation) if part
+            )
+            self.record_committed_event(
+                event_id=f"w{week}-r{round_number}",
+                week=week,
+                round_number=round_number,
+                date_info=(
+                    record.get("date_info")
+                    if isinstance(record.get("date_info"), Mapping)
+                    else {}
+                ),
+                summary=_text(record.get("summary")),
+                choice=_text(record.get("choice")),
+                story_text=story_text,
+                fact_updates=[],
+            )
 
     def _seed_identity(
         self,
@@ -315,9 +371,14 @@ class ContinuityLedger:
         if self.timeline:
             lines.append("最近已提交时间线：")
             for entry in self.timeline[-8:]:
+                summary = _text(entry.get("summary"))
+                choice = _text(entry.get("choice"))
+                evidence = summary or choice or "已提交事件"
+                if choice and choice != summary:
+                    evidence += f"；玩家已选择：{choice}"
                 lines.append(
                     f"- [{entry.get('event_id')}] {_date_label(entry.get('date_info') or {})}："
-                    f"{entry.get('summary') or entry.get('choice') or '已提交事件'}"
+                    f"{evidence}"
                 )
         if self.completed_events:
             lines.append("已完成事件（不得回滚成未办理）：")

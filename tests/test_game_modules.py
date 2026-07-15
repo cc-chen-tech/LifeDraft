@@ -2,6 +2,9 @@
 
 from unittest.mock import Mock
 
+import pytest
+
+from src.ai.story_exceptions import StoryContinuationFailure
 from src.game.achievements import AchievementEngine
 from src.game.endings import EndingEvaluator
 from src.game.monthly_summary import MonthlySummaryGenerator
@@ -332,23 +335,21 @@ class TestStoryService:
         result = service.generate_fallback_continuation("帮助朋友", {"relationships": {"小明": 10}})
         assert "小明" in result
 
-    def test_generate_story_continuation_ai_failure(self):
-        """Test story continuation falls back on AI failure."""
+    def test_generate_story_continuation_ai_failure_is_retryable(self):
+        """Provider failure must not fabricate a continuation for a committed choice."""
         mock_gen = Mock()
         mock_gen.generate_completion.side_effect = Exception("API Error")
         service = StoryService(ai_generator=mock_gen, language="zh")
-        result = service.generate_story_continuation("An event", "A choice", {"mood": 5})
-        assert len(result) > 0  # Should return fallback
+        with pytest.raises(StoryContinuationFailure, match="Story continuation generation failed"):
+            service.generate_story_continuation("An event", "A choice", {"mood": 5})
 
-    def test_generate_custom_choice_fallback(self):
-        """Test custom choice result on AI failure."""
+    def test_generate_custom_choice_failure_is_retryable(self):
+        """Custom choice provider failure must not fabricate story text or effects."""
         mock_gen = Mock()
         mock_gen.generate_completion_json.side_effect = Exception("API Error")
         service = StoryService(ai_generator=mock_gen, language="zh")
-        result = service.generate_custom_choice_result("Event description", "自定义选择")
-        assert "story_continuation" in result
-        assert "effects" in result
-        assert "自定义选择" in result["story_continuation"]
+        with pytest.raises(StoryContinuationFailure, match="custom choice result"):
+            service.generate_custom_choice_result("Event description", "自定义选择")
 
 
 # ==================== Summary Generator Tests ====================

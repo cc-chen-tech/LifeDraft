@@ -322,6 +322,28 @@ class TestSSEAsyncFunctions:
                 assert saved["state"] == state
                 break
 
+    @pytest.mark.asyncio
+    async def test_stream_choice_failure_emits_no_complete_or_persistence(self, monkeypatch):
+        """A rejected choice must not publish a new story for media consumers."""
+        from src.ai.story_exceptions import StoryContinuationFailure
+        from src.api.routers.gameplay import sse_helpers
+
+        class ImmediateExecutor:
+            def submit(self, callback):
+                callback()
+
+        game_loop = MagicMock()
+        game_loop.make_round_choice.side_effect = StoryContinuationFailure("provider unavailable")
+        persist = MagicMock()
+        monkeypatch.setattr(sse_helpers, "_get_sse_thread_pool", lambda: ImmediateExecutor())
+        monkeypatch.setattr(sse_helpers, "_persist_choice_state", persist)
+
+        events = [event async for event in stream_choice(game_loop, 0, 456)]
+
+        assert any("event: error" in event for event in events)
+        assert not any("event: complete" in event for event in events)
+        persist.assert_not_called()
+
 
 class TestSSEFunctionsExist:
     """SSE函数存在性测试"""
@@ -576,6 +598,36 @@ class TestStreamRewrite:
         # 验证生成了错误事件
         error_events = [e for e in results if "error" in e.lower()]
         assert len(error_events) >= 1
+
+    @pytest.mark.asyncio
+    async def test_stream_rewrite_noop_failure_does_not_complete_or_persist(self):
+        """A rejected no-op rewrite must remain an error all the way through SSE."""
+        from src.ai.story_exceptions import StoryRewriteFailure
+
+        game_loop = MagicMock()
+        game_loop.player_state = None
+        game_loop.current_event = MagicMock()
+        game_loop.current_event.event_description = "原始故事"
+        game_loop.ai_generator = MagicMock()
+        game_loop.ai_generator.rewrite_story_segment.side_effect = StoryRewriteFailure(
+            "Story rewrite did not change the submitted story"
+        )
+
+        results = [
+            event
+            async for event in stream_rewrite(
+                game_loop=game_loop,
+                game_id=1,
+                full_story="原始故事",
+                segment_to_replace="原始故事",
+                user_instruction="把语气改得更紧张",
+                language="zh",
+            )
+        ]
+
+        assert any("error" in event.lower() for event in results)
+        assert not any('"new_story": "原始故事"' in event for event in results)
+        assert game_loop.current_event.event_description == "原始故事"
 
     @pytest.mark.asyncio
     async def test_stream_rewrite_empty_result(self):

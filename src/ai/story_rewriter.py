@@ -11,6 +11,7 @@ from config.prompts import get_story_only_prompt
 from config.prompts.story_prompts import _build_zh_chapter_constraint
 from src.ai.client import AIClient
 from src.ai.professional_risk import apply_professional_risk_guardrail
+from src.ai.story_exceptions import StoryRewriteFailure
 from src.ai.system_prompts import get_system_prompt
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,25 @@ class StoryRewriter:
 
     def __init__(self, client: AIClient):
         self.client = client
+
+    @staticmethod
+    def _normalize_story_for_rewrite_comparison(story: str) -> str:
+        """Remove formatting-only differences when validating rewrite output."""
+        normalized_lines = [line.rstrip() for line in story.replace("\r\n", "\n").split("\n")]
+        while normalized_lines and not normalized_lines[0].strip():
+            normalized_lines.pop(0)
+        while normalized_lines and not normalized_lines[-1].strip():
+            normalized_lines.pop()
+
+        result: list[str] = []
+        previous_blank = False
+        for line in normalized_lines:
+            is_blank = not line.strip()
+            if is_blank and previous_blank:
+                continue
+            result.append(line)
+            previous_blank = is_blank
+        return "\n".join(result)
 
     @staticmethod
     def _build_rewrite_title_constraint(
@@ -184,12 +204,19 @@ Please rewrite the specified segment according to the user's request:
                     status_callback=status_callback,
                 )
 
-            return apply_professional_risk_guardrail(rewritten_story, language=language)
+            rewritten_story = apply_professional_risk_guardrail(
+                rewritten_story,
+                language=language,
+            )
+            if self._normalize_story_for_rewrite_comparison(
+                rewritten_story
+            ) == self._normalize_story_for_rewrite_comparison(full_story):
+                raise ValueError("Story rewrite did not change the submitted story")
+            return rewritten_story
 
         except Exception as e:
             logger.error(f"Failed to rewrite story segment: {e}")
-            # Return original story as fallback
-            return apply_professional_risk_guardrail(full_story, language=language)
+            raise StoryRewriteFailure(f"Story rewrite failed: {e}") from e
 
     def _quick_validate_and_retry_rewrite(
         self,
