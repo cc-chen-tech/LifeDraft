@@ -4,11 +4,15 @@
 Layer 3: 契约测试 — 风格列表、获取、设置接口的字段和格式。
 """
 
+import asyncio
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
 from src.api.main import app
+from src.api.routers.games import UpdateNarrativeStyleRequest, update_narrative_style
+from src.game.state.player_state import PlayerState
 
 client = TestClient(app)
 
@@ -66,6 +70,33 @@ class TestNarrativeStyleSelectionContract:
             if response.status_code == 200:
                 data = response.json()
                 assert "success" in data or "style_id" in data
+
+    def test_update_style_syncs_live_player_state_for_next_regeneration(self):
+        """The live session must use the style that was just persisted to the game."""
+        db_session = MagicMock()
+        game = MagicMock()
+        db_session.query.return_value.filter.return_value.first.return_value = game
+        game_loop = SimpleNamespace(
+            narrative_style_id="chinese_classic_saga",
+            player_state=PlayerState(),
+        )
+        game_session = SimpleNamespace(game_loop=game_loop)
+
+        with patch("src.api.routers.games.SessionLocal", return_value=db_session):
+            with patch("src.api.routers.games.session_store") as session_store:
+                session_store.get.return_value = game_session
+                asyncio.run(
+                    update_narrative_style(
+                        game_id=42,
+                        req=UpdateNarrativeStyleRequest(style_id="cyberpunk"),
+                        user_id=7,
+                    )
+                )
+
+        assert game.narrative_style_id == "cyberpunk"
+        assert game_loop.narrative_style_id == "cyberpunk"
+        assert game_loop.player_state.narrative_style_id == "cyberpunk"
+        session_store.get.assert_called_once_with(42, user_id=7)
 
     def test_update_game_narrative_style_rejects_invalid(self):
         """更新游戏叙事风格时，无效风格 ID 应返回 400"""
