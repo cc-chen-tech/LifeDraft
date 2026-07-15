@@ -182,6 +182,7 @@ jobs:
             tests/test_fast_generation_budget_no_mock.py \
             tests/test_assistant_grounding_evidence_contracts.py \
             tests/test_game_initializer_input_contracts.py \
+            tests/test_decision_effect_fallback_contracts.py \
             -v --tb=short
         env:
           PYTHONPATH: ${{ github.workspace }}
