@@ -75,6 +75,7 @@ jobs:
             tests/test_sse_terminal_stream_contracts.py \
             tests/test_image_prompt_builder_contracts.py \
             tests/test_story_analyzer_parsing_contracts.py \
+            tests/test_summary_generator_recovery_contracts.py \
             tests/test_event_fallback_context_contracts.py \
             tests/test_gameplay_event_protocol_contracts.py \
             tests/test_extraction_parser_contracts.py \
