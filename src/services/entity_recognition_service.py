@@ -96,6 +96,7 @@ class EntityRecognitionService(BaseExtractionService):
                 result["characters"] = self._filter_character_entities_by_metadata(
                     result.get("characters", []),
                     eligible_character_names=effective_character_names,
+                    story_character_names=story_character_names,
                     existing_characters=existing_characters,
                 )
             result = self._supplement_with_story_entities(
@@ -342,19 +343,27 @@ class EntityRecognitionService(BaseExtractionService):
         self,
         characters: List[Dict[str, Any]],
         eligible_character_names: Optional[List[str]],
+        story_character_names: List[str],
         existing_characters: List[str],
     ) -> List[Dict[str, Any]]:
-        """Keep only relationship/important character candidates not already collected."""
+        """Keep supported character candidates and reject inferred names."""
         eligible = set(eligible_character_names or [])
+        story_people = set(story_character_names)
         existing = set(existing_characters)
-        if not eligible:
+        if not eligible or not story_people:
             return []
 
         filtered: List[Dict[str, Any]] = []
         seen: set[str] = set()
         for character in characters:
             name = str(character.get("name", "")).strip()
-            if not name or name in seen or name in existing or name not in eligible:
+            if (
+                not name
+                or name in seen
+                or name in existing
+                or name not in eligible
+                or name not in story_people
+            ):
                 continue
             filtered.append(character)
             seen.add(name)
@@ -459,6 +468,11 @@ class EntityRecognitionService(BaseExtractionService):
         if len(name) < 2 or len(name) > 5:
             return False
         false_positive_tokens = (
+            "周初",
+            "周中",
+            "周末",
+            "元增",
+            "元减",
             "方才",
             "顾客",
             "水洼",

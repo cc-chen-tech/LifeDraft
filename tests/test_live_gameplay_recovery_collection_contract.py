@@ -116,6 +116,44 @@ def test_entity_recognition_does_not_repropose_existing_eligible_character() -> 
     assert result["characters"] == []
 
 
+def test_entity_recognition_requires_exact_story_evidence_for_character_names() -> None:
+    """Recognition must not turn a title or lexical fragment into a fabricated person."""
+    service = EntityRecognitionService(
+        _FakeAIClient(
+            """
+            {
+              "items": [],
+              "characters": [
+                {"name": "周建国", "description": "凭空补全的姓名", "role": "房东", "importance": "important", "appear_count": 3, "appear_contexts": []},
+                {"name": "周师傅", "description": "房东", "role": "房东", "importance": "important", "appear_count": 2, "appear_contexts": []},
+                {"name": "周初", "description": "阶段标签", "role": "人物", "importance": "normal", "appear_count": 1, "appear_contexts": []},
+                {"name": "元减", "description": "数值片段", "role": "人物", "importance": "normal", "appear_count": 1, "appear_contexts": []}
+              ],
+              "landmarks": []
+            }
+            """
+        )
+    )
+
+    result = service.recognize_from_history(
+        round_history=[
+            {
+                "week": 1,
+                "round": 0,
+                "event_description": "周初，林岚和周师傅核对预算表，80000元减去500元后余额为79500元。",
+            }
+        ],
+        existing_items=[],
+        existing_characters=[],
+        existing_landmarks=[],
+        min_appearances=1,
+        language="zh",
+        eligible_character_names=["周建国", "周师傅", "周初", "元减"],
+    )
+
+    assert [character["name"] for character in result["characters"]] == ["周师傅", "林岚"]
+
+
 def test_opening_prompt_marks_life_vision_as_non_drifting_constraint() -> None:
     """A specific career/premise cannot be softened into an unrelated heritage story."""
     prompt = get_opening_story_prompt(
