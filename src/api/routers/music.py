@@ -80,7 +80,7 @@ class MusicRecommendationRequest(BaseModel):
 class SongResponse(BaseModel):
     """歌曲响应"""
 
-    id: int
+    id: Union[int, str]
     name: str
     artists: List[str]
     album: str

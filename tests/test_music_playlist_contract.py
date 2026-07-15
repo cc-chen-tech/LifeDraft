@@ -153,6 +153,33 @@ class TestMusicPlaylistContract:
         assert len(data["queue"]) == 1
         assert data["queue"][0]["id"] == 2
 
+    def test_put_playlist_accepts_generated_music_string_id(self):
+        """Generated tracks retain their stable string identifier at the API boundary."""
+        game_id, headers = self._create_game()
+
+        resp = client.put(
+            f"/api/music/playlist/{game_id}",
+            headers=headers,
+            json={
+                "songs": [
+                    {
+                        "id": "ai-generated-120",
+                        "name": "AI MiniMax 平静",
+                        "artists": ["MiniMax"],
+                        "album": "AI Generated",
+                        "duration": 123924,
+                        "source": "ai_generated",
+                    }
+                ],
+                "mood": "平静",
+                "keywords": ["轻音乐", "背景音乐", "纯音乐"],
+            },
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["current_song"]["id"] == "ai-generated-120"
+
     def test_put_playlist_dedupes_future_queue_by_title_family_save_read(self):
         """PUT must persist a queue deduped by title family, not only by id."""
         game_id, headers = self._create_game()

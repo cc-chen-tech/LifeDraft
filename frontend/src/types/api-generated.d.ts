@@ -2953,7 +2953,7 @@ export interface components {
          */
         SongResponse: {
             /** Id */
-            id: number;
+            id: number | string;
             /** Name */
             name: string;
             /** Artists */
