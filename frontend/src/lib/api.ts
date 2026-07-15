@@ -17,8 +17,9 @@ import type {
   VoiceReadingSettingsUpdateRequest,
   VoiceUploadConsentRequest,
 } from './types';
+import { resolveApiBase } from './apiBase';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
+const API_BASE = resolveApiBase();
 export const LIFE_SUMMARY_REQUEST_TIMEOUT_MS = 30_000;
 
 /**

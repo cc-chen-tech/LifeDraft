@@ -235,6 +235,47 @@ describe('credentials', () => {
   });
 });
 
+describe('production API base safety', () => {
+  const originalApiUrl = process.env.NEXT_PUBLIC_API_URL;
+
+  afterEach(() => {
+    if (originalApiUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_URL = originalApiUrl;
+    }
+    jest.resetModules();
+  });
+
+  it('keeps voice settings on the same-origin proxy when a loopback URL leaks into the public build', async () => {
+    process.env.NEXT_PUBLIC_API_URL = 'http://127.0.0.1:3010/api';
+    jest.resetModules();
+    const { api: isolatedApi } = await import('@/lib/api');
+    global.fetch = jest.fn(() => mockFetchResponse({ auto_read_enabled: false }));
+
+    await isolatedApi.voice_reading.getSettings();
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/api/voice-reading/settings',
+      expect.objectContaining({ credentials: 'include' }),
+    );
+  });
+
+  it('keeps music recommendations on the same-origin proxy when a loopback URL leaks into the public build', async () => {
+    process.env.NEXT_PUBLIC_API_URL = 'http://127.0.0.1:3010/api';
+    jest.resetModules();
+    const { fetchMusicRecommendation: isolatedFetchMusicRecommendation } = await import('@/stores/useMusicStore');
+    global.fetch = jest.fn(() => mockFetchResponse({ keywords: [], mood: 'calm', scene_type: 'study', songs: [] }));
+
+    await isolatedFetchMusicRecommendation('雨夜的图书馆里，你决定继续整理证据。', 7);
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      '/api/music/recommend',
+      expect.objectContaining({ credentials: 'include' }),
+    );
+  });
+});
+
 // ─── 204 No Content handling ───────────────────────────────────
 // 204 handling was removed — backend no longer returns 204 on these endpoints
 describe('204 No Content', () => {

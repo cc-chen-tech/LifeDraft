@@ -4,6 +4,7 @@
  * 管理故事音乐推荐和播放状态
  */
 import { create } from "zustand";
+import { resolveApiBase } from "@/lib/apiBase";
 import type { CharacterSettings } from "@/lib/types";
 
 export interface Song {
@@ -316,9 +317,7 @@ interface MusicState {
   cleanup: () => void;
 }
 
-// ★ Use the same relative /api path as api.ts to ensure consistency.
-// Absolute URLs bypass the Next.js proxy and can cause CORS/timeout issues.
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api";
+const API_BASE = resolveApiBase();
 const GENERATED_MUSIC_POLL_ATTEMPTS = 30;
 const GENERATED_MUSIC_POLL_INTERVAL_MS = 10_000;
 const GENERATION_IN_FLIGHT_KEY_PREFIX = "music-generation:";
