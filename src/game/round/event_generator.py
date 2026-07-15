@@ -433,8 +433,7 @@ class RoundEventGenerator:
                         logger.warning(f"标记事件触发失败: {e}")
 
             if not event:
-                logger.error("AI generator returned None for round event!")
-                event = self._generate_fallback_event(is_round=True)
+                raise StoryGenerationFailure("AI generator returned no round event")
 
             self._current_event = event
 
@@ -457,12 +456,9 @@ class RoundEventGenerator:
             raise
         except Exception as e:
             logger.error(f"Failed to generate round event: {str(e)}", exc_info=True)
-            event = self._generate_fallback_event(is_round=True)
-            self._current_event = event
-            player_state.current_event_data = event.model_dump()
-            self._generating = False  # Reset flag on error
+            self._generating = False
             self._generating_start_time = None
-            return event
+            raise StoryGenerationFailure(f"Round event generation failed: {e}") from e
 
     def _generate_options_only_with_timeout(
         self,

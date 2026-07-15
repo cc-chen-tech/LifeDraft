@@ -149,3 +149,58 @@ def test_round_event_generation_does_not_persist_fallback_after_provider_failure
         generator.generate_round_event()
 
     assert state.current_event_data is None
+
+
+@pytest.mark.parametrize(
+    "generation_result",
+    [RuntimeError("provider returned malformed payload"), None],
+)
+def test_round_event_generation_never_persists_template_fallback_after_unexpected_failure(
+    generation_result: object,
+) -> None:
+    """Unexpected generator failures must reach the UI as errors, not fake prose."""
+    state = SimpleNamespace(
+        week=0,
+        current_round=0,
+        round_history=[],
+        last_round_full_story="",
+        current_event_data=None,
+        character_settings={
+            "era": {"era_description": "小型独立影院面临转型压力。"},
+            "traits": {"traits_description": "林岚是一个务实坚韧的创业者"},
+        },
+        pending_storylines=[],
+        established_facts=[],
+        last_event_concluded=False,
+        character_habits=[],
+        foreshadowing_seeds=[],
+        get_pending_scheduled_events=lambda *_args: [],
+        get_round_context=lambda: "",
+        to_dict=lambda: {"character_settings": {}},
+        get_game_date_info=lambda: {},
+    )
+    ai_generator = Mock()
+    if isinstance(generation_result, Exception):
+        ai_generator.generate_round_event.side_effect = generation_result
+    else:
+        ai_generator.generate_round_event.return_value = generation_result
+
+    introductions = Mock()
+    introductions.check_introduction_opportunity.return_value = None
+    summaries = Mock()
+    summaries.select_relevant_historical_summary.return_value = ("", "")
+    relationships = Mock()
+    relationships.get_triggered_events.return_value = []
+    generator = RoundEventGenerator(
+        player_state_getter=lambda: state,
+        ai_generator=ai_generator,
+        language_getter=lambda: "zh",
+        character_introduction_service=introductions,
+        summary_selector=summaries,
+        relationship_service=relationships,
+    )
+
+    with pytest.raises(StoryGenerationFailure):
+        generator.generate_round_event()
+
+    assert state.current_event_data is None
