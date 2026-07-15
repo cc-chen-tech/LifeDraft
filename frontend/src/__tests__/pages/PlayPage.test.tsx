@@ -496,6 +496,22 @@ describe('PlayPage', () => {
   });
 
   describe('Save functionality', () => {
+    it('keeps a persistent header save control available outside the chat bar', async () => {
+      const user = userEvent.setup();
+      const handleSave = jest.fn();
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        handleSave,
+      });
+
+      render(<PlayPage />);
+
+      await user.click(screen.getByRole('button', { name: '保存游戏' }));
+
+      expect(handleSave).toHaveBeenCalledTimes(1);
+    });
+
     it('shows save success toast', () => {
       const originalHook = jest.requireMock('@/hooks/usePlayGame');
       originalHook.usePlayGame = () => ({
