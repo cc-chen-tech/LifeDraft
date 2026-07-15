@@ -260,10 +260,26 @@ class StoryService:
             "[StoryContinuation] Quick validation retry still failed: %s",
             retry_result.issues,
         )
+        if self._has_only_perspective_issues(retry_result.issues):
+            # A committed choice must not be stranded because the model used a
+            # first-person sentence after an otherwise successful retry. Keep
+            # the continuation visible and preserve the diagnostic in logs.
+            logger.warning(
+                "[StoryContinuation] Accepting retry with perspective-only issues"
+            )
+            return retry_continuation
         raise ValueError(
             "Choice continuation quick validation failed: "
             + "; ".join(retry_result.issues)
         )
+
+    @staticmethod
+    def _has_only_perspective_issues(issues: List[str]) -> bool:
+        """Return whether validation found only non-blocking perspective drift."""
+        if not issues:
+            return False
+        perspective_markers = ("第一人称", "first-person")
+        return all(any(marker in issue for marker in perspective_markers) for issue in issues)
 
     def generate_fallback_continuation(
         self, chosen_option: str, effects: Dict[str, Any]

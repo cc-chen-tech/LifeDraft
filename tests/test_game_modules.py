@@ -1,6 +1,7 @@
 """Tests for game modules: achievements, endings, player_service, story_service, summaries."""
 
-from unittest.mock import Mock
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -342,6 +343,20 @@ class TestStoryService:
         service = StoryService(ai_generator=mock_gen, language="zh")
         with pytest.raises(StoryContinuationFailure, match="Story continuation generation failed"):
             service.generate_story_continuation("An event", "A choice", {"mood": 5})
+
+    def test_choice_continuation_keeps_retry_when_only_perspective_check_fails(self):
+        """A post-choice retry with only perspective drift must not block gameplay."""
+        mock_gen = Mock()
+        mock_gen.generate_completion.side_effect = ["initial story", "retry story"]
+        service = StoryService(ai_generator=mock_gen, language="zh")
+        invalid = SimpleNamespace(passed=False, issues=["故事中使用了第一人称「我」，应使用第三人称"])
+
+        with patch("src.ai.quick_validator.quick_validate_story", side_effect=[invalid, invalid]):
+            result = service.generate_story_continuation(
+                "An event", "A choice", {"mood": 5}
+            )
+
+        assert result == "retry story"
 
     def test_generate_custom_choice_failure_is_retryable(self):
         """Custom choice provider failure must not fabricate story text or effects."""
