@@ -180,6 +180,7 @@ jobs:
             tests/test_decision_effect_fallback_contracts.py \
             tests/test_round_finalizer_state_contracts.py \
             tests/test_story_service_recovery_contracts.py \
+            tests/test_game_loop_summary_fallback_contracts.py \
             --cov=src --cov-report=xml --cov-report=term --cov-fail-under=60
         env:
           PYTHONPATH: ${{ github.workspace }}
