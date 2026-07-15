@@ -190,6 +190,7 @@ jobs:
             tests/test_round_finalization_ledger_contracts.py \
             tests/test_collection_assembly_contracts.py \
             tests/test_opening_illustration_lifecycle_contracts.py \
+            tests/test_round_illustration_entity_selection_contracts.py \
             -v --tb=short
         env:
           PYTHONPATH: ${{ github.workspace }}
