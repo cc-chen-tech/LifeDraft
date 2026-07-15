@@ -335,6 +335,8 @@ class TestListGames:
         assert data[0]["game_id"] == 1
         assert data[0]["player_name"] == "Hero"
         assert data[0]["has_progress"] is True
+        assert data[0]["created_at"] == "2024-01-01T12:00:00Z"
+        assert data[0]["updated_at"] == "2024-01-02T12:00:00Z"
 
     def test_list_games_empty(self, client, mock_db, mock_auth, auth_headers):
         """Test listing games when user has none."""
