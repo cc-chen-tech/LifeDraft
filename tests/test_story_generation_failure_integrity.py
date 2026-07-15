@@ -57,6 +57,28 @@ def test_rewrite_surfaces_provider_failure_instead_of_returning_original_story()
         )
 
 
+@pytest.mark.parametrize(
+    "provider_story",
+    [
+        "林岚在会议室整理资料。",
+        "  \n林岚在会议室整理资料。\n\n",
+    ],
+)
+def test_rewrite_rejects_output_without_a_player_visible_change(provider_story: str) -> None:
+    client = Mock()
+    client.call.return_value = provider_story
+
+    with pytest.raises(StoryRewriteFailure, match="did not change"):
+        StoryRewriter(client).rewrite_story_segment(
+            "林岚在会议室整理资料。",
+            "林岚在会议室整理资料。",
+            "把环境改得更有压迫感。",
+            {},
+            "",
+            language="zh",
+        )
+
+
 def test_choice_continuation_surfaces_provider_failure_instead_of_fake_prose() -> None:
     service = StoryService(FailingStoryGenerator(), language="zh")
 

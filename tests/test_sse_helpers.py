@@ -600,6 +600,36 @@ class TestStreamRewrite:
         assert len(error_events) >= 1
 
     @pytest.mark.asyncio
+    async def test_stream_rewrite_noop_failure_does_not_complete_or_persist(self):
+        """A rejected no-op rewrite must remain an error all the way through SSE."""
+        from src.ai.story_exceptions import StoryRewriteFailure
+
+        game_loop = MagicMock()
+        game_loop.player_state = None
+        game_loop.current_event = MagicMock()
+        game_loop.current_event.event_description = "原始故事"
+        game_loop.ai_generator = MagicMock()
+        game_loop.ai_generator.rewrite_story_segment.side_effect = StoryRewriteFailure(
+            "Story rewrite did not change the submitted story"
+        )
+
+        results = [
+            event
+            async for event in stream_rewrite(
+                game_loop=game_loop,
+                game_id=1,
+                full_story="原始故事",
+                segment_to_replace="原始故事",
+                user_instruction="把语气改得更紧张",
+                language="zh",
+            )
+        ]
+
+        assert any("error" in event.lower() for event in results)
+        assert not any('"new_story": "原始故事"' in event for event in results)
+        assert game_loop.current_event.event_description == "原始故事"
+
+    @pytest.mark.asyncio
     async def test_stream_rewrite_empty_result(self):
         """测试改写返回空结果时生成错误事件"""
         game_loop = MagicMock()
