@@ -735,7 +735,7 @@ describe('MusicPlayer', () => {
     expect(screen.queryByText('音乐服务暂不可用，故事可继续进行')).not.toBeInTheDocument();
   });
 
-  it('在音频控制台显示 AI 本地库复用和匹配分', () => {
+  it('在音频控制台显示 AI 本地库复用的场景状态', () => {
     useMusicStore.setState({
       recommendation: {
         mood: '悬疑',
@@ -770,7 +770,7 @@ describe('MusicPlayer', () => {
     );
 
     expect(screen.getByTestId('sound-music-console-status')).toHaveTextContent(
-      'MiniMax · AI Generated · AI 本地库 · 匹配 88'
+      'MiniMax · AI Generated · AI 本地库 · 已匹配当前场景'
     );
   });
 
