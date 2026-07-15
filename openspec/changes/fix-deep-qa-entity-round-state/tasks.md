@@ -6,9 +6,9 @@
 
 ## 2. Player-facing round display
 
-- [ ] 2.1 Add a failing scene-image label test for a zero-based first round.
-- [ ] 2.2 Derive a scene-image display label from the zero-based state index without changing persisted state semantics.
-- [ ] 2.3 Run focused frontend tests and commit the completed display function.
+- [x] 2.1 Add a failing scene-image label test for a zero-based first round.
+- [x] 2.2 Derive a scene-image display label from the zero-based state index without changing persisted state semantics.
+- [x] 2.3 Run focused frontend tests and commit the completed display function.
 
 ## 3. Verification
 

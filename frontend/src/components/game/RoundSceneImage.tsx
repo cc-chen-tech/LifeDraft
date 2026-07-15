@@ -167,7 +167,7 @@ export function RoundSceneImageDisplay({
 
         {/* 轮次标签 */}
         <div className="absolute top-2 left-2 px-2 py-1 rounded bg-black/50 text-white text-xs">
-          第 {sceneImage.round_number} 轮
+          第 {sceneImage.round_number + 1} 轮
         </div>
         
         {/* ★ 图片加载错误提示 */}
