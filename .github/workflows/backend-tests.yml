@@ -184,6 +184,7 @@ jobs:
             tests/test_game_initializer_input_contracts.py \
             tests/test_decision_effect_fallback_contracts.py \
             tests/test_round_finalizer_state_contracts.py \
+            tests/test_story_service_recovery_contracts.py \
             -v --tb=short
         env:
           PYTHONPATH: ${{ github.workspace }}
