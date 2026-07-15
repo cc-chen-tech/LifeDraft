@@ -168,8 +168,10 @@ export function getMusicProvenanceLabel(song: Song | null | undefined): string {
     return "";
   }
   const labelParts = [song.library_reused ? "AI 本地库" : "AI"];
-  if (typeof song.match_score === "number" && Number.isFinite(song.match_score)) {
-    labelParts.push(`匹配 ${Math.round(song.match_score)}`);
+  if (song.library_reused) {
+    labelParts.push(
+      song.match_reason === "scene_fit" ? "场景契合" : "已匹配当前场景",
+    );
   }
   return labelParts.join(" · ");
 }

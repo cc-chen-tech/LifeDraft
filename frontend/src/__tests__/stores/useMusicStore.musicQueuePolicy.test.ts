@@ -638,8 +638,9 @@ describe("music queue policy", () => {
         ...song("ai-generated-88", "AI MiniMax 都市调查悬疑", "ai_generated"),
         library_reused: true,
         match_score: 88,
+        match_reason: "scene_fit",
       })
-    ).toBe("AI 本地库 · 匹配 88");
+    ).toBe("AI 本地库 · 场景契合");
     expect(getMusicProvenanceLabel(song(1, "网易云 当前曲", "netease"))).toBe("");
   });
 });
