@@ -7,6 +7,8 @@ consistency validation with retry, and life-phase determination.
 import json
 import logging
 import os
+import re
+from difflib import SequenceMatcher
 from types import SimpleNamespace
 from typing import Any, Callable, Dict, Optional, Union
 
@@ -119,6 +121,65 @@ class StoryGenerator:
         player_state = player_state or {}
         name = resolve_protagonist_name(player_state, player_state.get("character_settings"), None)
         return sanitize_player_name(name)
+
+    @staticmethod
+    def _canonical_story_for_repeat_check(story: str) -> str:
+        """Normalize prose for a semantic duplicate check without changing stored text."""
+        return re.sub(r"\s+", "", (story or "").replace("\r\n", "\n"))
+
+    @classmethod
+    def _repeats_committed_story(cls, candidate: str, committed_stories: list[str]) -> bool:
+        """Return whether a substantial candidate duplicates a committed round story."""
+        canonical_candidate = cls._canonical_story_for_repeat_check(candidate)
+        if len(canonical_candidate) < 160:
+            return False
+
+        for committed_story in committed_stories:
+            canonical_committed = cls._canonical_story_for_repeat_check(committed_story)
+            if len(canonical_committed) < 160:
+                continue
+            if canonical_candidate == canonical_committed:
+                return True
+            if min(len(canonical_candidate), len(canonical_committed)) < 240:
+                continue
+            similarity = SequenceMatcher(
+                None,
+                canonical_candidate,
+                canonical_committed,
+                autojunk=False,
+            ).ratio()
+            if similarity >= 0.92:
+                return True
+        return False
+
+    @staticmethod
+    def _committed_round_stories(
+        player_state: Dict[str, Any],
+        last_round_full_story: str,
+    ) -> list[str]:
+        """Collect only persisted story prose, not summaries or pending stream chunks."""
+        stories: list[str] = []
+        if last_round_full_story:
+            stories.append(last_round_full_story)
+
+        for entry in player_state.get("round_history", []) or []:
+            if not isinstance(entry, dict):
+                continue
+            for field in ("event_description", "story_text", "full_story"):
+                value = entry.get(field)
+                if isinstance(value, str) and value:
+                    stories.append(value)
+                    break
+
+        for entry in player_state.get("decision_history", []) or []:
+            if not isinstance(entry, dict):
+                continue
+            for field in ("event", "event_description", "story_text", "full_story"):
+                value = entry.get(field)
+                if isinstance(value, str) and value:
+                    stories.append(value)
+                    break
+        return stories
 
     # -------------------- Public API --------------------
 
@@ -494,6 +555,10 @@ class StoryGenerator:
             for p in _collect_available_people(character_settings)
             if p.get("name")
         ]
+        committed_stories = self._committed_round_stories(
+            player_state,
+            last_round_full_story,
+        )
 
         best_valid_story_text = ""
         last_generation_error: Optional[Exception] = None
@@ -705,6 +770,50 @@ class StoryGenerator:
                         "Story shape issues recorded without another provider retry: %s",
                         hard_shape_issues,
                     )
+
+                if self._repeats_committed_story(story_text, committed_stories):
+                    if self._canonical_story_for_repeat_check(
+                        best_valid_story_text
+                    ) == self._canonical_story_for_repeat_check(story_text):
+                        best_valid_story_text = ""
+                    logger.warning("Round story repeats committed story; requesting one rewrite")
+                    if status_callback:
+                        status_callback("retry")
+                    repeat_retry_prompt = attempt_prompt + (
+                        "\n\n【重复正文修正 - 必须重写】\n"
+                        "上一版与已提交轮次重复。请围绕当前日期、未解决事项和玩家状态写出一个"
+                        "不同的具体事件；不得复用先前场景、句式或选项。"
+                        if language == "zh"
+                        else "\n\n[Repeated Story Fix - Regenerate Required]\n"
+                        "The previous version duplicates a committed round. Write a distinct concrete event "
+                        "grounded in the current date, unresolved threads, and player state; do not reuse "
+                        "the earlier scene, phrasing, or options."
+                    )
+                    retry_story = self.client.call(
+                        system_prompt=sys_prompt,
+                        user_prompt=repeat_retry_prompt,
+                        temperature=0.65,
+                        max_tokens=generation_budget.max_tokens,
+                        stream_callback=stream_callback if attempt == 0 else None,
+                        frequency_penalty=0.5,
+                        presence_penalty=0.5,
+                    )
+                    story_text = normalize_generated_story(retry_story, language=language)
+                    repeat_retry_validation = quick_validate_story(
+                        story_text=story_text,
+                        character_settings=character_settings,
+                        available_people=available_people_names,
+                        language=language,
+                    )
+                    repeat_retry_shape_issues = _hard_shape_issues(story_text)
+                    if not repeat_retry_validation.passed or repeat_retry_shape_issues:
+                        issues = repeat_retry_validation.issues + repeat_retry_shape_issues
+                        raise ValueError(
+                            "Repeated-story retry failed validation: " + "; ".join(issues)
+                        )
+                    if self._repeats_committed_story(story_text, committed_stories):
+                        raise ValueError("Round story repeats committed story after retry")
+                    _set_best_story(story_text, require_valid=True)
 
                 # Step 1.5: AI-based consistency validation (if world_model is provided)
                 if world_model and story_text and generation_budget.allow_ai_consistency:
