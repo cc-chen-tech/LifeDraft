@@ -14,4 +14,4 @@
 
 - [x] 3.1 Run the relevant backend and frontend regression suites, type checks, and strict OpenSpec validation.
 - [x] 3.2 Run the applicable browser regression path and capture a concise verification record.
-- [ ] 3.3 Commit OpenSpec task completion, open a PR from the latest-main branch, and observe its checks.
+- [x] 3.3 Commit OpenSpec task completion, open a PR from the latest-main branch, and observe its checks.
