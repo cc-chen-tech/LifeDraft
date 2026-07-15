@@ -51,6 +51,7 @@ jobs:
           python -m pytest \
             tests/test_gate_preflight_no_mock.py \
             tests/test_gate_gameplay_behavior_no_mock.py \
+            tests/test_option_generator_fallback_validation_contracts.py \
             tests/test_gate_static_no_mock.py \
             tests/test_imports.py \
             tests/test_gate_imports_no_mock.py \
