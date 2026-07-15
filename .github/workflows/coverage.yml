@@ -175,6 +175,7 @@ jobs:
             tests/test_constraint_level_db.py \
             tests/test_truncation_recovery_contract.py \
             tests/test_fast_generation_budget_no_mock.py \
+            tests/test_assistant_grounding_evidence_contracts.py \
             --cov=src --cov-report=xml --cov-report=term --cov-fail-under=51
         env:
           PYTHONPATH: ${{ github.workspace }}
