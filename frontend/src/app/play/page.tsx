@@ -374,6 +374,22 @@ export default function PlayPage() {
           
           {/* Actions */}
           <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2"
+              onClick={handleSave}
+              disabled={isSaving}
+              title="保存游戏"
+              aria-label="保存游戏"
+            >
+              {isSaving ? (
+                <Loader2 className="w-4 h-4 animate-spin md:mr-1.5" />
+              ) : (
+                <Save className="w-4 h-4 md:mr-1.5" />
+              )}
+              <span className="hidden md:inline text-xs">保存</span>
+            </Button>
             {/* ★ 收集按钮 */}
             <Button
               variant="ghost"
