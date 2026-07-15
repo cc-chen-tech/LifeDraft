@@ -115,6 +115,7 @@ jobs:
             tests/test_monthly_summary_contract.py \
             tests/test_yearly_summary_contract.py \
             tests/test_event_generation_contract.py \
+            tests/test_round_event_fallback_contracts.py \
             tests/test_scene_image_sse_contract.py \
             tests/test_scene_character_manifest_contracts.py \
             tests/test_image_generator_pure_contracts.py \
