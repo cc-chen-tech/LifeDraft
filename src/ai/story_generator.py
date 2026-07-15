@@ -15,7 +15,7 @@ from typing import Any, Callable, Dict, Optional, Union
 from pydantic import ValidationError
 
 from config.prompts import get_round_event_prompt, get_story_only_prompt
-from config.prompts._helpers import extract_overused_phrases
+from config.prompts._helpers import _build_style_constraints_text, extract_overused_phrases
 from config.prompts.story_prompts import resolve_protagonist_name
 from src.ai.client import AIClient
 from src.ai.harness.diagnostics import ConstraintViolationDiagnostic
@@ -55,6 +55,7 @@ class StoryGenerator:
         self._style_manifest = None
         self._prompt_builder = None
         self._style_validator = None
+        self._initialized_style_id: Optional[str] = None
 
     @staticmethod
     def _normalize_punctuation(text: Optional[str], language: str = "zh") -> Optional[str]:
@@ -244,6 +245,7 @@ class StoryGenerator:
             or ""
         )
         self._init_narrative_systems(style_id, player_state)
+        style_constraints = _build_style_constraints_text(self._prompt_builder, language)
 
         current_phase = self._get_phase_from_state(player_state)
 
@@ -297,6 +299,7 @@ class StoryGenerator:
             world_model=world_model,
             vector_context=vector_context,  # ★ 注入向量检索上下文
             overused_phrases=overused_phrases,  # ★ 注入动态禁用列表
+            style_constraints=style_constraints,
         )
 
         sys_prompt = get_system_prompt("story_novelist", language)
@@ -496,6 +499,14 @@ class StoryGenerator:
                 f"[AntiRepeat] Round: Injected dynamic ban list ({len(overused_phrases)} chars)"
             )
 
+        style_id = str(
+            player_state.get("narrative_style_id")
+            or (character_settings or {}).get("narrative_style_id")
+            or ""
+        )
+        self._init_narrative_systems(style_id, player_state)
+        style_constraints = _build_style_constraints_text(self._prompt_builder, language)
+
         # Get round story prompt
         prompt = get_round_event_prompt(
             player_state,
@@ -517,6 +528,7 @@ class StoryGenerator:
             new_character=new_character,
             vector_context=vector_context,  # ★ 注入向量检索上下文
             overused_phrases=overused_phrases,  # ★ 注入动态禁用列表
+            style_constraints=style_constraints,
             quality_level=self.quality_level.value,
         )
         generation_budget = get_generation_budget(self.quality_level.value)
@@ -959,21 +971,25 @@ class StoryGenerator:
         style_id: str,
         player_state: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Initialize optional narrative style systems when the feature flag is on."""
+        """Initialize or refresh narrative style systems for the selected style."""
         del player_state
-        if self._narrative_systems_initialized:
+        requested_style_id = style_id or "magical_realism"
+        if (
+            self._narrative_systems_initialized
+            and self._initialized_style_id == requested_style_id
+        ):
             return
 
-        if not self._env_enabled("ENABLE_NARRATIVE_STYLE_ENGINE"):
-            self._narrative_systems_initialized = True
-            return
+        self._style_manifest = None
+        self._prompt_builder = None
+        self._style_validator = None
 
         try:
             from src.ai.narrative.style_manifest import get_style
             from src.ai.narrative.style_prompt_builder import StyleAwarePromptBuilder
             from src.ai.narrative.style_validator import StyleAwareValidator
 
-            self._style_manifest = get_style(style_id)
+            self._style_manifest = get_style(requested_style_id)
             if not self._style_manifest and not style_id:
                 self._style_manifest = get_style("magical_realism")
 
@@ -985,11 +1001,12 @@ class StoryGenerator:
                     self._style_manifest.style_id,
                 )
             else:
-                logger.warning("Style %r not found, style engine disabled", style_id)
+                logger.warning("Style %r not found, style engine disabled", requested_style_id)
         except Exception as exc:
             logger.warning("Failed to initialize narrative style systems: %s", exc)
         finally:
             self._narrative_systems_initialized = True
+            self._initialized_style_id = requested_style_id
 
     def _gather_narrative_hints(
         self,

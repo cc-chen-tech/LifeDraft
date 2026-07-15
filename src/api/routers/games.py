@@ -682,9 +682,11 @@ async def update_narrative_style(
         db_session.close()
 
     # 同步更新会话中的 style
-    game_session = session_store.get(game_id)
+    game_session = session_store.get(game_id, user_id=user_id)
     if game_session and game_session.game_loop:
         game_session.game_loop.narrative_style_id = req.style_id  # type: ignore[attr-defined]
+        if game_session.game_loop.player_state:
+            game_session.game_loop.player_state.narrative_style_id = req.style_id
 
     return MessageResponse(success=True, message="Narrative style updated")
 

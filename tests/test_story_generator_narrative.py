@@ -4,6 +4,7 @@ import os
 from unittest.mock import MagicMock, patch
 
 from src.ai.story_generator import StoryGenerator
+from src.game.state.player_state import PlayerState
 
 
 class TestNarrativeSystemInitialization:
@@ -93,3 +94,52 @@ class TestNarrativeSystemInitialization:
                 call_args = mock_init.call_args
                 # None gets coerced to "" by the `or ...get("narrative_style_id", "")` fallback
                 assert call_args[0][0] == ""
+
+    def test_round_prompt_refreshes_constraints_when_selected_style_changes(self):
+        """The active style must reach the round prompt and refresh after a switch."""
+        client = MagicMock()
+        client.call.return_value = "这是一个足够长的测试故事，用于验证风格约束会进入实际生成提示词。"
+        generator = StoryGenerator(client)
+        option_generator = MagicMock()
+        event = MagicMock()
+        event.options = []
+        option_generator.generate_options_only.return_value = event
+        quick_result = MagicMock(passed=True, warnings=[], issues=[])
+
+        style_constraints = []
+
+        def capture_prompt(*args, **kwargs):
+            style_constraints.append(kwargs.get("style_constraints"))
+            return "prompt"
+
+        base_state = {
+            "player_name": "测试者",
+            "decision_history": [],
+            "character_settings": {},
+        }
+
+        with patch.dict(os.environ, {"ENABLE_NARRATIVE_STYLE_ENGINE": "false"}):
+            with patch("src.ai.story_generator.get_round_event_prompt", side_effect=capture_prompt):
+                with patch("src.ai.story_generator.is_vector_search_enabled", return_value=False):
+                    with patch("src.ai.story_generator.validate_narrative_quality", return_value=[]):
+                        with patch("src.ai.quick_validator.quick_validate_story", return_value=quick_result):
+                            for style_id in ("chinese_wuxia", "cyberpunk"):
+                                generator.generate_round_event(
+                                    player_state={**base_state, "narrative_style_id": style_id},
+                                    language="zh",
+                                    round_number=0,
+                                    round_context="",
+                                    character_settings={},
+                                    option_generator=option_generator,
+                                )
+
+        assert len(style_constraints) == 2
+        assert all(style_constraints)
+        assert style_constraints[0] != style_constraints[1]
+
+    def test_selected_narrative_style_survives_player_state_serialization(self):
+        """A selected style must remain available after save/load before regeneration."""
+        state = PlayerState.from_dict({"narrative_style_id": "cyberpunk"})
+
+        assert state.narrative_style_id == "cyberpunk"
+        assert state.to_dict()["narrative_style_id"] == "cyberpunk"
