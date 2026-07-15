@@ -78,6 +78,72 @@ def test_rewrite_rejects_output_without_a_player_visible_change(provider_story: 
             language="zh",
         )
 
+def test_round_generation_retries_when_provider_repeats_committed_story(monkeypatch) -> None:
+    from src.ai.models import EventOption, GameEvent
+
+    repeated_story = "林岚在小影院核对测量费与预算表，陈越记录每一笔待确认支出。" * 32
+    distinct_story = "林岚和陈越约周师傅在影院门口确认施工时间，并把预算分成紧急与可延后两栏。" * 28
+    client = Mock()
+    client.call.side_effect = [repeated_story, distinct_story]
+    option_generator = Mock()
+    option_generator.generate_options_only.return_value = GameEvent(
+        event_description=distinct_story,
+        options=[
+            EventOption(text="确认施工时间", effects={}),
+            EventOption(text="延后施工并复核预算", effects={}),
+        ],
+    )
+
+    monkeypatch.setattr(
+        "src.ai.quick_validator.quick_validate_story",
+        lambda **_kwargs: SimpleNamespace(passed=True, warnings=[], issues=[]),
+    )
+    monkeypatch.setattr(
+        "src.ai.story_generator.validate_narrative_quality",
+        lambda *_args, **_kwargs: [],
+    )
+
+    event = StoryGenerator(client).generate_round_event(
+        player_state={"week": 1, "decision_history": [{"event": repeated_story}]},
+        language="zh",
+        round_number=1,
+        round_context="",
+        option_generator=option_generator,
+        last_round_full_story=repeated_story,
+    )
+
+    assert event.event_description == distinct_story
+    assert client.call.call_count == 2
+    assert "重复" in client.call.call_args_list[1].kwargs["user_prompt"]
+
+
+def test_round_generation_rejects_provider_output_repeated_after_retry(monkeypatch) -> None:
+    repeated_story = "林岚在小影院核对测量费与预算表，陈越记录每一笔待确认支出。" * 32
+    client = Mock()
+    client.call.side_effect = [repeated_story, repeated_story]
+    option_generator = Mock()
+
+    monkeypatch.setattr(
+        "src.ai.quick_validator.quick_validate_story",
+        lambda **_kwargs: SimpleNamespace(passed=True, warnings=[], issues=[]),
+    )
+    monkeypatch.setattr(
+        "src.ai.story_generator.validate_narrative_quality",
+        lambda *_args, **_kwargs: [],
+    )
+
+    with pytest.raises(StoryGenerationFailure, match="repeats committed story"):
+        StoryGenerator(client).generate_round_event(
+            player_state={"week": 1, "decision_history": [{"event": repeated_story}]},
+            language="zh",
+            round_number=1,
+            round_context="",
+            option_generator=option_generator,
+            last_round_full_story=repeated_story,
+        )
+
+    assert client.call.call_count == 2
+    option_generator.generate_options_only.assert_not_called()
 
 def test_choice_continuation_surfaces_provider_failure_instead_of_fake_prose() -> None:
     service = StoryService(FailingStoryGenerator(), language="zh")
