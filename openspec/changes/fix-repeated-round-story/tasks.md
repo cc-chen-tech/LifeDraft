@@ -7,6 +7,6 @@
 
 ## 2. Verification
 
-- [ ] 2.1 Run relevant backend, frontend, and strict OpenSpec validation.
-- [ ] 2.2 Run applicable browser regression and full local suite.
+- [x] 2.1 Run relevant backend, frontend, and strict OpenSpec validation.
+- [x] 2.2 Run applicable browser regression and full local suite.
 - [ ] 2.3 Commit verification, open a PR, and observe checks.
