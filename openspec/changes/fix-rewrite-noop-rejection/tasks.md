@@ -6,6 +6,6 @@
 
 ## 2. Verification
 
-- [ ] 2.1 Run relevant backend suites and strict OpenSpec validation.
-- [ ] 2.2 Run the applicable browser regression path and record the result.
+- [x] 2.1 Run relevant backend suites and strict OpenSpec validation.
+- [x] 2.2 Run the applicable browser regression path and record the result.
 - [ ] 2.3 Commit the verification record, open a PR, and observe its checks.
