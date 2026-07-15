@@ -177,7 +177,7 @@ jobs:
             tests/test_fast_generation_budget_no_mock.py \
             tests/test_assistant_grounding_evidence_contracts.py \
             tests/test_game_initializer_input_contracts.py \
-            --cov=src --cov-report=xml --cov-report=term --cov-fail-under=51
+            --cov=src --cov-report=xml --cov-report=term --cov-fail-under=60
         env:
           PYTHONPATH: ${{ github.workspace }}
           TESTING: 'true'
