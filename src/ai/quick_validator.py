@@ -650,8 +650,13 @@ class QuickValidator:
             rf"([{surname_class}][\u4e00-\u9fff]{{1,2}}(?:{role_titles})?)"
         )
         names: List[str] = []
-        for match in pattern.findall(text):
-            candidate = str(match).strip("，。！？、；：“”‘’（）()《》")
+        for match in pattern.finditer(text):
+            candidate_start = match.start()
+            # Do not treat a surname-shaped suffix in normal prose as a new
+            # person, e.g. "林伯元低声" must not create "元低声".
+            if candidate_start > 0 and "\u4e00" <= text[candidate_start - 1] <= "\u9fff":
+                continue
+            candidate = str(match.group(1)).strip("，。！？、；：“”‘’（）()《》")
             if not candidate or candidate in allowed_names:
                 continue
             if candidate in self.NON_PERSON_NAME_CANDIDATES:

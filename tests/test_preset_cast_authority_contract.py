@@ -321,6 +321,24 @@ def test_quick_validator_rejects_partial_cast_when_new_named_network_dominates()
     assert any("预设关系网使用不足" in issue for issue in result.issues)
 
 
+def test_quick_validator_ignores_surname_shaped_prose_suffixes() -> None:
+    """Narrative text must not invent names from suffixes such as 元低声."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨坐在会议室里。林伯元低声提醒林清注意方向，"
+            "会议气氛逐渐平稳，大家决定继续推进产品复盘。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+
+
 def test_quick_validator_rejects_single_new_role_substitute_for_preset_network() -> None:
     """A single invented strong-role character can still replace the preset network."""
     from config.prompts._helpers import _collect_available_people
