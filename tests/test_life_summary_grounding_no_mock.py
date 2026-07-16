@@ -46,6 +46,24 @@ def test_prompt_uses_exact_range_evidence_rules_and_no_resource_metrics() -> Non
         assert removed_metric not in prompt
 
 
+def test_prompt_bounds_long_history_while_retaining_timeline_endpoints() -> None:
+    long_history = [
+        {
+            "week": week,
+            "round": 0,
+            "story_text": f"第{week + 1}周故事证据 " + "细节" * 1_000,
+            "choice_text": f"第{week + 1}周选择",
+        }
+        for week in range(100)
+    ]
+
+    prompt = build_life_summary_prompt(long_history, start_week=1, end_week=100)
+
+    assert len(prompt) <= 25_000
+    assert "第1周故事证据" in prompt
+    assert "第100周选择" in prompt
+
+
 def test_unsafe_provider_summary_falls_back_to_grounded_exact_range() -> None:
     unsafe = (
         "半年不到，林晓通过母亲名义注册找到了合规路径。"
@@ -93,4 +111,3 @@ def test_deterministic_fallback_uses_source_excerpts_without_metrics_or_legal_en
     assert "合规路径" not in result
     for removed_metric in ("精力", "情绪", "学识", "财富"):
         assert removed_metric not in result
-

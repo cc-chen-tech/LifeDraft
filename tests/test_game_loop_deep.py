@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from src.ai.models import EventOption, GameEvent
+from src.ai.story_exceptions import StoryGenerationFailure
 from src.game.state import PlayerState
 
 
@@ -340,15 +341,14 @@ class TestGameLoopMultiRound:
         assert event is not None
         assert loop.current_event == test_event
 
-    def test_generate_round_event_fallback(self):
-        """Test round event fallback on error."""
+    def test_generate_round_event_surfaces_failure_without_fake_fallback(self):
+        """A failed round must not become a persisted template event."""
         loop = _make_game_loop()
         loop.start_new_game()
         loop.ai_generator.generate_round_event.side_effect = Exception("fail")
-        event = loop.generate_round_event()
-        assert event is not None
-        # Fallback events have 3 options (default behavior)
-        assert len(event.options) >= 2
+        with pytest.raises(StoryGenerationFailure, match="Round event generation failed"):
+            loop.generate_round_event()
+        assert loop.player_state.current_event_data is None
 
     def test_make_round_choice_no_event(self):
         """Test make_round_choice raises without event."""

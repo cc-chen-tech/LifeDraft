@@ -4,6 +4,7 @@ Includes narrative-style endpoints for style browsing and per-game style updates
 """
 
 import logging
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -28,6 +29,18 @@ from src.utils.language import detect_language_from_state
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _format_utc_timestamp(value: Optional[datetime]) -> Optional[str]:
+    """Serialize database UTC timestamps as unambiguous ISO 8601 values."""
+    if value is None:
+        return None
+    utc_value = (
+        value.replace(tzinfo=timezone.utc)
+        if value.tzinfo is None
+        else value.astimezone(timezone.utc)
+    )
+    return utc_value.isoformat().replace("+00:00", "Z")
 
 
 def _deep_merge_dicts(existing: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
@@ -129,8 +142,8 @@ async def list_games(
             player_name=g.get("player_name", ""),
             week=g.get("week", 0),
             age=g.get("age", 22),
-            created_at=g["created_at"].isoformat() if g.get("created_at") else None,
-            updated_at=g["updated_at"].isoformat() if g.get("updated_at") else None,
+            created_at=_format_utc_timestamp(g.get("created_at")),
+            updated_at=_format_utc_timestamp(g.get("updated_at")),
             has_progress=g.get("has_progress", False),
         )
         for g in games
@@ -682,9 +695,11 @@ async def update_narrative_style(
         db_session.close()
 
     # 同步更新会话中的 style
-    game_session = session_store.get(game_id)
+    game_session = session_store.get(game_id, user_id=user_id)
     if game_session and game_session.game_loop:
         game_session.game_loop.narrative_style_id = req.style_id  # type: ignore[attr-defined]
+        if game_session.game_loop.player_state:
+            game_session.game_loop.player_state.narrative_style_id = req.style_id
 
     return MessageResponse(success=True, message="Narrative style updated")
 

@@ -90,7 +90,19 @@ describe('RoundSceneImageDisplay', () => {
       );
 
       expect(screen.getByRole('img')).toBeInTheDocument();
+      expect(screen.getByText('第 2 轮')).toBeInTheDocument();
+    });
+
+    it('renders a zero-based first round as the first player-facing round', () => {
+      render(
+        <RoundSceneImageDisplay
+          {...defaultProps}
+          sceneImage={{ ...mockSceneImage, round_number: 0 } as any}
+        />
+      );
+
       expect(screen.getByText('第 1 轮')).toBeInTheDocument();
+      expect(screen.queryByText('第 0 轮')).not.toBeInTheDocument();
     });
 
     it('shows scene description', () => {

@@ -53,6 +53,10 @@ class PlayerDataMixin:
     # Character creation settings
     character_settings: Dict[str, Any] = Field(default_factory=dict)
 
+    # Selected narrative style. This is part of player state because generation
+    # can occur after a session is restored from a save.
+    narrative_style_id: Optional[str] = Field(default=None)
+
     # Story history - stores each week's story/event description
     story_history: list = Field(default_factory=list)
 

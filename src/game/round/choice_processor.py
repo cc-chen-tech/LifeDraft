@@ -109,31 +109,43 @@ class RoundChoiceProcessor:
         effects_requested = chosen_option.effects
         effects, resource_warnings = self._normalize_effects_for_current_state(effects_requested)
 
-        wealth_transaction_id = self._apply_wealth_transaction(
-            player_state,
+        staged_state = player_state.model_copy(deep=True)
+        staged_transaction_id = self._apply_wealth_transaction(
+            staged_state,
             requested_delta=effects_requested.get("wealth", effects.get("wealth", 0)),
             reason=chosen_option.text,
         )
-
-        # 1. Apply effects immediately (real-time update)
-        player_state.update(
+        staged_state.update(
             energy=effects.get("energy", 0),
             mood=effects.get("mood", 0),
             knowledge=effects.get("knowledge", 0),
             relationships=effects.get("relationships"),
         )
 
-        logger.debug(f"Applied effects: {effects}")
-
-        # 2. Generate story continuation
+        # Generate against a staged state. No gameplay mutation is committed until
+        # the provider has produced a valid continuation.
         story_continuation = self._generate_story_continuation(
             current_event.event_description,
             chosen_option.text,
             effects,
             stream_callback=stream_callback,
             status_callback=status_callback,
-            active_wealth_transaction_id=wealth_transaction_id,
+            active_wealth_transaction_id=staged_transaction_id,
+            player_state=staged_state,
         )
+
+        self._apply_wealth_transaction(
+            player_state,
+            requested_delta=effects_requested.get("wealth", effects.get("wealth", 0)),
+            reason=chosen_option.text,
+        )
+        player_state.update(
+            energy=effects.get("energy", 0),
+            mood=effects.get("mood", 0),
+            knowledge=effects.get("knowledge", 0),
+            relationships=effects.get("relationships"),
+        )
+        logger.debug(f"Applied effects: {effects}")
 
         # 3. Build full story and delegate to shared pipeline
         full_story = current_event.event_description
@@ -188,24 +200,20 @@ class RoundChoiceProcessor:
         )
         effects, resource_warnings = self._normalize_effects_for_current_state(effects_requested)
 
-        wealth_transaction_id = self._apply_wealth_transaction(
-            player_state,
+        staged_state = player_state.model_copy(deep=True)
+        staged_transaction_id = self._apply_wealth_transaction(
+            staged_state,
             requested_delta=effects_requested.get("wealth", effects.get("wealth", 0)),
             reason=custom_text,
         )
-
-        # 2. 应用属性变化
-        player_state.update(
+        staged_state.update(
             energy=effects.get("energy", 0),
             mood=effects.get("mood", 0),
             knowledge=effects.get("knowledge", 0),
             relationships=effects.get("relationships"),
         )
 
-        logger.debug(f"Applied effects from custom choice: {effects}")
-
-        # 3. 生成故事续写（流式输出）
-        # ★ Bug #26: 传递 is_custom=True 以确保 prompt 中包含强约束
+        # Generate custom-choice prose before committing its staged effects.
         story_continuation = self._generate_story_continuation(
             current_event.event_description,
             custom_text,
@@ -213,8 +221,22 @@ class RoundChoiceProcessor:
             stream_callback=stream_callback,
             status_callback=status_callback,
             is_custom=True,
-            active_wealth_transaction_id=wealth_transaction_id,
+            active_wealth_transaction_id=staged_transaction_id,
+            player_state=staged_state,
         )
+
+        self._apply_wealth_transaction(
+            player_state,
+            requested_delta=effects_requested.get("wealth", effects.get("wealth", 0)),
+            reason=custom_text,
+        )
+        player_state.update(
+            energy=effects.get("energy", 0),
+            mood=effects.get("mood", 0),
+            knowledge=effects.get("knowledge", 0),
+            relationships=effects.get("relationships"),
+        )
+        logger.debug(f"Applied effects from custom choice: {effects}")
 
         # 4. Build full story and delegate to shared pipeline
         full_story = current_event.event_description
@@ -647,11 +669,12 @@ class RoundChoiceProcessor:
         status_callback: Optional[Callable[[str], None]] = None,
         is_custom: bool = False,
         active_wealth_transaction_id: Optional[str] = None,
+        player_state: Optional["PlayerState"] = None,
     ) -> str:
         """Generate a detailed story continuation. Delegates to StoryService."""
-        player_state = self.player_state
-        character_settings = player_state.character_settings if player_state else {}
-        player_state_dict = player_state.to_dict() if player_state else {}
+        effective_state = player_state or self.player_state
+        character_settings = effective_state.character_settings if effective_state else {}
+        player_state_dict = effective_state.to_dict() if effective_state else {}
         if active_wealth_transaction_id:
             player_state_dict["_active_wealth_transaction_id"] = (
                 active_wealth_transaction_id

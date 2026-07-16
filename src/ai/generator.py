@@ -96,6 +96,7 @@ class EventGenerator:
         model: Optional[str] = None,
         retry_count: int = 1,
         language: str = "zh",
+        request_timeout: Optional[float] = None,
     ) -> str:
         """Public AI text generation interface.
 
@@ -119,6 +120,7 @@ class EventGenerator:
                 stream_callback=stream_callback,
                 model=model,
                 language=language,
+                request_timeout=request_timeout,
             )
         return self.ai_client.call(
             system_prompt=system_prompt,
@@ -127,6 +129,7 @@ class EventGenerator:
             max_tokens=max_tokens,
             stream_callback=stream_callback,
             model=model,
+            request_timeout=request_timeout,
         )
 
     def generate_completion_json(

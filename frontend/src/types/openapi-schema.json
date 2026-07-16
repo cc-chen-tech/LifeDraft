@@ -6877,7 +6877,14 @@
       "SongResponse": {
         "properties": {
           "id": {
-            "type": "integer",
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
             "title": "Id"
           },
           "name": {

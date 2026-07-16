@@ -18,8 +18,8 @@ describe("StatusBar", () => {
   };
 
   const mockProgress = {
-    current_round: 5,
-    total_rounds: 10,
+    week: 9,
+    total_weeks: 52,
   };
 
   describe("when playerState is null", () => {
@@ -38,10 +38,15 @@ describe("StatusBar", () => {
       expect(screen.getByText("25岁 第10周")).toBeInTheDocument();
     });
 
-    it("displays progress when available", () => {
-      render(<StatusBar playerState={mockPlayerState} progress={mockProgress} />);
+    it("displays the human-readable current round from player state", () => {
+      render(
+        <StatusBar
+          playerState={{ ...mockPlayerState, current_round: 0, rounds_per_week: 3 }}
+          progress={mockProgress}
+        />
+      );
 
-      expect(screen.getByText("5/10")).toBeInTheDocument();
+      expect(screen.getByText("第1轮/3")).toBeInTheDocument();
     });
 
     it("hides runtime resource metrics", () => {
@@ -64,12 +69,16 @@ describe("StatusBar", () => {
       expect(screen.getByText("25岁 第10周")).toBeInTheDocument();
     });
 
-    it("displays progress bar when available", () => {
+    it("displays a current-round progress bar when available", () => {
       render(
-        <StatusBar playerState={mockPlayerState} progress={mockProgress} compact={false} />
+        <StatusBar
+          playerState={{ ...mockPlayerState, current_round: 1, rounds_per_week: 3 }}
+          progress={mockProgress}
+          compact={false}
+        />
       );
 
-      expect(screen.getByText("进度 5/10")).toBeInTheDocument();
+      expect(screen.getByText("进度 第2轮/3")).toBeInTheDocument();
     });
 
     it("hides all resource bars", () => {
@@ -94,16 +103,39 @@ describe("StatusBar", () => {
       // Should not crash when resources are missing
     });
 
-    it("handles zero progress", () => {
+    it("labels the first round instead of hiding or showing round zero", () => {
       render(
         <StatusBar
-          playerState={mockPlayerState}
-          progress={{ current_round: 0, total_rounds: 10 }}
+          playerState={{ ...mockPlayerState, current_round: 0, rounds_per_week: 3 }}
+          progress={mockProgress}
         />
       );
 
-      // Progress should not be shown when current_round is 0
-      expect(screen.queryByText("0/10")).not.toBeInTheDocument();
+      expect(screen.getByText("第1轮/3")).toBeInTheDocument();
+      expect(screen.queryByText(/第0轮/)).not.toBeInTheDocument();
+    });
+
+    it("keeps the completed week and round visible while weekly summary is open", () => {
+      render(
+        <StatusBar
+          playerState={{
+            ...mockPlayerState,
+            week: 1,
+            current_round: 0,
+            rounds_per_week: 3,
+            resume_view: {
+              phase: "summary",
+              completed_week: 0,
+              completed_round: 2,
+            },
+          }}
+          progress={{ week: 1, total_weeks: 52 }}
+        />
+      );
+
+      expect(screen.getByText("25岁 第1周")).toBeInTheDocument();
+      expect(screen.getByText("第3轮/3")).toBeInTheDocument();
+      expect(screen.queryByText("25岁 第2周")).not.toBeInTheDocument();
     });
   });
 });

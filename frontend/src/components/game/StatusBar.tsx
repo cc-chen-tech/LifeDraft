@@ -12,6 +12,34 @@ interface StatusBarProps {
   compact?: boolean;
 }
 
+function getNonNegativeInteger(value: unknown, fallback = 0): number {
+  const numberValue = Number(value);
+  return Number.isInteger(numberValue) && numberValue >= 0
+    ? numberValue
+    : fallback;
+}
+
+function getCompletedViewPosition(playerState: Record<string, unknown>) {
+  const resumeView = playerState.resume_view;
+  if (!resumeView || typeof resumeView !== "object") return null;
+
+  const { phase, completed_week: completedWeek, completed_round: completedRound } = resumeView as Record<string, unknown>;
+  if (
+    !["result", "summary", "ending"].includes(String(phase)) ||
+    !Number.isInteger(Number(completedWeek)) ||
+    !Number.isInteger(Number(completedRound)) ||
+    Number(completedWeek) < 0 ||
+    Number(completedRound) < 0
+  ) {
+    return null;
+  }
+
+  return {
+    week: Number(completedWeek),
+    round: Number(completedRound),
+  };
+}
+
 /**
  * StatusBar — 游戏进度展示
  * - 紧凑模式用于游戏主页顶部
@@ -25,11 +53,14 @@ export const StatusBar = memo(function StatusBar({
 }: StatusBarProps) {
   if (!playerState) return null;
 
-  const age = (playerState.age as number) || 0;
-  const week = ((playerState.week as number) || 0) + 1; // ★ week 从0开始，显示时+1
-  const currentRound = progress ? Number(progress.current_round) || 0 : 0;
-  const totalRounds = progress ? Number(progress.total_rounds) || 1 : 1;
-  const hasProgress = !!progress && currentRound > 0;
+  const age = getNonNegativeInteger(playerState.age);
+  const completedViewPosition = getCompletedViewPosition(playerState);
+  const currentWeek = completedViewPosition?.week ?? getNonNegativeInteger(playerState.week);
+  const currentRound = completedViewPosition?.round ?? getNonNegativeInteger(playerState.current_round);
+  const totalRounds = getNonNegativeInteger(playerState.rounds_per_week);
+  const hasRoundProgress = totalRounds > 0;
+  const week = currentWeek + 1;
+  const roundLabel = `第${currentRound + 1}轮/${totalRounds}`;
 
   if (compact) {
     return (
@@ -37,10 +68,10 @@ export const StatusBar = memo(function StatusBar({
         <Badge variant="secondary" className="text-xs">
           {age}岁 第{week}周
         </Badge>
-        {hasProgress && (
+        {hasRoundProgress && (
           <Badge variant="outline" className="text-xs">
             <TrendingUp className="w-3 h-3 mr-1" />
-            {currentRound}/{totalRounds}
+            {roundLabel}
           </Badge>
         )}
       </div>
@@ -54,20 +85,20 @@ export const StatusBar = memo(function StatusBar({
         <span>
           {age}岁 第{week}周
         </span>
-        {hasProgress && (
+        {hasRoundProgress && (
           <span>
-            进度 {currentRound}/{totalRounds}
+            进度 {roundLabel}
           </span>
         )}
       </div>
 
       {/* Progress bar */}
-      {hasProgress && (
+      {hasRoundProgress && (
         <div className="w-full h-1.5 bg-secondary rounded-full overflow-hidden">
           <div
             className="h-full bg-primary rounded-full transition-all duration-500"
             style={{
-              width: `${(currentRound / totalRounds) * 100}%`,
+              width: `${((currentRound + 1) / totalRounds) * 100}%`,
             }}
           />
         </div>

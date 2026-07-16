@@ -1,7 +1,11 @@
 """Tests for game modules: achievements, endings, player_service, story_service, summaries."""
 
-from unittest.mock import Mock
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
+import pytest
+
+from src.ai.story_exceptions import StoryContinuationFailure
 from src.game.achievements import AchievementEngine
 from src.game.endings import EndingEvaluator
 from src.game.monthly_summary import MonthlySummaryGenerator
@@ -332,23 +336,35 @@ class TestStoryService:
         result = service.generate_fallback_continuation("帮助朋友", {"relationships": {"小明": 10}})
         assert "小明" in result
 
-    def test_generate_story_continuation_ai_failure(self):
-        """Test story continuation falls back on AI failure."""
+    def test_generate_story_continuation_ai_failure_is_retryable(self):
+        """Provider failure must not fabricate a continuation for a committed choice."""
         mock_gen = Mock()
         mock_gen.generate_completion.side_effect = Exception("API Error")
         service = StoryService(ai_generator=mock_gen, language="zh")
-        result = service.generate_story_continuation("An event", "A choice", {"mood": 5})
-        assert len(result) > 0  # Should return fallback
+        with pytest.raises(StoryContinuationFailure, match="Story continuation generation failed"):
+            service.generate_story_continuation("An event", "A choice", {"mood": 5})
 
-    def test_generate_custom_choice_fallback(self):
-        """Test custom choice result on AI failure."""
+    def test_choice_continuation_keeps_retry_when_only_perspective_check_fails(self):
+        """A post-choice retry with only perspective drift must not block gameplay."""
+        mock_gen = Mock()
+        mock_gen.generate_completion.side_effect = ["initial story", "retry story"]
+        service = StoryService(ai_generator=mock_gen, language="zh")
+        invalid = SimpleNamespace(passed=False, issues=["故事中使用了第一人称「我」，应使用第三人称"])
+
+        with patch("src.ai.quick_validator.quick_validate_story", side_effect=[invalid, invalid]):
+            result = service.generate_story_continuation(
+                "An event", "A choice", {"mood": 5}
+            )
+
+        assert result == "retry story"
+
+    def test_generate_custom_choice_failure_is_retryable(self):
+        """Custom choice provider failure must not fabricate story text or effects."""
         mock_gen = Mock()
         mock_gen.generate_completion_json.side_effect = Exception("API Error")
         service = StoryService(ai_generator=mock_gen, language="zh")
-        result = service.generate_custom_choice_result("Event description", "自定义选择")
-        assert "story_continuation" in result
-        assert "effects" in result
-        assert "自定义选择" in result["story_continuation"]
+        with pytest.raises(StoryContinuationFailure, match="custom choice result"):
+            service.generate_custom_choice_result("Event description", "自定义选择")
 
 
 # ==================== Summary Generator Tests ====================

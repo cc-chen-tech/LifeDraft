@@ -5,6 +5,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from config.prompts.story_prompts import (
     get_event_generation_prompt,
     get_result_generation_prompt,
@@ -12,6 +14,7 @@ from config.prompts.story_prompts import (
     get_story_only_prompt,
 )
 from src.ai.models import EventOption, GameEvent
+from src.ai.story_exceptions import StoryGenerationFailure
 from src.game.round.event_generator import RoundEventGenerator
 from src.game.world_model import WorldModel
 
@@ -316,6 +319,24 @@ def test_quick_validator_rejects_partial_cast_when_new_named_network_dominates()
 
     assert not result.passed
     assert any("预设关系网使用不足" in issue for issue in result.issues)
+
+
+def test_quick_validator_ignores_surname_shaped_prose_suffixes() -> None:
+    """Narrative text must not invent names from suffixes such as 元低声."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨坐在会议室里。林伯元低声提醒林清注意方向，"
+            "会议气氛逐渐平稳，大家决定继续推进产品复盘。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
 
 
 def test_quick_validator_rejects_single_new_role_substitute_for_preset_network() -> None:
@@ -786,8 +807,8 @@ def test_resume_existing_round_story_rejects_preset_cast_drift_before_options_on
     assert "马老板" not in event.event_description
 
 
-def test_round_generation_fallback_preserves_character_authority() -> None:
-    """If normal generation fails, fallback must not discard the preset cast."""
+def test_round_generation_failure_preserves_character_authority_by_not_persisting_fake_event() -> None:
+    """A provider failure must not turn preset facts into a fallback story."""
 
     class FailingAI:
         def generate_round_event(self, **_kwargs: Any) -> GameEvent:
@@ -798,7 +819,7 @@ def test_round_generation_fallback_preserves_character_authority() -> None:
         week = 2
         current_round = 0
         last_round_full_story = ""
-        current_event_data: dict[str, Any] = {}
+        current_event_data: dict[str, Any] | None = None
         pending_storylines: list[Any] = []
         established_facts: list[Any] = []
         last_event_concluded = True
@@ -842,12 +863,10 @@ def test_round_generation_fallback_preserves_character_authority() -> None:
         ),
     )
 
-    event = generator.generate_round_event()
+    with pytest.raises(StoryGenerationFailure, match="upstream model unavailable"):
+        generator.generate_round_event()
 
-    assert event is not None
-    assert "陆昊然" in event.event_description
-    assert "产品经理" in event.event_description
-    assert "一个平静的日子" not in event.event_description
+    assert player_state.current_event_data is None
 
 
 def test_world_model_constraints_include_required_cast_from_character_settings() -> None:

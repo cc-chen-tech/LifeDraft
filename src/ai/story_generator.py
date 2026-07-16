@@ -7,13 +7,15 @@ consistency validation with retry, and life-phase determination.
 import json
 import logging
 import os
+import re
+from difflib import SequenceMatcher
 from types import SimpleNamespace
 from typing import Any, Callable, Dict, Optional, Union
 
 from pydantic import ValidationError
 
 from config.prompts import get_round_event_prompt, get_story_only_prompt
-from config.prompts._helpers import extract_overused_phrases
+from config.prompts._helpers import _build_style_constraints_text, extract_overused_phrases
 from config.prompts.story_prompts import resolve_protagonist_name
 from src.ai.client import AIClient
 from src.ai.harness.diagnostics import ConstraintViolationDiagnostic
@@ -53,6 +55,7 @@ class StoryGenerator:
         self._style_manifest = None
         self._prompt_builder = None
         self._style_validator = None
+        self._initialized_style_id: Optional[str] = None
 
     @staticmethod
     def _normalize_punctuation(text: Optional[str], language: str = "zh") -> Optional[str]:
@@ -120,6 +123,65 @@ class StoryGenerator:
         name = resolve_protagonist_name(player_state, player_state.get("character_settings"), None)
         return sanitize_player_name(name)
 
+    @staticmethod
+    def _canonical_story_for_repeat_check(story: str) -> str:
+        """Normalize prose for a semantic duplicate check without changing stored text."""
+        return re.sub(r"\s+", "", (story or "").replace("\r\n", "\n"))
+
+    @classmethod
+    def _repeats_committed_story(cls, candidate: str, committed_stories: list[str]) -> bool:
+        """Return whether a substantial candidate duplicates a committed round story."""
+        canonical_candidate = cls._canonical_story_for_repeat_check(candidate)
+        if len(canonical_candidate) < 160:
+            return False
+
+        for committed_story in committed_stories:
+            canonical_committed = cls._canonical_story_for_repeat_check(committed_story)
+            if len(canonical_committed) < 160:
+                continue
+            if canonical_candidate == canonical_committed:
+                return True
+            if min(len(canonical_candidate), len(canonical_committed)) < 240:
+                continue
+            similarity = SequenceMatcher(
+                None,
+                canonical_candidate,
+                canonical_committed,
+                autojunk=False,
+            ).ratio()
+            if similarity >= 0.92:
+                return True
+        return False
+
+    @staticmethod
+    def _committed_round_stories(
+        player_state: Dict[str, Any],
+        last_round_full_story: str,
+    ) -> list[str]:
+        """Collect only persisted story prose, not summaries or pending stream chunks."""
+        stories: list[str] = []
+        if last_round_full_story:
+            stories.append(last_round_full_story)
+
+        for entry in player_state.get("round_history", []) or []:
+            if not isinstance(entry, dict):
+                continue
+            for field in ("event_description", "story_text", "full_story"):
+                value = entry.get(field)
+                if isinstance(value, str) and value:
+                    stories.append(value)
+                    break
+
+        for entry in player_state.get("decision_history", []) or []:
+            if not isinstance(entry, dict):
+                continue
+            for field in ("event", "event_description", "story_text", "full_story"):
+                value = entry.get(field)
+                if isinstance(value, str) and value:
+                    stories.append(value)
+                    break
+        return stories
+
     # -------------------- Public API --------------------
 
     def generate_event(
@@ -183,6 +245,7 @@ class StoryGenerator:
             or ""
         )
         self._init_narrative_systems(style_id, player_state)
+        style_constraints = _build_style_constraints_text(self._prompt_builder, language)
 
         current_phase = self._get_phase_from_state(player_state)
 
@@ -236,6 +299,7 @@ class StoryGenerator:
             world_model=world_model,
             vector_context=vector_context,  # ★ 注入向量检索上下文
             overused_phrases=overused_phrases,  # ★ 注入动态禁用列表
+            style_constraints=style_constraints,
         )
 
         sys_prompt = get_system_prompt("story_novelist", language)
@@ -435,6 +499,14 @@ class StoryGenerator:
                 f"[AntiRepeat] Round: Injected dynamic ban list ({len(overused_phrases)} chars)"
             )
 
+        style_id = str(
+            player_state.get("narrative_style_id")
+            or (character_settings or {}).get("narrative_style_id")
+            or ""
+        )
+        self._init_narrative_systems(style_id, player_state)
+        style_constraints = _build_style_constraints_text(self._prompt_builder, language)
+
         # Get round story prompt
         prompt = get_round_event_prompt(
             player_state,
@@ -456,6 +528,7 @@ class StoryGenerator:
             new_character=new_character,
             vector_context=vector_context,  # ★ 注入向量检索上下文
             overused_phrases=overused_phrases,  # ★ 注入动态禁用列表
+            style_constraints=style_constraints,
             quality_level=self.quality_level.value,
         )
         generation_budget = get_generation_budget(self.quality_level.value)
@@ -494,6 +567,10 @@ class StoryGenerator:
             for p in _collect_available_people(character_settings)
             if p.get("name")
         ]
+        committed_stories = self._committed_round_stories(
+            player_state,
+            last_round_full_story,
+        )
 
         best_valid_story_text = ""
         last_generation_error: Optional[Exception] = None
@@ -706,6 +783,50 @@ class StoryGenerator:
                         hard_shape_issues,
                     )
 
+                if self._repeats_committed_story(story_text, committed_stories):
+                    if self._canonical_story_for_repeat_check(
+                        best_valid_story_text
+                    ) == self._canonical_story_for_repeat_check(story_text):
+                        best_valid_story_text = ""
+                    logger.warning("Round story repeats committed story; requesting one rewrite")
+                    if status_callback:
+                        status_callback("retry")
+                    repeat_retry_prompt = attempt_prompt + (
+                        "\n\n【重复正文修正 - 必须重写】\n"
+                        "上一版与已提交轮次重复。请围绕当前日期、未解决事项和玩家状态写出一个"
+                        "不同的具体事件；不得复用先前场景、句式或选项。"
+                        if language == "zh"
+                        else "\n\n[Repeated Story Fix - Regenerate Required]\n"
+                        "The previous version duplicates a committed round. Write a distinct concrete event "
+                        "grounded in the current date, unresolved threads, and player state; do not reuse "
+                        "the earlier scene, phrasing, or options."
+                    )
+                    retry_story = self.client.call(
+                        system_prompt=sys_prompt,
+                        user_prompt=repeat_retry_prompt,
+                        temperature=0.65,
+                        max_tokens=generation_budget.max_tokens,
+                        stream_callback=stream_callback if attempt == 0 else None,
+                        frequency_penalty=0.5,
+                        presence_penalty=0.5,
+                    )
+                    story_text = normalize_generated_story(retry_story, language=language)
+                    repeat_retry_validation = quick_validate_story(
+                        story_text=story_text,
+                        character_settings=character_settings,
+                        available_people=available_people_names,
+                        language=language,
+                    )
+                    repeat_retry_shape_issues = _hard_shape_issues(story_text)
+                    if not repeat_retry_validation.passed or repeat_retry_shape_issues:
+                        issues = repeat_retry_validation.issues + repeat_retry_shape_issues
+                        raise ValueError(
+                            "Repeated-story retry failed validation: " + "; ".join(issues)
+                        )
+                    if self._repeats_committed_story(story_text, committed_stories):
+                        raise ValueError("Round story repeats committed story after retry")
+                    _set_best_story(story_text, require_valid=True)
+
                 # Step 1.5: AI-based consistency validation (if world_model is provided)
                 if world_model and story_text and generation_budget.allow_ai_consistency:
                     story_text = self._validate_and_retry_story(
@@ -819,12 +940,19 @@ class StoryGenerator:
                 "Using best historical story (%d chars) after all round attempts",
                 len(best_valid_story_text),
             )
+            fallback_options = OptionGenerator.build_contextual_fallback_options(
+                best_valid_story_text,
+                language=language,
+            )
+            if OptionGenerator.fallback_options_repeat_recent_history(
+                fallback_options, player_state.get("decision_history", [])
+            ):
+                raise StoryGenerationFailure(
+                    "Option generation failed and the contextual fallback repeats recent choices"
+                )
             return GameEvent(
                 event_description=best_valid_story_text,
-                options=OptionGenerator.build_contextual_fallback_options(
-                    best_valid_story_text,
-                    language=language,
-                ),
+                options=fallback_options,
             )
 
         message = "Story generation failed before producing a valid event"
@@ -843,21 +971,25 @@ class StoryGenerator:
         style_id: str,
         player_state: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Initialize optional narrative style systems when the feature flag is on."""
+        """Initialize or refresh narrative style systems for the selected style."""
         del player_state
-        if self._narrative_systems_initialized:
+        requested_style_id = style_id or "magical_realism"
+        if (
+            self._narrative_systems_initialized
+            and self._initialized_style_id == requested_style_id
+        ):
             return
 
-        if not self._env_enabled("ENABLE_NARRATIVE_STYLE_ENGINE"):
-            self._narrative_systems_initialized = True
-            return
+        self._style_manifest = None
+        self._prompt_builder = None
+        self._style_validator = None
 
         try:
             from src.ai.narrative.style_manifest import get_style
             from src.ai.narrative.style_prompt_builder import StyleAwarePromptBuilder
             from src.ai.narrative.style_validator import StyleAwareValidator
 
-            self._style_manifest = get_style(style_id)
+            self._style_manifest = get_style(requested_style_id)
             if not self._style_manifest and not style_id:
                 self._style_manifest = get_style("magical_realism")
 
@@ -869,11 +1001,12 @@ class StoryGenerator:
                     self._style_manifest.style_id,
                 )
             else:
-                logger.warning("Style %r not found, style engine disabled", style_id)
+                logger.warning("Style %r not found, style engine disabled", requested_style_id)
         except Exception as exc:
             logger.warning("Failed to initialize narrative style systems: %s", exc)
         finally:
             self._narrative_systems_initialized = True
+            self._initialized_style_id = requested_style_id
 
     def _gather_narrative_hints(
         self,
