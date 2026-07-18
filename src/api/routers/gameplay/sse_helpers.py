@@ -26,6 +26,7 @@ HEARTBEAT_INTERVAL = 5
 
 # 线程池用于 SSE 后台任务
 _sse_thread_pool: Optional[ThreadPoolExecutor] = None
+_background_thread_pool: Optional[ThreadPoolExecutor] = None
 
 
 def _get_sse_thread_pool() -> ThreadPoolExecutor:
@@ -37,6 +38,21 @@ def _get_sse_thread_pool() -> ThreadPoolExecutor:
 
 # Public alias for contract tests
 get_sse_thread_pool = _get_sse_thread_pool
+
+
+def _get_background_thread_pool() -> ThreadPoolExecutor:
+    """Return the bounded pool for non-critical media and prefetch work."""
+    global _background_thread_pool
+    if _background_thread_pool is None:
+        _background_thread_pool = ThreadPoolExecutor(
+            max_workers=4,
+            thread_name_prefix="background-worker",
+        )
+    return _background_thread_pool
+
+
+# Public alias for contract tests
+get_background_thread_pool = _get_background_thread_pool
 
 
 def persist_rewritten_current_event(game_loop, game_id: int, rewritten_story: str) -> None:
@@ -76,11 +92,14 @@ def persist_rewritten_current_event(game_loop, game_id: int, rewritten_story: st
 
 
 def shutdown_sse_thread_pool(wait: bool = True) -> None:
-    """关闭 SSE 线程池（用于应用退出时清理）。"""
-    global _sse_thread_pool
+    """Close story and non-critical background pools during application shutdown."""
+    global _sse_thread_pool, _background_thread_pool
     if _sse_thread_pool is not None:
         _sse_thread_pool.shutdown(wait=wait)
         _sse_thread_pool = None
+    if _background_thread_pool is not None:
+        _background_thread_pool.shutdown(wait=wait)
+        _background_thread_pool = None
 
 
 def _trigger_round_illustration_generation(
@@ -249,7 +268,7 @@ def _trigger_round_illustration_generation(
             logger.exception(f"[RoundIllustration] Unexpected error in generate_illustration: {e}")
 
     # 在线程池中执行
-    _get_sse_thread_pool().submit(generate_illustration)
+    _get_background_thread_pool().submit(generate_illustration)
 
 
 def _ensure_entity_images_exist(
@@ -377,7 +396,7 @@ def _ensure_entity_images_exist(
             logger.exception(f"[EntityImages] Unexpected error in ensure_images: {e}")
 
     # 在线程池中执行
-    _get_sse_thread_pool().submit(ensure_images)
+    _get_background_thread_pool().submit(ensure_images)
 
 
 def _prefetch_options(game_loop, game_id: int, session, event) -> None:
@@ -456,7 +475,7 @@ def _prefetch_options(game_loop, game_id: int, session, event) -> None:
                 session.finish_prefetching_options()
 
     # 在线程池中执行
-    _get_sse_thread_pool().submit(prefetch)
+    _get_background_thread_pool().submit(prefetch)
 
 
 def make_sse_event(event_type: str, data, event_id: Optional[int] = None) -> str:
