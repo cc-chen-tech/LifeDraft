@@ -81,6 +81,7 @@ jobs:
             tests/test_gameplay_event_protocol_contracts.py \
             tests/test_extraction_parser_contracts.py \
             tests/test_local_music_library_helper_contracts.py \
+            tests/test_local_music_library_db_contracts.py \
             tests/test_multi_character_scene_contract.py \
             tests/test_historical_summary_selection_contracts.py \
             tests/test_narrative_state_contracts.py \
