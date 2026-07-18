@@ -19,6 +19,7 @@ const config = {
     'src/**/*.{ts,tsx}',
     '!src/**/*.d.ts',
     '!src/**/types.ts',
+    '!src/**/__tests__/**',
   ],
   // M-11: Coverage thresholds aligned with codecov.yml (temporarily lowered due to Phase 2-3 refactoring)
   coverageThreshold: {

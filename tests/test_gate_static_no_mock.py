@@ -39,8 +39,12 @@ def test_test_script_runs_music_frontend_queue_policy_tests() -> None:
 
 def test_test_script_runs_minimax_audio_generation_frontend_tests() -> None:
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
+    config = (ROOT / "frontend" / "playwright.config.ts").read_text(encoding="utf-8")
 
-    assert "e2e/minimax-story-audio-generation.spec.ts" in script
+    assert 'run_playwright_command "core" npx playwright test --project=core' in script
+    assert "minimax-story-audio-generation.spec.ts" not in config.split(
+        "const AI_HEAVY_TESTS", 1
+    )[1].split("const MANUAL_EXPLORATION_TESTS", 1)[0]
     assert "tests/test_minimax_audio_generation_contract.py" in script
     assert "tests/test_minimax_audio_generation_db.py" in script
 
