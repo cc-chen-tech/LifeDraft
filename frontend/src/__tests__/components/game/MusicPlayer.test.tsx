@@ -770,7 +770,7 @@ describe('MusicPlayer', () => {
     );
 
     expect(screen.getByTestId('sound-music-console-status')).toHaveTextContent(
-      'MiniMax · AI Generated · AI 本地库 · 已匹配当前场景'
+      '悬疑 · 都市调查悬疑 · MiniMax · AI Generated · AI 本地库 · 已匹配当前场景'
     );
   });
 
