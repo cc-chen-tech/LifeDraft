@@ -116,7 +116,10 @@ class QuickValidator:
         "尤其是",
     }
     CHINESE_NAME_GRAMMATICAL_PARTICLES = frozenset(
-        "的地得了着过是在和与及或把被将让给向从到"
+        "的地得了着过是在和与及或把被将让给向从到可"
+    )
+    CHINESE_NAME_NARRATIVE_ACTION_SUFFIXES = frozenset(
+        "走脱抬站接翻沉推穿拿刷靠打说合转"
     )
 
     def __init__(self):
@@ -670,6 +673,14 @@ class QuickValidator:
             ):
                 continue
             if any(char in self.CHINESE_NAME_GRAMMATICAL_PARTICLES for char in candidate):
+                continue
+            # The name-shaped pattern is intentionally broad, so a protagonist
+            # omitted from relationship people can otherwise become "陈越走".
+            # A real three-character name such as "苏婉清" remains eligible.
+            if (
+                len(candidate) == 3
+                and candidate[-1] in self.CHINESE_NAME_NARRATIVE_ACTION_SUFFIXES
+            ):
                 continue
             if any(candidate in allowed or allowed in candidate for allowed in allowed_names):
                 continue

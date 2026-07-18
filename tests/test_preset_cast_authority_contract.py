@@ -377,6 +377,25 @@ def test_quick_validator_ignores_surname_shaped_sentence_openers() -> None:
     assert result.passed
 
 
+def test_quick_validator_ignores_protagonist_verb_phrases_outside_relationship_cast() -> None:
+    """The protagonist may be absent from relationship people without becoming fake cast."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然在晨会前提醒团队核对风控模块的测试结果。"
+            "陈越走进会议室。陈越脱下大衣。陈越抬头看向投影屏幕。"
+            "她把昨晚整理的风险清单递给陆昊然，等待他的意见。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+
+
 def test_quick_validator_rejects_single_new_role_substitute_for_preset_network() -> None:
     """A single invented strong-role character can still replace the preset network."""
     from config.prompts._helpers import _collect_available_people
