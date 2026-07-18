@@ -93,6 +93,7 @@ jobs:
             tests/test_historical_summary_selection_contracts.py \
             tests/test_narrative_state_contracts.py \
             tests/test_character_creation_pure_contracts.py \
+            tests/test_opening_story_cache_contracts.py \
             tests/test_character_creator_recovery_contracts.py \
             tests/test_relationship_person_recovery_contracts.py \
             tests/test_decision_state_contracts.py \
