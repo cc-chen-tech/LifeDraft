@@ -244,6 +244,10 @@ export function ChatBar({
             });
           },
           onStatus: (status) => {
+            if (status.phase === "retry") {
+              // The server discards the prior attempt before streaming a replacement.
+              accumulatedStoryRef.current = "";
+            }
             const message = getRewriteProgressMessage(status);
             setRewriteProgressMessage(message);
             showRewriteToast("loading", message);
