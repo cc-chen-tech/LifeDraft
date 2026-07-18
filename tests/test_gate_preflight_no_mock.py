@@ -62,7 +62,9 @@ def test_preflight_script_runs_before_expensive_layers() -> None:
     assert "src/__tests__/lib/sse.test.ts" in script
     assert "python -m flake8 src/services/story_voice_reading.py" in script
     assert "python scripts/export_openapi.py" in script
-    assert "git diff --exit-code -- frontend/src/types/openapi-schema.json" in script
+    assert 'local openapi_check_dir="$TEST_RUN_DIR/openapi-check"' in script
+    assert 'python scripts/export_openapi.py "$generated_openapi_schema"' in script
+    assert 'cmp -s "$generated_openapi_schema" frontend/src/types/openapi-schema.json' in script
     assert script.index("run_preflight || ((failed++))") < script.index("run_mypy || ((failed++))")
     assert script.index("run_preflight || ((failed++))") < script.index(
         "run_e2e_browser || ((failed++))"
@@ -116,6 +118,7 @@ def test_preflight_validates_archived_provider_story_tts_spec() -> None:
 
 def test_preflight_validates_minimax_story_audio_generation_change() -> None:
     script = (ROOT / "test.sh").read_text(encoding="utf-8")
+    config = (ROOT / "frontend" / "playwright.config.ts").read_text(encoding="utf-8")
     change_dir = ROOT / "openspec" / "changes" / "add-minimax-story-audio-generation"
 
     assert change_dir.exists()
@@ -125,7 +128,10 @@ def test_preflight_validates_minimax_story_audio_generation_change() -> None:
     assert "openspec validate add-minimax-story-audio-generation --strict" in script
     assert "tests/test_minimax_audio_generation_contract.py" in script
     assert "tests/test_minimax_audio_generation_db.py" in script
-    assert "e2e/minimax-story-audio-generation.spec.ts" in script
+    assert 'run_playwright_command "core" npx playwright test --project=core' in script
+    assert "minimax-story-audio-generation.spec.ts" not in config.split(
+        "const AI_HEAVY_TESTS", 1
+    )[1].split("const MANUAL_EXPLORATION_TESTS", 1)[0]
 
 
 def test_minimax_api_key_is_not_committed_to_repository_files() -> None:
