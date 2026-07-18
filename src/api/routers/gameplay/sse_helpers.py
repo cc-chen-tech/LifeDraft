@@ -5,10 +5,14 @@ for event generation and choice processing.
 """
 
 import asyncio
+import copy
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional
+from dataclasses import dataclass
+from threading import RLock
+from types import SimpleNamespace
+from typing import Any, Callable, Dict, List, Optional
 
 from config.settings import settings
 from src.api.deps import get_db
@@ -24,16 +28,35 @@ SSE_STREAM_TIMEOUT = 330
 # 心跳间隔（秒），防止 Nginx 空闲超时断连
 HEARTBEAT_INTERVAL = 5
 
-# 线程池用于 SSE 后台任务
+# Gameplay execution pools. Story work has a dedicated lane; optional media and
+# prefetch work must never consume its workers.
 _sse_thread_pool: Optional[ThreadPoolExecutor] = None
 _background_thread_pool: Optional[ThreadPoolExecutor] = None
+_thread_pool_lock = RLock()
+_background_jobs_enabled = True
+
+
+@dataclass(frozen=True)
+class RoundIllustrationJob:
+    """Immutable event context used by a delayed scene-generation task."""
+
+    game_id: int
+    week: int
+    round_number: int
+    stage: str
+    story_text: str
+    character_settings: Dict[str, Any]
+    player_name: str
+    world_model_data: Dict[str, Any]
+    established_facts: List[Dict[str, Any]]
 
 
 def _get_sse_thread_pool() -> ThreadPoolExecutor:
     global _sse_thread_pool
-    if _sse_thread_pool is None:
-        _sse_thread_pool = ThreadPoolExecutor(max_workers=20, thread_name_prefix="sse-worker")
-    return _sse_thread_pool
+    with _thread_pool_lock:
+        if _sse_thread_pool is None:
+            _sse_thread_pool = ThreadPoolExecutor(max_workers=20, thread_name_prefix="sse-worker")
+        return _sse_thread_pool
 
 
 # Public alias for contract tests
@@ -43,16 +66,33 @@ get_sse_thread_pool = _get_sse_thread_pool
 def _get_background_thread_pool() -> ThreadPoolExecutor:
     """Return the bounded pool for non-critical media and prefetch work."""
     global _background_thread_pool
-    if _background_thread_pool is None:
-        _background_thread_pool = ThreadPoolExecutor(
-            max_workers=4,
-            thread_name_prefix="background-worker",
-        )
-    return _background_thread_pool
+    with _thread_pool_lock:
+        if not _background_jobs_enabled:
+            raise RuntimeError("Background jobs are disabled during application shutdown")
+        if _background_thread_pool is None:
+            _background_thread_pool = ThreadPoolExecutor(
+                max_workers=4,
+                thread_name_prefix="background-worker",
+            )
+        return _background_thread_pool
 
 
 # Public alias for contract tests
 get_background_thread_pool = _get_background_thread_pool
+
+
+def submit_background_job(job_name: str, callback: Callable[[], None]) -> bool:
+    """Submit optional work unless FastAPI shutdown has stopped media admission."""
+    with _thread_pool_lock:
+        if not _background_jobs_enabled:
+            logger.info("Skipping background job during shutdown: %s", job_name)
+            return False
+        try:
+            _get_background_thread_pool().submit(callback)
+        except RuntimeError:
+            logger.info("Skipping unavailable background job: %s", job_name)
+            return False
+    return True
 
 
 def persist_rewritten_current_event(game_loop, game_id: int, rewritten_story: str) -> None:
@@ -91,184 +131,145 @@ def persist_rewritten_current_event(game_loop, game_id: int, rewritten_story: st
         logger.exception(f"Auto-save unexpected error after rewrite: {e}")
 
 
-def shutdown_sse_thread_pool(wait: bool = True) -> None:
-    """Close story and non-critical background pools during application shutdown."""
-    global _sse_thread_pool, _background_thread_pool
-    if _sse_thread_pool is not None:
-        _sse_thread_pool.shutdown(wait=wait)
+def shutdown_sse_thread_pool(
+    wait: bool = True, prevent_new_background_jobs: bool = False
+) -> None:
+    """Close gameplay executors and optionally stop media admission permanently."""
+    global _sse_thread_pool, _background_thread_pool, _background_jobs_enabled
+    with _thread_pool_lock:
+        if prevent_new_background_jobs:
+            _background_jobs_enabled = False
+        story_pool = _sse_thread_pool
+        background_pool = _background_thread_pool
         _sse_thread_pool = None
-    if _background_thread_pool is not None:
-        _background_thread_pool.shutdown(wait=wait)
         _background_thread_pool = None
+
+    for pool in (story_pool, background_pool):
+        if pool is not None:
+            pool.shutdown(wait=wait, cancel_futures=not wait)
+
+
+def build_round_illustration_job(
+    game_loop, game_id: int, event, stage: str = "event"
+) -> Optional[RoundIllustrationJob]:
+    """Freeze event data before it can be delayed behind other media work."""
+    player_state = getattr(game_loop, "player_state", None)
+    story_text = getattr(event, "event_description", "") if event else ""
+    if not player_state or not story_text:
+        logger.warning("[RoundIllustration] Missing player state or story for game %s", game_id)
+        return None
+
+    return RoundIllustrationJob(
+        game_id=game_id,
+        week=int(player_state.week),
+        round_number=int(player_state.current_round),
+        stage=stage,
+        story_text=str(story_text),
+        character_settings=copy.deepcopy(player_state.character_settings or {}),
+        player_name=str(player_state.player_name or "主角"),
+        world_model_data=copy.deepcopy(player_state.world_model_data or {}),
+        established_facts=copy.deepcopy(
+            getattr(player_state, "established_facts", []) or []
+        ),
+    )
 
 
 def _trigger_round_illustration_generation(
     game_loop, game_id: int, event, stage: str = "event"
 ) -> None:
-    """
-    异步触发每轮场景插画生成
+    """Queue an event-scoped scene job without retaining mutable game state."""
+    job = build_round_illustration_job(game_loop, game_id, event, stage)
+    if job is None:
+        return
+    submit_background_job(
+        f"round-illustration:{job.game_id}:{job.week}:{job.round_number}:{job.stage}",
+        lambda: _generate_round_illustration(job),
+    )
 
-    在后台线程中执行，不阻塞游戏流程
 
-    Args:
-        game_loop: 游戏循环实例
-        game_id: 游戏ID
-        event: 事件对象
-        stage: 场景阶段 (event=事件故事, result=结果故事)
-    """
+def _generate_round_illustration(job: RoundIllustrationJob) -> None:
+    """Generate one scene entirely inside its bounded background worker."""
+    try:
+        from src.ai.image_client import ImageClient
+        from src.database.models import Game
+        from src.database.models import Image as ImageModel
+        from src.database.models import SceneImage
+        from src.database.models import SessionLocal
+        from src.game.round.illustration_service import RoundIllustrationService
+        from src.services.image_storage import ImageStorageService
 
-    def generate_illustration():
+        db = SessionLocal()
         try:
-            from src.ai.image_client import ImageClient
-            from src.database.models import Game
-            from src.database.models import Image as ImageModel
-            from src.database.models import SessionLocal
-            from src.game.round.illustration_service import \
-                RoundIllustrationService
-            from src.services.image_storage import ImageStorageService
+            game = db.query(Game).filter(Game.game_id == job.game_id).first()
+            if not game:
+                logger.warning("[RoundIllustration] Game %s not found", job.game_id)
+                return
 
-            # 创建数据库会话
-            db = SessionLocal()
-
-            try:
-                # 获取游戏信息
-                game = db.query(Game).filter(Game.game_id == game_id).first()
-                if not game:
-                    logger.warning(f"[RoundIllustration] Game {game_id} not found")
-                    return
-
-                # 获取玩家状态
-                player_state = game_loop.player_state
-                if not player_state:
-                    logger.warning(f"[RoundIllustration] No player state for game {game_id}")
-                    return
-
-                # 获取当前轮次和周数
-                round_number = player_state.current_round
-                week = player_state.week  # ★ 获取周数
-
-                # ★ 检查是否已存在该周该轮该阶段的插画
-                from src.database.models import SceneImage
-
-                existing = (
-                    db.query(SceneImage)
-                    .filter(
-                        SceneImage.game_id == game_id,
-                        SceneImage.week == week,  # ★ 加入 week 条件
-                        SceneImage.round_number == round_number,
-                        SceneImage.stage == stage,  # ★ 区分阶段
-                    )
-                    .first()
+            existing = (
+                db.query(SceneImage)
+                .filter(
+                    SceneImage.game_id == job.game_id,
+                    SceneImage.week == job.week,
+                    SceneImage.round_number == job.round_number,
+                    SceneImage.stage == job.stage,
                 )
+                .first()
+            )
+            images = (
+                db.query(ImageModel)
+                .filter(ImageModel.game_id == job.game_id, ImageModel.is_active.is_(True))
+                .all()
+            )
+            existing_images = [
+                {
+                    "image_id": image.image_id,
+                    "entity_name": image.entity_name,
+                    "image_type": image.image_type,
+                    "entity_key": image.entity_key,
+                }
+                for image in images
+            ]
 
-                if existing:
-                    week_display = f"第{week + 1}周" if week is not None else "未知周"
-                    logger.info(
-                        f"[RoundIllustration] {week_display} round {round_number} stage={stage} 插画已存在"
-                    )
-                    if not settings.AUTO_GENERATE_ENTITY_IMAGES_FOR_SCENES:
-                        logger.info(
-                            "[RoundIllustration] Entity image backfill for scenes is disabled"
+            if existing:
+                if settings.AUTO_GENERATE_ENTITY_IMAGES_FOR_SCENES:
+                    snapshot_loop = SimpleNamespace(
+                        player_state=SimpleNamespace(
+                            character_settings=job.character_settings,
+                            world_model_data=job.world_model_data,
+                            established_facts=job.established_facts,
                         )
-                        return
-                    # ★ 即使插画已存在，仍然检查并生成缺失的人物图片
-                    # 需要先获取已有图片列表
-                    images = (
-                        db.query(ImageModel)
-                        .filter(
-                            ImageModel.game_id == game_id,
-                            ImageModel.is_active.is_(True),
-                        )
-                        .all()
                     )
-                    existing_images = [
-                        {
-                            "image_id": img.image_id,
-                            "entity_name": img.entity_name,
-                            "image_type": img.image_type,
-                            "entity_key": img.entity_key,
-                        }
-                        for img in images
-                    ]
                     _ensure_entity_images_exist(
-                        game_loop, game_id, event, existing_images, week, round_number
+                        snapshot_loop,
+                        job.game_id,
+                        SimpleNamespace(event_description=job.story_text),
+                        existing_images,
+                        job.week,
+                        job.round_number,
                     )
-                    return
+                return
 
-                # 获取故事文本
-                story_text = event.event_description if event else ""
-                if not story_text:
-                    week_display = f"第{week + 1}周" if week is not None else "未知周"
-                    logger.warning(
-                        f"[RoundIllustration] {week_display} round {round_number} 无故事文本"
-                    )
-                    return
-
-                # 获取角色设定
-                character_settings = player_state.character_settings or {}
-                player_name = player_state.player_name or "主角"
-
-                # 获取世界模型数据与已建立事实（用于更精确的实体/物品识别）
-                world_model_data = player_state.world_model_data or {}
-                established_facts = getattr(player_state, "established_facts", []) or []
-
-                # 获取已有图片
-                images = (
-                    db.query(ImageModel)
-                    .filter(ImageModel.game_id == game_id, ImageModel.is_active.is_(True))
-                    .all()
-                )
-
-                existing_images = [
-                    {
-                        "image_id": img.image_id,
-                        "entity_name": img.entity_name,
-                        "image_type": img.image_type,
-                        "entity_key": img.entity_key,
-                    }
-                    for img in images
-                ]
-
-                logger.info(
-                    f"[RoundIllustration] Found {len(existing_images)} existing images for game {game_id}"
-                )
-
-                # 创建服务实例
-                image_client = ImageClient()
-                image_storage = ImageStorageService()
-                illustration_service = RoundIllustrationService(
-                    image_client=image_client,
-                    image_storage=image_storage,
-                    db_session=db,
-                )
-
-                # 异步生成插画
-                illustration_service.generate_round_illustration_async(
-                    game_id=game_id,
-                    round_number=round_number,
-                    story_text=story_text,
-                    character_settings=character_settings,
-                    player_name=player_name,
-                    existing_images=existing_images,
-                    stage=stage,  # ★ 传递 stage 参数
-                    week=week,  # ★ 传递 week 参数
-                    world_model_data=world_model_data,
-                    established_facts=established_facts,
-                )
-
-                week_display = f"第{week + 1}周" if week is not None else "未知周"
-                logger.info(
-                    f"[RoundIllustration] 触发异步生成: game={game_id}, {week_display}, round {round_number}, stage={stage}"
-                )
-
-            finally:
-                db.close()
-
-        except Exception as e:
-            logger.exception(f"[RoundIllustration] Unexpected error in generate_illustration: {e}")
-
-    # 在线程池中执行
-    _get_background_thread_pool().submit(generate_illustration)
+            illustration_service = RoundIllustrationService(
+                image_client=ImageClient(),
+                image_storage=ImageStorageService(),
+                db_session=db,
+            )
+            illustration_service.generate_round_illustration(
+                game_id=job.game_id,
+                round_number=job.round_number,
+                story_text=job.story_text,
+                character_settings=job.character_settings,
+                player_name=job.player_name,
+                existing_images=existing_images,
+                stage=job.stage,
+                week=job.week,
+                world_model_data=job.world_model_data,
+                established_facts=job.established_facts,
+            )
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.exception("[RoundIllustration] Unexpected error: %s", exc)
 
 
 def _ensure_entity_images_exist(
@@ -395,8 +396,10 @@ def _ensure_entity_images_exist(
         except Exception as e:
             logger.exception(f"[EntityImages] Unexpected error in ensure_images: {e}")
 
-    # 在线程池中执行
-    _get_background_thread_pool().submit(ensure_images)
+    submit_background_job(
+        f"entity-backfill:{game_id}:{week}:{round_number}",
+        ensure_images,
+    )
 
 
 def _prefetch_options(game_loop, game_id: int, session, event) -> None:
@@ -413,20 +416,34 @@ def _prefetch_options(game_loop, game_id: int, session, event) -> None:
         event: 事件对象（包含故事描述但没有选项）
     """
 
+    player_state = getattr(game_loop, "player_state", None)
+    prefetch_snapshot = None
+    if player_state is not None:
+        prefetch_snapshot = {
+            "week": int(player_state.week),
+            "round_number": int(player_state.current_round),
+            "story_text": str(getattr(event, "event_description", "")),
+            "player_state": copy.deepcopy(player_state.to_dict()),
+            "character_settings": copy.deepcopy(
+                getattr(player_state, "character_settings", None) or {}
+            ),
+            "ai_generator": game_loop.ai_generator,
+            "language": game_loop.language,
+        }
+
     def prefetch():
         try:
             if not session or session.is_prefetching_options():
                 return
 
-            player_state = game_loop.player_state
-            if not player_state:
+            if prefetch_snapshot is None:
                 return
 
-            current_week = player_state.week
-            current_round = player_state.current_round
+            current_week = prefetch_snapshot["week"]
+            current_round = prefetch_snapshot["round_number"]
+            story_description = prefetch_snapshot["story_text"]
 
             # Check if already cached
-            story_description = event.event_description if event else ""
             cached = session.get_cached_options(current_week, current_round, story_description)
             if cached:
                 logger.info(
@@ -441,14 +458,13 @@ def _prefetch_options(game_loop, game_id: int, session, event) -> None:
             )
 
             # Generate options
-            story_description = event.event_description
-            ai_generator = game_loop.ai_generator
+            ai_generator = prefetch_snapshot["ai_generator"]
 
             options_event = ai_generator.generate_options_only(
                 story_description=story_description,
-                player_state=player_state.to_dict(),
-                character_settings=player_state.character_settings,
-                language=game_loop.language,
+                player_state=prefetch_snapshot["player_state"],
+                character_settings=prefetch_snapshot["character_settings"],
+                language=prefetch_snapshot["language"],
             )
 
             if options_event and options_event.options:
@@ -474,8 +490,7 @@ def _prefetch_options(game_loop, game_id: int, session, event) -> None:
             if session:
                 session.finish_prefetching_options()
 
-    # 在线程池中执行
-    _get_background_thread_pool().submit(prefetch)
+    submit_background_job(f"options-prefetch:{game_id}", prefetch)
 
 
 def make_sse_event(event_type: str, data, event_id: Optional[int] = None) -> str:

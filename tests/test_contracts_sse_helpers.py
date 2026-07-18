@@ -138,3 +138,47 @@ class TestPrefetchOptionsContracts:
 
         assert session.finish_prefetching_options.called
         assert session.start_prefetching_options.called
+
+    def test_prefetch_snapshots_event_identity_before_delayed_execution(self, monkeypatch):
+        """A queued prefetch cannot cache options under a later round's identity."""
+        queued_callbacks = []
+        monkeypatch.setattr(
+            "src.api.routers.gameplay.sse_helpers.submit_background_job",
+            lambda _name, callback: queued_callbacks.append(callback) or True,
+        )
+
+        game_loop = MagicMock()
+        game_loop.player_state = SimpleNamespace(
+            week=1,
+            current_round=2,
+            to_dict=lambda: {"round": "original"},
+            character_settings={"city": "Shanghai"},
+        )
+        game_loop.ai_generator = SimpleNamespace(
+            generate_options_only=MagicMock(
+                return_value=SimpleNamespace(
+                    options=[SimpleNamespace(model_dump=lambda: {"text": "原始选项"})]
+                )
+            )
+        )
+        game_loop.language = "zh"
+        session = MagicMock()
+        session.is_prefetching_options.return_value = False
+        session.get_cached_options.return_value = None
+        event = SimpleNamespace(event_description="原始故事")
+
+        _prefetch_options(game_loop, 99, session, event)
+        game_loop.player_state.week = 2
+        game_loop.player_state.current_round = 0
+        game_loop.player_state.character_settings["city"] = "Beijing"
+        event.event_description = "后来的故事"
+        queued_callbacks.pop()()
+
+        game_loop.ai_generator.generate_options_only.assert_called_once_with(
+            story_description="原始故事",
+            player_state={"round": "original"},
+            character_settings={"city": "Shanghai"},
+            language="zh",
+        )
+        assert session.set_cached_options.call_args.args[:2] == (1, 2)
+        assert session.set_cached_options.call_args.args[3] == "原始故事"

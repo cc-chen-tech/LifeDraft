@@ -91,6 +91,33 @@ class RoundIllustrationService:
             f"[RoundIllustration] 启动异步生成: game={game_id}, {week_display}, round {round_number}, stage={stage}"
         )
 
+    def generate_round_illustration(
+        self,
+        game_id: int,
+        round_number: int,
+        story_text: str,
+        character_settings: Dict[str, Any],
+        player_name: str,
+        existing_images: List[Dict[str, Any]],
+        stage: str = "event",
+        week: Optional[int] = None,
+        world_model_data: Optional[Dict[str, Any]] = None,
+        established_facts: Optional[List[Dict[str, Any]]] = None,
+    ) -> None:
+        """Generate a scene on the caller's already-bounded worker."""
+        self._generate_round_illustration_sync(
+            game_id,
+            round_number,
+            story_text,
+            character_settings,
+            player_name,
+            existing_images,
+            stage,
+            week,
+            world_model_data,
+            established_facts,
+        )
+
     def _generate_round_illustration_sync(
         self,
         game_id: int,

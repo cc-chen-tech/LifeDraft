@@ -70,7 +70,7 @@ async def lifespan(app: FastAPI):
     from src.api.routers.gameplay.sse_helpers import shutdown_sse_thread_pool
     from src.services.image_service import shutdown_image_thread_pool
 
-    shutdown_sse_thread_pool(wait=False)
+    shutdown_sse_thread_pool(wait=False, prevent_new_background_jobs=True)
     shutdown_image_thread_pool(wait=False)
     logger.info("Global thread pools shut down")
 

@@ -442,6 +442,28 @@ class TestGenerateRoundIllustrationAsync:
             mock_thread.assert_called_once()
             mock_thread.return_value.start.assert_called_once()
 
+    def test_sync_generation_stays_on_the_callers_worker(self):
+        """The bounded gameplay media worker must not fan out into image-gen workers."""
+        service = RoundIllustrationService(
+            image_client=MagicMock(),
+            image_storage=MagicMock(),
+            db_session=MagicMock(),
+        )
+        service._generate_round_illustration_sync = MagicMock()
+
+        with patch("src.game.round.illustration_service.get_image_thread_pool") as image_pool:
+            service.generate_round_illustration(
+                game_id=1,
+                round_number=1,
+                story_text="Test story",
+                character_settings={},
+                player_name="Player",
+                existing_images=[],
+            )
+
+        service._generate_round_illustration_sync.assert_called_once()
+        image_pool.assert_not_called()
+
 
 class TestSyncGeneration:
     """Test _generate_round_illustration_sync method."""
