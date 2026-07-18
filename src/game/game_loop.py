@@ -8,6 +8,7 @@ from config.feature_flags import get_feature
 from config.settings import settings
 from src.ai.generator import EventGenerator
 from src.ai.models import EventOption, GameEvent
+from src.ai.story_exceptions import StoryGenerationFailure
 from src.game.character_creation import CharacterCreator
 from src.game.decisions import process_decision
 from src.game.historical_summary_selector import HistoricalSummarySelector
@@ -312,12 +313,7 @@ class GameLoop(RoundSystemMixin):
             )
 
             if not event:
-                logger.error("AI generator returned None - this should not happen!")
-                logger.error(
-                    f"Player state: week={self.player_state.week}, age={self.player_state.age}"
-                )
-                logger.error(f"Character settings present: {bool(character_settings)}")
-                event = self._generate_fallback_event()
+                raise StoryGenerationFailure("AI generator returned no weekly event")
 
             self.current_event = event
 
@@ -333,17 +329,11 @@ class GameLoop(RoundSystemMixin):
             logger.debug(f"Successfully generated event for 第{self.player_state.week + 1}周")
             return event
 
+        except StoryGenerationFailure:
+            raise
         except Exception as e:
             logger.error(f"Failed to generate event: {str(e)}", exc_info=True)
-            logger.error(f"Exception type: {type(e).__name__}")
-            logger.error(f"Player week: {self.player_state.week if self.player_state else 'N/A'}")
-            # Fallback to a simple event
-            event = self._generate_fallback_event()
-            self.current_event = event
-            self.player_state.current_event_data = event.model_dump()
-            self.last_event_week = current_week
-            logger.error(f"Using fallback event due to error: {str(e)}")
-            return event
+            raise StoryGenerationFailure(f"Weekly event generation failed: {e}") from e
 
     def make_choice(self, option_index: int) -> Dict[str, Any]:
         """
