@@ -8,6 +8,9 @@ import type { Phase, ConnectionStatus } from "./usePhaseManager";
 import { handleEventComplete, handleStatusUpdate, type EventHandlers } from "./eventUtils";
 import { parseSSEError } from "./choiceUtils";
 
+const PERSISTED_EVENT_RECOVERY_INITIAL_DELAY_MS = 45_000;
+const PERSISTED_EVENT_RECOVERY_INTERVAL_MS = 15_000;
+
 interface UseEventGeneratorParams {
   gameId: number | null;
   phaseRef: React.MutableRefObject<Phase>;
@@ -63,6 +66,7 @@ export function useEventGenerator({
   isRetryingRef,
 }: UseEventGeneratorParams) {
   const retryStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const persistedEventRecoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const eventCursorStorageKey = gameId === null
     ? null
     : `story101:event-cursor:${gameId}`;
@@ -97,6 +101,56 @@ export function useEventGenerator({
       retryStatusTimerRef.current = null;
     }
   }, []);
+
+  const clearPersistedEventRecovery = useCallback(() => {
+    if (persistedEventRecoveryTimerRef.current !== null) {
+      clearTimeout(persistedEventRecoveryTimerRef.current);
+      persistedEventRecoveryTimerRef.current = null;
+    }
+  }, []);
+
+  const startPersistedEventRecovery = useCallback(() => {
+    const recoverPersistedEvent = async () => {
+      if (!generatingRef.current || pollingRef.current) return;
+
+      try {
+        await useGameStore.getState().syncState();
+        if (!generatingRef.current || pollingRef.current) return;
+
+        const state = useGameStore.getState();
+        const persistedEvent = state.currentEvent;
+
+        if (persistedEvent?.options?.length) {
+          const persistedStory = persistedEvent.story || state.storyText;
+          console.warn("[generateEvent] Recovered persisted event while SSE remained open");
+          clearPersistedEventRecovery();
+          abortRef.current?.abort();
+          setStoryText(persistedStory);
+          setOptions(persistedEvent.options);
+          setCurrentEvent({ story: persistedStory, options: persistedEvent.options });
+          setProcessing(false);
+          setConnectionStatus(null);
+          generatingRef.current = false;
+          setRoundSummary(null);
+          setPhase("options");
+          return;
+        }
+      } catch (err) {
+        console.warn("[generateEvent] Persisted-event recovery check failed:", err);
+      }
+
+      persistedEventRecoveryTimerRef.current = setTimeout(
+        recoverPersistedEvent,
+        PERSISTED_EVENT_RECOVERY_INTERVAL_MS
+      );
+    };
+
+    clearPersistedEventRecovery();
+    persistedEventRecoveryTimerRef.current = setTimeout(
+      recoverPersistedEvent,
+      PERSISTED_EVENT_RECOVERY_INITIAL_DELAY_MS
+    );
+  }, [abortRef, clearPersistedEventRecovery, generatingRef, pollingRef, setConnectionStatus, setCurrentEvent, setOptions, setPhase, setProcessing, setRoundSummary, setStoryText]);
 
   const armRetryStatusTimeout = useCallback(() => {
     clearRetryStatusTimer();
@@ -191,6 +245,7 @@ export function useEventGenerator({
     setConnectionStatus(null);
     setReconnectAttempt(null);
     abortRef.current = new AbortController();
+    startPersistedEventRecovery();
     let streamErrorHandled = false;
 
     try {
@@ -228,6 +283,7 @@ export function useEventGenerator({
           setReconnectAttempt({ current: attempt, max: maxRetries });
         },
         onComplete: (data) => {
+          clearPersistedEventRecovery();
           clearRetryStatusTimer();
           handleEventComplete(data, eventHandlers);
           lastEventIdRef.current = null;
@@ -240,6 +296,7 @@ export function useEventGenerator({
         },
         onError: async (err) => {
           streamErrorHandled = true;
+          clearPersistedEventRecovery();
           clearRetryStatusTimer();
           const errorMsg = parseSSEError(err);
           console.log(`[generateEvent] SSE error: msg="${errorMsg}"`);
@@ -370,7 +427,7 @@ export function useEventGenerator({
         throw err; // Re-throw other errors
       }
     }
-  }, [gameId, eventCursorStorageKey, eventStoryStorageKey, setStoryText, appendStoryText, setProcessing, setCurrentEvent, setGameOver, setPhase, phaseRef, setConnectionStatus, setReconnectAttempt, setOptions, setRoundSummary, armRetryStatusTimeout, clearRetryStatusTimer]);
+  }, [gameId, eventCursorStorageKey, eventStoryStorageKey, setStoryText, appendStoryText, setProcessing, setCurrentEvent, setGameOver, setPhase, phaseRef, setConnectionStatus, setReconnectAttempt, setOptions, setRoundSummary, armRetryStatusTimeout, clearRetryStatusTimer, clearPersistedEventRecovery, startPersistedEventRecovery]);
 
   const recoverEventGeneration = useCallback(async () => {
     abortRef.current?.abort();
@@ -379,6 +436,7 @@ export function useEventGenerator({
     pollingRef.current = false;
     prefetchingRef.current = false;
     isRetryingRef.current = false;
+    clearPersistedEventRecovery();
     clearRetryStatusTimer();
     prefetchResultRef.current = null;
     setIsPrefetching(false);
@@ -403,6 +461,7 @@ export function useEventGenerator({
     phaseRef,
     setPhase,
     clearRetryStatusTimer,
+    clearPersistedEventRecovery,
     generateEvent,
   ]);
 
@@ -476,9 +535,10 @@ export function useEventGenerator({
       pollingRef.current = false;
       prefetchingRef.current = false;
       isRetryingRef.current = false;
+      clearPersistedEventRecovery();
       clearRetryStatusTimer();
     };
-  }, [abortRef, prefetchAbortRef, generatingRef, pollingRef, prefetchingRef, isRetryingRef, clearRetryStatusTimer]);
+  }, [abortRef, prefetchAbortRef, generatingRef, pollingRef, prefetchingRef, isRetryingRef, clearPersistedEventRecovery, clearRetryStatusTimer]);
 
   return {
     generateEvent,

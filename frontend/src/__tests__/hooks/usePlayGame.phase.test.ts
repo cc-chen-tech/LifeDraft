@@ -8,6 +8,7 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { usePlayGame } from '@/hooks/usePlayGame';
 import { useGameStore } from '@/stores/useGameStore';
+import { useSessionStore } from '@/stores/useSessionStore';
 import { createSSEMockResponse } from '@/__tests__/helpers/sse-mock';
 import { jsonResponse } from '@/__tests__/helpers/fetch';
 
@@ -228,6 +229,108 @@ describe('usePlayGame - Phase State Machine', () => {
       });
 
       expect(result.current.options).toHaveLength(2);
+    });
+
+    it('recovers a persisted next event when its SSE connection remains open', async () => {
+      jest.useFakeTimers();
+      let unmount: (() => void) | undefined;
+      try {
+        const savedResult = '上一轮结算内容';
+        const recoveredStory = '服务端已经持久化的下一轮事件。';
+        const recoveredOptions = [{ text: '继续调查' }, { text: '联系同事' }];
+
+        setupGameStore({
+          gameId: 1,
+          storyText: savedResult,
+          playerState: {
+            resume_view: {
+              phase: 'result',
+              story_text: savedResult,
+              round_summary: '上一轮总结',
+            },
+          },
+        });
+        useSessionStore.setState({
+          gameId: 1,
+          playerState: {
+            resume_view: {
+              phase: 'result',
+              story_text: savedResult,
+              round_summary: '上一轮总结',
+            },
+          },
+        } as never);
+        const syncState = jest.spyOn(useGameStore.getState(), 'syncState');
+        syncState
+          .mockResolvedValueOnce(undefined)
+          .mockImplementation(async () => {
+            useGameStore.setState({
+              storyText: recoveredStory,
+              currentEvent: { story: recoveredStory, options: recoveredOptions },
+            });
+          });
+        jest.spyOn(useGameStore.getState(), 'syncPlayerState').mockResolvedValue(undefined);
+
+        (global.fetch as jest.Mock).mockImplementation((url: string) => {
+          if (url.includes('/event')) {
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              body: {
+                getReader: () => ({
+                  // Simulate a proxy-held SSE connection: no complete/error event arrives.
+                  read: () => new Promise(() => {}),
+                }),
+              },
+              headers: new Headers({ 'content-type': 'text/event-stream' }),
+            } as Response);
+          }
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ acknowledged: true }),
+            text: () => Promise.resolve('{}'),
+            headers: new Headers({ 'content-type': 'application/json' }),
+          } as Response);
+        });
+
+        const rendered = renderHook(() => usePlayGame());
+        unmount = rendered.unmount;
+        const { result } = rendered;
+
+        await act(async () => {
+          await Promise.resolve();
+        });
+        expect(result.current.phase).toBe('result');
+
+        act(() => {
+          result.current.setPhase('loading');
+        });
+
+        await act(async () => {
+          await Promise.resolve();
+        });
+
+        act(() => {
+          void result.current.generateEvent();
+        });
+
+        await act(async () => {
+          await Promise.resolve();
+        });
+
+        await act(async () => {
+          await jest.advanceTimersByTimeAsync(45_000);
+        });
+
+        expect(result.current.phase).toBe('options');
+        expect(result.current.storyText).toBe(recoveredStory);
+        expect(result.current.options).toEqual(recoveredOptions);
+      } finally {
+        unmount?.();
+        useSessionStore.getState().resetSession();
+        jest.useRealTimers();
+      }
     });
 
     it('should transition options -> choosing when handleChoice is called', async () => {
