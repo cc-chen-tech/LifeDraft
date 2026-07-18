@@ -396,6 +396,23 @@ def test_quick_validator_ignores_protagonist_verb_phrases_outside_relationship_c
     assert result.passed
 
 
+def test_quick_validator_ignores_protagonist_action_phrases_seen_in_live_retry() -> None:
+    """Action prose must not make the protagonist look like several invented people."""
+    from src.ai.quick_validator import QuickValidator
+
+    validator = QuickValidator()
+    candidates = validator._extract_likely_chinese_person_names(
+        text=(
+            "陈越也没有立刻回答。陈越收起手机，陈越坦然看向林悦。"
+            "她随后陈越放下咖啡，陈越问赵思琪是否愿意一起梳理路线。"
+            "陈越伸出手，等待两人的回应。"
+        ),
+        allowed_names=["林悦", "赵思琪"],
+    )
+
+    assert candidates == []
+
+
 def test_quick_validator_rejects_single_new_role_substitute_for_preset_network() -> None:
     """A single invented strong-role character can still replace the preset network."""
     from config.prompts._helpers import _collect_available_people
