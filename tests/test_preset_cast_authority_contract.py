@@ -339,6 +339,25 @@ def test_quick_validator_ignores_surname_shaped_prose_suffixes() -> None:
     assert result.passed
 
 
+def test_quick_validator_does_not_treat_weekend_phrase_as_invented_cast() -> None:
+    """Calendar language must not trigger the strict relationship-network guard."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然把需求复盘表递给林清，提醒她先确认用户反馈。"
+            "陈晓雨陪她梳理下午的访谈记录，并约好下次一起核对方案。"
+            "周末的复盘仍由她们安排，林清决定先把今天的结论整理出来。"
+        ),
+        character_settings=settings,
+        available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+
+
 def test_quick_validator_rejects_single_new_role_substitute_for_preset_network() -> None:
     """A single invented strong-role character can still replace the preset network."""
     from config.prompts._helpers import _collect_available_people

@@ -659,7 +659,10 @@ class QuickValidator:
             candidate = str(match.group(1)).strip("，。！？、；：“”‘’（）()《》")
             if not candidate or candidate in allowed_names:
                 continue
-            if candidate in self.NON_PERSON_NAME_CANDIDATES:
+            if any(
+                candidate.startswith(non_person)
+                for non_person in self.NON_PERSON_NAME_CANDIDATES
+            ):
                 continue
             if any(candidate in allowed or allowed in candidate for allowed in allowed_names):
                 continue
