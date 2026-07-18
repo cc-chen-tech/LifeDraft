@@ -114,6 +114,9 @@ class QuickValidator:
         "周会",
         "尤其是",
     }
+    CHINESE_NAME_GRAMMATICAL_PARTICLES = frozenset(
+        "的地得了着过是在和与及或把被将让给向从到"
+    )
 
     def __init__(self):
         self._forbidden_pattern_zh = self._build_forbidden_pattern("zh")
@@ -664,6 +667,8 @@ class QuickValidator:
                 candidate.startswith(non_person)
                 for non_person in self.NON_PERSON_NAME_CANDIDATES
             ):
+                continue
+            if any(char in self.CHINESE_NAME_GRAMMATICAL_PARTICLES for char in candidate):
                 continue
             if any(candidate in allowed or allowed in candidate for allowed in allowed_names):
                 continue
