@@ -117,6 +117,7 @@ jobs:
             tests/test_round_event_fallback_contracts.py \
             tests/test_scene_image_sse_contract.py \
             tests/test_scene_character_manifest_contracts.py \
+            tests/test_scene_image_persistence_contracts.py \
             tests/test_image_generator_pure_contracts.py \
             tests/test_appearance_anchor.py \
             tests/test_prompt_enhancer.py \
