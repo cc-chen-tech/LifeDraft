@@ -149,7 +149,7 @@ def test_story_continuation_accepts_protagonist_suffixes_and_timeline_prose() ->
             return (
                 "陆昊然把复盘文档递给林清，陈晓雨陪她逐条整理用户反馈。"
                 "林清把需要补充的资料列在便签上，林清的担心也渐渐平复。"
-                "时间上已经临近下班，她决定明早再和林一凡核对数据。"
+                "时间上已经临近下班，尤其是预算仍待核对，她决定明早再和林一凡核对数据。"
             )
 
     generator = ProtagonistFocusedGenerator()
@@ -166,6 +166,7 @@ def test_story_continuation_accepts_protagonist_suffixes_and_timeline_prose() ->
     assert len(generator.calls) == 1
     assert "林清把" in continuation
     assert "时间上" in continuation
+    assert "尤其是预算" in continuation
 
 
 def test_regenerate_story_retries_when_story_drifts_from_character_settings() -> None:

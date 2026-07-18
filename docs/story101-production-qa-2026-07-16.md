@@ -6,8 +6,8 @@
   name in normal Chinese grammar (for example, `陈越把` and `陈越的`) and timeline
   prose (`时间上`) exhausted the cast-drift retry budget and returned an SSE error.
 - The quick validator now treats the configured player name as an allowed person and
-  ignores the timeline prefix. The regression contract verifies that the continuation
-  completes on the first generation while the existing unfamiliar-cast checks remain.
+  ignores timeline and narrative prefixes. The regression contract verifies that the
+  continuation completes on the first generation while unfamiliar-cast checks remain.
 
 ## P1: Choice continuation blocked by first-person validation
 
