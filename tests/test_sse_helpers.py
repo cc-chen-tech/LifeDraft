@@ -3,6 +3,8 @@
 使用 Mock 隔离数据库和外部服务依赖
 """
 
+from queue import Queue
+from threading import Event, current_thread
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -101,6 +103,114 @@ class TestTriggerRoundIllustration:
         )
 
         assert self.submitted_background_jobs == []
+
+
+class TestRoundIllustrationBackgroundContract:
+    """Scene work must stay off the gameplay SSE executor."""
+
+    def test_four_slow_scene_jobs_do_not_delay_story_worker(self, monkeypatch):
+        from src.api.routers.gameplay import sse_helpers
+
+        started = Queue()
+        release = Event()
+
+        def slow_scene_job(_job):
+            started.put(current_thread().name)
+            release.wait(timeout=2)
+
+        monkeypatch.setattr(sse_helpers, "_generate_round_illustration", slow_scene_job)
+        try:
+            for round_number in range(4):
+                game_loop = MagicMock()
+                game_loop.player_state = MagicMock(
+                    week=0,
+                    current_round=round_number,
+                    character_settings={},
+                    player_name="测试主角",
+                    world_model_data={},
+                    established_facts=[],
+                )
+                event = MagicMock(event_description=f"第 {round_number} 个场景")
+                sse_helpers._trigger_round_illustration_generation(
+                    game_loop, 66, event, stage="event"
+                )
+
+            worker_names = [started.get(timeout=1) for _ in range(4)]
+            story_started = Event()
+            sse_helpers.get_sse_thread_pool().submit(story_started.set)
+
+            assert story_started.wait(timeout=0.2)
+            assert all(name.startswith("background-worker") for name in worker_names)
+        finally:
+            release.set()
+
+    def test_round_job_uses_sync_scene_service_and_never_async_fanout(self, monkeypatch):
+        from src.ai import image_client
+        from src.api.routers.gameplay import sse_helpers
+        from src.database import models
+        from src.game.round import illustration_service
+        from src.services import image_storage
+
+        fake_db = MagicMock()
+        game_query = MagicMock()
+        game_query.filter.return_value.first.return_value = object()
+        scene_query = MagicMock()
+        scene_query.filter.return_value.first.return_value = None
+        image_query = MagicMock()
+        image_query.filter.return_value.all.return_value = []
+        fake_db.query.side_effect = [game_query, scene_query, image_query]
+
+        class FakeIllustrationService:
+            instances = []
+
+            def __init__(self, **_kwargs):
+                self.sync_calls = []
+                self.async_calls = []
+                self.instances.append(self)
+
+            def generate_round_illustration(self, **kwargs):
+                self.sync_calls.append(kwargs)
+
+            def generate_round_illustration_async(self, **kwargs):
+                self.async_calls.append(kwargs)
+                raise AssertionError("scene work must not fan out to image-gen")
+
+        monkeypatch.setattr(models, "SessionLocal", lambda: fake_db)
+        monkeypatch.setattr(image_client, "ImageClient", MagicMock)
+        monkeypatch.setattr(image_storage, "ImageStorageService", MagicMock)
+        monkeypatch.setattr(illustration_service, "RoundIllustrationService", FakeIllustrationService)
+
+        job = sse_helpers.RoundIllustrationJob(
+            game_id=71,
+            week=2,
+            round_number=1,
+            stage="event",
+            story_text="陈越在傍晚核对预算表。",
+            character_settings={"city": "Shanghai"},
+            player_name="陈越",
+            world_model_data={"location": "studio"},
+            established_facts=[],
+        )
+
+        sse_helpers._generate_round_illustration(job)
+
+        instance = FakeIllustrationService.instances[0]
+        assert instance.async_calls == []
+        assert instance.sync_calls == [
+            {
+                "game_id": 71,
+                "round_number": 1,
+                "story_text": "陈越在傍晚核对预算表。",
+                "character_settings": {"city": "Shanghai"},
+                "player_name": "陈越",
+                "existing_images": [],
+                "stage": "event",
+                "week": 2,
+                "world_model_data": {"location": "studio"},
+                "established_facts": [],
+            }
+        ]
+        fake_db.close.assert_called_once()
 
 
 class TestMakeSSEEvent:
