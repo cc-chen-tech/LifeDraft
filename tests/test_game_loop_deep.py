@@ -146,14 +146,18 @@ class TestGameLoopEventGeneration:
         assert result is not None
         assert loop.current_event == test_event
 
-    def test_generate_weekly_event_fallback_on_error(self):
-        """Test fallback event on AI error."""
+    def test_generate_weekly_event_surfaces_failure_without_persisting_fallback(self):
+        """A provider failure must leave weekly event state untouched."""
         loop = _make_game_loop()
         loop.start_new_game()
         loop.ai_generator.generate_event.side_effect = Exception("API error")
-        event = loop.generate_weekly_event()
-        assert event is not None
-        assert len(event.options) == 2
+
+        with pytest.raises(StoryGenerationFailure, match="Weekly event generation failed"):
+            loop.generate_weekly_event()
+
+        assert loop.current_event is None
+        assert loop.player_state.current_event_data is None
+        assert loop.last_event_week == -1
 
     def test_generate_weekly_event_callback(self):
         """Test event callback is called."""
