@@ -56,6 +56,7 @@ jobs:
             tests/test_story_music_recommendation_contract.py \
             tests/test_integration_real_db.py \
             tests/test_database.py \
+            tests/test_save_point_repository_db_contracts.py \
             tests/test_gate_real_db_no_mock.py \
             tests/test_story_music_recommendation_db.py \
             tests/test_music_degradation_no_mock.py \
