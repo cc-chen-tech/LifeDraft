@@ -31,3 +31,12 @@ class TestSSEThreadPoolLifecycle:
         sse_helpers.shutdown_sse_thread_pool()
         pool = sse_helpers.get_sse_thread_pool()
         assert isinstance(pool, ThreadPoolExecutor)
+
+    def test_background_media_pool_is_separate_from_story_pool(self):
+        """Slow media jobs must not occupy the story-generation worker pool."""
+        story_pool = sse_helpers.get_sse_thread_pool()
+        background_pool = sse_helpers.get_background_thread_pool()
+
+        assert isinstance(background_pool, ThreadPoolExecutor)
+        assert background_pool is not story_pool
+        assert background_pool._max_workers < story_pool._max_workers

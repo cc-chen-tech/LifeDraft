@@ -19,7 +19,7 @@ class TestPrefetchOptionsContracts:
     def test_prefetch_skips_when_cached_options_exist(self, monkeypatch):
         pool = _SyncThreadPool()
         monkeypatch.setattr(
-            "src.api.routers.gameplay.sse_helpers._get_sse_thread_pool", lambda: pool
+            "src.api.routers.gameplay.sse_helpers._get_background_thread_pool", lambda: pool
         )
 
         game_loop = MagicMock()
@@ -40,7 +40,7 @@ class TestPrefetchOptionsContracts:
     def test_prefetch_generates_and_caches_options(self, monkeypatch):
         pool = _SyncThreadPool()
         monkeypatch.setattr(
-            "src.api.routers.gameplay.sse_helpers._get_sse_thread_pool", lambda: pool
+            "src.api.routers.gameplay.sse_helpers._get_background_thread_pool", lambda: pool
         )
 
         game_loop = MagicMock()
@@ -78,7 +78,7 @@ class TestPrefetchOptionsContracts:
     def test_prefetch_handles_empty_generation_as_warning_path(self, monkeypatch):
         pool = _SyncThreadPool()
         monkeypatch.setattr(
-            "src.api.routers.gameplay.sse_helpers._get_sse_thread_pool", lambda: pool
+            "src.api.routers.gameplay.sse_helpers._get_background_thread_pool", lambda: pool
         )
 
         game_loop = MagicMock()
@@ -102,7 +102,7 @@ class TestPrefetchOptionsContracts:
     def test_prefetch_finishes_even_when_player_state_missing(self, monkeypatch):
         pool = _SyncThreadPool()
         monkeypatch.setattr(
-            "src.api.routers.gameplay.sse_helpers._get_sse_thread_pool", lambda: pool
+            "src.api.routers.gameplay.sse_helpers._get_background_thread_pool", lambda: pool
         )
 
         game_loop = MagicMock()
@@ -117,7 +117,7 @@ class TestPrefetchOptionsContracts:
     def test_prefetch_finishes_when_generation_raises(self, monkeypatch):
         pool = _SyncThreadPool()
         monkeypatch.setattr(
-            "src.api.routers.gameplay.sse_helpers._get_sse_thread_pool", lambda: pool
+            "src.api.routers.gameplay.sse_helpers._get_background_thread_pool", lambda: pool
         )
 
         game_loop = MagicMock()

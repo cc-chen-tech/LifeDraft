@@ -31,7 +31,7 @@ class TestTriggerRoundIllustration:
                 self.submitted_background_jobs.append((args, kwargs))
                 return MagicMock()
 
-        monkeypatch.setattr(sse_helpers, "_get_sse_thread_pool", lambda: FakePool())
+        monkeypatch.setattr(sse_helpers, "_get_background_thread_pool", lambda: FakePool())
 
     def test_trigger_with_valid_event(self):
         """测试有效事件触发插画生成"""
