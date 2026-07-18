@@ -63,6 +63,7 @@ jobs:
             tests/test_world_fact_safety_contract_no_mock.py \
             tests/test_collection_shape_contracts.py \
             tests/test_collection_state_db_contracts.py \
+            tests/test_collection_entity_lifecycle_db_contracts.py \
             tests/test_collection_service_state_contracts.py \
             tests/test_round_illustration_contracts.py \
             tests/test_sse_helper_state_contracts.py \
