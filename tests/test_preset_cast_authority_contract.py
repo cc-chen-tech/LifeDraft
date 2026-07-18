@@ -358,6 +358,25 @@ def test_quick_validator_does_not_treat_weekend_phrase_as_invented_cast() -> Non
     assert result.passed
 
 
+def test_quick_validator_ignores_surname_shaped_sentence_openers() -> None:
+    """Normal prose must not turn sentence-opening adverbs into invented cast."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在会议室复盘项目。"
+            "周围的灯光暗下来，于是陈越把预算表递给两人。"
+            "安静地等了一会儿后，她们确认了下一步的测算安排。"
+        ),
+        character_settings=settings,
+        available_people=["陈越", "陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+
+
 def test_quick_validator_rejects_single_new_role_substitute_for_preset_network() -> None:
     """A single invented strong-role character can still replace the preset network."""
     from config.prompts._helpers import _collect_available_people
