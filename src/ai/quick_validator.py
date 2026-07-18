@@ -116,10 +116,10 @@ class QuickValidator:
         "尤其是",
     }
     CHINESE_NAME_GRAMMATICAL_PARTICLES = frozenset(
-        "的地得了着过是在和与及或把被将让给向从到可"
+        "的地得了着过是在和与及或把被将让给向从到可也"
     )
     CHINESE_NAME_NARRATIVE_ACTION_SUFFIXES = frozenset(
-        "走脱抬站接翻沉推穿拿刷靠打说合转"
+        "走脱抬站接翻沉推穿拿刷靠打说合转收坦放问伸"
     )
 
     def __init__(self):
