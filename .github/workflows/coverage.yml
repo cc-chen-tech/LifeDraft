@@ -127,6 +127,7 @@ jobs:
             tests/test_style_manager.py \
             tests/test_image_service_data_helper_contracts.py \
             tests/test_image_service_persistence_contracts.py \
+            tests/test_image_facade_db_contracts.py \
             tests/test_image_storage_local_path_contracts.py \
             tests/test_image_storage_save_lifecycle_contracts.py \
             tests/test_image_storage_transport_contracts.py \
