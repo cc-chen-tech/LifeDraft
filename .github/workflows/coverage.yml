@@ -151,6 +151,7 @@ jobs:
             tests/test_minimax_music_protocol_parser_contracts.py \
             tests/test_minimax_tts_protocol_parser_contracts.py \
             tests/test_story_tts_provider_contracts.py \
+            tests/test_story_voice_reading_db_contracts.py \
             tests/test_live_gameplay_recovery_collection_contract.py \
             tests/test_collection_recognition_current_event.py \
             tests/test_gameplay_event_protocol_contracts.py \
