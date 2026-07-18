@@ -416,34 +416,20 @@ def _prefetch_options(game_loop, game_id: int, session, event) -> None:
         event: 事件对象（包含故事描述但没有选项）
     """
 
-    player_state = getattr(game_loop, "player_state", None)
-    prefetch_snapshot = None
-    if player_state is not None:
-        prefetch_snapshot = {
-            "week": int(player_state.week),
-            "round_number": int(player_state.current_round),
-            "story_text": str(getattr(event, "event_description", "")),
-            "player_state": copy.deepcopy(player_state.to_dict()),
-            "character_settings": copy.deepcopy(
-                getattr(player_state, "character_settings", None) or {}
-            ),
-            "ai_generator": game_loop.ai_generator,
-            "language": game_loop.language,
-        }
-
     def prefetch():
         try:
             if not session or session.is_prefetching_options():
                 return
 
-            if prefetch_snapshot is None:
+            player_state = game_loop.player_state
+            if not player_state:
                 return
 
-            current_week = prefetch_snapshot["week"]
-            current_round = prefetch_snapshot["round_number"]
-            story_description = prefetch_snapshot["story_text"]
+            current_week = player_state.week
+            current_round = player_state.current_round
 
             # Check if already cached
+            story_description = event.event_description if event else ""
             cached = session.get_cached_options(current_week, current_round, story_description)
             if cached:
                 logger.info(
@@ -458,13 +444,14 @@ def _prefetch_options(game_loop, game_id: int, session, event) -> None:
             )
 
             # Generate options
-            ai_generator = prefetch_snapshot["ai_generator"]
+            story_description = event.event_description
+            ai_generator = game_loop.ai_generator
 
             options_event = ai_generator.generate_options_only(
                 story_description=story_description,
-                player_state=prefetch_snapshot["player_state"],
-                character_settings=prefetch_snapshot["character_settings"],
-                language=prefetch_snapshot["language"],
+                player_state=player_state.to_dict(),
+                character_settings=player_state.character_settings,
+                language=game_loop.language,
             )
 
             if options_event and options_event.options:
