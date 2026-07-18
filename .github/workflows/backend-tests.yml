@@ -157,6 +157,7 @@ jobs:
             tests/test_local_minimax_provider_contracts.py \
             tests/test_minimax_music_protocol_parser_contracts.py \
             tests/test_minimax_tts_protocol_parser_contracts.py \
+            tests/test_minimax_tts_fallback_contracts.py \
             tests/test_story_tts_provider_contracts.py \
             tests/test_story_voice_reading_db_contracts.py \
             tests/test_music_playlist_state_contracts.py \
