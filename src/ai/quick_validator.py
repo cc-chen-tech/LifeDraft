@@ -112,6 +112,7 @@ class QuickValidator:
         "周二",
         "周报",
         "周会",
+        "时间",
     }
 
     def __init__(self):

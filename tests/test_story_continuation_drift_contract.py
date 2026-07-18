@@ -137,6 +137,37 @@ def test_story_continuation_retries_when_choice_result_drifts_from_character_set
     assert "马老板" not in continuation
 
 
+def test_story_continuation_accepts_protagonist_suffixes_and_timeline_prose() -> None:
+    """Player-name grammar and timeline prose must not become invented cast members."""
+
+    class ProtagonistFocusedGenerator:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        def generate_completion(self, **kwargs: Any) -> str:
+            self.calls.append(kwargs)
+            return (
+                "陆昊然把复盘文档递给林清，陈晓雨陪她逐条整理用户反馈。"
+                "林清把需要补充的资料列在便签上，林清的担心也渐渐平复。"
+                "时间上已经临近下班，她决定明早再和林一凡核对数据。"
+            )
+
+    generator = ProtagonistFocusedGenerator()
+    service = StoryService(generator, language="zh")  # type: ignore[arg-type]
+
+    continuation = service.generate_story_continuation(
+        event_description="林清刚结束需求评审。",
+        chosen_option="和陆昊然复盘需求优先级",
+        effects={"knowledge": 5},
+        character_settings=_modern_product_manager_settings(),
+        player_state={"player_name": "林清", "wealth": 50000},
+    )
+
+    assert len(generator.calls) == 1
+    assert "林清把" in continuation
+    assert "时间上" in continuation
+
+
 def test_regenerate_story_retries_when_story_drifts_from_character_settings() -> None:
     class DriftThenValidClient:
         def __init__(self) -> None:
