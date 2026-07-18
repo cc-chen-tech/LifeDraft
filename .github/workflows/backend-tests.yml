@@ -76,6 +76,7 @@ jobs:
             tests/test_sse_helper_state_contracts.py \
             tests/test_sse_protocol_pure_contracts.py \
             tests/test_sse_terminal_stream_contracts.py \
+            tests/test_gameplay_summary_state_contracts.py \
             tests/test_image_prompt_builder_contracts.py \
             tests/test_image_prompt_fallback_contracts.py \
             tests/test_story_analyzer_parsing_contracts.py \
