@@ -124,6 +124,8 @@ export function useEventGenerator({
           const persistedStory = persistedEvent.story || state.storyText;
           console.warn("[generateEvent] Recovered persisted event while SSE remained open");
           clearPersistedEventRecovery();
+          clearRetryStatusTimer();
+          isRetryingRef.current = false;
           abortRef.current?.abort();
           setStoryText(persistedStory);
           setOptions(persistedEvent.options);

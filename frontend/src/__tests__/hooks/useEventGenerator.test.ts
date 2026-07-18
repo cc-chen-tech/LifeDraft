@@ -81,6 +81,7 @@ function setupDefaultState() {
 }
 
 describe('useEventGenerator', () => {
+  const defaultSyncState = useGameStore.getState().syncState;
   const mockPhaseRef: React.MutableRefObject<Phase> = { current: 'loading' as Phase };
   const mockAbortRef: React.MutableRefObject<AbortController | null> = { current: null };
   const mockGeneratingRef: React.MutableRefObject<boolean> = { current: false };
@@ -130,6 +131,7 @@ describe('useEventGenerator', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    useGameStore.setState({ syncState: defaultSyncState } as never);
     mockPhaseRef.current = 'loading' as Phase;
     mockGeneratingRef.current = false;
     mockPollingRef.current = false;
@@ -409,6 +411,48 @@ describe('useEventGenerator', () => {
       expect(mockGeneratingRef.current).toBe(false);
       expect(mockSetters.setConnectionStatus).toHaveBeenCalledWith('error');
       expect(mockSetters.setPhase).toHaveBeenCalledWith('error');
+
+      unmount();
+      jest.useRealTimers();
+    });
+
+    it('clears retry guard when persisted event recovery succeeds after a retry status', async () => {
+      jest.useFakeTimers();
+      const recoveredStory = '服务端已持久化的事件正文。';
+      const recoveredOptions = [{ text: '继续推进' }];
+      const syncState = jest.fn().mockImplementation(async () => {
+        useGameStore.setState({
+          storyText: recoveredStory,
+          currentEvent: {
+            story: recoveredStory,
+            options: recoveredOptions,
+          },
+        } as never);
+      });
+      useGameStore.setState({ syncState } as never);
+      (global.fetch as jest.Mock).mockResolvedValue(
+        createHangingSSEMockResponse([
+          'event: status\ndata: {"phase":"retrying"}\n\n',
+        ])
+      );
+
+      const { result, unmount } = renderHook(() => useEventGenerator(defaultParams));
+
+      await act(async () => {
+        void result.current.generateEvent();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(mockIsRetryingRef.current).toBe(true);
+
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(45_000);
+      });
+
+      expect(syncState).toHaveBeenCalledTimes(1);
+      expect(mockSetters.setOptions).toHaveBeenCalledWith(recoveredOptions);
+      expect(mockSetters.setPhase).toHaveBeenCalledWith('options');
+      expect(mockIsRetryingRef.current).toBe(false);
 
       unmount();
       jest.useRealTimers();
