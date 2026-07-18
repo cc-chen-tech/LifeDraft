@@ -79,6 +79,7 @@ jobs:
             tests/test_story_analyzer_parsing_contracts.py \
             tests/test_summary_generator_recovery_contracts.py \
             tests/test_event_fallback_context_contracts.py \
+            tests/test_scheduled_event_prompt_contracts.py \
             tests/test_story_generator_fallback_shape_contracts.py \
             tests/test_gameplay_event_protocol_contracts.py \
             tests/test_extraction_parser_contracts.py \
