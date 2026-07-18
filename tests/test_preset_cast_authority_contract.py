@@ -341,6 +341,7 @@ def test_quick_validator_ignores_surname_shaped_prose_suffixes() -> None:
 
 def test_quick_validator_does_not_treat_weekend_phrase_as_invented_cast() -> None:
     """Calendar language must not trigger the strict relationship-network guard."""
+
     from src.ai.quick_validator import quick_validate_story
 
     settings = _modern_product_manager_settings()
@@ -352,6 +353,25 @@ def test_quick_validator_does_not_treat_weekend_phrase_as_invented_cast() -> Non
         ),
         character_settings=settings,
         available_people=["陆昊然", "陈晓雨", "林一凡"],
+        language="zh",
+    )
+
+    assert result.passed
+
+
+def test_quick_validator_ignores_narrative_particles_as_invented_cast() -> None:
+    """Chinese prose around the protagonist must not trip cast-drift rejection."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = _modern_product_manager_settings()
+    result = quick_validate_story(
+        story_text=(
+            "陆昊然和陈晓雨在会议室复盘项目。"
+            "陈越的指尖在方案书上轻叩，尤其是预算部分。"
+            "陈越说要先确认品牌底线，陈越合上电脑后转过身离开。"
+        ),
+        character_settings=settings,
+        available_people=["陈越", "陆昊然", "陈晓雨", "林一凡"],
         language="zh",
     )
 

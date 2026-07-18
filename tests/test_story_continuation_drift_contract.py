@@ -137,6 +137,35 @@ def test_story_continuation_retries_when_choice_result_drifts_from_character_set
     assert "马老板" not in continuation
 
 
+def test_story_continuation_accepts_player_name_prose_without_retry() -> None:
+    """The protagonist is valid cast even when omitted from relationship settings."""
+    class ProseClient:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, Any]] = []
+
+        def generate_completion(self, **kwargs: Any) -> str:
+            self.calls.append(kwargs)
+            return (
+                "陆昊然和陈晓雨在会议室复盘项目。"
+                "陈越的指尖在方案书上轻叩，尤其是预算部分。"
+                "陈越说要先确认品牌底线，陈越合上电脑后转过身离开。"
+            )
+
+    generator = ProseClient()
+    service = StoryService(generator, language="zh")  # type: ignore[arg-type]
+
+    continuation = service.generate_story_continuation(
+        event_description="陈越正在和陆昊然、陈晓雨讨论纪录片项目预算。",
+        chosen_option="接受项目，但重谈条件",
+        effects={"knowledge": 5, "relationships": {"陆昊然": 3}},
+        character_settings=_modern_product_manager_settings(),
+        player_state={"player_name": "陈越", "wealth": 40000},
+    )
+
+    assert len(generator.calls) == 1
+    assert "陈越说要先确认品牌底线" in continuation
+
+
 def test_regenerate_story_retries_when_story_drifts_from_character_settings() -> None:
     class DriftThenValidClient:
         def __init__(self) -> None:

@@ -95,6 +95,7 @@ class StoryService:
             continuation = self._quick_validate_and_retry_continuation(
                 continuation=continuation,
                 character_settings=character_settings or {},
+                player_state=player_state,
                 original_prompt=prompt,
                 sys_prompt=sys_prompt,
                 stream_callback=stream_callback,
@@ -189,6 +190,7 @@ class StoryService:
         self,
         continuation: str,
         character_settings: Dict[str, Any],
+        player_state: Optional[Dict[str, Any]],
         original_prompt: str,
         sys_prompt: str,
         stream_callback: Optional[Callable[[str], None]] = None,
@@ -206,6 +208,9 @@ class StoryService:
             for p in _collect_available_people(character_settings)
             if p.get("name")
         ]
+        player_name = str((player_state or {}).get("player_name") or "").strip()
+        if player_name and player_name not in available_people_names:
+            available_people_names.append(player_name)
         result = quick_validate_story(
             story_text=continuation,
             character_settings=character_settings,
