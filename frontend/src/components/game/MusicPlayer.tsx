@@ -657,9 +657,12 @@ export function MusicPlayer({
 
   if (consoleControls) {
     const artists = displaySong?.artists?.join(" / ") || "";
-    const storyContext = [recommendation?.mood, recommendation?.scene_type]
-      .filter(Boolean)
-      .join(" · ");
+    const displaySongMatchesRecommendation = Boolean(
+      displaySong && recommendation?.songs.some((song) => song.id === displaySong.id)
+    );
+    const storyContext = displaySongMatchesRecommendation
+      ? [recommendation?.mood, recommendation?.scene_type].filter(Boolean).join(" · ")
+      : "";
     const subtitle = displaySong
       ? [storyContext, artists, displaySong.album, provenanceLabel].filter(Boolean).join(" · ") || sourceLabel || "当前音乐"
       : isLoadingRecommendation

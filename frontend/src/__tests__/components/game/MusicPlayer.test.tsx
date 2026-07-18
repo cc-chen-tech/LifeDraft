@@ -741,7 +741,19 @@ describe('MusicPlayer', () => {
         mood: '悬疑',
         scene_type: '都市调查悬疑',
         keywords: ['都市调查 悬疑配乐'],
-        songs: [],
+        songs: [
+          {
+            id: 'ai-generated-88',
+            name: 'AI MiniMax 都市调查悬疑',
+            artists: ['MiniMax'],
+            album: 'AI Generated',
+            duration: 180000,
+            url: '/api/music/generated/reused.mp3',
+            source: 'ai_generated',
+            library_reused: true,
+            match_score: 88,
+          },
+        ],
       },
       currentSong: {
         id: 'ai-generated-88',
@@ -771,6 +783,54 @@ describe('MusicPlayer', () => {
 
     expect(screen.getByTestId('sound-music-console-status')).toHaveTextContent(
       '悬疑 · 都市调查悬疑 · MiniMax · AI Generated · AI 本地库 · 已匹配当前场景'
+    );
+  });
+
+  it('在新推荐保留旧曲目时不把新场景标签贴到旧曲目上', () => {
+    useMusicStore.setState({
+      recommendation: {
+        mood: '轻松',
+        scene_type: '海边重逢',
+        keywords: ['海边 原声'],
+        songs: [
+          {
+            id: 99,
+            name: '新场景候选曲',
+            artists: ['New Artist'],
+            album: 'New Album',
+            duration: 180000,
+            url: 'https://example.com/new-scene.mp3',
+            source: 'netease',
+          },
+        ],
+      },
+      currentSong: {
+        id: 42,
+        name: '上一场景保留曲',
+        artists: ['Previous Artist'],
+        album: 'Previous Album',
+        duration: 180000,
+        url: 'https://example.com/previous-scene.mp3',
+        source: 'netease',
+      },
+      isLoadingRecommendation: false,
+      recommendationError: null,
+    } as never);
+
+    render(
+      <MusicPlayer
+        storyText="海边重逢后，主角决定暂时留下。"
+        gameId={77}
+        autoFetchRecommendation={false}
+        consoleControls
+      />
+    );
+
+    expect(screen.getByTestId('sound-music-console-status')).toHaveTextContent(
+      'Previous Artist · Previous Album'
+    );
+    expect(screen.getByTestId('sound-music-console-status')).not.toHaveTextContent(
+      '轻松 · 海边重逢'
     );
   });
 
