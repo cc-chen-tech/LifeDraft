@@ -85,6 +85,33 @@ def test_unsafe_provider_summary_falls_back_to_grounded_exact_range() -> None:
     assert "身份列为待核实" in result
 
 
+def test_provider_history_dump_falls_back_to_a_compact_summary() -> None:
+    """A life summary must aggregate history instead of replaying every round."""
+    history = [
+        {
+            "week": week,
+            "round": week % 3,
+            "story_text": f"第{week + 1}周影院改造事件：" + ("现场细节" * 200),
+            "choice_text": f"第{week + 1}周选择：确认本周安排",
+        }
+        for week in range(9)
+    ]
+    provider_dump = "\n".join(
+        f"{entry['story_text']}\n{entry['choice_text']}" for entry in history
+    )
+
+    result = validate_or_fallback_life_summary(
+        provider_dump,
+        history,
+        start_week=1,
+        end_week=9,
+    )
+
+    assert result.startswith("第1-9周：")
+    assert result != provider_dump
+    assert len(result) <= len(provider_dump) // 4
+
+
 def test_safe_grounded_provider_summary_is_preserved() -> None:
     safe = (
         "第1-4周，林晓围绕隐私风险、注册材料和招标安排持续查证。"

@@ -16,6 +16,9 @@ _INFLATED_DURATION = ("半年", "一年", "数年", "half a year", "one year", "
 _LIFE_SUMMARY_EVIDENCE_MAX_CHARS = 24_000
 _COMPACT_STORY_MAX_CHARS = 360
 _COMPACT_CHOICE_MAX_CHARS = 120
+_LIFE_SUMMARY_OUTPUT_MAX_CHARS = 600
+_COMPACT_FALLBACK_STORY_MAX_CHARS = 140
+_COMPACT_FALLBACK_CHOICE_MAX_CHARS = 60
 
 
 def _as_text(item: StoryItem, key: str) -> str:
@@ -81,6 +84,12 @@ def _range_label(start_week: int, end_week: int) -> str:
     return f"第{start_week}周" if start_week == end_week else f"第{start_week}-{end_week}周"
 
 
+def _summary_output_limit(story_history: Sequence[StoryItem]) -> int:
+    """Keep a summary compact relative to the source while preserving short histories."""
+    source_length = len(_source_text(story_history))
+    return min(_LIFE_SUMMARY_OUTPUT_MAX_CHARS, max(300, source_length // 4))
+
+
 def build_life_summary_prompt(
     story_history: Sequence[StoryItem], start_week: int, end_week: int
 ) -> str:
@@ -104,19 +113,41 @@ def build_life_summary_prompt(
 def build_grounded_fallback(
     story_history: Sequence[StoryItem], start_week: int, end_week: int
 ) -> str:
-    """Create a deterministic summary from bounded source excerpts."""
+    """Create a compact deterministic summary from representative source excerpts."""
     excerpts: List[str] = []
     for item in story_history:
         story = _as_text(item, "story_text").strip()
         if story and story not in excerpts:
-            excerpts.append(story)
+            choice = _as_text(item, "choice_text").strip()
+            excerpt = _truncate_evidence(story, _COMPACT_FALLBACK_STORY_MAX_CHARS)
+            if choice:
+                excerpt += f"（选择：{_truncate_evidence(choice, _COMPACT_FALLBACK_CHOICE_MAX_CHARS)}）"
+            excerpts.append(excerpt)
 
-    body = " ".join(excerpts[:8]) or "这段时间的故事记录仍在整理。"
     source = _source_text(story_history)
     caution = ""
     if any(marker in source for marker in ("规避竞业", "亲属名义", "母亲名义")):
         caution = " 相关做法存在争议与风险，不能据此认定法律或合规问题已经解决。"
-    return f"{_range_label(start_week, end_week)}：{body}{caution}"
+
+    if len(excerpts) > 4:
+        excerpts = [
+            excerpts[round(index * (len(excerpts) - 1) / 3)]
+            for index in range(4)
+        ]
+
+    prefix = f"{_range_label(start_week, end_week)}："
+    body_limit = max(1, _summary_output_limit(story_history) - len(prefix) - len(caution))
+    if excerpts:
+        # Give every sampled point a bounded share so a late conflict is not
+        # silently dropped just because early entries occupy the whole budget.
+        separator_size = len(excerpts) - 1
+        excerpt_limit = max(1, (body_limit - separator_size) // len(excerpts))
+        body = "；".join(
+            _truncate_evidence(excerpt, excerpt_limit) for excerpt in excerpts
+        )
+    else:
+        body = "这段时间的故事记录仍在整理。"
+    return f"{prefix}{body}{caution}"
 
 
 def _has_unsupported_number(
@@ -138,6 +169,7 @@ def validate_or_fallback_life_summary(
     span = end_week - start_week + 1
     unsafe = (
         not summary.strip()
+        or len(summary.strip()) > _summary_output_limit(story_history)
         or any(metric.lower() in lowered for metric in _REMOVED_METRICS)
         or any(claim.lower() in lowered for claim in _LEGAL_ENDORSEMENTS)
         or (span <= 8 and any(duration.lower() in lowered for duration in _INFLATED_DURATION))
