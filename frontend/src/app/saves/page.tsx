@@ -25,12 +25,37 @@ import {
 } from "lucide-react";
 import type { GameListItem } from "@/lib/types";
 
+const SAVE_DISPLAY_TIME_ZONE = "Asia/Shanghai";
+
+function getSaveDate(dateStr: string): Date | null {
+  const date = new Date(dateStr);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatSaveDate(dateStr: string): string {
+  const date = getSaveDate(dateStr);
+  if (!date) return "";
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: SAVE_DISPLAY_TIME_ZONE,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  }).format(date);
+}
+
 // ★ 格式化时间为中文时段
 function formatChineseTime(dateStr: string | null): string {
   if (!dateStr) return "";
-  const date = new Date(dateStr);
-  const hour = date.getHours();
-  const minute = date.getMinutes();
+  const date = getSaveDate(dateStr);
+  if (!date) return "";
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: SAVE_DISPLAY_TIME_ZONE,
+    hour: "numeric",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const hour = Number(parts.find((part) => part.type === "hour")?.value);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value);
   
   let period = "";
   if (hour >= 0 && hour < 6) period = "凌晨";
@@ -242,7 +267,7 @@ export default function SavesPage() {
                       </div>
                       {save.updated_at && (
                         <div className="text-xs text-muted-foreground mt-0.5">
-                          {new Date(save.updated_at).toLocaleDateString()} {formatChineseTime(save.updated_at)}
+                          {formatSaveDate(save.updated_at)} {formatChineseTime(save.updated_at)}
                         </div>
                       )}
                     </div>
