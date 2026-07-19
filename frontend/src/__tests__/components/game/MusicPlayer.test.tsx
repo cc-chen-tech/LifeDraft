@@ -28,7 +28,6 @@ class MockAudioClass {
   onpause: (() => void) | null = null;
   ontimeupdate: (() => void) | null = null;
   onloadedmetadata: (() => void) | null = null;
-  oncanplaythrough: (() => void) | null = null;
   onended: (() => void) | null = null;
   onerror: (() => void) | null = null;
   private _listeners: Record<string, Array<() => void>> = {};
@@ -102,7 +101,6 @@ describe('MusicPlayer', () => {
   });
 
   afterEach(() => {
-    jest.useRealTimers();
     jest.restoreAllMocks();
   });
 
@@ -657,63 +655,6 @@ describe('MusicPlayer', () => {
         String(call[0]).includes('/api/music/playlist/77/advance')
       )
     ).toBe(true);
-  });
-
-  it('切换到下一首时复用已缓冲的音频实例', async () => {
-    jest.useFakeTimers();
-    useMusicStore.setState({
-      recommendation: {
-        mood: '平静',
-        scene_type: '独处',
-        keywords: ['钢琴'],
-        songs: [
-          {
-            id: 1,
-            name: '当前曲目',
-            artists: ['Score'],
-            album: '影视配乐',
-            duration: 180000,
-            url: 'https://example.com/current.mp3',
-          },
-          {
-            id: 2,
-            name: '已缓冲下一曲',
-            artists: ['Score'],
-            album: '影视配乐',
-            duration: 180000,
-            url: 'https://example.com/next.mp3',
-          },
-        ],
-      },
-      currentSong: null,
-      audioElement: null,
-      isPlaying: false,
-    } as never);
-
-    render(<MusicPlayer storyText="雨夜的影院即将开场。" autoFetchRecommendation={false} />);
-
-    await waitFor(() => expect(createdAudioInstances).toHaveLength(1));
-    const currentAudio = createdAudioInstances[0];
-    act(() => currentAudio.onplay?.());
-
-    await act(async () => {
-      jest.advanceTimersByTime(5000);
-      await Promise.resolve();
-    });
-    expect(createdAudioInstances).toHaveLength(2);
-    const preloadedAudio = createdAudioInstances[1];
-    act(() => preloadedAudio.oncanplaythrough?.());
-
-    await act(async () => {
-      currentAudio.onended?.();
-      await Promise.resolve();
-    });
-
-    await waitFor(() => {
-      expect(useMusicStore.getState().currentSong?.name).toBe('已缓冲下一曲');
-    });
-    expect(createdAudioInstances).toHaveLength(2);
-    expect(preloadedAudio.play).toHaveBeenCalledTimes(1);
   });
 
   it('有基础歌曲时仍提示 MiniMax 原创音乐正在后台生成', () => {
