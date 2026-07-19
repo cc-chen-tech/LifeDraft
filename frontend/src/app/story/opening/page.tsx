@@ -28,6 +28,7 @@ export default function OpeningStoryPage() {
   const openingStory = useGameStore((s) => s.openingStory);
   const setOpeningStory = useGameStore((s) => s.setOpeningStory);
   const playerName = useGameStore((s) => s.playerName);
+  const lifeVision = useGameStore((s) => s.lifeVision);
   const characterSettings = useGameStore((s) => s.characterSettings);
   // ★ 图片相关状态从 useImageStore 获取
   const openingIllustration = useImageStore((s) => s.openingIllustration);
@@ -240,7 +241,7 @@ export default function OpeningStoryPage() {
     );
   };
 
-  const handleStart = () => {
+  const handleStart = async () => {
     if (!isComplete || displayedCompleteText !== storyText) return;
 
     const currentGameId = useGameStore.getState().gameId;
@@ -248,6 +249,18 @@ export default function OpeningStoryPage() {
     console.log("[OpeningStory] Starting game, gameId:", currentGameId);
     
     if (currentGameId) {
+      const openingForContinuity = (openingStory || storyText).trim();
+
+      try {
+        await games.patchCharacterSettings(
+          currentGameId,
+          { ...characterSettings, opening_story: openingForContinuity },
+          { player_name: playerName.trim(), life_vision: lifeVision },
+        );
+      } catch (err) {
+        console.warn("[OpeningStory] Failed to persist opening continuity:", err);
+      }
+
       router.push("/play");
     } else {
       console.warn("[OpeningStory] No gameId, going to create page");

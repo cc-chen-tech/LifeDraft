@@ -326,6 +326,20 @@ class RoundEventGenerator:
 
         # Get round context from player state
         round_context = player_state.get_round_context()
+        opening_story = (getattr(player_state, "character_settings", {}) or {}).get(
+            "opening_story"
+        )
+        if (
+            current_week == 0
+            and current_round == 0
+            and isinstance(opening_story, str)
+            and opening_story.strip()
+        ):
+            round_context = (
+                "【开场已呈现的经历 - 仅作连续性依据，不得复述其中的场景、对话或开场】\n"
+                f"{opening_story.strip()}\n\n"
+                f"{round_context}"
+            ).strip()
 
         try:
             # 发送初始化状态
