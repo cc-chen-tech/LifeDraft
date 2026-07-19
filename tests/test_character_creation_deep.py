@@ -268,6 +268,41 @@ class TestCharacterCreatorGenerateSetting:
         names = [member["name"] for member in result["family_members"]]
         assert names == ["张卫国", "张秀兰"]
 
+    def test_family_setting_does_not_invent_names_for_unnamed_relatives(self):
+        """Family roles named without a legal name stay title-only in the saved facts."""
+        creator = self._make_creator()
+        creator.ai_generator.generate_completion.return_value = json.dumps(
+            {
+                "family_description": "父母住在宁波，弟弟在杭州读大学。",
+                "family_members": [
+                    {"name": "林建国", "role": "父亲", "relationship": "父亲住在宁波"},
+                    {"name": "王秀英", "role": "母亲", "relationship": "母亲住在宁波"},
+                    {"name": "林涛", "role": "弟弟", "relationship": "弟弟在杭州读大学"},
+                ],
+                "family_economy": "中等",
+                "family_relationships": "互相关心",
+            },
+            ensure_ascii=False,
+        )
+
+        result = creator.generate_setting(
+            "family",
+            "林岚",
+            "父母住宁波，弟弟林涛在杭州读大学。",
+            {},
+        )
+
+        assert [member["name"] for member in result["family_members"]] == [
+            "父亲",
+            "母亲",
+            "林涛",
+        ]
+        descriptions = " ".join(
+            str(member.get("relationship", "")) for member in result["family_members"]
+        )
+        assert "林建国" not in descriptions
+        assert "王秀英" not in descriptions
+
     def test_generate_setting_en_fallback(self):
         """Test English fallback settings."""
         creator = self._make_creator("en")

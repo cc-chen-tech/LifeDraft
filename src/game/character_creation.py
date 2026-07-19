@@ -180,6 +180,88 @@ def _preserve_title_only_relationship_names(
     return normalized
 
 
+def _family_role_label(member: Dict[str, Any]) -> str:
+    """Return a stable family-role label without inferring a legal name."""
+    role = " ".join(
+        str(member.get(field) or "")
+        for field in ("role", "relationship", "relationship_desc")
+    )
+    if "父" in role:
+        return "父亲"
+    if "母" in role:
+        return "母亲"
+    if "哥哥" in role:
+        return "哥哥"
+    if "姐姐" in role:
+        return "姐姐"
+    if "弟" in role:
+        return "弟弟"
+    if "妹" in role:
+        return "妹妹"
+    return ""
+
+
+def _life_vision_mentions_family_role(life_vision: str, role_label: str) -> bool:
+    if role_label in life_vision:
+        return True
+    return role_label in {"父亲", "母亲"} and "父母" in life_vision
+
+
+def _preserve_explicit_family_member_names(
+    family_setting: Dict[str, Any], life_vision: str
+) -> Dict[str, Any]:
+    """Do not turn unnamed family roles in the premise into invented legal names."""
+    if not isinstance(life_vision, str) or not life_vision.strip():
+        return family_setting
+
+    members = family_setting.get("family_members")
+    if not isinstance(members, list):
+        return family_setting
+
+    normalized_setting = dict(family_setting)
+    normalized_members: list[Any] = []
+    replacements: list[tuple[str, str]] = []
+    for raw_member in members:
+        if not isinstance(raw_member, dict):
+            normalized_members.append(raw_member)
+            continue
+
+        member = dict(raw_member)
+        generated_name = str(member.get("name") or "").strip()
+        role_label = _family_role_label(member)
+        if (
+            generated_name
+            and role_label
+            and generated_name not in life_vision
+            and _life_vision_mentions_family_role(life_vision, role_label)
+        ):
+            member["name"] = role_label
+            replacements.append((generated_name, role_label))
+        normalized_members.append(member)
+
+    if not replacements:
+        return family_setting
+
+    for member in normalized_members:
+        if not isinstance(member, dict):
+            continue
+        for field in ("relationship", "relationship_desc", "description"):
+            value = member.get(field)
+            if isinstance(value, str):
+                for generated_name, role_label in replacements:
+                    value = value.replace(generated_name, role_label)
+                member[field] = value
+
+    for field in ("family_description", "family_relationships"):
+        value = normalized_setting.get(field)
+        if isinstance(value, str):
+            for generated_name, role_label in replacements:
+                value = value.replace(generated_name, role_label)
+            normalized_setting[field] = value
+    normalized_setting["family_members"] = normalized_members
+    return normalized_setting
+
+
 def _extract_explicit_modern_year(life_vision: str) -> int:
     years = [
         int(match)
@@ -438,6 +520,7 @@ class CharacterCreator:
 
                 if setting_type == "family":
                     result = _strip_placeholder_surname_from_family_members(result, player_name)
+                    result = _preserve_explicit_family_member_names(result, life_vision)
 
                 return result
 
