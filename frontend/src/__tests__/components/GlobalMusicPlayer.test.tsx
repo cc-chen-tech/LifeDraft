@@ -484,15 +484,15 @@ describe("GlobalMusicPlayer", () => {
       ).toBeInTheDocument();
     });
 
-    it("stays below the app header on desktop so it cannot cover header controls or the chat launcher", () => {
+    it("keeps the top position outside the save page so it cannot cover chat actions", () => {
       setStoreState({ activeStoryText: "story text" });
 
       render(<GlobalMusicPlayer />);
 
       const wrapper = screen.getByTestId("global-music-player");
       expect(wrapper).toHaveClass("top-16");
-      expect(wrapper).not.toHaveClass("md:top-auto");
-      expect(wrapper).not.toHaveClass("md:bottom-4");
+      expect(wrapper).toHaveClass("safe-area-pt");
+      expect(wrapper).not.toHaveClass("bottom-4");
     });
 
     it("shows song name when currentSong is set", () => {

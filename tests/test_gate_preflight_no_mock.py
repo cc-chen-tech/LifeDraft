@@ -197,7 +197,7 @@ def test_frontend_layout_does_not_depend_on_google_font_network() -> None:
     assert "--font-serif-sc" in globals_css
 
 
-def test_collection_sheet_stacks_above_global_music_player() -> None:
+def test_global_music_player_uses_save_page_safe_positioning() -> None:
     play_page = (ROOT / "frontend" / "src" / "app" / "play" / "page.tsx").read_text(
         encoding="utf-8"
     )
@@ -213,7 +213,9 @@ def test_collection_sheet_stacks_above_global_music_player() -> None:
 
     assert collection_sheet is not None
     assert 'className="z-[60] w-[400px] sm:w-[540px] p-0"' in collection_sheet.group(0)
-    assert 'className="fixed z-50 top-16 left-0 right-0 safe-area-pt mt-2' in music_player
+    assert 'const isSavesPage = pathname === "/saves";' in music_player
+    assert 'top-16 left-0 right-0 safe-area-pt mt-2' in music_player
+    assert 'bottom-4 left-4 right-4 safe-area-pb' in music_player
 
 
 def test_e2e_gate_does_not_reuse_frontend_from_other_worktree() -> None:

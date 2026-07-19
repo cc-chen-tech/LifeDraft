@@ -11,6 +11,7 @@
  * browser never pauses the audio.
  */
 import { useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { MusicPlayer } from "./MusicPlayer";
 import { StoryVoiceControls } from "./StoryVoiceControls";
 import { useMusicStore } from "@/stores/useMusicStore";
@@ -26,6 +27,8 @@ import {
 export function GlobalMusicPlayer() {
   const hasInitRef = useRef(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const pathname = usePathname();
+  const isSavesPage = pathname === "/saves";
 
   const loadPlaylist = useMusicStore((state) => state.loadPlaylist);
   const playlistGameId = useMusicStore((state) => state.playlistGameId);
@@ -128,7 +131,11 @@ export function GlobalMusicPlayer() {
       role="region"
       aria-label="声音"
       data-testid="global-music-player"
-      className="fixed z-50 top-16 left-0 right-0 safe-area-pt mt-2 md:left-auto md:right-4 md:w-[28rem]"
+      className={
+        isSavesPage
+          ? "fixed z-50 bottom-4 left-4 right-4 safe-area-pb md:left-auto md:right-4 md:w-[28rem]"
+          : "fixed z-50 top-16 left-0 right-0 safe-area-pt mt-2 md:left-auto md:right-4 md:w-[28rem]"
+      }
     >
       {/* MusicPlayer always mounted to keep audio alive.
           Use opacity-0 + h-0 + overflow-hidden instead of display:none
