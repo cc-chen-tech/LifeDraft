@@ -14,6 +14,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from src.ai.story_exceptions import StoryContinuationFailure
 from src.api.deps import get_current_user_optional, get_db
 from src.api.routers.gameplay.sse_helpers import stream_choice
 from src.api.schemas import CustomChoiceRequest, MakeChoiceRequest
@@ -21,6 +22,17 @@ from src.api.services.session_service import session_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _retryable_continuation_error(exc: StoryContinuationFailure) -> HTTPException:
+    """Expose a failed choice generation without discarding its current event."""
+    return HTTPException(
+        status_code=503,
+        detail={
+            "error": "story_continuation_failed",
+            "message": str(exc),
+        },
+    )
 
 
 def _is_choice_already_processed(exc: HTTPException) -> bool:
@@ -263,6 +275,8 @@ async def make_choice_sync(
 
     try:
         result = await loop.run_in_executor(None, run)
+    except StoryContinuationFailure as exc:
+        raise _retryable_continuation_error(exc) from exc
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
@@ -309,6 +323,8 @@ async def make_custom_choice_sync(
 
     try:
         result = await loop.run_in_executor(None, run)
+    except StoryContinuationFailure as exc:
+        raise _retryable_continuation_error(exc) from exc
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
 

@@ -12,6 +12,10 @@ from src.ai.text_quality import normalize_generated_story
 
 logger = logging.getLogger(__name__)
 
+# A choice still needs time for local and world-model validation after prose
+# generation, so each provider attempt must remain below the SSE lifecycle cap.
+STORY_CONTINUATION_REQUEST_TIMEOUT_SECONDS = 75.0
+
 
 class StoryService:
     """Handles story continuation generation, compression, and custom choice results."""
@@ -87,8 +91,9 @@ class StoryService:
                 temperature=0.8,
                 max_tokens=4096,
                 stream_callback=stream_callback,
-                retry_count=2,
+                retry_count=1,
                 language=self.language,
+                request_timeout=STORY_CONTINUATION_REQUEST_TIMEOUT_SECONDS,
             )
             logger.debug(f"Generated story continuation: {len(continuation)} chars")
 
@@ -168,6 +173,7 @@ class StoryService:
             max_tokens=4096,
             retry_count=1,
             language=self.language,
+            request_timeout=STORY_CONTINUATION_REQUEST_TIMEOUT_SECONDS,
         )
         retry_validation = ledger.validate_narrative(
             retry,
@@ -250,6 +256,7 @@ class StoryService:
             stream_callback=stream_callback,
             retry_count=1,
             language=self.language,
+            request_timeout=STORY_CONTINUATION_REQUEST_TIMEOUT_SECONDS,
         )
         retry_result = quick_validate_story(
             story_text=retry_continuation,
@@ -430,6 +437,7 @@ class StoryService:
                 stream_callback=stream_callback,
                 retry_count=1,
                 language=self.language,
+                request_timeout=STORY_CONTINUATION_REQUEST_TIMEOUT_SECONDS,
             )
 
             if retry_continuation:

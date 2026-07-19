@@ -344,6 +344,19 @@ class TestStoryService:
         with pytest.raises(StoryContinuationFailure, match="Story continuation generation failed"):
             service.generate_story_continuation("An event", "A choice", {"mood": 5})
 
+    def test_story_continuation_uses_one_bounded_provider_attempt(self):
+        """Choice generation must leave room for validation and recovery inside SSE."""
+        mock_gen = Mock()
+        mock_gen.generate_completion.return_value = "林岚和陈越核对预算，确认明天继续联系施工方。"
+        service = StoryService(ai_generator=mock_gen, language="zh")
+
+        service.generate_story_continuation(
+            "林岚正在安排影院改造。", "和陈越核对预算", {"knowledge": 5}
+        )
+
+        assert mock_gen.generate_completion.call_args.kwargs["retry_count"] == 1
+        assert mock_gen.generate_completion.call_args.kwargs["request_timeout"] == 75.0
+
     def test_choice_continuation_keeps_retry_when_only_perspective_check_fails(self):
         """A post-choice retry with only perspective drift must not block gameplay."""
         mock_gen = Mock()
