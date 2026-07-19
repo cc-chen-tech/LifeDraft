@@ -169,6 +169,10 @@ class QuickValidator:
         if available_people:
             name_issues = self._check_character_names(story_text, available_people, language)
             warnings.extend(name_issues)  # 作为警告，不阻止生成
+            role_alias_issues = self._check_unapproved_role_aliases(
+                story_text, available_people, language
+            )
+            issues.extend(role_alias_issues)
             required_key_people = self._extract_required_key_people_names(character_settings)
             cast_drift_issues = self._check_key_people_cast_drift(
                 story_text,
@@ -391,6 +395,30 @@ class QuickValidator:
         # 不再尝试从文本中提取人名，因为误报率太高
         # 只检查 available_people 中的人名是否出现在文本中（用于其他用途）
         return warnings
+
+    def _check_unapproved_role_aliases(
+        self, text: str, available_people: List[str], language: str
+    ) -> List[str]:
+        """Reject high-confidence named role aliases not present in the cast."""
+        if language != "zh":
+            return []
+
+        surname_class = re.escape(self.COMMON_CHINESE_SURNAMES)
+        role_pattern = "老师|经理|医生|律师|主任|老板|师傅|叔|姨|哥|姐"
+        aliases = []
+        for match in re.finditer(rf"([{surname_class}](?:{role_pattern}))", text):
+            alias = match.group(1)
+            if alias not in available_people and alias not in aliases:
+                aliases.append(alias)
+
+        if not aliases:
+            return []
+
+        return [
+            "上一版故事出现名单外命名角色"
+            f"（{'、'.join(aliases[:3])}）；请仅使用可用人物列表中的人物，"
+            "或使用不带姓名的通用称谓。"
+        ]
 
     def _check_key_people_cast_drift(
         self,
