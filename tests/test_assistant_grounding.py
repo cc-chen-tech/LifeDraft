@@ -134,6 +134,26 @@ def test_supported_answer_must_cite_authoritative_record() -> None:
     assert result.uncertain is False
 
 
+def test_initial_life_vision_is_available_for_family_location_answers() -> None:
+    """Initial player facts must remain answerable after later story prose omits them."""
+    player = _player_state()
+    player.life_vision = "父母住在宁波，弟弟林涛在杭州读大学。"
+    ai = MagicMock()
+    ai.generate_completion_json.return_value = {
+        "reply": "父母住在宁波。",
+        "citations": ["initial:life_vision"],
+        "uncertain": False,
+    }
+
+    result = AssistantGroundingService(ai, max_attempts=1).answer(
+        "父母住在哪里？", player, language="zh"
+    )
+
+    assert result.reply == "父母住在宁波。"
+    assert result.citations == ["initial:life_vision"]
+    assert result.uncertain is False
+
+
 def test_unknown_person_returns_uncertainty_without_calling_model() -> None:
     ai = MagicMock()
 

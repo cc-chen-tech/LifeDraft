@@ -33,6 +33,7 @@ _GENERIC_PERSON_TERMS = {
     "好友",
     "同事",
     "家人",
+    "父母",
     "父亲",
     "母亲",
     "老师",
@@ -111,6 +112,18 @@ class AssistantEvidence:
         settings = _value(player_state, "character_settings", {})
         if isinstance(settings, Mapping):
             evidence._add_setting_scalars(settings)
+
+        life_vision = _clean(_value(player_state, "life_vision", ""))
+        if life_vision:
+            evidence._add_authoritative(
+                EvidenceRecord(
+                    evidence_id="initial:life_vision",
+                    kind="initial_premise",
+                    subject="玩家初始人生设定",
+                    fact=life_vision,
+                    metadata={"authoritative_field": "player_state.life_vision"},
+                )
+            )
 
         ledger = _value(player_state, "continuity_ledger", {})
         if not isinstance(ledger, Mapping):
