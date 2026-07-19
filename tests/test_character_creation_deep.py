@@ -303,6 +303,28 @@ class TestCharacterCreatorRelationships:
         assert "affinity" in result
         assert "sexual_orientation" in result
 
+    def test_generate_single_person_preserves_title_only_name_from_life_vision(self):
+        """A title-only person in the premise must not receive an invented legal name."""
+        creator = self._make_creator()
+        creator.ai_generator.generate_completion_json.return_value = {
+            "name": "周德明",
+            "role": "房东",
+            "relationship_desc": "周德明是社区老街坊，也是林岚的房东。",
+        }
+
+        result = creator.generate_single_relationship_person(
+            "林岚",
+            "2026年杭州经营社区小影院；房东仅称周师傅。",
+            {},
+            [],
+            0,
+            3,
+        )
+
+        assert result["name"] == "周师傅"
+        assert "周德明" not in result["relationship_desc"]
+        assert "周师傅" in result["relationship_desc"]
+
     def test_generate_single_person_defaults(self):
         """Test defaults are applied for missing fields."""
         creator = self._make_creator()
