@@ -280,6 +280,28 @@ describe('SavesPage', () => {
         expect(continueButtons.length).toBeGreaterThan(0);
       });
     });
+
+    it('renders save timestamps in the product time zone', async () => {
+      useGameStore.setState({
+        savedGames: [
+          {
+            game_id: 4,
+            player_name: 'Shanghai Save',
+            age: 29,
+            week: 3,
+            updated_at: '2026-07-13T16:30:00Z',
+          },
+        ],
+      });
+
+      await act(async () => {
+        render(<SavesPage />);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('2026/7/14 凌晨0:30')).toBeInTheDocument();
+      });
+    });
   });
 
   describe('Delete game', () => {
