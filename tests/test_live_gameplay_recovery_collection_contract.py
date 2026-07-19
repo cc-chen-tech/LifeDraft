@@ -154,6 +154,58 @@ def test_entity_recognition_requires_exact_story_evidence_for_character_names() 
     assert [character["name"] for character in result["characters"]] == ["周师傅", "林岚"]
 
 
+def test_entity_recognition_rejects_production_fragments() -> None:
+    """Narrative fragments cannot enter collection characters."""
+    service = EntityRecognitionService(
+        _FakeAIClient(
+            """
+            {
+              "items": [],
+              "characters": [
+                {
+                  "name": "谢谢刘主任", "description": "礼貌语误切", "role": "人物",
+                  "importance": "normal", "appear_count": 1,
+                  "appear_contexts": []
+                },
+                {
+                  "name": "林澈站", "description": "动作误切", "role": "人物",
+                  "importance": "normal", "appear_count": 1,
+                  "appear_contexts": []
+                },
+                {
+                  "name": "水电", "description": "费用误切", "role": "人物",
+                  "importance": "normal", "appear_count": 1,
+                  "appear_contexts": []
+                }
+              ],
+              "landmarks": []
+            }
+            """
+        )
+    )
+
+    result = service.recognize_from_history(
+        round_history=[
+            {
+                "week": 1,
+                "round": 0,
+                "event_description": (
+                    "林澈站在书店门口，核对本月扣除房租、水电和进货成本后的账目。"
+                    "她抬头对电话那头说：‘谢谢刘主任。’"
+                ),
+            }
+        ],
+        existing_items=[],
+        existing_characters=["林澈"],
+        existing_landmarks=[],
+        min_appearances=1,
+        language="zh",
+        eligible_character_names=[],
+    )
+
+    assert result["characters"] == []
+
+
 def test_opening_prompt_marks_life_vision_as_non_drifting_constraint() -> None:
     """A specific career/premise cannot be softened into an unrelated heritage story."""
     prompt = get_opening_story_prompt(
