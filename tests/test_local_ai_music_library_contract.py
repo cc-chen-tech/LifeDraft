@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.database.models import Base, Game, GeneratedMusicAsset, SessionLocal, init_db
+from src.database.models import Base, Game, GamePlaylist, GeneratedMusicAsset, SessionLocal, init_db
 from src.services.minimax_config import MiniMaxConfig
 from src.services.minimax_music_generation import (
     GeneratedMusicFile,
@@ -216,6 +216,48 @@ def test_local_library_reuse_updates_usage_and_privacy_safe_track(
     assert entry.last_match_score == decision.score
 
 
+def test_local_library_excludes_assets_already_used_by_requesting_playlist(
+    db_session,
+    tmp_path,
+):
+    from src.services.local_ai_music_library import LocalAiMusicLibraryService
+
+    Base.metadata.create_all(bind=db_session.get_bind())
+    source_game = _create_game(db_session)
+    target_game = _create_game(db_session)
+    asset = _create_asset(
+        db_session,
+        game_id=source_game.game_id,
+        storage_path=_write_audio(tmp_path, "already-playing.mp3"),
+    )
+    service = LocalAiMusicLibraryService(match_threshold=70)
+    service.upsert_ready_asset(db_session, asset)
+    brief = MusicBrief.from_analysis(
+        {
+            "mood": "紧张",
+            "scene_type": "现代职场危机",
+            "environment": "2020年代互联网公司会议室",
+            "pacing": "紧凑",
+            "energy": "中高",
+            "instruments": ["电子合成器", "钢琴"],
+            "negative_cues": ["人声", "歌词"],
+        }
+    )
+
+    decision = service.find_best_match(
+        db_session,
+        requesting_game_id=target_game.game_id,
+        brief=brief,
+        provider="minimax",
+        model="music-2.6",
+        generation_settings=GENERATION_SETTINGS,
+        excluded_asset_ids={int(asset.asset_id)},
+    )
+
+    assert decision.hit is False
+    assert "already_in_playlist" in decision.rejection_reasons
+
+
 def test_local_library_reuse_titles_generic_narrative_scene_from_context(
     db_session,
     tmp_path,
@@ -397,6 +439,79 @@ def test_story_generation_reuses_local_library_before_provider_call(
         f"ai-generated-{asset.asset_id}",
         2,
     ]
+
+
+def test_story_generation_generates_when_only_library_match_is_already_playing(
+    db_session,
+    tmp_path,
+):
+    Base.metadata.create_all(bind=db_session.get_bind())
+    target_game = _create_game(db_session)
+    existing = _create_asset(
+        db_session,
+        game_id=target_game.game_id,
+        storage_path=_write_audio(tmp_path, "already-playing-library.mp3"),
+    )
+    db_session.add(
+        GamePlaylist(
+            game_id=target_game.game_id,
+            current_song_json={
+                "id": f"ai-generated-{existing.asset_id}",
+                "asset_id": existing.asset_id,
+                "source": "ai_generated",
+            },
+            queue_json=[],
+        )
+    )
+    db_session.commit()
+    generated_path = Path(_write_audio(tmp_path, "fresh-after-playback.mp3"))
+    provider_calls = 0
+
+    class ProviderFallback:
+        provider = "minimax"
+        model = "music-2.6"
+        config = MiniMaxConfig.from_env(
+            {
+                "MINIMAX_API_KEY": "test-key",
+                "MINIMAX_MUSIC_PROMPT_MAX_CHARS": "900",
+                "STORY_MUSIC_AI_GENERATION_ENABLED": "true",
+            }
+        )
+        build_brief_from_story = staticmethod(
+            MiniMaxMusicGenerationProvider.build_brief_from_story
+        )
+        to_playlist_track = staticmethod(MiniMaxMusicGenerationProvider.to_playlist_track)
+
+        def generate_to_asset(self, _request, brief_hash=None):
+            nonlocal provider_calls
+            provider_calls += 1
+            return GeneratedMusicFile(
+                storage_path=str(generated_path),
+                local_path=generated_path,
+                duration_ms=91000,
+                provider="minimax",
+                model="music-2.6",
+                media_type="audio/mpeg",
+            )
+
+    track = StoryMusicGenerationService(provider=ProviderFallback()).generate_ready_track(
+        db=db_session,
+        game_id=target_game.game_id,
+        story_text="顾晨曦在会议室准备 AI 产品复盘，气氛紧张。",
+        analysis={
+            "mood": "紧张",
+            "scene_type": "现代职场危机",
+            "environment": "2020年代互联网公司会议室",
+            "pacing": "紧凑",
+            "energy": "中高",
+            "instruments": ["电子合成器", "钢琴"],
+            "negative_cues": ["人声", "歌词"],
+        },
+    )
+
+    assert provider_calls == 1
+    assert track["asset_id"] != existing.asset_id
+    assert track.get("library_reused") is not True
 
 
 def test_story_generation_falls_back_to_provider_when_library_lookup_fails(

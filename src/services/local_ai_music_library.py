@@ -152,6 +152,7 @@ class LocalAiMusicLibraryService:
         provider: str,
         model: str,
         generation_settings: Mapping[str, Any],
+        excluded_asset_ids: Optional[Iterable[int]] = None,
     ) -> LocalAiMusicMatchDecision:
         if not self.enabled:
             return LocalAiMusicMatchDecision(hit=False, rejection_reasons=["disabled"])
@@ -169,6 +170,7 @@ class LocalAiMusicLibraryService:
             .all()
         )
         rejection_reasons: set[str] = set()
+        excluded_ids = {int(asset_id) for asset_id in excluded_asset_ids or []}
         best_entry: Optional[GeneratedMusicLibraryEntry] = None
         best_score = 0
 
@@ -179,6 +181,9 @@ class LocalAiMusicLibraryService:
             asset = entry.asset
             if asset is None:
                 rejection_reasons.add("stale_audio")
+                continue
+            if int(entry.asset_id) in excluded_ids:
+                rejection_reasons.add("already_in_playlist")
                 continue
             if (
                 self.reuse_scope == "game"
