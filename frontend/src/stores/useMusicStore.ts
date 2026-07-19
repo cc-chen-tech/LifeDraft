@@ -497,7 +497,16 @@ export const useMusicStore = create<MusicState>((set, get) => ({
   setPlayedSongs: (playedSongs) => set({ playedSongs }),
   setPlaylistGameId: (playlistGameId) => set({ playlistGameId }),
   setActiveStoryText: (activeStoryText) => set({ activeStoryText }),
-  setActiveGameId: (activeGameId) => set({ activeGameId }),
+  setActiveGameId: (activeGameId) =>
+    set((state) => ({
+      activeGameId,
+      ...(state.activeGameId !== activeGameId
+        ? {
+            isGeneratingAiMusic: false,
+            aiMusicGenerationStatus: "idle" as AiMusicGenerationStatus,
+          }
+        : {}),
+    })),
 
   // 播放控制
   play: () => {
@@ -716,6 +725,11 @@ export const useMusicStore = create<MusicState>((set, get) => ({
     }
     inFlightMusicGenerations.add(inFlightKey);
 
+    const isStillActiveGame = () => {
+      const activeGameId = get().activeGameId;
+      return activeGameId === null || activeGameId === gameId;
+    };
+
     set({ isGeneratingAiMusic: true, aiMusicGenerationStatus: "queued" });
     try {
       const initialGeneratedIds = generatedTrackIds(get());
@@ -725,27 +739,38 @@ export const useMusicStore = create<MusicState>((set, get) => ({
         get().queue,
         analysis
       );
-      if (snapshot) {
+      if (snapshot && isStillActiveGame()) {
         set((state) =>
           playlistStateToStorePatchWithRecommendation(snapshot, state.recommendation)
         );
       }
       await enqueueGeneratedMusic(storyText, gameId, analysis);
-      set({ aiMusicGenerationStatus: "polling" });
+      if (isStillActiveGame()) {
+        set({ aiMusicGenerationStatus: "polling" });
+      }
       const generatedTrackReady = await pollPlaylistForGeneratedTrack(gameId, initialGeneratedIds, (playlist) => {
+        if (!isStillActiveGame()) {
+          return;
+        }
         set((state) =>
           playlistStateToStorePatchWithRecommendation(playlist, state.recommendation)
         );
       });
-      set({
-        aiMusicGenerationStatus: generatedTrackReady ? "ready" : "delayed",
-      });
+      if (isStillActiveGame()) {
+        set({
+          aiMusicGenerationStatus: generatedTrackReady ? "ready" : "delayed",
+        });
+      }
     } catch (error) {
       console.warn("[MusicStore] AI music generation unavailable:", error);
-      set({ aiMusicGenerationStatus: "failed" });
+      if (isStillActiveGame()) {
+        set({ aiMusicGenerationStatus: "failed" });
+      }
     } finally {
-      set({ isGeneratingAiMusic: false });
       inFlightMusicGenerations.delete(inFlightKey);
+      if (isStillActiveGame()) {
+        set({ isGeneratingAiMusic: false });
+      }
     }
   },
 
@@ -841,6 +866,8 @@ export const useMusicStore = create<MusicState>((set, get) => ({
       isLoadingPlaylist: false,
       isGeneratingAiMusic: false,
       aiMusicGenerationStatus: "idle",
+      activeStoryText: null,
+      activeGameId: null,
     });
   },
 

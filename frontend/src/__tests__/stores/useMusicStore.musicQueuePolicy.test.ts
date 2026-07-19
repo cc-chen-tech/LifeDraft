@@ -443,6 +443,80 @@ describe("music queue policy", () => {
     expect(generateCalls).toHaveLength(1);
   });
 
+  it("does not let a completed old-game generation overwrite the active game's playlist", async () => {
+    let resolveOldGamePlaylist: ((value: Response) => void) | undefined;
+    const oldGamePlaylist = new Promise<Response>((resolve) => {
+      resolveOldGamePlaylist = resolve;
+    });
+    global.fetch = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/music/playlist/101") && init?.method === "PUT") {
+        return {
+          ok: true,
+          json: async () => ({
+            game_id: 101,
+            current_song: song(1, "旧局当前曲"),
+            queue: [song(2, "旧局下一曲")],
+            played_songs: [],
+            is_playing: false,
+            volume: 0.5,
+            current_position_ms: 0,
+          }),
+        } as Response;
+      }
+      if (url.endsWith("/api/music/generate")) {
+        return {
+          ok: true,
+          json: async () => ({ status: "queued", game_id: 101, insert_policy: "future_queue" }),
+        } as Response;
+      }
+      if (url.endsWith("/api/music/playlist/101")) {
+        return oldGamePlaylist;
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    }) as jest.Mock;
+    useMusicStore.setState({
+      activeGameId: 101,
+      playlistGameId: 101,
+      currentSong: song(1, "旧局当前曲"),
+      queue: [song(2, "旧局下一曲")],
+    });
+
+    const oldGeneration = useMusicStore.getState().generateAiMusicForStory("旧局故事", 101, {
+      mood: "紧张",
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    useMusicStore.setState({
+      activeGameId: 202,
+      playlistGameId: 202,
+      currentSong: song(20, "新局当前曲"),
+      queue: [song(21, "新局下一曲")],
+      isGeneratingAiMusic: true,
+      aiMusicGenerationStatus: "polling",
+    });
+    resolveOldGamePlaylist?.({
+      ok: true,
+      json: async () => ({
+        game_id: 101,
+        current_song: song(1, "旧局当前曲"),
+        queue: [song("old-ai", "AI MiniMax 旧局", "ai_generated"), song(2, "旧局下一曲")],
+        played_songs: [],
+        is_playing: false,
+        volume: 0.5,
+        current_position_ms: 0,
+      }),
+    } as Response);
+    await oldGeneration;
+
+    const state = useMusicStore.getState();
+    expect(state.playlistGameId).toBe(202);
+    expect(state.currentSong?.id).toBe(20);
+    expect(state.queue.map((item) => item.id)).toEqual([21]);
+    expect(state.isGeneratingAiMusic).toBe(true);
+    expect(state.aiMusicGenerationStatus).toBe("polling");
+  });
+
   it("store keeps async AI music visibly queued when polling has not seen the generated track yet", async () => {
     jest.useFakeTimers();
     try {
