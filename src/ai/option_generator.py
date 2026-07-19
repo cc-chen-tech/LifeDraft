@@ -17,6 +17,7 @@ from src.game.constants import GENERIC_CHARACTER_NAMES, GENERIC_OPTION_TEXTS
 logger = logging.getLogger(__name__)
 
 TARGET_OPTION_COUNT = 3
+OPTION_GENERATION_REQUEST_TIMEOUT_SECONDS = 45.0
 
 
 def _normalize_option_text(text: str) -> str:
@@ -38,7 +39,7 @@ class OptionGenerator:
         player_state: Dict[str, Any],
         character_settings: Optional[Dict[str, Any]] = None,
         language: str = "zh",
-        retry_count: int = 3,
+        retry_count: int = 1,
     ) -> GameEvent:
         """
         Generate options for an existing story (used for opening story).
@@ -93,6 +94,7 @@ class OptionGenerator:
                     user_prompt=user_prompt,
                     temperature=0.7,  # 从 0.8 降至 0.7，减少选项幻觉
                     max_tokens=2000,  # 从 1000 增至 2000，防止截断
+                    request_timeout=OPTION_GENERATION_REQUEST_TIMEOUT_SECONDS,
                 )
 
                 content = content.strip()

@@ -60,6 +60,18 @@ class TestOptionGenerator:
         assert len(event.options) == 3
         assert event.options[0].text == "选项A"
 
+    def test_generate_options_uses_one_bounded_provider_attempt_before_fallback(self):
+        """A stalled option provider must not keep a completed story in generation forever."""
+        mock_client = Mock()
+        mock_client.call.side_effect = TimeoutError("option provider timed out")
+        gen = self._make_generator(mock_client)
+
+        event = gen.generate_options_only("林岚要在租金和特价图书之间取舍。", {}, language="zh")
+
+        assert len(event.options) == 3
+        assert mock_client.call.call_count == 1
+        assert mock_client.call.call_args.kwargs["request_timeout"] == 45.0
+
     def test_generate_options_rejects_two_options_and_returns_three_contextual_fallbacks(self):
         """Two options is a production regression: the UI expects three meaningful choices."""
         mock_client = Mock()
