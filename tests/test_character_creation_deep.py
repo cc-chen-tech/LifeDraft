@@ -654,6 +654,31 @@ class TestCheckAndFixMissingAttributes:
         creator.check_and_fix_missing_attributes(state)
         assert isinstance(state.character_settings["family"]["family_members"][0], dict)
 
+    def test_legacy_family_upgrade_preserves_unnamed_roles(self):
+        """A legacy family list cannot invent parent names absent from the premise."""
+        creator = self._make_creator()
+        creator.ai_generator.generate_completion_json.return_value = {
+            "members": [
+                {"name": "林建国", "role": "父亲", "relationship": "林建国住在宁波"},
+                {"name": "王秀英", "role": "母亲", "relationship": "王秀英住在宁波"},
+                {"name": "林涛", "role": "弟弟", "relationship": "林涛在杭州读大学"},
+            ]
+        }
+        state = Mock()
+        state.character_settings = {"family": {"family_members": ["父亲", "母亲", "弟弟"]}}
+        state.player_name = "林岚"
+        state.life_vision = "父母住宁波，弟弟林涛在杭州读大学。"
+        state.relationships = {}
+
+        creator.check_and_fix_missing_attributes(state)
+
+        assert [member["name"] for member in state.character_settings["family"]["family_members"]] == [
+            "父亲",
+            "母亲",
+            "林涛",
+        ]
+        assert set(state.relationships) == {"父亲", "母亲", "林涛"}
+
     def test_no_fix_needed(self):
         """Test no changes when nothing is missing."""
         creator = self._make_creator()

@@ -1360,13 +1360,19 @@ class CharacterCreator:
                         raw_members, character_settings, player_name
                     )
                     if new_members:
-                        family["family_members"] = new_members
+                        family["family_members"] = _preserve_explicit_family_member_names(
+                            {"family_members": new_members},
+                            getattr(player_state, "life_vision", ""),
+                        )["family_members"]
                         fixed_any = True
                         logger.debug(
-                            f"升级 family_members 成功: {[m.get('name') for m in new_members]}"
+                            "升级 family_members 成功: "
+                            f"{[m.get('name') for m in family['family_members'] if isinstance(m, dict)]}"
                         )
 
-                        for member in new_members:
+                        for member in family["family_members"]:
+                            if not isinstance(member, dict):
+                                continue
                             name = member.get("name", "")
                             if name and name not in player_state.relationships:
                                 player_state.relationships[name] = 60
