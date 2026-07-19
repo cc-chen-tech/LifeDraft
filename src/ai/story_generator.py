@@ -744,10 +744,13 @@ class StoryGenerator:
                     _set_best_story(story_text, require_valid=True)
 
                 hard_shape_issues = _hard_shape_issues(story_text)
+                requires_shape_retry = (
+                    not quick_retry_used or "story_too_long" in hard_shape_issues
+                )
                 if (
                     hard_shape_issues
                     and generation_budget.allow_quick_regeneration
-                    and not quick_retry_used
+                    and requires_shape_retry
                     and max_attempts == 1
                 ):
                     logger.warning("Story shape validation failed: %s", hard_shape_issues)
@@ -768,13 +771,21 @@ class StoryGenerator:
                         len(story_text),
                     )
                     retry_shape_issues = _hard_shape_issues(story_text)
-                    if retry_shape_issues:
+                    retry_quick_result = quick_validate_story(
+                        story_text=story_text,
+                        character_settings=character_settings,
+                        available_people=available_people_names,
+                        language=language,
+                    )
+                    if retry_shape_issues or not retry_quick_result.passed:
                         logger.warning(
-                            "Story shape retry still failed: %s",
+                            "Story shape retry still failed: shape=%s quick=%s",
                             retry_shape_issues,
+                            retry_quick_result.issues,
                         )
                         raise ValueError(
-                            "Story shape validation failed: " + "; ".join(retry_shape_issues)
+                            "Story shape validation failed: "
+                            + "; ".join(retry_shape_issues + retry_quick_result.issues)
                         )
                     _set_best_story(story_text, require_valid=True)
                 elif hard_shape_issues:
