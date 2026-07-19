@@ -240,6 +240,7 @@ class StoryMusicGenerationService:
         settings = request.generation_settings()
         brief_hash = music_brief_hash(brief, request.model, settings)
         repository = GeneratedMusicAssetRepository(db)
+        active_asset_ids = _playlist_generated_asset_ids(db, game_id)
         ready_asset = repository.find_ready_asset(
             game_id=game_id,
             provider=self.provider.provider,
@@ -247,6 +248,8 @@ class StoryMusicGenerationService:
             brief_hash=brief_hash,
             generation_settings=settings,
         )
+        if ready_asset is not None and int(ready_asset.asset_id) in active_asset_ids:
+            ready_asset = None
         if ready_asset is None:
             local_library = LocalAiMusicLibraryService()
             try:
@@ -257,7 +260,7 @@ class StoryMusicGenerationService:
                     provider=self.provider.provider,
                     model=request.model,
                     generation_settings=settings,
-                    excluded_asset_ids=_playlist_generated_asset_ids(db, game_id),
+                    excluded_asset_ids=active_asset_ids,
                 )
                 if local_match.hit:
                     return local_library.reuse_match(

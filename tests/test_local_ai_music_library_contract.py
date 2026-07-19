@@ -16,6 +16,7 @@ from src.services.minimax_music_generation import (
     GeneratedMusicFile,
     MiniMaxMusicGenerationProvider,
     StoryMusicGenerationService,
+    music_brief_hash,
 )
 from src.services.music_playlist_service import MusicPlaylistService
 from src.services.music_service import MusicBrief
@@ -441,7 +442,7 @@ def test_story_generation_reuses_local_library_before_provider_call(
     ]
 
 
-def test_story_generation_generates_when_only_library_match_is_already_playing(
+def test_story_generation_generates_when_exact_cache_match_is_already_playing(
     db_session,
     tmp_path,
 ):
@@ -494,19 +495,33 @@ def test_story_generation_generates_when_only_library_match_is_already_playing(
                 media_type="audio/mpeg",
             )
 
+    story_text = "顾晨曦在会议室准备 AI 产品复盘，气氛紧张。"
+    analysis = {
+        "mood": "紧张",
+        "scene_type": "现代职场危机",
+        "environment": "2020年代互联网公司会议室",
+        "pacing": "紧凑",
+        "energy": "中高",
+        "instruments": ["电子合成器", "钢琴"],
+        "negative_cues": ["人声", "歌词"],
+    }
+    brief = ProviderFallback.build_brief_from_story(
+        story_text=story_text,
+        analysis=analysis,
+        max_prompt_chars=ProviderFallback.config.max_music_prompt_chars,
+    )
+    existing.brief_hash = music_brief_hash(
+        brief,
+        ProviderFallback.model,
+        GENERATION_SETTINGS,
+    )
+    db_session.commit()
+
     track = StoryMusicGenerationService(provider=ProviderFallback()).generate_ready_track(
         db=db_session,
         game_id=target_game.game_id,
-        story_text="顾晨曦在会议室准备 AI 产品复盘，气氛紧张。",
-        analysis={
-            "mood": "紧张",
-            "scene_type": "现代职场危机",
-            "environment": "2020年代互联网公司会议室",
-            "pacing": "紧凑",
-            "energy": "中高",
-            "instruments": ["电子合成器", "钢琴"],
-            "negative_cues": ["人声", "歌词"],
-        },
+        story_text=story_text,
+        analysis=analysis,
     )
 
     assert provider_calls == 1
