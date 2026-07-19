@@ -223,6 +223,12 @@ export function MusicPlayer({
       isLoadingSongRef.current = true;
       setIsSwitchingSong(true); // 显示切换加载状态
     }
+
+    const reusablePreloadedAudio = !isPreload &&
+      preloadedAudioRef.current &&
+      preloadedSongRef.current?.id === song.id
+      ? preloadedAudioRef.current
+      : null;
     
     try {
       // 如果是预加载，不清理当前播放的音频
@@ -248,12 +254,16 @@ export function MusicPlayer({
           audioElement.onerror = null;
         }
         
-        // 清理预加载的音频
-        if (preloadedAudioRef.current) {
+        // A ready next track can become the active player without another network load.
+        if (preloadedAudioRef.current && preloadedAudioRef.current !== reusablePreloadedAudio) {
           preloadedAudioRef.current.pause();
           preloadedAudioRef.current.src = "";
           preloadedAudioRef.current = null;
           preloadedSongRef.current = null;
+        } else if (reusablePreloadedAudio) {
+          preloadedAudioRef.current = null;
+          preloadedSongRef.current = null;
+          reusablePreloadedAudio.oncanplaythrough = null;
         }
         
         // 重置音频元素状态
@@ -264,7 +274,7 @@ export function MusicPlayer({
       }
 
       // 获取播放地址（优先使用歌曲自带的 URL，后端已批量返回）
-      let url = song.url || songUrlMapRef.current.get(song.id);
+      let url = song.url || songUrlMapRef.current.get(song.id) || reusablePreloadedAudio?.src;
       
       // 如果没有 URL，尝试实时获取（降级方案）
       if (!url && !isPreload && typeof song.id === "number") {
@@ -314,8 +324,8 @@ export function MusicPlayer({
         return;
       }
 
-      // 创建新的音频元素
-      const audio = new Audio(url);
+      // Reuse the preloaded element when it matches the target track.
+      const audio = reusablePreloadedAudio || new Audio(url);
       audio.volume = volume;
 
       // 绑定事件
