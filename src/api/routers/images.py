@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.params import Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from src.api.deps import get_current_user, get_current_user_optional
 from src.api.routers.image_failures import (image_failure_http_exception,
@@ -1170,7 +1171,8 @@ async def generate_round_scene_image(
     service = ImageService(db)
 
     try:
-        scene_model = service.generate_round_scene_image(
+        scene_model = await run_in_threadpool(
+            service.generate_round_scene_image,
             game_id=req.game_id,
             round_number=req.round_number,
             story_text=req.story_text,
