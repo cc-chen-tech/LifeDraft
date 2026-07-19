@@ -106,6 +106,38 @@ class TestOptionGenerator:
         assert len(event.options) == 3
         assert "积极面对" not in event.options[0].text
 
+    def test_generate_options_rejects_a_model_set_that_repeats_recent_choices(self):
+        """A normal model response must not replay all three recent choices."""
+        repeated_choices = ["细读合作条款", "请伙伴一起把关", "先锁定关键风险"]
+        mock_client = Mock()
+        mock_client.call.return_value = json.dumps(
+            {
+                "options": [
+                    {"text": choice, "effects": {"energy": -5, "mood": 0}}
+                    for choice in repeated_choices
+                ]
+            }
+        )
+
+        with pytest.raises(ValueError, match="repeats recent choices"):
+            self._make_generator(mock_client).generate_options_only(
+                "林岚需要在合同签署前决定如何处理新增条款。",
+                {"decision_history": [{"choice": choice} for choice in repeated_choices]},
+                language="zh",
+            )
+
+    def test_options_prompt_includes_recent_choices_as_a_repeat_constraint(self):
+        from config.prompts import get_options_only_prompt
+
+        prompt = get_options_only_prompt(
+            "林岚需要在合同签署前决定如何处理新增条款。",
+            {"decision_history": [{"choice": "细读合作条款"}]},
+            language="zh",
+        )
+
+        assert "细读合作条款" in prompt
+        assert "禁止逐字或等价重复" in prompt
+
     def test_generate_options_fallback_en(self):
         """Test English fallback options."""
         mock_client = Mock()

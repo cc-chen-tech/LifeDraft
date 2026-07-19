@@ -119,6 +119,12 @@ class OptionGenerator:
                                 TARGET_OPTION_COUNT,
                             )
                             options = options[:TARGET_OPTION_COUNT]
+                        if self.options_repeat_recent_history(
+                            options, player_state.get("decision_history", [])
+                        ):
+                            last_error = "Generated options repeat recent choices"
+                            logger.warning(last_error)
+                            continue
                         logger.info("Options generated successfully!")
                         return GameEvent(
                             event_description=story_description,
@@ -138,6 +144,10 @@ class OptionGenerator:
             story_description=story_description,
             language=language,
         )
+        if self.options_repeat_recent_history(
+            default_options, player_state.get("decision_history", [])
+        ):
+            raise ValueError("Option generation fallback repeats recent choices")
         return GameEvent(event_description=story_description, options=default_options)
 
     @staticmethod
@@ -232,6 +242,13 @@ class OptionGenerator:
         options: List[EventOption], decision_history: Any
     ) -> bool:
         """Return whether every fallback option repeats a recent committed choice."""
+        return OptionGenerator.options_repeat_recent_history(options, decision_history)
+
+    @staticmethod
+    def options_repeat_recent_history(
+        options: List[EventOption], decision_history: Any
+    ) -> bool:
+        """Return whether every candidate option replays a recent committed choice."""
         if not isinstance(decision_history, list) or not options:
             return False
 
