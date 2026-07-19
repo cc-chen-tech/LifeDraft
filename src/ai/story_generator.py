@@ -581,12 +581,10 @@ class StoryGenerator:
         best_valid_story_text = ""
         last_generation_error: Optional[Exception] = None
 
-        def _set_best_story(candidate: Optional[str], *, require_valid: bool = False) -> None:
+        def _set_best_story(candidate: Optional[str]) -> None:
             if not candidate:
                 return
             nonlocal best_valid_story_text
-            if not require_valid or _hard_shape_issues(candidate):
-                return
             if len(candidate) > len(best_valid_story_text):
                 best_valid_story_text = candidate
 
@@ -669,8 +667,6 @@ class StoryGenerator:
                 )
                 story_text = normalize_generated_story(story_text, language=language)
                 logger.info(f"Generated round story with {len(story_text)} characters")
-                # 主生成结果先记录（未通过 quick 校验前不标记为有效）
-                _set_best_story(story_text)
 
                 # Step 1.4: Quick rule-based validation (before AI validation)
                 quick_result = quick_validate_story(
@@ -731,7 +727,6 @@ class StoryGenerator:
                             retry_result.issues,
                         )
                         break
-                    _set_best_story(story_text, require_valid=True)
                     if retry_result.warnings:
                         logger.info(
                             "Quick validation retry warnings: %s",
@@ -743,12 +738,8 @@ class StoryGenerator:
                         "Fast generation records local validation issues without a second provider call: %s",
                         quick_result.issues,
                     )
-                    _set_best_story(story_text, require_valid=True)
                 elif quick_result.warnings:
                     logger.info(f"Quick validation warnings: {quick_result.warnings}")
-                    _set_best_story(story_text, require_valid=True)
-                else:
-                    _set_best_story(story_text, require_valid=True)
 
                 hard_shape_issues = _hard_shape_issues(story_text)
                 requires_shape_retry = (
@@ -795,12 +786,13 @@ class StoryGenerator:
                             "Story shape validation failed: "
                             + "; ".join(retry_shape_issues + retry_quick_result.issues)
                         )
-                    _set_best_story(story_text, require_valid=True)
                 elif hard_shape_issues:
                     logger.warning(
                         "Story shape issues recorded without another provider retry: %s",
                         hard_shape_issues,
                     )
+                else:
+                    _set_best_story(story_text)
 
                 if self._repeats_committed_story(story_text, committed_stories):
                     if self._canonical_story_for_repeat_check(
@@ -845,7 +837,7 @@ class StoryGenerator:
                         )
                     if self._repeats_committed_story(story_text, committed_stories):
                         raise ValueError("Round story repeats committed story after retry")
-                    _set_best_story(story_text, require_valid=True)
+                    _set_best_story(story_text)
 
                 # Step 1.5: AI-based consistency validation (if world_model is provided)
                 if world_model and story_text and generation_budget.allow_ai_consistency:
@@ -867,7 +859,7 @@ class StoryGenerator:
                             "Story consistency retry failed shape validation: "
                             + "; ".join(post_validation_shape_issues)
                         )
-                    _set_best_story(story_text, require_valid=True)
+                    _set_best_story(story_text)
 
                 # Harness 检查（仅在开启时执行），支持在无效内容上继续 retry
                 if self._harness_enabled and self._validation_pipeline:
