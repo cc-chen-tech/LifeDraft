@@ -112,6 +112,11 @@ class StoryGenerator:
             return base_temperature
         return max(min_temperature, base_temperature - attempt * decay)
 
+    def _story_request_timeout_seconds(self) -> float:
+        """Keep interactive story requests inside the selected quality budget."""
+        budget = get_generation_budget(self.quality_level.value)
+        return float(budget.expected_seconds + 30)
+
     @staticmethod
     def _extract_player_name(player_state: Optional[Dict[str, Any]]) -> str:
         """Resolve and sanitize player name from player state.
@@ -338,6 +343,7 @@ class StoryGenerator:
                     stream_callback=cb,
                     frequency_penalty=0.3,  # ★ 惩罚重复词汇，减少车轲辘话
                     presence_penalty=0.3,  # ★ 鼓励使用新词汇/新主题
+                    request_timeout=self._story_request_timeout_seconds(),
                 )
 
                 story_text = normalize_generated_story(story_text, language=language)
@@ -660,6 +666,7 @@ class StoryGenerator:
                     stream_callback=stream_callback if attempt == 0 else None,
                     frequency_penalty=0.4,  # ★ 轮次级别更强的反重复，因为同周多轮更容易重复
                     presence_penalty=0.4,  # ★ 鼓励每轮使用不同的表达方式
+                    request_timeout=self._story_request_timeout_seconds(),
                 )
                 story_text = normalize_generated_story(story_text, language=language)
                 logger.info(f"Generated round story with {len(story_text)} characters")
@@ -703,6 +710,7 @@ class StoryGenerator:
                         stream_callback=stream_callback if attempt == 0 else None,
                         frequency_penalty=0.4,
                         presence_penalty=0.4,
+                        request_timeout=self._story_request_timeout_seconds(),
                     )
                     story_text = normalize_generated_story(retry_story, language=language)
                     quick_retry_used = True
@@ -764,6 +772,7 @@ class StoryGenerator:
                         stream_callback=stream_callback if attempt == 0 else None,
                         frequency_penalty=0.4,
                         presence_penalty=0.4,
+                        request_timeout=self._story_request_timeout_seconds(),
                     )
                     story_text = normalize_generated_story(retry_story, language=language)
                     logger.info(
@@ -820,6 +829,7 @@ class StoryGenerator:
                         stream_callback=stream_callback if attempt == 0 else None,
                         frequency_penalty=0.5,
                         presence_penalty=0.5,
+                        request_timeout=self._story_request_timeout_seconds(),
                     )
                     story_text = normalize_generated_story(retry_story, language=language)
                     repeat_retry_validation = quick_validate_story(
@@ -1208,6 +1218,7 @@ class StoryGenerator:
                 stream_callback=stream_callback,
                 frequency_penalty=0.3,  # ★ 重试时也保持反重复
                 presence_penalty=0.3,
+                request_timeout=self._story_request_timeout_seconds(),
             )
 
             if retry_story:

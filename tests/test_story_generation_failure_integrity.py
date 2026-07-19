@@ -117,6 +117,43 @@ def test_round_generation_retries_when_provider_repeats_committed_story(monkeypa
     assert "重复" in client.call.call_args_list[1].kwargs["user_prompt"]
 
 
+def test_round_generation_uses_a_bounded_provider_timeout(monkeypatch) -> None:
+    """A stalled story request must not inherit the five-minute client default."""
+    from src.ai.models import EventOption, GameEvent
+
+    story = "林岚在小影院核对预算，陈越把待确认的施工报价分成两栏。" * 40
+    client = Mock()
+    client.call.return_value = story
+    option_generator = Mock()
+    option_generator.generate_options_only.return_value = GameEvent(
+        event_description=story,
+        options=[
+            EventOption(text="确认最紧急的施工项", effects={}),
+            EventOption(text="先和陈越复核报价", effects={}),
+            EventOption(text="联系周师傅约现场时间", effects={}),
+        ],
+    )
+
+    monkeypatch.setattr(
+        "src.ai.quick_validator.quick_validate_story",
+        lambda **_kwargs: SimpleNamespace(passed=True, warnings=[], issues=[]),
+    )
+    monkeypatch.setattr(
+        "src.ai.story_generator.validate_narrative_quality",
+        lambda *_args, **_kwargs: [],
+    )
+
+    StoryGenerator(client).generate_round_event(
+        player_state={"week": 0, "current_round": 0},
+        language="zh",
+        round_number=0,
+        round_context="",
+        option_generator=option_generator,
+    )
+
+    assert client.call.call_args.kwargs["request_timeout"] == 120.0
+
+
 def test_round_generation_rejects_provider_output_repeated_after_retry(monkeypatch) -> None:
     repeated_story = "林岚在小影院核对测量费与预算表，陈越记录每一笔待确认支出。" * 32
     client = Mock()
