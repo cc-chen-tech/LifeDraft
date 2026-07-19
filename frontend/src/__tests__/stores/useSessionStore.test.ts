@@ -7,6 +7,7 @@
  */
 import { act, renderHook } from '@testing-library/react';
 import { useGameStore } from '@/stores/useGameStore';
+import { useSessionStore } from '@/stores/useSessionStore';
 import { jsonResponse, errorResponse } from '@/__tests__/helpers/fetch';
 
 describe('useSessionStore (Session Management)', () => {
@@ -346,6 +347,50 @@ describe('useSessionStore (Session Management)', () => {
       });
 
       expect(global.fetch).toHaveBeenCalledWith('/api/games/42', expect.objectContaining({ credentials: 'include' }));
+    });
+
+    it('clears a completed resume view even when progression values are unchanged', async () => {
+      const completedView = {
+        phase: 'result',
+        story_text: '上一轮故事',
+        round_summary: '上一轮小结',
+        completed_week: 0,
+        completed_round: 0,
+      };
+      const progressedPlayerState = {
+        player_name: '林澈',
+        life_vision: '',
+        energy: 80,
+        mood: 70,
+        knowledge: 20,
+        wealth: 50000,
+        age: 30,
+        week: 0,
+        current_round: 1,
+        rounds_per_week: 3,
+        character_settings: {},
+      };
+
+      act(() => {
+        useSessionStore.setState({
+          gameId: 42,
+          playerState: { ...progressedPlayerState, resume_view: completedView },
+          progress: { week: 0, current_round: 1, rounds_per_week: 3 },
+          roundInfo: { week: 0, current_round: 1, rounds_per_week: 3 },
+        });
+      });
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        player_state: { ...progressedPlayerState, resume_view: null },
+        progress: { week: 0, current_round: 1, rounds_per_week: 3 },
+        round_info: { week: 0, current_round: 1, rounds_per_week: 3 },
+        current_event: null,
+      }));
+
+      await act(async () => {
+        await useGameStore.getState().syncPlayerState();
+      });
+
+      expect(useGameStore.getState().playerState?.resume_view).toBeNull();
     });
   });
 

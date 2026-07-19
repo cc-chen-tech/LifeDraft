@@ -51,6 +51,15 @@ const _persisted = _readPersistedState();
 // 浅比较辅助函数
 const KEY_FIELDS = ["energy", "mood", "knowledge", "wealth", "age", "week", "current_round"];
 
+function resumeViewChanged(
+  newVal: PlayerState | GameProgress | RoundInfo,
+  oldVal: PlayerState | GameProgress | RoundInfo
+): boolean {
+  const nextResumeView = (newVal as PlayerState).resume_view ?? null;
+  const previousResumeView = (oldVal as PlayerState).resume_view ?? null;
+  return JSON.stringify(nextResumeView) !== JSON.stringify(previousResumeView);
+}
+
 function shallowChanged(
   newVal: PlayerState | GameProgress | RoundInfo | null,
   oldVal: PlayerState | GameProgress | RoundInfo | null,
@@ -58,7 +67,10 @@ function shallowChanged(
 ): boolean {
   if (newVal === oldVal) return false;
   if (!newVal || !oldVal) return true;
-  return keyFields.some((key) => (newVal as Record<string, unknown>)[key] !== (oldVal as Record<string, unknown>)[key]);
+  return (
+    keyFields.some((key) => (newVal as Record<string, unknown>)[key] !== (oldVal as Record<string, unknown>)[key]) ||
+    resumeViewChanged(newVal, oldVal)
+  );
 }
 
 export interface SessionState {
