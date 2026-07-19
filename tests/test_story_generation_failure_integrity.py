@@ -182,6 +182,64 @@ def test_round_generation_rejects_provider_output_repeated_after_retry(monkeypat
     assert client.call.call_count == 2
     option_generator.generate_options_only.assert_not_called()
 
+
+def test_round_generation_rejects_an_overlong_story_after_shape_retry(monkeypatch) -> None:
+    """An overlong retry must not become the persisted fallback event."""
+    overlong_story = "林岚和陈越核对影院改造预算，并逐项确认本周的施工安排。" * 50
+    client = Mock()
+    client.call.side_effect = [overlong_story, overlong_story]
+    option_generator = Mock()
+
+    monkeypatch.setattr(
+        "src.ai.quick_validator.quick_validate_story",
+        lambda **_kwargs: SimpleNamespace(passed=True, warnings=[], issues=[]),
+    )
+
+    with pytest.raises(StoryGenerationFailure, match="Story shape validation failed"):
+        StoryGenerator(client).generate_round_event(
+            player_state={"week": 0, "current_round": 0},
+            language="zh",
+            round_number=0,
+            round_context="",
+            option_generator=option_generator,
+        )
+
+    assert client.call.call_count == 2
+    option_generator.generate_options_only.assert_not_called()
+
+
+def test_round_generation_rejects_an_overlong_consistency_retry(monkeypatch) -> None:
+    """A consistency rewrite must obey the same shape budget as its first draft."""
+    valid_story = "林岚和陈越核对影院改造预算，并确认本周先去居委会咨询补贴条件。" * 32
+    overlong_retry = "林岚和陈越继续逐项讨论影院改造预算和施工安排，反复核对每个细节。" * 50
+    client = Mock()
+    client.call.return_value = valid_story
+    option_generator = Mock()
+    generator = StoryGenerator(client)
+
+    monkeypatch.setattr(
+        "src.ai.quick_validator.quick_validate_story",
+        lambda **_kwargs: SimpleNamespace(passed=True, warnings=[], issues=[]),
+    )
+    monkeypatch.setattr(
+        generator,
+        "_validate_and_retry_story",
+        lambda **_kwargs: overlong_retry,
+    )
+
+    with pytest.raises(StoryGenerationFailure, match="consistency retry failed shape validation"):
+        generator.generate_round_event(
+            player_state={"week": 0, "current_round": 0},
+            language="zh",
+            round_number=0,
+            round_context="",
+            option_generator=option_generator,
+            world_model=object(),
+        )
+
+    option_generator.generate_options_only.assert_not_called()
+
+
 def test_choice_continuation_surfaces_provider_failure_instead_of_fake_prose() -> None:
     service = StoryService(FailingStoryGenerator(), language="zh")
 

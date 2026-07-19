@@ -585,11 +585,10 @@ class StoryGenerator:
             if not candidate:
                 return
             nonlocal best_valid_story_text
-            if not require_valid:
+            if not require_valid or _hard_shape_issues(candidate):
                 return
-            if require_valid:
-                if len(candidate) > len(best_valid_story_text):
-                    best_valid_story_text = candidate
+            if len(candidate) > len(best_valid_story_text):
+                best_valid_story_text = candidate
 
         def _hard_shape_issues(candidate: str) -> list[str]:
             shape_issues = validate_narrative_quality(
@@ -861,6 +860,13 @@ class StoryGenerator:
                         stream_callback=stream_callback if attempt == 0 else None,
                         status_callback=status_callback,
                     )
+                    post_validation_shape_issues = _hard_shape_issues(story_text)
+                    if post_validation_shape_issues:
+                        best_valid_story_text = ""
+                        raise ValueError(
+                            "Story consistency retry failed shape validation: "
+                            + "; ".join(post_validation_shape_issues)
+                        )
                     _set_best_story(story_text, require_valid=True)
 
                 # Harness 检查（仅在开启时执行），支持在无效内容上继续 retry
