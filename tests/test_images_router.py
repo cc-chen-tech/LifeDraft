@@ -1,5 +1,6 @@
 """Tests for images router - simplified version."""
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -17,6 +18,60 @@ from src.ai.image_exceptions import ImageProviderError  # noqa: E402
 from src.services.image_service import (ImageContentError,  # noqa: E402
                                         ImageProviderServiceError)
 from src.services.image_storage import ImageStorageError  # noqa: E402
+
+
+@pytest.mark.asyncio
+async def test_round_scene_generation_runs_outside_the_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Long-running provider calls must not delay gameplay SSE and saves."""
+    from src.api.routers import images
+    from src.api.schemas import GenerateRoundSceneRequest
+
+    service = MagicMock()
+    service.storage_service.get_image_url.return_value = "/api/images/file/1/scene.jpg"
+    service.generate_round_scene_image.return_value = SimpleNamespace(
+        scene_id=7,
+        game_id=1,
+        week=2,
+        round_number=1,
+        stage="event",
+        storage_path="/tmp/scene.jpg",
+        storage_type="local",
+        scene_description="雨夜的咖啡馆",
+        created_at=None,
+    )
+    offloaded: list[object] = []
+
+    async def run_in_test_threadpool(func, *args, **kwargs):
+        offloaded.append(func)
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(images, "ImageService", lambda _db: service)
+    monkeypatch.setattr(
+        images,
+        "run_in_threadpool",
+        run_in_test_threadpool,
+        raising=False,
+    )
+    monkeypatch.setattr(images, "verify_game_ownership", MagicMock())
+
+    response = await images.generate_round_scene_image(
+        GenerateRoundSceneRequest(
+            game_id=1,
+            week=2,
+            round_number=1,
+            story_text="沈言在雨夜的咖啡馆整理文稿。",
+            character_settings={},
+            player_name="沈言",
+            stage="event",
+        ),
+        db=MagicMock(),
+        user=1,
+    )
+
+    assert offloaded == [service.generate_round_scene_image]
+    assert response.scene_id == 7
 
 
 @pytest.fixture
