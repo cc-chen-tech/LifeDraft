@@ -184,6 +184,44 @@ describe('ChatBar', () => {
       expect((await screen.findAllByText('正在生成改写文本')).length).toBeGreaterThan(0);
     });
 
+    it('replaces streamed rewrite text when the server retries the rewrite', async () => {
+      const rewriteStream = createControlledSSEStream();
+      const onRewriteComplete = jest.fn();
+      (global.fetch as jest.Mock).mockResolvedValue({
+        ok: true,
+        body: rewriteStream.stream,
+      });
+
+      const user = userEvent.setup();
+      render(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+          storyText="原始故事。"
+          onRewriteComplete={onRewriteComplete}
+        />
+      );
+
+      await user.click(screen.getByRole('button', { name: '改写' }));
+      await user.type(
+        await screen.findByPlaceholderText(/描述你想要的修改/),
+        '增加对话'
+      );
+      await user.click(screen.getByRole('button', { name: '改写故事' }));
+
+      act(() => {
+        rewriteStream.enqueue('data: {"type":"story_chunk","content":"首稿"}\n\n');
+        rewriteStream.enqueue('data: {"type":"status","status":{"phase":"retry"}}\n\n');
+        rewriteStream.enqueue('data: {"type":"story_chunk","content":"重写稿"}\n\n');
+      });
+
+      await waitFor(() => {
+        expect(onRewriteComplete).toHaveBeenLastCalledWith('重写稿');
+      });
+      expect(onRewriteComplete).not.toHaveBeenCalledWith('首稿重写稿');
+    });
+
     it('opens dedicated summary panel and calls summary API from collapsed quick action', async () => {
       (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
         summary_text: 'Test summary content',
