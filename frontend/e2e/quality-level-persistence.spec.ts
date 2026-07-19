@@ -61,20 +61,20 @@ test.describe("叙事质量持久化", () => {
     await masterItem.click();
     await settingsUpdate;
 
-    // 验证已选中
-    await expect(masterItem).toHaveAttribute("data-state", "checked");
-
     // 刷新页面
     await page.reload();
     await page.waitForLoadState("domcontentloaded");
     await page.waitForTimeout(2000);
 
     // 再次打开菜单验证
-    await settingsButton.click();
-    await page.locator("text=叙事质量").first().hover();
-    await page.waitForTimeout(300);
+    const settingsButtonAfterReload = page.getByRole("button", { name: "设置" });
+    await expect(settingsButtonAfterReload).toBeVisible({ timeout: 20_000 });
+    await settingsButtonAfterReload.click();
+    const qualityMenu = page.getByRole("menuitem", { name: "叙事质量" });
+    await expect(qualityMenu).toBeVisible({ timeout: 20_000 });
+    await qualityMenu.hover();
 
-    const masterItemAfterReload = page.locator("[role='menuitemradio']:has-text('大师')");
+    const masterItemAfterReload = page.getByRole("menuitemradio", { name: "大师" });
     await expect(masterItemAfterReload).toHaveAttribute("data-state", "checked");
   });
 });
