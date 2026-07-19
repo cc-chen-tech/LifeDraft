@@ -657,6 +657,79 @@ describe('MusicPlayer', () => {
     ).toBe(true);
   });
 
+  it('当前歌曲加载失败后优先推进持久化队列里的 AI 曲目', async () => {
+    const currentSong = {
+      id: 1,
+      name: '网易云 当前曲',
+      artists: ['Score'],
+      album: '影视配乐',
+      duration: 180000,
+      url: 'https://example.com/current.mp3',
+      source: 'netease' as const,
+    };
+    const queuedAiSong = {
+      id: 'ai-generated-77',
+      name: 'AI MiniMax 雨夜追逐',
+      artists: ['MiniMax'],
+      album: 'AI Generated',
+      duration: 120000,
+      url: '/api/music/generated/ai-generated-77.mp3',
+      source: 'ai_generated' as const,
+      provider: 'minimax',
+      model: 'music-01',
+    };
+    (global.fetch as jest.Mock).mockReset();
+    (global.fetch as jest.Mock).mockResolvedValue(
+      playlistResponse(77, queuedAiSong, [])
+    );
+    useMusicStore.setState({
+      recommendation: {
+        mood: '紧张',
+        scene_type: '雨夜追逐',
+        keywords: ['雨夜追逐'],
+        songs: [currentSong],
+      },
+      playlistGameId: 77,
+      currentSong,
+      queue: [queuedAiSong],
+      playedSongs: [],
+      audioElement: null,
+      isPlaying: false,
+    });
+
+    render(
+      <MusicPlayer
+        storyText="雨夜码头追逐，主角发现旧账册线索。"
+        gameId={77}
+        autoFetchRecommendation={false}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '播放' }));
+    const firstAudio = createdAudioInstances.find((audio) =>
+      audio.src.includes('current.mp3')
+    );
+    expect(firstAudio).toBeDefined();
+
+    act(() => {
+      firstAudio?.onerror?.();
+    });
+
+    await waitFor(() => {
+      expect(useMusicStore.getState().currentSong?.name).toBe('AI MiniMax 雨夜追逐');
+    });
+    expect(
+      (global.fetch as jest.Mock).mock.calls.some((call: unknown[]) =>
+        String(call[0]).includes('/api/music/playlist/77/advance')
+      )
+    ).toBe(true);
+    expect(
+      createdAudioInstances.some((audio) =>
+        audio.src.includes('ai-generated-77.mp3') && audio.play.mock.calls.length === 1
+      )
+    ).toBe(true);
+  });
+
   it('有基础歌曲时仍提示 MiniMax 原创音乐正在后台生成', () => {
     useMusicStore.setState({
       recommendation: {
