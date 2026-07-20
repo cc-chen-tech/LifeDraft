@@ -640,7 +640,10 @@ class TestStoryGenerator:
         """If story succeeds but option validation fails, keep story and build 3 non-generic choices."""
         from src.ai.story_generator import StoryGenerator
 
-        story = "顾晨曦在浙大实验室拿到合作协议，需要和林一凡确认技术对接计划。"
+        story = (
+            "顾晨曦在浙大实验室拿到合作协议，需要和林一凡确认技术对接计划，"
+            "并为下周的联调安排明确负责人和时间表。"
+        ) * 20
         mock_client = Mock()
         mock_client.call.return_value = story
         option_generator = Mock()
@@ -669,7 +672,10 @@ class TestStoryGenerator:
         from src.ai.story_exceptions import StoryGenerationFailure
         from src.ai.story_generator import StoryGenerator
 
-        story = "顾晨曦在浙大实验室拿到合作协议，需要和林一凡确认技术对接计划。"
+        story = (
+            "顾晨曦在浙大实验室拿到合作协议，需要和林一凡确认技术对接计划，"
+            "并为下周的联调安排明确负责人和时间表。"
+        ) * 20
         mock_client = Mock()
         mock_client.call.return_value = story
         option_generator = Mock()

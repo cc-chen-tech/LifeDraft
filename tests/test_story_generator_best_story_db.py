@@ -28,9 +28,11 @@ class TestStoryGeneratorBestStoryFallback:
         gen, client = self._make_generator(QualityLevel.MASTER)
 
         long_story = (
-            "这是一个很长的故事文本，远远超过了五十个字符的长度要求，"
-            "讲述了主角在古代的冒险经历和各种奇遇，以及他如何克服困难。"
-        )
+            "你在清晨的图书馆整理实验记录，窗外的雨声提醒你即将到来的合作评审。"
+            "你把协议中的风险条款逐条标记，并联系林一凡确认技术接口、预算节奏和联调日期。"
+            "午后，团队针对数据权限和样本交接展开讨论，你提出先完成小范围验证，再把结果带回项目会上复盘。"
+            "傍晚离开实验室前，你写下明天要跟进的三项事项，也决定把尚未解决的顾虑坦诚告诉合作方。"
+        ) * 10
         short_story = "短"
 
         # 第一次返回长文本（被记录为 best_story_text），
@@ -110,8 +112,15 @@ class TestStoryGeneratorBestStoryFallback:
         """best_story_text 应记录所有尝试中最长的文本"""
         gen, client = self._make_generator(QualityLevel.MASTER)
 
-        medium_story = "中等长度的故事文本，描述了一些情节。" * 2
-        long_story = "这是一个很长的故事文本，超过了很多字符。" * 5
+        medium_story = (
+            "你在清晨的图书馆整理实验记录，窗外的雨声提醒你即将到来的合作评审。"
+            "你把协议中的风险条款逐条标记，并联系林一凡确认技术接口、预算节奏和联调日期。"
+            "午后，团队针对数据权限和样本交接展开讨论，你提出先完成小范围验证，再把结果带回项目会上复盘。"
+            "傍晚离开实验室前，你写下明天要跟进的三项事项，也决定把尚未解决的顾虑坦诚告诉合作方。"
+        ) * 10
+        long_story = medium_story + (
+            "第二天的复盘让你确认了验证范围，也为下一次沟通准备了更清晰的备选方案。"
+        ) * 2
         short_story = "短"
 
         # 第一次中等，第二次长（更新 best），第三次短（不更新 best）
