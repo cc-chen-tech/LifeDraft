@@ -69,6 +69,14 @@ function makeChoiceCompleteOnlyResponse(story = 'Choice result...', options = [{
   ]);
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 /** SSE response for regenerate endpoint */
 function makeRegenerateResponse(story = 'New regenerated story') {
   return createSSEMockResponse([
@@ -498,6 +506,12 @@ describe('usePlayGame - Phase State Machine', () => {
 
     it('should transition to error phase on SSE error event', async () => {
       setupGameStore({ gameId: 1, storyText: '' });
+      const initialSync = createDeferred<void>();
+      const recoverySync = createDeferred<void>();
+      const syncState = jest.spyOn(useGameStore.getState(), 'syncState');
+      syncState
+        .mockImplementationOnce(() => initialSync.promise)
+        .mockImplementationOnce(() => recoverySync.promise);
 
       (global.fetch as jest.Mock).mockImplementation((url: string) => {
         if (typeof url === 'string' && url.includes('/event')) {
@@ -512,15 +526,21 @@ describe('usePlayGame - Phase State Machine', () => {
         expect(result.current.gameId).toBe(1);
       });
 
-      await act(async () => {
-        await result.current.generateEvent();
+      // Keep initialization behind its state sync so this test owns the one
+      // explicit request that exercises the SSE error path.
+      act(() => {
+        void result.current.generateEvent();
       });
 
-      // Should be in error phase or loading (depending on error handling)
       await waitFor(() => {
-        expect(['error', 'loading', 'generating']).toContain(result.current.phase);
+        expect(fetchCallCount('/event')).toBe(1);
+      });
+      await waitFor(() => {
+        expect(syncState).toHaveBeenCalledTimes(2);
       });
 
+      expect(['error', 'loading', 'generating']).toContain(result.current.phase);
+      initialSync.resolve(undefined);
       unmount();
     });
 
@@ -695,28 +715,29 @@ describe('usePlayGame - Phase State Machine', () => {
   describe('Phase Timeout Handling', () => {
     it('should track elapsed time during generating phase', async () => {
       setupGameStore({ gameId: 1, storyText: '' });
+      const initialSync = createDeferred<void>();
+      jest
+        .spyOn(useGameStore.getState(), 'syncState')
+        .mockImplementation(() => initialSync.promise);
 
-      let resolveFetch: ((r: Response) => void) | null = null;
       (global.fetch as jest.Mock).mockImplementation((url: string) => {
         if (typeof url === 'string' && url.includes('/event')) {
-          return new Promise<Response>((resolve) => {
-            resolveFetch = resolve;
-          });
+          return new Promise<Response>(() => {});
         }
         return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}), headers: new Headers() } as Response);
       });
 
-      const { result } = renderHook(() => usePlayGame());
+      const { result, unmount } = renderHook(() => usePlayGame());
 
       await waitFor(() => {
         expect(result.current.gameId).toBe(1);
       });
 
-      await act(async () => {
-        result.current.generateEvent();
+      // Keep initialization behind its sync so this unresolved request is the
+      // only generation that owns the elapsed-time state.
+      act(() => {
+        void result.current.generateEvent();
       });
-
-      // Should be in generating phase with timer
       await waitFor(() => {
         expect(result.current.phase).toBe('generating');
       });
@@ -724,12 +745,8 @@ describe('usePlayGame - Phase State Machine', () => {
       // Elapsed seconds should be tracked
       expect(result.current.elapsedSeconds).toBeGreaterThanOrEqual(0);
 
-      // Cleanup
-      if (resolveFetch) {
-        act(() => {
-          resolveFetch(makeEventResponse());
-        });
-      }
+      initialSync.resolve(undefined);
+      unmount();
     });
 
     it('should reset elapsed time when leaving generating phase', async () => {

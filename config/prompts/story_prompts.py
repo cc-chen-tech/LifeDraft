@@ -1123,6 +1123,14 @@ def get_options_only_prompt(
 
     people_list = "、".join(available_people) if available_people else "无"
 
+    recent_choice_texts = []
+    for entry in player_state.get("decision_history", [])[-12:]:
+        if not isinstance(entry, dict):
+            continue
+        choice = str(entry.get("choice") or "").strip()
+        if choice and choice not in recent_choice_texts:
+            recent_choice_texts.append(choice)
+
     # Build character context for option generator (era, personality, key background)
     char_context_parts = []
     if character_settings:
@@ -1155,13 +1163,20 @@ def get_options_only_prompt(
 
     if language == "zh":
         char_section = f"\n\n【角色背景】\n{char_context_str}" if char_context_str else ""
+        recent_choices_section = (
+            "\n\n【近期已采用的选择】\n"
+            + "\n".join(f"- {choice}" for choice in recent_choice_texts)
+            + "\n本轮三项选择禁止逐字或等价重复上述选择；必须针对当前故事结尾提出新的取舍。"
+            if recent_choice_texts
+            else ""
+        )
         return f"""你是一个人生模拟游戏的选项生成器。基于以下故事描述，生成2-4个用户可以选择的选项。
 
 【故事描述】
 {story_description}
 
 【可用人物列表】
-{people_list}{char_section}
+{people_list}{char_section}{recent_choices_section}
 
 【核心要求 - 必须严格遵守】
 
@@ -1218,13 +1233,20 @@ def get_options_only_prompt(
         char_section_en = (
             f"\n\n[Character Background]\n{char_context_str}" if char_context_str else ""
         )
+        recent_choices_section_en = (
+            "\n\n[Recently Chosen Actions]\n"
+            + "\n".join(f"- {choice}" for choice in recent_choice_texts)
+            + "\nThe complete option set must not repeat these choices verbatim or semantically; propose new trade-offs for the current ending."
+            if recent_choice_texts
+            else ""
+        )
         return f"""You are an options generator for a life simulation game. Based on the following story description, generate 2-4 options for the user to choose from.
 
 [Story Description]
 {story_description}
 
 [Available People]
-{people_list}{char_section_en}
+{people_list}{char_section_en}{recent_choices_section_en}
 
 [Requirements]
 1. **Options MUST precisely respond to the decision point at the END of the story**:

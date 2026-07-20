@@ -383,6 +383,28 @@ class TestChoiceSync:
         )
         assert response.status_code == 400
 
+    def test_choice_sync_returns_retryable_error_without_saving_failed_choice(
+        self, client, auth_headers, mock_auth, mock_session_service, mock_session
+    ):
+        """A provider failure must preserve the event for a later retry."""
+        from src.ai.story_exceptions import StoryContinuationFailure
+
+        event = MagicMock()
+        event.options = [{"text": "复盘预算"}]
+        mock_session.game_loop.current_event = event
+        mock_session.game_loop.make_round_choice.side_effect = StoryContinuationFailure(
+            "provider unavailable"
+        )
+        mock_session_service.return_value = mock_session
+
+        response = client.post(
+            "/api/games/1/choice-sync", json={"option_index": 0}, headers=auth_headers
+        )
+
+        assert response.status_code == 503
+        assert response.json()["detail"]["error"] == "story_continuation_failed"
+        assert mock_session.game_loop.current_event is event
+
 
 class TestCustomChoiceSync:
     """Tests for POST /api/gameplay/{game_id}/custom-choice-sync."""
@@ -398,6 +420,27 @@ class TestCustomChoiceSync:
             headers=auth_headers,
         )
         assert response.status_code == 422
+
+    def test_custom_choice_sync_returns_retryable_error_without_saving_failed_choice(
+        self, client, auth_headers, mock_auth, mock_session_service, mock_session
+    ):
+        """Custom-choice fallback must expose generation failure as retryable."""
+        from src.ai.story_exceptions import StoryContinuationFailure
+
+        mock_session.game_loop.current_event = MagicMock()
+        mock_session.game_loop.make_custom_choice.side_effect = StoryContinuationFailure(
+            "provider unavailable"
+        )
+        mock_session_service.return_value = mock_session
+
+        response = client.post(
+            "/api/games/1/custom-choice-sync",
+            json={"custom_text": "和陈越核对预算"},
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 503
+        assert response.json()["detail"]["error"] == "story_continuation_failed"
 
 
 class TestSummaryWeekRange:

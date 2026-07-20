@@ -355,7 +355,8 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
     inFlightReadingRequests.add(requestKey);
     activeLoadingRequestKey = requestKey;
     activeLoadingStartedAt = now;
-    const musicWasPlaying = duckMusicForReading() || get().musicWasPlaying;
+    // Keep background music unchanged while an audio job is still preparing.
+    // Duck only when browser speech or the returned audio actually starts.
     const browserSpeech = getSpeechSynthesis();
     browserSpeech?.getVoices?.();
     browserSpeech?.cancel();
@@ -371,7 +372,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       playbackMode: browserSpeech ? "browser_speech" : "none",
       spokenTextLength: browserSpeech ? context.text.length : 0,
       errorMessage: "",
-      musicDuckState: musicWasPlaying ? "ducked" : get().musicDuckState,
+      musicDuckState: get().musicDuckState,
       userChangedMusic: false,
     });
 
@@ -405,6 +406,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
       if (attemptId !== activeReadingAttempt) {
         return;
       }
+      const musicWasPlaying = duckMusicForReading() || get().musicWasPlaying;
       set({
         readingState: "playing",
         currentAudioUrl: "",
@@ -414,6 +416,7 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
         spokenTextLength: context.text.length,
         currentSpeechText: context.text,
         errorMessage: "",
+        musicDuckState: musicWasPlaying ? "ducked" : get().musicDuckState,
       });
       activeLoadingRequestKey = null;
       activeLoadingStartedAt = 0;
@@ -647,7 +650,12 @@ export const useStoryVoiceStore = create<StoryVoiceState>((set, get) => ({
     if (playbackMode !== "audio" || !currentAudioUrl || readingState === "failed") {
       return;
     }
-    set({ readingState: "playing", errorMessage: "" });
+    const musicWasPlaying = duckMusicForReading() || get().musicWasPlaying;
+    set({
+      readingState: "playing",
+      errorMessage: "",
+      musicDuckState: musicWasPlaying ? "ducked" : get().musicDuckState,
+    });
   },
   markAudioReady: (message) => {
     const { playbackMode, currentAudioUrl, readingState } = get();

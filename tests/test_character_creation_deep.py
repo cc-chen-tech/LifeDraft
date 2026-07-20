@@ -268,6 +268,41 @@ class TestCharacterCreatorGenerateSetting:
         names = [member["name"] for member in result["family_members"]]
         assert names == ["张卫国", "张秀兰"]
 
+    def test_family_setting_does_not_invent_names_for_unnamed_relatives(self):
+        """Family roles named without a legal name stay title-only in the saved facts."""
+        creator = self._make_creator()
+        creator.ai_generator.generate_completion.return_value = json.dumps(
+            {
+                "family_description": "父母住在宁波，弟弟在杭州读大学。",
+                "family_members": [
+                    {"name": "林建国", "role": "父亲", "relationship": "父亲住在宁波"},
+                    {"name": "王秀英", "role": "母亲", "relationship": "母亲住在宁波"},
+                    {"name": "林涛", "role": "弟弟", "relationship": "弟弟在杭州读大学"},
+                ],
+                "family_economy": "中等",
+                "family_relationships": "互相关心",
+            },
+            ensure_ascii=False,
+        )
+
+        result = creator.generate_setting(
+            "family",
+            "林岚",
+            "父母住宁波，弟弟林涛在杭州读大学。",
+            {},
+        )
+
+        assert [member["name"] for member in result["family_members"]] == [
+            "父亲",
+            "母亲",
+            "林涛",
+        ]
+        descriptions = " ".join(
+            str(member.get("relationship", "")) for member in result["family_members"]
+        )
+        assert "林建国" not in descriptions
+        assert "王秀英" not in descriptions
+
     def test_generate_setting_en_fallback(self):
         """Test English fallback settings."""
         creator = self._make_creator("en")
@@ -302,6 +337,28 @@ class TestCharacterCreatorRelationships:
         assert result["role"] == "同事"
         assert "affinity" in result
         assert "sexual_orientation" in result
+
+    def test_generate_single_person_preserves_title_only_name_from_life_vision(self):
+        """A title-only person in the premise must not receive an invented legal name."""
+        creator = self._make_creator()
+        creator.ai_generator.generate_completion_json.return_value = {
+            "name": "周德明",
+            "role": "房东",
+            "relationship_desc": "周德明是社区老街坊，也是林岚的房东。",
+        }
+
+        result = creator.generate_single_relationship_person(
+            "林岚",
+            "2026年杭州经营社区小影院；房东仅称周师傅。",
+            {},
+            [],
+            0,
+            3,
+        )
+
+        assert result["name"] == "周师傅"
+        assert "周德明" not in result["relationship_desc"]
+        assert "周师傅" in result["relationship_desc"]
 
     def test_generate_single_person_defaults(self):
         """Test defaults are applied for missing fields."""
@@ -596,6 +653,31 @@ class TestCheckAndFixMissingAttributes:
         state.relationships = {}
         creator.check_and_fix_missing_attributes(state)
         assert isinstance(state.character_settings["family"]["family_members"][0], dict)
+
+    def test_legacy_family_upgrade_preserves_unnamed_roles(self):
+        """A legacy family list cannot invent parent names absent from the premise."""
+        creator = self._make_creator()
+        creator.ai_generator.generate_completion_json.return_value = {
+            "members": [
+                {"name": "林建国", "role": "父亲", "relationship": "林建国住在宁波"},
+                {"name": "王秀英", "role": "母亲", "relationship": "王秀英住在宁波"},
+                {"name": "林涛", "role": "弟弟", "relationship": "林涛在杭州读大学"},
+            ]
+        }
+        state = Mock()
+        state.character_settings = {"family": {"family_members": ["父亲", "母亲", "弟弟"]}}
+        state.player_name = "林岚"
+        state.life_vision = "父母住宁波，弟弟林涛在杭州读大学。"
+        state.relationships = {}
+
+        creator.check_and_fix_missing_attributes(state)
+
+        assert [member["name"] for member in state.character_settings["family"]["family_members"]] == [
+            "父亲",
+            "母亲",
+            "林涛",
+        ]
+        assert set(state.relationships) == {"父亲", "母亲", "林涛"}
 
     def test_no_fix_needed(self):
         """Test no changes when nothing is missing."""

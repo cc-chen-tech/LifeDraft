@@ -78,6 +78,11 @@ ANTI_MODERN_LIFE_VISION_CUES = (
     "避免现代",
     "避开现代",
 )
+TITLE_ONLY_RELATIONSHIP_RE = re.compile(
+    r"(?P<role>房东|老师|导师|师父|医生|老板|同事|邻居|亲戚)?"
+    r"(?:仅称|只称|仅被称为|只被称为|只叫)"
+    r"(?P<name>[\u4e00-\u9fff]{1,4}(?:师傅|老师|先生|女士|姐|哥|叔|姨))"
+)
 
 
 def assign_sexual_orientation() -> str:
@@ -129,6 +134,130 @@ def _strip_placeholder_surname_from_family_members(
         normalized_members.append(normalized_member)
 
     normalized_setting = dict(family_setting)
+    normalized_setting["family_members"] = normalized_members
+    return normalized_setting
+
+
+def _title_only_relationships(life_vision: str) -> List[Dict[str, str]]:
+    """Return people the player explicitly chose to identify only by a title."""
+    return [
+        {
+            "name": match.group("name"),
+            "role": match.group("role") or "",
+        }
+        for match in TITLE_ONLY_RELATIONSHIP_RE.finditer(life_vision)
+    ]
+
+
+def _preserve_title_only_relationship_names(
+    relationship: Dict[str, Any], life_vision: str
+) -> Dict[str, Any]:
+    """Prevent generated relationship data from assigning a legal name to a title-only person."""
+    normalized = dict(relationship)
+    generated_name = str(normalized.get("name") or "").strip()
+    if not generated_name:
+        return normalized
+
+    context = " ".join(
+        str(normalized.get(field) or "")
+        for field in ("role", "relationship", "relationship_desc", "occupation")
+    )
+    for protected_person in _title_only_relationships(life_vision):
+        canonical_name = protected_person["name"]
+        protected_role = protected_person["role"]
+        shares_surname = generated_name[0] == canonical_name[0]
+        has_matching_role = not protected_role or protected_role in context
+        if generated_name == canonical_name or not (shares_surname and has_matching_role):
+            continue
+
+        normalized["name"] = canonical_name
+        for field in ("relationship", "relationship_desc", "description"):
+            value = normalized.get(field)
+            if isinstance(value, str):
+                normalized[field] = value.replace(generated_name, canonical_name)
+        break
+
+    return normalized
+
+
+def _family_role_label(member: Dict[str, Any]) -> str:
+    """Return a stable family-role label without inferring a legal name."""
+    role = " ".join(
+        str(member.get(field) or "")
+        for field in ("role", "relationship", "relationship_desc")
+    )
+    if "父" in role:
+        return "父亲"
+    if "母" in role:
+        return "母亲"
+    if "哥哥" in role:
+        return "哥哥"
+    if "姐姐" in role:
+        return "姐姐"
+    if "弟" in role:
+        return "弟弟"
+    if "妹" in role:
+        return "妹妹"
+    return ""
+
+
+def _life_vision_mentions_family_role(life_vision: str, role_label: str) -> bool:
+    if role_label in life_vision:
+        return True
+    return role_label in {"父亲", "母亲"} and "父母" in life_vision
+
+
+def _preserve_explicit_family_member_names(
+    family_setting: Dict[str, Any], life_vision: str
+) -> Dict[str, Any]:
+    """Do not turn unnamed family roles in the premise into invented legal names."""
+    if not isinstance(life_vision, str) or not life_vision.strip():
+        return family_setting
+
+    members = family_setting.get("family_members")
+    if not isinstance(members, list):
+        return family_setting
+
+    normalized_setting = dict(family_setting)
+    normalized_members: list[Any] = []
+    replacements: list[tuple[str, str]] = []
+    for raw_member in members:
+        if not isinstance(raw_member, dict):
+            normalized_members.append(raw_member)
+            continue
+
+        member = dict(raw_member)
+        generated_name = str(member.get("name") or "").strip()
+        role_label = _family_role_label(member)
+        if (
+            generated_name
+            and role_label
+            and generated_name not in life_vision
+            and _life_vision_mentions_family_role(life_vision, role_label)
+        ):
+            member["name"] = role_label
+            replacements.append((generated_name, role_label))
+        normalized_members.append(member)
+
+    if not replacements:
+        return family_setting
+
+    for member in normalized_members:
+        if not isinstance(member, dict):
+            continue
+        for field in ("relationship", "relationship_desc", "description"):
+            value = member.get(field)
+            if isinstance(value, str):
+                for generated_name, role_label in replacements:
+                    value = value.replace(generated_name, role_label)
+                member[field] = value
+
+    for field in ("family_description", "family_relationships"):
+        value = normalized_setting.get(field)
+        if isinstance(value, str):
+            for generated_name, role_label in replacements:
+                value = value.replace(generated_name, role_label)
+            normalized_setting[field] = value
     normalized_setting["family_members"] = normalized_members
     return normalized_setting
 
@@ -391,6 +520,7 @@ class CharacterCreator:
 
                 if setting_type == "family":
                     result = _strip_placeholder_surname_from_family_members(result, player_name)
+                    result = _preserve_explicit_family_member_names(result, life_vision)
 
                 return result
 
@@ -484,6 +614,19 @@ class CharacterCreator:
                     language=self.language,
                     feedback=feedback,
                 )
+                title_only_people = _title_only_relationships(life_vision)
+                if title_only_people:
+                    protected_names = "、".join(person["name"] for person in title_only_people)
+                    if is_zh:
+                        prompt += (
+                            "\n\n【玩家明确的称谓约束】"
+                            f"以下人物只能使用其已给出的称谓，禁止擅自补充姓名：{protected_names}。"
+                        )
+                    else:
+                        prompt += (
+                            "\n\n[Player-specified title-only identities] "
+                            f"Use these names exactly and do not invent legal names: {protected_names}."
+                        )
 
                 # ★ 错误反馈注入：重试时追加上次失败原因
                 if attempt > 0 and last_error:
@@ -512,6 +655,8 @@ class CharacterCreator:
                     result["relationship"] = result["relationship_desc"]
                 elif "relationship" in result and "relationship_desc" not in result:
                     result["relationship_desc"] = result["relationship"]
+
+                result = _preserve_title_only_relationship_names(result, life_vision)
 
                 # Set defaults for missing optional fields
                 result.setdefault("age", 25)
@@ -1215,13 +1360,19 @@ class CharacterCreator:
                         raw_members, character_settings, player_name
                     )
                     if new_members:
-                        family["family_members"] = new_members
+                        family["family_members"] = _preserve_explicit_family_member_names(
+                            {"family_members": new_members},
+                            getattr(player_state, "life_vision", ""),
+                        )["family_members"]
                         fixed_any = True
                         logger.debug(
-                            f"升级 family_members 成功: {[m.get('name') for m in new_members]}"
+                            "升级 family_members 成功: "
+                            f"{[m.get('name') for m in family['family_members'] if isinstance(m, dict)]}"
                         )
 
-                        for member in new_members:
+                        for member in family["family_members"]:
+                            if not isinstance(member, dict):
+                                continue
                             name = member.get("name", "")
                             if name and name not in player_state.relationships:
                                 player_state.relationships[name] = 60

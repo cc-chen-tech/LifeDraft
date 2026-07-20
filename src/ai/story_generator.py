@@ -112,6 +112,11 @@ class StoryGenerator:
             return base_temperature
         return max(min_temperature, base_temperature - attempt * decay)
 
+    def _story_request_timeout_seconds(self) -> float:
+        """Keep interactive story requests inside the selected quality budget."""
+        budget = get_generation_budget(self.quality_level.value)
+        return float(budget.expected_seconds + 30)
+
     @staticmethod
     def _extract_player_name(player_state: Optional[Dict[str, Any]]) -> str:
         """Resolve and sanitize player name from player state.
@@ -338,6 +343,7 @@ class StoryGenerator:
                     stream_callback=cb,
                     frequency_penalty=0.3,  # ★ 惩罚重复词汇，减少车轲辘话
                     presence_penalty=0.3,  # ★ 鼓励使用新词汇/新主题
+                    request_timeout=self._story_request_timeout_seconds(),
                 )
 
                 story_text = normalize_generated_story(story_text, language=language)
@@ -578,15 +584,12 @@ class StoryGenerator:
         best_valid_story_text = ""
         last_generation_error: Optional[Exception] = None
 
-        def _set_best_story(candidate: Optional[str], *, require_valid: bool = False) -> None:
+        def _set_best_story(candidate: Optional[str]) -> None:
             if not candidate:
                 return
             nonlocal best_valid_story_text
-            if not require_valid:
-                return
-            if require_valid:
-                if len(candidate) > len(best_valid_story_text):
-                    best_valid_story_text = candidate
+            if len(candidate) > len(best_valid_story_text):
+                best_valid_story_text = candidate
 
         def _hard_shape_issues(candidate: str) -> list[str]:
             shape_issues = validate_narrative_quality(
@@ -663,11 +666,10 @@ class StoryGenerator:
                     stream_callback=stream_callback if attempt == 0 else None,
                     frequency_penalty=0.4,  # ★ 轮次级别更强的反重复，因为同周多轮更容易重复
                     presence_penalty=0.4,  # ★ 鼓励每轮使用不同的表达方式
+                    request_timeout=self._story_request_timeout_seconds(),
                 )
                 story_text = normalize_generated_story(story_text, language=language)
                 logger.info(f"Generated round story with {len(story_text)} characters")
-                # 主生成结果先记录（未通过 quick 校验前不标记为有效）
-                _set_best_story(story_text)
 
                 # Step 1.4: Quick rule-based validation (before AI validation)
                 quick_result = quick_validate_story(
@@ -706,6 +708,7 @@ class StoryGenerator:
                         stream_callback=stream_callback if attempt == 0 else None,
                         frequency_penalty=0.4,
                         presence_penalty=0.4,
+                        request_timeout=self._story_request_timeout_seconds(),
                     )
                     story_text = normalize_generated_story(retry_story, language=language)
                     quick_retry_used = True
@@ -727,7 +730,6 @@ class StoryGenerator:
                             retry_result.issues,
                         )
                         break
-                    _set_best_story(story_text, require_valid=True)
                     if retry_result.warnings:
                         logger.info(
                             "Quick validation retry warnings: %s",
@@ -739,12 +741,8 @@ class StoryGenerator:
                         "Fast generation records local validation issues without a second provider call: %s",
                         quick_result.issues,
                     )
-                    _set_best_story(story_text, require_valid=True)
                 elif quick_result.warnings:
                     logger.info(f"Quick validation warnings: {quick_result.warnings}")
-                    _set_best_story(story_text, require_valid=True)
-                else:
-                    _set_best_story(story_text, require_valid=True)
 
                 hard_shape_issues = _hard_shape_issues(story_text)
                 requires_shape_retry = (
@@ -767,6 +765,7 @@ class StoryGenerator:
                         stream_callback=stream_callback if attempt == 0 else None,
                         frequency_penalty=0.4,
                         presence_penalty=0.4,
+                        request_timeout=self._story_request_timeout_seconds(),
                     )
                     story_text = normalize_generated_story(retry_story, language=language)
                     logger.info(
@@ -790,12 +789,13 @@ class StoryGenerator:
                             "Story shape validation failed: "
                             + "; ".join(retry_shape_issues + retry_quick_result.issues)
                         )
-                    _set_best_story(story_text, require_valid=True)
                 elif hard_shape_issues:
                     logger.warning(
                         "Story shape issues recorded without another provider retry: %s",
                         hard_shape_issues,
                     )
+                else:
+                    _set_best_story(story_text)
 
                 if self._repeats_committed_story(story_text, committed_stories):
                     if self._canonical_story_for_repeat_check(
@@ -823,6 +823,7 @@ class StoryGenerator:
                         stream_callback=stream_callback if attempt == 0 else None,
                         frequency_penalty=0.5,
                         presence_penalty=0.5,
+                        request_timeout=self._story_request_timeout_seconds(),
                     )
                     story_text = normalize_generated_story(retry_story, language=language)
                     repeat_retry_validation = quick_validate_story(
@@ -839,7 +840,7 @@ class StoryGenerator:
                         )
                     if self._repeats_committed_story(story_text, committed_stories):
                         raise ValueError("Round story repeats committed story after retry")
-                    _set_best_story(story_text, require_valid=True)
+                    _set_best_story(story_text)
 
                 # Step 1.5: AI-based consistency validation (if world_model is provided)
                 if world_model and story_text and generation_budget.allow_ai_consistency:
@@ -854,7 +855,14 @@ class StoryGenerator:
                         stream_callback=stream_callback if attempt == 0 else None,
                         status_callback=status_callback,
                     )
-                    _set_best_story(story_text, require_valid=True)
+                    post_validation_shape_issues = _hard_shape_issues(story_text)
+                    if post_validation_shape_issues:
+                        best_valid_story_text = ""
+                        raise ValueError(
+                            "Story consistency retry failed shape validation: "
+                            + "; ".join(post_validation_shape_issues)
+                        )
+                    _set_best_story(story_text)
 
                 # Harness 检查（仅在开启时执行），支持在无效内容上继续 retry
                 if self._harness_enabled and self._validation_pipeline:
@@ -1211,6 +1219,7 @@ class StoryGenerator:
                 stream_callback=stream_callback,
                 frequency_penalty=0.3,  # ★ 重试时也保持反重复
                 presence_penalty=0.3,
+                request_timeout=self._story_request_timeout_seconds(),
             )
 
             if retry_story:

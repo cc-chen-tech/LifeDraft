@@ -470,7 +470,7 @@ class TestStoryChat:
         data = response.json()
         assert "reply" in data
 
-    def test_story_chat_qualifies_unsafe_professional_guarantee(
+    def test_story_chat_rejects_unsupported_professional_guarantee(
         self, client, auth_headers, mock_auth, mock_session_service, mock_session
     ):
         unsafe_reply = "律师说用母亲名义注册公司规避竞业是合法合规的路径，风险几乎为零。"
