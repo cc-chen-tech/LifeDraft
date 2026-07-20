@@ -11,6 +11,22 @@ import { create } from "zustand";
 import type { ImageResponse, OpeningIllustrationResponse, CharacterSettings, EraSetting } from "@/lib/types";
 import api from "@/lib/api";
 
+function getPlayerImageErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error) {
+    const message = error.message.trim();
+    if (/failed to fetch|networkerror|load failed/i.test(message)) {
+      return "人物形象服务暂时无法连接，请检查网络后重试。";
+    }
+    if (/abort|timeout|timed out/i.test(message)) {
+      return "人物形象生成超时，请稍后重试。";
+    }
+    if (message) {
+      return message;
+    }
+  }
+  return fallback;
+}
+
 // 场景插画类型（导出供 useGameStore 使用）
 export interface RoundSceneImage {
   scene_id: number;
@@ -163,7 +179,7 @@ export const useImageStore = create<ImageState>()(
         console.error("[generatePlayerImage] Failed:", err);
         set({
           isGeneratingImage: false,
-          imageGenerationError: err instanceof Error ? err.message : "人物形象生成失败",
+          imageGenerationError: getPlayerImageErrorMessage(err, "人物形象生成失败"),
         });
         throw err;
       }
@@ -197,7 +213,7 @@ export const useImageStore = create<ImageState>()(
         console.error("[regeneratePlayerImage] Failed:", err);
         set({
           isGeneratingImage: false,
-          imageGenerationError: err instanceof Error ? err.message : "人物形象重新生成失败",
+          imageGenerationError: getPlayerImageErrorMessage(err, "人物形象重新生成失败"),
         });
         throw err;
       }
@@ -228,7 +244,7 @@ export const useImageStore = create<ImageState>()(
         console.error("[regenerateFreshPlayerImage] Failed:", err);
         set({
           isGeneratingImage: false,
-          imageGenerationError: err instanceof Error ? err.message : "人物形象重新生成失败",
+          imageGenerationError: getPlayerImageErrorMessage(err, "人物形象重新生成失败"),
         });
         throw err;
       }

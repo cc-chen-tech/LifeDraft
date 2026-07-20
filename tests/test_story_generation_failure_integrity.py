@@ -117,6 +117,98 @@ def test_round_generation_retries_when_provider_repeats_committed_story(monkeypa
     assert "重复" in client.call.call_args_list[1].kwargs["user_prompt"]
 
 
+def test_round_generation_retries_when_provider_repeats_persisted_opening(monkeypatch) -> None:
+    from src.ai.models import EventOption, GameEvent
+
+    opening_story = "林澈在上海的咖啡馆与王天成讨论独立创作的第一步，并决定开始用户调研。" * 18
+    distinct_story = "午后，林澈整理访谈提纲，决定先联系三位目标用户确认访谈时间。" * 24
+    client = Mock()
+    client.call.side_effect = [opening_story, distinct_story]
+    option_generator = Mock()
+    option_generator.generate_options_only.return_value = GameEvent(
+        event_description=distinct_story,
+        options=[
+            EventOption(text="约访第一位用户", effects={}),
+            EventOption(text="完善访谈提纲", effects={}),
+        ],
+    )
+
+    monkeypatch.setattr(
+        "src.ai.quick_validator.quick_validate_story",
+        lambda **_kwargs: SimpleNamespace(passed=True, warnings=[], issues=[]),
+    )
+    monkeypatch.setattr(
+        "src.ai.story_generator.validate_narrative_quality",
+        lambda *_args, **_kwargs: [],
+    )
+
+    event = StoryGenerator(client).generate_round_event(
+        player_state={"week": 0, "current_round": 0},
+        language="zh",
+        round_number=0,
+        round_context="",
+        character_settings={"opening_story": opening_story},
+        option_generator=option_generator,
+    )
+
+    assert event.event_description == distinct_story
+    assert client.call.call_count == 2
+    assert "重复" in client.call.call_args_list[1].kwargs["user_prompt"]
+
+
+def test_first_round_receives_persisted_opening_as_non_repeating_context() -> None:
+    from src.ai.models import EventOption, GameEvent
+
+    opening_story = "林澈在上海的咖啡馆与王天成讨论独立创作的第一步。"
+    state = SimpleNamespace(
+        week=0,
+        current_round=0,
+        round_history=[],
+        last_round_full_story="",
+        current_event_data=None,
+        character_settings={"opening_story": opening_story},
+        pending_storylines=[],
+        established_facts=[],
+        last_event_concluded=True,
+        character_habits=[],
+        foreshadowing_seeds=[],
+        get_pending_scheduled_events=lambda *_args: [],
+        get_round_context=lambda: "",
+        to_dict=lambda: {"character_settings": {"opening_story": opening_story}},
+        get_game_date_info=lambda: {},
+    )
+    ai_generator = Mock()
+    ai_generator.generate_round_event.return_value = GameEvent(
+        event_description="下午，林澈开始整理访谈提纲。",
+        options=[
+            EventOption(text="联系访谈对象", effects={}),
+            EventOption(text="完善访谈提纲", effects={}),
+        ],
+    )
+    introductions = Mock()
+    introductions.maybe_generate_new_character.return_value = None
+    introductions.check_introduction_opportunity.return_value = None
+    summaries = Mock()
+    summaries.select_relevant_historical_summary.return_value = ("", "")
+    relationships = Mock()
+    relationships.get_triggered_events.return_value = []
+
+    generator = RoundEventGenerator(
+        player_state_getter=lambda: state,
+        ai_generator=ai_generator,
+        language_getter=lambda: "zh",
+        character_introduction_service=introductions,
+        summary_selector=summaries,
+        relationship_service=relationships,
+    )
+
+    generator.generate_round_event()
+
+    context = ai_generator.generate_round_event.call_args.kwargs["round_context"]
+    assert opening_story in context
+    assert "不得复述" in context
+
+
 def test_round_generation_rejects_provider_output_repeated_after_retry(monkeypatch) -> None:
     repeated_story = "林岚在小影院核对测量费与预算表，陈越记录每一笔待确认支出。" * 32
     client = Mock()

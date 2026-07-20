@@ -389,30 +389,42 @@ export function MusicPlayer({
         audio.pause();
         audio.src = "";
         
-        // 播放出错时尝试下一首
-        if (recommendation?.songs.length) {
-          const currentIndex = recommendation.songs.findIndex((s) => s.id === song.id);
-          // 找到下一首未跳过的歌曲
-          let nextIndex = (currentIndex + 1) % recommendation.songs.length;
-          let attempts = 0;
-          const maxAttempts = recommendation.songs.length;
-          
-          while (attempts < maxAttempts) {
-            const nextSong = recommendation.songs[nextIndex];
-            if (!skippedSongsRef.current.has(nextSong.id)) {
-              console.log(`[MusicPlayer] Error occurred, trying next song: ${nextSong.name}`);
-              setTimeout(() => loadAndPlaySong(nextSong), 800);
-              return;
-            }
-            nextIndex = (nextIndex + 1) % recommendation.songs.length;
-            attempts++;
+        // 优先保持持久化队列顺序，确保后台生成的原创曲目不会被错误回退跳过。
+        void (async () => {
+          await advanceQueue();
+          const queuedNextSong = useMusicStore.getState().currentSong;
+          if (
+            queuedNextSong &&
+            queuedNextSong.id !== song.id &&
+            !skippedSongsRef.current.has(queuedNextSong.id)
+          ) {
+            console.log(`[MusicPlayer] Error occurred, advancing playlist: ${queuedNextSong.name}`);
+            await loadAndPlaySong(queuedNextSong);
+            return;
           }
-          
-          // 所有歌曲都跳过了，清空列表重试
-          console.log('[MusicPlayer] All songs skipped, resetting skip list');
-          skippedSongsRef.current = new Set();
-          setSkippedSongs(new Set());
-        }
+
+          if (recommendation?.songs.length) {
+            const currentIndex = recommendation.songs.findIndex((s) => s.id === song.id);
+            let nextIndex = (currentIndex + 1) % recommendation.songs.length;
+            let attempts = 0;
+            const maxAttempts = recommendation.songs.length;
+
+            while (attempts < maxAttempts) {
+              const nextSong = recommendation.songs[nextIndex];
+              if (!skippedSongsRef.current.has(nextSong.id)) {
+                console.log(`[MusicPlayer] Error occurred, trying next song: ${nextSong.name}`);
+                setTimeout(() => loadAndPlaySong(nextSong), 800);
+                return;
+              }
+              nextIndex = (nextIndex + 1) % recommendation.songs.length;
+              attempts++;
+            }
+
+            console.log('[MusicPlayer] All songs skipped, resetting skip list');
+            skippedSongsRef.current = new Set();
+            setSkippedSongs(new Set());
+          }
+        })();
       };
 
       // 先设置当前歌曲（不播放），等待音频准备好

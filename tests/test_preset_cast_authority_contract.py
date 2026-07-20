@@ -294,6 +294,32 @@ def test_quick_validator_uses_relationships_list_for_required_cast() -> None:
     assert any("没有使用预设关键人物" in issue for issue in result.issues)
 
 
+def test_quick_validator_rejects_unapproved_role_alias_with_single_preset_person() -> None:
+    """A single configured person must not permit a new named relative to lead a scene."""
+    from src.ai.quick_validator import quick_validate_story
+
+    settings = {
+        "relationships": {
+            "key_people": [
+                {"name": "王天成", "role": "创业伙伴", "relationship": "伙伴"},
+            ]
+        }
+    }
+
+    result = quick_validate_story(
+        story_text=(
+            "周叔端着生煎走进咖啡馆，催林澈立刻放下访谈计划。"
+            "王天成只能坐在一旁，整件事都由周叔安排。"
+        ),
+        character_settings=settings,
+        available_people=["王天成"],
+        language="zh",
+    )
+
+    assert not result.passed
+    assert any("名单外命名角色" in issue for issue in result.issues)
+
+
 def test_quick_validator_rejects_partial_cast_when_new_named_network_dominates() -> None:
     """Two preset names are not enough if the scene is still led by a new cast."""
     from config.prompts._helpers import _collect_available_people

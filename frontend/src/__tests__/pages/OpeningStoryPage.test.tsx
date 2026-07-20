@@ -27,6 +27,7 @@ jest.mock('@/lib/sse', () => ({
 jest.mock('@/lib/api', () => {
   const mockGames = {
     getActive: jest.fn(),
+    patchCharacterSettings: jest.fn(),
   };
   return {
     __esModule: true,
@@ -37,6 +38,7 @@ jest.mock('@/lib/api', () => {
 
 const mockStreamOpeningStory = streamOpeningStory as jest.MockedFunction<typeof streamOpeningStory>;
 const mockGetActive = games.getActive as jest.MockedFunction<typeof games.getActive>;
+const mockPatchCharacterSettings = games.patchCharacterSettings as jest.MockedFunction<typeof games.patchCharacterSettings>;
 
 function setupDefaultState() {
   useGameStore.setState({
@@ -59,6 +61,8 @@ describe('OpeningStoryPage', () => {
     jest.clearAllMocks();
     mockStreamOpeningStory.mockReset();
     mockGetActive.mockReset();
+    mockPatchCharacterSettings.mockReset();
+    mockPatchCharacterSettings.mockResolvedValue({} as never);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     delete (window as any).__TEST_DATA__;
     setupDefaultState();
@@ -302,6 +306,20 @@ describe('OpeningStoryPage', () => {
 
       await user.click(screen.getByText('开始我的人生'));
 
+      expect(mockPush).toHaveBeenCalledWith('/play');
+    });
+
+    it('persists the completed opening before entering play', async () => {
+      const user = userEvent.setup();
+      render(<OpeningStoryPage />);
+
+      await user.click(screen.getByText('开始我的人生'));
+
+      expect(mockPatchCharacterSettings).toHaveBeenCalledWith(
+        123,
+        expect.objectContaining({ opening_story: 'Test opening story content.' }),
+        expect.objectContaining({ player_name: 'TestHero', life_vision: 'Be great' }),
+      );
       expect(mockPush).toHaveBeenCalledWith('/play');
     });
 

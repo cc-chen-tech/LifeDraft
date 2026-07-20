@@ -571,6 +571,9 @@ class StoryGenerator:
             player_state,
             last_round_full_story,
         )
+        opening_story = (character_settings or {}).get("opening_story")
+        if isinstance(opening_story, str) and opening_story.strip():
+            committed_stories.append(opening_story)
 
         best_valid_story_text = ""
         last_generation_error: Optional[Exception] = None

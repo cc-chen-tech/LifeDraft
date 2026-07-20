@@ -112,6 +112,19 @@ describe('useImageStore', () => {
         expect(useImageStore.getState().isGeneratingImage).toBe(false);
       });
 
+      it('maps a browser connection failure to actionable portrait retry text', async () => {
+        (global.fetch as jest.Mock).mockRejectedValue(new TypeError('Failed to fetch'));
+
+        await expect(
+          useImageStore.getState().generatePlayerImage(1, '林见微', {})
+        ).rejects.toThrow('Failed to fetch');
+
+        expect(useImageStore.getState()).toMatchObject({
+          isGeneratingImage: false,
+          imageGenerationError: '人物形象服务暂时无法连接，请检查网络后重试。',
+        });
+      });
+
       it('stores a safe provider failure and stops loading', async () => {
         (global.fetch as jest.Mock).mockResolvedValue(
           errorResponse(503, {
