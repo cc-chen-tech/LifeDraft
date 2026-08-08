@@ -7,7 +7,7 @@ from config.prompts import get_result_generation_prompt
 from src.ai.generator import EventGenerator
 from src.ai.system_prompts import get_system_prompt
 from src.game.state import PlayerState
-from src.game.effects import normalize_resource_effects
+from src.game.effects import normalize_gameplay_effects
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +175,7 @@ def process_decision(
         raise ValueError(f"Invalid option index: {chosen_option_index}")
 
     chosen_option = event_options[chosen_option_index]
-    effects = normalize_resource_effects(chosen_option.get("effects", {}))
+    effects = normalize_gameplay_effects(chosen_option.get("effects", {}))
 
     # Apply effects to player
     energy_change = effects.get("energy", 0)
@@ -186,6 +186,7 @@ def process_decision(
         energy=energy_change,
         mood=mood_change,
         knowledge=knowledge_change,
+        relationships=effects.get("relationships"),
     )
 
     # 同步 relationships 到 characters

@@ -18,7 +18,6 @@ const createBasePlayerState = (): PlayerState => ({
   energy: 100,
   mood: 50,
   knowledge: 0,
-  wealth: 0,
   age: 18,
   week: 1,
   current_round: 1,
@@ -28,6 +27,7 @@ const createBasePlayerState = (): PlayerState => ({
 
 describe('useSessionStore State Comparison Logic', () => {
   beforeEach(() => {
+    window.localStorage.clear();
     act(() => {
       useSessionStore.setState({
         gameId: null,
@@ -46,6 +46,40 @@ describe('useSessionStore State Comparison Logic', () => {
 
   // ==================== shallowChanged Function Tests ====================
   describe('shallowChanged function behavior', () => {
+    it('replaces a legacy cached playerState when the server omits wealth', async () => {
+      const legacy = {
+        ...createBasePlayerState(),
+        wealth: 50_000,
+        nested: { wealth_ledger: { balance: 50_000 } },
+        round_history: [{ effects: { energy: 2, wealth: 500 } }],
+      };
+      const cleanServerState = createBasePlayerState();
+
+      act(() => {
+        useSessionStore.setState({
+          gameId: 1,
+          playerState: legacy,
+          progress: { week: 1, current_round: 1, rounds_per_week: 3 },
+          roundInfo: { current_round: 1, week: 1 },
+        });
+      });
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        player_state: cleanServerState,
+        progress: { week: 1, current_round: 1, rounds_per_week: 3 },
+        round_info: { current_round: 1, week: 1 },
+        current_event: null,
+      }));
+
+      await act(async () => {
+        await useSessionStore.getState().syncState();
+      });
+
+      expect(useSessionStore.getState().playerState).toEqual(cleanServerState);
+      const persisted = JSON.parse(window.localStorage.getItem('game-store') || '{}');
+      expect(persisted.version).toBe(1);
+      expect(JSON.stringify(persisted)).not.toContain('wealth');
+    });
+
     it('returns false when comparing the same object reference', async () => {
       const sameObject = createBasePlayerState();
 
@@ -212,7 +246,7 @@ describe('useSessionStore State Comparison Logic', () => {
       });
 
       // Should NOT trigger update since KEY_FIELDS doesn't include player_name
-      // KEY_FIELDS = ["energy", "mood", "knowledge", "wealth", "age", "week", "current_round"]
+      // KEY_FIELDS = ["energy", "mood", "knowledge", "age", "week", "current_round"]
       expect(listener).not.toHaveBeenCalled();
 
       unsubscribe();
@@ -591,7 +625,6 @@ describe('useSessionStore State Comparison Logic', () => {
       mockPlayerState.energy = 80;
       mockPlayerState.mood = 60;
       mockPlayerState.knowledge = 10;
-      mockPlayerState.wealth = 20;
       mockPlayerState.age = 20;
       mockPlayerState.week = 3;
       mockPlayerState.current_round = 2;

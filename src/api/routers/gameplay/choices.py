@@ -19,6 +19,8 @@ from src.api.deps import get_current_user_optional, get_db
 from src.api.routers.gameplay.sse_helpers import stream_choice
 from src.api.schemas import CustomChoiceRequest, MakeChoiceRequest
 from src.api.services.session_service import session_service
+from src.game.effects import normalize_gameplay_effects
+from src.utils.legacy_data import strip_retired_wealth_keys
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -50,7 +52,7 @@ def _latest_processed_choice_result(
     if not isinstance(round_history, list) or not round_history:
         return None
 
-    latest = round_history[-1]
+    latest = strip_retired_wealth_keys(round_history[-1])
     if not isinstance(latest, dict):
         return None
 
@@ -59,19 +61,17 @@ def _latest_processed_choice_result(
     if not isinstance(story_continuation, str) and not isinstance(summary, str):
         return None
 
-    effects = latest.get("effects")
-    effects_requested = latest.get("effects_requested")
+    effects = normalize_gameplay_effects(latest.get("effects"))
+    effects_requested = normalize_gameplay_effects(
+        latest.get("effects_requested") or effects
+    )
     resource_warnings = latest.get("resource_warnings")
 
     return {
         "story_continuation": story_continuation if isinstance(story_continuation, str) else "",
         "summary": summary if isinstance(summary, str) else "",
-        "effects_applied": effects if isinstance(effects, dict) else {},
-        "effects_requested": (
-            effects_requested
-            if isinstance(effects_requested, dict)
-            else effects if isinstance(effects, dict) else {}
-        ),
+        "effects_applied": effects,
+        "effects_requested": effects_requested,
         "resource_warnings": resource_warnings if isinstance(resource_warnings, list) else [],
         "need_weekly_summary": False,
         "weekly_summary": None,

@@ -9,6 +9,7 @@ from typing import Any, Dict
 import pytest
 
 from src.ai.models import EventOption, GameEvent
+from src.game.endings import EndingEvaluator
 from src.game.round.choice_processor import RoundChoiceProcessor
 from src.game.state import PlayerState
 
@@ -659,6 +660,80 @@ class TestEffectsAppliedIntegrity:
         assert result["effects_applied"]["energy"] == -10
         assert result["effects_applied"]["mood"] == -5
         assert "wealth" not in result["effects_applied"]
+
+    def test_relationship_effect_changes_affinity_and_can_reach_social_ending(self):
+        state = _make_state(
+            energy=60,
+            mood=60,
+            knowledge=60,
+            relationships={"甲": 69, "乙": 69, "丙": 69},
+        )
+        event = GameEvent(
+            event_description="三位老友邀请你共同完成社区项目。",
+            options=[
+                EventOption(
+                    text="认真协作并照顾每个人的感受",
+                    effects={
+                        "mood": 2,
+                        "relationships": {"甲": 3, "乙": 3, "丙": 3},
+                        "wealth": 999,
+                    },
+                ),
+                EventOption(text="礼貌婉拒", effects={"energy": 1}),
+            ],
+        )
+        proc = _make_processor(player_state=state, current_event=event)
+
+        result = proc.make_round_choice(option_index=0)
+
+        assert result["effects_applied"]["relationships"] == {
+            "甲": 3,
+            "乙": 3,
+            "丙": 3,
+        }
+        assert state.relationships == {"甲": 72, "乙": 72, "丙": 72}
+        assert EndingEvaluator().evaluate_ending(state)["ending_type"] == "social"
+        assert "wealth" not in result["effects_applied"]
+
+    def test_choice_pipeline_does_not_promote_money_to_authoritative_facts(self):
+        state = _make_state(character_settings={"era": {"year": 2026}})
+        event = _make_event()
+        service = FakeStoryService()
+        service.fact_updates = [
+            {
+                "action": "new",
+                "subject": "TestHero",
+                "category": "financial",
+                "fact": "家庭经济压力加剧",
+            },
+            {
+                "action": "new",
+                "subject": "TestHero",
+                "category": "career",
+                "fact": "月薪8000元",
+            },
+            {
+                "action": "new",
+                "subject": "TestHero",
+                "category": "economic_context",
+                "fact": "家庭经济压力加剧，消费更加谨慎",
+            },
+        ]
+        proc = _make_processor(
+            player_state=state,
+            current_event=event,
+            story_service=service,
+        )
+
+        proc.make_round_choice(option_index=0)
+
+        assert [fact["fact"] for fact in state.established_facts] == [
+            "家庭经济压力加剧，消费更加谨慎"
+        ]
+        ledger_facts = state.continuity_ledger["mutable_states"]["facts"]
+        assert [record["fact"] for record in ledger_facts.values()] == [
+            "家庭经济压力加剧，消费更加谨慎"
+        ]
 
     def test_exhausting_choice_reports_actual_applied_energy_and_warning(self):
         """When energy is too low, effects_applied should reflect the actual clamped delta."""

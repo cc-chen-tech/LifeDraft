@@ -66,7 +66,7 @@ def test_player_state_recursively_drops_legacy_wealth_keys():
     assert dumped["character_settings"]["family"]["description"] == "经营一家小店"
 
 
-def test_generated_event_effects_use_three_resource_allowlist():
+def test_generated_event_effects_keep_relationships_outside_resource_allowlist():
     option = EventOption(
         text="承接临时项目",
         effects={
@@ -74,12 +74,17 @@ def test_generated_event_effects_use_three_resource_allowlist():
             "mood": 2,
             "knowledge": 4,
             "wealth": 1_000,
-            "relationships": {"合伙人": 5},
+            "relationships": {"合伙人": 5, "": 3, "无效": "5", "布尔": True},
             "unexpected": 99,
         },
     )
 
-    assert option.effects == {"energy": -5, "mood": 2, "knowledge": 4}
+    assert option.effects == {
+        "energy": -5,
+        "mood": 2,
+        "knowledge": 4,
+        "relationships": {"合伙人": 5},
+    }
 
 
 def test_setting_request_rejects_wealth_during_pydantic_validation():

@@ -8,7 +8,7 @@ state or long-term grounding evidence.
 from __future__ import annotations
 
 import re
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 _ARABIC_NUMBER = r"(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)"
 _ZH_NUMBER = r"[零〇一二两三四五六七八九十百千万亿]+"
@@ -122,6 +122,34 @@ def contains_tracked_wealth_state(*values: Any) -> bool:
 def contains_authoritative_financial_state(*values: Any) -> bool:
     """Return whether values encode exact money or cross-turn money state."""
     return contains_precise_financial_fact(*values) or contains_tracked_wealth_state(*values)
+
+
+def is_authoritative_financial_record(value: Any) -> bool:
+    """Classify a structured fact that must not become continuity authority."""
+    if not isinstance(value, Mapping):
+        return False
+    category = value.get("category") or value.get("type") or value.get("fact_type")
+    if is_structured_financial_category(category):
+        return True
+    return contains_authoritative_financial_state(
+        value.get("subject"),
+        value.get("fact"),
+        value.get("description"),
+        value.get("constraint_text"),
+        value.get("source_excerpt"),
+    )
+
+
+def sanitize_authoritative_fact_records(values: Any) -> list[dict[str, Any]]:
+    """Copy only mappings safe to retain as cross-turn authority."""
+    if not isinstance(values, list):
+        return []
+    return [
+        dict(value)
+        for value in values
+        if isinstance(value, Mapping)
+        and not is_authoritative_financial_record(value)
+    ]
 
 
 def sanitize_authoritative_financial_clauses(text: str) -> str:

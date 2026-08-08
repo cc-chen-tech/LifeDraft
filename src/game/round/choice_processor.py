@@ -12,7 +12,7 @@ from src.ai.models import GameEvent
 from src.ai.vector_store import get_vector_store, is_vector_search_enabled
 from src.game.narrative_manager import NarrativeManager
 from src.game.continuity_ledger import ContinuityLedger
-from src.game.effects import normalize_resource_effects
+from src.game.effects import normalize_gameplay_effects
 from src.game.world_model_updater import WorldModelUpdater
 
 if TYPE_CHECKING:
@@ -255,7 +255,7 @@ class RoundChoiceProcessor:
         player_state = self.player_state
         if player_state is None:
             raise ValueError("Player state is not available")
-        requested_effects = normalize_resource_effects(effects_requested or effects)
+        requested_effects = normalize_gameplay_effects(effects_requested or effects)
 
         # 1. Parallel: narrative compression + world extraction + story analyzer
         if status_callback:
@@ -566,9 +566,9 @@ class RoundChoiceProcessor:
         """Return actual deltas after resource bounds plus warning metadata."""
         player_state = self.player_state
         if player_state is None:
-            return effects.copy(), []
+            return normalize_gameplay_effects(effects), []
 
-        normalized: Dict[str, Any] = normalize_resource_effects(effects)
+        normalized = normalize_gameplay_effects(effects)
         warnings: list[Dict[str, Any]] = []
 
         bounded_resources = {

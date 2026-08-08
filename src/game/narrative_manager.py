@@ -10,6 +10,8 @@ import math
 import random
 from typing import Any, Dict, List, Optional
 
+from src.utils.financial_narrative import is_authoritative_financial_record
+
 logger = logging.getLogger(__name__)
 
 
@@ -206,6 +208,9 @@ class NarrativeManager:
             subject = update.get("subject", "")
 
             if not action or not subject:
+                continue
+
+            if action != "remove" and is_authoritative_financial_record(update):
                 continue
 
             if action == "new":

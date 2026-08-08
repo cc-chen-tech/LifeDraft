@@ -4,7 +4,7 @@
 包含所有 Pydantic 字段定义、验证器和序列化方法。
 """
 
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Mapping, Optional
 
 from pydantic import Field, field_validator
 
@@ -231,9 +231,20 @@ class PlayerDataMixin:
         return {name: max(0, min(100, affinity)) for name, affinity in v.items()}
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert state to dictionary."""
+        """Convert state to a persistence-safe dictionary."""
+        from src.game.continuity_ledger import ContinuityLedger
+        from src.utils.financial_narrative import sanitize_authoritative_fact_records
+        from src.utils.legacy_data import strip_retired_wealth_keys
+
         # model_dump is provided by BaseModel when used in the combined class
-        return getattr(self, "model_dump")()  # type: ignore[no-any-return]
+        data = strip_retired_wealth_keys(getattr(self, "model_dump")())
+        data["established_facts"] = sanitize_authoritative_fact_records(
+            data.get("established_facts")
+        )
+        ledger = data.get("continuity_ledger")
+        if isinstance(ledger, Mapping):
+            data["continuity_ledger"] = ContinuityLedger(ledger).to_dict()
+        return data  # type: ignore[no-any-return]
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PlayerDataMixin":
@@ -241,8 +252,12 @@ class PlayerDataMixin:
         # ★ 处理可能为 None 的字符串字段，避免 Pydantic 验证错误
         # 这是为了兼容旧数据，这些字段在之前的 bug 中可能被设为 None
         from src.utils.legacy_data import strip_retired_wealth_keys
+        from src.utils.financial_narrative import sanitize_authoritative_fact_records
 
         cleaned_data = strip_retired_wealth_keys(data)
+        cleaned_data["established_facts"] = sanitize_authoritative_fact_records(
+            cleaned_data.get("established_facts")
+        )
         if cleaned_data.get("last_round_full_story") is None:
             cleaned_data["last_round_full_story"] = ""
         return cls(**cleaned_data)

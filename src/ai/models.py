@@ -5,7 +5,7 @@ from typing import Any, Dict, List
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
-from src.game.effects import normalize_resource_effects
+from src.game.effects import normalize_gameplay_effects
 
 
 class EventOption(BaseModel):
@@ -17,9 +17,9 @@ class EventOption(BaseModel):
 
     @field_validator("effects", mode="before")
     @classmethod
-    def normalize_effects(cls, value: Any) -> Dict[str, int]:
-        """Silently discard retired or unexpected generated effect keys."""
-        return normalize_resource_effects(value)
+    def normalize_effects(cls, value: Any) -> Dict[str, Any]:
+        """Keep resources and validated relationship effects; discard other keys."""
+        return normalize_gameplay_effects(value)
 
 
 class GameEvent(BaseModel):

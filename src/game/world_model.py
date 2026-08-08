@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 from src.game.relationship_authority import build_required_cast_constraints, extract_required_key_people
 from src.utils.financial_narrative import (
     contains_authoritative_financial_state,
+    is_authoritative_financial_record,
     is_structured_financial_category,
 )
 
@@ -372,6 +373,8 @@ class WorldModel:
 
         # ---------- Supplement from legacy established_facts ----------
         for fact in getattr(player_state, "established_facts", []):
+            if is_authoritative_financial_record(fact):
+                continue
             category = fact.get("category", "")
             subject = fact.get("subject", "")
             fact_text = fact.get("fact", "")

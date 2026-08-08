@@ -3,6 +3,8 @@
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
+from src.utils.financial_narrative import sanitize_authoritative_fact_records
+
 logger = logging.getLogger(__name__)
 
 # 约束优先级标记
@@ -1272,7 +1274,9 @@ def _build_established_facts_context(
         return priority_order.get(category, 8)
 
     # 排序事实
-    sorted_facts = sorted(established_facts, key=get_priority)
+    sorted_facts = sorted(
+        sanitize_authoritative_fact_records(established_facts), key=get_priority
+    )
 
     # 类别标签
     cat_labels = {
@@ -1375,7 +1379,7 @@ def _build_fallback_constraints(
     commitments = []
     locations = []
 
-    for fact in established_facts:
+    for fact in sanitize_authoritative_fact_records(established_facts):
         fact_type = fact.get("category", "").lower()
         fact_text = fact.get("fact", "")
         subject = fact.get("subject", "")
@@ -1960,7 +1964,7 @@ def _build_critical_summary(
     # 2. 从 established_facts 中提取 priority <= 1（承诺/决策）的事实（最多5条）
     if established_facts:
         critical_facts: List[str] = []
-        for fact in established_facts:
+        for fact in sanitize_authoritative_fact_records(established_facts):
             if len(critical_facts) >= 5:
                 break
             category = fact.get("category", "").lower()

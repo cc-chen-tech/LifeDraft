@@ -3,6 +3,7 @@
 from typing import Any, Dict, List, Optional
 
 from config.prompts._helpers import _build_time_context, _format_people_names
+from src.utils.financial_narrative import sanitize_authoritative_fact_records
 
 
 def _build_weekly_summary_time_guard(
@@ -193,10 +194,11 @@ def get_story_compression_prompt(
 
     # Build established facts context
     facts_context = ""
-    if established_facts:
+    safe_established_facts = sanitize_authoritative_fact_records(established_facts)
+    if safe_established_facts:
         if language == "zh":
             lines = ["\n【当前已建立的世界事实】"]
-            for f in established_facts:
+            for f in safe_established_facts:
                 cat = {"location": "地点", "role": "角色", "situation": "事务"}.get(
                     f.get("category", ""), "事实"
                 )
@@ -204,7 +206,7 @@ def get_story_compression_prompt(
             facts_context = "\n".join(lines)
         else:
             lines = ["\n[Current Established Facts]"]
-            for f in established_facts:
+            for f in safe_established_facts:
                 cat = {
                     "location": "Location",
                     "role": "Role",
