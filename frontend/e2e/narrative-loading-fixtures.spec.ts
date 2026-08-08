@@ -1,4 +1,11 @@
-import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import {
+  expect,
+  test,
+  type Frame,
+  type Page,
+  type Request,
+  type TestInfo,
+} from '@playwright/test';
 
 type NarrativeFixtureState =
   | 'initial'
@@ -43,6 +50,39 @@ async function expectSharedContract(page: Page) {
 
 test.beforeEach(async ({ page }, testInfo) => {
   await page.setViewportSize(viewportFor(testInfo));
+});
+
+test('server-renders legacy content immediately when narrative loading is absent or unsupported', async ({
+  request,
+}) => {
+  for (const url of ['/e2e-regression', '/e2e-regression?narrativeLoading=unknown']) {
+    const response = await request.get(url);
+    expect(response.ok()).toBe(true);
+    const responseBody = await response.text();
+
+    expect(responseBody).toContain('data-testid="e2e-regression-legacy"');
+    expect(responseBody).not.toContain('data-testid="narrative-loading-fixture"');
+  }
+});
+
+test('server-renders only the allowlisted narrative fixture without client JavaScript', async ({
+  request,
+}) => {
+  for (const state of [
+    'initial',
+    'partial',
+    'delayed',
+    'reconnecting',
+    'polling',
+    'failed',
+  ] as const) {
+    const response = await request.get(`/e2e-regression?narrativeLoading=${state}`);
+    expect(response.ok()).toBe(true);
+    const responseBody = await response.text();
+
+    expect(responseBody).toContain('data-testid="narrative-loading-fixture"');
+    expect(responseBody).not.toContain('data-testid="e2e-regression-legacy"');
+  }
 });
 
 test('renders the six deterministic narrative loading states and captures visual evidence', async ({
@@ -151,13 +191,38 @@ test('keeps reconnect and retry actions local to the fixture', async ({ page }) 
     await openState(page, state);
     const beforeUrl = page.url();
     const actionName = state === 'failed' ? '重试' : '重新连接';
+    const apiRequests: string[] = [];
+    const frameNavigations: string[] = [];
+    let loadCount = 0;
+    const observeRequest = (request: Request) => {
+      const requestPath = new URL(request.url()).pathname;
+      if (requestPath.startsWith('/api/')) apiRequests.push(requestPath);
+    };
+    const observeFrameNavigation = (frame: Frame) => {
+      if (frame === page.mainFrame()) frameNavigations.push(frame.url());
+    };
+    const observeLoad = () => {
+      loadCount += 1;
+    };
+
+    page.on('request', observeRequest);
+    page.on('framenavigated', observeFrameNavigation);
+    page.on('load', observeLoad);
 
     await expect(fixture(page).getByTestId('narrative-loading-action-count')).toHaveText('0');
     await fixture(page).getByRole('button', { name: actionName }).click();
     await expect(fixture(page).getByTestId('narrative-loading-action-count')).toHaveText('1');
     await expect(fixture(page).getByTestId('narrative-loading-fixture-state')).toHaveText(state);
+    await page.waitForTimeout(100);
     expect(page.url()).toBe(beforeUrl);
+    expect(apiRequests).toEqual([]);
+    expect(frameNavigations).toEqual([]);
+    expect(loadCount).toBe(0);
     await expectSharedContract(page);
+
+    page.off('request', observeRequest);
+    page.off('framenavigated', observeFrameNavigation);
+    page.off('load', observeLoad);
   }
 });
 
