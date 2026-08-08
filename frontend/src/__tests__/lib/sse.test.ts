@@ -244,6 +244,42 @@ describe('SSE Streaming', () => {
       expect(onComplete).not.toHaveBeenCalled();
     });
 
+    it('settles and cancels an open body immediately after one error frame', async () => {
+      jest.useRealTimers();
+      const onStory = jest.fn();
+      const onComplete = jest.fn();
+      const onError = jest.fn();
+      const cancelBody = jest.fn();
+      let closeProducer!: () => void;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          closeProducer = () => controller.close();
+          controller.enqueue(new TextEncoder().encode(
+            'event: error\ndata: {"message":"generation failed"}\n\n',
+          ));
+        },
+        cancel() {
+          cancelBody();
+        },
+      });
+      mockFetch.mockResolvedValueOnce({ ok: true, body });
+
+      const stream = streamGameEvent(123, { onStory, onComplete, onError });
+      const settledBeforeProducerClose = await Promise.race([
+        stream.then(() => true),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 100)),
+      ]);
+      if (!settledBeforeProducerClose) closeProducer();
+      await stream;
+
+      expect(settledBeforeProducerClose).toBe(true);
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect(onError).toHaveBeenCalledWith({ message: 'generation failed' });
+      expect(cancelBody).toHaveBeenCalledTimes(1);
+      expect(onStory).not.toHaveBeenCalled();
+      expect(onComplete).not.toHaveBeenCalled();
+    });
+
     it('ignores buffered story frames after a complete frame', async () => {
       const onStory = jest.fn();
       const onComplete = jest.fn();

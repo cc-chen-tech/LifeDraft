@@ -88,9 +88,12 @@ export function useChoiceHandler({
   const watchdogCleanupRef = useRef<(() => void) | null>(null);
   const recoveryTargetRef = useRef<ChoiceRecoveryTarget | null>(null);
 
-  useEffect(() => () => {
-    watchdogCleanupRef.current?.();
-    invalidateGameplayRun(runTokenRef, abortRef);
+  useEffect(() => {
+    recoveryTargetRef.current = null;
+    return () => {
+      watchdogCleanupRef.current?.();
+      invalidateGameplayRun(runTokenRef, abortRef);
+    };
   }, [abortRef, gameId, runTokenRef]);
 
   const commitSessionFields = (

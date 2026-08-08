@@ -397,6 +397,68 @@ describe("useChoiceHandler run isolation", () => {
     );
   });
 
+  it("drops A's manual recovery target when the same page switches to game B", async () => {
+    const callbacks: StreamCallbacks[] = [];
+    mockStreamChoice.mockImplementation(pendingStream(callbacks));
+    const { result, rerender } = renderHook(
+      ({ gameId }) => useChoiceHandler({ ...params, gameId }),
+      { initialProps: { gameId: 7 } },
+    );
+
+    act(() => {
+      void result.current.handleChoice(0);
+    });
+    expect(callbacks).toHaveLength(1);
+
+    rerender({ gameId: 8 });
+    (global.fetch as jest.Mock).mockClear();
+    Object.values(setters).forEach((setter) => setter.mockClear());
+
+    await act(async () => {
+      void result.current.recoverChoiceGeneration();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    Object.values(setters).forEach((setter) => expect(setter).not.toHaveBeenCalled());
+
+    useGameStore.setState({
+      storyText: "B base",
+      currentEvent: { story: "B", options: [{ text: "B choice" }] },
+    } as never);
+    act(() => {
+      void result.current.handleChoice(0);
+    });
+    expect(callbacks).toHaveLength(2);
+    (global.fetch as jest.Mock).mockReset().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        current_event: null,
+        player_state: {
+          round_history: [{
+            choice: "B choice",
+            story_continuation: "B completed continuation",
+          }],
+          resume_view: {
+            phase: "result",
+            story_text: "B base plus completed continuation",
+          },
+        },
+        progress: { week: 2, total_weeks: 52 },
+      }),
+    });
+    Object.values(setters).forEach((setter) => setter.mockClear());
+
+    await act(async () => {
+      await result.current.recoverChoiceGeneration();
+    });
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    expect(setters.setStoryText).toHaveBeenCalledWith("B base plus completed continuation");
+    expect(setters.setPhase).toHaveBeenCalledWith("result");
+  });
+
   it("uses B's captured base story for B complete-only fallback", () => {
     const aCallbacks: StreamCallbacks[] = [];
     const bCallbacks: StreamCallbacks[] = [];

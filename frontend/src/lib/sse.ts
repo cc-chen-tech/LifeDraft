@@ -160,7 +160,10 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
                 emitErrorActivity();
                 callbacks.onError?.({ message: errorMsg });
                 currentEventType = null;
-                continue;
+                pendingEventId = null;
+                void reader.cancel().catch(() => undefined);
+                safeResolve();
+                return;
               }
 
               // Handle status updates (support both formats: {type: "status", status: {...}} and {phase: "..."})
