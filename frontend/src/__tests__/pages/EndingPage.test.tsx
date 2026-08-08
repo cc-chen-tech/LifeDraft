@@ -2,7 +2,7 @@
  * Tests for EndingPage component
  */
 import React from 'react';
-import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import EndingPage from '@/app/ending/page';
 import { useGameStore } from '@/stores/useGameStore';
 import { jsonResponse } from '@/__tests__/helpers/fetch';
@@ -178,6 +178,76 @@ describe('EndingPage', () => {
       expect(await screen.findByText(visibleText)).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument();
     });
+
+    it('ignores malformed achievements when independent ending copy is valid', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        ending_name: '安全的终章',
+        achievements: { list: 'bad' },
+      }));
+
+      render(<EndingPage />);
+
+      expect(await screen.findByText('安全的终章')).toBeInTheDocument();
+      expect(screen.queryByText('人生成就')).not.toBeInTheDocument();
+      expect(screen.queryByText('bad')).not.toBeInTheDocument();
+    });
+
+    it('normalizes a partial review before the user expands it', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        life_review: {
+          life_motto: '保持好奇',
+          personality_labels: 'bad',
+          key_turning_points: { invalid: true },
+          resource_curves: 'bad',
+          achievement_badge_wall: 'bad',
+          relationship_network: null,
+          play_duration_minutes: 'bad',
+          total_decisions: null,
+          favorite_choice_type: { invalid: true },
+        },
+      }));
+
+      render(<EndingPage />);
+      fireEvent.click(await screen.findByRole('button', { name: '查看人生回顾' }));
+
+      const reviewCard = screen.getByTestId('life-review-card');
+      expect(reviewCard).toBeInTheDocument();
+      expect(within(reviewCard).getByText(/“保持好奇”/)).toBeInTheDocument();
+      expect(screen.queryByText('bad')).not.toBeInTheDocument();
+    });
+
+    it('filters malformed relationship values without hiding valid ones', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        ending_name: '关系收束',
+        final_stats: {
+          relationships: {
+            '故友': 72,
+            '陌生人': 'high',
+            '失真数值': Number.POSITIVE_INFINITY,
+          },
+        },
+      }));
+
+      render(<EndingPage />);
+
+      expect(await screen.findByText('故友')).toBeInTheDocument();
+      expect(screen.getByText('72/100')).toBeInTheDocument();
+      expect(screen.queryByText('陌生人')).not.toBeInTheDocument();
+      expect(screen.queryByText('失真数值')).not.toBeInTheDocument();
+    });
+
+    it('ignores a wrong relationships container when independent ending copy is valid', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        summary: '只保留安全的结局正文。',
+        final_stats: { relationships: 'bad' },
+      }));
+
+      render(<EndingPage />);
+
+      expect(await screen.findByText('只保留安全的结局正文。')).toBeInTheDocument();
+      expect(screen.queryByText('人际关系')).not.toBeInTheDocument();
+      expect(screen.queryByText('bad')).not.toBeInTheDocument();
+    });
   });
 
   describe('Request ownership', () => {
@@ -331,6 +401,18 @@ describe('EndingPage', () => {
 
       expect(await screen.findByRole('button', { name: '重试' })).toBeInTheDocument();
       expect(screen.queryByText('temporarily unavailable')).not.toBeInTheDocument();
+    });
+
+    it.each([
+      { achievements: { list: 'bad' } },
+      { final_stats: { relationships: 'bad' } },
+    ])('rejects a response whose only canonical field is malformed: %p', async (response) => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(response));
+
+      render(<EndingPage />);
+
+      expect(await screen.findByRole('button', { name: '重试' })).toBeInTheDocument();
+      expect(screen.getAllByRole('status')).toHaveLength(1);
     });
 
     it('retries in place and renders the second successful response', async () => {
