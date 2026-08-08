@@ -55,6 +55,20 @@ def test_qualitative_economic_or_value_statements_are_preserved(text: str) -> No
     assert not contains_tracked_wealth_state(text)
 
 
+@pytest.mark.parametrize(
+    "text",
+    (
+        "她拓展了3 European markets",
+        "她搬到广州三元里",
+        "她掌握了一元二次方程",
+        "他研究三元组的性质",
+    ),
+)
+def test_currency_lookalikes_are_not_financial_state(text: str) -> None:
+    assert not contains_precise_financial_fact(text)
+    assert not contains_tracked_wealth_state(text)
+
+
 def test_prompt_forbids_exact_financial_authority() -> None:
     prompts = [
         get_story_analysis_prompt("故事", "选择", "", {}, 1, language)
@@ -69,7 +83,7 @@ def test_prompt_forbids_exact_financial_authority() -> None:
     assert "received bonus" not in prompts[1]
 
 
-def test_story_analyzer_filters_exact_money_fact() -> None:
+def test_story_analyzer_rejects_structured_financial_category() -> None:
     analyzer = StoryAnalyzer(client=None)
     response = """{
       "facts": [
@@ -77,13 +91,13 @@ def test_story_analyzer_filters_exact_money_fact() -> None:
           "action": "new",
           "fact_type": "financial",
           "subject": "林岚",
-          "description": "公司发放了5000元奖金",
-          "constraint_text": "后续必须保持账户余额增加5000元",
-          "source_excerpt": "奖金到账5000元"
+          "description": "家庭经济压力加剧",
+          "constraint_text": "经济压力会影响她的消费选择",
+          "source_excerpt": "家庭经济压力加剧"
         },
         {
           "action": "new",
-          "fact_type": "financial",
+          "fact_type": "economic_context",
           "subject": "林岚",
           "description": "家庭经济压力加剧",
           "constraint_text": "经济压力会影响她的消费选择",
@@ -99,7 +113,19 @@ def test_story_analyzer_filters_exact_money_fact() -> None:
 
 @pytest.mark.parametrize(
     "unsafe_fact",
-    ("USD 8,000", "RMB 5000", "当前财富值有所提升", "存款继续增长"),
+    (
+        "USD 8,000",
+        "RMB 5000",
+        "当前财富值有所提升",
+        "存款继续增长",
+        "财富持续缩水",
+        "存款快要见底",
+        "净资产大幅缩水",
+        "savings rose",
+        "net worth dropped",
+        "月薪8000",
+        "salary is 8000",
+    ),
 )
 def test_story_analyzer_filters_authoritative_money_state(unsafe_fact: str) -> None:
     analyzer = StoryAnalyzer(client=None)
@@ -133,8 +159,75 @@ def test_story_analyzer_filters_authoritative_money_state(unsafe_fact: str) -> N
 
 
 @pytest.mark.parametrize(
+    "safe_fact",
+    (
+        "她拓展了3 European markets",
+        "她搬到广州三元里",
+        "她掌握了一元二次方程",
+        "他研究三元组的性质",
+    ),
+)
+def test_story_analyzer_keeps_currency_lookalikes(safe_fact: str) -> None:
+    analyzer = StoryAnalyzer(client=None)
+    response = json.dumps(
+        {
+            "facts": [
+                {
+                    "action": "new",
+                    "fact_type": "knowledge",
+                    "subject": "林岚",
+                    "description": safe_fact,
+                    "constraint_text": safe_fact,
+                    "source_excerpt": safe_fact,
+                }
+            ]
+        },
+        ensure_ascii=False,
+    )
+
+    facts = analyzer._parse_analysis_response(response, 4, [], "hash")
+
+    assert [fact.description for fact in facts] == [safe_fact]
+
+
+@pytest.mark.parametrize("fact_type", ("financial", "wealth"))
+def test_world_model_rejects_structured_financial_category(fact_type: str) -> None:
+    model = WorldModel()
+    model.dynamic_facts = [
+        DynamicFact(
+            fact_id="unsafe",
+            fact_type=fact_type,
+            subject="林岚",
+            description="家庭经济压力加剧",
+            constraint_text="经济压力会影响她的消费选择",
+        ),
+        DynamicFact(
+            fact_id="safe",
+            fact_type="economic_context",
+            subject="林岚",
+            description="家庭经济压力加剧",
+            constraint_text="经济压力会影响她的消费选择",
+        ),
+    ]
+
+    assert [fact["fact_id"] for fact in model.to_dict()["dynamic_facts"]] == ["safe"]
+
+
+@pytest.mark.parametrize(
     "unsafe_fact",
-    ("USD 8,000", "RMB 5000", "当前财富值有所提升", "账户余额有所改善"),
+    (
+        "USD 8,000",
+        "RMB 5000",
+        "当前财富值有所提升",
+        "账户余额有所改善",
+        "财富持续缩水",
+        "存款快要见底",
+        "净资产大幅缩水",
+        "savings rose",
+        "net worth dropped",
+        "月薪8000",
+        "salary is 8000",
+    ),
 )
 def test_world_model_filters_authoritative_money_state(unsafe_fact: str) -> None:
     model = WorldModel()
@@ -162,9 +255,52 @@ def test_world_model_filters_authoritative_money_state(unsafe_fact: str) -> None
     assert [fact["fact_id"] for fact in model.to_dict()["dynamic_facts"]] == ["safe"]
 
 
+@pytest.mark.parametrize("category", ("financial", "wealth"))
+def test_assistant_rejects_structured_financial_category(category: str) -> None:
+    player = SimpleNamespace(
+        character_settings={},
+        life_vision="",
+        continuity_ledger={
+            "mutable_states": {
+                "facts": {
+                    "unsafe": {
+                        "subject": "林岚",
+                        "category": category,
+                        "fact": "家庭经济压力加剧",
+                        "source_event_id": "w1-r1",
+                    },
+                    "safe": {
+                        "subject": "林岚",
+                        "category": "economic_context",
+                        "fact": "家庭经济压力加剧",
+                        "source_event_id": "w1-r2",
+                    },
+                }
+            }
+        },
+    )
+
+    evidence = AssistantEvidence.from_player_state(player)
+
+    assert "state:unsafe" not in evidence.records
+    assert evidence.records["state:safe"].fact == "家庭经济压力加剧"
+
+
 @pytest.mark.parametrize(
     "unsafe_fact",
-    ("USD 8,000", "RMB 5000", "当前财富值有所提升", "存款继续增长"),
+    (
+        "USD 8,000",
+        "RMB 5000",
+        "当前财富值有所提升",
+        "存款继续增长",
+        "财富持续缩水",
+        "存款快要见底",
+        "净资产大幅缩水",
+        "savings rose",
+        "net worth dropped",
+        "月薪8000",
+        "salary is 8000",
+    ),
 )
 def test_assistant_filters_authoritative_money_state(unsafe_fact: str) -> None:
     player = SimpleNamespace(

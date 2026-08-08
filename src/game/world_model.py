@@ -11,7 +11,10 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from src.game.relationship_authority import build_required_cast_constraints, extract_required_key_people
-from src.utils.financial_narrative import contains_authoritative_financial_state
+from src.utils.financial_narrative import (
+    contains_authoritative_financial_state,
+    is_structured_financial_category,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -332,12 +335,15 @@ class WorldModel:
                 # Skip expired facts
                 if df.expiry_week > 0 and df.expiry_week <= wm.current_week:
                     df.active = False
-                if df.active and not contains_authoritative_financial_state(
-                    df.fact_type,
-                    df.subject,
-                    df.description,
-                    df.constraint_text,
-                    df.source_excerpt,
+                if (
+                    df.active
+                    and not is_structured_financial_category(df.fact_type)
+                    and not contains_authoritative_financial_state(
+                        df.subject,
+                        df.description,
+                        df.constraint_text,
+                        df.source_excerpt,
+                    )
                 ):
                     wm.dynamic_facts.append(df)
             except (KeyError, TypeError, ValueError) as e:
@@ -932,8 +938,8 @@ class WorldModel:
             for f in self.dynamic_facts
             if f.active
             and f.constraint_text
+            and not is_structured_financial_category(f.fact_type)
             and not contains_authoritative_financial_state(
-                f.fact_type,
                 f.subject,
                 f.description,
                 f.constraint_text,
@@ -1037,8 +1043,8 @@ class WorldModel:
                 df.to_dict()
                 for df in self.dynamic_facts
                 if hasattr(df, "to_dict")
+                and not is_structured_financial_category(getattr(df, "fact_type", ""))
                 and not contains_authoritative_financial_state(
-                    getattr(df, "fact_type", ""),
                     getattr(df, "subject", ""),
                     getattr(df, "description", ""),
                     getattr(df, "constraint_text", ""),

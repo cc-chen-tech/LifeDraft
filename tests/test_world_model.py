@@ -455,7 +455,7 @@ class TestWorldModel:
             ),
             DynamicFact(
                 fact_id="f_pressure",
-                fact_type="financial",
+                fact_type="economic_context",
                 subject="林岚",
                 description="家庭经济压力加剧",
                 constraint_text="家庭经济压力仍在，做决定时会更加谨慎",

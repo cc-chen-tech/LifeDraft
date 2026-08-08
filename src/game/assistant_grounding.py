@@ -13,7 +13,10 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
 
-from src.utils.financial_narrative import contains_authoritative_financial_state
+from src.utils.financial_narrative import (
+    contains_authoritative_financial_state,
+    is_structured_financial_category,
+)
 
 MAX_EVIDENCE_RECORDS = 160
 MAX_ATTEMPTS = 2
@@ -259,10 +262,11 @@ class AssistantEvidence:
         )
 
     def _add(self, record: EvidenceRecord) -> None:
+        if is_structured_financial_category(record.metadata.get("category", "")):
+            return
         if contains_authoritative_financial_state(
             record.subject,
             record.fact,
-            record.metadata.get("category", ""),
         ):
             return
         if len(self.records) < MAX_EVIDENCE_RECORDS:

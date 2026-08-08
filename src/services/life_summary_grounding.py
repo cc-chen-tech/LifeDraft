@@ -6,8 +6,10 @@ import re
 from typing import List, Mapping, Sequence
 
 from src.ai.professional_risk import apply_professional_risk_guardrail
-from src.utils.financial_narrative import contains_authoritative_financial_state
-
+from src.utils.financial_narrative import (
+    contains_authoritative_financial_state,
+    sanitize_authoritative_financial_clauses,
+)
 
 StoryItem = Mapping[str, object]
 _NUMBER_PATTERN = re.compile(r"\d+(?:\.\d+)?")
@@ -20,7 +22,6 @@ _COMPACT_CHOICE_MAX_CHARS = 120
 _LIFE_SUMMARY_OUTPUT_MAX_CHARS = 600
 _COMPACT_FALLBACK_STORY_MAX_CHARS = 140
 _COMPACT_FALLBACK_CHOICE_MAX_CHARS = 60
-_FALLBACK_CLAUSE_SPLIT = re.compile(r"[，,；;。！？!?\n]+")
 
 
 def _as_text(item: StoryItem, key: str) -> str:
@@ -84,14 +85,7 @@ def _truncate_evidence(text: str, limit: int) -> str:
 
 def _sanitize_fallback_evidence(text: str) -> str:
     """Remove exact or tracked money-state clauses before fallback quoting."""
-    if not contains_authoritative_financial_state(text):
-        return text.strip()
-    safe_clauses = [
-        clause.strip()
-        for clause in _FALLBACK_CLAUSE_SPLIT.split(text)
-        if clause.strip() and not contains_authoritative_financial_state(clause)
-    ]
-    return "；".join(safe_clauses) or "相关经济处境有所变化"
+    return sanitize_authoritative_financial_clauses(text) or "相关经济处境有所变化"
 
 
 def _range_label(start_week: int, end_week: int) -> str:
@@ -162,7 +156,10 @@ def build_grounded_fallback(
         )
     else:
         body = "这段时间的故事记录仍在整理。"
-    return f"{prefix}{body}{caution}"
+    result = f"{prefix}{body}{caution}"
+    if contains_authoritative_financial_state(result):
+        return f"{prefix}相关经济处境有所变化。"
+    return result
 
 
 def _has_unsupported_number(

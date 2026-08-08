@@ -129,7 +129,7 @@ def test_evidence_excludes_exact_money_facts_but_keeps_qualitative_economic_cont
             },
             "finance:pressure": {
                 "subject": "林岚",
-                "category": "financial",
+                "category": "economic_context",
                 "fact": "家庭经济压力加剧，消费变得谨慎",
                 "source_event_id": "w4-r2",
             },
