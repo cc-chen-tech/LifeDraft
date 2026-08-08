@@ -152,6 +152,54 @@ describe('ChatBar', () => {
       expect(screen.getByText('这段故事怎么样？')).toBeInTheDocument();
     });
 
+    it('closes an open summary panel during busy work and fades the launcher and panel back without reopening it', async () => {
+      const user = userEvent.setup();
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        summary_text: '这一周的总结。',
+        start_week: 4,
+        end_week: 4,
+      }));
+      const { rerender } = render(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+          storyText="Partial streamed story"
+        />
+      );
+
+      await user.click(screen.getByRole('button', { name: '人生总结' }));
+      expect(await screen.findByTestId('life-summary-panel')).toBeInTheDocument();
+
+      rerender(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+          storyText="Partial streamed story"
+          isStoryBusy
+        />
+      );
+
+      expect(screen.queryByTestId('life-summary-panel')).not.toBeInTheDocument();
+
+      rerender(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+          storyText="Partial streamed story"
+        />
+      );
+
+      const launcher = await screen.findByTestId('chat-bar-launcher');
+      expect(launcher).toHaveClass('fade-in');
+      expect(screen.queryByTestId('life-summary-panel')).not.toBeInTheDocument();
+
+      await user.click(screen.getByLabelText('打开聊天'));
+      expect((await screen.findByTestId('chat-bar-panel'))).toHaveClass('fade-in');
+    });
+
     it('opens rewrite sheet from collapsed quick action', async () => {
       const user = userEvent.setup();
       render(

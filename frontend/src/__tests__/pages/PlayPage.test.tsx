@@ -745,8 +745,9 @@ describe('PlayPage', () => {
       });
     });
 
-    it('uses recover and retry actions for reconnecting and failed gameplay without a reload card', async () => {
+    it('uses unified reconnect and real error failure actions without a reload card', async () => {
       const mockRecoverEventGeneration = jest.fn();
+      const mockGenerateEvent = jest.fn();
       const originalHook = jest.requireMock('@/hooks/usePlayGame');
       originalHook.usePlayGame = () => ({
         ...mockUsePlayGame,
@@ -767,18 +768,41 @@ describe('PlayPage', () => {
 
       originalHook.usePlayGame = () => ({
         ...mockUsePlayGame,
-        phase: 'generating',
+        phase: 'error',
         options: [],
         storyText: '',
         displayText: '',
         connectionStatus: 'error',
-        recoverEventGeneration: mockRecoverEventGeneration,
+        generateEvent: mockGenerateEvent,
       });
       rerender(<PlayPage />);
 
+      expect(screen.getByTestId('narrative-loading-section')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: '重试' })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '重试' }));
+      await waitFor(() => {
+        expect(mockGenerateEvent).toHaveBeenCalledTimes(1);
+      });
       expect(screen.queryByRole('button', { name: '恢复当前进度' })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: '重新加载' })).not.toBeInTheDocument();
+      expect(screen.queryByText('出现错误，请重试')).not.toBeInTheDocument();
+
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'error',
+        options: [],
+        storyText: '生成失败前已收到的正文。',
+        displayText: '生成失败前已收到的正文。',
+        connectionStatus: 'error',
+        generateEvent: mockGenerateEvent,
+      });
+      rerender(<PlayPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('生成失败前已收到的正文。')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('narrative-loading-inline')).toBeInTheDocument();
+      expect(screen.queryByTestId('narrative-loading-section')).not.toBeInTheDocument();
     });
   });
 

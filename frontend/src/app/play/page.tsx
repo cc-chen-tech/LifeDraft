@@ -19,7 +19,6 @@ import {
 import {
   Sheet,
   SheetContent,
-  SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
 import { StreamingText } from "@/components/game/StreamingText";
@@ -101,7 +100,6 @@ export default function PlayPage() {
     progress,
     roundInfo,
     storyText,
-    isGameOver,
 
     // Refs
     storyContainerRef,
@@ -141,7 +139,6 @@ export default function PlayPage() {
     handleRegenerateHistoryImage,  // ★ 重新生成历史图片
     
     // ★ 场景插画
-    roundSceneImages,
     currentRoundSceneImage,
     eventSceneImage,  // ★ 事件插画
     resultSceneImage,  // ★ 结果插画
@@ -150,8 +147,6 @@ export default function PlayPage() {
     isRegeneratingRoundScene,
     fetchRoundSceneImage,
     regenerateRoundSceneImage,
-    setEventSceneImage,  // ★ 设置事件插画
-    setResultSceneImage,  // ★ 设置结果插画
     // ★ 历史场景插画
     historySceneImage,
     isLoadingHistoryImage,
@@ -173,6 +168,10 @@ export default function PlayPage() {
         ? "failed"
         : "active";
   const gameplayOperation = phase === "choosing" ? "choice" : "event";
+  const isUnifiedGameplayFailure =
+    phase === "error" && gameplayTransport === "failed";
+  const shouldRenderGameplayLoading =
+    isCurrentStoryBusy || isUnifiedGameplayFailure;
   const sceneImageDisplayMode = getSceneImageDisplayMode({
     phase,
     hasEventSceneImage: Boolean(eventSceneImage),
@@ -237,6 +236,14 @@ export default function PlayPage() {
     setPhase("loading");
     setTimeout(() => recoverEventGeneration(), 0);
   }, [recoverEventGeneration, setOptions, setPhase]);
+
+  const handleRetryGeneration = useCallback(() => {
+    setPhase("loading");
+    setTimeout(() => generateEvent(), 0);
+  }, [generateEvent, setPhase]);
+
+  const handleGameplayLoadingAction =
+    gameplayTransport === "failed" ? handleRetryGeneration : handleRecoverGeneration;
 
   const handleOpenCollection = useCallback(() => {
     setActiveSidePanel("collection");
@@ -311,7 +318,7 @@ export default function PlayPage() {
           <div className="space-y-2">
             <h1 className="text-lg font-semibold text-foreground">正在恢复当前进度</h1>
             <p className="text-sm text-muted-foreground">
-              如果没有可恢复的游戏，页面会返回首页。你也可以手动返回或重新加载。
+              如果没有可恢复的游戏，页面会返回首页。你也可以手动返回。
             </p>
           </div>
           <div className="flex items-center justify-center gap-3">
@@ -495,7 +502,7 @@ export default function PlayPage() {
           </div>
         )}
         
-        {!isViewingHistory && isCurrentStoryBusy && !displayText && (
+        {!isViewingHistory && shouldRenderGameplayLoading && !displayText && (
           gameplayTransport === "active" ? (
             <NarrativeLoadingState
               context="gameplay"
@@ -512,7 +519,7 @@ export default function PlayPage() {
               operation={gameplayOperation}
               delayed={isGameplayDelayed}
               transport={gameplayTransport}
-              onAction={handleRecoverGeneration}
+              onAction={handleGameplayLoadingAction}
             />
           )
         )}
@@ -550,7 +557,7 @@ export default function PlayPage() {
                 narrative
                 className="mb-6"
               />
-              {isCurrentStoryBusy && (
+              {shouldRenderGameplayLoading && (
                 gameplayTransport === "active" ? (
                   <NarrativeLoadingState
                     context="gameplay"
@@ -567,7 +574,7 @@ export default function PlayPage() {
                     operation={gameplayOperation}
                     delayed={isGameplayDelayed}
                     transport={gameplayTransport}
-                    onAction={handleRecoverGeneration}
+                    onAction={handleGameplayLoadingAction}
                   />
                 )
               )}
@@ -808,7 +815,7 @@ export default function PlayPage() {
         )}
 
         {/* Error state */}
-        {!isViewingHistory && phase === "error" && (
+        {!isViewingHistory && phase === "error" && !isUnifiedGameplayFailure && (
           <div className="text-center py-12 space-y-4">
             <p className="text-destructive">出现错误，请重试</p>
             <Button
