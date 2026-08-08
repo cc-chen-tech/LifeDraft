@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from config.settings import settings
 from src.ai.models import GameEvent
-from src.ai.vector_store import get_vector_store, is_vector_search_enabled
 from src.game.narrative_manager import NarrativeManager
 from src.game.continuity_ledger import ContinuityLedger
 from src.game.world_model_updater import WorldModelUpdater
@@ -405,27 +404,6 @@ class RoundChoiceProcessor:
         if is_custom:
             story_entry["is_custom"] = True
         player_state.story_history.append(story_entry)
-
-        # ★ 向量存储：将故事存入向量库以支持语义检索
-        if is_vector_search_enabled():
-            try:
-                vector_store = get_vector_store()
-                story_id = f"week{player_state.week}_round{player_state.current_round}"
-                full_story_text = event.event_description
-                if story_continuation:
-                    full_story_text += f"\n\n[选择: {choice_text}]\n\n{story_continuation}"
-                vector_store.add_story(
-                    story_id=story_id,
-                    content=full_story_text,
-                    metadata={
-                        "week": player_state.week,
-                        "round": player_state.current_round,
-                        "choice": choice_text[:100],  # 截断防止过长
-                        "is_custom": is_custom,
-                    },
-                )
-            except Exception as e:
-                logger.warning(f"Failed to add story to vector store: {e}")
 
         decision_record = {
             "week": player_state.week,

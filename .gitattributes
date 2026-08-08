@@ -1,0 +1,2 @@
+# Upstream tokenizer artifact; keep code review focused on the wrapper and hash notice.
+src/ai/deepseek_tokenizer/tokenizer.json -diff

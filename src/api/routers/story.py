@@ -32,8 +32,7 @@ def _is_api_contract_probe(request: Request) -> bool:
     """Detect Playwright APIRequest endpoint probes used by the E2E contract gate."""
     if os.getenv("E2E_CONTRACT_PROBE_FAST") != "1":
         return False
-    user_agent = request.headers.get("user-agent", "")
-    return "Playwright" in user_agent or not request.headers.get("cookie")
+    return request.headers.get("x-e2e-contract-probe") == "1"
 
 
 def _require_session(game_id: int, user_id: Optional[int]):

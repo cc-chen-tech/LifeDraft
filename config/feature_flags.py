@@ -21,7 +21,6 @@ class FeatureFlags(TypedDict, total=False):
     narrative_style_engine: bool
     creative_enhancement: bool
     epic_narrative: bool
-    vector_search: bool
     model_fallback: bool
     truncation_recovery: bool
     reactive_compression: bool
@@ -36,7 +35,6 @@ _ENV_VAR_MAP: Dict[str, str] = {
     "narrative_style_engine": "ENABLE_NARRATIVE_STYLE_ENGINE",
     "creative_enhancement": "ENABLE_CREATIVE_ENHANCEMENT",
     "epic_narrative": "ENABLE_EPIC_NARRATIVE",
-    "vector_search": "ENABLE_VECTOR_SEARCH",
     "model_fallback": "ENABLE_MODEL_FALLBACK",
     "truncation_recovery": "ENABLE_TRUNCATION_RECOVERY",
     "reactive_compression": "ENABLE_REACTIVE_COMPRESSION",
@@ -50,7 +48,6 @@ FEATURE_DEFAULTS: FeatureFlags = {
     "narrative_style_engine": False,
     "creative_enhancement": False,
     "epic_narrative": False,
-    "vector_search": False,
     "model_fallback": False,
     "truncation_recovery": False,
     "reactive_compression": False,

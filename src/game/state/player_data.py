@@ -76,6 +76,10 @@ class PlayerDataMixin:
     # Structure: [{"week": 0, "round": 0, "summary": "100字总结", "choice": "选项文本", "effects": {...}}]
     round_history: list = Field(default_factory=list)
 
+    # Derived, immutable prompt-compression snapshots. The canonical story
+    # remains in round_history; these records only bound long-context prompts.
+    long_context_snapshots: list = Field(default_factory=list)
+
     # Weekly summaries - generated at end of each week after all rounds
     # Structure: [{"week": 0, "summary": "周总结文本", "bonus_effects": {...}}]
     weekly_summaries: list = Field(default_factory=list)

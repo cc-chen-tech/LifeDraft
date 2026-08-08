@@ -120,18 +120,17 @@ class TestNarrativeSystemInitialization:
 
         with patch.dict(os.environ, {"ENABLE_NARRATIVE_STYLE_ENGINE": "false"}):
             with patch("src.ai.story_generator.get_round_event_prompt", side_effect=capture_prompt):
-                with patch("src.ai.story_generator.is_vector_search_enabled", return_value=False):
-                    with patch("src.ai.story_generator.validate_narrative_quality", return_value=[]):
-                        with patch("src.ai.quick_validator.quick_validate_story", return_value=quick_result):
-                            for style_id in ("chinese_wuxia", "cyberpunk"):
-                                generator.generate_round_event(
-                                    player_state={**base_state, "narrative_style_id": style_id},
-                                    language="zh",
-                                    round_number=0,
-                                    round_context="",
-                                    character_settings={},
-                                    option_generator=option_generator,
-                                )
+                with patch("src.ai.story_generator.validate_narrative_quality", return_value=[]):
+                    with patch("src.ai.quick_validator.quick_validate_story", return_value=quick_result):
+                        for style_id in ("chinese_wuxia", "cyberpunk"):
+                            generator.generate_round_event(
+                                player_state={**base_state, "narrative_style_id": style_id},
+                                language="zh",
+                                round_number=0,
+                                round_context="",
+                                character_settings={},
+                                option_generator=option_generator,
+                            )
 
         assert len(style_constraints) == 2
         assert all(style_constraints)
