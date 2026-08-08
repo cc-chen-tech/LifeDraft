@@ -972,7 +972,7 @@ Effects: {_format_effects(r.get('effects', {}), language)}
 【输出JSON格式】
 {{
     "summary": "本周总结文本...",
-    "bonus_effects": {{"energy": 0, "mood": 0, "knowledge": 0, "wealth": 0}}
+    "bonus_effects": {{"energy": 0, "mood": 0, "knowledge": 0}}
 }}
 
 【加成规则】
@@ -996,7 +996,7 @@ Please generate:
 [Output JSON Format]
 {{
     "summary": "Weekly summary text...",
-    "bonus_effects": {{"energy": 0, "mood": 0, "knowledge": 0, "wealth": 0}}
+    "bonus_effects": {{"energy": 0, "mood": 0, "knowledge": 0}}
 }}
 
 [Bonus Rules]
@@ -1027,16 +1027,15 @@ def _format_effects(effects: Dict[str, Any], language: str) -> str:
 
     parts = []
     labels = {
-        "zh": {"energy": "精力", "mood": "情绪", "knowledge": "学识", "wealth": "财富"},
+        "zh": {"energy": "精力", "mood": "情绪", "knowledge": "学识"},
         "en": {
             "energy": "Energy",
             "mood": "Mood",
             "knowledge": "Knowledge",
-            "wealth": "Wealth",
         },
     }
 
-    for key in ["energy", "mood", "knowledge", "wealth"]:
+    for key in ["energy", "mood", "knowledge"]:
         val = effects.get(key, 0)
         if val != 0:
             label = labels.get(language, labels["en"]).get(key, key)

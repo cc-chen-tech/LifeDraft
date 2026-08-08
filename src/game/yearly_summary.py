@@ -57,7 +57,6 @@ class YearlySummaryGenerator:
             "energy": end_state.energy - start_state.get("energy", end_state.energy),
             "mood": end_state.mood - start_state.get("mood", end_state.mood),
             "knowledge": end_state.knowledge - start_state.get("knowledge", end_state.knowledge),
-            "wealth": end_state.wealth - start_state.get("wealth", end_state.wealth),
             "age": end_state.age - start_state.get("age", end_state.age),
         }
 
@@ -124,13 +123,12 @@ class YearlySummaryGenerator:
 - 精力：{changes['energy']:+d}
 - 情绪：{changes['mood']:+d}
 - 学识：{changes['knowledge']:+d}
-- 财富：{changes['wealth']:+,}
 - 年龄增长：{changes['age']}岁
 
 年度决策：{len(decisions)}个
 关键决策：{', '.join(decision_texts[:5]) if decision_texts else '无'}
 
-当前状态：精力{end_state.energy}/100，情绪{end_state.mood}/100，学识{end_state.knowledge}/100，财富¥{end_state.wealth:,}
+当前状态：精力{end_state.energy}/100，情绪{end_state.mood}/100，学识{end_state.knowledge}/100
 
 月度总结片段：
 {chr(10).join(summary_highlights[:3]) if summary_highlights else '无详细记录'}
@@ -145,13 +143,12 @@ Annual changes:
 - Energy: {changes['energy']:+d}
 - Mood: {changes['mood']:+d}
 - Knowledge: {changes['knowledge']:+d}
-- Wealth: {changes['wealth']:+,}
 - Age increase: {changes['age']} years
 
 Annual decisions: {len(decisions)}
 Key decisions: {', '.join(decision_texts[:5]) if decision_texts else 'None'}
 
-Current state: Energy {end_state.energy}/100, Mood {end_state.mood}/100, Knowledge {end_state.knowledge}/100, Wealth ¥{end_state.wealth:,}
+Current state: Energy {end_state.energy}/100, Mood {end_state.mood}/100, Knowledge {end_state.knowledge}/100
 
 Monthly summary highlights:
 {chr(10).join(summary_highlights[:3]) if summary_highlights else 'No detailed records'}
@@ -172,6 +169,6 @@ Generate a vivid annual summary describing the main changes, important events, g
     def _get_fallback_summary(self, year: int, changes: Dict[str, int], language: str) -> str:
         """Get fallback summary."""
         if language == "zh":
-            return f"第{year}年过去了。精力变化{changes['energy']:+d}，情绪变化{changes['mood']:+d}，学识变化{changes['knowledge']:+d}，财富变化{changes['wealth']:+,}，年龄增长了{changes['age']}岁。"
+            return f"第{year}年过去了。精力变化{changes['energy']:+d}，情绪变化{changes['mood']:+d}，学识变化{changes['knowledge']:+d}，年龄增长了{changes['age']}岁。"
         else:
-            return f"Year {year} passed. Energy {changes['energy']:+d}, Mood {changes['mood']:+d}, Knowledge {changes['knowledge']:+d}, Wealth {changes['wealth']:+,}, Age increased by {changes['age']} years."
+            return f"Year {year} passed. Energy {changes['energy']:+d}, Mood {changes['mood']:+d}, Knowledge {changes['knowledge']:+d}, Age increased by {changes['age']} years."

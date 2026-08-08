@@ -10,7 +10,7 @@ from src.ai.professional_risk import apply_professional_risk_guardrail
 
 StoryItem = Mapping[str, object]
 _NUMBER_PATTERN = re.compile(r"\d+(?:\.\d+)?")
-_REMOVED_METRICS = ("精力", "情绪", "学识", "财富", "energy", "mood", "knowledge", "wealth")
+_REMOVED_METRICS = ("精力", "情绪", "学识", "energy", "mood", "knowledge")
 _LEGAL_ENDORSEMENTS = ("合规路径", "合法合规", "完全合法", "符合法律规定", "compliant path")
 _INFLATED_DURATION = ("半年", "一年", "数年", "half a year", "one year", "several years")
 _LIFE_SUMMARY_EVIDENCE_MAX_CHARS = 24_000
@@ -102,7 +102,7 @@ def build_life_summary_prompt(
 - 时间范围只能写成“{label}”或等价的{end_week - start_week + 1}周，不得夸大为半年、数月或更长时期。
 - 如果不同回合对身份、病情、招标、注册或其他事实存在冲突，必须明确保留为冲突或未决，不得自行合并成确定事实。
 - 对“规避竞业”、借用亲属名义或类似行为，不得称为合规路径、合法方案或已经解决的法律风险。
-- 不要提及精力、情绪、学识、财富等游戏资源指标。
+- 不要提及精力、情绪、学识等游戏资源指标。
 
 【故事证据】
 {_source_text(story_history)}

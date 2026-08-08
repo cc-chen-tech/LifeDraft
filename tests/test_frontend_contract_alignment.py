@@ -216,8 +216,8 @@ class TestGetGameResponseShape:
 
         assert "life_vision" in ps, "player_state.life_vision missing"
 
-        # Attribute fields (energy, mood, knowledge, wealth)
-        for attr in ("energy", "mood", "knowledge", "wealth"):
+        # Active resource fields
+        for attr in ("energy", "mood", "knowledge"):
             assert attr in ps, f"player_state.{attr} missing"
             assert isinstance(
                 ps[attr], (int, float)

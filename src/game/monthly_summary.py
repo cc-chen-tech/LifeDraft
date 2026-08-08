@@ -56,7 +56,6 @@ class MonthlySummaryGenerator:
             "mood": current_state.mood - previous_state.get("mood", current_state.mood),
             "knowledge": current_state.knowledge
             - previous_state.get("knowledge", current_state.knowledge),
-            "wealth": current_state.wealth - previous_state.get("wealth", current_state.wealth),
         }
 
         # Generate AI summary
@@ -107,12 +106,11 @@ class MonthlySummaryGenerator:
 - 精力：{changes['energy']:+d}
 - 情绪：{changes['mood']:+d}
 - 学识：{changes['knowledge']:+d}
-- 财富：{changes['wealth']:+,}
 
 本月决策：{len(decisions)}个
 关键决策：{', '.join(decision_texts[:3]) if decision_texts else '无'}
 
-当前状态：精力{current_state.energy}/100，情绪{current_state.mood}/100，学识{current_state.knowledge}/100，财富¥{current_state.wealth:,}
+当前状态：精力{current_state.energy}/100，情绪{current_state.mood}/100，学识{current_state.knowledge}/100
 
 请生成一段生动的月度总结，描述这个月的主要变化、重要事件和感受。"""
             else:
@@ -124,12 +122,11 @@ Monthly changes:
 - Energy: {changes['energy']:+d}
 - Mood: {changes['mood']:+d}
 - Knowledge: {changes['knowledge']:+d}
-- Wealth: {changes['wealth']:+,}
 
 Decisions made: {len(decisions)}
 Key decisions: {', '.join(decision_texts[:3]) if decision_texts else 'None'}
 
-Current state: Energy {current_state.energy}/100, Mood {current_state.mood}/100, Knowledge {current_state.knowledge}/100, Wealth ¥{current_state.wealth:,}
+Current state: Energy {current_state.energy}/100, Mood {current_state.mood}/100, Knowledge {current_state.knowledge}/100
 
 Generate a vivid monthly summary describing the main changes, important events, and feelings of this month."""
 
@@ -147,6 +144,6 @@ Generate a vivid monthly summary describing the main changes, important events, 
     def _get_fallback_summary(self, month: int, changes: Dict[str, int], language: str) -> str:
         """Get fallback summary."""
         if language == "zh":
-            return f"第{month}个月过去了。精力变化{changes['energy']:+d}，情绪变化{changes['mood']:+d}，学识变化{changes['knowledge']:+d}，财富变化{changes['wealth']:+,}。"
+            return f"第{month}个月过去了。精力变化{changes['energy']:+d}，情绪变化{changes['mood']:+d}，学识变化{changes['knowledge']:+d}。"
         else:
-            return f"Month {month} passed. Energy {changes['energy']:+d}, Mood {changes['mood']:+d}, Knowledge {changes['knowledge']:+d}, Wealth {changes['wealth']:+,}."
+            return f"Month {month} passed. Energy {changes['energy']:+d}, Mood {changes['mood']:+d}, Knowledge {changes['knowledge']:+d}."

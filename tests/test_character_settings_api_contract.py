@@ -99,9 +99,9 @@ class TestCharacterSettingsUpdateAPIContract:
         assert saved_state["character_settings"]["age"]["birth_year"] == 1998
         assert saved_state["character_settings"]["family"]["family_background"] == "普通城市家庭"
         assert len(saved_state["character_settings"]["relationships"]["key_people"]) == 2
-        assert saved_state["character_settings"]["wealth"]["initial_wealth"] == "middle"
+        assert "wealth" not in saved_state["character_settings"]
 
-    def test_update_character_settings_syncs_late_generated_wealth_before_play(self) -> None:
+    def test_update_character_settings_drops_legacy_generated_wealth(self) -> None:
         db = MagicMock()
         existing_state = {
             "player_name": "苏清岚",
@@ -136,11 +136,11 @@ class TestCharacterSettingsUpdateAPIContract:
 
         assert response.status_code == 200
         saved_state = db.save_game_progress.call_args.args[1].to_dict()
-        assert saved_state["character_settings"]["wealth"]["wealth"] == 60000
-        assert saved_state["wealth"] == 60000
+        assert "wealth" not in saved_state["character_settings"]
+        assert "wealth" not in saved_state
 
-    def test_update_character_settings_syncs_starting_wealth_before_play(self) -> None:
-        """Late generated wealth may arrive as starting_wealth from /api/character/setting."""
+    def test_update_character_settings_drops_legacy_starting_wealth(self) -> None:
+        """Legacy starting_wealth payloads are accepted but retired state is discarded."""
         db = MagicMock()
         existing_state = {
             "player_name": "张若虚",
@@ -177,13 +177,13 @@ class TestCharacterSettingsUpdateAPIContract:
 
         assert response.status_code == 200
         saved_state = db.save_game_progress.call_args.args[1].to_dict()
-        assert saved_state["character_settings"]["wealth"]["starting_wealth"] == 50000
-        assert saved_state["wealth"] == 50000
+        assert "wealth" not in saved_state["character_settings"]
+        assert "wealth" not in saved_state
 
-    def test_update_character_settings_syncs_currency_string_initial_wealth_before_play(
+    def test_update_character_settings_drops_legacy_currency_wealth_before_play(
         self,
     ) -> None:
-        """Late generated wealth may arrive as formatted initial_wealth text."""
+        """Formatted legacy currency payloads are also discarded."""
         db = MagicMock()
         existing_state = {
             "player_name": "张若虚",
@@ -220,8 +220,8 @@ class TestCharacterSettingsUpdateAPIContract:
 
         assert response.status_code == 200
         saved_state = db.save_game_progress.call_args.args[1].to_dict()
-        assert saved_state["character_settings"]["wealth"]["initial_wealth"] == "50,000元"
-        assert saved_state["wealth"] == 50000
+        assert "wealth" not in saved_state["character_settings"]
+        assert "wealth" not in saved_state
 
     def test_update_character_settings_can_replace_stale_identity_before_play(self) -> None:
         """已有 gameId 继续创建新角色时，应同步覆盖旧 player_name/life_vision。"""

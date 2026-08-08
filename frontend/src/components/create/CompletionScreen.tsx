@@ -38,10 +38,9 @@ const STEP_LABELS: Record<string, string> = {
   family: "家庭背景",
   relationships: "人际关系",
   traits: "性格特征",
-  wealth: "财富状况",
 };
 
-const AUTO_ADVANCE_STEPS = ["family", "relationships", "traits", "wealth"];
+const AUTO_ADVANCE_STEPS = ["family", "relationships", "traits"];
 
 interface CompletionScreenProps {
   playerName: string;

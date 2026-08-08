@@ -95,8 +95,6 @@ class EventCache:
             "energy": round(player_state.get("energy", 70) / 10) * 10,  # Round to nearest 10
             "mood": round(player_state.get("mood", 60) / 10) * 10,
             "knowledge": round(player_state.get("knowledge", 50) / 10) * 10,
-            "wealth": round(player_state.get("wealth", 10000) / 10000)
-            * 10000,  # Round to nearest 10000 for more variation
             "week": player_state.get("week", 0),
             "decision_count": decision_count,  # Add decision history length for variation
             "language": language,

@@ -34,7 +34,6 @@ class StoryService:
         stream_callback: Optional[Callable[[str], None]] = None,
         status_callback: Optional[Callable[[str], None]] = None,
         is_custom: bool = False,
-        active_wealth_transaction_id: Optional[str] = None,
     ) -> str:
         """
         Generate a detailed story continuation after the player's choice.
@@ -73,17 +72,6 @@ class StoryService:
                 is_custom=is_custom,
             )
 
-            wealth_ledger = None
-            current_balance = 0
-            if player_state:
-                from src.game.wealth_ledger import WealthLedger
-
-                wealth_ledger = WealthLedger.from_player_state(player_state)
-                current_balance = max(0, int(player_state.get("wealth", 0)))
-                prompt += wealth_ledger.build_constraints_text(
-                    current_balance, self.language
-                )
-
             sys_prompt = get_system_prompt("story_continuation", self.language)
             continuation = self.ai_generator.generate_completion(
                 prompt=prompt,
@@ -106,17 +94,6 @@ class StoryService:
                 stream_callback=stream_callback,
                 status_callback=status_callback,
             )
-
-            if wealth_ledger is not None:
-                continuation = self._validate_and_retry_wealth_narrative(
-                    continuation=continuation,
-                    ledger=wealth_ledger,
-                    current_balance=current_balance,
-                    active_transaction_id=active_wealth_transaction_id,
-                    original_prompt=prompt,
-                    sys_prompt=sys_prompt,
-                    status_callback=status_callback,
-                )
 
             # ★ 一致性校验：检查结果故事是否与世界模型一致
             if player_state and continuation:
@@ -144,53 +121,6 @@ class StoryService:
             raise StoryContinuationFailure(
                 f"Story continuation generation failed: {e}"
             ) from e
-
-    def _validate_and_retry_wealth_narrative(
-        self,
-        *,
-        continuation: str,
-        ledger: Any,
-        current_balance: int,
-        active_transaction_id: Optional[str],
-        original_prompt: str,
-        sys_prompt: str,
-        status_callback: Optional[Callable[[str], None]],
-    ) -> str:
-        validation = ledger.validate_narrative(
-            continuation,
-            current_balance=current_balance,
-            active_transaction_id=active_transaction_id,
-        )
-        if validation.passed:
-            return continuation
-        if status_callback:
-            status_callback("retrying")
-            status_callback("retry")
-        retry = self.ai_generator.generate_completion(
-            prompt=original_prompt + validation.fix_instructions,
-            system_prompt=sys_prompt,
-            temperature=0.6,
-            max_tokens=4096,
-            retry_count=1,
-            language=self.language,
-            request_timeout=STORY_CONTINUATION_REQUEST_TIMEOUT_SECONDS,
-        )
-        retry_validation = ledger.validate_narrative(
-            retry,
-            current_balance=current_balance,
-            active_transaction_id=active_transaction_id,
-        )
-        if retry_validation.passed:
-            return retry
-        logger.warning(
-            "Wealth claims remained unsupported after retry; applying deterministic correction: %s",
-            [issue.code for issue in retry_validation.issues],
-        )
-        return ledger.sanitize_narrative(
-            retry,
-            retry_validation,
-            current_balance=current_balance,
-        )
 
     def _quick_validate_and_retry_continuation(
         self,
@@ -526,7 +456,7 @@ class StoryService:
             current_state: Current player state dict (for context)
 
         Returns:
-            Dictionary with effects: {"energy": int, "mood": int, "knowledge": int, "wealth": int}
+            Dictionary with effects: {"energy": int, "mood": int, "knowledge": int}
         """
         from config.prompts.story_prompts import (
             get_custom_choice_effects_prompt,
@@ -563,7 +493,7 @@ class StoryService:
                     max_tokens=4096,
                 )
                 if result and isinstance(result, dict):
-                    effect_keys = ("energy", "mood", "knowledge", "wealth")
+                    effect_keys = ("energy", "mood", "knowledge")
                     effects = {key: result.get(key) for key in effect_keys}
                     if all(
                         isinstance(value, int) and not isinstance(value, bool)

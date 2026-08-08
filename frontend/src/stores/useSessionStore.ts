@@ -49,7 +49,7 @@ function _writePersistedState(gameId: number | null, playerState: PlayerState | 
 const _persisted = _readPersistedState();
 
 // 浅比较辅助函数
-const KEY_FIELDS = ["energy", "mood", "knowledge", "wealth", "age", "week", "current_round"];
+const KEY_FIELDS = ["energy", "mood", "knowledge", "age", "week", "current_round"];
 
 function resumeViewChanged(
   newVal: PlayerState | GameProgress | RoundInfo,

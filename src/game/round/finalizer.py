@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Dict, Optional
 
 from src.game.world_model_updater import WorldModelUpdater
-from src.game.wealth_ledger import WealthLedger
+from src.game.effects import normalize_resource_effects
 
 logger = logging.getLogger(__name__)
 
@@ -73,48 +73,13 @@ class RoundFinalizer:
         result["weekly_summary"] = weekly_result.get("summary", "")
 
         # Apply bonus effects if any
-        bonus_effects = weekly_result.get("bonus_effects", {})
+        bonus_effects = normalize_resource_effects(weekly_result.get("bonus_effects", {}))
         if bonus_effects:
-            wealth_ledger = WealthLedger.from_player_state(player_state)
-            requested_wealth = bonus_effects.get("wealth", 0)
-            if (
-                isinstance(requested_wealth, int)
-                and not isinstance(requested_wealth, bool)
-                and requested_wealth != 0
-            ):
-                wealth_ledger.apply_transaction(
-                    player_state,
-                    transaction_id=f"weekly-bonus:w{player_state.week}",
-                    requested_delta=requested_wealth,
-                    reason="周总结奖励",
-                    source_event_id=f"weekly-summary:w{player_state.week}",
-                    week=player_state.week,
-                    round_number=player_state.current_round,
-                )
-            else:
-                wealth_ledger.persist(player_state)
             player_state.update(
                 energy=bonus_effects.get("energy", 0),
                 mood=bonus_effects.get("mood", 0),
                 knowledge=bonus_effects.get("knowledge", 0),
             )
-            allowed_ids = [
-                transaction.transaction_id
-                for transaction in wealth_ledger.transactions
-                if transaction.week == player_state.week
-            ]
-            wealth_validation = wealth_ledger.validate_narrative(
-                str(weekly_result.get("summary", "")),
-                current_balance=player_state.wealth,
-                allowed_transaction_ids=allowed_ids,
-            )
-            if not wealth_validation.passed:
-                weekly_result["summary"] = wealth_ledger.sanitize_narrative(
-                    str(weekly_result.get("summary", "")),
-                    wealth_validation,
-                    current_balance=player_state.wealth,
-                )
-                result["weekly_summary"] = weekly_result["summary"]
             result["bonus_effects"] = bonus_effects
             logger.info(f"Applied bonus effects: {bonus_effects}")
 
@@ -215,10 +180,6 @@ class RoundFinalizer:
                 character_settings=player_state.character_settings,
                 language=self.language,
                 game_date_info=player_state.get_game_date_info(),
-                wealth_context={
-                    "current_balance": player_state.wealth,
-                    "wealth_ledger": player_state.wealth_ledger,
-                },
             )
         except Exception as e:
             logger.error(f"Failed to generate weekly summary: {e}")

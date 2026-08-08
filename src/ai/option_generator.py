@@ -163,15 +163,15 @@ class OptionGenerator:
                 return [
                     EventOption(
                         text="细读合作条款",
-                        effects={"energy": -8, "mood": -2, "knowledge": 10, "wealth": 0},
+                        effects={"energy": -8, "mood": -2, "knowledge": 10},
                     ),
                     EventOption(
                         text="请伙伴一起把关",
-                        effects={"energy": -5, "mood": 5, "knowledge": 5, "wealth": 0},
+                        effects={"energy": -5, "mood": 5, "knowledge": 5},
                     ),
                     EventOption(
                         text="先锁定关键风险",
-                        effects={"energy": -6, "mood": 0, "knowledge": 8, "wealth": 0},
+                        effects={"energy": -6, "mood": 0, "knowledge": 8},
                     ),
                 ]
 
@@ -179,15 +179,15 @@ class OptionGenerator:
                 return [
                     EventOption(
                         text="整理用户数据",
-                        effects={"energy": -8, "mood": 0, "knowledge": 10, "wealth": 0},
+                        effects={"energy": -8, "mood": 0, "knowledge": 10},
                     ),
                     EventOption(
                         text="找同伴交叉核验",
-                        effects={"energy": -5, "mood": 5, "knowledge": 6, "wealth": 0},
+                        effects={"energy": -5, "mood": 5, "knowledge": 6},
                     ),
                     EventOption(
                         text="提炼最关键痛点",
-                        effects={"energy": -6, "mood": 2, "knowledge": 8, "wealth": 0},
+                        effects={"energy": -6, "mood": 2, "knowledge": 8},
                     ),
                 ]
 
@@ -195,45 +195,45 @@ class OptionGenerator:
                 return [
                     EventOption(
                         text="完善方案细节",
-                        effects={"energy": -10, "mood": 0, "knowledge": 8, "wealth": 0},
+                        effects={"energy": -10, "mood": 0, "knowledge": 8},
                     ),
                     EventOption(
                         text="协调关键资源",
-                        effects={"energy": -6, "mood": 5, "knowledge": 3, "wealth": 0},
+                        effects={"energy": -6, "mood": 5, "knowledge": 3},
                     ),
                     EventOption(
                         text="提前演练汇报",
-                        effects={"energy": -8, "mood": 4, "knowledge": 6, "wealth": 0},
+                        effects={"energy": -8, "mood": 4, "knowledge": 6},
                     ),
                 ]
 
             return [
                 EventOption(
                     text="梳理刚发生的变化",
-                    effects={"energy": -5, "mood": 0, "knowledge": 6, "wealth": 0},
+                    effects={"energy": -5, "mood": 0, "knowledge": 6},
                 ),
                 EventOption(
                     text="询问可信任的人",
-                    effects={"energy": -4, "mood": 4, "knowledge": 4, "wealth": 0},
+                    effects={"energy": -4, "mood": 4, "knowledge": 4},
                 ),
                 EventOption(
                     text="先确认下一步风险",
-                    effects={"energy": -6, "mood": 0, "knowledge": 7, "wealth": 0},
+                    effects={"energy": -6, "mood": 0, "knowledge": 7},
                 ),
             ]
 
         return [
             EventOption(
                 text="Review the key terms",
-                effects={"energy": -6, "mood": 0, "knowledge": 7, "wealth": 0},
+                effects={"energy": -6, "mood": 0, "knowledge": 7},
             ),
             EventOption(
                 text="Ask an ally to cross-check",
-                effects={"energy": -5, "mood": 4, "knowledge": 5, "wealth": 0},
+                effects={"energy": -5, "mood": 4, "knowledge": 5},
             ),
             EventOption(
                 text="Identify the next risk",
-                effects={"energy": -6, "mood": 0, "knowledge": 7, "wealth": 0},
+                effects={"energy": -6, "mood": 0, "knowledge": 7},
             ),
         ]
 
@@ -358,7 +358,6 @@ class OptionGenerator:
 
         Checks:
         - All options have required effects
-        - At least one option has action_points cost
         - Options present real trade-offs
         """
         if len(event.options) < 2:
@@ -366,10 +365,6 @@ class OptionGenerator:
 
         # Check that all options have effects
         for option in event.options:
-            if "action_points" not in option.effects:
-                # Default to -1 if not specified
-                option.effects["action_points"] = -1
-
             # Ensure effects are reasonable
             for key in ["energy", "mood", "knowledge"]:
                 if key in option.effects:
@@ -385,7 +380,6 @@ class OptionGenerator:
                     abs(option.effects.get("energy", 0)),
                     abs(option.effects.get("mood", 0)),
                     abs(option.effects.get("knowledge", 0)),
-                    abs(option.effects.get("wealth", 0)) / 1000,  # Normalize wealth
                 ]
             )
             total_effects.append(total)
@@ -488,18 +482,6 @@ class OptionGenerator:
                         issues.append(
                             f"Option {i+1} {key} change too large ({value}), suggest -20 to 20"
                         )
-
-            # 检查财富变化
-            wealth_change = effects.get("wealth", 0)
-            if abs(wealth_change) > 10000:
-                if language == "zh":
-                    issues.append(
-                        f"选项{i+1}的财富变化过大({wealth_change})，建议在-5000到5000之间"
-                    )
-                else:
-                    issues.append(
-                        f"Option {i+1} wealth change too large ({wealth_change}), suggest -5000 to 5000"
-                    )
 
         if issues:
             logger.warning(f"Options consistency issues: {issues}")

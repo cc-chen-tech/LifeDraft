@@ -28,10 +28,9 @@ class TestAchievementEngine:
         result = engine.evaluate(player)
         assert isinstance(result, list)
 
-    def test_wealth_achievement_triggers(self):
-        """High wealth with history should trigger legendary tale achievement."""
+    def test_legendary_tale_triggers_after_fifty_rounds(self):
         engine = AchievementEngine(language="zh")
-        player = PlayerState(wealth=100000, round_history=[{}] * 50)
+        player = PlayerState(round_history=[{}] * 50)
         result = engine.evaluate(player)
         names = [a.name for a in result]
         assert "传奇故事" in names
@@ -131,12 +130,11 @@ class TestEndingEvaluator:
         assert result["ending_type"] == "balanced"
         assert result["ending_name"] == "平衡人生"
 
-    def test_wealthy_ending(self):
-        """Test wealthy ending with high wealth."""
+    def test_balanced_ending_has_no_wealth_branch(self):
         evaluator = EndingEvaluator()
         player = PlayerState(energy=60, mood=60, knowledge=60, wealth=80000, age=24)
         result = evaluator.evaluate_ending(player, "zh")
-        assert result["ending_type"] == "wealthy"
+        assert result["ending_type"] == "balanced"
 
     def test_scholar_ending(self):
         """Test scholar ending with high knowledge."""
@@ -201,11 +199,11 @@ class TestEndingEvaluator:
     def test_calculate_achievements(self):
         """Test achievement calculation."""
         evaluator = EndingEvaluator()
-        player = PlayerState(wealth=100000, knowledge=95)
+        player = PlayerState(energy=90, mood=90, knowledge=95)
         result = evaluator.evaluate_ending(player, "zh")
         achievements = result["achievements"]
         names = [a["name"] for a in achievements["list"]]
-        assert "白手起家" in names
+        assert "白手起家" not in names
         assert "平衡人生" in names
 
 

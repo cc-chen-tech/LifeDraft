@@ -652,7 +652,6 @@ def sample_player_state_with_creative():
     state.energy = 80
     state.mood = 70
     state.knowledge = 60
-    state.wealth = 5000
     state.age = 28
     state.week = 12
     state.decision_history = [

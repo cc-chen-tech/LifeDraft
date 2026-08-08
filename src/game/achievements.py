@@ -47,14 +47,6 @@ class AchievementEngine:
             "dimension": "trajectory",
         },
         {
-            "id": "steady_climber",
-            "name": "稳健攀登",
-            "name_en": "Steady Climber",
-            "description": "财富每10周持续增长",
-            "rarity": "rare",
-            "dimension": "trajectory",
-        },
-        {
             "id": "phoenix",
             "name": "凤凰涅槃",
             "name_en": "Phoenix",
@@ -195,14 +187,6 @@ class AchievementEngine:
             "dimension": "narrative",
         },
         {
-            "id": "rags_to_riches",
-            "name": "白手起家",
-            "name_en": "Rags to Riches",
-            "description": "从贫穷到富裕的逆袭",
-            "rarity": "epic",
-            "dimension": "narrative",
-        },
-        {
             "id": "legendary_tale",
             "name": "传奇故事",
             "name_en": "Legendary Tale",
@@ -258,8 +242,6 @@ class AchievementEngine:
             return all(v >= 40 for v in [player.energy, player.mood, player.knowledge])
         if ach_id == "rollercoaster":
             return self._mood_variance(player) > 30
-        if ach_id == "steady_climber":
-            return self._wealth_steady_growth(player)
         if ach_id == "phoenix":
             return self._phoenix_check(player)
         if ach_id == "perfect_equilibrium":
@@ -267,7 +249,6 @@ class AchievementEngine:
                 player.energy,
                 player.mood,
                 player.knowledge,
-                min(player.wealth // 100, 100),
             ]
             return max(resources) - min(resources) <= 5
 
@@ -312,19 +293,12 @@ class AchievementEngine:
             return len(player.round_history) >= 20
         if ach_id == "tragic_hero":
             return self._tragic_hero_check(player)
-        if ach_id == "rags_to_riches":
-            return self._rags_to_riches_check(player)
         if ach_id == "legendary_tale":
-            return len(player.round_history) >= 50 and player.wealth > 50000
+            return len(player.round_history) >= 50
 
         # Hidden
         if ach_id == "true_neutral":
-            return (
-                player.energy == 50
-                and player.mood == 50
-                and player.knowledge == 50
-                and player.wealth == 5000
-            )
+            return player.energy == player.mood == player.knowledge == 50
 
         return False
 
@@ -344,13 +318,6 @@ class AchievementEngine:
         mean = sum(moods) / len(moods)
         variance = sum((m - mean) ** 2 for m in moods) / len(moods)
         return float(variance**0.5)
-
-    def _wealth_steady_growth(self, player: PlayerState) -> bool:
-        """Check if wealth grew every 10 weeks."""
-        if not player.round_history or len(player.round_history) < 10:
-            return False
-        # 简化为检查最终财富 > 初始财富 * 2
-        return player.wealth > 2000
 
     def _phoenix_check(self, player: PlayerState) -> bool:
         """Check if player recovered from low energy."""
@@ -398,18 +365,13 @@ class AchievementEngine:
         if len(player.round_history) < 10:
             return False
         mid = len(player.round_history) // 2
-        early_wealth = sum(
-            r.get("effects", {}).get("wealth", 0) for r in player.round_history[:mid]
+        resource_keys = ("energy", "mood", "knowledge")
+        early_total = sum(
+            sum(r.get("effects", {}).get(key, 0) for key in resource_keys)
+            for r in player.round_history[:mid]
         )
-        late_wealth = sum(r.get("effects", {}).get("wealth", 0) for r in player.round_history[mid:])
-        return late_wealth < early_wealth and player.mood < 40
-
-    def _rags_to_riches_check(self, player: PlayerState) -> bool:
-        """Detect wealth rise narrative."""
-        if player.wealth < 30000:
-            return False
-        # 简化：检查早期是否有低财富记录
-        early_poor = any(
-            r.get("effects", {}).get("wealth", 1000) < 1000 for r in player.round_history[:10]
+        late_total = sum(
+            sum(r.get("effects", {}).get(key, 0) for key in resource_keys)
+            for r in player.round_history[mid:]
         )
-        return early_poor or player.wealth > 50000
+        return late_total < early_total and player.mood < 40

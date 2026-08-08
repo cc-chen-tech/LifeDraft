@@ -38,10 +38,8 @@ class TestSettings:
         assert Settings.INITIAL_ENERGY == 70
         assert Settings.INITIAL_MOOD == 60
         assert Settings.INITIAL_KNOWLEDGE == 50
-        assert Settings.INITIAL_WEALTH == 10000
         assert Settings.MIN_RESOURCE == 0
         assert Settings.MAX_RESOURCE == 100
-        assert Settings.MAX_WEALTH == 1000000
         assert Settings.ENERGY_DECAY == 5
         assert Settings.MOOD_DECAY == 2
 

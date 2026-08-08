@@ -92,12 +92,10 @@ class Settings:
     INITIAL_ENERGY: int = 70
     INITIAL_MOOD: int = 60
     INITIAL_KNOWLEDGE: int = 50
-    INITIAL_WEALTH: int = 10000
 
     # Resource Bounds
     MIN_RESOURCE: int = 0
     MAX_RESOURCE: int = 100
-    MAX_WEALTH: int = 1000000  # No upper limit for wealth
 
     # Weekly Decay (if applicable)
     ENERGY_DECAY: int = 5  # If no rest

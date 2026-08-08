@@ -46,7 +46,9 @@ class PlayerState(
         """Create state from dictionary."""
         # ★ 处理可能为 None 的字符串字段，避免 Pydantic 验证错误
         # 这是为了兼容旧数据，这些字段在之前的 bug 中可能被设为 None
-        cleaned_data = data.copy()
+        from src.utils.legacy_data import strip_retired_wealth_keys
+
+        cleaned_data = strip_retired_wealth_keys(data)
         if cleaned_data.get("last_round_full_story") is None:
             cleaned_data["last_round_full_story"] = ""
         return cls(**cleaned_data)

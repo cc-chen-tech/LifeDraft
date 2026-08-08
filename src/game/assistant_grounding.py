@@ -207,38 +207,6 @@ class AssistantEvidence:
                     record_key = key if category == "facts" else f"{category}:{key}"
                     evidence._add_ledger_record("state", record_key, raw_record)
 
-        from src.game.wealth_ledger import WealthLedger
-
-        current_balance = max(0, _int_or_none(_value(player_state, "wealth", 0)) or 0)
-        wealth_ledger = WealthLedger.from_player_state(player_state)
-        evidence._add_authoritative(
-            EvidenceRecord(
-                evidence_id="wealth:balance",
-                kind="wealth_balance",
-                subject="玩家当前余额",
-                fact=wealth_ledger.format_amount(current_balance),
-                metadata={"authoritative_field": "player_state.wealth"},
-            )
-        )
-        for transaction in wealth_ledger.transactions[-12:]:
-            evidence._add_authoritative(
-                EvidenceRecord(
-                    evidence_id=(
-                        f"wealth:transaction:{_safe_component(transaction.transaction_id)}"
-                    ),
-                    kind="wealth_transaction",
-                    subject=transaction.reason,
-                    fact=(
-                        f"期初{wealth_ledger.format_amount(transaction.opening_balance)}；"
-                        f"变动{wealth_ledger.format_amount(transaction.applied_delta, signed=True)}；"
-                        f"期末{wealth_ledger.format_amount(transaction.closing_balance)}"
-                    ),
-                    source_event_id=transaction.source_event_id,
-                    effective_week=transaction.week,
-                    effective_round=transaction.round_number,
-                )
-            )
-
         evidence.known_people = _unique(evidence.known_people)
         return evidence
 
@@ -300,14 +268,7 @@ class AssistantEvidence:
                 None,
             )
             if removable is None:
-                removable = next(
-                    (
-                        key
-                        for key in reversed(self.records)
-                        if not key.startswith("wealth:")
-                    ),
-                    None,
-                )
+                removable = next(reversed(self.records), None)
             if removable is not None:
                 del self.records[removable]
         self._add(record)

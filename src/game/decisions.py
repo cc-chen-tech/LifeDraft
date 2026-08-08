@@ -1,6 +1,5 @@
 """Decision processing and result generation."""
 
-import hashlib
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -8,6 +7,7 @@ from config.prompts import get_result_generation_prompt
 from src.ai.generator import EventGenerator
 from src.ai.system_prompts import get_system_prompt
 from src.game.state import PlayerState
+from src.game.effects import normalize_resource_effects
 
 logger = logging.getLogger(__name__)
 
@@ -175,40 +175,17 @@ def process_decision(
         raise ValueError(f"Invalid option index: {chosen_option_index}")
 
     chosen_option = event_options[chosen_option_index]
-    effects = chosen_option.get("effects", {})
+    effects = normalize_resource_effects(chosen_option.get("effects", {}))
 
     # Apply effects to player
     energy_change = effects.get("energy", 0)
     mood_change = effects.get("mood", 0)
     knowledge_change = effects.get("knowledge", 0)
-    wealth_change = effects.get("wealth", 0)
-    relationships_change = effects.get("relationships", {})
-
-    from src.game.wealth_ledger import WealthLedger
-
-    wealth_ledger = WealthLedger.from_player_state(player_state)
-    if isinstance(wealth_change, int) and not isinstance(wealth_change, bool) and wealth_change:
-        choice_text = str(chosen_option.get("text", ""))
-        digest = hashlib.sha256(
-            f"{player_state.week}|{event_description}|{choice_text}".encode("utf-8")
-        ).hexdigest()[:16]
-        wealth_ledger.apply_transaction(
-            player_state,
-            transaction_id=f"legacy-choice:{digest}",
-            requested_delta=wealth_change,
-            reason=choice_text,
-            source_event_id=f"legacy-decision:{digest}",
-            week=player_state.week,
-            round_number=getattr(player_state, "current_round", 0),
-        )
-    else:
-        wealth_ledger.persist(player_state)
 
     player_state.update(
         energy=energy_change,
         mood=mood_change,
         knowledge=knowledge_change,
-        relationships=relationships_change,
     )
 
     # 同步 relationships 到 characters
@@ -297,14 +274,6 @@ def _generate_fallback_result(effects: Dict[str, Any], language: str) -> str:
             f"Knowledge {'+' if val > 0 else ''}{val}"
             if language == "en"
             else f"学识{'+' if val > 0 else ''}{val}"
-        )
-
-    if effects.get("wealth", 0) != 0:
-        val = effects["wealth"]
-        changes.append(
-            f"Wealth {'+' if val > 0 else ''}¥{abs(val):,}"
-            if language == "en"
-            else f"财富{'+' if val > 0 else ''}¥{abs(val):,}"
         )
 
     if language == "en":

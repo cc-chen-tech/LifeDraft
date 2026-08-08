@@ -275,8 +275,6 @@ class WorldModel:
         self.required_cast: List[Dict[str, str]] = []
         self.continuity_ledger = None
         self.continuity_source_state = None
-        self.wealth_ledger = None
-        self.authoritative_wealth: int = 0
 
     # -------------------- Factory --------------------
 
@@ -305,15 +303,6 @@ class WorldModel:
             wm.continuity_ledger.persist(player_state)
         except (TypeError, ValueError, KeyError) as exc:
             logger.warning("Skipping invalid continuity ledger: %s", exc)
-
-        try:
-            from src.game.wealth_ledger import WealthLedger
-
-            wm.authoritative_wealth = max(0, int(getattr(player_state, "wealth", 0)))
-            wm.wealth_ledger = WealthLedger.from_player_state(player_state)
-            wm.wealth_ledger.persist(player_state)
-        except (TypeError, ValueError, KeyError) as exc:
-            logger.warning("Skipping invalid wealth ledger: %s", exc)
 
         # ---------- Read new structured data ----------
         wmd: Dict[str, Any] = getattr(player_state, "world_model_data", None) or {}
@@ -600,15 +589,6 @@ class WorldModel:
             ledger_lines = self.continuity_ledger.build_constraints_text("zh" if zh else "en")
             if ledger_lines:
                 sections.append(ledger_lines)
-
-        # Wealth authority is intentionally last: extracted prose and legacy
-        # summaries cannot override the numeric balance or transaction audit.
-        if self.wealth_ledger is not None:
-            wealth_lines = self.wealth_ledger.build_constraints_text(
-                self.authoritative_wealth, "zh" if zh else "en"
-            )
-            if wealth_lines:
-                sections.append(wealth_lines)
 
         if not sections:
             return ""

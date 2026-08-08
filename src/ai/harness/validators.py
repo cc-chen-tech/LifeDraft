@@ -97,7 +97,7 @@ def validate_no_meta_narration(story_text: str, context: dict) -> Tuple[bool, st
         r"(?:游戏|系统)(?:设定|规则|机制)",
         r"(?:我|让我)(?:来)?(?:为你|给你)(?:写|生成|创作)",
         r"接下来(?:的故事|我会)",
-        r"(?:精力值|情绪值|学识值|财富值|属性值)",
+        r"(?:精力值|情绪值|学识值|属性值)",
     ]
 
     violations: list = []

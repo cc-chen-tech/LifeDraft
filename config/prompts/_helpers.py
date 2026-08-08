@@ -1590,16 +1590,15 @@ def _format_effects(effects: Dict[str, Any], language: str) -> str:
 
     parts = []
     labels = {
-        "zh": {"energy": "精力", "mood": "情绪", "knowledge": "学识", "wealth": "财富"},
+        "zh": {"energy": "精力", "mood": "情绪", "knowledge": "学识"},
         "en": {
             "energy": "Energy",
             "mood": "Mood",
             "knowledge": "Knowledge",
-            "wealth": "Wealth",
         },
     }
 
-    for key in ["energy", "mood", "knowledge", "wealth"]:
+    for key in ["energy", "mood", "knowledge"]:
         val = effects.get(key, 0)
         if val != 0:
             label = labels.get(language, labels["en"]).get(key, key)

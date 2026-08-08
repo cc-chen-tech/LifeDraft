@@ -337,7 +337,7 @@ class TestMakeRoundChoiceContract:
         result = proc.make_round_choice(option_index=0)
         assert isinstance(result["game_over"], bool)
 
-    def test_wealth_effect_creates_source_linked_transaction(self):
+    def test_retired_wealth_effect_is_silently_dropped(self):
         state = _make_state(wealth=10_000)
         event = _make_event()
         service = FakeStoryService()
@@ -349,31 +349,18 @@ class TestMakeRoundChoiceContract:
 
         result = proc.make_round_choice(option_index=2)
 
-        assert state.wealth == 9_800
-        assert result["effects_applied"]["wealth"] == -200
-        transactions = state.wealth_ledger["transactions"]
-        assert len(transactions) == 1
-        assert transactions[0] == {
-            "transaction_id": "choice:w0-r0",
-            "opening_balance": 10_000,
-            "requested_delta": -200,
-            "applied_delta": -200,
-            "reason": "Visit the blacksmith",
-            "source_event_id": "w0-r0",
-            "week": 0,
-            "round": 0,
-            "closing_balance": 9_800,
-        }
+        assert "wealth" not in result["effects_applied"]
+        assert "wealth" not in result["effects_requested"]
+        assert "wealth" not in state.to_dict()
 
-    def test_zero_wealth_effect_does_not_create_fake_transaction(self):
+    def test_zero_retired_effect_does_not_create_state(self):
         state = _make_state(wealth=10_000)
         event = _make_event()
         proc = _make_processor(player_state=state, current_event=event)
 
         proc.make_round_choice(option_index=0)
 
-        assert state.wealth == 10_000
-        assert state.wealth_ledger["transactions"] == []
+        assert "wealth" not in state.to_dict()
 
     def test_game_over_false_early_game(self):
         """game_over should be False when week < TOTAL_WEEKS."""
@@ -660,18 +647,18 @@ class TestEffectsAppliedIntegrity:
         # option 1: {"energy": 5, "mood": 10}
         assert result["effects_applied"]["energy"] == 5
         assert result["effects_applied"]["mood"] == 10
-        assert result["effects_applied"].get("wealth", 0) == 0
+        assert set(result["effects_applied"]) <= {"energy", "mood", "knowledge"}
 
-    def test_standard_choice_effects_with_wealth(self):
+    def test_standard_choice_drops_retired_wealth_effect(self):
         state = _make_state()
         event = _make_event()
         proc = _make_processor(player_state=state, current_event=event)
 
         result = proc.make_round_choice(option_index=2)
-        # option 2: {"energy": -10, "mood": -5, "wealth": -200}
+        # option 2 source includes a retired effect that EventOption filters.
         assert result["effects_applied"]["energy"] == -10
         assert result["effects_applied"]["mood"] == -5
-        assert result["effects_applied"]["wealth"] == -200
+        assert "wealth" not in result["effects_applied"]
 
     def test_exhausting_choice_reports_actual_applied_energy_and_warning(self):
         """When energy is too low, effects_applied should reflect the actual clamped delta."""
