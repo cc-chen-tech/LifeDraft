@@ -10,7 +10,7 @@ import { SettingFeedbackCard } from "@/components/create/SettingFeedbackCard";
 import { OpeningCompletionGate } from "@/components/game/OpeningCompletionGate";
 import { CompletedStoryMediaGate } from "@/components/game/CompletedStoryMediaGate";
 import { LifeSummaryPanel } from "@/components/game/LifeSummaryPanel";
-import { GenerationBudgetProgress } from "@/components/game/GenerationBudgetProgress";
+import { NarrativeLoadingState } from "@/components/narrative-loading/NarrativeLoadingState";
 import { useCharacterCreation } from "@/hooks/useCharacterCreation";
 import { api } from "@/lib/api";
 import { useCollectionStore } from "@/stores/useCollectionStore";
@@ -21,6 +21,151 @@ import { useStoryVoiceStore } from "@/stores/useStoryVoiceStore";
 
 const transparentPixel =
   "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
+
+const narrativeLoadingFixtureStates = [
+  "initial",
+  "partial",
+  "delayed",
+  "reconnecting",
+  "polling",
+  "failed",
+] as const;
+
+type NarrativeLoadingFixtureState = (typeof narrativeLoadingFixtureStates)[number];
+
+const narrativeLoadingFixtureLabels: Record<NarrativeLoadingFixtureState, string> = {
+  initial: "初始状态",
+  partial: "部分正文",
+  delayed: "延迟状态",
+  reconnecting: "模拟重连",
+  polling: "模拟轮询",
+  failed: "模拟失败",
+};
+
+function resolveNarrativeLoadingFixtureState(
+  value: string | null,
+): NarrativeLoadingFixtureState | null {
+  return narrativeLoadingFixtureStates.find((state) => state === value) ?? null;
+}
+
+function NarrativeLoadingFixture({ initialState }: { initialState: NarrativeLoadingFixtureState }) {
+  const [selectedState, setSelectedState] = useState(initialState);
+  const [actionCount, setActionCount] = useState(0);
+
+  const selectState = (state: NarrativeLoadingFixtureState) => {
+    setSelectedState(state);
+    setActionCount(0);
+  };
+
+  const narrativeState = (() => {
+    switch (selectedState) {
+      case "initial":
+        return (
+          <NarrativeLoadingState
+            context="opening"
+            layout="screen"
+            phase="generating"
+          />
+        );
+      case "partial":
+        return (
+          <article className="mx-auto min-h-dvh w-full max-w-3xl px-6 pb-28 pt-24 sm:px-10">
+            <p className="font-serif text-base leading-8 text-[#F0ECE6] sm:text-lg">
+              首段正文已经抵达。
+            </p>
+            <NarrativeLoadingState
+              context="opening"
+              layout="inline"
+              phase="generating"
+            />
+          </article>
+        );
+      case "delayed":
+        return (
+          <div className="flex min-h-dvh items-center justify-center px-4 pb-24">
+            <NarrativeLoadingState
+              className="w-full max-w-3xl"
+              context="gameplay"
+              layout="section"
+              phase="generating"
+              delayed
+            />
+          </div>
+        );
+      case "reconnecting":
+        return (
+          <div className="flex min-h-dvh items-center justify-center px-4 pb-24">
+            <NarrativeLoadingState
+              className="w-full max-w-3xl"
+              context="gameplay"
+              layout="section"
+              phase="generating"
+              transport="reconnecting"
+              onAction={() => setActionCount((count) => count + 1)}
+            />
+          </div>
+        );
+      case "polling":
+        return (
+          <div className="flex min-h-dvh items-center justify-center px-4 pb-24">
+            <NarrativeLoadingState
+              className="w-full max-w-3xl"
+              context="gameplay"
+              layout="section"
+              phase="generating"
+              transport="polling"
+              onAction={() => setActionCount((count) => count + 1)}
+            />
+          </div>
+        );
+      case "failed":
+        return (
+          <div className="flex min-h-dvh items-center justify-center px-4 pb-24">
+            <NarrativeLoadingState
+              className="w-full max-w-3xl"
+              context="gameplay"
+              layout="section"
+              phase="generating"
+              transport="failed"
+              onAction={() => setActionCount((count) => count + 1)}
+            />
+          </div>
+        );
+    }
+  })();
+
+  return (
+    <section
+      aria-label="叙事加载回归夹具"
+      className="relative min-h-dvh overflow-x-hidden bg-[#0D0C0B] text-[#F0ECE6]"
+      data-testid="narrative-loading-fixture"
+    >
+      <p className="sr-only" data-testid="narrative-loading-fixture-state">
+        {selectedState}
+      </p>
+      <p className="sr-only" data-testid="narrative-loading-action-count">
+        {actionCount}
+      </p>
+      {narrativeState}
+      <nav
+        aria-label="叙事加载夹具状态"
+        className="fixed inset-x-3 bottom-3 z-10 mx-auto flex max-w-2xl flex-wrap justify-center gap-1.5 rounded border border-[#34302C] bg-[#11100F]/95 p-2 shadow-lg"
+      >
+        {narrativeLoadingFixtureStates.map((state) => (
+          <button
+            aria-pressed={selectedState === state}
+            className="rounded-sm border border-transparent px-2.5 py-1.5 text-xs text-[#8F8881] hover:border-[#34302C] hover:text-[#F0ECE6] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F0ECE6] aria-pressed:border-[#71675D] aria-pressed:text-[#F0ECE6]"
+            key={state}
+            onClick={() => selectState(state)}
+            type="button"
+          >
+            {narrativeLoadingFixtureLabels[state]}
+          </button>
+        ))}
+      </nav>
+    </section>
+  );
+}
 
 const relationshipFixtureSettings = {
   family: { family_description: "测试家庭" },
@@ -51,7 +196,7 @@ function RelationshipRegenerationFixture() {
   );
 }
 
-export default function E2ERegressionPage() {
+function E2ERegressionPageContent() {
   const setActiveStoryText = useMusicStore((state) => state.setActiveStoryText);
   const setActiveGameId = useMusicStore((state) => state.setActiveGameId);
   const setCurrentSong = useMusicStore((state) => state.setCurrentSong);
@@ -85,7 +230,6 @@ export default function E2ERegressionPage() {
   const [audioStoryBusy, setAudioStoryBusy] = useState(false);
   const [lifeSummaryFixtureEnabled, setLifeSummaryFixtureEnabled] = useState(false);
   const [showLifeSummaryFixture, setShowLifeSummaryFixture] = useState(false);
-  const [fastProgressFixtureEnabled, setFastProgressFixtureEnabled] = useState(false);
   const [worldFactSetting, setWorldFactSetting] = useState<Record<string, unknown> | null>(null);
   const [entityCollectionAddEnabled, setEntityCollectionAddEnabled] = useState(false);
   const [entityAddState, setEntityAddState] = useState<"idle" | "adding" | "saved" | "error">("idle");
@@ -108,7 +252,6 @@ export default function E2ERegressionPage() {
     setEntityCollectionAddEnabled(searchParams.get("entityCollectionAdd") === "1");
     setAudioRegenerationFixtureEnabled(searchParams.get("audioRegeneration") === "1");
     setLifeSummaryFixtureEnabled(searchParams.get("lifeSummary") === "1");
-    setFastProgressFixtureEnabled(searchParams.get("fastProgress") === "1");
     const enableRelationshipRegenerationFixture =
       searchParams.get("relationshipRegeneration") === "1";
     if (enableRelationshipRegenerationFixture) {
@@ -316,9 +459,6 @@ export default function E2ERegressionPage() {
            )}
          </section>
        )}
-      {fastProgressFixtureEnabled && (
-        <GenerationBudgetProgress qualityLevel="fast" elapsedSeconds={12} />
-      )}
       {worldFactSetting && (
         <section aria-label="世界事实边界回归夹具">
           <SettingDisplay stepKey="world" data={worldFactSetting} />
@@ -651,4 +791,24 @@ export default function E2ERegressionPage() {
       </section>
     </main>
   );
+}
+
+export default function E2ERegressionPage() {
+  const [narrativeLoadingFixtureState, setNarrativeLoadingFixtureState] = useState<
+    NarrativeLoadingFixtureState | null | undefined
+  >(undefined);
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    setNarrativeLoadingFixtureState(
+      resolveNarrativeLoadingFixtureState(searchParams.get("narrativeLoading")),
+    );
+  }, []);
+
+  if (narrativeLoadingFixtureState === undefined) return null;
+  if (narrativeLoadingFixtureState) {
+    return <NarrativeLoadingFixture initialState={narrativeLoadingFixtureState} />;
+  }
+
+  return <E2ERegressionPageContent />;
 }
