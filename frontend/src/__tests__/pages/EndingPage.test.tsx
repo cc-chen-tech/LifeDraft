@@ -21,6 +21,30 @@ const STORE_METHODS = ['resetGame', 'loadGameState', 'fetchSavedGames'] as const
 
 type StoreSpy = ReturnType<typeof spyOnStoreMethods<typeof useGameStore, (typeof STORE_METHODS)[number]>>;
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+function renderWithCommitSnapshots(snapshots: string[]) {
+  let container: HTMLElement | undefined;
+  const result = render(
+    <React.Profiler
+      id="ending-page"
+      onRender={() => {
+        if (container) snapshots.push(container.textContent || '');
+      }}
+    >
+      <EndingPage />
+    </React.Profiler>,
+  );
+  container = result.container;
+  return result;
+}
+
 function setupDefaultState() {
   useGameStore.setState({
     gameId: 123,
@@ -140,6 +164,92 @@ describe('EndingPage', () => {
         expect(screen.getByText('Achievement 2')).toBeInTheDocument();
       });
     });
+
+    it.each([
+      [{ summary: '只有总结也是有效结局。' }, '只有总结也是有效结局。'],
+      [{ achievements: { list: ['唯一成就'] } }, '唯一成就'],
+      [{ life_review: { life_motto: '保持好奇' } }, '查看人生回顾'],
+      [{ final_stats: { relationships: { '故友': 42 } } }, '故友'],
+    ])('accepts a meaningful partial canonical response: %p', async (response, visibleText) => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(response));
+
+      render(<EndingPage />);
+
+      expect(await screen.findByText(visibleText)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Request ownership', () => {
+    it('ignores A while B remains loading, then renders only B', async () => {
+      const requestA = deferred<Response>();
+      const requestB = deferred<Response>();
+      (global.fetch as jest.Mock)
+        .mockImplementationOnce(() => requestA.promise)
+        .mockImplementationOnce(() => requestB.promise);
+      const commitSnapshots: string[] = [];
+
+      renderWithCommitSnapshots(commitSnapshots);
+      await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+      commitSnapshots.length = 0;
+
+      await act(async () => {
+        useGameStore.setState({
+          gameId: 456,
+          playerState: { player_name: 'PlayerB' },
+        });
+        requestA.resolve(jsonResponse({ ending_name: 'A的终章', summary: 'A的故事' }));
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
+      expect(screen.getByTestId('narrative-loading-screen')).toBeInTheDocument();
+      expect(screen.queryByText('A的终章')).not.toBeInTheDocument();
+      expect(commitSnapshots.join('\n')).not.toContain('A的终章');
+
+      await act(async () => {
+        requestB.resolve(jsonResponse({ ending_name: 'B的终章', summary: 'B的故事' }));
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(await screen.findByText('B的终章')).toBeInTheDocument();
+      expect(screen.queryByText('A的终章')).not.toBeInTheDocument();
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('never commits A content with B player state while B starts loading', async () => {
+      const requestB = deferred<Response>();
+      (global.fetch as jest.Mock)
+        .mockResolvedValueOnce(jsonResponse({ ending_name: 'A已完成', summary: 'A的人生' }))
+        .mockImplementationOnce(() => requestB.promise);
+      const commitSnapshots: string[] = [];
+
+      renderWithCommitSnapshots(commitSnapshots);
+      expect(await screen.findByText('A已完成')).toBeInTheDocument();
+      commitSnapshots.length = 0;
+
+      act(() => {
+        useGameStore.setState({
+          gameId: 456,
+          playerState: { player_name: 'PlayerB' },
+        });
+      });
+
+      await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2));
+      expect(screen.getByTestId('narrative-loading-screen')).toBeInTheDocument();
+      expect(screen.queryByText('A已完成')).not.toBeInTheDocument();
+      expect(commitSnapshots.join('\n')).not.toContain('A已完成');
+
+      await act(async () => {
+        requestB.resolve(jsonResponse({ ending_name: 'B已完成', summary: 'B的人生' }));
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(await screen.findByText('B已完成')).toBeInTheDocument();
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('Navigation buttons', () => {
@@ -203,6 +313,24 @@ describe('EndingPage', () => {
 
       expect(await screen.findByRole('button', { name: '重试' })).toBeInTheDocument();
       expect(screen.getAllByRole('status')).toHaveLength(1);
+    });
+
+    it.each([
+      [{ message: 'temporarily unavailable' }, 'unknown response envelope'],
+      [{
+        ending_name: '   ',
+        summary: '\n\t',
+        achievements: { list: [] },
+        life_review: {},
+        final_stats: { relationships: {} },
+      }, 'blank canonical fields'],
+    ])('rejects %s: %s', async (response) => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse(response));
+
+      render(<EndingPage />);
+
+      expect(await screen.findByRole('button', { name: '重试' })).toBeInTheDocument();
+      expect(screen.queryByText('temporarily unavailable')).not.toBeInTheDocument();
     });
 
     it('retries in place and renders the second successful response', async () => {

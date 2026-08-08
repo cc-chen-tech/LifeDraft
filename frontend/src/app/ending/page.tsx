@@ -17,25 +17,56 @@ import { useDelayedLoading } from "@/hooks/useDelayedLoading";
 import api from "@/lib/api";
 import { Home, RotateCcw, Award, ChevronDown, ChevronUp } from "lucide-react";
 
-type EndingRequestState = "idle" | "loading" | "ready" | "failed";
+type EndingRequestState =
+  | { status: "idle"; gameId: null; requestId: 0; data: null }
+  | { status: "loading" | "failed"; gameId: number; requestId: number; data: null }
+  | {
+      status: "ready";
+      gameId: number;
+      requestId: number;
+      data: Record<string, unknown>;
+    };
+
+function isNonBlankString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function hasMeaningfulStructuredValue(value: unknown): boolean {
+  if (isNonBlankString(value)) return true;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value === "boolean") return true;
+  if (Array.isArray(value)) return value.some(hasMeaningfulStructuredValue);
+  if (!value || typeof value !== "object") return false;
+
+  return Object.values(value as Record<string, unknown>).some(
+    hasMeaningfulStructuredValue
+  );
+}
 
 function isEndingResponse(value: unknown): value is Record<string, unknown> {
-  return Boolean(
-    value &&
-      typeof value === "object" &&
-      !Array.isArray(value) &&
-      Object.keys(value).length > 0
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+
+  const response = value as Record<string, unknown>;
+  // A partial ending is displayable when it has prose/title or meaningful
+  // content in one of the three canonical structured sections.
+  return (
+    isNonBlankString(response.ending_name) ||
+    isNonBlankString(response.summary) ||
+    hasMeaningfulStructuredValue(response.life_review) ||
+    hasMeaningfulStructuredValue(response.achievements) ||
+    hasMeaningfulStructuredValue(response.final_stats)
   );
 }
 
 export default function EndingPage() {
   const router = useRouter();
   const { gameId, playerState, resetGame } = useGameStore();
-  const [endingData, setEndingData] = useState<Record<string, unknown> | null>(
-    null
-  );
-  const [requestState, setRequestState] = useState<EndingRequestState>("idle");
-  const [requestIdentity, setRequestIdentity] = useState(0);
+  const [requestState, setRequestState] = useState<EndingRequestState>({
+    status: "idle",
+    gameId: null,
+    requestId: 0,
+    data: null,
+  });
   const [showReview, setShowReview] = useState(false);
   const requestIdRef = useRef(0);
   const hydrated = useHydration();
@@ -43,33 +74,62 @@ export default function EndingPage() {
   const loadEnding = useCallback(async () => {
     if (!gameId) return;
 
+    const targetGameId = gameId;
     const requestId = ++requestIdRef.current;
-    setRequestIdentity(requestId);
-    setRequestState("loading");
-    setEndingData(null);
+    setRequestState({
+      status: "loading",
+      gameId: targetGameId,
+      requestId,
+      data: null,
+    });
 
     try {
-      const response = await api.gameplay.getEnding(gameId);
-      if (requestId !== requestIdRef.current) return;
-
-      if (!isEndingResponse(response)) {
-        setRequestState("failed");
+      const response = await api.gameplay.getEnding(targetGameId);
+      if (
+        requestId !== requestIdRef.current ||
+        useGameStore.getState().gameId !== targetGameId
+      ) {
         return;
       }
 
-      setEndingData(response);
-      setRequestState("ready");
+      if (!isEndingResponse(response)) {
+        setRequestState({
+          status: "failed",
+          gameId: targetGameId,
+          requestId,
+          data: null,
+        });
+        return;
+      }
+
+      setRequestState({
+        status: "ready",
+        gameId: targetGameId,
+        requestId,
+        data: response,
+      });
     } catch {
-      if (requestId === requestIdRef.current) {
-        setRequestState("failed");
+      if (
+        requestId === requestIdRef.current &&
+        useGameStore.getState().gameId === targetGameId
+      ) {
+        setRequestState({
+          status: "failed",
+          gameId: targetGameId,
+          requestId,
+          data: null,
+        });
       }
     }
   }, [gameId]);
 
+  const isCurrentRequest = requestState.gameId === gameId;
   const isEndingDelayed = useDelayedLoading({
-    isLoading: requestState === "loading",
+    isLoading: isCurrentRequest && requestState.status === "loading",
     delay: getNarrativeLoadingDelay("ending"),
-    loadingIdentity: requestIdentity,
+    loadingIdentity: isCurrentRequest
+      ? requestState.requestId
+      : `ending:${gameId}:pending`,
   });
 
   useEffect(() => {
@@ -92,7 +152,11 @@ export default function EndingPage() {
 
   if (!gameId) return null;
 
-  if (requestState === "idle" || requestState === "loading") {
+  if (
+    !isCurrentRequest ||
+    requestState.status === "idle" ||
+    requestState.status === "loading"
+  ) {
     return (
       <NarrativeLoadingState
         context="ending"
@@ -103,7 +167,7 @@ export default function EndingPage() {
     );
   }
 
-  if (requestState === "failed") {
+  if (requestState.status === "failed") {
     return (
       <NarrativeLoadingState
         context="ending"
@@ -114,6 +178,8 @@ export default function EndingPage() {
       />
     );
   }
+
+  const endingData = requestState.data;
 
   const playerName = (playerState?.player_name as string) || "旅行者";
   const endingName = (endingData?.ending_name as string) || "人生落幕";
