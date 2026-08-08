@@ -233,13 +233,19 @@ class PlayerDataMixin:
     def to_dict(self) -> Dict[str, Any]:
         """Convert state to a persistence-safe dictionary."""
         from src.game.continuity_ledger import ContinuityLedger
-        from src.utils.financial_narrative import sanitize_authoritative_fact_records
+        from src.utils.financial_narrative import (
+            sanitize_authoritative_fact_records,
+            sanitize_world_model_financial_authority,
+        )
         from src.utils.legacy_data import strip_retired_wealth_keys
 
         # model_dump is provided by BaseModel when used in the combined class
         data = strip_retired_wealth_keys(getattr(self, "model_dump")())
         data["established_facts"] = sanitize_authoritative_fact_records(
             data.get("established_facts")
+        )
+        data["world_model_data"] = sanitize_world_model_financial_authority(
+            data.get("world_model_data")
         )
         ledger = data.get("continuity_ledger")
         if isinstance(ledger, Mapping):
@@ -252,11 +258,17 @@ class PlayerDataMixin:
         # ★ 处理可能为 None 的字符串字段，避免 Pydantic 验证错误
         # 这是为了兼容旧数据，这些字段在之前的 bug 中可能被设为 None
         from src.utils.legacy_data import strip_retired_wealth_keys
-        from src.utils.financial_narrative import sanitize_authoritative_fact_records
+        from src.utils.financial_narrative import (
+            sanitize_authoritative_fact_records,
+            sanitize_world_model_financial_authority,
+        )
 
         cleaned_data = strip_retired_wealth_keys(data)
         cleaned_data["established_facts"] = sanitize_authoritative_fact_records(
             cleaned_data.get("established_facts")
+        )
+        cleaned_data["world_model_data"] = sanitize_world_model_financial_authority(
+            cleaned_data.get("world_model_data")
         )
         if cleaned_data.get("last_round_full_story") is None:
             cleaned_data["last_round_full_story"] = ""

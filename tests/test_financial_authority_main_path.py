@@ -285,3 +285,89 @@ def test_legacy_structured_world_authority_is_filtered_on_load_prompt_and_serial
     for expected in ("经济援助项目协调员", "在经济压力下互相支持", "家庭消费压力加剧"):
         assert expected in constraints
         assert expected in serialized_text
+
+
+def test_player_state_load_and_save_sanitize_structured_world_authority() -> None:
+    state = PlayerState.from_dict(
+        {
+            "player_name": "林岚",
+            "world_model_data": {
+                "career_records": {
+                    "林岚": {"current_job": "月薪8000元的产品经理"},
+                    "周宁": {"current_job": "经济援助项目协调员"},
+                },
+                "active_commitments": [
+                    {"description": "承诺偿还5000元债务"},
+                    {"description": "在经济压力下互相支持"},
+                ],
+                "causal_chains": [
+                    {"cause": "付款2000元", "expected_consequence": "余额改善"},
+                    {"cause": "家庭消费压力加剧", "expected_consequence": "生活选择更加谨慎"},
+                ],
+            },
+        }
+    )
+
+    assert set(state.world_model_data["career_records"]) == {"周宁"}
+    assert len(state.world_model_data["active_commitments"]) == 1
+    assert len(state.world_model_data["causal_chains"]) == 1
+    serialized = str(state.to_dict()["world_model_data"])
+    assert "经济援助项目协调员" in serialized
+    assert "家庭消费压力加剧" in serialized
+    for forbidden in ("8000", "5000", "2000", "余额改善"):
+        assert forbidden not in serialized
+
+
+def test_world_updater_cleans_existing_containers_before_merging() -> None:
+    state = PlayerState(
+        player_name="林岚",
+        world_model_data={
+            "career_records": {"林岚": {"current_job": "月薪8000元的产品经理"}},
+            "active_commitments": [{"description": "偿还5000元债务", "status": "pending"}],
+            "causal_chains": [{"cause": "付款2000元", "expected_consequence": "余额改善"}],
+        },
+    )
+
+    WorldModelUpdater.process_career_updates(
+        state, [{"action": "change", "character": "周宁", "new_role": "经济援助项目协调员"}]
+    )
+    WorldModelUpdater.process_commitment_updates(
+        state, [{"action": "new", "description": "在经济压力下互相支持"}]
+    )
+    WorldModelUpdater.process_causal_updates(
+        state,
+        [{"action": "new", "cause": "家庭消费压力加剧", "expected_consequence": "生活选择更加谨慎"}],
+    )
+
+    serialized = str(state.world_model_data)
+    assert "经济援助项目协调员" in serialized
+    assert "在经济压力下互相支持" in serialized
+    assert "家庭消费压力加剧" in serialized
+    for forbidden in ("8000", "5000", "2000", "余额改善"):
+        assert forbidden not in serialized
+
+
+def test_causal_updater_alone_cleans_existing_financial_authority() -> None:
+    state = PlayerState(
+        world_model_data={
+            "causal_chains": [
+                {"cause": "付款2000元", "expected_consequence": "账户余额改善"}
+            ]
+        }
+    )
+
+    WorldModelUpdater.process_causal_updates(
+        state,
+        [
+            {
+                "action": "new",
+                "cause": "家庭消费压力加剧",
+                "expected_consequence": "生活选择更加谨慎",
+            }
+        ],
+    )
+
+    serialized = str(state.world_model_data["causal_chains"])
+    assert "家庭消费压力加剧" in serialized
+    assert "2000" not in serialized
+    assert "账户余额" not in serialized

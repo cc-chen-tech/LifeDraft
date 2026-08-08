@@ -7,6 +7,7 @@ state or long-term grounding evidence.
 
 from __future__ import annotations
 
+import copy
 import re
 from typing import Any, Iterable, Mapping
 
@@ -156,6 +157,40 @@ def sanitize_authoritative_fact_records(values: Any) -> list[dict[str, Any]]:
         if isinstance(value, Mapping)
         and not is_authoritative_financial_record(value)
     ]
+
+
+def sanitize_world_model_financial_authority(value: Any) -> dict[str, Any]:
+    """Copy world-model data without authoritative money records."""
+    if not isinstance(value, Mapping):
+        return {}
+    cleaned = copy.deepcopy(dict(value))
+
+    careers = cleaned.get("career_records")
+    if isinstance(careers, Mapping):
+        cleaned["career_records"] = {
+            str(name): record
+            for name, record in careers.items()
+            if isinstance(record, Mapping)
+            and not is_authoritative_financial_record(
+                {"subject": str(name), **dict(record)}
+            )
+        }
+    else:
+        cleaned["career_records"] = {}
+
+    for key in ("active_commitments", "causal_chains"):
+        records = cleaned.get(key)
+        cleaned[key] = (
+            [
+                record
+                for record in records
+                if isinstance(record, Mapping)
+                and not is_authoritative_financial_record(record)
+            ]
+            if isinstance(records, list)
+            else []
+        )
+    return cleaned
 
 
 def sanitize_authoritative_financial_clauses(text: str) -> str:
