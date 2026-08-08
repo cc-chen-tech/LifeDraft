@@ -120,7 +120,7 @@ describe('SettingDisplay', () => {
       });
     });
 
-    it('renders wealth setting correctly', () => {
+    it('hides retired wealth settings from legacy payloads', () => {
       const wealthData = {
         wealth_level: '中等',
         assets: '一套房产',
@@ -128,8 +128,7 @@ describe('SettingDisplay', () => {
 
       render(<SettingDisplay stepKey="wealth" data={wealthData} />);
 
-      // Should render wealth content
-      expect(screen.getByText(/中等|财富|资产/i)).toBeInTheDocument();
+      expect(screen.queryByText(/中等|财富|资产/i)).not.toBeInTheDocument();
     });
   });
 

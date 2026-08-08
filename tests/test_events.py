@@ -68,7 +68,6 @@ class TestEventGenerator:
             "energy": 70,
             "mood": 60,
             "knowledge": 50,
-            "wealth": 10000,
             "relationships": {},
             "week": 0,
         }

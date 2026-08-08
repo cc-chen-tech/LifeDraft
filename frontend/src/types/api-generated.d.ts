@@ -304,7 +304,7 @@ export interface paths {
          * Update Character Settings
          * @description Persist late character creation settings for an existing game.
          *
-         *     The create flow may add generated family, relationship, trait, and wealth
+         *     The create flow may add generated family, relationship, and trait
          *     settings after the initial game record exists. This endpoint preserves the
          *     manually selected settings and merges the generated settings into the saved
          *     player state before opening story generation starts.
@@ -407,7 +407,7 @@ export interface paths {
         put?: never;
         /**
          * Generate Setting
-         * @description Generate a character setting (era, age, gender, world, family, relationships, traits, wealth).
+         * @description Generate a character setting (era, age, gender, world, family, relationships, traits).
          */
         post: operations["generate_setting_api_character_setting_post"];
         delete?: never;
@@ -447,7 +447,7 @@ export interface paths {
         put?: never;
         /**
          * Generate Attributes
-         * @description Generate initial character attributes (energy, mood, knowledge, wealth).
+         * @description Generate initial character attributes (energy, mood, knowledge).
          */
         post: operations["generate_attributes_api_character_attributes_post"];
         delete?: never;
@@ -2262,9 +2262,10 @@ export interface components {
         GenerateSettingRequest: {
             /**
              * Setting Type
-             * @description era|age|gender|world|family|relationships|traits|wealth
+             * @description era|age|gender|world|family|relationships|traits
+             * @enum {string}
              */
-            setting_type: string;
+            setting_type: "era" | "age" | "gender" | "world" | "family" | "relationships" | "traits";
             /** Player Name */
             player_name: string;
             /** Life Vision */

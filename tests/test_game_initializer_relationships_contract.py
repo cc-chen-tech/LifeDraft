@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock
 
-from src.game.game_initializer import GameInitializer, extract_initial_wealth_from_settings
+from src.game.game_initializer import GameInitializer
 
 
 def test_initialize_game_normalizes_relationships_list_payload() -> None:
@@ -40,23 +40,3 @@ def test_initialize_game_normalizes_relationships_list_payload() -> None:
         "陈晓雨",
         "",
     ]
-
-
-def test_extract_initial_wealth_accepts_formatted_numeric_initial_wealth() -> None:
-    """Generated initial_wealth can be a formatted amount, not only a raw number."""
-    assert (
-        extract_initial_wealth_from_settings({"wealth": {"initial_wealth": "¥50,000"}})
-        == 50000
-    )
-    assert (
-        extract_initial_wealth_from_settings({"wealth": {"initial_wealth": "50,000元"}})
-        == 50000
-    )
-    assert (
-        extract_initial_wealth_from_settings({"wealth": {"initial_wealth": "5万元"}})
-        == 50000
-    )
-    assert (
-        extract_initial_wealth_from_settings({"wealth": {"initial_wealth": "middle"}})
-        is None
-    )

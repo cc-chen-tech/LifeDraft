@@ -43,7 +43,7 @@ def _opening_story_appears_truncated(
 
 @router.post("/setting")
 async def generate_setting(req: GenerateSettingRequest):
-    """Generate a character setting (era, age, gender, world, family, relationships, traits, wealth)."""
+    """Generate a character setting (era, age, gender, world, family, relationships, traits)."""
     creator = CharacterCreator(language=req.language)
     try:
         result = creator.generate_setting(
@@ -81,7 +81,7 @@ async def generate_relationship(req: GenerateRelationshipRequest):
 
 @router.post("/attributes")
 async def generate_attributes(req: GenerateAttributesRequest):
-    """Generate initial character attributes (energy, mood, knowledge, wealth)."""
+    """Generate initial character attributes (energy, mood, knowledge)."""
     creator = CharacterCreator(language=req.language)
     try:
         result = creator.generate_initial_attributes(

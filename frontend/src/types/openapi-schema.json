@@ -684,7 +684,7 @@
           "Games"
         ],
         "summary": "Update Character Settings",
-        "description": "Persist late character creation settings for an existing game.\n\nThe create flow may add generated family, relationship, trait, and wealth\nsettings after the initial game record exists. This endpoint preserves the\nmanually selected settings and merges the generated settings into the saved\nplayer state before opening story generation starts.",
+        "description": "Persist late character creation settings for an existing game.\n\nThe create flow may add generated family, relationship, and trait\nsettings after the initial game record exists. This endpoint preserves the\nmanually selected settings and merges the generated settings into the saved\nplayer state before opening story generation starts.",
         "operationId": "update_character_settings_api_games__game_id__character_settings_patch",
         "security": [
           {
@@ -998,7 +998,7 @@
           "Character"
         ],
         "summary": "Generate Setting",
-        "description": "Generate a character setting (era, age, gender, world, family, relationships, traits, wealth).",
+        "description": "Generate a character setting (era, age, gender, world, family, relationships, traits).",
         "operationId": "generate_setting_api_character_setting_post",
         "requestBody": {
           "content": {
@@ -1078,7 +1078,7 @@
           "Character"
         ],
         "summary": "Generate Attributes",
-        "description": "Generate initial character attributes (energy, mood, knowledge, wealth).",
+        "description": "Generate initial character attributes (energy, mood, knowledge).",
         "operationId": "generate_attributes_api_character_attributes_post",
         "requestBody": {
           "content": {
@@ -5518,8 +5518,17 @@
         "properties": {
           "setting_type": {
             "type": "string",
+            "enum": [
+              "era",
+              "age",
+              "gender",
+              "world",
+              "family",
+              "relationships",
+              "traits"
+            ],
             "title": "Setting Type",
-            "description": "era|age|gender|world|family|relationships|traits|wealth"
+            "description": "era|age|gender|world|family|relationships|traits"
           },
           "player_name": {
             "type": "string",

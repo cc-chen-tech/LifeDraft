@@ -12,7 +12,6 @@ import {
   Home,
   Users,
   Sparkles,
-  Coins,
 } from "lucide-react";
 
 interface SettingDisplayProps {
@@ -32,6 +31,8 @@ export const SettingDisplay = memo(function SettingDisplay({
   isNew = false,
   className,
 }: SettingDisplayProps) {
+  if (stepKey === "wealth") return null;
+
   return (
     <Card
       className={cn(
@@ -72,8 +73,6 @@ function renderContent(
       return <RelationshipsDisplay data={data} />;
     case "traits":
       return <TraitsDisplay data={data} />;
-    case "wealth":
-      return <WealthDisplay data={data} />;
     default:
       // Fallback: formatted JSON
       return (
@@ -368,32 +367,6 @@ function TraitsDisplay({ data }: { data: Record<string, unknown> }) {
             </div>
           ))}
         </div>
-      )}
-    </div>
-  );
-}
-
-// ===== Wealth =====
-function WealthDisplay({ data }: { data: Record<string, unknown> }) {
-  const wealth = data.wealth as number | undefined;
-  const currency = str(data.currency) || "碳信用";
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2 mb-1">
-        <Coins className="w-5 h-5 text-warning flex-shrink-0" />
-        <span className="font-medium text-foreground">初始财富</span>
-      </div>
-      {wealth !== undefined && (
-        <div className="text-2xl font-bold text-warning">
-          {currency}
-          {wealth.toLocaleString()}
-        </div>
-      )}
-      {has(data, "wealth_description") && (
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          {str(data.wealth_description)}
-        </p>
       )}
     </div>
   );

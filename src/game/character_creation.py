@@ -448,7 +448,7 @@ class CharacterCreator:
                     prompt=prompt,
                     system_prompt=get_system_prompt("world_building", "en"),
                     temperature=1.0,  # Use 1.0 for better JSON stability with DeepSeek
-                    max_tokens=4096,  # Increased to avoid truncation for traits/wealth
+                    max_tokens=4096,
                 )
 
                 # Unified JSON extraction (handles code blocks, regex fallback, etc.)
@@ -456,7 +456,6 @@ class CharacterCreator:
                 if result is None:
                     raise ValueError(f"Failed to extract JSON from response: {content[:200]}")
 
-                # Validate wealth if it's the wealth setting
                 if setting_type == "era":
                     result = _align_era_setting_with_life_vision(
                         result,
@@ -466,37 +465,6 @@ class CharacterCreator:
 
                 if setting_type == "world":
                     result = qualify_generated_world_facts(result, language=self.language)
-
-                # Validate wealth if it's the wealth setting
-                if setting_type == "wealth":
-                    wealth = result.get("wealth", 0)
-                    # If wealth is 0 or missing, retry API call
-                    if wealth == 0 or wealth is None:
-                        if attempt < max_retries - 1:
-                            logger.warning(
-                                f"Generated wealth is 0 or missing (attempt {attempt + 1}/{max_retries}), retrying API call..."
-                            )
-                            # Add more explicit instruction to the prompt for retry
-                            if self.language == "zh":
-                                prompt += "\n\n**重要：请确保 wealth 字段是一个正整数（1000-1000000），绝对不能为 0。如果角色来自贫困家庭，财富至少应为 1000-5000。**"
-                            else:
-                                prompt += "\n\n**IMPORTANT: Please ensure the wealth field is a positive integer (1000-1000000), and must NEVER be 0. If the character comes from a poor family, wealth should be at least 1000-5000.**"
-                            continue  # Retry API call
-                        else:
-                            # Last attempt failed, use fallback
-                            logger.error(
-                                f"Failed to generate valid wealth after {max_retries} attempts, using fallback"
-                            )
-                            fallback = self._get_fallback_setting(setting_type)
-                            if fallback.get("wealth", 0) == 0:
-                                fallback["wealth"] = 30000
-                            return fallback
-                    elif wealth < 1000:
-                        # If wealth is too low (but not 0), ensure minimum
-                        result["wealth"] = max(1000, wealth)
-                        logger.warning(
-                            f"Generated wealth {wealth} is too low, adjusted to {result['wealth']}"
-                        )
 
                 # Validate and calculate birth_year for age setting
                 if setting_type == "age":
@@ -536,9 +504,6 @@ class CharacterCreator:
                     )
                     logger.error(f"Error type: {type(e).__name__}, Error details: {str(e)}")
                     fallback = self._get_fallback_setting(setting_type)
-                    # Ensure wealth fallback is not 0
-                    if setting_type == "wealth" and fallback.get("wealth", 0) == 0:
-                        fallback["wealth"] = 30000
                     # Mark as fallback for debugging
                     fallback["_is_fallback"] = True
                     fallback["_error"] = f"{type(e).__name__}: {str(e)}"
@@ -557,9 +522,6 @@ class CharacterCreator:
                     )
                     logger.error(f"Error type: {type(e).__name__}, Error details: {str(e)}")
                     fallback = self._get_fallback_setting(setting_type)
-                    # Ensure wealth fallback is not 0
-                    if setting_type == "wealth" and fallback.get("wealth", 0) == 0:
-                        fallback["wealth"] = 30000
                     # Mark as fallback for debugging
                     fallback["_is_fallback"] = True
                     fallback["_error"] = f"{type(e).__name__}: {str(e)}"
@@ -568,8 +530,6 @@ class CharacterCreator:
 
         # Should not reach here, but just in case
         fallback = self._get_fallback_setting(setting_type)
-        if setting_type == "wealth" and fallback.get("wealth", 0) == 0:
-            fallback["wealth"] = 30000
         return fallback
 
     def generate_single_relationship_person(
@@ -868,14 +828,14 @@ class CharacterCreator:
         self, character_settings: Dict[str, Any], language: str = "zh"
     ) -> Dict[str, int]:
         """
-        Generate initial core attributes (energy, mood, knowledge, wealth) based on character traits.
+        Generate initial core attributes (energy, mood, knowledge) based on character traits.
 
         Args:
             character_settings: Complete character settings dictionary
             language: Language code
 
         Returns:
-            Dictionary with energy, mood, knowledge, wealth values
+            Dictionary with energy, mood, and knowledge values
         """
         prompt = get_initial_attributes_prompt(character_settings, language)
 
@@ -899,13 +859,11 @@ class CharacterCreator:
             energy = max(0, min(100, result.get("energy", 70)))
             mood = max(0, min(100, result.get("mood", 60)))
             knowledge = max(0, min(100, result.get("knowledge", 50)))
-            wealth = max(0, min(1000000, result.get("wealth", 10000)))
 
             return {
                 "energy": energy,
                 "mood": mood,
                 "knowledge": knowledge,
-                "wealth": wealth,
             }
         except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
             logger.warning(f"AI生成初始属性失败: {e}")
@@ -930,17 +888,16 @@ class CharacterCreator:
 
         Args:
             traits: Character traits dictionary
-            character_settings: Complete character settings (optional, for wealth generation)
+            character_settings: Complete character settings (optional)
 
         Returns:
-            Dictionary with energy, mood, knowledge, wealth values
+            Dictionary with energy, mood, and knowledge values
         """
         logger.debug(f"规则生成属性开始: traits_type={type(traits)}")
         # Default values
         energy = 70
         mood = 60
         knowledge = 50
-        wealth = 10000
 
         # 辅助函数：将 traits 值转换为小写字符串
         def to_lower_str(value) -> str:
@@ -1000,59 +957,15 @@ class CharacterCreator:
         ):
             knowledge -= 20
 
-        # Wealth: based on family background, era, and abilities
-        if character_settings:
-            family = character_settings.get("family", {})
-            family_economy = family.get("family_economy", "").lower()
-            family.get("family_description", "").lower()
-
-            era = character_settings.get("era", {})
-            era_description = era.get("era_description", "").lower()
-            era.get("world_context", "").lower()
-
-            age_info = character_settings.get("age", {})
-            age = age_info.get("age", 22)
-
-            # Family economy adjustments
-            if any(
-                word in family_economy for word in ["富裕", "富有", "wealthy", "rich", "affluent"]
-            ):
-                wealth += 50000
-            elif any(word in family_economy for word in ["中产", "中等", "middle", "moderate"]):
-                wealth += 20000
-            elif any(word in family_economy for word in ["贫困", "贫穷", "poor", "poverty"]):
-                wealth -= 5000
-
-            # Era adjustments
-            if any(word in era_description for word in ["现代", "当代", "modern", "contemporary"]):
-                wealth += 10000
-            elif any(word in era_description for word in ["古代", "ancient", "medieval"]):
-                wealth -= 5000
-
-            # Age adjustments (older characters may have more savings)
-            if age >= 30:
-                wealth += 15000
-            elif age >= 25:
-                wealth += 5000
-
-            # Ability adjustments
-            if any(
-                word in abilities
-                for word in ["商业", "投资", "business", "investment", "entrepreneur"]
-            ):
-                wealth += 20000
-
         # Clamp values
         energy = max(30, min(100, energy))
         mood = max(30, min(100, mood))
         knowledge = max(20, min(100, knowledge))
-        wealth = max(0, min(1000000, wealth))
 
         result = {
             "energy": energy,
             "mood": mood,
             "knowledge": knowledge,
-            "wealth": wealth,
         }
         logger.debug(f"规则生成属性完成: {result}")
         return result
@@ -1127,12 +1040,6 @@ class CharacterCreator:
                     "strengths": "适应力强",
                     "weaknesses": "经验不足",
                 },
-                "wealth": {
-                    "wealth": 30000,
-                    "currency": "¥",
-                    "currency_name": "人民币",
-                    "wealth_description": "普通家庭的初始财富，主要来自家庭支持和少量个人积蓄。",
-                },
             }
         else:
             fallbacks = {
@@ -1186,12 +1093,6 @@ class CharacterCreator:
                     "interests": "Wide range",
                     "strengths": "Strong adaptability",
                     "weaknesses": "Lack of experience",
-                },
-                "wealth": {
-                    "wealth": 30000,
-                    "currency": "$",
-                    "currency_name": "Dollar",
-                    "wealth_description": "Initial wealth from average family, mainly from family support and small personal savings.",
                 },
             }
 

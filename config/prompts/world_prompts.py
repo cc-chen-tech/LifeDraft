@@ -8,6 +8,8 @@ Contains:
 
 from typing import Any, Dict, List, Optional
 
+from src.utils.financial_narrative import sanitize_authoritative_fact_records
+
 
 def get_ending_prompt(
     final_state: Dict[str, Any], decision_history: list, language: str = "en"
@@ -47,10 +49,11 @@ def get_world_extraction_prompt(
     """
     # Build established facts context
     facts_context = ""
-    if established_facts:
+    safe_established_facts = sanitize_authoritative_fact_records(established_facts)
+    if safe_established_facts:
         if language == "zh":
             lines = ["\n【当前已建立的世界事实】"]
-            for f in established_facts:
+            for f in safe_established_facts:
                 cat = {"location": "地点", "role": "角色", "situation": "事务"}.get(
                     f.get("category", ""), "事实"
                 )
@@ -58,7 +61,7 @@ def get_world_extraction_prompt(
             facts_context = "\n".join(lines)
         else:
             lines = ["\n[Current Established Facts]"]
-            for f in established_facts:
+            for f in safe_established_facts:
                 cat = {
                     "location": "Location",
                     "role": "Role",

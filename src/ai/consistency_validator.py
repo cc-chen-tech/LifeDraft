@@ -134,53 +134,6 @@ class ConsistencyValidator:
                         fix_instructions=authoritative.fix_instructions,
                     )
 
-            wealth_ledger = getattr(world_model, "wealth_ledger", None)
-            if wealth_ledger is not None:
-                current_balance = max(0, int(player_state_dict.get("wealth", 0)))
-                active_transaction_id = player_state_dict.get(
-                    "_active_wealth_transaction_id"
-                )
-                wealth_result = wealth_ledger.validate_narrative(
-                    story_text,
-                    current_balance=current_balance,
-                    active_transaction_id=(
-                        str(active_transaction_id) if active_transaction_id else None
-                    ),
-                )
-                if not wealth_result.passed:
-                    source_event_id = (
-                        str(active_transaction_id)
-                        if active_transaction_id
-                        else (
-                            f"candidate-w{player_state_dict.get('week', 0)}-"
-                            f"r{player_state_dict.get('current_round', 0)}"
-                        )
-                    )
-                    wealth_ledger.record_validation_conflicts(
-                        wealth_result.issues,
-                        source_event_id=source_event_id,
-                    )
-                    source_state = getattr(world_model, "continuity_source_state", None)
-                    if source_state is not None:
-                        wealth_ledger.persist(source_state)
-                    issues = [
-                        ConsistencyIssue(
-                            dimension="wealth",
-                            severity="CRITICAL",
-                            description=issue.message,
-                            fix_suggestion=(
-                                f"使用权威余额 {current_balance:,}；"
-                                "没有交易支持时删除精确金额变化"
-                            ),
-                        )
-                        for issue in wealth_result.issues
-                    ]
-                    return ValidationResult(
-                        passed=False,
-                        issues=issues,
-                        fix_instructions=wealth_result.fix_instructions,
-                    )
-
             if not run_ai_validation:
                 return ValidationResult(passed=True)
 

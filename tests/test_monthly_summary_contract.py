@@ -94,7 +94,7 @@ class TestMonthlySummaryContract:
         assert changes["energy"] == 10
         assert changes["mood"] == 10
         assert changes["knowledge"] == 10
-        assert changes["wealth"] == 500
+        assert set(changes) == {"energy", "mood", "knowledge"}
 
     def test_generate_summary_no_previous_defaults(self):
         """Missing previous state keys should default to current values (zero change)."""
@@ -119,7 +119,7 @@ class TestMonthlySummaryContract:
         assert changes["energy"] == 0
         assert changes["mood"] == 0
         assert changes["knowledge"] == 0
-        assert changes["wealth"] == 0
+        assert set(changes) == {"energy", "mood", "knowledge"}
 
     def test_generate_summary_ai_error_fallback(self):
         """AI error should trigger fallback summary."""
@@ -219,7 +219,7 @@ class TestMonthlySummaryContract:
 
         prompt = fake.calls[0]["prompt"]
         assert "精力：+10" in prompt
-        assert "财富：+500" in prompt
+        assert "财富：+500" not in prompt
 
     def test_final_state_is_dict(self):
         """final_state should be a dict representation of current state."""

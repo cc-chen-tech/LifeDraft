@@ -23,6 +23,10 @@ from typing import Any, Dict, List
 
 from src.ai.system_prompts import get_system_prompt
 from src.ai.utils import extract_json
+from src.utils.financial_narrative import (
+    contains_authoritative_financial_state,
+    is_structured_financial_category,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -191,7 +195,18 @@ class StoryAnalyzer:
         self, existing_facts: List[DynamicFact], language: str
     ) -> str:
         """Build a text summary of existing active facts for the AI."""
-        active = [f for f in existing_facts if f.active]
+        active = [
+            f
+            for f in existing_facts
+            if f.active
+            and not is_structured_financial_category(f.fact_type)
+            and not contains_authoritative_financial_state(
+                f.subject,
+                f.description,
+                f.constraint_text,
+                f.source_excerpt,
+            )
+        ]
         if not active:
             return ""
 
@@ -249,6 +264,19 @@ class StoryAnalyzer:
                 constraint_text = raw.get("constraint_text", "")
 
                 if not subject or not description:
+                    continue
+                if action in (
+                    "new",
+                    "update",
+                ) and (
+                    is_structured_financial_category(fact_type)
+                    or contains_authoritative_financial_state(
+                        subject,
+                        description,
+                        constraint_text,
+                        raw.get("source_excerpt", ""),
+                    )
+                ):
                     continue
 
                 if action == "new":

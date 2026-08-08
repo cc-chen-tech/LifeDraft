@@ -148,8 +148,20 @@ class TestMakeChoiceEndpoint:
                     "event_description": "李诗涵在咖啡馆里摊开渠道资料。",
                     "story_continuation": "你决定给陈思颖打电话确认明天的安排。",
                     "summary": "你确认了创业推进的下一步。",
-                    "effects": {"energy": -5, "mood": 3},
-                    "effects_requested": {"energy": -5, "mood": 3},
+                    "effects": {
+                        "energy": -5,
+                        "mood": 3,
+                        "wealth": 500,
+                        "relationships": {"陈思颖": 4},
+                        "unexpected": 9,
+                    },
+                    "effects_requested": {
+                        "energy": -5,
+                        "mood": 3,
+                        "wealth": 1_000,
+                        "wealth_ledger": {"balance": 1_000},
+                        "relationships": {"陈思颖": 4},
+                    },
                     "resource_warnings": [],
                     "event_concluded": False,
                 }
@@ -164,8 +176,16 @@ class TestMakeChoiceEndpoint:
             assert response.json() == {
                 "story_continuation": "你决定给陈思颖打电话确认明天的安排。",
                 "summary": "你确认了创业推进的下一步。",
-                "effects_applied": {"energy": -5, "mood": 3},
-                "effects_requested": {"energy": -5, "mood": 3},
+                "effects_applied": {
+                    "energy": -5,
+                    "mood": 3,
+                    "relationships": {"陈思颖": 4},
+                },
+                "effects_requested": {
+                    "energy": -5,
+                    "mood": 3,
+                    "relationships": {"陈思颖": 4},
+                },
                 "resource_warnings": [],
                 "need_weekly_summary": False,
                 "weekly_summary": None,

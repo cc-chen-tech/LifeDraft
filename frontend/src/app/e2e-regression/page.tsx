@@ -32,7 +32,6 @@ const relationshipFixtureSettings = {
     ],
   },
   traits: { traits_description: "谨慎务实" },
-  wealth: { wealth: 200000, currency: "¥" },
 };
 
 function RelationshipRegenerationFixture() {

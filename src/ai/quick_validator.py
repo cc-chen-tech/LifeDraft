@@ -262,7 +262,6 @@ class QuickValidator:
         realistic_sections = {
             "basic",
             "career",
-            "wealth",
             "education",
             "family",
             "relationships",

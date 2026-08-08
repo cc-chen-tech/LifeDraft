@@ -6,11 +6,14 @@ import re
 from typing import List, Mapping, Sequence
 
 from src.ai.professional_risk import apply_professional_risk_guardrail
-
+from src.utils.financial_narrative import (
+    contains_authoritative_financial_state,
+    sanitize_authoritative_financial_clauses,
+)
 
 StoryItem = Mapping[str, object]
 _NUMBER_PATTERN = re.compile(r"\d+(?:\.\d+)?")
-_REMOVED_METRICS = ("精力", "情绪", "学识", "财富", "energy", "mood", "knowledge", "wealth")
+_REMOVED_METRICS = ("精力", "情绪", "学识", "energy", "mood", "knowledge")
 _LEGAL_ENDORSEMENTS = ("合规路径", "合法合规", "完全合法", "符合法律规定", "compliant path")
 _INFLATED_DURATION = ("半年", "一年", "数年", "half a year", "one year", "several years")
 _LIFE_SUMMARY_EVIDENCE_MAX_CHARS = 24_000
@@ -80,6 +83,11 @@ def _truncate_evidence(text: str, limit: int) -> str:
     return normalized[: limit - 3].rstrip() + "..."
 
 
+def _sanitize_fallback_evidence(text: str) -> str:
+    """Remove exact or tracked money-state clauses before fallback quoting."""
+    return sanitize_authoritative_financial_clauses(text) or "相关经济处境有所变化"
+
+
 def _range_label(start_week: int, end_week: int) -> str:
     return f"第{start_week}周" if start_week == end_week else f"第{start_week}-{end_week}周"
 
@@ -102,7 +110,8 @@ def build_life_summary_prompt(
 - 时间范围只能写成“{label}”或等价的{end_week - start_week + 1}周，不得夸大为半年、数月或更长时期。
 - 如果不同回合对身份、病情、招标、注册或其他事实存在冲突，必须明确保留为冲突或未决，不得自行合并成确定事实。
 - 对“规避竞业”、借用亲属名义或类似行为，不得称为合规路径、合法方案或已经解决的法律风险。
-- 不要提及精力、情绪、学识、财富等游戏资源指标。
+- 不要提及精力、情绪、学识等游戏资源指标。
+- 不要把财富、账户余额或存款写成可追踪资源，也不要给出精确余额或财富门槛；可以保留定性的收入、消费、贫富与经济压力叙事。
 
 【故事证据】
 {_source_text(story_history)}
@@ -116,9 +125,9 @@ def build_grounded_fallback(
     """Create a compact deterministic summary from representative source excerpts."""
     excerpts: List[str] = []
     for item in story_history:
-        story = _as_text(item, "story_text").strip()
+        story = _sanitize_fallback_evidence(_as_text(item, "story_text"))
         if story and story not in excerpts:
-            choice = _as_text(item, "choice_text").strip()
+            choice = _sanitize_fallback_evidence(_as_text(item, "choice_text"))
             excerpt = _truncate_evidence(story, _COMPACT_FALLBACK_STORY_MAX_CHARS)
             if choice:
                 excerpt += f"（选择：{_truncate_evidence(choice, _COMPACT_FALLBACK_CHOICE_MAX_CHARS)}）"
@@ -147,7 +156,10 @@ def build_grounded_fallback(
         )
     else:
         body = "这段时间的故事记录仍在整理。"
-    return f"{prefix}{body}{caution}"
+    result = f"{prefix}{body}{caution}"
+    if contains_authoritative_financial_state(result):
+        return f"{prefix}相关经济处境有所变化。"
+    return result
 
 
 def _has_unsupported_number(
@@ -171,6 +183,7 @@ def validate_or_fallback_life_summary(
         not summary.strip()
         or len(summary.strip()) > _summary_output_limit(story_history)
         or any(metric.lower() in lowered for metric in _REMOVED_METRICS)
+        or contains_authoritative_financial_state(summary)
         or any(claim.lower() in lowered for claim in _LEGAL_ENDORSEMENTS)
         or (span <= 8 and any(duration.lower() in lowered for duration in _INFLATED_DURATION))
         or _has_unsupported_number(summary, story_history, start_week, end_week)

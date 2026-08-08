@@ -152,7 +152,7 @@ class TestGenerateSetting:
         assert response.status_code == 200
 
     def test_generate_wealth_success(self, client, mock_character_creator):
-        """Test generating wealth setting."""
+        """Retired wealth setting requests are rejected by request validation."""
         mock_character_creator.generate_setting.return_value = {
             "wealth_level": "中等",
             "starting_wealth": 50000,
@@ -169,7 +169,8 @@ class TestGenerateSetting:
             },
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 422
+        mock_character_creator.generate_setting.assert_not_called()
 
     def test_generate_setting_with_feedback(self, client, mock_character_creator):
         """Test generating setting with user feedback."""

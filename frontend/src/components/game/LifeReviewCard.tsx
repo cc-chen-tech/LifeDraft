@@ -24,7 +24,6 @@ export interface LifeReviewData {
     energy: number[];
     mood: number[];
     knowledge: number[];
-    wealth: number[];
   };
   achievement_badge_wall: BadgeWallItem[];
   relationship_network: {
