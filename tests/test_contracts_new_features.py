@@ -301,7 +301,7 @@ class TestParallelPostProcessorContracts:
         """PostProcessingResult 的字段名与 advance_to_next_week() 消费的数据一致。
 
         契约：PostProcessingResult 应包含 compression_result, world_model_updates,
-        vector_stored, weekly_summary, errors 字段，
+        weekly_summary, errors 字段，
         这些字段与 GameLoop.advance_to_next_week() 中的后处理步骤对应。
         """
         from src.game.parallel_postprocessor import PostProcessingResult
@@ -310,14 +310,12 @@ class TestParallelPostProcessorContracts:
         # 验证所有预期字段存在
         assert hasattr(result, "compression_result")
         assert hasattr(result, "world_model_updates")
-        assert hasattr(result, "vector_stored")
         assert hasattr(result, "weekly_summary")
         assert hasattr(result, "errors")
 
         # 验证默认值类型
         assert result.compression_result is None
         assert result.world_model_updates is None
-        assert result.vector_stored is False
         assert result.weekly_summary is None
         assert isinstance(result.errors, list)
 

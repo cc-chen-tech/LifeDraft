@@ -44,7 +44,6 @@
 - `narrative_style_engine`：叙事风格模板系统（风格选择、自动匹配）
 - `creative_enhancement`：创意增强（情绪弧线、新颖性、伏笔）
 - `epic_narrative`：史诗叙事（角色弧线、世界演进、冲突塔）
-- `vector_search`：向量检索
 - `model_fallback`：模型降级兜底
 - `truncation_recovery`：截断恢复
 - `reactive_compression`：响应式压缩

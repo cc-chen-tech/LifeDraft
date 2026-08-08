@@ -20,7 +20,6 @@ class PostProcessingResult:
 
     compression_result: Optional[Dict[str, Any]] = None
     world_model_updates: Optional[Dict[str, Any]] = None
-    vector_stored: bool = False
     weekly_summary: Optional[str] = None
     errors: List[str] = field(default_factory=list)
 
@@ -42,14 +41,12 @@ class ParallelPostProcessor:
         language: str,
         summary_generator: Any,
         world_model_updater: Any,
-        vector_store: Optional[Any] = None,
         weekly_summary_generator: Optional[Any] = None,
     ) -> PostProcessingResult:
         """Execute post-processing steps with maximum parallelism.
 
         Parallel group 1 (independent):
           - Story compression (summary_generator.compress_story)
-          - Vector store update (vector_store.add_context)
 
         Serial group 2 (depends on compression result):
           - World model update (world_model_updater.process_*)
@@ -70,15 +67,6 @@ class ParallelPostProcessor:
             logger.error("Failed to submit compress task: %s", e)
             result.errors.append(f"compress_submit: {e}")
 
-        if vector_store is not None:
-            try:
-                futures["vector"] = self._executor.submit(
-                    self._safe_vector_store, vector_store, story_text
-                )
-            except Exception as e:
-                logger.error("Failed to submit vector task: %s", e)
-                result.errors.append(f"vector_submit: {e}")
-
         # Wait for parallel group 1
         if "compress" in futures:
             try:
@@ -86,13 +74,6 @@ class ParallelPostProcessor:
             except Exception as e:
                 logger.error("Compress task failed: %s", e)
                 result.errors.append(f"compress: {e}")
-
-        if "vector" in futures:
-            try:
-                result.vector_stored = futures["vector"].result(timeout=30)
-            except Exception as e:
-                logger.error("Vector store task failed: %s", e)
-                result.errors.append(f"vector: {e}")
 
         # -- Serial group 2 (depends on compression result) --------------------
         if result.compression_result and world_model_updater:
@@ -124,11 +105,6 @@ class ParallelPostProcessor:
     ) -> Dict[str, Any]:
         """Safe wrapper around summary_generator.compress_story."""
         return summary_generator.compress_story(story_text, choice, language)  # type: ignore[no-any-return]
-
-    def _safe_vector_store(self, vector_store: Any, story_text: str) -> bool:
-        """Safe wrapper around vector_store.add_context."""
-        vector_store.add_context(story_text)
-        return True
 
     def shutdown(self) -> None:
         """Shutdown the internal thread pool executor."""

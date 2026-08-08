@@ -11,12 +11,25 @@ import hashlib
 import logging
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Protocol
 
 
 logger = logging.getLogger(__name__)
 
 EVENT_LOG_HEADER = "EVENT_LOG_V1\n"
+
+
+def is_deepseek_v4_model(model: object) -> bool:
+    """Return whether a model supports the DeepSeek V4 long-context path."""
+    return str(model or "").strip().lower().startswith("deepseek-v4-")
+
+
+def prepend_history_prefix(history_prefix: str, dynamic_prompt: str) -> str:
+    """Keep immutable history byte-stable before all changing request data."""
+    if not history_prefix:
+        return dynamic_prompt
+    return f"{history_prefix}\n[CURRENT_REQUEST]\n{dynamic_prompt}"
 
 
 class TokenCounter(Protocol):
@@ -29,17 +42,17 @@ class TokenCounter(Protocol):
 class DeepSeekTokenCounter:
     """Use the official DeepSeek tokenizer when it is configured locally.
 
-    DeepSeek distributes its tokenizer as an offline artifact.  The configured
-    tokenizer must expose the ``tokenizers.Tokenizer`` JSON format.  Until an
-    operator installs that artifact, count every character as one token.  That
-    is deliberately conservative and cannot under-budget normal text.
+    The default artifact is the official DeepSeek offline tokenizer committed
+    with this module. An environment override is useful for provider upgrades.
+    If loading fails, count every character as one token; this is deliberately
+    conservative and cannot under-budget normal text.
     """
 
     def __init__(self, tokenizer_path: Optional[str] = None) -> None:
         self._tokenizer = None
-        path = tokenizer_path or os.getenv("DEEPSEEK_TOKENIZER_PATH")
-        if not path:
-            return
+        path = tokenizer_path or os.getenv("DEEPSEEK_TOKENIZER_PATH") or str(
+            Path(__file__).with_name("deepseek_tokenizer") / "tokenizer.json"
+        )
         try:
             from tokenizers import Tokenizer  # type: ignore[import-not-found]
 
@@ -110,6 +123,20 @@ class LongStoryContextBuilder:
             input_tokens=self._counter.count(prefix),
             used_snapshot=bool(snapshots),
         )
+
+    def build_for_request(
+        self, player_state: Mapping[str, Any] | Any, dynamic_tail: str
+    ) -> StoryHistoryContext:
+        """Build history against the remaining space in one complete request."""
+        remaining = self._settings.input_token_budget - self._counter.count(dynamic_tail)
+        if remaining < 1:
+            raise ValueError("Dynamic story request exceeds the configured input budget")
+        request_settings = StoryContextSettings(
+            input_token_budget=remaining,
+            snapshot_target_tokens=self._settings.snapshot_target_tokens,
+            dynamic_token_reserve=0,
+        )
+        return LongStoryContextBuilder(self._counter, request_settings).build(player_state)
 
     @staticmethod
     def _value(player_state: Mapping[str, Any] | Any, field: str, default: Any) -> Any:

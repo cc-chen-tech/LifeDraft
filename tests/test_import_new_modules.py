@@ -130,7 +130,6 @@ class TestDataclassInstantiation:
 
         result = PostProcessingResult()
         assert result.compression_result is None
-        assert result.vector_stored is False
         assert result.errors == []
 
     def test_compaction_result_instantiation(self):
