@@ -100,12 +100,10 @@ def _require_session(game_id: int, user_id: Optional[int]):
 
 
 def _is_api_contract_probe(request: Request) -> bool:
-    """Identify unauthenticated Playwright route probes without blocking real E2E flows."""
+    """Identify explicitly marked route probes without blocking real E2E flows."""
     if os.getenv("E2E_CONTRACT_PROBE_FAST") != "1":
         return False
-    user_agent = request.headers.get("user-agent", "")
-    cookie_header = request.headers.get("cookie")
-    return "Playwright" in user_agent and cookie_header is None
+    return request.headers.get("x-e2e-contract-probe") == "1"
 
 
 def _parse_last_event_id(request: Request) -> Optional[int]:

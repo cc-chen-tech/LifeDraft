@@ -58,13 +58,26 @@ class TestE2EContractProbe:
 
         assert _is_api_contract_probe(Request(scope)) is False
 
-    def test_unauthenticated_playwright_request_is_a_contract_probe(self, monkeypatch):
+    def test_unmarked_playwright_request_is_not_a_contract_probe(self, monkeypatch):
         monkeypatch.setenv("E2E_CONTRACT_PROBE_FAST", "1")
         scope = {
             "type": "http",
             "method": "POST",
             "path": "/games/1/event-sync",
             "headers": [(b"user-agent", b"Playwright/1.58")],
+        }
+
+        from starlette.requests import Request
+
+        assert _is_api_contract_probe(Request(scope)) is False
+
+    def test_explicit_contract_probe_header_is_a_contract_probe(self, monkeypatch):
+        monkeypatch.setenv("E2E_CONTRACT_PROBE_FAST", "1")
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/games/1/event-sync",
+            "headers": [(b"x-e2e-contract-probe", b"1")],
         }
 
         from starlette.requests import Request
