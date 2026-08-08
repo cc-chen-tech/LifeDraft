@@ -26,8 +26,8 @@ const mockUsePlayGame = {
   isSaving: false,
   saveToast: null,
   endingData: null,
-  elapsedSeconds: 0,
-  connectionStatus: null,
+  transport: 'active' as const,
+  loadingIdentity: 0,
   gameId: 123,
   playerState: { player_name: 'TestPlayer', energy: 80, mood: 70 },
   progress: { week: 5, age: 22 },
@@ -47,7 +47,7 @@ const mockUsePlayGame = {
   handleRegenerate: jest.fn(),
   generateEvent: jest.fn(),
   recoverEventGeneration: jest.fn(),
-  getLoadingMessage: jest.fn(() => 'Loading...'),
+  recoverChoiceGeneration: jest.fn(),
   hydrated: true,
   router: { push: jest.fn(), replace: jest.fn() },
   // ★ 历史回顾相关
@@ -61,12 +61,14 @@ const mockUsePlayGame = {
   handleBackToCurrent: jest.fn(),
 };
 
+const mockUseDelayedLoading = jest.fn(() => false);
+
 jest.mock('@/hooks/usePlayGame', () => ({
   usePlayGame: () => mockUsePlayGame,
-  STATUS_MESSAGES: {
-    preparing: '正在准备...',
-    generating_story: '正在生成故事...',
-  },
+}));
+
+jest.mock('@/hooks/useDelayedLoading', () => ({
+  useDelayedLoading: (options: unknown) => mockUseDelayedLoading(options),
 }));
 
 jest.mock('@/components/game/CollectionPanel', () => ({
@@ -76,6 +78,7 @@ jest.mock('@/components/game/CollectionPanel', () => ({
 describe('PlayPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseDelayedLoading.mockReturnValue(false);
     Object.defineProperty(globalThis, 'crypto', {
       value: webcrypto,
       configurable: true,
@@ -670,7 +673,6 @@ describe('PlayPage', () => {
         options: [],
         storyText: '',
         displayText: '',
-        getLoadingMessage: () => '不应由展示层使用这个转换后的文案',
       });
       useUIStore.setState({ processingMessage: 'generating_options' });
 
@@ -712,10 +714,11 @@ describe('PlayPage', () => {
         options: [],
         storyText: '部分故事正文已经生成。',
         displayText: '部分故事正文已经生成。',
-        elapsedSeconds: 75,
+        loadingIdentity: 42,
         recoverEventGeneration: mockRecoverEventGeneration,
       });
       useGameStore.setState({ constraintLevel: 'fast' });
+      mockUseDelayedLoading.mockReturnValue(true);
 
       render(<PlayPage />);
 
@@ -724,6 +727,11 @@ describe('PlayPage', () => {
       expect(loader).not.toHaveTextContent(/秒|分钟|预计|fast|expert|master/);
       expect(screen.queryByRole('button', { name: '恢复当前进度' })).not.toBeInTheDocument();
       expect(mockRecoverEventGeneration).not.toHaveBeenCalled();
+      expect(mockUseDelayedLoading).toHaveBeenCalledWith({
+        isLoading: true,
+        delay: 45_000,
+        loadingIdentity: 42,
+      });
     });
 
     it('shows generating state with message', async () => {
@@ -734,8 +742,6 @@ describe('PlayPage', () => {
         options: [],
         storyText: 'Some story',
         displayText: 'Some story',
-        elapsedSeconds: 30,
-        getLoadingMessage: () => '正在生成故事...',
       });
       
       render(<PlayPage />);
@@ -755,16 +761,31 @@ describe('PlayPage', () => {
         options: [],
         storyText: '',
         displayText: '',
-        connectionStatus: 'reconnecting',
+        transport: 'reconnecting',
         recoverEventGeneration: mockRecoverEventGeneration,
       });
 
       const { rerender } = render(<PlayPage />);
 
       fireEvent.click(screen.getByRole('button', { name: '重新连接' }));
-      await waitFor(() => {
-        expect(mockRecoverEventGeneration).toHaveBeenCalledTimes(1);
+      expect(mockRecoverEventGeneration).toHaveBeenCalledTimes(1);
+      expect(mockUsePlayGame.setOptions).not.toHaveBeenCalled();
+      expect(mockUsePlayGame.setPhase).not.toHaveBeenCalled();
+
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'generating',
+        options: [],
+        storyText: '',
+        displayText: '',
+        transport: 'polling',
+        recoverEventGeneration: mockRecoverEventGeneration,
       });
+      rerender(<PlayPage />);
+      fireEvent.click(screen.getByRole('button', { name: '重新连接' }));
+      expect(mockRecoverEventGeneration).toHaveBeenCalledTimes(2);
+      expect(mockUsePlayGame.setOptions).not.toHaveBeenCalled();
+      expect(mockUsePlayGame.setPhase).not.toHaveBeenCalled();
 
       originalHook.usePlayGame = () => ({
         ...mockUsePlayGame,
@@ -772,7 +793,7 @@ describe('PlayPage', () => {
         options: [],
         storyText: '',
         displayText: '',
-        connectionStatus: 'error',
+        transport: 'failed',
         generateEvent: mockGenerateEvent,
       });
       rerender(<PlayPage />);
@@ -780,9 +801,8 @@ describe('PlayPage', () => {
       expect(screen.getByTestId('narrative-loading-section')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: '重试' })).toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: '重试' }));
-      await waitFor(() => {
-        expect(mockGenerateEvent).toHaveBeenCalledTimes(1);
-      });
+      expect(mockGenerateEvent).toHaveBeenCalledTimes(1);
+      expect(mockUsePlayGame.setPhase).not.toHaveBeenCalled();
       expect(screen.queryByRole('button', { name: '恢复当前进度' })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: '重新加载' })).not.toBeInTheDocument();
       expect(screen.queryByText('出现错误，请重试')).not.toBeInTheDocument();
@@ -793,7 +813,7 @@ describe('PlayPage', () => {
         options: [],
         storyText: '生成失败前已收到的正文。',
         displayText: '生成失败前已收到的正文。',
-        connectionStatus: 'error',
+        transport: 'failed',
         generateEvent: mockGenerateEvent,
       });
       rerender(<PlayPage />);
@@ -803,6 +823,29 @@ describe('PlayPage', () => {
       });
       expect(screen.getByTestId('narrative-loading-inline')).toBeInTheDocument();
       expect(screen.queryByTestId('narrative-loading-section')).not.toBeInTheDocument();
+    });
+
+    it('routes a choosing recovery action to read-only choice reconciliation, not event generation', () => {
+      const mockRecoverEventGeneration = jest.fn();
+      const mockRecoverChoiceGeneration = jest.fn();
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'choosing',
+        options: [],
+        storyText: '选择正在后台继续处理。',
+        displayText: '选择正在后台继续处理。',
+        transport: 'polling',
+        recoverEventGeneration: mockRecoverEventGeneration,
+        recoverChoiceGeneration: mockRecoverChoiceGeneration,
+      });
+
+      render(<PlayPage />);
+
+      expect(screen.getByTestId('narrative-loading-inline')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '重新连接' }));
+      expect(mockRecoverChoiceGeneration).toHaveBeenCalledTimes(1);
+      expect(mockRecoverEventGeneration).not.toHaveBeenCalled();
     });
   });
 
@@ -1140,8 +1183,9 @@ describe('PlayPage', () => {
   });
 
   describe('Error handling', () => {
-    it('calls generateEvent on retry click', () => {
+    it('calls generateEvent synchronously on the generic retry without a phase shim or timer', () => {
       const mockGenerateEvent = jest.fn();
+      const timeoutSpy = jest.spyOn(global, 'setTimeout');
       const originalHook = jest.requireMock('@/hooks/usePlayGame');
       originalHook.usePlayGame = () => ({
         ...mockUsePlayGame,
@@ -1151,10 +1195,13 @@ describe('PlayPage', () => {
       
       render(<PlayPage />);
       const retryButton = screen.getByText('重试');
+      timeoutSpy.mockClear();
       fireEvent.click(retryButton);
-      
-      // Should trigger regenerate
-      expect(mockGenerateEvent).toBeDefined();
+
+      expect(mockGenerateEvent).toHaveBeenCalledTimes(1);
+      expect(mockUsePlayGame.setPhase).not.toHaveBeenCalled();
+      expect(timeoutSpy).not.toHaveBeenCalled();
+      timeoutSpy.mockRestore();
     });
   });
 

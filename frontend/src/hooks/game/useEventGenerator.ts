@@ -3,13 +3,23 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useGameStore } from "@/stores/useGameStore";
 import { streamGameEvent } from "@/lib/sse";
+import type { StreamActivityKind } from "@/lib/sse";
 import type { EventOption } from "@/lib/types";
 import type { Phase, ConnectionStatus } from "./usePhaseManager";
+import type { NarrativeTransportState } from "@/components/narrative-loading/NarrativeLoadingState";
 import { handleEventComplete, handleStatusUpdate, type EventHandlers } from "./eventUtils";
 import { parseSSEError } from "./choiceUtils";
+import { fetchGameplayStateSnapshot, fetchPersistedEventSnapshot } from "./eventRecovery";
+import {
+  abortableSleep,
+  beginGameplayRun,
+  invalidateGameplayRun,
+  isAbortError,
+} from "./gameplayRun";
 
-const PERSISTED_EVENT_RECOVERY_INITIAL_DELAY_MS = 45_000;
-const PERSISTED_EVENT_RECOVERY_INTERVAL_MS = 15_000;
+export const EVENT_INACTIVITY_TIMEOUT_MS = 45_000;
+export const EVENT_POLL_INTERVAL_MS = 5_000;
+export const EVENT_POLL_TIMEOUT_MS = 180_000;
 
 interface UseEventGeneratorParams {
   gameId: number | null;
@@ -17,6 +27,8 @@ interface UseEventGeneratorParams {
   setPhase: (phase: Phase | ((prev: Phase) => Phase)) => void;
   setConnectionStatus: (status: ConnectionStatus) => void;
   setReconnectAttempt: (attempt: { current: number; max: number } | null) => void;
+  setTransport: (transport: NarrativeTransportState) => void;
+  setLoadingIdentity: React.Dispatch<React.SetStateAction<number>>;
   setProcessing: (processing: boolean, message?: string) => void;
   setOptions: (options: EventOption[]) => void;
   setStoryText: (text: string) => void;
@@ -25,7 +37,7 @@ interface UseEventGeneratorParams {
   setGameOver: (gameOver: boolean) => void;
   setRoundSummary: (summary: string | null) => void;
   setIsPrefetching: (prefetching: boolean) => void;
-  // Refs passed from parent
+  runTokenRef: React.MutableRefObject<number>;
   abortRef: React.MutableRefObject<AbortController | null>;
   generatingRef: React.MutableRefObject<boolean>;
   pollingRef: React.MutableRefObject<boolean>;
@@ -39,16 +51,36 @@ interface UseEventGeneratorParams {
   isRetryingRef: React.MutableRefObject<boolean>;
 }
 
-/**
- * Hook for generating game events via SSE.
- * Handles event generation, prefetching, and error recovery.
- */
+interface GenerateEventOptions {
+  resume?: boolean;
+  recoveryDepth?: 0 | 1;
+}
+
+function isRecoverableEventStreamError(errorMessage: string): boolean {
+  const normalized = errorMessage.toLowerCase();
+  const httpStatus = Number.parseInt(normalized.match(/status:\s*(\d{3})/)?.[1] ?? "", 10);
+  return (
+    (Number.isFinite(httpStatus) && httpStatus >= 500) ||
+    errorMessage === "Unknown error" ||
+    errorMessage === "undefined" ||
+    normalized.includes("timeout waiting for event generation") ||
+    normalized.includes("network error") ||
+    normalized.includes("failed to fetch") ||
+    normalized.includes("empty_response") ||
+    normalized.includes("incomplete_chunked_encoding") ||
+    normalized.includes("terminated") ||
+    normalized.includes("stream ended")
+  );
+}
+
 export function useEventGenerator({
   gameId,
   phaseRef,
   setPhase,
   setConnectionStatus,
   setReconnectAttempt,
+  setTransport,
+  setLoadingIdentity,
   setProcessing,
   setOptions,
   setStoryText,
@@ -57,6 +89,7 @@ export function useEventGenerator({
   setGameOver,
   setRoundSummary,
   setIsPrefetching,
+  runTokenRef,
   abortRef,
   generatingRef,
   pollingRef,
@@ -65,486 +98,517 @@ export function useEventGenerator({
   prefetchingRef,
   isRetryingRef,
 }: UseEventGeneratorParams) {
-  const retryStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const persistedEventRecoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const eventCursorStorageKey = gameId === null
-    ? null
-    : `story101:event-cursor:${gameId}`;
-  const eventStoryStorageKey = gameId === null
-    ? null
-    : `story101:event-story:${gameId}`;
+  const watchdogCleanupRef = useRef<(() => void) | null>(null);
+  const eventCursorStorageKey = gameId === null ? null : `story101:event-cursor:${gameId}`;
+  const eventStoryStorageKey = gameId === null ? null : `story101:event-story:${gameId}`;
   const lastEventIdRef = useRef<number | null>(null);
+
+  const clearDurableResume = useCallback(() => {
+    lastEventIdRef.current = null;
+    if (eventCursorStorageKey) window.sessionStorage.removeItem(eventCursorStorageKey);
+    if (eventStoryStorageKey) window.sessionStorage.removeItem(eventStoryStorageKey);
+  }, [eventCursorStorageKey, eventStoryStorageKey]);
 
   useEffect(() => {
     if (!eventCursorStorageKey || !eventStoryStorageKey) {
       lastEventIdRef.current = null;
       return;
     }
-    const stored = window.sessionStorage.getItem(eventCursorStorageKey);
-    const parsed = stored === null ? Number.NaN : Number.parseInt(stored, 10);
+
+    const storedCursor = window.sessionStorage.getItem(eventCursorStorageKey);
+    const parsedCursor = storedCursor === null ? Number.NaN : Number.parseInt(storedCursor, 10);
     const storedStory = window.sessionStorage.getItem(eventStoryStorageKey) || "";
-    if (Number.isFinite(parsed) && storedStory) {
-      lastEventIdRef.current = parsed;
-      if (!useGameStore.getState().storyText) {
-        setStoryText(storedStory);
-      }
+    if (Number.isFinite(parsedCursor) && storedStory) {
+      lastEventIdRef.current = parsedCursor;
+      if (!useGameStore.getState().storyText) setStoryText(storedStory);
       return;
     }
+
     lastEventIdRef.current = null;
     window.sessionStorage.removeItem(eventCursorStorageKey);
     window.sessionStorage.removeItem(eventStoryStorageKey);
   }, [eventCursorStorageKey, eventStoryStorageKey, setStoryText]);
 
-  const clearRetryStatusTimer = useCallback(() => {
-    if (retryStatusTimerRef.current) {
-      clearTimeout(retryStatusTimerRef.current);
-      retryStatusTimerRef.current = null;
+  const generateEvent = useCallback(async (options?: GenerateEventOptions) => {
+    const resume = Boolean(options?.resume);
+    const recoveryDepth: 0 | 1 = options?.recoveryDepth ?? (resume ? 1 : 0);
+    const state = useGameStore.getState();
+
+    if (!gameId) return;
+    if (generatingRef.current && !resume) return;
+    if (isRetryingRef.current && !resume) return;
+    if (phaseRef.current !== "loading" && phaseRef.current !== "error" && !resume) return;
+
+    watchdogCleanupRef.current?.();
+    const run = beginGameplayRun(runTokenRef, abortRef);
+    const { controller, isCurrent, isLive } = run;
+    if (resume) {
+      setTransport("reconnecting");
+    } else {
+      setLoadingIdentity((identity) => identity + 1);
+      setTransport("active");
     }
-  }, []);
 
-  const clearPersistedEventRecovery = useCallback(() => {
-    if (persistedEventRecoveryTimerRef.current !== null) {
-      clearTimeout(persistedEventRecoveryTimerRef.current);
-      persistedEventRecoveryTimerRef.current = null;
+    generatingRef.current = true;
+    pollingRef.current = false;
+    isRetryingRef.current = false;
+
+    const currentPhase = phaseRef.current;
+    const currentEvent = state.currentEvent;
+    if (!resume) {
+      clearDurableResume();
+      if (currentPhase === "error" || !currentEvent?.options?.length) setStoryText("");
     }
-  }, []);
 
-  const startPersistedEventRecovery = useCallback(() => {
-    const recoverPersistedEvent = async () => {
-      if (!generatingRef.current || pollingRef.current) return;
+    setPhase("generating");
+    setConnectionStatus(null);
+    setReconnectAttempt(null);
 
-      try {
-        await useGameStore.getState().syncState();
-        if (!generatingRef.current || pollingRef.current) return;
+    let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
+    let terminal = false;
+    let errorHandlingPromise: Promise<void> | null = null;
+    let errorHandled = false;
+    const hadRetryRef = { current: false };
 
-        const state = useGameStore.getState();
-        const persistedEvent = state.currentEvent;
-
-        if (persistedEvent?.options?.length) {
-          const persistedStory = persistedEvent.story || state.storyText;
-          console.warn("[generateEvent] Recovered persisted event while SSE remained open");
-          clearPersistedEventRecovery();
-          clearRetryStatusTimer();
-          isRetryingRef.current = false;
-          abortRef.current?.abort();
-          setStoryText(persistedStory);
-          setOptions(persistedEvent.options);
-          setCurrentEvent({ story: persistedStory, options: persistedEvent.options });
-          setProcessing(false);
-          setConnectionStatus(null);
-          generatingRef.current = false;
-          setRoundSummary(null);
-          setPhase("options");
-          return;
-        }
-      } catch (err) {
-        console.warn("[generateEvent] Persisted-event recovery check failed:", err);
+    const clearWatchdog = () => {
+      if (inactivityTimer !== null) {
+        clearTimeout(inactivityTimer);
+        inactivityTimer = null;
       }
-
-      persistedEventRecoveryTimerRef.current = setTimeout(
-        recoverPersistedEvent,
-        PERSISTED_EVENT_RECOVERY_INTERVAL_MS
-      );
     };
+    watchdogCleanupRef.current = clearWatchdog;
+    controller.signal.addEventListener("abort", clearWatchdog, { once: true });
 
-    clearPersistedEventRecovery();
-    persistedEventRecoveryTimerRef.current = setTimeout(
-      recoverPersistedEvent,
-      PERSISTED_EVENT_RECOVERY_INITIAL_DELAY_MS
-    );
-  }, [abortRef, clearPersistedEventRecovery, generatingRef, pollingRef, setConnectionStatus, setCurrentEvent, setOptions, setPhase, setProcessing, setRoundSummary, setStoryText]);
+    const guard = <Args extends unknown[]>(callback: (...args: Args) => void) =>
+      (...args: Args) => {
+        if (!isLive()) return;
+        callback(...args);
+      };
 
-  const armRetryStatusTimeout = useCallback(() => {
-    clearRetryStatusTimer();
-    retryStatusTimerRef.current = setTimeout(() => {
-      if (!isRetryingRef.current) return;
-      console.warn("[generateEvent] Retry status timed out, clearing retry guard");
-      isRetryingRef.current = false;
+    const finishAsFailed = () => {
+      if (!isLive()) return;
+      terminal = true;
+      clearWatchdog();
       generatingRef.current = false;
       pollingRef.current = false;
+      isRetryingRef.current = false;
       setProcessing(false);
       setConnectionStatus("error");
       setReconnectAttempt(null);
       setRoundSummary(null);
+      setTransport("failed");
       setPhase("error");
-      retryStatusTimerRef.current = null;
-    }, 60000);
+    };
+
+    const commitPersistedCompletion = (story: string, persistedOptions: EventOption[]) => {
+      if (!isLive()) return;
+      terminal = true;
+      clearWatchdog();
+      if (story.trim()) setStoryText(story);
+      setOptions(persistedOptions);
+      setCurrentEvent({ story, options: persistedOptions });
+      setProcessing(false);
+      setConnectionStatus(null);
+      setReconnectAttempt(null);
+      setRoundSummary(null);
+      generatingRef.current = false;
+      pollingRef.current = false;
+      isRetryingRef.current = false;
+      clearDurableResume();
+      setTransport("active");
+      setPhase("options");
+    };
+
+    const commitPersistedGameOver = () => {
+      if (!isLive()) return;
+      terminal = true;
+      clearWatchdog();
+      setProcessing(false);
+      setConnectionStatus(null);
+      setReconnectAttempt(null);
+      setRoundSummary(null);
+      generatingRef.current = false;
+      pollingRef.current = false;
+      isRetryingRef.current = false;
+      clearDurableResume();
+      setGameOver(true);
+      setTransport("active");
+      setPhase("ending");
+    };
+
+    const pollForCompletion = async (): Promise<void> => {
+      if (!isLive()) return;
+      terminal = true;
+      clearWatchdog();
+      pollingRef.current = true;
+      setTransport("polling");
+      setProcessing(true, "generating_story");
+      setConnectionStatus(null);
+
+      const deadline = Date.now() + EVENT_POLL_TIMEOUT_MS;
+      let recoveredPartialStory = "";
+
+      while (isLive()) {
+        const remainingRequestTime = deadline - Date.now();
+        if (remainingRequestTime <= 0) break;
+        try {
+          const snapshot = await fetchPersistedEventSnapshot(
+            gameId,
+            controller.signal,
+            remainingRequestTime,
+          );
+          if (!isLive()) return;
+
+          if (snapshot?.gameOver) {
+            commitPersistedGameOver();
+            return;
+          }
+
+          if (snapshot?.options.length) {
+            const completedStory = snapshot.story.trim()
+              ? snapshot.story
+              : recoveredPartialStory || useGameStore.getState().storyText;
+            if (completedStory.trim()) {
+              commitPersistedCompletion(completedStory, snapshot.options);
+              return;
+            }
+          }
+
+          if (snapshot?.story.trim()) {
+            recoveredPartialStory = snapshot.story;
+            setStoryText(snapshot.story);
+            setCurrentEvent({ story: snapshot.story, options: [] });
+          }
+        } catch (pollError) {
+          if (!isLive() || isAbortError(pollError)) return;
+          console.warn("[generateEvent] Persisted-event polling failed:", pollError);
+        }
+
+        if (!isLive()) return;
+        if (Date.now() >= deadline) break;
+        const remaining = Math.max(0, deadline - Date.now());
+        try {
+          await abortableSleep(Math.min(EVENT_POLL_INTERVAL_MS, remaining), controller.signal);
+        } catch (sleepError) {
+          if (!isLive() || isAbortError(sleepError)) return;
+          throw sleepError;
+        }
+        if (!isLive()) return;
+      }
+
+      if (!isLive()) return;
+      if (recoveredPartialStory.trim()) {
+        setStoryText(recoveredPartialStory);
+        setCurrentEvent({ story: recoveredPartialStory, options: [] });
+      }
+      finishAsFailed();
+    };
+
+    const beginRecovery = () => {
+      if (!isLive()) return;
+      clearWatchdog();
+      if (recoveryDepth === 0) {
+        setTransport("reconnecting");
+        void generateEvent({ resume: true, recoveryDepth: 1 });
+        return;
+      }
+      void pollForCompletion();
+    };
+
+    const armWatchdog = () => {
+      clearWatchdog();
+      if (!isLive() || terminal) return;
+      inactivityTimer = setTimeout(() => {
+        inactivityTimer = null;
+        if (!isLive() || terminal) return;
+        beginRecovery();
+      }, EVENT_INACTIVITY_TIMEOUT_MS);
+    };
+
+    const touchActivity = () => {
+      if (!isLive() || terminal) return;
+      setTransport("active");
+      setReconnectAttempt(null);
+      armWatchdog();
+    };
+
+    const handle404 = async (): Promise<void> => {
+      if (!isLive()) return;
+      try {
+        setProcessing(true, "恢复游戏状态...");
+        const snapshot = await fetchPersistedEventSnapshot(
+          gameId,
+          controller.signal,
+          EVENT_INACTIVITY_TIMEOUT_MS,
+        );
+        if (!isLive()) return;
+        if (snapshot?.gameOver) {
+          commitPersistedGameOver();
+          return;
+        }
+        if (snapshot?.options.length) {
+          const completedStory = snapshot.story || useGameStore.getState().storyText;
+          if (completedStory.trim()) {
+            commitPersistedCompletion(completedStory, snapshot.options);
+            return;
+          }
+        }
+        setProcessing(false);
+        generatingRef.current = false;
+        phaseRef.current = "loading";
+        setPhase("loading");
+        await abortableSleep(100, controller.signal);
+        if (!isLive()) return;
+        void generateEvent({ resume: false, recoveryDepth: 0 });
+      } catch (restoreError) {
+        if (!isLive() || isAbortError(restoreError)) return;
+        const restoreMessage = parseSSEError(restoreError).toLowerCase();
+        if (restoreMessage.includes("404") || restoreMessage.includes("not found")) {
+          finishAsFailed();
+          return;
+        }
+        finishAsFailed();
+      }
+    };
+
+    const handleStreamError = async (error: unknown): Promise<void> => {
+      if (!isLive() || isAbortError(error)) return;
+      clearWatchdog();
+      const errorMessage = parseSSEError(error);
+      if (errorMessage.includes("404") || errorMessage.includes("No active game session")) {
+        await handle404();
+        return;
+      }
+      if (isRecoverableEventStreamError(errorMessage)) {
+        beginRecovery();
+        return;
+      }
+      finishAsFailed();
+    };
+
+    const dispatchStreamError = (error: unknown): Promise<void> => {
+      if (!isLive() || isAbortError(error)) return Promise.resolve();
+      if (errorHandled) return errorHandlingPromise ?? Promise.resolve();
+      errorHandled = true;
+      terminal = true;
+      clearWatchdog();
+      errorHandlingPromise = handleStreamError(error);
+      return errorHandlingPromise;
+    };
+
+    const eventHandlers: EventHandlers = {
+      setStoryText: guard(setStoryText),
+      setOptions: guard(setOptions),
+      setCurrentEvent: guard(setCurrentEvent),
+      setPhase: guard(setPhase as (phase: string) => void),
+      setGameOver: guard(setGameOver),
+      setRoundSummary: guard(setRoundSummary),
+      setProcessing: guard(setProcessing),
+      setConnectionStatus: guard(setConnectionStatus as (status: string | null) => void),
+      appendStoryText: guard(appendStoryText),
+      generatingRef,
+      isRetryingRef,
+      hadRetryRef,
+      isCurrentRun: isCurrent,
+      setTransport: guard(setTransport),
+    };
+
+    armWatchdog();
+    try {
+      await streamGameEvent(
+        gameId,
+        {
+          onStory: (text) => {
+            if (!isLive() || terminal) return;
+            touchActivity();
+            appendStoryText(text);
+          },
+          onEventId: (eventId) => {
+            if (!isLive() || terminal) return;
+            lastEventIdRef.current = eventId;
+            if (eventCursorStorageKey) {
+              window.sessionStorage.setItem(eventCursorStorageKey, String(eventId));
+            }
+            if (eventStoryStorageKey) {
+              window.sessionStorage.setItem(eventStoryStorageKey, useGameStore.getState().storyText);
+            }
+          },
+          onStatus: (status) => {
+            if (!isLive() || terminal) return;
+            touchActivity();
+            handleStatusUpdate(status, setProcessing, isRetryingRef, () => {
+              hadRetryRef.current = true;
+              clearDurableResume();
+              setStoryText("");
+            });
+          },
+          onActivity: (kind: StreamActivityKind) => {
+            if (!isLive()) return;
+            if (kind === "complete" || kind === "error") clearWatchdog();
+          },
+          onConnectionStatus: (status) => {
+            if (!isLive() || terminal) return;
+            setConnectionStatus(status);
+            if (status === "reconnecting") setTransport("reconnecting");
+            if (status !== "reconnecting") setReconnectAttempt(null);
+          },
+          onReconnecting: (attempt, maxRetries) => {
+            if (!isLive() || terminal) return;
+            setTransport("reconnecting");
+            setReconnectAttempt({ current: attempt, max: maxRetries });
+          },
+          onComplete: (data) => {
+            if (!isLive() || terminal) return;
+            terminal = true;
+            clearWatchdog();
+            const valid = handleEventComplete(data, eventHandlers);
+            if (valid && isCurrent()) clearDurableResume();
+          },
+          onError: (error) => {
+            void dispatchStreamError(error);
+          },
+        },
+        {
+          signal: controller.signal,
+          lastEventId: resume ? lastEventIdRef.current ?? -1 : undefined,
+        },
+      );
+      if (errorHandlingPromise) await errorHandlingPromise;
+    } catch (error) {
+      if (!isCurrent() || controller.signal.aborted || isAbortError(error)) return;
+      await dispatchStreamError(error);
+    }
   }, [
-    clearRetryStatusTimer,
+    abortRef,
+    appendStoryText,
+    clearDurableResume,
+    eventCursorStorageKey,
+    eventStoryStorageKey,
+    gameId,
     generatingRef,
     isRetryingRef,
+    phaseRef,
     pollingRef,
+    runTokenRef,
     setConnectionStatus,
+    setCurrentEvent,
+    setGameOver,
+    setLoadingIdentity,
+    setOptions,
     setPhase,
     setProcessing,
     setReconnectAttempt,
     setRoundSummary,
+    setStoryText,
+    setTransport,
   ]);
 
-  // Event handlers object for utility functions
-  const eventHandlers: EventHandlers = {
-    setStoryText,
-    setOptions,
-    setCurrentEvent,
-    setPhase: setPhase as (phase: string) => void,
-    setGameOver,
-    setRoundSummary,
-    setProcessing,
-    setConnectionStatus: setConnectionStatus as (status: string | null) => void,
-    appendStoryText,
-    generatingRef,
-    isRetryingRef,
-  };
-
-  // Generate event function
-  const generateEvent = useCallback(async (options?: { resume?: boolean }) => {
-    const resume = Boolean(options?.resume);
-    const caller = new Error().stack?.split('\n')[2]?.trim() || 'unknown';
-    const state = useGameStore.getState();
-    const storyLen = state?.storyText?.length ?? 0;
-    console.log(`[generateEvent] Called from: ${caller}`);
-    console.log(`[generateEvent] Current state: gameId=${gameId}, phase=${phaseRef.current}, storyLen=${storyLen}, generating=${generatingRef.current}`);
-
-    if (!gameId) {
-      console.warn("[generateEvent] Blocked: no gameId");
-      return;
-    }
-    if (generatingRef.current && !resume) {
-      console.warn("[generateEvent] Blocked: already generating");
-      return;
-    }
-    if (isRetryingRef.current && !resume) {
-      console.warn("[generateEvent] Blocked: retry in progress within existing SSE stream");
-      return;
-    }
-
-    const currentPhase = phaseRef.current;
-    if (currentPhase !== "loading" && currentPhase !== "error" && !resume) {
-      console.warn(`[generateEvent] Blocked: current phase is ${currentPhase}`);
-      return;
-    }
-
-    generatingRef.current = true;
-    console.log(`[generateEvent] Starting generation for gameId: ${gameId}`);
-
-    abortRef.current?.abort();
-    const storeState = useGameStore.getState();
-    const currentEvent = storeState?.currentEvent;
-    if (!resume) {
-      lastEventIdRef.current = null;
-      if (eventCursorStorageKey) {
-        window.sessionStorage.removeItem(eventCursorStorageKey);
-      }
-      if (eventStoryStorageKey) {
-        window.sessionStorage.removeItem(eventStoryStorageKey);
-      }
-      if (currentPhase === "error" || !currentEvent?.options?.length) {
-        console.log("[generateEvent] Clearing story for a new generation attempt");
-        setStoryText("");
-      }
-    }
-    setPhase("generating");
-    setConnectionStatus(null);
-    setReconnectAttempt(null);
-    abortRef.current = new AbortController();
-    startPersistedEventRecovery();
-    let streamErrorHandled = false;
-
-    try {
-      await streamGameEvent(
-      gameId,
-      {
-        onStory: appendStoryText,
-        onEventId: (eventId) => {
-          lastEventIdRef.current = eventId;
-          if (eventCursorStorageKey) {
-            window.sessionStorage.setItem(eventCursorStorageKey, String(eventId));
-          }
-          if (eventStoryStorageKey) {
-            window.sessionStorage.setItem(
-              eventStoryStorageKey,
-              useGameStore.getState().storyText
-            );
-          }
-        },
-        onStatus: (status) => {
-          handleStatusUpdate(status, setProcessing, isRetryingRef);
-          if (status.phase === "retry" || status.phase === "retrying") {
-            armRetryStatusTimeout();
-          } else {
-            clearRetryStatusTimer();
-          }
-        },
-        onConnectionStatus: (status) => {
-          setConnectionStatus(status);
-          if (status !== "reconnecting") {
-            setReconnectAttempt(null);
-          }
-        },
-        onReconnecting: (attempt, maxRetries) => {
-          setReconnectAttempt({ current: attempt, max: maxRetries });
-        },
-        onComplete: (data) => {
-          clearPersistedEventRecovery();
-          clearRetryStatusTimer();
-          handleEventComplete(data, eventHandlers);
-          lastEventIdRef.current = null;
-          if (eventCursorStorageKey) {
-            window.sessionStorage.removeItem(eventCursorStorageKey);
-          }
-          if (eventStoryStorageKey) {
-            window.sessionStorage.removeItem(eventStoryStorageKey);
-          }
-        },
-        onError: async (err) => {
-          streamErrorHandled = true;
-          clearPersistedEventRecovery();
-          clearRetryStatusTimer();
-          const errorMsg = parseSSEError(err);
-          console.log(`[generateEvent] SSE error: msg="${errorMsg}"`);
-
-          if (errorMsg.includes("404") || errorMsg.includes("No active game session")) {
-            console.log("[generateEvent] Session expired, restoring and regenerating...");
-            try {
-              setProcessing(true, "恢复游戏状态...");
-              await useGameStore.getState()?.syncPlayerState?.();
-              generatingRef.current = false;
-              setProcessing(false);
-              setPhase("loading");
-              setTimeout(() => generateEvent(), 100);
-              return;
-            } catch (restoreErr) {
-              const restoreErrorMsg = String((restoreErr as Error)?.message || restoreErr);
-              console.error("[generateEvent] Failed to restore session:", restoreErr);
-
-              if (restoreErrorMsg.includes("not found") || restoreErrorMsg.includes("404")) {
-                console.warn("[generateEvent] Game no longer exists, redirecting to home...");
-                setProcessing(false);
-                setPhase("error");
-                return;
-              }
-            }
-          }
-
-          const isTimeout = errorMsg.includes("Timeout waiting for event generation");
-          const isRecoverable = errorMsg === "Unknown error" || errorMsg === "undefined" || isTimeout;
-
-          if (!errorMsg.includes("404") && !isRecoverable) {
-            console.error("SSE final error:", err);
-          } else if (isRecoverable) {
-            console.warn("[generateEvent] SSE connection interrupted or timed out, will start polling...");
-          }
-
-          if (pollingRef.current) {
-            console.warn("[Polling] Blocked: already polling");
-            return;
-          }
-          pollingRef.current = true;
-
-          console.log("SSE failed, starting polling...");
-          setProcessing(true, "generating_story");
-          setConnectionStatus(null);
-
-          const maxPollingTime = 180000;  // 3分钟，改善用户体验
-          const pollInterval = 5000;      // 5秒，更快检测完成状态
-          const startTime = Date.now();
-          let recoveredPartialStory = "";
-
-          const pollForCompletion = async (): Promise<boolean> => {
-            try {
-              await useGameStore.getState()?.syncState?.();
-              const state = useGameStore.getState();
-
-              if (state?.currentEvent?.options?.length) {
-                setOptions(state.currentEvent.options);
-                setCurrentEvent({
-                  ...state.currentEvent,
-                  story: useGameStore.getState()?.storyText || state.currentEvent.story,
-                });
-                setPhase("options");
-                setProcessing(false);
-                generatingRef.current = false;
-                pollingRef.current = false;
-                setRoundSummary(null);
-                return true;
-              }
-
-              const partialStory =
-                state?.currentEvent?.story ||
-                state?.storyText ||
-                "";
-              if (partialStory.trim()) {
-                recoveredPartialStory = partialStory;
-                setStoryText(partialStory);
-                setCurrentEvent({
-                  story: partialStory,
-                  options: [],
-                });
-              }
-              return false;
-            } catch (pollErr) {
-              console.error("Polling error:", pollErr);
-              return false;
-            }
-          };
-
-          if (await pollForCompletion()) return;
-
-          while (Date.now() - startTime < maxPollingTime) {
-            await new Promise(resolve => setTimeout(resolve, pollInterval));
-            if (await pollForCompletion()) return;
-            console.log(`Polling... (${Math.round((Date.now() - startTime) / 1000)}s elapsed)`);
-          }
-
-          console.warn("Polling timeout after 3 minutes, entering error state");
-          setProcessing(false);
-          setConnectionStatus("error");
-          generatingRef.current = false;
-          pollingRef.current = false;
-          isRetryingRef.current = false;
-          if (recoveredPartialStory.trim()) {
-            setStoryText(recoveredPartialStory);
-            setCurrentEvent({
-              story: recoveredPartialStory,
-              options: [],
-            });
-          }
-          setPhase("error");
-        },
-      },
-      {
-        signal: abortRef.current.signal,
-        lastEventId: resume && lastEventIdRef.current !== null
-          ? lastEventIdRef.current
-          : undefined,
-      }
-    );
-    } catch (err) {
-      // Ignore AbortError - it's expected when component unmounts or user navigates away
-      if (err instanceof Error && err.name === 'AbortError') {
-        console.log("[generateEvent] Generation aborted (expected)");
-      } else if (streamErrorHandled || pollingRef.current) {
-        console.warn("[generateEvent] streamGameEvent rejection already handled by polling recovery");
-      } else {
-        throw err; // Re-throw other errors
-      }
-    }
-  }, [gameId, eventCursorStorageKey, eventStoryStorageKey, setStoryText, appendStoryText, setProcessing, setCurrentEvent, setGameOver, setPhase, phaseRef, setConnectionStatus, setReconnectAttempt, setOptions, setRoundSummary, armRetryStatusTimeout, clearRetryStatusTimer, clearPersistedEventRecovery, startPersistedEventRecovery]);
-
   const recoverEventGeneration = useCallback(async () => {
-    abortRef.current?.abort();
+    watchdogCleanupRef.current?.();
+    invalidateGameplayRun(runTokenRef, abortRef);
     prefetchAbortRef.current?.abort();
     generatingRef.current = false;
     pollingRef.current = false;
     prefetchingRef.current = false;
     isRetryingRef.current = false;
-    clearPersistedEventRecovery();
-    clearRetryStatusTimer();
     prefetchResultRef.current = null;
     setIsPrefetching(false);
     setProcessing(false);
     setConnectionStatus(null);
     setReconnectAttempt(null);
+    setTransport("reconnecting");
     phaseRef.current = "generating";
     setPhase("generating");
-    await generateEvent({ resume: true });
+    await generateEvent({ resume: true, recoveryDepth: 1 });
   }, [
     abortRef,
-    prefetchAbortRef,
-    generatingRef,
-    pollingRef,
-    prefetchingRef,
-    isRetryingRef,
-    prefetchResultRef,
-    setIsPrefetching,
-    setProcessing,
-    setConnectionStatus,
-    setReconnectAttempt,
-    phaseRef,
-    setPhase,
-    clearRetryStatusTimer,
-    clearPersistedEventRecovery,
     generateEvent,
+    generatingRef,
+    isRetryingRef,
+    phaseRef,
+    pollingRef,
+    prefetchAbortRef,
+    prefetchResultRef,
+    prefetchingRef,
+    runTokenRef,
+    setConnectionStatus,
+    setIsPrefetching,
+    setPhase,
+    setProcessing,
+    setReconnectAttempt,
+    setTransport,
   ]);
 
-  // Prefetch next event (background generation)
   const prefetchNextEvent = useCallback(async () => {
-    if (!gameId) return;
-    if (prefetchingRef.current) {
-      console.log("[prefetch] Already prefetching, skip");
-      return;
-    }
-
-    console.log("[prefetch] Starting prefetch for next event...");
+    if (!gameId || prefetchingRef.current) return;
     prefetchingRef.current = true;
     setIsPrefetching(true);
     prefetchResultRef.current = null;
 
     prefetchAbortRef.current?.abort();
-    prefetchAbortRef.current = new AbortController();
-
+    const controller = new AbortController();
+    prefetchAbortRef.current = controller;
+    const isCurrentPrefetch = () =>
+      prefetchAbortRef.current === controller && !controller.signal.aborted;
     let prefetchedStory = "";
-    let prefetchedOptions: EventOption[] = [];
 
     try {
-      await useGameStore.getState()?.syncPlayerState?.();
-
+      // This probe is intentionally read-only. A superseded prefetch must not
+      // write session/event stores before its captured signal is rechecked.
+      await fetchGameplayStateSnapshot(
+        gameId,
+        controller.signal,
+        EVENT_INACTIVITY_TIMEOUT_MS,
+      );
+      if (!isCurrentPrefetch()) return;
       await streamGameEvent(
         gameId,
         {
           onStory: (chunk) => {
-            prefetchedStory += chunk;
+            if (isCurrentPrefetch()) prefetchedStory += chunk;
           },
           onComplete: (data) => {
-            const receivedOptions = data.options as EventOption[] | undefined;
-            if (receivedOptions?.length) {
-              prefetchedOptions = receivedOptions;
+            if (!isCurrentPrefetch()) return;
+            const prefetchedOptions = data.options as EventOption[] | undefined;
+            if (prefetchedOptions?.length) {
               prefetchResultRef.current = {
                 story: prefetchedStory,
                 options: prefetchedOptions,
                 event: { story: prefetchedStory, options: prefetchedOptions },
               };
-              console.log(`[prefetch] Prefetch complete! story=${prefetchedStory.length} chars, options=${prefetchedOptions.length}`);
             }
           },
-          onError: (err) => {
-            console.warn("[prefetch] Prefetch failed:", err.message);
-            prefetchResultRef.current = null;
+          onError: () => {
+            if (isCurrentPrefetch()) prefetchResultRef.current = null;
           },
         },
-        { signal: prefetchAbortRef.current.signal }
+        { signal: controller.signal },
       );
-    } catch (err) {
-      // Ignore AbortError - it's expected when component unmounts or effect re-runs
-      if (err instanceof Error && err.name === 'AbortError') {
-        console.log("[prefetch] Prefetch aborted (expected)");
-      } else {
-        console.warn("[prefetch] Prefetch error:", err);
+    } catch (error) {
+      if (isCurrentPrefetch() && !isAbortError(error)) {
+        console.warn("[prefetch] Prefetch error:", error);
+        prefetchResultRef.current = null;
       }
-      prefetchResultRef.current = null;
     } finally {
-      prefetchingRef.current = false;
-      setIsPrefetching(false);
+      if (prefetchAbortRef.current === controller) {
+        prefetchAbortRef.current = null;
+        prefetchingRef.current = false;
+        setIsPrefetching(false);
+      }
     }
-  }, [gameId, setIsPrefetching]);
+  }, [gameId, prefetchAbortRef, prefetchResultRef, prefetchingRef, setIsPrefetching]);
 
-  // Cleanup effect
   useEffect(() => {
     return () => {
-      abortRef.current?.abort();
+      watchdogCleanupRef.current?.();
+      invalidateGameplayRun(runTokenRef, abortRef);
       prefetchAbortRef.current?.abort();
       generatingRef.current = false;
       pollingRef.current = false;
       prefetchingRef.current = false;
       isRetryingRef.current = false;
-      clearPersistedEventRecovery();
-      clearRetryStatusTimer();
     };
-  }, [abortRef, prefetchAbortRef, generatingRef, pollingRef, prefetchingRef, isRetryingRef, clearPersistedEventRecovery, clearRetryStatusTimer]);
+  }, [abortRef, gameId, generatingRef, isRetryingRef, pollingRef, prefetchAbortRef, prefetchingRef, runTokenRef]);
 
-  return {
-    generateEvent,
-    recoverEventGeneration,
-    prefetchNextEvent,
-  };
+  return { generateEvent, recoverEventGeneration, prefetchNextEvent };
 }

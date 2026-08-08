@@ -71,6 +71,10 @@ describe('choiceUtils', () => {
       expect(parseSSEError({ message: 'Test error message' })).toBe('Test error message');
     });
 
+    it('preserves the message from an Error instance', () => {
+      expect(parseSSEError(new Error('HTTP error! status: 403'))).toBe('HTTP error! status: 403');
+    });
+
     it('extracts error property', () => {
       expect(parseSSEError({ error: 'Error from error property' })).toBe('Error from error property');
     });
@@ -105,10 +109,14 @@ describe('choiceUtils', () => {
       expect(isRecoverableChoiceStreamError('network error')).toBe(true);
       expect(isRecoverableChoiceStreamError('net::ERR_INCOMPLETE_CHUNKED_ENCODING')).toBe(true);
       expect(isRecoverableChoiceStreamError('Unknown error')).toBe(true);
+      expect(isRecoverableChoiceStreamError('HTTP error! status: 502')).toBe(true);
+      expect(isRecoverableChoiceStreamError('Timeout waiting for choice stream activity')).toBe(true);
+      expect(isRecoverableChoiceStreamError('Timeout processing choice')).toBe(true);
     });
 
     it('does not treat domain validation errors as recoverable stream failures', () => {
       expect(isRecoverableChoiceStreamError('Invalid option index')).toBe(false);
+      expect(isRecoverableChoiceStreamError('HTTP error! status: 403')).toBe(false);
     });
   });
 
@@ -427,6 +435,48 @@ describe('choiceUtils', () => {
       );
 
       expect(mockHandlers.setProcessing).toHaveBeenCalledWith(true, '恢复游戏状态...');
+    });
+
+    it('falls through to the existing failure path when the read-only session probe fails', async () => {
+      const signal = new AbortController().signal;
+      (global.fetch as jest.Mock)
+        .mockRejectedValueOnce(new Error('restore probe failed'))
+        .mockResolvedValueOnce(jsonResponse({
+          story_continuation: 'sync fallback result',
+          need_weekly_summary: false,
+          game_over: false,
+        }));
+      const context: ChoiceErrorContext = {
+        optionIndex: 0,
+        isRetry: false,
+        sseSucceeded: false,
+        signal,
+      };
+
+      await handleChoiceError({ message: '404 Not Found' }, 123, mockHandlers, context, 'test');
+
+      expect((global.fetch as jest.Mock).mock.calls.some(([url]) =>
+        String(url).includes('/choice-sync')
+      )).toBe(true);
+    });
+
+    it('commits ending when a restored session snapshot is already game-over', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        current_event: null,
+        player_state: { resume_view: { phase: 'ending' } },
+        progress: { week: 52, total_weeks: 52 },
+      }));
+      const context: ChoiceErrorContext = {
+        optionIndex: 0,
+        isRetry: false,
+        sseSucceeded: false,
+        signal: new AbortController().signal,
+      };
+
+      await handleChoiceError({ message: '404 Not Found' }, 123, mockHandlers, context, 'test');
+
+      expect(mockHandlers.setGameOver).toHaveBeenCalledWith(true);
+      expect(mockHandlers.setPhase).toHaveBeenCalledWith('ending');
     });
 
     it('handles fallback when SSE not succeeded', async () => {

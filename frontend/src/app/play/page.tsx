@@ -34,6 +34,7 @@ import { CompletedStoryMediaGate } from "@/components/game/CompletedStoryMediaGa
 import { getSceneImageDisplayMode } from "@/components/game/sceneImageStagePolicy";
 
 import { usePlayGame } from "@/hooks/usePlayGame";
+import { useDelayedLoading } from "@/hooks/useDelayedLoading";
 import { useGameIdFromUrl } from "@/hooks/useGameIdFromUrl";
 import { useGameStore } from "@/stores/useGameStore";
 import { useMusicStore } from "@/stores/useMusicStore";
@@ -90,8 +91,8 @@ export default function PlayPage() {
     saveToast,
     regenerateToast,
     endingData,
-    elapsedSeconds,
-    connectionStatus,
+    transport: gameplayTransport,
+    loadingIdentity,
     isPrefetching,  // ★ 预生成状态
 
     // Store values
@@ -105,9 +106,7 @@ export default function PlayPage() {
     storyContainerRef,
 
     // Actions
-    setPhase,
     setStoryText,
-    setOptions,
 
     // Handlers
     handleChoice,
@@ -118,6 +117,7 @@ export default function PlayPage() {
     handleRegenerate,
     generateEvent,
     recoverEventGeneration,
+    recoverChoiceGeneration,
 
     // Utilities
     hydrated,
@@ -161,12 +161,6 @@ export default function PlayPage() {
   const storyReadyForCompletedMedia =
     phase === "options" || phase === "result" || phase === "summary";
   const isCurrentStoryBusy = phase === "loading" || phase === "generating" || phase === "choosing";
-  const gameplayTransport =
-    connectionStatus === "reconnecting"
-      ? "reconnecting"
-      : connectionStatus === "error"
-        ? "failed"
-        : "active";
   const gameplayOperation = phase === "choosing" ? "choice" : "event";
   const isUnifiedGameplayFailure =
     phase === "error" && gameplayTransport === "failed";
@@ -198,9 +192,11 @@ export default function PlayPage() {
   const setConstraintLevel = useGameStore((state) => state.setConstraintLevel);
   const enableSceneImage = useGameStore((state) => state.enableSceneImage);
   const setEnableSceneImage = useGameStore((state) => state.setEnableSceneImage);
-  const isGameplayDelayed =
-    isCurrentStoryBusy &&
-    elapsedSeconds * 1000 >= getNarrativeLoadingDelay("gameplay", constraintLevel);
+  const isGameplayDelayed = useDelayedLoading({
+    isLoading: isCurrentStoryBusy,
+    delay: getNarrativeLoadingDelay("gameplay", constraintLevel),
+    loadingIdentity,
+  });
 
   // ★ 加载故事风格
   const loadNarrativeStyles = useCallback(async () => {
@@ -232,18 +228,23 @@ export default function PlayPage() {
   }, [gameId]);
 
   const handleRecoverGeneration = useCallback(() => {
-    setOptions([]);
-    setPhase("loading");
-    setTimeout(() => recoverEventGeneration(), 0);
-  }, [recoverEventGeneration, setOptions, setPhase]);
+    void recoverEventGeneration();
+  }, [recoverEventGeneration]);
 
   const handleRetryGeneration = useCallback(() => {
-    setPhase("loading");
-    setTimeout(() => generateEvent(), 0);
-  }, [generateEvent, setPhase]);
+    void generateEvent();
+  }, [generateEvent]);
+
+  const handleRecoverChoice = useCallback(() => {
+    void recoverChoiceGeneration();
+  }, [recoverChoiceGeneration]);
 
   const handleGameplayLoadingAction =
-    gameplayTransport === "failed" ? handleRetryGeneration : handleRecoverGeneration;
+    gameplayTransport === "failed"
+      ? handleRetryGeneration
+      : gameplayOperation === "choice"
+        ? handleRecoverChoice
+        : handleRecoverGeneration;
 
   const handleOpenCollection = useCallback(() => {
     setActiveSidePanel("collection");
@@ -820,10 +821,7 @@ export default function PlayPage() {
             <p className="text-destructive">出现错误，请重试</p>
             <Button
               variant="outline"
-              onClick={() => {
-                setPhase("loading");
-                setTimeout(() => generateEvent(), 0);
-              }}
+              onClick={handleRetryGeneration}
               className="touch-target"
             >
               重试

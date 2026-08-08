@@ -8,68 +8,6 @@ import { useGameStore } from '@/stores/useGameStore';
 import type { Phase, ConnectionStatus } from '@/hooks/game/usePhaseManager';
 import { createSSEMockResponse } from '@/__tests__/helpers/sse-mock';
 
-function createHangingSSEMockResponse(chunks: string[]): Response {
-  let index = 0;
-  const reader: ReadableStreamDefaultReader<Uint8Array> = {
-    read(): Promise<ReadableStreamReadResult<Uint8Array>> {
-      if (index < chunks.length) {
-        const value = new TextEncoder().encode(chunks[index]);
-        index += 1;
-        return Promise.resolve({ done: false, value });
-      }
-      return new Promise(() => {});
-    },
-    cancel(): Promise<void> {
-      return Promise.resolve();
-    },
-    releaseLock(): void {},
-    get closed(): Promise<undefined> {
-      return Promise.resolve(undefined);
-    },
-  };
-  return {
-    ok: true,
-    status: 200,
-    headers: new Headers({ 'content-type': 'text/event-stream' }),
-    body: {
-      locked: false,
-      cancel: () => Promise.resolve(),
-      getReader: () => reader,
-    } as unknown as ReadableStream<Uint8Array>,
-  } as Response;
-}
-
-function createBrokenSSEMockResponse(chunks: string[] = []): Response {
-  let index = 0;
-  const reader: ReadableStreamDefaultReader<Uint8Array> = {
-    read(): Promise<ReadableStreamReadResult<Uint8Array>> {
-      if (index < chunks.length) {
-        const value = new TextEncoder().encode(chunks[index]);
-        index += 1;
-        return Promise.resolve({ done: false, value });
-      }
-      return Promise.reject(new TypeError('network error'));
-    },
-    cancel(): Promise<void> {
-      return Promise.resolve();
-    },
-    releaseLock(): void {},
-    get closed(): Promise<undefined> {
-      return Promise.resolve(undefined);
-    },
-  };
-  return {
-    ok: true,
-    status: 200,
-    headers: new Headers({ 'content-type': 'text/event-stream' }),
-    body: {
-      locked: false,
-      cancel: () => Promise.resolve(),
-      getReader: () => reader,
-    } as unknown as ReadableStream<Uint8Array>,
-  } as Response;
-}
-
 function setupDefaultState() {
   useGameStore.setState({
     storyText: '',
@@ -83,6 +21,7 @@ function setupDefaultState() {
 describe('useEventGenerator', () => {
   const defaultSyncState = useGameStore.getState().syncState;
   const mockPhaseRef: React.MutableRefObject<Phase> = { current: 'loading' as Phase };
+  const mockRunTokenRef: React.MutableRefObject<number> = { current: 0 };
   const mockAbortRef: React.MutableRefObject<AbortController | null> = { current: null };
   const mockGeneratingRef: React.MutableRefObject<boolean> = { current: false };
   const mockPollingRef: React.MutableRefObject<boolean> = { current: false };
@@ -95,6 +34,8 @@ describe('useEventGenerator', () => {
     setPhase: jest.fn(),
     setConnectionStatus: jest.fn(),
     setReconnectAttempt: jest.fn(),
+    setTransport: jest.fn(),
+    setLoadingIdentity: jest.fn(),
     setProcessing: jest.fn(),
     setOptions: jest.fn(),
     setStoryText: jest.fn(),
@@ -111,6 +52,8 @@ describe('useEventGenerator', () => {
     setPhase: mockSetters.setPhase,
     setConnectionStatus: mockSetters.setConnectionStatus,
     setReconnectAttempt: mockSetters.setReconnectAttempt,
+    setTransport: mockSetters.setTransport,
+    setLoadingIdentity: mockSetters.setLoadingIdentity,
     setProcessing: mockSetters.setProcessing,
     setOptions: mockSetters.setOptions,
     setStoryText: mockSetters.setStoryText,
@@ -120,6 +63,7 @@ describe('useEventGenerator', () => {
     setRoundSummary: mockSetters.setRoundSummary,
     isGameOver: false,
     setIsPrefetching: mockSetters.setIsPrefetching,
+    runTokenRef: mockRunTokenRef,
     abortRef: mockAbortRef,
     generatingRef: mockGeneratingRef,
     pollingRef: mockPollingRef,
@@ -133,6 +77,7 @@ describe('useEventGenerator', () => {
     jest.clearAllMocks();
     useGameStore.setState({ syncState: defaultSyncState } as never);
     mockPhaseRef.current = 'loading' as Phase;
+    mockRunTokenRef.current = 0;
     mockGeneratingRef.current = false;
     mockPollingRef.current = false;
     mockPrefetchingRef.current = false;
@@ -240,7 +185,7 @@ describe('useEventGenerator', () => {
 
       expect(global.fetch).toHaveBeenCalledWith(
         '/api/games/1/event',
-        expect.objectContaining({ headers: undefined })
+        expect.objectContaining({ headers: { 'Last-Event-ID': '-1' } })
       );
       expect(window.sessionStorage.getItem('story101:event-cursor:1')).toBeNull();
     });
@@ -279,85 +224,6 @@ describe('useEventGenerator', () => {
       expect(mockGeneratingRef.current).toBe(false);
     });
 
-    it('surfaces recovered partial story instead of staying in generation recovery forever', async () => {
-      jest.useFakeTimers();
-      const partialStory = '第十回 残月孤影探险途\n\n沈清越已经取到证据，但选项仍在生成。';
-      const syncState = jest.fn().mockImplementation(async () => {
-        useGameStore.setState({
-          storyText: partialStory,
-          currentEvent: {
-            story: partialStory,
-            options: [],
-          },
-        } as never);
-      });
-      useGameStore.setState({ syncState } as never);
-
-      (global.fetch as jest.Mock).mockResolvedValue(
-        createSSEMockResponse([
-          'event: error\ndata: {"message":"Timeout waiting for event generation"}\n\n',
-        ])
-      );
-
-      const { result } = renderHook(() => useEventGenerator(defaultParams));
-
-      await act(async () => {
-        void result.current.generateEvent();
-      });
-
-      await act(async () => {
-        await jest.advanceTimersByTimeAsync(181000);
-      });
-
-      expect(syncState).toHaveBeenCalled();
-      expect(mockSetters.setStoryText).toHaveBeenCalledWith(partialStory);
-      expect(mockSetters.setCurrentEvent).toHaveBeenCalledWith({
-        story: partialStory,
-        options: [],
-      });
-      expect(mockSetters.setConnectionStatus).toHaveBeenCalledWith('error');
-      expect(mockSetters.setPhase).toHaveBeenCalledWith('error');
-      expect(mockGeneratingRef.current).toBe(false);
-
-      jest.useRealTimers();
-    });
-
-    it('does not bubble stream rejection after event polling recovery starts', async () => {
-      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-      const recoveredStory = '轮次事件已经由后端保存。';
-      const recoveredOptions = [{ text: '继续调查' }];
-      const syncState = jest.fn().mockImplementation(async () => {
-        useGameStore.setState({
-          storyText: recoveredStory,
-          currentEvent: {
-            story: recoveredStory,
-            options: recoveredOptions,
-          },
-        } as never);
-      });
-      useGameStore.setState({ syncState } as never);
-      (global.fetch as jest.Mock).mockResolvedValue(createBrokenSSEMockResponse());
-
-      const { result } = renderHook(() => useEventGenerator(defaultParams));
-
-      await expect(act(async () => {
-        await result.current.generateEvent();
-      })).resolves.toBeUndefined();
-
-      await waitFor(() => {
-        expect(syncState).toHaveBeenCalled();
-        expect(mockSetters.setOptions).toHaveBeenCalledWith(recoveredOptions);
-        expect(mockSetters.setPhase).toHaveBeenCalledWith('options');
-      });
-      expect(mockSetters.setConnectionStatus).not.toHaveBeenCalledWith('error');
-      expect(
-        warnSpy.mock.calls.some((args) =>
-          args.some((arg) => String(arg).includes('TypeError') || String(arg).includes('network error'))
-        )
-      ).toBe(false);
-      warnSpy.mockRestore();
-    });
-
     it('clears recovered partial story before retrying so new output is not appended to it', async () => {
       const partialStory = '半截故事：沈清越刚推开门，正文还没有选项。';
       setupDefaultState();
@@ -385,77 +251,5 @@ describe('useEventGenerator', () => {
       expect(mockSetters.appendStoryText).toHaveBeenCalledWith('重新生成的完整故事');
     });
 
-    it('clears retrying guard when retry status stream never completes', async () => {
-      jest.useFakeTimers();
-      (global.fetch as jest.Mock).mockResolvedValue(
-        createHangingSSEMockResponse([
-          'event: status\ndata: {"phase":"retrying"}\n\n',
-        ])
-      );
-
-      const { result, unmount } = renderHook(() => useEventGenerator(defaultParams));
-
-      await act(async () => {
-        void result.current.generateEvent();
-        await Promise.resolve();
-        await Promise.resolve();
-      });
-
-      expect(mockIsRetryingRef.current).toBe(true);
-
-      await act(async () => {
-        await jest.advanceTimersByTimeAsync(61000);
-      });
-
-      expect(mockIsRetryingRef.current).toBe(false);
-      expect(mockGeneratingRef.current).toBe(false);
-      expect(mockSetters.setConnectionStatus).toHaveBeenCalledWith('error');
-      expect(mockSetters.setPhase).toHaveBeenCalledWith('error');
-
-      unmount();
-      jest.useRealTimers();
-    });
-
-    it('clears retry guard when persisted event recovery succeeds after a retry status', async () => {
-      jest.useFakeTimers();
-      const recoveredStory = '服务端已持久化的事件正文。';
-      const recoveredOptions = [{ text: '继续推进' }];
-      const syncState = jest.fn().mockImplementation(async () => {
-        useGameStore.setState({
-          storyText: recoveredStory,
-          currentEvent: {
-            story: recoveredStory,
-            options: recoveredOptions,
-          },
-        } as never);
-      });
-      useGameStore.setState({ syncState } as never);
-      (global.fetch as jest.Mock).mockResolvedValue(
-        createHangingSSEMockResponse([
-          'event: status\ndata: {"phase":"retrying"}\n\n',
-        ])
-      );
-
-      const { result, unmount } = renderHook(() => useEventGenerator(defaultParams));
-
-      await act(async () => {
-        void result.current.generateEvent();
-        await Promise.resolve();
-        await Promise.resolve();
-      });
-      expect(mockIsRetryingRef.current).toBe(true);
-
-      await act(async () => {
-        await jest.advanceTimersByTimeAsync(45_000);
-      });
-
-      expect(syncState).toHaveBeenCalledTimes(1);
-      expect(mockSetters.setOptions).toHaveBeenCalledWith(recoveredOptions);
-      expect(mockSetters.setPhase).toHaveBeenCalledWith('options');
-      expect(mockIsRetryingRef.current).toBe(false);
-
-      unmount();
-      jest.useRealTimers();
-    });
   });
 });

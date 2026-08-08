@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useGameStore } from "@/stores/useGameStore";
 import { useEventStore } from "@/stores/useEventStore";
@@ -16,10 +16,10 @@ import { useEventGenerator } from "./game/useEventGenerator";
 import { useChoiceHandler } from "./game/useChoiceHandler";
 import { useGameState } from "./game/useGameState";
 import { useHistoryViewer } from "./game/useHistoryViewer";
+import { isAbortError } from "./game/gameplayRun";
 
 // Re-export types for backwards compatibility
 export type { Phase, ConnectionStatus };
-export { STATUS_MESSAGES } from "./game/usePhaseManager";
 
 function isNotFoundError(err: unknown): boolean {
   const error = err as { status?: number; message?: string } | null;
@@ -46,9 +46,7 @@ export function usePlayGame() {
     setStoryText,
     setCurrentEvent,
     setGameOver,
-    syncState,
     syncPlayerState,
-    saveGame,
     // ★ 场景插画
     roundSceneImages,
     currentRoundSceneImage,
@@ -79,12 +77,14 @@ export function usePlayGame() {
   // Options state (local, not in sub-hooks)
   const [options, setOptions] = useState<EventOption[]>([]);
   const [isPrefetching, setIsPrefetching] = useState(false);
+  const [loadingIdentity, setLoadingIdentity] = useState(0);
 
   // Story container ref for scrolling
   const storyContainerRef = useRef<HTMLDivElement>(null);
   
   // Refs defined once and passed to sub-hooks
   const abortRef = useRef<AbortController | null>(null);
+  const runTokenRef = useRef(0);
   const generatingRef = useRef(false);
   const isRetryingRef = useRef(false);
   const pollingRef = useRef(false);
@@ -106,8 +106,8 @@ export function usePlayGame() {
     setConnectionStatus,
     reconnectAttempt,
     setReconnectAttempt,
-    elapsedSeconds,
-    getLoadingMessage,
+    transport,
+    setTransport,
     setProcessing,
   } = usePhaseManager();
 
@@ -153,6 +153,8 @@ export function usePlayGame() {
     setPhase,
     setConnectionStatus,
     setReconnectAttempt,
+    setTransport,
+    setLoadingIdentity,
     setProcessing,
     setOptions,
     setStoryText,
@@ -161,6 +163,7 @@ export function usePlayGame() {
     setGameOver,
     setRoundSummary,
     setIsPrefetching,
+    runTokenRef,
     abortRef,
     generatingRef,
     isRetryingRef,
@@ -174,13 +177,20 @@ export function usePlayGame() {
   generateEventRef.current = generateEvent;
 
   // ===== Choice Handler =====
-  const { handleChoice, handleCustomChoice } = useChoiceHandler({
+  const {
+    handleChoice,
+    handleCustomChoice,
+    recoverChoiceGeneration,
+  } = useChoiceHandler({
     gameId,
+    runTokenRef,
     abortRef,
     generatingRef,
     setPhase,
     setConnectionStatus,
     setReconnectAttempt,
+    setTransport,
+    setLoadingIdentity,
     setProcessing,
     appendStoryText,
     setCurrentEvent,
@@ -303,8 +313,8 @@ export function usePlayGame() {
   }, [hydrated, gameId, router]);
 
   // ===== Initial Load =====
-  const initialLoadDoneRef = useRef(false);
   const lastInitializedGameIdRef = useRef<number | null>(null);
+  const initializationEpochRef = useRef(0);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -323,12 +333,28 @@ export function usePlayGame() {
       return;
     }
 
-    initialLoadDoneRef.current = true;
     lastInitializedGameIdRef.current = gameId;
+    const initializationEpoch = initializationEpochRef.current + 1;
+    initializationEpochRef.current = initializationEpoch;
+    const initialRunToken = runTokenRef.current;
+    const initializedGameId = gameId;
+    abortRef.current?.abort();
+    const initializationController = new AbortController();
+    abortRef.current = initializationController;
+    const isCurrentInitialization = () =>
+      !initializationController.signal.aborted &&
+      abortRef.current === initializationController &&
+      initializationEpochRef.current === initializationEpoch &&
+      runTokenRef.current === initialRunToken &&
+      useGameStore.getState().gameId === initializedGameId;
 
     const doInit = async () => {
       try {
-        await useGameStore.getState().syncState();
+        await useGameStore.getState().syncState({
+          gameId: initializedGameId,
+          signal: initializationController.signal,
+        });
+        if (!isCurrentInitialization()) return;
         const state = useGameStore.getState();
         const recoveredView = resolveRecoveredView({
           eventStory: state.currentEvent?.story,
@@ -361,6 +387,7 @@ export function usePlayGame() {
           }
           phaseRef.current = "generating";
           setPhase("generating");
+          if (!isCurrentInitialization()) return;
           await generateEvent({ resume: true });
         } else if (recoveredView.phase === "failed") {
           if (recoveredView.story) {
@@ -368,25 +395,52 @@ export function usePlayGame() {
           }
           setOptions([]);
           setProcessing(false);
+          setTransport("failed");
           setPhase("error");
         } else {
+          if (!isCurrentInitialization()) return;
           await generateEvent();
         }
       } catch (err) {
+        if (isAbortError(err) || initializationController.signal.aborted) return;
+        if (!isCurrentInitialization()) return;
         if (isNotFoundError(err)) {
           console.warn("[play] Stored game no longer exists, clearing session; retry recovery remains available");
           useGameStore.getState().resetGame();
           setProcessing(false);
+          setTransport("failed");
           setPhase("error");
           return;
         }
         console.error("[play] syncState failed:", err);
+        if (!isCurrentInitialization()) return;
         await generateEvent();
       }
     };
 
-    doInit();
-  }, [hydrated, gameId, generateEvent, setStoryText, setPhase, phaseRef]);
+    void doInit();
+    return () => {
+      if (abortRef.current === initializationController) {
+        initializationController.abort();
+        abortRef.current = null;
+      }
+      if (initializationEpochRef.current === initializationEpoch) {
+        initializationEpochRef.current += 1;
+      }
+    };
+  }, [
+    hydrated,
+    gameId,
+    generateEvent,
+    setStoryText,
+    setPhase,
+    phaseRef,
+    runTokenRef,
+    setProcessing,
+    setRoundSummary,
+    setSummaryText,
+    setTransport,
+  ]);
 
   // ===== Fetch Ending =====
   const [localEndingData, setLocalEndingData] = useState<Record<string, unknown> | null>(null);
@@ -459,7 +513,8 @@ export function usePlayGame() {
     isSaving,
     connectionStatus,
     reconnectAttempt,
-    elapsedSeconds,
+    transport,
+    loadingIdentity,
   };
 
   const actions = {
@@ -477,6 +532,7 @@ export function usePlayGame() {
     handleRegenerate,
     generateEvent,
     recoverEventGeneration,
+    recoverChoiceGeneration,
   };
 
   const history = {
@@ -515,11 +571,7 @@ export function usePlayGame() {
     storyContainerRef,
   };
 
-  const utils = {
-    getLoadingMessage,
-    hydrated,
-    router,
-  };
+  const utils = { hydrated, router };
 
   // Return both grouped and flat APIs for flexibility
   // Flat API maintained for backwards compatibility
@@ -546,7 +598,8 @@ export function usePlayGame() {
     endingData: finalEndingData,
     connectionStatus,
     reconnectAttempt,
-    elapsedSeconds,
+    transport,
+    loadingIdentity,
     isPrefetching,
 
     // Store values
@@ -575,6 +628,7 @@ export function usePlayGame() {
     handleRegenerate,
     generateEvent,
     recoverEventGeneration,
+    recoverChoiceGeneration,
 
     // History
     showHistory,
@@ -612,7 +666,6 @@ export function usePlayGame() {
     currentRound,
 
     // Utilities
-    getLoadingMessage,
     hydrated,
     router,
   };

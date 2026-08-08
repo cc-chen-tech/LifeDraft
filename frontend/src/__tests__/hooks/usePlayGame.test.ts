@@ -77,6 +77,14 @@ describe('usePlayGame', () => {
       expect(result.current.options).toEqual([]);
       expect(result.current.gameId).toBeNull();
       expect(result.current.hydrated).toBe(true);
+      expect(result.current.transport).toBe('active');
+      expect(result.current.ui.transport).toBe('active');
+      expect(result.current.loadingIdentity).toBe(0);
+      expect(result.current.ui.loadingIdentity).toBe(0);
+      expect('elapsedSeconds' in result.current).toBe(false);
+      expect('elapsedSeconds' in result.current.ui).toBe(false);
+      expect('getLoadingMessage' in result.current).toBe(false);
+      expect('getLoadingMessage' in result.current.utils).toBe(false);
     });
 
     it('returns hydrated state correctly', () => {
@@ -280,6 +288,7 @@ describe('usePlayGame', () => {
       await waitFor(() => {
         expect(result.current.phase).toBe('error');
       });
+      expect(result.current.transport).toBe('failed');
       expect(mockReplace).not.toHaveBeenCalled();
       expect(global.fetch).not.toHaveBeenCalledWith(
         expect.stringContaining('/api/games/46/event'),
@@ -407,11 +416,6 @@ describe('usePlayGame', () => {
   });
 
   describe('Utility functions', () => {
-    it('provides getLoadingMessage', () => {
-      const { result } = renderHook(() => usePlayGame());
-      expect(typeof result.current.getLoadingMessage).toBe('function');
-    });
-
     it('provides router instance', () => {
       const { result } = renderHook(() => usePlayGame());
       expect(result.current.router).toBeDefined();
