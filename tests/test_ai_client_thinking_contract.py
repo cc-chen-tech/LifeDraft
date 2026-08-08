@@ -150,10 +150,11 @@ def test_non_false_thinking_preserves_deepseek_payload(
         assert chunks == ["story"]
 
 
-def test_non_deepseek_ignores_false_thinking() -> None:
+@pytest.mark.parametrize("model", ["gpt-4o-mini", "deepseek-v3"])
+def test_non_deepseek_v4_ignores_false_thinking(model: str) -> None:
     seen: list[dict[str, Any]] = []
     with httpx.Client(transport=_capture_transport(seen)) as http_client:
-        client = _ai_client("gpt-4o-mini", http_client)
+        client = _ai_client(model, http_client)
         assert client.call("system", "user", thinking=False) == "story"
 
     assert "thinking" not in seen[0]
