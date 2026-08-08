@@ -19,7 +19,9 @@ _CURRENCY_AMOUNT = re.compile(
     rf"{_ARABIC_NUMBER}\s*(?:万|亿)?\s*(?:{_CURRENCY_NAME}|{_CURRENCY_CODE}))",
     re.IGNORECASE,
 )
-_ZH_YUAN_AMOUNT = re.compile(rf"{_ZH_NUMBER}\s*元")
+_ZH_CURRENCY_AMOUNT = re.compile(
+    rf"{_ZH_NUMBER}\s*(?:{_CURRENCY_NAME}|{_CURRENCY_CODE})", re.IGNORECASE
+)
 _RESOURCE_NUMBER = re.compile(rf"{_ARABIC_NUMBER}(?![\d年月周岁天日个%％])")
 _FINANCIAL_AMOUNT_CONTEXT = re.compile(
     r"(?:工资|薪资|月薪|年薪|奖金|收入|支出|花费|售价|价格|余额|存款|资产|财富|"
@@ -86,7 +88,7 @@ def contains_precise_financial_fact(*values: Any) -> bool:
     for clause in _clauses(*values):
         if _CURRENCY_AMOUNT.search(clause):
             return True
-        if _FINANCIAL_AMOUNT_CONTEXT.search(clause) and _ZH_YUAN_AMOUNT.search(clause):
+        if _FINANCIAL_AMOUNT_CONTEXT.search(clause) and _ZH_CURRENCY_AMOUNT.search(clause):
             return True
         if _FINANCIAL_RESOURCE_HEAD.search(clause) and _RESOURCE_NUMBER.search(clause):
             return True

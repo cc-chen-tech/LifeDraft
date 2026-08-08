@@ -26,6 +26,9 @@ from src.utils.financial_narrative import (
         "月薪八千元",
         "奖金三万元",
         "余额五万元",
+        "月薪八千美元",
+        "奖金三万人民币",
+        "余额五千欧元",
     ),
 )
 def test_precise_money_formats_are_classified(text: str) -> None:
@@ -139,6 +142,9 @@ def test_story_analyzer_rejects_structured_financial_category() -> None:
         "月薪八千元",
         "奖金三万元",
         "余额五万元",
+        "月薪八千美元",
+        "奖金三万人民币",
+        "余额五千欧元",
         "财富不再增长",
         "wealth did not increase",
     ),

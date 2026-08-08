@@ -150,6 +150,9 @@ def test_tracked_wealth_or_exact_balance_summary_falls_back_even_when_evidenced(
         "第1周，林晓的月薪八千元。",
         "第1周，林晓获得奖金三万元。",
         "第1周，林晓的余额五万元。",
+        "第1周，林晓的月薪八千美元。",
+        "第1周，林晓获得奖金三万人民币。",
+        "第1周，林晓的余额五千欧元。",
     ):
         result = validate_or_fallback_life_summary(
             tracked_summary,
@@ -196,6 +199,24 @@ def test_non_metric_wealth_value_summary_is_preserved(value_statement: str) -> N
         }
     ]
     summary = f"第1周，{value_statement}。"
+
+    assert (
+        validate_or_fallback_life_summary(summary, history, start_week=1, end_week=1)
+        == summary
+    )
+
+
+@pytest.mark.parametrize("lookalike", ("他们讨论二元关系", "他们走过三元桥"))
+def test_currency_lookalike_summary_is_preserved(lookalike: str) -> None:
+    history = [
+        {
+            "week": 0,
+            "round": 0,
+            "story_text": lookalike,
+            "choice_text": "继续讨论",
+        }
+    ]
+    summary = f"第1周，{lookalike}。"
 
     assert (
         validate_or_fallback_life_summary(summary, history, start_week=1, end_week=1)
