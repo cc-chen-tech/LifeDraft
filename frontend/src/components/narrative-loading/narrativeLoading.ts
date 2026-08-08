@@ -56,7 +56,20 @@ const QUALITY_DELAYS: Record<string, number> = {
   master: 180_000,
 };
 
-const SHORT_CHINESE_LABEL = /^[\u3400-\u9fff，。、；：？！“”‘’（）《》【】\s]+$/;
+const APPROVED_EXTERNAL_LABELS = new Set([
+  "时代背景",
+  "年龄阶段",
+  "性别",
+  "世界观",
+  "人物形象",
+  "家庭背景",
+  "人际关系",
+  "性格特征",
+  "财富状况",
+  "剩余角色背景",
+  "生成关键人物",
+  "整理人际关系",
+]);
 
 function fallbackStatus(operation?: NarrativeLoadingOperation) {
   return operation === "choice" ? "正在继续推演" : "正在继续写作";
@@ -64,7 +77,7 @@ function fallbackStatus(operation?: NarrativeLoadingOperation) {
 
 function getAllowedLabel(label?: string): string | undefined {
   const trimmedLabel = label?.trim();
-  return trimmedLabel && SHORT_CHINESE_LABEL.test(trimmedLabel) ? trimmedLabel : undefined;
+  return trimmedLabel && APPROVED_EXTERNAL_LABELS.has(trimmedLabel) ? trimmedLabel : undefined;
 }
 
 function getActionLabel(transport: NarrativeTransportState): NarrativeLoadingCopy["actionLabel"] {

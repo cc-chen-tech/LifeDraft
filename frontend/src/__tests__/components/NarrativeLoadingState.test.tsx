@@ -70,9 +70,9 @@ describe("resolveNarrativeLoadingCopy", () => {
       resolveNarrativeLoadingCopy({
         context: "character-step",
         phase: "building_world",
-        stepLabel: "正在确认成长地点",
+        stepLabel: "时代背景",
       })
-    ).toMatchObject({ status: "正在确认成长地点" });
+    ).toMatchObject({ status: "时代背景" });
     expect(
       resolveNarrativeLoadingCopy({ context: "gameplay", phase: "unknown", operation: "event" })
     ).toMatchObject({ status: "正在继续写作" });
@@ -143,6 +143,27 @@ describe("resolveNarrativeLoadingCopy", () => {
       expect(resolveNarrativeLoadingCopy({ context: "gameplay", phase: "generating", ...labels }))
         .toMatchObject({ status: "正在写作" });
     }
+  });
+
+  it.each([
+    ["人工智能正在写作", "Chinese AI wording"],
+    ["预计还要三分钟", "Chinese estimate"],
+    ["已耗时十五秒", "Chinese elapsed time"],
+    ["进度百分之五十", "Chinese percentage"],
+    ["专家档正在生成", "Chinese quality tier"],
+    ["正在处理设定", "unknown ordinary copy"],
+  ] as const)("falls back from non-approved %s label (%s) on either external label channel", (label) => {
+    for (const labelField of ["stepLabel", "contextLabel"] as const) {
+      const labels = labelField === "stepLabel" ? { stepLabel: label } : { contextLabel: label };
+      expect(resolveNarrativeLoadingCopy({ context: "gameplay", phase: "generating", ...labels }))
+        .toMatchObject({ status: "正在写作" });
+    }
+  });
+
+  it.each(["stepLabel", "contextLabel"] as const)("keeps approved %s visible", (labelField) => {
+    const labels = labelField === "stepLabel" ? { stepLabel: "家庭背景" } : { contextLabel: "家庭背景" };
+    expect(resolveNarrativeLoadingCopy({ context: "character-auto", phase: "generating", ...labels }))
+      .toMatchObject({ status: "家庭背景" });
   });
 
   it("uses a restrained delayed copy and only exposes transport actions for an abnormal transport", () => {
