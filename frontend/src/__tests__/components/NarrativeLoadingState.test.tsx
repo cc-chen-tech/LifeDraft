@@ -7,6 +7,31 @@ import {
   resolveNarrativeLoadingCopy,
 } from "@/components/narrative-loading/NarrativeLoadingState";
 
+function extractReducedMotionBlock(stylesheet: string): string | undefined {
+  const marker = "@media (prefers-reduced-motion: reduce)";
+  let offset = 0;
+
+  while (offset < stylesheet.length) {
+    const markerIndex = stylesheet.indexOf(marker, offset);
+    if (markerIndex === -1) return undefined;
+    const openBraceIndex = stylesheet.indexOf("{", markerIndex);
+    let depth = 0;
+
+    for (let index = openBraceIndex; index < stylesheet.length; index += 1) {
+      if (stylesheet[index] === "{") depth += 1;
+      if (stylesheet[index] === "}") depth -= 1;
+      if (depth === 0) {
+        const block = stylesheet.slice(markerIndex, index + 1);
+        if (block.includes(".narrative-loading-divider")) return block;
+        offset = index + 1;
+        break;
+      }
+    }
+  }
+
+  return undefined;
+}
+
 describe("resolveNarrativeLoadingCopy", () => {
   it.each([
     ["hydrate", "正在打开这一页"],
@@ -68,6 +93,40 @@ describe("resolveNarrativeLoadingCopy", () => {
     ).toMatchObject({ status: undefined });
   });
 
+  it.each(["stepLabel", "contextLabel"] as const)(
+    "falls back to the real phase when %s contains forbidden loading language",
+    (labelField) => {
+      const labels = {
+        stepLabel: "AI 正在写作",
+        contextLabel: "预计 1-2 分钟",
+      } as const;
+
+      expect(
+        resolveNarrativeLoadingCopy({
+          context: "gameplay",
+          phase: "generating",
+          [labelField]: labels[labelField],
+        })
+      ).toMatchObject({ status: "正在写作" });
+    }
+  );
+
+  it.each([
+    ["AI 正在写作", "AI"],
+    ["进度 50%", "percentage"],
+    ["预计 1-2 分钟", "estimate"],
+    ["已耗时 15 秒", "elapsed time"],
+    ["fast 生成", "fast quality"],
+    ["expert 生成", "expert quality"],
+    ["master 生成", "master quality"],
+  ] as const)("falls back from forbidden %s label (%s)", (label) => {
+    for (const labelField of ["stepLabel", "contextLabel"] as const) {
+      const labels = labelField === "stepLabel" ? { stepLabel: label } : { contextLabel: label };
+      expect(resolveNarrativeLoadingCopy({ context: "gameplay", phase: "generating", ...labels }))
+        .toMatchObject({ status: "正在写作" });
+    }
+  });
+
   it("uses a restrained delayed copy and only exposes transport actions for an abnormal transport", () => {
     expect(resolveNarrativeLoadingCopy({ context: "opening", delayed: true })).toMatchObject({
       delayedCopy: "这一页仍在继续写作",
@@ -111,17 +170,21 @@ describe("NarrativeLoadingState", () => {
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
-  it("renders real transport actions outside the live region", () => {
+  it.each([
+    ["reconnecting", "重新连接"],
+    ["polling", "重新连接"],
+    ["failed", "重试"],
+  ] as const)("renders the required %s action outside the live region", (transport, actionLabel) => {
     const onAction = jest.fn();
     render(
       <NarrativeLoadingState
         context="ending"
         layout="screen"
-        transport="failed"
+        transport={transport}
         onAction={onAction}
       />
     );
-    const action = screen.getByRole("button", { name: "重试" });
+    const action = screen.getByRole("button", { name: actionLabel });
     expect(action.closest('[role="status"]')).toBeNull();
     fireEvent.click(action);
     expect(onAction).toHaveBeenCalledTimes(1);
@@ -135,8 +198,10 @@ describe("NarrativeLoadingState", () => {
 
   it("keeps the divider completely static for reduced motion", () => {
     const stylesheet = readFileSync(resolve(process.cwd(), "src/app/globals.css"), "utf8");
-    expect(stylesheet).toMatch(
-      /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.narrative-loading-divider\s*\{[\s\S]*?animation:\s*none/
+    const reducedMotionBlock = extractReducedMotionBlock(stylesheet);
+    expect(reducedMotionBlock).toBeDefined();
+    expect(reducedMotionBlock ?? "").toMatch(
+      /\.narrative-loading-divider\s*\{[^}]*animation:\s*none/
     );
   });
 });

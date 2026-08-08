@@ -17,7 +17,7 @@ export type {
 } from "./narrativeLoading";
 export { getNarrativeLoadingDelay, resolveNarrativeLoadingCopy } from "./narrativeLoading";
 
-interface NarrativeLoadingStateProps {
+interface NarrativeLoadingStateBaseProps {
   context: NarrativeLoadingContext;
   layout: NarrativeLoadingLayout;
   phase?: string | null;
@@ -25,10 +25,22 @@ interface NarrativeLoadingStateProps {
   stepLabel?: string;
   contextLabel?: string;
   delayed?: boolean;
-  transport?: NarrativeTransportState;
-  onAction?: () => void;
   className?: string;
 }
+
+interface NarrativeLoadingStateActiveProps extends NarrativeLoadingStateBaseProps {
+  transport?: "active";
+  onAction?: never;
+}
+
+interface NarrativeLoadingStateRecoveryProps extends NarrativeLoadingStateBaseProps {
+  transport: Exclude<NarrativeTransportState, "active">;
+  onAction: () => void;
+}
+
+export type NarrativeLoadingStateProps =
+  | NarrativeLoadingStateActiveProps
+  | NarrativeLoadingStateRecoveryProps;
 
 export function NarrativeLoadingState({
   context,
