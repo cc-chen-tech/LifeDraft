@@ -9,7 +9,6 @@ OpenAI SDK or private methods. This ensures:
 """
 
 import logging
-import os
 import re
 import threading
 from dataclasses import dataclass
@@ -34,12 +33,6 @@ _DEFAULT_FALLBACK_MODELS: List[str] = [
     "deepseek-v4-pro",  # 备选模型（原 deepseek-chat）
     "gpt-4o-mini",  # 最后备选
 ]
-
-_E2E_DETERMINISTIC_STORY = (
-    "清晨的会议结束后，主角把刚整理好的资料放回桌面，窗外的城市已经开始忙碌。"
-    "这份资料既带来一个可以推进的机会，也留下了需要核实的风险。"
-    "主角先记录了关键事实，并约定在下次沟通前确认时间、责任和可用资源。"
-) * 12
 
 
 @dataclass(frozen=True)
@@ -147,11 +140,6 @@ class AIClient:
         Returns:
             AI generated text
         """
-        if os.getenv("E2E_DETERMINISTIC_AI") == "1":
-            if stream_callback is not None:
-                stream_callback(_E2E_DETERMINISTIC_STORY)
-            return _E2E_DETERMINISTIC_STORY
-
         # C-04: 使用信号量限制并发调用
         with self._semaphore:
             # ★ 模型降级链：开启时自动切换备选模型

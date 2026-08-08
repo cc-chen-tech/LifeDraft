@@ -66,15 +66,3 @@ def test_streaming_v4_request_includes_usage_and_reports_terminal_usage():
     assert captured_kwargs["stream_options"] == {"include_usage": True}
     assert usage[0].streamed is True
     assert usage[0].prompt_cache_hit_tokens == 45
-
-
-def test_e2e_deterministic_mode_avoids_provider_and_streams_response(monkeypatch):
-    monkeypatch.setenv("E2E_DETERMINISTIC_AI", "1")
-    client = AIClient(api_key="dummy", model="deepseek-v4-flash")
-    client.require_openai_client = lambda: (_ for _ in ()).throw(AssertionError("provider called"))
-    chunks = []
-
-    result = client.call("system", "story prompt", stream_callback=chunks.append)
-
-    assert len(result) >= 800
-    assert chunks == [result]
