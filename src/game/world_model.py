@@ -8,7 +8,7 @@ and validate generated stories.
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 from src.game.relationship_authority import build_required_cast_constraints, extract_required_key_people
 from src.utils.financial_narrative import (
@@ -18,6 +18,15 @@ from src.utils.financial_narrative import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _is_safe_structured_authority(
+    record: Mapping[str, Any], *, subject: str = ""
+) -> bool:
+    payload = dict(record)
+    if subject:
+        payload["subject"] = subject
+    return not is_authoritative_financial_record(payload)
 
 
 # ==================== Data Structures ====================
@@ -316,13 +325,18 @@ class WorldModel:
             wm.character_locations[name] = LocationInfo.from_dict(loc_d)
 
         for name, car_d in wmd.get("career_records", {}).items():
-            wm.career_records[name] = CareerInfo.from_dict(car_d)
+            if isinstance(car_d, Mapping) and _is_safe_structured_authority(
+                car_d, subject=name
+            ):
+                wm.career_records[name] = CareerInfo.from_dict(dict(car_d))
 
         for com_d in wmd.get("active_commitments", []):
-            wm.active_commitments.append(Commitment.from_dict(com_d))
+            if isinstance(com_d, Mapping) and _is_safe_structured_authority(com_d):
+                wm.active_commitments.append(Commitment.from_dict(dict(com_d)))
 
         for cc_d in wmd.get("causal_chains", []):
-            wm.causal_chains.append(CausalChain.from_dict(cc_d))
+            if isinstance(cc_d, Mapping) and _is_safe_structured_authority(cc_d):
+                wm.causal_chains.append(CausalChain.from_dict(dict(cc_d)))
 
         for name, ps_d in wmd.get("physical_states", {}).items():
             wm.physical_states[name] = PhysicalState.from_dict(ps_d)
@@ -397,12 +411,16 @@ class WorldModel:
         if "occupation" in cs and "主角" not in wm.career_records:
             occ = cs["occupation"]
             protagonist_name = player_state.player_name or "主角"
-            wm.career_records[protagonist_name] = CareerInfo(
+            career = CareerInfo(
                 current_job=occ.get("occupation", ""),
                 employer=occ.get("employer", ""),
                 level=occ.get("level", "mid"),
                 since_week=0,
             )
+            if _is_safe_structured_authority(
+                career.to_dict(), subject=protagonist_name
+            ):
+                wm.career_records[protagonist_name] = career
 
         return wm
 
@@ -780,25 +798,34 @@ class WorldModel:
         return "\n".join(lines)
 
     def _build_career_constraints(self, zh: bool) -> str:
-        if not self.career_records:
+        safe_records = {
+            name: record
+            for name, record in self.career_records.items()
+            if _is_safe_structured_authority(record.to_dict(), subject=name)
+        }
+        if not safe_records:
             return ""
         lines = []
         if zh:
             lines.append("💼 【人物职业/职位】")
-            for name, cr in self.career_records.items():
+            for name, cr in safe_records.items():
                 emp = f"（{cr.employer}）" if cr.employer else ""
                 lines.append(f"  - {name}：{cr.current_job}{emp}，级别={cr.level}")
             lines.append("  ⚠️ 职位变动必须合理递进，不可跳跃式晋升。")
         else:
             lines.append("[Character Careers]")
-            for name, cr in self.career_records.items():
+            for name, cr in safe_records.items():
                 emp = f" at {cr.employer}" if cr.employer else ""
                 lines.append(f"  - {name}: {cr.current_job}{emp}, level={cr.level}")
             lines.append("  Warning: Career changes must be gradual, no unrealistic jumps.")
         return "\n".join(lines)
 
     def _build_commitment_constraints(self, zh: bool) -> str:
-        pending = [c for c in self.active_commitments if c.status == "pending"]
+        pending = [
+            c
+            for c in self.active_commitments
+            if c.status == "pending" and _is_safe_structured_authority(c.to_dict())
+        ]
         if not pending:
             return ""
 
@@ -884,7 +911,11 @@ class WorldModel:
         return "\n".join(lines)
 
     def _build_causal_constraints(self, zh: bool) -> str:
-        active = self.get_active_causal_chains()
+        active = [
+            chain
+            for chain in self.get_active_causal_chains()
+            if _is_safe_structured_authority(chain.to_dict())
+        ]
         if not active:
             return ""
         lines = []
@@ -1038,9 +1069,21 @@ class WorldModel:
             "character_locations": {
                 n: loc.to_dict() for n, loc in self.character_locations.items()
             },
-            "career_records": {n: cr.to_dict() for n, cr in self.career_records.items()},
-            "active_commitments": [c.to_dict() for c in self.active_commitments],
-            "causal_chains": [cc.to_dict() for cc in self.causal_chains],
+            "career_records": {
+                name: record.to_dict()
+                for name, record in self.career_records.items()
+                if _is_safe_structured_authority(record.to_dict(), subject=name)
+            },
+            "active_commitments": [
+                commitment.to_dict()
+                for commitment in self.active_commitments
+                if _is_safe_structured_authority(commitment.to_dict())
+            ],
+            "causal_chains": [
+                chain.to_dict()
+                for chain in self.causal_chains
+                if _is_safe_structured_authority(chain.to_dict())
+            ],
             "physical_states": {n: ps.to_dict() for n, ps in self.physical_states.items()},
             "dynamic_facts": [
                 df.to_dict()

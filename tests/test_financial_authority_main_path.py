@@ -5,6 +5,7 @@ from config.prompts.world_prompts import get_world_extraction_prompt
 from src.game.continuity_ledger import ContinuityLedger
 from src.game.state import PlayerState
 from src.game.world_model import WorldModel
+from src.game.world_model_updater import WorldModelUpdater
 
 
 def _legacy_authority_state() -> PlayerState:
@@ -199,3 +200,88 @@ def test_established_fact_prompt_boundaries_drop_money_authority() -> None:
         assert "月薪8000" not in prompt
         assert "结构化财务" not in prompt
         assert "家庭经济压力加剧，消费更加谨慎" in prompt
+
+
+def test_structured_world_updates_reject_money_authority_and_keep_qualitative_context() -> None:
+    state = PlayerState(player_name="林岚", week=2)
+
+    WorldModelUpdater.process_career_updates(
+        state,
+        [
+            {"action": "change", "character": "林岚", "new_role": "月薪8000元的产品经理"},
+            {"action": "change", "character": "周宁", "new_role": "经济援助项目协调员"},
+        ],
+    )
+    WorldModelUpdater.process_commitment_updates(
+        state,
+        [
+            {"action": "new", "description": "承诺偿还5000元债务", "parties": ["林岚"]},
+            {"action": "new", "description": "在经济压力下互相支持", "parties": ["周宁"]},
+        ],
+    )
+    WorldModelUpdater.process_causal_updates(
+        state,
+        [
+            {
+                "action": "new",
+                "cause": "账户余额不足5000元",
+                "expected_consequence": "需要偿还2000元",
+            },
+            {
+                "action": "new",
+                "cause": "家庭消费压力加剧",
+                "expected_consequence": "生活选择更加谨慎",
+            },
+        ],
+    )
+
+    data = state.world_model_data
+    assert set(data["career_records"]) == {"周宁"}
+    assert [item["description"] for item in data["active_commitments"]] == [
+        "在经济压力下互相支持"
+    ]
+    assert [item["cause"] for item in data["causal_chains"]] == ["家庭消费压力加剧"]
+
+
+def test_legacy_structured_world_authority_is_filtered_on_load_prompt_and_serialize() -> None:
+    state = PlayerState(
+        player_name="林岚",
+        week=3,
+        world_model_data={
+            "career_records": {
+                "林岚": {"current_job": "月薪8000元的产品经理", "employer": "星河科技"},
+                "周宁": {"current_job": "经济援助项目协调员", "employer": "社区中心"},
+            },
+            "active_commitments": [
+                {"description": "承诺偿还5000元债务", "parties": ["林岚"]},
+                {"description": "在经济压力下互相支持", "parties": ["周宁"]},
+            ],
+            "causal_chains": [
+                {
+                    "cause": "奖金到账5000元",
+                    "expected_consequence": "账户余额提升",
+                },
+                {
+                    "cause": "家庭消费压力加剧",
+                    "expected_consequence": "生活选择更加谨慎",
+                },
+            ],
+        },
+    )
+
+    world = WorldModel.from_player_state(state)
+    constraints = world.build_constraints_text("zh")
+    serialized = world.to_dict()
+    serialized_text = str(serialized)
+
+    assert set(world.career_records) == {"周宁"}
+    assert [item.description for item in world.active_commitments] == [
+        "在经济压力下互相支持"
+    ]
+    assert [item.cause for item in world.causal_chains] == ["家庭消费压力加剧"]
+    for forbidden in ("8000", "5000", "账户余额"):
+        assert forbidden not in constraints
+        assert forbidden not in serialized_text
+    for expected in ("经济援助项目协调员", "在经济压力下互相支持", "家庭消费压力加剧"):
+        assert expected in constraints
+        assert expected in serialized_text

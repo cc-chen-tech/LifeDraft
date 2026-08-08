@@ -13,6 +13,7 @@ from typing import Dict, List, Optional
 from src.game.constants import (DEFAULT_CAREER_LEVEL, GENERIC_CHARACTER_NAMES,
                                 IMPORTANCE_ORDER, ROLE_KEYWORDS,
                                 VALID_CAREER_LEVELS)
+from src.utils.financial_narrative import is_authoritative_financial_record
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,8 @@ class WorldModelUpdater:
         careers = wm_data.get("career_records", {})
 
         for update in career_updates:
+            if is_authoritative_financial_record(update):
+                continue
             action = update.get("action", "")
             character = update.get("character", "")
             if not action or not character:
@@ -163,6 +166,8 @@ class WorldModelUpdater:
         commitments = wm_data.get("active_commitments", [])
 
         for update in commitment_updates:
+            if is_authoritative_financial_record(update):
+                continue
             action = update.get("action", "")
             if not action:
                 continue
@@ -267,6 +272,8 @@ class WorldModelUpdater:
         chains = wm_data.get("causal_chains", [])
 
         for update in causal_updates:
+            if is_authoritative_financial_record(update):
+                continue
             action = update.get("action", "")
             if not action:
                 continue

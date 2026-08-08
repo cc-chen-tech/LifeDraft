@@ -131,13 +131,19 @@ def is_authoritative_financial_record(value: Any) -> bool:
     category = value.get("category") or value.get("type") or value.get("fact_type")
     if is_structured_financial_category(category):
         return True
-    return contains_authoritative_financial_state(
-        value.get("subject"),
-        value.get("fact"),
-        value.get("description"),
-        value.get("constraint_text"),
-        value.get("source_excerpt"),
-    )
+    return contains_authoritative_financial_state(*_record_text_values(value))
+
+
+def _record_text_values(value: Any) -> Iterable[str]:
+    """Yield every textual leaf in a structured authority record."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, Mapping):
+        for nested in value.values():
+            yield from _record_text_values(nested)
+    elif isinstance(value, (list, tuple, set)):
+        for nested in value:
+            yield from _record_text_values(nested)
 
 
 def sanitize_authoritative_fact_records(values: Any) -> list[dict[str, Any]]:
