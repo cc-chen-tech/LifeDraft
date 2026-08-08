@@ -2,14 +2,27 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
 from src.api.main import app
+from src.game.state import PlayerState
 
 
 client = TestClient(app)
+LEGACY_KEYS = {"wealth", "wealth_ledger", "_active_wealth_transaction_id"}
+
+
+def _assert_no_legacy_keys(value: object) -> None:
+    if isinstance(value, dict):
+        assert LEGACY_KEYS.isdisjoint(value)
+        for nested in value.values():
+            _assert_no_legacy_keys(nested)
+    elif isinstance(value, list):
+        for nested in value:
+            _assert_no_legacy_keys(nested)
 
 
 class TestCharacterSettingsUpdateAPIContract:
@@ -222,6 +235,76 @@ class TestCharacterSettingsUpdateAPIContract:
         saved_state = db.save_game_progress.call_args.args[1].to_dict()
         assert "wealth" not in saved_state["character_settings"]
         assert "wealth" not in saved_state
+
+    def test_update_character_settings_keeps_live_response_and_next_save_sanitized(
+        self,
+    ) -> None:
+        """A PATCH must not reintroduce retired keys into the live session."""
+        db = MagicMock()
+        db.load_saved_game.return_value = {
+            "player_name": "林岚",
+            "life_vision": "经营一家社区书店",
+            "age": 31,
+            "week": 0,
+            "current_round": 0,
+            "character_settings": {"era": {"era_name": "现代上海"}},
+        }
+        db.save_game_progress.return_value = True
+
+        live_state = PlayerState.from_dict(db.load_saved_game.return_value)
+        game_loop = SimpleNamespace(
+            player_state=live_state,
+            get_state=lambda: live_state,
+            get_progress=lambda: {},
+            get_round_info=lambda: {},
+            current_event=None,
+            quality_level="expert",
+        )
+        live_session = SimpleNamespace(game_loop=game_loop)
+        nested_legacy_settings = {
+            "family": {
+                "description": "家里经营小店",
+                "wealth": 50_000,
+                "audit": [
+                    {
+                        "wealth_ledger": {"balance": 50_000},
+                        "details": {
+                            "_active_wealth_transaction_id": "legacy-tx-1",
+                            "note": "保留",
+                        },
+                    }
+                ],
+            }
+        }
+
+        with patch("src.api.deps.decode_token", return_value=1), patch(
+            "src.api.routers.games.get_db", return_value=db
+        ), patch(
+            "src.api.routers.games.session_store.get", return_value=live_session
+        ):
+            patch_response = client.patch(
+                "/api/games/77/character-settings",
+                json={"character_settings": nested_legacy_settings},
+                headers={"Authorization": "Bearer test-token"},
+            )
+            live_response = client.get(
+                "/api/games/77",
+                headers={"Authorization": "Bearer test-token"},
+            )
+            save_response = client.post(
+                "/api/games/77/save",
+                headers={"Authorization": "Bearer test-token"},
+            )
+
+        assert patch_response.status_code == 200
+        assert live_response.status_code == 200
+        assert save_response.status_code == 200
+        assert live_state.character_settings["family"]["description"] == "家里经营小店"
+        assert live_state.character_settings["family"]["audit"][0]["details"]["note"] == "保留"
+        _assert_no_legacy_keys(live_state.to_dict())
+        _assert_no_legacy_keys(live_response.json()["player_state"])
+        for call in db.save_game_progress.call_args_list:
+            _assert_no_legacy_keys(call.args[1].to_dict())
 
     def test_update_character_settings_can_replace_stale_identity_before_play(self) -> None:
         """已有 gameId 继续创建新角色时，应同步覆盖旧 player_name/life_vision。"""

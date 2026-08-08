@@ -13,6 +13,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
 
+from src.utils.financial_narrative import contains_precise_financial_fact
+
 MAX_EVIDENCE_RECORDS = 160
 MAX_ATTEMPTS = 2
 
@@ -257,6 +259,12 @@ class AssistantEvidence:
         )
 
     def _add(self, record: EvidenceRecord) -> None:
+        if contains_precise_financial_fact(
+            record.subject,
+            record.fact,
+            record.metadata.get("category", ""),
+        ):
+            return
         if len(self.records) < MAX_EVIDENCE_RECORDS:
             self.records[record.evidence_id] = record
 

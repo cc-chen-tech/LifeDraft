@@ -129,6 +129,47 @@ def test_safe_grounded_provider_summary_is_preserved() -> None:
     )
 
 
+def test_tracked_wealth_or_exact_balance_summary_falls_back_even_when_evidenced() -> None:
+    history = [
+        {
+            "week": 0,
+            "round": 0,
+            "story_text": "林晓的账户余额达到50000元。",
+            "choice_text": "继续储蓄",
+        }
+    ]
+
+    for tracked_summary in (
+        "第1周，林晓的财富达到50000元。",
+        "第1周，林晓的账户余额达到50000元。",
+        "第1周，林晓的当前财富值有所提升。",
+    ):
+        result = validate_or_fallback_life_summary(
+            tracked_summary,
+            history,
+            start_week=1,
+            end_week=1,
+        )
+        assert result != tracked_summary
+
+
+def test_qualitative_economic_summary_is_preserved() -> None:
+    history = [
+        {
+            "week": 0,
+            "round": 0,
+            "story_text": "项目收入有所改善，但家庭仍面临经济压力，消费也更加谨慎。",
+            "choice_text": "暂缓非必要开支",
+        }
+    ]
+    summary = "第1周，项目收入有所改善，但家庭仍面临经济压力，消费更加谨慎。"
+
+    assert (
+        validate_or_fallback_life_summary(summary, history, start_week=1, end_week=1)
+        == summary
+    )
+
+
 def test_deterministic_fallback_uses_source_excerpts_without_metrics_or_legal_endorsement() -> None:
     result = build_grounded_fallback(STORY_HISTORY, start_week=1, end_week=4)
 

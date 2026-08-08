@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from src.game.relationship_authority import build_required_cast_constraints, extract_required_key_people
+from src.utils.financial_narrative import contains_precise_financial_fact
 
 logger = logging.getLogger(__name__)
 
@@ -331,7 +332,13 @@ class WorldModel:
                 # Skip expired facts
                 if df.expiry_week > 0 and df.expiry_week <= wm.current_week:
                     df.active = False
-                if df.active:
+                if df.active and not contains_precise_financial_fact(
+                    df.fact_type,
+                    df.subject,
+                    df.description,
+                    df.constraint_text,
+                    df.source_excerpt,
+                ):
                     wm.dynamic_facts.append(df)
             except (KeyError, TypeError, ValueError) as e:
                 logger.warning(f"Skipping invalid dynamic fact data: {e}, data: {df_d}")
@@ -920,7 +927,19 @@ class WorldModel:
         """Build constraint text from AI-identified dynamic facts."""
         from src.game.constants import IMPORTANCE_ORDER
 
-        active_facts = [f for f in self.dynamic_facts if f.active and f.constraint_text]
+        active_facts = [
+            f
+            for f in self.dynamic_facts
+            if f.active
+            and f.constraint_text
+            and not contains_precise_financial_fact(
+                f.fact_type,
+                f.subject,
+                f.description,
+                f.constraint_text,
+                f.source_excerpt,
+            )
+        ]
         if not active_facts:
             return ""
 
@@ -1014,7 +1033,18 @@ class WorldModel:
             "active_commitments": [c.to_dict() for c in self.active_commitments],
             "causal_chains": [cc.to_dict() for cc in self.causal_chains],
             "physical_states": {n: ps.to_dict() for n, ps in self.physical_states.items()},
-            "dynamic_facts": [df.to_dict() for df in self.dynamic_facts if hasattr(df, "to_dict")],
+            "dynamic_facts": [
+                df.to_dict()
+                for df in self.dynamic_facts
+                if hasattr(df, "to_dict")
+                and not contains_precise_financial_fact(
+                    getattr(df, "fact_type", ""),
+                    getattr(df, "subject", ""),
+                    getattr(df, "description", ""),
+                    getattr(df, "constraint_text", ""),
+                    getattr(df, "source_excerpt", ""),
+                )
+            ],
             "character_profiles": {n: cp.to_dict() for n, cp in self.character_profiles.items()},
             "location_graph": self.location_graph,
             "required_cast": self.required_cast,

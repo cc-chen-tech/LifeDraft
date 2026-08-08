@@ -6,6 +6,7 @@ import re
 from typing import List, Mapping, Sequence
 
 from src.ai.professional_risk import apply_professional_risk_guardrail
+from src.utils.financial_narrative import contains_tracked_wealth_state
 
 
 StoryItem = Mapping[str, object]
@@ -103,6 +104,7 @@ def build_life_summary_prompt(
 - 如果不同回合对身份、病情、招标、注册或其他事实存在冲突，必须明确保留为冲突或未决，不得自行合并成确定事实。
 - 对“规避竞业”、借用亲属名义或类似行为，不得称为合规路径、合法方案或已经解决的法律风险。
 - 不要提及精力、情绪、学识等游戏资源指标。
+- 不要把财富、账户余额或存款写成可追踪资源，也不要给出精确余额或财富门槛；可以保留定性的收入、消费、贫富与经济压力叙事。
 
 【故事证据】
 {_source_text(story_history)}
@@ -171,6 +173,7 @@ def validate_or_fallback_life_summary(
         not summary.strip()
         or len(summary.strip()) > _summary_output_limit(story_history)
         or any(metric.lower() in lowered for metric in _REMOVED_METRICS)
+        or contains_tracked_wealth_state(summary)
         or any(claim.lower() in lowered for claim in _LEGAL_ENDORSEMENTS)
         or (span <= 8 and any(duration.lower() in lowered for duration in _INFLATED_DURATION))
         or _has_unsupported_number(summary, story_history, start_week, end_week)

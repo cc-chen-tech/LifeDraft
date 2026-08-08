@@ -25,6 +25,7 @@ from src.database.models import Game, SessionLocal
 from src.game.game_initializer import GameInitializer
 from src.game.game_loop import GameLoop
 from src.game.state import PlayerState
+from src.utils.legacy_data import strip_retired_wealth_keys
 from src.utils.language import detect_language_from_state
 
 logger = logging.getLogger(__name__)
@@ -507,7 +508,9 @@ async def update_character_settings(
     existing_settings = state_data.get("character_settings") or {}
     if not isinstance(existing_settings, dict):
         existing_settings = {}
-    merged_settings = _deep_merge_dicts(existing_settings, req.character_settings)
+    merged_settings = strip_retired_wealth_keys(
+        _deep_merge_dicts(existing_settings, req.character_settings)
+    )
 
     updated_state = dict(state_data)
     updated_state["character_settings"] = merged_settings

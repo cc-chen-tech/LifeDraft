@@ -3,7 +3,7 @@
  *
  * 验证角色创建流程中，所有 character_settings 都被正确持久化到后端。
  * 核心测试：拦截 PATCH /api/games/{game_id}/character-settings 请求，
- * 验证 payload 包含 family/relationships/traits/wealth。
+ * 验证 payload 包含 family/relationships/traits，且不再包含财富设置。
  *
  * 注意：此测试使用真实后端 API，不 mock。
  */
@@ -95,7 +95,7 @@ test.describe('Character Creation - Settings Persistence', () => {
     expect(cs).toHaveProperty('family');
     expect(cs).toHaveProperty('relationships');
     expect(cs).toHaveProperty('traits');
-    expect(cs).toHaveProperty('wealth');
+    expect(cs).not.toHaveProperty('wealth');
 
     // 10. 验证手动步骤的字段也存在
     expect(cs).toHaveProperty('era');
