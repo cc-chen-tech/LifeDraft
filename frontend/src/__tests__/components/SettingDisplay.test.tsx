@@ -86,7 +86,31 @@ describe('SettingDisplay', () => {
       render(<SettingDisplay stepKey="traits" data={traitsData} />);
 
       // Should render traits content
-      expect(screen.getByText(/乐观|坚韧|性格/i)).toBeInTheDocument();
+      expect(screen.getByRole('listitem')).toHaveTextContent('性格: 乐观,坚韧');
+    });
+
+    it('contains long text for every trait in full-width wrapping rows', () => {
+      const longTrait = '在复杂环境中持续观察细节并把不确定信息转化为可执行计划的能力';
+
+      render(
+        <SettingDisplay
+          stepKey="traits"
+          data={{
+            personality: longTrait,
+            abilities: longTrait,
+            interests: longTrait,
+            strengths: longTrait,
+            weaknesses: longTrait,
+          }}
+        />,
+      );
+
+      const rows = screen.getAllByRole('listitem');
+      expect(rows).toHaveLength(5);
+      rows.forEach((row) => {
+        expect(row).toHaveClass('w-full', 'rounded-lg', 'whitespace-normal', 'break-words');
+        expect(row).toHaveTextContent(longTrait);
+      });
     });
 
     it('renders wealth setting correctly', () => {

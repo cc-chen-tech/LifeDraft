@@ -87,6 +87,7 @@ export default function E2ERegressionPage() {
   const [showLifeSummaryFixture, setShowLifeSummaryFixture] = useState(false);
   const [fastProgressFixtureEnabled, setFastProgressFixtureEnabled] = useState(false);
   const [worldFactSetting, setWorldFactSetting] = useState<Record<string, unknown> | null>(null);
+  const [traitLayoutFixtureEnabled, setTraitLayoutFixtureEnabled] = useState(false);
   const [entityCollectionAddEnabled, setEntityCollectionAddEnabled] = useState(false);
   const [entityAddState, setEntityAddState] = useState<"idle" | "adding" | "saved" | "error">("idle");
   const [musicQueueFixture, setMusicQueueFixture] = useState<{
@@ -109,6 +110,7 @@ export default function E2ERegressionPage() {
     setAudioRegenerationFixtureEnabled(searchParams.get("audioRegeneration") === "1");
     setLifeSummaryFixtureEnabled(searchParams.get("lifeSummary") === "1");
     setFastProgressFixtureEnabled(searchParams.get("fastProgress") === "1");
+    setTraitLayoutFixtureEnabled(searchParams.get("traitsLayout") === "1");
     const enableRelationshipRegenerationFixture =
       searchParams.get("relationshipRegeneration") === "1";
     if (enableRelationshipRegenerationFixture) {
@@ -322,6 +324,20 @@ export default function E2ERegressionPage() {
       {worldFactSetting && (
         <section aria-label="世界事实边界回归夹具">
           <SettingDisplay stepKey="world" data={worldFactSetting} />
+        </section>
+      )}
+      {traitLayoutFixtureEnabled && (
+        <section aria-label="角色特质布局回归夹具">
+          <SettingDisplay
+            stepKey="traits"
+            data={{
+              personality: "在复杂环境中持续观察细节，并把不确定信息转化为可执行计划。",
+              abilities: "能够将分散线索归纳成清晰路径，和不同背景的伙伴保持有效协作。",
+              interests: "喜欢研究城市生活里隐藏的故事、旧物与人与人之间微妙的关系。",
+              strengths: "面对变化时保持耐心，先核对事实，再作出不仓促的选择。",
+              weaknesses: "容易把所有责任都揽在自己身上，需要学习在合适的时候寻求帮助。",
+            }}
+          />
         </section>
       )}
       <section aria-label="开场完成门控回归夹具" className="space-y-3">
