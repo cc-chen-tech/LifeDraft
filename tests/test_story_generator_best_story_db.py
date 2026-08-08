@@ -23,20 +23,22 @@ class TestStoryGeneratorBestStoryFallback:
         mock_client = MagicMock()
         return StoryGenerator(mock_client, quality_level=level), mock_client
 
-    def test_best_story_text_used_when_final_is_short(self):
-        """后续失败时，回退到先前 Harness 已接受的 best_story_text"""
+    def test_accepted_story_survives_a_longer_critical_candidate(self):
+        """后续更长的 CRITICAL 候选不得覆盖先前 Harness 已接受故事。"""
         gen, client = self._make_generator(QualityLevel.EXPERT)
 
-        long_story = (
+        accepted_story = (
             "你在清晨的图书馆整理实验记录，窗外的雨声提醒你即将到来的合作评审。"
             "你把协议中的风险条款逐条标记，并联系林一凡确认技术接口、预算节奏和联调日期。"
             "午后，团队针对数据权限和样本交接展开讨论，你提出先完成小范围验证，再把结果带回项目会上复盘。"
             "傍晚离开实验室前，你写下明天要跟进的三项事项，也决定把尚未解决的顾虑坦诚告诉合作方。"
         ) * 6
-        short_story = "短"
+        rejected_story = accepted_story + (
+            "第二天的复盘让你确认了验证范围，也为下一次沟通准备了更清晰的备选方案。"
+        )
 
-        # 第一次返回 Harness 已接受的长文本；后续 CRITICAL 与空文本均不得覆盖它。
-        client.call.side_effect = [long_story, short_story, ""]
+        # 第一次候选被 Harness 接受；第二次更长但 CRITICAL，第三次为空。
+        client.call.side_effect = [accepted_story, rejected_story, ""]
 
         mock_option_gen = MagicMock()
         mock_option_gen.generate_options_only.side_effect = Exception("option gen failed")
@@ -78,10 +80,11 @@ class TestStoryGeneratorBestStoryFallback:
                 option_generator=mock_option_gen,
             )
 
-        # 应使用 best_story_text（长故事），而非 fallback "平静的一天"
+        # 仅 Harness 已接受的候选可以作为上下文回退。
         assert "平静" not in event.event_description
         assert len(event.event_description) > 50
-        assert event.event_description == long_story
+        assert event.event_description == accepted_story
+        assert event.event_description != rejected_story
 
     def test_failure_is_surfaced_when_no_valid_story_exists(self):
         """An empty provider result must fail instead of persisting template prose."""
