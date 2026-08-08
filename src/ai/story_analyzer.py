@@ -23,7 +23,7 @@ from typing import Any, Dict, List
 
 from src.ai.system_prompts import get_system_prompt
 from src.ai.utils import extract_json
-from src.utils.financial_narrative import contains_precise_financial_fact
+from src.utils.financial_narrative import contains_authoritative_financial_state
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +196,7 @@ class StoryAnalyzer:
             f
             for f in existing_facts
             if f.active
-            and not contains_precise_financial_fact(
+            and not contains_authoritative_financial_state(
                 f.fact_type,
                 f.subject,
                 f.description,
@@ -262,7 +262,10 @@ class StoryAnalyzer:
 
                 if not subject or not description:
                     continue
-                if action in ("new", "update") and contains_precise_financial_fact(
+                if action in (
+                    "new",
+                    "update",
+                ) and contains_authoritative_financial_state(
                     fact_type,
                     subject,
                     description,

@@ -6,7 +6,7 @@ import re
 from typing import List, Mapping, Sequence
 
 from src.ai.professional_risk import apply_professional_risk_guardrail
-from src.utils.financial_narrative import contains_tracked_wealth_state
+from src.utils.financial_narrative import contains_authoritative_financial_state
 
 
 StoryItem = Mapping[str, object]
@@ -20,6 +20,7 @@ _COMPACT_CHOICE_MAX_CHARS = 120
 _LIFE_SUMMARY_OUTPUT_MAX_CHARS = 600
 _COMPACT_FALLBACK_STORY_MAX_CHARS = 140
 _COMPACT_FALLBACK_CHOICE_MAX_CHARS = 60
+_FALLBACK_CLAUSE_SPLIT = re.compile(r"[，,；;。！？!?\n]+")
 
 
 def _as_text(item: StoryItem, key: str) -> str:
@@ -81,6 +82,18 @@ def _truncate_evidence(text: str, limit: int) -> str:
     return normalized[: limit - 3].rstrip() + "..."
 
 
+def _sanitize_fallback_evidence(text: str) -> str:
+    """Remove exact or tracked money-state clauses before fallback quoting."""
+    if not contains_authoritative_financial_state(text):
+        return text.strip()
+    safe_clauses = [
+        clause.strip()
+        for clause in _FALLBACK_CLAUSE_SPLIT.split(text)
+        if clause.strip() and not contains_authoritative_financial_state(clause)
+    ]
+    return "；".join(safe_clauses) or "相关经济处境有所变化"
+
+
 def _range_label(start_week: int, end_week: int) -> str:
     return f"第{start_week}周" if start_week == end_week else f"第{start_week}-{end_week}周"
 
@@ -118,9 +131,9 @@ def build_grounded_fallback(
     """Create a compact deterministic summary from representative source excerpts."""
     excerpts: List[str] = []
     for item in story_history:
-        story = _as_text(item, "story_text").strip()
+        story = _sanitize_fallback_evidence(_as_text(item, "story_text"))
         if story and story not in excerpts:
-            choice = _as_text(item, "choice_text").strip()
+            choice = _sanitize_fallback_evidence(_as_text(item, "choice_text"))
             excerpt = _truncate_evidence(story, _COMPACT_FALLBACK_STORY_MAX_CHARS)
             if choice:
                 excerpt += f"（选择：{_truncate_evidence(choice, _COMPACT_FALLBACK_CHOICE_MAX_CHARS)}）"
@@ -173,7 +186,7 @@ def validate_or_fallback_life_summary(
         not summary.strip()
         or len(summary.strip()) > _summary_output_limit(story_history)
         or any(metric.lower() in lowered for metric in _REMOVED_METRICS)
-        or contains_tracked_wealth_state(summary)
+        or contains_authoritative_financial_state(summary)
         or any(claim.lower() in lowered for claim in _LEGAL_ENDORSEMENTS)
         or (span <= 8 and any(duration.lower() in lowered for duration in _INFLATED_DURATION))
         or _has_unsupported_number(summary, story_history, start_week, end_week)

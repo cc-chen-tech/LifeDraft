@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from src.game.relationship_authority import build_required_cast_constraints, extract_required_key_people
-from src.utils.financial_narrative import contains_precise_financial_fact
+from src.utils.financial_narrative import contains_authoritative_financial_state
 
 logger = logging.getLogger(__name__)
 
@@ -332,7 +332,7 @@ class WorldModel:
                 # Skip expired facts
                 if df.expiry_week > 0 and df.expiry_week <= wm.current_week:
                     df.active = False
-                if df.active and not contains_precise_financial_fact(
+                if df.active and not contains_authoritative_financial_state(
                     df.fact_type,
                     df.subject,
                     df.description,
@@ -932,7 +932,7 @@ class WorldModel:
             for f in self.dynamic_facts
             if f.active
             and f.constraint_text
-            and not contains_precise_financial_fact(
+            and not contains_authoritative_financial_state(
                 f.fact_type,
                 f.subject,
                 f.description,
@@ -1037,7 +1037,7 @@ class WorldModel:
                 df.to_dict()
                 for df in self.dynamic_facts
                 if hasattr(df, "to_dict")
-                and not contains_precise_financial_fact(
+                and not contains_authoritative_financial_state(
                     getattr(df, "fact_type", ""),
                     getattr(df, "subject", ""),
                     getattr(df, "description", ""),
