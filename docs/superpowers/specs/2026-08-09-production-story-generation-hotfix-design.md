@@ -1,6 +1,6 @@
 # Production Story Generation Hotfix Design
 
-> Status: Approach A approved; written specification awaiting review
+> Status: Approach A and written specification approved for implementation planning
 >
 > Date: 2026-08-09
 >
