@@ -106,6 +106,7 @@ describe('OpeningStoryPage', () => {
     it('does not reveal hydration loading until 250ms have elapsed', () => {
       jest.useFakeTimers();
       isHydratedForTest = false;
+      useGameStore.setState({ openingStory: '' });
 
       render(<OpeningStoryPage />);
 
@@ -114,6 +115,23 @@ describe('OpeningStoryPage', () => {
         jest.advanceTimersByTime(250);
       });
       expect(screen.getByTestId('narrative-loading-screen')).toHaveTextContent('正在打开这一页');
+      jest.useRealTimers();
+    });
+
+    it('never shows an opening loading screen while hydration restores an existing opening', () => {
+      jest.useFakeTimers();
+      isHydratedForTest = false;
+      const { rerender } = render(<OpeningStoryPage />);
+
+      act(() => {
+        jest.advanceTimersByTime(250);
+      });
+      expect(screen.queryByTestId('narrative-loading-screen')).not.toBeInTheDocument();
+
+      isHydratedForTest = true;
+      rerender(<OpeningStoryPage />);
+      expect(screen.queryByTestId('narrative-loading-screen')).not.toBeInTheDocument();
+      expect(screen.getByText('Test opening story content.')).toBeInTheDocument();
       jest.useRealTimers();
     });
 
@@ -145,6 +163,26 @@ describe('OpeningStoryPage', () => {
       });
 
       expect(screen.queryByTestId('narrative-loading-inline')).not.toBeInTheDocument();
+    });
+
+    it('retries a failed opening stream without reloading the page', async () => {
+      useGameStore.setState({ openingStory: '' });
+      let handlers: Parameters<typeof streamOpeningStory>[4] | undefined;
+      mockStreamOpeningStory.mockImplementation((...args) => {
+        handlers = args[4];
+        return Promise.resolve();
+      });
+
+      render(<OpeningStoryPage />);
+      await waitFor(() => expect(handlers).toBeDefined());
+      act(() => {
+        handlers?.onError(new Error('stream dropped'));
+      });
+
+      fireEvent.click(await screen.findByRole('button', { name: '重试' }));
+      expect(mockStreamOpeningStory).toHaveBeenCalledTimes(2);
+      expect(mockPush).not.toHaveBeenCalled();
+      expect(screen.getByTestId('narrative-loading-screen')).toBeInTheDocument();
     });
   });
 

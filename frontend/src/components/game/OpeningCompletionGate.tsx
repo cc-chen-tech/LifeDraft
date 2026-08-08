@@ -30,7 +30,7 @@ export function OpeningCompletionGate({
         开始我的人生
       </Button>
       {!ready && (
-        <p className="text-sm text-muted-foreground animate-pulse" aria-live="polite">
+        <p className="text-sm text-muted-foreground" aria-live="polite">
           {backendComplete ? "正在显示完整故事..." : "故事正在展开..."}
         </p>
       )}

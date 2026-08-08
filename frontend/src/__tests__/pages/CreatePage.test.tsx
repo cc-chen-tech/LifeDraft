@@ -517,6 +517,39 @@ describe('CreatePage', () => {
       jest.useRealTimers();
     });
 
+    it('keeps the real pending automatic background step when portrait enters the full-screen state', async () => {
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url === '/api/character/setting') {
+          return new Promise(() => {});
+        }
+        return Promise.resolve(jsonResponse({}));
+      });
+      useGameStore.setState({
+        creationStep: 4,
+        gameId: 123,
+        playerName: '陆明',
+        characterSettings: {
+          era: { era_name: '现代' },
+          age: { starting_age: 22 },
+          gender: 'male',
+          world: { world_description: '城市' },
+        },
+      });
+      useImageStore.setState({ playerImages: [], isGeneratingImage: true });
+
+      render(<CreatePage />);
+
+      await waitFor(() => expect(global.fetch).toHaveBeenCalledWith(
+        '/api/character/setting',
+        expect.any(Object),
+      ));
+      fireEvent.click(screen.getByRole('button', { name: '继续生成角色' }));
+
+      expect(screen.getByTestId('narrative-loading-screen')).toHaveTextContent('角色背景，正在补全');
+      expect(screen.getByRole('status')).toHaveTextContent('家庭背景');
+      expect(screen.queryByText('剩余角色背景')).not.toBeInTheDocument();
+    });
+
     it('handles regenerate button click', async () => {
       (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ era_name: '现代' }));
 

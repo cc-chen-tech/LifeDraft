@@ -617,7 +617,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
       } else if (isBackgroundGenerating) {
         console.log("[portrait] Background generation still in progress, showing loading...");
         setAutoGenPhase("generating");
-        setAutoGenLabel("剩余角色背景");
+        setAutoGenLabel((currentLabel) => currentLabel || "剩余角色背景");
         
         const checkInterval = setInterval(() => {
           const settings = useGameStore.getState().characterSettings;

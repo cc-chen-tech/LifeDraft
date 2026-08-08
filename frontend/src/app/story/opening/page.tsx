@@ -43,8 +43,8 @@ export default function OpeningStoryPage() {
   const { language } = useUIStore();
 
   const [isStreaming, setIsStreaming] = useState(false);
-  const [isComplete, setIsComplete] = useState(false);
-  const [storyText, setStoryText] = useState("");
+  const [isComplete, setIsComplete] = useState(() => Boolean(openingStory));
+  const [storyText, setStoryText] = useState(() => openingStory);
   const [displayedCompleteText, setDisplayedCompleteText] = useState("");
   const [error, setError] = useState("");
   const [illustrationPrompt, setIllustrationPrompt] = useState("");
@@ -279,6 +279,9 @@ export default function OpeningStoryPage() {
 
   // 等待 hydration
   if (!hydrated) {
+    if (storyText || openingStory) {
+      return <div className="min-h-screen" aria-busy="true" />;
+    }
     return showHydrationLoading ? (
       <NarrativeLoadingState context="hydrate" layout="screen" />
     ) : (
