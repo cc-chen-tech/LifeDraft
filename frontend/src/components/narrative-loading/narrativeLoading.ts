@@ -56,8 +56,7 @@ const QUALITY_DELAYS: Record<string, number> = {
   master: 180_000,
 };
 
-const FORBIDDEN_LOADING_LABEL =
-  /\bai\b|%|预计|预估|估计|耗时|秒|分钟|\b(?:fast|expert|master)\b|\d+\s*[-~～]\s*\d+/i;
+const SHORT_CHINESE_LABEL = /^[\u3400-\u9fff，。、；：？！“”‘’（）《》【】\s]+$/;
 
 function fallbackStatus(operation?: NarrativeLoadingOperation) {
   return operation === "choice" ? "正在继续推演" : "正在继续写作";
@@ -65,7 +64,7 @@ function fallbackStatus(operation?: NarrativeLoadingOperation) {
 
 function getAllowedLabel(label?: string): string | undefined {
   const trimmedLabel = label?.trim();
-  return trimmedLabel && !FORBIDDEN_LOADING_LABEL.test(trimmedLabel) ? trimmedLabel : undefined;
+  return trimmedLabel && SHORT_CHINESE_LABEL.test(trimmedLabel) ? trimmedLabel : undefined;
 }
 
 function getActionLabel(transport: NarrativeTransportState): NarrativeLoadingCopy["actionLabel"] {
@@ -84,7 +83,7 @@ export function resolveNarrativeLoadingCopy({
   transport,
 }: NarrativeLoadingCopyOptions): NarrativeLoadingCopy {
   const normalizedPhase = phase?.trim().toLowerCase();
-  const resolvedTransport = transport ?? (normalizedPhase === "failed" ? "failed" : "active");
+  const resolvedTransport = transport ?? "active";
   const label = getAllowedLabel(stepLabel) ?? getAllowedLabel(contextLabel);
   const status =
     context === "hydrate" || normalizedPhase === "completed"

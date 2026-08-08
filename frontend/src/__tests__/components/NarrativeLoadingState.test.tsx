@@ -15,7 +15,9 @@ function extractReducedMotionBlock(stylesheet: string): string | undefined {
     const markerIndex = stylesheet.indexOf(marker, offset);
     if (markerIndex === -1) return undefined;
     const openBraceIndex = stylesheet.indexOf("{", markerIndex);
+    if (openBraceIndex === -1) return undefined;
     let depth = 0;
+    let closedBlock = false;
 
     for (let index = openBraceIndex; index < stylesheet.length; index += 1) {
       if (stylesheet[index] === "{") depth += 1;
@@ -24,9 +26,12 @@ function extractReducedMotionBlock(stylesheet: string): string | undefined {
         const block = stylesheet.slice(markerIndex, index + 1);
         if (block.includes(".narrative-loading-divider")) return block;
         offset = index + 1;
+        closedBlock = true;
         break;
       }
     }
+
+    if (!closedBlock) return undefined;
   }
 
   return undefined;
@@ -127,6 +132,19 @@ describe("resolveNarrativeLoadingCopy", () => {
     }
   });
 
+  it.each([
+    ["OpenAI 正在写作", "ASCII brand"],
+    ["进度 3/5", "numeric slash progress"],
+    ["进度 50％", "full-width percentage"],
+    ["elapsed 15s", "English elapsed time"],
+  ] as const)("falls back from unsafe %s label (%s) on either external label channel", (label) => {
+    for (const labelField of ["stepLabel", "contextLabel"] as const) {
+      const labels = labelField === "stepLabel" ? { stepLabel: label } : { contextLabel: label };
+      expect(resolveNarrativeLoadingCopy({ context: "gameplay", phase: "generating", ...labels }))
+        .toMatchObject({ status: "正在写作" });
+    }
+  });
+
   it("uses a restrained delayed copy and only exposes transport actions for an abnormal transport", () => {
     expect(resolveNarrativeLoadingCopy({ context: "opening", delayed: true })).toMatchObject({
       delayedCopy: "这一页仍在继续写作",
@@ -140,6 +158,12 @@ describe("resolveNarrativeLoadingCopy", () => {
     });
     expect(resolveNarrativeLoadingCopy({ context: "ending", transport: "failed" })).toMatchObject({
       actionLabel: "重试",
+    });
+  });
+
+  it("treats an omitted transport as active even when a raw phase says failed", () => {
+    expect(resolveNarrativeLoadingCopy({ context: "gameplay", phase: "failed" })).toMatchObject({
+      actionLabel: undefined,
     });
   });
 
@@ -167,6 +191,11 @@ describe("NarrativeLoadingState", () => {
   it("has exactly one live status region and no normal action", () => {
     render(<NarrativeLoadingState context="gameplay" layout="section" phase="generating" delayed />);
     expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("does not render a recovery action when a raw failed phase has no explicit transport", () => {
+    render(<NarrativeLoadingState context="gameplay" layout="section" phase="failed" />);
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
@@ -203,5 +232,9 @@ describe("NarrativeLoadingState", () => {
     expect(reducedMotionBlock ?? "").toMatch(
       /\.narrative-loading-divider\s*\{[^}]*animation:\s*none/
     );
+  });
+
+  it("returns no reduced-motion block when the media query is unterminated", () => {
+    expect(extractReducedMotionBlock("@media (prefers-reduced-motion: reduce) { .narrative-loading-divider {")).toBeUndefined();
   });
 });
