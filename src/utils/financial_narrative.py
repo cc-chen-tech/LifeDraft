@@ -13,16 +13,20 @@ from typing import Any, Iterable
 _ARABIC_NUMBER = r"(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)"
 _ZH_NUMBER = r"[零〇一二两三四五六七八九十百千万亿]+"
 _CURRENCY_CODE = r"(?<![A-Za-z])(?:USD|RMB|CNY|EUR|GBP|JPY|HKD)(?![A-Za-z])"
-_CURRENCY_NAME = (
-    r"(?:元(?!里|二次|组)|块钱|人民币|美元|美金|欧元|英镑|日元|港元|" r"yuan\b|dollars?\b)"
-)
+_CURRENCY_NAME = r"(?:元|块钱|人民币|美元|美金|欧元|英镑|日元|港元|yuan\b|dollars?\b)"
 _CURRENCY_AMOUNT = re.compile(
     rf"(?:[¥￥$€£]\s*{_ARABIC_NUMBER}|{_CURRENCY_CODE}\s*{_ARABIC_NUMBER}|"
-    rf"(?:{_ARABIC_NUMBER}|{_ZH_NUMBER})\s*(?:万|亿)?\s*"
-    rf"(?:{_CURRENCY_NAME}|{_CURRENCY_CODE}))",
+    rf"{_ARABIC_NUMBER}\s*(?:万|亿)?\s*(?:{_CURRENCY_NAME}|{_CURRENCY_CODE}))",
     re.IGNORECASE,
 )
+_ZH_YUAN_AMOUNT = re.compile(rf"{_ZH_NUMBER}\s*元")
 _RESOURCE_NUMBER = re.compile(rf"{_ARABIC_NUMBER}(?![\d年月周岁天日个%％])")
+_FINANCIAL_AMOUNT_CONTEXT = re.compile(
+    r"(?:工资|薪资|月薪|年薪|奖金|收入|支出|花费|售价|价格|余额|存款|资产|财富|"
+    r"\bsalar(?:y|ies)\b|\bwages?\b|\bbonus(?:es)?\b|\bincome\b|\bexpenses?\b|"
+    r"\bprice\b|\bbalance\b|\bsavings\b|\bassets?\b|\bwealth\b)",
+    re.IGNORECASE,
+)
 _FINANCIAL_RESOURCE_HEAD = re.compile(
     r"(?:财富值|财富资源|财富|账户余额|帐户余额|余额|存款|净资产|月薪|年薪|工资|薪资|"
     r"\baccount\s+balance\b|\bbank\s+balance\b|\bbalance\b|\bsavings\b|"
@@ -30,10 +34,20 @@ _FINANCIAL_RESOURCE_HEAD = re.compile(
     re.IGNORECASE,
 )
 _PLAIN_WEALTH_HEAD = re.compile(r"(?:财富(?!值|资源)|\bwealth\b)", re.IGNORECASE)
-_NON_TRACKING_WEALTH_VALUE = re.compile(
-    r"(?:财富\s*(?:并非|不是|并不是|不等于).{0,18}(?:人生|生活|幸福|成功|唯一)?"
-    r".{0,8}(?:目标|标准|意义)|"
-    r"\bwealth\s+(?:is\s+)?not\s+.{0,24}(?:goal|measure|meaning))",
+_NEGATED_WEALTH_RELATION = re.compile(
+    r"(?:财富\s*(?:不代表|不能|无法|并非|不是|并不是|不等于)|"
+    r"\bwealth\s+(?:does\s+not|doesn't|did\s+not|do\s+not|cannot|can't|"
+    r"is\s+not|isn't)\b)",
+    re.IGNORECASE,
+)
+_TRACKED_STATE_OR_CHANGE = re.compile(
+    r"(?:财富值|财富资源|数额|余额|存款|资产|水平|状态|增长|增加|提升|减少|下降|"
+    r"缩水|改善|恶化|保持|剩余|达到|超过|低于|变化|变动|见底|"
+    r"\b(?:stat(?:e)?|score|balance|savings|assets?|increase(?:d|s|ing)?|"
+    r"decrease(?:d|s|ing)?|rise|rises|rising|rose|fall|falls|falling|fell|"
+    r"drop(?:ped|s|ping)?|grow|grows|growing|grew|improve(?:d|s|ing)?|"
+    r"worsen(?:ed|s|ing)?|remain(?:ed|s|ing)?|reach(?:ed|es|ing)?|"
+    r"change(?:d|s|ing)?)\b)",
     re.IGNORECASE,
 )
 _STRUCTURED_FINANCIAL_CATEGORIES = frozenset({"financial", "wealth"})
@@ -72,6 +86,8 @@ def contains_precise_financial_fact(*values: Any) -> bool:
     for clause in _clauses(*values):
         if _CURRENCY_AMOUNT.search(clause):
             return True
+        if _FINANCIAL_AMOUNT_CONTEXT.search(clause) and _ZH_YUAN_AMOUNT.search(clause):
+            return True
         if _FINANCIAL_RESOURCE_HEAD.search(clause) and _RESOURCE_NUMBER.search(clause):
             return True
     return False
@@ -82,7 +98,8 @@ def _is_non_tracking_wealth_value(clause: str) -> bool:
     return bool(
         heads
         and all(_PLAIN_WEALTH_HEAD.fullmatch(match.group(0)) for match in heads)
-        and _NON_TRACKING_WEALTH_VALUE.search(clause)
+        and _NEGATED_WEALTH_RELATION.search(clause)
+        and not _TRACKED_STATE_OR_CHANGE.search(clause)
         and not _CURRENCY_AMOUNT.search(clause)
     )
 

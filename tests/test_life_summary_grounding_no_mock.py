@@ -1,5 +1,7 @@
 """No-mock contracts for evidence-grounded life summaries."""
 
+import pytest
+
 from src.services.life_summary_grounding import (
     build_grounded_fallback,
     build_life_summary_prompt,
@@ -143,6 +145,11 @@ def test_tracked_wealth_or_exact_balance_summary_falls_back_even_when_evidenced(
         "第1周，林晓的财富达到50000元。",
         "第1周，林晓的账户余额达到50000元。",
         "第1周，林晓的当前财富值有所提升。",
+        "第1周，林晓的财富不再增长。",
+        "第1周，Lin's wealth did not increase.",
+        "第1周，林晓的月薪八千元。",
+        "第1周，林晓获得奖金三万元。",
+        "第1周，林晓的余额五万元。",
     ):
         result = validate_or_fallback_life_summary(
             tracked_summary,
@@ -163,6 +170,32 @@ def test_qualitative_economic_summary_is_preserved() -> None:
         }
     ]
     summary = "第1周，项目收入有所改善，但家庭仍面临经济压力，消费更加谨慎。"
+
+    assert (
+        validate_or_fallback_life_summary(summary, history, start_week=1, end_week=1)
+        == summary
+    )
+
+
+@pytest.mark.parametrize(
+    "value_statement",
+    (
+        "财富不代表幸福",
+        "财富不能定义成功",
+        "wealth does not define success",
+        "wealth cannot measure happiness",
+    ),
+)
+def test_non_metric_wealth_value_summary_is_preserved(value_statement: str) -> None:
+    history = [
+        {
+            "week": 0,
+            "round": 0,
+            "story_text": value_statement,
+            "choice_text": "陪伴家人",
+        }
+    ]
+    summary = f"第1周，{value_statement}。"
 
     assert (
         validate_or_fallback_life_summary(summary, history, start_week=1, end_week=1)

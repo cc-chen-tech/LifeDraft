@@ -23,6 +23,9 @@ from src.utils.financial_narrative import (
         "USD 8,000",
         "RMB 5000",
         "8,000 USD",
+        "月薪八千元",
+        "奖金三万元",
+        "余额五万元",
     ),
 )
 def test_precise_money_formats_are_classified(text: str) -> None:
@@ -35,6 +38,8 @@ def test_precise_money_formats_are_classified(text: str) -> None:
         "当前财富值有所提升",
         "账户余额有所改善",
         "存款继续增长",
+        "财富不再增长",
+        "wealth did not increase",
     ),
 )
 def test_unnumbered_tracked_money_state_is_classified(text: str) -> None:
@@ -45,6 +50,10 @@ def test_unnumbered_tracked_money_state_is_classified(text: str) -> None:
     "text",
     (
         "财富并非人生目标，她一直重视家人",
+        "财富不代表幸福",
+        "财富不能定义成功",
+        "wealth does not define success",
+        "wealth cannot measure happiness",
         "收入连续3个月下降，经济压力加剧",
         "她因贫富差距而调整消费习惯",
         "the family faces more economic pressure",
@@ -62,6 +71,8 @@ def test_qualitative_economic_or_value_statements_are_preserved(text: str) -> No
         "她搬到广州三元里",
         "她掌握了一元二次方程",
         "他研究三元组的性质",
+        "他们讨论二元关系",
+        "他们走过三元桥",
     ),
 )
 def test_currency_lookalikes_are_not_financial_state(text: str) -> None:
@@ -125,6 +136,11 @@ def test_story_analyzer_rejects_structured_financial_category() -> None:
         "net worth dropped",
         "月薪8000",
         "salary is 8000",
+        "月薪八千元",
+        "奖金三万元",
+        "余额五万元",
+        "财富不再增长",
+        "wealth did not increase",
     ),
 )
 def test_story_analyzer_filters_authoritative_money_state(unsafe_fact: str) -> None:
@@ -165,6 +181,8 @@ def test_story_analyzer_filters_authoritative_money_state(unsafe_fact: str) -> N
         "她搬到广州三元里",
         "她掌握了一元二次方程",
         "他研究三元组的性质",
+        "他们讨论二元关系",
+        "他们走过三元桥",
     ),
 )
 def test_story_analyzer_keeps_currency_lookalikes(safe_fact: str) -> None:
@@ -175,6 +193,38 @@ def test_story_analyzer_keeps_currency_lookalikes(safe_fact: str) -> None:
                 {
                     "action": "new",
                     "fact_type": "knowledge",
+                    "subject": "林岚",
+                    "description": safe_fact,
+                    "constraint_text": safe_fact,
+                    "source_excerpt": safe_fact,
+                }
+            ]
+        },
+        ensure_ascii=False,
+    )
+
+    facts = analyzer._parse_analysis_response(response, 4, [], "hash")
+
+    assert [fact.description for fact in facts] == [safe_fact]
+
+
+@pytest.mark.parametrize(
+    "safe_fact",
+    (
+        "财富不代表幸福",
+        "财富不能定义成功",
+        "wealth does not define success",
+        "wealth cannot measure happiness",
+    ),
+)
+def test_story_analyzer_keeps_non_metric_wealth_values(safe_fact: str) -> None:
+    analyzer = StoryAnalyzer(client=None)
+    response = json.dumps(
+        {
+            "facts": [
+                {
+                    "action": "new",
+                    "fact_type": "value",
                     "subject": "林岚",
                     "description": safe_fact,
                     "constraint_text": safe_fact,
