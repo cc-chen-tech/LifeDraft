@@ -6,6 +6,11 @@ async function expectLongTraitRowsContained(page: Page) {
   const rows = list.getByRole('listitem');
 
   await expect(rows).toHaveCount(5);
+  const rootDimensions = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    viewportWidth: window.innerWidth,
+  }));
+  expect(rootDimensions.scrollWidth).toBeLessThanOrEqual(rootDimensions.viewportWidth);
   const listBox = await list.boundingBox();
   expect(listBox).not.toBeNull();
 

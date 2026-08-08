@@ -107,6 +107,13 @@ describe('SettingDisplay', () => {
 
       const rows = screen.getAllByRole('listitem');
       expect(rows).toHaveLength(5);
+      expect(rows.map((row) => row.textContent)).toEqual([
+        `性格: ${longTrait}`,
+        `能力: ${longTrait}`,
+        `兴趣: ${longTrait}`,
+        `优点: ${longTrait}`,
+        `缺点: ${longTrait}`,
+      ]);
       rows.forEach((row) => {
         expect(row).toHaveClass('w-full', 'rounded-lg', 'whitespace-normal', 'break-words');
         expect(row).toHaveTextContent(longTrait);
