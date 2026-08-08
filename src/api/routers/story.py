@@ -33,7 +33,7 @@ def _is_api_contract_probe(request: Request) -> bool:
     if os.getenv("E2E_CONTRACT_PROBE_FAST") != "1":
         return False
     user_agent = request.headers.get("user-agent", "")
-    return "Playwright" in user_agent or not request.headers.get("cookie")
+    return "Playwright" in user_agent and not request.headers.get("cookie")
 
 
 def _require_session(game_id: int, user_id: Optional[int]):

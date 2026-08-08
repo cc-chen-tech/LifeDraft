@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from src.ai.models import EventOption, GameEvent
-from src.api.routers.gameplay.events import _require_session, router
+from src.api.routers.gameplay.events import _is_api_contract_probe, _require_session, router
 from src.api.services.event_generation_operation import EventGenerationKey
 from src.api.session_store import GameLoopSession
 
@@ -39,6 +39,37 @@ class TestRequireSession:
 
         assert result == mock_session
         mock_service.get_or_restore.assert_called_once_with(1, 42)
+
+
+class TestE2EContractProbe:
+    def test_authenticated_playwright_request_is_not_a_contract_probe(self, monkeypatch):
+        monkeypatch.setenv("E2E_CONTRACT_PROBE_FAST", "1")
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/games/1/event-sync",
+            "headers": [
+                (b"user-agent", b"Playwright/1.58"),
+                (b"cookie", b"access_token=e2e-token"),
+            ],
+        }
+
+        from starlette.requests import Request
+
+        assert _is_api_contract_probe(Request(scope)) is False
+
+    def test_unauthenticated_playwright_request_is_a_contract_probe(self, monkeypatch):
+        monkeypatch.setenv("E2E_CONTRACT_PROBE_FAST", "1")
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/games/1/event-sync",
+            "headers": [(b"user-agent", b"Playwright/1.58")],
+        }
+
+        from starlette.requests import Request
+
+        assert _is_api_contract_probe(Request(scope)) is True
 
 
 class TestGenerateEventEndpoint:
