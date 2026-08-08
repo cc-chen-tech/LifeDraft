@@ -3,7 +3,7 @@
  * Note: This page has complex SSE streaming logic, tests focus on basic rendering
  */
 import React from 'react';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import OpeningStoryPage from '@/app/story/opening/page';
 import { useGameStore } from '@/stores/useGameStore';
@@ -11,6 +11,8 @@ import { useImageStore } from '@/stores/useImageStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { streamOpeningStory } from '@/lib/sse';
 import { games } from '@/lib/api';
+
+let isHydratedForTest = true;
 
 const mockPush = jest.fn();
 jest.mock('next/navigation', () => ({
@@ -22,6 +24,10 @@ jest.mock('next/navigation', () => ({
 
 jest.mock('@/lib/sse', () => ({
   streamOpeningStory: jest.fn(),
+}));
+
+jest.mock('@/hooks/useHydration', () => ({
+  useHydration: () => isHydratedForTest,
 }));
 
 jest.mock('@/lib/api', () => {
@@ -63,8 +69,8 @@ describe('OpeningStoryPage', () => {
     mockGetActive.mockReset();
     mockPatchCharacterSettings.mockReset();
     mockPatchCharacterSettings.mockResolvedValue({} as never);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     delete (window as any).__TEST_DATA__;
+    isHydratedForTest = true;
     setupDefaultState();
   });
 
@@ -93,6 +99,52 @@ describe('OpeningStoryPage', () => {
     it('displays player name in header', () => {
       render(<OpeningStoryPage />);
       expect(screen.getByText('Test opening story content.')).toBeInTheDocument();
+    });
+  });
+
+  describe('Narrative loading states', () => {
+    it('does not reveal hydration loading until 250ms have elapsed', () => {
+      jest.useFakeTimers();
+      isHydratedForTest = false;
+
+      render(<OpeningStoryPage />);
+
+      expect(screen.queryByTestId('narrative-loading-screen')).not.toBeInTheDocument();
+      act(() => {
+        jest.advanceTimersByTime(250);
+      });
+      expect(screen.getByTestId('narrative-loading-screen')).toHaveTextContent('正在打开这一页');
+      jest.useRealTimers();
+    });
+
+    it('replaces the opening screen with story text and an inline state after the first chunk', async () => {
+      useGameStore.setState({ openingStory: '' });
+      let handlers: Parameters<typeof streamOpeningStory>[4] | undefined;
+      mockStreamOpeningStory.mockImplementation((...args) => {
+        handlers = args[4];
+        return Promise.resolve();
+      });
+
+      render(<OpeningStoryPage />);
+
+      await waitFor(() => expect(handlers).toBeDefined());
+      expect(screen.getByTestId('narrative-loading-screen')).toHaveTextContent('人生开篇，正在落笔');
+      expect(screen.queryByTestId('narrative-loading-inline')).not.toBeInTheDocument();
+
+      act(() => {
+        handlers?.onStory('首段人生故事。');
+      });
+
+      expect(await screen.findByText('首段人生故事。')).toBeInTheDocument();
+      expect(screen.queryByTestId('narrative-loading-screen')).not.toBeInTheDocument();
+      expect(screen.getByTestId('narrative-loading-inline')).toBeInTheDocument();
+      expect(document.querySelectorAll('[aria-live]')).toHaveLength(1);
+
+      act(() => {
+        handlers?.onComplete({ full_story: '首段人生故事。' });
+      });
+
+      expect(screen.queryByTestId('narrative-loading-inline')).not.toBeInTheDocument();
     });
   });
 
@@ -130,7 +182,6 @@ describe('OpeningStoryPage', () => {
         playerName: '',
         lifeVision: '',
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any).__TEST_DATA__ = {
         playerName: 'InjectedHero',
         lifeVision: 'Injected Vision',
@@ -280,7 +331,6 @@ describe('OpeningStoryPage', () => {
         playerName: 'QueuedHero',
         lifeVision: 'Build carefully',
       });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any).__TEST_DATA__ = {
         playerName: 'QueuedHero',
         lifeVision: 'Build carefully',

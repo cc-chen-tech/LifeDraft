@@ -65,7 +65,10 @@ export function NarrativeLoadingState({
   });
 
   return (
-    <section className={cn("narrative-loading", `narrative-loading--${layout}`, className)}>
+    <section
+      className={cn("narrative-loading", `narrative-loading--${layout}`, className)}
+      data-testid={`narrative-loading-${layout}`}
+    >
       <div className="narrative-loading-copy" role="status" aria-live="polite">
         <h2 className="narrative-loading-title">{copy.title}</h2>
         {copy.status && <p className="narrative-loading-status">{copy.status}</p>}

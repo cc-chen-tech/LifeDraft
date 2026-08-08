@@ -12,11 +12,15 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { StreamingText } from "@/components/game/StreamingText";
 import { OpeningCompletionGate } from "@/components/game/OpeningCompletionGate";
-import { SkeletonStory } from "@/components/game/SkeletonStory";
+import {
+  NarrativeLoadingState,
+  getNarrativeLoadingDelay,
+} from "@/components/narrative-loading/NarrativeLoadingState";
 import { useGameStore } from "@/stores/useGameStore";
 import { useUIStore } from "@/stores/useUIStore";
 import { useImageStore } from "@/stores/useImageStore";
 import { useHydration } from "@/hooks/useHydration";
+import { useDelayedLoading } from "@/hooks/useDelayedLoading";
 import { games } from "@/lib/api";
 import { streamOpeningStory } from "@/lib/sse";
 import { Loader2, Home, ImageIcon, RefreshCw } from "lucide-react";
@@ -46,6 +50,11 @@ export default function OpeningStoryPage() {
   const [illustrationPrompt, setIllustrationPrompt] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const hydrated = useHydration();
+  const showHydrationLoading = useDelayedLoading({
+    isLoading: !hydrated,
+    delay: getNarrativeLoadingDelay("hydrate"),
+    loadingIdentity: "opening-hydration",
+  });
   const illustrationGeneratedRef = useRef(false);
   
   // ★ 防止重复执行的标记
@@ -270,39 +279,43 @@ export default function OpeningStoryPage() {
 
   // 等待 hydration
   if (!hydrated) {
-    return <SkeletonStory message="加载中..." />;
+    return showHydrationLoading ? (
+      <NarrativeLoadingState context="hydrate" layout="screen" />
+    ) : (
+      <div className="min-h-screen" aria-busy="true" />
+    );
   }
 
   // 错误状态
   if (error) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-4">
-        <div className="text-center space-y-4 max-w-md">
+      <div className="min-h-screen">
+        <NarrativeLoadingState
+          context="opening"
+          layout="screen"
+          phase="generating"
+          transport="failed"
+          onAction={handleRetry}
+        />
+        <div className="absolute inset-x-0 bottom-8 flex flex-col items-center gap-3 px-4">
           <p className="text-destructive">{error}</p>
-          <div className="flex gap-3 justify-center">
-            <Button variant="outline" onClick={() => router.push("/")}>
-              <Home className="w-4 h-4 mr-2" />
-              返回首页
-            </Button>
-            <Button onClick={handleRetry}>
-              <Loader2 className="w-4 h-4 mr-2" />
-              重试
-            </Button>
-          </div>
+          <Button variant="outline" onClick={() => router.push("/")}>
+            <Home className="w-4 h-4 mr-2" />
+            返回首页
+          </Button>
         </div>
       </div>
     );
+  }
+
+  if (!storyText && (isStreaming || !isComplete)) {
+    return <NarrativeLoadingState context="opening" layout="screen" phase="generating" />;
   }
 
   return (
     <div className="min-h-screen flex flex-col bg-background animate-page-enter">
       <div className="flex-1 flex items-center justify-center p-6 md:p-12">
         <div className="w-full max-w-[65ch] space-y-8">
-          {/* ★ 修复：streaming 初始状态也显示 loading，避免空白 */}
-          {(!storyText || isStreaming) && (
-            <SkeletonStory message="正在编写你的人生开篇..." />
-          )}
-
           {storyText && (
             <StreamingText
               text={storyText}
@@ -310,6 +323,10 @@ export default function OpeningStoryPage() {
               narrative
               onDisplayComplete={setDisplayedCompleteText}
             />
+          )}
+
+          {storyText && isStreaming && (
+            <NarrativeLoadingState context="opening" layout="inline" phase="generating" />
           )}
           
           {/* ★ 开场插画展示区 */}
@@ -401,13 +418,13 @@ export default function OpeningStoryPage() {
       </div>
 
       <div className="p-6 flex justify-center">
-        {isComplete || isStreaming ? (
+        {isComplete ? (
           <OpeningCompletionGate
             backendComplete={isComplete}
             visibleComplete={Boolean(storyText) && displayedCompleteText === storyText}
             onStart={handleStart}
           />
-        ) : (
+        ) : !isStreaming ? (
           <Button
             variant="outline"
             className="touch-target"
@@ -416,7 +433,7 @@ export default function OpeningStoryPage() {
             <Loader2 className="w-4 h-4 mr-2" />
             重新加载
           </Button>
-        )}
+        ) : null}
       </div>
     </div>
   );
