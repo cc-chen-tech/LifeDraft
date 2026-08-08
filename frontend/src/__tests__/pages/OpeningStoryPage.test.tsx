@@ -260,6 +260,18 @@ describe('OpeningStoryPage', () => {
       expect(screen.getByText('开始我的人生')).toBeInTheDocument();
     });
 
+    it('keeps the start control visibly busy while generation is incomplete', async () => {
+      useGameStore.setState({ openingStory: '' });
+      mockStreamOpeningStory.mockImplementation(() => new Promise(() => undefined));
+
+      render(<OpeningStoryPage />);
+
+      const startButton = await screen.findByRole('button', { name: '开始我的人生' });
+      expect(startButton).toBeDisabled();
+      expect(startButton).toHaveAttribute('aria-busy', 'true');
+      expect(screen.getByRole('status')).toHaveTextContent('故事正在展开...');
+    });
+
     it('allows starting the game while opening illustration is still generating', async () => {
       useImageStore.setState({ isGeneratingIllustration: true });
       const user = userEvent.setup();
