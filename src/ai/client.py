@@ -116,6 +116,14 @@ class AIClient:
         Returns:
             AI generated text
         """
+        from src.ai.e2e_story_provider import deterministic_e2e_response
+
+        e2e_response = deterministic_e2e_response(system_prompt)
+        if e2e_response is not None:
+            if stream_callback is not None:
+                stream_callback(e2e_response)
+            return e2e_response
+
         # C-04: 使用信号量限制并发调用
         with self._semaphore:
             # ★ 模型降级链：开启时自动切换备选模型
