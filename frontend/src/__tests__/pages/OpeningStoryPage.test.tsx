@@ -74,6 +74,10 @@ describe('OpeningStoryPage', () => {
     setupDefaultState();
   });
 
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   describe('Initial render', () => {
     it('renders without crashing', () => {
       render(<OpeningStoryPage />);
@@ -184,6 +188,46 @@ describe('OpeningStoryPage', () => {
       expect(mockPush).not.toHaveBeenCalled();
       expect(screen.getByTestId('narrative-loading-screen')).toBeInTheDocument();
     });
+
+    it.each([
+      ['fast', 45_000],
+      ['expert', 90_000],
+      ['master', 180_000],
+    ] as const)(
+      'uses the %s upper bound for calm loading copy before and after the first chunk',
+      (constraintLevel, delay) => {
+        jest.useFakeTimers();
+        useGameStore.setState({ openingStory: '', constraintLevel });
+        let handlers: Parameters<typeof streamOpeningStory>[4] | undefined;
+        mockStreamOpeningStory.mockImplementation((...args) => {
+          handlers = args[4];
+          return Promise.resolve();
+        });
+
+        render(<OpeningStoryPage />);
+
+        expect(handlers).toBeDefined();
+        expect(screen.getByTestId('narrative-loading-screen')).toBeInTheDocument();
+        act(() => {
+          jest.advanceTimersByTime(delay - 1);
+        });
+        expect(screen.queryByText('这一页仍在继续写作')).not.toBeInTheDocument();
+
+        act(() => {
+          jest.advanceTimersByTime(1);
+        });
+        expect(screen.getByTestId('narrative-loading-screen')).toHaveTextContent('这一页仍在继续写作');
+        expect(document.body).not.toHaveTextContent(/fast|expert|master|45|90|180|秒|预计|AI/i);
+
+        act(() => {
+          handlers?.onStory('首段人生故事。');
+        });
+
+        expect(screen.queryByTestId('narrative-loading-screen')).not.toBeInTheDocument();
+        expect(screen.getByTestId('narrative-loading-inline')).toHaveTextContent('这一页仍在继续写作');
+        expect(screen.getAllByRole('status')).toHaveLength(1);
+      },
+    );
   });
 
   describe('Error handling', () => {

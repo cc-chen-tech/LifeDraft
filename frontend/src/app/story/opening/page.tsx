@@ -34,6 +34,7 @@ export default function OpeningStoryPage() {
   const playerName = useGameStore((s) => s.playerName);
   const lifeVision = useGameStore((s) => s.lifeVision);
   const characterSettings = useGameStore((s) => s.characterSettings);
+  const constraintLevel = useGameStore((s) => s.constraintLevel);
   // ★ 图片相关状态从 useImageStore 获取
   const openingIllustration = useImageStore((s) => s.openingIllustration);
   const isGeneratingIllustration = useImageStore((s) => s.isGeneratingIllustration);
@@ -47,6 +48,7 @@ export default function OpeningStoryPage() {
   const [storyText, setStoryText] = useState(() => openingStory);
   const [displayedCompleteText, setDisplayedCompleteText] = useState("");
   const [error, setError] = useState("");
+  const [streamingIdentity, setStreamingIdentity] = useState(0);
   const [illustrationPrompt, setIllustrationPrompt] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const hydrated = useHydration();
@@ -54,6 +56,11 @@ export default function OpeningStoryPage() {
     isLoading: !hydrated,
     delay: getNarrativeLoadingDelay("hydrate"),
     loadingIdentity: "opening-hydration",
+  });
+  const isOpeningDelayed = useDelayedLoading({
+    isLoading: hydrated && isStreaming,
+    delay: getNarrativeLoadingDelay("opening", constraintLevel),
+    loadingIdentity: streamingIdentity,
   });
   const illustrationGeneratedRef = useRef(false);
   
@@ -139,6 +146,7 @@ export default function OpeningStoryPage() {
 
       // 开始生成故事
       console.log("[OpeningStory] Starting generation...");
+      setStreamingIdentity((identity) => identity + 1);
       setIsStreaming(true);
       abortRef.current = new AbortController();
 
@@ -206,6 +214,7 @@ export default function OpeningStoryPage() {
     setError("");
     setStoryText("");
     setDisplayedCompleteText("");
+    setStreamingIdentity((identity) => identity + 1);
     setIsStreaming(true);
     setIsComplete(false);
     
@@ -312,7 +321,14 @@ export default function OpeningStoryPage() {
   }
 
   if (!storyText && (isStreaming || !isComplete)) {
-    return <NarrativeLoadingState context="opening" layout="screen" phase="generating" />;
+    return (
+      <NarrativeLoadingState
+        context="opening"
+        layout="screen"
+        phase="generating"
+        delayed={isOpeningDelayed}
+      />
+    );
   }
 
   return (
@@ -329,7 +345,12 @@ export default function OpeningStoryPage() {
           )}
 
           {storyText && isStreaming && (
-            <NarrativeLoadingState context="opening" layout="inline" phase="generating" />
+            <NarrativeLoadingState
+              context="opening"
+              layout="inline"
+              phase="generating"
+              delayed={isOpeningDelayed}
+            />
           )}
           
           {/* ★ 开场插画展示区 */}
