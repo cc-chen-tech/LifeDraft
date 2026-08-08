@@ -36,7 +36,7 @@ class TokenCounter(Protocol):
     """Small adapter so tests and deployments can provide an exact tokenizer."""
 
     def count(self, text: str) -> int:
-        ...
+        raise NotImplementedError
 
 
 class DeepSeekTokenCounter:
