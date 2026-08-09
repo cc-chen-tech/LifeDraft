@@ -1,6 +1,8 @@
 'use client';
 import * as Sentry from '@sentry/nextjs';
 import { useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { GlobalStatePage } from '@/components/story101';
 
 export default function Error({
   error,
@@ -16,11 +18,10 @@ export default function Error({
   }, [error]);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen gap-4">
-      <h2 className="text-xl font-semibold">出现了一些问题</h2>
-      <button onClick={reset} className="px-4 py-2 bg-primary text-white rounded">
-        重试
-      </button>
-    </div>
+    <GlobalStatePage
+      title="出现了一些问题"
+      description="这一页暂时无法继续。请再试一次。"
+      action={<Button type="button" variant="chrome" size="touch" onClick={reset}>重试</Button>}
+    />
   );
 }
