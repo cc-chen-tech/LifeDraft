@@ -178,6 +178,7 @@ class Settings:
 #   ENABLE_CONSTRAINT_HARNESS       — 约束评估引擎
 #   ENABLE_SOFT_NARRATIVE_LENGTHS   — 篇幅偏差仅诊断并保留完整正文
 #   ENABLE_UNIFIED_NARRATIVE_BUDGETS — 统一正文篇幅、调用额度与截止时间
+#   ENABLE_STRUCTURED_STORY_MEMORY — 账本作为模型记忆权威，展示摘要不再注入
 #   ENABLE_NARRATIVE_STYLE_ENGINE   — 叙事风格引擎
 #   ENABLE_CREATIVE_ENHANCEMENT     — 创意增强
 #   ENABLE_EPIC_NARRATIVE           — 史诗叙事

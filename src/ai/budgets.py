@@ -81,6 +81,8 @@ class DisplayBudget:
 @dataclass(frozen=True)
 class InformationBudget:
     summary_kind: str
+    target_min: int
+    target_max: int
     required_coverage: tuple[str, ...]
     compression_threshold: int
     unit: LengthUnit
@@ -155,6 +157,25 @@ _CALL_LIMITS = {
     "master": (3, 2, 2),
 }
 _DEADLINES = {"fast": 60, "expert": 120, "master": 240}
+_DISPLAY_SUMMARY_BANDS = {
+    "week": {"zh": (80, 160), "en": (50, 100)},
+    "month": {"zh": (180, 320), "en": (120, 220)},
+    "year": {"zh": (350, 600), "en": (220, 400)},
+    "life": {"zh": (500, 900), "en": (320, 600)},
+}
+_DISPLAY_SUMMARY_ALIASES = {
+    "weekly": "week",
+    "four_week": "month",
+    "monthly": "month",
+    "yearly": "year",
+    "lifetime": "life",
+}
+_DISPLAY_SUMMARY_COVERAGE = {
+    "week": ("events", "choices", "changes"),
+    "month": ("timeline", "turning_points", "choices", "changes"),
+    "year": ("timeline", "turning_points", "relationships", "commitments"),
+    "life": ("timeline", "turning_points", "relationships", "commitments", "sources"),
+}
 _EN_WORD_PATTERN = re.compile(r"\b\w+(?:[-'’]\w+)*\b", re.UNICODE)
 _LEGACY_GENERATION_BUDGETS = {
     "fast": GenerationBudget("fast", 350, 600, 2048, False, False, 20, 45),
@@ -181,6 +202,33 @@ def measure_narrative_length(text: str, language: str) -> int:
     if _normalized_language(language) == "zh":
         return sum(1 for character in text if not character.isspace())
     return len(_EN_WORD_PATTERN.findall(text))
+
+
+def resolve_information_budget(summary_kind: str, language: str) -> InformationBudget:
+    """Resolve one localized display-summary information budget."""
+    normalized_kind = str(summary_kind or "week").strip().lower().replace("-", "_")
+    normalized_kind = _DISPLAY_SUMMARY_ALIASES.get(normalized_kind, normalized_kind)
+    if normalized_kind not in _DISPLAY_SUMMARY_BANDS:
+        raise ValueError(f"unsupported summary kind: {summary_kind}")
+    normalized_language = _normalized_language(language)
+    target_min, target_max = _DISPLAY_SUMMARY_BANDS[normalized_kind][normalized_language]
+    return InformationBudget(
+        summary_kind=normalized_kind,
+        target_min=target_min,
+        target_max=target_max,
+        required_coverage=_DISPLAY_SUMMARY_COVERAGE[normalized_kind],
+        compression_threshold=target_max,
+        unit="characters" if normalized_language == "zh" else "words",
+    )
+
+
+def format_information_budget_requirement(summary_kind: str, language: str) -> str:
+    budget = resolve_information_budget(summary_kind, language)
+    if budget.unit == "characters":
+        return f"总结目标为{budget.target_min}-{budget.target_max}字，必须使用完整句子。"
+    return (
+        f"Target {budget.target_min}-{budget.target_max} words and use complete sentences."
+    )
 
 
 def measure_option_length(text: str, language: str) -> int:

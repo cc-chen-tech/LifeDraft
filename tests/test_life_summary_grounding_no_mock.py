@@ -62,8 +62,10 @@ def test_prompt_bounds_long_history_while_retaining_timeline_endpoints() -> None
     prompt = build_life_summary_prompt(long_history, start_week=1, end_week=100)
 
     assert len(prompt) <= 25_000
-    assert "第1周故事证据" in prompt
+    assert "第1周" in prompt
     assert "第100周选择" in prompt
+    assert "完整事件正文保存在原始记录中" in prompt
+    assert "..." not in prompt
 
 
 def test_unsafe_provider_summary_falls_back_to_grounded_exact_range() -> None:
@@ -85,6 +87,8 @@ def test_unsafe_provider_summary_falls_back_to_grounded_exact_range() -> None:
     assert "19.9" not in result
     assert "学识95" not in result
     assert "身份列为待核实" in result
+    assert result.endswith(("。", "！", "？"))
+    assert "..." not in result
 
 
 def test_provider_history_dump_falls_back_to_a_compact_summary() -> None:
@@ -112,6 +116,8 @@ def test_provider_history_dump_falls_back_to_a_compact_summary() -> None:
     assert result.startswith("第1-9周：")
     assert result != provider_dump
     assert len(result) <= len(provider_dump) // 4
+    assert result.endswith(("。", "！", "？"))
+    assert "..." not in result
 
 
 def test_safe_grounded_provider_summary_is_preserved() -> None:

@@ -30,6 +30,27 @@ class GameLoop(RoundSystemMixin):
     Inherits Multi-Round System functionality from RoundSystemMixin.
     """
 
+    def _select_display_summary_context(self) -> tuple[Optional[str], Optional[str]]:
+        """Return legacy prose memory only while structured memory is disabled."""
+        if get_feature("structured_story_memory"):
+            return None, None
+
+        four_week_summary = None
+        if self.player_state and self.player_state.four_week_summaries:
+            latest = self.player_state.four_week_summaries[-1]
+            four_week_summary = latest.get("summary") or latest.get("combined_summary")
+
+        yearly_summary = None
+        if (
+            self.player_state
+            and self.player_state.yearly_summaries
+            and random.random() < 0.5
+        ):
+            latest = self.player_state.yearly_summaries[-1]
+            yearly_summary = latest.get("summary") or latest.get("summary_text")
+            logger.info("Including yearly summary in event generation context")
+        return four_week_summary, yearly_summary
+
     def __init__(
         self,
         language: str = "en",
@@ -280,16 +301,7 @@ class GameLoop(RoundSystemMixin):
             state_dict = self.player_state.to_dict()
             character_settings = state_dict.get("character_settings", {})
 
-            # Get the most recent 4-week summary if available
-            four_week_summary = None
-            if self.player_state.four_week_summaries:
-                four_week_summary = self.player_state.four_week_summaries[-1].get("summary")
-
-            # Randomly decide whether to include yearly summary (if available)
-            yearly_summary = None
-            if self.player_state.yearly_summaries and random.random() < 0.5:
-                yearly_summary = self.player_state.yearly_summaries[-1].get("summary")
-                logger.info("Including yearly summary in event generation context")
+            four_week_summary, yearly_summary = self._select_display_summary_context()
 
             event = self.ai_generator.generate_event(
                 state_dict,

@@ -9,6 +9,12 @@ import re as _re
 from typing import Any, Dict, List, Optional
 
 from src.ai.client import AIClient
+from src.ai.budgets import (
+    InformationBudget,
+    format_information_budget_requirement,
+    measure_narrative_length,
+    resolve_information_budget,
+)
 from src.ai.professional_risk import apply_professional_risk_guardrail
 from src.ai.system_prompts import get_system_prompt
 from src.ai.utils import extract_json
@@ -16,11 +22,112 @@ from src.ai.utils import extract_json
 logger = logging.getLogger(__name__)
 
 
+_ZH_SENTENCE_PATTERN = _re.compile(r"[^。！？!?]+[。！？!?](?:[”’\"']*)", _re.UNICODE)
+_EN_SENTENCE_PATTERN = _re.compile(r"[^.!?]+[.!?](?:[”’\"']*)(?=\s|$)", _re.UNICODE)
+
+
+def display_summary_overflow_fallback(language: str) -> str:
+    """Return a complete, non-authoritative placeholder for uncompactable prose."""
+    return (
+        "完整记录仍保存在事件账本中。"
+        if str(language).lower().startswith("zh")
+        else "The complete record remains preserved in the event ledger."
+    )
+
+
+class _LegacyCompletionClientAdapter:
+    """One-release adapter for standalone summary generator callers."""
+
+    def __init__(self, generator: Any):
+        self.generator = generator
+
+    def call_with_retry(self, **kwargs: Any) -> str:
+        return str(
+            self.generator.generate_completion(
+                prompt=kwargs["user_prompt"],
+                system_prompt=kwargs["system_prompt"],
+                temperature=kwargs.get("temperature", 0.7),
+                max_tokens=kwargs.get("max_tokens", 2048),
+            )
+        )
+
+
+def compact_display_summary(text: str, budget: InformationBudget) -> str:
+    """Compact display prose without cutting a sentence or event in half."""
+    cleaned = str(text or "").strip()
+    if not cleaned:
+        return cleaned
+    language = "zh" if budget.unit == "characters" else "en"
+    punctuation = "。" if language == "zh" else "."
+    if not cleaned.endswith(("。", "！", "？", ".", "!", "?")):
+        cleaned += punctuation
+    if measure_narrative_length(cleaned, language) <= budget.compression_threshold:
+        return cleaned
+
+    pattern = _ZH_SENTENCE_PATTERN if language == "zh" else _EN_SENTENCE_PATTERN
+    sentences = [match.group(0).strip() for match in pattern.finditer(cleaned)]
+    if not sentences:
+        return display_summary_overflow_fallback(language)
+
+    selected: list[str] = []
+    separator = "" if language == "zh" else " "
+    for sentence in sentences:
+        candidate = separator.join([*selected, sentence])
+        if measure_narrative_length(candidate, language) > budget.compression_threshold:
+            break
+        selected.append(sentence)
+        if measure_narrative_length(candidate, language) >= budget.compression_threshold:
+            break
+    if selected:
+        return separator.join(selected)
+    return display_summary_overflow_fallback(language)
+
+
 class SummaryGenerator:
     """Generates summaries and compresses stories."""
 
     def __init__(self, client: AIClient):
         self.client = client
+
+    @classmethod
+    def for_compatibility_generator(cls, generator: Any) -> "SummaryGenerator":
+        """Resolve the shared service behind an EventGenerator or legacy stub."""
+        existing = getattr(generator, "summary_gen", None)
+        if isinstance(existing, cls):
+            return existing
+        if callable(getattr(generator, "generate_completion", None)):
+            return cls(_LegacyCompletionClientAdapter(generator))  # type: ignore[arg-type]
+        client = getattr(generator, "ai_client", None)
+        if client is not None:
+            return cls(client)
+        return cls(_LegacyCompletionClientAdapter(generator))  # type: ignore[arg-type]
+
+    def generate_display_summary(
+        self,
+        *,
+        summary_kind: str,
+        prompt: str,
+        language: str,
+        fallback: str,
+        temperature: float = 0.7,
+    ) -> str:
+        """Generate recoverable display prose using the shared localized budget."""
+        budget = resolve_information_budget(summary_kind, language)
+        user_prompt = f"{prompt}\n\n{format_information_budget_requirement(summary_kind, language)}"
+        try:
+            summary = self.client.call_with_retry(
+                system_prompt=get_system_prompt("narrative_summary", language),
+                user_prompt=user_prompt,
+                retry_count=2,
+                temperature=temperature,
+                max_tokens=2048,
+                language=language,
+            )
+            cleaned = self._clean_summary_text(summary)
+            return compact_display_summary(cleaned, budget) or fallback
+        except Exception as exc:
+            logger.warning("Display summary generation failed for %s: %s", summary_kind, exc)
+            return fallback
 
     # -------------------- Story Compression --------------------
 
@@ -86,8 +193,9 @@ class SummaryGenerator:
                 data = extract_json(content)
                 if data and "summary" in data:
                     summary = self._clean_summary_text(data["summary"])
-                    if len(summary) > 700:
-                        summary = summary[:697] + "..."
+                    summary = compact_display_summary(
+                        summary, resolve_information_budget("week", language)
+                    )
                     storyline_updates = data.get("storyline_updates", [])
                     fact_updates = data.get("fact_updates", [])
                     event_concluded = data.get("event_concluded", True)
@@ -121,6 +229,9 @@ class SummaryGenerator:
                     logger.warning(f"Attempting summary-only extraction from: {content[:200]}...")
                     summary_text = self._extract_summary_from_raw(content, story, language)
                     summary_text = self._clean_summary_text(summary_text)
+                    summary_text = compact_display_summary(
+                        summary_text, resolve_information_budget("week", language)
+                    )
                     logger.info(f"Fallback summary: {len(summary_text)} chars")
                     return {
                         "summary": summary_text,
@@ -135,9 +246,10 @@ class SummaryGenerator:
                 last_error = str(e)
                 logger.warning(f"Attempt {attempt + 1}/2 failed: {e}")
 
-        # All retries exhausted — truncate story as fallback
-        logger.error("compress_story failed after 2 attempts, using truncation fallback")
-        fallback = story[:97] + "..." if len(story) > 100 else story
+        logger.error("compress_story failed after 2 attempts, using sentence fallback")
+        fallback = compact_display_summary(
+            story, resolve_information_budget("week", language)
+        )
         return {
             "summary": fallback,
             "storyline_updates": [],
@@ -197,8 +309,9 @@ class SummaryGenerator:
                 data = extract_json(content)
                 if data and "summary" in data:
                     summary = self._clean_summary_text(data["summary"])
-                    if len(summary) > 700:
-                        summary = summary[:697] + "..."
+                    summary = compact_display_summary(
+                        summary, resolve_information_budget("week", language)
+                    )
                     storyline_updates = data.get("storyline_updates", [])
                     event_concluded = data.get("event_concluded", True)
                     logger.info(
@@ -220,6 +333,9 @@ class SummaryGenerator:
                 if attempt == 1:
                     summary_text = self._extract_summary_from_raw(content, story, language)
                     summary_text = self._clean_summary_text(summary_text)
+                    summary_text = compact_display_summary(
+                        summary_text, resolve_information_budget("week", language)
+                    )
                     return {
                         "summary": summary_text,
                         "event_concluded": True,
@@ -231,9 +347,11 @@ class SummaryGenerator:
                 logger.warning(f"[Narrative] Attempt {attempt + 1}/2 failed: {e}")
 
         logger.error(
-            "[Narrative] compress_narrative failed after 2 attempts, using truncation fallback"
+            "[Narrative] compress_narrative failed after 2 attempts, using sentence fallback"
         )
-        fallback = story[:97] + "..." if len(story) > 100 else story
+        fallback = compact_display_summary(
+            story, resolve_information_budget("week", language)
+        )
         return {
             "summary": fallback,
             "event_concluded": True,
@@ -377,6 +495,10 @@ class SummaryGenerator:
                         "summary",
                         ("本周平静地度过了。" if language == "zh" else "This week passed quietly."),
                     )
+                    summary = compact_display_summary(
+                        self._clean_summary_text(str(summary)),
+                        resolve_information_budget("week", language),
+                    )
                     bonus_effects = data.get("bonus_effects", {})
 
                     # Validate bonus_effects
@@ -433,21 +555,16 @@ class SummaryGenerator:
         prompt = get_four_week_summary_prompt(
             stories, decisions, character_settings, language, game_date_info
         )
-        sys_prompt = get_system_prompt("four_week_summary", language)
-
-        try:
-            return self.client.call_with_retry(
-                system_prompt=sys_prompt,
-                user_prompt=prompt,
-                retry_count=2,
-                temperature=0.7,
-                max_tokens=4096,
-                language=language,
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to generate 4-week summary after retries: {e}")
-            return "这4周平静地度过了。" if language == "zh" else "These 4 weeks passed quietly."
+        return self.generate_display_summary(
+            summary_kind="month",
+            prompt=prompt,
+            language=language,
+            fallback=(
+                "这4周平静地度过了。"
+                if language == "zh"
+                else "These 4 weeks passed quietly."
+            ),
+        )
 
     # -------------------- Yearly Summary --------------------
 
@@ -484,25 +601,16 @@ class SummaryGenerator:
             language,
             game_date_info,
         )
-        sys_prompt = get_system_prompt("yearly_summary", language)
-
-        try:
-            return self.client.call_with_retry(
-                system_prompt=sys_prompt,
-                user_prompt=prompt,
-                retry_count=2,
-                temperature=0.7,
-                max_tokens=4096,
-                language=language,
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to generate yearly summary after retries: {e}")
-            return (
+        return self.generate_display_summary(
+            summary_kind="year",
+            prompt=prompt,
+            language=language,
+            fallback=(
                 "这一年充满了各种经历。"
                 if language == "zh"
                 else "This year was full of experiences."
-            )
+            ),
+        )
 
     # -------------------- Internal Helpers --------------------
 
@@ -559,9 +667,9 @@ class SummaryGenerator:
         if summary_match:
             extracted = summary_match.group(1)
             extracted = extracted.replace("\\n", "\n").replace('\\"', '"').replace("\\\\", "\\")
-            if len(extracted) > 700:
-                extracted = extracted[:697] + "..."
-            return extracted
+            return compact_display_summary(
+                extracted, resolve_information_budget("week", language)
+            )
 
         # Strategy 2: Remove all JSON/code markers and extract readable text
         cleaned = text
@@ -573,19 +681,19 @@ class SummaryGenerator:
         value_match = _re.search(r'"[^"]+"\s*:\s*"((?:[^"\\]|\\.)*)"', cleaned)
         if value_match:
             extracted = value_match.group(1)
-            if len(extracted) > 700:
-                extracted = extracted[:697] + "..."
-            return extracted
+            return compact_display_summary(
+                extracted, resolve_information_budget("week", language)
+            )
 
         # Strategy 3: If cleaned text is reasonable length, use it
         cleaned = _re.sub(r'"[^"]+"\s*:', "", cleaned)  # Remove JSON keys
         cleaned = _re.sub(r"[{}\[\],]", "", cleaned)  # Remove JSON syntax chars
         cleaned = _re.sub(r"\s+", " ", cleaned).strip().strip('"')
         if 5 < len(cleaned) < 800:
-            if len(cleaned) > 700:
-                cleaned = cleaned[:697] + "..."
-            return cleaned
+            return compact_display_summary(
+                cleaned, resolve_information_budget("week", language)
+            )
 
-        # Strategy 4: Last resort - truncate original story
-        fallback = original_story[:97] + "..." if len(original_story) > 100 else original_story
-        return fallback
+        return compact_display_summary(
+            original_story, resolve_information_budget("week", language)
+        )

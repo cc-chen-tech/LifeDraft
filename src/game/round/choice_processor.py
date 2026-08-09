@@ -8,7 +8,9 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from config.settings import settings
+from src.ai.budgets import resolve_information_budget
 from src.ai.models import GameEvent
+from src.ai.summary_generator import compact_display_summary
 from src.game.narrative_manager import NarrativeManager
 from src.game.continuity_ledger import ContinuityLedger
 from src.game.effects import normalize_gameplay_effects
@@ -286,10 +288,36 @@ class RoundChoiceProcessor:
                 self.ai_generator.ai_client,
                 self.language,
             )
-            # Wait for all to complete
-            narrative_result = narrative_future.result()
-            world_result = world_future.result()
-            analyzer_future.result()  # side-effect only
+            try:
+                narrative_result = narrative_future.result()
+            except Exception as exc:
+                logger.warning("Display summary failed; preserving committed story: %s", exc)
+                narrative_result = {
+                    "summary": compact_display_summary(
+                        full_story,
+                        resolve_information_budget("week", self.language),
+                    )
+                    or ("本轮故事已经完成。" if self.language == "zh" else "This round concluded."),
+                    "event_concluded": True,
+                    "storyline_updates": [],
+                }
+            try:
+                world_result = world_future.result()
+            except Exception as exc:
+                logger.warning("Optional world extraction failed; using deterministic data: %s", exc)
+                world_result = {
+                    "fact_updates": [],
+                    "foreshadowing_seeds": [],
+                    "habit_updates": [],
+                    "location_updates": [],
+                    "career_updates": [],
+                    "commitment_updates": [],
+                    "causal_updates": [],
+                }
+            try:
+                analyzer_future.result()  # side-effect only
+            except Exception as exc:
+                logger.warning("Optional story analyzer failed after choice commit: %s", exc)
 
         # Merge results
         compression_result = {**narrative_result, **world_result}
@@ -467,6 +495,7 @@ class RoundChoiceProcessor:
             choice=choice_text,
             story_text=full_story,
             fact_updates=ledger_fact_updates,
+            effects=effects,
         )
         ledger.persist(player_state)
 
