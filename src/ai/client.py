@@ -68,6 +68,16 @@ def _is_max_tokens_error(error_message: str) -> bool:
     return any(re.search(p, error_message, re.IGNORECASE) for p in patterns)
 
 
+def _thinking_request_params(
+    model: str,
+    thinking: Optional[bool],
+) -> Dict[str, Any]:
+    """Return provider-specific request fields for explicit DeepSeek V4 control."""
+    if thinking is not False or not model.lower().startswith("deepseek-v4"):
+        return {}
+    return {"extra_body": {"thinking": {"type": "disabled"}}}
+
+
 class AIClient:
     """Base AI calling abstraction. All AI services depend on this."""
 
@@ -123,6 +133,7 @@ class AIClient:
         presence_penalty: float = 0.0,
         request_timeout: Optional[float] = None,
         usage_callback: Optional[Callable[[AIUsage], None]] = None,
+        thinking: Optional[bool] = None,
     ) -> str:
         """
         Unified AI call method.
@@ -136,6 +147,7 @@ class AIClient:
             model: Optional model override
             frequency_penalty: Penalize repeated tokens by frequency (0.0-2.0)
             presence_penalty: Penalize tokens that already appeared (0.0-2.0)
+            thinking: Disable thinking for DeepSeek V4 when False
 
         Returns:
             AI generated text
@@ -163,6 +175,7 @@ class AIClient:
                     presence_penalty=presence_penalty,
                     request_timeout=request_timeout,
                     usage_callback=usage_callback,
+                    thinking=thinking,
                 )
             return self._call_impl(
                 system_prompt=system_prompt,
@@ -175,6 +188,7 @@ class AIClient:
                 presence_penalty=presence_penalty,
                 request_timeout=request_timeout,
                 usage_callback=usage_callback,
+                thinking=thinking,
             )
 
     def _call_with_model_fallback(
@@ -189,6 +203,7 @@ class AIClient:
         presence_penalty: float = 0.0,
         request_timeout: Optional[float] = None,
         usage_callback: Optional[Callable[[AIUsage], None]] = None,
+        thinking: Optional[bool] = None,
     ) -> str:
         """Call AI with automatic model fallback using FallbackChain config.
 
@@ -221,6 +236,7 @@ class AIClient:
                     presence_penalty=presence_penalty,
                     request_timeout=request_timeout,
                     usage_callback=usage_callback,
+                    thinking=thinking,
                 )
             except Exception as e:
                 last_error = e
@@ -257,6 +273,7 @@ class AIClient:
         presence_penalty: float = 0.0,
         request_timeout: Optional[float] = None,
         usage_callback: Optional[Callable[[AIUsage], None]] = None,
+        thinking: Optional[bool] = None,
     ) -> str:
         """Internal implementation of AI call."""
         messages = [
@@ -288,6 +305,7 @@ class AIClient:
                         extra_params["timeout"] = request_timeout
                     if _is_deepseek_v4(use_model):
                         extra_params["stream_options"] = {"include_usage": True}
+                    extra_params.update(_thinking_request_params(use_model, thinking))
                     stream = client.chat.completions.create(
                         model=use_model,
                         messages=messages,  # type: ignore[arg-type]
@@ -335,6 +353,7 @@ class AIClient:
                                     temperature=temperature,
                                     max_tokens=current_max_tokens,
                                     model=use_model,
+                                    thinking=thinking,
                                 )
 
                     self._emit_usage(terminal_usage, use_model, True, usage_callback)
@@ -348,6 +367,7 @@ class AIClient:
                         extra_params_sync["presence_penalty"] = presence_penalty
                     if request_timeout is not None:
                         extra_params_sync["timeout"] = request_timeout
+                    extra_params_sync.update(_thinking_request_params(use_model, thinking))
                     response = client.chat.completions.create(
                         model=use_model,
                         messages=messages,  # type: ignore[arg-type]
@@ -378,6 +398,7 @@ class AIClient:
                                     temperature=temperature,
                                     max_tokens=current_max_tokens,
                                     model=use_model,
+                                    thinking=thinking,
                                 )
 
                     return content.strip()

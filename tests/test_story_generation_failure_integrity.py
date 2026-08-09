@@ -3,6 +3,13 @@ from unittest.mock import Mock
 
 import pytest
 
+from src.ai.consistency_validator import (
+    ConsistencyIssue,
+    ValidationResult as ConsistencyValidationResult,
+)
+from src.ai.harness import ConstraintCheckResult, ValidationResult
+from src.ai.harness.quality_level import QualityLevel
+from src.ai.models import EventOption, GameEvent
 from src.ai.option_generator import OptionGenerator
 from src.ai.story_exceptions import StoryGenerationFailure, StoryRewriteFailure
 from src.ai.story_generator import StoryGenerator
@@ -33,6 +40,74 @@ class InvalidEffectsStoryGenerator:
         return {"energy": "-5", "mood": 3, "knowledge": 0, "wealth": 0}
 
 
+class StaticStoryClient:
+    def __init__(self, story: str):
+        self.story = story
+        self.calls: list[dict[str, object]] = []
+
+    def call(self, **kwargs: object) -> str:
+        self.calls.append(kwargs)
+        return self.story
+
+
+class SequenceStoryClient:
+    def __init__(self, stories: list[str]):
+        self.stories = iter(stories)
+        self.calls: list[dict[str, object]] = []
+
+    def call(self, **kwargs: object) -> str:
+        self.calls.append(kwargs)
+        return next(self.stories)
+
+
+class RecordingOptionGenerator:
+    def __init__(self):
+        self.story_descriptions: list[str] = []
+
+    def generate_options_only(self, **kwargs: object) -> GameEvent:
+        story = str(kwargs["story_description"])
+        self.story_descriptions.append(story)
+        return GameEvent(
+            event_description=story,
+            options=[
+                EventOption(text="继续核对", effects={}),
+                EventOption(text="暂缓处理", effects={}),
+            ],
+        )
+
+    def validate_and_fix_relationships(self, *_args: object, **_kwargs: object) -> None:
+        return None
+
+    def validate_options_consistency(
+        self,
+        *_args: object,
+        **_kwargs: object,
+    ) -> list[str]:
+        return []
+
+
+class AlwaysCriticalPipeline:
+    def __init__(self):
+        self.calls = 0
+
+    def validate(self, **_kwargs: object) -> ValidationResult:
+        self.calls += 1
+        return ValidationResult(
+            passed=False,
+            score=55.0,
+            critical_failures=[
+                ConstraintCheckResult(
+                    constraint_type="decision_point_ending",
+                    priority="CRITICAL",
+                    passed=False,
+                    evidence="terminal critical fixture",
+                )
+            ],
+            total_checked=1,
+            total_passed=0,
+        )
+
+
 def test_round_story_generation_surfaces_provider_failure() -> None:
     with pytest.raises(StoryGenerationFailure, match="provider unavailable"):
         StoryGenerator(FailingClient()).generate_round_event(
@@ -43,6 +118,65 @@ def test_round_story_generation_surfaces_provider_failure() -> None:
             character_settings={},
             option_generator=OptionGenerator(FailingClient()),
         )
+
+
+def test_round_generation_rejects_blank_provider_text_before_option_generation(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ENABLE_CONSTRAINT_HARNESS", "true")
+    client = StaticStoryClient("  \n\t")
+    option_generator = RecordingOptionGenerator()
+
+    with pytest.raises(StoryGenerationFailure, match="Story provider returned empty text"):
+        StoryGenerator(client, quality_level=QualityLevel.EXPERT).generate_round_event(
+            player_state={"week": 0, "current_round": 0},
+            language="zh",
+            round_number=0,
+            round_context="",
+            character_settings={},
+            option_generator=option_generator,
+        )
+
+    assert len(client.calls) == 3
+    assert all(call["thinking"] is False for call in client.calls)
+    assert option_generator.story_descriptions == []
+
+
+def test_round_generation_rejects_final_critical_candidate_before_option_generation(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ENABLE_CONSTRAINT_HARNESS", "true")
+    monkeypatch.setattr(
+        "src.ai.quick_validator.quick_validate_story",
+        lambda **_kwargs: SimpleNamespace(passed=True, warnings=[], issues=[]),
+    )
+    monkeypatch.setattr(
+        "src.ai.story_generator.validate_narrative_quality",
+        lambda *_args, **_kwargs: [],
+    )
+    story = "林岚和陈越在影院办公室核对预算，逐项确认施工日期，并决定是否先联系周师傅复核报价。" * 22
+    client = StaticStoryClient(story)
+    pipeline = AlwaysCriticalPipeline()
+    option_generator = RecordingOptionGenerator()
+    generator = StoryGenerator(client, quality_level=QualityLevel.EXPERT)
+    generator._validation_pipeline = pipeline
+
+    with pytest.raises(
+        StoryGenerationFailure,
+        match="Story harness validation failed after final attempt",
+    ):
+        generator.generate_round_event(
+            player_state={"week": 0, "current_round": 0},
+            language="zh",
+            round_number=0,
+            round_context="",
+            character_settings={},
+            option_generator=option_generator,
+        )
+
+    assert len(client.calls) == 3
+    assert pipeline.calls == 3
+    assert option_generator.story_descriptions == []
 
 
 def test_rewrite_surfaces_provider_failure_instead_of_returning_original_story() -> None:
@@ -114,6 +248,7 @@ def test_round_generation_retries_when_provider_repeats_committed_story(monkeypa
 
     assert event.event_description == distinct_story
     assert client.call.call_count == 2
+    assert all(call.kwargs["thinking"] is False for call in client.call.call_args_list)
     assert "重复" in client.call.call_args_list[1].kwargs["user_prompt"]
 
 
@@ -236,6 +371,87 @@ def test_round_generation_rejects_provider_output_repeated_after_retry(monkeypat
 
     assert client.call.call_count == 2
     option_generator.generate_options_only.assert_not_called()
+
+
+def test_round_generation_disables_thinking_for_quick_consistency_rewrite(
+    monkeypatch,
+) -> None:
+    initial_story = "林岚和陈越在影院办公室核对预算，并暂时搁置了施工报价。" * 20
+    repaired_story = "林岚和陈越重新核对预算，并确认本周先请周师傅复核施工报价。" * 20
+    client = SequenceStoryClient([initial_story, repaired_story])
+    option_generator = RecordingOptionGenerator()
+    quick_results = iter(
+        [
+            SimpleNamespace(passed=False, warnings=[], issues=["forced quick retry"]),
+            SimpleNamespace(passed=True, warnings=[], issues=[]),
+        ]
+    )
+    monkeypatch.setattr(
+        "src.ai.quick_validator.quick_validate_story",
+        lambda **_kwargs: next(quick_results),
+    )
+    monkeypatch.setattr(
+        "src.ai.story_generator.validate_narrative_quality",
+        lambda *_args, **_kwargs: [],
+    )
+
+    StoryGenerator(client).generate_round_event(
+        player_state={"week": 0, "current_round": 0},
+        language="zh",
+        round_number=0,
+        round_context="",
+        option_generator=option_generator,
+    )
+
+    assert len(client.calls) == 2
+    assert all(call["thinking"] is False for call in client.calls)
+    assert option_generator.story_descriptions == [repaired_story]
+
+
+def test_round_generation_rejects_blank_ai_consistency_rewrite(
+    monkeypatch,
+) -> None:
+    story = "林岚和陈越在影院办公室核对预算，并确认本周先请周师傅复核施工报价。" * 20
+    client = SequenceStoryClient([story, "  \n\t"])
+    option_generator = RecordingOptionGenerator()
+    monkeypatch.setattr(
+        "src.ai.quick_validator.quick_validate_story",
+        lambda **_kwargs: SimpleNamespace(passed=True, warnings=[], issues=[]),
+    )
+    monkeypatch.setattr(
+        "src.ai.story_generator.validate_narrative_quality",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        "src.ai.consistency_validator.ConsistencyValidator.validate_story",
+        lambda *_args, **_kwargs: ConsistencyValidationResult(
+            passed=False,
+            issues=[
+                ConsistencyIssue(
+                    dimension="causal",
+                    severity="CRITICAL",
+                    description="forced critical rewrite",
+                    fix_suggestion="rewrite the scene",
+                )
+            ],
+            fix_instructions="\nRewrite the scene.",
+        ),
+    )
+
+    with pytest.raises(StoryGenerationFailure, match="Story provider returned empty text"):
+        StoryGenerator(client).generate_round_event(
+            player_state={"week": 0, "current_round": 0},
+            language="zh",
+            round_number=0,
+            round_context="",
+            character_settings={},
+            option_generator=option_generator,
+            world_model=object(),
+        )
+
+    assert len(client.calls) == 2
+    assert all(call["thinking"] is False for call in client.calls)
+    assert option_generator.story_descriptions == []
 
 
 def test_choice_continuation_surfaces_provider_failure_instead_of_fake_prose() -> None:
@@ -369,6 +585,7 @@ def test_round_generation_rejects_an_overlong_story_after_shape_retry(monkeypatc
         )
 
     assert client.call.call_count == 2
+    assert all(call.kwargs["thinking"] is False for call in client.call.call_args_list)
     option_generator.generate_options_only.assert_not_called()
 
 

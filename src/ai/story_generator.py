@@ -38,6 +38,10 @@ from src.ai.text_quality import normalize_generated_story, validate_narrative_qu
 logger = logging.getLogger(__name__)
 
 
+class _EmptyStoryProviderOutput(ValueError):
+    """A round-prose provider call returned no normalized text."""
+
+
 class StoryGenerator:
     """Generates story text for events and rounds."""
 
@@ -120,6 +124,22 @@ class StoryGenerator:
         """Keep interactive story requests inside the selected quality budget."""
         budget = get_generation_budget(self.quality_level.value)
         return float(budget.expected_seconds + 30)
+
+    def _call_required_round_story(
+        self,
+        *,
+        language: str,
+        **call_kwargs: Any,
+    ) -> str:
+        """Generate required round prose in non-thinking mode and reject blanks."""
+        provider_story = self.client.call(thinking=False, **call_kwargs)
+        story_text = normalize_generated_story(
+            provider_story or "",
+            language=language,
+        )
+        if not story_text.strip():
+            raise _EmptyStoryProviderOutput("Story provider returned empty text")
+        return story_text
 
     @staticmethod
     def _extract_player_name(player_state: Optional[Dict[str, Any]]) -> str:
@@ -631,6 +651,7 @@ class StoryGenerator:
         retry_hint = None
 
         for attempt in range(max_attempts):
+            best_story_before_attempt = best_valid_story_text
             story_text = None
             try:
                 attempt_prompt = prompt
@@ -647,7 +668,8 @@ class StoryGenerator:
                     f"Round story attempt {attempt + 1}/{max_attempts}, temperature={current_temp}"
                 )
 
-                story_text = self.client.call(
+                story_text = self._call_required_round_story(
+                    language=language,
                     system_prompt=sys_prompt,
                     user_prompt=attempt_prompt,
                     temperature=current_temp,
@@ -657,7 +679,6 @@ class StoryGenerator:
                     presence_penalty=0.4,  # ★ 鼓励每轮使用不同的表达方式
                     request_timeout=self._story_request_timeout_seconds(),
                 )
-                story_text = normalize_generated_story(story_text, language=language)
                 logger.info(f"Generated round story with {len(story_text)} characters")
 
                 # Step 1.4: Quick rule-based validation (before AI validation)
@@ -689,7 +710,8 @@ class StoryGenerator:
                     if status_callback:
                         status_callback("retry")
 
-                    retry_story = self.client.call(
+                    story_text = self._call_required_round_story(
+                        language=language,
                         system_prompt=sys_prompt,
                         user_prompt=retry_prompt,
                         temperature=0.65,
@@ -699,7 +721,6 @@ class StoryGenerator:
                         presence_penalty=0.4,
                         request_timeout=self._story_request_timeout_seconds(),
                     )
-                    story_text = normalize_generated_story(retry_story, language=language)
                     quick_retry_used = True
                     logger.info(
                         "Quick validation retry completed with %d characters",
@@ -746,7 +767,8 @@ class StoryGenerator:
                     logger.warning("Story shape validation failed: %s", hard_shape_issues)
                     if status_callback:
                         status_callback("retry")
-                    retry_story = self.client.call(
+                    story_text = self._call_required_round_story(
+                        language=language,
                         system_prompt=sys_prompt,
                         user_prompt=attempt_prompt + _build_shape_retry_instruction(hard_shape_issues),
                         temperature=0.65,
@@ -756,7 +778,6 @@ class StoryGenerator:
                         presence_penalty=0.4,
                         request_timeout=self._story_request_timeout_seconds(),
                     )
-                    story_text = normalize_generated_story(retry_story, language=language)
                     logger.info(
                         "Story shape retry completed with %d characters",
                         len(story_text),
@@ -804,7 +825,8 @@ class StoryGenerator:
                         "grounded in the current date, unresolved threads, and player state; do not reuse "
                         "the earlier scene, phrasing, or options."
                     )
-                    retry_story = self.client.call(
+                    story_text = self._call_required_round_story(
+                        language=language,
                         system_prompt=sys_prompt,
                         user_prompt=repeat_retry_prompt,
                         temperature=0.65,
@@ -814,7 +836,6 @@ class StoryGenerator:
                         presence_penalty=0.5,
                         request_timeout=self._story_request_timeout_seconds(),
                     )
-                    story_text = normalize_generated_story(retry_story, language=language)
                     repeat_retry_validation = quick_validate_story(
                         story_text=story_text,
                         character_settings=character_settings,
@@ -873,6 +894,9 @@ class StoryGenerator:
                         profile=self._quality_profile,
                     )
 
+                    if not validation_result.passed:
+                        best_valid_story_text = best_story_before_attempt
+
                     diagnostic_report = ConstraintViolationDiagnostic().generate_report(
                         story_text=story_text,
                         validation_result=validation_result,
@@ -897,6 +921,12 @@ class StoryGenerator:
                             attempt + 1,
                         )
                         continue
+
+                    if (
+                        not validation_result.passed
+                        and self._quality_profile.enforce_validation_on_all_attempts
+                    ):
+                        raise ValueError("Story harness validation failed after final attempt")
 
                 # Step 2: Generate options based on the story
                 if option_generator is None:
@@ -934,6 +964,10 @@ class StoryGenerator:
 
                 return event
 
+            except _EmptyStoryProviderOutput as e:
+                best_valid_story_text = best_story_before_attempt
+                logger.warning(f"Round event attempt {attempt + 1} failed: {e}")
+                last_generation_error = e
             except (ValueError, ValidationError, json.JSONDecodeError) as e:
                 logger.warning(f"Round event attempt {attempt + 1} failed: {e}")
                 last_generation_error = e
@@ -1201,7 +1235,8 @@ class StoryGenerator:
                 f"Consistency retry with temperature=0.7 (conservative), stream_callback={stream_callback is not None}"
             )
 
-            retry_story = self.client.call(
+            retry_story = self._call_required_round_story(
+                language=language,
                 system_prompt=sys_prompt,
                 user_prompt=retry_prompt,
                 temperature=0.7,  # 固定低温度，确保严格遵守约束
@@ -1218,6 +1253,8 @@ class StoryGenerator:
 
             return story_text
 
+        except _EmptyStoryProviderOutput:
+            raise
         except Exception as e:
             logger.error(f"Story validation/retry failed: {e}")
             return story_text
