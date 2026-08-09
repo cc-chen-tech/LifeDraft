@@ -124,8 +124,14 @@
   --safe-area-inset-bottom: env(safe-area-inset-bottom);
   --safe-area-inset-left: env(safe-area-inset-left);
 
+  /* Keep route content clear of the persistent sound dock at scroll end. */
   --app-shell-fixed-gap: 1rem;
-  --app-shell-bottom-reserve: calc(5.5rem + var(--safe-area-inset-bottom));
+  --app-shell-sound-dock-height: 4.5rem;
+  --app-shell-content-clearance: 1rem;
+  --app-shell-bottom-reserve: calc(
+    var(--app-shell-sound-dock-height) + var(--app-shell-fixed-gap) +
+      var(--app-shell-content-clearance) + var(--safe-area-inset-bottom)
+  );
   --app-shell-feedback-bottom: calc(var(--app-shell-bottom-reserve) + 0.75rem);
 
   /* Compatibility aliases */
@@ -181,6 +187,10 @@
 .app-shell-bottom-reserve {
   height: var(--app-shell-bottom-reserve);
   pointer-events: none;
+}
+
+.app-shell-bottom-dock {
+  bottom: var(--app-shell-fixed-gap);
 }
 
 @layer base {

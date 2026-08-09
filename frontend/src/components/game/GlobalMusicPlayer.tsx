@@ -173,7 +173,7 @@ export function GlobalMusicPlayer() {
       data-app-shell-reserve={usesBottomAppShellDock ? "bottom" : undefined}
       className={
         usesBottomAppShellDock
-          ? "safe-area-fixed-inline fixed z-50 bottom-4 left-4 right-4 safe-area-pb md:left-auto md:right-4 md:w-[28rem]"
+          ? "app-shell-bottom-dock safe-area-fixed-inline fixed z-50 left-4 right-4 safe-area-pb md:left-auto md:right-4 md:w-[28rem]"
           : "safe-area-fixed-inline fixed z-50 top-16 left-0 right-0 safe-area-pt mt-2 md:left-auto md:right-4 md:w-[28rem]"
       }
     >

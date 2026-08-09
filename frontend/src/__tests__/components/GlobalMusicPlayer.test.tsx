@@ -514,7 +514,7 @@ describe("GlobalMusicPlayer", () => {
         expect(reserve?.parentElement).toBe(wrapper.parentElement);
         expect(reserve?.nextElementSibling).toBe(wrapper);
         expect(wrapper).toHaveAttribute("data-app-shell-reserve", "bottom");
-        expect(wrapper).toHaveClass("bottom-4", "safe-area-pb");
+        expect(wrapper).toHaveClass("app-shell-bottom-dock", "safe-area-pb");
         expect(wrapper).not.toHaveClass("top-16");
       },
     );
@@ -533,7 +533,7 @@ describe("GlobalMusicPlayer", () => {
         ).not.toBeInTheDocument();
         expect(wrapper).not.toHaveAttribute("data-app-shell-reserve");
         expect(wrapper).toHaveClass("top-16", "safe-area-pt");
-        expect(wrapper).not.toHaveClass("bottom-4");
+        expect(wrapper).not.toHaveClass("app-shell-bottom-dock");
       },
     );
 
@@ -546,6 +546,31 @@ describe("GlobalMusicPlayer", () => {
       expect(globalsCss).not.toContain(":has(");
       expect(globalsCss).toMatch(
         /\.app-shell-bottom-reserve\s*\{[^}]*height:\s*var\(--app-shell-bottom-reserve\)/s,
+      );
+    });
+
+    it("reserves the collapsed dock, its viewport gap, and clear space after route content", () => {
+      const globalsCss = readFileSync(
+        resolve(__dirname, "../../app/globals.css"),
+        "utf8",
+      );
+
+      expect(globalsCss).toMatch(
+        /--app-shell-sound-dock-height:\s*4\.5rem/,
+      );
+      expect(globalsCss).toMatch(
+        /--app-shell-content-clearance:\s*1rem/,
+      );
+      expect(globalsCss).toMatch(
+        /--app-shell-bottom-reserve:\s*calc\(\s*var\(--app-shell-sound-dock-height\)\s*\+\s*var\(--app-shell-fixed-gap\)\s*\+\s*var\(--app-shell-content-clearance\)\s*\+\s*var\(--safe-area-inset-bottom\)\s*\)/s,
+      );
+
+      mockUsePathname.mockReturnValue("/");
+      setStoreState({ activeStoryText: "story text" });
+      render(<GlobalMusicPlayer />);
+
+      expect(screen.getByTestId("global-music-player")).toHaveClass(
+        "app-shell-bottom-dock",
       );
     });
 
