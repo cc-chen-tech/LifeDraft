@@ -149,14 +149,14 @@ test.describe('异步实体识别功能', () => {
     
     // 新创建的游戏应该显示主角
     // 检查人物标签有计数
-    const characterTab = page.locator('text=/人物.*\\(/');
+    const collectionDialog = page.getByRole('dialog', { name: '收集' });
+    const characterTab = collectionDialog.getByRole('button', { name: /人物.*\(/ });
     await expect(characterTab).toBeVisible();
-    
-    // 应显示角色名
-    const playerName = page.locator('text=E2E测试角色');
-    if (await playerName.isVisible().catch(() => false)) {
-      // 角色应标记为主角
-      await expect(page.locator('text=主角')).toBeVisible();
-    }
+
+    const playerCard = collectionDialog.getByRole('button', {
+      name: /E2E测试角色.*主角/,
+    });
+    await expect(playerCard).toBeVisible();
+    await expect(playerCard.getByText('主角', { exact: true })).toBeVisible();
   });
 });
