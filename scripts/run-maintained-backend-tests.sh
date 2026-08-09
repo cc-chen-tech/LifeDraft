@@ -20,6 +20,7 @@ maintained_tests=(
   tests/test_integration_real_db.py
   tests/test_database.py
   tests/test_gate_real_db_no_mock.py
+  tests/test_scene_image_sse_replay_contract_no_mock.py
   tests/test_story_music_recommendation_db.py
   tests/test_music_degradation_no_mock.py
 )
