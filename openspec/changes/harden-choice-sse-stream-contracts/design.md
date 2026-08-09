@@ -19,5 +19,5 @@ existing browser tests.
 
 ## Risks / Trade-offs
 
-- [Global worker pool] → Every test consumes a stream through its terminal
+- [Global worker pool] -> Every test consumes a stream through its terminal
   frame, avoiding timing-based assertions.
