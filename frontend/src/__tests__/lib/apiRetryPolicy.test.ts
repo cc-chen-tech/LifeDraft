@@ -8,6 +8,8 @@ describe("api retry policy", () => {
   it("keeps one auth retry for non-voice endpoints that may hit cookie forwarding races", () => {
     expect(shouldRetryApiResponse(401, "/games", 0)).toBe(true);
     expect(shouldRetryApiResponse(401, "/games", 1)).toBe(false);
+    expect(shouldRetryApiResponse(401, "/auth/me", 0)).toBe(true);
+    expect(shouldRetryApiResponse(401, "/auth/me", 1)).toBe(false);
   });
 
   it("does not retry voice reading server errors so browser speech fallback starts immediately", () => {

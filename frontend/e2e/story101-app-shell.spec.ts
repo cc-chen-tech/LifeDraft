@@ -469,6 +469,34 @@ async function expectUsesTextSubtleToken(locator: Locator) {
   ).toBe("rgb(1, 2, 3)");
 }
 
+async function expectUsesTextSecondaryToken(locator: Locator) {
+  const colors = await locator.evaluate((element) => {
+    const root = document.documentElement;
+    const authoredInlineValue = root.style.getPropertyValue("--text-secondary");
+    const priority = root.style.getPropertyPriority("--text-secondary");
+    const token = getComputedStyle(root).getPropertyValue("--text-secondary").trim();
+    const normal = getComputedStyle(element).color;
+
+    root.style.setProperty("--text-secondary", "rgb(1, 2, 3)", "important");
+    const mutated = getComputedStyle(element).color;
+
+    if (authoredInlineValue) {
+      root.style.setProperty("--text-secondary", authoredInlineValue, priority);
+    } else {
+      root.style.removeProperty("--text-secondary");
+    }
+
+    return { token, normal, mutated };
+  });
+
+  expect(colors.token.toLowerCase()).toBe("#8f8881");
+  expect(colors.normal).toBe("rgb(143, 136, 129)");
+  expect(
+    colors.mutated,
+    "the input count must consume --text-secondary without opacity",
+  ).toBe("rgb(1, 2, 3)");
+}
+
 async function expectBottomSoundReserve(page: Page) {
   const player = page.getByTestId("global-music-player");
   const spacer = page.locator('[data-app-shell-reserve-spacer="bottom"]');
@@ -648,6 +676,9 @@ test("guest home keeps one quiet story101 portal and a labelled touch-sized auth
   await expect(page.locator("#display-name-input-description")).toHaveText(
     "将在首页这样称呼你",
   );
+  await expectUsesTextSecondaryToken(
+    page.locator("#display-name-input-length").getByText("还可输入 50 字"),
+  );
   await expectTouchTargetsAtLeast44(authDialog);
   await expectNoHorizontalOverflow(page);
   await captureEvidence(page, testInfo, "home-auth-sheet");
@@ -665,8 +696,21 @@ test("guest home keeps one quiet story101 portal and a labelled touch-sized auth
   await expectTouchTargetsAtLeast44(authDialog);
   await expectSingleReadingSurface(page);
 
+  await expect
+    .poll(
+      () =>
+        scenario.requests.filter(
+          ({ method, path }) => method === "GET" && path === "/api/auth/me",
+        ).length,
+      {
+        message:
+          "the anonymous session probe must complete its single cookie-race retry",
+      },
+    )
+    .toBe(2);
+
   await expectOnlyApiRequests(page, scenario, [
-    { method: "GET", path: "/api/auth/me", count: 1 },
+    { method: "GET", path: "/api/auth/me", count: 2 },
     {
       method: "GET",
       path: `/api/music/playlist/${SOUND_GAME_ID}`,
