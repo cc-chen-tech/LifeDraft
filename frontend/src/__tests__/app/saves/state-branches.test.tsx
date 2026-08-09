@@ -6,6 +6,7 @@
  */
 import React from 'react';
 import { act, render, screen, waitFor, fireEvent, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { GameListItem } from '@/lib/types';
 import { useGameStore } from '@/stores/useGameStore';
 import { useUserStore } from '@/stores/useUserStore';
@@ -82,14 +83,14 @@ describe('SavesPage - 4 State Rendering', () => {
   });
 
   describe('Loading State', () => {
-    it('shows spinner when loading', () => {
+    it('shows a quiet status when loading', () => {
       // Simulate loading by never resolving fetch
       fetchSavedGamesSpy.mockImplementation(() => new Promise(() => {}));
 
       render(<SavesPage />);
 
-      expect(screen.getByText('加载中...')).toBeInTheDocument();
-      expect(document.querySelector('[class*="animate-spin"]')).toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent('正在整理存档');
+      expect(document.querySelector('[class*="animate-spin"]')).toBeNull();
     });
 
     it('hides the previous user saves while a new user save list is loading', async () => {
@@ -131,7 +132,7 @@ describe('SavesPage - 4 State Rendering', () => {
       await waitFor(() => {
         expect(fetchSavedGamesSpy).toHaveBeenCalledTimes(2);
       });
-      expect(screen.getByText('加载中...')).toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent('正在整理存档');
       expect(screen.queryByText('PreviousUserSave')).not.toBeInTheDocument();
     });
   });
@@ -143,7 +144,7 @@ describe('SavesPage - 4 State Rendering', () => {
       render(<SavesPage />);
 
       await waitFor(() => {
-        expect(screen.getByText('加载存档失败，请刷新页面重试')).toBeInTheDocument();
+        expect(screen.getByRole('alert')).toHaveTextContent('未能载入存档');
       });
     });
 
@@ -154,7 +155,7 @@ describe('SavesPage - 4 State Rendering', () => {
       render(<SavesPage />);
 
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: '重试' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: '重试载入存档' })).toBeInTheDocument();
       });
     });
 
@@ -168,17 +169,17 @@ describe('SavesPage - 4 State Rendering', () => {
 
       // Wait for error state to show
       await waitFor(() => {
-        expect(screen.getByText('加载存档失败，请刷新页面重试')).toBeInTheDocument();
+        expect(screen.getByRole('alert')).toHaveTextContent('未能载入存档');
       });
 
-      const retryButton = screen.getByRole('button', { name: '重试' });
+      const retryButton = screen.getByRole('button', { name: '重试载入存档' });
       fireEvent.click(retryButton);
 
       // Verify that fetchSavedGames was called again (retry)
       expect(fetchSavedGamesSpy).toHaveBeenCalledTimes(2);
 
       // After clicking retry, should show loading state again
-      expect(screen.getByText('加载中...')).toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent('正在整理存档');
     });
   });
 
@@ -192,7 +193,7 @@ describe('SavesPage - 4 State Rendering', () => {
 
       // Should show empty state after fetch completes
       // Use findBy which combines waitFor + getBy
-      const emptyMessage = await screen.findByText('暂无存档', {}, { timeout: 3000 });
+      const emptyMessage = await screen.findByText('还没有存档', {}, { timeout: 3000 });
       expect(emptyMessage).toBeInTheDocument();
     });
 
@@ -436,8 +437,8 @@ describe('SavesPage - Interaction Handling', () => {
     });
 
     // Check dialog content
-    expect(screen.getByText('确认删除')).toBeInTheDocument();
-    expect(screen.getByText('删除后无法恢复，确定要删除这个存档吗？')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '删除存档“TestPlayer”？' })).toBeInTheDocument();
+    expect(screen.getByText(/删除后无法恢复/)).toBeInTheDocument();
   });
 
   it('closes delete dialog when clicking cancel', async () => {
@@ -557,7 +558,7 @@ describe('SavesPage - Interaction Handling', () => {
 
     // Should show loading state
     await waitFor(() => {
-      const deleteBtn = screen.getByRole('button', { name: /^删除$/ });
+      const deleteBtn = screen.getByRole('button', { name: '正在删除' });
       expect(deleteBtn).toBeDisabled();
     });
 
@@ -578,7 +579,7 @@ describe('SavesPage - Unauthenticated State', () => {
     render(<SavesPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('暂无存档')).toBeInTheDocument();
+      expect(screen.getByText('还没有存档')).toBeInTheDocument();
     });
 
     // Should not call fetchSavedGames when not authenticated
@@ -602,7 +603,7 @@ describe('SavesPage - Unauthenticated State', () => {
     render(<SavesPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('暂无存档')).toBeInTheDocument();
+      expect(screen.getByText('还没有存档')).toBeInTheDocument();
     });
 
     expect(screen.queryByText('PreviousUserSave')).not.toBeInTheDocument();
@@ -664,7 +665,7 @@ describe('SavesPage - Error Handling', () => {
     }
 
     await waitFor(() => {
-      expect(screen.getByText('加载存档失败，请重试')).toBeInTheDocument();
+      expect(screen.getByRole('alert')).toHaveTextContent('无法打开存档“TestPlayer”');
     });
   });
 
@@ -702,7 +703,112 @@ describe('SavesPage - Error Handling', () => {
     fireEvent.click(confirmDeleteButton);
 
     await waitFor(() => {
-      expect(screen.getByText('删除失败，请重试')).toBeInTheDocument();
+      expect(within(screen.getByRole('dialog')).getByRole('alert')).toHaveTextContent(
+        '未能删除存档“TestPlayer”',
+      );
     });
+  });
+});
+
+describe('SavesPage - story101 recovery and destructive actions', () => {
+  const save: GameListItem = {
+    game_id: 17,
+    player_name: '林望舒',
+    age: 28,
+    week: 6,
+    updated_at: '2026-08-09T10:00:00Z',
+  };
+  let consoleErrorSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockPush.mockClear();
+    setupStore({ savedGames: [save], isAuthenticated: true, userId: 7 });
+    setupSpies();
+    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+    restoreSpies();
+  });
+
+  async function openDeleteDialog() {
+    const user = userEvent.setup();
+    render(<SavesPage />);
+    await user.click(await screen.findByRole('button', {
+      name: '删除存档“林望舒”（存档 17）',
+    }));
+    return { user, dialog: await screen.findByRole('dialog') };
+  }
+
+  it('keeps a second failed fetch retry in the error state instead of showing the empty state', async () => {
+    fetchSavedGamesSpy
+      .mockRejectedValueOnce(new Error('first failure'))
+      .mockRejectedValueOnce(new Error('second failure'));
+    useGameStore.setState({ savedGames: [] });
+
+    render(<SavesPage />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('未能载入存档');
+    fireEvent.click(screen.getByRole('button', { name: '重试载入存档' }));
+
+    await waitFor(() => expect(fetchSavedGamesSpy).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole('alert')).toHaveTextContent('未能载入存档');
+    expect(screen.queryByText('还没有存档')).not.toBeInTheDocument();
+  });
+
+  it('names the delete target and explicitly focuses cancel when the dialog opens', async () => {
+    const { dialog } = await openDeleteDialog();
+
+    expect(within(dialog).getByRole('heading', { name: '删除存档“林望舒”？' })).toBeInTheDocument();
+    expect(within(dialog).getByText(/删除后无法恢复/)).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: '取消' })).toHaveFocus();
+    within(dialog).getAllByRole('button').forEach((button) => {
+      expect(button).toHaveAttribute('data-size', 'touch');
+    });
+  });
+
+  it('announces deletion progress, blocks closing, and submits only once while busy', async () => {
+    let resolveDelete: () => void = () => {};
+    deleteGameSpy.mockImplementation(() => new Promise<void>((resolve) => {
+      resolveDelete = resolve;
+    }));
+    const { user, dialog } = await openDeleteDialog();
+
+    const deleteButton = within(dialog).getByRole('button', { name: '删除' });
+    fireEvent.click(deleteButton);
+    fireEvent.click(deleteButton);
+
+    await waitFor(() => expect(dialog).toHaveAttribute('aria-busy', 'true'));
+    expect(within(dialog).getByRole('button', { name: '正在删除' })).toBeDisabled();
+    expect(deleteGameSpy).toHaveBeenCalledTimes(1);
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    resolveDelete();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('keeps a failed deletion in the dialog with a target-specific alert and retry action', async () => {
+    deleteGameSpy.mockRejectedValueOnce(new Error('delete failed'));
+    const { user, dialog } = await openDeleteDialog();
+
+    await user.click(within(dialog).getByRole('button', { name: '删除' }));
+
+    const alert = await within(dialog).findByRole('alert');
+    expect(alert).toHaveTextContent('未能删除存档“林望舒”');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: '删除' })).toBeEnabled();
+  });
+
+  it('announces a successful deletion with the target name', async () => {
+    const { user, dialog } = await openDeleteDialog();
+
+    await user.click(within(dialog).getByRole('button', { name: '删除' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByRole('status')).toHaveTextContent('已删除存档“林望舒”');
+    expect(deleteGameSpy).toHaveBeenCalledWith(17);
   });
 });

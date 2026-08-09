@@ -1,29 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { ArrowLeft, Play, Trash2 } from "lucide-react";
+
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
+  DestructiveConfirmDialog,
+  FeedbackNotice,
+  Surface,
+} from "@/components/story101";
+import { Button } from "@/components/ui/button";
+import { useHydration } from "@/hooks/useHydration";
+import type { GameListItem } from "@/lib/types";
 import { useGameStore } from "@/stores/useGameStore";
 import { hasAuthSessionHint, useUserStore } from "@/stores/useUserStore";
-import { useHydration } from "@/hooks/useHydration";
-import { cn } from "@/lib/utils";
-import {
-  ArrowLeft,
-  Play,
-  Trash2,
-  Loader2,
-  User,
-  FolderOpen,
-} from "lucide-react";
-import type { GameListItem } from "@/lib/types";
 
 const SAVE_DISPLAY_TIME_ZONE = "Asia/Shanghai";
 
@@ -43,7 +33,6 @@ function formatSaveDate(dateStr: string): string {
   }).format(date);
 }
 
-// ★ 格式化时间为中文时段
 function formatChineseTime(dateStr: string | null): string {
   if (!dateStr) return "";
   const date = getSaveDate(dateStr);
@@ -56,16 +45,25 @@ function formatChineseTime(dateStr: string | null): string {
   }).formatToParts(date);
   const hour = Number(parts.find((part) => part.type === "hour")?.value);
   const minute = Number(parts.find((part) => part.type === "minute")?.value);
-  
+
   let period = "";
   if (hour >= 0 && hour < 6) period = "凌晨";
   else if (hour >= 6 && hour < 12) period = "上午";
   else if (hour >= 12 && hour < 18) period = "下午";
   else period = "晚上";
-  
+
   const displayHour = hour > 12 ? hour - 12 : hour;
   return `${period}${displayHour}:${minute.toString().padStart(2, "0")}`;
 }
+
+function getSaveName(save: GameListItem): string {
+  return save.player_name?.trim() || "未知角色";
+}
+
+type PageFeedback = {
+  tone: "success" | "danger";
+  message: string;
+};
 
 export default function SavesPage() {
   const router = useRouter();
@@ -86,15 +84,40 @@ export default function SavesPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadedUserId, setLoadedUserId] = useState<number | null>(null);
   const [loadingGameId, setLoadingGameId] = useState<number | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<GameListItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
-  const visibleSavedGames = isAuthenticated && loadedUserId === currentUserId ? savedGames : [];
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [pageFeedback, setPageFeedback] = useState<PageFeedback | null>(null);
 
-  const showToast = (type: "success" | "error", message: string) => {
-    setToast({ type, message });
-    setTimeout(() => setToast(null), 3000);
-  };
+  const visibleSavedGames =
+    isAuthenticated && loadedUserId === currentUserId ? savedGames : [];
+
+  const loadSavedGames = useCallback(
+    async (
+      userId: number | null,
+      isCancelled: () => boolean = () => false,
+    ) => {
+      setLoadError(null);
+      setPageFeedback(null);
+      setIsLoading(true);
+
+      try {
+        await fetchSavedGames();
+        if (isCancelled()) return;
+        setLoadedUserId(userId);
+        setIsLoading(false);
+      } catch (err: unknown) {
+        if (isCancelled()) return;
+        const error = err as { status?: number; name?: string };
+        if (error.status !== 401 && error.name !== "AbortError") {
+          console.error("Failed to fetch saved games:", err);
+          setLoadError("请检查网络后重试。");
+          setIsLoading(false);
+        }
+      }
+    },
+    [fetchSavedGames],
+  );
 
   useEffect(() => {
     if (!hydrated) return;
@@ -137,221 +160,253 @@ export default function SavesPage() {
     }
 
     setLoadedUserId(null);
-    setLoadError(null);
-    setIsLoading(true);
-
-    const loadSaves = async () => {
-      try {
-        await fetchSavedGames();
-        if (cancelled) return;
-        setLoadedUserId(currentUserId);
-        // 成功获取数据，重置 loading 状态
-        setIsLoading(false);
-      } catch (err: unknown) {
-        if (cancelled) return;
-        const error = err as { status?: number; name?: string };
-        // 401 错误会在 api.ts 中处理重定向，不需要重置 loading 状态
-        // 其他错误（非 401、非 AbortError）记录日志并重置 loading
-        if (error.status !== 401 && error.name !== 'AbortError') {
-          console.error("Failed to fetch saved games:", err);
-          setLoadError("加载存档失败，请刷新页面重试");
-          setIsLoading(false);
-        }
-        // 401 和 AbortError 不重置 loading，因为页面即将重定向或组件已卸载
-      }
-    };
-    
-    loadSaves();
+    void loadSavedGames(currentUserId, () => cancelled);
     return () => {
       cancelled = true;
     };
-  }, [authChecked, isAuthenticated, currentUserId, fetchSavedGames]);
+  }, [authChecked, isAuthenticated, currentUserId, loadSavedGames]);
 
-  const handleLoad = async (gameId: number) => {
-    setLoadingGameId(gameId);
+  const handleLoad = async (save: GameListItem) => {
+    const saveName = getSaveName(save);
+    setLoadingGameId(save.game_id);
+    setPageFeedback(null);
     try {
-      await loadGameState(gameId);
-      setGameSession(gameId, `session_${gameId}`);
+      await loadGameState(save.game_id);
+      setGameSession(save.game_id, `session_${save.game_id}`);
       router.push("/play");
     } catch (err) {
       console.error("Load game failed:", err);
-      showToast("error", "加载存档失败，请重试");
+      setPageFeedback({
+        tone: "danger",
+        message: `无法打开存档“${saveName}”，请重试。`,
+      });
     } finally {
       setLoadingGameId(null);
     }
   };
 
   const handleDelete = async () => {
-    if (deleteTarget === null) return;
+    if (!deleteTarget || isDeleting) return;
+    const target = deleteTarget;
+    const targetName = getSaveName(target);
     setIsDeleting(true);
+    setDeleteError(null);
     try {
-      await deleteGame(deleteTarget);
+      await deleteGame(target.game_id);
       setDeleteTarget(null);
-      showToast("success", "存档已删除");
+      setPageFeedback({
+        tone: "success",
+        message: `已删除存档“${targetName}”。`,
+      });
     } catch (err) {
       console.error("Delete failed:", err);
-      showToast("error", "删除失败，请重试");
+      setDeleteError(`未能删除存档“${targetName}”，请重试。`);
     } finally {
       setIsDeleting(false);
     }
   };
 
+  const openDeleteDialog = (save: GameListItem) => {
+    setDeleteError(null);
+    setPageFeedback(null);
+    setDeleteTarget(save);
+  };
+
   return (
-    <div className="min-h-screen bg-background animate-page-enter">
-      <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-sm border-b border-border">
-        <div className="max-w-2xl mx-auto px-4 h-14 flex items-center">
-          <Button variant="ghost" size="sm" onClick={() => router.push("/")}>
-            <ArrowLeft className="w-4 h-4 mr-1" />
+    <div className="min-h-screen bg-[var(--surface-canvas)] text-[var(--text-primary)]">
+      <header className="border-b border-[var(--border-default)] bg-[var(--surface-canvas)]">
+        <div className="mx-auto flex min-h-16 max-w-4xl items-center justify-between gap-4 px-4 sm:px-6">
+          <Button
+            type="button"
+            variant="quiet"
+            size="touch"
+            aria-label="返回首页"
+            onClick={() => router.push("/")}
+          >
+            <ArrowLeft className="h-4 w-4" />
             返回
           </Button>
-          <h1 className="text-lg font-bold text-foreground ml-3">存档管理</h1>
+          <span className="font-brand text-sm font-semibold tracking-[-0.03em] text-[var(--text-secondary)]">
+            story101
+          </span>
         </div>
       </header>
 
-      <main className="max-w-2xl mx-auto px-4 py-6">
-        {isLoading ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-            加载中...
-          </div>
-        ) : loadError ? (
-          <div className="text-center py-12">
-            <p className="text-destructive mb-4">{loadError}</p>
-            <Button onClick={() => {
-              if (!isAuthenticated) return;
-              setLoadError(null);
-              setIsLoading(true);
-              fetchSavedGames().finally(() => setIsLoading(false));
-            }}>
-              重试
-            </Button>
-          </div>
-        ) : visibleSavedGames.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground mb-4">暂无存档</p>
-            <Button onClick={() => {
-              resetCreation();
-              router.push("/create");
-            }}>
-              开始新游戏
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {visibleSavedGames
-              .sort((a, b) => {
-                const timeA = a.updated_at ? new Date(a.updated_at).getTime() : 0;
-                const timeB = b.updated_at ? new Date(b.updated_at).getTime() : 0;
-                return timeB - timeA;
-              })
-              .map((save) => (
-              <Card key={save.game_id} className="bg-card border-border overflow-hidden">
-                <div className="p-4 flex items-center justify-between hover:bg-muted/30 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <User className="w-5 h-5 text-primary" />
-                    </div>
-                    <div className="text-left">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-foreground">
-                          {save.player_name?.trim() || "未知角色"}
-                        </span>
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                          {save.age}岁 第{(save.week ?? 0) + 1}周
-                        </span>
-                        {(save.week ?? 0) === 0 && (
-                          <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600">
-                            新角色
-                          </span>
-                        )}
-                      </div>
-                      {save.updated_at && (
-                        <div className="text-xs text-muted-foreground mt-0.5">
-                          {formatSaveDate(save.updated_at)} {formatChineseTime(save.updated_at)}
+      <main className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-6 sm:py-12">
+        <div className="mb-6 max-w-2xl">
+          <h1 className="font-serif text-3xl leading-tight text-[var(--text-primary)] sm:text-4xl">
+            存档
+          </h1>
+          <p className="mt-2 leading-7 text-[var(--text-secondary)]">
+            从上次停下的地方，继续这一页人生。
+          </p>
+        </div>
+
+        {pageFeedback ? (
+          <FeedbackNotice
+            tone={pageFeedback.tone}
+            className="mb-4"
+          >
+            {pageFeedback.message}
+          </FeedbackNotice>
+        ) : null}
+
+        <Surface variant="reading" className="overflow-hidden">
+          {isLoading ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className="px-5 py-12 text-center text-sm text-[var(--text-secondary)]"
+            >
+              正在整理存档
+            </div>
+          ) : loadError ? (
+            <div className="p-4 sm:p-6">
+              <FeedbackNotice
+                tone="danger"
+                title="未能载入存档"
+                action={
+                  <Button
+                    type="button"
+                    variant="narrative"
+                    size="touch"
+                    aria-label="重试载入存档"
+                    onClick={() => {
+                      if (!isAuthenticated) return;
+                      void loadSavedGames(currentUserId);
+                    }}
+                  >
+                    重试
+                  </Button>
+                }
+              >
+                {loadError}
+              </FeedbackNotice>
+            </div>
+          ) : visibleSavedGames.length === 0 ? (
+            <div className="px-5 py-10 sm:px-8 sm:py-14">
+              <h2 className="font-serif text-2xl text-[var(--text-primary)]">
+                还没有存档
+              </h2>
+              <p className="mt-2 max-w-lg leading-7 text-[var(--text-secondary)]">
+                开始一段人生后，可以从这里继续。
+              </p>
+              <Button
+                type="button"
+                variant="default"
+                size="touch"
+                className="mt-6"
+                onClick={() => {
+                  resetCreation();
+                  router.push("/create");
+                }}
+              >
+                开始新游戏
+              </Button>
+            </div>
+          ) : (
+            <ul aria-label="存档列表" className="divide-y divide-[var(--border-default)]">
+              {visibleSavedGames
+                .sort((a, b) => {
+                  const timeA = a.updated_at
+                    ? new Date(a.updated_at).getTime()
+                    : 0;
+                  const timeB = b.updated_at
+                    ? new Date(b.updated_at).getTime()
+                    : 0;
+                  return timeB - timeA;
+                })
+                .map((save) => {
+                  const saveName = getSaveName(save);
+                  const isOpening = loadingGameId === save.game_id;
+                  return (
+                    <li
+                      key={save.game_id}
+                      data-slot="management-row"
+                      className="min-w-0"
+                    >
+                      <div className="grid min-w-0 gap-4 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:p-5">
+                        <div className="min-w-0">
+                          <h2 className="break-words font-serif text-xl leading-8 text-[var(--text-primary)]">
+                            {saveName}
+                          </h2>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[var(--text-secondary)]">
+                            <span>
+                              {save.age}岁 · 第{(save.week ?? 0) + 1}周
+                            </span>
+                            {(save.week ?? 0) === 0 ? (
+                              <span className="text-[var(--warning-foreground)]">
+                                新角色
+                              </span>
+                            ) : null}
+                            {save.updated_at ? (
+                              <span>
+                                {formatSaveDate(save.updated_at)} {formatChineseTime(save.updated_at)}
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      variant="default"
-                      className="h-8"
-                      onClick={() => handleLoad(save.game_id)}
-                      disabled={loadingGameId === save.game_id}
-                    >
-                      {loadingGameId === save.game_id ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <>
-                          <Play className="w-4 h-4 mr-1" />
-                          继续
-                        </>
-                      )}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-8 text-muted-foreground hover:text-destructive"
-                      onClick={() => setDeleteTarget(save.game_id)}
-                      aria-label={`删除存档 ${save.player_name?.trim() || "未知角色"}（存档 ${save.game_id}）`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-        )}
+
+                        <Button
+                          type="button"
+                          variant="default"
+                          size="touch"
+                          className="w-full sm:w-auto"
+                          aria-busy={isOpening}
+                          aria-label={
+                            isOpening
+                              ? `正在打开“${saveName}”的人生`
+                              : `继续“${saveName}”的人生`
+                          }
+                          disabled={isOpening}
+                          onClick={() => void handleLoad(save)}
+                        >
+                          <Play className="h-4 w-4" />
+                          {isOpening ? "正在打开" : "继续"}
+                        </Button>
+                      </div>
+
+                      <div
+                        data-slot="danger-row"
+                        className="flex min-w-0 flex-col gap-2 border-t border-[var(--border-default)] bg-[var(--surface-subtle)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5"
+                      >
+                        <span className="text-xs leading-5 text-[var(--text-muted)]">
+                          不再保留这段人生
+                        </span>
+                        <Button
+                          type="button"
+                          variant="quiet"
+                          size="touch"
+                          className="w-full text-[var(--danger-foreground)] hover:bg-[var(--danger-subtle)] sm:w-auto"
+                          aria-label={`删除存档“${saveName}”（存档 ${save.game_id}）`}
+                          onClick={() => openDeleteDialog(save)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          删除存档
+                        </Button>
+                      </div>
+                    </li>
+                  );
+                })}
+            </ul>
+          )}
+        </Surface>
       </main>
 
-      {/* Delete confirmation */}
-      <Dialog
+      <DestructiveConfirmDialog
         open={deleteTarget !== null}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-      >
-        <DialogContent className="bg-card border-border">
-          <DialogHeader>
-            <DialogTitle className="text-foreground">确认删除</DialogTitle>
-            <DialogDescription className="text-muted-foreground">
-              删除后无法恢复，确定要删除这个存档吗？
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex gap-3 justify-end mt-4">
-            <Button
-              variant="outline"
-              onClick={() => setDeleteTarget(null)}
-            >
-              取消
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDelete}
-              disabled={isDeleting}
-            >
-              {isDeleting && (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              )}
-              删除
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Toast */}
-      {toast && (
-        <div
-          className={cn(
-            "fixed bottom-20 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-sm z-50 animate-fade-in",
-            toast.type === "success"
-              ? "bg-green-500/90 text-white"
-              : "bg-red-500/90 text-white"
-          )}
-        >
-          {toast.message}
-        </div>
-      )}
+        itemKind="存档"
+        itemName={deleteTarget ? getSaveName(deleteTarget) : ""}
+        busy={isDeleting}
+        error={deleteError}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteTarget(null);
+            setDeleteError(null);
+          }
+        }}
+        onConfirm={() => void handleDelete()}
+      />
     </div>
   );
 }

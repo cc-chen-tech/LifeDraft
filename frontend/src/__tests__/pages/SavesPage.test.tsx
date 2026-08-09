@@ -3,7 +3,7 @@
  * Tests all interactive elements of the saved games page
  */
 import React from 'react';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import SavesPage from '@/app/saves/page';
 import { useGameStore } from '@/stores/useGameStore';
@@ -64,7 +64,7 @@ describe('SavesPage', () => {
       storeSpy.spies.fetchSavedGames.mockReturnValue(new Promise(() => {}));
 
       render(<SavesPage />);
-      expect(screen.getByText('加载中...')).toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent('正在整理存档');
     });
   });
 
@@ -89,7 +89,7 @@ describe('SavesPage', () => {
 
       expect(storeSpy.spies.fetchSavedGames).not.toHaveBeenCalled();
       expect(screen.queryByText('Other User Save')).not.toBeInTheDocument();
-      expect(screen.getByText('暂无存档')).toBeInTheDocument();
+      expect(screen.getByText('还没有存档')).toBeInTheDocument();
     });
 
     it('shows empty message when no saves', async () => {
@@ -98,7 +98,7 @@ describe('SavesPage', () => {
       });
 
       await waitFor(() => {
-        expect(screen.getByText('暂无存档')).toBeInTheDocument();
+        expect(screen.getByText('还没有存档')).toBeInTheDocument();
       });
     });
 
@@ -213,6 +213,63 @@ describe('SavesPage', () => {
     });
   });
 
+  describe('story101 library surface', () => {
+    const longPlayerName = '这是一位名字很长需要在三百二十像素宽度下完整换行的角色';
+
+    beforeEach(() => {
+      useUserStore.setState({
+        isAuthenticated: true,
+        user: {
+          user_id: 7,
+          public_id: 'USER7',
+          display_name: 'Reader',
+          private_id: 'private-7',
+        },
+      });
+      useGameStore.setState({
+        savedGames: [
+          {
+            game_id: 17,
+            player_name: longPlayerName,
+            age: 28,
+            week: 6,
+            updated_at: '2026-08-09T10:00:00Z',
+          },
+        ],
+      });
+    });
+
+    it('uses the lowercase brand, the concise page heading, and one reading surface', async () => {
+      const { container } = render(<SavesPage />);
+
+      await screen.findByText(longPlayerName);
+
+      expect(screen.getByText('story101')).toHaveClass('font-brand');
+      expect(screen.getByRole('heading', { level: 1, name: '存档' })).toBeInTheDocument();
+      expect(container.querySelectorAll('[data-slot="surface"][data-variant="reading"]')).toHaveLength(1);
+      expect(container.querySelector('[data-slot="card"]')).toBeNull();
+    });
+
+    it('keeps the main action separate from a touch-sized danger row for long names', async () => {
+      const { container } = render(<SavesPage />);
+
+      const playerName = await screen.findByText(longPlayerName);
+      const continueButton = screen.getByRole('button', { name: `继续“${longPlayerName}”的人生` });
+      const deleteButton = screen.getByRole('button', {
+        name: `删除存档“${longPlayerName}”（存档 17）`,
+      });
+      const dangerRow = deleteButton.closest('[data-slot="danger-row"]');
+
+      expect(playerName).toHaveClass('break-words');
+      expect(container.querySelector('[data-slot="management-row"]')).toHaveClass('min-w-0');
+      expect(dangerRow).toContainElement(deleteButton);
+      expect(dangerRow).not.toContainElement(continueButton);
+      expect(continueButton).toHaveAttribute('data-size', 'touch');
+      expect(deleteButton).toHaveAttribute('data-size', 'touch');
+      expect(within(dangerRow as HTMLElement).getByText('删除存档')).toBeInTheDocument();
+    });
+  });
+
   describe('Navigation', () => {
     it('navigates back when clicking back button', async () => {
       const user = userEvent.setup();
@@ -231,7 +288,7 @@ describe('SavesPage', () => {
         render(<SavesPage />);
       });
 
-      expect(screen.getByText('存档管理')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 1, name: '存档' })).toBeInTheDocument();
     });
   });
 
@@ -344,7 +401,7 @@ describe('SavesPage', () => {
         await user.click(trashButtons[0]);
 
         await waitFor(() => {
-          expect(screen.getByText(/确认删除/)).toBeInTheDocument();
+          expect(screen.getByRole('heading', { name: '删除存档“Hero”？' })).toBeInTheDocument();
         });
       }
     });
@@ -398,10 +455,10 @@ describe('SavesPage', () => {
       });
 
       await waitFor(() => {
-        expect(screen.getByText('暂无存档')).toBeInTheDocument();
+        expect(screen.getByText('还没有存档')).toBeInTheDocument();
       });
 
-      expect(screen.getByText('存档管理')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 1, name: '存档' })).toBeInTheDocument();
     });
   });
 });
