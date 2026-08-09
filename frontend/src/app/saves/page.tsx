@@ -370,7 +370,7 @@ export default function SavesPage() {
                         data-slot="danger-row"
                         className="flex min-w-0 flex-col gap-2 border-t border-[var(--border-default)] bg-[var(--surface-subtle)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5"
                       >
-                        <span className="text-xs leading-5 text-[var(--text-muted)]">
+                        <span className="text-xs leading-5 text-[var(--text-subtle)]">
                           不再保留这段人生
                         </span>
                         <Button

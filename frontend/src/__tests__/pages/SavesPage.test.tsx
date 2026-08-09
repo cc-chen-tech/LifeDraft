@@ -2,6 +2,8 @@
  * Saves Page Tests
  * Tests all interactive elements of the saved games page
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import React from 'react';
 import { render, screen, waitFor, act, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -267,6 +269,20 @@ describe('SavesPage', () => {
       expect(continueButton).toHaveAttribute('data-size', 'touch');
       expect(deleteButton).toHaveAttribute('data-size', 'touch');
       expect(within(dangerRow as HTMLElement).getByText('删除存档')).toBeInTheDocument();
+    });
+
+    it('uses the defined text-subtle token for the secondary danger note', async () => {
+      render(<SavesPage />);
+
+      const dangerNote = await screen.findByText('不再保留这段人生');
+      const stylesheet = readFileSync(
+        resolve(process.cwd(), 'src/app/globals.css'),
+        'utf8',
+      );
+
+      expect(stylesheet).toMatch(/--text-subtle\s*:\s*#8f8881\s*;/i);
+      expect(dangerNote).toHaveClass('text-[var(--text-subtle)]');
+      expect(dangerNote.className).not.toContain('--text-muted');
     });
   });
 

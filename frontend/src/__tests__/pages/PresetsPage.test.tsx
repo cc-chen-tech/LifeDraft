@@ -2,6 +2,8 @@
  * Presets Page Tests
  * Tests all interactive elements of the presets page
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -316,6 +318,24 @@ describe('PresetsPage', () => {
       expect(deleteButton).toHaveAttribute('data-size', 'touch');
       expect(dangerRow).toContainElement(deleteButton);
       expect(dangerRow).not.toContainElement(useButton);
+    });
+
+    it('uses the defined text-subtle token for both secondary preset notes', async () => {
+      useGameStore.setState({ presets: [storyPreset] });
+      render(<PresetsPage />);
+
+      const lifeVision = await screen.findByText(storyPreset.life_vision);
+      const dangerNote = screen.getByText('不再保留这份人物设定');
+      const stylesheet = readFileSync(
+        resolve(process.cwd(), 'src/app/globals.css'),
+        'utf8',
+      );
+
+      expect(stylesheet).toMatch(/--text-subtle\s*:\s*#8f8881\s*;/i);
+      [lifeVision, dangerNote].forEach((note) => {
+        expect(note).toHaveClass('text-[var(--text-subtle)]');
+        expect(note.className).not.toContain('--text-muted');
+      });
     });
 
     it('names the preset and explicitly focuses cancel in the delete dialog', async () => {

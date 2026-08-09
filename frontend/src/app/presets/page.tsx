@@ -204,7 +204,7 @@ export default function PresetsPage() {
                           ) : null}
                         </div>
                         {preset.life_vision ? (
-                          <p className="mt-2 break-words text-sm leading-6 text-[var(--text-muted)]">
+                          <p className="mt-2 break-words text-sm leading-6 text-[var(--text-subtle)]">
                             {preset.life_vision}
                           </p>
                         ) : null}
@@ -227,7 +227,7 @@ export default function PresetsPage() {
                       data-slot="danger-row"
                       className="flex min-w-0 flex-col gap-2 border-t border-[var(--border-default)] bg-[var(--surface-subtle)] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5"
                     >
-                      <span className="text-xs leading-5 text-[var(--text-muted)]">
+                      <span className="text-xs leading-5 text-[var(--text-subtle)]">
                         不再保留这份人物设定
                       </span>
                       <Button
