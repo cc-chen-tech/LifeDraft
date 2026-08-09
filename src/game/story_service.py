@@ -61,7 +61,7 @@ class StoryService:
             status_callback: Optional callback for status updates (e.g., 'retrying')
 
         Returns:
-            A 500-800 character story continuation
+            A story continuation sized by the active localized narrative budget
         """
         # 清洗用户选择，防止 prompt 注入
         sanitized_chosen_option = sanitize_user_choice(chosen_option)

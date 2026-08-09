@@ -18,7 +18,7 @@ import openai
 
 from config.feature_flags import get_feature
 from config.settings import settings
-from src.ai.budgets import GenerationCallTracker
+from src.ai.budgets import GenerationBudgetError, GenerationCallTracker
 from src.ai.model_fallback import FallbackChain, ModelFallbackConfig
 from src.ai.truncation_recovery import TruncationRecovery
 from src.ai.utils import extract_json
@@ -432,6 +432,8 @@ class AIClient:
 
                     return content.strip()
 
+            except GenerationBudgetError:
+                raise
             except openai.APIError as e:
                 error_msg = str(e)
                 last_error = e
@@ -599,6 +601,8 @@ class AIClient:
                     generation_tracker=generation_tracker,
                 )
 
+            except GenerationBudgetError:
+                raise
             except openai.APIError as e:
                 last_error = str(e)
                 logger.warning(f"AI call attempt {attempt + 1}/{retry_count} failed: {e}")

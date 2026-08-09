@@ -11,6 +11,7 @@ import pytest
 from src.ai.budgets import (GenerationBudgetExceeded, GenerationCallTracker,
                             GenerationOperation, NarrativeKind,
                             resolve_narrative_budget)
+from src.ai.client import AIClient
 from src.ai.consistency_validator import ConsistencyValidator
 from src.ai.option_generator import OptionGenerator
 from src.ai.story_generator import StoryGenerator
@@ -67,6 +68,32 @@ def test_story_provider_call_consumes_prose_before_invocation() -> None:
 
     assert len(client.calls) == 2
     assert tracker.prose_calls == 2
+
+
+def test_retry_wrapper_propagates_budget_exhaustion_without_provider_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = AIClient(api_key="test-key", model="test-model")
+    tracker = _tracker(quality="fast")
+    tracker.consume("prose")
+    provider_call_count = 0
+
+    def unexpected_call(**_kwargs: Any) -> str:
+        nonlocal provider_call_count
+        provider_call_count += 1
+        return "unexpected"
+
+    monkeypatch.setattr(client, "call", unexpected_call)
+
+    with pytest.raises(GenerationBudgetExceeded):
+        client.call_with_retry(
+            system_prompt="system",
+            user_prompt="story",
+            retry_count=3,
+            generation_tracker=tracker,
+        )
+
+    assert provider_call_count == 0
 
 
 def test_option_provider_call_consumes_option_allowance_before_invocation() -> None:
