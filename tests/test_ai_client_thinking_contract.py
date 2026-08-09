@@ -2,7 +2,7 @@
 
 import json
 from collections.abc import Callable, Iterator
-from typing import Any
+from typing import Any, Dict, Optional
 
 import httpx
 import openai
@@ -110,7 +110,7 @@ def test_deepseek_v4_false_serializes_disabled_thinking(
     chunks: list[str] = []
     with httpx.Client(transport=_capture_transport(seen)) as http_client:
         client = _ai_client(model, http_client)
-        callback: Callable[[str], None] | None = chunks.append if streaming else None
+        callback: Optional[Callable[[str], None]] = chunks.append if streaming else None
         result = client.call(
             "system",
             "user",
@@ -130,14 +130,14 @@ def test_deepseek_v4_false_serializes_disabled_thinking(
 @pytest.mark.parametrize("streaming", [False, True])
 @pytest.mark.parametrize("thinking_kwargs", [{}, {"thinking": None}, {"thinking": True}])
 def test_non_false_thinking_preserves_deepseek_payload(
-    thinking_kwargs: dict[str, bool | None],
+    thinking_kwargs: Dict[str, Optional[bool]],
     streaming: bool,
 ) -> None:
     seen: list[dict[str, Any]] = []
     chunks: list[str] = []
     with httpx.Client(transport=_capture_transport(seen)) as http_client:
         client = _ai_client("deepseek-v4-flash", http_client)
-        callback: Callable[[str], None] | None = chunks.append if streaming else None
+        callback: Optional[Callable[[str], None]] = chunks.append if streaming else None
         assert client.call(
             "system",
             "user",
