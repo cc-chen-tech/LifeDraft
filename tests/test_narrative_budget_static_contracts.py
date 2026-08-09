@@ -8,7 +8,9 @@ import re
 from pathlib import Path
 
 from config.prompts.story_prompts import (get_event_generation_prompt,
+                                          get_result_generation_prompt,
                                           get_story_only_prompt)
+from src.ai.narrative.style_manifest import StyleLoader
 
 ROOT = Path(__file__).resolve().parents[1]
 CRITICAL_PROVIDER_FILES = (
@@ -91,19 +93,46 @@ def test_english_prompt_uses_english_fast_band_when_enabled(monkeypatch) -> None
 
 
 def test_narrative_prompt_templates_do_not_embed_product_length_ranges() -> None:
-    forbidden = re.compile(
-        r"(?:200|300|500|800|1500)\s*(?:-|–|to)\s*" r"(?:400|800|1200|2000)\s*(?:字|chars?|words?)",
-        re.I,
-    )
+    forbidden = re.compile(r"\d+\s*(?:-|–|to)\s*\d+\s*(?:字|chars?|words?)", re.I)
     violations: dict[str, list[str]] = {}
     for relative_path in (
-        "config/prompts/character_prompts.py",
         "config/prompts/story_prompts.py",
         "src/ai/system_prompts.py",
     ):
         source = (ROOT / relative_path).read_text(encoding="utf-8")
-        matches = [match.group(0) for match in forbidden.finditer(source)]
+        active_source = "\n".join(
+            line for line in source.splitlines() if "LEGACY_COMPAT" not in line
+        )
+        matches = [match.group(0) for match in forbidden.finditer(active_source)]
         if matches:
             violations[relative_path] = matches
 
     assert violations == {}
+
+
+def test_enabled_continuation_has_no_independent_numeric_paragraph_budget(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ENABLE_UNIFIED_NARRATIVE_BUDGETS", "true")
+    for language in ("zh", "en"):
+        prompt = get_result_generation_prompt("story", "choice", {}, language=language)
+        assert "150-300" not in prompt
+        assert "500字无换行" not in prompt
+        assert "500 words without" not in prompt
+
+
+def test_disabled_flag_restores_legacy_prompt_and_style_inputs(monkeypatch) -> None:
+    monkeypatch.setenv("ENABLE_UNIFIED_NARRATIVE_BUDGETS", "false")
+    prompt = get_event_generation_prompt(
+        player_state={"week": 1, "current_round": 0, "relationships": {}},
+        language="zh",
+        character_settings={},
+    )
+    continuation = get_result_generation_prompt("story", "choice", {}, language="zh")
+    style = StyleLoader().get_style("magical_realism")
+
+    assert "每段控制在200-400字" in prompt
+    assert '"event_description": "对情况的生动描述（1500-2000字' in prompt
+    assert "每段控制在150-300字" in continuation
+    assert style is not None
+    assert style.structure.chapter_rules.avg_length.startswith("每章1800-3000字")

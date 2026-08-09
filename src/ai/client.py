@@ -165,6 +165,8 @@ class AIClient:
 
         # C-04: 使用信号量限制并发调用
         with self._semaphore:
+            if generation_tracker is not None:
+                generation_tracker.assert_before_provider_call()
             # ★ 模型降级链：开启时自动切换备选模型
             if get_feature("model_fallback"):
                 return self._call_with_model_fallback(
@@ -309,7 +311,8 @@ class AIClient:
                     generation_tracker.consume_retry()
                 effective_request_timeout = request_timeout
                 if generation_tracker is not None:
-                    remaining = max(0.001, generation_tracker.remaining_seconds)
+                    generation_tracker.assert_before_provider_call()
+                    remaining = generation_tracker.remaining_seconds
                     effective_request_timeout = (
                         min(request_timeout, remaining)
                         if request_timeout is not None
@@ -331,6 +334,8 @@ class AIClient:
                     if _is_deepseek_v4(use_model):
                         extra_params["stream_options"] = {"include_usage": True}
                     extra_params.update(_thinking_request_params(use_model, thinking))
+                    if generation_tracker is not None:
+                        generation_tracker.assert_before_provider_call()
                     stream = client.chat.completions.create(
                         model=use_model,
                         messages=messages,  # type: ignore[arg-type]
@@ -394,6 +399,8 @@ class AIClient:
                     if effective_request_timeout is not None:
                         extra_params_sync["timeout"] = effective_request_timeout
                     extra_params_sync.update(_thinking_request_params(use_model, thinking))
+                    if generation_tracker is not None:
+                        generation_tracker.assert_before_provider_call()
                     response = client.chat.completions.create(
                         model=use_model,
                         messages=messages,  # type: ignore[arg-type]

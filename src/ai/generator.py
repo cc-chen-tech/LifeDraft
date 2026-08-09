@@ -14,8 +14,10 @@ import json
 import logging
 from typing import Any, Callable, Dict, List, Optional
 
+from config.feature_flags import get_feature
 from config.settings import PRESETS_DIR, settings
-from src.ai.budgets import GenerationCallTracker
+from src.ai.budgets import (GenerationCallTracker, GenerationOperation,
+                            NarrativeKind, resolve_narrative_budget)
 from src.ai.cache import EventCache
 from src.ai.client import AIClient, _thinking_request_params
 from src.ai.models import GameEvent
@@ -136,6 +138,7 @@ class EventGenerator:
             )
         if generation_tracker is not None:
             generation_tracker.consume("prose")
+            generation_tracker.assert_before_provider_call()
         return self.ai_client.call(
             system_prompt=system_prompt,
             user_prompt=prompt,
@@ -195,6 +198,8 @@ class EventGenerator:
         use_model = model or self.ai_client.model
         client = self.ai_client.require_openai_client()
         request_params = _thinking_request_params(use_model, thinking)
+        if generation_tracker is not None:
+            generation_tracker.assert_before_provider_call()
         return client.chat.completions.create(
             model=use_model,
             messages=[
@@ -351,14 +356,25 @@ class EventGenerator:
         character_settings: Optional[Dict[str, Any]] = None,
         language: str = "zh",
         retry_count: int = 3,
+        generation_tracker: Optional[GenerationCallTracker] = None,
     ) -> GameEvent:
         """Generate options for an existing story."""
+        if get_feature("unified_narrative_budgets"):
+            budget = resolve_narrative_budget(
+                NarrativeKind.ROUND,
+                GenerationOperation.GENERATE,
+                self.quality_level,
+                language,
+            )
+            generation_tracker = generation_tracker or GenerationCallTracker(budget)
+            retry_count = min(retry_count, budget.option_call_limit)
         return self.option_gen.generate_options_only(
             story_description=story_description,
             player_state=player_state,
             character_settings=character_settings,
             language=language,
             retry_count=retry_count,
+            generation_tracker=generation_tracker,
         )
 
     def compress_story(

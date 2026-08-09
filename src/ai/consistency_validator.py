@@ -170,6 +170,10 @@ class ConsistencyValidator:
                 temperature=0.3,
                 max_tokens=max_output_tokens,
                 thinking=False,
+                request_timeout=(
+                    generation_tracker.remaining_seconds if generation_tracker is not None else None
+                ),
+                generation_tracker=generation_tracker,
             )
 
             # ★ 解析 AI 的验证结果（已移除硬性判断逻辑）

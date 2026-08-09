@@ -20,7 +20,8 @@ from config.prompts._helpers import (_build_style_constraints_text,
 from config.prompts.story_prompts import resolve_protagonist_name
 from src.ai.budgets import (GenerationBudgetError, GenerationCallTracker,
                             GenerationOperation, NarrativeBudget,
-                            NarrativeKind, resolve_narrative_budget)
+                            NarrativeKind, measure_narrative_length,
+                            resolve_narrative_budget)
 from src.ai.client import AIClient
 from src.ai.generation_budget import get_generation_budget
 from src.ai.harness.diagnostics import ConstraintViolationDiagnostic
@@ -59,6 +60,37 @@ _TERMINAL_CONTINUITY_CONSTRAINTS = frozenset(
         "cause_effect_consistency",
     }
 )
+
+
+def _localized_story_shape_issues(
+    candidate: str,
+    *,
+    language: str,
+    target_min: int,
+    target_max: int,
+    use_localized_measurement: bool,
+) -> list[str]:
+    """Validate narrative shape without treating English characters as words."""
+    if not use_localized_measurement:
+        return validate_narrative_quality(
+            candidate,
+            language=language,
+            perspective="third",
+            min_chars=target_min,
+            max_chars=target_max,
+        )
+
+    issues = validate_narrative_quality(
+        candidate,
+        language=language,
+        perspective="third",
+    )
+    measured_length = measure_narrative_length(candidate, language)
+    if measured_length < target_min:
+        issues.append("story_too_short")
+    if measured_length > target_max:
+        issues.append("story_too_long")
+    return issues
 
 
 class _EmptyStoryProviderOutput(ValueError):
@@ -380,6 +412,7 @@ class StoryGenerator:
             world_model=world_model,
             overused_phrases=overused_phrases,  # ★ 注入动态禁用列表
             style_constraints=style_constraints,
+            quality_level=self.quality_level.value,
         )
         sys_prompt = get_system_prompt("story_novelist", language)
         history_prefix = self._long_history_prefix(player_state, sys_prompt + story_prompt)
@@ -618,6 +651,31 @@ class StoryGenerator:
             quality_level=self.quality_level.value,
         )
         generation_budget = get_generation_budget(self.quality_level.value)
+        target_min = (
+            narrative_budget.length.target_min
+            if narrative_budget is not None
+            else generation_budget.min_length
+        )
+        target_max = (
+            narrative_budget.length.target_max
+            if narrative_budget is not None
+            else generation_budget.max_length
+        )
+        active_max_tokens = (
+            narrative_budget.max_output_tokens
+            if narrative_budget is not None
+            else generation_budget.max_tokens
+        )
+        allow_quick_regeneration = (
+            narrative_budget.prose_call_limit > 1
+            if narrative_budget is not None
+            else generation_budget.allow_quick_regeneration
+        )
+        allow_ai_consistency = (
+            narrative_budget.validation_call_limit > 0
+            if narrative_budget is not None
+            else generation_budget.allow_ai_consistency
+        )
 
         # Step 1: Generate story text (with optional streaming)
         sys_prompt = get_system_prompt("story_novelist", language)
@@ -676,12 +734,12 @@ class StoryGenerator:
                 best_valid_story_text = candidate
 
         def _hard_shape_issues(candidate: str) -> list[str]:
-            shape_issues = validate_narrative_quality(
+            shape_issues = _localized_story_shape_issues(
                 candidate,
                 language=language,
-                perspective="third",
-                min_chars=generation_budget.min_length,
-                max_chars=generation_budget.max_length,
+                target_min=target_min,
+                target_max=target_max,
+                use_localized_measurement=narrative_budget is not None,
             )
             return [
                 issue
@@ -702,14 +760,14 @@ class StoryGenerator:
                 return (
                     "\n\n【篇幅与分段修正 - 必须重写】\n"
                     f"{issue_text}。请重新生成本轮故事，严格控制在"
-                    f"{generation_budget.min_length}-{generation_budget.max_length}字，"
+                    f"{target_min}-{target_max}字，"
                     "使用2-5个自然段，每段有完整场景推进，禁止拆成大量短句碎片。"
                 )
             issue_text = "; ".join(hard_shape_issues)
             return (
                 "\n\n[Length and Paragraph Fix - Regenerate Required]\n"
                 f"{issue_text}. Regenerate this round within "
-                f"{generation_budget.min_length}-{generation_budget.max_length} words, "
+                f"{target_min}-{target_max} words, "
                 "using 2-5 coherent paragraphs."
             )
 
@@ -770,7 +828,7 @@ class StoryGenerator:
                     system_prompt=sys_prompt,
                     user_prompt=attempt_prompt,
                     temperature=current_temp,
-                    max_tokens=generation_budget.max_tokens,
+                    max_tokens=active_max_tokens,
                     stream_callback=stream_callback if attempt == 0 else None,
                     frequency_penalty=0.4,  # ★ 轮次级别更强的反重复，因为同周多轮更容易重复
                     presence_penalty=0.4,  # ★ 鼓励每轮使用不同的表达方式
@@ -790,7 +848,7 @@ class StoryGenerator:
                 quick_retry_used = False
                 locally_usable_story = quick_result.passed
 
-                if not quick_result.passed and generation_budget.allow_quick_regeneration:
+                if not quick_result.passed and allow_quick_regeneration:
                     logger.warning(f"Quick validation failed: {quick_result.issues}")
                     retry_lines = "\n".join(f"- {issue}" for issue in quick_result.issues)
                     retry_prompt = (
@@ -816,7 +874,7 @@ class StoryGenerator:
                         system_prompt=sys_prompt,
                         user_prompt=retry_prompt,
                         temperature=0.65,
-                        max_tokens=generation_budget.max_tokens,
+                        max_tokens=active_max_tokens,
                         stream_callback=stream_callback if attempt == 0 else None,
                         frequency_penalty=0.4,
                         presence_penalty=0.4,
@@ -870,7 +928,7 @@ class StoryGenerator:
                 requires_shape_retry = not quick_retry_used or "story_too_long" in hard_shape_issues
                 if (
                     hard_shape_issues
-                    and generation_budget.allow_quick_regeneration
+                    and allow_quick_regeneration
                     and requires_shape_retry
                     and max_attempts == 1
                 ):
@@ -884,7 +942,7 @@ class StoryGenerator:
                         user_prompt=attempt_prompt
                         + _build_shape_retry_instruction(hard_shape_issues),
                         temperature=0.65,
-                        max_tokens=generation_budget.max_tokens,
+                        max_tokens=active_max_tokens,
                         stream_callback=stream_callback if attempt == 0 else None,
                         frequency_penalty=0.4,
                         presence_penalty=0.4,
@@ -959,7 +1017,7 @@ class StoryGenerator:
                         system_prompt=sys_prompt,
                         user_prompt=repeat_retry_prompt,
                         temperature=0.65,
-                        max_tokens=generation_budget.max_tokens,
+                        max_tokens=active_max_tokens,
                         stream_callback=stream_callback if attempt == 0 else None,
                         frequency_penalty=0.5,
                         presence_penalty=0.5,
@@ -994,7 +1052,7 @@ class StoryGenerator:
                     _set_best_story(story_text)
 
                 # Step 1.5: AI-based consistency validation (if world_model is provided)
-                if world_model and story_text and generation_budget.allow_ai_consistency:
+                if world_model and story_text and allow_ai_consistency:
                     story_text = self._validate_and_retry_story(
                         story_text=story_text,
                         world_model=world_model,

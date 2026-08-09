@@ -3,6 +3,7 @@
 import re
 from typing import Any, Dict, Optional
 
+from config.feature_flags import get_feature
 from config.prompts._helpers import (_build_available_people_constraint,
                                      _build_character_habits_context,
                                      _build_common_story_constraints,
@@ -23,6 +24,19 @@ from config.prompts._helpers import (_build_available_people_constraint,
 from src.ai.budgets import NarrativeKind, resolve_prompt_length_requirement
 from src.ai.prompt_sanitizer import sanitize_player_name, sanitize_user_choice
 from src.game.relationship_authority import build_required_cast_constraints
+
+_LEGACY_EVENT_PARAGRAPH_ZH = (
+    "适时换段，每段控制在200-400字，禁止出现超过600字无换行的超长段落"  # LEGACY_COMPAT
+)
+_LEGACY_EVENT_PARAGRAPH_EN = "Change paragraphs appropriately. Keep each paragraph between 200-400 words. NO paragraphs exceeding 600 words without a break"  # LEGACY_COMPAT
+_LEGACY_EVENT_SCHEMA_ZH = "对情况的生动描述（1500-2000字，包含大量人物对话）"  # LEGACY_COMPAT
+_LEGACY_EVENT_SCHEMA_EN = (
+    "A vivid description (1500-2000 words with extensive dialogue)"  # LEGACY_COMPAT
+)
+_LEGACY_CONTINUATION_PARAGRAPH_ZH = (
+    "每段控制在150-300字，适时换段，禁止出现超过500字无换行的超长段落"  # LEGACY_COMPAT
+)
+_LEGACY_CONTINUATION_PARAGRAPH_EN = "Keep each paragraph between 150-300 words. Change paragraphs appropriately. NO paragraphs exceeding 500 words without a break"  # LEGACY_COMPAT
 
 # ==================== 自定义选择相关 Prompts ====================
 
@@ -631,6 +645,16 @@ def _get_english_prompt(
         )
 
     length_requirement = resolve_prompt_length_requirement(NarrativeKind.ROUND, quality_level, "en")
+    paragraph_rule = (
+        "Break the story into coherent paragraphs; do not return one oversized unbroken block"
+        if get_feature("unified_narrative_budgets")
+        else _LEGACY_EVENT_PARAGRAPH_EN
+    )
+    event_schema_description = (
+        "A vivid description that follows the required narrative budget"
+        if get_feature("unified_narrative_budgets")
+        else _LEGACY_EVENT_SCHEMA_EN
+    )
     prompt = f"""You are a "fate engine" for a life simulation game. Generate a life event that requires the player to make a meaningful choice.
 
 MOST IMPORTANT REQUIREMENTS:
@@ -673,7 +697,7 @@ Key Relationships: {rel_str}{storylines_context}{facts_context}{world_model_cont
    - Use commas and semicolons for clause breaks; no run-on sentences over 30 words without punctuation
    - No paragraphs without any punctuation
    - Do not mix Chinese and English punctuation
-   - **Paragraph breaks**: Break the story into coherent paragraphs; do not return one oversized unbroken block
+   - **Paragraph breaks**: {paragraph_rule}
 7. Options should present real trade-offs - no option should be clearly superior
 8. Relationship effects should be specified as "relationships": {{"name": +/-value}}, **name MUST come from Available People List**
 9. **IMPORTANT: Based on the character's personality, abilities, interests, and life vision, mark each option with "likely_choice": true/false to indicate what the character would most likely choose. At least one option should have likely_choice: true.**
@@ -698,7 +722,7 @@ REMINDER: event_description: {length_requirement}. Focus on the key moment with 
 【Output Format】
 You MUST return ONLY valid JSON in this exact format:
 {{
-  "event_description": "A vivid description that follows the required narrative budget"
+  "event_description": "{event_schema_description}"
   "options": [
     {{
       "text": "Option A description (max 15 words)",
@@ -856,6 +880,16 @@ def _get_chinese_prompt(
     )
 
     length_requirement = resolve_prompt_length_requirement(NarrativeKind.ROUND, quality_level, "zh")
+    paragraph_rule = (
+        "按语义适时换段，禁止返回一整块无换行的超长段落"
+        if get_feature("unified_narrative_budgets")
+        else _LEGACY_EVENT_PARAGRAPH_ZH
+    )
+    event_schema_description = (
+        "遵守当前叙事预算的生动描述"
+        if get_feature("unified_narrative_budgets")
+        else _LEGACY_EVENT_SCHEMA_ZH
+    )
     prompt = f"""你是一个人生模拟游戏的"命运引擎"。请根据以下玩家状态和角色设定，以故事续写的方式生成一个需要拉择的生活事件。
 
 最重要的要求：
@@ -913,7 +947,7 @@ def _get_chinese_prompt(
    - 句内必须使用逗号、顿号合理断句，禁止出现超过30字无标点的情况
    - 禁止出现没有标点的大段连续文字
    - 标点禁止中英混用
-   - **合理分段**：按语义适时换段，禁止返回一整块无换行的超长段落
+   - **合理分段**：{paragraph_rule}
 7. 选项应呈现真实的权衡取舍，不应有明显最优选项
 8. 关系影响应指定为"relationships": {{"姓名": +/-数值}}，**姓名必须来自可用人物列表**
 9. **重要：根据角色的性格特点、能力、兴趣和人生愿景，在选项中标注"likely_choice": true/false，表示该角色最可能做出的选择。每个事件至少有一个likely_choice为true的选项。**
@@ -939,7 +973,7 @@ def _get_chinese_prompt(
 【输出格式】
 你必须仅返回有效的JSON格式，格式如下：
 {{
-  "event_description": "遵守当前叙事预算的生动描述"
+  "event_description": "{event_schema_description}"
   "options": [
     {{
       "text": "选项A描述（最多15字）",
@@ -1056,6 +1090,11 @@ def get_result_generation_prompt(
         localized_length = length_requirement or resolve_prompt_length_requirement(
             NarrativeKind.CONTINUATION, "expert", language
         )
+        paragraph_rule = (
+            "按完整场景和语义自然分段，避免过碎或整块无换行"
+            if get_feature("unified_narrative_budgets")
+            else _LEGACY_CONTINUATION_PARAGRAPH_ZH
+        )
         return f"""你是一个沉浸式叙事小说作家。现在请续写以下故事，展示玩家做出选择后发生了什么。
 
 ## 角色信息{char_context}
@@ -1078,13 +1117,18 @@ def get_result_generation_prompt(
 6. 正确使用标点符号：对话必须用""包裹，句末使用句号/问号/感叹号，句内用逗号合理断句。禁止出现没有标点的大段连续文字
 7. 严禁跳脱叙事：不得提及"游戏""模拟""系统""属性值"等元信息，不得出现作者旁白
 8. **选择必须产生独特影响**：这个续写必须是因这个特定选择才发生的，不能是换任何一个选项都能套用的通用剧情。必须体现：如果玩家选择了另一个完全不同的选项，故事的走向和发展会明显不同
-9. **合理分段**：每段控制在150-300字，适时换段，禁止出现超过500字无换行的超长段落
+9. **合理分段**：{paragraph_rule}
 10. **不得重复当前故事**：当前故事已经展示给玩家，续写必须从玩家选择之后开始推进；不要重复叙述当前故事中已经发生的场景、旅程、对话或揭示{custom_constraint_zh}
 
 仅返回续写的故事内容，不要其他说明或标题。"""
     else:
         localized_length = length_requirement or resolve_prompt_length_requirement(
             NarrativeKind.CONTINUATION, "expert", language
+        )
+        paragraph_rule = (
+            "Use coherent scene-based paragraphs; avoid fragments and oversized unbroken blocks"
+            if get_feature("unified_narrative_budgets")
+            else _LEGACY_CONTINUATION_PARAGRAPH_EN
         )
         return f"""You are an immersive narrative writer. Continue the following story, showing what happens after the player's choice.
 
@@ -1108,7 +1152,7 @@ def get_result_generation_prompt(
 6. Proper punctuation: dialogue MUST be in quotation marks, every sentence MUST end with a period/question/exclamation, use commas for clause breaks. No run-on paragraphs without punctuation
 7. NO FOURTH-WALL BREAKING: never mention 'game', 'simulation', 'system', 'stats', etc. No author asides
 8. **Choice must have UNIQUE impact**: This continuation MUST be a direct result of THIS specific choice. It cannot be a generic outcome that would apply to any option. Show that if the player had chosen a completely different option, the story direction and development would be noticeably different
-9. **Paragraph breaks**: Keep each paragraph between 150-300 words. Change paragraphs appropriately. NO paragraphs exceeding 500 words without a break
+9. **Paragraph breaks**: {paragraph_rule}
 10. **Do not repeat the current story**: The current story has already been shown to the player. Continue from after the player's choice; do not re-narrate scenes, travel, dialogue, or revelations that already happened in the current story{custom_constraint_en}
 
 Return only the story continuation, no other explanations or headers."""

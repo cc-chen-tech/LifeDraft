@@ -343,6 +343,10 @@ class GenerationCallTracker:
                 f"Narrative deadline exhausted after {self.elapsed_seconds:.3f}s"
             )
 
+    def assert_before_provider_call(self) -> None:
+        """Reject a physical provider call that starts after queueing past deadline."""
+        self._assert_before_deadline()
+
     def consume(self, category: CallCategory) -> int:
         """Consume one allowance before a provider call and return category count."""
         self._assert_before_deadline()

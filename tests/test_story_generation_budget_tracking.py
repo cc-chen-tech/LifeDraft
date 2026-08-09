@@ -9,16 +9,46 @@ from typing import Any
 import pytest
 
 from src.ai.budgets import (GenerationBudgetExceeded, GenerationCallTracker,
-                            GenerationOperation, NarrativeKind,
-                            resolve_narrative_budget)
+                            GenerationDeadlineExceeded, GenerationOperation,
+                            NarrativeKind, resolve_narrative_budget)
 from src.ai.client import AIClient
 from src.ai.consistency_validator import ConsistencyValidator
+from src.ai.generator import EventGenerator
 from src.ai.option_generator import OptionGenerator
-from src.ai.story_generator import StoryGenerator
+from src.ai.story_generator import (StoryGenerator,
+                                    _localized_story_shape_issues)
 from src.ai.story_rewriter import StoryRewriter
 from src.ai.truncation_recovery import TruncationRecovery
 from src.game.character_creation import CharacterCreator
 from src.game.story_service import StoryService
+
+
+@pytest.mark.parametrize(
+    ("quality", "language", "text"),
+    [
+        ("fast", "zh", "他" * 500),
+        ("expert", "zh", "他" * 1000),
+        ("master", "zh", "他" * 1600),
+        ("fast", "en", "word " * 300),
+        ("expert", "en", "word " * 600),
+        ("master", "en", "word " * 1000),
+    ],
+)
+def test_round_runtime_shape_uses_each_localized_quality_band(
+    quality: str, language: str, text: str
+) -> None:
+    budget = resolve_narrative_budget("round", "generate", quality, language)
+
+    issues = _localized_story_shape_issues(
+        text,
+        language=language,
+        target_min=budget.length.target_min,
+        target_max=budget.length.target_max,
+        use_localized_measurement=True,
+    )
+
+    assert "story_too_short" not in issues
+    assert "story_too_long" not in issues
 
 
 class RecordingClient:
@@ -96,6 +126,56 @@ def test_retry_wrapper_propagates_budget_exhaustion_without_provider_call(
     assert provider_call_count == 0
 
 
+@pytest.mark.parametrize(
+    ("quality", "expected_tokens"), [("fast", 1024), ("expert", 2048), ("master", 4096)]
+)
+def test_legacy_event_entry_passes_active_quality_to_prompt_and_budget(
+    monkeypatch: pytest.MonkeyPatch, quality: str, expected_tokens: int
+) -> None:
+    monkeypatch.setenv("ENABLE_UNIFIED_NARRATIVE_BUDGETS", "true")
+    captured_quality: list[str] = []
+
+    def prompt_builder(*_args: Any, **kwargs: Any) -> str:
+        captured_quality.append(kwargs["quality_level"])
+        return "story prompt"
+
+    monkeypatch.setattr("src.ai.story_generator.get_story_only_prompt", prompt_builder)
+    monkeypatch.setattr(
+        "src.ai.quick_validator.quick_validate_story",
+        lambda **_kwargs: SimpleNamespace(passed=True, issues=[]),
+    )
+    client = RecordingClient("林岚按约定抵达车站，与伙伴确认下一步安排。")
+    generator = StoryGenerator(client, quality_level=quality)
+
+    class Options:
+        def generate_options_only(self, **kwargs: Any) -> Any:
+            return SimpleNamespace(
+                event_description=kwargs["story_description"],
+                options=[SimpleNamespace(text="继续", effects={})] * 3,
+            )
+
+        def validate_and_fix_relationships(self, *_args: Any) -> None:
+            return None
+
+        def validate_event_quality(self, *_args: Any) -> None:
+            return None
+
+        def ensure_options_consistency(self, **_kwargs: Any) -> None:
+            return None
+
+    event = generator.generate_event(
+        player_state={"week": 1, "relationships": {}},
+        language="zh",
+        retry_count=1,
+        character_settings={},
+        option_generator=Options(),
+    )
+
+    assert len(event.options) == 3
+    assert captured_quality == [quality]
+    assert client.calls[0]["max_tokens"] == expected_tokens
+
+
 def test_option_provider_call_consumes_option_allowance_before_invocation() -> None:
     content = json.dumps(
         {
@@ -131,6 +211,114 @@ def test_option_provider_call_consumes_option_allowance_before_invocation() -> N
     assert len(fallback.options) == 3
 
 
+def test_option_and_consistency_calls_forward_tracker_and_remaining_deadline() -> None:
+    option_content = json.dumps(
+        {
+            "options": [
+                {"text": "接受邀请", "effects": {}},
+                {"text": "谨慎询问", "effects": {}},
+                {"text": "暂时拒绝", "effects": {}},
+            ]
+        },
+        ensure_ascii=False,
+    )
+    option_client = RecordingClient(option_content)
+    option_tracker = _tracker()
+    OptionGenerator(option_client).generate_options_only(
+        story_description="他收到了一封邀请函。",
+        player_state={},
+        language="zh",
+        generation_tracker=option_tracker,
+    )
+
+    validation_client = RecordingClient('{"issues": []}')
+    validation_tracker = _tracker()
+    ConsistencyValidator(validation_client).validate_story(
+        story_text="他按约定抵达车站。",
+        world_model=SimpleNamespace(build_constraints_text=lambda _language: "facts"),
+        player_state_dict={},
+        character_settings={},
+        language="zh",
+        generation_tracker=validation_tracker,
+        max_output_tokens=2048,
+    )
+
+    for call, tracker in (
+        (option_client.calls[0], option_tracker),
+        (validation_client.calls[0], validation_tracker),
+    ):
+        assert call["generation_tracker"] is tracker
+        assert 0 < call["request_timeout"] <= tracker.budget.total_deadline_seconds
+
+
+class RecordingOptionService:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def generate_options_only(self, **kwargs: Any) -> str:
+        self.calls.append(kwargs)
+        return "options"
+
+
+def test_options_only_facade_creates_active_quality_tracker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENABLE_UNIFIED_NARRATIVE_BUDGETS", "true")
+    facade = EventGenerator.__new__(EventGenerator)
+    facade.quality_level = "master"
+    facade.option_gen = RecordingOptionService()
+
+    result = facade.generate_options_only("story", {}, language="en", retry_count=9)
+
+    assert result == "options"
+    call = facade.option_gen.calls[0]
+    tracker = call["generation_tracker"]
+    assert tracker.budget.quality_level == "master"
+    assert tracker.budget.language == "en"
+    assert call["retry_count"] == tracker.budget.option_call_limit == 2
+
+
+def test_ai_client_rechecks_deadline_after_waiting_for_semaphore(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = [0.0]
+    tracker = GenerationCallTracker(
+        resolve_narrative_budget("round", "generate", "fast", "zh"),
+        clock=lambda: now[0],
+    )
+    tracker.consume("prose")
+    provider_calls = 0
+
+    class AdvancingSemaphore:
+        def __enter__(self) -> None:
+            now[0] = 61.0
+
+        def __exit__(self, *_args: Any) -> None:
+            return None
+
+    class Completions:
+        def create(self, **_kwargs: Any) -> None:
+            nonlocal provider_calls
+            provider_calls += 1
+
+    client = AIClient(api_key="test-key", model="test-model")
+    client._semaphore = AdvancingSemaphore()  # type: ignore[assignment]
+    monkeypatch.setattr(
+        client,
+        "require_openai_client",
+        lambda: SimpleNamespace(chat=SimpleNamespace(completions=Completions())),
+    )
+
+    with pytest.raises(GenerationDeadlineExceeded):
+        client.call(
+            system_prompt="system",
+            user_prompt="story",
+            generation_tracker=tracker,
+        )
+
+    assert provider_calls == 0
+
+
 def test_consistency_provider_call_consumes_validation_and_uses_request_tokens() -> None:
     client = RecordingClient('{"issues": []}')
     validator = ConsistencyValidator(client)
@@ -164,8 +352,9 @@ def test_consistency_provider_call_consumes_validation_and_uses_request_tokens()
 
 
 class RecordingStreamGenerator:
-    def __init__(self) -> None:
+    def __init__(self, quality_level: str = "expert") -> None:
         self.calls: list[dict[str, Any]] = []
+        self.quality_level = quality_level
 
     def generate_stream(self, **kwargs: Any):
         self.calls.append(kwargs)
@@ -194,6 +383,27 @@ def test_opening_stream_uses_opening_budget_and_shared_tracker(
     assert "300-500字" in call["prompt"]
     assert "300-400字" not in call["prompt"]
     assert call["generation_tracker"].prose_calls == 1
+
+
+@pytest.mark.parametrize(("quality", "deadline"), [("fast", 60), ("expert", 120), ("master", 240)])
+def test_opening_inherits_active_quality_deadline(
+    monkeypatch: pytest.MonkeyPatch, quality: str, deadline: int
+) -> None:
+    monkeypatch.setenv("ENABLE_UNIFIED_NARRATIVE_BUDGETS", "true")
+    generator = RecordingStreamGenerator(quality)
+    creator = CharacterCreator(ai_generator=generator, language="en")
+
+    list(
+        creator.generate_opening_story(
+            character_settings={"era": {"year": 2026}},
+            player_name="Lin",
+            life_vision="Build a library",
+        )
+    )
+
+    tracker = generator.calls[0]["generation_tracker"]
+    assert tracker.budget.quality_level == quality
+    assert tracker.budget.total_deadline_seconds == deadline
 
 
 class RecordingCompletionGenerator:

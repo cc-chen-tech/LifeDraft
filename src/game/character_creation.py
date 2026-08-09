@@ -1127,10 +1127,11 @@ class CharacterCreator:
         generation_tracker = None
         length_requirement = None
         if get_feature("unified_narrative_budgets"):
+            quality_level = str(getattr(self.ai_generator, "quality_level", None) or "expert")
             narrative_budget = resolve_narrative_budget(
                 NarrativeKind.OPENING,
                 GenerationOperation.GENERATE,
-                "expert",
+                quality_level,
                 self.language,
             )
             generation_tracker = GenerationCallTracker(narrative_budget)
