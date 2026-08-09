@@ -92,6 +92,18 @@ describe('Session Recovery', () => {
       );
     });
 
+    it('getActive forwards an abort signal to the recovery request', async () => {
+      (global.fetch as jest.Mock).mockImplementation(() => new Promise(() => {}));
+      const controller = new AbortController();
+
+      void games.getActive(controller.signal);
+      await Promise.resolve();
+      const requestSignal = (global.fetch as jest.Mock).mock.calls[0][1].signal as AbortSignal;
+      controller.abort();
+
+      expect(requestSignal.aborted).toBe(true);
+    });
+
     it('should handle deleted game scenario', async () => {
       (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ message: 'Active game no longer exists' }, 404));
       await expect(games.getActive()).rejects.toThrow();

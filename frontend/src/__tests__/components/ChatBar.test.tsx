@@ -152,6 +152,58 @@ describe('ChatBar', () => {
       expect(screen.getByText('这段故事怎么样？')).toBeInTheDocument();
     });
 
+    it('stays mounted but hides every control in history view, then restores chat history', async () => {
+      const user = userEvent.setup();
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ reply: '助手回复' }));
+      const { rerender } = render(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+          storyText="Current story"
+        />
+      );
+
+      await user.click(screen.getByLabelText('打开聊天'));
+      await user.type(screen.getByPlaceholderText('向剧情助手提问...'), '请记住这段对话');
+      await user.click(screen.getByLabelText('发送消息'));
+      expect(await screen.findByText('请记住这段对话')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: '改写' }));
+      expect(await screen.findByTestId('inline-rewrite-sheet')).toBeInTheDocument();
+
+      rerender(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+          storyText="Current story"
+          isViewingHistory
+        />
+      );
+
+      expect(screen.queryByTestId('chat-bar-launcher')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('chat-bar-panel')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('inline-rewrite-sheet')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('life-summary-panel')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '打开聊天' })).not.toBeInTheDocument();
+
+      rerender(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+          storyText="Current story"
+        />
+      );
+
+      expect(await screen.findByTestId('chat-bar-launcher')).toBeInTheDocument();
+      await user.click(screen.getByLabelText('打开聊天'));
+      expect(await screen.findByTestId('chat-bar-panel')).toBeInTheDocument();
+      expect(screen.getByText('请记住这段对话')).toBeInTheDocument();
+      expect(screen.queryByTestId('inline-rewrite-sheet')).not.toBeInTheDocument();
+    });
+
     it('closes an open summary panel during busy work and fades the launcher and panel back without reopening it', async () => {
       const user = userEvent.setup();
       (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({

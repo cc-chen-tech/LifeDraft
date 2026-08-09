@@ -3,7 +3,7 @@
  * Tests session recovery, initialization, ending data, and scene images
  */
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useGameStore } from '@/stores/useGameStore';
+import { useEventStore, useGameStore, useSessionStore } from '@/stores/useGameStore';
 import { spyOnStoreMethods } from '@/__tests__/helpers/store-spy';
 
 // Mock the sub-hooks before importing usePlayGame
@@ -52,6 +52,16 @@ function setupDefaultState() {
 
 // Import after mocks
 import { usePlayGame } from '@/hooks/usePlayGame';
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
 
 describe('usePlayGame', () => {
   let storeSpy: StoreSpy;
@@ -252,6 +262,82 @@ describe('usePlayGame', () => {
       });
 
       consoleSpy.mockRestore();
+    });
+
+    it('aborts active recovery and ignores a late success after game B becomes current', async () => {
+      const activeRequest = deferred<Response>();
+      (global.fetch as jest.Mock).mockImplementation(() => activeRequest.promise);
+      storeSpy.spies.syncState.mockImplementation(() => new Promise(() => {}));
+
+      const { result } = renderHook(() => usePlayGame());
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledWith(
+          '/api/games/active',
+          expect.objectContaining({
+            credentials: 'include',
+            signal: expect.any(AbortSignal),
+          }),
+        );
+      });
+      const activeSignal = (global.fetch as jest.Mock).mock.calls[0][1].signal as AbortSignal;
+
+      act(() => {
+        useSessionStore.setState({
+          gameId: 84,
+          playerState: { player_name: 'Player B' },
+          progress: { week: 8 },
+          roundInfo: { current_round: 2 },
+        } as never);
+        useEventStore.setState({
+          storyText: 'B 当前故事',
+          currentEvent: { story: 'B 当前故事', options: [{ text: 'B 选择' }] },
+        } as never);
+      });
+
+      await waitFor(() => expect(result.current.gameId).toBe(84));
+      expect(activeSignal.aborted).toBe(true);
+
+      await act(async () => {
+        activeRequest.resolve(jsonResponse({
+          game_id: 42,
+          player_state: { player_name: 'Late A' },
+          progress: { week: 1 },
+          round_info: { current_round: 1 },
+          current_event: { event_description: 'A 迟到故事', options: [{ text: 'A 选择' }] },
+          constraint_level: 'expert',
+        }));
+        await activeRequest.promise;
+        await Promise.resolve();
+      });
+
+      expect(useGameStore.getState().gameId).toBe(84);
+      expect(useGameStore.getState().playerState).toEqual(expect.objectContaining({ player_name: 'Player B' }));
+      expect(useGameStore.getState().storyText).toBe('B 当前故事');
+      expect(mockReplace).not.toHaveBeenCalled();
+    });
+
+    it('ignores a late active-recovery failure after game B becomes current', async () => {
+      const activeRequest = deferred<Response>();
+      (global.fetch as jest.Mock).mockImplementation(() => activeRequest.promise);
+      storeSpy.spies.syncState.mockImplementation(() => new Promise(() => {}));
+
+      const { result } = renderHook(() => usePlayGame());
+      await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+
+      act(() => {
+        useSessionStore.setState({ gameId: 84 } as never);
+      });
+      await waitFor(() => expect(result.current.gameId).toBe(84));
+
+      await act(async () => {
+        activeRequest.resolve(errorResponse(400));
+        await activeRequest.promise;
+        await Promise.resolve();
+      });
+
+      expect(useGameStore.getState().gameId).toBe(84);
+      expect(mockReplace).not.toHaveBeenCalled();
     });
   });
 

@@ -27,6 +27,7 @@ const mockUsePlayGame = {
   saveToast: null,
   endingData: null,
   transport: 'active' as const,
+  loadingOperation: 'event' as const,
   loadingIdentity: 0,
   gameId: 123,
   playerState: { player_name: 'TestPlayer', energy: 80, mood: 70 },
@@ -187,12 +188,36 @@ describe('PlayPage', () => {
   });
 
   describe('Loading state', () => {
-    it('shows loading spinner when not hydrated', () => {
+    it('keeps hydration visually quiet before the 250ms reveal', () => {
       const originalHook = jest.requireMock('@/hooks/usePlayGame');
       originalHook.usePlayGame = () => ({ ...mockUsePlayGame, hydrated: false });
-      
+
       render(<PlayPage />);
-      // Should show loading state
+
+      expect(screen.getByTestId('play-hydration-shell')).toHaveAttribute('aria-busy', 'true');
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('narrative-loading-screen')).not.toBeInTheDocument();
+      expect(document.querySelector('.animate-spin')).not.toBeInTheDocument();
+      expect(mockUseDelayedLoading).toHaveBeenCalledWith({
+        isLoading: true,
+        delay: 250,
+        loadingIdentity: 'play-hydration',
+      });
+    });
+
+    it('shows the unified hydration interstitial after 250ms', () => {
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({ ...mockUsePlayGame, hydrated: false });
+      mockUseDelayedLoading.mockImplementation((options: unknown) => (
+        (options as { loadingIdentity?: string }).loadingIdentity === 'play-hydration'
+      ));
+
+      render(<PlayPage />);
+
+      expect(screen.getByTestId('narrative-loading-screen')).toBeInTheDocument();
+      expect(screen.getAllByRole('status')).toHaveLength(1);
+      expect(screen.getByRole('status')).toHaveTextContent('正在打开这一页');
+      expect(document.querySelector('.animate-spin')).not.toBeInTheDocument();
     });
 
     it('shows loading spinner when no gameId', () => {
@@ -450,30 +475,24 @@ describe('PlayPage', () => {
   });
 
   describe('Ending phase', () => {
-    it('shows ending title', () => {
+    it('hands the production ending path to the hardened ending page', async () => {
+      const mockRouter = { push: jest.fn(), replace: jest.fn() };
       const originalHook = jest.requireMock('@/hooks/usePlayGame');
       originalHook.usePlayGame = () => ({
         ...mockUsePlayGame,
         phase: 'ending',
-        endingData: { ending_type: 'happy', summary: 'A good ending' },
-      });
-      
-      render(<PlayPage />);
-      expect(screen.getByText('人生落幕')).toBeInTheDocument();
-    });
-
-    it('shows home button in ending', () => {
-      const mockRouter = { push: jest.fn() };
-      const originalHook = jest.requireMock('@/hooks/usePlayGame');
-      originalHook.usePlayGame = () => ({
-        ...mockUsePlayGame,
-        phase: 'ending',
-        endingData: null,
         router: mockRouter,
       });
-      
+
       render(<PlayPage />);
-      expect(screen.getByText('返回首页')).toBeInTheDocument();
+
+      await waitFor(() => {
+        expect(mockRouter.push).toHaveBeenCalledWith('/ending');
+      });
+      expect(screen.getByTestId('narrative-loading-screen')).toHaveTextContent('这一生，正在收束');
+      expect(screen.getAllByRole('status')).toHaveLength(1);
+      expect(screen.queryByTestId('chat-bar-launcher')).not.toBeInTheDocument();
+      expect(screen.queryByText(/A good ending|happy/)).not.toBeInTheDocument();
     });
   });
 
@@ -689,6 +708,7 @@ describe('PlayPage', () => {
       originalHook.usePlayGame = () => ({
         ...mockUsePlayGame,
         phase: 'choosing',
+        loadingOperation: 'choice',
         options: [],
         storyText: '选择后的故事还在继续。',
         displayText: '选择后的故事还在继续。',
@@ -832,6 +852,7 @@ describe('PlayPage', () => {
       originalHook.usePlayGame = () => ({
         ...mockUsePlayGame,
         phase: 'choosing',
+        loadingOperation: 'choice',
         options: [],
         storyText: '选择正在后台继续处理。',
         displayText: '选择正在后台继续处理。',
@@ -847,6 +868,31 @@ describe('PlayPage', () => {
       expect(mockRecoverChoiceGeneration).toHaveBeenCalledTimes(1);
       expect(mockRecoverEventGeneration).not.toHaveBeenCalled();
     });
+
+    it('preserves a failed choice identity, retries by read-only reconciliation, and keeps ChatBar hidden', () => {
+      const mockGenerateEvent = jest.fn();
+      const mockRecoverChoiceGeneration = jest.fn();
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'error',
+        options: [],
+        storyText: '选择失败前已收到的正文。',
+        displayText: '选择失败前已收到的正文。',
+        transport: 'failed',
+        loadingOperation: 'choice',
+        generateEvent: mockGenerateEvent,
+        recoverChoiceGeneration: mockRecoverChoiceGeneration,
+      });
+
+      render(<PlayPage />);
+
+      expect(screen.getByTestId('narrative-loading-inline')).toBeInTheDocument();
+      expect(screen.queryByTestId('chat-bar-launcher')).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '重试' }));
+      expect(mockRecoverChoiceGeneration).toHaveBeenCalledTimes(1);
+      expect(mockGenerateEvent).not.toHaveBeenCalled();
+    });
   });
 
   describe('Choosing phase', () => {
@@ -855,6 +901,7 @@ describe('PlayPage', () => {
       originalHook.usePlayGame = () => ({
         ...mockUsePlayGame,
         phase: 'choosing',
+        loadingOperation: 'choice',
         options: [],
         storyText: 'Choosing story',
         displayText: 'Choosing story',
@@ -869,16 +916,18 @@ describe('PlayPage', () => {
   });
 
   describe('Game over state', () => {
-    it('shows game over state when isGameOver is true', () => {
+    it('navigates game-over state to the ending page', async () => {
+      const mockRouter = { push: jest.fn(), replace: jest.fn() };
       const originalHook = jest.requireMock('@/hooks/usePlayGame');
       originalHook.usePlayGame = () => ({
         ...mockUsePlayGame,
         isGameOver: true,
         phase: 'ending',
+        router: mockRouter,
       });
-      
+
       render(<PlayPage />);
-      expect(screen.getByText('人生落幕')).toBeInTheDocument();
+      await waitFor(() => expect(mockRouter.push).toHaveBeenCalledWith('/ending'));
     });
   });
 
@@ -1156,29 +1205,21 @@ describe('PlayPage', () => {
   });
 
   describe('Ending phase variations', () => {
-    it('shows ending narrative loading when no ending data', () => {
-      const originalHook = jest.requireMock('@/hooks/usePlayGame');
-      originalHook.usePlayGame = () => ({
-        ...mockUsePlayGame,
-        phase: 'ending',
-        endingData: null,
-      });
-      
-      render(<PlayPage />);
-      expect(screen.getByTestId('narrative-loading-section')).toHaveTextContent('这一生，正在收束');
-    });
-
-    it('shows ending data when available', () => {
+    it('does not render an unsafe inline ending response before navigation', async () => {
+      const mockRouter = { push: jest.fn(), replace: jest.fn() };
       const originalHook = jest.requireMock('@/hooks/usePlayGame');
       originalHook.usePlayGame = () => ({
         ...mockUsePlayGame,
         phase: 'ending',
         endingData: { ending_type: 'happy', summary: 'A wonderful life' },
+        router: mockRouter,
       });
-      
+
       render(<PlayPage />);
-      expect(screen.getByText(/happy/)).toBeInTheDocument();
-      expect(screen.getByText(/A wonderful life/)).toBeInTheDocument();
+
+      await waitFor(() => expect(mockRouter.push).toHaveBeenCalledWith('/ending'));
+      expect(screen.queryByText(/happy/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/A wonderful life/)).not.toBeInTheDocument();
     });
   });
 

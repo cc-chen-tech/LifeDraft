@@ -17,6 +17,7 @@ import { useChoiceHandler } from "./game/useChoiceHandler";
 import { useGameState } from "./game/useGameState";
 import { useHistoryViewer } from "./game/useHistoryViewer";
 import { isAbortError } from "./game/gameplayRun";
+import type { NarrativeLoadingOperation } from "@/components/narrative-loading/NarrativeLoadingState";
 
 // Re-export types for backwards compatibility
 export type { Phase, ConnectionStatus };
@@ -77,6 +78,7 @@ export function usePlayGame() {
   // Options state (local, not in sub-hooks)
   const [options, setOptions] = useState<EventOption[]>([]);
   const [isPrefetching, setIsPrefetching] = useState(false);
+  const [loadingOperation, setLoadingOperation] = useState<NarrativeLoadingOperation>("event");
   const [loadingIdentity, setLoadingIdentity] = useState(0);
 
   // Story container ref for scrolling
@@ -154,6 +156,7 @@ export function usePlayGame() {
     setConnectionStatus,
     setReconnectAttempt,
     setTransport,
+    setLoadingOperation,
     setLoadingIdentity,
     setProcessing,
     setOptions,
@@ -173,8 +176,10 @@ export function usePlayGame() {
     prefetchingRef,
   });
   
-  // Update generateEventRef for useGameState
-  generateEventRef.current = generateEvent;
+  // Keep the late-bound callback current without mutating refs during render.
+  useEffect(() => {
+    generateEventRef.current = generateEvent;
+  }, [generateEvent]);
 
   // ===== Choice Handler =====
   const {
@@ -190,6 +195,7 @@ export function usePlayGame() {
     setConnectionStatus,
     setReconnectAttempt,
     setTransport,
+    setLoadingOperation,
     setLoadingIdentity,
     setProcessing,
     appendStoryText,
@@ -234,9 +240,19 @@ export function usePlayGame() {
 
   // ===== Session Recovery (remains in main hook) =====
   const redirectCheckedRef = useRef(false);
+  const activeRecoveryEpochRef = useRef(0);
 
   useEffect(() => {
     if (!hydrated) return;
+
+    const recoveryEpoch = activeRecoveryEpochRef.current + 1;
+    activeRecoveryEpochRef.current = recoveryEpoch;
+    const recoveryController = new AbortController();
+    const recoveryStartGameId = gameId;
+    const isCurrentRecovery = () =>
+      !recoveryController.signal.aborted &&
+      activeRecoveryEpochRef.current === recoveryEpoch &&
+      useGameStore.getState().gameId === recoveryStartGameId;
 
     const attemptRecovery = async () => {
       if (!gameId) {
@@ -247,7 +263,8 @@ export function usePlayGame() {
         console.warn("[play] No gameId in localStorage, attempting server-side recovery...");
 
         try {
-          const state = await games.getActive();
+          const state = await games.getActive(recoveryController.signal);
+          if (!isCurrentRecovery()) return;
           if (state && state.game_id) {
             console.log("[play] ✅ Recovered active game from server:", state.game_id);
 
@@ -294,6 +311,7 @@ export function usePlayGame() {
             return;
           }
         } catch (err) {
+          if (isAbortError(err) || !isCurrentRecovery()) return;
           const error = err as { status?: number };
           if (error.status === 404) {
             console.log("[play] No active game on server, redirecting to home");
@@ -302,14 +320,20 @@ export function usePlayGame() {
           }
         }
 
-        router.replace("/");
+        if (isCurrentRecovery()) router.replace("/");
       } else {
         console.log("[play] gameId exists:", gameId);
         redirectCheckedRef.current = true;
       }
     };
 
-    attemptRecovery();
+    void attemptRecovery();
+    return () => {
+      recoveryController.abort();
+      if (activeRecoveryEpochRef.current === recoveryEpoch) {
+        activeRecoveryEpochRef.current += 1;
+      }
+    };
   }, [hydrated, gameId, router]);
 
   // ===== Initial Load =====
@@ -442,20 +466,6 @@ export function usePlayGame() {
     setTransport,
   ]);
 
-  // ===== Fetch Ending =====
-  const [localEndingData, setLocalEndingData] = useState<Record<string, unknown> | null>(null);
-  
-  useEffect(() => {
-    if (phase === "ending" && gameId && !localEndingData) {
-      import("@/lib/api").then(({ default: api }) =>
-        api.gameplay.getEnding(gameId).then(setLocalEndingData).catch(console.error)
-      );
-    }
-  }, [phase, gameId, localEndingData]);
-  
-  // Use local ending data if available, otherwise from useGameState
-  const finalEndingData = localEndingData || endingData;
-
   // ===== Round Scene Images =====
   const currentRound = (roundInfo?.current_round as number) ?? 0;
   
@@ -501,7 +511,7 @@ export function usePlayGame() {
     displayText,
     summaryText,
     roundSummary,
-    endingData: finalEndingData,
+    endingData,
     isPrefetching,
   };
 
@@ -514,6 +524,7 @@ export function usePlayGame() {
     connectionStatus,
     reconnectAttempt,
     transport,
+    loadingOperation,
     loadingIdentity,
   };
 
@@ -595,10 +606,11 @@ export function usePlayGame() {
     isSaving,
     saveToast,
     regenerateToast,
-    endingData: finalEndingData,
+    endingData,
     connectionStatus,
     reconnectAttempt,
     transport,
+    loadingOperation,
     loadingIdentity,
     isPrefetching,
 

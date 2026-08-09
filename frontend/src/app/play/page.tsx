@@ -90,8 +90,8 @@ export default function PlayPage() {
     isSaving,
     saveToast,
     regenerateToast,
-    endingData,
     transport: gameplayTransport,
+    loadingOperation: gameplayOperation,
     loadingIdentity,
     isPrefetching,  // ★ 预生成状态
 
@@ -161,7 +161,6 @@ export default function PlayPage() {
   const storyReadyForCompletedMedia =
     phase === "options" || phase === "result" || phase === "summary";
   const isCurrentStoryBusy = phase === "loading" || phase === "generating" || phase === "choosing";
-  const gameplayOperation = phase === "choosing" ? "choice" : "event";
   const isUnifiedGameplayFailure =
     phase === "error" && gameplayTransport === "failed";
   const shouldRenderGameplayLoading =
@@ -196,6 +195,11 @@ export default function PlayPage() {
     isLoading: isCurrentStoryBusy,
     delay: getNarrativeLoadingDelay("gameplay", constraintLevel),
     loadingIdentity,
+  });
+  const isHydrationLoadingVisible = useDelayedLoading({
+    isLoading: !hydrated,
+    delay: getNarrativeLoadingDelay("hydrate"),
+    loadingIdentity: "play-hydration",
   });
 
   // ★ 加载故事风格
@@ -240,11 +244,17 @@ export default function PlayPage() {
   }, [recoverChoiceGeneration]);
 
   const handleGameplayLoadingAction =
-    gameplayTransport === "failed"
-      ? handleRetryGeneration
-      : gameplayOperation === "choice"
-        ? handleRecoverChoice
+    gameplayOperation === "choice"
+      ? handleRecoverChoice
+      : gameplayTransport === "failed"
+        ? handleRetryGeneration
         : handleRecoverGeneration;
+
+  useEffect(() => {
+    if (hydrated && gameId && phase === "ending") {
+      router.push("/ending");
+    }
+  }, [gameId, hydrated, phase, router]);
 
   const handleOpenCollection = useCallback(() => {
     setActiveSidePanel("collection");
@@ -304,8 +314,14 @@ export default function PlayPage() {
   // Don't render until hydrated
   if (!hydrated) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div
+        className="min-h-screen bg-[#0D0C0B]"
+        data-testid="play-hydration-shell"
+        aria-busy="true"
+      >
+        {isHydrationLoadingVisible && (
+          <NarrativeLoadingState context="hydrate" layout="screen" />
+        )}
       </div>
     );
   }
@@ -330,6 +346,16 @@ export default function PlayPage() {
           </div>
         </div>
       </div>
+    );
+  }
+
+  if (phase === "ending") {
+    return (
+      <NarrativeLoadingState
+        context="ending"
+        layout="screen"
+        phase="loading_context"
+      />
     );
   }
 
@@ -791,30 +817,6 @@ export default function PlayPage() {
           </div>
         )}
 
-        {/* Ending */}
-        {!isViewingHistory && phase === "ending" && (
-          <div className="animate-page-enter space-y-6 text-center py-12">
-            <h2 className="text-2xl font-serif font-bold text-foreground">
-              人生落幕
-            </h2>
-            {endingData ? (
-              <Card className="p-6 bg-card border-border text-left">
-                <pre className="text-sm text-foreground whitespace-pre-wrap font-sans">
-                  {JSON.stringify(endingData, null, 2)}
-                </pre>
-              </Card>
-            ) : (
-              <NarrativeLoadingState context="ending" layout="section" phase="generating" />
-            )}
-            <Button
-              className="touch-target"
-              onClick={() => router.push("/")}
-            >
-              返回首页
-            </Button>
-          </div>
-        )}
-
         {/* Error state */}
         {!isViewingHistory && phase === "error" && !isUnifiedGameplayFailure && (
           <div className="text-center py-12 space-y-4">
@@ -838,7 +840,7 @@ export default function PlayPage() {
         storyText={storyText}
         onRewriteComplete={handleRewriteComplete}
         isSaving={isSaving}
-        isStoryBusy={isCurrentStoryBusy}
+        isStoryBusy={shouldRenderGameplayLoading}
         isViewingHistory={isViewingHistory}
       />
 

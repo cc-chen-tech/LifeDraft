@@ -124,4 +124,3 @@
 - [ ] Verify core desktop at 1440×900 and mobile at 390×844: no horizontal overflow, no layout jump, no time copy, no full-screen loader after first chunk.
 - [ ] Capture and inspect screenshots for initial, partial, delayed, reconnecting and failed states; correct spacing, type, contrast and mobile wrapping while retaining the approved tokens.
 - [ ] Run focused Jest, `npm run test:types`, `npm run lint`, target Playwright core/mobile, then `./scripts/test-run-isolated.sh --namespace calm_narrative_loading all` from the repository root.
-

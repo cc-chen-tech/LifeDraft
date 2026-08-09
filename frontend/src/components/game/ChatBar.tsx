@@ -137,12 +137,12 @@ export function ChatBar({
   }, [chatHistory]);
 
   useEffect(() => {
-    if (!isStoryBusy) return;
+    if (!isStoryBusy && !isViewingHistory) return;
 
     setIsExpanded(false);
     setIsRewriteOpen(false);
     setIsSummaryOpen(false);
-  }, [isStoryBusy]);
+  }, [isStoryBusy, isViewingHistory]);
 
   // 生成总结并显示在专用总结面板中
   const handleGenerateSummary = useCallback(async () => {
@@ -335,7 +335,7 @@ export function ChatBar({
     storyText,
   ]);
 
-  if (!gameId || isStoryBusy) return null;
+  if (!gameId || isStoryBusy || isViewingHistory) return null;
 
   const storyBusyTitle = "故事生成完成后可用";
   const storyActionDisabled = isViewingHistory || isStoryBusy;

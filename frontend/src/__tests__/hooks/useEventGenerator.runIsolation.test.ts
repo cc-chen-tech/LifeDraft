@@ -38,6 +38,7 @@ describe('useEventGenerator run isolation', () => {
     setConnectionStatus: jest.fn(),
     setReconnectAttempt: jest.fn(),
     setTransport: jest.fn(),
+    setLoadingOperation: jest.fn(),
     setLoadingIdentity: jest.fn(),
     setProcessing: jest.fn(),
     setOptions: jest.fn(),
@@ -86,6 +87,17 @@ describe('useEventGenerator run isolation', () => {
       syncPlayerState: jest.fn().mockResolvedValue(undefined),
       generateRoundSceneImage: jest.fn().mockResolvedValue(undefined),
     } as never);
+  });
+
+  it('records event ownership before entering the generation state', () => {
+    const { result } = renderHook(() => useEventGenerator(params));
+
+    act(() => { void result.current.generateEvent(); });
+
+    expect(setters.setLoadingOperation).toHaveBeenCalledWith('event');
+    expect(setters.setLoadingOperation.mock.invocationCallOrder[0]).toBeLessThan(
+      setters.setPhase.mock.invocationCallOrder[0],
+    );
   });
 
   it('does not poll or fail when the captured stream reports AbortError', async () => {

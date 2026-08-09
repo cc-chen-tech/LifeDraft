@@ -308,7 +308,7 @@ export const api = {
       fetchJson<{ success: boolean }>(`/games/${gameId}/save`, { method: 'POST' }),
     delete: (gameId: number) =>
       fetchJson<{ success: boolean }>(`/games/${gameId}`, { method: 'DELETE' }),
-    getActive: () =>
+    getActive: (signal?: AbortSignal) =>
       fetchJson<{
         game_id: number;
         player_state: PlayerState;
@@ -316,7 +316,7 @@ export const api = {
         round_info: RoundInfo;
         current_event: CurrentEventData | null;
         constraint_level: "fast" | "expert" | "master";
-      }>('/games/active'),
+      }>('/games/active', { signal }),
     updateSettings: (gameId: number, data: { constraint_level?: string }) =>
       fetchJson<{ success: boolean; message: string }>(`/games/${gameId}/settings`, {
         method: 'PATCH',

@@ -7,7 +7,7 @@ declare global {
   }
 }
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { StreamingText } from "@/components/game/StreamingText";
@@ -49,8 +49,10 @@ export default function OpeningStoryPage() {
   const [displayedCompleteText, setDisplayedCompleteText] = useState("");
   const [error, setError] = useState("");
   const [streamingIdentity, setStreamingIdentity] = useState(0);
+  const [storyDisplayIdentity, setStoryDisplayIdentity] = useState(0);
   const [illustrationPrompt, setIllustrationPrompt] = useState("");
   const abortRef = useRef<AbortController | null>(null);
+  const activeAttemptRef = useRef(0);
   const hydrated = useHydration();
   const showHydrationLoading = useDelayedLoading({
     isLoading: !hydrated,
@@ -64,24 +66,147 @@ export default function OpeningStoryPage() {
   });
   const illustrationGeneratedRef = useRef(false);
   
-  // ★ 防止重复执行的标记
-  const initializedRef = useRef(false);
-  
   // ★ 添加渲染计数器来诊断问题
   const renderCountRef = useRef(0);
   // Note: ref access moved to useEffect to avoid React warning
 
   useEffect(() => {
-    console.log(`[OpeningStory] Render #${renderCountRef.current}, hydrated=${hydrated}, initialized=${initializedRef.current}`);
+    console.log(`[OpeningStory] Render #${renderCountRef.current}, hydrated=${hydrated}`);
   });
 
-  // ★ 初始化：只执行一次
+  const startOpeningStream = useCallback(({
+    attemptCharacterSettings,
+    attemptPlayerName,
+    attemptLifeVision,
+    attemptLanguage,
+    generateIllustrationOnComplete,
+  }: {
+    attemptCharacterSettings: Record<string, unknown>;
+    attemptPlayerName: string;
+    attemptLifeVision: string;
+    attemptLanguage: string;
+    generateIllustrationOnComplete: boolean;
+  }) => {
+    const attemptId = activeAttemptRef.current + 1;
+    activeAttemptRef.current = attemptId;
+    abortRef.current?.abort();
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let streamedText = "";
+    let hasReceivedChunk = false;
+    let settled = false;
+
+    const isActiveAttempt = () =>
+      activeAttemptRef.current === attemptId && !controller.signal.aborted && !settled;
+
+    const failAttempt = (streamError: unknown) => {
+      if (!isActiveAttempt()) return;
+
+      settled = true;
+      controller.abort();
+      const message =
+        streamError instanceof Error
+          ? streamError.message
+          : typeof streamError === "object" &&
+              streamError !== null &&
+              "message" in streamError &&
+              typeof streamError.message === "string"
+            ? streamError.message
+            : "未知错误";
+      console.error("[OpeningStory] SSE error:", streamError);
+      setIsStreaming(false);
+      setError("故事生成失败: " + (message || "未知错误"));
+    };
+
+    setError("");
+    setStreamingIdentity(attemptId);
+    setIsStreaming(true);
+    setIsComplete(false);
+
+    try {
+      const streamPromise = streamOpeningStory(
+        attemptCharacterSettings,
+        attemptPlayerName,
+        attemptLifeVision,
+        attemptLanguage,
+        {
+          onStory: (text) => {
+            if (!isActiveAttempt() || !text) return;
+
+            const replacePreviousAttempt = !hasReceivedChunk;
+            hasReceivedChunk = true;
+            const nextAttemptText = streamedText + text;
+            streamedText = nextAttemptText;
+            setDisplayedCompleteText("");
+            if (replacePreviousAttempt) {
+              setStoryDisplayIdentity(attemptId);
+            }
+            setStoryText(nextAttemptText);
+          },
+          onComplete: (data) => {
+            if (!isActiveAttempt()) return;
+
+            const fullText = (data && typeof data === "object" && "full_story" in data)
+              ? (data as { full_story?: string }).full_story || ""
+              : "";
+            const finalText = fullText || streamedText;
+            if (!finalText.trim()) {
+              failAttempt(new Error("故事内容为空"));
+              return;
+            }
+
+            settled = true;
+            console.log("[OpeningStory] Generation complete, length:", finalText.length);
+            if (finalText) {
+              setStoryText(finalText);
+              setOpeningStory(finalText);
+            }
+            setIsStreaming(false);
+            setError("");
+
+            if (generateIllustrationOnComplete) {
+              // ★ 故事生成完成后，触发插画生成
+              const currentGameId = useGameStore.getState().gameId;
+              if (!illustrationGeneratedRef.current && currentGameId) {
+                illustrationGeneratedRef.current = true;
+                console.log("[OpeningStory] Story complete, triggering illustration generation...");
+                // 延迟一点生成插画，让用户先看到故事
+                setTimeout(() => {
+                  generateOpeningIllustration(
+                    currentGameId,
+                    finalText,
+                    attemptCharacterSettings,
+                    attemptPlayerName
+                  );
+                }, 500);
+              }
+            }
+            setIsComplete(true);
+          },
+          onError: failAttempt,
+        },
+        {
+          signal: controller.signal,
+          enableReconnect: false,
+        }
+      );
+
+      void Promise.resolve(streamPromise).catch(failAttempt);
+    } catch (streamError) {
+      failAttempt(streamError);
+    }
+  }, [generateOpeningIllustration, setOpeningStory]);
+
+  // Defer initialization by one microtask so StrictMode can replay the effect
+  // without issuing and immediately aborting a duplicate backend request.
   useEffect(() => {
-    if (!hydrated || initializedRef.current) return;
-    initializedRef.current = true;
+    if (!hydrated) return;
     let cancelled = false;
 
     const initialize = async () => {
+      if (cancelled) return;
+
       // ★ 支持测试数据注入（E2E 测试用）
       const testData = (typeof window !== "undefined" && window.__TEST_DATA__) || null;
       if (testData) {
@@ -146,117 +271,34 @@ export default function OpeningStoryPage() {
 
       // 开始生成故事
       console.log("[OpeningStory] Starting generation...");
-      setStreamingIdentity((identity) => identity + 1);
-      setIsStreaming(true);
-      abortRef.current = new AbortController();
-
-      let streamedText = "";
-
-      streamOpeningStory(
-        resolvedCharacterSettings,
-        resolvedPlayerName,
-        resolvedLifeVision,
-        language,
-        {
-          onStory: (text) => {
-            setDisplayedCompleteText("");
-            streamedText += text;
-            setStoryText((prev) => prev + text);
-          },
-          onComplete: (data) => {
-            const fullText = (data && typeof data === 'object' && 'full_story' in data)
-              ? (data as { full_story?: string }).full_story || ""
-              : "";
-            const finalText = fullText || streamedText;
-            console.log("[OpeningStory] Generation complete, length:", finalText.length);
-            if (finalText) {
-              setStoryText(finalText);
-              setOpeningStory(finalText);
-            }
-            setIsStreaming(false);
-
-            // ★ 故事生成完成后，触发插画生成
-            const currentGameId = useGameStore.getState().gameId;
-            if (!illustrationGeneratedRef.current && currentGameId) {
-              illustrationGeneratedRef.current = true;
-              console.log("[OpeningStory] Story complete, triggering illustration generation...");
-              // 延迟一点生成插画，让用户先看到故事
-              setTimeout(() => {
-                generateOpeningIllustration(currentGameId, finalText, resolvedCharacterSettings, resolvedPlayerName);
-              }, 500);
-            }
-            setIsComplete(true);
-          },
-          onError: (err) => {
-            console.error("[OpeningStory] SSE error:", err);
-            setIsStreaming(false);
-            setError("故事生成失败: " + (err.message || "未知错误"));
-          },
-        },
-        {
-          signal: abortRef.current.signal,
-          enableReconnect: false,
-        }
-      );
+      startOpeningStream({
+        attemptCharacterSettings: resolvedCharacterSettings,
+        attemptPlayerName: resolvedPlayerName,
+        attemptLifeVision: resolvedLifeVision,
+        attemptLanguage: language,
+        generateIllustrationOnComplete: true,
+      });
     };
 
-    void initialize();
+    void Promise.resolve().then(initialize);
 
     return () => {
       cancelled = true;
       console.log("[OpeningStory] Cleanup: aborting SSE");
       abortRef.current?.abort();
     };
-  }, [hydrated, language, setOpeningStory, generateOpeningIllustration]);
+  }, [hydrated, language, startOpeningStream]);
 
   const handleRetry = () => {
     console.log("[OpeningStory] Retrying generation...");
-    setError("");
-    setStoryText("");
-    setDisplayedCompleteText("");
-    setStreamingIdentity((identity) => identity + 1);
-    setIsStreaming(true);
-    setIsComplete(false);
-    
     const state = useGameStore.getState();
-    abortRef.current = new AbortController();
-    
-    let streamedText = "";
-
-    streamOpeningStory(
-      state.characterSettings,
-      state.playerName,
-      state.lifeVision,
-      language,
-      {
-        onStory: (text) => {
-          setDisplayedCompleteText("");
-          streamedText += text;
-          setStoryText((prev) => prev + text);
-        },
-        onComplete: (data) => {
-          const fullText = (data && typeof data === 'object' && 'full_story' in data)
-            ? (data as { full_story?: string }).full_story || ""
-            : "";
-          const finalText = fullText || streamedText;
-          if (finalText) {
-            setStoryText(finalText);
-            setOpeningStory(finalText);
-          }
-          setIsStreaming(false);
-          setIsComplete(true);
-        },
-        onError: (err) => {
-          console.error("[OpeningStory] Retry error:", err);
-          setIsStreaming(false);
-          setError("重试失败: " + (err.message || "未知错误"));
-        },
-      },
-      { 
-        signal: abortRef.current.signal,
-        enableReconnect: false,
-      }
-    );
+    startOpeningStream({
+      attemptCharacterSettings: state.characterSettings,
+      attemptPlayerName: state.playerName,
+      attemptLifeVision: state.lifeVision,
+      attemptLanguage: language,
+      generateIllustrationOnComplete: false,
+    });
   };
 
   const handleStart = async () => {
@@ -299,7 +341,7 @@ export default function OpeningStoryPage() {
   }
 
   // 错误状态
-  if (error) {
+  if (error && !storyText) {
     return (
       <div className="min-h-screen">
         <NarrativeLoadingState
@@ -337,6 +379,7 @@ export default function OpeningStoryPage() {
         <div className="w-full max-w-[65ch] space-y-8">
           {storyText && (
             <StreamingText
+              key={storyDisplayIdentity}
               text={storyText}
               isStreaming={isStreaming}
               narrative
@@ -350,6 +393,16 @@ export default function OpeningStoryPage() {
               layout="inline"
               phase="generating"
               delayed={isOpeningDelayed}
+            />
+          )}
+
+          {storyText && error && (
+            <NarrativeLoadingState
+              context="opening"
+              layout="inline"
+              phase="generating"
+              transport="failed"
+              onAction={handleRetry}
             />
           )}
           
@@ -448,7 +501,7 @@ export default function OpeningStoryPage() {
             visibleComplete={Boolean(storyText) && displayedCompleteText === storyText}
             onStart={handleStart}
           />
-        ) : !isStreaming ? (
+        ) : !isStreaming && !error ? (
           <Button
             variant="outline"
             className="touch-target"

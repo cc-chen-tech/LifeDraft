@@ -36,6 +36,7 @@ describe("useChoiceHandler run isolation", () => {
     setConnectionStatus: jest.fn(),
     setReconnectAttempt: jest.fn(),
     setTransport: jest.fn(),
+    setLoadingOperation: jest.fn(),
     setLoadingIdentity: jest.fn(),
     setProcessing: jest.fn(),
     appendStoryText: jest.fn(),
@@ -264,6 +265,7 @@ describe("useChoiceHandler run isolation", () => {
     });
 
     await waitFor(() => expect(setters.setTransport).toHaveBeenCalledWith("failed"));
+    expect(setters.setLoadingOperation).toHaveBeenCalledWith("choice");
     expect(setters.setPhase).toHaveBeenCalledWith("error");
     errorSpy.mockRestore();
   });

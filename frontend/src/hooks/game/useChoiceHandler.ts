@@ -6,7 +6,10 @@ import { streamChoice, streamCustomChoice } from "@/lib/sse";
 import type { StreamActivityKind } from "@/lib/sse";
 import type { EventOption } from "@/lib/types";
 import type { Phase, ConnectionStatus } from "./usePhaseManager";
-import type { NarrativeTransportState } from "@/components/narrative-loading/NarrativeLoadingState";
+import type {
+  NarrativeLoadingOperation,
+  NarrativeTransportState,
+} from "@/components/narrative-loading/NarrativeLoadingState";
 import {
   handleChoiceComplete,
   handleChoiceError,
@@ -35,6 +38,7 @@ interface UseChoiceHandlerParams {
   setConnectionStatus: (status: ConnectionStatus) => void;
   setReconnectAttempt: (attempt: { current: number; max: number } | null) => void;
   setTransport: (transport: NarrativeTransportState) => void;
+  setLoadingOperation: (operation: NarrativeLoadingOperation) => void;
   setLoadingIdentity: React.Dispatch<React.SetStateAction<number>>;
   setProcessing: (processing: boolean, message?: string) => void;
   appendStoryText: (text: string) => void;
@@ -75,6 +79,7 @@ export function useChoiceHandler({
   setConnectionStatus,
   setReconnectAttempt,
   setTransport,
+  setLoadingOperation,
   setLoadingIdentity,
   setProcessing,
   appendStoryText,
@@ -261,6 +266,7 @@ export function useChoiceHandler({
   ): Promise<void> => {
     if (!gameId) return;
 
+    setLoadingOperation("choice");
     watchdogCleanupRef.current?.();
     const run = beginGameplayRun(runTokenRef, abortRef);
     const { controller, isCurrent, isLive } = run;
@@ -500,6 +506,7 @@ export function useChoiceHandler({
 
   const recoverChoiceGeneration = async (): Promise<void> => {
     if (!gameId || !recoveryTargetRef.current) return;
+    setLoadingOperation("choice");
     watchdogCleanupRef.current?.();
     const run = beginGameplayRun(runTokenRef, abortRef);
     generatingRef.current = true;

@@ -6,7 +6,10 @@ import { streamGameEvent } from "@/lib/sse";
 import type { StreamActivityKind } from "@/lib/sse";
 import type { EventOption } from "@/lib/types";
 import type { Phase, ConnectionStatus } from "./usePhaseManager";
-import type { NarrativeTransportState } from "@/components/narrative-loading/NarrativeLoadingState";
+import type {
+  NarrativeLoadingOperation,
+  NarrativeTransportState,
+} from "@/components/narrative-loading/NarrativeLoadingState";
 import { handleEventComplete, handleStatusUpdate, type EventHandlers } from "./eventUtils";
 import { parseSSEError } from "./choiceUtils";
 import { fetchGameplayStateSnapshot, fetchPersistedEventSnapshot } from "./eventRecovery";
@@ -28,6 +31,7 @@ interface UseEventGeneratorParams {
   setConnectionStatus: (status: ConnectionStatus) => void;
   setReconnectAttempt: (attempt: { current: number; max: number } | null) => void;
   setTransport: (transport: NarrativeTransportState) => void;
+  setLoadingOperation: (operation: NarrativeLoadingOperation) => void;
   setLoadingIdentity: React.Dispatch<React.SetStateAction<number>>;
   setProcessing: (processing: boolean, message?: string) => void;
   setOptions: (options: EventOption[]) => void;
@@ -80,6 +84,7 @@ export function useEventGenerator({
   setConnectionStatus,
   setReconnectAttempt,
   setTransport,
+  setLoadingOperation,
   setLoadingIdentity,
   setProcessing,
   setOptions,
@@ -139,6 +144,7 @@ export function useEventGenerator({
     if (isRetryingRef.current && !resume) return;
     if (phaseRef.current !== "loading" && phaseRef.current !== "error" && !resume) return;
 
+    setLoadingOperation("event");
     watchdogCleanupRef.current?.();
     const run = beginGameplayRun(runTokenRef, abortRef);
     const { controller, isCurrent, isLive } = run;
@@ -501,6 +507,7 @@ export function useEventGenerator({
     setRoundSummary,
     setStoryText,
     setTransport,
+    setLoadingOperation,
   ]);
 
   const recoverEventGeneration = useCallback(async () => {

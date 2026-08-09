@@ -189,13 +189,201 @@ describe('OpeningStoryPage', () => {
       expect(screen.getByTestId('narrative-loading-screen')).toBeInTheDocument();
     });
 
+    it('routes a pre-reader stream rejection into the unified failed state', async () => {
+      useGameStore.setState({ openingStory: '' });
+      mockStreamOpeningStory.mockRejectedValueOnce(new Error('network before response body'));
+
+      render(<OpeningStoryPage />);
+
+      expect(await screen.findByRole('button', { name: '重试' })).toBeInTheDocument();
+      expect(screen.getByTestId('narrative-loading-screen')).toBeInTheDocument();
+      expect(screen.getAllByRole('status')).toHaveLength(1);
+    });
+
+    it('treats an empty stream completion as failed instead of completing a blank opening', async () => {
+      useGameStore.setState({ openingStory: '' });
+      let handlers: Parameters<typeof streamOpeningStory>[4] | undefined;
+      mockStreamOpeningStory.mockImplementation((...args) => {
+        handlers = args[4];
+        return Promise.resolve();
+      });
+
+      render(<OpeningStoryPage />);
+      await waitFor(() => expect(handlers).toBeDefined());
+      act(() => {
+        handlers?.onComplete({});
+      });
+
+      expect(await screen.findByRole('button', { name: '重试' })).toBeInTheDocument();
+      expect(screen.getByTestId('narrative-loading-screen')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '开始我的人生' })).not.toBeInTheDocument();
+    });
+
+    it('keeps partial opening text visible with an inline retry after the stream fails', async () => {
+      useGameStore.setState({ openingStory: '' });
+      let handlers: Parameters<typeof streamOpeningStory>[4] | undefined;
+      mockStreamOpeningStory.mockImplementation((...args) => {
+        handlers = args[4];
+        return Promise.resolve();
+      });
+
+      render(<OpeningStoryPage />);
+      await waitFor(() => expect(handlers).toBeDefined());
+      act(() => {
+        handlers?.onStory('已经写下的开场。');
+        handlers?.onError(new Error('stream dropped after first chunk'));
+      });
+
+      expect(await screen.findByText('已经写下的开场。')).toBeInTheDocument();
+      expect(screen.queryByTestId('narrative-loading-screen')).not.toBeInTheDocument();
+      expect(screen.getByTestId('narrative-loading-inline')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '重试' })).toBeInTheDocument();
+      expect(screen.getAllByRole('status')).toHaveLength(1);
+    });
+
+    it('renders two synchronously delivered chunks exactly once', async () => {
+      jest.useFakeTimers();
+      useGameStore.setState({ openingStory: '' });
+      let handlers: Parameters<typeof streamOpeningStory>[4] | undefined;
+      mockStreamOpeningStory.mockImplementation((...args) => {
+        handlers = args[4];
+        return new Promise(() => undefined);
+      });
+
+      render(<OpeningStoryPage />);
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(handlers).toBeDefined();
+
+      act(() => {
+        handlers?.onStory('第一段。');
+        handlers?.onStory('第二段。');
+      });
+      act(() => {
+        jest.advanceTimersByTime(1_000);
+      });
+
+      expect(document.querySelector('.markdown-mock')).toHaveTextContent('第一段。第二段。');
+      expect(document.querySelector('.markdown-mock')?.textContent).toBe('第一段。第二段。');
+    });
+
+    it('restarts a pending stream in the new language and fences the aborted attempt', async () => {
+      useGameStore.setState({ openingStory: '' });
+      const attempts: Array<{
+        language: string;
+        handlers: Parameters<typeof streamOpeningStory>[4];
+        signal?: AbortSignal;
+      }> = [];
+      mockStreamOpeningStory.mockImplementation((...args) => {
+        attempts.push({
+          language: args[3],
+          handlers: args[4],
+          signal: args[5]?.signal,
+        });
+        return new Promise(() => undefined);
+      });
+
+      render(<OpeningStoryPage />);
+      await waitFor(() => expect(attempts).toHaveLength(1));
+
+      act(() => {
+        useUIStore.getState().setLanguage('en');
+      });
+
+      await waitFor(() => expect(attempts).toHaveLength(2));
+      expect(attempts[0].language).toBe('zh');
+      expect(attempts[0].signal?.aborted).toBe(true);
+      expect(attempts[1].language).toBe('en');
+      expect(attempts[1].signal?.aborted).toBe(false);
+
+      act(() => {
+        attempts[0].handlers.onStory('不应出现的旧语言正文。');
+        attempts[1].handlers.onStory('New-language opening.');
+      });
+
+      expect(await screen.findByText('New-language opening.')).toBeInTheDocument();
+      expect(screen.queryByText('不应出现的旧语言正文。')).not.toBeInTheDocument();
+      expect(screen.getByTestId('narrative-loading-inline')).toBeInTheDocument();
+    });
+
+    it('starts exactly one live opening stream under StrictMode effect replay', async () => {
+      useGameStore.setState({ openingStory: '' });
+      const signals: AbortSignal[] = [];
+      mockStreamOpeningStory.mockImplementation((...args) => {
+        if (args[5]?.signal) signals.push(args[5].signal);
+        return new Promise(() => undefined);
+      });
+
+      render(
+        <React.StrictMode>
+          <OpeningStoryPage />
+        </React.StrictMode>
+      );
+
+      await waitFor(() => expect(signals).toHaveLength(1));
+      expect(signals[0].aborted).toBe(false);
+    });
+
+    it('ignores callbacks from the failed attempt after a retry starts', async () => {
+      useGameStore.setState({ openingStory: '' });
+      const attempts: Array<Parameters<typeof streamOpeningStory>[4]> = [];
+      mockStreamOpeningStory.mockImplementation((...args) => {
+        attempts.push(args[4]);
+        return new Promise(() => undefined);
+      });
+
+      render(<OpeningStoryPage />);
+      await waitFor(() => expect(attempts).toHaveLength(1));
+      act(() => {
+        attempts[0].onStory('第一版残稿。');
+        attempts[0].onError(new Error('first attempt failed'));
+      });
+      fireEvent.click(await screen.findByRole('button', { name: '重试' }));
+      await waitFor(() => expect(attempts).toHaveLength(2));
+
+      act(() => {
+        attempts[0].onComplete({ full_story: '迟到的旧版完整故事。' });
+        attempts[1].onStory('第二版正文。');
+      });
+
+      expect(await screen.findByText('第二版正文。')).toBeInTheDocument();
+      expect(screen.queryByText('迟到的旧版完整故事。')).not.toBeInTheDocument();
+      expect(screen.getByTestId('narrative-loading-inline')).toBeInTheDocument();
+    });
+
+    it('routes a retry promise rejection back to the inline failed state', async () => {
+      useGameStore.setState({ openingStory: '' });
+      let firstHandlers: Parameters<typeof streamOpeningStory>[4] | undefined;
+      mockStreamOpeningStory
+        .mockImplementationOnce((...args) => {
+          firstHandlers = args[4];
+          return Promise.resolve();
+        })
+        .mockRejectedValueOnce(new Error('retry failed before response body'));
+
+      render(<OpeningStoryPage />);
+      await waitFor(() => expect(firstHandlers).toBeDefined());
+      act(() => {
+        firstHandlers?.onStory('保留的残稿。');
+        firstHandlers?.onError(new Error('first attempt failed'));
+      });
+      fireEvent.click(await screen.findByRole('button', { name: '重试' }));
+
+      await waitFor(() => expect(mockStreamOpeningStory).toHaveBeenCalledTimes(2));
+      expect(await screen.findByRole('button', { name: '重试' })).toBeInTheDocument();
+      expect(screen.getByText('保留的残稿。')).toBeInTheDocument();
+      expect(screen.queryByTestId('narrative-loading-screen')).not.toBeInTheDocument();
+      expect(screen.getByTestId('narrative-loading-inline')).toBeInTheDocument();
+    });
+
     it.each([
       ['fast', 45_000],
       ['expert', 90_000],
       ['master', 180_000],
     ] as const)(
       'uses the %s upper bound for calm loading copy before and after the first chunk',
-      (constraintLevel, delay) => {
+      async (constraintLevel, delay) => {
         jest.useFakeTimers();
         useGameStore.setState({ openingStory: '', constraintLevel });
         let handlers: Parameters<typeof streamOpeningStory>[4] | undefined;
@@ -205,6 +393,9 @@ describe('OpeningStoryPage', () => {
         });
 
         render(<OpeningStoryPage />);
+        await act(async () => {
+          await Promise.resolve();
+        });
 
         expect(handlers).toBeDefined();
         expect(screen.getByTestId('narrative-loading-screen')).toBeInTheDocument();
@@ -429,7 +620,7 @@ describe('OpeningStoryPage', () => {
 
       expect(await screen.findByText('新生成的开场故事。')).toBeInTheDocument();
       const startButton = screen.getByRole('button', { name: '开始我的人生' });
-      expect(startButton).toBeEnabled();
+      await waitFor(() => expect(startButton).toBeEnabled());
     });
 
     it('navigates to play page when clicking start', async () => {
