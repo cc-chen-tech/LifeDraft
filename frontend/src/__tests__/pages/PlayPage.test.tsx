@@ -703,6 +703,27 @@ describe('PlayPage', () => {
       expect(screen.queryByTestId('narrative-loading-inline')).not.toBeInTheDocument();
     });
 
+    it('keeps completed story visible while options are pending', async () => {
+      const originalHook = jest.requireMock('@/hooks/usePlayGame');
+      originalHook.usePlayGame = () => ({
+        ...mockUsePlayGame,
+        phase: 'generating',
+        options: [],
+        storyText: '正文已经完整生成，选项仍在准备。',
+        displayText: '正文已经完整生成，选项仍在准备。',
+      });
+      useUIStore.setState({ processingMessage: 'generating_options' });
+
+      render(<PlayPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('正文已经完整生成，选项仍在准备。')).toBeInTheDocument();
+      });
+      expect(screen.getByTestId('narrative-loading-inline')).toHaveTextContent('正在准备选择');
+      expect(screen.queryByTestId('narrative-loading-section')).not.toBeInTheDocument();
+      expect(screen.queryByText('出现错误，请重试')).not.toBeInTheDocument();
+    });
+
     it('renders only an inline loader after partial choice text arrives', async () => {
       const originalHook = jest.requireMock('@/hooks/usePlayGame');
       originalHook.usePlayGame = () => ({

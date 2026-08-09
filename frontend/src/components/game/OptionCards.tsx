@@ -29,15 +29,17 @@ export function OptionCards({
 }: OptionCardsProps) {
   const [customText, setCustomText] = useState("");
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const isSubmitting = selectedIndex !== null;
+  const controlsDisabled = disabled || isSubmitting;
 
   const handleSelect = (index: number) => {
-    if (disabled) return;
+    if (controlsDisabled) return;
     setSelectedIndex(index);
     onSelect(index);
   };
 
   const handleCustomSubmit = () => {
-    if (!customText.trim() || disabled) return;
+    if (!customText.trim() || controlsDisabled) return;
     setSelectedIndex(-1); // -1 = custom
     onCustomChoice(customText.trim());
     setCustomText("");
@@ -55,19 +57,20 @@ export function OptionCards({
         <button
           key={i}
           aria-label={`选择 ${i + 1}：${option.text}`}
+          title={option.text}
           className={cn(
             "option-card group w-full text-left",
-            "flex items-start gap-3 px-4 py-3.5 rounded-lg",
+            "flex min-h-14 items-center gap-3 px-4 py-3 rounded-lg",
             "border border-border/60 bg-card/50",
             "transition-all duration-200 ease-out",
             "hover:bg-card hover:border-primary/40",
             "active:scale-[0.985]",
-            disabled && "opacity-40 pointer-events-none",
+            controlsDisabled && selectedIndex !== i && "opacity-40",
             selectedIndex === i &&
               "border-primary/60 bg-primary/5 shadow-[0_0_16px_rgba(96,165,250,0.08)]"
           )}
           onClick={() => handleSelect(i)}
-          disabled={disabled}
+          disabled={controlsDisabled}
         >
           {/* Ordinal number */}
           <span
@@ -84,13 +87,20 @@ export function OptionCards({
           </span>
 
           {/* Option text */}
-          <span className="flex-1 text-sm text-foreground/85 leading-relaxed group-hover:text-foreground transition-colors duration-200">
+          <span
+            data-testid={`option-text-${i}`}
+            className="line-clamp-2 flex-1 text-sm text-foreground/85 leading-relaxed group-hover:text-foreground transition-colors duration-200"
+          >
             {option.text}
           </span>
 
           {/* Action indicator */}
-          {disabled && selectedIndex === i ? (
-            <Loader2 className="w-3.5 h-3.5 mt-0.5 animate-spin text-primary flex-shrink-0" />
+          {isSubmitting && selectedIndex === i ? (
+            <span className="flex flex-shrink-0 items-center gap-1.5 text-xs text-primary" role="status">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+              <span aria-hidden="true">正在进入</span>
+              <span className="sr-only">正在进入下一段人生</span>
+            </span>
           ) : (
             <ChevronRight
               className={cn(
@@ -118,7 +128,7 @@ export function OptionCards({
                 "focus:border-primary/40 focus:bg-background/80",
                 "transition-colors duration-200"
               )}
-              disabled={disabled}
+              disabled={controlsDisabled}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
@@ -137,10 +147,10 @@ export function OptionCards({
               "transition-all duration-200",
               customText.trim() && "text-primary"
             )}
-            disabled={disabled || !customText.trim()}
+            disabled={controlsDisabled || !customText.trim()}
             onClick={handleCustomSubmit}
           >
-            {disabled && selectedIndex === -1 ? (
+            {isSubmitting && selectedIndex === -1 ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <Send className="w-4 h-4" />

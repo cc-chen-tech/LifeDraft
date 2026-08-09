@@ -123,6 +123,41 @@ describe('OptionCards', () => {
       expect(mockOnSelect).toHaveBeenCalledWith(2);
     });
 
+    it('immediately disables every choice and shows selected loading feedback', async () => {
+      const user = userEvent.setup();
+      render(
+        <OptionCards
+          options={mockOptions}
+          onSelect={mockOnSelect}
+          onCustomChoice={mockOnCustomChoice}
+        />
+      );
+
+      await user.click(screen.getByRole('button', { name: '选择 2：Option 2' }));
+
+      expect(screen.getByText('正在进入')).toBeInTheDocument();
+      for (const button of screen.getAllByRole('button', { name: /选择 \d：/ })) {
+        expect(button).toBeDisabled();
+      }
+      expect(screen.getByPlaceholderText(/或者，描述你想做的事情/i)).toBeDisabled();
+    });
+
+    it('visually clamps long copy to two lines but preserves the full accessible text', () => {
+      const fullText = '这是一个需要完整保留给屏幕阅读器但视觉上最多显示两行的很长故事选项文本';
+      render(
+        <OptionCards
+          options={[{ text: fullText }]}
+          onSelect={mockOnSelect}
+          onCustomChoice={mockOnCustomChoice}
+        />
+      );
+
+      const button = screen.getByRole('button', { name: `选择 1：${fullText}` });
+      expect(button).toHaveAttribute('title', fullText);
+      expect(button).toHaveClass('min-h-14');
+      expect(screen.getByTestId('option-text-0')).toHaveClass('line-clamp-2');
+    });
+
     it('does not call onSelect when disabled', async () => {
       const user = userEvent.setup();
       render(
