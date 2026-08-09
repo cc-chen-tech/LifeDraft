@@ -6,7 +6,7 @@ Handles the generation of events for each round in the game.
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Dict, Optional
 
 from config.prompts._helpers import (
     _build_available_people_constraint,
@@ -76,6 +76,13 @@ class RoundEventGenerator:
         self._GENERATION_TIMEOUT: float = 120.0  # seconds
         self._OPTIONS_ONLY_TIMEOUT: float = 75.0  # seconds
         self._current_event: Optional[GameEvent] = None
+
+    @staticmethod
+    def _persist_long_context_snapshots(player_state: Any, generated_state: Dict[str, Any]) -> None:
+        """Copy derived snapshots from the generation dict back into saved state."""
+        snapshots = generated_state.get("long_context_snapshots")
+        if isinstance(snapshots, list):
+            player_state.long_context_snapshots = snapshots
 
     @property
     def player_state(self):
@@ -366,12 +373,11 @@ class RoundEventGenerator:
             state_dict = player_state.to_dict()
             character_settings = state_dict.get("character_settings", {})
 
-            # 随机选择历史总结加入提示词（如同回忆）
+            # Reviews keep their summaries, while story generation receives the
+            # append-only event log as its cache-stable historical context.
             if status_callback:
                 status_callback("loading_context")
-            historical_weekly, historical_yearly = (
-                self.summary_selector.select_relevant_historical_summary(player_state)
-            )
+            historical_weekly, historical_yearly = None, None
 
             # 检测关系事件触发
             relationship_events = []
@@ -430,6 +436,7 @@ class RoundEventGenerator:
                 new_character=new_character,
                 status_callback=status_callback,
             )
+            self._persist_long_context_snapshots(player_state, state_dict)
 
             # 如果有关系事件被触发，标记为已触发
             if relationship_events and event:

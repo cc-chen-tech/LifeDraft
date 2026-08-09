@@ -23,13 +23,17 @@ from src.ai.harness.validation_pipeline import ValidationPipeline
 from src.ai.harness.retry_controller import RetryController
 from src.ai.harness.quality_level import PROFILES, QualityLevel
 from src.ai.generation_budget import get_generation_budget
+from src.ai.long_story_context import (
+    LongStoryContextBuilder,
+    is_deepseek_v4_model,
+    prepend_history_prefix,
+)
 from src.ai.models import GameEvent
 from src.ai.option_generator import OptionGenerator
 from src.ai.system_prompts import get_system_prompt
 from src.ai.prompt_sanitizer import sanitize_player_name
 from src.ai.story_exceptions import StoryGenerationFailure
 from src.ai.text_quality import normalize_generated_story, validate_narrative_quality
-from src.ai.vector_store import get_vector_store, is_vector_search_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +211,23 @@ class StoryGenerator:
                     break
         return stories
 
+    def _long_history_prefix(
+        self, player_state: Dict[str, Any], dynamic_tail: str = ""
+    ) -> str:
+        """Return cache-stable history only when the active model supports it."""
+        model = getattr(self.client, "model", None)
+        if not is_deepseek_v4_model(model):
+            logger.info("Long story context disabled for model=%s", model or "unknown")
+            return ""
+        builder = LongStoryContextBuilder()
+        context = (
+            builder.build_for_request(player_state, dynamic_tail)
+            if dynamic_tail
+            else builder.build(player_state)
+        )
+        logger.info("Long story context: %d tokens", context.input_tokens)
+        return context.history_prefix
+
     # -------------------- Public API --------------------
 
     def generate_event(
@@ -280,23 +301,6 @@ class StoryGenerator:
             if decision_history:
                 last_event_description = decision_history[-1].get("event")
 
-        # ★ 向量检索：获取相关历史片段
-        vector_context = ""
-        if is_vector_search_enabled():
-            try:
-                vector_store = get_vector_store()
-                # 使用当前情境作为查询
-                query_context = last_event_description or ""
-                if pending_storylines:
-                    query_context += " " + " ".join(str(s) for s in pending_storylines[:3])
-                vector_context = vector_store.get_relevant_context(query_context, max_chars=1500)
-                if vector_context:
-                    logger.info(
-                        f"[VectorStore] Injected {len(vector_context)} chars of vector context"
-                    )
-            except Exception as e:
-                logger.warning(f"Vector search failed: {e}")
-
         # ★ 动态提取历史故事中的高频重复短语，生成禁用列表
         decision_history = player_state.get("decision_history", [])
         overused_phrases = extract_overused_phrases(decision_history, language=language)
@@ -322,12 +326,12 @@ class StoryGenerator:
             activated_foreshadowing,
             character_habits,
             world_model=world_model,
-            vector_context=vector_context,  # ★ 注入向量检索上下文
             overused_phrases=overused_phrases,  # ★ 注入动态禁用列表
             style_constraints=style_constraints,
         )
-
         sys_prompt = get_system_prompt("story_novelist", language)
+        history_prefix = self._long_history_prefix(player_state, sys_prompt + story_prompt)
+        story_prompt = prepend_history_prefix(history_prefix, story_prompt)
         last_error: Optional[str] = None
 
         # ★ 优化：使用渐进式温度策略
@@ -402,6 +406,7 @@ class StoryGenerator:
                     character_settings=character_settings,
                     language=language,
                     retry_count=retry_count,
+                    history_prefix=history_prefix,
                 )
                 logger.info(f"Generated {len(event.options)} options")
                 for i, opt in enumerate(event.options):
@@ -500,23 +505,6 @@ class StoryGenerator:
             f"stream_callback={stream_callback is not None}"
         )
 
-        # ★ 向量检索：获取相关历史片段
-        vector_context = ""
-        if is_vector_search_enabled():
-            try:
-                vector_store = get_vector_store()
-                # 使用当前情境作为查询
-                query_context = round_context or ""
-                if pending_storylines:
-                    query_context += " " + " ".join(str(s) for s in pending_storylines[:3])
-                vector_context = vector_store.get_relevant_context(query_context, max_chars=1500)
-                if vector_context:
-                    logger.info(
-                        f"[VectorStore] Injected {len(vector_context)} chars of vector context"
-                    )
-            except Exception as e:
-                logger.warning(f"Vector search failed: {e}")
-
         # ★ 动态提取历史故事中的高频重复短语，生成禁用列表
         decision_history = player_state.get("decision_history", [])
         overused_phrases = extract_overused_phrases(decision_history, language=language)
@@ -541,8 +529,8 @@ class StoryGenerator:
             round_context,
             character_settings,
             relationship_events=relationship_events,
-            historical_weekly_summary=historical_weekly_summary,
-            historical_yearly_summary=historical_yearly_summary,
+            historical_weekly_summary=None,
+            historical_yearly_summary=None,
             game_date_info=game_date_info,
             pending_storylines=pending_storylines,
             established_facts=established_facts,
@@ -552,7 +540,6 @@ class StoryGenerator:
             character_habits=character_habits,
             world_model=world_model,
             new_character=new_character,
-            vector_context=vector_context,  # ★ 注入向量检索上下文
             overused_phrases=overused_phrases,  # ★ 注入动态禁用列表
             style_constraints=style_constraints,
             quality_level=self.quality_level.value,
@@ -561,6 +548,8 @@ class StoryGenerator:
 
         # Step 1: Generate story text (with optional streaming)
         sys_prompt = get_system_prompt("story_novelist", language)
+        history_prefix = self._long_history_prefix(player_state, sys_prompt + prompt)
+        prompt = prepend_history_prefix(history_prefix, prompt)
 
         # ★ 动态温度策略：根据上下文调整温度
         # - 有未完结剧情线或上一轮未结束时，使用更保守的温度
@@ -951,6 +940,7 @@ class StoryGenerator:
                     player_state=player_state,
                     character_settings=character_settings,
                     language=language,
+                    history_prefix=history_prefix,
                 )
 
                 # Validate relationships

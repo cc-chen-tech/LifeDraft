@@ -200,7 +200,9 @@ async def generate_opening_story(req: OpeningStoryRequest):
             try:
                 wait_time = max(0.1, next_heartbeat - time.time())
                 event_type, data = await asyncio.wait_for(q.get(), timeout=wait_time)
-            except asyncio.TimeoutError:
+            # Test transports and synchronous boundaries can raise the built-in
+            # timeout class instead of asyncio's distinct Python 3.9 class.
+            except (asyncio.TimeoutError, TimeoutError):
                 now = time.time()
                 if thread.is_alive() and now - last_activity[0] < OPENING_STORY_HARD_TIMEOUT:
                     next_heartbeat = now + OPENING_STORY_HEARTBEAT_INTERVAL

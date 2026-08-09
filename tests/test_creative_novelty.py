@@ -90,10 +90,9 @@ class TestNoveltyScorer:
         suggestion = self.scorer.suggest_diversity_boost(high_novelty)
         assert suggestion is None or suggestion == ""
 
-    def test_no_chromadb_degradation(self):
-        """无chromadb时优雅降级（返回默认高分）"""
-        # 模拟 chromadb 不可用
-        scorer = NoveltyScorer(use_vector_store=False)
+    def test_text_similarity_has_a_safe_floor(self):
+        """纯文本相似度不会阻碍创意生成。"""
+        scorer = NoveltyScorer()
         result = scorer.score(
             current_text=STORY_SEGMENT_A,
             history=HISTORY_CLICHE,

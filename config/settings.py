@@ -181,7 +181,6 @@ class Settings:
 #   ENABLE_NARRATIVE_STYLE_ENGINE   — 叙事风格引擎
 #   ENABLE_CREATIVE_ENHANCEMENT     — 创意增强
 #   ENABLE_EPIC_NARRATIVE           — 史诗叙事
-#   ENABLE_VECTOR_SEARCH            — 向量搜索
 #   ENABLE_MODEL_FALLBACK           — 模型降级
 #   ENABLE_TRUNCATION_RECOVERY      — 截断恢复
 #   ENABLE_REACTIVE_COMPRESSION     — 响应式压缩

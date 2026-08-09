@@ -9,6 +9,11 @@ import re
 from typing import Any, Dict, List, Optional
 
 from src.ai.client import AIClient
+from src.ai.long_story_context import (
+    LongStoryContextBuilder,
+    is_deepseek_v4_model,
+    prepend_history_prefix,
+)
 from src.ai.models import EventOption, GameEvent
 from src.ai.system_prompts import get_system_prompt
 from src.ai.utils import extract_json
@@ -40,6 +45,7 @@ class OptionGenerator:
         character_settings: Optional[Dict[str, Any]] = None,
         language: str = "zh",
         retry_count: int = 1,
+        history_prefix: Optional[str] = None,
     ) -> GameEvent:
         """
         Generate options for an existing story (used for opening story).
@@ -66,6 +72,9 @@ class OptionGenerator:
         prompt = get_options_only_prompt(
             story_description, player_state, character_settings, language
         )
+        if history_prefix is None and is_deepseek_v4_model(getattr(self.client, "model", None)):
+            history_prefix = LongStoryContextBuilder().build(player_state).history_prefix
+        prompt = prepend_history_prefix(history_prefix or "", prompt)
         logger.info(f"Prompt length: {len(prompt)} characters")
         logger.debug(f"Prompt preview (first 500 chars):\n{prompt[:500]}...")
 
