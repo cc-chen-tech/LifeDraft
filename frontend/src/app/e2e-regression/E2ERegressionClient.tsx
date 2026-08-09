@@ -20,6 +20,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useCharacterCreation } from "@/hooks/useCharacterCreation";
 import { api } from "@/lib/api";
 import { useCollectionStore } from "@/stores/useCollectionStore";
@@ -91,6 +92,23 @@ export function VisualFoundationFixture() {
                 id="foundation-character-name"
                 placeholder="例如：林见微"
                 required={required}
+              />
+            )}
+          </FormField>
+
+          <FormField
+            description="这段文字只保存在当前回归场景中。"
+            id="foundation-context-note"
+            label="补充这一页的方向"
+          >
+            {({ describedBy }) => (
+              <Textarea
+                aria-describedby={describedBy}
+                controlSize="touch"
+                data-testid="visual-foundation-normal-textarea"
+                data-touch-target="true"
+                id="foundation-context-note"
+                placeholder="例如：让人物先观察，再作决定"
               />
             )}
           </FormField>

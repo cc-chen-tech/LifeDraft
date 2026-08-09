@@ -31,6 +31,14 @@ test("server-renders only the allowlisted visual foundation fixture", async ({ r
   expect(foundationHtml).not.toContain('data-testid="e2e-regression-legacy"');
   expect(foundationHtml).not.toContain('data-testid="narrative-loading-fixture"');
 
+  const narrativePriorityResponse = await request.get(
+    "/e2e-regression?narrativeLoading=initial&visualSystem=foundation",
+  );
+  expect(narrativePriorityResponse.ok()).toBe(true);
+  const narrativePriorityHtml = await narrativePriorityResponse.text();
+  expect(narrativePriorityHtml).toContain('data-testid="narrative-loading-fixture"');
+  expect(narrativePriorityHtml).not.toContain('data-testid="visual-foundation-fixture"');
+
   for (const url of [
     "/e2e-regression",
     "/e2e-regression?visualSystem=unknown",
@@ -59,11 +67,39 @@ test("renders the approved visual tokens, accessible states, and responsive evid
   await expect(fixture(page)).toBeVisible();
   await expect(fixture(page).getByTestId("visual-foundation-brand")).toBeVisible();
   await expect(fixture(page).getByText("请补充人物的称呼。", { exact: true })).toBeVisible();
+  await expect(
+    fixture(page).getByRole("textbox", { name: "补充这一页的方向" }),
+  ).toBeVisible();
+
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#0D0C0B");
+  const fontLoaded = await page.evaluate(async () => {
+    await document.fonts.load('600 32px "Spline Sans Variable"', "story101");
+    return document.fonts.check('600 32px "Spline Sans Variable"', "story101");
+  });
+  expect(fontLoaded).toBe(true);
+
+  const loadedFontResources = await page.evaluate(() =>
+    performance
+      .getEntriesByType("resource")
+      .map((entry) => entry.name)
+      .filter((name) => name.includes("spline-sans") && name.endsWith(".woff2")),
+  );
+  expect(loadedFontResources).toHaveLength(1);
+  expect(loadedFontResources[0]).toContain("spline-sans-latin-wght-normal");
+  expect(loadedFontResources[0]).not.toContain("latin-ext");
+
+  const licenseResponse = await page.request.get("/licenses/SplineSans-OFL.txt");
+  expect(licenseResponse.ok()).toBe(true);
+  const licenseText = await licenseResponse.text();
+  expect(licenseText).toContain("Copyright 2021 The Spline Sans Project Authors");
+  expect(licenseText).toContain("SIL OPEN FONT LICENSE Version 1.1");
 
   const visualValues = await fixture(page).evaluate((element) => {
     const root = getComputedStyle(document.documentElement);
     const brand = element.querySelector('[data-testid="visual-foundation-brand"]');
     const touchButton = element.querySelector('[data-testid="visual-foundation-touch-control"]');
+    const normalTextarea = element.querySelector('[data-testid="visual-foundation-normal-textarea"]');
+    const invalidInput = element.querySelector('#foundation-character-name');
     const body = element.querySelector('[data-testid="visual-foundation-body"]');
     const helper = element.querySelector('[data-testid="visual-foundation-helper"]');
 
@@ -75,6 +111,11 @@ test("renders the approved visual tokens, accessible states, and responsive evid
       brandFamily: brand ? getComputedStyle(brand).fontFamily : "",
       bodySize: body ? getComputedStyle(body).fontSize : "",
       helperSize: helper ? getComputedStyle(helper).fontSize : "",
+      touchButtonBorder: touchButton ? getComputedStyle(touchButton).borderColor : "",
+      touchButtonRadius: touchButton ? getComputedStyle(touchButton).borderRadius : "",
+      normalTextareaBorder: normalTextarea ? getComputedStyle(normalTextarea).borderColor : "",
+      normalTextareaRadius: normalTextarea ? getComputedStyle(normalTextarea).borderRadius : "",
+      invalidInputRadius: invalidInput ? getComputedStyle(invalidInput).borderRadius : "",
     };
   });
 
@@ -85,6 +126,11 @@ test("renders the approved visual tokens, accessible states, and responsive evid
     rule: "#34302c",
     bodySize: "14px",
     helperSize: "12px",
+    touchButtonBorder: "rgb(113, 103, 93)",
+    touchButtonRadius: "6px",
+    normalTextareaBorder: "rgb(113, 103, 93)",
+    normalTextareaRadius: "6px",
+    invalidInputRadius: "6px",
   });
   expect(visualValues.brandFamily).toMatch(/Spline Sans Variable/i);
 
@@ -102,6 +148,7 @@ test("renders the approved visual tokens, accessible states, and responsive evid
     expect.arrayContaining([
       expect.objectContaining({ tagName: "BUTTON" }),
       expect.objectContaining({ tagName: "INPUT" }),
+      expect.objectContaining({ tagName: "TEXTAREA" }),
     ]),
   );
   for (const target of touchTargetSizes) {
