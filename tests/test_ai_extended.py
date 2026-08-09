@@ -224,7 +224,7 @@ class TestOptionGenerator:
         )
         settings = {"relationships": {"key_people": [{"name": "张三"}]}}
         gen.validate_and_fix_relationships(event, settings)
-        assert "relationships" not in event.options[0].effects
+        assert event.options[0].effects["relationships"] == {"张三": 5}
 
     def test_validate_and_fix_relationships_case_insensitive(self):
         """Test case-insensitive name matching."""
@@ -238,7 +238,7 @@ class TestOptionGenerator:
         )
         settings = {"relationships": {"key_people": [{"name": "John"}]}}
         gen.validate_and_fix_relationships(event, settings)
-        assert "relationships" not in event.options[0].effects
+        assert event.options[0].effects["relationships"] == {"John": 5}
 
     def test_validate_and_fix_relationships_role_match(self):
         """Test name matching by role."""
@@ -252,7 +252,7 @@ class TestOptionGenerator:
         )
         settings = {"relationships": {"key_people": [{"name": "李华", "role": "老师"}]}}
         gen.validate_and_fix_relationships(event, settings)
-        assert "relationships" not in event.options[0].effects
+        assert event.options[0].effects["relationships"] == {"李华": 5}
 
     def test_validate_and_fix_relationships_keeps_non_key_people(self):
         """Test non-key_people names are kept as-is (not dropped or mapped)."""
@@ -266,7 +266,7 @@ class TestOptionGenerator:
         )
         settings = {"relationships": {"key_people": [{"name": "张三"}, {"name": "李四"}]}}
         gen.validate_and_fix_relationships(event, settings)
-        assert "relationships" not in event.options[0].effects
+        assert event.options[0].effects["relationships"] == {"韦待价": 5}
 
     def test_validate_and_fix_relationships_no_cross_mapping(self):
         """Test non-key_people names are NOT mapped to key_people.
@@ -286,7 +286,7 @@ class TestOptionGenerator:
         )
         settings = {"relationships": {"key_people": [{"name": "裴行俭"}, {"name": "李四"}]}}
         gen.validate_and_fix_relationships(event, settings)
-        assert "relationships" not in event.options[0].effects
+        assert event.options[0].effects["relationships"] == {"武承嗣": -5}
 
     def test_validate_and_fix_relationships_family_members(self):
         """Test family members are also valid relationship targets."""
@@ -303,7 +303,7 @@ class TestOptionGenerator:
             "family": {"family_members": [{"name": "母亲王氏", "role": "母亲"}]},
         }
         gen.validate_and_fix_relationships(event, settings)
-        assert "relationships" not in event.options[0].effects
+        assert event.options[0].effects["relationships"] == {"母亲王氏": 5}
 
     def test_validate_event_quality_adds_action_points(self):
         """Test quality validation adds missing action_points."""
@@ -380,7 +380,7 @@ class TestOptionGenerator:
         issues = gen.validate_options_consistency(
             event, story_text, available_people, language="zh"
         )
-        assert not issues
+        assert any("陌生人甲" in issue for issue in issues)
 
     def test_validate_options_consistency_known_character_no_warning(self):
         """Test known characters in available_people generate no warnings."""
