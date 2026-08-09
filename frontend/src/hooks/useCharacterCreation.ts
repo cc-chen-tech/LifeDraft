@@ -136,6 +136,7 @@ export interface UseCharacterCreationReturn {
     characterSettings: CharacterSettings,
     feedback?: string
   ) => Promise<void>;
+  refreshPortraitImageJob: (gameId: number) => Promise<void>;
   regeneratePlayerImage: (feedback: string) => Promise<void>;
   regenerateFreshPlayerImage: () => Promise<void>;
   
@@ -217,6 +218,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     imageFeedback,
     setSelectedImageIndex,
     generatePlayerImage,
+    refreshPortraitImageJob,
     regeneratePlayerImage,
     regenerateFreshPlayerImage,
     setImageFeedback,
@@ -934,6 +936,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     setSelectedImageIndex,
     setImageFeedback,
     generatePlayerImage,
+    refreshPortraitImageJob,
     regeneratePlayerImage,
     regenerateFreshPlayerImage,
     

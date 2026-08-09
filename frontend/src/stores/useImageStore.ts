@@ -9,7 +9,17 @@
  */
 import { create } from "zustand";
 import type { ImageResponse, OpeningIllustrationResponse, CharacterSettings, EraSetting } from "@/lib/types";
-import api from "@/lib/api";
+import api, { type PortraitImageGenerationJob } from "@/lib/api";
+
+const PORTRAIT_JOB_POLL_INTERVAL_MS = 3_000;
+let portraitJobPollTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearPortraitJobPollTimer(): void {
+  if (portraitJobPollTimer !== null) {
+    clearTimeout(portraitJobPollTimer);
+    portraitJobPollTimer = null;
+  }
+}
 
 function getPlayerImageErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error) {
@@ -46,6 +56,7 @@ interface ImageState {
   selectedImageIndex: number;
   isGeneratingImage: boolean;
   imageGenerationError: string | null;
+  portraitImageJob: PortraitImageGenerationJob | null;
   isLoadingPlayerImages: boolean;  // ★ 加载玩家图片中
   imageFeedback: string;
 
@@ -61,6 +72,8 @@ interface ImageState {
   setIsGeneratingImage: (isGenerating: boolean) => void;
   setImageFeedback: (feedback: string) => void;
   generatePlayerImage: (gameId: number, playerName: string, characterSettings: CharacterSettings, feedback?: string) => Promise<void>;
+  refreshPortraitImageJob: (gameId: number) => Promise<void>;
+  stopPortraitImagePolling: () => void;
   regeneratePlayerImage: (feedback: string) => Promise<void>;
   regenerateFreshPlayerImage: () => Promise<void>;
   // ★ 从服务器重新加载玩家形象
@@ -85,6 +98,7 @@ export const useImageStore = create<ImageState>()(
     selectedImageIndex: 0,
     isGeneratingImage: false,
     imageGenerationError: null,
+    portraitImageJob: null,
     isLoadingPlayerImages: false,  // ★ 初始不处于加载状态
     imageFeedback: "",
 
@@ -155,7 +169,7 @@ export const useImageStore = create<ImageState>()(
           feedback,
         };
 
-        const result = await api.images.generate({
+        const job = await api.images.enqueueCharacterPortrait({
           game_id: gameId,
           image_type: "character",
           entity_name: playerName,
@@ -166,17 +180,30 @@ export const useImageStore = create<ImageState>()(
           feedback,
         });
 
-        const images = result.images || [];
         set({
-          playerImages: images,
-          playerImage: images[0] || null,
-          selectedImageIndex: 0,
-          isGeneratingImage: false,
+          portraitImageJob: job,
+          isGeneratingImage: job.status === "queued" || job.status === "running",
           imageGenerationError: null,
-          imageFeedback: "",
         });
+        if (job.status === "succeeded") {
+          await get().loadPlayerImages(gameId);
+          set({ isGeneratingImage: false, imageFeedback: "" });
+        } else if (job.status === "failed") {
+          set({ isGeneratingImage: false, imageGenerationError: job.error_message || "人物形象生成失败" });
+        } else {
+          clearPortraitJobPollTimer();
+          portraitJobPollTimer = setTimeout(() => {
+            portraitJobPollTimer = null;
+            void get().refreshPortraitImageJob(gameId);
+          }, PORTRAIT_JOB_POLL_INTERVAL_MS);
+        }
       } catch (err) {
         console.error("[generatePlayerImage] Failed:", err);
+        await get().refreshPortraitImageJob(gameId);
+        const recoveredJob = get().portraitImageJob;
+        if (recoveredJob && (recoveredJob.status === "queued" || recoveredJob.status === "running" || recoveredJob.status === "succeeded")) {
+          return;
+        }
         set({
           isGeneratingImage: false,
           imageGenerationError: getPlayerImageErrorMessage(err, "人物形象生成失败"),
@@ -184,6 +211,53 @@ export const useImageStore = create<ImageState>()(
         throw err;
       }
     },
+
+    refreshPortraitImageJob: async (gameId) => {
+      if (!gameId) return;
+
+      try {
+        const job = await api.images.getLatestCharacterPortraitJob(gameId);
+        if (!job) {
+          clearPortraitJobPollTimer();
+          set({ portraitImageJob: null, isGeneratingImage: false });
+          return;
+        }
+
+        set({ portraitImageJob: job });
+        if (job.status === "succeeded") {
+          clearPortraitJobPollTimer();
+          await get().loadPlayerImages(gameId);
+          set({ isGeneratingImage: false, imageGenerationError: null, imageFeedback: "" });
+          return;
+        }
+        if (job.status === "failed") {
+          clearPortraitJobPollTimer();
+          set({
+            isGeneratingImage: false,
+            imageGenerationError: job.error_message || "人物形象生成失败，请稍后重试",
+          });
+          return;
+        }
+
+        set({ isGeneratingImage: true, imageGenerationError: null });
+        clearPortraitJobPollTimer();
+        portraitJobPollTimer = setTimeout(() => {
+          portraitJobPollTimer = null;
+          void get().refreshPortraitImageJob(gameId);
+        }, PORTRAIT_JOB_POLL_INTERVAL_MS);
+      } catch (err) {
+        console.warn("[refreshPortraitImageJob] Unable to refresh durable job", err);
+        if (get().portraitImageJob?.status === "queued" || get().portraitImageJob?.status === "running") {
+          clearPortraitJobPollTimer();
+          portraitJobPollTimer = setTimeout(() => {
+            portraitJobPollTimer = null;
+            void get().refreshPortraitImageJob(gameId);
+          }, PORTRAIT_JOB_POLL_INTERVAL_MS);
+        }
+      }
+    },
+
+    stopPortraitImagePolling: () => clearPortraitJobPollTimer(),
 
     regeneratePlayerImage: async (feedback) => {
       const { playerImages, selectedImageIndex } = get();

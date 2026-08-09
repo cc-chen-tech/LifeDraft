@@ -21,6 +21,18 @@ import { resolveApiBase } from './apiBase';
 const API_BASE = resolveApiBase();
 export const LIFE_SUMMARY_REQUEST_TIMEOUT_MS = 30_000;
 
+export interface PortraitImageGenerationJob {
+  job_id: number;
+  game_id: number;
+  status: 'queued' | 'running' | 'succeeded' | 'failed';
+  image_id: number | null;
+  attempt_count: number;
+  error_code?: string | null;
+  error_message?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
 /**
  * 401 重定向防抖：防止并发请求竞态导致多次重定向
  * 一旦触发登出，后续 401 不再重复处理
@@ -76,6 +88,7 @@ function isImageGenerationMutation(url: string): boolean {
 
   return [
     '/images/generate',
+    '/images/character/generate-async',
     '/images/player',
     '/images/regenerate',
     '/images/regenerate-fresh',
@@ -568,6 +581,24 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+    enqueueCharacterPortrait: (data: {
+      game_id: number;
+      image_type: 'character';
+      entity_name: string;
+      description: string;
+      entity_key: 'player_main';
+      era?: string;
+      extra_context?: Record<string, unknown>;
+      feedback?: string;
+    }) =>
+      fetchJson<PortraitImageGenerationJob>('/images/character/generate-async', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    getCharacterPortraitJob: (jobId: number) =>
+      fetchJson<PortraitImageGenerationJob>(`/images/character/jobs/${jobId}`),
+    getLatestCharacterPortraitJob: (gameId: number) =>
+      fetchJson<PortraitImageGenerationJob | null>(`/images/character/jobs/latest?game_id=${gameId}`),
     regenerate: (imageId: number, data?: { prompt?: string; feedback?: string }) =>
       fetchJson<{ images: Array<{ image_id: number; image_url: string }>; total: number }>(`/images/regenerate`, {
         method: 'POST',

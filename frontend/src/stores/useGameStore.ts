@@ -301,7 +301,9 @@ export const useGameStore = create<GameState>()(
 
       // Load player images asynchronously
       setTimeout(() => {
-        useImageStore.getState().loadPlayerImages(gameId);
+        const imageStore = useImageStore.getState();
+        void imageStore.loadPlayerImages(gameId);
+        void imageStore.refreshPortraitImageJob(gameId);
       }, 0);
     },
 

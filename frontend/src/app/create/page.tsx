@@ -63,6 +63,7 @@ export default function CreatePage() {
     setSelectedImageIndex,
     setImageFeedback,
     generatePlayerImage,
+    refreshPortraitImageJob,
     regeneratePlayerImage,
     regenerateFreshPlayerImage,
     regenerateSetting,
@@ -308,7 +309,9 @@ export default function CreatePage() {
                   if (!gameId) return Promise.resolve();
                   return generatePlayerImage(gameId, playerName, characterSettings);
                 }}
-                onRecover={() => window.location.reload()}
+                onRecover={() => {
+                  if (gameId) void refreshPortraitImageJob(gameId);
+                }}
                 showToast={showToast}
               />
             )}
@@ -421,7 +424,7 @@ export default function CreatePage() {
                 </>
               ) : isPortraitStep && playerImages.length === 0 ? (
                 <>
-                  继续生成角色
+                  跳过并继续
                   <ArrowRight />
                 </>
               ) : isPortraitStep ? (
