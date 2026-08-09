@@ -24,7 +24,7 @@ Character-setting payloads are serialized as compact UTF-8 JSON and rejected abo
 
 ### UI prevents accidental overrun but server remains authoritative
 
-Affected editable controls receive native `maxLength` where appropriate plus a visible remaining count near the limit. Controls that can receive programmatic oversized values show an explicit over-limit state and prevent submission. The backend still validates every request.
+Affected editable controls use the shared Unicode code-point counter plus a visible remaining count near the limit. They intentionally do not use native `maxLength`, whose browser semantics count UTF-16 code units and would disagree for astral Unicode characters. Controls that receive typed, pasted, or programmatic oversized values keep the value visible, show an explicit over-limit state, and prevent submission. The backend still validates every request.
 
 ### Saved data is outside this boundary
 
@@ -33,7 +33,7 @@ Response schemas, database hydration, and legacy save restoration remain permiss
 ## Risks / Trade-offs
 
 - Rejecting previously accepted oversized requests is an intentional API behavior change; structured details make remediation deterministic.
-- Native `maxLength` prevents normal typing beyond the limit, so tests also cover pasted/programmatic values and backend rejection.
+- UI counters do not mutate user text, so tests cover typed, pasted, and programmatic oversized values, guarded submission, and backend rejection.
 - Character-setting JSON size depends on UTF-8 encoding, unlike text fields; the error explicitly reports bytes.
 
 ## Rollout
