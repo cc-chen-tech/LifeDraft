@@ -156,4 +156,3 @@
 
 - [ ] **Step 6: Commit**
   - Commit message: `test(e2e): cover story101 visual foundation`
-
