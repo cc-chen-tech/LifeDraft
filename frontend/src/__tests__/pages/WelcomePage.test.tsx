@@ -346,7 +346,13 @@ describe('WelcomePage', () => {
       expect(screen.getAllByRole('alert')).toHaveLength(1);
       expect(alert).toHaveTextContent('Invalid key');
       expect(input).toHaveAttribute('aria-invalid', 'true');
-      expect(input).toHaveAttribute('aria-describedby', expect.stringContaining(alert.parentElement?.id));
+      const describedByTokens = input.getAttribute('aria-describedby')?.split(/\s+/) ?? [];
+      expect(describedByTokens).toContain('private-id-input-description');
+      expect(describedByTokens).toContain('private-id-input-server-error');
+
+      const errorElement = document.getElementById('private-id-input-server-error');
+      expect(errorElement).not.toBeNull();
+      expect(errorElement).toContainElement(alert);
     });
 
     it('marks the form busy and disables its controls while login is pending', async () => {
