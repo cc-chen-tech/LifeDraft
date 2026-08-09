@@ -4,6 +4,10 @@ import {
   VisualFoundationFixture,
   type NarrativeLoadingFixtureState,
 } from "./E2ERegressionClient";
+import {
+  PlayExperienceFixture,
+  type PlayExperienceFixtureState,
+} from "./PlayExperienceFixture";
 
 interface E2ERegressionPageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -31,7 +35,27 @@ function resolveVisualFoundationFixture(
   return value === "foundation";
 }
 
-export default async function E2ERegressionPage({ searchParams }: E2ERegressionPageProps) {
+function resolvePlayExperienceFixtureState(
+  value: string | string[] | undefined,
+): PlayExperienceFixtureState | null {
+  switch (value) {
+    case "options":
+    case "choosing":
+    case "result":
+    case "summary":
+    case "history":
+    case "reconnecting":
+    case "polling":
+    case "failed":
+      return value;
+    default:
+      return null;
+  }
+}
+
+export default async function E2ERegressionPage({
+  searchParams,
+}: E2ERegressionPageProps) {
   const resolvedSearchParams = await searchParams;
   const narrativeLoadingFixtureState = resolveNarrativeLoadingFixtureState(
     resolvedSearchParams.narrativeLoading,
@@ -39,9 +63,18 @@ export default async function E2ERegressionPage({ searchParams }: E2ERegressionP
   const visualFoundationFixture = resolveVisualFoundationFixture(
     resolvedSearchParams.visualSystem,
   );
+  const playExperienceFixtureState = resolvePlayExperienceFixtureState(
+    resolvedSearchParams.playState,
+  );
 
   if (narrativeLoadingFixtureState) {
-    return <NarrativeLoadingFixture initialState={narrativeLoadingFixtureState} />;
+    return (
+      <NarrativeLoadingFixture initialState={narrativeLoadingFixtureState} />
+    );
+  }
+
+  if (playExperienceFixtureState) {
+    return <PlayExperienceFixture initialState={playExperienceFixtureState} />;
   }
 
   if (visualFoundationFixture) {

@@ -20,6 +20,7 @@ import { isWithinInputLimit } from "@/lib/inputLimits";
 export function AddItemDialog({
   open,
   onClose,
+  onCloseAutoFocus,
   onSubmit,
   itemName,
   onItemNameChange,
@@ -39,7 +40,11 @@ export function AddItemDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent
+        className="z-[81] max-w-md"
+        overlayClassName="z-[80]"
+        onCloseAutoFocus={onCloseAutoFocus}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Plus className="w-5 h-5" />

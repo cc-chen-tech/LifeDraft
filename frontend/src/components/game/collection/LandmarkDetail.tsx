@@ -26,6 +26,7 @@ import type { LandmarkDetailProps } from "./types";
 export function LandmarkDetail({
   landmark,
   onClose,
+  onCloseAutoFocus,
   onGenerateImage,
   onGenerateDescription,
   onOpenDeleteConfirm,
@@ -40,7 +41,11 @@ export function LandmarkDetail({
 
   return (
     <Dialog open={!!landmark} onOpenChange={onClose}>
-      <DialogContent className="max-w-md h-[85vh] flex flex-col p-0 gap-0">
+      <DialogContent
+        className="z-[81] max-w-md h-[85vh] flex flex-col p-0 gap-0"
+        overlayClassName="z-[80]"
+        onCloseAutoFocus={onCloseAutoFocus}
+      >
         <DialogHeader className="px-6 pt-6 pb-2 flex-shrink-0">
           <div className="flex items-start justify-between">
             <div>

@@ -42,10 +42,20 @@ describe("HistorySceneImage", () => {
 
   describe("Generating state", () => {
     it("shows generating UI when isGenerating is true", () => {
-      render(<HistorySceneImage {...baseProps} isGenerating={true} />);
-      expect(
-        screen.getByText("AI正在为你绘制场景插画...")
-      ).toBeInTheDocument();
+      const { container } = render(
+        <HistorySceneImage {...baseProps} isGenerating={true} />
+      );
+      const status = screen.getByRole("status");
+      expect(status).toHaveTextContent("正在绘制历史场景插画");
+      expect(status).not.toHaveTextContent("AI");
+      expect(status.querySelector(".animate-pulse")).toBeNull();
+      expect(status.querySelector(".rounded-full")).toBeNull();
+      expect(container.querySelector('[data-slot="card"]')).toBeNull();
+      expect(container.querySelector('[data-slot="history-scene-state"]')).toHaveClass(
+        'border-y',
+        'bg-transparent',
+        'shadow-none',
+      );
     });
   });
 
@@ -58,9 +68,13 @@ describe("HistorySceneImage", () => {
 
   describe("Empty state (no image)", () => {
     it("shows generate button when no scene image", () => {
-      render(<HistorySceneImage {...baseProps} />);
+      const { container } = render(<HistorySceneImage {...baseProps} />);
       expect(screen.getByText("该轮次暂无场景插画")).toBeInTheDocument();
-      expect(screen.getByText("生成场景插画")).toBeInTheDocument();
+      expect(container.querySelector('[data-slot="card"]')).toBeNull();
+      expect(screen.getByRole('button', { name: '生成场景插画' })).toHaveAttribute(
+        'data-size',
+        'touch',
+      );
     });
 
     it("calls onGenerate when clicking generate button", async () => {
@@ -95,6 +109,44 @@ describe("HistorySceneImage", () => {
       created_at: "2025-01-01T00:00:00Z",
     };
 
+    it("renders a flat historical figure with caption metadata instead of a card", () => {
+      const { container } = render(
+        <HistorySceneImage
+          {...baseProps}
+          sceneImage={sceneImage}
+          week={4}
+          round={2}
+        />
+      );
+
+      const figure = container.querySelector('figure[data-slot="history-scene-figure"]');
+      expect(figure).toBeInTheDocument();
+      expect(figure).toHaveClass(
+        'rounded-none',
+        'border-y',
+        'bg-transparent',
+        'shadow-none',
+      );
+      expect(container.querySelector('[data-slot="card"]')).toBeNull();
+      expect(figure?.querySelector('figcaption')).toHaveTextContent('历史场景插画');
+      expect(figure?.querySelector('figcaption')).toHaveTextContent('第 5 周 · 第 3 轮');
+
+      const roundLabel = screen.getByText('第 5 周 · 第 3 轮');
+      expect(roundLabel).not.toHaveClass('rounded', 'bg-black/50', 'text-white');
+      expect(figure?.getAttribute('class')).not.toMatch(
+        /(?:rounded-(?:lg|xl|2xl)|shadow-(?!none)|bg-card|drop-shadow)/,
+      );
+    });
+
+    it("keeps the historical image action at a 44px touch target", () => {
+      render(<HistorySceneImage {...baseProps} sceneImage={sceneImage} />);
+
+      expect(screen.getByRole('button', { name: '修改图片' })).toHaveAttribute(
+        'data-size',
+        'touch',
+      );
+    });
+
     it("renders the image with src", () => {
       render(<HistorySceneImage {...baseProps} sceneImage={sceneImage} />);
 
@@ -105,7 +157,9 @@ describe("HistorySceneImage", () => {
 
     it("renders scene description", () => {
       render(<HistorySceneImage {...baseProps} sceneImage={sceneImage} />);
-      expect(screen.getByText("A beautiful landscape scene")).toBeInTheDocument();
+      const description = screen.getByText("A beautiful landscape scene");
+      expect(description).toHaveClass("whitespace-normal", "break-words");
+      expect(description).not.toHaveClass("line-clamp-2", "truncate");
     });
 
     it("shows week and round labels", () => {
@@ -141,7 +195,10 @@ describe("HistorySceneImage", () => {
       fireEvent.error(img!);
 
       expect(screen.getByText("图片加载失败")).toBeInTheDocument();
-      expect(screen.getByText("重新加载")).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '重新加载' })).toHaveAttribute(
+        'data-size',
+        'touch',
+      );
     });
 
     it("clears image cache on first error", () => {
@@ -191,11 +248,19 @@ describe("HistorySceneImage", () => {
       );
 
       await user.click(screen.getByText("修改图片"));
-      expect(
-        screen.getByPlaceholderText("例如：让场景更明亮一些，增加更多人物...")
-      ).toBeInTheDocument();
-      expect(screen.getByText("确认生成")).toBeInTheDocument();
+      const input = screen.getByRole("textbox", { name: "插画修改要求" });
+      expect(input).toHaveAttribute("data-control-size", "touch");
+      expect(screen.getByRole("button", { name: "确认生成" })).not.toHaveClass("text-xs");
+      expect(screen.getByRole("button", { name: "取消" })).not.toHaveClass("text-xs");
       expect(screen.getByText("取消")).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '确认生成' })).toHaveAttribute(
+        'data-size',
+        'touch',
+      );
+      expect(screen.getByRole('button', { name: '取消' })).toHaveAttribute(
+        'data-size',
+        'touch',
+      );
     });
 
     it("hides regenerate input when clicking cancel", async () => {

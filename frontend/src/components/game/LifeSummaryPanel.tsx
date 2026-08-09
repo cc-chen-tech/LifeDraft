@@ -4,6 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { FileText, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { FeedbackNotice, Surface } from "@/components/story101";
 import { cn } from "@/lib/utils";
 
 export interface LifeSummaryData {
@@ -32,25 +33,28 @@ export function LifeSummaryPanel({
   className,
 }: LifeSummaryPanelProps) {
   return (
+    <Surface asChild variant="overlay">
     <section
       role="dialog"
       data-testid="life-summary-panel"
       aria-label="人生总结"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") onClose();
+      }}
       className={cn(
-        "fixed bottom-20 left-4 right-4 sm:left-auto sm:w-[min(28rem,calc(100vw-2rem))] max-w-md z-50",
-        "bg-card/95 backdrop-blur-sm border border-border shadow-xl rounded-lg",
-        "p-4 safe-area-pb",
+        "play-chat-surface fixed left-4 right-4 z-[70] max-w-md p-4 safe-area-pb sm:left-auto sm:w-[min(28rem,calc(100vw-2rem))]",
         className,
       )}
     >
-      <div className="flex items-center gap-2 mb-3">
-        <FileText className="w-4 h-4 text-primary" />
-        <h2 className="text-sm font-semibold text-foreground">人生总结</h2>
+      <div className="mb-4 flex items-center gap-2 border-b border-[var(--border-default)] pb-3">
+        <FileText className="h-4 w-4 text-[var(--text-secondary)]" />
+        <h2 className="text-sm font-medium text-[var(--text-primary)]">人生总结</h2>
         <div className="flex-1" />
         <Button
-          size="icon"
-          variant="ghost"
-          className="h-8 w-8"
+          type="button"
+          size="icon-touch"
+          variant="quiet"
+          autoFocus
           onClick={onClose}
           aria-label="关闭人生总结"
           title="关闭人生总结"
@@ -58,27 +62,30 @@ export function LifeSummaryPanel({
           <X className="w-4 h-4" />
         </Button>
       </div>
-      <div className="max-h-[320px] overflow-y-auto text-sm text-muted-foreground">
+      <div className="max-h-[min(22rem,55dvh)] overflow-y-auto text-sm text-[var(--text-secondary)]">
         {isLoading ? (
-          <div className="flex items-center gap-2 rounded-lg bg-secondary px-3 py-2">
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            正在生成总结...
-          </div>
+          <FeedbackNotice tone="info">
+            <span className="flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              正在生成总结...
+            </span>
+          </FeedbackNotice>
         ) : error ? (
-          <div className="rounded-lg bg-destructive/10 px-3 py-2 text-destructive">{error}</div>
+          <FeedbackNotice tone="danger">{error}</FeedbackNotice>
         ) : summary ? (
           <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-[var(--text-secondary)]">
               {getSummaryWeekLabel(summary.startWeek, summary.endWeek)}
             </p>
-            <div className="prose prose-sm prose-invert max-w-none text-muted-foreground">
+            <div className="prose-story max-w-none text-sm text-[var(--text-secondary)]">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary.text}</ReactMarkdown>
             </div>
           </div>
         ) : (
-          <div className="rounded-lg bg-secondary px-3 py-2">暂无总结内容</div>
+          <p className="border-y border-[var(--border-default)] py-3">暂无总结内容</p>
         )}
       </div>
     </section>
+    </Surface>
   );
 }

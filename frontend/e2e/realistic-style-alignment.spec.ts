@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { ensureAuthenticated, API_URL } from './helpers/auth';
+import { openPlayTools } from './helpers/play-tools';
 
 test('realistic modern setup selects nonfiction instead of cyberpunk', async ({ page, context }) => {
   await ensureAuthenticated(page, context);
@@ -24,15 +25,9 @@ test('realistic modern setup selects nonfiction instead of cyberpunk', async ({ 
   const game = await response.json();
 
   await page.goto(`/play?gameId=${game.game_id}`);
-  await page.getByRole('button', { name: '设置' }).click();
-  await page.getByRole('menuitem', { name: /叙事风格/ }).hover();
+  const toolsDialog = await openPlayTools(page);
+  await toolsDialog.getByRole('button', { name: '叙事风格', exact: true }).click();
 
-  await expect(page.getByRole('menuitemradio', { name: '非虚构小说' })).toHaveAttribute(
-    'data-state',
-    'checked',
-  );
-  await expect(page.getByRole('menuitemradio', { name: '赛博朋克' })).toHaveAttribute(
-    'data-state',
-    'unchecked',
-  );
+  await expect(toolsDialog.getByRole('radio', { name: /非虚构小说/ })).toBeChecked();
+  await expect(toolsDialog.getByRole('radio', { name: /赛博朋克/ })).not.toBeChecked();
 });

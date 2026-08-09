@@ -178,7 +178,7 @@ describe('CollectionPanel action contracts', () => {
     });
     await renderPanel(74);
 
-    fireEvent.click(screen.getByRole('button', { name: '关闭' }));
+    fireEvent.click(screen.getByRole('button', { name: '关闭收集错误' }));
 
     expect(actionMock('clearError')).toHaveBeenCalledTimes(1);
   });

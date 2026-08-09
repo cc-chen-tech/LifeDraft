@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { ensureAuthenticated, API_URL } from "./helpers/auth";
+import { openPlayTools } from "./helpers/play-tools";
 
 // 通过 API 直接创建测试游戏
 async function createTestGame(
@@ -32,7 +33,7 @@ async function createTestGame(
 }
 
 test.describe("叙事风格选择", () => {
-  test("齿轮按钮下拉菜单可切换叙事风格", async ({ page, context }) => {
+  test("游戏工具可切换叙事风格", async ({ page, context }) => {
     // 登录并创建游戏
     await ensureAuthenticated(page, context);
     const gameId = await createTestGame(context);
@@ -42,29 +43,25 @@ test.describe("叙事风格选择", () => {
     await page.waitForLoadState("domcontentloaded");
     await page.waitForTimeout(2000);
 
-    // 点击右上角齿轮按钮（设置）
-    const settingsButton = page.locator("button[title='设置']").first();
-    await expect(settingsButton).toBeVisible({ timeout: 20000 });
-    await settingsButton.click();
+    // 从当前视口的真实入口打开统一游戏工具面板
+    const toolsDialog = await openPlayTools(page);
 
-    // 断言 DropdownMenu 可见且包含"叙事风格"
-    await expect(page.locator("text=设置").first()).toBeVisible();
-    await expect(page.locator("text=叙事风格").first()).toBeVisible();
-
-    // Hover 到"叙事风格"菜单项上展开子菜单，并等待远端风格列表加载完成
-    const narrativeStyleTrigger = page.getByRole("menuitem", { name: /叙事风格/ });
-    await narrativeStyleTrigger.hover();
-    await expect(page.locator("text=中国古典演义").first()).toBeVisible({ timeout: 15000 });
-
-    // 子菜单中应包含至少一个选项（如"中国古典演义"）
-    await expect(page.locator("text=中国古典演义").first()).toBeVisible();
+    // 点击"叙事风格"按钮展开选项，并等待远端风格列表加载完成
+    const narrativeStyleTrigger = toolsDialog.getByRole("button", {
+      name: "叙事风格",
+      exact: true,
+    });
+    await narrativeStyleTrigger.click();
+    await expect(
+      toolsDialog.getByRole("radio", { name: /中国古典演义/ })
+    ).toBeVisible({ timeout: 15000 });
 
     // 选择"中国武侠"
-    const wuxiaItem = page.locator("[role='menuitemradio']:has-text('中国武侠')");
-    await wuxiaItem.click();
+    const wuxiaItem = toolsDialog.getByRole("radio", { name: /中国武侠/ });
+    await wuxiaItem.check();
 
-    // 验证"中国武侠"项带有选中标记
-    await expect(wuxiaItem).toHaveAttribute("data-state", "checked");
+    // 验证"中国武侠"原生 radio 已选中
+    await expect(wuxiaItem).toBeChecked();
   });
 
   test("游戏状态 API 返回 narrative_style_id", async ({ page, context }) => {

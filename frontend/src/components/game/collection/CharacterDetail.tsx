@@ -27,6 +27,7 @@ import type { CharacterDetailProps } from "./types";
 export function CharacterDetail({
   character,
   onClose,
+  onCloseAutoFocus,
   onGenerateImage,
   onStartRegenerate,
   onCancelRegenerate,
@@ -48,8 +49,10 @@ export function CharacterDetail({
   return (
     <Dialog open={!!character} onOpenChange={onClose}>
       <DialogContent
-        className="max-w-md h-[85vh] flex flex-col p-0 gap-0"
+        className="z-[81] max-w-md h-[85vh] flex flex-col p-0 gap-0"
+        overlayClassName="z-[80]"
         closeButtonLabel={`关闭${character.name}人物详情`}
+        onCloseAutoFocus={onCloseAutoFocus}
       >
         <DialogHeader className="px-6 pt-6 pb-2 flex-shrink-0">
           <div className="flex items-start justify-between">

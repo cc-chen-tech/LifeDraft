@@ -1,16 +1,17 @@
 "use client";
 
+import type { ComponentProps } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
+  SheetClose,
   SheetContent,
   SheetHeader,
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { History, ChevronRight, Calendar } from "lucide-react";
+import { History, ChevronRight, Calendar, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /** 场景图片信息 */
@@ -45,6 +46,8 @@ interface RoundHistoryDrawerProps {
   open: boolean;
   /** 打开/关闭回调 */
   onOpenChange: (open: boolean) => void;
+  /** 关闭后将焦点交还给打开抽屉的真实动作 */
+  onCloseAutoFocus?: ComponentProps<typeof SheetContent>["onCloseAutoFocus"];
   /** 历史轮次数据 */
   roundHistory: RoundHistoryItem[];
   /** 当前选中的轮次索引 */
@@ -62,6 +65,7 @@ const ROUND_NAMES = ["周一", "周中", "周末"];
 export function RoundHistoryDrawer({
   open,
   onOpenChange,
+  onCloseAutoFocus,
   roundHistory,
   selectedIndex,
   onSelect,
@@ -83,13 +87,26 @@ export function RoundHistoryDrawer({
     .sort((a, b) => a - b);
 
   return (
-    <Sheet modal={false} open={open} onOpenChange={onOpenChange}>
+    <Sheet modal open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="left"
-        className="w-80 sm:w-96 p-0"
-        overlayClassName="pointer-events-none bg-transparent"
+        showCloseButton={false}
+        onCloseAutoFocus={onCloseAutoFocus}
+        className="z-[71] w-full max-w-[min(100vw,24rem)] p-0"
+        overlayClassName="z-[70] bg-transparent"
       >
-        <SheetHeader className="p-4 border-b">
+        <SheetClose asChild>
+          <Button
+            variant="quiet"
+            size="icon-touch"
+            className="absolute right-2 top-2 z-[72]"
+            aria-label="关闭历史回顾"
+          >
+            <X className="size-4" aria-hidden="true" />
+          </Button>
+        </SheetClose>
+
+        <SheetHeader className="border-b p-4 pr-16">
           <SheetTitle className="flex items-center gap-2">
             <History className="w-5 h-5" />
             历史回顾
@@ -104,7 +121,8 @@ export function RoundHistoryDrawer({
             {/* 当前轮次提示 */}
             {isViewingHistory && (
               <Button
-                variant="outline"
+                variant="narrative"
+                size="touch"
                 className="w-full justify-start gap-2"
                 onClick={onBackToCurrent}
               >
@@ -121,9 +139,9 @@ export function RoundHistoryDrawer({
               sortedWeeks.map((week) => {
                 const rounds = groupedByWeek[week];
                 return (
-                  <div key={week} className="space-y-2">
+                  <div key={week} className="space-y-0">
                     {/* 周标题 */}
-                    <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                    <div className="flex items-center gap-2 border-b border-[var(--border-default)] py-3 text-sm font-medium text-muted-foreground">
                       <Calendar className="w-4 h-4" />
                       第 {week + 1} 周
                       {rounds[0]?.date_info?.date_string && (
@@ -144,20 +162,22 @@ export function RoundHistoryDrawer({
                       return (
                         <div
                           key={`${item.week}-${item.round}`}
-                          className="space-y-2"
+                          className="space-y-0"
                         >
                           <button
+                            data-slot="history-round-row"
                             aria-label={`第 ${item.week + 1} 周 ${roundName}：${hasStory ? "阅读正文" : "查看摘要"}`}
                             onClick={() => {
                               onSelect(item.originalIndex);
                               onOpenChange(false);
                             }}
                             className={cn(
-                              "w-full text-left p-3 rounded-lg border transition-all",
-                              "hover:bg-accent hover:border-accent-foreground/20",
+                              "min-h-11 w-full rounded-none border-x-0 border-t-0 border-b bg-transparent px-0 py-3 text-left shadow-none transition-colors",
+                              "hover:border-[var(--border-strong)] hover:bg-transparent",
+                              "focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-inset",
                               isSelected
-                                ? "bg-primary/10 border-primary/30"
-                                : "bg-card border-border"
+                                ? "border-[var(--border-strong)]"
+                                : "border-[var(--border-default)]"
                             )}
                           >
                             <div className="flex items-center justify-between mb-1">
@@ -165,9 +185,12 @@ export function RoundHistoryDrawer({
                                 {roundName}
                               </span>
                               {hasStory && (
-                                <Badge variant="secondary" className="text-xs">
+                                <span
+                                  data-slot="history-recorded"
+                                  className="text-xs tracking-[0.12em] text-[var(--text-secondary)]"
+                                >
                                   已记录
-                                </Badge>
+                                </span>
                               )}
                             </div>
 
@@ -185,14 +208,17 @@ export function RoundHistoryDrawer({
                               </p>
                             )}
                             {hasStory && (
-                              <p className="mt-2 text-xs text-primary">
+                              <p className="mt-2 text-xs text-[var(--text-secondary)]">
                                 点击阅读正文
                               </p>
                             )}
                           </button>
 
                           {isSelected && hasStory && (
-                            <div className="space-y-3 rounded-md border border-primary/20 bg-primary/5 p-3 text-xs leading-6 text-foreground">
+                            <div
+                              data-slot="history-round-body"
+                              className="space-y-3 rounded-none border-x-0 border-t-0 border-b border-[var(--border-default)] bg-transparent px-0 py-4 text-sm leading-6 text-foreground shadow-none"
+                            >
                               {item.event_description && (
                                 <p className="whitespace-pre-wrap">
                                   {item.event_description}
@@ -200,7 +226,7 @@ export function RoundHistoryDrawer({
                               )}
                               {item.story_continuation && (
                                 <div className="space-y-2">
-                                  <p className="font-medium text-primary">
+                                  <p className="font-medium text-[var(--text-primary)]">
                                     选择后的故事发展
                                   </p>
                                   <p className="whitespace-pre-wrap">
@@ -221,7 +247,7 @@ export function RoundHistoryDrawer({
         </ScrollArea>
 
         {/* 底部提示 */}
-        <div className="p-4 border-t bg-muted/30">
+        <div className="border-t border-[var(--border-default)] p-4">
           <p className="text-xs text-muted-foreground text-center">
             共 {roundHistory.length} 轮历史记录
           </p>

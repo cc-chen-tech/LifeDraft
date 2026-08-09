@@ -7,28 +7,50 @@
  * 3. 生成图片后 → 收集面板显示最新数据
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import { ensureActiveGame } from './helpers/auth';
+import { openPlayTools } from './helpers/play-tools';
 
-// 打开收集面板的辅助函数
-async function openCollectionPanel(page: import('@playwright/test').Page) {
-  const collectionButton = page.getByRole('button', { name: '收集' });
-  await expect(collectionButton).toBeVisible({ timeout: 15000 });
-  await collectionButton.click();
-  await expect(page.locator('text=人物、物品和标志物收集记录')).toBeVisible({ timeout: 5000 });
+function collectionDialog(page: Page) {
+  return page.getByRole('dialog', { name: '收集', exact: true });
 }
 
-function collectionDialog(page: import('@playwright/test').Page) {
-  return page.getByRole('dialog', { name: '收集' });
+function historyDialog(page: Page) {
+  return page.getByRole('dialog', { name: '历史回顾', exact: true });
 }
 
-// 关闭收集面板的辅助函数
-async function closeCollectionPanel(page: import('@playwright/test').Page) {
-  const closeButton = page.locator('button:has-text("Close"), button[aria-label="关闭"]').first();
-  if (await closeButton.isVisible().catch(() => false)) {
-    await closeButton.click();
-    await page.waitForTimeout(300);
-  }
+// 从当前 viewport 的真实工具入口打开收集面板。
+async function openCollectionPanel(page: Page): Promise<Locator> {
+  const tools = await openPlayTools(page);
+  await tools.getByRole('button', { name: '打开收集', exact: true }).click();
+
+  const dialog = collectionDialog(page);
+  await expect(dialog).toBeVisible({ timeout: 5000 });
+  await expect(
+    dialog.getByText('人物、物品和标志物收集记录', { exact: true })
+  ).toBeVisible({ timeout: 5000 });
+  return dialog;
+}
+
+async function closeCollectionPanel(page: Page) {
+  const dialog = collectionDialog(page);
+  await dialog.getByRole('button', { name: '关闭收集', exact: true }).click();
+  await expect(dialog).not.toBeVisible({ timeout: 3000 });
+}
+
+async function openHistoryPanel(page: Page): Promise<Locator> {
+  const tools = await openPlayTools(page);
+  await tools.getByRole('button', { name: '打开历史回顾', exact: true }).click();
+
+  const dialog = historyDialog(page);
+  await expect(dialog).toBeVisible({ timeout: 10000 });
+  return dialog;
+}
+
+async function closeHistoryPanel(page: Page) {
+  const dialog = historyDialog(page);
+  await dialog.getByRole('button', { name: '关闭历史回顾', exact: true }).click();
+  await expect(dialog).not.toBeVisible({ timeout: 3000 });
 }
 
 test.describe('收集面板缓存优化', () => {
@@ -40,11 +62,13 @@ test.describe('收集面板缓存优化', () => {
     await page.goto('/play');
     await page.waitForLoadState('domcontentloaded');
 
-    await openCollectionPanel(page);
+    const collection = await openCollectionPanel(page);
 
     // 验证面板内容加载完成
-    await expect(page.locator('text=人物、物品和标志物收集记录')).toBeVisible();
-    await expect(page.getByText(/人物.*\(/)).toBeVisible();
+    await expect(
+      collection.getByText('人物、物品和标志物收集记录', { exact: true })
+    ).toBeVisible();
+    await expect(collection.getByRole('tab', { name: /人物.*\(/ })).toBeVisible();
   });
 
   test('收集面板关闭后重新打开应快速显示', async ({ page }) => {
@@ -52,19 +76,30 @@ test.describe('收集面板缓存优化', () => {
     await page.waitForLoadState('domcontentloaded');
 
     // 第一次打开
-    await openCollectionPanel(page);
-    await expect(
-      collectionDialog(page).getByRole('button', { name: /缓存测试角色.*主角/ })
-    ).toBeVisible();
+    const initialCollection = await openCollectionPanel(page);
+    const initialPlayerRow = initialCollection.getByRole('button', {
+      name: '查看人物：缓存测试角色',
+      exact: true,
+    });
+    await expect(initialPlayerRow).toBeVisible();
+    await expect(initialPlayerRow.getByText('主角', { exact: true })).toBeVisible();
 
     // 关闭面板
     await closeCollectionPanel(page);
 
-    // 记录重新打开的时间
+    // 工具面板不是收集缓存的一部分；只计时从收集动作到缓存内容可见。
+    const tools = await openPlayTools(page);
     const startTime = Date.now();
+    await tools.getByRole('button', { name: '打开收集', exact: true }).click();
 
-    // 重新打开
-    await openCollectionPanel(page);
+    const collection = collectionDialog(page);
+    await expect(collection).toBeVisible({ timeout: 1000 });
+    const cachedPlayerRow = collection.getByRole('button', {
+      name: '查看人物：缓存测试角色',
+      exact: true,
+    });
+    await expect(cachedPlayerRow).toBeVisible({ timeout: 1000 });
+    await expect(cachedPlayerRow.getByText('主角', { exact: true })).toBeVisible();
 
     const openTime = Date.now() - startTime;
 
@@ -72,34 +107,38 @@ test.describe('收集面板缓存优化', () => {
     expect(openTime).toBeLessThan(1000);
 
     // 内容应该仍然正确显示
-    await expect(page.locator('text=人物、物品和标志物收集记录')).toBeVisible();
+    await expect(
+      collection.getByText('人物、物品和标志物收集记录', { exact: true })
+    ).toBeVisible({ timeout: 5000 });
   });
 
   test('收集面板显示分类标签和主角信息', async ({ page }) => {
     await page.goto('/play');
     await page.waitForLoadState('domcontentloaded');
 
-    await openCollectionPanel(page);
+    const collection = await openCollectionPanel(page);
 
     // 应有人物、物品、标志物三个分类标签
-    await expect(page.getByText(/人物.*\(/)).toBeVisible();
-    await expect(page.getByText(/物品.*\(/)).toBeVisible();
-    await expect(page.getByText(/标志物.*\(/)).toBeVisible();
+    await expect(collection.getByRole('tab', { name: /人物.*\(/ })).toBeVisible();
+    await expect(collection.getByRole('tab', { name: /物品.*\(/ })).toBeVisible();
+    await expect(collection.getByRole('tab', { name: /标志物.*\(/ })).toBeVisible();
 
     // 应显示主角
-    const collection = collectionDialog(page);
-    await expect(collection.getByRole('button', { name: /缓存测试角色.*主角/ })).toBeVisible();
-    await expect(collection.getByText('主角')).toBeVisible();
+    const playerRow = collection.getByRole('button', {
+      name: '查看人物：缓存测试角色',
+      exact: true,
+    });
+    await expect(playerRow).toBeVisible();
+    await expect(playerRow.getByText('主角', { exact: true })).toBeVisible();
   });
 
   test('切换标签页不触发新的网络请求', async ({ page }) => {
     await page.goto('/play');
     await page.waitForLoadState('domcontentloaded');
 
-    await openCollectionPanel(page);
+    const collection = await openCollectionPanel(page);
 
     // 获取物品标签
-    const collection = collectionDialog(page);
     const itemsTab = collection.getByTestId('collection-tab-items');
     await expect(itemsTab).toBeVisible();
 
@@ -133,26 +172,26 @@ test.describe('收集面板缓存优化', () => {
     expect(collectionRequestCount).toBe(0);
   });
 
-  test('历史回顾与收集面板不能同时打开', async ({ page }) => {
+  test('历史回顾与收集面板按用户路径保持单一可见层', async ({ page }) => {
     await page.goto('/play');
     await page.waitForLoadState('domcontentloaded');
 
-    const historyButton = page.getByRole('button', { name: '历史回顾' });
-    const collectionButton = page.getByRole('button', { name: '收集' });
-    const historyDialog = page.getByRole('dialog', { name: '历史回顾' });
-    const collectionDialog = page.getByRole('dialog', { name: '收集' });
+    const history = historyDialog(page);
+    const collection = collectionDialog(page);
 
-    await historyButton.click();
-    await expect(historyDialog).toBeVisible({ timeout: 10000 });
-    await expect(collectionDialog).not.toBeVisible();
+    await openHistoryPanel(page);
+    await expect(history).toBeVisible();
+    await expect(collection).not.toBeVisible();
 
-    await collectionButton.click();
-    await expect(collectionDialog).toBeVisible({ timeout: 10000 });
-    await expect(historyDialog).not.toBeVisible();
+    await closeHistoryPanel(page);
+    await openCollectionPanel(page);
+    await expect(collection).toBeVisible();
+    await expect(history).not.toBeVisible();
 
-    await historyButton.click();
-    await expect(historyDialog).toBeVisible({ timeout: 10000 });
-    await expect(collectionDialog).not.toBeVisible();
+    await closeCollectionPanel(page);
+    await openHistoryPanel(page);
+    await expect(history).toBeVisible();
+    await expect(collection).not.toBeVisible();
   });
 
 });
@@ -332,12 +371,16 @@ test.describe('真实游戏页收集自动识别', () => {
     await page.goto(`/play?gameId=${gameId}`);
     await page.waitForLoadState('domcontentloaded');
 
-    await openCollectionPanel(page);
+    const collection = await openCollectionPanel(page);
 
-    const collection = collectionDialog(page);
-    await expect(collection.getByRole('button', { name: /赵掌柜.*故事人物/ })).toBeVisible({
-      timeout: 10000,
+    const recognizedCharacterRow = collection.getByRole('button', {
+      name: '查看人物：赵掌柜',
+      exact: true,
     });
+    await expect(recognizedCharacterRow).toBeVisible({ timeout: 10000 });
+    await expect(
+      recognizedCharacterRow.getByText('故事人物', { exact: true })
+    ).toBeVisible();
     await expect(collection.getByText(/人物 \(2\)/)).toBeVisible();
     expect(recognizeCalled).toBe(true);
     expect(addEntitiesCalled).toBe(true);

@@ -12,6 +12,11 @@ export { PageTransition } from "./PageTransition";
 export type { PageTransitionProps } from "./PageTransition";
 export { PageEdgeBookmark } from "./PageEdgeBookmark";
 export type { PageEdgeBookmarkProps } from "./PageEdgeBookmark";
+export { MobileActionDock } from "./MobileActionDock";
+export type {
+  MobileActionDockAction,
+  MobileActionDockProps,
+} from "./MobileActionDock";
 export { RouteLoadingState } from "./RouteLoadingState";
 export { Surface } from "./Surface";
 export type { SurfaceProps } from "./Surface";

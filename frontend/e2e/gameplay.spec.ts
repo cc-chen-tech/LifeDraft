@@ -9,7 +9,8 @@
  * 2. UI components are present when game exists
  */
 import { test, expect } from '@playwright/test';
-import { waitForPageReady } from './helpers/wait-helpers';
+import { ensureActiveGame } from './helpers/auth';
+import { openPlayTools } from './helpers/play-tools';
 
 test.describe('Gameplay - Game Page Structure', () => {
   test.beforeEach(async ({ page }) => {
@@ -81,19 +82,20 @@ test.describe('Gameplay - History Feature', () => {
     await expect(page).toHaveTitle(/Story Life|人生|Life Draft/);
   });
 
-  test('should open history drawer when clicking history button', async ({ page }) => {
+  test('should open history drawer when clicking history button', async ({ page, context }) => {
+    await ensureActiveGame(page, context, { player_name: '历史入口测试角色' });
+
     await page.goto('/play');
     await page.waitForLoadState('domcontentloaded');
-    
-    const headerButtons = page.locator('header button');
-    if (await headerButtons.count() >= 2) {
-      // First button after status bar should be history
-      await headerButtons.first().click();
-      await page.waitForLoadState('domcontentloaded');
-      
-      // Drawer should open
-      const drawer = page.locator('[class*="drawer"], [class*="sheet"], [role="dialog"]');
-    }
+
+    const tools = await openPlayTools(page);
+    await tools.getByRole('button', { name: '打开历史回顾', exact: true }).click();
+
+    const history = page.getByRole('dialog', { name: '历史回顾', exact: true });
+    await expect(history).toBeVisible({ timeout: 10000 });
+    await expect(
+      history.getByText('查看之前轮次的故事（只读模式）', { exact: true })
+    ).toBeVisible();
   });
 });
 

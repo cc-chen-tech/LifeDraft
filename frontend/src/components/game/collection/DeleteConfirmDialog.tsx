@@ -17,13 +17,18 @@ import type { DeleteConfirmDialogProps } from "./types";
 export function DeleteConfirmDialog({
   open,
   onClose,
+  onCloseAutoFocus,
   onConfirm,
   entityToDelete,
   isDeleting,
 }: DeleteConfirmDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-sm">
+      <DialogContent
+        className="z-[91] max-w-sm"
+        overlayClassName="z-[90]"
+        onCloseAutoFocus={onCloseAutoFocus}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-destructive">
             <Trash2 className="w-5 h-5" />
