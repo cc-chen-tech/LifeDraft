@@ -16,7 +16,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from config.settings import PRESETS_DIR, settings
 from src.ai.cache import EventCache
-from src.ai.client import AIClient
+from src.ai.client import AIClient, _thinking_request_params
 from src.ai.models import GameEvent
 from src.ai.option_generator import OptionGenerator
 from src.ai.story_generator import StoryGenerator
@@ -75,6 +75,7 @@ class EventGenerator:
         max_tokens: int = 2000,
         stream_callback: Optional[Callable[[str], None]] = None,
         model: Optional[str] = None,
+        thinking: Optional[bool] = None,
     ) -> str:
         """Backward-compatible private AI call (delegates to AIClient)."""
         return self.ai_client.call(
@@ -84,6 +85,7 @@ class EventGenerator:
             max_tokens=max_tokens,
             stream_callback=stream_callback,
             model=model,
+            thinking=thinking,
         )
 
     def generate_completion(
@@ -97,6 +99,7 @@ class EventGenerator:
         retry_count: int = 1,
         language: str = "zh",
         request_timeout: Optional[float] = None,
+        thinking: Optional[bool] = None,
     ) -> str:
         """Public AI text generation interface.
 
@@ -109,6 +112,7 @@ class EventGenerator:
             model: Optional model override
             retry_count: Number of attempts (1 = no retry, 2+ = retry with error feedback)
             language: Language for error feedback messages
+            thinking: Disable thinking for DeepSeek V4 when False
         """
         if retry_count > 1:
             return self.ai_client.call_with_retry(
@@ -121,6 +125,7 @@ class EventGenerator:
                 model=model,
                 language=language,
                 request_timeout=request_timeout,
+                thinking=thinking,
             )
         return self.ai_client.call(
             system_prompt=system_prompt,
@@ -130,6 +135,7 @@ class EventGenerator:
             stream_callback=stream_callback,
             model=model,
             request_timeout=request_timeout,
+            thinking=thinking,
         )
 
     def generate_completion_json(
@@ -139,6 +145,7 @@ class EventGenerator:
         temperature: float = 0.8,
         max_tokens: int = 2000,
         model: Optional[str] = None,
+        thinking: Optional[bool] = None,
     ) -> Optional[Dict[str, Any]]:
         """Public AI JSON generation interface."""
         return self.ai_client.call_json(
@@ -147,6 +154,7 @@ class EventGenerator:
             temperature=temperature,
             max_tokens=max_tokens,
             model=model,
+            thinking=thinking,
         )
 
     def generate_stream(
@@ -156,6 +164,7 @@ class EventGenerator:
         temperature: float = 0.8,
         max_tokens: int = 2000,
         model: Optional[str] = None,
+        thinking: Optional[bool] = None,
     ):
         """Public AI streaming interface - returns raw stream object.
 
@@ -167,6 +176,7 @@ class EventGenerator:
         """
         use_model = model or self.ai_client.model
         client = self.ai_client.require_openai_client()
+        request_params = _thinking_request_params(use_model, thinking)
         return client.chat.completions.create(
             model=use_model,
             messages=[
@@ -176,6 +186,7 @@ class EventGenerator:
             temperature=temperature,
             max_tokens=max_tokens,
             stream=True,
+            **request_params,
         )
 
     # ==================== Preset Events ====================
