@@ -18,6 +18,7 @@ maintained_tests=(
   tests/test_choice_sse_stream_contracts.py
   tests/test_session_store_replay_contracts.py
   tests/test_active_game_owner_recovery_db_no_mock.py
+  tests/test_round_event_sse_terminal_contracts.py
   tests/test_story_music_recommendation_contract.py
   tests/test_integration_real_db.py
   tests/test_database.py
