@@ -141,7 +141,7 @@ export interface SessionState {
     playerName?: string;
     constraintLevel?: "fast" | "expert" | "master";
   }>;
-  syncState: () => Promise<{
+  syncState: (options?: { gameId?: number; signal?: AbortSignal }) => Promise<{
     event: { story: string; options: EventOption[] } | null;
     hasNewOptions: boolean;
     eventStory?: string;
@@ -217,20 +217,31 @@ export const useSessionStore = create<SessionState>()(
       };
     },
 
-    syncState: async () => {
-      const { gameId } = get();
+    syncState: async (options) => {
+      const gameId = options?.gameId ?? get().gameId;
+      const isCurrentRequest = () =>
+        !options?.signal?.aborted && get().gameId === gameId;
       console.log(`[syncState] Syncing game ${gameId}`);
       if (!gameId) return;
 
       let state;
       try {
-        state = await api.gameplay.getState(gameId);
+        state = await api.gameplay.getState(gameId, options?.signal);
+        if (!isCurrentRequest()) return;
       } catch (err) {
+        if (!isCurrentRequest()) return;
         const error = err as { status?: number; message?: string };
         if (error.status === 404 || String(error.message || "").includes("404")) {
+          // A run-owned initialization must never enter the legacy mutating
+          // reload path. Its caller decides how to recover after rechecking
+          // the captured game/run identity.
+          if (options?.gameId !== undefined || options?.signal) {
+            throw err;
+          }
           console.warn("[syncState] Session expired (404), reloading game to restore session...");
           try {
             const loaded = await get().loadGameState(gameId);
+            if (!isCurrentRequest()) return;
             console.log("[syncState] Game reloaded successfully");
             return {
               event: loaded.event,
@@ -284,6 +295,7 @@ export const useSessionStore = create<SessionState>()(
         updates.constraintLevel = state.constraint_level;
       }
 
+      if (!isCurrentRequest()) return;
       if (Object.keys(updates).length > 0) {
         console.log(`[syncState] Updating fields: ${Object.keys(updates).join(', ')}`);
         set(updates as SessionState);

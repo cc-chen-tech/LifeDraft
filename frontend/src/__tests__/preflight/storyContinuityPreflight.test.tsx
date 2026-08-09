@@ -47,6 +47,8 @@ function createHandlers(): EventHandlers {
     setConnectionStatus: jest.fn(),
     appendStoryText: jest.fn(),
     generatingRef: { current: true },
+    isRetryingRef: { current: false },
+    hadRetryRef: { current: false },
   };
 }
 
@@ -70,11 +72,20 @@ describe('story continuity preflight', () => {
     const handlers = createHandlers();
     const retryStory = '苏小二按住账册，低声提醒陆明先核对暗号。';
 
-    (useGameStore.getState as jest.Mock)
-      .mockReturnValueOnce({ setStoryText: jest.fn() })
-      .mockReturnValue({ storyText: '账册被人翻开，这是旧的首轮 stream 内容。', currentEvent: null });
+    (useGameStore.getState as jest.Mock).mockReturnValue({
+      storyText: '账册被人翻开，这是旧的首轮 stream 内容。',
+      currentEvent: null,
+    });
 
-    handleStatusUpdate({ phase: 'retry' }, handlers.setProcessing);
+    handleStatusUpdate(
+      { phase: 'retry' },
+      handlers.setProcessing,
+      handlers.isRetryingRef,
+      () => {
+        handlers.hadRetryRef!.current = true;
+        handlers.setStoryText('');
+      },
+    );
     handleEventComplete(
       {
         event_description: retryStory,
@@ -83,7 +94,8 @@ describe('story continuity preflight', () => {
       handlers,
     );
 
-    expect(handlers.setStoryText).toHaveBeenCalledWith(retryStory);
+    expect(handlers.setStoryText).toHaveBeenNthCalledWith(1, '');
+    expect(handlers.setStoryText).toHaveBeenLastCalledWith(retryStory);
     expect(handlers.setCurrentEvent).toHaveBeenCalledWith({
       story: retryStory,
       options: [{ text: '跟苏小二核对暗号' }, { text: '立刻去码头截人' }],

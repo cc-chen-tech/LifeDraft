@@ -136,6 +136,14 @@ export function ChatBar({
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatHistory]);
 
+  useEffect(() => {
+    if (!isStoryBusy && !isViewingHistory) return;
+
+    setIsExpanded(false);
+    setIsRewriteOpen(false);
+    setIsSummaryOpen(false);
+  }, [isStoryBusy, isViewingHistory]);
+
   // 生成总结并显示在专用总结面板中
   const handleGenerateSummary = useCallback(async () => {
     if (!gameId || isGeneratingSummary || isStoryBusy) return;
@@ -327,7 +335,7 @@ export function ChatBar({
     storyText,
   ]);
 
-  if (!gameId) return null;
+  if (!gameId || isStoryBusy || isViewingHistory) return null;
 
   const storyBusyTitle = "故事生成完成后可用";
   const storyActionDisabled = isViewingHistory || isStoryBusy;
@@ -420,7 +428,7 @@ export function ChatBar({
         <div
           data-testid="chat-bar-launcher"
           className={cn(
-            "fixed bottom-4 right-4 z-50 flex flex-wrap justify-end items-center gap-2 pointer-events-none",
+            "fixed bottom-4 right-4 z-50 flex flex-wrap justify-end items-center gap-2 pointer-events-none animate-in fade-in duration-200",
             "max-w-[calc(100vw-2rem)]",
             className
           )}
@@ -497,7 +505,7 @@ export function ChatBar({
     <div
       data-testid="chat-bar-panel"
       className={cn(
-        "fixed bottom-4 left-4 right-4 sm:left-auto sm:w-[min(28rem,calc(100vw-2rem))] max-w-md z-50",
+        "fixed bottom-4 left-4 right-4 sm:left-auto sm:w-[min(28rem,calc(100vw-2rem))] max-w-md z-50 animate-in fade-in duration-200",
         "bg-card/95 backdrop-blur-sm border border-border shadow-xl rounded-lg",
         "p-3 safe-area-pb",
         className

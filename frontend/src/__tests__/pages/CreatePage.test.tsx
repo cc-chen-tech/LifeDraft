@@ -494,7 +494,7 @@ describe('CreatePage', () => {
       expect(screen.getByText('时代背景')).toBeInTheDocument();
     });
 
-    it('shows long-running generation guidance before the request resolves', async () => {
+    it('shows the current character step in the unified loading state after a generation starts', () => {
       jest.useFakeTimers();
       (global.fetch as jest.Mock).mockImplementation(() => new Promise(() => {}));
       useGameStore.setState({
@@ -505,16 +505,49 @@ describe('CreatePage', () => {
 
       render(<CreatePage />);
 
-      await waitFor(() => {
-        expect(screen.getByText('AI正在生成时代背景...')).toBeInTheDocument();
-      });
+      expect(screen.getByRole('status')).toHaveTextContent('角色设定，正在成形');
+      expect(screen.getByRole('status')).toHaveTextContent('时代背景');
+      expect(screen.queryByText('这一页仍在继续写作')).not.toBeInTheDocument();
 
       act(() => {
         jest.advanceTimersByTime(15000);
       });
 
-      expect(screen.getByText('生成时间较久，请继续等待，完成后会自动显示结果。')).toBeInTheDocument();
+      expect(screen.getByText('这一页仍在继续写作')).toBeInTheDocument();
       jest.useRealTimers();
+    });
+
+    it('keeps the real pending automatic background step when portrait enters the full-screen state', async () => {
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url === '/api/character/setting') {
+          return new Promise(() => {});
+        }
+        return Promise.resolve(jsonResponse({}));
+      });
+      useGameStore.setState({
+        creationStep: 4,
+        gameId: 123,
+        playerName: '陆明',
+        characterSettings: {
+          era: { era_name: '现代' },
+          age: { starting_age: 22 },
+          gender: 'male',
+          world: { world_description: '城市' },
+        },
+      });
+      useImageStore.setState({ playerImages: [], isGeneratingImage: true });
+
+      render(<CreatePage />);
+
+      await waitFor(() => expect(global.fetch).toHaveBeenCalledWith(
+        '/api/character/setting',
+        expect.any(Object),
+      ));
+      fireEvent.click(screen.getByRole('button', { name: '继续生成角色' }));
+
+      expect(screen.getByTestId('narrative-loading-screen')).toHaveTextContent('角色背景，正在补全');
+      expect(screen.getByRole('status')).toHaveTextContent('家庭背景');
+      expect(screen.queryByText('剩余角色背景')).not.toBeInTheDocument();
     });
 
     it('handles regenerate button click', async () => {

@@ -8,17 +8,14 @@
 
 import { useGameStore } from "@/stores/useGameStore";
 import { handleChoiceComplete } from "@/hooks/game/choiceUtils";
-import { checkAndClearRetry, markRetry } from "@/hooks/game/eventUtils";
 
-describe("handleChoiceComplete — story text ownership on retry", () => {
+describe("handleChoiceComplete — story text ownership", () => {
   beforeEach(() => {
-    checkAndClearRetry();
     useGameStore.setState({ storyText: "" });
   });
 
-  it("retry complete-only 时不直接补写后端返回的选择结果", () => {
+  it("complete-only 时不直接补写后端返回的选择结果", () => {
     useGameStore.setState({ storyText: "第一章：开局。" });
-    markRetry(); // 标记发生了重试
 
     const handlers = {
       setProcessing: jest.fn(),
@@ -48,7 +45,7 @@ describe("handleChoiceComplete — story text ownership on retry", () => {
     expect(handlers.setProcessing).toHaveBeenCalledWith(false);
   });
 
-  it("非 retry complete-only 时不直接补写后端返回的选择结果", () => {
+  it("另一 complete-only payload 也不直接补写后端返回的选择结果", () => {
     useGameStore.setState({ storyText: "第一章：开局。" });
 
     const handlers = {
@@ -131,9 +128,8 @@ describe("handleChoiceComplete — story text ownership on retry", () => {
     expect(handlers.setPhase).toHaveBeenCalledWith("result");
   });
 
-  it("retry 但 continuation 为空时不应改变现有文本", () => {
+  it("continuation 为空时不应改变现有文本", () => {
     useGameStore.setState({ storyText: "第一章：开局。" });
-    markRetry();
 
     const handlers = {
       setProcessing: jest.fn(),

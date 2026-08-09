@@ -159,7 +159,6 @@ export interface UseCharacterCreationReturn {
   autoGenPhase: "idle" | "generating" | "done";
   setAutoGenPhase: (phase: "idle" | "generating" | "done") => void;
   autoGenLabel: string;
-  autoGenProgress: string;
   showDetails: boolean;
   setShowDetails: (show: boolean) => void;
   isBackgroundGenerating: boolean;
@@ -248,7 +247,6 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     allAutoSettingsPresent ? "done" : "idle"
   );
   const [autoGenLabel, setAutoGenLabel] = useState("");
-  const [autoGenProgress, setAutoGenProgress] = useState("");
   const [showDetails, setShowDetails] = useState(false);
 
   const autoGenTriggeredRef = useRef<Record<string, boolean>>({});
@@ -454,6 +452,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     for (let i = 0; i < stepsToGenerate.length; i++) {
       const step = stepsToGenerate[i];
       console.log(`[runAutoGeneration] Generating ${step} (${i + 1}/${stepsToGenerate.length})...`);
+      setAutoGenLabel(STEP_LABELS[step] ?? "剩余角色背景");
 
       try {
         let result: Record<string, unknown>;
@@ -462,6 +461,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
           const people: Record<string, unknown>[] = [];
           for (let pi = 0; pi < 3; pi++) {
             console.log(`[runAutoGeneration] Generating relationship person ${pi + 1}/3...`);
+            setAutoGenLabel("生成关键人物");
             const person = await withRetry(() =>
               api.character.generateRelationship({
                 player_name: playerName,
@@ -476,6 +476,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
             people.push(person);
           }
           console.log(`[runAutoGeneration] Generating relationships summary...`);
+          setAutoGenLabel("整理人际关系");
           const summaryResult = await withRetry(() =>
             api.character.generateRelationshipsSummary({
               player_name: playerName,
@@ -614,7 +615,7 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
       } else if (isBackgroundGenerating) {
         console.log("[portrait] Background generation still in progress, showing loading...");
         setAutoGenPhase("generating");
-        setAutoGenLabel("剩余角色背景");
+        setAutoGenLabel((currentLabel) => currentLabel || "剩余角色背景");
         
         const checkInterval = setInterval(() => {
           const settings = useGameStore.getState().characterSettings;
@@ -916,7 +917,6 @@ export function useCharacterCreation(): UseCharacterCreationReturn {
     autoGenPhase,
     setAutoGenPhase,
     autoGenLabel,
-    autoGenProgress,
     showDetails,
     setShowDetails,
     isBackgroundGenerating,

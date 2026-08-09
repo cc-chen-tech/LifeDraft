@@ -170,23 +170,6 @@
   animation: fade-in-word 0.3s ease-out forwards;
 }
 
-/* ===== Skeleton shimmer ===== */
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
-.skeleton-shimmer {
-  background: linear-gradient(
-    90deg,
-    var(--muted) 25%,
-    var(--accent) 50%,
-    var(--muted) 75%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 1.5s linear infinite;
-}
-
 /* ===== 页面转场 ===== */
 @keyframes page-enter {
   from { opacity: 0; transform: translateY(8px); }
@@ -253,5 +236,103 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* ===== 叙事加载：仅供 NarrativeLoadingState 使用 ===== */
+.narrative-loading {
+  --narrative-ink: #11100F;
+  --narrative-depth: #0D0C0B;
+  --narrative-paper: #F0ECE6;
+  --narrative-muted: #8F8881;
+  --narrative-rule: #34302C;
+  --narrative-accent: #71675D;
+  align-items: center;
+  background: var(--narrative-depth);
+  color: var(--narrative-paper);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+  padding: 2rem 1.5rem;
+  text-align: center;
+}
+
+.narrative-loading--screen {
+  min-height: 100dvh;
+}
+
+.narrative-loading--section {
+  min-height: 18rem;
+}
+
+.narrative-loading--inline {
+  align-items: flex-start;
+  background: transparent;
+  min-height: 0;
+  padding: 1.5rem 0;
+  text-align: left;
+}
+
+.narrative-loading-copy {
+  max-width: min(100%, 34rem);
+}
+
+.narrative-loading-title {
+  font-family: "Songti SC", "STSong", "Noto Serif SC", Georgia, serif;
+  font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+}
+
+.narrative-loading-status,
+.narrative-loading-delayed {
+  color: var(--narrative-muted);
+  font-size: 0.875rem;
+  line-height: 1.7;
+  margin-top: 0.75rem;
+}
+
+.narrative-loading-delayed {
+  color: var(--narrative-accent);
+}
+
+@keyframes narrative-loading-divider-breathe {
+  0%, 100% { opacity: 0.38; }
+  50% { opacity: 0.72; }
+}
+
+.narrative-loading-divider {
+  animation: narrative-loading-divider-breathe 2.8s ease-in-out infinite;
+  background: var(--narrative-rule);
+  height: 1px;
+  margin: 1.5rem auto 0;
+  max-width: 8rem;
+  width: 42%;
+}
+
+.narrative-loading--inline .narrative-loading-divider {
+  margin-left: 0;
+}
+
+.narrative-loading-action {
+  background: transparent;
+  border: 1px solid var(--narrative-accent);
+  color: var(--narrative-paper);
+  cursor: pointer;
+  font-size: 0.875rem;
+  margin-top: 1.5rem;
+  padding: 0.6rem 1rem;
+}
+
+.narrative-loading-action:focus-visible {
+  outline: 2px solid var(--narrative-paper);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .narrative-loading-divider {
+    animation: none;
   }
 }

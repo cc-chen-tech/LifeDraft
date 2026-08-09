@@ -6,70 +6,43 @@
 
 import { test, expect } from '@playwright/test';
 import { API_URL } from './helpers/auth';
+import { installReadyEndingFixture } from './helpers/ending-fixture';
 
-const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
 const API_BASE = `${API_URL}/api`;
 
 test.describe('Ending Life Review - Page Rendering', () => {
   test('life review card renders with personality labels', async ({ page }) => {
-    // 设置 gameId 使页面不跳转
-    await page.goto(`${BASE_URL}/`);
-    await page.evaluate(() => {
-      localStorage.setItem(
-        'game-store',
-        JSON.stringify({ state: { gameId: 1, playerState: { player_name: '测试角色' } }, version: 0 })
-      );
-    });
-    await page.goto(`${BASE_URL}/ending`, { waitUntil: 'domcontentloaded' }).catch(() => {});
-    await page.waitForTimeout(3000);
+    await installReadyEndingFixture(page);
+    await page.goto('/ending');
 
-    if (page.url().includes('/ending')) {
-      // 人生回顾卡片或相关区域应该可见
-      const reviewSection = page.locator('[data-testid="life-review-card"], [data-testid="achievement-section"], h1');
-      await expect(reviewSection.first()).toBeVisible({ timeout: 10000 });
-    }
+    await expect(page.getByRole('heading', { level: 1, name: '平衡人生' })).toBeVisible();
+    await page.getByRole('button', { name: '查看人生回顾' }).click();
+
+    const reviewCard = page.getByTestId('life-review-card');
+    await expect(reviewCard).toBeVisible();
+    await expect(reviewCard).toContainText('沉着的记录者');
+    await expect(reviewCard).toContainText('关系守护者');
   });
 
   test('achievement badges have rarity styling', async ({ page }) => {
-    await page.goto(`${BASE_URL}/`);
-    await page.evaluate(() => {
-      localStorage.setItem(
-        'game-store',
-        JSON.stringify({ state: { gameId: 1, playerState: { player_name: '测试角色' } }, version: 0 })
-      );
-    });
-    await page.goto(`${BASE_URL}/ending`, { waitUntil: 'domcontentloaded' }).catch(() => {});
-    await page.waitForTimeout(3000);
+    await installReadyEndingFixture(page);
+    await page.goto('/ending');
+    await page.getByRole('button', { name: '查看人生回顾' }).click();
 
-    if (page.url().includes('/ending')) {
-      // 徽章应该有某种样式表示（颜色类名或图标）
-      const badges = page.locator('[data-testid="achievement-badge"], [class*="badge"], [class*="achievement"]');
-      const count = await badges.count();
-      // 有成就时检查样式
-      if (count > 0) {
-        await expect(badges.first()).toBeVisible();
-      }
-    }
+    const badge = page.getByTestId('achievement-badge');
+    await expect(badge).toBeVisible();
+    await expect(badge).toContainText('平衡人生');
+    await expect(badge).toContainText('稀有');
   });
 
   test('share button exists and is clickable', async ({ page }) => {
-    await page.goto(`${BASE_URL}/`);
-    await page.evaluate(() => {
-      localStorage.setItem(
-        'game-store',
-        JSON.stringify({ state: { gameId: 1, playerState: { player_name: '测试角色' } }, version: 0 })
-      );
-    });
-    await page.goto(`${BASE_URL}/ending`, { waitUntil: 'domcontentloaded' }).catch(() => {});
-    await page.waitForTimeout(3000);
+    await installReadyEndingFixture(page);
+    await page.goto('/ending');
+    await page.getByRole('button', { name: '查看人生回顾' }).click();
 
-    if (page.url().includes('/ending')) {
-      const shareButton = page.locator('button').filter({ hasText: /分享|Share|保存图片|下载/i });
-      const hasShare = await shareButton.isVisible({ timeout: 5000 }).catch(() => false);
-      if (hasShare) {
-        await expect(shareButton).toBeEnabled();
-      }
-    }
+    const shareButton = page.getByRole('button', { name: '保存分享卡片' });
+    await expect(shareButton).toBeVisible();
+    await expect(shareButton).toBeEnabled();
   });
 });
 

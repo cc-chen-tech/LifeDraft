@@ -19,13 +19,12 @@ import {
 import {
   Sheet,
   SheetContent,
-  SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
 import { StreamingText } from "@/components/game/StreamingText";
 import { OptionCards } from "@/components/game/OptionCards";
 import { StatusBar } from "@/components/game/StatusBar";
-import { SkeletonStory } from "@/components/game/SkeletonStory";
+import { NarrativeLoadingState, getNarrativeLoadingDelay } from "@/components/narrative-loading/NarrativeLoadingState";
 import { ChatBar } from "@/components/game/ChatBar";
 import { RoundHistoryDrawer } from "@/components/game/RoundHistoryDrawer";
 import { RoundSceneImageDisplay } from "@/components/game/RoundSceneImage";
@@ -34,10 +33,12 @@ import { CollectionPanel } from "@/components/game/CollectionPanel";
 import { CompletedStoryMediaGate } from "@/components/game/CompletedStoryMediaGate";
 import { getSceneImageDisplayMode } from "@/components/game/sceneImageStagePolicy";
 
-import { usePlayGame, STATUS_MESSAGES } from "@/hooks/usePlayGame";
+import { usePlayGame } from "@/hooks/usePlayGame";
+import { useDelayedLoading } from "@/hooks/useDelayedLoading";
 import { useGameIdFromUrl } from "@/hooks/useGameIdFromUrl";
 import { useGameStore } from "@/stores/useGameStore";
 import { useMusicStore } from "@/stores/useMusicStore";
+import { useUIStore } from "@/stores/useUIStore";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
@@ -53,15 +54,7 @@ import {
   BookOpen,
   ArrowRight,
   Palette,
-  RotateCcw,
 } from "lucide-react";
-
-function formatElapsedTime(seconds: number): string {
-  if (seconds < 60) return `${seconds}秒`;
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins}分${secs}秒`;
-}
 
 /**
  * GameIdSync - 内部组件，使用 useGameIdFromUrl 同步 URL 参数
@@ -97,8 +90,9 @@ export default function PlayPage() {
     isSaving,
     saveToast,
     regenerateToast,
-    endingData,
-    elapsedSeconds,
+    transport: gameplayTransport,
+    loadingOperation: gameplayOperation,
+    loadingIdentity,
     isPrefetching,  // ★ 预生成状态
 
     // Store values
@@ -107,15 +101,12 @@ export default function PlayPage() {
     progress,
     roundInfo,
     storyText,
-    isGameOver,
 
     // Refs
     storyContainerRef,
 
     // Actions
-    setPhase,
     setStoryText,
-    setOptions,
 
     // Handlers
     handleChoice,
@@ -126,9 +117,9 @@ export default function PlayPage() {
     handleRegenerate,
     generateEvent,
     recoverEventGeneration,
+    recoverChoiceGeneration,
 
     // Utilities
-    getLoadingMessage,
     hydrated,
     router,
     
@@ -148,7 +139,6 @@ export default function PlayPage() {
     handleRegenerateHistoryImage,  // ★ 重新生成历史图片
     
     // ★ 场景插画
-    roundSceneImages,
     currentRoundSceneImage,
     eventSceneImage,  // ★ 事件插画
     resultSceneImage,  // ★ 结果插画
@@ -157,8 +147,6 @@ export default function PlayPage() {
     isRegeneratingRoundScene,
     fetchRoundSceneImage,
     regenerateRoundSceneImage,
-    setEventSceneImage,  // ★ 设置事件插画
-    setResultSceneImage,  // ★ 设置结果插画
     // ★ 历史场景插画
     historySceneImage,
     isLoadingHistoryImage,
@@ -167,10 +155,16 @@ export default function PlayPage() {
     currentRound,
   } = usePlayGame();
 
+  const processingMessage = useUIStore((state) => state.processingMessage);
+
   const resultSceneRound = Math.max(0, currentRound - 1);
   const storyReadyForCompletedMedia =
     phase === "options" || phase === "result" || phase === "summary";
   const isCurrentStoryBusy = phase === "loading" || phase === "generating" || phase === "choosing";
+  const isUnifiedGameplayFailure =
+    phase === "error" && gameplayTransport === "failed";
+  const shouldRenderGameplayLoading =
+    isCurrentStoryBusy || isUnifiedGameplayFailure;
   const sceneImageDisplayMode = getSceneImageDisplayMode({
     phase,
     hasEventSceneImage: Boolean(eventSceneImage),
@@ -197,6 +191,16 @@ export default function PlayPage() {
   const setConstraintLevel = useGameStore((state) => state.setConstraintLevel);
   const enableSceneImage = useGameStore((state) => state.enableSceneImage);
   const setEnableSceneImage = useGameStore((state) => state.setEnableSceneImage);
+  const isGameplayDelayed = useDelayedLoading({
+    isLoading: isCurrentStoryBusy,
+    delay: getNarrativeLoadingDelay("gameplay", constraintLevel),
+    loadingIdentity,
+  });
+  const isHydrationLoadingVisible = useDelayedLoading({
+    isLoading: !hydrated,
+    delay: getNarrativeLoadingDelay("hydrate"),
+    loadingIdentity: "play-hydration",
+  });
 
   // ★ 加载故事风格
   const loadNarrativeStyles = useCallback(async () => {
@@ -227,18 +231,30 @@ export default function PlayPage() {
     }
   }, [gameId]);
 
-  const showEmptyGenerationRecovery =
-    !isViewingHistory &&
-    phase === "loading" &&
-    !storyText &&
-    !displayText &&
-    options.length === 0;
-
   const handleRecoverGeneration = useCallback(() => {
-    setOptions([]);
-    setPhase("loading");
-    setTimeout(() => recoverEventGeneration(), 0);
-  }, [recoverEventGeneration, setOptions, setPhase]);
+    void recoverEventGeneration();
+  }, [recoverEventGeneration]);
+
+  const handleRetryGeneration = useCallback(() => {
+    void generateEvent();
+  }, [generateEvent]);
+
+  const handleRecoverChoice = useCallback(() => {
+    void recoverChoiceGeneration();
+  }, [recoverChoiceGeneration]);
+
+  const handleGameplayLoadingAction =
+    gameplayOperation === "choice"
+      ? handleRecoverChoice
+      : gameplayTransport === "failed"
+        ? handleRetryGeneration
+        : handleRecoverGeneration;
+
+  useEffect(() => {
+    if (hydrated && gameId && phase === "ending") {
+      router.push("/ending");
+    }
+  }, [gameId, hydrated, phase, router]);
 
   const handleOpenCollection = useCallback(() => {
     setActiveSidePanel("collection");
@@ -298,8 +314,14 @@ export default function PlayPage() {
   // Don't render until hydrated
   if (!hydrated) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div
+        className="min-h-screen bg-[#0D0C0B]"
+        data-testid="play-hydration-shell"
+        aria-busy="true"
+      >
+        {isHydrationLoadingVisible && (
+          <NarrativeLoadingState context="hydrate" layout="screen" />
+        )}
       </div>
     );
   }
@@ -313,7 +335,7 @@ export default function PlayPage() {
           <div className="space-y-2">
             <h1 className="text-lg font-semibold text-foreground">正在恢复当前进度</h1>
             <p className="text-sm text-muted-foreground">
-              如果没有可恢复的游戏，页面会返回首页。你也可以手动返回或重新加载。
+              如果没有可恢复的游戏，页面会返回首页。你也可以手动返回。
             </p>
           </div>
           <div className="flex items-center justify-center gap-3">
@@ -321,13 +343,19 @@ export default function PlayPage() {
               <Home className="mr-2 h-4 w-4" />
               返回首页
             </Button>
-            <Button variant="secondary" onClick={() => window.location.reload()}>
-              <RotateCcw className="mr-2 h-4 w-4" />
-              重新加载
-            </Button>
           </div>
         </div>
       </div>
+    );
+  }
+
+  if (phase === "ending") {
+    return (
+      <NarrativeLoadingState
+        context="ending"
+        layout="screen"
+        phase="loading_context"
+      />
     );
   }
 
@@ -501,32 +529,26 @@ export default function PlayPage() {
           </div>
         )}
         
-        {/* Loading skeleton - 历史模式下不显示 */}
-        {!isViewingHistory && (phase === "loading" || phase === "generating" || phase === "choosing") && !storyText && (
-          <SkeletonStory
-            message={phase === "loading" ? "故事生成中..." : getLoadingMessage()}
-            elapsedSeconds={elapsedSeconds}
-            phase={phase === "generating" || phase === "choosing" ? getLoadingMessage() : undefined}
-            qualityLevel={constraintLevel}
-            onRecover={() => window.location.reload()}
-          />
-        )}
-
-        {showEmptyGenerationRecovery && (
-          <div className="mx-auto mb-6 max-w-md rounded-lg border border-border bg-card/70 px-4 py-3 text-center shadow-sm">
-            <p className="mb-3 text-sm text-muted-foreground">
-              如果生成时间较长，可以先恢复当前进度；恢复不会丢失已创建的角色和存档。
-            </p>
-            <Button
-              variant="outline"
-              className="touch-target"
-              aria-label="恢复当前进度"
-              onClick={handleRecoverGeneration}
-            >
-              <RotateCcw className="mr-2 h-4 w-4" />
-              恢复当前进度
-            </Button>
-          </div>
+        {!isViewingHistory && shouldRenderGameplayLoading && !displayText && (
+          gameplayTransport === "active" ? (
+            <NarrativeLoadingState
+              context="gameplay"
+              layout="section"
+              phase={processingMessage}
+              operation={gameplayOperation}
+              delayed={isGameplayDelayed}
+            />
+          ) : (
+            <NarrativeLoadingState
+              context="gameplay"
+              layout="section"
+              phase={processingMessage}
+              operation={gameplayOperation}
+              delayed={isGameplayDelayed}
+              transport={gameplayTransport}
+              onAction={handleGameplayLoadingAction}
+            />
+          )
         )}
 
         {/* Story text */}
@@ -562,32 +584,26 @@ export default function PlayPage() {
                 narrative
                 className="mb-6"
               />
-              {/* ★ 在有故事内容且正在生成时，显示小的加载提示（历史模式下不显示） */}
-              {(phase === "generating" || phase === "choosing") && (
-                <div className="space-y-2 py-2">
-                  <div className="flex items-center justify-center gap-2 text-muted-foreground text-sm">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>{getLoadingMessage()}</span>
-                  </div>
-                  {elapsedSeconds >= 60 && (
-                    <div className="mx-auto max-w-md rounded-md border border-border bg-card/70 px-4 py-3 text-center text-xs text-muted-foreground leading-relaxed">
-                      <p>
-                        已等待 {formatElapsedTime(elapsedSeconds)}，正在校验故事逻辑和生成选项；这通常是长剧情的一致性检查，不代表内容丢失。
-                      </p>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="mt-3"
-                        aria-label="恢复当前进度"
-                        onClick={() => void recoverEventGeneration()}
-                      >
-                        <RotateCcw className="mr-2 h-3.5 w-3.5" />
-                        恢复当前进度
-                      </Button>
-                    </div>
-                  )}
-                </div>
+              {shouldRenderGameplayLoading && (
+                gameplayTransport === "active" ? (
+                  <NarrativeLoadingState
+                    context="gameplay"
+                    layout="inline"
+                    phase={processingMessage}
+                    operation={gameplayOperation}
+                    delayed={isGameplayDelayed}
+                  />
+                ) : (
+                  <NarrativeLoadingState
+                    context="gameplay"
+                    layout="inline"
+                    phase={processingMessage}
+                    operation={gameplayOperation}
+                    delayed={isGameplayDelayed}
+                    transport={gameplayTransport}
+                    onAction={handleGameplayLoadingAction}
+                  />
+                )
               )}
             </>
           )
@@ -801,40 +817,13 @@ export default function PlayPage() {
           </div>
         )}
 
-        {/* Ending */}
-        {!isViewingHistory && phase === "ending" && (
-          <div className="animate-page-enter space-y-6 text-center py-12">
-            <h2 className="text-2xl font-serif font-bold text-foreground">
-              人生落幕
-            </h2>
-            {endingData ? (
-              <Card className="p-6 bg-card border-border text-left">
-                <pre className="text-sm text-foreground whitespace-pre-wrap font-sans">
-                  {JSON.stringify(endingData, null, 2)}
-                </pre>
-              </Card>
-            ) : (
-              <SkeletonStory message="正在评估你的人生..." />
-            )}
-            <Button
-              className="touch-target"
-              onClick={() => router.push("/")}
-            >
-              返回首页
-            </Button>
-          </div>
-        )}
-
         {/* Error state */}
-        {!isViewingHistory && phase === "error" && (
+        {!isViewingHistory && phase === "error" && !isUnifiedGameplayFailure && (
           <div className="text-center py-12 space-y-4">
             <p className="text-destructive">出现错误，请重试</p>
             <Button
               variant="outline"
-              onClick={() => {
-                setPhase("loading");
-                setTimeout(() => generateEvent(), 0);
-              }}
+              onClick={handleRetryGeneration}
               className="touch-target"
             >
               重试
@@ -844,18 +833,16 @@ export default function PlayPage() {
       </main>
 
       {/* Chat bar */}
-      {!isViewingHistory && (
-        <ChatBar
-          gameId={gameId}
-          onSave={handleSave}
-          onRegenerate={handleRegenerate}
-          storyText={storyText}
-          onRewriteComplete={handleRewriteComplete}
-          isSaving={isSaving}
-          isStoryBusy={isCurrentStoryBusy}
-          isViewingHistory={isViewingHistory}
-        />
-      )}
+      <ChatBar
+        gameId={gameId}
+        onSave={handleSave}
+        onRegenerate={handleRegenerate}
+        storyText={storyText}
+        onRewriteComplete={handleRewriteComplete}
+        isSaving={isSaving}
+        isStoryBusy={shouldRenderGameplayLoading}
+        isViewingHistory={isViewingHistory}
+      />
 
       {/* ★ 历史回顾抽屉 */}
       <RoundHistoryDrawer

@@ -30,4 +30,12 @@ describe("ChatBar accessibility", () => {
       expect(screen.getByLabelText("发送消息")).toBeInTheDocument();
     });
   });
+
+  it("does not leave focusable chat controls in the DOM while a story is busy", () => {
+    render(<ChatBar gameId={1} onSave={jest.fn()} isStoryBusy />);
+
+    expect(screen.queryByRole("button", { name: "打开聊天" })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("chat-bar-launcher")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("chat-bar-panel")).not.toBeInTheDocument();
+  });
 });

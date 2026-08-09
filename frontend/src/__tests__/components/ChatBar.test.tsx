@@ -101,9 +101,27 @@ describe('ChatBar', () => {
       expect(mockOnRegenerate).toHaveBeenCalled();
     });
 
-    it('disables rewrite and regeneration while the current story is still generating', async () => {
+    it('hides every chat control while busy, then restores the mounted chat history when ready', async () => {
       const user = userEvent.setup();
-      render(
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ reply: '助手回复' }));
+      const { rerender } = render(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+          storyText="Partial streamed story"
+        />
+      );
+
+      await user.click(screen.getByLabelText('打开聊天'));
+      await user.type(screen.getByPlaceholderText('向剧情助手提问...'), '这段故事怎么样？');
+      await user.click(screen.getByLabelText('发送消息'));
+      expect(await screen.findByText('这段故事怎么样？')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: '改写' }));
+      expect(await screen.findByTestId('inline-rewrite-sheet')).toBeInTheDocument();
+
+      rerender(
         <ChatBar
           gameId={1}
           onSave={mockOnSave}
@@ -113,20 +131,125 @@ describe('ChatBar', () => {
         />
       );
 
-      const regenerateButton = screen.getByRole('button', { name: '重新生成' });
-      const rewriteButton = screen.getByRole('button', { name: '改写' });
-      const summaryButton = screen.getByRole('button', { name: '人生总结' });
+      expect(screen.queryByTestId('chat-bar-launcher')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('chat-bar-panel')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('inline-rewrite-sheet')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('life-summary-panel')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '打开聊天' })).not.toBeInTheDocument();
 
-      expect(regenerateButton).toBeDisabled();
-      expect(rewriteButton).toBeDisabled();
-      expect(summaryButton).toBeDisabled();
-      await user.click(regenerateButton);
-      await user.click(summaryButton);
-      expect(mockOnRegenerate).not.toHaveBeenCalled();
-      const summaryCalled = (global.fetch as jest.Mock).mock.calls.some((c: unknown[]) =>
-        (c[0] as string).includes('/summary')
+      rerender(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+          storyText="Partial streamed story"
+        />
       );
-      expect(summaryCalled).toBe(false);
+
+      expect(await screen.findByTestId('chat-bar-launcher')).toBeInTheDocument();
+      await user.click(screen.getByLabelText('打开聊天'));
+      expect(await screen.findByTestId('chat-bar-panel')).toBeInTheDocument();
+      expect(screen.getByText('这段故事怎么样？')).toBeInTheDocument();
+    });
+
+    it('stays mounted but hides every control in history view, then restores chat history', async () => {
+      const user = userEvent.setup();
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ reply: '助手回复' }));
+      const { rerender } = render(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+          storyText="Current story"
+        />
+      );
+
+      await user.click(screen.getByLabelText('打开聊天'));
+      await user.type(screen.getByPlaceholderText('向剧情助手提问...'), '请记住这段对话');
+      await user.click(screen.getByLabelText('发送消息'));
+      expect(await screen.findByText('请记住这段对话')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: '改写' }));
+      expect(await screen.findByTestId('inline-rewrite-sheet')).toBeInTheDocument();
+
+      rerender(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+          storyText="Current story"
+          isViewingHistory
+        />
+      );
+
+      expect(screen.queryByTestId('chat-bar-launcher')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('chat-bar-panel')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('inline-rewrite-sheet')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('life-summary-panel')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '打开聊天' })).not.toBeInTheDocument();
+
+      rerender(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+          storyText="Current story"
+        />
+      );
+
+      expect(await screen.findByTestId('chat-bar-launcher')).toBeInTheDocument();
+      await user.click(screen.getByLabelText('打开聊天'));
+      expect(await screen.findByTestId('chat-bar-panel')).toBeInTheDocument();
+      expect(screen.getByText('请记住这段对话')).toBeInTheDocument();
+      expect(screen.queryByTestId('inline-rewrite-sheet')).not.toBeInTheDocument();
+    });
+
+    it('closes an open summary panel during busy work and fades the launcher and panel back without reopening it', async () => {
+      const user = userEvent.setup();
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        summary_text: '这一周的总结。',
+        start_week: 4,
+        end_week: 4,
+      }));
+      const { rerender } = render(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+          storyText="Partial streamed story"
+        />
+      );
+
+      await user.click(screen.getByRole('button', { name: '人生总结' }));
+      expect(await screen.findByTestId('life-summary-panel')).toBeInTheDocument();
+
+      rerender(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+          storyText="Partial streamed story"
+          isStoryBusy
+        />
+      );
+
+      expect(screen.queryByTestId('life-summary-panel')).not.toBeInTheDocument();
+
+      rerender(
+        <ChatBar
+          gameId={1}
+          onSave={mockOnSave}
+          onRegenerate={mockOnRegenerate}
+          storyText="Partial streamed story"
+        />
+      );
+
+      const launcher = await screen.findByTestId('chat-bar-launcher');
+      expect(launcher).toHaveClass('fade-in');
+      expect(screen.queryByTestId('life-summary-panel')).not.toBeInTheDocument();
+
+      await user.click(screen.getByLabelText('打开聊天'));
+      expect((await screen.findByTestId('chat-bar-panel'))).toHaveClass('fade-in');
     });
 
     it('opens rewrite sheet from collapsed quick action', async () => {

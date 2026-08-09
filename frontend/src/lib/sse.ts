@@ -3,6 +3,7 @@
  */
 
 export type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "error" | null;
+export type StreamActivityKind = "status" | "story" | "complete" | "error";
 
 export interface StreamCallbacks {
   onStory?: (text: string) => void;
@@ -13,6 +14,7 @@ export interface StreamCallbacks {
   onError?: (error: Error | { message: string }) => void;
   onConnectionStatus?: (status: ConnectionStatus) => void;
   onReconnecting?: (attempt: number, maxRetries: number) => void;
+  onActivity?: (kind: StreamActivityKind) => void;
 }
 
 function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbacks: StreamCallbacks): Promise<void> {
@@ -24,6 +26,20 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
   let isErrorReceived = false;
   let isResolved = false;
   let pendingEventId: number | null = null;
+  let completeActivityEmitted = false;
+  let errorActivityEmitted = false;
+
+  const emitCompleteActivity = () => {
+    if (completeActivityEmitted) return;
+    completeActivityEmitted = true;
+    callbacks.onActivity?.("complete");
+  };
+
+  const emitErrorActivity = () => {
+    if (errorActivityEmitted) return;
+    errorActivityEmitted = true;
+    callbacks.onActivity?.("error");
+  };
 
   return new Promise((resolve, reject) => {
     function safeResolve() {
@@ -34,14 +50,15 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
     }
 
     function pump(): Promise<void> {
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       return reader!.read().then(({ done, value }) => {
         if (done) {
           // Stream ended - use the last complete event data if received
           console.log('[SSE] Stream ended, isCompleteReceived:', isCompleteReceived, 'completeData keys:', Object.keys(completeData || {}));
-          if (isCompleteReceived && completeData) {
+          if (isErrorReceived) {
+            safeResolve();
+          } else if (isCompleteReceived && completeData) {
             callbacks.onComplete?.(completeData);
-          } else if (!isCompleteReceived && !isErrorReceived) {
+          } else if (!isCompleteReceived) {
             const error = new Error('Stream ended without complete event');
             callbacks.onError?.(error);
             reject(error);
@@ -76,6 +93,7 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
                   safeResolve();
                   return;
                 }
+                emitCompleteActivity();
                 if (completeData) {
                   callbacks.onComplete?.(completeData);
                 } else {
@@ -85,33 +103,76 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
               }
               return;
             }
+            if (isErrorReceived || isCompleteReceived) {
+              currentEventType = null;
+              pendingEventId = null;
+              continue;
+            }
+            let parsed: unknown;
             try {
-              const parsed = JSON.parse(data);
+              parsed = JSON.parse(data);
+            } catch {
+              // If not JSON, treat as plain text chunk (for story)
+              if (data && currentEventType !== 'complete') {
+                callbacks.onActivity?.("story");
+                callbacks.onChunk?.(data);
+                callbacks.onStory?.(data);
+              }
+              parsed = undefined;
+            }
 
+            if (parsed !== undefined) {
+              const parsedRecord = parsed !== null && typeof parsed === 'object'
+                ? parsed as Record<string, unknown>
+                : null;
               // Handle complete event (either from event: line or type field in data)
-              if (currentEventType === 'complete' || parsed.type === 'complete' || parsed.event === 'complete') {
-                // Store the complete data but don't call callback yet
-                // Wait for stream to end or [DONE] marker to ensure all data is received
-                completeData = parsed.data || parsed;
+              if (
+                currentEventType === 'complete' ||
+                parsedRecord?.type === 'complete' ||
+                parsedRecord?.event === 'complete'
+              ) {
+                const completePayload = parsedRecord?.data ?? parsed;
+                const parsedComplete = completePayload !== null && typeof completePayload === 'object'
+                  ? completePayload as Record<string, unknown>
+                  : {};
+                completeData = parsedComplete;
                 isCompleteReceived = true;
+                emitCompleteActivity();
                 console.log('[SSE] Complete event received, data keys:', Object.keys(completeData || {}));
                 currentEventType = null;
-                continue;
+                // Callback failures are transport failures, not JSON parse failures.
+                callbacks.onComplete?.(parsedComplete);
+                safeResolve();
+                void reader.cancel().catch(() => undefined);
+                return;
               }
 
               // ★ Handle error events from backend
-              if (currentEventType === 'error' || parsed.type === 'error' || parsed.event === 'error') {
-                const errorMsg = parsed.error || parsed.message || 'Unknown server error';
+              if (
+                currentEventType === 'error' ||
+                parsedRecord?.type === 'error' ||
+                parsedRecord?.event === 'error'
+              ) {
+                const rawError = parsedRecord?.error ?? parsedRecord?.message;
+                const errorMsg = typeof rawError === 'string' ? rawError : 'Unknown server error';
                 console.error('[SSE] Error event received:', errorMsg);
                 isErrorReceived = true;
+                emitErrorActivity();
                 callbacks.onError?.({ message: errorMsg });
                 currentEventType = null;
-                continue;
+                pendingEventId = null;
+                void reader.cancel().catch(() => undefined);
+                safeResolve();
+                return;
               }
 
               // Handle status updates (support both formats: {type: "status", status: {...}} and {phase: "..."})
-              if (currentEventType === 'status' || parsed.type === 'status') {
-                const statusData = parsed.status || parsed;
+              if (currentEventType === 'status' || parsedRecord?.type === 'status') {
+                const rawStatus = parsedRecord?.status ?? parsedRecord;
+                const statusData = rawStatus !== null && typeof rawStatus === 'object'
+                  ? rawStatus as { phase: string; heartbeat?: boolean; cached_count?: number; message?: string }
+                  : { phase: '' };
+                callbacks.onActivity?.("status");
                 callbacks.onStatus?.(statusData);
                 currentEventType = null;
                 continue;
@@ -119,18 +180,18 @@ function parseSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>, callbac
 
               // Handle story chunks
               // 如果是字符串，直接使用；如果是对象，尝试提取内容字段
-              const chunk = typeof parsed === 'string' 
-                ? parsed 
-                : (parsed.content || parsed.text || parsed.chunk || parsed.story);
+              const chunk = typeof parsed === 'string'
+                ? parsed
+                : [
+                    parsedRecord?.content,
+                    parsedRecord?.text,
+                    parsedRecord?.chunk,
+                    parsedRecord?.story,
+                  ].find((value): value is string => typeof value === 'string');
               if (chunk) {
+                callbacks.onActivity?.("story");
                 callbacks.onChunk?.(chunk);
                 callbacks.onStory?.(chunk);
-              }
-            } catch {
-              // If not JSON, treat as plain text chunk (for story)
-              if (data && currentEventType !== 'complete') {
-                callbacks.onChunk?.(data);
-                callbacks.onStory?.(data);
               }
             }
             if (pendingEventId !== null) {
@@ -229,7 +290,7 @@ export async function streamChoice(
     credentials: 'include',
     body: JSON.stringify({ option_index: choiceIndex }),
     signal: options?.signal,
-  }, callbacks);
+  }, callbacks, 1);
 
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
@@ -255,7 +316,7 @@ export async function streamCustomChoice(
     credentials: 'include',
     body: JSON.stringify({ custom_text: customChoice }),
     signal: options?.signal,
-  }, callbacks);
+  }, callbacks, 1);
 
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);
@@ -369,9 +430,8 @@ export async function streamRewrite(
 
   let completed = false;
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     function pump(): Promise<void> {
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       return reader!.read().then(({ done, value }) => {
         if (done) {
           completed = true;

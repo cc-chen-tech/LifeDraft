@@ -799,6 +799,49 @@ describe('useCharacterCreation', () => {
       const { result } = renderHook(() => useCharacterCreation());
       expect(result.current.autoGenPhase).toBe('done');
     });
+
+    it('exposes each actual automatic background step while the generation loop advances', async () => {
+      useGameStore.setState({
+        creationStep: 3,
+        playerName: '陆明',
+        lifeVision: '认真生活',
+        characterSettings: {
+          era: { era_name: '现代' },
+          age: { starting_age: 22 },
+          gender: 'male',
+          world: { world_description: '城市' },
+        },
+      } as never);
+
+      let resolveFamily: ((response: Response) => void) | undefined;
+      let resolveRelationship: ((response: Response) => void) | undefined;
+      (global.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (url === '/api/character/setting') {
+          return new Promise<Response>((resolve) => {
+            resolveFamily = resolve;
+          });
+        }
+        if (url === '/api/character/relationship') {
+          return new Promise<Response>((resolve) => {
+            resolveRelationship = resolve;
+          });
+        }
+        return Promise.resolve(jsonResponse({}));
+      });
+
+      const { result } = renderHook(() => useCharacterCreation());
+      act(() => {
+        void result.current.runAutoGeneration();
+      });
+
+      await waitFor(() => expect(result.current.autoGenLabel).toBe('家庭背景'));
+      act(() => {
+        resolveFamily?.(jsonResponse({ family_background: '普通家庭' }));
+      });
+      await waitFor(() => expect(result.current.autoGenLabel).toBe('生成关键人物'));
+      expect(resolveRelationship).toBeDefined();
+
+    });
   });
 
   // ===================== prevCreationStep =====================

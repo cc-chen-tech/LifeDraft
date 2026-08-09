@@ -195,7 +195,7 @@ class TestOpeningStoryAPIContract:
             async def immediate_timeout(awaitable, *args, **kwargs):
                 if hasattr(awaitable, "close"):
                     awaitable.close()
-                raise TimeoutError()
+                raise asyncio.TimeoutError()
 
             mock_creator = MagicMock()
             mock_creator.generate_opening_story.return_value = empty_stream()
@@ -337,7 +337,7 @@ class TestOpeningStoryAPIContract:
                 if call_count["wait_for"] == 1:
                     if hasattr(awaitable, "close"):
                         awaitable.close()
-                    raise TimeoutError()
+                    raise asyncio.TimeoutError()
                 return await original_wait_for(awaitable, *args, **kwargs)
 
             mock_creator = MagicMock()

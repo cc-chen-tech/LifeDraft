@@ -49,15 +49,6 @@ function makeBrokenChoiceResponse() {
   } as Response;
 }
 
-function makeHttpErrorResponse(status: number) {
-  return {
-    ok: false,
-    status,
-    headers: new Headers(),
-    body: null,
-  } as Response;
-}
-
 function setupDefaultState() {
   useGameStore.setState({
     progress: { week: 1 },
@@ -72,11 +63,15 @@ function setupDefaultState() {
 describe('useChoiceHandler', () => {
   const mockAbortRef: React.MutableRefObject<AbortController | null> = { current: null };
   const mockGeneratingRef: React.MutableRefObject<boolean> = { current: false };
+  const mockRunTokenRef: React.MutableRefObject<number> = { current: 0 };
 
   const mockSetters = {
     setPhase: jest.fn(),
     setConnectionStatus: jest.fn(),
     setReconnectAttempt: jest.fn(),
+    setTransport: jest.fn(),
+    setLoadingOperation: jest.fn(),
+    setLoadingIdentity: jest.fn(),
     setProcessing: jest.fn(),
     appendStoryText: jest.fn(),
     setCurrentEvent: jest.fn(),
@@ -91,9 +86,13 @@ describe('useChoiceHandler', () => {
     gameId: 1,
     abortRef: mockAbortRef,
     generatingRef: mockGeneratingRef,
+    runTokenRef: mockRunTokenRef,
     setPhase: mockSetters.setPhase,
     setConnectionStatus: mockSetters.setConnectionStatus,
     setReconnectAttempt: mockSetters.setReconnectAttempt,
+    setTransport: mockSetters.setTransport,
+    setLoadingOperation: mockSetters.setLoadingOperation,
+    setLoadingIdentity: mockSetters.setLoadingIdentity,
     setProcessing: mockSetters.setProcessing,
     appendStoryText: mockSetters.appendStoryText,
     setCurrentEvent: mockSetters.setCurrentEvent,
@@ -106,8 +105,10 @@ describe('useChoiceHandler', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (global.fetch as jest.Mock).mockReset();
     mockGeneratingRef.current = false;
     mockAbortRef.current = null;
+    mockRunTokenRef.current = 0;
     setupDefaultState();
   });
 
@@ -166,9 +167,12 @@ describe('useChoiceHandler', () => {
       (global.fetch as jest.Mock)
         .mockResolvedValueOnce(makeBrokenChoiceResponse())
         .mockResolvedValue(jsonResponse({
-          story_continuation: '同步恢复后的选择结果',
-          need_weekly_summary: false,
-          game_over: false,
+          current_event: null,
+          player_state: {
+            round_history: [{ choice: 'Option 1', story_continuation: '同步恢复后的选择结果' }],
+            resume_view: { phase: 'result', story_text: '同步恢复后的选择结果' },
+          },
+          progress: { week: 1, total_weeks: 52 },
         }));
 
       const { result } = renderHook(() => useChoiceHandler(defaultParams));
@@ -192,9 +196,12 @@ describe('useChoiceHandler', () => {
       (global.fetch as jest.Mock)
         .mockResolvedValueOnce(makeBrokenChoiceResponse())
         .mockResolvedValue(jsonResponse({
-          story_continuation: '同步恢复后的自定义选择结果',
-          need_weekly_summary: false,
-          game_over: false,
+          current_event: null,
+          player_state: {
+            round_history: [{ choice: '继续调查异常数据', story_continuation: '同步恢复后的自定义选择结果' }],
+            resume_view: { phase: 'result', story_text: '同步恢复后的自定义选择结果' },
+          },
+          progress: { week: 1, total_weeks: 52 },
         }));
 
       const { result } = renderHook(() => useChoiceHandler(defaultParams));
@@ -213,19 +220,20 @@ describe('useChoiceHandler', () => {
       warnSpy.mockRestore();
     });
 
-    it('recovers through fallback when the choice HTTP response fails before SSE parsing', async () => {
+    it('recovers through fallback without starting a duplicate choice worker', async () => {
       useGameStore.setState({
         storyText: '原始故事',
         currentEvent: { options: [{ text: 'Option 1' }] },
       } as never);
       (global.fetch as jest.Mock)
-        .mockResolvedValueOnce(makeHttpErrorResponse(502))
-        .mockResolvedValueOnce(makeHttpErrorResponse(502))
-        .mockResolvedValueOnce(makeHttpErrorResponse(502))
+        .mockResolvedValueOnce(makeBrokenChoiceResponse())
         .mockResolvedValueOnce(jsonResponse({
-          story_continuation: '同步恢复后的选择结果',
-          need_weekly_summary: false,
-          game_over: false,
+          current_event: null,
+          player_state: {
+            round_history: [{ choice: 'Option 1', story_continuation: '同步恢复后的选择结果' }],
+            resume_view: { phase: 'result', story_text: '原始故事\n\n同步恢复后的选择结果' },
+          },
+          progress: { week: 1, total_weeks: 52 },
         }));
 
       const { result } = renderHook(() => useChoiceHandler(defaultParams));
@@ -234,10 +242,14 @@ describe('useChoiceHandler', () => {
         await result.current.handleChoice(0);
       });
 
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/games/1/choice-sync'),
-        expect.objectContaining({ method: 'POST' })
-      );
+      expect((global.fetch as jest.Mock).mock.calls.filter(([url]) =>
+        String(url).includes('/choice-sync')
+      )).toHaveLength(0);
+      expect(
+        (global.fetch as jest.Mock).mock.calls.filter(([url]) =>
+          String(url).endsWith('/choice')
+        )
+      ).toHaveLength(1);
       expect(mockSetters.setStoryText).toHaveBeenCalledWith(
         expect.stringContaining('同步恢复后的选择结果')
       );

@@ -35,9 +35,10 @@ export function OpeningCompletionGate({
       </Button>
       {!ready && (
         <p
-          className="text-sm text-muted-foreground animate-pulse"
+          className="text-sm text-muted-foreground"
           id="opening-start-status"
           role="status"
+          aria-live="polite"
         >
           {waitingMessage}
         </p>

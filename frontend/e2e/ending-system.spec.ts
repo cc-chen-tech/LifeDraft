@@ -7,7 +7,8 @@
 
 import { test, expect } from '@playwright/test';
 import { ensureAuthenticated, API_URL } from './helpers/auth';
-import { startNetworkMonitoring, waitForNetworkIdle, formatNetworkErrors } from './helpers/network-monitor';
+import { installReadyEndingFixture } from './helpers/ending-fixture';
+import { startNetworkMonitoring, waitForNetworkIdle } from './helpers/network-monitor';
 
 const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`;
 const API_BASE = `${API_URL}/api`;
@@ -27,33 +28,12 @@ test.describe('Ending System - Page Routing & Rendering', () => {
 
   // TC-04: 结局页面组件结构（标题/描述/统计区域）
   test('TC-04: ending page component structure', async ({ page }) => {
-    // 先导航到首页操作 localStorage
-    await page.goto(`${BASE_URL}/`);
-    await page.evaluate(() => {
-      const storeKey = Object.keys(localStorage).find(k => k.includes('game'));
-      if (!storeKey) {
-        localStorage.setItem(
-          'game-store',
-          JSON.stringify({ state: { gameId: 999, playerState: { player_name: '测试角色' } }, version: 0 })
-        );
-      }
-    });
-    await page.goto(`${BASE_URL}/ending`, { waitUntil: 'domcontentloaded' }).catch(() => {});
-    await page.waitForTimeout(2000);
+    await installReadyEndingFixture(page, { gameId: 999 });
+    await page.goto('/ending');
 
-    // 如果页面没有重定向（有 gameId），验证组件结构
-    if (page.url().includes('/ending')) {
-      // 标题区域
-      const heading = page.locator('h1');
-      await expect(heading.first()).toBeVisible({ timeout: 10000 });
-
-      // 按钮区域 - 使用更通用的选择器（可能是按钮或链接）
-      const navButton = page.locator('button, a[href="/"]').filter({
-        hasText: /返回首页|Home|首页|新游戏|开始新人生|New|重新开始/i,
-      });
-
-      await expect(navButton.first()).toBeVisible({ timeout: 5000 });
-    }
+    await expect(page.getByRole('heading', { level: 1, name: '平衡人生' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '返回首页' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '开始新人生' })).toBeVisible();
   });
 });
 
@@ -137,28 +117,11 @@ test.describe('Ending System - API Endpoints', () => {
 test.describe('Ending System - Navigation', () => {
   // TC-06: 结局页面导航（返回首页）
   test('TC-06: navigate from ending page to home', async ({ page }) => {
-    // 先导航到首页设置 localStorage
-    await page.goto(`${BASE_URL}/`);
-    await page.evaluate(() => {
-      localStorage.setItem(
-        'game-store',
-        JSON.stringify({ state: { gameId: 1, playerState: { player_name: '导航测试' } }, version: 0 })
-      );
-    });
+    await installReadyEndingFixture(page, { gameId: 1, playerName: '导航测试' });
+    await page.goto('/ending');
 
-    await page.goto(`${BASE_URL}/ending`, { waitUntil: 'domcontentloaded' }).catch(() => {});
-    await page.waitForTimeout(2000);
-
-    if (page.url().includes('/ending')) {
-      // 点击返回首页按钮 - 使用更通用的选择器
-      const homeButton = page.locator('button, a[href="/"]').filter({
-        hasText: /返回首页|Home|首页|返回|重新开始/i,
-      }).first();
-      if (await homeButton.isVisible({ timeout: 10000 }).catch(() => false)) {
-        await homeButton.click();
-        await expect(page).toHaveURL('/', { timeout: 10000 });
-      }
-    }
+    await page.getByRole('button', { name: '返回首页' }).click();
+    await expect(page).toHaveURL('/', { timeout: 10000 });
   });
 
   // TC-07: 无结局游戏访问结局页（没有 gameId 时应重定向）
@@ -239,12 +202,11 @@ test.describe('Ending System - Error Handling', () => {
     await page.evaluate(() => {
       localStorage.setItem(
         'game-store',
-        JSON.stringify({ state: { gameId: 1, playerState: { player_name: '错误测试' } }, version: 0 })
+        JSON.stringify({ state: { gameId: 99999, playerState: { player_name: '错误测试' } }, version: 0 })
       );
     });
 
-    await page.goto(`${BASE_URL}/ending`, { waitUntil: 'domcontentloaded' }).catch(() => {});
-    await page.waitForTimeout(3000);
+    await page.goto(`${BASE_URL}/ending`, { waitUntil: 'domcontentloaded' });
 
     // 页面不应该崩溃（不应有未处理的 JS 错误）
     const unhandledErrors = consoleErrors.filter(e =>
@@ -253,33 +215,45 @@ test.describe('Ending System - Error Handling', () => {
       !e.includes('extension')
     );
 
-    // 页面应该仍然可交互
-    const body = page.locator('body');
-    await expect(body).toBeVisible();
+    expect(unhandledErrors).toEqual([]);
+    await expect(page.getByTestId('narrative-loading-screen')).toContainText('这一生，正在收束');
+    await expect(page.getByRole('button', { name: '重试' })).toBeVisible();
   });
 
-  test('TC-10b: handle game not over (400) response', async ({ page }) => {
-    // 直接调用真实 API，游戏未结束或不存在时会返回 400/404
-    const response = await page.request.get(`${API_BASE}/games/1/ending`);
+  test('TC-10b: handle game not over (400) response', async ({ page, context }) => {
+    await ensureAuthenticated(page, context);
+    const createResponse = await page.request.post(`${API_BASE}/games`, {
+      data: {
+        player_name: '未结束测试',
+        life_vision: '继续记录尚未结束的生活',
+        character_settings: {
+          era: { name: '现代', period: '2026年' },
+          age: { age: 30, stage: '青年' },
+          personality: { traits: ['沉着'] },
+          background: { occupation: '编辑' },
+        },
+        language: 'zh',
+      },
+    });
+    expect(createResponse.status()).toBe(201);
+    const created = await createResponse.json();
+    const gameId = created.game_id as number;
 
-    // 端点应该存在，返回合理的错误状态码
-    expect(response.status()).not.toBe(405);
-    expect([200, 400, 401, 404, 422]).toContain(response.status());
+    const response = await page.request.get(`${API_BASE}/games/${gameId}/ending`);
 
-    // 先导航到首页设置 localStorage
+    expect(response.status()).toBe(400);
+
     await page.goto(`${BASE_URL}/`);
-    await page.evaluate(() => {
+    await page.evaluate((fixtureGameId) => {
       localStorage.setItem(
         'game-store',
-        JSON.stringify({ state: { gameId: 1, playerState: { player_name: '未结束测试' } }, version: 0 })
+        JSON.stringify({ state: { gameId: fixtureGameId, playerState: { player_name: '未结束测试' } }, version: 0 })
       );
-    });
+    }, gameId);
 
-    await page.goto(`${BASE_URL}/ending`, { waitUntil: 'domcontentloaded' }).catch(() => {});
-    await page.waitForTimeout(2000);
+    await page.goto(`${BASE_URL}/ending`, { waitUntil: 'domcontentloaded' });
 
-    // 页面应该优雅处理，不会白屏
-    const body = page.locator('body');
-    await expect(body).toBeVisible();
+    await expect(page.getByTestId('narrative-loading-screen')).toContainText('这一生，正在收束');
+    await expect(page.getByRole('button', { name: '重试' })).toBeVisible();
   });
 });

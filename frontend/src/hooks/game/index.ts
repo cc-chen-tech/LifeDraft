@@ -2,7 +2,6 @@
 
 // Re-export types
 export type { Phase, ConnectionStatus } from "./usePhaseManager";
-export { STATUS_MESSAGES } from "./usePhaseManager";
 
 // Re-export hooks
 export { usePhaseManager } from "./usePhaseManager";

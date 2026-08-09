@@ -111,6 +111,75 @@ describe('gameplay', () => {
     expect(result.game_over).toBe(false);
   });
 
+  it('keeps the caller abort signal linked while a choice response body is still reading', async () => {
+    const externalController = new AbortController();
+    let requestSignal: AbortSignal | undefined;
+    let rejectBody!: (reason: unknown) => void;
+    global.fetch = jest.fn((_url: RequestInfo | URL, init?: RequestInit) => {
+      requestSignal = init?.signal as AbortSignal;
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => new Promise((_resolve, reject) => {
+          rejectBody = reject;
+          requestSignal?.addEventListener('abort', () => {
+            reject(new DOMException('aborted', 'AbortError'));
+          }, { once: true });
+        }),
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+      } as Response);
+    });
+
+    const observed = api.gameplay
+      .makeChoiceSync(7, { option_index: 1 }, externalController.signal)
+      .catch((error) => error);
+    await Promise.resolve();
+    await Promise.resolve();
+    externalController.abort();
+    await Promise.resolve();
+
+    const remainedLinked = requestSignal?.aborted === true;
+    if (!remainedLinked) {
+      rejectBody(new DOMException('test cleanup', 'AbortError'));
+    }
+    await observed;
+    expect(remainedLinked).toBe(true);
+  });
+
+  it.each([401, 500])('does not swallow caller abort while reading a %i error body', async (status) => {
+    const externalController = new AbortController();
+    const removeItemSpy = jest.spyOn(Storage.prototype, 'removeItem');
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    let requestSignal: AbortSignal | undefined;
+    global.fetch = jest.fn((_url: RequestInfo | URL, init?: RequestInit) => {
+      requestSignal = init?.signal as AbortSignal;
+      return Promise.resolve({
+        ok: false,
+        status,
+        statusText: 'error response',
+        json: () => new Promise((_resolve, reject) => {
+          requestSignal?.addEventListener('abort', () => {
+            reject(new DOMException('aborted', 'AbortError'));
+          }, { once: true });
+        }),
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+      } as Response);
+    });
+
+    const observed = api.gameplay
+      .makeChoiceSync(7, { option_index: 1 }, externalController.signal)
+      .catch((error) => error);
+    await Promise.resolve();
+    await Promise.resolve();
+    externalController.abort();
+    const error = await observed;
+
+    expect(error).toBeInstanceOf(DOMException);
+    expect((error as DOMException).name).toBe('AbortError');
+    expect(removeItemSpy).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
   it('submitChoice calls POST /games/{id}/choices', async () => {
     global.fetch = jest.fn(() =>
       mockFetchResponse({ result: 'ok', new_event: null })

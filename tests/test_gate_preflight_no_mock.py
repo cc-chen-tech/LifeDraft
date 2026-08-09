@@ -21,6 +21,14 @@ SPEC_NAMES = (
 )
 
 
+def _read_e2e_regression_fixture_sources() -> str:
+    fixture_dir = ROOT / "frontend" / "src" / "app" / "e2e-regression"
+    return "\n".join(
+        (fixture_dir / source_name).read_text(encoding="utf-8")
+        for source_name in ("page.tsx", "E2ERegressionClient.tsx")
+    )
+
+
 def test_fix_story_continuity_change_tasks_stay_complete() -> None:
     tasks = (CHANGE_DIR / "tasks.md").read_text(encoding="utf-8")
 
@@ -430,9 +438,7 @@ def test_playwright_global_setup_does_not_spawn_competing_backend() -> None:
 
 
 def test_frontend_regression_fixture_exercises_changed_surfaces() -> None:
-    fixture = (ROOT / "frontend" / "src" / "app" / "e2e-regression" / "page.tsx").read_text(
-        encoding="utf-8"
-    )
+    fixture = _read_e2e_regression_fixture_sources()
     e2e = (ROOT / "frontend" / "e2e" / "no-mock-regression.spec.ts").read_text(encoding="utf-8")
 
     for token in (
@@ -453,9 +459,7 @@ def test_frontend_regression_fixture_exercises_changed_surfaces() -> None:
 
 
 def test_regression_fixture_does_not_hit_real_music_recommendation_by_default() -> None:
-    fixture = (ROOT / "frontend" / "src" / "app" / "e2e-regression" / "page.tsx").read_text(
-        encoding="utf-8"
-    )
+    fixture = _read_e2e_regression_fixture_sources()
 
     assert "autoFetchRecommendation={false}" in fixture
 
@@ -548,9 +552,7 @@ def test_story_voice_test_controls_stay_out_of_real_play_page() -> None:
     global_music_player = (
         ROOT / "frontend" / "src" / "components" / "game" / "GlobalMusicPlayer.tsx"
     ).read_text(encoding="utf-8")
-    regression_page = (
-        ROOT / "frontend" / "src" / "app" / "e2e-regression" / "page.tsx"
-    ).read_text(encoding="utf-8")
+    regression_page = _read_e2e_regression_fixture_sources()
 
     assert "showTestControls?: boolean" in component
     assert "showTestControls = false" in component
@@ -628,9 +630,7 @@ def test_global_music_player_autogenerates_music_from_completed_story_when_colla
 
 
 def test_regression_fixture_does_not_autogenerate_global_ai_music() -> None:
-    fixture = (ROOT / "frontend" / "src" / "app" / "e2e-regression" / "page.tsx").read_text(
-        encoding="utf-8"
-    )
+    fixture = _read_e2e_regression_fixture_sources()
 
     assert "setActiveStoryText(null);" in fixture
     assert 'setActiveStoryText("雨夜码头的旧账册被风吹开。");' not in fixture
@@ -645,7 +645,8 @@ def test_play_page_missing_game_state_has_actionable_recovery_ui() -> None:
 
     assert "正在恢复当前进度" in play_page
     assert "返回首页" in play_page
-    assert "window.location.reload()" in play_page
+    assert 'onClick={() => router.replace("/")}' in play_page
+    assert "window.location.reload()" not in play_page
     assert (
         'if (!gameId) {\n    return (\n      <div className="min-h-screen flex items-center justify-center">\n        <Loader2'
         not in play_page

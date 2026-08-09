@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -10,13 +9,16 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
-import { SkeletonStory } from "@/components/game/SkeletonStory";
+import {
+  NarrativeLoadingState,
+  getNarrativeLoadingDelay,
+} from "@/components/narrative-loading/NarrativeLoadingState";
 import { SettingDisplay } from "@/components/game/SettingDisplay";
 import { useCharacterCreation } from "@/hooks/useCharacterCreation";
+import { useDelayedLoading } from "@/hooks/useDelayedLoading";
 import {
   StepPlayerInfo,
   StepPortrait,
-  AutoGenScreen,
   CompletionScreen,
 } from "@/components/create";
 import { PresetSaveInlineStatus } from "@/components/create/PresetSaveInlineStatus";
@@ -83,7 +85,6 @@ export default function CreatePage() {
     autoGenPhase,
     setAutoGenPhase,
     autoGenLabel,
-    autoGenProgress,
     showDetails,
     setShowDetails,
     isBackgroundGenerating,
@@ -107,21 +108,16 @@ export default function CreatePage() {
     CREATION_STEPS,
   } = useCharacterCreation();
 
-  const [showSlowGenerationHint, setShowSlowGenerationHint] = useState(false);
-
-  useEffect(() => {
-    if (!isGenerating) {
-      setShowSlowGenerationHint(false);
-      return;
-    }
-
-    setShowSlowGenerationHint(false);
-    const timer = window.setTimeout(() => {
-      setShowSlowGenerationHint(true);
-    }, 15000);
-
-    return () => window.clearTimeout(timer);
-  }, [currentStepKey, isGenerating]);
+  const isStepLoadingDelayed = useDelayedLoading({
+    isLoading: isGenerating,
+    delay: getNarrativeLoadingDelay("character-step"),
+    loadingIdentity: isGenerating ? currentStepKey : null,
+  });
+  const isAutoLoadingDelayed = useDelayedLoading({
+    isLoading: autoGenPhase === "generating",
+    delay: getNarrativeLoadingDelay("character-auto"),
+    loadingIdentity: autoGenPhase === "generating" ? "character-auto" : null,
+  });
 
   const canContinuePortrait = isPortraitStep && hasBasicInfo && gameId != null;
   const isContinueDisabled =
@@ -132,7 +128,15 @@ export default function CreatePage() {
 
   // ==================== Auto-generation full-screen UI ====================
   if (autoGenPhase === "generating") {
-    return <AutoGenScreen autoGenLabel={autoGenLabel} autoGenProgress={autoGenProgress} />;
+    return (
+      <NarrativeLoadingState
+        context="character-auto"
+        layout="screen"
+        phase="generating"
+        stepLabel={autoGenLabel || "剩余角色背景"}
+        delayed={isAutoLoadingDelayed}
+      />
+    );
   }
 
   if (autoGenPhase === "done") {
@@ -228,14 +232,16 @@ export default function CreatePage() {
 
         {/* Step content */}
         <div className="space-y-6">
-          <div>
-            <h2 className="text-xl font-bold text-foreground">
-              {STEP_LABELS[currentStepKey]}
-            </h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              {STEP_DESCRIPTIONS[currentStepKey]}
-            </p>
-          </div>
+          {!isGenerating && (
+            <div>
+              <h2 className="text-xl font-bold text-foreground">
+                {STEP_LABELS[currentStepKey]}
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                {STEP_DESCRIPTIONS[currentStepKey]}
+              </p>
+            </div>
+          )}
 
           {/* Current setting display */}
           {characterSettings[currentStepKey] != null && !generatedContent && currentStepKey !== "portrait" && (
@@ -280,14 +286,13 @@ export default function CreatePage() {
 
           {/* Loading state */}
           {isGenerating && (
-            <div className="space-y-3">
-              <SkeletonStory message={`AI正在生成${STEP_LABELS[currentStepKey]}...`} />
-              {showSlowGenerationHint && (
-                <p className="rounded-md border border-border bg-secondary/60 px-3 py-2 text-center text-sm text-muted-foreground">
-                  生成时间较久，请继续等待，完成后会自动显示结果。
-                </p>
-              )}
-            </div>
+            <NarrativeLoadingState
+              context="character-step"
+              layout="section"
+              phase="generating"
+              stepLabel={STEP_LABELS[currentStepKey]}
+              delayed={isStepLoadingDelayed}
+            />
           )}
 
           {/* Prompt for name if needed */}
