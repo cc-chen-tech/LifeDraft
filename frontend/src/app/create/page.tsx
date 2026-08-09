@@ -189,7 +189,8 @@ export default function CreatePage() {
 
   // ==================== Interactive steps UI ====================
   return (
-    <PageTransition className="min-h-screen bg-[var(--surface-canvas)]">
+    <>
+      <PageTransition className="min-h-screen bg-[var(--surface-canvas)]">
       <header className="sticky top-0 z-40 border-b border-[var(--border-default)] bg-[var(--surface-canvas)]/95 backdrop-blur-sm">
         <div className="mx-auto flex min-h-16 max-w-5xl items-center gap-3 px-4">
           <Button
@@ -451,11 +452,12 @@ export default function CreatePage() {
         message={presetSaveMessage}
         onSave={handleSavePreset}
       />
+      </PageTransition>
 
       <CreateFeedbackToast
         toast={toast}
         suppressed={showPresetSheet && presetSaveStatus === "error"}
       />
-    </PageTransition>
+    </>
   );
 }

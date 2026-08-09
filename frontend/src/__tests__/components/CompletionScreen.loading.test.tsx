@@ -49,6 +49,22 @@ describe("CompletionScreen - Loading Feedback", () => {
     expect(container.querySelectorAll('[data-slot="card"]')).toHaveLength(0);
   });
 
+  test("renders completion feedback outside the page transition at the app-shell offset", () => {
+    render(
+      <CompletionScreen
+        {...defaultProps}
+        toast={{ type: "error", message: "人物形象修改失败" }}
+      />
+    );
+
+    const alert = screen.getByRole("alert");
+    const notice = alert.closest('[data-slot="feedback-notice"]');
+    expect(alert).toHaveTextContent("人物形象修改失败");
+    expect(notice).not.toBeNull();
+    expect(notice).toHaveClass("bottom-[var(--app-shell-feedback-bottom)]");
+    expect(notice?.closest('[data-slot="page-transition"]')).toBeNull();
+  });
+
   test("uses the full reading width when no portrait image exists", () => {
     render(<CompletionScreen {...defaultProps} playerImages={[]} />);
 

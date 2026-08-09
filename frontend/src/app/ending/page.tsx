@@ -209,17 +209,19 @@ function normalizeLifeReview(value: unknown): LifeReviewData | undefined {
 
   if (!isMeaningful) return undefined;
 
-  return {
+  const normalized: LifeReviewData = {
     personality_labels: personalityLabels,
     key_turning_points: keyTurningPoints,
     resource_curves: normalizedCurves,
     achievement_badge_wall: badgeWall,
     relationship_network: relationshipNetwork,
     life_motto: lifeMotto,
-    play_duration_minutes: playDuration ?? 0,
-    total_decisions: totalDecisions ?? 0,
     favorite_choice_type: favoriteChoiceType,
   };
+
+  if (playDuration !== undefined) normalized.play_duration_minutes = playDuration;
+  if (totalDecisions !== undefined) normalized.total_decisions = totalDecisions;
+  return normalized;
 }
 
 function normalizeEndingResponse(value: unknown): EndingData | null {
@@ -556,24 +558,28 @@ export default function EndingPage() {
                 className="mt-7 space-y-7 border-t border-[var(--border-default)] pt-7"
               >
                 <LifeReviewCard data={lifeReview} />
-                <div
-                  data-testid="ending-share-card-scroll-region"
-                  aria-label="分享卡片预览"
-                  className="max-w-full overflow-x-auto overscroll-x-contain pb-2"
-                >
-                  <ShareCard
-                    playerName={playerName}
-                    endingName={endingName}
-                    lifeMotto={lifeReview.life_motto}
-                    achievementCount={achievements.length}
-                    playDuration={lifeReview.play_duration_minutes}
+                {lifeReview.play_duration_minutes !== undefined && (
+                  <div
+                    data-testid="ending-share-card-scroll-region"
+                    aria-label="分享卡片预览"
+                    className="max-w-full overflow-x-auto overscroll-x-contain pb-2"
                   >
-                    <div className="space-y-2 text-sm text-slate-300">
-                      <p>成就数: {achievements.length}</p>
-                      <p>决策数: {lifeReview.total_decisions}</p>
-                    </div>
-                  </ShareCard>
-                </div>
+                    <ShareCard
+                      playerName={playerName}
+                      endingName={endingName}
+                      lifeMotto={lifeReview.life_motto}
+                      achievementCount={achievements.length}
+                      playDuration={lifeReview.play_duration_minutes}
+                    >
+                      <div className="space-y-2 text-sm text-slate-300">
+                        <p>成就数: {achievements.length}</p>
+                        {lifeReview.total_decisions !== undefined && (
+                          <p>决策数: {lifeReview.total_decisions}</p>
+                        )}
+                      </div>
+                    </ShareCard>
+                  </div>
+                )}
               </div>
             )}
           </section>

@@ -15,7 +15,7 @@ export function CreateFeedbackToast({
   return (
     <FeedbackNotice
       tone={toast.type === "success" ? "success" : "danger"}
-      className="fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] left-1/2 z-50 w-[calc(100%_-_2rem)] max-w-md -translate-x-1/2 p-3"
+      className="fixed bottom-[var(--app-shell-feedback-bottom)] left-1/2 z-50 w-[calc(100%_-_2rem)] max-w-md -translate-x-1/2 p-3"
     >
       <p>{toast.message}</p>
     </FeedbackNotice>

@@ -235,6 +235,62 @@ describe('EndingPage', () => {
       expect(screen.queryByTestId('life-review-card')).not.toBeInTheDocument();
     });
 
+    it('renders explicit zero review stats, including the share preview', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        life_review: {
+          play_duration_minutes: 0,
+          total_decisions: 0,
+        },
+      }));
+
+      render(<EndingPage />);
+      fireEvent.click(await screen.findByRole('button', { name: '查看人生回顾' }));
+
+      const reviewCard = screen.getByTestId('life-review-card');
+      expect(within(reviewCard).getByText('总决策数')).toBeInTheDocument();
+      expect(within(reviewCard).getByText('游戏时长(分)')).toBeInTheDocument();
+
+      const shareRegion = screen.getByTestId('ending-share-card-scroll-region');
+      expect(within(shareRegion).getByText('0分')).toBeInTheDocument();
+      expect(within(shareRegion).getByText('决策数: 0')).toBeInTheDocument();
+    });
+
+    it('does not invent numeric review stats when the fields are omitted', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        life_review: { life_motto: '只写下真实拥有的部分' },
+      }));
+
+      render(<EndingPage />);
+      fireEvent.click(await screen.findByRole('button', { name: '查看人生回顾' }));
+
+      const reviewCard = screen.getByTestId('life-review-card');
+      expect(within(reviewCard).queryByText('总决策数')).not.toBeInTheDocument();
+      expect(within(reviewCard).queryByText('游戏时长(分)')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('ending-share-card-scroll-region')).not.toBeInTheDocument();
+      expect(screen.queryByText('0分')).not.toBeInTheDocument();
+      expect(screen.queryByText('决策数: 0')).not.toBeInTheDocument();
+    });
+
+    it('omits a missing decisions count from an otherwise valid share preview', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({
+        life_review: {
+          life_motto: '只分享真实存在的统计',
+          play_duration_minutes: 7,
+        },
+      }));
+
+      render(<EndingPage />);
+      fireEvent.click(await screen.findByRole('button', { name: '查看人生回顾' }));
+
+      const reviewCard = screen.getByTestId('life-review-card');
+      expect(within(reviewCard).getByText('游戏时长(分)')).toBeInTheDocument();
+      expect(within(reviewCard).queryByText('总决策数')).not.toBeInTheDocument();
+
+      const shareRegion = screen.getByTestId('ending-share-card-scroll-region');
+      expect(within(shareRegion).getByText('7分')).toBeInTheDocument();
+      expect(within(shareRegion).queryByText(/^决策数:/)).not.toBeInTheDocument();
+    });
+
     it('gives long normalized relationship and achievement copy a breakable row', async () => {
       const longRelationship = '这是一位名字很长需要在三百二十像素宽度下完整换行的故友';
       const longAchievement = '在很长的人生里仍然保留好奇耐心以及重新出发的勇气';
@@ -298,6 +354,11 @@ describe('EndingPage', () => {
       const reviewCard = screen.getByTestId('life-review-card');
       expect(reviewCard).toBeInTheDocument();
       expect(within(reviewCard).getByText(/“保持好奇”/)).toBeInTheDocument();
+      expect(within(reviewCard).queryByText('总决策数')).not.toBeInTheDocument();
+      expect(within(reviewCard).queryByText('游戏时长(分)')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('ending-share-card-scroll-region')).not.toBeInTheDocument();
+      expect(screen.queryByText('0分')).not.toBeInTheDocument();
+      expect(screen.queryByText('决策数: 0')).not.toBeInTheDocument();
       expect(screen.queryByText('bad')).not.toBeInTheDocument();
     });
 

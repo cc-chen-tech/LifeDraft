@@ -613,10 +613,12 @@ describe('OpeningStoryPage', () => {
     it('shows illustration loading state', () => {
       useImageStore.setState({ isGeneratingIllustration: true });
       const { container } = render(<OpeningStoryPage />);
-      expect(screen.getByText('正在绘制人生插画')).toBeInTheDocument();
-      expect(container).not.toHaveTextContent(/AI/i);
-      expect(container.querySelector('.animate-pulse')).not.toBeInTheDocument();
-      expect(container.querySelector('.animate-spin')).not.toBeInTheDocument();
+      expect(screen.getByText('AI正在为你绘制人生插画...')).toBeInTheDocument();
+      expect(
+        screen.getByText('从故事中选择一个重要场景进行创作'),
+      ).toBeInTheDocument();
+      expect(container.querySelector('.animate-pulse')).toBeInTheDocument();
+      expect(container.querySelector('.animate-spin')).toBeInTheDocument();
     });
 
     it('shows illustration when available', () => {

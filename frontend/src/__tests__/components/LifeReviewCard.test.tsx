@@ -101,6 +101,24 @@ describe("LifeReviewCard", () => {
       expect(screen.getByText("冒险")).toBeInTheDocument();
       expect(screen.getByText("偏好风格")).toBeInTheDocument();
     });
+
+    it("renders explicit zero values for both numeric stats", () => {
+      render(
+        <LifeReviewCard
+          data={{
+            ...baseData,
+            play_duration_minutes: 0,
+            total_decisions: 0,
+            favorite_choice_type: "",
+          }}
+        />
+      );
+
+      const decisionsStat = screen.getByText("总决策数").parentElement;
+      const durationStat = screen.getByText("游戏时长(分)").parentElement;
+      expect(decisionsStat).toHaveTextContent("0");
+      expect(durationStat).toHaveTextContent("0");
+    });
   });
 
   describe("Turning points", () => {
@@ -185,16 +203,14 @@ describe("LifeReviewCard", () => {
       expect(screen.queryByText(/“”/)).not.toBeInTheDocument();
     });
 
-    it("does not invent sections for empty review metadata", () => {
-      const data: LifeReviewData = {
+    it("does not invent stats for omitted review metadata", () => {
+      const data = {
         personality_labels: [],
         key_turning_points: [],
         resource_curves: { energy: [], mood: [], knowledge: [], wealth: [] },
         achievement_badge_wall: [],
         relationship_network: { nodes: [], edges: [] },
         life_motto: "",
-        play_duration_minutes: 0,
-        total_decisions: 0,
         favorite_choice_type: "",
       };
 

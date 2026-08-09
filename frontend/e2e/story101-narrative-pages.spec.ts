@@ -426,34 +426,21 @@ async function installCreateFixture(page: Page) {
     ],
     total: 1,
   }));
+  await fulfillExactJson(page, "/api/presets", "POST", () => ({
+    preset_id: 74001,
+  }));
 }
 
-async function installSoundFixture(page: Page) {
+async function installSoundFixture(page: Page, gameId = SOUND_GAME_ID) {
   await fulfillExactJson(
     page,
-    `/api/music/playlist/${SOUND_GAME_ID}`,
+    `/api/music/playlist/${gameId}`,
     "GET",
-    () => SOUND_PLAYLIST,
+    () => ({ ...SOUND_PLAYLIST, game_id: gameId }),
   );
 }
 
-async function waitForGeneratedStep(page: Page, label: string) {
-  await expect(
-    page.locator('[data-slot="page-edge-bookmark"]'),
-  ).toContainText(label);
-  await expect(page.getByText("刚刚生成")).toBeVisible();
-}
-
-test("the create reading axis reserves the persistent sound dock", async ({
-  page,
-}, testInfo) => {
-  await page.setViewportSize(viewportFor(testInfo));
-  const scenario = await beginApiScenario(page, {
-    local: { gameId: String(SOUND_GAME_ID) },
-  });
-  await installSoundFixture(page);
-
-  await page.goto("/create");
+async function expectSoundDockClearance(page: Page) {
   const player = page.getByTestId("global-music-player");
   const spacer = page.locator('[data-app-shell-reserve-spacer="bottom"]');
   await expect(player).toBeVisible();
@@ -464,7 +451,9 @@ test("the create reading axis reserves the persistent sound dock", async ({
     "12px",
   );
 
-  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await page.evaluate(() =>
+    window.scrollTo(0, document.documentElement.scrollHeight),
+  );
   const geometry = await page.evaluate(() => {
     const content = document.querySelector<HTMLElement>(
       '[data-slot="app-shell-content"]',
@@ -488,8 +477,30 @@ test("the create reading axis reserves the persistent sound dock", async ({
   if (geometry) {
     expect(geometry.spacerPosition).toBe("static");
     expect(geometry.contentBottom).toBeLessThanOrEqual(geometry.playerTop + 0.5);
-    expect(geometry.playerBottom).toBeLessThanOrEqual(geometry.viewportHeight + 0.5);
+    expect(geometry.playerBottom).toBeLessThanOrEqual(
+      geometry.viewportHeight + 0.5,
+    );
   }
+}
+
+async function waitForGeneratedStep(page: Page, label: string) {
+  await expect(
+    page.locator('[data-slot="page-edge-bookmark"]'),
+  ).toContainText(label);
+  await expect(page.getByText("刚刚生成")).toBeVisible();
+}
+
+test("the create reading axis reserves the persistent sound dock", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize(viewportFor(testInfo));
+  const scenario = await beginApiScenario(page, {
+    local: { gameId: String(SOUND_GAME_ID) },
+  });
+  await installSoundFixture(page);
+
+  await page.goto("/create");
+  await expectSoundDockClearance(page);
 
   await expectOnlyApiRequests(page, scenario, {
     [`GET /api/music/playlist/${SOUND_GAME_ID}`]: 1,
@@ -501,8 +512,11 @@ test("create uses the real five-step reading flow through completion", async ({
 }, testInfo) => {
   await page.setViewportSize(viewportFor(testInfo));
   await page.emulateMedia({ reducedMotion: "reduce" });
-  const scenario = await beginApiScenario(page);
+  const scenario = await beginApiScenario(page, {
+    local: { gameId: String(SOUND_GAME_ID) },
+  });
   await installCreateFixture(page);
+  await installSoundFixture(page);
 
   await page.goto("/create");
 
@@ -578,8 +592,56 @@ test("create uses the real five-step reading flow through completion", async ({
   expect(dialogBounds.top).toBeGreaterThanOrEqual(0);
   expect(dialogBounds.right).toBeLessThanOrEqual(dialogBounds.viewportWidth);
   expect(dialogBounds.bottom).toBeLessThanOrEqual(dialogBounds.viewportHeight);
-  await page.getByRole("button", { name: "关闭保存预设" }).click();
+
+  await page
+    .getByRole("textbox", { name: "预设名称" })
+    .fill("许知夏的城市人生");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await expect(page.locator('[data-slot="page-transition"]')).toHaveCSS(
+    "animation-name",
+    "story101-page-enter",
+  );
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.getByRole("button", { name: "确认保存" }).click();
   await expect(presetDialog).toBeHidden();
+  const savedStatus = page.getByRole("status").filter({
+    hasText: "预设保存成功",
+  });
+  await expect(savedStatus).toBeVisible();
+  const toastNotice = page
+    .locator('[data-slot="feedback-notice"]')
+    .filter({ hasText: "预设保存成功" });
+  await expect(toastNotice).toHaveCSS("position", "fixed");
+  expect(
+    await toastNotice.evaluate(
+      (element) => element.closest('[data-slot="page-transition"]') === null,
+    ),
+  ).toBe(true);
+  const toastGeometry = await toastNotice.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const player = document.querySelector<HTMLElement>(
+      '[data-testid="global-music-player"]',
+    );
+    return {
+      top: rect.top,
+      bottom: rect.bottom,
+      viewportHeight: window.innerHeight,
+      playerTop: player?.getBoundingClientRect().top ?? null,
+      bottomProperty: getComputedStyle(element).bottom,
+    };
+  });
+  expect(toastGeometry.top).toBeGreaterThanOrEqual(0);
+  expect(toastGeometry.bottom).toBeLessThanOrEqual(
+    toastGeometry.viewportHeight + 0.5,
+  );
+  expect(Number.parseFloat(toastGeometry.bottomProperty)).toBeGreaterThan(0);
+  expect(toastGeometry.playerTop).not.toBeNull();
+  if (toastGeometry.playerTop !== null) {
+    expect(toastGeometry.bottom).toBeLessThanOrEqual(
+      toastGeometry.playerTop + 0.5,
+    );
+  }
+  await expectLiveRegionCount(page, 1);
 
   await expectResponsivePage(page);
 
@@ -589,6 +651,8 @@ test("create uses the real five-step reading flow through completion", async ({
     "POST /api/character/relationships-summary": 1,
     "POST /api/games": 1,
     "POST /api/images/generate": 1,
+    "POST /api/presets": 1,
+    [`GET /api/music/playlist/${SOUND_GAME_ID}`]: 1,
   });
 });
 
@@ -686,8 +750,11 @@ test("opening stays on one calm reading axis across retry and completion", async
 }, testInfo) => {
   await page.setViewportSize(viewportFor(testInfo));
   await page.emulateMedia({ reducedMotion: "reduce" });
-  const scenario = await beginApiScenario(page);
+  const scenario = await beginApiScenario(page, {
+    local: { gameId: String(SOUND_GAME_ID) },
+  });
   await installOpeningStreamFixture(page);
+  await installSoundFixture(page);
 
   await page.goto("/story/opening");
   await expect.poll(() => openingRequestCount(page)).toBe(1);
@@ -738,8 +805,11 @@ test("opening stays on one calm reading axis across retry and completion", async
   );
   expect(mainFrameNavigations).toBe(0);
   await screenshot(page, testInfo, "opening-complete");
+  await expectSoundDockClearance(page);
   await expectResponsivePage(page);
-  await expectOnlyApiRequests(page, scenario, {});
+  await expectOnlyApiRequests(page, scenario, {
+    [`GET /api/music/playlist/${SOUND_GAME_ID}`]: 1,
+  });
 });
 
 async function installEndingFixture(page: Page) {
@@ -775,6 +845,7 @@ test("ending failure retries into only the sections present in real data", async
   await page.emulateMedia({ reducedMotion: "reduce" });
   const scenario = await beginApiScenario(page, {
     local: {
+      gameId: String(ENDING_GAME_ID),
       "game-store": JSON.stringify({
         state: {
           gameId: ENDING_GAME_ID,
@@ -785,6 +856,7 @@ test("ending failure retries into only the sections present in real data", async
     },
   });
   await installEndingFixture(page);
+  await installSoundFixture(page, ENDING_GAME_ID);
 
   await page.goto("/ending");
   await expect(page.getByTestId("narrative-loading-screen")).toBeVisible();
@@ -824,9 +896,11 @@ test("ending failure retries into only the sections present in real data", async
     "animation-name",
     "none",
   );
+  await expectSoundDockClearance(page);
   await expectResponsivePage(page);
 
   await expectOnlyApiRequests(page, scenario, {
     [`GET /api/games/${ENDING_GAME_ID}/ending`]: 2,
+    [`GET /api/music/playlist/${ENDING_GAME_ID}`]: 1,
   });
 });

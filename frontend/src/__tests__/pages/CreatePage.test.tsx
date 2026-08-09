@@ -862,6 +862,24 @@ describe('CreatePage', () => {
   });
 
   describe('Toast functionality', () => {
+    it('renders interactive feedback outside the page transition at the app-shell offset', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(errorResponse(422, 'Invalid setting'));
+      useGameStore.setState({
+        creationStep: 0,
+        playerName: 'TestPlayer',
+        characterSettings: {},
+      });
+
+      render(<CreatePage />);
+
+      const alert = await screen.findByRole('alert');
+      const notice = alert.closest('[data-slot="feedback-notice"]');
+      expect(alert).toHaveTextContent('生成失败，请重试');
+      expect(notice).not.toBeNull();
+      expect(notice).toHaveClass('bottom-[var(--app-shell-feedback-bottom)]');
+      expect(notice?.closest('[data-slot="page-transition"]')).toBeNull();
+    });
+
     it('shows error toast when generation fails', async () => {
       (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ message: 'API Error' }, 400));
 

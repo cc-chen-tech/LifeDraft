@@ -147,7 +147,8 @@ export function CompletionScreen({
   };
 
   return (
-    <PageTransition className="min-h-screen bg-[var(--surface-canvas)]">
+    <>
+      <PageTransition className="min-h-screen bg-[var(--surface-canvas)]">
       <header className="sticky top-0 z-40 border-b border-[var(--border-default)] bg-[var(--surface-canvas)]/95 backdrop-blur-sm">
         <div className="mx-auto flex min-h-16 max-w-3xl items-center gap-2 px-4 sm:gap-4">
           <Button
@@ -360,11 +361,12 @@ export function CompletionScreen({
         message={presetSaveMessage}
         onSave={onSavePreset}
       />
+      </PageTransition>
 
       <CreateFeedbackToast
         toast={toast}
         suppressed={showPresetSheet && presetSaveStatus === "error"}
       />
-    </PageTransition>
+    </>
   );
 }

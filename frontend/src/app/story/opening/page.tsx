@@ -516,14 +516,18 @@ export default function OpeningStoryPage() {
             <div className="space-y-5 border-t border-[var(--border-default)] pt-7">
               {isGeneratingIllustration && (
                 <div className="flex flex-col items-center gap-3 py-6 text-center">
-                  <ImageIcon
-                    aria-hidden="true"
-                    className="h-6 w-6 text-[var(--text-secondary)]"
-                  />
-                  <p className="text-sm text-[var(--text-primary)]">正在绘制人生插画</p>
-                  <p className="text-xs text-[var(--text-secondary)]">
-                    从故事中选择一个重要场景
-                  </p>
+                  <div className="relative">
+                    <div className="h-16 w-16 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
+                    <ImageIcon className="absolute inset-0 m-auto h-6 w-6 text-primary" />
+                  </div>
+                  <div className="space-y-1 text-center">
+                    <p className="animate-pulse text-sm text-muted-foreground">
+                      AI正在为你绘制人生插画...
+                    </p>
+                    <p className="text-xs text-muted-foreground/60">
+                      从故事中选择一个重要场景进行创作
+                    </p>
+                  </div>
                 </div>
               )}
 

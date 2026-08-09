@@ -29,8 +29,8 @@ export interface LifeReviewData {
     edges: { source: string; target: string; strength: number }[];
   };
   life_motto: string;
-  play_duration_minutes: number;
-  total_decisions: number;
+  play_duration_minutes?: number;
+  total_decisions?: number;
   favorite_choice_type: string;
 }
 
@@ -43,8 +43,8 @@ export function LifeReviewCard({ data }: LifeReviewCardProps) {
   const hasLifeMotto = data.life_motto.trim().length > 0;
   const hasTurningPoints = data.key_turning_points.length > 0;
   const hasStats =
-    data.total_decisions > 0 ||
-    data.play_duration_minutes > 0 ||
+    data.total_decisions !== undefined ||
+    data.play_duration_minutes !== undefined ||
     data.favorite_choice_type.trim().length > 0;
   const hasAchievements = data.achievement_badge_wall.length > 0;
 
@@ -110,7 +110,7 @@ export function LifeReviewCard({ data }: LifeReviewCardProps) {
       {hasStats && (
         <section className="py-6 first:pt-0">
           <dl className="grid grid-cols-1 divide-y divide-[var(--border-default)] text-center sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-            {data.total_decisions > 0 && (
+            {data.total_decisions !== undefined && (
               <div className="flex min-w-0 flex-col px-3 py-3 first:pt-0 sm:py-0">
                 <dt className="order-2 mt-1 text-xs text-[var(--text-subtle)]">总决策数</dt>
                 <dd className="order-1 break-words text-2xl font-semibold text-[var(--text-primary)]">
@@ -118,7 +118,7 @@ export function LifeReviewCard({ data }: LifeReviewCardProps) {
                 </dd>
               </div>
             )}
-            {data.play_duration_minutes > 0 && (
+            {data.play_duration_minutes !== undefined && (
               <div className="flex min-w-0 flex-col px-3 py-3 sm:py-0">
                 <dt className="order-2 mt-1 text-xs text-[var(--text-subtle)]">游戏时长(分)</dt>
                 <dd className="order-1 break-words text-2xl font-semibold text-[var(--text-primary)]">
