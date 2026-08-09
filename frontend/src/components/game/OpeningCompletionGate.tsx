@@ -27,8 +27,10 @@ export function OpeningCompletionGate({
   return (
     <div className="flex flex-col items-center gap-2">
       <Button
-        size="lg"
-        className="h-14 px-8 text-base touch-target animate-fade-in-word disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 disabled:cursor-not-allowed disabled:hover:bg-muted"
+        type="button"
+        variant="narrative"
+        size="touch"
+        className="min-h-14 px-8 text-base disabled:bg-[var(--surface-raised)] disabled:text-[var(--text-secondary)] disabled:opacity-100 disabled:cursor-not-allowed disabled:hover:bg-[var(--surface-raised)]"
         onClick={ready ? onStart : undefined}
         disabled={!ready}
         aria-busy={!ready}
@@ -46,7 +48,7 @@ export function OpeningCompletionGate({
       </Button>
       {!ready && (
         <p
-          className="text-sm text-muted-foreground"
+          className="text-sm text-[var(--text-secondary)]"
           id="opening-start-status"
           role="status"
           aria-live="polite"

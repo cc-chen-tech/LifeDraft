@@ -1,4 +1,8 @@
 import { test, expect } from '@playwright/test';
+import {
+  FRONTEND_ORIGIN,
+  installEraGenerationFixture,
+} from './helpers/character-setting-fixture';
 
 test.describe('no-mock regression coverage', () => {
   test('register sheet focuses the display name field when opened', async ({ page }) => {
@@ -12,44 +16,50 @@ test.describe('no-mock regression coverage', () => {
   test('creation step indicators expose accessible names', async ({ page }) => {
     await page.goto('/create');
 
-    await expect(page.getByRole('button', { name: '第 1 步：时代背景' })).toBeVisible();
-    await expect(page.getByRole('button', { name: '第 2 步：年龄阶段' })).toBeVisible();
-    await expect(page.getByRole('button', { name: '第 3 步：性别' })).toBeVisible();
-    await expect(page.getByRole('button', { name: '第 4 步：世界观' })).toBeVisible();
-    await expect(page.getByRole('button', { name: '第 5 步：人物形象' })).toBeVisible();
+    const stepNavigation = page.getByRole('navigation', { name: '角色创建步骤' });
+    const currentStep = stepNavigation.getByRole('button', { name: '前往时代背景' });
+    await expect(currentStep).toBeVisible();
+    await expect(currentStep).toHaveAttribute('aria-current', 'step');
+    await expect(currentStep).toBeDisabled();
+
+    for (const name of ['年龄阶段', '性别', '世界观', '人物形象']) {
+      const futureStep = stepNavigation.getByRole('button', { name: `前往${name}` });
+      await expect(futureStep).toBeVisible();
+      await expect(futureStep).toBeDisabled();
+      await expect(futureStep).not.toHaveAttribute('aria-current', 'step');
+    }
   });
 
-  test('creation generation exits loading after backend success or failure', async ({ page }) => {
-    test.setTimeout(90_000);
-
+  test('creation generation uses calm loading and exits after backend success', async ({ page }) => {
+    const requests = await installEraGenerationFixture(page, 500);
     await page.goto('/create');
 
     const nameInput = page.getByPlaceholder('输入你的角色名');
     const visionInput = page.getByPlaceholder('描述你希望的人生方向...');
     await expect(nameInput).toBeEditable();
     await expect(visionInput).toBeEditable();
-    await nameInput.pressSequentially('陆明');
-    await visionInput.pressSequentially('古代江湖，重视关系和悬疑推进');
+    await visionInput.fill('古代江湖，重视关系和悬疑推进');
+    await nameInput.fill('陆明');
     await expect(nameInput).toHaveValue('陆明');
     await expect(visionInput).toHaveValue('古代江湖，重视关系和悬疑推进');
 
-    await expect
-      .poll(
-        async () => {
-          const loadingVisible = await page.getByText('AI正在生成时代背景...').isVisible();
-          const nextEnabled = await page.getByRole('button', { name: '下一步' }).isEnabled();
-          const errorVisible = await page.getByText('生成失败，请重试').isVisible();
-          const slowHintVisible = await page
-            .getByText('生成时间较久，请继续等待，完成后会自动显示结果。')
-            .isVisible();
-          return (!loadingVisible && (nextEnabled || errorVisible)) || slowHintVisible;
-        },
-        {
-          message: 'creation flow should not stay stuck in AI loading state',
-          timeout: 70000,
-        },
-      )
-      .toBe(true);
+    const loading = page.getByRole('status');
+    await expect(
+      loading.getByRole('heading', { name: '角色设定，正在成形' }),
+    ).toBeVisible();
+    await expect(loading).toContainText('时代背景');
+
+    await expect(page.getByText('刚刚生成')).toBeVisible();
+    await expect(page.getByRole('button', { name: '下一步' })).toBeEnabled();
+    expect(requests).toEqual([
+      {
+        method: 'POST',
+        origin: FRONTEND_ORIGIN,
+        path: '/api/character/setting',
+        search: '',
+        settingType: 'era',
+      },
+    ]);
   });
 
   test('choice buttons expose stable accessible names', async ({ page }) => {

@@ -76,6 +76,59 @@ describe('CreatePage', () => {
   });
 
   describe('Initial render', () => {
+    it('uses one calm reading surface inside the page transition', () => {
+      const { container } = render(<CreatePage />);
+
+      expect(container.querySelectorAll('main[data-slot="page-transition"]')).toHaveLength(1);
+      expect(container.querySelectorAll('main main')).toHaveLength(0);
+      expect(container.querySelectorAll('[data-slot="surface"][data-variant="reading"]')).toHaveLength(1);
+      expect(container.querySelectorAll('[data-slot="card"]')).toHaveLength(0);
+    });
+
+    it('shows the story101 brand and one current real-step bookmark', () => {
+      const { container } = render(<CreatePage />);
+
+      expect(screen.getByText('story101')).toBeInTheDocument();
+      const bookmarks = container.querySelectorAll('[data-slot="page-edge-bookmark"]');
+      expect(bookmarks).toHaveLength(1);
+      expect(bookmarks[0]).toHaveTextContent('时代背景');
+      expect(bookmarks[0]).toHaveTextContent('第 1 步，共 5 步');
+    });
+
+    it('renders five named steps with only completed steps actionable', () => {
+      useGameStore.setState({
+        creationStep: 2,
+        playerName: 'TestPlayer',
+        characterSettings: {
+          era: { era_name: '现代' },
+          age: { starting_age: 22 },
+        },
+      });
+
+      render(<CreatePage />);
+
+      const stepNames = ['时代背景', '年龄阶段', '性别', '世界观', '人物形象'];
+      const stepButtons = stepNames.map((name) =>
+        screen.getByRole('button', { name: `前往${name}` }),
+      );
+      expect(stepButtons).toHaveLength(5);
+      expect(stepButtons[0]).toBeEnabled();
+      expect(stepButtons[1]).toBeEnabled();
+      expect(stepButtons[2]).toBeDisabled();
+      expect(stepButtons[2]).toHaveAttribute('aria-current', 'step');
+      expect(stepButtons[3]).toBeDisabled();
+      expect(stepButtons[4]).toBeDisabled();
+      stepButtons.forEach((button) => {
+        expect(button).toHaveAttribute('data-size', 'touch');
+      });
+    });
+
+    it('does not create competing live regions for static field counters', () => {
+      const { container } = render(<CreatePage />);
+
+      expect(container.querySelectorAll('[aria-live]')).toHaveLength(0);
+    });
+
     it('renders the page title', () => {
       render(<CreatePage />);
       expect(screen.getByRole('heading', { level: 2 })).toBeInTheDocument();
@@ -111,7 +164,7 @@ describe('CreatePage', () => {
 
     it('shows era step title', () => {
       render(<CreatePage />);
-      expect(screen.getByText('时代背景')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: '时代背景', level: 2 })).toBeInTheDocument();
     });
   });
 
@@ -124,7 +177,7 @@ describe('CreatePage', () => {
       });
 
       render(<CreatePage />);
-      expect(screen.getByText('年龄阶段')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '前往年龄阶段' })).toHaveAttribute('aria-current', 'step');
     });
 
     it('renders gender step when creationStep is 2', () => {
@@ -135,7 +188,7 @@ describe('CreatePage', () => {
       });
 
       render(<CreatePage />);
-      expect(screen.getByText('性别')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '前往性别' })).toHaveAttribute('aria-current', 'step');
     });
 
     it('renders world step when creationStep is 3', () => {
@@ -146,7 +199,7 @@ describe('CreatePage', () => {
       });
 
       render(<CreatePage />);
-      expect(screen.getByText('世界观')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '前往世界观' })).toHaveAttribute('aria-current', 'step');
     });
 
     it('renders portrait step when creationStep is 4', () => {
@@ -158,7 +211,7 @@ describe('CreatePage', () => {
       });
 
       render(<CreatePage />);
-      expect(screen.getByText('人物形象')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: '人物形象', level: 2 })).toBeInTheDocument();
     });
   });
 
@@ -262,7 +315,7 @@ describe('CreatePage', () => {
       });
 
       render(<CreatePage />);
-      expect(screen.getByText('角色设定完成')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: '角色设定完成', level: 1 })).toBeInTheDocument();
     });
   });
 
@@ -340,7 +393,7 @@ describe('CreatePage', () => {
       });
 
       render(<CreatePage />);
-      expect(screen.getByText('人物形象')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: '人物形象', level: 2 })).toBeInTheDocument();
     });
 
     it('shows generating state when isGeneratingImage is true', () => {
@@ -358,7 +411,7 @@ describe('CreatePage', () => {
       useImageStore.setState({ isGeneratingImage: true });
 
       render(<CreatePage />);
-      expect(screen.getByText('人物形象')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: '人物形象', level: 2 })).toBeInTheDocument();
     });
 
     it('shows player images when available', () => {
@@ -382,7 +435,7 @@ describe('CreatePage', () => {
       });
 
       render(<CreatePage />);
-      expect(screen.getByText('人物形象')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: '人物形象', level: 2 })).toBeInTheDocument();
     });
   });
 
@@ -405,7 +458,7 @@ describe('CreatePage', () => {
       });
 
       render(<CreatePage />);
-      expect(screen.getByText('角色设定完成')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: '角色设定完成', level: 1 })).toBeInTheDocument();
     });
   });
 
@@ -452,7 +505,7 @@ describe('CreatePage', () => {
       fireEvent.click(saveButton);
 
       await waitFor(() => {
-        expect(screen.getByPlaceholderText('预设名称')).toBeInTheDocument();
+        expect(screen.getByRole('textbox', { name: '预设名称' })).toBeInTheDocument();
       });
     });
 
@@ -491,7 +544,10 @@ describe('CreatePage', () => {
       });
 
       render(<CreatePage />);
-      expect(screen.getByText('时代背景')).toBeInTheDocument();
+      const currentStep = screen.getByRole('button', { name: '前往时代背景' });
+      expect(currentStep).toHaveAttribute('aria-current', 'step');
+      expect(currentStep).toHaveClass('text-sm');
+      expect(currentStep).not.toHaveClass('text-xs');
     });
 
     it('shows the current character step in the unified loading state after a generation starts', () => {
@@ -714,7 +770,8 @@ describe('CreatePage', () => {
       useImageStore.setState({ isGeneratingImage: true });
 
       render(<CreatePage />);
-      expect(screen.getByText('AI正在生成人物形象...')).toBeInTheDocument();
+      expect(screen.getByText('正在生成人物形象...')).toBeInTheDocument();
+      expect(screen.queryByText(/AI/)).not.toBeInTheDocument();
     });
 
     it('shows regenerate image button when images available', () => {
@@ -760,7 +817,7 @@ describe('CreatePage', () => {
       });
 
       render(<CreatePage />);
-      expect(screen.getByText('人物形象')).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: /选择人物形象/ })).toHaveLength(2);
     });
 
     it('shows background generation indicator', () => {
@@ -781,12 +838,12 @@ describe('CreatePage', () => {
       });
 
       render(<CreatePage />);
-      expect(screen.getByText('人物形象')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: '人物形象', level: 2 })).toBeInTheDocument();
     });
   });
 
   describe('Step indicator navigation', () => {
-    it('allows clicking on previous step indicators', () => {
+    it('jumps directly to a previous named step without invoking destructive back cleanup', () => {
       useGameStore.setState({
         creationStep: 2,
         playerName: 'TestPlayer',
@@ -797,12 +854,32 @@ describe('CreatePage', () => {
       });
 
       render(<CreatePage />);
-      const stepIndicators = screen.getAllByRole('button');
-      expect(stepIndicators.length).toBeGreaterThan(0);
+      fireEvent.click(screen.getByRole('button', { name: '前往时代背景' }));
+
+      expect(gameSpy.spies.setCreationStep).toHaveBeenCalledWith(0);
+      expect(gameSpy.spies.prevCreationStep).not.toHaveBeenCalled();
     });
   });
 
   describe('Toast functionality', () => {
+    it('renders interactive feedback outside the page transition at the app-shell offset', async () => {
+      (global.fetch as jest.Mock).mockResolvedValue(errorResponse(422, 'Invalid setting'));
+      useGameStore.setState({
+        creationStep: 0,
+        playerName: 'TestPlayer',
+        characterSettings: {},
+      });
+
+      render(<CreatePage />);
+
+      const alert = await screen.findByRole('alert');
+      const notice = alert.closest('[data-slot="feedback-notice"]');
+      expect(alert).toHaveTextContent('生成失败，请重试');
+      expect(notice).not.toBeNull();
+      expect(notice).toHaveClass('bottom-[var(--app-shell-feedback-bottom)]');
+      expect(notice?.closest('[data-slot="page-transition"]')).toBeNull();
+    });
+
     it('shows error toast when generation fails', async () => {
       (global.fetch as jest.Mock).mockResolvedValue(jsonResponse({ message: 'API Error' }, 400));
 
@@ -849,7 +926,7 @@ describe('CreatePage', () => {
         fireEvent.click(saveButton);
       });
 
-      const input = screen.getByPlaceholderText('预设名称');
+      const input = screen.getByRole('textbox', { name: '预设名称' });
       fireEvent.change(input, { target: { value: 'Test Preset' } });
 
       const saveInSheet = screen.getByRole('button', { name: '确认保存' });
@@ -860,6 +937,39 @@ describe('CreatePage', () => {
       await waitFor(() => {
         expect(fetchCalled('/api/presets')).toBe(true);
       });
+      expect(await screen.findByRole('status')).toHaveTextContent('预设保存成功');
+    });
+
+    it('shows an image regeneration error in the completed creation branch', async () => {
+      imageSpy.spies.regeneratePlayerImage.mockRejectedValueOnce(
+        new Error('人物形象修改失败'),
+      );
+      useGameStore.setState({
+        creationStep: 4,
+        characterSettings: {
+          era: { era_name: '现代' },
+          age: { starting_age: 22 },
+          gender: 'male',
+          world: { world_description: 'test' },
+          family: { family_background: 'test' },
+          relationships: { relationships_description: 'test' },
+          traits: { traits: 'test' },
+        },
+        playerName: 'TestPlayer',
+        gameId: 1,
+      });
+      useImageStore.setState({
+        playerImages: [{ image_id: 1, image_url: 'http://test.url/1.png' }],
+        imageFeedback: '换成侧光',
+        isGeneratingImage: false,
+      });
+
+      render(<CreatePage />);
+      fireEvent.click(screen.getByRole('button', { name: '根据意见修改' }));
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        '人物形象修改失败',
+      );
     });
 
     it('shows error toast when preset save fails', async () => {
@@ -890,7 +1000,7 @@ describe('CreatePage', () => {
         fireEvent.click(saveButton);
       });
 
-      const input = screen.getByPlaceholderText('预设名称');
+      const input = screen.getByRole('textbox', { name: '预设名称' });
       fireEvent.change(input, { target: { value: 'Test Preset' } });
 
       const saveInSheet = screen.getByRole('button', { name: '确认保存' });
@@ -933,7 +1043,7 @@ describe('CreatePage', () => {
       render(<CreatePage />);
 
       fireEvent.click(screen.getByText('保存为预设'));
-      fireEvent.change(screen.getByPlaceholderText('预设名称'), {
+      fireEvent.change(screen.getByRole('textbox', { name: '预设名称' }), {
         target: { value: 'Test Preset' },
       });
       fireEvent.click(screen.getByText('确认保存'));
@@ -975,12 +1085,13 @@ describe('CreatePage', () => {
       render(<CreatePage />);
 
       fireEvent.click(screen.getByText('保存为预设'));
-      fireEvent.change(screen.getByPlaceholderText('预设名称'), {
+      fireEvent.change(screen.getByRole('textbox', { name: '预设名称' }), {
         target: { value: 'Test Preset' },
       });
       fireEvent.click(screen.getByText('确认保存'));
 
       expect(await screen.findByRole('alert')).toHaveTextContent('保存失败，预设未保存，请重试。');
+      expect(screen.getAllByRole('alert')).toHaveLength(1);
       const sheetSaveButton = screen.getAllByRole('button', { name: /保存/ }).at(-1);
       expect(sheetSaveButton).toBeEnabled();
     });
@@ -1118,7 +1229,7 @@ describe('CreatePage', () => {
         render(<CreatePage />);
       });
 
-      expect(screen.getByText('世界观')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: '世界观', level: 2 })).toBeInTheDocument();
     });
 
     it('saves generated content on accept', async () => {

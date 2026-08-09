@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
 import { RefreshCw, Loader2 } from "lucide-react";
 import { SettingDisplay } from "@/components/game/SettingDisplay";
 import { LengthIndicator } from "@/components/ui/length-indicator";
+import { FeedbackNotice, FormField } from "@/components/story101";
 import { INPUT_LIMITS } from "@/types/input-limits.generated";
 import { isWithinInputLimit } from "@/lib/inputLimits";
 
@@ -27,6 +27,7 @@ export function SettingFeedbackCard({
   const [feedback, setFeedback] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [regenerationError, setRegenerationError] = useState("");
+  const isOverLimit = !isWithinInputLimit(feedback, INPUT_LIMITS.feedback);
 
   const handleRegenerate = async () => {
     if (!feedback.trim() || !isWithinInputLimit(feedback, INPUT_LIMITS.feedback)) return;
@@ -48,12 +49,17 @@ export function SettingFeedbackCard({
   };
 
   return (
-    <Card className="p-4 border-border">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-medium text-primary">{stepLabel}</h3>
+    <section
+      className="min-w-0 border-t border-[var(--border-default)] py-5"
+      data-slot="setting-feedback"
+    >
+      <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-3">
+        <h3 className="break-words text-sm font-medium text-[var(--text-primary)]">
+          {stepLabel}
+        </h3>
         <Button
-          variant="ghost"
-          size="sm"
+          variant="quiet"
+          size="touch"
           onClick={() => {
             setIsEditing(!isEditing);
             setRegenerationError("");
@@ -62,7 +68,7 @@ export function SettingFeedbackCard({
           aria-label={isEditing ? `取消${stepLabel}反馈编辑` : `给${stepLabel}反馈重新生成`}
           data-testid={`${stepKey}-feedback-button`}
         >
-          <RefreshCw className="w-3.5 h-3.5 mr-1" />
+          <RefreshCw />
           {isEditing ? "取消" : "给反馈重新生成"}
         </Button>
       </div>
@@ -72,40 +78,62 @@ export function SettingFeedbackCard({
       </div>
 
       {isEditing && (
-        <div className="mt-3 space-y-2 animate-page-enter">
-          <Input
-            value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
-            placeholder="告诉AI你想怎么改..."
-            disabled={isGenerating}
-            data-testid={`${stepKey}-feedback-input`}
-          />
-          <LengthIndicator value={feedback} limit={INPUT_LIMITS.feedback} />
+        <div className="mt-5 grid gap-4 border-t border-[var(--border-default)] pt-5">
+          <FormField
+            id={`${stepKey}-feedback`}
+            label={`${stepLabel}修改意见`}
+            description="写清想保留的部分和需要调整的方向。"
+            error={isOverLimit ? `修改意见不能超过 ${INPUT_LIMITS.feedback} 字` : undefined}
+          >
+            {({ describedBy, invalid }) => (
+              <>
+                <Textarea
+                  id={`${stepKey}-feedback`}
+                  value={feedback}
+                  onChange={(e) => setFeedback(e.target.value)}
+                  placeholder="写下你想调整的方向"
+                  surface="underline"
+                  controlSize="touch"
+                  className="min-h-24 resize-y"
+                  disabled={isGenerating}
+                  aria-describedby={[describedBy, `${stepKey}-feedback-count`].filter(Boolean).join(" ")}
+                  aria-invalid={invalid}
+                  data-testid={`${stepKey}-feedback-input`}
+                />
+                <LengthIndicator
+                  id={`${stepKey}-feedback-count`}
+                  value={feedback}
+                  limit={INPUT_LIMITS.feedback}
+                  announce={false}
+                />
+              </>
+            )}
+          </FormField>
           {regenerationError && (
-            <p className="text-xs text-destructive" role="alert">
-              {regenerationError}
-            </p>
+            <FeedbackNotice tone="danger" className="p-3">
+              <p>{regenerationError}</p>
+            </FeedbackNotice>
           )}
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <Button
-              size="sm"
+              size="touch"
               onClick={handleRegenerate}
               disabled={
                 isGenerating ||
                 !feedback.trim() ||
-                !isWithinInputLimit(feedback, INPUT_LIMITS.feedback)
+                isOverLimit
               }
               aria-label={`重新生成${stepLabel}`}
             >
               {isGenerating ? (
-                <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                <Loader2 className="animate-spin" />
               ) : (
-                <RefreshCw className="w-3.5 h-3.5 mr-1" />
+                <RefreshCw />
               )}
               重新生成
             </Button>
             <Button
-              size="sm"
+              size="touch"
               variant="outline"
               onClick={() => {
                 setIsEditing(false);
@@ -119,6 +147,6 @@ export function SettingFeedbackCard({
           </div>
         </div>
       )}
-    </Card>
+    </section>
   );
 }

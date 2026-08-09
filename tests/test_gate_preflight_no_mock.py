@@ -232,8 +232,15 @@ def test_global_music_player_uses_app_shell_route_safe_positioning() -> None:
         r'pathname\s*===\s*"([^"]+)"',
         bottom_route_guard.group(1),
     )
-    assert len(bottom_routes) == 3
-    assert set(bottom_routes) == {"/", "/saves", "/presets"}
+    assert len(bottom_routes) == 6
+    assert set(bottom_routes) == {
+        "/",
+        "/saves",
+        "/presets",
+        "/create",
+        "/story/opening",
+        "/ending",
+    }
 
     spacer_branch = re.search(
         r"\{usesBottomAppShellDock\s*&&\s*\(.*?"

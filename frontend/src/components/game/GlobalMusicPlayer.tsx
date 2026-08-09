@@ -34,7 +34,12 @@ export function GlobalMusicPlayer() {
   const [isExpanded, setIsExpanded] = useState(false);
   const pathname = usePathname();
   const usesBottomAppShellDock =
-    pathname === "/" || pathname === "/saves" || pathname === "/presets";
+    pathname === "/" ||
+    pathname === "/saves" ||
+    pathname === "/presets" ||
+    pathname === "/create" ||
+    pathname === "/story/opening" ||
+    pathname === "/ending";
 
   const loadPlaylist = useMusicStore((state) => state.loadPlaylist);
   const playlistGameId = useMusicStore((state) => state.playlistGameId);
@@ -333,7 +338,7 @@ export function GlobalMusicPlayer() {
             </div>
             <div
               data-testid="collapsed-sound-status"
-              className="mt-0.5 truncate text-[11px] leading-4 text-muted-foreground"
+              className="mt-0.5 truncate text-xs leading-4 text-muted-foreground"
             >
               {combinedSoundStatus}
             </div>

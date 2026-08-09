@@ -21,6 +21,13 @@ describe("SettingFeedbackCard", () => {
   });
 
   describe("Basic rendering", () => {
+    it("uses a quiet divided section instead of nesting cards", () => {
+      const { container } = render(<SettingFeedbackCard {...baseProps} />);
+
+      expect(container.querySelector('[data-slot="card"]')).not.toBeInTheDocument();
+      expect(container.querySelector('[data-slot="setting-feedback"]')).toBeInTheDocument();
+    });
+
     it("renders the step label", () => {
       render(<SettingFeedbackCard {...baseProps} />);
       expect(screen.getByText("家庭背景")).toBeInTheDocument();
@@ -42,9 +49,8 @@ describe("SettingFeedbackCard", () => {
 
       await user.click(feedbackButton);
 
-      expect(
-        screen.getByRole("button", { name: "重新生成家庭背景" })
-      ).toBeDisabled();
+      expect(screen.getByRole("button", { name: "重新生成家庭背景" }))
+        .toHaveAttribute("data-size", "touch");
     });
 
     it("renders the SettingDisplay content", () => {
@@ -69,6 +75,9 @@ describe("SettingFeedbackCard", () => {
       await user.click(screen.getByTestId("background-feedback-button"));
 
       expect(screen.getByTestId("background-feedback-input")).toBeInTheDocument();
+      expect(screen.getByTestId("background-feedback-input").tagName).toBe("TEXTAREA");
+      expect(screen.getByRole("textbox", { name: "家庭背景修改意见" }))
+        .toHaveAttribute("aria-describedby");
       expect(screen.getByText("重新生成")).toBeInTheDocument();
       expect(screen.getByTestId("background-feedback-input")).not.toHaveAttribute("maxlength");
       expect(screen.getByText(`还可输入 ${INPUT_LIMITS.feedback} 字`)).toBeInTheDocument();
@@ -140,7 +149,7 @@ describe("SettingFeedbackCard", () => {
       await user.click(screen.getByTestId("background-feedback-button"));
       const input = screen.getByTestId("background-feedback-input");
       await user.type(input, "😀".repeat(INPUT_LIMITS.feedback + 1));
-      expect(screen.getByRole("alert")).toHaveTextContent("已超出 1 字");
+      expect(screen.getByText("已超出 1 字")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "重新生成家庭背景" })).toBeDisabled();
       expect(input).toHaveValue("😀".repeat(INPUT_LIMITS.feedback + 1));
       expect(onRegenerate).not.toHaveBeenCalled();

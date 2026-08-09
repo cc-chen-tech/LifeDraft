@@ -2,28 +2,23 @@
 
 import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { LengthIndicator } from "@/components/ui/length-indicator";
+import { FormField, PageTransition, Surface } from "@/components/story101";
 import { INPUT_LIMITS } from "@/types/input-limits.generated";
 import { isWithinInputLimit } from "@/lib/inputLimits";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet";
-import { SettingDisplay } from "@/components/game/SettingDisplay";
 import { SettingFeedbackCard } from "./SettingFeedbackCard";
-import { PresetSaveInlineStatus } from "./PresetSaveInlineStatus";
-import type { PresetSaveStatus } from "@/hooks/useCharacterCreation";
-import { CREATION_STEPS } from "@/stores/useGameStore";
+import { PresetSaveSheet } from "./PresetSaveSheet";
+import { CreateFeedbackToast } from "./CreateFeedbackToast";
+import type {
+  PresetSaveStatus,
+  ToastType,
+} from "@/hooks/useCharacterCreation";
 import {
   ArrowLeft,
   Loader2,
   Save,
   Play,
-  Sparkles,
   ChevronDown,
   ChevronUp,
   Eye,
@@ -59,6 +54,7 @@ interface CompletionScreenProps {
   isSavingPreset: boolean;
   presetSaveStatus: PresetSaveStatus;
   presetSaveMessage: string;
+  toast: ToastType;
   // Image regeneration
   isGeneratingImage: boolean;
   imageFeedback: string;
@@ -89,6 +85,7 @@ export function CompletionScreen({
   isSavingPreset,
   presetSaveStatus,
   presetSaveMessage,
+  toast,
   isGeneratingImage,
   imageFeedback,
   onImageFeedbackChange,
@@ -107,6 +104,10 @@ export function CompletionScreen({
   const [isRegeneratingFresh, setIsRegeneratingFresh] = useState(false);
   const [isRegeneratingImage, setIsRegeneratingImage] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const isImageFeedbackOverLimit = !isWithinInputLimit(
+    imageFeedback,
+    INPUT_LIMITS.feedback,
+  );
 
   const handleImageError = useCallback(() => {
     setImageError(true);
@@ -146,214 +147,226 @@ export function CompletionScreen({
   };
 
   return (
-    <div className="min-h-screen bg-background animate-page-enter flex flex-col">
-      <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-sm border-b border-border">
-        <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between">
+    <>
+      <PageTransition className="min-h-screen bg-[var(--surface-canvas)]">
+      <header className="sticky top-0 z-40 border-b border-[var(--border-default)] bg-[var(--surface-canvas)]/95 backdrop-blur-sm">
+        <div className="mx-auto flex min-h-16 max-w-3xl items-center gap-2 px-4 sm:gap-4">
           <Button
-            variant="ghost"
-            size="sm"
+            variant="quiet"
+            size="touch"
             onClick={handleBack}
             disabled={isGoingBack}
             data-testid="back-button"
           >
             {isGoingBack ? (
-              <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+              <Loader2 className="animate-spin" />
             ) : (
-              <ArrowLeft className="w-4 h-4 mr-1" />
+              <ArrowLeft />
             )}
             返回修改
           </Button>
-          <span className="text-sm text-muted-foreground">角色创建完成</span>
+          <div className="hidden min-w-0 flex-1 text-center sm:block">
+            <p className="text-sm font-medium text-[var(--text-primary)]">story101</p>
+            <p className="text-xs text-[var(--text-secondary)]">角色设定完成</p>
+          </div>
           <Button
-            variant="ghost"
-            size="sm"
+            variant="quiet"
+            size="touch"
             onClick={() => onSetShowPresetSheet(true)}
           >
-            <Save className="w-4 h-4 mr-1" />
+            <Save />
             快速保存
           </Button>
         </div>
       </header>
 
-      {/* Centered completion message */}
-      <main className="flex-1 flex flex-col items-center justify-center px-4 py-8">
-        {/* 主角图片展示 + 重新生成 */}
-        {playerImages.length > 0 && (
-          <div className="mb-6 flex flex-col items-center w-full max-w-xs">
-            {isGeneratingImage ? (
-              <div className="w-32 h-48 bg-secondary rounded-lg flex items-center justify-center">
-                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : !imageError ? (
-              <img
-                src={playerImages[selectedImageIndex]?.image_url || playerImages[0]?.image_url}
-                alt={playerName || "主角"}
-                className="w-32 h-48 object-cover rounded-lg border-2 border-primary/30 shadow-lg"
-                onError={handleImageError}
-              />
-            ) : (
-              <div className="w-32 h-48 bg-secondary rounded-lg flex flex-col items-center justify-center border-2 border-primary/30 shadow-lg">
-                <User className="w-8 h-8 text-muted-foreground mb-2" />
-                <span className="text-xs text-muted-foreground">图片加载失败</span>
+      <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:py-10">
+        <Surface variant="reading" className="min-w-0 p-5 sm:p-8">
+          <section
+            className={
+              playerImages.length > 0
+                ? "grid min-w-0 gap-8 md:grid-cols-[10rem_minmax(0,1fr)] md:items-start"
+                : "min-w-0"
+            }
+          >
+            {playerImages.length > 0 && (
+              <div className="flex min-w-0 flex-col items-center">
+                <>
+                  {isGeneratingImage ? (
+                    <div className="flex h-48 w-32 items-center justify-center rounded-[var(--radius-surface)] border border-[var(--border-default)] bg-[var(--surface-subtle)]">
+                      <Loader2 className="animate-spin text-[var(--text-secondary)]" />
+                    </div>
+                  ) : !imageError ? (
+                    <img
+                      src={playerImages[selectedImageIndex]?.image_url || playerImages[0]?.image_url}
+                      alt={playerName || "主角"}
+                      className="h-48 w-32 rounded-[var(--radius-surface)] border border-[var(--border-default)] object-cover"
+                      onError={handleImageError}
+                    />
+                  ) : (
+                    <div className="flex h-48 w-32 flex-col items-center justify-center rounded-[var(--radius-surface)] border border-[var(--border-default)] bg-[var(--surface-subtle)]">
+                      <User className="mb-2 text-[var(--text-secondary)]" />
+                      <span className="text-xs text-[var(--text-secondary)]">图片加载失败</span>
+                    </div>
+                  )}
+                  <span className="mt-3 break-words text-center text-sm font-medium text-[var(--text-primary)]">
+                    {playerName}
+                  </span>
+                </>
               </div>
             )}
-            <span className="text-sm font-medium text-foreground mt-2">{playerName}</span>
 
-            {/* 图片反馈重新生成 */}
-            {!isGeneratingImage && (
-              <div className="w-full mt-3 space-y-2">
-                <Input
-                  value={imageFeedback}
-                  onChange={(e) => onImageFeedbackChange(e.target.value)}
-                  placeholder="不满意？描述你想要的修改..."
-                  className="bg-secondary border-border text-sm h-9"
-                />
-                <LengthIndicator value={imageFeedback} limit={INPUT_LIMITS.feedback} />
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 h-8 text-xs"
-                    disabled={
-                      !imageFeedback.trim() ||
-                      isRegeneratingImage ||
-                      !isWithinInputLimit(imageFeedback, INPUT_LIMITS.feedback)
-                    }
-                    title={!imageFeedback.trim() ? "请先输入修改意见" : undefined}
-                    onClick={handleRegenerateImage}
+            <div className="min-w-0">
+              <p className="text-xs text-[var(--text-secondary)]">角色创建</p>
+              <h1 className="mt-2 font-serif text-2xl font-semibold text-[var(--text-primary)] sm:text-3xl">
+                角色设定完成
+              </h1>
+              <p className="mt-3 break-words text-sm leading-relaxed text-[var(--text-secondary)]">
+                {isPresetLoaded ? "已加载预设角色背景" : "已为你自动生成角色背景"}
+              </p>
+
+              {playerImages.length > 0 && !isGeneratingImage && (
+                <div className="mt-8 border-t border-[var(--border-default)] pt-6">
+                  <FormField
+                    id="completion-portrait-feedback"
+                    label="人物形象修改意见"
+                    description="会保留角色设定，只调整人物形象。"
+                    error={isImageFeedbackOverLimit ? `修改意见不能超过 ${INPUT_LIMITS.feedback} 字` : undefined}
                   >
-                    {isRegeneratingImage ? (
-                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                    ) : (
-                      <RefreshCw className="w-3 h-3 mr-1" />
+                    {({ describedBy, invalid }) => (
+                      <>
+                        <Textarea
+                          id="completion-portrait-feedback"
+                          value={imageFeedback}
+                          onChange={(event) => onImageFeedbackChange(event.target.value)}
+                          placeholder="描述你想调整的形象细节"
+                          surface="underline"
+                          controlSize="touch"
+                          className="min-h-24 resize-y"
+                          aria-describedby={[describedBy, "completion-portrait-feedback-count"].filter(Boolean).join(" ")}
+                          aria-invalid={invalid}
+                        />
+                        <LengthIndicator
+                          id="completion-portrait-feedback-count"
+                          value={imageFeedback}
+                          limit={INPUT_LIMITS.feedback}
+                          announce={false}
+                        />
+                      </>
                     )}
-                    根据意见修改
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 text-xs text-muted-foreground"
-                    disabled={isRegeneratingFresh}
-                    onClick={handleRegenerateFresh}
-                  >
-                    {isRegeneratingFresh ? (
-                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                    ) : (
-                      <RotateCcw className="w-3 h-3 mr-1" />
-                    )}
-                    完全重生成
-                  </Button>
+                  </FormField>
+                  <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                    <Button
+                      variant="narrative"
+                      size="touch"
+                      className="flex-1"
+                      disabled={
+                        !imageFeedback.trim() ||
+                        isRegeneratingImage ||
+                        isImageFeedbackOverLimit
+                      }
+                      title={!imageFeedback.trim() ? "请先输入修改意见" : undefined}
+                      onClick={handleRegenerateImage}
+                    >
+                      {isRegeneratingImage ? (
+                        <Loader2 className="animate-spin" />
+                      ) : (
+                        <RefreshCw />
+                      )}
+                      根据意见修改
+                    </Button>
+                    <Button
+                      variant="quiet"
+                      size="touch"
+                      disabled={isRegeneratingFresh}
+                      onClick={handleRegenerateFresh}
+                    >
+                      {isRegeneratingFresh ? (
+                        <Loader2 className="animate-spin" />
+                      ) : (
+                        <RotateCcw />
+                      )}
+                      完全重生成
+                    </Button>
+                  </div>
                 </div>
+              )}
+            </div>
+          </section>
+
+          <section className="mt-8 border-t border-[var(--border-default)] pt-6">
+            <Button
+              variant="quiet"
+              size="touch"
+              className="w-full justify-between sm:w-auto"
+              onClick={() => onSetShowDetails(!showDetails)}
+              aria-expanded={showDetails}
+            >
+              <span className="inline-flex items-center gap-2">
+                <Eye />
+                查看设定详情
+              </span>
+              {showDetails ? <ChevronUp /> : <ChevronDown />}
+            </Button>
+
+            {showDetails && (
+              <div className="mt-4 min-w-0">
+                {AUTO_ADVANCE_STEPS.map((step) => {
+                  const data = characterSettings[step];
+                  if (!data) return null;
+                  return (
+                    <SettingFeedbackCard
+                      key={step}
+                      stepKey={step}
+                      stepLabel={STEP_LABELS[step]}
+                      data={data as Record<string, unknown>}
+                      onRegenerate={(feedback) => onRegenerateSetting(step, feedback)}
+                    />
+                  );
+                })}
               </div>
             )}
-          </div>
-        )}
-        
-        <Sparkles className="w-14 h-14 text-primary mb-4" />
-        <h2 className="text-xl font-bold text-foreground mb-1">角色设定完成</h2>
-        <p className="text-sm text-muted-foreground text-center mb-6">
-          {isPresetLoaded ? "已加载预设角色背景" : "已为你自动生成角色背景"}
-        </p>
+          </section>
 
-        {/* View details toggle */}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="mb-4 text-muted-foreground"
-          onClick={() => onSetShowDetails(!showDetails)}
-        >
-          <Eye className="w-4 h-4 mr-1" />
-          查看设定详情
-          {showDetails ? (
-            <ChevronUp className="w-4 h-4 ml-1" />
-          ) : (
-            <ChevronDown className="w-4 h-4 ml-1" />
-          )}
-        </Button>
-
-        {/* Collapsible details */}
-        {showDetails && (
-          <div className="w-full max-w-lg space-y-4 mb-6 animate-page-enter">
-            {AUTO_ADVANCE_STEPS.map((step) => {
-              const data = characterSettings[step];
-              if (!data) return null;
-              return (
-                <SettingFeedbackCard
-                  key={step}
-                  stepKey={step}
-                  stepLabel={STEP_LABELS[step]}
-                  data={data as Record<string, unknown>}
-                  onRegenerate={(feedback) => onRegenerateSetting(step, feedback)}
-                />
-              );
-            })}
-          </div>
-        )}
-
-        {/* Action buttons */}
-        <div className="flex flex-col gap-3 w-full max-w-xs">
-          <Button
-            className="w-full touch-target h-12"
-            onClick={onStartGame}
-            disabled={isGenerating || !hasBasicInfo}
-          >
-            {isGenerating ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <Play className="w-4 h-4 mr-2" />
-            )}
-            {hasBasicInfo ? "开始游戏" : "请先输入角色姓名"}
-          </Button>
-          <Button
-            variant="outline"
-            className="w-full touch-target"
-            onClick={() => onSetShowPresetSheet(true)}
-          >
-            <Save className="w-4 h-4 mr-1" />
-            保存为预设
-          </Button>
-        </div>
-      </main>
-
-      {/* Save preset sheet */}
-      <Sheet open={showPresetSheet} onOpenChange={onSetShowPresetSheet}>
-        <SheetContent side="bottom" className="bg-card border-t border-border">
-          <SheetHeader>
-            <SheetTitle className="text-foreground">保存角色预设</SheetTitle>
-            <SheetDescription className="text-muted-foreground">
-              保存当前角色设定以便下次使用
-            </SheetDescription>
-          </SheetHeader>
-          <div className="space-y-4 mt-4">
-            <Input
-              value={presetName}
-              onChange={(e) => onSetPresetName(e.target.value)}
-              placeholder="预设名称"
-              className="bg-secondary border-border h-12"
-              autoFocus
-            />
-            <LengthIndicator value={presetName} limit={INPUT_LIMITS.name} />
-            <PresetSaveInlineStatus
-              status={presetSaveStatus}
-              message={presetSaveMessage}
-            />
+          <div className="mt-8 flex flex-col gap-3 border-t border-[var(--border-default)] pt-6 sm:flex-row">
             <Button
-              className="w-full touch-target"
-              disabled={
-                !presetName.trim() ||
-                isSavingPreset ||
-                !isWithinInputLimit(presetName, INPUT_LIMITS.name)
-              }
-              onClick={onSavePreset}
+              size="touch"
+              className="flex-1"
+              onClick={onStartGame}
+              disabled={isGenerating || !hasBasicInfo}
             >
-              {isSavingPreset && (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              )}
-              确认保存
+              {isGenerating ? <Loader2 className="animate-spin" /> : <Play />}
+              {hasBasicInfo ? "开始游戏" : "请先输入角色姓名"}
+            </Button>
+            <Button
+              variant="narrative"
+              size="touch"
+              className="flex-1"
+              onClick={() => onSetShowPresetSheet(true)}
+            >
+              <Save />
+              保存为预设
             </Button>
           </div>
-        </SheetContent>
-      </Sheet>
-    </div>
+        </Surface>
+      </div>
+
+      <PresetSaveSheet
+        open={showPresetSheet}
+        onOpenChange={onSetShowPresetSheet}
+        presetName={presetName}
+        onPresetNameChange={onSetPresetName}
+        isSaving={isSavingPreset}
+        status={presetSaveStatus}
+        message={presetSaveMessage}
+        onSave={onSavePreset}
+      />
+      </PageTransition>
+
+      <CreateFeedbackToast
+        toast={toast}
+        suppressed={showPresetSheet && presetSaveStatus === "error"}
+      />
+    </>
   );
 }

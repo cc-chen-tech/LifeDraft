@@ -7,6 +7,15 @@ import { SettingDisplay } from '@/components/game/SettingDisplay';
 
 describe('SettingDisplay', () => {
   describe('rendering', () => {
+    it('uses a quiet section rather than a nested card surface', () => {
+      const { container } = render(
+        <SettingDisplay stepKey="era" data={{ year: 2020 }} />,
+      );
+
+      expect(container.querySelector('[data-slot="card"]')).not.toBeInTheDocument();
+      expect(container.querySelector('[data-slot="setting-display"]')).toBeInTheDocument();
+    });
+
     it('renders era setting correctly', () => {
       const eraData = {
         year: 2020,
@@ -115,7 +124,7 @@ describe('SettingDisplay', () => {
         `缺点: ${longTrait}`,
       ]);
       rows.forEach((row) => {
-        expect(row).toHaveClass('w-full', 'rounded-lg', 'whitespace-normal', 'break-words');
+        expect(row).toHaveClass('w-full', 'min-w-0', 'whitespace-normal', 'break-words');
         expect(row).toHaveTextContent(longTrait);
       });
     });
@@ -146,12 +155,13 @@ describe('SettingDisplay', () => {
   });
 
   describe('isNew prop', () => {
-    it('shows AI generated badge when isNew is true', () => {
+    it('marks newly generated content without AI branding or decorative sparkle copy', () => {
       const data = { test: 'value' };
 
       render(<SettingDisplay stepKey="unknown" data={data} isNew={true} />);
 
-      expect(screen.getByText(/AI 生成/)).toBeInTheDocument();
+      expect(screen.getByText('刚刚生成')).toBeInTheDocument();
+      expect(screen.queryByText(/AI/)).not.toBeInTheDocument();
     });
 
     it('does not show badge when isNew is false', () => {
