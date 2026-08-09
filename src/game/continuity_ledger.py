@@ -308,6 +308,14 @@ class ContinuityLedger:
         for week, round_number, record in sorted(records, key=lambda item: item[:2]):
             event_description = _text(record.get("event_description"))
             continuation = _text(record.get("story_continuation"))
+            record_date_info = record.get("date_info")
+            date_info: Mapping[str, Any] = (
+                record_date_info if isinstance(record_date_info, Mapping) else {}
+            )
+            record_effects = record.get("effects")
+            effects: Mapping[str, Any] = (
+                record_effects if isinstance(record_effects, Mapping) else {}
+            )
             story_text = "\n\n".join(
                 part for part in (event_description, continuation) if part
             )
@@ -315,15 +323,12 @@ class ContinuityLedger:
                 event_id=f"w{week}-r{round_number}",
                 week=week,
                 round_number=round_number,
-                date_info=(
-                    record.get("date_info")
-                    if isinstance(record.get("date_info"), Mapping)
-                    else {}
-                ),
+                date_info=date_info,
                 summary=_text(record.get("summary")),
                 choice=_text(record.get("choice")),
                 story_text=story_text,
                 fact_updates=[],
+                effects=effects,
             )
 
     def _seed_identity(
@@ -704,6 +709,7 @@ class ContinuityLedger:
         choice: str,
         story_text: str,
         fact_updates: Iterable[Mapping[str, Any]],
+        effects: Optional[Mapping[str, Any]] = None,
     ) -> bool:
         if any(entry.get("event_id") == event_id for entry in self.timeline):
             return False
@@ -733,6 +739,7 @@ class ContinuityLedger:
                 "date_info": dict(date_info),
                 "summary": sanitize_authoritative_financial_clauses(summary),
                 "choice": sanitize_authoritative_financial_clauses(choice),
+                "effects": copy.deepcopy(dict(effects or {})),
                 "story_hash": _story_hash(story_text),
                 "status": "committed",
             }

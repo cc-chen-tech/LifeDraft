@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional
 
 from src.ai.generator import EventGenerator
 from src.ai.professional_risk import apply_professional_risk_guardrail
-from src.ai.system_prompts import get_system_prompt
+from src.ai.summary_generator import SummaryGenerator
 from src.game.state import PlayerState
 
 logger = logging.getLogger(__name__)
@@ -80,7 +80,7 @@ class WeeklySummaryGenerator:
         """Generate AI summary text."""
         try:
             if language == "zh":
-                prompt = f"""请为第{week}周生成一段总结（50-100字）。
+                prompt = f"""请为第{week}周生成一段总结。
 
 本周变化：
 - 精力：{changes['energy']:+d}
@@ -92,7 +92,7 @@ class WeeklySummaryGenerator:
 
 请生成一段生动的周总结，描述这周的主要变化和感受。"""
             else:
-                prompt = f"""Generate a summary for week {week} (50-100 words).
+                prompt = f"""Generate a summary for week {week}.
 
 Changes this week:
 - Energy: {changes['energy']:+d}
@@ -104,11 +104,14 @@ Current state: Energy {current_state.energy}/100, Mood {current_state.mood}/100,
 
 Generate a vivid weekly summary describing the main changes and feelings."""
 
-            summary = self.ai_generator.generate_completion(
+            summary = SummaryGenerator.for_compatibility_generator(
+                self.ai_generator
+            ).generate_display_summary(
+                summary_kind="week",
                 prompt=prompt,
-                system_prompt=get_system_prompt("narrative_summary", self.language),
+                language=language,
+                fallback=self._get_fallback_summary(week, changes, language),
                 temperature=0.7,
-                max_tokens=4096,
             )
             return apply_professional_risk_guardrail(summary, language=language)
         except Exception as e:

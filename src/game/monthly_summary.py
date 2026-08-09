@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from src.ai.generator import EventGenerator
 from src.ai.professional_risk import apply_professional_risk_guardrail
-from src.ai.system_prompts import get_system_prompt
+from src.ai.summary_generator import SummaryGenerator
 from src.game.state import PlayerState
 
 logger = logging.getLogger(__name__)
@@ -98,7 +98,7 @@ class MonthlySummaryGenerator:
             decision_texts = [d.get("choice", "") for d in decisions]
 
             if language == "zh":
-                prompt = f"""请为第{month}个月生成一段月度总结（80-150字）。
+                prompt = f"""请为第{month}个月生成一段月度总结。
 
 这个月从第{start_week}周到第{end_week}周，年龄从{previous_state.get('age', current_state.age)}岁到{current_state.age}岁。
 
@@ -114,7 +114,7 @@ class MonthlySummaryGenerator:
 
 请生成一段生动的月度总结，描述这个月的主要变化、重要事件和感受。"""
             else:
-                prompt = f"""Generate a summary for month {month} (80-150 words).
+                prompt = f"""Generate a summary for month {month}.
 
 This month spans from week {start_week} to week {end_week}, age from {previous_state.get('age', current_state.age)} to {current_state.age}.
 
@@ -130,11 +130,14 @@ Current state: Energy {current_state.energy}/100, Mood {current_state.mood}/100,
 
 Generate a vivid monthly summary describing the main changes, important events, and feelings of this month."""
 
-            summary = self.ai_generator.generate_completion(
+            summary = SummaryGenerator.for_compatibility_generator(
+                self.ai_generator
+            ).generate_display_summary(
+                summary_kind="month",
                 prompt=prompt,
-                system_prompt=get_system_prompt("narrative_summary", self.language),
+                language=language,
+                fallback=self._get_fallback_summary(month, changes, language),
                 temperature=0.7,
-                max_tokens=4096,
             )
             return apply_professional_risk_guardrail(summary, language=language)
         except Exception as e:

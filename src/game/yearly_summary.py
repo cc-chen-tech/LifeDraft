@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from src.ai.generator import EventGenerator
 from src.ai.professional_risk import apply_professional_risk_guardrail
-from src.ai.system_prompts import get_system_prompt
+from src.ai.summary_generator import SummaryGenerator
 from src.game.state import PlayerState
 
 logger = logging.getLogger(__name__)
@@ -115,7 +115,7 @@ class YearlySummaryGenerator:
                     summary_highlights = [s.get("summary_text", "") for s in weekly_summaries]
 
             if language == "zh":
-                prompt = f"""请为第{year}年生成一段年度总结（150-250字）。
+                prompt = f"""请为第{year}年生成一段年度总结。
 
 这一年从第{start_week}周到第{end_week}周，年龄从{start_state.get('age', end_state.age)}岁到{end_state.age}岁。
 
@@ -135,7 +135,7 @@ class YearlySummaryGenerator:
 
 请生成一段生动的年度总结，描述这一年的主要变化、重要事件、成长和挑战。要体现这一年的整体轨迹和转折点。"""
             else:
-                prompt = f"""Generate a summary for year {year} (150-250 words).
+                prompt = f"""Generate a summary for year {year}.
 
 This year spans from week {start_week} to week {end_week}, age from {start_state.get('age', end_state.age)} to {end_state.age}.
 
@@ -155,11 +155,14 @@ Monthly summary highlights:
 
 Generate a vivid annual summary describing the main changes, important events, growth, and challenges of this year. Reflect the overall trajectory and turning points."""
 
-            summary = self.ai_generator.generate_completion(
+            summary = SummaryGenerator.for_compatibility_generator(
+                self.ai_generator
+            ).generate_display_summary(
+                summary_kind="year",
                 prompt=prompt,
-                system_prompt=get_system_prompt("narrative_summary", self.language),
+                language=language,
+                fallback=self._get_fallback_summary(year, changes, language),
                 temperature=0.8,
-                max_tokens=4096,
             )
             return apply_professional_risk_guardrail(summary, language=language)
         except Exception as e:

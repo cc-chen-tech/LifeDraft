@@ -117,6 +117,16 @@ class FailingCustomContinuationStoryService(FailingContinuationStoryService):
         return {"energy": -3, "mood": 2, "knowledge": 1, "wealth": -200}
 
 
+class FailingSummaryAndExtractionService(FakeStoryService):
+    def compress_narrative(self, *args, **kwargs) -> Dict[str, Any]:
+        del args, kwargs
+        raise RuntimeError("display summary unavailable")
+
+    def extract_world_updates(self, *args, **kwargs) -> Dict[str, Any]:
+        del args, kwargs
+        raise RuntimeError("optional extraction unavailable")
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -294,6 +304,30 @@ class TestMakeRoundChoiceContract:
         health = state.continuity_ledger["mutable_states"]["health"]["TestHero"]
         assert health["fact"] == "右手轻度扭伤"
         assert health["source_event_id"] == "w0-r0"
+
+    def test_summary_and_extraction_failure_still_commit_deterministic_ledger_data(self):
+        state = _make_state(relationships={"Avery": 50})
+        event = _make_event()
+        event.options[0].effects["relationships"] = {"Avery": 3}
+        proc = _make_processor(
+            player_state=state,
+            current_event=event,
+            story_service=FailingSummaryAndExtractionService(),
+        )
+
+        result = proc.make_round_choice(option_index=0)
+
+        timeline = state.continuity_ledger["timeline"]
+        assert timeline[0]["event_id"] == "w0-r0"
+        assert timeline[0]["choice"] == "Browse the stalls"
+        assert timeline[0]["effects"]["energy"] == -5
+        assert (
+            state.continuity_ledger["immutable_identities"]["TestHero"]["age_baseline"]
+            == 25
+        )
+        relationship = state.continuity_ledger["mutable_states"]["relationships"]["Avery"]
+        assert relationship["source_event_id"] == "w0-r0"
+        assert result["summary"].endswith(".")
 
     def test_summary_is_string(self):
         state = _make_state()
