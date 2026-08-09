@@ -1,6 +1,6 @@
 """Pydantic request/response models for all API endpoints."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import AliasChoices, BaseModel, Field
 
@@ -96,7 +96,6 @@ class ResourceCurves(BaseModel):
     energy: List[int]
     mood: List[int]
     knowledge: List[int]
-    wealth: List[int]
 
 
 class RelationshipNode(BaseModel):
@@ -143,8 +142,8 @@ class SaveGameResponse(BaseModel):
 
 
 class GenerateSettingRequest(BaseModel):
-    setting_type: str = Field(
-        ..., description="era|age|gender|world|family|relationships|traits|wealth"
+    setting_type: Literal["era", "age", "gender", "world", "family", "relationships", "traits"] = Field(
+        ..., description="era|age|gender|world|family|relationships|traits"
     )
     player_name: str
     life_vision: str

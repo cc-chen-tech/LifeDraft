@@ -43,7 +43,7 @@ def _opening_story_appears_truncated(
 
 @router.post("/setting")
 async def generate_setting(req: GenerateSettingRequest):
-    """Generate a character setting (era, age, gender, world, family, relationships, traits, wealth)."""
+    """Generate a character setting (era, age, gender, world, family, relationships, traits)."""
     creator = CharacterCreator(language=req.language)
     try:
         result = creator.generate_setting(
@@ -81,7 +81,7 @@ async def generate_relationship(req: GenerateRelationshipRequest):
 
 @router.post("/attributes")
 async def generate_attributes(req: GenerateAttributesRequest):
-    """Generate initial character attributes (energy, mood, knowledge, wealth)."""
+    """Generate initial character attributes (energy, mood, knowledge)."""
     creator = CharacterCreator(language=req.language)
     try:
         result = creator.generate_initial_attributes(
@@ -200,7 +200,9 @@ async def generate_opening_story(req: OpeningStoryRequest):
             try:
                 wait_time = max(0.1, next_heartbeat - time.time())
                 event_type, data = await asyncio.wait_for(q.get(), timeout=wait_time)
-            except asyncio.TimeoutError:
+            # Test transports and synchronous boundaries can raise the built-in
+            # timeout class instead of asyncio's distinct Python 3.9 class.
+            except (asyncio.TimeoutError, TimeoutError):
                 now = time.time()
                 if thread.is_alive() and now - last_activity[0] < OPENING_STORY_HARD_TIMEOUT:
                     next_heartbeat = now + OPENING_STORY_HEARTBEAT_INTERVAL

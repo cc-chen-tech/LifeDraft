@@ -55,4 +55,25 @@ describe('opening visible completion', () => {
     await user.click(startButton);
     expect(starts).toBe(1);
   });
+
+  it('exposes a muted native-disabled busy state until the story is ready', () => {
+    render(
+      <OpeningCompletionGate
+        backendComplete={true}
+        visibleComplete={false}
+        onStart={() => undefined}
+      />,
+    );
+
+    const startButton = screen.getByRole('button', { name: '开始我的人生' });
+    expect(startButton).toBeDisabled();
+    expect(startButton).toHaveAttribute('aria-disabled', 'true');
+    expect(startButton).toHaveAttribute('aria-busy', 'true');
+    expect(startButton).toHaveClass(
+      'disabled:bg-muted',
+      'disabled:text-muted-foreground',
+      'disabled:cursor-not-allowed',
+    );
+    expect(screen.getByRole('status')).toHaveTextContent('正在显示完整故事...');
+  });
 });

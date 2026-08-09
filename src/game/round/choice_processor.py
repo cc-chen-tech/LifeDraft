@@ -9,11 +9,10 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from config.settings import settings
 from src.ai.models import GameEvent
-from src.ai.vector_store import get_vector_store, is_vector_search_enabled
 from src.game.narrative_manager import NarrativeManager
 from src.game.continuity_ledger import ContinuityLedger
+from src.game.effects import normalize_gameplay_effects
 from src.game.world_model_updater import WorldModelUpdater
-from src.game.wealth_ledger import WealthLedger
 
 if TYPE_CHECKING:
     from src.ai.generator import EventGenerator
@@ -110,11 +109,6 @@ class RoundChoiceProcessor:
         effects, resource_warnings = self._normalize_effects_for_current_state(effects_requested)
 
         staged_state = player_state.model_copy(deep=True)
-        staged_transaction_id = self._apply_wealth_transaction(
-            staged_state,
-            requested_delta=effects_requested.get("wealth", effects.get("wealth", 0)),
-            reason=chosen_option.text,
-        )
         staged_state.update(
             energy=effects.get("energy", 0),
             mood=effects.get("mood", 0),
@@ -130,15 +124,9 @@ class RoundChoiceProcessor:
             effects,
             stream_callback=stream_callback,
             status_callback=status_callback,
-            active_wealth_transaction_id=staged_transaction_id,
             player_state=staged_state,
         )
 
-        self._apply_wealth_transaction(
-            player_state,
-            requested_delta=effects_requested.get("wealth", effects.get("wealth", 0)),
-            reason=chosen_option.text,
-        )
         player_state.update(
             energy=effects.get("energy", 0),
             mood=effects.get("mood", 0),
@@ -201,11 +189,6 @@ class RoundChoiceProcessor:
         effects, resource_warnings = self._normalize_effects_for_current_state(effects_requested)
 
         staged_state = player_state.model_copy(deep=True)
-        staged_transaction_id = self._apply_wealth_transaction(
-            staged_state,
-            requested_delta=effects_requested.get("wealth", effects.get("wealth", 0)),
-            reason=custom_text,
-        )
         staged_state.update(
             energy=effects.get("energy", 0),
             mood=effects.get("mood", 0),
@@ -221,15 +204,9 @@ class RoundChoiceProcessor:
             stream_callback=stream_callback,
             status_callback=status_callback,
             is_custom=True,
-            active_wealth_transaction_id=staged_transaction_id,
             player_state=staged_state,
         )
 
-        self._apply_wealth_transaction(
-            player_state,
-            requested_delta=effects_requested.get("wealth", effects.get("wealth", 0)),
-            reason=custom_text,
-        )
         player_state.update(
             energy=effects.get("energy", 0),
             mood=effects.get("mood", 0),
@@ -277,6 +254,7 @@ class RoundChoiceProcessor:
         player_state = self.player_state
         if player_state is None:
             raise ValueError("Player state is not available")
+        requested_effects = normalize_gameplay_effects(effects_requested or effects)
 
         # 1. Parallel: narrative compression + world extraction + story analyzer
         if status_callback:
@@ -385,7 +363,7 @@ class RoundChoiceProcessor:
             "story_continuation": story_continuation,
             "choice": choice_text,
             "effects": effects.copy(),
-            "effects_requested": (effects_requested or effects).copy(),
+            "effects_requested": requested_effects.copy(),
             "resource_warnings": list(resource_warnings or []),
             "date_info": date_info,
             "event_concluded": event_concluded,
@@ -406,34 +384,13 @@ class RoundChoiceProcessor:
             story_entry["is_custom"] = True
         player_state.story_history.append(story_entry)
 
-        # ★ 向量存储：将故事存入向量库以支持语义检索
-        if is_vector_search_enabled():
-            try:
-                vector_store = get_vector_store()
-                story_id = f"week{player_state.week}_round{player_state.current_round}"
-                full_story_text = event.event_description
-                if story_continuation:
-                    full_story_text += f"\n\n[选择: {choice_text}]\n\n{story_continuation}"
-                vector_store.add_story(
-                    story_id=story_id,
-                    content=full_story_text,
-                    metadata={
-                        "week": player_state.week,
-                        "round": player_state.current_round,
-                        "choice": choice_text[:100],  # 截断防止过长
-                        "is_custom": is_custom,
-                    },
-                )
-            except Exception as e:
-                logger.warning(f"Failed to add story to vector store: {e}")
-
         decision_record = {
             "week": player_state.week,
             "round": player_state.current_round,
             "event": event.event_description[:200] + "...",
             "choice": choice_text,
             "effects": effects.copy(),
-            "effects_requested": (effects_requested or effects).copy(),
+            "effects_requested": requested_effects.copy(),
             "resource_warnings": list(resource_warnings or []),
             "date_info": date_info,
         }
@@ -537,7 +494,7 @@ class RoundChoiceProcessor:
             "story_continuation": story_continuation,
             "summary": summary,
             "effects_applied": effects.copy(),
-            "effects_requested": (effects_requested or effects).copy(),
+            "effects_requested": requested_effects.copy(),
             "resource_warnings": list(resource_warnings or []),
             "need_weekly_summary": need_weekly_summary,
         }
@@ -587,9 +544,9 @@ class RoundChoiceProcessor:
         """Return actual deltas after resource bounds plus warning metadata."""
         player_state = self.player_state
         if player_state is None:
-            return effects.copy(), []
+            return normalize_gameplay_effects(effects), []
 
-        normalized = effects.copy()
+        normalized = normalize_gameplay_effects(effects)
         warnings: list[Dict[str, Any]] = []
 
         bounded_resources = {
@@ -601,7 +558,6 @@ class RoundChoiceProcessor:
                 settings.MAX_RESOURCE,
                 "学识",
             ),
-            "wealth": (player_state.wealth, 0, None, "财富"),
         }
 
         for resource, (current_value, min_value, max_value, display_name) in bounded_resources.items():
@@ -668,17 +624,12 @@ class RoundChoiceProcessor:
         stream_callback: Optional[Callable[[str], None]] = None,
         status_callback: Optional[Callable[[str], None]] = None,
         is_custom: bool = False,
-        active_wealth_transaction_id: Optional[str] = None,
         player_state: Optional["PlayerState"] = None,
     ) -> str:
         """Generate a detailed story continuation. Delegates to StoryService."""
         effective_state = player_state or self.player_state
         character_settings = effective_state.character_settings if effective_state else {}
         player_state_dict = effective_state.to_dict() if effective_state else {}
-        if active_wealth_transaction_id:
-            player_state_dict["_active_wealth_transaction_id"] = (
-                active_wealth_transaction_id
-            )
         return self.story_service.generate_story_continuation(
             event_description,
             chosen_option,
@@ -688,31 +639,4 @@ class RoundChoiceProcessor:
             stream_callback=stream_callback,
             status_callback=status_callback,
             is_custom=is_custom,
-            active_wealth_transaction_id=active_wealth_transaction_id,
         )
-
-    def _apply_wealth_transaction(
-        self,
-        player_state: "PlayerState",
-        *,
-        requested_delta: Any,
-        reason: str,
-    ) -> Optional[str]:
-        if not isinstance(requested_delta, int) or isinstance(requested_delta, bool):
-            requested_delta = 0
-        ledger = WealthLedger.from_player_state(player_state)
-        if requested_delta == 0:
-            ledger.persist(player_state)
-            return None
-        source_event_id = f"w{player_state.week}-r{player_state.current_round}"
-        transaction_id = f"choice:{source_event_id}"
-        ledger.apply_transaction(
-            player_state,
-            transaction_id=transaction_id,
-            requested_delta=requested_delta,
-            reason=reason,
-            source_event_id=source_event_id,
-            week=player_state.week,
-            round_number=player_state.current_round,
-        )
-        return transaction_id

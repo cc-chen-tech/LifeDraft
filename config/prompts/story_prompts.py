@@ -212,7 +212,7 @@ def _is_modern_story_setting(character_settings: Optional[Dict[str, Any]]) -> bo
     if any(cue in text for cue in realistic_cues):
         return True
 
-    realistic_sections = {"basic", "career", "wealth", "education", "family", "relationships"}
+    realistic_sections = {"basic", "career", "education", "family", "relationships"}
     settings = character_settings or {}
     return any(section in settings for section in realistic_sections)
 
@@ -283,13 +283,12 @@ def get_custom_choice_effects_prompt(
         return f"""你是一个人生模拟游戏的叙事引擎。玩家选择了一个自定义的行动，请根据当前情境和玩家的选择，生成合理的属性变化。
 
 角色设定：{json.dumps(character_settings or {}, ensure_ascii=False)}
-当前状态：精力={current_state.get('energy', 50)}, 情绪={current_state.get('mood', 50)}, 学识={current_state.get('knowledge', 50)}, 财富={current_state.get('wealth', 1000)}
+当前状态：精力={current_state.get('energy', 50)}, 情绪={current_state.get('mood', 50)}, 学识={current_state.get('knowledge', 50)}
 
 属性变化范围说明：
 - energy(精力): -20到20，负值表示累了，正值表示休息恢复
 - mood(情绪): -20到20，负值表示不开心，正值表示开心
 - knowledge(学识): -10到15，正值表示学到东西
-- wealth(财富): -1000到1000，平时变化应该较小
 
 注意：属性变化应该合理，不要过于极端。大多数情况下变化应该在 -10 到 10 之间。
 
@@ -297,20 +296,18 @@ def get_custom_choice_effects_prompt(
 {{
   "energy": 0,
   "mood": 0,
-  "knowledge": 0,
-  "wealth": 0
+  "knowledge": 0
 }}"""
     else:
         return f"""You are a narrative engine for a life simulation game. The player chose a custom action. Based on the current situation and player's choice, generate reasonable attribute changes.
 
 Character settings: {json.dumps(character_settings or {}, ensure_ascii=False)}
-Current state: Energy={current_state.get('energy', 50)}, Mood={current_state.get('mood', 50)}, Knowledge={current_state.get('knowledge', 50)}, Wealth={current_state.get('wealth', 1000)}
+Current state: Energy={current_state.get('energy', 50)}, Mood={current_state.get('mood', 50)}, Knowledge={current_state.get('knowledge', 50)}
 
 Attribute change ranges:
 - energy: -20 to 20, negative means tired, positive means rested
 - mood: -20 to 20, negative means unhappy, positive means happy
 - knowledge: -10 to 15, positive means learned something
-- wealth: -1000 to 1000, usually small changes
 
 Note: Changes should be reasonable, not extreme. Most changes should be between -10 and 10.
 
@@ -318,8 +315,7 @@ Return ONLY JSON format:
 {{
   "energy": 0,
   "mood": 0,
-  "knowledge": 0,
-  "wealth": 0
+  "knowledge": 0
 }}"""
 
 
@@ -367,14 +363,13 @@ def get_custom_choice_result_prompt(
 2. 生成合理的属性变化（必须符合逻辑）
 
 角色设定：{json.dumps(character_settings or {}, ensure_ascii=False)}
-当前状态：精力={current_state.get('energy', 50)}, 情绪={current_state.get('mood', 50)}, 学识={current_state.get('knowledge', 50)}, 财富={current_state.get('wealth', 1000)}
+当前状态：精力={current_state.get('energy', 50)}, 情绪={current_state.get('mood', 50)}, 学识={current_state.get('knowledge', 50)}
 {authority_context}
 
 属性变化范围说明：
 - energy(精力): -20到20，负值表示累了，正值表示休息恢复
 - mood(情绪): -20到20，负值表示不开心，正值表示开心
 - knowledge(学识): -10到15，正值表示学到东西
-- wealth(财富): -1000到1000，平时变化应该较小
 
 注意：属性变化应该合理，不要过于极端。大多数情况下变化应该在 -10 到 10 之间。
 
@@ -384,8 +379,7 @@ def get_custom_choice_result_prompt(
   "effects": {{
     "energy": 0,
     "mood": 0,
-    "knowledge": 0,
-    "wealth": 0
+    "knowledge": 0
   }}
 }}"""
     else:
@@ -394,14 +388,13 @@ def get_custom_choice_result_prompt(
 2. Generate reasonable attribute changes (must be logical)
 
 Character settings: {json.dumps(character_settings or {}, ensure_ascii=False)}
-Current state: Energy={current_state.get('energy', 50)}, Mood={current_state.get('mood', 50)}, Knowledge={current_state.get('knowledge', 50)}, Wealth={current_state.get('wealth', 1000)}
+Current state: Energy={current_state.get('energy', 50)}, Mood={current_state.get('mood', 50)}, Knowledge={current_state.get('knowledge', 50)}
 {authority_context}
 
 Attribute change ranges:
 - energy: -20 to 20, negative means tired, positive means rested
 - mood: -20 to 20, negative means unhappy, positive means happy
 - knowledge: -10 to 15, positive means learned something
-- wealth: -1000 to 1000, usually small changes
 
 Note: Changes should be reasonable, not extreme. Most changes should be between -10 and 10.
 
@@ -411,8 +404,7 @@ Return JSON format:
   "effects": {{
     "energy": 0,
     "mood": 0,
-    "knowledge": 0,
-    "wealth": 0
+    "knowledge": 0
   }}
 }}"""
 
@@ -535,7 +527,6 @@ def _get_english_prompt(
     energy = player_state.get("energy", 70)
     mood = player_state.get("mood", 60)
     knowledge = player_state.get("knowledge", 50)
-    wealth = player_state.get("wealth", 10000)
     relationships = player_state.get("relationships", {})
 
     rel_str = ", ".join([f"{name}({affinity})" for name, affinity in relationships.items()])
@@ -621,7 +612,6 @@ Age: {age} years old
 Energy: {energy}/100
 Mood: {mood}/100
 Knowledge: {knowledge}/100
-Wealth: ${wealth:,}
 Key Relationships: {rel_str}{storylines_context}{facts_context}{world_model_context}
 
 【Generation Requirements - MUST STRICTLY FOLLOW】
@@ -631,9 +621,9 @@ Key Relationships: {rel_str}{storylines_context}{facts_context}{world_model_cont
    - **Family Background**: If family situation is special, reflect it in the event
    - **Personality Traits**: Event must match character's personality (introverted/extroverted, adventurous/conservative, etc.)
    - **Social Relationships**: **All people in the event MUST and ONLY come from the "Available People List"**, cannot create new people
-2. Event must relate to at least two state values (energy, mood, knowledge, wealth, or relationships)
+2. Event must relate to at least two state values (energy, mood, knowledge, or relationships)
 3. Event should fit the "{phase_desc}" life stage and strictly match character settings
-4. Provide 2-4 options, each clearly listing effects on [energy, mood, knowledge, wealth]
+4. Provide 2-4 options, each clearly listing effects on [energy, mood, knowledge]
 5. **Story should be 800-1200 words - engaging and immersive**:
    - Write it as a compelling scene with depth
    - Include 3-5 meaningful dialogue exchanges
@@ -679,7 +669,6 @@ You MUST return ONLY valid JSON in this exact format:
         "energy": -10,
         "mood": 5,
         "knowledge": 0,
-        "wealth": 2000,
         "relationships": {{"Alice": -10}}
       }},
       "likely_choice": true
@@ -689,8 +678,7 @@ You MUST return ONLY valid JSON in this exact format:
       "effects": {{
         "energy": -20,
         "mood": -10,
-        "knowledge": 5,
-        "wealth": 5000
+        "knowledge": 5
       }}
     }}
   ]
@@ -720,11 +708,6 @@ def _get_chinese_prompt(
     energy = player_state.get("energy", 70)
     mood = player_state.get("mood", 60)
     knowledge = player_state.get("knowledge", 50)
-    wealth = player_state.get("wealth", 10000)
-    # ★ 从 character_settings 提取动态货币单位
-    currency_name = "货币"
-    if character_settings and isinstance(character_settings.get("wealth"), dict):
-        currency_name = character_settings["wealth"].get("currency_name", "货币")
     week = player_state.get("week", 0)
     current_round = player_state.get("current_round", 0)
     rounds_per_week = player_state.get("rounds_per_week", 3)
@@ -867,7 +850,6 @@ def _get_chinese_prompt(
 精力：{energy}/100
 情绪：{mood}/100
 学识：{knowledge}/100
-财富：{wealth:,}{currency_name}
 关键关系：{rel_str}{storylines_context}{facts_context}{world_model_context}
 
 【生成要求 - 必须严格遵守】
@@ -877,9 +859,9 @@ def _get_chinese_prompt(
    - **家庭背景**：如果家庭情况特殊，要在事件中体现
    - **性格特点**：事件要符合角色的性格（内向/外向、冒险/保守等）
    - **社会关系**：**事件中出现的所有人物必须且只能来自"可用人物列表"**，不能凭空创造新人物
-2. 事件必须与至少两项状态值相关（精力、情绪、学识、财富或关系）
+2. 事件必须与至少两项状态值相关（精力、情绪、学识或关系）
 3. 事件应贴近"{phase_desc}"人生阶段，并严格符合角色的基本设定
-4. 提供2-4个选项，每个选项明确列出对【精力、情绪、学识、财富】的影响值
+4. 提供2-4个选项，每个选项明确列出对【精力、情绪、学识】的影响值
 5. **故事应该800-1200字，生动有深度**：
    - 写成有吸引力的场景片段，有一定深度
    - 包含3-5轮有意义的对话交流
@@ -926,7 +908,6 @@ def _get_chinese_prompt(
         "energy": -10,
         "mood": 5,
         "knowledge": 0,
-        "wealth": 2000,
         "relationships": {{"李华": -10}}
       }},
       "likely_choice": true
@@ -936,8 +917,7 @@ def _get_chinese_prompt(
       "effects": {{
         "energy": -20,
         "mood": -10,
-        "knowledge": 5,
-        "wealth": 5000
+        "knowledge": 5
       }}
     }}
   ]
@@ -1195,7 +1175,7 @@ def get_options_only_prompt(
 - 不要生成脱离故事情境的独立行动
 
 【其他要求】
-3. 每个选项明确列出对【精力(energy)、情绪(mood)、学识(knowledge)、财富(wealth)】的影响值
+3. 每个选项明确列出对【精力(energy)、情绪(mood)、学识(knowledge)】的影响值
 4. 选项应呈现真实的权衡取舍，不应有明显最优选项
 5. **关系影响必须指定为"relationships": {{"姓名": +/-数值}}，姓名必须严格来自可用人物列表，禁止使用列表中不存在的名字！**
 6. 标注"likely_choice": true/false表示角色最可能做出的选择
@@ -1210,7 +1190,6 @@ def get_options_only_prompt(
         "energy": -10,
         "mood": 5,
         "knowledge": 0,
-        "wealth": 0,
         "relationships": {{}}
       }},
       "likely_choice": true
@@ -1220,8 +1199,7 @@ def get_options_only_prompt(
       "effects": {{
         "energy": -5,
         "mood": -5,
-        "knowledge": 5,
-        "wealth": 0
+        "knowledge": 5
       }},
       "likely_choice": false
     }}
@@ -1258,7 +1236,7 @@ def get_options_only_prompt(
    - "Rest", "Study", "Work", "Exercise" etc.
    - "Continue forward", "Think about it", "Keep status quo" etc.
    - Any action detached from the story context
-3. Each option clearly lists effects on [energy, mood, knowledge, wealth]
+3. Each option clearly lists effects on [energy, mood, knowledge]
 4. Options should present real trade-offs - no option should be clearly superior
 5. Relationship effects should be specified as "relationships": {{"name": +/-value}}, name must come from Available People List
 6. Mark "likely_choice": true/false to indicate what the character would most likely choose
@@ -1273,7 +1251,6 @@ Return ONLY valid JSON:
         "energy": -10,
         "mood": 5,
         "knowledge": 0,
-        "wealth": 0,
         "relationships": {{}}
       }},
       "likely_choice": true
@@ -1283,8 +1260,7 @@ Return ONLY valid JSON:
       "effects": {{
         "energy": -5,
         "mood": -5,
-        "knowledge": 5,
-        "wealth": 0
+        "knowledge": 5
       }},
       "likely_choice": false
     }}
@@ -1350,7 +1326,6 @@ def get_story_only_prompt(
     energy = player_state.get("energy", 70)
     mood = player_state.get("mood", 60)
     knowledge = player_state.get("knowledge", 50)
-    wealth = player_state.get("wealth", 10000)
     # ★ 章节号计算（week 已是显示值+1，此处用原始值计算章节号）
     raw_week = player_state.get("week", 0)
     current_round = player_state.get("current_round", 0)
@@ -1362,10 +1337,6 @@ def get_story_only_prompt(
         current_round,
         character_settings,
     )
-    # ★ 从 character_settings 提取动态货币单位
-    currency_name = "货币"
-    if character_settings and isinstance(character_settings.get("wealth"), dict):
-        currency_name = character_settings["wealth"].get("currency_name", "货币")
     relationships = player_state.get("relationships", {})
     protagonist_name = _resolve_protagonist_name(player_state, character_settings, player_name)
     protagonist_gender = _extract_gender_text(character_settings)
@@ -1549,7 +1520,7 @@ def get_story_only_prompt(
 【玩家当前状态】
 年龄：{age}岁 | 第{week}周
 精力：{energy}/100 | 情绪：{mood}/100 | 学识：{knowledge}/100
-财富：{wealth:,}{currency_name} | 关系：{rel_str}
+关系：{rel_str}
 
 [MUST] 强制约束（违反即重新生成）：{storylines_context}{facts_context}{world_model_context}{continuation_mandate}
 {pacing_guard}
@@ -1587,7 +1558,7 @@ def get_story_only_prompt(
 [Current Player State]
 Age: {age} | Week {week}
 Energy: {energy}/100 | Mood: {mood}/100 | Knowledge: {knowledge}/100
-Wealth: ${wealth:,} | Relationships: {rel_str}
+Relationships: {rel_str}
 
 [MUST] Mandatory constraints (violation = regeneration):{storylines_context}{facts_context}{world_model_context}{continuation_mandate}
 {pacing_guard}
@@ -1707,7 +1678,6 @@ def get_round_event_prompt(
     energy = player_state.get("energy", 70)
     mood = player_state.get("mood", 60)
     knowledge = player_state.get("knowledge", 50)
-    wealth = player_state.get("wealth", 10000)
     # ★ 章节号计算（与 get_story_only_prompt 一致）
     raw_week = player_state.get("week", 0)
     current_round = player_state.get("current_round", 0)
@@ -1719,10 +1689,6 @@ def get_round_event_prompt(
         current_round,
         character_settings,
     )
-    # ★ 从 character_settings 提取动态货币单位
-    currency_name = "货币"
-    if character_settings and isinstance(character_settings.get("wealth"), dict):
-        currency_name = character_settings["wealth"].get("currency_name", "货币")
     relationships = player_state.get("relationships", {})
     protagonist_name = _resolve_protagonist_name(player_state, character_settings, player_name)
     protagonist_gender = _extract_gender_text(character_settings)
@@ -1922,7 +1888,7 @@ def get_round_event_prompt(
 【当前状态】
 年龄：{age}岁 | 第{week}周 - {round_name}
 精力：{energy}/100 | 情绪：{mood}/100 | 学识：{knowledge}/100
-财富：{wealth:,}{currency_name} | 关系：{rel_str}{context_section}{rel_events_context}{memory_context}
+关系：{rel_str}{context_section}{rel_events_context}{memory_context}
 
 [MUST] 强制约束（违反即重新生成）：{world_model_context}{storylines_context}{facts_context}{continuation_mandate}{new_char_context}
 {pacing_guard}
@@ -2066,7 +2032,7 @@ Usage tip: Use as character memories, dialogue references, or background context
 [Current State]
 Age: {age} | Week {week} - {round_name_en}
 Energy: {energy}/100 | Mood: {mood}/100 | Knowledge: {knowledge}/100
-Wealth: ${wealth:,} | Relationships: {rel_str}{context_section}{rel_events_context}{memory_context}
+Relationships: {rel_str}{context_section}{rel_events_context}{memory_context}
 
 [MUST] Mandatory constraints (violation = regeneration):{world_model_context_en}{storylines_context}{facts_context}{continuation_mandate_en}{new_char_context_en}
 {pacing_guard}

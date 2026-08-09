@@ -144,8 +144,7 @@ class TestProcessDecision:
         with pytest.raises(ValueError):
             process_decision(player, "Test", -1, options, generate_result_text=False)
 
-    def test_with_relationship_effects(self):
-        """Test decision with relationship effects."""
+    def test_non_resource_effects_are_dropped(self):
         player = PlayerState()
         player.relationships["Friend"] = 50
         char = CharacterState(name="Friend", affinity=50)
@@ -156,7 +155,7 @@ class TestProcessDecision:
             player, "Friend needs help", 0, options, generate_result_text=False
         )
         assert result["success"] is True
-        assert player.relationships["Friend"] > 50
+        assert player.relationships["Friend"] == 50
 
     def test_with_ai_result_generation(self):
         """Test decision with AI-generated result text."""
@@ -216,12 +215,11 @@ class TestGenerateFallbackResult:
 
     def test_zh_with_all_effects(self):
         """Test Chinese fallback with all effect types."""
-        effects = {"energy": -10, "mood": 5, "knowledge": 3, "wealth": 1000}
+        effects = {"energy": -10, "mood": 5, "knowledge": 3}
         result = _generate_fallback_result(effects, "zh")
         assert "精力" in result
         assert "情绪" in result
         assert "学识" in result
-        assert "财富" in result
 
     def test_en_with_effects(self):
         """Test English fallback."""

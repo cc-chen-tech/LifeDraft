@@ -18,7 +18,6 @@ class EndingEvaluator:
 
     ENDING_TYPES = {
         "balanced": {"en": "Balanced Life", "zh": "平衡人生"},
-        "wealthy": {"en": "Wealthy Success", "zh": "财富自由"},
         "scholar": {"en": "Intellectual Pursuit", "zh": "学术之路"},
         "social": {"en": "Social Butterfly", "zh": "社交达人"},
         "struggling": {"en": "Struggling Journey", "zh": "艰难前行"},
@@ -48,14 +47,13 @@ class EndingEvaluator:
 
         # Calculate scores
         avg_attribute = (player_state.energy + player_state.mood + player_state.knowledge) / 3
-        wealth_score = min(player_state.wealth / 10000, 10)  # Normalize wealth
         relationship_score = (
             sum(player_state.relationships.values()) / max(len(player_state.relationships), 1) / 100
         )
 
         # Determine ending type
         ending_type = self._determine_ending_type(
-            avg_attribute, wealth_score, relationship_score, player_state
+            avg_attribute, relationship_score, player_state
         )
 
         # Generate summary
@@ -82,7 +80,6 @@ class EndingEvaluator:
                 "energy": player_state.energy,
                 "mood": player_state.mood,
                 "knowledge": player_state.knowledge,
-                "wealth": player_state.wealth,
                 "relationships": player_state.relationships.copy(),
             },
         }
@@ -90,18 +87,13 @@ class EndingEvaluator:
     def _determine_ending_type(
         self,
         avg_attribute: float,
-        wealth_score: float,
         relationship_score: float,
         player_state: PlayerState,
     ) -> str:
         """Determine ending type based on scores."""
         # Check for struggling (low overall)
-        if avg_attribute < 40 or (player_state.wealth < 5000 and avg_attribute < 50):
+        if avg_attribute < 40:
             return "struggling"
-
-        # Check for wealthy (high wealth, moderate others)
-        if wealth_score > 7 and player_state.wealth > 50000:
-            return "wealthy"
 
         # Check for scholar (high knowledge, moderate others)
         if player_state.knowledge > 80 and avg_attribute > 60:
@@ -177,7 +169,7 @@ class EndingEvaluator:
 人生历程：
 - 从{player_state.character_settings.get('age', {}).get('age', 22) if player_state.character_settings else 22}岁开始，到{player_state.age}岁结束
 - 经历了{player_state.week}周的人生旅程
-- 最终状态：精力{player_state.energy}/100，情绪{player_state.mood}/100，学识{player_state.knowledge}/100，财富¥{player_state.wealth:,}
+- 最终状态：精力{player_state.energy}/100，情绪{player_state.mood}/100，学识{player_state.knowledge}/100
 
 关键决策（最近10个）：{', '.join(decision_history) if decision_history else '无'}
 
@@ -199,7 +191,7 @@ Character Settings: {character_context if character_context else "Standard moder
 Life Journey:
 - Started at age {player_state.character_settings.get('age', {}).get('age', 22) if player_state.character_settings else 22}, ended at {player_state.age}
 - Experienced {player_state.week} weeks of life
-- Final state: Energy {player_state.energy}/100, Mood {player_state.mood}/100, Knowledge {player_state.knowledge}/100, Wealth ¥{player_state.wealth:,}
+- Final state: Energy {player_state.energy}/100, Mood {player_state.mood}/100, Knowledge {player_state.knowledge}/100
 
 Key Decisions (last 10): {', '.join(decision_history) if decision_history else 'None'}
 
@@ -233,16 +225,14 @@ Be vivid and specific, reflecting the character's uniqueness."""
         """Generate template-based summary."""
         if language == "zh":
             summaries = {
-                "balanced": f"在{player_state.age}岁时，你过上了平衡的生活。精力、情绪和学识都保持在良好水平，财富也足够支撑你的生活。",
-                "wealthy": f"在{player_state.age}岁时，你积累了可观的财富。虽然可能在某些方面有所牺牲，但你在财务上取得了成功。",
+                "balanced": f"在{player_state.age}岁时，你过上了平衡的生活。精力、情绪和学识都保持在良好水平。",
                 "scholar": f"在{player_state.age}岁时，你在学术和知识领域取得了卓越成就。你的学识达到了{player_state.knowledge}分的高水平。",
                 "social": f"在{player_state.age}岁时，你建立了丰富的人际关系网络。你与{len(player_state.relationships)}个重要的人保持着良好的关系。",
                 "struggling": f"在{player_state.age}岁时，你的人生充满挑战。虽然困难重重，但你坚持了下来，这段经历塑造了你的性格。",
             }
         else:
             summaries = {
-                "balanced": f"At age {player_state.age}, you've achieved a balanced life. Your energy, mood, and knowledge are all at good levels, and your wealth is sufficient to support your lifestyle.",
-                "wealthy": f"At age {player_state.age}, you've accumulated substantial wealth. While you may have sacrificed in some areas, you've achieved financial success.",
+                "balanced": f"At age {player_state.age}, you've achieved a balanced life. Your energy, mood, and knowledge are all at good levels.",
                 "scholar": f"At age {player_state.age}, you've achieved excellence in academics and knowledge. Your knowledge has reached a high level of {player_state.knowledge}.",
                 "social": f"At age {player_state.age}, you've built a rich network of relationships. You maintain good relationships with {len(player_state.relationships)} important people.",
                 "struggling": f"At age {player_state.age}, your life has been full of challenges. Despite the difficulties, you persevered, and these experiences have shaped your character.",

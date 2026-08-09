@@ -13,6 +13,10 @@ from typing import Dict, List, Optional
 from src.game.constants import (DEFAULT_CAREER_LEVEL, GENERIC_CHARACTER_NAMES,
                                 IMPORTANCE_ORDER, ROLE_KEYWORDS,
                                 VALID_CAREER_LEVELS)
+from src.utils.financial_narrative import (
+    is_authoritative_financial_record,
+    sanitize_world_model_financial_authority,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -94,10 +98,13 @@ class WorldModelUpdater:
             return
 
         current_week = player_state.week
-        wm_data = player_state.world_model_data
+        wm_data = sanitize_world_model_financial_authority(player_state.world_model_data)
+        player_state.world_model_data = wm_data
         careers = wm_data.get("career_records", {})
 
         for update in career_updates:
+            if is_authoritative_financial_record(update):
+                continue
             action = update.get("action", "")
             character = update.get("character", "")
             if not action or not character:
@@ -159,10 +166,13 @@ class WorldModelUpdater:
             return
 
         current_week = player_state.week
-        wm_data = player_state.world_model_data
+        wm_data = sanitize_world_model_financial_authority(player_state.world_model_data)
+        player_state.world_model_data = wm_data
         commitments = wm_data.get("active_commitments", [])
 
         for update in commitment_updates:
+            if is_authoritative_financial_record(update):
+                continue
             action = update.get("action", "")
             if not action:
                 continue
@@ -263,10 +273,13 @@ class WorldModelUpdater:
             return
 
         current_week = player_state.week
-        wm_data = player_state.world_model_data
+        wm_data = sanitize_world_model_financial_authority(player_state.world_model_data)
+        player_state.world_model_data = wm_data
         chains = wm_data.get("causal_chains", [])
 
         for update in causal_updates:
+            if is_authoritative_financial_record(update):
+                continue
             action = update.get("action", "")
             if not action:
                 continue

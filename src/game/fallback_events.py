@@ -51,12 +51,11 @@ def generate_fallback_event(
                     "energy": 0 if is_round else 5,
                     "mood": 5,
                     "knowledge": 0,
-                    "wealth": 0,
                 },
             ),
             EventOption(
                 text="思考人生方向" if not is_round else "尝试做点不一样的事",
-                effects={"energy": -5, "mood": 0, "knowledge": 5, "wealth": 0},
+                effects={"energy": -5, "mood": 0, "knowledge": 5},
             ),
         ]
     else:
@@ -78,12 +77,11 @@ def generate_fallback_event(
                     "energy": 0 if is_round else 5,
                     "mood": 5,
                     "knowledge": 0,
-                    "wealth": 0,
                 },
             ),
             EventOption(
                 text=("Reflect on life direction" if not is_round else "Try something different"),
-                effects={"energy": -5, "mood": 0, "knowledge": 5, "wealth": 0},
+                effects={"energy": -5, "mood": 0, "knowledge": 5},
             ),
         ]
 

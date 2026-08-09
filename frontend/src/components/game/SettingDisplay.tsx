@@ -12,7 +12,6 @@ import {
   Home,
   Users,
   Sparkles,
-  Coins,
 } from "lucide-react";
 
 interface SettingDisplayProps {
@@ -32,6 +31,8 @@ export const SettingDisplay = memo(function SettingDisplay({
   isNew = false,
   className,
 }: SettingDisplayProps) {
+  if (stepKey === "wealth") return null;
+
   return (
     <Card
       className={cn(
@@ -72,8 +73,6 @@ function renderContent(
       return <RelationshipsDisplay data={data} />;
     case "traits":
       return <TraitsDisplay data={data} />;
-    case "wealth":
-      return <WealthDisplay data={data} />;
     default:
       // Fallback: formatted JSON
       return (
@@ -336,6 +335,14 @@ function RelationshipsDisplay({ data }: { data: Record<string, unknown> }) {
 
 // ===== Traits =====
 function TraitsDisplay({ data }: { data: Record<string, unknown> }) {
+  const traits = [
+    { key: "personality", label: "性格" },
+    { key: "abilities", label: "能力" },
+    { key: "interests", label: "兴趣" },
+    { key: "strengths", label: "优点" },
+    { key: "weaknesses", label: "缺点" },
+  ].filter(({ key }) => has(data, key));
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 mb-1">
@@ -347,48 +354,19 @@ function TraitsDisplay({ data }: { data: Record<string, unknown> }) {
           {str(data.traits_description)}
         </p>
       )}
-      <div className="flex flex-wrap gap-2">
-        {has(data, "personality") && (
-          <Badge variant="secondary">性格: {str(data.personality)}</Badge>
-        )}
-        {has(data, "abilities") && (
-          <Badge variant="secondary">能力: {str(data.abilities)}</Badge>
-        )}
-        {has(data, "interests") && (
-          <Badge variant="secondary">兴趣: {str(data.interests)}</Badge>
-        )}
-        {has(data, "strengths") && (
-          <Badge variant="secondary">优点: {str(data.strengths)}</Badge>
-        )}
-        {has(data, "weaknesses") && (
-          <Badge variant="secondary">缺点: {str(data.weaknesses)}</Badge>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ===== Wealth =====
-function WealthDisplay({ data }: { data: Record<string, unknown> }) {
-  const wealth = data.wealth as number | undefined;
-  const currency = str(data.currency) || "碳信用";
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2 mb-1">
-        <Coins className="w-5 h-5 text-warning flex-shrink-0" />
-        <span className="font-medium text-foreground">初始财富</span>
-      </div>
-      {wealth !== undefined && (
-        <div className="text-2xl font-bold text-warning">
-          {currency}
-          {wealth.toLocaleString()}
+      {traits.length > 0 && (
+        <div aria-label="角色特质" className="space-y-2" role="list">
+          {traits.map(({ key, label }) => (
+            <div
+              className="w-full min-w-0 rounded-lg bg-secondary px-3 py-2 text-sm leading-relaxed whitespace-normal break-words"
+              key={key}
+              role="listitem"
+            >
+              <span className="font-medium text-foreground">{label}: </span>
+              <span className="text-secondary-foreground">{str(data[key])}</span>
+            </div>
+          ))}
         </div>
-      )}
-      {has(data, "wealth_description") && (
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          {str(data.wealth_description)}
-        </p>
       )}
     </div>
   );

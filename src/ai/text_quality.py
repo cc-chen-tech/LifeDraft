@@ -55,7 +55,7 @@ def normalize_chinese_punctuation(text: Optional[str]) -> Optional[str]:
 
 INTERNAL_STATE_PATTERNS = [
     re.compile(r"【[^】]*(状态|系统|数值|判定)[^】]*】"),
-    re.compile(r"\b(energy|mood|knowledge|wealth)\s*[+-]?\s*\d+", re.IGNORECASE),
+    re.compile(r"\b(energy|mood|knowledge)\s*[+-]?\s*\d+", re.IGNORECASE),
     re.compile(r"(系统|AI|模型|规则|状态栏|数值|判定)[:：][^\n。！？]*"),
 ]
 

@@ -4,7 +4,7 @@
 包含所有 Pydantic 字段定义、验证器和序列化方法。
 """
 
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Mapping, Optional
 
 from pydantic import Field, field_validator
 
@@ -29,7 +29,6 @@ class PlayerDataMixin:
     energy: int = Field(default=settings.INITIAL_ENERGY, ge=0, le=100)
     mood: int = Field(default=settings.INITIAL_MOOD, ge=0, le=100)
     knowledge: int = Field(default=settings.INITIAL_KNOWLEDGE, ge=0, le=100)
-    wealth: int = Field(default=settings.INITIAL_WEALTH, ge=0)
 
     # Relationships: {name: affinity (0-100)} - 为了向后兼容保留
     relationships: Dict[str, int] = Field(default_factory=dict)
@@ -75,6 +74,10 @@ class PlayerDataMixin:
     # Round history - stores each round's compressed summary and decision
     # Structure: [{"week": 0, "round": 0, "summary": "100字总结", "choice": "选项文本", "effects": {...}}]
     round_history: list = Field(default_factory=list)
+
+    # Derived, immutable prompt-compression snapshots. The canonical story
+    # remains in round_history; these records only bound long-context prompts.
+    long_context_snapshots: list = Field(default_factory=list)
 
     # Weekly summaries - generated at end of each week after all rounds
     # Structure: [{"week": 0, "summary": "周总结文本", "bonus_effects": {...}}]
@@ -164,20 +167,6 @@ class PlayerDataMixin:
         }
     )
 
-    # P1-8 source-linked audit for the authoritative numeric ``wealth`` field.
-    # The ledger never replaces ``wealth`` as a spendable balance; it explains
-    # each gameplay mutation and rejects unsupported exact narrative claims.
-    wealth_ledger: Dict[str, Any] = Field(
-        default_factory=lambda: {
-            "version": 1,
-            "opening_balance": 0,
-            "balance_snapshot": 0,
-            "currency_name": "元",
-            "transactions": [],
-            "conflicts": [],
-        }
-    )
-
     # 伏笔系统生命周期指标（用于评估伏笔系统健康度）
     # Structure: {"total_planted": 0, "total_activated": 0, "total_expired": 0,
     #             "avg_recovery_distance": 0, "recovery_distances": []}
@@ -246,16 +235,45 @@ class PlayerDataMixin:
         return {name: max(0, min(100, affinity)) for name, affinity in v.items()}
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert state to dictionary."""
+        """Convert state to a persistence-safe dictionary."""
+        from src.game.continuity_ledger import ContinuityLedger
+        from src.utils.financial_narrative import (
+            sanitize_authoritative_fact_records,
+            sanitize_world_model_financial_authority,
+        )
+        from src.utils.legacy_data import strip_retired_wealth_keys
+
         # model_dump is provided by BaseModel when used in the combined class
-        return getattr(self, "model_dump")()  # type: ignore[no-any-return]
+        data = strip_retired_wealth_keys(getattr(self, "model_dump")())
+        data["established_facts"] = sanitize_authoritative_fact_records(
+            data.get("established_facts")
+        )
+        data["world_model_data"] = sanitize_world_model_financial_authority(
+            data.get("world_model_data")
+        )
+        ledger = data.get("continuity_ledger")
+        if isinstance(ledger, Mapping):
+            data["continuity_ledger"] = ContinuityLedger(ledger).to_dict()
+        return data  # type: ignore[no-any-return]
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PlayerDataMixin":
         """Create state from dictionary."""
         # ★ 处理可能为 None 的字符串字段，避免 Pydantic 验证错误
         # 这是为了兼容旧数据，这些字段在之前的 bug 中可能被设为 None
-        cleaned_data = data.copy()
+        from src.utils.legacy_data import strip_retired_wealth_keys
+        from src.utils.financial_narrative import (
+            sanitize_authoritative_fact_records,
+            sanitize_world_model_financial_authority,
+        )
+
+        cleaned_data = strip_retired_wealth_keys(data)
+        cleaned_data["established_facts"] = sanitize_authoritative_fact_records(
+            cleaned_data.get("established_facts")
+        )
+        cleaned_data["world_model_data"] = sanitize_world_model_financial_authority(
+            cleaned_data.get("world_model_data")
+        )
         if cleaned_data.get("last_round_full_story") is None:
             cleaned_data["last_round_full_story"] = ""
         return cls(**cleaned_data)
@@ -273,8 +291,6 @@ class PlayerDataMixin:
             raise ValueError(f"Mood out of bounds: {self.mood}")
         if not (settings.MIN_RESOURCE <= self.knowledge <= settings.MAX_RESOURCE):
             raise ValueError(f"Knowledge out of bounds: {self.knowledge}")
-        if self.wealth < 0:
-            raise ValueError(f"Wealth cannot be negative: {self.wealth}")
         if self.week < 0 or self.week > settings.TOTAL_WEEKS:
             raise ValueError(f"Week out of bounds: {self.week}")
         if self.age < 0:

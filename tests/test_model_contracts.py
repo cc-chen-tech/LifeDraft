@@ -144,7 +144,6 @@ class TestPlayerStateContract:
             "energy",
             "mood",
             "knowledge",
-            "wealth",
             "age",
             "week",
             "current_round",

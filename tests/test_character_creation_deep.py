@@ -193,23 +193,21 @@ class TestCharacterCreatorGenerateSetting:
         result = creator.generate_setting("age", "张三", "成功", {"era": {"year": 2024}})
         assert result["birth_year"] == 1999  # 2024 - 25
 
-    def test_generate_wealth_setting_zero_retry(self):
-        """Test wealth=0 triggers retry and eventually uses fallback."""
+    def test_generate_retired_wealth_setting_has_no_special_handling(self):
         creator = self._make_creator()
         creator.ai_generator.generate_completion.return_value = json.dumps(
             {"wealth": 0, "currency": "¥"}
         )
         result = creator.generate_setting("wealth", "张三", "成功", {})
-        assert result["wealth"] >= 1000  # Either retried or fallback
+        assert result == {"wealth": 0, "currency": "¥"}
 
-    def test_generate_wealth_low_adjusted(self):
-        """Test low wealth is adjusted to minimum."""
+    def test_generate_retired_wealth_setting_is_not_adjusted(self):
         creator = self._make_creator()
         creator.ai_generator.generate_completion.return_value = json.dumps(
             {"wealth": 500, "currency": "¥"}
         )
         result = creator.generate_setting("wealth", "张三", "成功", {})
-        assert result["wealth"] >= 1000
+        assert result == {"wealth": 500, "currency": "¥"}
 
     def test_generate_setting_ai_failure_fallback(self):
         """Test fallback when AI fails all retries."""
@@ -480,7 +478,7 @@ class TestCharacterCreatorAttributes:
         result = creator.generate_initial_attributes({})
         assert result["energy"] == 100
         assert result["mood"] == 0
-        assert result["wealth"] == 1000000
+        assert "wealth" not in result
 
     def test_generate_initial_attributes_fallback(self):
         """Test rule-based fallback when AI fails."""
@@ -506,8 +504,7 @@ class TestCharacterCreatorAttributes:
         result = creator.generate_initial_attributes({"traits": {"personality": "体弱多病"}})
         assert result["energy"] <= 60
 
-    def test_rules_wealthy_family(self):
-        """Test wealth boost for wealthy family."""
+    def test_rules_wealthy_family_does_not_create_resource(self):
         creator = self._make_creator()
         creator.ai_generator.generate_completion_json.side_effect = Exception("fail")
         result = creator.generate_initial_attributes(
@@ -518,10 +515,9 @@ class TestCharacterCreatorAttributes:
                 "age": {"age": 30},
             }
         )
-        assert result["wealth"] > 30000
+        assert "wealth" not in result
 
-    def test_rules_poor_family_ancient(self):
-        """Test wealth reduction for poor family in ancient era."""
+    def test_rules_poor_family_does_not_create_resource(self):
         creator = self._make_creator()
         creator.ai_generator.generate_completion_json.side_effect = Exception("fail")
         result = creator.generate_initial_attributes(
@@ -532,7 +528,7 @@ class TestCharacterCreatorAttributes:
                 "age": {"age": 22},
             }
         )
-        assert result["wealth"] < 20000
+        assert "wealth" not in result
 
     def test_rules_list_traits(self):
         """Test rules handle list-format traits."""
@@ -581,7 +577,6 @@ class TestCharacterCreatorMisc:
             "family",
             "relationships",
             "traits",
-            "wealth",
         ]:
             fallback = creator._get_fallback_setting(setting_type)
             assert isinstance(fallback, dict)

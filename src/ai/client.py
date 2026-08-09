@@ -11,6 +11,7 @@ OpenAI SDK or private methods. This ensures:
 import logging
 import re
 import threading
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
 import openai
@@ -32,6 +33,28 @@ _DEFAULT_FALLBACK_MODELS: List[str] = [
     "deepseek-v4-pro",  # 备选模型（原 deepseek-chat）
     "gpt-4o-mini",  # 最后备选
 ]
+
+
+@dataclass(frozen=True)
+class AIUsage:
+    """Provider usage telemetry. Prompt and response content are excluded."""
+
+    model: str
+    prompt_tokens: Optional[int]
+    completion_tokens: Optional[int]
+    total_tokens: Optional[int]
+    prompt_cache_hit_tokens: Optional[int]
+    prompt_cache_miss_tokens: Optional[int]
+    streamed: bool
+
+
+def _usage_value(usage: Any, name: str) -> Optional[int]:
+    value = usage.get(name) if isinstance(usage, dict) else getattr(usage, name, None)
+    return int(value) if isinstance(value, (int, float)) else None
+
+
+def _is_deepseek_v4(model: str) -> bool:
+    return model.strip().lower().startswith("deepseek-v4-")
 
 
 def _is_max_tokens_error(error_message: str) -> bool:
@@ -99,6 +122,7 @@ class AIClient:
         frequency_penalty: float = 0.0,
         presence_penalty: float = 0.0,
         request_timeout: Optional[float] = None,
+        usage_callback: Optional[Callable[[AIUsage], None]] = None,
     ) -> str:
         """
         Unified AI call method.
@@ -116,6 +140,14 @@ class AIClient:
         Returns:
             AI generated text
         """
+        from src.ai.e2e_story_provider import deterministic_e2e_response
+
+        e2e_response = deterministic_e2e_response(system_prompt)
+        if e2e_response is not None:
+            if stream_callback is not None:
+                stream_callback(e2e_response)
+            return e2e_response
+
         # C-04: 使用信号量限制并发调用
         with self._semaphore:
             # ★ 模型降级链：开启时自动切换备选模型
@@ -130,6 +162,7 @@ class AIClient:
                     frequency_penalty=frequency_penalty,
                     presence_penalty=presence_penalty,
                     request_timeout=request_timeout,
+                    usage_callback=usage_callback,
                 )
             return self._call_impl(
                 system_prompt=system_prompt,
@@ -141,6 +174,7 @@ class AIClient:
                 frequency_penalty=frequency_penalty,
                 presence_penalty=presence_penalty,
                 request_timeout=request_timeout,
+                usage_callback=usage_callback,
             )
 
     def _call_with_model_fallback(
@@ -154,6 +188,7 @@ class AIClient:
         frequency_penalty: float = 0.0,
         presence_penalty: float = 0.0,
         request_timeout: Optional[float] = None,
+        usage_callback: Optional[Callable[[AIUsage], None]] = None,
     ) -> str:
         """Call AI with automatic model fallback using FallbackChain config.
 
@@ -185,6 +220,7 @@ class AIClient:
                     frequency_penalty=frequency_penalty,
                     presence_penalty=presence_penalty,
                     request_timeout=request_timeout,
+                    usage_callback=usage_callback,
                 )
             except Exception as e:
                 last_error = e
@@ -220,6 +256,7 @@ class AIClient:
         frequency_penalty: float = 0.0,
         presence_penalty: float = 0.0,
         request_timeout: Optional[float] = None,
+        usage_callback: Optional[Callable[[AIUsage], None]] = None,
     ) -> str:
         """Internal implementation of AI call."""
         messages = [
@@ -249,6 +286,8 @@ class AIClient:
                         extra_params["presence_penalty"] = presence_penalty
                     if request_timeout is not None:
                         extra_params["timeout"] = request_timeout
+                    if _is_deepseek_v4(use_model):
+                        extra_params["stream_options"] = {"include_usage": True}
                     stream = client.chat.completions.create(
                         model=use_model,
                         messages=messages,  # type: ignore[arg-type]
@@ -261,14 +300,19 @@ class AIClient:
                     full_text = ""
                     finish_reason = None
                     chunk_count = 0
+                    terminal_usage = None
                     for chunk in stream:
-                        if hasattr(chunk, "choices") and chunk.choices[0].delta.content is not None:  # type: ignore[union-attr]
-                            chunk_text = chunk.choices[0].delta.content  # type: ignore[union-attr]
+                        choices = getattr(chunk, "choices", None) or []
+                        delta = getattr(choices[0], "delta", None) if choices else None
+                        chunk_text = getattr(delta, "content", None)
+                        if chunk_text is not None:
                             full_text += chunk_text
                             chunk_count += 1
                             stream_callback(chunk_text)
-                        if hasattr(chunk, "choices") and chunk.choices[0].finish_reason:  # type: ignore[union-attr]
-                            finish_reason = chunk.choices[0].finish_reason  # type: ignore[union-attr]
+                        if choices and choices[0].finish_reason:
+                            finish_reason = choices[0].finish_reason
+                        if getattr(chunk, "usage", None) is not None:
+                            terminal_usage = chunk.usage
                     logger.info(
                         f"[AIClient] Streaming complete: {chunk_count} chunks, {len(full_text)} chars"
                     )
@@ -293,6 +337,7 @@ class AIClient:
                                     model=use_model,
                                 )
 
+                    self._emit_usage(terminal_usage, use_model, True, usage_callback)
                     return full_text.strip()
                 else:
                     # ★ 构建额外参数（仅在非零时传入）
@@ -310,6 +355,8 @@ class AIClient:
                         max_tokens=current_max_tokens,
                         **extra_params_sync,
                     )
+
+                    self._emit_usage(getattr(response, "usage", None), use_model, False, usage_callback)
 
                     finish_reason = response.choices[0].finish_reason
                     content = response.choices[0].message.content or ""
@@ -360,6 +407,36 @@ class AIClient:
 
         # 所有尝试都失败，抛出最后一个错误
         raise last_error  # type: ignore[misc]
+
+    @staticmethod
+    def _emit_usage(
+        usage: Any,
+        model: str,
+        streamed: bool,
+        callback: Optional[Callable[[AIUsage], None]],
+    ) -> None:
+        if usage is None:
+            return
+        telemetry = AIUsage(
+            model=model,
+            prompt_tokens=_usage_value(usage, "prompt_tokens"),
+            completion_tokens=_usage_value(usage, "completion_tokens"),
+            total_tokens=_usage_value(usage, "total_tokens"),
+            prompt_cache_hit_tokens=_usage_value(usage, "prompt_cache_hit_tokens"),
+            prompt_cache_miss_tokens=_usage_value(usage, "prompt_cache_miss_tokens"),
+            streamed=streamed,
+        )
+        logger.info(
+            "AI usage model=%s streamed=%s prompt=%s completion=%s cache_hit=%s cache_miss=%s",
+            telemetry.model,
+            telemetry.streamed,
+            telemetry.prompt_tokens,
+            telemetry.completion_tokens,
+            telemetry.prompt_cache_hit_tokens,
+            telemetry.prompt_cache_miss_tokens,
+        )
+        if callback is not None:
+            callback(telemetry)
 
     # -------------------- JSON Call --------------------
 

@@ -22,17 +22,18 @@ async function testEndpoint(
   requestTimeout: number = 15000
 ) {
   const url = `${API_URL}${path}`;
+  const headers = { 'X-E2E-Contract-Probe': '1' };
   let response;
 
   try {
     if (method === 'GET') {
-      response = await request.get(url, { timeout: requestTimeout });
+      response = await request.get(url, { headers, timeout: requestTimeout });
     } else if (method === 'POST') {
-      response = await request.post(url, { data: body || {}, timeout: requestTimeout });
+      response = await request.post(url, { data: body || {}, headers, timeout: requestTimeout });
     } else if (method === 'PUT') {
-      response = await request.put(url, { data: body || {}, timeout: requestTimeout });
+      response = await request.put(url, { data: body || {}, headers, timeout: requestTimeout });
     } else if (method === 'DELETE') {
-      response = await request.delete(url, { timeout: requestTimeout });
+      response = await request.delete(url, { headers, timeout: requestTimeout });
     }
 
     const status = response!.status();

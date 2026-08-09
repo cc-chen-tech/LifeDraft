@@ -808,11 +808,10 @@ def test_e2e_api_contract_probe_does_not_trigger_long_story_regeneration() -> No
 
     assert "E2E_CONTRACT_PROBE_FAST=1" in script
     assert "E2E_CONTRACT_PROBE_FAST" in story_router
-    assert 'request.headers.get("user-agent", "")' in story_router
+    assert 'request.headers.get("x-e2e-contract-probe") == "1"' in story_router
     assert "API contract probe should not trigger story regeneration" in story_router
     assert "E2E_CONTRACT_PROBE_FAST" in events_router
-    assert 'request.headers.get("user-agent", "")' in events_router
-    assert 'not request.headers.get("cookie")' not in events_router
+    assert 'request.headers.get("x-e2e-contract-probe") == "1"' in events_router
     assert "API contract probe should not trigger event generation" in events_router
 
 

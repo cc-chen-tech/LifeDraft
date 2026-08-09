@@ -17,7 +17,6 @@ const STEP_LABELS: Record<string, string> = {
   family: "家庭背景",
   relationships: "人际关系",
   traits: "性格特征",
-  wealth: "财富状况",
 };
 
 const STEP_DESCRIPTIONS: Record<string, string> = {
@@ -29,7 +28,6 @@ const STEP_DESCRIPTIONS: Record<string, string> = {
   family: "AI将为你生成家庭背景",
   relationships: "AI将为你创造关键人物关系",
   traits: "AI将基于你的设定生成性格特征",
-  wealth: "AI将确定你的初始财富水平",
 };
 
 type RelationshipPerson = Record<string, unknown> & {

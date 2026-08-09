@@ -584,6 +584,17 @@ describe('OpeningStoryPage', () => {
       expect(screen.getByText('开始我的人生')).toBeInTheDocument();
     });
 
+    it('shows the narrative loading screen instead of a start control while generation is incomplete', async () => {
+      useGameStore.setState({ openingStory: '' });
+      mockStreamOpeningStory.mockImplementation(() => new Promise(() => undefined));
+
+      render(<OpeningStoryPage />);
+
+      expect(await screen.findByTestId('narrative-loading-screen')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '开始我的人生' })).not.toBeInTheDocument();
+      expect(screen.getAllByRole('status')).toHaveLength(1);
+    });
+
     it('allows starting the game while opening illustration is still generating', async () => {
       useImageStore.setState({ isGeneratingIllustration: true });
       const user = userEvent.setup();

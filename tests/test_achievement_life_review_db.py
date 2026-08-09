@@ -143,7 +143,7 @@ class TestAchievementPersistence:
         assert len(curves["energy"]) == 11
         assert len(curves["mood"]) == 11
         assert len(curves["knowledge"]) == 11
-        assert len(curves["wealth"]) == 11
+        assert set(curves) == {"energy", "mood", "knowledge"}
 
     def test_life_review_personality_labels_non_empty(self):
         """personality_labels 至少有一个标签"""

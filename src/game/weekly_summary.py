@@ -52,7 +52,6 @@ class WeeklySummaryGenerator:
             "mood": current_state.mood - previous_state.get("mood", current_state.mood),
             "knowledge": current_state.knowledge
             - previous_state.get("knowledge", current_state.knowledge),
-            "wealth": current_state.wealth - previous_state.get("wealth", current_state.wealth),
         }
 
         # Generate AI summary
@@ -87,7 +86,6 @@ class WeeklySummaryGenerator:
 - 精力：{changes['energy']:+d}
 - 情绪：{changes['mood']:+d}
 - 学识：{changes['knowledge']:+d}
-- 财富：{changes['wealth']:+,}
 
 本周决策：{len(decisions)}个
 当前状态：精力{current_state.energy}/100，情绪{current_state.mood}/100，学识{current_state.knowledge}/100
@@ -100,7 +98,6 @@ Changes this week:
 - Energy: {changes['energy']:+d}
 - Mood: {changes['mood']:+d}
 - Knowledge: {changes['knowledge']:+d}
-- Wealth: {changes['wealth']:+,}
 
 Decisions made: {len(decisions)}
 Current state: Energy {current_state.energy}/100, Mood {current_state.mood}/100, Knowledge {current_state.knowledge}/100
@@ -121,6 +118,6 @@ Generate a vivid weekly summary describing the main changes and feelings."""
     def _get_fallback_summary(self, week: int, changes: Dict[str, int], language: str) -> str:
         """Get fallback summary."""
         if language == "zh":
-            return f"第{week}周过去了。精力变化{changes['energy']:+d}，情绪变化{changes['mood']:+d}，学识变化{changes['knowledge']:+d}，财富变化{changes['wealth']:+,}。"
+            return f"第{week}周过去了。精力变化{changes['energy']:+d}，情绪变化{changes['mood']:+d}，学识变化{changes['knowledge']:+d}。"
         else:
-            return f"Week {week} passed. Energy {changes['energy']:+d}, Mood {changes['mood']:+d}, Knowledge {changes['knowledge']:+d}, Wealth {changes['wealth']:+,}."
+            return f"Week {week} passed. Energy {changes['energy']:+d}, Mood {changes['mood']:+d}, Knowledge {changes['knowledge']:+d}."

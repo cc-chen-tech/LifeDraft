@@ -92,12 +92,10 @@ class Settings:
     INITIAL_ENERGY: int = 70
     INITIAL_MOOD: int = 60
     INITIAL_KNOWLEDGE: int = 50
-    INITIAL_WEALTH: int = 10000
 
     # Resource Bounds
     MIN_RESOURCE: int = 0
     MAX_RESOURCE: int = 100
-    MAX_WEALTH: int = 1000000  # No upper limit for wealth
 
     # Weekly Decay (if applicable)
     ENERGY_DECAY: int = 5  # If no rest
@@ -181,7 +179,6 @@ class Settings:
 #   ENABLE_NARRATIVE_STYLE_ENGINE   — 叙事风格引擎
 #   ENABLE_CREATIVE_ENHANCEMENT     — 创意增强
 #   ENABLE_EPIC_NARRATIVE           — 史诗叙事
-#   ENABLE_VECTOR_SEARCH            — 向量搜索
 #   ENABLE_MODEL_FALLBACK           — 模型降级
 #   ENABLE_TRUNCATION_RECOVERY      — 截断恢复
 #   ENABLE_REACTIVE_COMPRESSION     — 响应式压缩

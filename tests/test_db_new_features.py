@@ -278,7 +278,6 @@ class TestParallelPostProcessingDataIntegrity:
                 "character_locations": {"杜甫": {"location": "成都", "since_week": 8}},
                 "career_records": {},
             },
-            "vector_stored": True,
             "weekly_summary": "第五周：主角在长安结识了诗友，开始了新的诗歌创作生涯。",
         }
 
@@ -304,7 +303,6 @@ class TestParallelPostProcessingDataIntegrity:
             "遇见李白",
             "饮酒作诗",
         ]
-        assert loaded_pp["vector_stored"] is True
         assert "主角在长安" in loaded_pp["weekly_summary"]
 
     def test_concurrent_world_model_writes_no_corruption(self, db_session, game_ctx):

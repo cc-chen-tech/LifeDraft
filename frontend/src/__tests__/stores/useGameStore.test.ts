@@ -208,7 +208,7 @@ describe('useGameStore', () => {
     });
 
     it('has correct auto advance steps', () => {
-      expect(AUTO_ADVANCE_STEPS).toEqual(['family', 'relationships', 'traits', 'wealth']);
+      expect(AUTO_ADVANCE_STEPS).toEqual(['family', 'relationships', 'traits']);
     });
 
     it('sets player name', () => {

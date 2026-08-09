@@ -323,11 +323,9 @@ run_preflight() {
         tests/test_continuity_ledger.py \
         tests/test_continuity_ledger_integration.py \
         tests/test_assistant_grounding.py \
-        tests/test_wealth_ledger.py \
-        tests/test_wealth_ledger_integration.py \
+        tests/test_wealth_removal_contract.py \
         tests/test_opening_story_contract.py \
         tests/test_character_creation_deep.py::TestCharacterCreatorGenerateSetting::test_generate_era_feedback_still_aligns_with_modern_life_vision \
-        tests/test_api_games.py::TestCreateGame::test_create_game_preserves_generated_initial_wealth \
         tests/test_music_degradation_no_mock.py \
         tests/test_minimax_audio_generation_contract.py \
         tests/test_sse_timeout_contract.py \
@@ -422,7 +420,6 @@ run_mypy() {
         src/services/minimax_music_generation.py
         src/game/relationship_authority.py
         src/game/assistant_grounding.py
-        src/game/wealth_ledger.py
         src/services/story_tts_provider.py
         src/services/story_voice_reading.py
         src/services/story_voice_repository.py
@@ -634,7 +631,7 @@ run_e2e_browser_impl() {
     API_HOST=127.0.0.1 API_PORT="$E2E_BACKEND_PORT" \
     E2E_BACKEND_HOST=127.0.0.1 E2E_BACKEND_PORT="$E2E_BACKEND_PORT" \
     DATABASE_URL="$LOCAL_E2E_DB_URL" \
-    E2E_CONTRACT_PROBE_FAST=1 STORY_TTS_ALLOW_REQUEST_PROVIDER=1 \
+    E2E_CONTRACT_PROBE_FAST=1 E2E_DETERMINISTIC_STORY=1 STORY_TTS_ALLOW_REQUEST_PROVIDER=1 \
     MINIMAX_E2E_LOCAL_AUDIO=1 MINIMAX_E2E_LOCAL_IMAGE=1 NETEASE_E2E_LOCAL_MUSIC=1 API_RELOAD=false \
     python run_api.py > "$BACKEND_LOG" 2>&1 &
     BACKEND_PID=$!

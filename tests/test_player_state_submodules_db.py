@@ -227,7 +227,6 @@ class TestPlayerDataDB:
             energy=80,
             mood=70,
             knowledge=60,
-            wealth=5000,
             age=25,
             week=10,
             current_round=1,
@@ -239,7 +238,7 @@ class TestPlayerDataDB:
         assert d["energy"] == 80
         assert d["mood"] == 70
         assert d["knowledge"] == 60
-        assert d["wealth"] == 5000
+        assert "wealth" not in d
         assert d["age"] == 25
         assert d["week"] == 10
         assert d["current_round"] == 1
@@ -306,14 +305,6 @@ class TestPlayerDataDB:
         object.__setattr__(state, "energy", 150)
 
         with pytest.raises(ValueError, match="Energy"):
-            state.validate_state()
-
-    def test_validate_state_raises_for_negative_wealth(self):
-        """validate_state should raise ValueError when wealth is set negative post-construction."""
-        state = PlayerState(week=0, age=25, energy=50, mood=50, knowledge=50, wealth=100)
-        object.__setattr__(state, "wealth", -10)
-
-        with pytest.raises(ValueError, match="Wealth"):
             state.validate_state()
 
     def test_relationships_validator_clamps_values(self):
@@ -880,26 +871,24 @@ class TestPlayerLogicDB:
 
     def test_update_stats_survives_round_trip(self, repo, sample_game):
         """Stat updates should persist across save/load."""
-        state = PlayerState(energy=80, mood=60, knowledge=50, wealth=1000)
+        state = PlayerState(energy=80, mood=60, knowledge=50)
 
-        state.update(energy=-10, mood=15, knowledge=20, wealth=-200)
+        state.update(energy=-10, mood=15, knowledge=20)
         loaded = _save_and_load(repo, sample_game.game_id, state)
 
         assert loaded.energy == 70
         assert loaded.mood == 75
         assert loaded.knowledge == 70
-        assert loaded.wealth == 800
 
     def test_update_clamps_bounds(self, repo, sample_game):
         """update should clamp values to valid ranges."""
-        state = PlayerState(energy=5, mood=5, wealth=50)
+        state = PlayerState(energy=5, mood=5)
 
-        state.update(energy=-100, mood=-100, wealth=-100)
+        state.update(energy=-100, mood=-100)
         loaded = _save_and_load(repo, sample_game.game_id, state)
 
         assert loaded.energy == 0  # clamped to MIN_RESOURCE
         assert loaded.mood == 0
-        assert loaded.wealth == 0  # clamped to 0
 
         state.energy = 95
         state.update(energy=100)

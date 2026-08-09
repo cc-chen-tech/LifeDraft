@@ -441,6 +441,35 @@ class TestWorldModel:
         text = wm.build_constraints_text("zh")
         assert text == ""
 
+    def test_dynamic_fact_constraints_exclude_exact_money_but_keep_economic_context(self):
+        from src.ai.story_analyzer import DynamicFact
+
+        wm = WorldModel()
+        wm.dynamic_facts = [
+            DynamicFact(
+                fact_id="f_bonus",
+                fact_type="financial",
+                subject="林岚",
+                description="公司发放了5000元奖金",
+                constraint_text="林岚的账户必须增加5000元并在后续保持这个余额",
+            ),
+            DynamicFact(
+                fact_id="f_pressure",
+                fact_type="economic_context",
+                subject="林岚",
+                description="家庭经济压力加剧",
+                constraint_text="家庭经济压力仍在，做决定时会更加谨慎",
+            ),
+        ]
+
+        text = wm.build_constraints_text("zh")
+
+        assert "5000" not in text
+        assert "账户" not in text
+        assert "家庭经济压力仍在" in text
+        serialized = wm.to_dict()["dynamic_facts"]
+        assert [fact["fact_id"] for fact in serialized] == ["f_pressure"]
+
     def test_build_constraints_text_chinese(self):
         wm = WorldModel()
         wm.current_week = 10

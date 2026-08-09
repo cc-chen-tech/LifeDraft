@@ -680,7 +680,7 @@ describe('useCharacterCreation', () => {
 
     it('exposes AUTO_ADVANCE_STEPS', () => {
       const { result } = renderHook(() => useCharacterCreation());
-      expect(result.current.AUTO_ADVANCE_STEPS).toEqual(['family', 'relationships', 'traits', 'wealth']);
+      expect(result.current.AUTO_ADVANCE_STEPS).toEqual(['family', 'relationships', 'traits']);
     });
   });
 

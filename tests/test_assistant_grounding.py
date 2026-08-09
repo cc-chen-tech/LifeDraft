@@ -117,6 +117,35 @@ def test_evidence_uses_only_allowlisted_structured_authority() -> None:
     assert "搬到火星" not in rendered
 
 
+def test_evidence_excludes_exact_money_facts_but_keeps_qualitative_economic_context() -> None:
+    player = _player_state()
+    player.continuity_ledger["mutable_states"]["facts"].update(
+        {
+            "finance:bonus": {
+                "subject": "林岚",
+                "category": "financial",
+                "fact": "公司发放了5000元奖金，账户余额达到50000元",
+                "source_event_id": "w4-r1",
+            },
+            "finance:pressure": {
+                "subject": "林岚",
+                "category": "economic_context",
+                "fact": "家庭经济压力加剧，消费变得谨慎",
+                "source_event_id": "w4-r2",
+            },
+        }
+    )
+
+    evidence = AssistantEvidence.from_player_state(player)
+    rendered = evidence.render("zh")
+
+    assert "state:finance:bonus" not in evidence.records
+    assert "5000" not in rendered
+    assert "50000" not in rendered
+    assert "state:finance:pressure" in evidence.records
+    assert "家庭经济压力加剧" in rendered
+
+
 def test_supported_answer_must_cite_authoritative_record() -> None:
     ai = MagicMock()
     ai.generate_completion_json.return_value = {

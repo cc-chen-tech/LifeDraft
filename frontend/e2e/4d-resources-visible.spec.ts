@@ -16,7 +16,6 @@ async function createTestGame(
         family: { description: "普通家庭" },
         relationships: { key_people: [], relationships_description: "暂无" },
         traits: { traits: ["勇敢", "好奇"] },
-        wealth: { level: "中等", description: "普通家庭收入" },
       },
       language: "zh",
     },
@@ -30,8 +29,8 @@ async function createTestGame(
   return game.game_id;
 }
 
-test.describe("4D 资源隐藏", () => {
-  test("游戏页面顶部状态栏隐藏 4D 资源", async ({ page, context }) => {
+test.describe("内部资源隐藏", () => {
+  test("游戏页面顶部状态栏隐藏内部资源", async ({ page, context }) => {
     await ensureAuthenticated(page, context);
     const gameId = await createTestGame(context);
 
@@ -47,7 +46,7 @@ test.describe("4D 资源隐藏", () => {
     await expect(statusBar.locator("text=/精力|情绪|学识|财富|energy|mood|knowledge|wealth/i")).toHaveCount(0);
   });
 
-  test("API 保留资源字段但页面不展示资源数值", async ({ page, context }) => {
+  test("API 仅保留三项内部资源且页面不展示资源数值", async ({ page, context }) => {
     await ensureAuthenticated(page, context);
     const gameId = await createTestGame(context);
 
@@ -66,7 +65,7 @@ test.describe("4D 资源隐藏", () => {
     expect(playerState).toHaveProperty("energy");
     expect(playerState).toHaveProperty("mood");
     expect(playerState).toHaveProperty("knowledge");
-    expect(playerState).toHaveProperty("wealth");
+    expect(playerState).not.toHaveProperty("wealth");
 
     const energyValue = String(playerState.energy ?? "");
     if (energyValue) {
