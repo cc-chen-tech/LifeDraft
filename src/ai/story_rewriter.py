@@ -7,8 +7,13 @@ import json
 import logging
 from typing import Any, Callable, Dict, Optional
 
+from config.feature_flags import get_feature
 from config.prompts import get_story_only_prompt
 from config.prompts.story_prompts import _build_zh_chapter_constraint
+from src.ai.budgets import (GenerationBudgetError, GenerationCallTracker,
+                            GenerationOperation, NarrativeBudget,
+                            NarrativeKind, format_length_requirement,
+                            measure_narrative_length, resolve_narrative_budget)
 from src.ai.client import AIClient
 from src.ai.professional_risk import apply_professional_risk_guardrail
 from src.ai.story_exceptions import StoryRewriteFailure
@@ -20,8 +25,47 @@ logger = logging.getLogger(__name__)
 class StoryRewriter:
     """Rewrites or regenerates stories."""
 
-    def __init__(self, client: AIClient):
+    def __init__(self, client: AIClient, quality_level: str = "expert"):
         self.client = client
+        self.quality_level = str(quality_level or "expert")
+
+    def _request_budget(
+        self,
+        operation: GenerationOperation,
+        language: str,
+        *,
+        original_story: Optional[str] = None,
+    ) -> tuple[Optional[NarrativeBudget], Optional[GenerationCallTracker]]:
+        if not get_feature("unified_narrative_budgets"):
+            return None, None
+        original_length = (
+            measure_narrative_length(original_story, language)
+            if original_story is not None
+            else None
+        )
+        budget = resolve_narrative_budget(
+            NarrativeKind.ROUND,
+            operation,
+            self.quality_level,
+            language,
+            original_length=original_length,
+        )
+        return budget, GenerationCallTracker(budget)
+
+    def _call_prose(
+        self,
+        generation_tracker: Optional[GenerationCallTracker],
+        **call_kwargs: Any,
+    ) -> str:
+        if generation_tracker is not None:
+            generation_tracker.consume("prose")
+            call_kwargs.setdefault(
+                "request_timeout", max(0.001, generation_tracker.remaining_seconds)
+            )
+        return self.client.call(
+            generation_tracker=generation_tracker,
+            **call_kwargs,
+        )
 
     @staticmethod
     def _normalize_story_for_rewrite_comparison(story: str) -> str:
@@ -103,6 +147,11 @@ class StoryRewriter:
             Rewritten complete story
         """
         logger.info(f"Rewriting story segment: {len(segment_to_replace)} chars")
+        narrative_budget, generation_tracker = self._request_budget(
+            GenerationOperation.REWRITE,
+            language,
+            original_story=full_story,
+        )
         title_constraint = self._build_rewrite_title_constraint(
             player_state,
             character_settings,
@@ -136,6 +185,7 @@ class StoryRewriter:
 4. 保持故事的文学性和流畅性
 5. 保持或修正整篇故事的开头标题，使其符合上方标题/时间线约束
 6. 只返回改写后的完整故事，不要任何解释或JSON格式
+{format_length_requirement(narrative_budget) if narrative_budget else ''}
 """
         else:
             prompt = f"""You are a talented novelist. Please rewrite the specified segment of the following story while maintaining narrative coherence and logical consistency.
@@ -161,16 +211,20 @@ Please rewrite the specified segment according to the user's request:
 3. Maintain consistency with character settings
 4. Keep the story's literary quality and flow
 5. Return ONLY the complete rewritten story, no explanations or JSON format
+{format_length_requirement(narrative_budget) if narrative_budget else ''}
 """
 
         sys_prompt = get_system_prompt("story_rewriter", language)
 
         try:
-            rewritten_story = self.client.call(
+            rewritten_story = self._call_prose(
+                generation_tracker,
                 system_prompt=sys_prompt,
                 user_prompt=prompt,
                 temperature=0.8,
-                max_tokens=4096,
+                max_tokens=(
+                    narrative_budget.max_output_tokens if narrative_budget is not None else 4096
+                ),
                 stream_callback=stream_callback,
                 frequency_penalty=0.3,
                 presence_penalty=0.3,
@@ -185,6 +239,8 @@ Please rewrite the specified segment according to the user's request:
                 language=language,
                 stream_callback=stream_callback,
                 status_callback=status_callback,
+                narrative_budget=narrative_budget,
+                generation_tracker=generation_tracker,
             )
 
             # ★ 一致性校验（如果有 world_model）- 复用 StoryGenerator 的方法
@@ -192,7 +248,7 @@ Please rewrite the specified segment according to the user's request:
                 from src.ai.story_generator import StoryGenerator
 
                 # 创建临时 StoryGenerator 实例来复用验证方法
-                temp_generator = StoryGenerator(self.client)
+                temp_generator = StoryGenerator(self.client, quality_level=self.quality_level)
                 rewritten_story = temp_generator._validate_and_retry_story(
                     story_text=rewritten_story,
                     world_model=world_model,
@@ -203,6 +259,8 @@ Please rewrite the specified segment according to the user's request:
                     sys_prompt=sys_prompt,
                     stream_callback=stream_callback,
                     status_callback=status_callback,
+                    narrative_budget=narrative_budget,
+                    generation_tracker=generation_tracker,
                 )
 
             rewritten_story = apply_professional_risk_guardrail(
@@ -228,6 +286,8 @@ Please rewrite the specified segment according to the user's request:
         language: str,
         stream_callback: Optional[Callable[[str], None]] = None,
         status_callback: Optional[Callable[[str], None]] = None,
+        narrative_budget: Optional[NarrativeBudget] = None,
+        generation_tracker: Optional[GenerationCallTracker] = None,
     ) -> str:
         """Fast local validation for segment rewrite output."""
         if not rewritten_story:
@@ -273,16 +333,23 @@ Please rewrite the specified segment according to the user's request:
                 + "\nRewrite the complete story while strictly following the character setup, world boundary, and preset key people relationships."
             )
 
-        retry_story = self.client.call(
-            system_prompt=sys_prompt,
-            user_prompt=retry_prompt,
-            temperature=0.65,
-            max_tokens=4096,
-            stream_callback=stream_callback,
-            frequency_penalty=0.3,
-            presence_penalty=0.3,
-            thinking=False,
-        )
+        try:
+            retry_story = self._call_prose(
+                generation_tracker,
+                system_prompt=sys_prompt,
+                user_prompt=retry_prompt,
+                temperature=0.65,
+                max_tokens=(
+                    narrative_budget.max_output_tokens if narrative_budget is not None else 4096
+                ),
+                stream_callback=stream_callback,
+                frequency_penalty=0.3,
+                presence_penalty=0.3,
+                thinking=False,
+            )
+        except GenerationBudgetError as exc:
+            logger.warning("Keeping complete rewrite after budget exhaustion: %s", exc)
+            return rewritten_story
         retry_result = quick_validate_story(
             story_text=retry_story,
             character_settings=character_settings,
@@ -299,10 +366,7 @@ Please rewrite the specified segment according to the user's request:
             "[StoryRewrite] Quick validation retry still failed: %s",
             retry_result.issues,
         )
-        raise ValueError(
-            "Story rewrite quick validation failed: "
-            + "; ".join(retry_result.issues)
-        )
+        raise ValueError("Story rewrite quick validation failed: " + "; ".join(retry_result.issues))
 
     def regenerate_story(
         self,
@@ -334,6 +398,10 @@ Please rewrite the specified segment according to the user's request:
             Newly generated story text
         """
         logger.info("Regenerating entire story")
+        narrative_budget, generation_tracker = self._request_budget(
+            GenerationOperation.REGENERATE,
+            language,
+        )
 
         # Determine life phase
         week = player_state.get("week", 0)
@@ -361,7 +429,10 @@ Please rewrite the specified segment according to the user's request:
             last_event_description,
             None,
             None,
+            quality_level=self.quality_level,
         )
+        if narrative_budget is not None:
+            story_prompt += "\n\n" + format_length_requirement(narrative_budget)
 
         # Add previous story context
         if story_context:
@@ -383,11 +454,14 @@ Please generate a brand new story based on the above context, ensuring logical c
         sys_prompt = get_system_prompt("story_novelist", language)
 
         try:
-            regenerated_story = self.client.call(
+            regenerated_story = self._call_prose(
+                generation_tracker,
                 system_prompt=sys_prompt,
                 user_prompt=story_prompt,
                 temperature=0.75,  # 从 1.0 降至 0.75，减少幻觉
-                max_tokens=4096,
+                max_tokens=(
+                    narrative_budget.max_output_tokens if narrative_budget is not None else 4096
+                ),
                 stream_callback=stream_callback,
                 frequency_penalty=0.3,
                 presence_penalty=0.3,
@@ -432,16 +506,31 @@ Please generate a brand new story based on the above context, ensuring logical c
                         + retry_lines
                         + "\nRegenerate the story while strictly following the character setup, realistic-world boundary, and preset key people relationships."
                     )
-                regenerated_story = self.client.call(
-                    system_prompt=sys_prompt,
-                    user_prompt=retry_prompt,
-                    temperature=0.65,
-                    max_tokens=4096,
-                    stream_callback=stream_callback,
-                    frequency_penalty=0.3,
-                    presence_penalty=0.3,
-                    thinking=False,
-                )
+                try:
+                    regenerated_story = self._call_prose(
+                        generation_tracker,
+                        system_prompt=sys_prompt,
+                        user_prompt=retry_prompt,
+                        temperature=0.65,
+                        max_tokens=(
+                            narrative_budget.max_output_tokens
+                            if narrative_budget is not None
+                            else 4096
+                        ),
+                        stream_callback=stream_callback,
+                        frequency_penalty=0.3,
+                        presence_penalty=0.3,
+                        thinking=False,
+                    )
+                except GenerationBudgetError as exc:
+                    logger.warning(
+                        "Keeping complete regeneration after budget exhaustion: %s",
+                        exc,
+                    )
+                    return apply_professional_risk_guardrail(
+                        regenerated_story,
+                        language=language,
+                    )
                 retry_result = quick_validate_story(
                     story_text=regenerated_story,
                     character_settings=character_settings,
@@ -465,7 +554,7 @@ Please generate a brand new story based on the above context, ensuring logical c
                 from src.ai.story_generator import StoryGenerator
 
                 # 创建临时 StoryGenerator 实例来复用验证方法
-                temp_generator = StoryGenerator(self.client)
+                temp_generator = StoryGenerator(self.client, quality_level=self.quality_level)
                 regenerated_story = temp_generator._validate_and_retry_story(
                     story_text=regenerated_story,
                     world_model=world_model,
@@ -476,6 +565,8 @@ Please generate a brand new story based on the above context, ensuring logical c
                     sys_prompt=sys_prompt,
                     stream_callback=stream_callback,
                     status_callback=status_callback,
+                    narrative_budget=narrative_budget,
+                    generation_tracker=generation_tracker,
                 )
 
             return apply_professional_risk_guardrail(regenerated_story, language=language)

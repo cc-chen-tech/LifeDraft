@@ -13,6 +13,7 @@ Contains:
 from typing import Any, Dict, List, Optional
 
 from config.prompts._helpers import build_realistic_modern_world_boundary
+from src.ai.budgets import NarrativeKind, resolve_prompt_length_requirement
 from src.ai.prompt_sanitizer import sanitize_life_vision, sanitize_player_name
 
 
@@ -87,9 +88,7 @@ def get_character_profile_synthesis_prompt(
     """
     # 清洗角色名称输入，防止 prompt 注入
     sanitized_character_name = sanitize_player_name(character_name)
-    traits_str = (
-        "、".join(character_settings_traits) if character_settings_traits else "未设定"
-    )
+    traits_str = "、".join(character_settings_traits) if character_settings_traits else "未设定"
 
     evidence_str = (
         "\n".join(f"  - {e}" for e in behavioral_evidence)
@@ -391,9 +390,7 @@ Return JSON format:
 
     if feedback:
         if language == "zh":
-            prompt += (
-                f"\n\n用户反馈：{feedback}\n请根据反馈重新生成，确保满足用户的要求。"
-            )
+            prompt += f"\n\n用户反馈：{feedback}\n请根据反馈重新生成，确保满足用户的要求。"
         else:
             prompt += f"\n\nUser Feedback: {feedback}\nPlease regenerate based on the feedback to meet user requirements."
 
@@ -714,6 +711,7 @@ def get_opening_story_prompt(
     life_vision: str,
     formatted_family_members: str,
     language: str = "zh",
+    length_requirement: Optional[str] = None,
 ) -> str:
     """Generate prompt for creating the opening story.
 
@@ -759,7 +757,10 @@ def get_opening_story_prompt(
     modern_world_boundary = build_realistic_modern_world_boundary(character_settings, language)
 
     if language == "zh":
-        return f"""请基于以下角色设定，生成一个生动的开场故事（300-400字）。
+        localized_length = length_requirement or resolve_prompt_length_requirement(
+            NarrativeKind.OPENING, "expert", language
+        )
+        return f"""请基于以下角色设定，生成一个生动的开场故事（{localized_length}）。
 
 【主角身份硬约束 - 违反即失败】
 主角姓名必须是：{sanitized_player_name}
@@ -822,7 +823,10 @@ def get_opening_story_prompt(
 7. 只返回故事文本，不要任何JSON格式或其他标记
 """
     else:
-        return f"""Generate a vivid opening story (300-400 words) based on the following character settings.
+        localized_length = length_requirement or resolve_prompt_length_requirement(
+            NarrativeKind.OPENING, "expert", language
+        )
+        return f"""Generate a vivid opening story ({localized_length}) based on the following character settings.
 
 [Protagonist Identity - Hard Constraint]
 The protagonist's exact name must be: {sanitized_player_name}

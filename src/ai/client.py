@@ -18,6 +18,7 @@ import openai
 
 from config.feature_flags import get_feature
 from config.settings import settings
+from src.ai.budgets import GenerationBudgetError, GenerationCallTracker
 from src.ai.model_fallback import FallbackChain, ModelFallbackConfig
 from src.ai.truncation_recovery import TruncationRecovery
 from src.ai.utils import extract_json
@@ -134,6 +135,8 @@ class AIClient:
         request_timeout: Optional[float] = None,
         usage_callback: Optional[Callable[[AIUsage], None]] = None,
         thinking: Optional[bool] = None,
+        generation_tracker: Optional[GenerationCallTracker] = None,
+        _allow_truncation_recovery: bool = True,
     ) -> str:
         """
         Unified AI call method.
@@ -162,6 +165,8 @@ class AIClient:
 
         # C-04: 使用信号量限制并发调用
         with self._semaphore:
+            if generation_tracker is not None:
+                generation_tracker.assert_before_provider_call()
             # ★ 模型降级链：开启时自动切换备选模型
             if get_feature("model_fallback"):
                 return self._call_with_model_fallback(
@@ -176,6 +181,8 @@ class AIClient:
                     request_timeout=request_timeout,
                     usage_callback=usage_callback,
                     thinking=thinking,
+                    generation_tracker=generation_tracker,
+                    _allow_truncation_recovery=_allow_truncation_recovery,
                 )
             return self._call_impl(
                 system_prompt=system_prompt,
@@ -189,6 +196,8 @@ class AIClient:
                 request_timeout=request_timeout,
                 usage_callback=usage_callback,
                 thinking=thinking,
+                generation_tracker=generation_tracker,
+                _allow_truncation_recovery=_allow_truncation_recovery,
             )
 
     def _call_with_model_fallback(
@@ -204,6 +213,8 @@ class AIClient:
         request_timeout: Optional[float] = None,
         usage_callback: Optional[Callable[[AIUsage], None]] = None,
         thinking: Optional[bool] = None,
+        generation_tracker: Optional[GenerationCallTracker] = None,
+        _allow_truncation_recovery: bool = True,
     ) -> str:
         """Call AI with automatic model fallback using FallbackChain config.
 
@@ -225,6 +236,8 @@ class AIClient:
         for i in range(attempts):
             current_model = models[i]
             try:
+                if i > 0 and generation_tracker is not None:
+                    generation_tracker.consume_retry()
                 return self._call_impl(
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
@@ -237,6 +250,8 @@ class AIClient:
                     request_timeout=request_timeout,
                     usage_callback=usage_callback,
                     thinking=thinking,
+                    generation_tracker=generation_tracker,
+                    _allow_truncation_recovery=_allow_truncation_recovery,
                 )
             except Exception as e:
                 last_error = e
@@ -274,6 +289,8 @@ class AIClient:
         request_timeout: Optional[float] = None,
         usage_callback: Optional[Callable[[AIUsage], None]] = None,
         thinking: Optional[bool] = None,
+        generation_tracker: Optional[GenerationCallTracker] = None,
+        _allow_truncation_recovery: bool = True,
     ) -> str:
         """Internal implementation of AI call."""
         messages = [
@@ -290,6 +307,17 @@ class AIClient:
         last_error = None
         for attempt, current_max_tokens in enumerate(tokens_to_try):
             try:
+                if attempt > 0 and generation_tracker is not None:
+                    generation_tracker.consume_retry()
+                effective_request_timeout = request_timeout
+                if generation_tracker is not None:
+                    generation_tracker.assert_before_provider_call()
+                    remaining = generation_tracker.remaining_seconds
+                    effective_request_timeout = (
+                        min(request_timeout, remaining)
+                        if request_timeout is not None
+                        else remaining
+                    )
                 client = self.require_openai_client()
                 if stream_callback:
                     logger.info(
@@ -301,11 +329,13 @@ class AIClient:
                         extra_params["frequency_penalty"] = frequency_penalty
                     if presence_penalty > 0:
                         extra_params["presence_penalty"] = presence_penalty
-                    if request_timeout is not None:
-                        extra_params["timeout"] = request_timeout
+                    if effective_request_timeout is not None:
+                        extra_params["timeout"] = effective_request_timeout
                     if _is_deepseek_v4(use_model):
                         extra_params["stream_options"] = {"include_usage": True}
                     extra_params.update(_thinking_request_params(use_model, thinking))
+                    if generation_tracker is not None:
+                        generation_tracker.assert_before_provider_call()
                     stream = client.chat.completions.create(
                         model=use_model,
                         messages=messages,  # type: ignore[arg-type]
@@ -342,7 +372,7 @@ class AIClient:
                             f"Consider increasing max_tokens."
                         )
                         # ★ 截断恢复：自动续写被截断的输出
-                        if get_feature("truncation_recovery"):
+                        if _allow_truncation_recovery and get_feature("truncation_recovery"):
                             recovery = TruncationRecovery()
                             if recovery.detect_truncation(full_text, finish_reason):
                                 full_text = recovery.recover(
@@ -354,6 +384,7 @@ class AIClient:
                                     max_tokens=current_max_tokens,
                                     model=use_model,
                                     thinking=thinking,
+                                    generation_tracker=generation_tracker,
                                 )
 
                     self._emit_usage(terminal_usage, use_model, True, usage_callback)
@@ -365,9 +396,11 @@ class AIClient:
                         extra_params_sync["frequency_penalty"] = frequency_penalty
                     if presence_penalty > 0:
                         extra_params_sync["presence_penalty"] = presence_penalty
-                    if request_timeout is not None:
-                        extra_params_sync["timeout"] = request_timeout
+                    if effective_request_timeout is not None:
+                        extra_params_sync["timeout"] = effective_request_timeout
                     extra_params_sync.update(_thinking_request_params(use_model, thinking))
+                    if generation_tracker is not None:
+                        generation_tracker.assert_before_provider_call()
                     response = client.chat.completions.create(
                         model=use_model,
                         messages=messages,  # type: ignore[arg-type]
@@ -376,7 +409,9 @@ class AIClient:
                         **extra_params_sync,
                     )
 
-                    self._emit_usage(getattr(response, "usage", None), use_model, False, usage_callback)
+                    self._emit_usage(
+                        getattr(response, "usage", None), use_model, False, usage_callback
+                    )
 
                     finish_reason = response.choices[0].finish_reason
                     content = response.choices[0].message.content or ""
@@ -387,7 +422,7 @@ class AIClient:
                             f"Consider increasing max_tokens."
                         )
                         # ★ 截断恢复：自动续写被截断的输出
-                        if get_feature("truncation_recovery"):
+                        if _allow_truncation_recovery and get_feature("truncation_recovery"):
                             recovery = TruncationRecovery()
                             if recovery.detect_truncation(content, finish_reason):
                                 content = recovery.recover(
@@ -399,10 +434,13 @@ class AIClient:
                                     max_tokens=current_max_tokens,
                                     model=use_model,
                                     thinking=thinking,
+                                    generation_tracker=generation_tracker,
                                 )
 
                     return content.strip()
 
+            except GenerationBudgetError:
+                raise
             except openai.APIError as e:
                 error_msg = str(e)
                 last_error = e
@@ -469,6 +507,7 @@ class AIClient:
         max_tokens: int = 2000,
         model: Optional[str] = None,
         thinking: Optional[bool] = None,
+        generation_tracker: Optional[GenerationCallTracker] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Call AI and parse response as JSON.
@@ -491,6 +530,7 @@ class AIClient:
             max_tokens=max_tokens,
             model=model,
             thinking=thinking,
+            generation_tracker=generation_tracker,
         )
         return extract_json(content)
 
@@ -508,6 +548,7 @@ class AIClient:
         language: str = "zh",
         request_timeout: Optional[float] = None,
         thinking: Optional[bool] = None,
+        generation_tracker: Optional[GenerationCallTracker] = None,
     ) -> str:
         """
         Call AI with retry and error feedback injection.
@@ -553,6 +594,8 @@ class AIClient:
                 # Only use stream_callback on first attempt
                 cb = stream_callback if attempt == 0 else None
 
+                if generation_tracker is not None:
+                    generation_tracker.consume("prose")
                 return self.call(
                     system_prompt=system_prompt,
                     user_prompt=prompt,
@@ -562,8 +605,11 @@ class AIClient:
                     model=model,
                     request_timeout=request_timeout,
                     thinking=thinking,
+                    generation_tracker=generation_tracker,
                 )
 
+            except GenerationBudgetError:
+                raise
             except openai.APIError as e:
                 last_error = str(e)
                 logger.warning(f"AI call attempt {attempt + 1}/{retry_count} failed: {e}")
