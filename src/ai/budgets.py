@@ -206,7 +206,7 @@ def resolve_display_budget(
         target_min=target_min,
         target_max=target_max,
         repair_threshold=repair_threshold,
-        option_call_limit=max(0, option_call_limit),
+        option_call_limit=min(2, max(0, option_call_limit)),
         max_display_lines=2,
         unit=unit,
     )

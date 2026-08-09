@@ -299,17 +299,7 @@ class OptionGenerator:
                     ),
                 ]
             )
-        for variant in range(1, 25):
-            fallback_pool.append(
-                EventOption(
-                    text=(
-                        f"围绕关键线索核验方案{variant}"
-                        if language == "zh"
-                        else f"Recheck the key clue using approach {variant}"
-                    ),
-                    effects={"knowledge": 3},
-                )
-            )
+        fallback_pool.extend(cls._build_diverse_contingency_options(language))
         completed = cls._merge_usable_options(
             retained,
             fallback_pool,
@@ -320,6 +310,53 @@ class OptionGenerator:
         if len(completed) != display_budget.option_count:
             raise ValueError("Unable to build three unique contextual options")
         return completed
+
+    @staticmethod
+    def _build_diverse_contingency_options(language: str) -> List[EventOption]:
+        """Provide semantically distinct actions when story-specific pools were exhausted."""
+        if language == "zh":
+            candidates = [
+                ("核验最关键的事实", {"energy": -2, "knowledge": 4}),
+                ("请可信任的人复核", {"mood": 2, "knowledge": 2}),
+                ("做一次低风险试探", {"energy": -2, "knowledge": 3}),
+                ("暂缓承诺收集证据", {"energy": 2, "knowledge": 2}),
+                ("明确底线后再回应", {"mood": 1, "knowledge": 2}),
+                ("接受可控风险推进", {"energy": -4, "mood": 3}),
+                ("拒绝并说明现实顾虑", {"energy": 2, "mood": -1}),
+                ("提出折中方案谈判", {"energy": -2, "mood": 2, "knowledge": 2}),
+                ("先确认对方真实意图", {"mood": 1, "knowledge": 3}),
+                ("记录分歧等待时机", {"energy": 2, "knowledge": 1}),
+                ("公开关键疑问求证", {"energy": -2, "knowledge": 5}),
+                ("私下联系相关人物", {"mood": 3, "knowledge": 2}),
+                ("把决定拆成小步骤", {"energy": -1, "knowledge": 2}),
+                ("设定退出条件再尝试", {"energy": -3, "knowledge": 3}),
+                ("优先保护当前承诺", {"energy": 1, "mood": 2}),
+                ("转向更稳妥的替代", {"energy": 3, "knowledge": 1}),
+                ("承担责任立即行动", {"energy": -5, "mood": 4}),
+                ("保留证据果断退出", {"energy": 2, "mood": 1}),
+            ]
+        else:
+            candidates = [
+                ("Verify the most important fact", {"energy": -2, "knowledge": 4}),
+                ("Ask a trusted person to review", {"mood": 2, "knowledge": 2}),
+                ("Try one low-risk probe", {"energy": -2, "knowledge": 3}),
+                ("Delay commitment and gather evidence", {"energy": 2, "knowledge": 2}),
+                ("Set boundaries before responding", {"mood": 1, "knowledge": 2}),
+                ("Accept the manageable risk", {"energy": -4, "mood": 3}),
+                ("Decline and explain practical concerns", {"energy": 2, "mood": -1}),
+                ("Negotiate a workable compromise", {"energy": -2, "mood": 2, "knowledge": 2}),
+                ("Confirm their real intentions first", {"mood": 1, "knowledge": 3}),
+                ("Record the disagreement and wait", {"energy": 2, "knowledge": 1}),
+                ("Raise the key question openly", {"energy": -2, "knowledge": 5}),
+                ("Contact someone involved privately", {"mood": 3, "knowledge": 2}),
+                ("Break the decision into small steps", {"energy": -1, "knowledge": 2}),
+                ("Set an exit condition before trying", {"energy": -3, "knowledge": 3}),
+                ("Protect the current commitment first", {"energy": 1, "mood": 2}),
+                ("Choose a safer alternative path", {"energy": 3, "knowledge": 1}),
+                ("Take responsibility and act now", {"energy": -5, "mood": 4}),
+                ("Preserve evidence and withdraw", {"energy": 2, "mood": 1}),
+            ]
+        return [EventOption(text=text, effects=effects) for text, effects in candidates]
 
     @classmethod
     def complete_new_event_options(

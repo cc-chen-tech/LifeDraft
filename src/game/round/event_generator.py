@@ -244,7 +244,7 @@ class RoundEventGenerator:
                     )
 
                     # Create event with cached options
-                    from src.ai.models import GameEvent
+                    from src.ai.models import EventOption, GameEvent
 
                     options = [EventOption(**opt) for opt in cached_options]
                     event = GameEvent(

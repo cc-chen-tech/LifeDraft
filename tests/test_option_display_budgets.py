@@ -53,6 +53,7 @@ def test_display_budget_defaults_are_localized(
         budget.max_display_lines,
         budget.unit,
     ) == expected
+    assert resolve_display_budget(language, option_call_limit=99).option_call_limit == 2
 
 
 def test_option_measurement_uses_unicode_characters_and_english_words() -> None:
@@ -307,6 +308,13 @@ def test_contextual_fallback_survives_recent_history_exhausting_static_pool() ->
     assert event.event_description == "团队正在讨论合作协议。"
     assert len(event.options) == 3
     assert not ({option.text for option in event.options} & set(recent_choices))
+    assert all("方案" not in option.text for option in event.options)
+    assert len(
+        {
+            tuple(sorted(option.effects.items()))
+            for option in event.options
+        }
+    ) == 3
 
 
 def test_english_repair_threshold_is_measured_in_words_not_characters() -> None:
