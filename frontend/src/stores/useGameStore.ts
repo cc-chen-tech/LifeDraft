@@ -307,6 +307,8 @@ export const useGameStore = create<GameState>()(
 
     syncState: async (options) => {
       const expectedGameId = options?.gameId ?? get().gameId;
+      const isRunOwnedRequest =
+        options?.gameId !== undefined || options?.signal !== undefined;
       const isCurrentRequest = () =>
         !options?.signal?.aborted &&
         get().gameId === expectedGameId &&
@@ -344,12 +346,15 @@ export const useGameStore = create<GameState>()(
         }
         if (isCurrentRequest()) get()._syncFromSubStores();
       } catch (err) {
-        if (!isCurrentRequest()) return;
+        const sessionGameId = useSessionStore.getState().gameId;
+        const legacyRequestClearedSession =
+          !isRunOwnedRequest && sessionGameId === null && get().gameId === null;
+        if (!legacyRequestClearedSession && !isCurrentRequest()) return;
         // On 404 error, session store clears its state - also clear event store
-        if (useSessionStore.getState().gameId === null) {
+        if (sessionGameId === null) {
           useEventStore.getState().clearCurrentEvent();
         }
-        if (isCurrentRequest()) get()._syncFromSubStores();
+        get()._syncFromSubStores();
         throw err;
       }
     },

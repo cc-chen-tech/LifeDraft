@@ -1,5 +1,41 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { API_URL, ensureAuthenticated } from './helpers/auth';
+
+async function routeActionableGameState(
+  page: Page,
+  gameId: number,
+  createdState: Record<string, unknown>,
+): Promise<void> {
+  await page.route(`**/api/games/${gameId}`, async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.continue();
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        ...createdState,
+        current_event: {
+          event_description: '建筑档案已经整理完毕，接下来可以继续忠实记录这段生活。',
+          options: [
+            {
+              text: '继续忠实记录已经发生的生活',
+              effects: {},
+              likely_choice: true,
+            },
+            {
+              text: '先核对档案中的人物关系',
+              effects: {},
+              likely_choice: false,
+            },
+          ],
+        },
+      }),
+    });
+  });
+}
 
 test.describe('Read-only grounded story assistant', () => {
   test('unknown people degrade visibly without changing authoritative state', async ({
@@ -27,6 +63,7 @@ test.describe('Read-only grounded story assistant', () => {
     expect(createResponse.status()).toBe(201);
     const created = await createResponse.json();
     const gameId = created.game_id as number;
+    await routeActionableGameState(page, gameId, created as Record<string, unknown>);
 
     let observeChatMutations = false;
     const chatMutationRequests: string[] = [];
@@ -42,6 +79,9 @@ test.describe('Read-only grounded story assistant', () => {
 
     await page.goto(`/play?gameId=${gameId}`);
     await page.waitForLoadState('domcontentloaded');
+    await expect(
+      page.getByRole('button', { name: '选择 1：继续忠实记录已经发生的生活' }),
+    ).toBeVisible({ timeout: 20_000 });
     await expect(page.getByLabel('打开聊天')).toBeVisible({ timeout: 20_000 });
     await page.getByLabel('打开聊天').click();
 
