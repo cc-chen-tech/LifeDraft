@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -14,7 +15,9 @@ from src.ai.budgets import (
     resolve_narrative_budget,
 )
 from src.ai.models import EventOption, GameEvent
+from src.ai.generator import EventGenerator
 from src.ai.option_generator import OptionGenerator
+from src.game.round.event_generator import RoundEventGenerator
 
 
 class SequenceClient:
@@ -238,3 +241,146 @@ def test_nonstandard_new_event_paths_are_normalized_to_three_options() -> None:
     ]
     assert [option.text for option in normalized_two[:2]] == ["已有行动0", "已有行动1"]
     assert len(normalized_two) == 3
+
+
+def test_default_option_repair_uses_two_calls_but_never_exceeds_two_without_tracker() -> (
+    None
+):
+    client = SequenceClient(
+        [
+            _payload(
+                [
+                    {"text": "核对协议关键条款", "effects": {"knowledge": 3}},
+                    {"text": "请同伴交叉检查", "effects": {"mood": 2}},
+                    {"text": "长" * 41, "effects": {"energy": -2}},
+                ]
+            ),
+            _payload([{"text": "先确认最坏风险", "effects": {"knowledge": 2}}]),
+            _payload([]),
+        ]
+    )
+
+    event = OptionGenerator(client).generate_options_only(
+        story_description="团队正在讨论合作协议。",
+        player_state={},
+        language="zh",
+    )
+
+    assert len(event.options) == 3
+    assert [option.text for option in event.options] == [
+        "核对协议关键条款",
+        "请同伴交叉检查",
+        "先确认最坏风险",
+    ]
+    assert len(client.calls) == 2
+
+    exhausted_client = SequenceClient(["not json"] * 5)
+    fallback_event = OptionGenerator(exhausted_client).generate_options_only(
+        story_description="团队正在讨论合作协议。",
+        player_state={},
+        language="zh",
+        retry_count=5,
+    )
+    assert len(fallback_event.options) == 3
+    assert len(exhausted_client.calls) == 2
+
+
+def test_contextual_fallback_survives_recent_history_exhausting_static_pool() -> None:
+    recent_choices = [
+        "细读合作条款",
+        "请伙伴一起把关",
+        "先锁定关键风险",
+        "先观察局势变化",
+        "与当事人确认细节",
+        "保留余地再做决定",
+    ]
+    client = SequenceClient(["not json", "still not json"])
+
+    event = OptionGenerator(client).generate_options_only(
+        story_description="团队正在讨论合作协议。",
+        player_state={
+            "decision_history": [{"choice": choice} for choice in recent_choices]
+        },
+        language="zh",
+    )
+
+    assert event.event_description == "团队正在讨论合作协议。"
+    assert len(event.options) == 3
+    assert not ({option.text for option in event.options} & set(recent_choices))
+
+
+def test_english_repair_threshold_is_measured_in_words_not_characters() -> None:
+    sixteen_words = (
+        "Carefully review every relevant contract clause with two trusted advisers "
+        "before making the final commitment today"
+    )
+    event = GameEvent(
+        event_description="A contract decision must be made.",
+        options=[
+            EventOption(text=sixteen_words, effects={"knowledge": 3}),
+            EventOption(text="Ask a trusted adviser", effects={"mood": 2}),
+            EventOption(text="Delay the final commitment", effects={"energy": 2}),
+        ],
+    )
+
+    issues = OptionGenerator(object()).validate_options_consistency(
+        event,
+        story_description=event.event_description,
+        language="en",
+    )
+
+    assert not [issue for issue in issues if "too long" in issue]
+
+
+def test_week_40_preset_new_events_are_normalized_to_three_in_both_languages() -> None:
+    generator = object.__new__(EventGenerator)
+    generator.preset_events = generator._load_preset_events()
+
+    for language in ("zh", "en"):
+        event = generator._get_preset_milestone_event(40, language)
+        assert event is not None
+        assert len(event.options) == 3
+
+
+def test_scheduled_event_preserves_story_when_one_option_sibling_is_malformed() -> None:
+    story = (
+        "林岚按约来到档案馆，与周老师逐页核对账册来源，并在闭馆前确认了下一步调查方向。"
+    )
+
+    class Client:
+        def call(self, **_: Any) -> str:
+            return _payload(
+                [
+                    {"text": "继续核对账册来源", "effects": {"knowledge": 4}},
+                    "malformed sibling",
+                    {"text": "请周老师交叉验证", "effects": {"mood": 2}},
+                ]
+            ).replace(
+                '{"options":', f'{{"event_description": {json.dumps(story)}, "options":'
+            )
+
+    class PlayerState:
+        def to_dict(self) -> dict[str, Any]:
+            return {
+                "player_name": "林岚",
+                "week": 2,
+                "current_round": 1,
+                "character_settings": {},
+            }
+
+    generator = RoundEventGenerator(
+        player_state_getter=lambda: None,
+        ai_generator=SimpleNamespace(ai_client=Client()),
+        language_getter=lambda: "zh",
+        character_introduction_service=None,
+        summary_selector=None,
+        relationship_service=None,
+    )
+    event = generator._generate_scheduled_event(
+        [{"description": "核对账册", "parties": ["林岚", "周老师"]}],
+        PlayerState(),
+    )
+
+    assert event is not None
+    assert event.event_description == story
+    assert len(event.options) == 3

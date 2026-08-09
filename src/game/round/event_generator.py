@@ -244,7 +244,7 @@ class RoundEventGenerator:
                     )
 
                     # Create event with cached options
-                    from src.ai.models import EventOption, GameEvent
+                    from src.ai.models import GameEvent
 
                     options = [EventOption(**opt) for opt in cached_options]
                     event = GameEvent(
@@ -885,19 +885,16 @@ class RoundEventGenerator:
                 if data:
                     from src.ai.models import EventOption, GameEvent
 
-                    event_desc = data.get("event_description", "")
+                    raw_event_desc = data.get("event_description", "")
+                    event_desc = (
+                        raw_event_desc.strip()
+                        if isinstance(raw_event_desc, str)
+                        else ""
+                    )
                     options_data = data.get("options", [])
+                    options = OptionGenerator._parse_candidate_options(options_data)
 
-                    options = []
-                    for opt in options_data:
-                        options.append(
-                            EventOption(
-                                text=opt.get("text", ""),
-                                effects=opt.get("effects", {}),
-                            )
-                        )
-
-                    if event_desc and options:
+                    if event_desc:
                         options = OptionGenerator.complete_new_event_options(
                             options,
                             story_description=event_desc,

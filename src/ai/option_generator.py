@@ -49,7 +49,7 @@ class OptionGenerator:
         player_state: Dict[str, Any],
         character_settings: Optional[Dict[str, Any]] = None,
         language: str = "zh",
-        retry_count: int = 1,
+        retry_count: int = 2,
         history_prefix: Optional[str] = None,
         generation_tracker: Optional[GenerationCallTracker] = None,
     ) -> GameEvent:
@@ -90,13 +90,17 @@ class OptionGenerator:
 
         sys_prompt = get_system_prompt("option_generator", language)
         last_error: Optional[str] = None
-        display_budget = resolve_display_budget(
-            language,
-            option_call_limit=(
+        allowed_option_calls = min(
+            2,
+            (
                 generation_tracker.budget.option_call_limit
                 if generation_tracker is not None
-                else retry_count
+                else 2
             ),
+        )
+        display_budget = resolve_display_budget(
+            language,
+            option_call_limit=allowed_option_calls,
         )
         retained_options: List[EventOption] = []
         retry_count = min(retry_count, display_budget.option_call_limit)
@@ -191,6 +195,7 @@ class OptionGenerator:
             except Exception as e:
                 last_error = str(e)
                 logger.warning(f"Attempt {attempt + 1} failed: {e}")
+                break
 
         # Fallback fills only missing slots; a complete story is never discarded.
         logger.warning(
@@ -293,6 +298,17 @@ class OptionGenerator:
                         text="Keep options open before deciding", effects={"energy": 2}
                     ),
                 ]
+            )
+        for variant in range(1, 25):
+            fallback_pool.append(
+                EventOption(
+                    text=(
+                        f"围绕关键线索核验方案{variant}"
+                        if language == "zh"
+                        else f"Recheck the key clue using approach {variant}"
+                    ),
+                    effects={"knowledge": 3},
+                )
             )
         completed = cls._merge_usable_options(
             retained,
@@ -608,16 +624,18 @@ class OptionGenerator:
             issues.append("Less than 2 options generated")
             return issues
 
+        display_budget = resolve_display_budget(language)
         for i, option in enumerate(event.options):
             # 检查选项文本长度
-            if len(option.text) > 50:
+            measured_length = measure_option_length(option.text, language)
+            if measured_length > display_budget.repair_threshold:
                 if language == "zh":
                     issues.append(
-                        f"选项{i+1}文本过长({len(option.text)}字)，建议控制在15字内"
+                        f"选项{i+1}文本过长({measured_length}字)，超过40字修复阈值"
                     )
                 else:
                     issues.append(
-                        f"Option {i+1} text too long ({len(option.text)} chars), suggest max 15 words"
+                        f"Option {i+1} text too long ({measured_length} words), exceeds 16-word repair threshold"
                     )
 
             # 检查是否是通用选项（与故事无关）

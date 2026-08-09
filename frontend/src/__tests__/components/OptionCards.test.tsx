@@ -125,6 +125,10 @@ describe('OptionCards', () => {
 
     it('immediately disables every choice and shows selected loading feedback', async () => {
       const user = userEvent.setup();
+      let finishSelection: (() => void) | undefined;
+      mockOnSelect.mockImplementationOnce(
+        () => new Promise<void>((resolve) => { finishSelection = resolve; })
+      );
       render(
         <OptionCards
           options={mockOptions}
@@ -140,6 +144,29 @@ describe('OptionCards', () => {
         expect(button).toBeDisabled();
       }
       expect(screen.getByPlaceholderText(/或者，描述你想做的事情/i)).toBeDisabled();
+
+      finishSelection?.();
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: '选择 1：Option 1' })).toBeEnabled();
+      });
+    });
+
+    it('unlocks choices after a synchronous selection callback completes', async () => {
+      const user = userEvent.setup();
+      render(
+        <OptionCards
+          options={mockOptions}
+          onSelect={mockOnSelect}
+          onCustomChoice={mockOnCustomChoice}
+        />
+      );
+
+      const first = screen.getByRole('button', { name: '选择 1：Option 1' });
+      await user.click(first);
+
+      await waitFor(() => expect(first).toBeEnabled());
+      await user.click(first);
+      expect(mockOnSelect).toHaveBeenCalledTimes(2);
     });
 
     it('visually clamps long copy to two lines but preserves the full accessible text', () => {

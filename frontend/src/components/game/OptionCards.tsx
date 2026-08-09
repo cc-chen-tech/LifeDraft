@@ -8,8 +8,8 @@ import { Send, Loader2, ChevronRight } from "lucide-react";
 
 interface OptionCardsProps {
   options: { text: string; potential_effects?: Record<string, unknown> }[];
-  onSelect: (index: number) => void;
-  onCustomChoice: (text: string) => void;
+  onSelect: (index: number) => void | Promise<void>;
+  onCustomChoice: (text: string) => void | Promise<void>;
   disabled?: boolean;
   className?: string;
 }
@@ -32,17 +32,28 @@ export function OptionCards({
   const isSubmitting = selectedIndex !== null;
   const controlsDisabled = disabled || isSubmitting;
 
-  const handleSelect = (index: number) => {
+  const handleSelect = async (index: number) => {
     if (controlsDisabled) return;
     setSelectedIndex(index);
-    onSelect(index);
+    try {
+      const pendingSelection = onSelect(index);
+      if (pendingSelection) await pendingSelection;
+    } finally {
+      setSelectedIndex(null);
+    }
   };
 
-  const handleCustomSubmit = () => {
+  const handleCustomSubmit = async () => {
     if (!customText.trim() || controlsDisabled) return;
+    const submittedText = customText.trim();
     setSelectedIndex(-1); // -1 = custom
-    onCustomChoice(customText.trim());
     setCustomText("");
+    try {
+      const pendingSelection = onCustomChoice(submittedText);
+      if (pendingSelection) await pendingSelection;
+    } finally {
+      setSelectedIndex(null);
+    }
   };
 
   return (
@@ -69,7 +80,7 @@ export function OptionCards({
             selectedIndex === i &&
               "border-primary/60 bg-primary/5 shadow-[0_0_16px_rgba(96,165,250,0.08)]"
           )}
-          onClick={() => handleSelect(i)}
+          onClick={() => void handleSelect(i)}
           disabled={controlsDisabled}
         >
           {/* Ordinal number */}
@@ -132,7 +143,7 @@ export function OptionCards({
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  handleCustomSubmit();
+                  void handleCustomSubmit();
                 }
               }}
             />
@@ -148,7 +159,7 @@ export function OptionCards({
               customText.trim() && "text-primary"
             )}
             disabled={controlsDisabled || !customText.trim()}
-            onClick={handleCustomSubmit}
+            onClick={() => void handleCustomSubmit()}
           >
             {isSubmitting && selectedIndex === -1 ? (
               <Loader2 className="w-4 h-4 animate-spin" />

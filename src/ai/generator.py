@@ -16,8 +16,12 @@ from typing import Any, Callable, Dict, List, Optional
 
 from config.feature_flags import get_feature
 from config.settings import PRESETS_DIR, settings
-from src.ai.budgets import (GenerationCallTracker, GenerationOperation,
-                            NarrativeKind, resolve_narrative_budget)
+from src.ai.budgets import (
+    GenerationCallTracker,
+    GenerationOperation,
+    NarrativeKind,
+    resolve_narrative_budget,
+)
 from src.ai.cache import EventCache
 from src.ai.client import AIClient, _thinking_request_params
 from src.ai.models import GameEvent
@@ -226,7 +230,9 @@ class EventGenerator:
                 logger.warning(f"Failed to load preset events: {e}")
         return {}
 
-    def _get_preset_milestone_event(self, week: int, language: str) -> Optional[GameEvent]:
+    def _get_preset_milestone_event(
+        self, week: int, language: str
+    ) -> Optional[GameEvent]:
         """Get preset milestone event if available."""
         if not self.preset_events:
             return None
@@ -237,7 +243,13 @@ class EventGenerator:
                 lang_data = event_data.get(language)
                 if lang_data:
                     try:
-                        return GameEvent(**lang_data)
+                        event = GameEvent(**lang_data)
+                        options = OptionGenerator.complete_new_event_options(
+                            event.options,
+                            story_description=event.event_description,
+                            language=language,
+                        )
+                        return event.model_copy(update={"options": options})
                     except Exception as e:
                         logger.warning(f"Failed to parse preset milestone event: {e}")
         return None
@@ -544,6 +556,10 @@ class EventGenerator:
         return SummaryGenerator._clean_summary_text(summary)
 
     @staticmethod
-    def _extract_summary_from_raw(content: str, original_story: str, language: str) -> str:
+    def _extract_summary_from_raw(
+        content: str, original_story: str, language: str
+    ) -> str:
         """Extract summary from raw response (delegates to SummaryGenerator)."""
-        return SummaryGenerator._extract_summary_from_raw(content, original_story, language)
+        return SummaryGenerator._extract_summary_from_raw(
+            content, original_story, language
+        )
