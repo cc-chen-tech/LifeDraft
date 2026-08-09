@@ -1,6 +1,7 @@
 import {
   E2ERegressionPageContent,
   NarrativeLoadingFixture,
+  VisualFoundationFixture,
   type NarrativeLoadingFixtureState,
 } from "./E2ERegressionClient";
 
@@ -24,14 +25,27 @@ function resolveNarrativeLoadingFixtureState(
   }
 }
 
+function resolveVisualFoundationFixture(
+  value: string | string[] | undefined,
+): boolean {
+  return value === "foundation";
+}
+
 export default async function E2ERegressionPage({ searchParams }: E2ERegressionPageProps) {
   const resolvedSearchParams = await searchParams;
   const narrativeLoadingFixtureState = resolveNarrativeLoadingFixtureState(
     resolvedSearchParams.narrativeLoading,
   );
+  const visualFoundationFixture = resolveVisualFoundationFixture(
+    resolvedSearchParams.visualSystem,
+  );
 
   if (narrativeLoadingFixtureState) {
     return <NarrativeLoadingFixture initialState={narrativeLoadingFixtureState} />;
+  }
+
+  if (visualFoundationFixture) {
+    return <VisualFoundationFixture />;
   }
 
   return <E2ERegressionPageContent />;

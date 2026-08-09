@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Bookmark } from "lucide-react";
 import { ChatBar } from "@/components/game/ChatBar";
 import { MusicPlayer } from "@/components/game/MusicPlayer";
 import { OptionCards } from "@/components/game/OptionCards";
@@ -11,6 +12,14 @@ import { OpeningCompletionGate } from "@/components/game/OpeningCompletionGate";
 import { CompletedStoryMediaGate } from "@/components/game/CompletedStoryMediaGate";
 import { LifeSummaryPanel } from "@/components/game/LifeSummaryPanel";
 import { NarrativeLoadingState } from "@/components/narrative-loading/NarrativeLoadingState";
+import {
+  FeedbackNotice,
+  FormField,
+  Surface,
+} from "@/components/story101";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useCharacterCreation } from "@/hooks/useCharacterCreation";
 import { api } from "@/lib/api";
 import { useCollectionStore } from "@/stores/useCollectionStore";
@@ -32,6 +41,103 @@ const narrativeLoadingFixtureStates = [
 ] as const;
 
 export type NarrativeLoadingFixtureState = (typeof narrativeLoadingFixtureStates)[number];
+
+export function VisualFoundationFixture() {
+  const [actionResult, setActionResult] = useState("尚未保存；此操作只用于验证本地交互。");
+
+  return (
+    <main
+      aria-label="story101 视觉基础回归夹具"
+      className="min-h-dvh overflow-x-hidden bg-[var(--surface-canvas)] px-4 py-8 text-[var(--text-primary)] sm:px-8 sm:py-12"
+      data-testid="visual-foundation-fixture"
+    >
+      <div className="mx-auto grid w-full max-w-4xl gap-8">
+        <header className="border-b border-[var(--border-default)] pb-6">
+          <h1
+            className="mt-3 font-brand text-2xl font-semibold tracking-tight sm:text-4xl"
+            data-testid="visual-foundation-brand"
+          >
+            story101，把这一页写得清楚
+          </h1>
+          <p
+            className="mt-3 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]"
+            data-testid="visual-foundation-body"
+          >
+            这是一个稳定的视觉回归场景：信息先被阅读，操作随后出现，不以动效争夺注意力。
+          </p>
+        </header>
+
+        <Surface className="grid gap-6 p-5 sm:p-7" variant="reading">
+          <div className="grid gap-1">
+            <h2 className="text-lg font-medium">人物开场</h2>
+            <p className="text-xs leading-5 text-[var(--text-secondary)]" data-testid="visual-foundation-helper">
+              先补齐称呼，再继续组织这一段故事。
+            </p>
+          </div>
+
+          <FormField
+            description="称呼会出现在后续叙事的第一句。"
+            error="请补充人物的称呼。"
+            id="foundation-character-name"
+            label="人物称呼"
+            required
+          >
+            {({ describedBy, invalid, required }) => (
+              <Input
+                aria-describedby={describedBy}
+                aria-invalid={invalid}
+                controlSize="touch"
+                data-touch-target="true"
+                id="foundation-character-name"
+                placeholder="例如：林见微"
+                required={required}
+              />
+            )}
+          </FormField>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              data-testid="visual-foundation-touch-control"
+              data-touch-target="true"
+              onClick={() => setActionResult("草稿已保存在当前夹具中。")}
+              size="touch"
+              type="button"
+              variant="chrome"
+            >
+              保存这一页
+            </Button>
+            <Button aria-label="标记这一页" data-touch-target="true" size="icon-touch" type="button" variant="quiet">
+              <Bookmark aria-hidden="true" className="size-5" />
+            </Button>
+            <Button data-testid="visual-foundation-disabled-control" data-touch-target="true" disabled size="touch" type="button" variant="quiet">
+              等待补充称呼
+            </Button>
+          </div>
+          <p aria-atomic="true" aria-live="polite" className="text-xs text-[var(--text-secondary)]" data-testid="visual-foundation-action-result" role="status">
+            {actionResult}
+          </p>
+        </Surface>
+
+        <section aria-labelledby="foundation-feedback-title" className="grid gap-3 border-t border-[var(--border-default)] pt-6">
+          <div>
+            <h2 className="text-lg font-medium" id="foundation-feedback-title">状态提示</h2>
+            <p className="mt-1 text-sm text-[var(--text-secondary)]">每种状态都用文字说明，不依赖颜色传递结果。</p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <FeedbackNotice title="已保存" tone="success">草稿已留在当前阅读上下文。</FeedbackNotice>
+            <FeedbackNotice title="待确认" tone="warning">请在继续前核对人物称呼。</FeedbackNotice>
+            <FeedbackNotice title="无法继续" tone="danger">缺少人物称呼，当前步骤仍不可提交。</FeedbackNotice>
+          </div>
+          <div className="flex flex-wrap gap-2" aria-label="状态标签">
+            <Badge variant="success">成功：草稿已保存</Badge>
+            <Badge variant="warning">提醒：需要核对</Badge>
+            <Badge variant="danger">错误：信息缺失</Badge>
+          </div>
+        </section>
+      </div>
+    </main>
+  );
+}
 
 const narrativeLoadingFixtureLabels: Record<NarrativeLoadingFixtureState, string> = {
   initial: "初始状态",
