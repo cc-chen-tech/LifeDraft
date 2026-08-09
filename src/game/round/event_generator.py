@@ -10,23 +10,34 @@ from concurrent.futures import TimeoutError as FutureTimeoutError
 from typing import Any, Callable, Dict, Optional
 
 from config.feature_flags import get_feature
-from config.prompts._helpers import (_build_available_people_constraint,
-                                     _build_era_anachronism_constraints,
-                                     _build_full_character_context,
-                                     _collect_available_people,
-                                     build_realistic_modern_world_boundary)
+from config.prompts._helpers import (
+    _build_available_people_constraint,
+    _build_era_anachronism_constraints,
+    _build_full_character_context,
+    _collect_available_people,
+    build_realistic_modern_world_boundary,
+)
 from config.prompts.story_prompts import (
-    _build_protagonist_identity_instruction, _build_zh_chapter_constraint,
-    _extract_gender_text, resolve_protagonist_name)
-from src.ai.budgets import (GenerationCallTracker, GenerationOperation,
-                            NarrativeKind, resolve_narrative_budget)
+    _build_protagonist_identity_instruction,
+    _build_zh_chapter_constraint,
+    _extract_gender_text,
+    resolve_protagonist_name,
+)
+from src.ai.budgets import (
+    GenerationCallTracker,
+    GenerationOperation,
+    NarrativeKind,
+    resolve_narrative_budget,
+)
 from src.ai.generation_budget import get_generation_budget
 from src.ai.models import GameEvent
 from src.ai.option_generator import OptionGenerator
 from src.ai.story_exceptions import StoryGenerationFailure
 from src.game.narrative_manager import NarrativeManager
-from src.game.relationship_authority import (build_required_cast_constraints,
-                                             extract_required_key_people)
+from src.game.relationship_authority import (
+    build_required_cast_constraints,
+    extract_required_key_people,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +87,9 @@ class RoundEventGenerator:
         self._current_event: Optional[GameEvent] = None
 
     @staticmethod
-    def _persist_long_context_snapshots(player_state: Any, generated_state: Dict[str, Any]) -> None:
+    def _persist_long_context_snapshots(
+        player_state: Any, generated_state: Dict[str, Any]
+    ) -> None:
         """Copy derived snapshots from the generation dict back into saved state."""
         snapshots = generated_state.get("long_context_snapshots")
         if isinstance(snapshots, list):
@@ -151,7 +164,9 @@ class RoundEventGenerator:
             if self._current_event and not self._current_event.options:
                 existing_story = self._current_event.event_description
                 resume_source = "partial_current_event"
-                logger.info("[Resume Check] Found partial current_event story without options")
+                logger.info(
+                    "[Resume Check] Found partial current_event story without options"
+                )
             elif round_history:
                 last_entry = round_history[-1]
                 entry_week = last_entry.get("week")
@@ -170,7 +185,9 @@ class RoundEventGenerator:
                         f"\n\n{story_continuation}" if story_continuation else ""
                     )
                     resume_source = "round_history"
-                    logger.info("[Resume Check] Found current round story in round_history")
+                    logger.info(
+                        "[Resume Check] Found current round story in round_history"
+                    )
 
                 # Case 2: Last round is current_round - 1, and last_round_full_story exists
                 # This means story was generated but choice not made yet
@@ -190,7 +207,11 @@ class RoundEventGenerator:
 
             # Also check last_round_full_story if no round_history match
             # ★ CRITICAL: Only use last_round_full_story for round 0 if current_event_data exists
-            elif last_round_full_story and current_round == 0 and player_state.current_event_data:
+            elif (
+                last_round_full_story
+                and current_round == 0
+                and player_state.current_event_data
+            ):
                 existing_story = last_round_full_story
                 resume_source = "last_round_full_story_only"
                 logger.info(
@@ -255,9 +276,11 @@ class RoundEventGenerator:
                     if status_callback:
                         status_callback("generating_options")
 
-                    generated_event: GameEvent = self._generate_options_only_with_timeout(
-                        existing_story=existing_story,
-                        player_state=player_state,
+                    generated_event: GameEvent = (
+                        self._generate_options_only_with_timeout(
+                            existing_story=existing_story,
+                            player_state=player_state,
+                        )
                     )
 
                     # ★ Cache the generated options
@@ -307,11 +330,15 @@ class RoundEventGenerator:
         current_round = player_state.current_round
 
         # ★ 显示用周数（人类可读，从1开始）
-        week_display = f"第{current_week + 1}周" if current_week is not None else "未知周"
+        week_display = (
+            f"第{current_week + 1}周" if current_week is not None else "未知周"
+        )
         logger.info(f"Generating round event: {week_display}, round={current_round}")
 
         # ★ 步骤0: 检查是否有预定事件需要触发
-        scheduled_events = player_state.get_pending_scheduled_events(current_week, current_round)
+        scheduled_events = player_state.get_pending_scheduled_events(
+            current_week, current_round
+        )
         if scheduled_events:
             logger.info(f"检测到 {len(scheduled_events)} 个预定事件需要触发")
             event = self._generate_scheduled_event(  # type: ignore[assignment]
@@ -331,7 +358,9 @@ class RoundEventGenerator:
 
         # Get round context from player state
         round_context = player_state.get_round_context()
-        opening_story = (getattr(player_state, "character_settings", {}) or {}).get("opening_story")
+        opening_story = (getattr(player_state, "character_settings", {}) or {}).get(
+            "opening_story"
+        )
         if (
             current_week == 0
             and current_round == 0
@@ -350,14 +379,20 @@ class RoundEventGenerator:
                 status_callback("initializing")
 
             # 步骤1: 尝试生成新人物（存入待引入队列，不立即引入）
-            self.character_introduction_service.maybe_generate_new_character(probability=0.08)
+            self.character_introduction_service.maybe_generate_new_character(
+                probability=0.08
+            )
 
             # 步骤2: 检查是否有合适的引入机会
             new_character = None
-            pending_entry = self.character_introduction_service.check_introduction_opportunity()
+            pending_entry = (
+                self.character_introduction_service.check_introduction_opportunity()
+            )
             if pending_entry:
-                new_character = self.character_introduction_service.introduce_pending_character(
-                    pending_entry
+                new_character = (
+                    self.character_introduction_service.introduce_pending_character(
+                        pending_entry
+                    )
                 )
                 if new_character:
                     intro_ctx = pending_entry.get("introduction_context", "random")
@@ -426,7 +461,9 @@ class RoundEventGenerator:
                 established_facts=player_state.established_facts,
                 last_event_concluded=player_state.last_event_concluded,
                 last_round_full_story=player_state.last_round_full_story,
-                activated_foreshadowing=NarrativeManager.select_foreshadowing_seed(player_state),
+                activated_foreshadowing=NarrativeManager.select_foreshadowing_seed(
+                    player_state
+                ),
                 character_habits=player_state.character_habits,
                 world_model=world_model,
                 new_character=new_character,
@@ -493,7 +530,9 @@ class RoundEventGenerator:
                 language=self.language,
             )
 
-        executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="options-resume")
+        executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="options-resume"
+        )
         future = executor.submit(call_options_generator)
         try:
             return future.result(timeout=self._OPTIONS_ONLY_TIMEOUT)
@@ -607,10 +646,18 @@ class RoundEventGenerator:
                 options = [
                     EventOption(
                         text=f"联系{anchor_person['name']}确认下一步",
-                        effects={"knowledge": 3, "relationships": {anchor_person["name"]: 2}},
+                        effects={
+                            "knowledge": 3,
+                            "relationships": {anchor_person["name"]: 2},
+                        },
                     ),
-                    EventOption(text="先独自整理当前线索", effects={"energy": -3, "knowledge": 2}),
-                    EventOption(text="放慢节奏恢复状态", effects={"mood": 3, "energy": 2}),
+                    EventOption(
+                        text="先独自整理当前线索",
+                        effects={"energy": -3, "knowledge": 2},
+                    ),
+                    EventOption(
+                        text="放慢节奏恢复状态", effects={"mood": 3, "energy": 2}
+                    ),
                 ]
         else:
             if anchor_person.get("name") or occupation or era:
@@ -641,12 +688,18 @@ class RoundEventGenerator:
                 options = [
                     EventOption(
                         text=f"Check in with {anchor_person['name']}",
-                        effects={"knowledge": 3, "relationships": {anchor_person["name"]: 2}},
+                        effects={
+                            "knowledge": 3,
+                            "relationships": {anchor_person["name"]: 2},
+                        },
                     ),
                     EventOption(
-                        text="Organize the current clues", effects={"energy": -3, "knowledge": 2}
+                        text="Organize the current clues",
+                        effects={"energy": -3, "knowledge": 2},
                     ),
-                    EventOption(text="Slow down and recover", effects={"mood": 3, "energy": 2}),
+                    EventOption(
+                        text="Slow down and recover", effects={"mood": 3, "energy": 2}
+                    ),
                 ]
 
         return GameEvent(
@@ -655,7 +708,9 @@ class RoundEventGenerator:
         )
 
     @staticmethod
-    def _extract_setting_text(character_settings: dict[str, Any], keys: list[str]) -> str:
+    def _extract_setting_text(
+        character_settings: dict[str, Any], keys: list[str]
+    ) -> str:
         """Extract a concise setting value from nested character settings."""
         if not character_settings:
             return ""
@@ -719,7 +774,9 @@ class RoundEventGenerator:
                 event_hints.append(se.get("event_hint"))
             # 取最高重要程度
             se_importance = se.get("importance", "normal")
-            if IMPORTANCE_ORDER.get(se_importance, 2) < IMPORTANCE_ORDER.get(max_importance, 2):
+            if IMPORTANCE_ORDER.get(se_importance, 2) < IMPORTANCE_ORDER.get(
+                max_importance, 2
+            ):
                 max_importance = se_importance
 
         # 构建强制事件的提示
@@ -727,7 +784,9 @@ class RoundEventGenerator:
         "；".join(event_hints) if event_hints else ""
         parties_str = "、".join(all_parties) if all_parties else ""
 
-        logger.info(f"生成预定事件: {combined_description[:60]}... (涉及: {parties_str})")
+        logger.info(
+            f"生成预定事件: {combined_description[:60]}... (涉及: {parties_str})"
+        )
 
         try:
             # 使用AI生成事件内容，但必须包含承诺的核心元素
@@ -755,7 +814,9 @@ class RoundEventGenerator:
                 if p.get("name")
             ]
             last_validation_error = ""
-            quality_level = str(getattr(self.ai_generator, "quality_level", None) or "expert")
+            quality_level = str(
+                getattr(self.ai_generator, "quality_level", None) or "expert"
+            )
             narrative_budget = (
                 resolve_narrative_budget(
                     NarrativeKind.ROUND,
@@ -767,11 +828,17 @@ class RoundEventGenerator:
                 else None
             )
             generation_tracker = (
-                GenerationCallTracker(narrative_budget) if narrative_budget is not None else None
+                GenerationCallTracker(narrative_budget)
+                if narrative_budget is not None
+                else None
             )
             max_attempts = min(
                 2,
-                narrative_budget.prose_call_limit if narrative_budget is not None else 2,
+                (
+                    narrative_budget.prose_call_limit
+                    if narrative_budget is not None
+                    else 2
+                ),
             )
 
             for attempt in range(max_attempts):
@@ -831,6 +898,12 @@ class RoundEventGenerator:
                         )
 
                     if event_desc and options:
+                        options = OptionGenerator.complete_new_event_options(
+                            options,
+                            story_description=event_desc,
+                            language=self.language,
+                            decision_history=state_dict.get("decision_history", []),
+                        )
                         quick_result = quick_validate_story(
                             story_text=event_desc,
                             character_settings=character_settings,
@@ -884,31 +957,41 @@ class RoundEventGenerator:
         combined_hint = "；".join(event_hints) if event_hints else ""
         parties_str = "、".join(all_parties) if all_parties else ""
 
-        player_name = resolve_protagonist_name(player_state, character_settings, None) or "主角"
+        player_name = (
+            resolve_protagonist_name(player_state, character_settings, None) or "主角"
+        )
         protagonist_gender = _extract_gender_text(character_settings)
         character_context, available_people = _build_full_character_context(
             character_settings,
             language,
         )
-        available_people_str = _build_available_people_constraint(available_people, language)
+        available_people_str = _build_available_people_constraint(
+            available_people, language
+        )
         name_instruction = _build_protagonist_identity_instruction(
             player_name,
             protagonist_gender,
             language,
         )
-        required_cast_context = build_required_cast_constraints(character_settings or {}, language)
+        required_cast_context = build_required_cast_constraints(
+            character_settings or {}, language
+        )
         modern_world_boundary = build_realistic_modern_world_boundary(
             character_settings,
             language,
         )
-        era_constraints = _build_era_anachronism_constraints(character_settings, language)
+        era_constraints = _build_era_anachronism_constraints(
+            character_settings, language
+        )
         week = int(player_state.get("week", 0) or 0)
         current_round = int(player_state.get("current_round", 0) or 0)
         rounds_per_week = player_state.get("rounds_per_week", 3) or 3
         total_chapter = week * int(rounds_per_week) + current_round + 1
 
         round_names = (
-            ["周一", "周中", "周末"] if language == "zh" else ["Monday", "Midweek", "Weekend"]
+            ["周一", "周中", "周末"]
+            if language == "zh"
+            else ["Monday", "Midweek", "Weekend"]
         )
         round_name = (
             round_names[current_round]
@@ -926,8 +1009,12 @@ class RoundEventGenerator:
             else ""
         )
         zh_timeline_title = f"第{week + 1}周·{round_name}" if language == "zh" else ""
-        quality_level = str(getattr(self.ai_generator, "quality_level", None) or "expert")
-        length_requirement = get_generation_budget(quality_level).length_requirement(language)
+        quality_level = str(
+            getattr(self.ai_generator, "quality_level", None) or "expert"
+        )
+        length_requirement = get_generation_budget(quality_level).length_requirement(
+            language
+        )
 
         if language == "zh":
             return f"""【强制事件】角色之前做出的承诺必须在本轮兑现。
@@ -950,7 +1037,7 @@ class RoundEventGenerator:
 2. 必须涉及上述人物
 3. 事件开头要自然衔接之前的承诺（如"记得之前答应过..."）
 4. {length_requirement}，生动有深度
-5. 提供3-4个选项，每个选项都要与承诺相关
+5. 提供恰好3个选项，每个选项目标8-24字、超过40字必须重写，且都要与承诺相关
 6. 选项应呈现真实的权衡取舍
 
 【输出格式】
@@ -958,7 +1045,7 @@ class RoundEventGenerator:
 {{
   "event_description": "事件描述（{length_requirement}）",
   "options": [
-    {{"text": "选项文本（最多15字）", "effects": {{"energy": -10, "mood": 5, ...}}}},
+    {{"text": "选项文本（目标8-24字）", "effects": {{"energy": -10, "mood": 5, ...}}}},
     ...
   ]
 }}
@@ -983,7 +1070,7 @@ Player name: {player_name}
 2. Must involve the listed characters
 3. Start naturally by referencing the previous promise (e.g., "Remembering the promise to...")
 4. {length_requirement}, vivid and deep
-5. Provide 3-4 options, each related to the commitment
+5. Provide exactly 3 options, each targeting 3-12 words; rewrite any option over 16 words, and keep each related to the commitment
 6. Options should present real trade-offs
 
 [Output Format]
@@ -991,7 +1078,7 @@ Return JSON:
 {{
   "event_description": "Event description ({length_requirement})",
   "options": [
-    {{"text": "Option text (max 15 chars)", "effects": {{"energy": -10, "mood": 5, ...}}}},
+    {{"text": "Option text (target 3-12 words)", "effects": {{"energy": -10, "mood": 5, ...}}}},
     ...
   ]
 }}
@@ -1020,9 +1107,7 @@ Return ONLY JSON, no other text."""
                 EventOption(text="找借口推迟", effects={"mood": -15}),
             ]
         else:
-            event_desc = (
-                f"It's time to fulfill your commitment. {combined_desc}. You need to make a choice."
-            )
+            event_desc = f"It's time to fulfill your commitment. {combined_desc}. You need to make a choice."
             options = [
                 EventOption(
                     text="Fulfill the commitment seriously",

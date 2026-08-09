@@ -8,11 +8,18 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from src.ai.budgets import GenerationCallTracker
+from src.ai.budgets import (
+    DisplayBudget,
+    GenerationCallTracker,
+    measure_option_length,
+    resolve_display_budget,
+)
 from src.ai.client import AIClient
-from src.ai.long_story_context import (LongStoryContextBuilder,
-                                       is_deepseek_v4_model,
-                                       prepend_history_prefix)
+from src.ai.long_story_context import (
+    LongStoryContextBuilder,
+    is_deepseek_v4_model,
+    prepend_history_prefix,
+)
 from src.ai.models import EventOption, GameEvent
 from src.ai.system_prompts import get_system_prompt
 from src.ai.utils import extract_json
@@ -20,7 +27,6 @@ from src.game.constants import GENERIC_CHARACTER_NAMES, GENERIC_OPTION_TEXTS
 
 logger = logging.getLogger(__name__)
 
-TARGET_OPTION_COUNT = 3
 OPTION_GENERATION_REQUEST_TIMEOUT_SECONDS = 45.0
 
 
@@ -72,21 +78,52 @@ class OptionGenerator:
         prompt = get_options_only_prompt(
             story_description, player_state, character_settings, language
         )
-        if history_prefix is None and is_deepseek_v4_model(getattr(self.client, "model", None)):
-            history_prefix = LongStoryContextBuilder().build(player_state).history_prefix
+        if history_prefix is None and is_deepseek_v4_model(
+            getattr(self.client, "model", None)
+        ):
+            history_prefix = (
+                LongStoryContextBuilder().build(player_state).history_prefix
+            )
         prompt = prepend_history_prefix(history_prefix or "", prompt)
         logger.info(f"Prompt length: {len(prompt)} characters")
         logger.debug(f"Prompt preview (first 500 chars):\n{prompt[:500]}...")
 
         sys_prompt = get_system_prompt("option_generator", language)
         last_error: Optional[str] = None
+        display_budget = resolve_display_budget(
+            language,
+            option_call_limit=(
+                generation_tracker.budget.option_call_limit
+                if generation_tracker is not None
+                else retry_count
+            ),
+        )
+        retained_options: List[EventOption] = []
+        retry_count = min(retry_count, display_budget.option_call_limit)
 
         for attempt in range(retry_count):
             try:
                 logger.info(f"Attempt {attempt + 1}/{retry_count}...")
 
                 user_prompt = prompt
-                if attempt > 0 and last_error:
+                if retained_options:
+                    retained_text = "\n".join(
+                        f"- {option.text}" for option in retained_options
+                    )
+                    missing_count = display_budget.option_count - len(retained_options)
+                    if language == "zh":
+                        user_prompt += (
+                            "\n\n【只补充缺失选项】\n"
+                            f"以下 {len(retained_options)} 个选项已经合格，必须原样保留且不得重复：\n"
+                            f"{retained_text}\n只返回 {missing_count} 个新的替代选项。"
+                        )
+                    else:
+                        user_prompt += (
+                            "\n\n[Fill only the missing option slots]\n"
+                            f"Keep these {len(retained_options)} valid options unchanged and do not repeat them:\n"
+                            f"{retained_text}\nReturn only {missing_count} new replacement options."
+                        )
+                elif attempt > 0 and last_error:
                     if language == "zh":
                         user_prompt += (
                             f"\n\n【上次生成失败，原因：{last_error}。"
@@ -124,51 +161,175 @@ class OptionGenerator:
                 # Extract JSON from response
                 data = extract_json(content)
                 if data:
-                    # Create GameEvent with the original story and generated options
-                    options = [EventOption(**opt) for opt in data.get("options", [])]
-                    logger.info(f"Parsed {len(options)} options:")
-                    for i, opt in enumerate(options):
+                    parsed_options = self._parse_candidate_options(
+                        data.get("options", [])
+                    )
+                    retained_options = self._merge_usable_options(
+                        retained_options,
+                        parsed_options,
+                        display_budget=display_budget,
+                        decision_history=player_state.get("decision_history", []),
+                        language=language,
+                    )
+                    logger.info(f"Retained {len(retained_options)} valid options:")
+                    for i, opt in enumerate(retained_options):
                         logger.info(f"  Option {i+1}: {opt.text}")
                         logger.info(f"    Effects: {opt.effects}")
 
-                    if len(options) >= TARGET_OPTION_COUNT:
-                        if len(options) > TARGET_OPTION_COUNT:
-                            logger.info(
-                                "Received %d options; using first %d",
-                                len(options),
-                                TARGET_OPTION_COUNT,
-                            )
-                            options = options[:TARGET_OPTION_COUNT]
-                        if self.options_repeat_recent_history(
-                            options, player_state.get("decision_history", [])
-                        ):
-                            last_error = "Generated options repeat recent choices"
-                            logger.warning(last_error)
-                            continue
+                    if len(retained_options) == display_budget.option_count:
                         logger.info("Options generated successfully!")
                         return GameEvent(
                             event_description=story_description,
-                            options=options,
+                            options=retained_options,
                         )
 
-                last_error = f"Invalid options format or fewer than {TARGET_OPTION_COUNT} options"
-                logger.warning(f"Attempt {attempt + 1}: Invalid options format, retrying...")
+                last_error = f"{display_budget.option_count - len(retained_options)} option slots remain invalid"
+                logger.warning(
+                    "Attempt %d left invalid option slots; repairing", attempt + 1
+                )
 
             except Exception as e:
                 last_error = str(e)
                 logger.warning(f"Attempt {attempt + 1} failed: {e}")
 
-        # Fallback: return with default options
-        logger.error("All attempts failed, using fallback options")
-        default_options = self.build_contextual_fallback_options(
+        # Fallback fills only missing slots; a complete story is never discarded.
+        logger.warning(
+            "Option repair exhausted; filling only missing slots contextually"
+        )
+        completed_options = self._complete_with_contextual_fallbacks(
+            retained_options,
             story_description=story_description,
             language=language,
+            decision_history=player_state.get("decision_history", []),
+            display_budget=display_budget,
         )
-        if self.options_repeat_recent_history(
-            default_options, player_state.get("decision_history", [])
-        ):
-            raise ValueError("Option generation fallback repeats recent choices")
-        return GameEvent(event_description=story_description, options=default_options)
+        return GameEvent(event_description=story_description, options=completed_options)
+
+    @staticmethod
+    def _parse_candidate_options(raw_options: Any) -> List[EventOption]:
+        """Keep well-formed candidates even when a sibling item is malformed."""
+        if not isinstance(raw_options, list):
+            return []
+        parsed: List[EventOption] = []
+        for raw_option in raw_options:
+            if not isinstance(raw_option, dict):
+                continue
+            try:
+                parsed.append(EventOption(**raw_option))
+            except Exception as exc:
+                logger.warning("Ignoring malformed option candidate: %s", exc)
+        return parsed
+
+    @staticmethod
+    def _recent_choice_keys(decision_history: Any) -> set[str]:
+        if not isinstance(decision_history, list):
+            return set()
+        return {
+            _normalize_option_text(str(entry.get("choice") or ""))
+            for entry in decision_history[-12:]
+            if isinstance(entry, dict) and entry.get("choice")
+        }
+
+    @classmethod
+    def _merge_usable_options(
+        cls,
+        retained: List[EventOption],
+        candidates: List[EventOption],
+        *,
+        display_budget: DisplayBudget,
+        decision_history: Any,
+        language: str,
+    ) -> List[EventOption]:
+        merged = list(retained)
+        if len(merged) >= display_budget.option_count:
+            return merged[: display_budget.option_count]
+        seen = {_normalize_option_text(option.text) for option in merged}
+        recent = cls._recent_choice_keys(decision_history)
+        for option in candidates:
+            text = option.text.strip()
+            key = _normalize_option_text(text)
+            if not text or not key or key in seen or key in recent:
+                continue
+            if measure_option_length(text, language) > display_budget.repair_threshold:
+                continue
+            merged.append(option.model_copy(update={"text": text}))
+            seen.add(key)
+            if len(merged) == display_budget.option_count:
+                break
+        return merged
+
+    @classmethod
+    def _complete_with_contextual_fallbacks(
+        cls,
+        retained: List[EventOption],
+        *,
+        story_description: str,
+        language: str,
+        decision_history: Any,
+        display_budget: DisplayBudget,
+    ) -> List[EventOption]:
+        fallback_pool = cls.build_contextual_fallback_options(
+            story_description, language
+        )
+        if language == "zh":
+            fallback_pool.extend(
+                [
+                    EventOption(text="先观察局势变化", effects={"knowledge": 4}),
+                    EventOption(text="与当事人确认细节", effects={"mood": 2}),
+                    EventOption(text="保留余地再做决定", effects={"energy": 2}),
+                ]
+            )
+        else:
+            fallback_pool.extend(
+                [
+                    EventOption(
+                        text="Observe how the situation changes",
+                        effects={"knowledge": 4},
+                    ),
+                    EventOption(
+                        text="Confirm details with those involved", effects={"mood": 2}
+                    ),
+                    EventOption(
+                        text="Keep options open before deciding", effects={"energy": 2}
+                    ),
+                ]
+            )
+        completed = cls._merge_usable_options(
+            retained,
+            fallback_pool,
+            display_budget=display_budget,
+            decision_history=decision_history,
+            language=language,
+        )
+        if len(completed) != display_budget.option_count:
+            raise ValueError("Unable to build three unique contextual options")
+        return completed
+
+    @classmethod
+    def complete_new_event_options(
+        cls,
+        options: List[EventOption],
+        *,
+        story_description: str,
+        language: str,
+        decision_history: Any = None,
+    ) -> List[EventOption]:
+        """Normalize nonstandard generation paths to three options without touching saves."""
+        display_budget = resolve_display_budget(language)
+        retained = cls._merge_usable_options(
+            [],
+            options,
+            display_budget=display_budget,
+            decision_history=decision_history,
+            language=language,
+        )
+        return cls._complete_with_contextual_fallbacks(
+            retained,
+            story_description=story_description,
+            language=language,
+            decision_history=decision_history,
+            display_budget=display_budget,
+        )
 
     @staticmethod
     def build_contextual_fallback_options(
@@ -211,7 +372,10 @@ class OptionGenerator:
                     ),
                 ]
 
-            if any(token in text for token in ("方案", "计划", "提案", "会议", "汇报", "演示")):
+            if any(
+                token in text
+                for token in ("方案", "计划", "提案", "会议", "汇报", "演示")
+            ):
                 return [
                     EventOption(
                         text="完善方案细节",
@@ -265,7 +429,9 @@ class OptionGenerator:
         return OptionGenerator.options_repeat_recent_history(options, decision_history)
 
     @staticmethod
-    def options_repeat_recent_history(options: List[EventOption], decision_history: Any) -> bool:
+    def options_repeat_recent_history(
+        options: List[EventOption], decision_history: Any
+    ) -> bool:
         """Return whether every candidate option replays a recent committed choice."""
         if not isinstance(decision_history, list) or not options:
             return False
@@ -350,7 +516,9 @@ class OptionGenerator:
                             if not found_match:
                                 for person in key_people:
                                     role = person.get("role", "").lower()
-                                    if role and (name.lower() in role or role in name.lower()):
+                                    if role and (
+                                        name.lower() in role or role in name.lower()
+                                    ):
                                         person_name = person.get("name", "")
                                         if person_name in valid_names:
                                             fixed_relationships[person_name] = value
@@ -365,7 +533,9 @@ class OptionGenerator:
                             # Non-key_people characters can still have relationship changes
                             if not found_match:
                                 fixed_relationships[name] = value
-                                logger.info(f"Keeping non-key_people relationship: '{name}'")
+                                logger.info(
+                                    f"Keeping non-key_people relationship: '{name}'"
+                                )
 
                     # Update relationships in effects
                     option.effects["relationships"] = fixed_relationships
@@ -442,7 +612,9 @@ class OptionGenerator:
             # 检查选项文本长度
             if len(option.text) > 50:
                 if language == "zh":
-                    issues.append(f"选项{i+1}文本过长({len(option.text)}字)，建议控制在15字内")
+                    issues.append(
+                        f"选项{i+1}文本过长({len(option.text)}字)，建议控制在15字内"
+                    )
                 else:
                     issues.append(
                         f"Option {i+1} text too long ({len(option.text)} chars), suggest max 15 words"
@@ -454,10 +626,13 @@ class OptionGenerator:
                 _normalize_option_text(g) for g in generic_options.get(language, [])
             ]
             if normalized_option_text in normalized_generic_options or any(
-                generic in normalized_option_text for generic in normalized_generic_options
+                generic in normalized_option_text
+                for generic in normalized_generic_options
             ):
                 if language == "zh":
-                    issues.append(f"选项{i+1}「{option.text}」过于通用，应与故事情境相关")
+                    issues.append(
+                        f"选项{i+1}「{option.text}」过于通用，应与故事情境相关"
+                    )
                 else:
                     issues.append(
                         f"Option {i+1} '{option.text}' is too generic, should relate to story"
@@ -475,12 +650,17 @@ class OptionGenerator:
                         if name in GENERIC_CHARACTER_NAMES:
                             continue
                         # 允许故事中已经出现过的人物（AI 可能在之前的轮次中引入了该人物）
-                        if name.lower() in story_text_lower or name in story_description:
+                        if (
+                            name.lower() in story_text_lower
+                            or name in story_description
+                        ):
                             logger.info(f"允许非列表人物「{name}」：已在故事文本中出现")
                             continue
                         # 其他情况记录警告，但不阻止生成
                         if language == "zh":
-                            issues.append(f"选项{i+1}中人物「{name}」不在可用人物列表中")
+                            issues.append(
+                                f"选项{i+1}中人物「{name}」不在可用人物列表中"
+                            )
                         else:
                             issues.append(
                                 f"Option {i+1} character '{name}' not in available people list"
@@ -495,7 +675,9 @@ class OptionGenerator:
                 value = effects.get(key, 0)
                 if abs(value) > 30:
                     if language == "zh":
-                        issues.append(f"选项{i+1}的{key}变化过大({value})，建议在-20到20之间")
+                        issues.append(
+                            f"选项{i+1}的{key}变化过大({value})，建议在-20到20之间"
+                        )
                     else:
                         issues.append(
                             f"Option {i+1} {key} change too large ({value}), suggest -20 to 20"

@@ -684,7 +684,7 @@ Key Relationships: {rel_str}{storylines_context}{facts_context}{world_model_cont
    - **Social Relationships**: **All people in the event MUST and ONLY come from the "Available People List"**, cannot create new people
 2. Event must relate to at least two state values (energy, mood, knowledge, or relationships)
 3. Event should fit the "{phase_desc}" life stage and strictly match character settings
-4. Provide 2-4 options, each clearly listing effects on [energy, mood, knowledge]
+4. Provide exactly 3 options, each clearly listing effects on [energy, mood, knowledge]; target 3-12 words per option and rewrite any option over 16 words
 5. **{length_requirement} - engaging and immersive**:
    - Write it as a compelling scene with depth
    - Include 3-5 meaningful dialogue exchanges
@@ -725,7 +725,7 @@ You MUST return ONLY valid JSON in this exact format:
   "event_description": "{event_schema_description}"
   "options": [
     {{
-      "text": "Option A description (max 15 words)",
+      "text": "Option A description (target 3-12 words)",
       "effects": {{
         "energy": -10,
         "mood": 5,
@@ -735,7 +735,7 @@ You MUST return ONLY valid JSON in this exact format:
       "likely_choice": true
     }},
     {{
-      "text": "Option B description (max 15 words)",
+      "text": "Option B description (target 3-12 words)",
       "effects": {{
         "energy": -20,
         "mood": -10,
@@ -934,7 +934,7 @@ def _get_chinese_prompt(
    - **社会关系**：**事件中出现的所有人物必须且只能来自"可用人物列表"**，不能凭空创造新人物
 2. 事件必须与至少两项状态值相关（精力、情绪、学识或关系）
 3. 事件应贴近"{phase_desc}"人生阶段，并严格符合角色的基本设定
-4. 提供2-4个选项，每个选项明确列出对【精力、情绪、学识】的影响值
+4. 提供恰好3个选项，每个选项目标8-24字，超过40字必须重写，并明确列出对【精力、情绪、学识】的影响值
 5. **{length_requirement}，生动有深度**：
    - 写成有吸引力的场景片段，有一定深度
    - 包含3-5轮有意义的对话交流
@@ -976,7 +976,7 @@ def _get_chinese_prompt(
   "event_description": "{event_schema_description}"
   "options": [
     {{
-      "text": "选项A描述（最多15字）",
+      "text": "选项A描述（目标8-24字）",
       "effects": {{
         "energy": -10,
         "mood": 5,
@@ -986,7 +986,7 @@ def _get_chinese_prompt(
       "likely_choice": true
     }},
     {{
-      "text": "选项B描述（最多15字）",
+      "text": "选项B描述（目标8-24字）",
       "effects": {{
         "energy": -20,
         "mood": -10,
@@ -1235,7 +1235,7 @@ def get_options_only_prompt(
             if recent_choice_texts
             else ""
         )
-        return f"""你是一个人生模拟游戏的选项生成器。基于以下故事描述，生成2-4个用户可以选择的选项。
+        return f"""你是一个人生模拟游戏的选项生成器。基于以下故事描述，生成恰好3个用户可以选择的选项。
 
 【故事描述】
 {story_description}
@@ -1247,7 +1247,7 @@ def get_options_only_prompt(
 
 **最重要：选项必须精确回应故事结尾的决策点！**
 
-请仔细阅读上面的故事，特别关注故事**最后几段**面临的具体情境（某人提出邀请/面临冲突/需要做选择），然后生成2-4个**直接回应该情境**的选项。
+请仔细阅读上面的故事，特别关注故事**最后几段**面临的具体情境（某人提出邀请/面临冲突/需要做选择），然后生成恰好3个**直接回应该情境**的选项。
 
 **逻辑一致性要求：**
 - 选项必须是主角在故事结尾的**具体情境下**可以采取的行动
@@ -1260,6 +1260,7 @@ def get_options_only_prompt(
 - 不要生成脱离故事情境的独立行动
 
 【其他要求】
+2. 每个选项目标8-24字；超过40字的选项必须重写
 3. 每个选项明确列出对【精力(energy)、情绪(mood)、学识(knowledge)】的影响值
 4. 选项应呈现真实的权衡取舍，不应有明显最优选项
 5. **关系影响必须指定为"relationships": {{"姓名": +/-数值}}，姓名必须严格来自可用人物列表，禁止使用列表中不存在的名字！**
@@ -1270,7 +1271,7 @@ def get_options_only_prompt(
 {{
   "options": [
     {{
-      "text": "选项A描述（最多15字）",
+      "text": "选项A描述（目标8-24字）",
       "effects": {{
         "energy": -10,
         "mood": 5,
@@ -1280,7 +1281,7 @@ def get_options_only_prompt(
       "likely_choice": true
     }},
     {{
-      "text": "选项B描述（最多15字）",
+      "text": "选项B描述（目标8-24字）",
       "effects": {{
         "energy": -5,
         "mood": -5,
@@ -1303,7 +1304,7 @@ def get_options_only_prompt(
             if recent_choice_texts
             else ""
         )
-        return f"""You are an options generator for a life simulation game. Based on the following story description, generate 2-4 options for the user to choose from.
+        return f"""You are an options generator for a life simulation game. Based on the following story description, generate exactly 3 options for the user to choose from.
 
 [Story Description]
 {story_description}
@@ -1321,17 +1322,18 @@ def get_options_only_prompt(
    - "Rest", "Study", "Work", "Exercise" etc.
    - "Continue forward", "Think about it", "Keep status quo" etc.
    - Any action detached from the story context
-3. Each option clearly lists effects on [energy, mood, knowledge]
-4. Options should present real trade-offs - no option should be clearly superior
-5. Relationship effects should be specified as "relationships": {{"name": +/-value}}, name must come from Available People List
-6. Mark "likely_choice": true/false to indicate what the character would most likely choose
+3. Target 3-12 words per option; any option over 16 words must be rewritten
+4. Each option clearly lists effects on [energy, mood, knowledge]
+5. Options should present real trade-offs - no option should be clearly superior
+6. Relationship effects should be specified as "relationships": {{"name": +/-value}}, name must come from Available People List
+7. Mark "likely_choice": true/false to indicate what the character would most likely choose
 
 [Output Format]
 Return ONLY valid JSON:
 {{
   "options": [
     {{
-      "text": "Option A description (max 15 words)",
+      "text": "Option A description (target 3-12 words)",
       "effects": {{
         "energy": -10,
         "mood": 5,
@@ -1341,7 +1343,7 @@ Return ONLY valid JSON:
       "likely_choice": true
     }},
     {{
-      "text": "Option B description (max 15 words)",
+      "text": "Option B description (target 3-12 words)",
       "effects": {{
         "energy": -5,
         "mood": -5,

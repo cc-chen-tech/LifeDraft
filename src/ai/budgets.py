@@ -59,7 +59,9 @@ class NarrativeBudget:
 
     @property
     def total_call_limit(self) -> int:
-        return self.prose_call_limit + self.validation_call_limit + self.option_call_limit
+        return (
+            self.prose_call_limit + self.validation_call_limit + self.option_call_limit
+        )
 
     def exceeds_absolute_limit(self, text: str) -> bool:
         return len(text) > self.length.absolute_max_chars
@@ -181,6 +183,35 @@ def measure_narrative_length(text: str, language: str) -> int:
     return len(_EN_WORD_PATTERN.findall(text))
 
 
+def measure_option_length(text: str, language: str) -> int:
+    """Measure option copy in the same localized units as narrative copy."""
+    return measure_narrative_length(text, language)
+
+
+def resolve_display_budget(
+    language: str,
+    *,
+    option_call_limit: int = 2,
+) -> DisplayBudget:
+    """Resolve product and rendering limits for one option group."""
+    localized_language = _normalized_language(language)
+    if localized_language == "zh":
+        target_min, target_max, repair_threshold = 8, 24, 40
+        unit: LengthUnit = "characters"
+    else:
+        target_min, target_max, repair_threshold = 3, 12, 16
+        unit = "words"
+    return DisplayBudget(
+        option_count=3,
+        target_min=target_min,
+        target_max=target_max,
+        repair_threshold=repair_threshold,
+        option_call_limit=max(0, option_call_limit),
+        max_display_lines=2,
+        unit=unit,
+    )
+
+
 def resolve_narrative_budget(
     kind: NarrativeKind | str,
     operation: GenerationOperation | str,
@@ -198,7 +229,9 @@ def resolve_narrative_budget(
 
     if resolved_kind == NarrativeKind.ROUND:
         target_min, target_max, compression_threshold = (
-            _ZH_ROUND_BANDS[quality] if localized_language == "zh" else _EN_ROUND_BANDS[quality]
+            _ZH_ROUND_BANDS[quality]
+            if localized_language == "zh"
+            else _EN_ROUND_BANDS[quality]
         )
         max_output_tokens = _ROUND_OUTPUT_TOKENS[quality]
     else:
@@ -244,7 +277,9 @@ def format_length_requirement(budget: NarrativeBudget) -> str:
     """Render the prompt constraint from the same band used for measurement."""
     if budget.length.unit == "characters":
         return f"故事应该{budget.length.target_min}-{budget.length.target_max}字"
-    return f"Story should be {budget.length.target_min}-{budget.length.target_max} words"
+    return (
+        f"Story should be {budget.length.target_min}-{budget.length.target_max} words"
+    )
 
 
 def resolve_prompt_length_requirement(
@@ -272,7 +307,9 @@ def resolve_prompt_length_requirement(
         )
 
     if resolved_kind == NarrativeKind.ROUND:
-        return get_generation_budget(quality_level).length_requirement(localized_language)
+        return get_generation_budget(quality_level).length_requirement(
+            localized_language
+        )
 
     target_min, target_max = _LEGACY_PROMPT_BANDS[resolved_kind][localized_language]
     if localized_language == "zh":
@@ -374,7 +411,9 @@ class GenerationCallTracker:
     def consume_retry(self) -> int:
         """Charge a provider retry to the category of the preceding call."""
         if self._last_category is None:
-            raise GenerationBudgetError("Cannot charge retry before an initial provider call")
+            raise GenerationBudgetError(
+                "Cannot charge retry before an initial provider call"
+            )
         return self.consume(self._last_category)
 
     @contextmanager
