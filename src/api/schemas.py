@@ -447,6 +447,20 @@ class ImageListResponse(BaseModel):
     total: int
 
 
+class PortraitImageGenerationJobResponse(BaseModel):
+    """Safe public state for a durable main-character portrait job."""
+
+    job_id: int
+    game_id: int
+    status: str
+    image_id: Optional[int] = None
+    attempt_count: int
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
 # ==================== Save Points (时间回溯) ====================
 
 

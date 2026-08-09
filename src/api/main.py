@@ -54,6 +54,12 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("Database initialized")
 
+    from src.services.portrait_image_jobs import recover_pending_portrait_image_jobs
+
+    recovered_portrait_job_ids = recover_pending_portrait_image_jobs()
+    if recovered_portrait_job_ids:
+        logger.info("Scheduled durable portrait jobs count=%s", len(recovered_portrait_job_ids))
+
     import asyncio
 
     drain_task: Optional[asyncio.Task[None]] = None

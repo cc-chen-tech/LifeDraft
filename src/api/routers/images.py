@@ -22,17 +22,20 @@ from src.api.schemas import (BatchGenerateCharactersRequest,
                              GenerateRoundSceneRequest, ImageListResponse,
                              ImageResponse, MessageResponse,
                              OpeningIllustrationResponse,
+                             PortraitImageGenerationJobResponse,
                              RegenerateFreshImageRequest,
                              RegenerateImageRequest,
                              RegenerateOpeningIllustrationRequest,
                              RegenerateRoundSceneRequest, RoundSceneResponse)
 from src.database.models import Game
 from src.database.models import Image as ImageModel
-from src.database.models import SessionLocal, User
+from src.database.models import PortraitImageGenerationJob, SessionLocal, User
 from src.services.image_service import (ImageContentError,
                                         ImageProviderServiceError, ImageService,
                                         ImageServiceError)
 from src.services.image_storage import ImageStorageError, ImageStorageService
+from src.services.portrait_image_jobs import (PortraitImageJobService,
+                                              schedule_portrait_image_job)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -328,6 +331,91 @@ async def generate_image(
     except Exception as e:
         logger.exception(f"Unexpected error in generate_image: {e}")
         raise HTTPException(status_code=500, detail=f"图片生成失败: {e}")
+
+
+def _portrait_job_response(job: PortraitImageGenerationJob) -> PortraitImageGenerationJobResponse:
+    return PortraitImageGenerationJobResponse(
+        job_id=int(job.job_id),
+        game_id=int(job.game_id),
+        status=str(job.status),
+        image_id=int(job.image_id) if job.image_id is not None else None,
+        attempt_count=int(job.attempt_count),
+        error_code=str(job.error_code) if job.error_code else None,
+        error_message=str(job.error_message) if job.error_message else None,
+        created_at=job.created_at.isoformat() if job.created_at else None,
+        updated_at=job.updated_at.isoformat() if job.updated_at else None,
+    )
+
+
+@router.post(
+    "/character/generate-async",
+    response_model=PortraitImageGenerationJobResponse,
+    status_code=202,
+)
+async def enqueue_character_portrait(
+    req: GenerateImageRequest,
+    db: Session = Depends(get_session),
+    user: Optional[int] = Depends(get_current_user_optional),
+) -> PortraitImageGenerationJobResponse:
+    """Queue a durable main-character portrait without holding the browser request open."""
+    if user is None:
+        raise HTTPException(status_code=401, detail="未登录")
+    if req.image_type != "character" or req.entity_key not in (None, "player_main"):
+        raise HTTPException(status_code=422, detail="该接口仅支持主角人物形象")
+
+    verify_game_ownership(db, req.game_id, user)
+    request_json = req.model_dump()
+    request_json["entity_key"] = "player_main"
+    job, _ = PortraitImageJobService(db).enqueue(user, request_json)
+    schedule_portrait_image_job(int(job.job_id))
+    return _portrait_job_response(job)
+
+
+@router.get(
+    "/character/jobs/latest",
+    response_model=Optional[PortraitImageGenerationJobResponse],
+)
+async def get_latest_character_portrait_job(
+    game_id: int,
+    db: Session = Depends(get_session),
+    user: Optional[int] = Depends(get_current_user_optional),
+) -> Optional[PortraitImageGenerationJobResponse]:
+    """Return the latest durable portrait job for the authenticated game owner."""
+    if user is None:
+        raise HTTPException(status_code=401, detail="未登录")
+    verify_game_ownership(db, game_id, user)
+    job = PortraitImageJobService(db).latest_for_game(user, game_id)
+    if job is not None and job.status == "queued":
+        schedule_portrait_image_job(int(job.job_id))
+    return _portrait_job_response(job) if job else None
+
+
+@router.get(
+    "/character/jobs/{job_id}",
+    response_model=PortraitImageGenerationJobResponse,
+)
+async def get_character_portrait_job(
+    job_id: int,
+    db: Session = Depends(get_session),
+    user: Optional[int] = Depends(get_current_user_optional),
+) -> PortraitImageGenerationJobResponse:
+    """Return an owned portrait job by id for polling after refresh or relogin."""
+    if user is None:
+        raise HTTPException(status_code=401, detail="未登录")
+    job = (
+        db.query(PortraitImageGenerationJob)
+        .filter(
+            PortraitImageGenerationJob.job_id == job_id,
+            PortraitImageGenerationJob.user_id == user,
+        )
+        .first()
+    )
+    if job is None:
+        raise HTTPException(status_code=404, detail="人物形象任务不存在或无权访问")
+    verify_game_ownership(db, int(job.game_id), user)
+    if job.status == "queued":
+        schedule_portrait_image_job(int(job.job_id))
+    return _portrait_job_response(job)
 
 
 @router.post("/batch-characters", response_model=ImageListResponse)
