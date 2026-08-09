@@ -15,6 +15,6 @@
 ## 3. Verification and review
 
 - [x] 3.1 Run focused backend option, restore, frontend component, and play-state tests.
-- [ ] 3.2 Run mypy, imports, contract, DB, strict TypeScript, lint, production build, deterministic Playwright desktop/mobile, and `./test.sh all`.
-- [ ] 3.3 Obtain read-only review with no unresolved Critical/Important findings and validate OpenSpec strictly.
+- [x] 3.2 Run mypy, imports, contract, DB, strict TypeScript, lint, production build, deterministic Playwright desktop/mobile, and `./test.sh all`.
+- [x] 3.3 Obtain read-only review with no unresolved Critical/Important findings and validate OpenSpec strictly.
 - [ ] 3.4 Push a separate stacked branch and open a Draft PR targeting `codex/unify-narrative-generation-budgets`; leave later input/summary/context phases out of scope.
