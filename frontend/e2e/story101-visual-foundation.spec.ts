@@ -67,6 +67,10 @@ test("renders the approved visual tokens, accessible states, and responsive evid
   await expect(fixture(page)).toBeVisible();
   await expect(fixture(page).getByTestId("visual-foundation-brand")).toBeVisible();
   await expect(fixture(page).getByText("请补充人物的称呼。", { exact: true })).toBeVisible();
+  await expect(fixture(page).getByTestId("visual-foundation-touch-control")).toHaveAttribute(
+    "data-variant",
+    "outline",
+  );
   await expect(
     fixture(page).getByRole("textbox", { name: "补充这一页的方向" }),
   ).toBeVisible();
@@ -108,6 +112,7 @@ test("renders the approved visual tokens, accessible states, and responsive evid
       reading: root.getPropertyValue("--surface-reading").trim(),
       primary: root.getPropertyValue("--text-primary").trim(),
       rule: root.getPropertyValue("--border-default").trim(),
+      inputFill: root.getPropertyValue("--input").trim(),
       brandFamily: brand ? getComputedStyle(brand).fontFamily : "",
       bodySize: body ? getComputedStyle(body).fontSize : "",
       helperSize: helper ? getComputedStyle(helper).fontSize : "",
@@ -124,6 +129,7 @@ test("renders the approved visual tokens, accessible states, and responsive evid
     reading: "#11100f",
     primary: "#f0ece6",
     rule: "#34302c",
+    inputFill: "#34302c",
     bodySize: "14px",
     helperSize: "12px",
     touchButtonBorder: "rgb(113, 103, 93)",

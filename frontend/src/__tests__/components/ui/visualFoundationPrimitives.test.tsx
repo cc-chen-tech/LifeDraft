@@ -36,21 +36,24 @@ describe("Story101 visual foundation primitives", () => {
         "border-[var(--border-interactive)]"
       )
     }
+    const outline = screen.getByRole("button", { name: "Outline" })
+    expect(outline).toHaveClass("dark:bg-input/30", "dark:hover:bg-input/50")
+    expect(outline).not.toHaveClass("dark:border-input")
     expect(screen.getByRole("textbox", { name: "Default input" })).toHaveClass(
-      "border-input"
+      "border-[var(--border-interactive)]"
     )
     expect(screen.getByRole("textbox", { name: "Underline input" })).toHaveClass(
       "border-b-[var(--border-interactive)]"
     )
     expect(screen.getByRole("textbox", { name: "Default textarea" })).toHaveClass(
-      "border-input"
+      "border-[var(--border-interactive)]"
     )
     expect(screen.getByRole("textbox", { name: "Underline textarea" })).toHaveClass(
       "border-b-[var(--border-interactive)]"
     )
 
     const stylesheet = readFileSync(resolve(process.cwd(), "src/app/globals.css"), "utf8")
-    expect(stylesheet).toMatch(/--input:\s*var\(--border-interactive\)/)
+    expect(stylesheet).toMatch(/--input:\s*var\(--border-default\)/)
   })
 
   it("self-hosts only the basic Latin Spline Sans variable face", () => {

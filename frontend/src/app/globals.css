@@ -144,7 +144,7 @@
   --warning: var(--warning-foreground);
   --info: var(--info-foreground);
   --border: var(--border-default);
-  --input: var(--border-interactive);
+  --input: var(--border-default);
   --ring: #F0ECE6;
 
   --chart-1: var(--text-primary);

@@ -120,7 +120,7 @@ export function VisualFoundationFixture() {
               onClick={() => setActionResult("草稿已保存在当前夹具中。")}
               size="touch"
               type="button"
-              variant="chrome"
+              variant="outline"
             >
               保存这一页
             </Button>
