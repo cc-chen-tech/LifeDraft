@@ -20,11 +20,13 @@ describe("Story101 foundation components", () => {
         error="请填写角色姓名"
         required
       >
-        {({ describedBy, invalid }) => (
+        {({ describedBy, invalid, required }) => (
           <input
             id="character-name"
             aria-describedby={describedBy}
             aria-invalid={invalid}
+            aria-required={required}
+            required={required}
           />
         )}
       </FormField>
@@ -35,6 +37,8 @@ describe("Story101 foundation components", () => {
     const error = screen.getByText("请填写角色姓名");
 
     expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(input).toBeRequired();
+    expect(input).toHaveAttribute("aria-required", "true");
     expect(input).toHaveAttribute(
       "aria-describedby",
       expect.stringContaining(description.id)

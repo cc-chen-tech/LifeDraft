@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 export interface FormFieldRenderProps {
   describedBy: string | undefined;
   invalid: boolean;
+  required: boolean;
 }
 
 export interface FormFieldProps {
@@ -37,7 +38,7 @@ export function FormField({
         {label}
         {required && <span aria-hidden="true"> *</span>}
       </label>
-      {children({ describedBy, invalid })}
+      {children({ describedBy, invalid, required })}
       {description && (
         <p className="text-xs text-[var(--text-secondary)]" id={descriptionId}>
           {description}

@@ -1,6 +1,8 @@
 import React from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import ErrorPage from "@/app/error";
 import GlobalError from "@/app/global-error";
@@ -11,6 +13,7 @@ import * as Sentry from "@sentry/nextjs";
 jest.mock("@sentry/nextjs", () => ({
   captureException: jest.fn(),
 }));
+jest.mock("@/app/globals.css", () => ({}));
 
 describe("Story101 global states", () => {
   let consoleError: jest.SpiedFunction<typeof console.error>;
@@ -69,5 +72,11 @@ describe("Story101 global states", () => {
     expect(markup).toMatch(
       /<main[^>]*class="[^"]*story101-page-transition[^"]*min-h-\[100dvh\][^"]*"/
     );
+  });
+
+  it("declares the app stylesheet for root-layout-independent rendering", () => {
+    const source = readFileSync(resolve(process.cwd(), "src/app/global-error.tsx"), "utf8");
+
+    expect(source).toMatch(/import ["']\.\/globals\.css["'];/);
   });
 });
