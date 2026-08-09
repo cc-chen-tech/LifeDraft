@@ -1,9 +1,9 @@
 ## 1. Budget contracts and compatibility
 
-- [ ] 1.1 Add failing tests for all Chinese/English round, opening, and continuation defaults; rewrite 80%-120% derivation; regeneration inheritance; and the 32,000-character absolute limit in `tests/test_narrative_budgets.py`.
-- [ ] 1.2 Implement enums, immutable budget dataclasses, localized measurement/formatting, the resolver, exhaustion exceptions, and `GenerationCallTracker` in `src/ai/budgets.py`.
-- [ ] 1.3 Replace `src/ai/generation_budget.py` with a compatibility adapter/re-export and prove old imports and flag-off values remain callable for one release.
-- [ ] 1.4 Add `ENABLE_UNIFIED_NARRATIVE_BUDGETS=false` to feature-flag settings and environment documentation with parameterized on/off contracts.
+- [x] 1.1 Add failing tests for all Chinese/English round, opening, and continuation defaults; rewrite 80%-120% derivation; regeneration inheritance; and the 32,000-character absolute limit in `tests/test_narrative_budgets.py`.
+- [x] 1.2 Implement enums, immutable budget dataclasses, localized measurement/formatting, the resolver, exhaustion exceptions, and `GenerationCallTracker` in `src/ai/budgets.py`.
+- [x] 1.3 Replace `src/ai/generation_budget.py` with a compatibility adapter/re-export and prove old imports and flag-off values remain callable for one release.
+- [x] 1.4 Add `ENABLE_UNIFIED_NARRATIVE_BUDGETS=false` to feature-flag settings and environment documentation with parameterized on/off contracts.
 
 ## 2. Shared call accounting
 
