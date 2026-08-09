@@ -2,9 +2,22 @@
 
 import re
 
-# 最大用户输入长度
-MAX_USER_INPUT_LENGTH = 500
-MAX_NAME_LENGTH = 50
+from src.api.input_limits import LIFE_VISION_MAX_CHARS, NAME_MAX_CHARS
+
+MAX_USER_INPUT_LENGTH = LIFE_VISION_MAX_CHARS
+MAX_NAME_LENGTH = NAME_MAX_CHARS
+
+
+class PromptInputTooLongError(ValueError):
+    """Raised when sanitization would otherwise change input by truncation."""
+
+    def __init__(self, original_text: str, limit: int) -> None:
+        self.original_text = original_text
+        self.limit = limit
+        self.actual_length = len(original_text)
+        super().__init__(
+            f"user input exceeds {limit} characters (actual: {self.actual_length})"
+        )
 
 
 def sanitize_user_input(text: str, max_length: int = MAX_USER_INPUT_LENGTH) -> str:
@@ -20,8 +33,9 @@ def sanitize_user_input(text: str, max_length: int = MAX_USER_INPUT_LENGTH) -> s
     if not text:
         return text
 
-    # 1. 长度限制
-    text = text[:max_length]
+    # 1. Never change user meaning by silently slicing the submitted value.
+    if len(text) > max_length:
+        raise PromptInputTooLongError(text, max_length)
 
     # 2. 移除可能的系统指令注入模式
     # 移除试图覆盖系统角色的模式

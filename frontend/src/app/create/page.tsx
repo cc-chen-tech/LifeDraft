@@ -2,6 +2,8 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { LengthIndicator } from "@/components/ui/length-indicator";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
 import {
   Sheet,
   SheetContent,
@@ -306,12 +308,16 @@ export default function CreatePage() {
           {(generatedContent || characterSettings[currentStepKey] != null) && !isGenerating && !isPortraitStep && (
             <div className="space-y-3">
               <div className="flex gap-2">
-                <Input
-                  value={feedback}
-                  onChange={(e) => setFeedback(e.target.value)}
-                  placeholder="不满意？告诉AI你的想法..."
-                  className="flex-1 bg-secondary border-border text-sm h-10"
-                />
+                <div className="flex-1">
+                  <Input
+                    value={feedback}
+                    onChange={(e) => setFeedback(e.target.value)}
+                    placeholder="不满意？告诉AI你的想法..."
+                    className="bg-secondary border-border text-sm h-10"
+                    maxLength={INPUT_LIMITS.feedback}
+                  />
+                  <LengthIndicator value={feedback} limit={INPUT_LIMITS.feedback} />
+                </div>
                 <Button
                   variant="outline"
                   size="icon"

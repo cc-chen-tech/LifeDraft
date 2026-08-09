@@ -3,6 +3,8 @@
 import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { LengthIndicator } from "@/components/ui/length-indicator";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
 import {
   Sheet,
   SheetContent,
@@ -203,7 +205,9 @@ export function CompletionScreen({
                   onChange={(e) => onImageFeedbackChange(e.target.value)}
                   placeholder="不满意？描述你想要的修改..."
                   className="bg-secondary border-border text-sm h-9"
+                  maxLength={INPUT_LIMITS.feedback}
                 />
+                <LengthIndicator value={imageFeedback} limit={INPUT_LIMITS.feedback} />
                 <div className="flex gap-2">
                   <Button
                     variant="outline"

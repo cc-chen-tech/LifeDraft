@@ -6,6 +6,7 @@ import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SettingFeedbackCard } from "@/components/create/SettingFeedbackCard";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
 
 describe("SettingFeedbackCard", () => {
   const baseProps = {
@@ -69,6 +70,11 @@ describe("SettingFeedbackCard", () => {
 
       expect(screen.getByTestId("background-feedback-input")).toBeInTheDocument();
       expect(screen.getByText("重新生成")).toBeInTheDocument();
+      expect(screen.getByTestId("background-feedback-input")).toHaveAttribute(
+        "maxlength",
+        String(INPUT_LIMITS.feedback),
+      );
+      expect(screen.getByText(`还可输入 ${INPUT_LIMITS.feedback} 字`)).toBeInTheDocument();
     });
 
     it("changes feedback trigger button text to reflect editing state", async () => {

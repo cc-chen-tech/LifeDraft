@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { RefreshCw, Loader2 } from "lucide-react";
 import { SettingDisplay } from "@/components/game/SettingDisplay";
+import { LengthIndicator } from "@/components/ui/length-indicator";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
 
 interface SettingFeedbackCardProps {
   stepKey: string;
@@ -26,7 +28,7 @@ export function SettingFeedbackCard({
   const [regenerationError, setRegenerationError] = useState("");
 
   const handleRegenerate = async () => {
-    if (!feedback.trim()) return;
+    if (!feedback.trim() || Array.from(feedback).length > INPUT_LIMITS.feedback) return;
     setIsGenerating(true);
     setRegenerationError("");
     try {
@@ -76,7 +78,9 @@ export function SettingFeedbackCard({
             placeholder="告诉AI你想怎么改..."
             disabled={isGenerating}
             data-testid={`${stepKey}-feedback-input`}
+            maxLength={INPUT_LIMITS.feedback}
           />
+          <LengthIndicator value={feedback} limit={INPUT_LIMITS.feedback} />
           {regenerationError && (
             <p className="text-xs text-destructive" role="alert">
               {regenerationError}

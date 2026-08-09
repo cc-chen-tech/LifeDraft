@@ -6,6 +6,7 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { OptionCards } from '@/components/game/OptionCards';
+import { INPUT_LIMITS } from '@/types/input-limits.generated';
 
 describe('OptionCards', () => {
   const mockOptions = [
@@ -22,6 +23,20 @@ describe('OptionCards', () => {
   });
 
   describe('Rendering', () => {
+    it('applies the generated custom-action limit and shows its remaining count', () => {
+      render(
+        <OptionCards
+          options={mockOptions}
+          onSelect={mockOnSelect}
+          onCustomChoice={mockOnCustomChoice}
+        />
+      );
+      expect(screen.getByPlaceholderText(/或者，描述你想做的事情/i)).toHaveAttribute(
+        'maxlength',
+        String(INPUT_LIMITS.customAction),
+      );
+      expect(screen.getByText(`还可输入 ${INPUT_LIMITS.customAction} 字`)).toBeInTheDocument();
+    });
     it('renders all options', () => {
       render(
         <OptionCards

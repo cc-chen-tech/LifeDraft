@@ -12,6 +12,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { LengthIndicator } from "@/components/ui/length-indicator";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
 import { api } from "@/lib/api";
 import { streamRewrite } from "@/lib/sse";
 import { useGameStore } from "@/stores/useGameStore";
@@ -172,7 +174,12 @@ export function ChatBar({
 
   const handleSend = useCallback(async () => {
     const text = message.trim();
-    if (!text || !gameId || isSending) return;
+    if (
+      !text ||
+      !gameId ||
+      isSending ||
+      Array.from(text).length > INPUT_LIMITS.storyDialogue
+    ) return;
 
     // Add user message
     const userMsg: ChatMessage = { role: "user", content: text };
@@ -230,7 +237,15 @@ export function ChatBar({
   const handleRewrite = useCallback(async (): Promise<void> => {
     const instruction = rewriteInstruction.trim();
     const fullStory = storyText.trim();
-    if (!instruction || !gameId || !fullStory || isRewriting || isStoryBusy) return;
+    if (
+      !instruction ||
+      !gameId ||
+      !fullStory ||
+      isRewriting ||
+      isStoryBusy ||
+      Array.from(instruction).length > INPUT_LIMITS.rewriteInstruction ||
+      Array.from(fullStory).length > INPUT_LIMITS.fullStory
+    ) return;
 
     setIsRewriting(true);
     accumulatedStoryRef.current = "";
@@ -242,7 +257,7 @@ export function ChatBar({
         gameId,
         fullStory,
         instruction,
-        fullStory,
+        "",
         "zh",
         {
           onStory: (text) => {
@@ -339,7 +354,8 @@ export function ChatBar({
 
   const storyBusyTitle = "故事生成完成后可用";
   const storyActionDisabled = isViewingHistory || isStoryBusy;
-  const rewriteDisabled = storyActionDisabled || !storyText.trim();
+  const fullStoryOverLimit = Array.from(storyText).length > INPUT_LIMITS.fullStory;
+  const rewriteDisabled = storyActionDisabled || !storyText.trim() || fullStoryOverLimit;
   const summaryDisabled = isGeneratingSummary || isSending || isStoryBusy;
 
   const rewriteSheet = (
@@ -363,6 +379,11 @@ export function ChatBar({
             placeholder="描述你想要的修改，例如：让场景更加温馨、增加一些对话、改变结局..."
             className="min-h-[120px] bg-secondary border-border text-sm"
             disabled={isRewriting}
+            maxLength={INPUT_LIMITS.rewriteInstruction}
+          />
+          <LengthIndicator
+            value={rewriteInstruction}
+            limit={INPUT_LIMITS.rewriteInstruction}
           />
           <Button
             onClick={() => handleRewrite()}
@@ -464,6 +485,8 @@ export function ChatBar({
                 ? "历史回顾模式下不可用"
                 : !storyText.trim()
                 ? "暂无可改写的故事"
+                : fullStoryOverLimit
+                ? `当前故事超过 ${INPUT_LIMITS.fullStory} 字，无法提交改写`
                 : "改写当前故事"
             }
           >
@@ -542,6 +565,8 @@ export function ChatBar({
               ? "历史回顾模式下不可用"
               : !storyText.trim()
               ? "暂无可改写的故事"
+              : fullStoryOverLimit
+              ? `当前故事超过 ${INPUT_LIMITS.fullStory} 字，无法提交改写`
               : undefined
           }
         >
@@ -653,6 +678,7 @@ export function ChatBar({
           placeholder="向剧情助手提问..."
           className="flex-1 bg-secondary border-border text-sm h-10"
           disabled={isSending}
+          maxLength={INPUT_LIMITS.storyDialogue}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.nativeEvent.isComposing && message.trim()) {
               handleSend();
@@ -674,6 +700,7 @@ export function ChatBar({
           )}
         </Button>
       </div>
+      <LengthIndicator value={message} limit={INPUT_LIMITS.storyDialogue} />
       {rewriteSheet}
       {lifeSummaryPanel}
       {rewriteToastNode}

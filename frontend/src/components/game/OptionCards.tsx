@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { Send, Loader2, ChevronRight } from "lucide-react";
+import { LengthIndicator } from "@/components/ui/length-indicator";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
 
 interface OptionCardsProps {
   options: { text: string; potential_effects?: Record<string, unknown> }[];
@@ -44,7 +46,11 @@ export function OptionCards({
   };
 
   const handleCustomSubmit = async () => {
-    if (!customText.trim() || controlsDisabled) return;
+    if (
+      !customText.trim() ||
+      controlsDisabled ||
+      Array.from(customText).length > INPUT_LIMITS.customAction
+    ) return;
     const submittedText = customText.trim();
     setSelectedIndex(-1); // -1 = custom
     setCustomText("");
@@ -140,6 +146,7 @@ export function OptionCards({
                 "transition-colors duration-200"
               )}
               disabled={controlsDisabled}
+              maxLength={INPUT_LIMITS.customAction}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
@@ -147,6 +154,7 @@ export function OptionCards({
                 }
               }}
             />
+            <LengthIndicator value={customText} limit={INPUT_LIMITS.customAction} />
           </div>
           <Button
             size="icon"

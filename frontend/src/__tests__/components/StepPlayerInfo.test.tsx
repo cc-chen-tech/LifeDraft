@@ -6,6 +6,7 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StepPlayerInfo } from "@/components/create/StepPlayerInfo";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
 
 describe("StepPlayerInfo", () => {
   const baseProps = {
@@ -42,6 +43,14 @@ describe("StepPlayerInfo", () => {
   });
 
   describe("Player name input", () => {
+    it("uses the generated name limit and shows remaining characters", () => {
+      render(<StepPlayerInfo {...baseProps} playerName="林见微" />);
+      expect(screen.getByPlaceholderText("输入你的角色名")).toHaveAttribute(
+        "maxlength",
+        String(INPUT_LIMITS.name),
+      );
+      expect(screen.getByText(`还可输入 ${INPUT_LIMITS.name - 3} 字`)).toBeInTheDocument();
+    });
     it("displays the provided player name", () => {
       render(<StepPlayerInfo {...baseProps} playerName="Alice" />);
       const input = screen.getByPlaceholderText("输入你的角色名");
@@ -73,6 +82,19 @@ describe("StepPlayerInfo", () => {
   });
 
   describe("Life vision textarea", () => {
+    it("uses the generated vision limit and reports injected overflow", () => {
+      render(
+        <StepPlayerInfo
+          {...baseProps}
+          lifeVision={"愿".repeat(INPUT_LIMITS.lifeVision + 1)}
+        />,
+      );
+      expect(screen.getByPlaceholderText("描述你希望的人生方向...")).toHaveAttribute(
+        "maxlength",
+        String(INPUT_LIMITS.lifeVision),
+      );
+      expect(screen.getByRole("alert")).toHaveTextContent("已超出 1 字");
+    });
     it("displays the provided life vision", () => {
       render(
         <StepPlayerInfo

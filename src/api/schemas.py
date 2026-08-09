@@ -4,11 +4,24 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import AliasChoices, BaseModel, Field
 
+from src.api.input_limits import (
+    CUSTOM_ACTION_MAX_CHARS,
+    FEEDBACK_MAX_CHARS,
+    FULL_STORY_MAX_CHARS,
+    LIFE_VISION_MAX_CHARS,
+    NAME_MAX_CHARS,
+    REPLACEMENT_SEGMENT_MAX_CHARS,
+    STORY_DIALOGUE_MAX_CHARS,
+    STORY_REWRITE_INSTRUCTION_MAX_CHARS,
+    VOICE_TEXT_MAX_CHARS,
+    CharacterSettingsPayload,
+)
+
 # ==================== Auth ====================
 
 
 class RegisterRequest(BaseModel):
-    display_name: str = Field(..., min_length=1, max_length=50)
+    display_name: str = Field(..., min_length=1, max_length=NAME_MAX_CHARS)
 
 
 class LoginRequest(BaseModel):
@@ -40,9 +53,9 @@ class UserInfo(BaseModel):
 
 
 class CreateGameRequest(BaseModel):
-    character_settings: Dict[str, Any]
-    player_name: str
-    life_vision: str
+    character_settings: CharacterSettingsPayload
+    player_name: str = Field(..., max_length=NAME_MAX_CHARS)
+    life_vision: str = Field(..., max_length=LIFE_VISION_MAX_CHARS)
     language: str = "zh"
     constraint_level: str = "expert"
 
@@ -145,26 +158,26 @@ class GenerateSettingRequest(BaseModel):
     setting_type: Literal["era", "age", "gender", "world", "family", "relationships", "traits"] = Field(
         ..., description="era|age|gender|world|family|relationships|traits"
     )
-    player_name: str
-    life_vision: str
-    previous_settings: Dict[str, Any] = Field(default_factory=dict)
-    feedback: Optional[str] = None
+    player_name: str = Field(..., max_length=NAME_MAX_CHARS)
+    life_vision: str = Field(..., max_length=LIFE_VISION_MAX_CHARS)
+    previous_settings: CharacterSettingsPayload = Field(default_factory=dict)
+    feedback: Optional[str] = Field(None, max_length=FEEDBACK_MAX_CHARS)
     language: str = "zh"
 
 
 class GenerateRelationshipRequest(BaseModel):
-    player_name: str
-    life_vision: str
-    previous_settings: Dict[str, Any] = Field(default_factory=dict)
+    player_name: str = Field(..., max_length=NAME_MAX_CHARS)
+    life_vision: str = Field(..., max_length=LIFE_VISION_MAX_CHARS)
+    previous_settings: CharacterSettingsPayload = Field(default_factory=dict)
     existing_people: List[Dict[str, Any]] = Field(default_factory=list)
     person_index: int = 0
     total_needed: int = 3
-    feedback: Optional[str] = None
+    feedback: Optional[str] = Field(None, max_length=FEEDBACK_MAX_CHARS)
     language: str = "zh"
 
 
 class GenerateAttributesRequest(BaseModel):
-    character_settings: Dict[str, Any]
+    character_settings: CharacterSettingsPayload
     language: str = "zh"
 
 
@@ -173,9 +186,9 @@ class UpdateGameSettingsRequest(BaseModel):
 
 
 class UpdateCharacterSettingsRequest(BaseModel):
-    character_settings: Dict[str, Any] = Field(..., min_length=1)
-    player_name: Optional[str] = None
-    life_vision: Optional[str] = None
+    character_settings: CharacterSettingsPayload = Field(..., min_length=1)
+    player_name: Optional[str] = Field(None, max_length=NAME_MAX_CHARS)
+    life_vision: Optional[str] = Field(None, max_length=LIFE_VISION_MAX_CHARS)
 
 
 class UpdateNarrativeStyleRequest(BaseModel):
@@ -183,16 +196,16 @@ class UpdateNarrativeStyleRequest(BaseModel):
 
 
 class OpeningStoryRequest(BaseModel):
-    character_settings: Dict[str, Any]
-    player_name: str
-    life_vision: str
+    character_settings: CharacterSettingsPayload
+    player_name: str = Field(..., max_length=NAME_MAX_CHARS)
+    life_vision: str = Field(..., max_length=LIFE_VISION_MAX_CHARS)
     language: str = "zh"
 
 
 class RelationshipsSummaryRequest(BaseModel):
-    player_name: str
-    life_vision: str
-    previous_settings: Dict[str, Any] = Field(default_factory=dict)
+    player_name: str = Field(..., max_length=NAME_MAX_CHARS)
+    life_vision: str = Field(..., max_length=LIFE_VISION_MAX_CHARS)
+    previous_settings: CharacterSettingsPayload = Field(default_factory=dict)
     key_people: List[Dict[str, Any]] = Field(default_factory=list)
     language: str = "zh"
 
@@ -202,9 +215,9 @@ class RelationshipsSummaryRequest(BaseModel):
 
 class CreatePresetRequest(BaseModel):
     preset_name: str = Field(..., min_length=1, max_length=100)
-    player_name: str
-    life_vision: str = ""
-    character_settings: Dict[str, Any] = Field(default_factory=dict)
+    player_name: str = Field(..., max_length=NAME_MAX_CHARS)
+    life_vision: str = Field("", max_length=LIFE_VISION_MAX_CHARS)
+    character_settings: CharacterSettingsPayload = Field(default_factory=dict)
 
 
 class PresetInfo(BaseModel):
@@ -224,7 +237,7 @@ class MakeChoiceRequest(BaseModel):
 
 
 class CustomChoiceRequest(BaseModel):
-    custom_text: str = Field(..., min_length=1)
+    custom_text: str = Field(..., min_length=1, max_length=CUSTOM_ACTION_MAX_CHARS)
 
 
 class GenerateSummaryRequest(BaseModel):
@@ -275,7 +288,7 @@ class ReadingContext(BaseModel):
     stage: Optional[str] = None
     attempt_id: Optional[str] = None
     text_hash: str
-    text: str = Field(..., min_length=1)
+    text: str = Field(..., min_length=1, max_length=VOICE_TEXT_MAX_CHARS)
 
 
 class StoryVoiceReadingRequest(BaseModel):
@@ -336,9 +349,11 @@ class StoryVoiceErrorResponse(BaseModel):
 
 
 class RewriteStoryRequest(BaseModel):
-    full_story: str
-    segment_to_replace: Optional[str] = None  # 可选，不提供则改写整个故事
-    user_instruction: str
+    full_story: str = Field(..., max_length=FULL_STORY_MAX_CHARS)
+    segment_to_replace: Optional[str] = Field(
+        None, max_length=REPLACEMENT_SEGMENT_MAX_CHARS
+    )
+    user_instruction: str = Field(..., max_length=STORY_REWRITE_INSTRUCTION_MAX_CHARS)
     language: str = "zh"
 
 
@@ -347,7 +362,7 @@ class RegenerateStoryRequest(BaseModel):
 
 
 class StoryChatRequest(BaseModel):
-    message: str = Field(..., min_length=1)
+    message: str = Field(..., min_length=1, max_length=STORY_DIALOGUE_MAX_CHARS)
     language: str = "zh"
 
 
@@ -376,15 +391,19 @@ class GenerateImageRequest(BaseModel):
     description: str = Field(..., description="描述文本")
     entity_key: Optional[str] = Field(None, description="实体唯一标识")
     era: str = Field(default="现代", description="时代背景")
-    extra_context: Optional[Dict[str, Any]] = Field(None, description="额外上下文")
-    feedback: Optional[str] = Field(None, description="重新生成时的修改意见")
+    extra_context: Optional[CharacterSettingsPayload] = Field(None, description="额外上下文")
+    feedback: Optional[str] = Field(
+        None, max_length=FEEDBACK_MAX_CHARS, description="重新生成时的修改意见"
+    )
 
 
 class RegenerateImageRequest(BaseModel):
     """重新生成图片请求"""
 
     image_id: int
-    feedback: Optional[str] = Field(None, description="修改意见")
+    feedback: Optional[str] = Field(
+        None, max_length=FEEDBACK_MAX_CHARS, description="修改意见"
+    )
     new_description: Optional[str] = Field(None, description="新描述")
 
 
@@ -399,7 +418,7 @@ class BatchGenerateCharactersRequest(BaseModel):
     """批量生成关键人物画像请求"""
 
     game_id: int
-    character_settings: Dict[str, Any] = Field(
+    character_settings: CharacterSettingsPayload = Field(
         ..., description="角色设定（包含family和relationships）"
     )
     language: str = Field(default="zh", description="语言")
@@ -486,10 +505,10 @@ class GenerateOpeningIllustrationRequest(BaseModel):
     """生成开场插画请求"""
 
     game_id: int
-    story_text: str = Field(..., description="开场故事文本")
-    character_settings: Dict[str, Any] = Field(default_factory=dict, description="角色设定")
+    story_text: str = Field(..., max_length=FULL_STORY_MAX_CHARS, description="开场故事文本")
+    character_settings: CharacterSettingsPayload = Field(default_factory=dict, description="角色设定")
     player_image_id: Optional[int] = Field(None, description="可选：已有的人物图片ID")
-    player_name: str = Field(..., description="角色姓名")
+    player_name: str = Field(..., max_length=NAME_MAX_CHARS, description="角色姓名")
 
 
 class OpeningIllustrationResponse(BaseModel):
@@ -507,11 +526,11 @@ class RegenerateOpeningIllustrationRequest(BaseModel):
     """重新生成开场插画请求"""
 
     game_id: int
-    story_text: str = Field(..., description="开场故事文本")
-    character_settings: Dict[str, Any] = Field(default_factory=dict, description="角色设定")
+    story_text: str = Field(..., max_length=FULL_STORY_MAX_CHARS, description="开场故事文本")
+    character_settings: CharacterSettingsPayload = Field(default_factory=dict, description="角色设定")
     player_image_id: Optional[int] = Field(None, description="可选：已有的人物图片ID")
-    player_name: str = Field(..., description="角色姓名")
-    user_prompt: str = Field(..., description="用户自定义提示词/修改意见")
+    player_name: str = Field(..., max_length=NAME_MAX_CHARS, description="角色姓名")
+    user_prompt: str = Field(..., max_length=FEEDBACK_MAX_CHARS, description="用户自定义提示词/修改意见")
     current_illustration_id: int = Field(..., description="当前插画ID，作为参考")
 
 
@@ -520,10 +539,10 @@ class RegenerateRoundSceneRequest(BaseModel):
 
     game_id: int
     round_number: int = Field(..., description="轮次")
-    story_text: str = Field(..., description="该轮的故事文本")
-    character_settings: Dict[str, Any] = Field(default_factory=dict, description="角色设定")
-    player_name: str = Field(..., description="角色姓名")
-    user_prompt: str = Field(..., description="用户自定义提示词/修改意见")
+    story_text: str = Field(..., max_length=FULL_STORY_MAX_CHARS, description="该轮的故事文本")
+    character_settings: CharacterSettingsPayload = Field(default_factory=dict, description="角色设定")
+    player_name: str = Field(..., max_length=NAME_MAX_CHARS, description="角色姓名")
+    user_prompt: str = Field(..., max_length=FEEDBACK_MAX_CHARS, description="用户自定义提示词/修改意见")
     current_scene_id: int = Field(..., description="当前场景插画ID，作为参考")
     player_image_id: Optional[int] = Field(None, description="可选：已有的人物图片ID")
 
@@ -534,9 +553,9 @@ class GenerateRoundSceneRequest(BaseModel):
     game_id: int
     week: Optional[int] = Field(None, description="周数（可选，不传则自动从数据库获取）")
     round_number: int = Field(..., description="轮次")
-    story_text: str = Field(..., description="该轮的故事文本")
-    character_settings: Dict[str, Any] = Field(default_factory=dict, description="角色设定")
-    player_name: str = Field(..., description="角色姓名")
+    story_text: str = Field(..., max_length=FULL_STORY_MAX_CHARS, description="该轮的故事文本")
+    character_settings: CharacterSettingsPayload = Field(default_factory=dict, description="角色设定")
+    player_name: str = Field(..., max_length=NAME_MAX_CHARS, description="角色姓名")
     player_image_id: Optional[int] = Field(None, description="可选：已有的人物图片ID")
     stage: str = Field("result", description="场景阶段: event(事件故事) 或 result(结果故事)")
 
@@ -621,7 +640,7 @@ class CollectionResponse(BaseModel):
 class RegenerateCharacterImageRequest(BaseModel):
     """重新生成人物画像请求"""
 
-    feedback: str = Field(..., description="用户修改意见，例如：头发变长一点、换一件蓝色衣服")
+    feedback: str = Field(..., max_length=FEEDBACK_MAX_CHARS, description="用户修改意见，例如：头发变长一点、换一件蓝色衣服")
     image_id: Optional[int] = Field(
         None, description="可选：指定要修改的图片ID，不传则使用当前活跃图片"
     )
@@ -630,7 +649,7 @@ class RegenerateCharacterImageRequest(BaseModel):
 class RegenerateItemImageRequest(BaseModel):
     """重新生成物品图片请求"""
 
-    feedback: str = Field(..., description="用户修改意见")
+    feedback: str = Field(..., max_length=FEEDBACK_MAX_CHARS, description="用户修改意见")
 
 
 # ==================== Entity Recognition (实体识别) ====================

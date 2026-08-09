@@ -2,6 +2,8 @@
 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { LengthIndicator } from "@/components/ui/length-indicator";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
 
 interface StepPlayerInfoProps {
   playerName: string;
@@ -28,7 +30,9 @@ export function StepPlayerInfo({
           placeholder="输入你的角色名"
           className="bg-secondary border-border h-12 text-base"
           autoFocus
+          maxLength={INPUT_LIMITS.name}
         />
+        <LengthIndicator value={playerName} limit={INPUT_LIMITS.name} />
       </div>
       <div>
         <label className="text-sm text-muted-foreground mb-1 block">
@@ -39,7 +43,9 @@ export function StepPlayerInfo({
           onChange={(e) => onLifeVisionChange(e.target.value)}
           placeholder="描述你希望的人生方向..."
           className="bg-secondary border-border text-sm resize-none min-h-[80px]"
+          maxLength={INPUT_LIMITS.lifeVision}
         />
+        <LengthIndicator value={lifeVision} limit={INPUT_LIMITS.lifeVision} />
       </div>
     </div>
   );

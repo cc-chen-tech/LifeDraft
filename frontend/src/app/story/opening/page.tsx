@@ -25,6 +25,8 @@ import { games } from "@/lib/api";
 import { streamOpeningStory } from "@/lib/sse";
 import { Loader2, Home, ImageIcon, RefreshCw } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { LengthIndicator } from "@/components/ui/length-indicator";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
 
 export default function OpeningStoryPage() {
   const router = useRouter();
@@ -470,7 +472,9 @@ export default function OpeningStoryPage() {
                       onChange={(e) => setIllustrationPrompt(e.target.value)}
                       placeholder="想修改插画？描述你的想法，如：换成夜晚场景、增加 rain 效果..."
                       className="bg-secondary border-border text-sm"
+                      maxLength={INPUT_LIMITS.feedback}
                     />
+                    <LengthIndicator value={illustrationPrompt} limit={INPUT_LIMITS.feedback} />
                     <Button
                       variant="outline"
                       size="sm"

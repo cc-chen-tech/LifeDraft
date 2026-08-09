@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { Loader2, RefreshCw, RotateCcw, User } from "lucide-react";
+import { LengthIndicator } from "@/components/ui/length-indicator";
+import { INPUT_LIMITS } from "@/types/input-limits.generated";
 
 interface StepPortraitProps {
   playerImages: Array<{ image_id: number; image_url: string }>;
@@ -192,7 +194,9 @@ export function StepPortrait({
             onChange={(e) => onFeedbackChange(e.target.value)}
             placeholder="不满意？描述你想要的修改...（会保留之前的角色设定）"
             className="bg-secondary border-border"
+            maxLength={INPUT_LIMITS.feedback}
           />
+          <LengthIndicator value={imageFeedback} limit={INPUT_LIMITS.feedback} />
           <Button
             variant="outline"
             className="w-full"

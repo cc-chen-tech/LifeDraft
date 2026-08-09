@@ -4,9 +4,10 @@
  */
 import React from 'react';
 import { ReadableStream } from 'node:stream/web';
-import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChatBar } from '@/components/game/ChatBar';
+import { INPUT_LIMITS } from '@/types/input-limits.generated';
 import { useGameStore } from '@/stores/useGameStore';
 import { jsonResponse } from '@/__tests__/helpers/fetch';
 import { spyOnStoreMethods } from '@/__tests__/helpers/store-spy';
@@ -118,7 +119,11 @@ describe('ChatBar', () => {
       await user.click(screen.getByLabelText('发送消息'));
       expect(await screen.findByText('这段故事怎么样？')).toBeInTheDocument();
 
-      await user.click(screen.getByRole('button', { name: '改写' }));
+      const rewriteButton = screen
+        .getAllByTestId('rewrite-button')
+        .find((button) => !button.hasAttribute('disabled'));
+      expect(rewriteButton).toBeDefined();
+      await user.click(rewriteButton!);
       expect(await screen.findByTestId('inline-rewrite-sheet')).toBeInTheDocument();
 
       rerender(
@@ -293,6 +298,13 @@ describe('ChatBar', () => {
       );
       await user.click(screen.getByRole('button', { name: '改写故事' }));
 
+      const rewriteRequest = (global.fetch as jest.Mock).mock.calls[0][1] as RequestInit;
+      expect(JSON.parse(String(rewriteRequest.body))).toMatchObject({
+        full_story: '原始故事。',
+        segment_to_replace: '',
+        user_instruction: '增加对话',
+      });
+
       act(() => {
         rewriteStream.enqueue(
           'data: {"type":"status","status":{"phase":"analyzing","message":"正在理解改写要求"}}\n\n'
@@ -399,6 +411,18 @@ describe('ChatBar', () => {
   });
 
   describe('Expanded state', () => {
+    it('uses the generated story-dialogue limit and shows remaining characters', async () => {
+      const user = userEvent.setup();
+      render(<ChatBar gameId={1} storyText="Test story" />);
+
+      await user.click(screen.getByLabelText('打开聊天'));
+
+      expect(screen.getByPlaceholderText('向剧情助手提问...')).toHaveAttribute(
+        'maxlength',
+        String(INPUT_LIMITS.storyDialogue),
+      );
+      expect(screen.getByText(`还可输入 ${INPUT_LIMITS.storyDialogue} 字`)).toBeInTheDocument();
+    });
     it('expands when clicking the expand button', async () => {
       const user = userEvent.setup();
       render(
@@ -474,6 +498,27 @@ describe('ChatBar', () => {
   });
 
   describe('Quick action buttons', () => {
+    it('uses the generated rewrite-instruction limit and shows remaining characters', async () => {
+      const user = userEvent.setup();
+      render(<ChatBar gameId={1} storyText="Test story" />);
+
+      const rewriteButton = screen
+        .getAllByTestId('rewrite-button')
+        .find((button) => !button.hasAttribute('disabled'));
+      expect(rewriteButton).toBeDefined();
+      await user.click(rewriteButton!);
+
+      const instruction = await screen.findByPlaceholderText(/描述你想要的修改/);
+      expect(instruction).toHaveAttribute(
+        'maxlength',
+        String(INPUT_LIMITS.rewriteInstruction),
+      );
+      expect(
+        within(screen.getByTestId('inline-rewrite-sheet')).getByText(
+          `还可输入 ${INPUT_LIMITS.rewriteInstruction} 字`,
+        ),
+      ).toBeInTheDocument();
+    });
     beforeEach(async () => {
       const user = userEvent.setup();
       render(
