@@ -1,10 +1,13 @@
 import React from "react"
 import { render, screen } from "@testing-library/react"
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { NarrativeLoadingState } from "@/components/narrative-loading/NarrativeLoadingState"
 
 describe("Story101 visual foundation primitives", () => {
   it("routes touch button sizes to the native button", () => {
@@ -72,6 +75,55 @@ describe("Story101 visual foundation primitives", () => {
     expect(textarea).toHaveValue("A letter waits by the door.")
     expect(textarea).toHaveAttribute("data-surface", "underline")
     expect(textarea).toHaveAttribute("data-control-size", "touch")
+  })
+
+  it("lets selected input surfaces own the background in the always-dark root", () => {
+    render(
+      <>
+        <Input aria-label="Filled input" surface="filled" />
+        <Input aria-label="Underline input" surface="underline" />
+        <Textarea aria-label="Filled textarea" surface="filled" />
+        <Textarea aria-label="Underline textarea" surface="underline" />
+      </>
+    )
+
+    const filledControls = [
+      screen.getByRole("textbox", { name: "Filled input" }),
+      screen.getByRole("textbox", { name: "Filled textarea" }),
+    ]
+    const underlineControls = [
+      screen.getByRole("textbox", { name: "Underline input" }),
+      screen.getByRole("textbox", { name: "Underline textarea" }),
+    ]
+
+    for (const control of filledControls) {
+      expect(control).toHaveClass("bg-[var(--surface-raised)]")
+      expect(control).not.toHaveClass("dark:bg-input/30")
+    }
+    for (const control of underlineControls) {
+      expect(control).toHaveClass("bg-transparent")
+      expect(control).not.toHaveClass("dark:bg-input/30")
+    }
+  })
+
+  it("renders delayed narrative copy with the warning foreground token", () => {
+    const style = document.createElement("style")
+    style.textContent = readFileSync(resolve(process.cwd(), "src/app/globals.css"), "utf8")
+    document.head.appendChild(style)
+
+    try {
+      render(<NarrativeLoadingState context="gameplay" layout="section" delayed />)
+
+      const delayedCopy = screen.getByText("这一页仍在继续写作")
+      expect(getComputedStyle(delayedCopy).color).toBe("var(--warning-foreground)")
+      expect(
+        getComputedStyle(document.documentElement)
+          .getPropertyValue("--warning-foreground")
+          .trim()
+      ).toBe("#C2A26E")
+    } finally {
+      style.remove()
+    }
   })
 
   it.each(["success", "warning", "danger", "info"] as const)(

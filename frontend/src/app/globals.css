@@ -332,7 +332,7 @@
 }
 
 .narrative-loading-delayed {
-  color: var(--narrative-accent);
+  color: var(--warning-foreground);
 }
 
 @keyframes narrative-loading-divider-breathe {
